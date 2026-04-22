@@ -52,7 +52,7 @@ async function startCheckout() {
       key:         RAZORPAY_KEY,
       amount:      order.amount,
       currency:    order.currency,
-      name:        'Akshar & Co.',
+      name:        'Ink & Chai',
       description: `${cart.length} book${cart.length > 1 ? 's' : ''}`,
       image:       '/logo.png',          // add your logo here
       order_id:    order.id,

@@ -117,7 +117,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Akshar & Co. — Fine Books</title>
+<title>Ink & Chai — Books We Love</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet" />
 <style>
   :root {
@@ -311,6 +311,33 @@ HTML = r"""<!DOCTYPE html>
   .cat-name { font-family: 'Cormorant Garamond', serif; font-size: 1rem; color: var(--cream); line-height: 1.3; margin-bottom: 0.3rem; }
   .cat-count { font-size: 0.58rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold-dim); }
 
+  /* PRODUCT MODAL */
+  .prod-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:600; opacity:0; pointer-events:none; transition:opacity 0.3s; backdrop-filter:blur(4px); }
+  .prod-overlay.show { opacity:1; pointer-events:all; }
+  .prod-modal { position:fixed; inset:0; z-index:700; display:flex; align-items:center; justify-content:center; padding:2rem; pointer-events:none; opacity:0; transform:translateY(24px); transition:opacity 0.3s, transform 0.3s; }
+  .prod-modal.show { opacity:1; transform:translateY(0); pointer-events:all; }
+  .prod-close { position:absolute; top:1.2rem; right:1.4rem; background:none; border:none; color:var(--cream-dim); font-size:1.4rem; cursor:pointer; z-index:2; transition:color 0.2s; line-height:1; }
+  .prod-close:hover { color:var(--gold); }
+  .prod-inner { background:var(--bg3); border:1px solid var(--border); width:min(860px,100%); max-height:90vh; overflow-y:auto; display:grid; grid-template-columns:1fr 1.4fr; position:relative; }
+  .prod-img-col { background:var(--bg2); display:flex; align-items:center; justify-content:center; min-height:340px; padding:2.5rem; }
+  .prod-img-col img { max-height:420px; max-width:100%; object-fit:contain; box-shadow:0 20px 60px rgba(0,0,0,0.5); }
+  .prod-img-placeholder { width:180px; height:260px; background:linear-gradient(135deg,#1a0a00,#3a1500); }
+  .prod-info { padding:2.8rem 2.4rem; display:flex; flex-direction:column; gap:1rem; overflow-y:auto; }
+  .prod-cat { font-size:0.55rem; letter-spacing:0.3em; text-transform:uppercase; color:var(--gold); }
+  .prod-title { font-family:'Cormorant Garamond',serif; font-size:1.9rem; font-weight:400; color:var(--white); line-height:1.2; }
+  .prod-author { font-size:0.72rem; color:var(--cream-dim); letter-spacing:0.1em; }
+  .prod-price-row { display:flex; align-items:baseline; gap:0.8rem; margin-top:0.3rem; }
+  .prod-price { font-family:'Cormorant Garamond',serif; font-size:2rem; color:var(--gold); font-weight:600; }
+  .prod-orig { font-size:0.9rem; color:var(--cream-dim); text-decoration:line-through; }
+  .prod-saving { font-size:0.65rem; letter-spacing:0.1em; color:#6dbf6d; background:rgba(109,191,109,0.1); padding:0.25rem 0.6rem; }
+  .prod-desc { font-size:0.78rem; color:var(--cream-dim); line-height:1.9; letter-spacing:0.03em; border-top:1px solid var(--border); padding-top:1rem; }
+  .prod-actions { display:flex; gap:0.8rem; margin-top:auto; padding-top:1rem; border-top:1px solid var(--border); }
+  .prod-btn-cart { flex:1; font-family:'Montserrat',sans-serif; font-size:0.62rem; letter-spacing:0.22em; text-transform:uppercase; padding:0.9rem 1rem; background:var(--gold); color:var(--bg); border:none; cursor:pointer; font-weight:500; transition:background 0.3s; }
+  .prod-btn-cart:hover { background:var(--gold-light); }
+  .prod-btn-share { font-family:'Montserrat',sans-serif; font-size:0.62rem; letter-spacing:0.18em; text-transform:uppercase; padding:0.9rem 1.2rem; background:transparent; color:var(--cream-dim); border:1px solid var(--border); cursor:pointer; transition:all 0.3s; }
+  .prod-btn-share:hover { border-color:var(--gold-dim); color:var(--gold); }
+  @media (max-width:640px) { .prod-inner { grid-template-columns:1fr; } .prod-img-col { min-height:220px; } }
+
   /* CART SIDEBAR */
   .cart-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:400; opacity:0; pointer-events:none; transition:opacity 0.35s; }
   .cart-overlay.show { opacity:1; pointer-events:all; }
@@ -370,7 +397,7 @@ HTML = r"""<!DOCTYPE html>
 <body>
 
 <nav>
-  <a class="nav-logo" href="#">Akshar<span> & Co.</span></a>
+  <a class="nav-logo" href="#">Ink &amp;<span> Chai</span></a>
   <ul class="nav-links">
     <li><a href="#featured">Catalogue</a></li>
     <li><a href="#collections">Collections</a></li>
@@ -388,6 +415,13 @@ HTML = r"""<!DOCTYPE html>
     </div>
   </div>
 </nav>
+
+<!-- PRODUCT MODAL -->
+<div class="prod-overlay" id="prodOverlay" onclick="closeProduct()"></div>
+<div class="prod-modal" id="prodModal" role="dialog" aria-modal="true">
+  <button class="prod-close" onclick="closeProduct()" aria-label="Close">✕</button>
+  <div class="prod-inner" id="prodInner"><!-- filled by JS --></div>
+</div>
 
 <!-- CART OVERLAY + SIDEBAR -->
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
@@ -415,7 +449,7 @@ HTML = r"""<!DOCTYPE html>
 <!-- HERO -->
 <section class="hero" style="padding:0;">
   <div class="hero-left">
-    <div class="hero-eyebrow">New Delhi's Finest Bookshop</div>
+    <div class="hero-eyebrow">inkandchai.in — Books We Love</div>
     <h1 class="hero-title">Stories that<br/><em>endure</em> the<br/>passage of time.</h1>
     <p class="hero-sub">Curated fiction, non-fiction, poetry, and rare finds — thoughtfully selected for readers who believe in the transformative power of the written word.</p>
     <div class="hero-ctas">
@@ -517,8 +551,8 @@ HTML = r"""<!DOCTYPE html>
   <div class="editorial-content">
     <div class="section-label">Our Story</div>
     <h2 class="section-title">More than just<br/><em>a bookshop</em></h2>
-    <p>Founded in the bylanes of Delhi's literary heart, Akshar & Co. was born from a single belief — that the right book, in the right hands, at the right moment, can change everything.</p>
-    <p>We curate every title with care, stock rare editions alongside contemporary bestsellers, and believe in building a community of readers who share a love for words, stories, and ideas.</p>
+    <p>Ink & Chai was born from a simple belief — that the right book, paired with a warm cup of chai, can change everything. We curate every title with care for readers who love to get lost in words.</p>
+    <p>From Indian literary masters to manga, from self-help to rare finds — our catalogue spans 40+ genres with fast pan-India delivery straight to your door.</p>
     <a href="#" class="btn-primary" style="align-self:flex-start; margin-top:1rem;">Our Story</a>
   </div>
 </div>
@@ -527,7 +561,7 @@ HTML = r"""<!DOCTYPE html>
 <section class="newsletter">
   <div class="section-label">Stay in the loop</div>
   <h2 class="section-title" style="margin-bottom:0.5rem;">New arrivals. Rare finds.<br/><em>Every week.</em></h2>
-  <p style="font-size:0.78rem;color:var(--cream-dim);letter-spacing:0.04em;">Join 14,000+ readers who get our weekly picks — no spam, ever.</p>
+  <p style="font-size:0.78rem;color:var(--cream-dim);letter-spacing:0.04em;">Join readers who get our weekly picks — new arrivals, deals, and chai-approved reads. No spam, ever.</p>
   <form class="newsletter-form" onsubmit="return false;">
     <input class="newsletter-input" type="email" placeholder="your@email.com" />
     <button class="btn-subscribe">Subscribe</button>
@@ -538,8 +572,8 @@ HTML = r"""<!DOCTYPE html>
 <footer>
   <div class="footer-top">
     <div>
-      <div class="footer-logo">Akshar<span> & Co.</span></div>
-      <p class="footer-about">New Delhi's home for lovers of the written word. 2,300+ unique titles across every genre, with pan-India delivery in 2 days.</p>
+      <div class="footer-logo">Ink &amp;<span> Chai</span></div>
+      <p class="footer-about">Books we love, delivered to your door. 2,300+ titles across every genre — fiction, manga, self-help, kids, and more — with pan-India delivery in 2 days.</p>
     </div>
     <div>
       <div class="footer-col-title">Shop</div>
@@ -567,7 +601,7 @@ HTML = r"""<!DOCTYPE html>
     </div>
   </div>
   <div class="footer-bottom">
-    <span class="footer-copy">© 2026 Akshar & Co. All rights reserved.</span>
+    <span class="footer-copy">© 2026 Ink & Chai. All rights reserved.</span>
     <div class="footer-bottom-links">
       <a href="#">Privacy Policy</a><a href="#">Terms of Service</a><a href="#">Instagram</a>
     </div>
@@ -609,14 +643,19 @@ function renderBooks() {
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
 
-  grid.innerHTML = slice.map(b => `
-    <div class="book-card" onclick="window.open('${b.url}','_blank')">
+  grid.innerHTML = slice.map((b, i) => `
+    <div class="book-card" onclick="openProduct('${encodeURIComponent(b.url)}')">
       <div class="book-cover">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
              onerror="this.style.display='none'" />
         <div class="book-cover-overlay">
           <div class="book-cover-title">${escHtml(b.t)}</div>
-          <button class="btn-add" onclick="event.stopPropagation(); addToCartById(this)" data-url="\${b.url}" data-title="\${b.t.replace(/\"/g,'&quot;')}" data-author="\${(b.a||'').replace(/\"/g,'&quot;')}" data-price="\${(b.p||'').replace(/[^0-9.]/g,'')}" data-img="\${b.img}">Add to Cart</button>
+          <button class="btn-add" onclick="event.stopPropagation(); addToCartById(this)"
+            data-url="${escHtml(b.url)}"
+            data-title="${escHtml(b.t)}"
+            data-author="${escHtml(b.a||'')}"
+            data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
+            data-img="${escHtml(b.img)}">Add to Cart</button>
         </div>
       </div>
       <div class="book-name">${escHtml(b.t)}</div>
@@ -706,6 +745,92 @@ function loadMore() {
   });
 }
 
+// ── PRODUCT MODAL + HASH ROUTING ─────────────────────────────────────────
+// Build a lookup map: encoded URL → book object
+const BOOK_MAP = {};
+BOOKS.forEach(b => { BOOK_MAP[encodeURIComponent(b.url)] = b; });
+
+function openProduct(encodedUrl) {
+  const b = BOOK_MAP[encodedUrl];
+  if (!b) return;
+
+  // Update URL hash (shareable link)
+  history.pushState(null, '', '#/product/' + encodedUrl);
+  document.title = b.t + ' — Ink & Chai';
+
+  // Calculate saving if original price exists
+  let savingHtml = '';
+  if (b.op) {
+    const sale = parseFloat((b.p||'').replace(/[^0-9.]/g,''));
+    const orig = parseFloat((b.op||'').replace(/[^0-9.]/g,''));
+    if (orig > sale) {
+      const pct = Math.round((orig - sale) / orig * 100);
+      savingHtml = `<span class="prod-saving">Save ${pct}%</span>`;
+    }
+  }
+
+  document.getElementById('prodInner').innerHTML = `
+    <div class="prod-img-col">
+      ${b.img
+        ? `<img src="${escHtml(b.img)}" alt="${escHtml(b.t)}" />`
+        : `<div class="prod-img-placeholder"></div>`}
+    </div>
+    <div class="prod-info">
+      <div class="prod-cat">${escHtml(b.cat)}</div>
+      <h2 class="prod-title">${escHtml(b.t)}</h2>
+      <div class="prod-author">${b.a ? 'by ' + escHtml(b.a) : ''}</div>
+      <div class="prod-price-row">
+        <span class="prod-price">${escHtml(b.p)}</span>
+        ${b.op ? `<span class="prod-orig">${escHtml(b.op)}</span>` : ''}
+        ${savingHtml}
+      </div>
+      ${b.desc ? `<p class="prod-desc">${escHtml(b.desc)}${b.desc.length >= 140 ? '…' : ''}</p>` : ''}
+      <div class="prod-actions">
+        <button class="prod-btn-cart" onclick="
+          addToCart({id:'${escHtml(b.url)}', title:'${escHtml(b.t).replace(/'/g,'\\u0027')}',
+            author:'${escHtml(b.a||'').replace(/'/g,'\\u0027')}',
+            price:${parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0)},
+            img:'${escHtml(b.img)}', url:'${escHtml(b.url)}'});
+        ">Add to Cart</button>
+        <button class="prod-btn-share" onclick="shareProduct('${encodedUrl}')">Share ↗</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('prodOverlay').classList.add('show');
+  document.getElementById('prodModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeProduct() {
+  document.getElementById('prodOverlay').classList.remove('show');
+  document.getElementById('prodModal').classList.remove('show');
+  document.body.style.overflow = '';
+  // Restore URL
+  history.pushState(null, '', window.location.pathname);
+  document.title = 'Ink & Chai — Books We Love';
+}
+
+function shareProduct(encodedUrl) {
+  const url = window.location.origin + window.location.pathname + '#/product/' + encodedUrl;
+  if (navigator.share) {
+    navigator.share({ title: document.title, url });
+  } else {
+    navigator.clipboard.writeText(url).then(() => showToast('Link copied to clipboard!'));
+  }
+}
+
+// Handle direct link to product via hash on page load
+function handleHash() {
+  const hash = window.location.hash;
+  const match = hash.match(/^#\/product\/(.+)$/);
+  if (match) openProduct(match[1]);
+}
+window.addEventListener('popstate', () => {
+  if (!window.location.hash.includes('/product/')) closeProduct();
+  else handleHash();
+});
+
 // ── CATEGORIES ────────────────────────────────────────────────────────────
 let activeCat = null;
 
@@ -749,12 +874,17 @@ function renderBooksForCat(cat) {
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
   grid.innerHTML = slice.map(b => `
-    <div class="book-card" onclick="window.open('${b.url}','_blank')">
+    <div class="book-card" onclick="openProduct('${encodeURIComponent(b.url)}')">
       <div class="book-cover">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
         <div class="book-cover-overlay">
           <div class="book-cover-title">${escHtml(b.t)}</div>
-          <button class="btn-add" onclick="event.stopPropagation(); addToCartById(this)" data-url="\${b.url}" data-title="\${b.t.replace(/\"/g,'&quot;')}" data-author="\${(b.a||'').replace(/\"/g,'&quot;')}" data-price="\${(b.p||'').replace(/[^0-9.]/g,'')}" data-img="\${b.img}">Add to Cart</button>
+          <button class="btn-add" onclick="event.stopPropagation(); addToCartById(this)"
+            data-url="${escHtml(b.url)}"
+            data-title="${escHtml(b.t)}"
+            data-author="${escHtml(b.a||'')}"
+            data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
+            data-img="${escHtml(b.img)}">Add to Cart</button>
         </div>
       </div>
       <div class="book-name">${escHtml(b.t)}</div>
@@ -778,6 +908,7 @@ document.getElementById('view-all-link').textContent = `View all ${BOOKS.length.
 renderBooks();
 renderCollections();
 renderCats(ALL_CATS);
+handleHash();   // open product modal if URL has #/product/...
 
 // Intersection observer for initial cards
 const obs = new IntersectionObserver(entries => {
