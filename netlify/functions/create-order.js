@@ -6,10 +6,18 @@
 
 const Razorpay = require('razorpay');
 
+const CORS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Content-Type': 'application/json',
+};
+
 exports.handler = async (event) => {
-  // Only allow POST
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers: CORS, body: '' };
+  }
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
+    return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
   }
 
   let body;
@@ -34,13 +42,13 @@ exports.handler = async (event) => {
     const order = await razorpay.orders.create({
       amount:   Math.round(amount),   // paise
       currency,
-      receipt:  receipt || `akshar_${Date.now()}`,
+      receipt:  receipt || `inkandchai_${Date.now()}`,
       notes:    notes || {},
     });
 
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS,
       body: JSON.stringify({
         id:       order.id,
         amount:   order.amount,
@@ -52,6 +60,7 @@ exports.handler = async (event) => {
     console.error('Razorpay order error:', err);
     return {
       statusCode: 500,
+      headers: CORS,
       body: JSON.stringify({ error: 'Failed to create order', details: err.message }),
     };
   }
