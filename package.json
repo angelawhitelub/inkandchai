@@ -1,0 +1,14 @@
+{
+  "name": "akshar-co",
+  "version": "1.0.0",
+  "description": "Akshar & Co. — Fine Books",
+  "scripts": {
+    "dev":   "netlify dev",
+    "build": "python3 generate_site.py",
+    "deploy": "netlify deploy --prod"
+  },
+  "dependencies": {
+    "razorpay": "^2.9.2",
+    "@supabase/supabase-js": "^2.43.4"
+  }
+}
