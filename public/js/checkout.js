@@ -189,6 +189,126 @@ function openCheckoutForm() {
   document.body.appendChild(form);
 }
 
+// ── Cash on Delivery form ─────────────────────────────────────────────────
+function openCODForm() {
+  const cart = getCart();
+  if (cart.length === 0) { showToast('Your cart is empty!'); return; }
+
+  let modal = document.getElementById('codFormModal');
+  if (modal) { modal.style.display = 'flex'; return; }
+
+  modal = document.createElement('div');
+  modal.id = 'codFormModal';
+  modal.style.cssText = `
+    position:fixed; inset:0; background:rgba(13,11,8,0.92); backdrop-filter:blur(8px);
+    display:flex; align-items:center; justify-content:center; z-index:5000;
+  `;
+  modal.innerHTML = `
+    <div style="background:#1c1916; border:1px solid rgba(201,168,76,0.18);
+                padding:2.8rem; width:min(480px,90vw); position:relative; max-height:90vh; overflow-y:auto;">
+      <button onclick="document.getElementById('codFormModal').style.display='none'"
+        style="position:absolute;top:1rem;right:1rem;background:none;border:none;
+               color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
+
+      <div style="font-size:0.58rem;letter-spacing:0.35em;text-transform:uppercase;
+                  color:#c9a84c;margin-bottom:0.8rem;">🚚 Cash on Delivery</div>
+      <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;
+                 color:#faf7f2;margin-bottom:0.5rem;">Delivery Details</h3>
+      <p style="font-size:0.72rem;color:#a09080;margin-bottom:1.8rem;line-height:1.7;">
+        Pay cash when your books arrive. No prepayment needed.
+      </p>
+
+      ${inputField('cod-name',    'text',  'Full Name *',          'Your full name')}
+      ${inputField('cod-phone',   'tel',   'Phone Number *',       '10-digit mobile number')}
+      ${inputField('cod-email',   'email', 'Email (for updates)',  'you@example.com')}
+      ${inputField('cod-address', 'text',  'Full Delivery Address *', 'House, Street, City, PIN')}
+
+      <button onclick="submitCOD()"
+        style="width:100%;margin-top:1rem;font-family:'Montserrat',sans-serif;
+               font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;
+               padding:1rem 2rem;background:#c9a84c;color:#0d0b08;
+               border:none;cursor:pointer;font-weight:500;">
+        Confirm Order →
+      </button>
+      <p style="font-size:0.62rem;color:#7a6330;text-align:center;margin-top:1rem;letter-spacing:0.05em;">
+        You'll pay ₹ ${getCart().reduce((s,i)=>s+i.price*i.qty,0).toLocaleString('en-IN')} in cash at delivery.
+      </p>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function submitCOD() {
+  const name    = document.getElementById('cod-name')?.value.trim()    || '';
+  const phone   = document.getElementById('cod-phone')?.value.trim()   || '';
+  const email   = document.getElementById('cod-email')?.value.trim()   || '';
+  const address = document.getElementById('cod-address')?.value.trim() || '';
+
+  if (!phone || !address || !name) {
+    showToast('Please fill in your name, phone and address.');
+    return;
+  }
+  if (phone.replace(/\D/g,'').length < 10) {
+    showToast('Please enter a valid 10-digit phone number.');
+    return;
+  }
+
+  const cart   = getCart();
+  const amount = cart.reduce((s, i) => s + i.price * i.qty, 0);
+
+  showToast('Placing your order…');
+
+  try {
+    const res = await fetch('/.netlify/functions/cod-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cart, customer: { name, phone, email, address }, amount }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+
+    // Close form and show success
+    document.getElementById('codFormModal')?.remove();
+    clearCart();
+    closeCart();
+    showCODSuccess(data.order_id, name);
+
+  } catch (err) {
+    console.error(err);
+    showToast('Could not place order. Please try again.');
+  }
+}
+
+function showCODSuccess(orderId, name) {
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position:fixed; inset:0; background:rgba(13,11,8,0.97);
+    display:flex; align-items:center; justify-content:center; z-index:10000;
+  `;
+  modal.innerHTML = `
+    <div style="text-align:center; padding:3rem; max-width:480px;">
+      <div style="font-size:3rem; margin-bottom:1.5rem;">🚚</div>
+      <h2 style="font-family:'Cormorant Garamond',serif; font-size:2.2rem;
+                 color:#f0e8d8; font-weight:300; margin-bottom:1rem;">Order Placed!</h2>
+      <p style="font-size:0.82rem; color:#a09080; line-height:1.9; letter-spacing:0.04em; margin-bottom:0.5rem;">
+        Hi ${name.split(' ')[0]}, your books are on their way.<br/>
+        Pay cash when they arrive at your door.
+      </p>
+      <p style="font-size:0.65rem; color:#7a6330; letter-spacing:0.15em; margin-bottom:2.5rem;">
+        Order ID: ${orderId}
+      </p>
+      <button onclick="this.closest('div[style*=inset]').remove()"
+        style="font-family:'Montserrat',sans-serif; font-size:0.62rem; letter-spacing:0.22em;
+               text-transform:uppercase; padding:0.9rem 2rem; background:#c9a84c;
+               color:#0d0b08; border:none; cursor:pointer; font-weight:500;">
+        Continue Shopping
+      </button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
 function inputField(id, type, label, placeholder) {
   return `
     <div style="margin-bottom:1.2rem;">

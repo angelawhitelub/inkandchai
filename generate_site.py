@@ -370,6 +370,8 @@ HTML = r"""<!DOCTYPE html>
   .cart-total-amount { font-family:'Cormorant Garamond',serif; font-size:1.5rem; color:var(--gold); font-weight:600; }
   .btn-checkout { width:100%; font-family:'Montserrat',sans-serif; font-size:0.65rem; letter-spacing:0.25em; text-transform:uppercase; padding:1rem; background:var(--gold); color:var(--bg); border:none; cursor:pointer; font-weight:500; transition:all 0.3s; }
   .btn-checkout:hover { background:var(--gold-light); }
+  .btn-cod-cart { width:100%; font-family:'Montserrat',sans-serif; font-size:0.62rem; letter-spacing:0.18em; text-transform:uppercase; padding:0.85rem; background:transparent; color:var(--cream-dim); border:1px solid var(--border); cursor:pointer; font-weight:300; transition:all 0.3s; }
+  .btn-cod-cart:hover { border-color:var(--gold-dim); color:var(--gold); }
   .cart-badge { background:var(--gold); color:var(--bg); border-radius:50%; width:18px; height:18px; font-size:0.55rem; font-weight:500; display:inline-flex; align-items:center; justify-content:center; position:absolute; top:-6px; right:-8px; }
   .nav-cart-wrap { position:relative; }
 
@@ -416,13 +418,6 @@ HTML = r"""<!DOCTYPE html>
   </div>
 </nav>
 
-<!-- PRODUCT MODAL -->
-<div class="prod-overlay" id="prodOverlay" onclick="closeProduct()"></div>
-<div class="prod-modal" id="prodModal" role="dialog" aria-modal="true">
-  <button class="prod-close" onclick="closeProduct()" aria-label="Close">✕</button>
-  <div class="prod-inner" id="prodInner"><!-- filled by JS --></div>
-</div>
-
 <!-- CART OVERLAY + SIDEBAR -->
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
 <div class="cart-sidebar" id="cartSidebar">
@@ -442,7 +437,8 @@ HTML = r"""<!DOCTYPE html>
       <span class="cart-total-label">Total</span>
       <span class="cart-total-amount" id="cartTotal">₹ 0</span>
     </div>
-    <button class="btn-checkout" onclick="openCheckoutForm()">Proceed to Checkout →</button>
+    <button class="btn-checkout" onclick="openCheckoutForm()">Pay Online →</button>
+    <button class="btn-cod-cart" onclick="openCODForm()">🚚 Cash on Delivery</button>
   </div>
 </div>
 
@@ -644,7 +640,7 @@ function renderBooks() {
   const grid  = document.getElementById('booksGrid');
 
   grid.innerHTML = slice.map((b, i) => `
-    <div class="book-card" onclick="openProduct('${encodeURIComponent(b.url)}')">
+    <div class="book-card" onclick="location.href='/product/?id=${encodeURIComponent(b.url)}'" style="cursor:pointer;">
       <div class="book-cover">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
              onerror="this.style.display='none'" />
@@ -745,91 +741,10 @@ function loadMore() {
   });
 }
 
-// ── PRODUCT MODAL + HASH ROUTING ─────────────────────────────────────────
-// Build a lookup map: encoded URL → book object
+// ── BOOK LOOKUP MAP (used by Add-to-Cart on index page) ───────────────────
 const BOOK_MAP = {};
 BOOKS.forEach(b => { BOOK_MAP[encodeURIComponent(b.url)] = b; });
 
-function openProduct(encodedUrl) {
-  const b = BOOK_MAP[encodedUrl];
-  if (!b) return;
-
-  // Update URL hash (shareable link)
-  history.pushState(null, '', '#/product/' + encodedUrl);
-  document.title = b.t + ' — Ink & Chai';
-
-  // Calculate saving if original price exists
-  let savingHtml = '';
-  if (b.op) {
-    const sale = parseFloat((b.p||'').replace(/[^0-9.]/g,''));
-    const orig = parseFloat((b.op||'').replace(/[^0-9.]/g,''));
-    if (orig > sale) {
-      const pct = Math.round((orig - sale) / orig * 100);
-      savingHtml = `<span class="prod-saving">Save ${pct}%</span>`;
-    }
-  }
-
-  document.getElementById('prodInner').innerHTML = `
-    <div class="prod-img-col">
-      ${b.img
-        ? `<img src="${escHtml(b.img)}" alt="${escHtml(b.t)}" />`
-        : `<div class="prod-img-placeholder"></div>`}
-    </div>
-    <div class="prod-info">
-      <div class="prod-cat">${escHtml(b.cat)}</div>
-      <h2 class="prod-title">${escHtml(b.t)}</h2>
-      <div class="prod-author">${b.a ? 'by ' + escHtml(b.a) : ''}</div>
-      <div class="prod-price-row">
-        <span class="prod-price">${escHtml(b.p)}</span>
-        ${b.op ? `<span class="prod-orig">${escHtml(b.op)}</span>` : ''}
-        ${savingHtml}
-      </div>
-      ${b.desc ? `<p class="prod-desc">${escHtml(b.desc)}${b.desc.length >= 140 ? '…' : ''}</p>` : ''}
-      <div class="prod-actions">
-        <button class="prod-btn-cart" onclick="
-          addToCart({id:'${escHtml(b.url)}', title:'${escHtml(b.t).replace(/'/g,'\\u0027')}',
-            author:'${escHtml(b.a||'').replace(/'/g,'\\u0027')}',
-            price:${parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0)},
-            img:'${escHtml(b.img)}', url:'${escHtml(b.url)}'});
-        ">Add to Cart</button>
-        <button class="prod-btn-share" onclick="shareProduct('${encodedUrl}')">Share ↗</button>
-      </div>
-    </div>
-  `;
-
-  document.getElementById('prodOverlay').classList.add('show');
-  document.getElementById('prodModal').classList.add('show');
-  document.body.style.overflow = 'hidden';
-}
-
-function closeProduct() {
-  document.getElementById('prodOverlay').classList.remove('show');
-  document.getElementById('prodModal').classList.remove('show');
-  document.body.style.overflow = '';
-  // Restore URL
-  history.pushState(null, '', window.location.pathname);
-  document.title = 'Ink & Chai — Books We Love';
-}
-
-function shareProduct(encodedUrl) {
-  const url = window.location.origin + window.location.pathname + '#/product/' + encodedUrl;
-  if (navigator.share) {
-    navigator.share({ title: document.title, url });
-  } else {
-    navigator.clipboard.writeText(url).then(() => showToast('Link copied to clipboard!'));
-  }
-}
-
-// Handle direct link to product via hash on page load
-function handleHash() {
-  const hash = window.location.hash;
-  const match = hash.match(/^#\/product\/(.+)$/);
-  if (match) openProduct(match[1]);
-}
-window.addEventListener('popstate', () => {
-  if (!window.location.hash.includes('/product/')) closeProduct();
-  else handleHash();
-});
 
 // ── CATEGORIES ────────────────────────────────────────────────────────────
 let activeCat = null;
@@ -874,7 +789,7 @@ function renderBooksForCat(cat) {
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
   grid.innerHTML = slice.map(b => `
-    <div class="book-card" onclick="openProduct('${encodeURIComponent(b.url)}')">
+    <div class="book-card" onclick="location.href='/product/?id=${encodeURIComponent(b.url)}'" style="cursor:pointer;">
       <div class="book-cover">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
         <div class="book-cover-overlay">
@@ -908,7 +823,6 @@ document.getElementById('view-all-link').textContent = `View all ${BOOKS.length.
 renderBooks();
 renderCollections();
 renderCats(ALL_CATS);
-handleHash();   // open product modal if URL has #/product/...
 
 // Intersection observer for initial cards
 const obs = new IntersectionObserver(entries => {
@@ -940,7 +854,331 @@ out = Path(__file__).parent / "public" / "index.html"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(HTML, encoding="utf-8")
 size_kb = len(HTML.encode()) / 1024
-print(f"\nGenerated: {out}")
-print(f"File size: {size_kb:.0f} KB ({size_kb/1024:.1f} MB)")
+print(f"Generated: {out}  ({size_kb:.0f} KB)")
+
+# ── Generate product.html ────────────────────────────────────────────────────
+razorpay_key = os.environ.get("RAZORPAY_KEY_ID", "rzp_test_CHANGE_ME")
+
+PRODUCT_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Loading… — Ink &amp; Chai</title>
+<meta name="description" content="Buy books online at Ink &amp; Chai — fast pan-India delivery."/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
+
+/* NAV */
+nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1.2rem 4rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
+.nav-logo{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;letter-spacing:0.08em;color:var(--gold);text-decoration:none}
+.nav-logo span{color:var(--cream);font-weight:300;font-style:italic}
+.nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;display:flex;align-items:center;gap:0.5rem;transition:color 0.3s}
+.nav-back:hover{color:var(--gold)}
+.nav-cart-wrap{position:relative}
+.btn-nav{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.55rem 1.4rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.3s;text-decoration:none}
+.btn-nav:hover{background:var(--gold);color:var(--bg)}
+.cart-badge{background:var(--gold);color:var(--bg);border-radius:50%;width:18px;height:18px;font-size:0.55rem;font-weight:500;display:inline-flex;align-items:center;justify-content:center;position:absolute;top:-6px;right:-8px}
+
+/* PRODUCT LAYOUT */
+.product-page{max-width:1100px;margin:0 auto;padding:4rem 2rem 6rem;display:grid;grid-template-columns:1fr 1.4fr;gap:5rem;align-items:start}
+@media(max-width:780px){.product-page{grid-template-columns:1fr;gap:2.5rem;padding:2rem 1.2rem 4rem}}
+
+/* LEFT — cover */
+.prod-cover-wrap{position:sticky;top:6rem}
+.prod-cover{background:var(--bg2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;padding:2.5rem;min-height:380px}
+.prod-cover img{max-height:480px;max-width:100%;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,0.6);display:block}
+.prod-cover-placeholder{width:200px;height:300px;background:linear-gradient(135deg,#1a0a00,#3a1500)}
+.prod-badges{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1.2rem}
+.badge{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.35rem 0.8rem;border:1px solid var(--border);color:var(--cream-dim)}
+.badge.sale{border-color:rgba(109,191,109,0.4);color:#6dbf6d;background:rgba(109,191,109,0.07)}
+
+/* RIGHT — info */
+.prod-info{display:flex;flex-direction:column;gap:1.4rem}
+.prod-breadcrumb{font-size:0.58rem;letter-spacing:0.25em;text-transform:uppercase;color:var(--gold)}
+.prod-breadcrumb a{color:var(--gold-dim);text-decoration:none;transition:color 0.2s}
+.prod-breadcrumb a:hover{color:var(--gold)}
+.prod-title{font-family:'Cormorant Garamond',serif;font-size:clamp(1.8rem,4vw,2.8rem);font-weight:400;color:var(--white);line-height:1.15}
+.prod-author{font-size:0.8rem;color:var(--cream-dim);letter-spacing:0.1em}
+.prod-author span{color:var(--cream)}
+.divider{height:1px;background:var(--border)}
+.prod-price-row{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.prod-price{font-family:'Cormorant Garamond',serif;font-size:2.4rem;color:var(--gold);font-weight:600;line-height:1}
+.prod-orig{font-size:1rem;color:var(--cream-dim);text-decoration:line-through}
+.prod-saving{font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:#6dbf6d;background:rgba(109,191,109,0.1);padding:0.3rem 0.7rem;border:1px solid rgba(109,191,109,0.25)}
+.prod-desc-title{font-size:0.6rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem}
+.prod-desc{font-size:0.82rem;color:var(--cream-dim);line-height:1.9;letter-spacing:0.03em}
+.prod-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem 2rem}
+.prod-meta-item{}
+.prod-meta-label{font-size:0.55rem;letter-spacing:0.25em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:0.2rem}
+.prod-meta-val{font-size:0.78rem;color:var(--cream)}
+
+/* ACTIONS */
+.prod-actions{display:flex;flex-direction:column;gap:0.8rem;margin-top:0.5rem}
+.btn-cart{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.3s}
+.btn-cart:hover{background:var(--gold-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.25)}
+.btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:transparent;color:var(--cream);border:1px solid var(--border);cursor:pointer;font-weight:400;transition:all 0.3s}
+.btn-cod:hover{border-color:var(--gold-dim);color:var(--gold)}
+.btn-share{font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:0.4rem;transition:color 0.2s;font-family:'Montserrat',sans-serif}
+.btn-share:hover{color:var(--gold)}
+
+/* RELATED */
+.related{max-width:1100px;margin:0 auto;padding:0 2rem 6rem}
+.related-title{font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;color:var(--white);margin-bottom:2rem}
+.related-title em{font-style:italic;color:var(--gold-light)}
+.related-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem}
+@media(max-width:780px){.related-grid{grid-template-columns:repeat(2,1fr)}}
+.rel-card{cursor:pointer;transition:opacity 0.2s}
+.rel-card:hover{opacity:0.85}
+.rel-cover{aspect-ratio:2/3;background:var(--bg2);border:1px solid var(--border);overflow:hidden;margin-bottom:0.8rem}
+.rel-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.rel-title{font-family:'Cormorant Garamond',serif;font-size:0.95rem;color:var(--cream);line-height:1.3;margin-bottom:0.2rem}
+.rel-price{font-size:0.85rem;color:var(--gold)}
+
+/* CART SIDEBAR (same as homepage) */
+.cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:400;opacity:0;pointer-events:none;transition:opacity 0.35s}
+.cart-overlay.show{opacity:1;pointer-events:all}
+.cart-sidebar{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);background:var(--bg3);border-left:1px solid var(--border);z-index:500;transform:translateX(100%);transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column}
+.cart-sidebar.open{transform:translateX(0)}
+.cart-header{display:flex;justify-content:space-between;align-items:center;padding:1.6rem 1.8rem;border-bottom:1px solid var(--border)}
+.cart-title{font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;color:var(--white)}
+.cart-close{background:none;border:none;color:var(--cream-dim);font-size:1.3rem;cursor:pointer;padding:0.2rem 0.4rem;transition:color 0.2s}
+.cart-close:hover{color:var(--gold)}
+.cart-body{flex:1;overflow-y:auto;padding:1.2rem 1.8rem}
+.cart-empty{text-align:center;padding:4rem 1rem;color:var(--cream-dim);font-size:0.78rem;letter-spacing:0.08em}
+.cart-empty-icon{font-size:2.5rem;margin-bottom:1rem;opacity:0.3}
+.cart-item{display:flex;gap:1rem;padding:1.2rem 0;border-bottom:1px solid var(--border)}
+.cart-item-img{width:64px;flex-shrink:0;aspect-ratio:2/3;background:var(--bg2);overflow:hidden}
+.cart-item-img img{width:100%;height:100%;object-fit:cover}
+.cart-item-img-placeholder{width:100%;height:100%;background:linear-gradient(135deg,#1a0a00,#3a1500)}
+.cart-item-info{flex:1;min-width:0}
+.cart-item-title{font-family:'Cormorant Garamond',serif;font-size:0.95rem;color:var(--cream);line-height:1.3;margin-bottom:0.2rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.cart-item-author{font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.08em;margin-bottom:0.4rem}
+.cart-item-price{font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--gold);margin-bottom:0.5rem}
+.cart-item-controls{display:flex;align-items:center;gap:0.5rem}
+.qty-btn{background:var(--bg2);border:1px solid var(--border);color:var(--cream);width:24px;height:24px;cursor:pointer;font-size:0.9rem;display:flex;align-items:center;justify-content:center;transition:all 0.2s}
+.qty-btn:hover{background:var(--gold);color:var(--bg);border-color:var(--gold)}
+.qty-num{font-size:0.78rem;color:var(--cream);min-width:20px;text-align:center}
+.cart-remove{background:none;border:none;color:var(--cream-dim);font-size:0.6rem;letter-spacing:0.12em;cursor:pointer;text-transform:uppercase;margin-left:0.5rem;transition:color 0.2s}
+.cart-remove:hover{color:#e05a5a}
+.cart-footer{padding:1.4rem 1.8rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:0.8rem}
+.cart-total-row{display:flex;justify-content:space-between;align-items:baseline}
+.cart-total-label{font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--cream-dim)}
+.cart-total-amount{font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:var(--gold);font-weight:600}
+.btn-checkout{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.3s}
+.btn-checkout:hover{background:var(--gold-light)}
+
+/* NOT FOUND */
+.not-found{text-align:center;padding:8rem 2rem;color:var(--cream-dim)}
+.not-found h2{font-family:'Cormorant Garamond',serif;font-size:2rem;color:var(--white);margin-bottom:1rem}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="/">Ink &amp;<span> Chai</span></a>
+  <a class="nav-back" href="javascript:history.back()">← Back to catalogue</a>
+  <div class="nav-cart-wrap">
+    <button class="btn-nav" onclick="openCart()">Cart</button>
+    <span class="cart-badge" id="cartBadge" style="display:none;">0</span>
+  </div>
+</nav>
+
+<!-- PRODUCT CONTENT (rendered by JS) -->
+<div id="productContent"></div>
+<div id="relatedContent"></div>
+
+<!-- CART OVERLAY + SIDEBAR -->
+<div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
+<div class="cart-sidebar" id="cartSidebar">
+  <div class="cart-header">
+    <span class="cart-title">Your Cart</span>
+    <button class="cart-close" onclick="closeCart()">✕</button>
+  </div>
+  <div class="cart-body">
+    <div class="cart-empty" id="cartEmpty">
+      <div class="cart-empty-icon">📚</div>
+      <div>Your cart is empty.</div>
+    </div>
+    <div id="cartItems"></div>
+  </div>
+  <div class="cart-footer" id="cartFooter" style="display:none;">
+    <div class="cart-total-row">
+      <span class="cart-total-label">Total</span>
+      <span class="cart-total-amount" id="cartTotal">₹ 0</span>
+    </div>
+    <button class="btn-checkout" onclick="openCheckoutForm()">Pay Online →</button>
+    <button class="btn-cod-cart" onclick="openCODForm()">🚚 Cash on Delivery</button>
+  </div>
+</div>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
+<script src="/js/cart.js"></script>
+<script src="/js/checkout.js"></script>
+<script>
+const BOOKS = BOOKS_DATA_PLACEHOLDER;
+
+// ── Lookup book by encoded URL param ─────────────────────────────────────
+const BOOK_MAP = {};
+BOOKS.forEach(b => { BOOK_MAP[encodeURIComponent(b.url)] = b; });
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function pricePaise(priceStr){ return Math.round(parseFloat((priceStr||'').replace(/[^0-9.]/g,'')||0)); }
+
+// ── Render product page ───────────────────────────────────────────────────
+function renderProduct(b) {
+  document.title = b.t + ' — Ink & Chai';
+
+  // Savings
+  const sale = parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0);
+  const orig = parseFloat((b.op||'').replace(/[^0-9.]/g,'')||0);
+  const savePct = (orig > sale && orig > 0) ? Math.round((orig - sale)/orig*100) : 0;
+
+  const shareUrl = window.location.href;
+
+  document.getElementById('productContent').innerHTML = `
+    <div class="product-page">
+      <!-- LEFT: cover -->
+      <div class="prod-cover-wrap">
+        <div class="prod-cover">
+          ${b.img
+            ? `<img src="${esc(b.img)}" alt="${esc(b.t)}" />`
+            : `<div class="prod-cover-placeholder"></div>`}
+        </div>
+        <div class="prod-badges">
+          <span class="badge">${esc(b.cat)}</span>
+          ${savePct ? `<span class="badge sale">Save ${savePct}%</span>` : ''}
+        </div>
+      </div>
+
+      <!-- RIGHT: info -->
+      <div class="prod-info">
+        <div class="prod-breadcrumb">
+          <a href="/">Home</a> &nbsp;/&nbsp;
+          <a href="/?cat=${encodeURIComponent(b.cat)}">${esc(b.cat)}</a> &nbsp;/&nbsp;
+          ${esc(b.t)}
+        </div>
+
+        <h1 class="prod-title">${esc(b.t)}</h1>
+        ${b.a ? `<div class="prod-author">by <span>${esc(b.a)}</span></div>` : ''}
+
+        <div class="divider"></div>
+
+        <div class="prod-price-row">
+          <span class="prod-price">${esc(b.p)}</span>
+          ${b.op ? `<span class="prod-orig">${esc(b.op)}</span>` : ''}
+          ${savePct ? `<span class="prod-saving">Save ${savePct}%</span>` : ''}
+        </div>
+
+        ${b.desc ? `
+          <div>
+            <div class="prod-desc-title">About this book</div>
+            <p class="prod-desc" id="descText">${esc(b.desc)}</p>
+          </div>` : ''}
+
+        <div class="prod-meta-grid">
+          ${b.cat       ? `<div class="prod-meta-item"><div class="prod-meta-label">Category</div><div class="prod-meta-val">${esc(b.cat)}</div></div>` : ''}
+          ${b.a         ? `<div class="prod-meta-item"><div class="prod-meta-label">Author</div><div class="prod-meta-val">${esc(b.a)}</div></div>` : ''}
+          <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India, 2–5 days</div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day easy returns</div></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="prod-actions">
+          <button class="btn-cart" onclick="
+            addToCart({
+              id: '${esc(b.url)}',
+              title: '${esc(b.t).replace(/'/g,'\\u0027')}',
+              author: '${esc(b.a||'').replace(/'/g,'\\u0027')}',
+              price: ${sale},
+              img: '${esc(b.img)}',
+              url: '${esc(b.url)}'
+            })">
+            Add to Cart
+          </button>
+          <button class="btn-cod" onclick="
+            addToCart({
+              id: '${esc(b.url)}',
+              title: '${esc(b.t).replace(/'/g,'\\u0027')}',
+              author: '${esc(b.a||'').replace(/'/g,'\\u0027')}',
+              price: ${sale},
+              img: '${esc(b.img)}',
+              url: '${esc(b.url)}'
+            }); openCODForm();">
+            🚚 Buy with Cash on Delivery
+          </button>
+          <button class="btn-share" onclick="shareBook()">
+            ↗ Share this book
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function shareBook() {
+  if (navigator.share) {
+    navigator.share({ title: document.title, url: window.location.href });
+  } else {
+    navigator.clipboard.writeText(window.location.href)
+      .then(() => showToast('Link copied!'));
+  }
+}
+
+// ── Related books ─────────────────────────────────────────────────────────
+function renderRelated(b) {
+  const related = BOOKS.filter(x => x.cat === b.cat && x.url !== b.url).slice(0, 4);
+  if (!related.length) return;
+  document.getElementById('relatedContent').innerHTML = `
+    <div class="related">
+      <h2 class="related-title">More from <em>${esc(b.cat)}</em></h2>
+      <div class="related-grid">
+        ${related.map(r => `
+          <div class="rel-card" onclick="location.href='/product/?id=${encodeURIComponent(r.url)}'">
+            <div class="rel-cover">
+              ${r.img ? `<img src="${esc(r.img)}" alt="${esc(r.t)}" loading="lazy"/>` : ''}
+            </div>
+            <div class="rel-title">${esc(r.t)}</div>
+            <div class="rel-price">${esc(r.p)}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+const params  = new URLSearchParams(window.location.search);
+const encoded = params.get('id');
+const book    = encoded ? BOOK_MAP[encoded] : null;
+
+if (book) {
+  renderProduct(book);
+  renderRelated(book);
+} else {
+  document.getElementById('productContent').innerHTML = `
+    <div class="not-found">
+      <h2>Book not found</h2>
+      <p>This page may have moved. <a href="/" style="color:var(--gold)">Browse all books →</a></p>
+    </div>`;
+}
+</script>
+</body>
+</html>
+"""
+
+PRODUCT_HTML = PRODUCT_HTML.replace("BOOKS_DATA_PLACEHOLDER", books_js)
+PRODUCT_HTML = PRODUCT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER", razorpay_key)
+
+prod_out = Path(__file__).parent / "public" / "product" / "index.html"
+prod_out.parent.mkdir(parents=True, exist_ok=True)
+prod_out.write_text(PRODUCT_HTML, encoding="utf-8")
+print(f"Generated: {prod_out}  ({len(PRODUCT_HTML.encode())//1024} KB)")
 print(f"Books embedded: {len(slim)}")
-print("Open akshar_co.html in your browser!")
