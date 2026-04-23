@@ -1025,8 +1025,9 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 const BOOKS = BOOKS_DATA_PLACEHOLDER;
 
 // ── Lookup book by encoded URL param ─────────────────────────────────────
+// Key by decoded URL so URLSearchParams.get() lookup works directly
 const BOOK_MAP = {};
-BOOKS.forEach(b => { BOOK_MAP[encodeURIComponent(b.url)] = b; });
+BOOKS.forEach(b => { BOOK_MAP[b.url] = b; });
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -1155,9 +1156,9 @@ function renderRelated(b) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
-const params  = new URLSearchParams(window.location.search);
-const encoded = params.get('id');
-const book    = encoded ? BOOK_MAP[encoded] : null;
+const params   = new URLSearchParams(window.location.search);
+const bookUrl  = params.get('id');   // URLSearchParams auto-decodes, gives us the raw URL
+const book     = bookUrl ? BOOK_MAP[bookUrl] : null;
 
 if (book) {
   renderProduct(book);
