@@ -192,7 +192,11 @@ async function fetchOrders(reset = false) {
       showLoginErr('Invalid password. Please try again.');
       return;
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { const e = await res.json(); msg = e.error || msg; } catch {}
+      throw new Error(msg);
+    }
     const data = await res.json();
 
     if (reset) allOrders = data.orders || [];
