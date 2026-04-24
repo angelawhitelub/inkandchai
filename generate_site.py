@@ -7,6 +7,13 @@ import json, re
 from pathlib import Path
 from collections import Counter, defaultdict
 
+def make_slug(title, shopify_id):
+    """Generate a clean URL slug from title + last 5 chars of shopify_id."""
+    slug = re.sub(r'[^a-z0-9]+', '-', (title or '').lower())
+    slug = slug.strip('-')[:55]
+    suffix = str(shopify_id or '')[-5:]
+    return f"{slug}-{suffix}" if suffix else slug
+
 # ── Load & deduplicate ───────────────────────────────────────────────────────
 # Data lives in data/ALL_BOOKS.json (relative to this script) — works both locally and on Netlify
 raw = json.loads((Path(__file__).parent / "data" / "ALL_BOOKS.json").read_text())
@@ -76,10 +83,13 @@ for b in books:
         "p":    price_str,
         "op":   orig_str,
         "img":  b.get("image_url", ""),
-        "url":  b.get("url", ""),
+        "url":  b.get("url", ""),   # kept for cart ID compatibility
+        "slug": make_slug(b["title"], b.get("shopify_id", "")),
         "cat":  b.get("category", ""),
         "tab":  tab_for(b.get("category", "")),
         "desc": (b.get("description") or "")[:140],
+        "isbn": b.get("isbn", ""),
+        "pub":  b.get("publisher", ""),
     })
 
 books_js = json.dumps(slim, ensure_ascii=False)
@@ -680,7 +690,7 @@ function renderBooks() {
     const wishlisted = window.isWishlisted ? isWishlisted(b.url) : false;
     const priceNum = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
     return `
-    <div class="book-card" onclick="location.href='/product/?id=${encodeURIComponent(b.url)}'" style="cursor:pointer;">
+    <div class="book-card" onclick="location.href='/product/?id=${b.slug}'" style="cursor:pointer;">
       <div class="book-cover" style="position:relative;">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
              onerror="this.style.display='none'" />
@@ -787,9 +797,9 @@ function loadMore() {
   });
 }
 
-// ── BOOK LOOKUP MAP (used by Add-to-Cart on index page) ───────────────────
+// ── BOOK LOOKUP MAP (keyed by slug) ───────────────────────────────────────
 const BOOK_MAP = {};
-BOOKS.forEach(b => { BOOK_MAP[encodeURIComponent(b.url)] = b; });
+BOOKS.forEach(b => { BOOK_MAP[b.slug] = b; });
 
 
 // ── CATEGORIES ────────────────────────────────────────────────────────────
@@ -835,7 +845,7 @@ function renderBooksForCat(cat) {
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
   grid.innerHTML = slice.map(b => `
-    <div class="book-card" onclick="location.href='/product/?id=${encodeURIComponent(b.url)}'" style="cursor:pointer;">
+    <div class="book-card" onclick="location.href='/product/?id=${b.slug}'" style="cursor:pointer;">
       <div class="book-cover">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
         <div class="book-cover-overlay">
@@ -1142,10 +1152,9 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 <script>
 const BOOKS = BOOKS_DATA_PLACEHOLDER;
 
-// ── Lookup book by encoded URL param ─────────────────────────────────────
-// Key by decoded URL so URLSearchParams.get() lookup works directly
+// ── Lookup book by slug ───────────────────────────────────────────────────
 const BOOK_MAP = {};
-BOOKS.forEach(b => { BOOK_MAP[b.url] = b; });
+BOOKS.forEach(b => { BOOK_MAP[b.slug] = b; });
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -1153,7 +1162,14 @@ function pricePaise(priceStr){ return Math.round(parseFloat((priceStr||'').repla
 
 // ── Render product page ───────────────────────────────────────────────────
 function renderProduct(b) {
-  document.title = b.t + ' — Ink & Chai';
+  document.title = b.t + ' — Buy Online at Ink & Chai';
+  // Set meta description
+  const metaDesc = document.querySelector('meta[name="description"]');
+  if (metaDesc) metaDesc.content = (b.desc || ('Buy ' + b.t + ' by ' + (b.a||'') + ' online at Ink & Chai. Fast pan-India delivery.'));
+  // Set canonical URL (clean slug URL on our domain)
+  let canon = document.querySelector('link[rel="canonical"]');
+  if (!canon) { canon = document.createElement('link'); canon.rel = 'canonical'; document.head.appendChild(canon); }
+  canon.href = 'https://inkandchai.in/product/?id=' + b.slug;
 
   // Savings
   const sale = parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0);
@@ -1203,10 +1219,14 @@ function renderProduct(b) {
           </div>` : ''}
 
         <div class="prod-meta-grid">
-          ${b.cat       ? `<div class="prod-meta-item"><div class="prod-meta-label">Category</div><div class="prod-meta-val">${esc(b.cat)}</div></div>` : ''}
-          ${b.a         ? `<div class="prod-meta-item"><div class="prod-meta-label">Author</div><div class="prod-meta-val">${esc(b.a)}</div></div>` : ''}
-          <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India, 2–5 days</div></div>
+          ${b.cat  ? `<div class="prod-meta-item"><div class="prod-meta-label">Category</div><div class="prod-meta-val">${esc(b.cat)}</div></div>` : ''}
+          ${b.a    ? `<div class="prod-meta-item"><div class="prod-meta-label">Author</div><div class="prod-meta-val">${esc(b.a)}</div></div>` : ''}
+          ${b.pub  ? `<div class="prod-meta-item"><div class="prod-meta-label">Publisher</div><div class="prod-meta-val">${esc(b.pub)}</div></div>` : ''}
+          ${b.isbn ? `<div class="prod-meta-item"><div class="prod-meta-label">ISBN</div><div class="prod-meta-val">${esc(b.isbn)}</div></div>` : ''}
+          <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India · 2–5 days</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day easy returns</div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">UPI · Cards · COD</div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Sold by</div><div class="prod-meta-val">Ink &amp; Chai</div></div>
         </div>
 
         <div class="divider"></div>
@@ -1256,8 +1276,8 @@ function renderProduct(b) {
 function updateProdWishBtn() {
   const btn = document.getElementById('prodWishBtn');
   if (!btn) return;
-  const url = new URLSearchParams(window.location.search).get('id');
-  const wished = window.isWishlisted ? isWishlisted(url) : false;
+  const bookUrl = book ? book.url : '';
+  const wished = window.isWishlisted ? isWishlisted(bookUrl) : false;
   btn.innerHTML = wished ? '♥ Wishlisted' : '♡ Save to Wishlist';
   btn.style.color = wished ? '#e05050' : '#a09080';
   btn.style.borderColor = wished ? 'rgba(224,80,80,0.4)' : 'rgba(201,168,76,0.3)';
@@ -1281,7 +1301,7 @@ function renderRelated(b) {
       <h2 class="related-title">More from <em>${esc(b.cat)}</em></h2>
       <div class="related-grid">
         ${related.map(r => `
-          <div class="rel-card" onclick="location.href='/product/?id=${encodeURIComponent(r.url)}'">
+          <div class="rel-card" onclick="location.href='/product/?id=${r.slug}'">
             <div class="rel-cover">
               ${r.img ? `<img src="${esc(r.img)}" alt="${esc(r.t)}" loading="lazy"/>` : ''}
             </div>
@@ -1294,9 +1314,9 @@ function renderRelated(b) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
-const params   = new URLSearchParams(window.location.search);
-const bookUrl  = params.get('id');   // URLSearchParams auto-decodes, gives us the raw URL
-const book     = bookUrl ? BOOK_MAP[bookUrl] : null;
+const params  = new URLSearchParams(window.location.search);
+const slug    = params.get('id');
+const book    = slug ? BOOK_MAP[slug] : null;
 
 if (book) {
   renderProduct(book);
