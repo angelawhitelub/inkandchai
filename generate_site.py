@@ -216,6 +216,20 @@ HTML = r"""<!DOCTYPE html>
   .book-orig-price { font-size: 0.72rem; color: var(--cream-dim); text-decoration: line-through; margin-left: 0.4rem; }
   .book-category { font-size: 0.55rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold-dim); }
 
+  /* Wishlist button on book cards */
+  .wish-btn { position:absolute; top:0.5rem; right:0.5rem; background:rgba(13,11,8,0.7); border:none; color:var(--cream-dim); font-size:1rem; width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.2s; z-index:2; border-radius:0; }
+  .book-card:hover .wish-btn { opacity:1; }
+  .wish-btn.wishlisted { opacity:1; color:#e05050; }
+  .wish-btn:hover { color:#e05050; }
+
+  /* Pincode section */
+  .pincode-section { background:var(--bg2); border-top:1px solid var(--border); padding:4rem 6rem; }
+  .pincode-row { display:flex; gap:1rem; align-items:stretch; max-width:500px; margin-top:2rem; }
+  .pincode-input { flex:1; background:var(--bg3); border:1px solid var(--border); color:var(--cream); padding:0.85rem 1.2rem; font-family:'Montserrat',sans-serif; font-size:0.82rem; outline:none; letter-spacing:0.1em; }
+  .pincode-input:focus { border-color:var(--gold-dim); }
+  .pincode-btn { font-family:'Montserrat',sans-serif; font-size:0.62rem; letter-spacing:0.2em; text-transform:uppercase; padding:0.85rem 1.6rem; background:var(--gold); color:var(--bg); border:none; cursor:pointer; font-weight:500; white-space:nowrap; }
+  .pincode-result { margin-top:0.8rem; font-size:0.78rem; min-height:1.4em; }
+
   /* Load more */
   .load-more-wrap { text-align: center; margin-top: 3.5rem; }
   .btn-load-more { font-family: 'Montserrat', sans-serif; font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; padding: 0.9rem 2.4rem; border: 1px solid var(--gold-dim); color: var(--gold); background: transparent; cursor: pointer; transition: all 0.3s; }
@@ -409,8 +423,9 @@ HTML = r"""<!DOCTYPE html>
     <li><a href="#">About</a></li>
   </ul>
   <div class="nav-actions">
-    <span class="nav-icon" title="Search">&#9906;</span>
-    <span class="nav-icon" title="Wishlist">&#9825;</span>
+    <span class="nav-icon" title="Search" onclick="document.getElementById('searchInput')?.focus();document.getElementById('featured')?.scrollIntoView({behavior:'smooth'})">&#9906;</span>
+    <span class="nav-icon" title="Wishlist" onclick="openWishlistModal()">&#9825;<span id="wishBadge" style="display:none;font-size:0.55rem;background:var(--gold);color:var(--bg);border-radius:50%;width:14px;height:14px;display:none;align-items:center;justify-content:center;position:absolute;top:-4px;right:-6px;"></span></span>
+    <button class="btn-nav auth-nav-btn" id="authNavBtnMain" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
     <div class="nav-cart-wrap">
       <button class="btn-nav" onclick="openCart()" style="cursor:pointer;">Cart</button>
       <span class="cart-badge" id="cartBadge" style="display:none;">0</span>
@@ -553,15 +568,30 @@ HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<!-- PINCODE CHECKER -->
+<section class="pincode-section" id="check-delivery">
+  <div class="section-label">Delivery</div>
+  <h2 class="section-title" style="font-size:1.8rem;">Check delivery<br/><em>to your pincode</em></h2>
+  <p style="font-size:0.78rem;color:var(--cream-dim);margin-top:0.5rem;">We deliver pan-India via trusted courier partners.</p>
+  <div class="pincode-row">
+    <input class="pincode-input" id="pincodeInput" type="text" maxlength="6" placeholder="Enter 6-digit pincode"
+      oninput="this.value=this.value.replace(/\D/g,'')"
+      onkeydown="if(event.key==='Enter')checkPincode()"/>
+    <button class="pincode-btn" onclick="checkPincode()">Check →</button>
+  </div>
+  <div class="pincode-result" id="pincodeResult"></div>
+</section>
+
 <!-- NEWSLETTER -->
 <section class="newsletter">
   <div class="section-label">Stay in the loop</div>
   <h2 class="section-title" style="margin-bottom:0.5rem;">New arrivals. Rare finds.<br/><em>Every week.</em></h2>
   <p style="font-size:0.78rem;color:var(--cream-dim);letter-spacing:0.04em;">Join readers who get our weekly picks — new arrivals, deals, and chai-approved reads. No spam, ever.</p>
-  <form class="newsletter-form" onsubmit="return false;">
-    <input class="newsletter-input" type="email" placeholder="your@email.com" />
-    <button class="btn-subscribe">Subscribe</button>
+  <form class="newsletter-form" onsubmit="subscribeNewsletter(event);">
+    <input class="newsletter-input" id="nlEmail" type="email" placeholder="your@email.com" />
+    <button class="btn-subscribe" type="submit">Subscribe</button>
   </form>
+  <p id="nlMsg" style="font-size:0.72rem;color:var(--gold-dim);margin-top:0.8rem;min-height:1em;"></p>
 </section>
 
 <!-- FOOTER -->
@@ -604,13 +634,20 @@ HTML = r"""<!DOCTYPE html>
   </div>
 </footer>
 
+<!-- Supabase JS (for user accounts) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+  window.SUPABASE_URL      = "SUPABASE_URL_PLACEHOLDER";
+  window.SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY_PLACEHOLDER";
+</script>
 <!-- Razorpay SDK -->
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <!-- Razorpay public key (set via env at build time) -->
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
-<!-- Cart & Checkout -->
+<!-- Cart, Checkout & Auth -->
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
+<script src="/js/auth.js"></script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -639,9 +676,12 @@ function renderBooks() {
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
 
-  grid.innerHTML = slice.map((b, i) => `
+  grid.innerHTML = slice.map((b, i) => {
+    const wishlisted = window.isWishlisted ? isWishlisted(b.url) : false;
+    const priceNum = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
+    return `
     <div class="book-card" onclick="location.href='/product/?id=${encodeURIComponent(b.url)}'" style="cursor:pointer;">
-      <div class="book-cover">
+      <div class="book-cover" style="position:relative;">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
              onerror="this.style.display='none'" />
         <div class="book-cover-overlay">
@@ -650,9 +690,15 @@ function renderBooks() {
             data-url="${escHtml(b.url)}"
             data-title="${escHtml(b.t)}"
             data-author="${escHtml(b.a||'')}"
-            data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
+            data-price="${priceNum}"
             data-img="${escHtml(b.img)}">Add to Cart</button>
         </div>
+        <button class="wish-btn ${wishlisted ? 'wishlisted' : ''}"
+          data-url="${escHtml(b.url)}"
+          title="${wishlisted ? 'Remove from wishlist' : 'Save to wishlist'}"
+          onclick="event.stopPropagation(); if(window.toggleWishlist) toggleWishlist({url:'${escHtml(b.url)}',title:'${escHtml(b.t).replace(/'/g,"\\'")}',img:'${escHtml(b.img)}',price:${priceNum}}); updateWishlistBadge();">
+          ${wishlisted ? '♥' : '♡'}
+        </button>
       </div>
       <div class="book-name">${escHtml(b.t)}</div>
       <div class="book-author">${escHtml(b.a || '')}</div>
@@ -660,8 +706,8 @@ function renderBooks() {
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   const btn = document.getElementById('loadMoreBtn');
   const info = document.getElementById('booksCount');
@@ -817,6 +863,67 @@ function renderBooksForCat(cat) {
   btn.onclick = () => { visibleCount += PAGE_SIZE; renderBooksForCat(cat); };
 }
 
+// ── WISHLIST MODAL ─────────────────────────────────────────────────────────
+function updateWishlistBadge() {
+  // Re-render visible wish-btn hearts
+  const list = window.getWishlist ? getWishlist() : [];
+  document.querySelectorAll('.wish-btn').forEach(btn => {
+    const url = btn.dataset.url;
+    const wished = list.some(b => b.url === url);
+    btn.classList.toggle('wishlisted', wished);
+    btn.textContent = wished ? '♥' : '♡';
+  });
+}
+
+function openWishlistModal() {
+  const list = window.getWishlist ? getWishlist() : [];
+  const old = document.getElementById('wishlistModal');
+  if (old) old.remove();
+  const modal = document.createElement('div');
+  modal.id = 'wishlistModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;z-index:9000;';
+  const items = list.length ? list.map(b => `
+    <div style="display:flex;gap:1rem;align-items:center;padding:0.8rem 0;border-bottom:1px solid rgba(201,168,76,0.1);">
+      ${b.img ? `<img src="${b.img}" style="width:44px;height:64px;object-fit:cover;" alt=""/>` : ''}
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.82rem;color:#f0e8d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${b.title||''}</div>
+        <div style="font-size:0.7rem;color:#c9a84c;margin-top:0.2rem;">${b.price ? '₹' + Number(b.price).toLocaleString('en-IN') : ''}</div>
+      </div>
+      <div style="display:flex;gap:0.5rem;">
+        <button onclick="addToCart({id:'${b.url}',title:'${(b.title||'').replace(/'/g,"\\'")}',price:${Number(b.price)||0},img:'${b.img||''}',url:'${b.url}'}); document.getElementById('wishlistModal').remove(); openCart();"
+          style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.5rem 0.9rem;background:#c9a84c;color:#0d0b08;border:none;cursor:pointer;font-family:'Montserrat',sans-serif;">
+          Add to Cart
+        </button>
+        <button onclick="toggleWishlist({url:'${b.url}'});openWishlistModal();"
+          style="font-size:0.9rem;background:none;border:none;color:#e05050;cursor:pointer;">✕</button>
+      </div>
+    </div>`).join('') : `<p style="color:#a09080;font-size:0.82rem;text-align:center;padding:2rem;">Your wishlist is empty.<br/><a href="#featured" onclick="document.getElementById('wishlistModal').remove()" style="color:#c9a84c;">Browse books →</a></p>`;
+  modal.innerHTML = `
+    <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);width:min(500px,92vw);padding:2.4rem;position:relative;max-height:80vh;overflow-y:auto;">
+      <button onclick="document.getElementById('wishlistModal').remove()"
+        style="position:absolute;top:1rem;right:1.2rem;background:none;border:none;color:#a09080;font-size:1.3rem;cursor:pointer;">✕</button>
+      <div style="font-size:0.58rem;letter-spacing:0.35em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.5rem;">Saved Books</div>
+      <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:#faf7f2;margin-bottom:1.5rem;">My Wishlist (${list.length})</h3>
+      ${items}
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+// ── NEWSLETTER ──────────────────────────────────────────────────────────────
+function subscribeNewsletter(e) {
+  e.preventDefault();
+  const email = document.getElementById('nlEmail')?.value.trim();
+  const msg   = document.getElementById('nlMsg');
+  if (!email || !email.includes('@')) { msg.textContent = 'Please enter a valid email.'; msg.style.color = '#e06060'; return; }
+  // Store in Supabase if available
+  const sb = window.supabase && window.SUPABASE_URL !== 'SUPABASE_URL_PLACEHOLDER'
+    ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY) : null;
+  if (sb) sb.from('newsletter').insert({ email }).then(() => {});
+  msg.style.color = '#6dbf6d';
+  msg.textContent = '✓ You\'re subscribed! Expect our first newsletter soon.';
+  document.getElementById('nlEmail').value = '';
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────
 document.getElementById('stat-total').textContent = BOOKS.length.toLocaleString() + '+';
 document.getElementById('view-all-link').textContent = `View all ${BOOKS.length.toLocaleString()} books`;
@@ -849,6 +956,8 @@ HTML = HTML.replace("BOOKS_DATA_PLACEHOLDER",         books_js)
 HTML = HTML.replace("COLLECTIONS_DATA_PLACEHOLDER",   json.dumps(coll_data, ensure_ascii=False))
 HTML = HTML.replace("ALL_CATS_DATA_PLACEHOLDER",      all_cats_js)
 HTML = HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",   os.environ.get("RAZORPAY_KEY_ID", "rzp_test_CHANGE_ME"))
+HTML = HTML.replace("SUPABASE_URL_PLACEHOLDER",       os.environ.get("SUPABASE_URL", ""))
+HTML = HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER",  os.environ.get("SUPABASE_ANON_KEY", ""))
 
 out = Path(__file__).parent / "public" / "index.html"
 out.parent.mkdir(parents=True, exist_ok=True)
@@ -983,9 +1092,12 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 <nav>
   <a class="nav-logo" href="/">Ink &amp;<span> Chai</span></a>
   <a class="nav-back" href="javascript:history.back()">← Back to catalogue</a>
-  <div class="nav-cart-wrap">
-    <button class="btn-nav" onclick="openCart()">Cart</button>
-    <span class="cart-badge" id="cartBadge" style="display:none;">0</span>
+  <div style="display:flex;gap:1rem;align-items:center;">
+    <button class="btn-nav auth-nav-btn" id="authNavBtnProd" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
+    <div class="nav-cart-wrap">
+      <button class="btn-nav" onclick="openCart()">Cart</button>
+      <span class="cart-badge" id="cartBadge" style="display:none;">0</span>
+    </div>
   </div>
 </nav>
 
@@ -1017,10 +1129,16 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+  window.SUPABASE_URL      = "SUPABASE_URL_PLACEHOLDER";
+  window.SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY_PLACEHOLDER";
+</script>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
+<script src="/js/auth.js"></script>
 <script>
 const BOOKS = BOOKS_DATA_PLACEHOLDER;
 
@@ -1119,10 +1237,30 @@ function renderProduct(b) {
           <button class="btn-share" onclick="shareBook()">
             ↗ Share this book
           </button>
+          <button id="prodWishBtn"
+            onclick="if(window.toggleWishlist){ toggleWishlist({url:'${esc(b.url)}',title:'${esc(b.t).replace(/'/g,'\\u0027')}',img:'${esc(b.img)}',price:${sale}}); updateProdWishBtn(); }"
+            style="font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;
+                   padding:0.7rem 1.4rem;border:1px solid rgba(201,168,76,0.3);color:#a09080;
+                   background:transparent;cursor:pointer;margin-top:0.4rem;transition:all 0.2s;"
+            title="Save to wishlist">
+            ♡ Save to Wishlist
+          </button>
         </div>
       </div>
     </div>
   `;
+  // Set initial wishlist state
+  setTimeout(updateProdWishBtn, 100);
+}
+
+function updateProdWishBtn() {
+  const btn = document.getElementById('prodWishBtn');
+  if (!btn) return;
+  const url = new URLSearchParams(window.location.search).get('id');
+  const wished = window.isWishlisted ? isWishlisted(url) : false;
+  btn.innerHTML = wished ? '♥ Wishlisted' : '♡ Save to Wishlist';
+  btn.style.color = wished ? '#e05050' : '#a09080';
+  btn.style.borderColor = wished ? 'rgba(224,80,80,0.4)' : 'rgba(201,168,76,0.3)';
 }
 
 function shareBook() {
@@ -1175,8 +1313,10 @@ if (book) {
 </html>
 """
 
-PRODUCT_HTML = PRODUCT_HTML.replace("BOOKS_DATA_PLACEHOLDER", books_js)
-PRODUCT_HTML = PRODUCT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER", razorpay_key)
+PRODUCT_HTML = PRODUCT_HTML.replace("BOOKS_DATA_PLACEHOLDER",        books_js)
+PRODUCT_HTML = PRODUCT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",  razorpay_key)
+PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_URL_PLACEHOLDER",      os.environ.get("SUPABASE_URL", ""))
+PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER", os.environ.get("SUPABASE_ANON_KEY", ""))
 
 prod_out = Path(__file__).parent / "public" / "product" / "index.html"
 prod_out.parent.mkdir(parents=True, exist_ok=True)

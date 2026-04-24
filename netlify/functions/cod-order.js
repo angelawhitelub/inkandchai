@@ -74,7 +74,7 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body); }
   catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
-  const { cart, customer, amount } = body;
+  const { cart, customer, amount, user_id } = body;
   if (!cart?.length || !customer?.phone) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
   }
@@ -82,7 +82,7 @@ exports.handler = async (event) => {
   const orderId = `COD-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
   const total   = cart.reduce((s,i)=>s+i.price*i.qty, 0);
 
-  // ── 1. Save to Supabase ───────────────────────────────────────────────────
+  // ── 1. Save to Supabase (non-fatal — emails still send even if DB is down) ──
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { error } = await supabase.from('orders').insert({
@@ -95,11 +95,11 @@ exports.handler = async (event) => {
       customer_phone:      customer.phone,
       customer_address:    customer.address || '',
       cart_items:          cart,
+      user_id:             user_id || null,
     });
-    if (error) throw error;
+    if (error) console.error('Supabase error (non-fatal):', error.message);
   } catch (err) {
-    console.error('Supabase error:', err.message);
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
+    console.error('Supabase error (non-fatal):', err.message);
   }
 
   // ── 2. Email YOU (store owner) ────────────────────────────────────────────

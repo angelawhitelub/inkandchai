@@ -195,7 +195,12 @@ function openCODForm() {
   if (cart.length === 0) { showToast('Your cart is empty!'); return; }
 
   let modal = document.getElementById('codFormModal');
-  if (modal) { modal.style.display = 'flex'; return; }
+  if (modal) {
+    modal.style.display = 'flex';
+    // Try pre-fill with auth profile even if modal already existed
+    if (window.IAC) setTimeout(() => IAC.prefillCheckout(), 50);
+    return;
+  }
 
   modal = document.createElement('div');
   modal.id = 'codFormModal';
@@ -236,6 +241,8 @@ function openCODForm() {
     </div>
   `;
   document.body.appendChild(modal);
+  // Pre-fill if user is logged in
+  if (window.IAC) setTimeout(() => IAC.prefillCheckout(), 50);
 }
 
 async function submitCOD() {
@@ -262,7 +269,12 @@ async function submitCOD() {
     const res = await fetch('/.netlify/functions/cod-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cart, customer: { name, phone, email, address }, amount }),
+      body: JSON.stringify({
+        cart,
+        customer: { name, phone, email, address },
+        amount,
+        user_id: window.IAC ? IAC.getUserId() : null,
+      }),
     });
 
     const data = await res.json();

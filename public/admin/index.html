@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Admin — Ink &amp; Chai</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 3rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);}
+.logo{font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:600;color:var(--gold);}
+.logo span{color:var(--cream);font-weight:300;font-style:italic}
+.nav-right{display:flex;gap:1rem;align-items:center;}
+.chip{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.3rem 0.8rem;border:1px solid var(--border);color:var(--cream-dim);}
+main{max-width:1200px;margin:0 auto;padding:2.5rem 2rem;}
+h1{font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:var(--white);margin-bottom:0.3rem;}
+.subtitle{font-size:0.7rem;color:var(--cream-dim);letter-spacing:0.1em;margin-bottom:2.5rem;}
+
+/* Login */
+#loginPanel{max-width:420px;margin:8rem auto;background:var(--bg3);border:1px solid var(--border);padding:2.4rem;}
+#loginPanel h2{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:var(--white);margin-bottom:1.5rem;}
+.form-row{margin-bottom:1rem;}
+.form-row label{display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.4rem;}
+.form-row input{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.7rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.78rem;outline:none;}
+.form-row input:focus{border-color:rgba(201,168,76,0.5);}
+.btn-gold{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.85rem 2rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;width:100%;margin-top:0.4rem;}
+.btn-gold:hover{background:var(--gold-light);}
+.btn-outline{font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.55rem 1.2rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;}
+.btn-outline:hover{background:var(--gold);color:var(--bg);}
+.err{font-size:0.7rem;color:#e06060;margin-top:0.6rem;}
+
+/* Stats */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1.2rem;margin-bottom:2rem;}
+.stat-card{background:var(--bg3);border:1px solid var(--border);padding:1.4rem;}
+.stat-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.5rem;}
+.stat-val{font-family:'Cormorant Garamond',serif;font-size:2.2rem;color:var(--gold);font-weight:400;}
+
+/* Filters */
+.filters{display:flex;gap:0.8rem;margin-bottom:1.5rem;flex-wrap:wrap;align-items:center;}
+.filter-btn{font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.45rem 1rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;}
+.filter-btn.active,.filter-btn:hover{border-color:var(--gold-dim);color:var(--gold);background:rgba(201,168,76,0.07);}
+.search-box{margin-left:auto;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.45rem 0.9rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;outline:none;min-width:220px;}
+.search-box:focus{border-color:rgba(201,168,76,0.4);}
+
+/* Table */
+.tbl-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:0.74rem;}
+th{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--gold);padding:0.8rem 0.9rem;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:0.8rem 0.9rem;border-bottom:1px solid rgba(201,168,76,0.07);color:var(--cream);vertical-align:top;}
+tr:hover td{background:rgba(201,168,76,0.03);}
+.badge{display:inline-block;font-size:0.52rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.25rem 0.6rem;border:1px solid;border-radius:0;}
+.b-pending{border-color:rgba(232,160,48,0.5);color:#e8a030;}
+.b-paid{border-color:rgba(109,191,109,0.5);color:#6dbf6d;}
+.b-shipped{border-color:rgba(201,168,76,0.5);color:#c9a84c;}
+.b-delivered{border-color:rgba(109,191,109,0.5);color:#6dbf6d;}
+.b-cancelled{border-color:rgba(224,96,96,0.5);color:#e06060;}
+.b-confirmed{border-color:rgba(160,144,128,0.4);color:#a09080;}
+.status-sel{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.3rem 0.5rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;cursor:pointer;}
+.order-id{font-size:0.62rem;color:var(--gold-dim);font-weight:300;}
+.cust-name{color:var(--cream);font-size:0.78rem;}
+.cust-phone{color:var(--cream-dim);font-size:0.65rem;}
+.items-list{font-size:0.65rem;color:var(--cream-dim);max-width:200px;}
+.items-list li{list-style:none;margin-bottom:0.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.amount{font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--gold);}
+.load-more-btn{display:block;width:100%;margin-top:1.5rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.85rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
+.load-more-btn:hover{background:var(--gold);color:var(--bg);}
+.empty{text-align:center;padding:4rem;color:var(--cream-dim);font-size:0.82rem;}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Ink &amp;<span> Chai</span></div>
+  <div class="nav-right">
+    <span class="chip" id="adminChip" style="display:none;border-color:rgba(109,191,109,0.3);color:#6dbf6d;">● Admin</span>
+    <button class="btn-outline" id="logoutBtn" style="display:none;" onclick="logout()">Sign Out</button>
+    <a href="/" class="btn-outline" style="text-decoration:none;">← Store</a>
+  </div>
+</nav>
+
+<!-- LOGIN PANEL -->
+<div id="loginPanel">
+  <h2>Admin Access</h2>
+  <div class="form-row">
+    <label>Admin Password</label>
+    <input type="password" id="adminPass" placeholder="Enter admin password"
+      onkeydown="if(event.key==='Enter')doLogin()"/>
+  </div>
+  <button class="btn-gold" onclick="doLogin()">Access Dashboard →</button>
+  <p class="err" id="loginErr" style="display:none;"></p>
+</div>
+
+<!-- DASHBOARD -->
+<main id="dashboard" style="display:none;">
+  <h1>Orders Dashboard</h1>
+  <p class="subtitle" id="dashSubtitle">Loading…</p>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Total Orders</div>
+      <div class="stat-val" id="statTotal">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">COD Pending</div>
+      <div class="stat-val" id="statCod" style="color:#e8a030;">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Paid Online</div>
+      <div class="stat-val" id="statPaid" style="color:#6dbf6d;">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Revenue (₹)</div>
+      <div class="stat-val" id="statRev">—</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <button class="filter-btn active" onclick="setFilter(this,'')">All</button>
+    <button class="filter-btn" onclick="setFilter(this,'cod_pending')">COD Pending</button>
+    <button class="filter-btn" onclick="setFilter(this,'confirmed')">Confirmed</button>
+    <button class="filter-btn" onclick="setFilter(this,'shipped')">Shipped</button>
+    <button class="filter-btn" onclick="setFilter(this,'delivered')">Delivered</button>
+    <button class="filter-btn" onclick="setFilter(this,'paid')">Paid</button>
+    <button class="filter-btn" onclick="setFilter(this,'cancelled')">Cancelled</button>
+    <input class="search-box" id="searchBox" placeholder="🔍 Search by name, phone, order ID…"
+      oninput="renderTable()"/>
+  </div>
+
+  <!-- Table -->
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>Customer</th>
+          <th>Items</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th>Address</th>
+        </tr>
+      </thead>
+      <tbody id="ordersBody"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="emptyState" style="display:none;">No orders found.</div>
+  <button class="load-more-btn" id="loadMoreBtn" style="display:none;" onclick="loadMore()">Load More Orders</button>
+</main>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let adminKey  = '';
+let allOrders = [];
+let filtered  = [];
+let currentFilter = '';
+let page      = 1;
+const PAGE    = 50;
+let hasMore   = false;
+
+// ── Login ──────────────────────────────────────────────────────────────────
+function doLogin() {
+  const pass = document.getElementById('adminPass').value.trim();
+  if (!pass) return;
+  adminKey = pass;
+  fetchOrders(true);
+}
+
+function logout() {
+  adminKey = '';
+  allOrders = [];
+  document.getElementById('loginPanel').style.display   = '';
+  document.getElementById('dashboard').style.display    = 'none';
+  document.getElementById('adminChip').style.display    = 'none';
+  document.getElementById('logoutBtn').style.display    = 'none';
+  document.getElementById('adminPass').value            = '';
+}
+
+// ── Fetch ──────────────────────────────────────────────────────────────────
+async function fetchOrders(reset = false) {
+  if (reset) { page = 1; allOrders = []; }
+  try {
+    const params = new URLSearchParams({ page, limit: PAGE });
+    if (currentFilter) params.set('status', currentFilter);
+    const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
+      headers: { 'X-Admin-Key': adminKey },
+    });
+    if (res.status === 401) {
+      showLoginErr('Invalid password. Please try again.');
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (reset) allOrders = data.orders || [];
+    else        allOrders = [...allOrders, ...(data.orders || [])];
+
+    hasMore = allOrders.length < (data.total || 0);
+    page++;
+
+    // Show dashboard
+    document.getElementById('loginPanel').style.display  = 'none';
+    document.getElementById('dashboard').style.display   = '';
+    document.getElementById('adminChip').style.display   = '';
+    document.getElementById('logoutBtn').style.display   = '';
+    document.getElementById('loginErr').style.display    = 'none';
+
+    updateStats();
+    filtered = allOrders;
+    renderTable();
+  } catch (err) {
+    showLoginErr('Error: ' + err.message);
+  }
+}
+
+function showLoginErr(msg) {
+  const el = document.getElementById('loginErr');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+function updateStats() {
+  const cod  = allOrders.filter(o => o.status === 'cod_pending').length;
+  const paid = allOrders.filter(o => ['paid','delivered','shipped'].includes(o.status)).length;
+  const rev  = allOrders
+    .filter(o => ['paid','delivered','shipped'].includes(o.status))
+    .reduce((s, o) => s + (o.amount_paise || 0), 0);
+
+  document.getElementById('statTotal').textContent = allOrders.length;
+  document.getElementById('statCod').textContent   = cod;
+  document.getElementById('statPaid').textContent  = paid;
+  document.getElementById('statRev').textContent   = '₹' + Math.round(rev / 100).toLocaleString('en-IN');
+  document.getElementById('dashSubtitle').textContent =
+    `${allOrders.length} orders loaded · Last refreshed ${new Date().toLocaleTimeString('en-IN')}`;
+}
+
+// ── Filter ────────────────────────────────────────────────────────────────
+function setFilter(btn, status) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentFilter = status;
+  fetchOrders(true);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+function renderTable() {
+  const q = (document.getElementById('searchBox')?.value || '').toLowerCase();
+  filtered = allOrders.filter(o => {
+    if (!q) return true;
+    return (
+      (o.razorpay_order_id || '').toLowerCase().includes(q) ||
+      (o.customer_name     || '').toLowerCase().includes(q) ||
+      (o.customer_phone    || '').toLowerCase().includes(q) ||
+      (o.customer_email    || '').toLowerCase().includes(q)
+    );
+  });
+
+  const body = document.getElementById('ordersBody');
+  body.innerHTML = filtered.map(o => {
+    const items   = Array.isArray(o.cart_items) ? o.cart_items : [];
+    const amount  = o.amount_paise ? '₹' + (o.amount_paise / 100).toLocaleString('en-IN') : '—';
+    const date    = new Date(o.created_at).toLocaleString('en-IN', {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+    const badgeCls = {
+      cod_pending: 'b-pending', paid: 'b-paid', shipped: 'b-shipped',
+      delivered: 'b-delivered', cancelled: 'b-cancelled', confirmed: 'b-confirmed',
+    }[o.status] || 'b-confirmed';
+
+    return `<tr>
+      <td>
+        <div class="order-id">${esc(o.razorpay_order_id || o.id || '—')}</div>
+        ${o.razorpay_payment_id ? `<div style="font-size:0.58rem;color:#5a4a2a;margin-top:0.2rem;">${esc(o.razorpay_payment_id)}</div>` : ''}
+      </td>
+      <td>
+        <div class="cust-name">${esc(o.customer_name || '—')}</div>
+        <div class="cust-phone">${esc(o.customer_phone || '')}</div>
+        <div class="cust-phone">${esc(o.customer_email || '')}</div>
+      </td>
+      <td>
+        <ul class="items-list">
+          ${items.slice(0,5).map(i => `<li>· ${esc(i.title||'')} ×${i.qty}</li>`).join('')}
+          ${items.length > 5 ? `<li style="color:#7a6330;">+${items.length - 5} more</li>` : ''}
+        </ul>
+      </td>
+      <td><div class="amount">${amount}</div></td>
+      <td>
+        <span class="badge ${badgeCls}">${(o.status||'').replace('_',' ')}</span><br/>
+        <select class="status-sel" style="margin-top:0.5rem;" onchange="updateStatus('${o.id}',this.value)">
+          <option value="">Update…</option>
+          <option value="cod_pending">COD Pending</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="shipped">Shipped</option>
+          <option value="delivered">Delivered</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="paid">Paid</option>
+          <option value="refunded">Refunded</option>
+        </select>
+      </td>
+      <td style="font-size:0.65rem;color:var(--cream-dim);white-space:nowrap;">${date}</td>
+      <td style="font-size:0.65rem;color:var(--cream-dim);max-width:180px;">${esc(o.customer_address || '—')}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('emptyState').style.display   = filtered.length ? 'none' : '';
+  document.getElementById('loadMoreBtn').style.display  = hasMore && !q ? '' : 'none';
+}
+
+function loadMore() {
+  fetchOrders(false);
+}
+
+// ── Update status ──────────────────────────────────────────────────────────
+async function updateStatus(id, status) {
+  if (!status) return;
+  try {
+    const res = await fetch('/.netlify/functions/update-order-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ id, status }),
+    });
+    if (!res.ok) throw new Error('Update failed');
+    // Update local
+    const ord = allOrders.find(o => o.id === id);
+    if (ord) ord.status = status;
+    updateStats();
+    renderTable();
+  } catch (err) {
+    alert('Could not update status: ' + err.message);
+  }
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Auto-refresh every 60s when logged in ─────────────────────────────────
+setInterval(() => { if (adminKey) fetchOrders(true); }, 60000);
+
+// Focus password field
+document.getElementById('adminPass').focus();
+</script>
+</body>
+</html>
