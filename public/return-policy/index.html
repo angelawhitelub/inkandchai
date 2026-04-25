@@ -14,21 +14,15 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1.2rem
 .logo span{color:var(--cream);font-weight:300;font-style:italic}
 .nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;transition:color 0.3s;}
 .nav-back:hover{color:var(--gold)}
-main{max-width:800px;margin:0 auto;padding:5rem 2rem 8rem;}
-.policy-label{font-size:0.6rem;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem;display:flex;align-items:center;gap:1rem;}
-.policy-label::before{content:'';display:inline-block;width:30px;height:1px;background:var(--gold);}
-h1{font-family:'Cormorant Garamond',serif;font-size:2.8rem;font-weight:300;color:var(--white);margin-bottom:0.5rem;line-height:1.15;}
-.updated{font-size:0.65rem;color:var(--gold-dim);letter-spacing:0.1em;margin-bottom:3rem;padding-bottom:2rem;border-bottom:1px solid var(--border);}
-h2{font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;color:var(--gold);margin:2.5rem 0 0.8rem;}
-p{font-size:0.82rem;line-height:1.9;color:var(--cream-dim);margin-bottom:1rem;letter-spacing:0.02em;}
-ul,ol{padding-left:1.4rem;margin-bottom:1rem;}
-li{font-size:0.82rem;line-height:1.9;color:var(--cream-dim);margin-bottom:0.3rem;letter-spacing:0.02em;}
-a{color:var(--gold);text-decoration:none;}
-a:hover{text-decoration:underline;}
-.steps{counter-reset:steps;list-style:none;padding-left:0;}
-.steps li{counter-increment:steps;padding:1rem 1rem 1rem 3.5rem;position:relative;border-bottom:1px solid rgba(201,168,76,0.08);}
-.steps li::before{content:counter(steps);position:absolute;left:0;top:0.9rem;width:2rem;height:2rem;background:var(--gold);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:500;font-family:'Montserrat',sans-serif;}
-footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-size:0.65rem;color:var(--gold-dim);letter-spacing:0.1em;}
+main{max-width:820px;margin:0 auto;padding:5rem 2rem 8rem;}
+h1{font-family:'Cormorant Garamond',serif;font-size:2.6rem;font-weight:300;color:var(--white);margin-bottom:0.4rem;}
+.meta{font-size:0.65rem;color:var(--gold-dim);letter-spacing:0.08em;margin-bottom:2.5rem;padding-bottom:2rem;border-bottom:1px solid var(--border);}
+p{font-size:0.82rem;line-height:1.95;color:var(--cream-dim);margin-bottom:1rem;letter-spacing:0.02em;}
+strong{color:var(--cream);font-weight:500;}
+a{color:var(--gold);text-decoration:none;}a:hover{text-decoration:underline;}
+.contact-box{background:#1c1916;border:1px solid var(--border);border-left:3px solid var(--gold);padding:1.4rem 1.8rem;margin-top:2.5rem;}
+.contact-box p{margin:0.35rem 0;color:var(--cream);}
+footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-size:0.65rem;color:var(--gold-dim);letter-spacing:0.08em;}
 @media(max-width:600px){nav{padding:1rem 1.5rem;}main{padding:3rem 1.2rem 5rem;}}
 </style>
 </head>
@@ -38,47 +32,20 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
   <a class="nav-back" href="/">← Back to Store</a>
 </nav>
 <main>
-  <div class="policy-label">Legal</div>
   <h1>Return Policy</h1>
-  <p class="updated">Last updated: April 26, 2026 · Ink &amp; Chai, New Delhi – 110006, India · support@inkandchai.in</p>
+  <p class="meta">Last updated: April 26, 2026 &nbsp;·&nbsp; Ink &amp; Chai &nbsp;·&nbsp; inkandchai.in &nbsp;·&nbsp; 2969, Kucha Mai Dass, Sitaram Bazar, New Delhi – 110006</p>
 
-  <p>We accept returns for books that are damaged, defective, or incorrectly delivered. Returns are accepted within <strong style="color:#f0e8d8;">7 days of delivery</strong>.</p>
+  <p>We offer refund / exchange within first 7 days from the date of your purchase. If 7 days have passed since your purchase, you will not be offered a return, exchange or refund of any kind. In order to become eligible for a return or an exchange, (i) the purchased item should be unused and in the same condition as you received it, (ii) the item must have original packaging, (iii) if the item that you purchased on a sale, then the item may not be eligible for a return / exchange. Further, only such items are replaced by us (based on an exchange request), if such items are found defective or damaged.</p>
 
-  <h2>Conditions for Return</h2>
-  <p>A return request will be accepted only if:</p>
-  <ul>
-    <li>The book is in the same condition as received (for wrong item returns)</li>
-    <li>The original packaging is intact, or photographic evidence of damage is provided</li>
-    <li>The return is initiated within 7 days of the delivery date</li>
-    <li>The order ID and proof of purchase are provided</li>
-  </ul>
+  <p>You agree that there may be a certain category of products / items that are exempted from returns or refunds. Such categories of the products would be identified to you at the item of purchase. For exchange / return accepted request(s) (as applicable), once your returned product / item is received and inspected by us, we will send you an email to notify you about receipt of the returned / exchanged product. Further. If the same has been approved after the quality check at our end, your request (i.e. return / exchange) will be processed in accordance with our policies.</p>
 
-  <h2>Items Not Eligible for Return</h2>
-  <ul>
-    <li>Books damaged after delivery due to customer handling</li>
-    <li>Items returned without prior approval from our team</li>
-    <li>Orders placed more than 7 days ago</li>
-    <li>Books purchased during special clearance or final-sale events</li>
-  </ul>
-
-  <h2>How to Initiate a Return</h2>
-  <ol class="steps">
-    <li>Email <a href="mailto:support@inkandchai.in">support@inkandchai.in</a> with your Order ID and photos of the item.</li>
-    <li>Our team will review your request within 2 business days and confirm eligibility.</li>
-    <li>If approved, we will arrange a reverse pickup from your address at no cost to you.</li>
-    <li>Once the returned item is received and inspected, your refund will be processed within 5–7 business days.</li>
-  </ol>
-
-  <h2>Exchange Option</h2>
-  <p>Instead of a refund, you may request an exchange for the same title (in case of a damaged copy) or the correct title (in case of a wrong item). Exchanges are subject to stock availability.</p>
-
-  <h2>Return Shipping</h2>
-  <p>For approved returns, Ink &amp; Chai will arrange reverse pickup at <strong style="color:#f0e8d8;">no charge</strong> to the customer. Do not ship items back without our prior approval, as we cannot process unapproved returns.</p>
-
-  <h2>Contact</h2>
-  <p>Email: <a href="mailto:support@inkandchai.in">support@inkandchai.in</a><br/>
-  Response time: Within 2 business days</p>
+  <div class="contact-box">
+    <p><strong>Contact Us</strong></p>
+    <p>Ink &amp; Chai &nbsp;·&nbsp; 2969, Kucha Mai Dass, Sitaram Bazar, New Delhi – 110006</p>
+    <p>Email: <a href="mailto:support@inkandchai.in">support@inkandchai.in</a></p>
+    <p>Phone: <a href="tel:+919625836117">+91 96258 36117</a> &nbsp;·&nbsp; Monday – Friday, 9:00 AM – 6:00 PM IST</p>
+  </div>
 </main>
-<footer>© 2026 Ink &amp; Chai · inkandchai.in · New Delhi – 110006 · support@inkandchai.in</footer>
+<footer>© 2026 Ink &amp; Chai &nbsp;·&nbsp; inkandchai.in &nbsp;·&nbsp; 2969, Kucha Mai Dass, Sitaram Bazar, New Delhi – 110006 &nbsp;·&nbsp; support@inkandchai.in</footer>
 </body>
 </html>
