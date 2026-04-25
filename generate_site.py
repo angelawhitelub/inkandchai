@@ -422,15 +422,6 @@ HTML = r"""<!DOCTYPE html>
 </head>
 <body>
 
-<!-- POLICY BAR -->
-<div style="background:#1a1612;border-bottom:1px solid rgba(201,168,76,0.12);padding:0.4rem 4rem;display:flex;gap:2rem;justify-content:flex-end;flex-wrap:wrap;">
-  <a href="/terms/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Terms &amp; Conditions</a>
-  <a href="/privacy-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Privacy Policy</a>
-  <a href="/refund-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Refund Policy</a>
-  <a href="/return-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Return Policy</a>
-  <a href="/shipping-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Shipping Policy</a>
-</div>
-
 <nav>
   <a class="nav-logo" href="#">Ink &amp;<span> Chai</span></a>
   <ul class="nav-links">
@@ -438,8 +429,11 @@ HTML = r"""<!DOCTYPE html>
     <li><a href="#collections">Collections</a></li>
     <li><a href="#categories">Categories</a></li>
     <li><a href="#">New Arrivals</a></li>
-    <li><a href="#">Gift Cards</a></li>
-    <li><a href="#">About</a></li>
+    <li><a href="/terms/">Terms</a></li>
+    <li><a href="/privacy-policy/">Privacy</a></li>
+    <li><a href="/refund-policy/">Refund</a></li>
+    <li><a href="/return-policy/">Returns</a></li>
+    <li><a href="/shipping-policy/">Shipping</a></li>
   </ul>
   <div class="nav-actions">
     <span class="nav-icon" title="Search" onclick="document.getElementById('searchInput')?.focus();document.getElementById('featured')?.scrollIntoView({behavior:'smooth'})">&#9906;</span>
