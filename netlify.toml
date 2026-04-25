@@ -6,6 +6,19 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# Static assets — never redirect
+[[redirects]]
+  from   = "/images/*"
+  to     = "/images/:splat"
+  status = 200
+  force  = false
+
+[[redirects]]
+  from   = "/js/*"
+  to     = "/js/:splat"
+  status = 200
+  force  = false
+
 # Redirect all non-file requests to index (SPA-style)
 [[redirects]]
   from   = "/*"
