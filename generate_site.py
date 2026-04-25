@@ -1343,3 +1343,63 @@ prod_out.parent.mkdir(parents=True, exist_ok=True)
 prod_out.write_text(PRODUCT_HTML, encoding="utf-8")
 print(f"Generated: {prod_out}  ({len(PRODUCT_HTML.encode())//1024} KB)")
 print(f"Books embedded: {len(slim)}")
+
+# ── Google Merchant Center Product Feed (feed.xml) ───────────────────────────
+def xml_escape(s):
+    return (str(s or '')
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+            .replace('"', '&quot;'))
+
+SITE = "https://inkandchai.in"
+items = []
+for b in slim:
+    price = (b.get("p") or "").replace("₹", "").replace(",", "").strip()
+    try:
+        price_val = f"{float(price):.2f} INR"
+    except Exception:
+        price_val = "0.00 INR"
+        if price_val == "0.00 INR":
+            continue   # skip books with no price
+
+    img = b.get("img", "")
+    # Make relative image URLs absolute
+    if img and img.startswith("/"):
+        img = SITE + img
+
+    slug = b.get("slug", "")
+    link = f"{SITE}/product/?id={slug}"
+
+    desc = xml_escape(b.get("desc") or b.get("t") or "")
+    if not desc:
+        desc = f"Buy {xml_escape(b.get('t',''))} by {xml_escape(b.get('a',''))} online."
+
+    items.append(f"""    <item>
+      <g:id>{xml_escape(slug)}</g:id>
+      <g:title>{xml_escape(b.get('t',''))}</g:title>
+      <g:description>{desc}</g:description>
+      <g:link>{link}</g:link>
+      <g:image_link>{xml_escape(img)}</g:image_link>
+      <g:condition>new</g:condition>
+      <g:availability>in stock</g:availability>
+      <g:price>{price_val}</g:price>
+      <g:brand>{xml_escape(b.get('a') or 'Ink &amp; Chai')}</g:brand>
+      <g:google_product_category>Media &gt; Books</g:google_product_category>
+      <g:product_type>{xml_escape(b.get('cat','Books'))}</g:product_type>
+      {f"<g:identifier_exists>yes</g:identifier_exists><g:isbn>{xml_escape(b.get('isbn',''))}</g:isbn>" if b.get('isbn') else "<g:identifier_exists>no</g:identifier_exists>"}
+    </item>""")
+
+feed_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+  <channel>
+    <title>Ink &amp; Chai — Books Online India</title>
+    <link>{SITE}</link>
+    <description>Buy books online at Ink &amp; Chai. Pan-India delivery. Cash on Delivery available.</description>
+{chr(10).join(items)}
+  </channel>
+</rss>"""
+
+feed_out = Path(__file__).parent / "public" / "feed.xml"
+feed_out.write_text(feed_xml, encoding="utf-8")
+print(f"Generated: {feed_out}  ({len(feed_xml.encode())//1024} KB, {len(items)} products)")
