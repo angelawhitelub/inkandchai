@@ -118,6 +118,15 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 </head>
 <body>
 
+<!-- POLICY BAR -->
+<div style="background:#1a1612;border-bottom:1px solid rgba(201,168,76,0.12);padding:0.4rem 4rem;display:flex;gap:2rem;justify-content:flex-end;flex-wrap:wrap;">
+  <a href="/terms/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Terms &amp; Conditions</a>
+  <a href="/privacy-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Privacy Policy</a>
+  <a href="/refund-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Refund Policy</a>
+  <a href="/return-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Return Policy</a>
+  <a href="/shipping-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Shipping Policy</a>
+</div>
+
 <!-- NAV -->
 <nav>
   <a class="nav-logo" href="/">Ink &amp;<span> Chai</span></a>
@@ -252,26 +261,10 @@ function renderProduct(b) {
         <div class="divider"></div>
 
         <div class="prod-actions">
-          <button class="btn-cart" onclick="
-            addToCart({
-              id: '${esc(b.url)}',
-              title: '${esc(b.t).replace(/'/g,'\u0027')}',
-              author: '${esc(b.a||'').replace(/'/g,'\u0027')}',
-              price: ${sale},
-              img: '${esc(b.img)}',
-              url: '${esc(b.url)}'
-            })">
+          <button class="btn-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug)">
             Add to Cart
           </button>
-          <button class="btn-cod" onclick="
-            addToCart({
-              id: '${esc(b.url)}',
-              title: '${esc(b.t).replace(/'/g,'\u0027')}',
-              author: '${esc(b.a||'').replace(/'/g,'\u0027')}',
-              price: ${sale},
-              img: '${esc(b.img)}',
-              url: '${esc(b.url)}'
-            }); openCODForm();">
+          <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); openCODForm();">
             🚚 Buy with Cash on Delivery
           </button>
           <button class="btn-share" onclick="shareBook()">
@@ -331,6 +324,14 @@ function renderRelated(b) {
       </div>
     </div>
   `;
+}
+
+// ── Safe cart helper (avoids quoting issues in inline onclick) ────────────
+function addBookToCart(bookSlug) {
+  const b = BOOK_MAP[bookSlug];
+  if (!b) return;
+  const price = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
+  addToCart({ id: b.url || bookSlug, title: b.t, author: b.a||'', price, img: b.img||'', url: b.url||'' });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
