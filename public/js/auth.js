@@ -65,10 +65,17 @@
     getProfile: () => currentProfile,
     getUserId:  () => currentUser?.id,
 
-    // Pre-fill checkout forms with saved details
+    // Pre-fill checkout forms with saved profile details
+    // Handles both old field IDs (co-*, cod-*) and new unified form (ch-*)
     prefillCheckout() {
       if (!currentUser && !currentProfile) return;
       const vals = {
+        // Unified checkout form
+        'ch-name':  currentProfile?.name,
+        'ch-email': currentUser?.email,
+        'ch-phone': currentProfile?.phone,
+        'ch-addr':  currentProfile?.address,
+        // Legacy field IDs (kept for safety)
         'co-name':    currentProfile?.name,
         'co-email':   currentUser?.email,
         'co-phone':   currentProfile?.phone,
@@ -86,6 +93,119 @@
 
     openAuthModal,
     openAccountModal,
+    openMyOrders,
+  };
+
+  // ── Auto-login after order (called from checkout.js) ──────────────────────
+  // Creates Supabase account + sends magic link email so customer can track orders
+  window.autoLoginAfterOrder = async function (email, name, phone) {
+    const sb = getSB();
+    if (!sb || !email) return;
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) return; // already logged in — update profile if needed
+      // signInWithOtp creates the user if they don't exist AND sends a magic link
+      await sb.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: true,
+          data: { name: name || '', phone: phone || '' },
+        },
+      });
+    } catch (e) {
+      console.warn('Auto-login OTP error (non-fatal):', e.message);
+    }
+  };
+
+  // ── My Orders entry point ─────────────────────────────────────────────────
+  // Logged-in: opens account modal on Orders tab
+  // Guest: shows email-entry modal → sends magic link
+  function openMyOrders() {
+    if (currentUser) {
+      openAccountModal();
+      setTimeout(() => window.iacSwitchTab?.('acct-orders-tab'), 300);
+    } else {
+      openGuestOrdersModal();
+    }
+  }
+
+  function openGuestOrdersModal() {
+    removeModal('iacGuestOrdersModal');
+    const modal = document.createElement('div');
+    modal.id = 'iacGuestOrdersModal';
+    modal.style.cssText = `
+      position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
+      display:flex;align-items:center;justify-content:center;z-index:9000;padding:1.5rem;
+    `;
+    modal.innerHTML = `
+      <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);
+                  width:min(420px,100%);padding:2.6rem;position:relative;">
+        <button onclick="document.getElementById('iacGuestOrdersModal').remove()"
+          style="position:absolute;top:1rem;right:1.2rem;background:none;border:none;
+                 color:#a09080;font-size:1.3rem;cursor:pointer;line-height:1;">✕</button>
+
+        <div style="font-size:0.55rem;letter-spacing:0.35em;text-transform:uppercase;
+                    color:#c9a84c;margin-bottom:0.6rem;">My Orders</div>
+        <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;
+                   color:#faf7f2;margin-bottom:0.6rem;">Track your orders</h3>
+        <p style="font-size:0.72rem;color:#a09080;margin-bottom:1.8rem;line-height:1.7;">
+          Enter the email you used when placing your order. We'll send you a one-click login link.
+        </p>
+
+        <div style="margin-bottom:1rem;">
+          <label for="guestOrderEmail" style="display:block;font-size:0.58rem;letter-spacing:0.18em;
+                 text-transform:uppercase;color:#a09080;margin-bottom:0.45rem;">Email Address</label>
+          <input id="guestOrderEmail" type="email" placeholder="you@example.com"
+            style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);
+                   color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;
+                   font-size:0.78rem;outline:none;"
+            onfocus="this.style.borderColor='rgba(201,168,76,0.5)'"
+            onblur="this.style.borderColor='rgba(201,168,76,0.18)'"
+            onkeydown="if(event.key==='Enter') sendOrdersLink()" />
+        </div>
+
+        <button onclick="sendOrdersLink()"
+          style="width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;
+                 letter-spacing:0.25em;text-transform:uppercase;padding:1rem;
+                 background:#c9a84c;color:#0d0b08;border:none;cursor:pointer;font-weight:500;">
+          Send Login Link →
+        </button>
+        <p id="guestOrderMsg" style="font-size:0.7rem;margin-top:0.9rem;min-height:1.2em;
+           text-align:center;color:#6dbf6d;"></p>
+
+        <p style="text-align:center;margin-top:1.4rem;font-size:0.7rem;color:#a09080;">
+          Have a password?
+          <button onclick="removeModal('iacGuestOrdersModal');openAuthModal()"
+            style="background:none;border:none;color:#c9a84c;cursor:pointer;
+                   font-family:'Montserrat',sans-serif;font-size:0.7rem;text-decoration:underline;margin-left:0.3rem;">
+            Sign in instead
+          </button>
+        </p>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    setTimeout(() => document.getElementById('guestOrderEmail')?.focus(), 80);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  }
+
+  window.sendOrdersLink = async function () {
+    const email = document.getElementById('guestOrderEmail')?.value.trim();
+    const msg   = document.getElementById('guestOrderMsg');
+    if (!email) { if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please enter your email.'; } return; }
+
+    const sb = getSB();
+    if (!sb) { if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Auth not configured.'; } return; }
+
+    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending…'; }
+    try {
+      await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+      if (msg) {
+        msg.style.color = '#6dbf6d';
+        msg.textContent = '✓ Check your email! Click the link to view your orders.';
+      }
+    } catch (e) {
+      if (msg) { msg.style.color = '#e06060'; msg.textContent = e.message || 'Failed to send link.'; }
+    }
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -138,6 +258,7 @@
     window._iacMode = 'login';
     renderAuthFields('login');
     if (mode === 'signup') iacToggleMode();
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   }
 
   function renderAuthFields(mode) {
@@ -161,10 +282,9 @@
       `;
       document.getElementById('iacAuthTitle').textContent  = 'Welcome back';
       document.getElementById('iacAuthSubmit').textContent = 'Sign In →';
-      document.getElementById('iacToggleText').textContent  = 'Don\'t have an account?';
+      document.getElementById('iacToggleText').textContent  = "Don't have an account?";
       document.getElementById('iacToggleBtn').textContent   = 'Create account';
     }
-    // Focus email
     setTimeout(() => document.getElementById('iacEmail')?.focus(), 50);
   }
 
@@ -221,7 +341,6 @@
         btn.textContent = 'Create Account →';
         return;
       }
-      // Save profile
       if (data.user) {
         await sb.from('profiles').upsert({ id: data.user.id, name, phone });
         currentUser    = data.user;
@@ -326,6 +445,7 @@
       </div>
     `;
     document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   }
 
   function acctTab(id, label, active) {
@@ -401,7 +521,7 @@
     if (window.showToast) showToast('Signed out.');
   };
 
-  // ── My Orders ──────────────────────────────────────────────────────────────
+  // ── My Orders (loads orders for current logged-in user) ───────────────────
   async function loadMyOrders() {
     const container = document.getElementById('acct-orders-content');
     if (!container) return;
@@ -411,18 +531,27 @@
       return;
     }
 
-    // Fetch orders where customer_email matches (simple approach without RLS user_id)
+    container.innerHTML = '<p style="color:#a09080;font-size:0.78rem;">Loading your orders…</p>';
+
     const { data, error } = await sb
       .from('orders')
       .select('*')
       .eq('customer_email', currentUser.email)
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(30);
 
-    if (error || !data?.length) {
-      container.innerHTML = `<p style="color:#a09080;font-size:0.78rem;line-height:1.8;">
-        ${error ? 'Could not load orders.' : 'No orders yet. <a href="/" style="color:#c9a84c;">Browse books →</a>'}
-      </p>`;
+    if (error) {
+      container.innerHTML = `<p style="color:#e06060;font-size:0.78rem;">Could not load orders: ${error.message}</p>`;
+      return;
+    }
+    if (!data?.length) {
+      container.innerHTML = `
+        <div style="text-align:center;padding:3rem 1rem;">
+          <div style="font-size:2.5rem;margin-bottom:1rem;opacity:0.4;">📚</div>
+          <p style="color:#a09080;font-size:0.78rem;line-height:1.8;">No orders yet.<br/>
+            <a href="/" style="color:#c9a84c;">Browse books →</a>
+          </p>
+        </div>`;
       return;
     }
 
@@ -434,32 +563,56 @@
         paid: '#6dbf6d', shipped: '#c9a84c', delivered: '#6dbf6d',
         cod_pending: '#e8a030', confirmed: '#a09080', cancelled: '#e06060',
       }[o.status] || '#a09080';
+      const statusLabel = (o.status || 'pending').replace('_', ' ').toUpperCase();
 
       return `
         <div style="border:1px solid rgba(201,168,76,0.14);margin-bottom:1.2rem;padding:1.4rem;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.8rem;flex-wrap:wrap;gap:0.5rem;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;
+                      margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
             <div>
-              <div style="font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:#a09080;margin-bottom:0.2rem;">${date}</div>
-              <div style="font-size:0.68rem;color:#7a6330;letter-spacing:0.05em;">${o.razorpay_order_id}</div>
+              <div style="font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;
+                          color:#a09080;margin-bottom:0.2rem;">${date}</div>
+              <div style="font-size:0.65rem;color:#7a6330;letter-spacing:0.04em;
+                          font-family:'Montserrat',sans-serif;">${o.razorpay_order_id}</div>
             </div>
-            <div style="display:flex;gap:0.8rem;align-items:center;">
-              <span style="font-family:'Cormorant Garamond',serif;font-size:1.2rem;color:#c9a84c;">${amount}</span>
-              <span style="font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;
-                     padding:0.3rem 0.7rem;border:1px solid ${statusColor};color:${statusColor};">
-                ${o.status?.replace('_', ' ') || 'pending'}
+            <div style="display:flex;gap:0.8rem;align-items:center;flex-wrap:wrap;">
+              <span style="font-family:'Cormorant Garamond',serif;font-size:1.3rem;color:#c9a84c;">
+                ${amount}
+              </span>
+              <span style="font-size:0.52rem;letter-spacing:0.2em;text-transform:uppercase;
+                     padding:0.3rem 0.75rem;border:1px solid ${statusColor};color:${statusColor};">
+                ${statusLabel}
               </span>
             </div>
           </div>
-          ${items.slice(0, 3).map(i => `
-            <div style="display:flex;gap:0.8rem;align-items:center;padding:0.5rem 0;
+          ${items.slice(0, 4).map(i => `
+            <div style="display:flex;gap:0.9rem;align-items:center;padding:0.6rem 0;
                         border-top:1px solid rgba(201,168,76,0.08);">
-              ${i.img ? `<img src="${escHtmlAttr(i.img)}" style="width:36px;height:52px;object-fit:cover;opacity:0.9;" alt=""/>` : ''}
+              ${i.img
+                ? `<img src="${escHtmlAttr(i.img)}" style="width:40px;height:58px;object-fit:cover;
+                         border:1px solid rgba(201,168,76,0.12);flex-shrink:0;" alt="" />`
+                : `<div style="width:40px;height:58px;background:#141210;flex-shrink:0;
+                               border:1px solid rgba(201,168,76,0.1);"></div>`}
               <div style="flex:1;min-width:0;">
-                <div style="font-size:0.78rem;color:#f0e8d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(i.title||'')}</div>
-                <div style="font-size:0.6rem;color:#a09080;">Qty: ${i.qty} · ₹${(i.price*i.qty).toLocaleString('en-IN')}</div>
+                <div style="font-size:0.8rem;color:#f0e8d8;white-space:nowrap;overflow:hidden;
+                            text-overflow:ellipsis;margin-bottom:0.2rem;">${escHtml(i.title || '')}</div>
+                <div style="font-size:0.62rem;color:#a09080;">
+                  Qty: ${i.qty} &nbsp;·&nbsp; ₹${(i.price * i.qty).toLocaleString('en-IN')}
+                </div>
               </div>
             </div>`).join('')}
-          ${items.length > 3 ? `<div style="font-size:0.62rem;color:#7a6330;margin-top:0.4rem;">+${items.length - 3} more items</div>` : ''}
+          ${items.length > 4
+            ? `<div style="font-size:0.62rem;color:#7a6330;margin-top:0.5rem;padding-top:0.5rem;
+                           border-top:1px solid rgba(201,168,76,0.08);">
+                 +${items.length - 4} more item${items.length - 4 > 1 ? 's' : ''}
+               </div>` : ''}
+          ${o.customer_address
+            ? `<div style="margin-top:0.8rem;padding-top:0.8rem;border-top:1px solid rgba(201,168,76,0.08);
+                           font-size:0.62rem;color:#a09080;line-height:1.6;">
+                 <span style="color:#7a6330;text-transform:uppercase;letter-spacing:0.1em;
+                              font-size:0.55rem;">Deliver to</span><br/>
+                 ${escHtml(o.customer_address)}
+               </div>` : ''}
         </div>`;
     }).join('');
   }
@@ -497,7 +650,6 @@
   }
 
   // ── Pincode checker ────────────────────────────────────────────────────────
-  // Fast delivery zones (example — update with real pin ranges for your city)
   const EXPRESS_PINCODES = new Set([
     '110001','110002','110003','110004','110005','110006','110007','110008','110009','110010',
     '110011','110012','110013','110014','110015','110016','110017','110018','110019','110020',
@@ -509,7 +661,6 @@
     '110071','110072','110073','110074','110075','110076','110077','110078','110079','110080',
     '110081','110082','110083','110084','110085','110086','110087','110088','110089','110090',
     '110091','110092','110093','110094','110095','110096','110097',
-    // NCR
     '201301','201302','201303','201304','201305','201306','201307','201308','201309','201310',
     '122001','122002','122003','122004','122010','122011','122015','122016','122017','122018',
     '122022','122051','122052','122053','122054',
@@ -526,11 +677,11 @@
     if (EXPRESS_PINCODES.has(pin)) {
       res.innerHTML = `
         <span style="color:#6dbf6d;">✓ We deliver to <strong>${pin}</strong>!</span>
-        <span style="color:#a09080;font-size:0.68rem;margin-left:0.5rem;">Estimated delivery: 2-4 days</span>`;
+        <span style="color:#a09080;font-size:0.68rem;margin-left:0.5rem;">Estimated delivery: 1–3 days</span>`;
     } else {
       res.innerHTML = `
         <span style="color:#c9a84c;">✓ We deliver to <strong>${pin}</strong>!</span>
-        <span style="color:#a09080;font-size:0.68rem;margin-left:0.5rem;">Estimated delivery: 4-7 days via courier</span>`;
+        <span style="color:#a09080;font-size:0.68rem;margin-left:0.5rem;">Estimated delivery: 4–7 days via courier</span>`;
     }
   };
 

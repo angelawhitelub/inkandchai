@@ -165,6 +165,14 @@ exports.handler = async (event) => {
           <strong style="color:#f0e8d8;">Delivery address:</strong><br/>${customer.address||'—'}
         </p>
         <p style="margin-top:16px;color:#7a6330;font-size:12px;">Payment ID: ${razorpay_payment_id}</p>
+        <div style="margin-top:20px;padding:14px 16px;background:#1c1916;border-left:3px solid #c9a84c;">
+          <p style="color:#f0e8d8;font-size:13px;margin:0 0 8px;">Track your orders anytime</p>
+          <p style="color:#a09080;font-size:12px;margin:0;">
+            Visit <a href="https://inkandchai.in" style="color:#c9a84c;">inkandchai.in</a> and click
+            <strong style="color:#f0e8d8;">"My Orders"</strong> in the top menu. Enter this email address
+            and we'll send you a one-click login link.
+          </p>
+        </div>
       `),
     });
   }

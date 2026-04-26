@@ -292,7 +292,9 @@ async function startCheckout(addr) {
           clearCart();
           closeCart();
           document.getElementById('unifiedCheckoutModal')?.remove();
-          showOrderSuccess(response.razorpay_payment_id);
+          // Auto-create account & send magic link so customer can track order
+          if (window.autoLoginAfterOrder) autoLoginAfterOrder(addr.email, addr.name, addr.phone);
+          showOrderSuccess(response.razorpay_payment_id, addr.email);
         } catch (err) {
           console.error(err);
           showToast('Payment received but verification failed. Please contact support.');
@@ -336,7 +338,9 @@ async function submitCOD(addr) {
     document.getElementById('unifiedCheckoutModal')?.remove();
     clearCart();
     closeCart();
-    showCODSuccess(data.order_id, addr.name);
+    // Auto-create account & send magic link so customer can track order
+    if (window.autoLoginAfterOrder) autoLoginAfterOrder(addr.email, addr.name, addr.phone);
+    showCODSuccess(data.order_id, addr.name, addr.email);
 
   } catch (err) {
     console.error(err);
@@ -345,23 +349,34 @@ async function submitCOD(addr) {
 }
 
 // ── Success screens ───────────────────────────────────────────────────────
-function showOrderSuccess(paymentId) {
+function showOrderSuccess(paymentId, email) {
   const modal = document.createElement('div');
   modal.style.cssText = `
     position:fixed; inset:0; background:rgba(13,11,8,0.97);
-    display:flex; align-items:center; justify-content:center; z-index:10000;
+    display:flex; align-items:center; justify-content:center; z-index:10000; padding:1.5rem;
   `;
   modal.innerHTML = `
-    <div style="text-align:center; padding:3rem; max-width:480px;">
+    <div style="text-align:center; padding:3rem; max-width:500px;">
       <div style="font-size:3rem; margin-bottom:1.5rem;">✦</div>
       <h2 style="font-family:'Cormorant Garamond',serif; font-size:2.4rem;
-                 color:#f0e8d8; font-weight:300; margin-bottom:1rem;">Order Confirmed</h2>
+                 color:#f0e8d8; font-weight:300; margin-bottom:1rem;">Order Confirmed!</h2>
       <p style="font-size:0.78rem; color:#a09080; line-height:1.9; margin-bottom:0.5rem;">
         Thank you for your purchase. Your books are on their way.
       </p>
-      <p style="font-size:0.62rem; color:#7a6330; letter-spacing:0.15em; margin-bottom:2.5rem;">
+      <p style="font-size:0.65rem; color:#7a6330; letter-spacing:0.12em; margin-bottom:1rem;">
         Payment ID: ${paymentId}
       </p>
+      ${email ? `
+      <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.2);
+                  padding:1rem 1.4rem;margin-bottom:1.8rem;text-align:left;">
+        <p style="font-size:0.68rem;color:#c9a84c;margin-bottom:0.3rem;letter-spacing:0.08em;">
+          📧 Check your email — ${email}
+        </p>
+        <p style="font-size:0.65rem;color:#a09080;line-height:1.7;margin:0;">
+          We've sent your order confirmation and a <strong style="color:#f0e8d8;">one-click login link</strong>
+          to track your orders anytime from <strong style="color:#f0e8d8;">My Orders</strong>.
+        </p>
+      </div>` : ''}
       <button onclick="this.closest('div[style*=inset]').remove()"
         style="font-family:'Montserrat',sans-serif; font-size:0.62rem; letter-spacing:0.22em;
                text-transform:uppercase; padding:0.9rem 2rem; background:#c9a84c;
@@ -373,24 +388,35 @@ function showOrderSuccess(paymentId) {
   document.body.appendChild(modal);
 }
 
-function showCODSuccess(orderId, name) {
+function showCODSuccess(orderId, name, email) {
   const modal = document.createElement('div');
   modal.style.cssText = `
     position:fixed; inset:0; background:rgba(13,11,8,0.97);
-    display:flex; align-items:center; justify-content:center; z-index:10000;
+    display:flex; align-items:center; justify-content:center; z-index:10000; padding:1.5rem;
   `;
   modal.innerHTML = `
-    <div style="text-align:center; padding:3rem; max-width:480px;">
+    <div style="text-align:center; padding:3rem; max-width:500px;">
       <div style="font-size:3rem; margin-bottom:1.5rem;">🚚</div>
       <h2 style="font-family:'Cormorant Garamond',serif; font-size:2.4rem;
                  color:#f0e8d8; font-weight:300; margin-bottom:1rem;">Order Placed!</h2>
       <p style="font-size:0.82rem; color:#a09080; line-height:1.9; margin-bottom:0.5rem;">
         Hi ${name.split(' ')[0]}, your books are on their way.<br/>
-        Pay cash when they arrive at your door.
+        Pay <strong style="color:#c9a84c;">cash</strong> when they arrive at your door.
       </p>
-      <p style="font-size:0.65rem; color:#7a6330; letter-spacing:0.15em; margin-bottom:2.5rem;">
+      <p style="font-size:0.65rem; color:#7a6330; letter-spacing:0.12em; margin-bottom:1rem;">
         Order ID: ${orderId}
       </p>
+      ${email ? `
+      <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.2);
+                  padding:1rem 1.4rem;margin-bottom:1.8rem;text-align:left;">
+        <p style="font-size:0.68rem;color:#c9a84c;margin-bottom:0.3rem;letter-spacing:0.08em;">
+          📧 Check your email — ${email}
+        </p>
+        <p style="font-size:0.65rem;color:#a09080;line-height:1.7;margin:0;">
+          We've sent your order confirmation and a <strong style="color:#f0e8d8;">one-click login link</strong>
+          to track your orders anytime from <strong style="color:#f0e8d8;">My Orders</strong>.
+        </p>
+      </div>` : ''}
       <button onclick="this.closest('div[style*=inset]').remove()"
         style="font-family:'Montserrat',sans-serif; font-size:0.62rem; letter-spacing:0.22em;
                text-transform:uppercase; padding:0.9rem 2rem; background:#c9a84c;

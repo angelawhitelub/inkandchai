@@ -436,6 +436,7 @@ HTML = r"""<!DOCTYPE html>
   <div class="nav-actions">
     <span class="nav-icon" title="Search" onclick="document.getElementById('searchInput')?.focus();document.getElementById('featured')?.scrollIntoView({behavior:'smooth'})">&#9906;</span>
     <span class="nav-icon" title="Wishlist" onclick="openWishlistModal()">&#9825;<span id="wishBadge" style="display:none;font-size:0.55rem;background:var(--gold);color:var(--bg);border-radius:50%;width:14px;height:14px;display:none;align-items:center;justify-content:center;position:absolute;top:-4px;right:-6px;"></span></span>
+    <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
     <button class="btn-nav auth-nav-btn" id="authNavBtnMain" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
     <div class="nav-cart-wrap">
       <button class="btn-nav" onclick="openCart()" style="cursor:pointer;">Cart</button>
@@ -1143,6 +1144,7 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
   <a class="nav-logo" href="/">Ink &amp;<span> Chai</span></a>
   <a class="nav-back" href="javascript:history.back()">← Back to catalogue</a>
   <div style="display:flex;gap:1rem;align-items:center;">
+    <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
     <button class="btn-nav auth-nav-btn" id="authNavBtnProd" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
     <div class="nav-cart-wrap">
       <button class="btn-nav" onclick="openCart()">Cart</button>
