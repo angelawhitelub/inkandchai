@@ -1,76 +1,280 @@
 /**
- * checkout.js — Akshar & Co.
- * Handles Razorpay checkout flow.
+ * checkout.js — Ink & Chai
+ * Unified checkout modal: address form → Pay Now (Razorpay) or Cash on Delivery.
  * Depends on cart.js being loaded first.
  */
 
-const RAZORPAY_KEY = window.RAZORPAY_KEY_ID || '';   // injected at build or set here
+const RAZORPAY_KEY = window.RAZORPAY_KEY_ID || '';
 
-async function startCheckout() {
+// ── Pincode → City / State (India Post API) ───────────────────────────────
+async function fetchPincodeData(pin) {
+  try {
+    const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+    const data = await res.json();
+    if (data[0].Status === 'Success' && data[0].PostOffice?.length) {
+      const po = data[0].PostOffice[0];
+      return { city: po.District || po.Division || po.Name, state: po.State };
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+// ── Open unified checkout modal ───────────────────────────────────────────
+function openCheckoutForm() {
   const cart = getCart();
-  if (cart.length === 0) {
-    showToast('Your cart is empty!');
+  if (cart.length === 0) { showToast('Your cart is empty!'); return; }
+
+  // Remove old if exists
+  document.getElementById('unifiedCheckoutModal')?.remove();
+
+  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const totalFmt = '₹ ' + total.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+
+  const modal = document.createElement('div');
+  modal.id = 'unifiedCheckoutModal';
+  modal.style.cssText = `
+    position:fixed; inset:0; background:rgba(13,11,8,0.96); backdrop-filter:blur(10px);
+    display:flex; align-items:center; justify-content:center; z-index:6000;
+    overflow-y:auto; padding:1.5rem;
+  `;
+
+  modal.innerHTML = `
+    <div style="background:#1c1916; border:1px solid rgba(201,168,76,0.22);
+                width:min(540px,100%); position:relative; overflow:hidden;">
+
+      <!-- Header -->
+      <div style="padding:1.8rem 2rem 1.4rem; border-bottom:1px solid rgba(201,168,76,0.12);">
+        <button onclick="document.getElementById('unifiedCheckoutModal').remove()"
+          style="position:absolute;top:1.2rem;right:1.4rem;background:none;border:none;
+                 color:#a09080;font-size:1.3rem;cursor:pointer;line-height:1;">✕</button>
+        <div style="font-size:0.55rem;letter-spacing:0.35em;text-transform:uppercase;
+                    color:#c9a84c;margin-bottom:0.5rem;">Checkout</div>
+        <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.9rem;font-weight:300;
+                   color:#faf7f2;margin:0;">Delivery Details</h3>
+      </div>
+
+      <!-- Cart summary strip -->
+      <div style="padding:0.9rem 2rem;background:#141210;border-bottom:1px solid rgba(201,168,76,0.12);
+                  display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:0.65rem;letter-spacing:0.1em;color:#a09080;">
+          ${cart.length} item${cart.length > 1 ? 's' : ''}
+        </span>
+        <span style="font-family:'Cormorant Garamond',serif;font-size:1.2rem;color:#c9a84c;font-weight:600;">
+          ${totalFmt}
+        </span>
+      </div>
+
+      <!-- Form body -->
+      <div style="padding:2rem;">
+
+        <!-- Row: Name + Phone -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+          ${chkField('ch-name',  'text',  'Full Name *',     'Your name')}
+          ${chkField('ch-phone', 'tel',   'Phone Number *',  '10-digit mobile')}
+        </div>
+
+        <!-- Email -->
+        <div style="margin-bottom:1rem;">
+          ${chkField('ch-email', 'email', 'Email Address', 'you@example.com')}
+        </div>
+
+        <!-- Address Line -->
+        <div style="margin-bottom:1rem;">
+          ${chkField('ch-addr', 'text', 'House / Street / Locality *', 'e.g. 12B, MG Road, Lajpat Nagar')}
+        </div>
+
+        <!-- Row: Pincode + City + State -->
+        <div style="display:grid;grid-template-columns:130px 1fr 1fr;gap:1rem;margin-bottom:0.4rem;">
+          <div>
+            <label style="${labelCss}">Pincode *</label>
+            <input id="ch-pin" type="text" inputmode="numeric" maxlength="6" placeholder="6 digits"
+              style="${inputCss}"
+              onfocus="this.style.borderColor='rgba(201,168,76,0.5)'"
+              onblur="this.style.borderColor='rgba(201,168,76,0.18)'"
+              oninput="handlePincodeInput(this.value)" />
+          </div>
+          <div>
+            <label style="${labelCss}">City</label>
+            <input id="ch-city" type="text" placeholder="Auto-filled"
+              style="${inputCss}"
+              onfocus="this.style.borderColor='rgba(201,168,76,0.5)'"
+              onblur="this.style.borderColor='rgba(201,168,76,0.18)'" />
+          </div>
+          <div>
+            <label style="${labelCss}">State</label>
+            <input id="ch-state" type="text" placeholder="Auto-filled"
+              style="${inputCss}"
+              onfocus="this.style.borderColor='rgba(201,168,76,0.5)'"
+              onblur="this.style.borderColor='rgba(201,168,76,0.18)'" />
+          </div>
+        </div>
+        <div id="ch-pin-msg" style="font-size:0.62rem;min-height:1.2em;margin-bottom:1.2rem;
+             letter-spacing:0.05em;color:#7a6330;"></div>
+
+        <!-- Divider -->
+        <div style="border-top:1px solid rgba(201,168,76,0.12);margin:1.4rem 0 1.6rem;
+                    display:flex;align-items:center;gap:1rem;">
+          <span style="font-size:0.55rem;letter-spacing:0.28em;text-transform:uppercase;
+                       color:#7a6330;white-space:nowrap;">Choose Payment</span>
+          <div style="flex:1;height:1px;background:rgba(201,168,76,0.12);"></div>
+        </div>
+
+        <!-- Payment buttons -->
+        <div style="display:flex;flex-direction:column;gap:0.75rem;">
+          <button onclick="submitCheckout('online')"
+            style="width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;
+                   letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;
+                   background:#c9a84c;color:#0d0b08;border:none;cursor:pointer;
+                   font-weight:500;transition:all 0.3s;"
+            onmouseover="this.style.opacity='0.88'"
+            onmouseout="this.style.opacity='1'">
+            ⚡ Pay Now — ${totalFmt}
+          </button>
+          <button onclick="submitCheckout('cod')"
+            style="width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;
+                   letter-spacing:0.22em;text-transform:uppercase;padding:1.05rem;
+                   background:transparent;color:#f0e8d8;border:1px solid rgba(201,168,76,0.35);
+                   cursor:pointer;font-weight:400;transition:all 0.3s;"
+            onmouseover="this.style.borderColor='rgba(201,168,76,0.7)';this.style.color='#c9a84c'"
+            onmouseout="this.style.borderColor='rgba(201,168,76,0.35)';this.style.color='#f0e8d8'">
+            🚚 Cash on Delivery
+          </button>
+        </div>
+
+        <p style="font-size:0.6rem;color:#7a6330;text-align:center;margin-top:1.2rem;
+                  letter-spacing:0.06em;line-height:1.7;">
+          Secure checkout &nbsp;·&nbsp; Pan-India delivery &nbsp;·&nbsp; 7-day returns
+        </p>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Pre-fill if logged-in profile is available
+  if (window.IAC) setTimeout(() => IAC.prefillCheckout(), 60);
+
+  // Close on backdrop click
+  modal.addEventListener('click', e => {
+    if (e.target === modal) modal.remove();
+  });
+}
+
+// Inline CSS helpers so the template strings above stay clean
+const labelCss = `display:block;font-size:0.58rem;letter-spacing:0.18em;
+  text-transform:uppercase;color:#a09080;margin-bottom:0.45rem;`;
+const inputCss = `width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);
+  color:#f0e8d8;padding:0.75rem 0.9rem;font-family:'Montserrat',sans-serif;
+  font-size:0.78rem;outline:none;transition:border-color 0.3s;`;
+
+function chkField(id, type, label, placeholder) {
+  return `
+    <div>
+      <label for="${id}" style="${labelCss}">${label}</label>
+      <input id="${id}" type="${type}" placeholder="${placeholder}"
+        style="${inputCss}"
+        onfocus="this.style.borderColor='rgba(201,168,76,0.5)'"
+        onblur="this.style.borderColor='rgba(201,168,76,0.18)'" />
+    </div>
+  `;
+}
+
+// ── Pincode live lookup ────────────────────────────────────────────────────
+let _pinTimer = null;
+function handlePincodeInput(val) {
+  const msg = document.getElementById('ch-pin-msg');
+  clearTimeout(_pinTimer);
+  if (val.length < 6) {
+    if (msg) msg.textContent = '';
     return;
   }
+  if (msg) msg.textContent = 'Looking up pincode…';
+  _pinTimer = setTimeout(async () => {
+    const data = await fetchPincodeData(val);
+    if (data) {
+      const cityEl  = document.getElementById('ch-city');
+      const stateEl = document.getElementById('ch-state');
+      if (cityEl)  cityEl.value  = data.city;
+      if (stateEl) stateEl.value = data.state;
+      if (msg) { msg.textContent = '✓ ' + data.city + ', ' + data.state; msg.style.color = '#8fa87a'; }
+    } else {
+      if (msg) { msg.textContent = 'Pincode not found — please enter city and state manually.'; msg.style.color = '#c97a7a'; }
+    }
+  }, 500);
+}
 
-  // Collect customer info
-  const name    = document.getElementById('co-name')?.value.trim()    || '';
-  const email   = document.getElementById('co-email')?.value.trim()   || '';
-  const phone   = document.getElementById('co-phone')?.value.trim()   || '';
-  const address = document.getElementById('co-address')?.value.trim() || '';
+// ── Validate + collect address ─────────────────────────────────────────────
+function collectAddress() {
+  const name  = document.getElementById('ch-name')?.value.trim()  || '';
+  const phone = document.getElementById('ch-phone')?.value.trim() || '';
+  const email = document.getElementById('ch-email')?.value.trim() || '';
+  const addr  = document.getElementById('ch-addr')?.value.trim()  || '';
+  const pin   = document.getElementById('ch-pin')?.value.trim()   || '';
+  const city  = document.getElementById('ch-city')?.value.trim()  || '';
+  const state = document.getElementById('ch-state')?.value.trim() || '';
 
-  if (!email || !phone) {
-    showToast('Please enter your email and phone number.');
-    openCheckoutForm();
-    return;
+  if (!name) { showToast('Please enter your full name.'); return null; }
+  if (!phone || phone.replace(/\D/g,'').length < 10) {
+    showToast('Please enter a valid 10-digit phone number.'); return null;
   }
+  if (!addr) { showToast('Please enter your delivery address.'); return null; }
+  if (!pin || pin.length !== 6) { showToast('Please enter a valid 6-digit pincode.'); return null; }
 
-  const amountPaise = Math.round(
-    cart.reduce((s, i) => s + i.price * i.qty, 0) * 100
-  );
+  return {
+    name, phone, email,
+    address: `${addr}, ${city ? city + ', ' : ''}${state ? state + ' – ' : ''}${pin}`.replace(/^,\s*|,\s*$/g,''),
+    pincode: pin, city, state,
+  };
+}
 
+// ── Unified submit router ─────────────────────────────────────────────────
+function submitCheckout(method) {
+  const addr = collectAddress();
+  if (!addr) return;
+  if (method === 'online') {
+    startCheckout(addr);
+  } else {
+    submitCOD(addr);
+  }
+}
+
+// ── Razorpay checkout ─────────────────────────────────────────────────────
+async function startCheckout(addr) {
+  const cart = getCart();
+  if (!cart.length) { showToast('Your cart is empty!'); return; }
+
+  const amountPaise = Math.round(cart.reduce((s, i) => s + i.price * i.qty, 0) * 100);
   showToast('Creating order…');
 
   try {
-    // 1 — Create Razorpay order via Netlify function
     const res = await fetch('/.netlify/functions/create-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         amount:   amountPaise,
         currency: 'INR',
-        receipt:  `akshar_${Date.now()}`,
-        notes: { customer_email: email, customer_phone: phone, customer_name: name },
+        receipt:  `ic_${Date.now()}`,
+        notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name },
       }),
     });
 
     if (!res.ok) throw new Error(`Order creation failed (${res.status})`);
     const order = await res.json();
 
-    // 2 — Open Razorpay checkout
     const options = {
       key:         RAZORPAY_KEY,
       amount:      order.amount,
       currency:    order.currency,
       name:        'Ink & Chai',
       description: `${cart.length} book${cart.length > 1 ? 's' : ''}`,
-      image:       '/logo.png',          // add your logo here
       order_id:    order.id,
-
-      prefill: {
-        name:    name,
-        email:   email,
-        contact: phone,
-      },
-
+      prefill: { name: addr.name, email: addr.email, contact: addr.phone },
       notes: {
-        shipping_address: address,
+        shipping_address: addr.address,
         cart_summary: cart.map(i => `${i.title} x${i.qty}`).join('; ').slice(0, 250),
       },
-
       theme: { color: '#c9a84c' },
 
-      // 3 — On successful payment
       handler: async function (response) {
         showToast('Verifying payment…');
         try {
@@ -81,35 +285,24 @@ async function startCheckout() {
               razorpay_order_id:   response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature:  response.razorpay_signature,
-              cart,
-              customer: { name, email, phone, address },
-              amount:   amountPaise,
+              cart, customer: addr, amount: amountPaise,
             }),
           });
-
           if (!vRes.ok) throw new Error('Verification failed');
-
-          // Success!
           clearCart();
           closeCart();
+          document.getElementById('unifiedCheckoutModal')?.remove();
           showOrderSuccess(response.razorpay_payment_id);
         } catch (err) {
           console.error(err);
           showToast('Payment received but verification failed. Please contact support.');
         }
       },
-
-      modal: {
-        ondismiss: () => showToast('Payment cancelled.'),
-      },
+      modal: { ondismiss: () => showToast('Payment cancelled.') },
     };
 
     const rzp = new Razorpay(options);
-    rzp.on('payment.failed', function (response) {
-      console.error('Payment failed:', response.error);
-      showToast(`Payment failed: ${response.error.description}`);
-    });
-
+    rzp.on('payment.failed', r => showToast(`Payment failed: ${r.error.description}`));
     rzp.open();
 
   } catch (err) {
@@ -118,24 +311,55 @@ async function startCheckout() {
   }
 }
 
-// ── Order success screen ───────────────────────────────────────────────────
+// ── COD submit ────────────────────────────────────────────────────────────
+async function submitCOD(addr) {
+  const cart   = getCart();
+  const amount = cart.reduce((s, i) => s + i.price * i.qty, 0);
+
+  showToast('Placing your order…');
+
+  try {
+    const res = await fetch('/.netlify/functions/cod-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cart,
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+        amount,
+        user_id: window.IAC ? IAC.getUserId() : null,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+
+    document.getElementById('unifiedCheckoutModal')?.remove();
+    clearCart();
+    closeCart();
+    showCODSuccess(data.order_id, addr.name);
+
+  } catch (err) {
+    console.error(err);
+    showToast('Could not place order. Please try again.');
+  }
+}
+
+// ── Success screens ───────────────────────────────────────────────────────
 function showOrderSuccess(paymentId) {
   const modal = document.createElement('div');
   modal.style.cssText = `
-    position:fixed; inset:0; background:rgba(13,11,8,0.95);
-    display:flex; align-items:center; justify-content:center;
-    z-index:10000; animation:fadeIn 0.4s ease;
+    position:fixed; inset:0; background:rgba(13,11,8,0.97);
+    display:flex; align-items:center; justify-content:center; z-index:10000;
   `;
   modal.innerHTML = `
     <div style="text-align:center; padding:3rem; max-width:480px;">
       <div style="font-size:3rem; margin-bottom:1.5rem;">✦</div>
-      <h2 style="font-family:'Cormorant Garamond',serif; font-size:2.2rem; color:#f0e8d8; font-weight:300; margin-bottom:1rem;">
-        Order Confirmed
-      </h2>
-      <p style="font-size:0.78rem; color:#a09080; line-height:1.8; letter-spacing:0.04em; margin-bottom:0.5rem;">
+      <h2 style="font-family:'Cormorant Garamond',serif; font-size:2.4rem;
+                 color:#f0e8d8; font-weight:300; margin-bottom:1rem;">Order Confirmed</h2>
+      <p style="font-size:0.78rem; color:#a09080; line-height:1.9; margin-bottom:0.5rem;">
         Thank you for your purchase. Your books are on their way.
       </p>
-      <p style="font-size:0.65rem; color:#7a6330; letter-spacing:0.15em; margin-bottom:2.5rem;">
+      <p style="font-size:0.62rem; color:#7a6330; letter-spacing:0.15em; margin-bottom:2.5rem;">
         Payment ID: ${paymentId}
       </p>
       <button onclick="this.closest('div[style*=inset]').remove()"
@@ -149,149 +373,6 @@ function showOrderSuccess(paymentId) {
   document.body.appendChild(modal);
 }
 
-// ── Checkout form (name/email/phone/address) ──────────────────────────────
-function openCheckoutForm() {
-  let form = document.getElementById('checkoutFormModal');
-  if (form) { form.style.display = 'flex'; return; }
-
-  form = document.createElement('div');
-  form.id = 'checkoutFormModal';
-  form.style.cssText = `
-    position:fixed; inset:0; background:rgba(13,11,8,0.92); backdrop-filter:blur(8px);
-    display:flex; align-items:center; justify-content:center; z-index:5000;
-  `;
-  form.innerHTML = `
-    <div style="background:#1c1916; border:1px solid rgba(201,168,76,0.18);
-                padding:2.8rem; width:min(480px,90vw); position:relative;">
-      <button onclick="document.getElementById('checkoutFormModal').style.display='none'"
-        style="position:absolute;top:1rem;right:1rem;background:none;border:none;
-               color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
-
-      <div style="font-size:0.58rem;letter-spacing:0.35em;text-transform:uppercase;
-                  color:#c9a84c;margin-bottom:0.8rem;">Delivery Details</div>
-      <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;
-                 color:#faf7f2;margin-bottom:2rem;">Complete your order</h3>
-
-      ${inputField('co-name',    'text',  'Full Name',        'Your full name')}
-      ${inputField('co-email',   'email', 'Email Address *',  'you@example.com')}
-      ${inputField('co-phone',   'tel',   'Phone Number *',   '10-digit mobile')}
-      ${inputField('co-address', 'text',  'Delivery Address', 'Street, City, PIN')}
-
-      <button onclick="document.getElementById('checkoutFormModal').style.display='none'; startCheckout();"
-        style="width:100%;margin-top:1.5rem;font-family:'Montserrat',sans-serif;
-               font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;
-               padding:1rem 2rem;background:#c9a84c;color:#0d0b08;
-               border:none;cursor:pointer;font-weight:500;">
-        Proceed to Payment →
-      </button>
-    </div>
-  `;
-  document.body.appendChild(form);
-}
-
-// ── Cash on Delivery form ─────────────────────────────────────────────────
-function openCODForm() {
-  const cart = getCart();
-  if (cart.length === 0) { showToast('Your cart is empty!'); return; }
-
-  let modal = document.getElementById('codFormModal');
-  if (modal) {
-    modal.style.display = 'flex';
-    // Try pre-fill with auth profile even if modal already existed
-    if (window.IAC) setTimeout(() => IAC.prefillCheckout(), 50);
-    return;
-  }
-
-  modal = document.createElement('div');
-  modal.id = 'codFormModal';
-  modal.style.cssText = `
-    position:fixed; inset:0; background:rgba(13,11,8,0.92); backdrop-filter:blur(8px);
-    display:flex; align-items:center; justify-content:center; z-index:5000;
-  `;
-  modal.innerHTML = `
-    <div style="background:#1c1916; border:1px solid rgba(201,168,76,0.18);
-                padding:2.8rem; width:min(480px,90vw); position:relative; max-height:90vh; overflow-y:auto;">
-      <button onclick="document.getElementById('codFormModal').style.display='none'"
-        style="position:absolute;top:1rem;right:1rem;background:none;border:none;
-               color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
-
-      <div style="font-size:0.58rem;letter-spacing:0.35em;text-transform:uppercase;
-                  color:#c9a84c;margin-bottom:0.8rem;">🚚 Cash on Delivery</div>
-      <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;
-                 color:#faf7f2;margin-bottom:0.5rem;">Delivery Details</h3>
-      <p style="font-size:0.72rem;color:#a09080;margin-bottom:1.8rem;line-height:1.7;">
-        Pay cash when your books arrive. No prepayment needed.
-      </p>
-
-      ${inputField('cod-name',    'text',  'Full Name *',          'Your full name')}
-      ${inputField('cod-phone',   'tel',   'Phone Number *',       '10-digit mobile number')}
-      ${inputField('cod-email',   'email', 'Email (for updates)',  'you@example.com')}
-      ${inputField('cod-address', 'text',  'Full Delivery Address *', 'House, Street, City, PIN')}
-
-      <button onclick="submitCOD()"
-        style="width:100%;margin-top:1rem;font-family:'Montserrat',sans-serif;
-               font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;
-               padding:1rem 2rem;background:#c9a84c;color:#0d0b08;
-               border:none;cursor:pointer;font-weight:500;">
-        Confirm Order →
-      </button>
-      <p style="font-size:0.62rem;color:#7a6330;text-align:center;margin-top:1rem;letter-spacing:0.05em;">
-        You'll pay ₹ ${getCart().reduce((s,i)=>s+i.price*i.qty,0).toLocaleString('en-IN')} in cash at delivery.
-      </p>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  // Pre-fill if user is logged in
-  if (window.IAC) setTimeout(() => IAC.prefillCheckout(), 50);
-}
-
-async function submitCOD() {
-  const name    = document.getElementById('cod-name')?.value.trim()    || '';
-  const phone   = document.getElementById('cod-phone')?.value.trim()   || '';
-  const email   = document.getElementById('cod-email')?.value.trim()   || '';
-  const address = document.getElementById('cod-address')?.value.trim() || '';
-
-  if (!phone || !address || !name) {
-    showToast('Please fill in your name, phone and address.');
-    return;
-  }
-  if (phone.replace(/\D/g,'').length < 10) {
-    showToast('Please enter a valid 10-digit phone number.');
-    return;
-  }
-
-  const cart   = getCart();
-  const amount = cart.reduce((s, i) => s + i.price * i.qty, 0);
-
-  showToast('Placing your order…');
-
-  try {
-    const res = await fetch('/.netlify/functions/cod-order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        cart,
-        customer: { name, phone, email, address },
-        amount,
-        user_id: window.IAC ? IAC.getUserId() : null,
-      }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed');
-
-    // Close form and show success
-    document.getElementById('codFormModal')?.remove();
-    clearCart();
-    closeCart();
-    showCODSuccess(data.order_id, name);
-
-  } catch (err) {
-    console.error(err);
-    showToast('Could not place order. Please try again.');
-  }
-}
-
 function showCODSuccess(orderId, name) {
   const modal = document.createElement('div');
   modal.style.cssText = `
@@ -301,9 +382,9 @@ function showCODSuccess(orderId, name) {
   modal.innerHTML = `
     <div style="text-align:center; padding:3rem; max-width:480px;">
       <div style="font-size:3rem; margin-bottom:1.5rem;">🚚</div>
-      <h2 style="font-family:'Cormorant Garamond',serif; font-size:2.2rem;
+      <h2 style="font-family:'Cormorant Garamond',serif; font-size:2.4rem;
                  color:#f0e8d8; font-weight:300; margin-bottom:1rem;">Order Placed!</h2>
-      <p style="font-size:0.82rem; color:#a09080; line-height:1.9; letter-spacing:0.04em; margin-bottom:0.5rem;">
+      <p style="font-size:0.82rem; color:#a09080; line-height:1.9; margin-bottom:0.5rem;">
         Hi ${name.split(' ')[0]}, your books are on their way.<br/>
         Pay cash when they arrive at your door.
       </p>
@@ -321,17 +402,10 @@ function showCODSuccess(orderId, name) {
   document.body.appendChild(modal);
 }
 
+// ── Legacy stubs (kept for any old references) ────────────────────────────
+function openCODForm() { openCheckoutForm(); }
+
+// ── Old inputField helper (kept for safety) ───────────────────────────────
 function inputField(id, type, label, placeholder) {
-  return `
-    <div style="margin-bottom:1.2rem;">
-      <label for="${id}" style="display:block;font-size:0.6rem;letter-spacing:0.18em;
-             text-transform:uppercase;color:#a09080;margin-bottom:0.5rem;">${label}</label>
-      <input id="${id}" type="${type}" placeholder="${placeholder}"
-        style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);
-               color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;
-               font-size:0.78rem;outline:none;transition:border-color 0.3s;"
-        onfocus="this.style.borderColor='rgba(201,168,76,0.5)'"
-        onblur="this.style.borderColor='rgba(201,168,76,0.18)'" />
-    </div>
-  `;
+  return chkField(id, type, label, placeholder);
 }
