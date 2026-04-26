@@ -21,7 +21,7 @@ async function sendEmail({ to, subject, html }) {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: 'Ink & Chai <orders@inkandchai.in>',
+      from: 'Ink & Chai <support@inkandchai.in>',
       to,
       subject,
       html,

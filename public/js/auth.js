@@ -110,6 +110,7 @@
         options: {
           shouldCreateUser: true,
           data: { name: name || '', phone: phone || '' },
+          emailRedirectTo: 'https://inkandchai.in',
         },
       });
     } catch (e) {
@@ -198,7 +199,7 @@
 
     if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending…'; }
     try {
-      await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+      await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: 'https://inkandchai.in' } });
       if (msg) {
         msg.style.color = '#6dbf6d';
         msg.textContent = '✓ Check your email! Click the link to view your orders.';
