@@ -394,8 +394,6 @@ HTML = r"""<!DOCTYPE html>
   .cart-total-amount { font-family:'Cormorant Garamond',serif; font-size:1.5rem; color:var(--gold); font-weight:600; }
   .btn-checkout { width:100%; font-family:'Montserrat',sans-serif; font-size:0.65rem; letter-spacing:0.25em; text-transform:uppercase; padding:1rem; background:var(--gold); color:var(--bg); border:none; cursor:pointer; font-weight:500; transition:all 0.3s; }
   .btn-checkout:hover { background:var(--gold-light); }
-  .btn-cod-cart { width:100%; font-family:'Montserrat',sans-serif; font-size:0.62rem; letter-spacing:0.18em; text-transform:uppercase; padding:0.85rem; background:transparent; color:var(--cream-dim); border:1px solid var(--border); cursor:pointer; font-weight:300; transition:all 0.3s; }
-  .btn-cod-cart:hover { border-color:var(--gold-dim); color:var(--gold); }
   .cart-badge { background:var(--gold); color:var(--bg); border-radius:50%; width:18px; height:18px; font-size:0.55rem; font-weight:500; display:inline-flex; align-items:center; justify-content:center; position:absolute; top:-6px; right:-8px; }
   .nav-cart-wrap { position:relative; }
 
@@ -465,8 +463,7 @@ HTML = r"""<!DOCTYPE html>
       <span class="cart-total-label">Total</span>
       <span class="cart-total-amount" id="cartTotal">₹ 0</span>
     </div>
-    <button class="btn-checkout" onclick="openCheckoutForm()">Pay Online →</button>
-    <button class="btn-cod-cart" onclick="openCODForm()">🚚 Cash on Delivery</button>
+    <button class="btn-checkout" onclick="openCheckoutForm()">Buy Now →</button>
   </div>
 </div>
 
@@ -1074,8 +1071,8 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 .prod-actions{display:flex;flex-direction:column;gap:0.8rem;margin-top:0.5rem}
 .btn-cart{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.3s}
 .btn-cart:hover{background:var(--gold-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.25)}
-.btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:transparent;color:var(--cream);border:1px solid var(--border);cursor:pointer;font-weight:400;transition:all 0.3s}
-.btn-cod:hover{border-color:var(--gold-dim);color:var(--gold)}
+.btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid var(--gold-dim);cursor:pointer;font-weight:500;transition:all 0.3s}
+.btn-cod:hover{background:var(--gold);color:var(--bg);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.2)}
 .btn-share{font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:0.4rem;transition:color 0.2s;font-family:'Montserrat',sans-serif}
 .btn-share:hover{color:var(--gold)}
 
@@ -1177,8 +1174,7 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
       <span class="cart-total-label">Total</span>
       <span class="cart-total-amount" id="cartTotal">₹ 0</span>
     </div>
-    <button class="btn-checkout" onclick="openCheckoutForm()">Pay Online →</button>
-    <button class="btn-cod-cart" onclick="openCODForm()">🚚 Cash on Delivery</button>
+    <button class="btn-checkout" onclick="openCheckoutForm()">Buy Now →</button>
   </div>
 </div>
 
@@ -1268,7 +1264,7 @@ function renderProduct(b) {
           ${b.isbn ? `<div class="prod-meta-item"><div class="prod-meta-label">ISBN</div><div class="prod-meta-val">${esc(b.isbn)}</div></div>` : ''}
           <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India · 2–5 days</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day easy returns</div></div>
-          <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">UPI · Cards · COD</div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">UPI · Cards · Net Banking</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Sold by</div><div class="prod-meta-val">Ink &amp; Chai</div></div>
         </div>
 
@@ -1278,8 +1274,8 @@ function renderProduct(b) {
           <button class="btn-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug)">
             Add to Cart
           </button>
-          <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); openCODForm();">
-            🚚 Buy with Cash on Delivery
+          <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); openCheckoutForm();">
+            Buy Now →
           </button>
           <button class="btn-share" onclick="shareBook()">
             ↗ Share this book
@@ -1430,7 +1426,7 @@ feed_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
   <channel>
     <title>Ink &amp; Chai — Books Online India</title>
     <link>{SITE}</link>
-    <description>Buy books online at Ink &amp; Chai. Pan-India delivery. Cash on Delivery available.</description>
+    <description>Buy books online at Ink &amp; Chai. Pan-India delivery. Secure online payment via UPI, cards and net banking.</description>
 {chr(10).join(items)}
   </channel>
 </rss>"""
