@@ -97,24 +97,40 @@
   };
 
   // ── Auto-login after order (called from checkout.js) ──────────────────────
-  // Creates Supabase account + sends magic link email so customer can track orders
+  // Calls server to generate a one-time token, then verifies it client-side
+  // to create a real Supabase session — no email click required.
   window.autoLoginAfterOrder = async function (email, name, phone) {
     const sb = getSB();
     if (!sb || !email) return;
     try {
+      // If already logged in, just update profile
       const { data: { session } } = await sb.auth.getSession();
-      if (session) return; // already logged in — update profile if needed
-      // signInWithOtp creates the user if they don't exist AND sends a magic link
-      await sb.auth.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: true,
-          data: { name: name || '', phone: phone || '' },
-          emailRedirectTo: 'https://inkandchai.in',
-        },
+      if (session) {
+        updateNav();
+        return;
+      }
+
+      // Ask server to create/find user and return a one-time token
+      const res = await fetch('/.netlify/functions/auto-login-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name, phone }),
       });
+      if (!res.ok) throw new Error('auto-login-token failed');
+      const { token_hash } = await res.json();
+
+      // Exchange token for a real session — user is now logged in instantly
+      const { data, error } = await sb.auth.verifyOtp({
+        token_hash,
+        type: 'magiclink',
+      });
+      if (error) throw error;
+
+      currentUser = data.user;
+      await fetchProfile();
+      updateNav();
     } catch (e) {
-      console.warn('Auto-login OTP error (non-fatal):', e.message);
+      console.warn('Auto-login error (non-fatal):', e.message);
     }
   };
 
@@ -197,15 +213,31 @@
     const sb = getSB();
     if (!sb) { if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Auth not configured.'; } return; }
 
-    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending…'; }
+    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Logging you in…'; }
     try {
-      await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: 'https://inkandchai.in' } });
-      if (msg) {
-        msg.style.color = '#6dbf6d';
-        msg.textContent = '✓ Check your email! Click the link to view your orders.';
-      }
+      // Auto-login via server token (instant, no email click needed)
+      const res = await fetch('/.netlify/functions/auto-login-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const { token_hash, error: tokenErr } = await res.json();
+      if (!res.ok || !token_hash) throw new Error(tokenErr || 'Could not generate token');
+
+      const { data, error } = await sb.auth.verifyOtp({ token_hash, type: 'magiclink' });
+      if (error) throw error;
+
+      currentUser = data.user;
+      await fetchProfile();
+      updateNav();
+
+      // Close guest modal and open account modal on orders tab
+      removeModal('iacGuestOrdersModal');
+      openAccountModal();
+      setTimeout(() => window.iacSwitchTab?.('acct-orders-tab'), 200);
+
     } catch (e) {
-      if (msg) { msg.style.color = '#e06060'; msg.textContent = e.message || 'Failed to send link.'; }
+      if (msg) { msg.style.color = '#e06060'; msg.textContent = e.message || 'Login failed. Please try again.'; }
     }
   };
 
@@ -522,7 +554,7 @@
     if (window.showToast) showToast('Signed out.');
   };
 
-  // ── My Orders (loads orders for current logged-in user) ───────────────────
+  // ── My Orders (loads orders via Netlify function to bypass RLS) ──────────
   async function loadMyOrders() {
     const container = document.getElementById('acct-orders-content');
     if (!container) return;
@@ -532,19 +564,31 @@
       return;
     }
 
-    container.innerHTML = '<p style="color:#a09080;font-size:0.78rem;">Loading your orders…</p>';
+    container.innerHTML = `
+      <div style="text-align:center;padding:2rem;">
+        <div style="font-size:1.5rem;margin-bottom:0.8rem;opacity:0.5;">⟳</div>
+        <p style="color:#a09080;font-size:0.75rem;letter-spacing:0.08em;">Loading orders…</p>
+      </div>`;
 
-    const { data, error } = await sb
-      .from('orders')
-      .select('*')
-      .eq('customer_email', currentUser.email)
-      .order('created_at', { ascending: false })
-      .limit(30);
+    // Get current access token to pass to the function
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token || '';
 
-    if (error) {
-      container.innerHTML = `<p style="color:#e06060;font-size:0.78rem;">Could not load orders: ${error.message}</p>`;
+    let orders = [];
+    try {
+      const res = await fetch(
+        `/.netlify/functions/get-my-orders`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to load orders');
+      orders = json.orders || [];
+    } catch (err) {
+      container.innerHTML = `<p style="color:#e06060;font-size:0.78rem;">Could not load orders: ${err.message}</p>`;
       return;
     }
+
+    const data = orders;
     if (!data?.length) {
       container.innerHTML = `
         <div style="text-align:center;padding:3rem 1rem;">
