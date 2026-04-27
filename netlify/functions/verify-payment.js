@@ -16,17 +16,27 @@ const CORS = {
 // ── Send email via Resend ─────────────────────────────────────────────────
 async function sendEmail({ to, subject, html }) {
   const key = process.env.RESEND_API_KEY;
-  if (!key) return;   // silently skip if not configured
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: 'Ink & Chai <support@inkandchai.in>',
-      to,
-      subject,
-      html,
-    }),
-  });
+  if (!key) { console.warn('RESEND_API_KEY not set — email skipped'); return; }
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Ink & Chai <support@inkandchai.in>',
+        to,
+        subject,
+        html,
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      console.error(`Resend error ${res.status}:`, JSON.stringify(body));
+    } else {
+      console.log('Email sent:', body.id, '→', to);
+    }
+  } catch (err) {
+    console.error('sendEmail exception:', err.message);
+  }
 }
 
 function cartTable(cart) {
