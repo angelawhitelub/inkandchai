@@ -25,7 +25,14 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 
 /* PRODUCT LAYOUT */
 .product-page{max-width:1100px;margin:0 auto;padding:4rem 2rem 6rem;display:grid;grid-template-columns:1fr 1.4fr;gap:5rem;align-items:start}
-@media(max-width:780px){.product-page{grid-template-columns:1fr;gap:2.5rem;padding:2rem 1.2rem 4rem}}
+@media(max-width:780px){
+  .product-page{grid-template-columns:1fr;gap:2rem;padding:1.5rem 1rem 90px}
+  .prod-cover-wrap{position:static;background:var(--bg);padding-bottom:0.8rem;border-bottom:1px solid var(--border);margin-bottom:0.5rem}
+  .prod-cover{min-height:auto;padding:1.2rem}
+  .prod-cover img{max-height:280px}
+  .prod-actions{display:none}
+  .prod-bottom-bar{display:flex!important}
+}
 
 /* LEFT — cover */
 .prod-cover-wrap{position:sticky;top:6rem}
@@ -60,10 +67,36 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 .prod-actions{display:flex;flex-direction:column;gap:0.8rem;margin-top:0.5rem}
 .btn-cart{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.3s}
 .btn-cart:hover{background:var(--gold-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.25)}
-.btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:transparent;color:var(--cream);border:1px solid var(--border);cursor:pointer;font-weight:400;transition:all 0.3s}
-.btn-cod:hover{border-color:var(--gold-dim);color:var(--gold)}
+.btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid var(--gold-dim);cursor:pointer;font-weight:500;transition:all 0.3s}
+.btn-cod:hover{background:var(--gold);color:var(--bg);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.2)}
 .btn-share{font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:0.4rem;transition:color 0.2s;font-family:'Montserrat',sans-serif}
 .btn-share:hover{color:var(--gold)}
+
+/* MOBILE BOTTOM BAR */
+.prod-bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:300;background:rgba(13,11,8,0.97);border-top:1px solid rgba(201,168,76,0.25);padding:0.75rem 1rem;gap:0.6rem;align-items:center;backdrop-filter:blur(16px)}
+.pbb-cart{flex:1;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid rgba(201,168,76,0.4);cursor:pointer;font-weight:500;transition:all 0.2s}
+.pbb-buy{flex:1.5;font-family:'Montserrat',sans-serif;font-size:0.63rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:700;transition:all 0.2s}
+.pbb-cart:active{background:var(--gold);color:var(--bg)}
+.pbb-buy:active{background:var(--gold-light)}
+
+/* QUANTITY SELECTOR */
+.qty-row{display:flex;align-items:center;gap:1rem;margin-top:0.2rem}
+.qty-label{font-size:0.57rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--gold-dim)}
+.qty-ctrl{display:flex;align-items:center}
+.qty-ctrl button{width:36px;height:36px;background:var(--bg2);border:1px solid var(--border);color:var(--cream);font-size:1.15rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color 0.2s,color 0.2s}
+.qty-ctrl button:hover{border-color:var(--gold);color:var(--gold)}
+.qty-num{width:46px;height:36px;display:flex;align-items:center;justify-content:center;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:0.95rem;color:var(--cream);font-family:'Montserrat',sans-serif;user-select:none}
+
+/* STAR RATING */
+.prod-rating{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.2rem}
+.prod-stars{color:#c9a84c;font-size:1.05rem;letter-spacing:0.04em}
+.prod-rating-label{font-size:0.7rem;color:var(--cream-dim)}
+
+/* INK & CHAI PROMISE */
+.promise-box{border:1px solid rgba(201,168,76,0.2);background:rgba(201,168,76,0.04);padding:1rem 1.2rem;border-radius:2px}
+.promise-box-title{font-size:0.56rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold);margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem}
+.promise-box-text{font-size:0.76rem;color:var(--cream-dim);line-height:1.75}
+.promise-box-text strong{color:var(--cream)}
 
 /* RELATED */
 .related{max-width:1100px;margin:0 auto;padding:0 2rem 6rem}
@@ -132,6 +165,7 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
   <a class="nav-logo" href="/">Ink &amp;<span> Chai</span></a>
   <a class="nav-back" href="javascript:history.back()">← Back to catalogue</a>
   <div style="display:flex;gap:1rem;align-items:center;">
+    <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
     <button class="btn-nav auth-nav-btn" id="authNavBtnProd" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
     <div class="nav-cart-wrap">
       <button class="btn-nav" onclick="openCart()">Cart</button>
@@ -163,8 +197,7 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
       <span class="cart-total-label">Total</span>
       <span class="cart-total-amount" id="cartTotal">₹ 0</span>
     </div>
-    <button class="btn-checkout" onclick="openCheckoutForm()">Pay Online →</button>
-    <button class="btn-cod-cart" onclick="openCODForm()">🚚 Cash on Delivery</button>
+    <button class="btn-checkout" onclick="window.location.href='/checkout/'">Buy Now →</button>
   </div>
 </div>
 
@@ -232,6 +265,10 @@ function renderProduct(b) {
 
         <h1 class="prod-title">${esc(b.t)}</h1>
         ${b.a ? `<div class="prod-author">by <span>${esc(b.a)}</span></div>` : ''}
+        <div class="prod-rating">
+          <span class="prod-stars">★★★★★</span>
+          <span class="prod-rating-label">Bestseller · Loved by readers across India</span>
+        </div>
 
         <div class="divider"></div>
 
@@ -254,32 +291,51 @@ function renderProduct(b) {
           ${b.isbn ? `<div class="prod-meta-item"><div class="prod-meta-label">ISBN</div><div class="prod-meta-val">${esc(b.isbn)}</div></div>` : ''}
           <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India · 2–5 days</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day easy returns</div></div>
-          <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">UPI · Cards · COD</div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">UPI · Cards · Net Banking</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Sold by</div><div class="prod-meta-val">Ink &amp; Chai</div></div>
         </div>
 
         <div class="divider"></div>
 
+        <div class="qty-row">
+          <span class="qty-label">Quantity</span>
+          <div class="qty-ctrl">
+            <button onclick="adjQty(-1)" aria-label="decrease quantity">−</button>
+            <div class="qty-num" id="prodQty">1</div>
+            <button onclick="adjQty(1)" aria-label="increase quantity">+</button>
+          </div>
+        </div>
+
         <div class="prod-actions">
           <button class="btn-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug)">
-            Add to Cart
+            + Add to Cart
           </button>
-          <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); openCODForm();">
-            🚚 Buy with Cash on Delivery
+          <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
+            ⚡ Buy Now — ${esc(b.p)}
           </button>
-          <button class="btn-share" onclick="shareBook()">
-            ↗ Share this book
-          </button>
-          <button id="prodWishBtn"
-            onclick="if(window.toggleWishlist){ toggleWishlist({url:'${esc(b.url)}',title:'${esc(b.t).replace(/'/g,'\u0027')}',img:'${esc(b.img)}',price:${sale}}); updateProdWishBtn(); }"
-            style="font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;
-                   padding:0.7rem 1.4rem;border:1px solid rgba(201,168,76,0.3);color:#a09080;
-                   background:transparent;cursor:pointer;margin-top:0.4rem;transition:all 0.2s;"
-            title="Save to wishlist">
-            ♡ Save to Wishlist
-          </button>
+          <div style="display:flex;gap:0.6rem;margin-top:0.2rem">
+            <button class="btn-share" onclick="shareBook()">↗ Share</button>
+            <button id="prodWishBtn"
+              onclick="if(window.toggleWishlist){ toggleWishlist({url:'${esc(b.url)}',title:'${esc(b.t).replace(/'/g,'\u0027')}',img:'${esc(b.img)}',price:${sale}}); updateProdWishBtn(); }"
+              class="btn-share" title="Save to wishlist">♡ Wishlist</button>
+          </div>
+        </div>
+
+        <div class="promise-box">
+          <div class="promise-box-title">🛡 Ink &amp; Chai Promise</div>
+          <div class="promise-box-text">Get a <strong>free replacement</strong> if you receive a damaged, misprinted, or wrong book — no questions asked. Reply to your order email within 24 hours of delivery.</div>
         </div>
       </div>
+    </div>
+
+    <!-- Mobile sticky bottom bar (shown only on mobile via CSS) -->
+    <div class="prod-bottom-bar">
+      <button class="pbb-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug)">
+        + Add to Cart
+      </button>
+      <button class="pbb-buy" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
+        Buy Now · ${esc(b.p)}
+      </button>
     </div>
   `;
   // Set initial wishlist state
@@ -327,11 +383,31 @@ function renderRelated(b) {
 }
 
 // ── Safe cart helper (avoids quoting issues in inline onclick) ────────────
+// Quantity selector helpers
+function getQty() {
+  return Math.max(1, parseInt(document.getElementById('prodQty')?.textContent || '1') || 1);
+}
+function adjQty(d) {
+  const el = document.getElementById('prodQty');
+  if (!el) return;
+  el.textContent = Math.max(1, Math.min(10, (parseInt(el.textContent) || 1) + d));
+}
+
 function addBookToCart(bookSlug) {
   const b = BOOK_MAP[bookSlug];
   if (!b) return;
   const price = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
-  addToCart({ id: b.url || bookSlug, title: b.t, author: b.a||'', price, img: b.img||'', url: b.url||'' });
+  const item  = { id: b.url || bookSlug, title: b.t, author: b.a||'', price, img: b.img||'', url: b.url||'' };
+  const qty   = getQty();
+  // Directly write to localStorage to support qty > 1
+  const CART_KEY = 'akshar_cart';
+  const cart = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
+  const existing = cart.find(i => i.id === item.id);
+  if (existing) { existing.qty += qty; } else { cart.push({ ...item, qty }); }
+  localStorage.setItem(CART_KEY, JSON.stringify(cart));
+  if (window.refreshCart) refreshCart();
+  if (window.openCart)    openCart();
+  if (window.showToast)   showToast(`${qty > 1 ? qty + '× ' : ''}"${item.title.slice(0,28)}…" added to cart`);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
