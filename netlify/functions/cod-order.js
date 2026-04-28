@@ -89,7 +89,10 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
   }
 
-  const orderId = `COD-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
+  const now = new Date();
+  const datePart = now.toISOString().slice(0,10).replace(/-/g,'');   // 20260429
+  const randPart = Math.random().toString(36).slice(2,7).toUpperCase(); // AB3CD
+  const orderId = `IC-${datePart}-${randPart}`;  // e.g. IC-20260429-AB3CD
   const total   = cart.reduce((s,i)=>s+i.price*i.qty, 0);
 
   // ── 1. Save to Supabase (non-fatal — emails still send even if DB is down) ──

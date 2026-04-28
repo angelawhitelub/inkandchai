@@ -1037,7 +1037,12 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 
 /* PRODUCT LAYOUT */
 .product-page{max-width:1100px;margin:0 auto;padding:4rem 2rem 6rem;display:grid;grid-template-columns:1fr 1.4fr;gap:5rem;align-items:start}
-@media(max-width:780px){.product-page{grid-template-columns:1fr;gap:2.5rem;padding:2rem 1.2rem 4rem}}
+@media(max-width:780px){
+  .product-page{grid-template-columns:1fr;gap:2rem;padding:1.5rem 1rem 4rem}
+  .prod-cover-wrap{position:sticky;top:62px;z-index:10;background:var(--bg);padding-bottom:0.8rem;border-bottom:1px solid var(--border);margin-bottom:0.5rem}
+  .prod-cover{min-height:auto;padding:1.2rem}
+  .prod-cover img{max-height:240px}
+}
 
 /* LEFT — cover */
 .prod-cover-wrap{position:sticky;top:6rem}
@@ -1398,9 +1403,9 @@ main{max-width:900px;margin:0 auto;padding:3.5rem 1.5rem 6rem;}
 .page-label{font-size:0.55rem;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem;}
 h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color:var(--white);margin-bottom:2.5rem;}
 .checkout-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:2.5rem;align-items:start;}
-@media(max-width:700px){.checkout-grid{grid-template-columns:1fr;}.order-summary{order:-1;}}
+@media(max-width:700px){.checkout-grid{grid-template-columns:1fr;gap:1.5rem;}.order-summary{order:-1;position:static;}}
 /* Order Summary */
-.order-summary{background:var(--bg3);border:1px solid var(--border);padding:1.8rem;}
+.order-summary{background:var(--bg3);border:1px solid var(--border);padding:1.8rem;position:sticky;top:80px;}
 .summary-title{font-size:0.58rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold);margin-bottom:1.4rem;}
 .order-item{display:flex;gap:1rem;padding:0.9rem 0;border-bottom:1px solid rgba(201,168,76,0.1);}
 .order-item:last-child{border-bottom:none;}
@@ -1550,8 +1555,8 @@ window.SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY_PLACEHOLDER";
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
 
 <script>
-// ── Cart (mirrors cart.js localStorage schema) ─────────────────────────────
-const CART_KEY = 'iac_cart';
+// ── Cart (must match cart.js CART_KEY) ────────────────────────────────────
+const CART_KEY = 'akshar_cart';
 function getCart()  { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch { return []; } }
 function clearCart(){ localStorage.removeItem(CART_KEY); }
 
