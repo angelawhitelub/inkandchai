@@ -5,82 +5,115 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Admin — Ink &amp; Chai</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<!-- SheetJS for Excel export -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
-:root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
+:root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18);--green:#6dbf6d;--orange:#e8a030;--red:#e06060}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
-nav{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 3rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);flex-wrap:wrap;gap:0.8rem;}
 .logo{font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:600;color:var(--gold);}
 .logo span{color:var(--cream);font-weight:300;font-style:italic}
-.nav-right{display:flex;gap:1rem;align-items:center;}
-.chip{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.3rem 0.8rem;border:1px solid var(--border);color:var(--cream-dim);}
-main{max-width:1200px;margin:0 auto;padding:2.5rem 2rem;}
-h1{font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:var(--white);margin-bottom:0.3rem;}
-.subtitle{font-size:0.7rem;color:var(--cream-dim);letter-spacing:0.1em;margin-bottom:2.5rem;}
+.nav-right{display:flex;gap:0.7rem;align-items:center;flex-wrap:wrap;}
+.chip{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.28rem 0.75rem;border:1px solid var(--border);color:var(--cream-dim);}
+.btn-gold{font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.6rem 1.4rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;}
+.btn-gold:hover{background:var(--gold-light);}
+.btn-gold:disabled{opacity:0.5;cursor:not-allowed;}
+.btn-outline{font-family:'Montserrat',sans-serif;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.5rem 1.1rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;}
+.btn-outline:hover{background:var(--gold);color:var(--bg);}
+.btn-green{font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.6rem 1.4rem;background:#1a3a1a;color:var(--green);border:1px solid rgba(109,191,109,0.4);cursor:pointer;font-weight:500;transition:all 0.2s;}
+.btn-green:hover{background:var(--green);color:var(--bg);}
+.btn-green:disabled{opacity:0.4;cursor:not-allowed;}
 
 /* Login */
 #loginPanel{max-width:420px;margin:8rem auto;background:var(--bg3);border:1px solid var(--border);padding:2.4rem;}
 #loginPanel h2{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:var(--white);margin-bottom:1.5rem;}
 .form-row{margin-bottom:1rem;}
-.form-row label{display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.4rem;}
+.form-row label{display:block;font-size:0.56rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.4rem;}
 .form-row input{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.7rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.78rem;outline:none;}
 .form-row input:focus{border-color:rgba(201,168,76,0.5);}
-.btn-gold{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.85rem 2rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;width:100%;margin-top:0.4rem;}
-.btn-gold:hover{background:var(--gold-light);}
-.btn-outline{font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.55rem 1.2rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;}
-.btn-outline:hover{background:var(--gold);color:var(--bg);}
-.err{font-size:0.7rem;color:#e06060;margin-top:0.6rem;}
+.err{font-size:0.7rem;color:var(--red);margin-top:0.6rem;}
+
+/* Dashboard */
+main{max-width:1300px;margin:0 auto;padding:2rem 1.5rem;}
+.dash-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:2rem;flex-wrap:wrap;gap:1rem;}
+h1{font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:var(--white);}
+.subtitle{font-size:0.65rem;color:var(--cream-dim);letter-spacing:0.08em;margin-top:0.2rem;}
 
 /* Stats */
-.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1.2rem;margin-bottom:2rem;}
-.stat-card{background:var(--bg3);border:1px solid var(--border);padding:1.4rem;}
-.stat-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.5rem;}
-.stat-val{font-family:'Cormorant Garamond',serif;font-size:2.2rem;color:var(--gold);font-weight:400;}
+.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:2rem;}
+@media(max-width:900px){.stats-row{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:550px){.stats-row{grid-template-columns:repeat(2,1fr);}}
+.stat-card{background:var(--bg3);border:1px solid var(--border);padding:1.3rem;cursor:pointer;transition:border-color 0.2s;}
+.stat-card:hover{border-color:var(--gold-dim);}
+.stat-card.active{border-color:var(--gold);background:rgba(201,168,76,0.06);}
+.stat-label{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.5rem;}
+.stat-val{font-family:'Cormorant Garamond',serif;font-size:2rem;color:var(--gold);font-weight:400;line-height:1;}
 
-/* Filters */
-.filters{display:flex;gap:0.8rem;margin-bottom:1.5rem;flex-wrap:wrap;align-items:center;}
-.filter-btn{font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.45rem 1rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;}
+/* Toolbar */
+.toolbar{display:flex;gap:0.7rem;margin-bottom:1.2rem;flex-wrap:wrap;align-items:center;}
+.filter-btn{font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.4rem 0.9rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;white-space:nowrap;}
 .filter-btn.active,.filter-btn:hover{border-color:var(--gold-dim);color:var(--gold);background:rgba(201,168,76,0.07);}
-.search-box{margin-left:auto;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.45rem 0.9rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;outline:none;min-width:220px;}
+.search-box{background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.42rem 0.9rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;outline:none;min-width:220px;}
 .search-box:focus{border-color:rgba(201,168,76,0.4);}
+input[type="date"]{background:var(--bg3);border:1px solid var(--border);color:var(--cream-dim);padding:0.4rem 0.7rem;font-family:'Montserrat',sans-serif;font-size:0.7rem;outline:none;color-scheme:dark;}
+input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
+.date-sep{font-size:0.6rem;color:var(--gold-dim);padding:0 0.2rem;}
+
+/* Export bar */
+.export-bar{display:flex;gap:0.7rem;align-items:center;padding:0.9rem 1.2rem;background:var(--bg3);border:1px solid var(--border);margin-bottom:1.2rem;flex-wrap:wrap;}
+.export-label{font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold-dim);margin-right:0.4rem;}
+#exportCount{font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--gold);}
 
 /* Table */
 .tbl-wrap{overflow-x:auto;}
-table{width:100%;border-collapse:collapse;font-size:0.74rem;}
-th{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--gold);padding:0.8rem 0.9rem;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
-td{padding:0.8rem 0.9rem;border-bottom:1px solid rgba(201,168,76,0.07);color:var(--cream);vertical-align:top;}
-tr:hover td{background:rgba(201,168,76,0.03);}
-.badge{display:inline-block;font-size:0.52rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.25rem 0.6rem;border:1px solid;border-radius:0;}
-.b-pending{border-color:rgba(232,160,48,0.5);color:#e8a030;}
-.b-paid{border-color:rgba(109,191,109,0.5);color:#6dbf6d;}
-.b-shipped{border-color:rgba(201,168,76,0.5);color:#c9a84c;}
-.b-delivered{border-color:rgba(109,191,109,0.5);color:#6dbf6d;}
-.b-cancelled{border-color:rgba(224,96,96,0.5);color:#e06060;}
-.b-confirmed{border-color:rgba(160,144,128,0.4);color:#a09080;}
-.status-sel{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.3rem 0.5rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;cursor:pointer;}
-.order-id{font-size:0.62rem;color:var(--gold-dim);font-weight:300;}
-.cust-name{color:var(--cream);font-size:0.78rem;}
-.cust-phone{color:var(--cream-dim);font-size:0.65rem;}
-.items-list{font-size:0.65rem;color:var(--cream-dim);max-width:200px;}
-.items-list li{list-style:none;margin-bottom:0.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+table{width:100%;border-collapse:collapse;font-size:0.73rem;}
+th{font-size:0.52rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);padding:0.75rem 0.85rem;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
+th:hover{color:var(--gold-light);}
+td{padding:0.75rem 0.85rem;border-bottom:1px solid rgba(201,168,76,0.06);color:var(--cream);vertical-align:top;}
+tr:hover td{background:rgba(201,168,76,0.025);}
+.badge{display:inline-block;font-size:0.5rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.22rem 0.55rem;border:1px solid;white-space:nowrap;}
+.b-cod_pending,.b-pending{border-color:rgba(232,160,48,0.5);color:var(--orange);}
+.b-paid{border-color:rgba(109,191,109,0.5);color:var(--green);}
+.b-shipped{border-color:rgba(201,168,76,0.5);color:var(--gold);}
+.b-delivered{border-color:rgba(109,191,109,0.6);color:var(--green);}
+.b-cancelled,.b-refunded{border-color:rgba(224,96,96,0.5);color:var(--red);}
+.b-confirmed{border-color:rgba(160,144,128,0.4);color:var(--cream-dim);}
+.status-sel{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.28rem 0.5rem;font-family:'Montserrat',sans-serif;font-size:0.6rem;cursor:pointer;margin-top:0.4rem;}
+.order-id{font-size:0.62rem;color:var(--gold-dim);}
+.pay-id{font-size:0.56rem;color:#4a3a1a;margin-top:0.15rem;}
+.cust-name{font-size:0.78rem;color:var(--cream);}
+.cust-sub{font-size:0.62rem;color:var(--cream-dim);margin-top:0.1rem;}
+.items-cell{font-size:0.63rem;color:var(--cream-dim);max-width:190px;}
+.items-cell div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:0.1rem;}
 .amount{font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--gold);}
-.load-more-btn{display:block;width:100%;margin-top:1.5rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.85rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
-.load-more-btn:hover{background:var(--gold);color:var(--bg);}
+.method-badge{font-size:0.5rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--cream-dim);}
 .empty{text-align:center;padding:4rem;color:var(--cream-dim);font-size:0.82rem;}
+.load-more-btn{display:block;width:100%;margin-top:1.2rem;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.8rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
+.load-more-btn:hover{background:var(--gold);color:var(--bg);}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(201,168,76,0.3);border-top-color:var(--gold);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px;}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 
 <nav>
-  <div class="logo">Ink &amp;<span> Chai</span></div>
+  <div class="logo">Ink &amp;<span> Chai</span> <span style="font-size:0.7rem;color:var(--gold-dim);font-family:'Montserrat',sans-serif;letter-spacing:0.15em;"> — Admin</span></div>
   <div class="nav-right">
-    <span class="chip" id="adminChip" style="display:none;border-color:rgba(109,191,109,0.3);color:#6dbf6d;">● Admin</span>
+    <span class="chip" id="adminChip" style="display:none;border-color:rgba(109,191,109,0.3);color:var(--green);">● Admin</span>
+    <button class="btn-green" id="exportAllBtn" style="display:none;" onclick="exportExcel('all')" title="Download all orders as Excel">
+      ⬇ Export All Orders (.xlsx)
+    </button>
+    <button class="btn-green" id="exportFilteredBtn" style="display:none;" onclick="exportExcel('filtered')" title="Download filtered/visible orders">
+      ⬇ Export Filtered (.xlsx)
+    </button>
+    <button class="btn-outline" id="refreshBtn" style="display:none;" onclick="fetchOrders(true)">↻ Refresh</button>
     <button class="btn-outline" id="logoutBtn" style="display:none;" onclick="logout()">Sign Out</button>
     <a href="/" class="btn-outline" style="text-decoration:none;">← Store</a>
   </div>
 </nav>
 
-<!-- LOGIN PANEL -->
+<!-- LOGIN -->
 <div id="loginPanel">
   <h2>Admin Access</h2>
   <div class="form-row">
@@ -88,46 +121,70 @@ tr:hover td{background:rgba(201,168,76,0.03);}
     <input type="password" id="adminPass" placeholder="Enter admin password"
       onkeydown="if(event.key==='Enter')doLogin()"/>
   </div>
-  <button class="btn-gold" onclick="doLogin()">Access Dashboard →</button>
+  <button class="btn-gold" onclick="doLogin()" style="width:100%;margin-top:0.4rem;">Access Dashboard →</button>
   <p class="err" id="loginErr" style="display:none;"></p>
 </div>
 
 <!-- DASHBOARD -->
 <main id="dashboard" style="display:none;">
-  <h1>Orders Dashboard</h1>
-  <p class="subtitle" id="dashSubtitle">Loading…</p>
 
-  <!-- Stats -->
-  <div class="stats-row">
-    <div class="stat-card">
-      <div class="stat-label">Total Orders</div>
-      <div class="stat-val" id="statTotal">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">COD Pending</div>
-      <div class="stat-val" id="statCod" style="color:#e8a030;">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Paid Online</div>
-      <div class="stat-val" id="statPaid" style="color:#6dbf6d;">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Revenue (₹)</div>
-      <div class="stat-val" id="statRev">—</div>
+  <div class="dash-header">
+    <div>
+      <h1>Orders Dashboard</h1>
+      <p class="subtitle" id="dashSubtitle">Loading…</p>
     </div>
   </div>
 
-  <!-- Filters -->
-  <div class="filters">
-    <button class="filter-btn active" onclick="setFilter(this,'')">All</button>
-    <button class="filter-btn" onclick="setFilter(this,'cod_pending')">COD Pending</button>
-    <button class="filter-btn" onclick="setFilter(this,'confirmed')">Confirmed</button>
-    <button class="filter-btn" onclick="setFilter(this,'shipped')">Shipped</button>
-    <button class="filter-btn" onclick="setFilter(this,'delivered')">Delivered</button>
-    <button class="filter-btn" onclick="setFilter(this,'paid')">Paid</button>
-    <button class="filter-btn" onclick="setFilter(this,'cancelled')">Cancelled</button>
-    <input class="search-box" id="searchBox" placeholder="🔍 Search by name, phone, order ID…"
-      oninput="renderTable()"/>
+  <!-- Stats (click to filter) -->
+  <div class="stats-row">
+    <div class="stat-card active" onclick="setFilter(this,'')">
+      <div class="stat-label">Total Orders</div>
+      <div class="stat-val" id="statTotal">—</div>
+    </div>
+    <div class="stat-card" onclick="setFilter(this,'cod_pending')">
+      <div class="stat-label">COD Pending</div>
+      <div class="stat-val" id="statCod" style="color:var(--orange);">—</div>
+    </div>
+    <div class="stat-card" onclick="setFilter(this,'paid')">
+      <div class="stat-label">Paid Online</div>
+      <div class="stat-val" id="statPaid" style="color:var(--green);">—</div>
+    </div>
+    <div class="stat-card" onclick="setFilter(this,'shipped')">
+      <div class="stat-label">Shipped</div>
+      <div class="stat-val" id="statShipped" style="color:var(--gold);">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Revenue</div>
+      <div class="stat-val" id="statRev" style="font-size:1.4rem;">—</div>
+    </div>
+  </div>
+
+  <!-- Export bar -->
+  <div class="export-bar" id="exportBar" style="display:none;">
+    <span class="export-label">Export</span>
+    <span id="exportCount">0</span>
+    <span style="font-size:0.62rem;color:var(--cream-dim);">orders ready</span>
+    <button class="btn-green" onclick="exportExcel('filtered')" style="padding:0.45rem 1rem;font-size:0.58rem;">
+      ⬇ Download Excel (.xlsx)
+    </button>
+    <button class="btn-green" onclick="exportExcel('all')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ All Orders Excel
+    </button>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="filter-btn active" data-status="" onclick="setFilter(this,'')">All</button>
+    <button class="filter-btn" data-status="cod_pending" onclick="setFilter(this,'cod_pending')">COD Pending</button>
+    <button class="filter-btn" data-status="confirmed" onclick="setFilter(this,'confirmed')">Confirmed</button>
+    <button class="filter-btn" data-status="shipped" onclick="setFilter(this,'shipped')">Shipped</button>
+    <button class="filter-btn" data-status="delivered" onclick="setFilter(this,'delivered')">Delivered</button>
+    <button class="filter-btn" data-status="paid" onclick="setFilter(this,'paid')">Paid Online</button>
+    <button class="filter-btn" data-status="cancelled" onclick="setFilter(this,'cancelled')">Cancelled</button>
+    <input type="date" id="dateFrom" onchange="renderTable()" title="From date"/>
+    <span class="date-sep">→</span>
+    <input type="date" id="dateTo" onchange="renderTable()" title="To date"/>
+    <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID" oninput="renderTable()"/>
   </div>
 
   <!-- Table -->
@@ -135,13 +192,14 @@ tr:hover td{background:rgba(201,168,76,0.03);}
     <table>
       <thead>
         <tr>
-          <th>Order ID</th>
-          <th>Customer</th>
+          <th onclick="sortBy('razorpay_order_id')">Order ID ↕</th>
+          <th onclick="sortBy('created_at')">Date ↕</th>
+          <th onclick="sortBy('customer_name')">Customer ↕</th>
           <th>Items</th>
-          <th>Amount</th>
-          <th>Status</th>
-          <th>Date</th>
-          <th>Address</th>
+          <th onclick="sortBy('amount_paise')">Amount ↕</th>
+          <th>Payment</th>
+          <th onclick="sortBy('status')">Status ↕</th>
+          <th>Delivery Address</th>
         </tr>
       </thead>
       <tbody id="ordersBody"></tbody>
@@ -149,56 +207,62 @@ tr:hover td{background:rgba(201,168,76,0.03);}
   </div>
   <div class="empty" id="emptyState" style="display:none;">No orders found.</div>
   <button class="load-more-btn" id="loadMoreBtn" style="display:none;" onclick="loadMore()">Load More Orders</button>
+
 </main>
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
-let adminKey  = '';
-let allOrders = [];
-let filtered  = [];
+let adminKey      = '';
+let allOrders     = [];   // all loaded orders
+let filtered      = [];   // after search/filter/date
 let currentFilter = '';
-let page      = 1;
-const PAGE    = 50;
-let hasMore   = false;
+let sortField     = 'created_at';
+let sortAsc       = false;
+let page          = 1;
+let hasMore       = false;
+const PAGE        = 100;  // load 100 at a time
 
 // ── Login ──────────────────────────────────────────────────────────────────
 function doLogin() {
   const pass = document.getElementById('adminPass').value.trim();
   if (!pass) return;
-  adminKey = pass;
+  adminKey = btoa(pass);  // mild obfuscation in transit (proper auth is ADMIN_SECRET server-side)
+  adminKey = pass;        // actually just send plain — server checks against env var
   fetchOrders(true);
 }
 
 function logout() {
   adminKey = '';
   allOrders = [];
-  document.getElementById('loginPanel').style.display   = '';
-  document.getElementById('dashboard').style.display    = 'none';
-  document.getElementById('adminChip').style.display    = 'none';
-  document.getElementById('logoutBtn').style.display    = 'none';
-  document.getElementById('adminPass').value            = '';
+  ['loginPanel','loginErr'].forEach(id => document.getElementById(id).style.display = id === 'loginPanel' ? '' : 'none');
+  document.getElementById('dashboard').style.display = 'none';
+  ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  document.getElementById('adminPass').value = '';
 }
 
 // ── Fetch ──────────────────────────────────────────────────────────────────
 async function fetchOrders(reset = false) {
   if (reset) { page = 1; allOrders = []; }
+  const btn = document.getElementById('refreshBtn');
+  if (btn) btn.innerHTML = '<span class="spinner"></span>Refreshing…';
+
   try {
     const params = new URLSearchParams({ page, limit: PAGE });
     if (currentFilter) params.set('status', currentFilter);
+
     const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
       headers: { 'X-Admin-Key': adminKey },
     });
-    if (res.status === 401) {
-      showLoginErr('Invalid password. Please try again.');
-      return;
-    }
+
+    if (res.status === 401) { showLoginErr('Invalid password.'); return; }
     if (!res.ok) {
       let msg = `HTTP ${res.status}`;
       try { const e = await res.json(); msg = e.error || msg; } catch {}
       throw new Error(msg);
     }
-    const data = await res.json();
 
+    const data = await res.json();
     if (reset) allOrders = data.orders || [];
     else        allOrders = [...allOrders, ...(data.orders || [])];
 
@@ -206,17 +270,20 @@ async function fetchOrders(reset = false) {
     page++;
 
     // Show dashboard
-    document.getElementById('loginPanel').style.display  = 'none';
-    document.getElementById('dashboard').style.display   = '';
-    document.getElementById('adminChip').style.display   = '';
-    document.getElementById('logoutBtn').style.display   = '';
-    document.getElementById('loginErr').style.display    = 'none';
+    document.getElementById('loginPanel').style.display = 'none';
+    document.getElementById('dashboard').style.display  = '';
+    ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
+
+    document.getElementById('loginErr').style.display = 'none';
 
     updateStats();
-    filtered = allOrders;
-    renderTable();
+    applyFilters();
+
   } catch (err) {
     showLoginErr('Error: ' + err.message);
+  } finally {
+    if (btn) btn.innerHTML = '↻ Refresh';
   }
 }
 
@@ -226,99 +293,150 @@ function showLoginErr(msg) {
   el.style.display = '';
 }
 
+function loadMore() { fetchOrders(false); }
+
 // ── Stats ──────────────────────────────────────────────────────────────────
 function updateStats() {
-  const cod  = allOrders.filter(o => o.status === 'cod_pending').length;
-  const paid = allOrders.filter(o => ['paid','delivered','shipped'].includes(o.status)).length;
-  const rev  = allOrders
+  const cod     = allOrders.filter(o => o.status === 'cod_pending').length;
+  const paid    = allOrders.filter(o => o.status === 'paid').length;
+  const shipped = allOrders.filter(o => o.status === 'shipped').length;
+  const rev     = allOrders
     .filter(o => ['paid','delivered','shipped'].includes(o.status))
-    .reduce((s, o) => s + (o.amount_paise || 0), 0);
+    .reduce((s,o) => s + (o.amount_paise || 0), 0);
 
-  document.getElementById('statTotal').textContent = allOrders.length;
-  document.getElementById('statCod').textContent   = cod;
-  document.getElementById('statPaid').textContent  = paid;
-  document.getElementById('statRev').textContent   = '₹' + Math.round(rev / 100).toLocaleString('en-IN');
+  document.getElementById('statTotal').textContent   = allOrders.length;
+  document.getElementById('statCod').textContent     = cod;
+  document.getElementById('statPaid').textContent    = paid;
+  document.getElementById('statShipped').textContent = shipped;
+  document.getElementById('statRev').textContent     = '₹' + Math.round(rev / 100).toLocaleString('en-IN');
   document.getElementById('dashSubtitle').textContent =
-    `${allOrders.length} orders loaded · Last refreshed ${new Date().toLocaleTimeString('en-IN')}`;
+    `${allOrders.length} orders · refreshed ${new Date().toLocaleTimeString('en-IN')}`;
 }
 
-// ── Filter ────────────────────────────────────────────────────────────────
-function setFilter(btn, status) {
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+// ── Filter + Search + Date ─────────────────────────────────────────────────
+function setFilter(el, status) {
+  document.querySelectorAll('.filter-btn,.stat-card').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
   currentFilter = status;
   fetchOrders(true);
 }
 
-// ── Render ────────────────────────────────────────────────────────────────
-function renderTable() {
-  const q = (document.getElementById('searchBox')?.value || '').toLowerCase();
+let _sortDir = {};
+function sortBy(field) {
+  _sortDir[field] = !_sortDir[field];
+  sortField = field;
+  sortAsc   = _sortDir[field];
+  applyFilters();
+}
+
+function applyFilters() {
+  const q       = (document.getElementById('searchBox')?.value || '').toLowerCase().trim();
+  const dateFrom = document.getElementById('dateFrom')?.value;
+  const dateTo   = document.getElementById('dateTo')?.value;
+
   filtered = allOrders.filter(o => {
-    if (!q) return true;
-    return (
-      (o.razorpay_order_id || '').toLowerCase().includes(q) ||
-      (o.customer_name     || '').toLowerCase().includes(q) ||
-      (o.customer_phone    || '').toLowerCase().includes(q) ||
-      (o.customer_email    || '').toLowerCase().includes(q)
-    );
+    // Search
+    if (q) {
+      const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
+                   o.customer_email, o.customer_address].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    // Date range
+    if (dateFrom && new Date(o.created_at) < new Date(dateFrom)) return false;
+    if (dateTo   && new Date(o.created_at) > new Date(dateTo + 'T23:59:59')) return false;
+    return true;
   });
 
+  // Sort
+  filtered.sort((a, b) => {
+    let va = a[sortField] ?? '', vb = b[sortField] ?? '';
+    if (sortField === 'amount_paise') { va = Number(va); vb = Number(vb); }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+
+  // Update export count
+  document.getElementById('exportCount').textContent = filtered.length;
+  renderTable();
+}
+
+// Keep search + date reactive
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('searchBox')?.addEventListener('input', applyFilters);
+  document.getElementById('dateFrom')?.addEventListener('change', applyFilters);
+  document.getElementById('dateTo')?.addEventListener('change', applyFilters);
+});
+
+// ── Render Table ───────────────────────────────────────────────────────────
+function renderTable() {
+  applyFilters();  // re-run filters then draw
+  _drawTable();
+}
+
+function _drawTable() {
   const body = document.getElementById('ordersBody');
+  if (!filtered.length) {
+    body.innerHTML = '';
+    document.getElementById('emptyState').style.display = '';
+    document.getElementById('loadMoreBtn').style.display = 'none';
+    return;
+  }
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('loadMoreBtn').style.display = hasMore ? '' : 'none';
+
   body.innerHTML = filtered.map(o => {
     const items   = Array.isArray(o.cart_items) ? o.cart_items : [];
     const amount  = o.amount_paise ? '₹' + (o.amount_paise / 100).toLocaleString('en-IN') : '—';
-    const date    = new Date(o.created_at).toLocaleString('en-IN', {
-      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-    });
-    const badgeCls = {
-      cod_pending: 'b-pending', paid: 'b-paid', shipped: 'b-shipped',
-      delivered: 'b-delivered', cancelled: 'b-cancelled', confirmed: 'b-confirmed',
-    }[o.status] || 'b-confirmed';
+    const isCOD   = o.status === 'cod_pending' || !o.razorpay_payment_id;
+    const date    = o.created_at
+      ? new Date(o.created_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+      : '—';
+    const bc = 'b-' + (o.status || 'confirmed');
 
     return `<tr>
       <td>
         <div class="order-id">${esc(o.razorpay_order_id || o.id || '—')}</div>
-        ${o.razorpay_payment_id ? `<div style="font-size:0.58rem;color:#5a4a2a;margin-top:0.2rem;">${esc(o.razorpay_payment_id)}</div>` : ''}
+        ${o.razorpay_payment_id ? `<div class="pay-id">${esc(o.razorpay_payment_id)}</div>` : ''}
       </td>
+      <td style="font-size:0.65rem;color:var(--cream-dim);white-space:nowrap;">${date}</td>
       <td>
         <div class="cust-name">${esc(o.customer_name || '—')}</div>
-        <div class="cust-phone">${esc(o.customer_phone || '')}</div>
-        <div class="cust-phone">${esc(o.customer_email || '')}</div>
+        <div class="cust-sub">${esc(o.customer_phone || '')}</div>
+        <div class="cust-sub">${esc(o.customer_email || '')}</div>
       </td>
-      <td>
-        <ul class="items-list">
-          ${items.slice(0,5).map(i => `<li>· ${esc(i.title||'')} ×${i.qty}</li>`).join('')}
-          ${items.length > 5 ? `<li style="color:#7a6330;">+${items.length - 5} more</li>` : ''}
-        </ul>
+      <td class="items-cell">
+        ${items.slice(0,4).map(i=>`<div>· ${esc(i.title||'')} ×${i.qty}</div>`).join('')}
+        ${items.length > 4 ? `<div style="color:var(--gold-dim);">+${items.length-4} more</div>` : ''}
       </td>
       <td><div class="amount">${amount}</div></td>
       <td>
-        <span class="badge ${badgeCls}">${(o.status||'').replace('_',' ')}</span><br/>
-        <select class="status-sel" style="margin-top:0.5rem;" onchange="updateStatus('${o.id}',this.value)">
-          <option value="">Update…</option>
-          <option value="cod_pending">COD Pending</option>
+        <div class="method-badge" style="color:${isCOD ? 'var(--orange)' : 'var(--green)'};">
+          ${isCOD ? '🚚 COD' : '💳 Online'}
+        </div>
+      </td>
+      <td>
+        <span class="badge ${bc}">${esc((o.status||'pending').replace(/_/g,' '))}</span>
+        <br/>
+        <select class="status-sel" onchange="updateStatus('${esc(o.id)}',this.value)">
+          <option value="">Update status…</option>
           <option value="confirmed">Confirmed</option>
           <option value="shipped">Shipped</option>
           <option value="delivered">Delivered</option>
-          <option value="cancelled">Cancelled</option>
           <option value="paid">Paid</option>
+          <option value="cod_pending">COD Pending</option>
+          <option value="cancelled">Cancelled</option>
           <option value="refunded">Refunded</option>
         </select>
       </td>
-      <td style="font-size:0.65rem;color:var(--cream-dim);white-space:nowrap;">${date}</td>
-      <td style="font-size:0.65rem;color:var(--cream-dim);max-width:180px;">${esc(o.customer_address || '—')}</td>
+      <td style="font-size:0.65rem;color:var(--cream-dim);max-width:200px;line-height:1.5;">
+        ${esc(o.customer_address || '—')}
+      </td>
     </tr>`;
   }).join('');
-
-  document.getElementById('emptyState').style.display   = filtered.length ? 'none' : '';
-  document.getElementById('loadMoreBtn').style.display  = hasMore && !q ? '' : 'none';
 }
 
-function loadMore() {
-  fetchOrders(false);
-}
-
-// ── Update status ──────────────────────────────────────────────────────────
+// ── Update Status ──────────────────────────────────────────────────────────
 async function updateStatus(id, status) {
   if (!status) return;
   try {
@@ -328,24 +446,90 @@ async function updateStatus(id, status) {
       body: JSON.stringify({ id, status }),
     });
     if (!res.ok) throw new Error('Update failed');
-    // Update local
     const ord = allOrders.find(o => o.id === id);
     if (ord) ord.status = status;
     updateStats();
-    renderTable();
+    applyFilters();
   } catch (err) {
     alert('Could not update status: ' + err.message);
   }
 }
 
+// ── Excel Export ───────────────────────────────────────────────────────────
+async function exportExcel(mode) {
+  let orders = mode === 'all' ? allOrders : filtered;
+
+  // If "all" and we haven't loaded everything, fetch all first
+  if (mode === 'all' && hasMore) {
+    const btn = document.getElementById('exportAllBtn');
+    const origText = btn?.innerHTML;
+    if (btn) btn.innerHTML = '<span class="spinner"></span>Fetching all…';
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(`/.netlify/functions/get-orders?page=1&limit=5000${currentFilter ? '&status='+currentFilter : ''}`, {
+        headers: { 'X-Admin-Key': adminKey },
+      });
+      const data = await res.json();
+      orders = data.orders || orders;
+    } catch(e) { console.warn('Could not fetch all:', e.message); }
+    if (btn) { btn.innerHTML = origText; btn.disabled = false; }
+  }
+
+  if (!orders.length) { alert('No orders to export.'); return; }
+
+  // Build rows
+  const rows = orders.map(o => {
+    const items  = Array.isArray(o.cart_items) ? o.cart_items : [];
+    const isCOD  = o.status === 'cod_pending' || !o.razorpay_payment_id;
+    const total  = o.amount_paise ? (o.amount_paise / 100) : items.reduce((s,i)=>s+i.price*i.qty,0);
+
+    // Parse address parts (best-effort)
+    const addr = o.customer_address || '';
+
+    return {
+      'Order ID':         o.razorpay_order_id || o.id || '',
+      'Payment ID':       o.razorpay_payment_id || '',
+      'Date':             o.created_at ? new Date(o.created_at).toLocaleString('en-IN') : '',
+      'Customer Name':    o.customer_name || '',
+      'Phone':            o.customer_phone || '',
+      'Email':            o.customer_email || '',
+      'Delivery Address': addr,
+      'Items':            items.map(i => `${i.title} x${i.qty}`).join(' | '),
+      'Item Count':       items.reduce((s,i) => s + i.qty, 0),
+      'Amount (₹)':       total,
+      'Payment Method':   isCOD ? 'Cash on Delivery' : 'Online (Razorpay)',
+      'Status':           (o.status || '').replace(/_/g,' '),
+    };
+  });
+
+  // Create workbook
+  const ws = XLSX.utils.json_to_sheet(rows);
+
+  // Column widths
+  ws['!cols'] = [
+    {wch:22},{wch:24},{wch:22},{wch:20},{wch:14},{wch:28},{wch:40},
+    {wch:50},{wch:10},{wch:12},{wch:20},{wch:14}
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const sheetName = mode === 'all' ? 'All Orders' : 'Filtered Orders';
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+  // File name with date
+  const today = new Date().toISOString().slice(0,10);
+  const fname = `inkandchai-orders-${mode === 'all' ? 'all' : currentFilter || 'filtered'}-${today}.xlsx`;
+
+  XLSX.writeFile(wb, fname);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ── Auto-refresh every 60s when logged in ─────────────────────────────────
-setInterval(() => { if (adminKey) fetchOrders(true); }, 60000);
+// ── Auto-refresh every 90s ─────────────────────────────────────────────────
+setInterval(() => { if (adminKey) fetchOrders(true); }, 90000);
 
-// Focus password field
 document.getElementById('adminPass').focus();
 </script>
 </body>
