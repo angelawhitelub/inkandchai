@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Checkout — Ink &amp; Chai</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 3rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
+.logo{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;color:var(--gold);text-decoration:none;}
+.logo span{color:var(--cream);font-weight:300;font-style:italic}
+.nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;transition:color 0.2s;}
+.nav-back:hover{color:var(--gold)}
+main{max-width:900px;margin:0 auto;padding:3.5rem 1.5rem 6rem;}
+.page-label{font-size:0.55rem;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem;}
+h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color:var(--white);margin-bottom:2.5rem;}
+.checkout-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:2.5rem;align-items:start;}
+@media(max-width:700px){.checkout-grid{grid-template-columns:1fr;gap:1.5rem;}.order-summary{order:-1;position:static;}}
+/* Order Summary */
+.order-summary{background:var(--bg3);border:1px solid var(--border);padding:1.8rem;position:sticky;top:80px;}
+.summary-title{font-size:0.58rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold);margin-bottom:1.4rem;}
+.order-item{display:flex;gap:1rem;padding:0.9rem 0;border-bottom:1px solid rgba(201,168,76,0.1);}
+.order-item:last-child{border-bottom:none;}
+.item-img{width:52px;flex-shrink:0;aspect-ratio:2/3;background:var(--bg2);overflow:hidden;border:1px solid var(--border);}
+.item-img img{width:100%;height:100%;object-fit:cover;}
+.item-info{flex:1;min-width:0;}
+.item-title{font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--white);line-height:1.3;margin-bottom:0.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.item-author{font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.06em;margin-bottom:0.3rem;}
+.item-qty-price{font-size:0.68rem;color:var(--cream-dim);}
+.item-price-gold{color:var(--gold);font-family:'Cormorant Garamond',serif;font-size:1rem;}
+.summary-total{display:flex;justify-content:space-between;align-items:baseline;padding-top:1.2rem;margin-top:0.4rem;border-top:1px solid var(--border);}
+.total-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);}
+.total-amt{font-family:'Cormorant Garamond',serif;font-size:1.8rem;color:var(--gold);font-weight:600;}
+.empty-cart{text-align:center;padding:2.5rem 1rem;color:var(--cream-dim);}
+/* Form */
+.form-section{display:flex;flex-direction:column;gap:0;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
+.form-group{margin-bottom:1rem;}
+label{display:block;font-size:0.56rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.45rem;}
+input{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;transition:border-color 0.2s;}
+input:focus{border-color:rgba(201,168,76,0.5);}
+input::placeholder{color:rgba(160,144,128,0.5);}
+input:disabled{background:var(--bg2);color:var(--gold-dim);cursor:not-allowed;}
+.pincode-row{display:grid;grid-template-columns:110px 1fr 1fr;gap:1rem;margin-bottom:0.3rem;}
+.pin-msg{font-size:0.6rem;min-height:1.1em;margin-bottom:0.8rem;letter-spacing:0.04em;}
+.divider-label{display:flex;align-items:center;gap:1rem;margin:1.6rem 0 1.4rem;}
+.divider-label span{font-size:0.54rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold-dim);white-space:nowrap;}
+.divider-label::before,.divider-label::after{content:'';flex:1;height:1px;background:var(--border);}
+.btn-pay{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.25s;margin-bottom:0.8rem;}
+.btn-pay:hover{opacity:0.88;transform:translateY(-1px);}
+.btn-pay:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+.btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;padding:1rem;background:transparent;color:var(--cream);border:1px solid rgba(201,168,76,0.35);cursor:pointer;font-weight:400;transition:all 0.25s;}
+.btn-cod:hover{border-color:var(--gold);color:var(--gold);}
+.btn-cod:disabled{opacity:0.5;cursor:not-allowed;}
+.trust-row{display:flex;gap:1.5rem;justify-content:center;margin-top:1.2rem;font-size:0.6rem;color:var(--gold-dim);letter-spacing:0.06em;}
+/* Success screen */
+#successScreen{display:none;text-align:center;padding:4rem 2rem;max-width:560px;margin:0 auto;}
+.success-icon{font-size:3.5rem;margin-bottom:1.5rem;}
+.success-title{font-family:'Cormorant Garamond',serif;font-size:2.6rem;font-weight:300;color:var(--white);margin-bottom:1rem;}
+.success-sub{font-size:0.78rem;color:var(--cream-dim);line-height:1.9;margin-bottom:1.6rem;}
+.success-id{font-size:0.62rem;color:var(--gold-dim);letter-spacing:0.12em;margin-bottom:1.5rem;}
+.success-email-box{background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--gold);padding:1rem 1.4rem;text-align:left;margin-bottom:2rem;}
+.btn-home{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.9rem 2.4rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;text-decoration:none;display:inline-block;}
+footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-size:0.65rem;color:var(--gold-dim);letter-spacing:0.08em;margin-top:auto;}
+</style>
+</head>
+<body>
+<nav>
+  <a class="logo" href="/">Ink &amp;<span> Chai</span></a>
+  <a class="nav-back" href="javascript:history.back()">← Back</a>
+</nav>
+
+<main>
+  <!-- Success Screen (hidden until order placed) -->
+  <div id="successScreen"></div>
+
+  <!-- Checkout Screen -->
+  <div id="checkoutScreen">
+    <div class="page-label">Secure Checkout</div>
+    <h1>Delivery Details</h1>
+
+    <div class="checkout-grid">
+
+      <!-- LEFT: Form -->
+      <div class="form-section">
+        <div class="form-row">
+          <div class="form-group" style="margin:0;">
+            <label for="ch-name">Full Name *</label>
+            <input id="ch-name" type="text" placeholder="Your full name" autocomplete="name"/>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label for="ch-phone">Phone Number *</label>
+            <input id="ch-phone" type="tel" placeholder="10-digit mobile" autocomplete="tel"/>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="ch-email">Email Address</label>
+          <input id="ch-email" type="email" placeholder="you@example.com" autocomplete="email"/>
+        </div>
+
+        <div class="form-group">
+          <label for="ch-addr">House / Street / Locality *</label>
+          <input id="ch-addr" type="text" placeholder="e.g. 12B, MG Road, Lajpat Nagar" autocomplete="street-address"/>
+        </div>
+
+        <div class="pincode-row">
+          <div>
+            <label for="ch-pin">Pincode *</label>
+            <input id="ch-pin" type="text" inputmode="numeric" maxlength="6" placeholder="6 digits"
+              oninput="handlePin(this.value)"/>
+          </div>
+          <div>
+            <label for="ch-city">City</label>
+            <input id="ch-city" type="text" placeholder="Auto-filled"/>
+          </div>
+          <div>
+            <label for="ch-state">State</label>
+            <input id="ch-state" type="text" placeholder="Auto-filled"/>
+          </div>
+        </div>
+        <div id="pinMsg" class="pin-msg"></div>
+
+        <div class="divider-label"><span>Choose Payment</span></div>
+
+        <button class="btn-pay" id="btnPayNow" onclick="submitOrder('online')">
+          ⚡ Pay Now
+        </button>
+        <button class="btn-cod" id="btnCOD" onclick="submitOrder('cod')">
+          🚚 Cash on Delivery
+        </button>
+
+        <div class="trust-row">
+          <span>🔒 Secure checkout</span>
+          <span>🚀 Pan-India delivery</span>
+          <span>↩ 7-day returns</span>
+        </div>
+      </div>
+
+      <!-- RIGHT: Order Summary -->
+      <div class="order-summary">
+        <div class="summary-title">Your Order</div>
+        <div id="orderItems">
+          <div class="empty-cart">Your cart is empty.<br/>
+            <a href="/" style="color:var(--gold);">Browse books →</a>
+          </div>
+        </div>
+        <div class="summary-total" id="orderTotal" style="display:none;">
+          <span class="total-label">Total</span>
+          <span class="total-amt" id="totalAmt">₹0</span>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /checkoutScreen -->
+</main>
+
+<footer>© 2026 Ink &amp; Chai &nbsp;·&nbsp; inkandchai.in &nbsp;·&nbsp; support@inkandchai.in</footer>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+window.SUPABASE_URL      = "";
+window.SUPABASE_ANON_KEY = "";
+</script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>window.RAZORPAY_KEY_ID = "rzp_test_CHANGE_ME";</script>
+
+<script>
+// ── Cart (must match cart.js CART_KEY) ────────────────────────────────────
+const CART_KEY = 'akshar_cart';
+function getCart()  { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch { return []; } }
+function clearCart(){ localStorage.removeItem(CART_KEY); }
+
+// ── Render order summary ────────────────────────────────────────────────────
+function renderSummary() {
+  const cart = getCart();
+  const container = document.getElementById('orderItems');
+  const totalRow  = document.getElementById('orderTotal');
+  const totalEl   = document.getElementById('totalAmt');
+  const btnPay    = document.getElementById('btnPayNow');
+  const btnCOD    = document.getElementById('btnCOD');
+
+  if (!cart.length) {
+    container.innerHTML = '<div class="empty-cart">Your cart is empty.<br/><a href="/" style="color:var(--gold);">Browse books →</a></div>';
+    totalRow.style.display = 'none';
+    if (btnPay) btnPay.disabled = true;
+    if (btnCOD) btnCOD.disabled = true;
+    return;
+  }
+
+  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  container.innerHTML = cart.map(i => `
+    <div class="order-item">
+      <div class="item-img">
+        ${i.img ? `<img src="${esc(i.img)}" alt="" />` : ''}
+      </div>
+      <div class="item-info">
+        <div class="item-title">${esc(i.title)}</div>
+        ${i.author ? `<div class="item-author">${esc(i.author)}</div>` : ''}
+        <div class="item-qty-price">
+          Qty: ${i.qty} &nbsp;·&nbsp;
+          <span class="item-price-gold">₹${(i.price * i.qty).toLocaleString('en-IN')}</span>
+        </div>
+      </div>
+    </div>`).join('');
+
+  totalEl.textContent = '₹' + total.toLocaleString('en-IN');
+  totalRow.style.display = 'flex';
+
+  // Update Pay Now button label with total
+  if (btnPay) {
+    btnPay.textContent = `⚡ Pay Now — ₹${total.toLocaleString('en-IN')}`;
+    btnPay.disabled = false;
+  }
+  if (btnCOD) btnCOD.disabled = false;
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Pincode → City / State ─────────────────────────────────────────────────
+let _pinTimer = null;
+function handlePin(val) {
+  const msg = document.getElementById('pinMsg');
+  clearTimeout(_pinTimer);
+  val = val.replace(/\D/g,'');
+  if (val.length < 6) { msg.textContent = ''; msg.style.color = ''; return; }
+  msg.textContent = 'Looking up pincode…';
+  msg.style.color = '#a09080';
+  _pinTimer = setTimeout(async () => {
+    try {
+      const res  = await fetch(`https://api.postalpincode.in/pincode/${val}`);
+      const data = await res.json();
+      if (data[0].Status === 'Success' && data[0].PostOffice?.length) {
+        const po = data[0].PostOffice[0];
+        document.getElementById('ch-city').value  = po.District || po.Division || po.Name || '';
+        document.getElementById('ch-state').value = po.State || '';
+        msg.textContent = '✓ ' + (po.District || po.Name) + ', ' + po.State;
+        msg.style.color = '#8fa87a';
+        return;
+      }
+    } catch(e){}
+    msg.textContent = 'Pincode not found — enter city and state manually.';
+    msg.style.color = '#c97a7a';
+  }, 500);
+}
+
+// ── Collect + validate address ─────────────────────────────────────────────
+function collectAddr() {
+  const get = id => document.getElementById(id)?.value.trim() || '';
+  const name  = get('ch-name');
+  const phone = get('ch-phone');
+  const email = get('ch-email');
+  const addr  = get('ch-addr');
+  const pin   = get('ch-pin').replace(/\D/g,'');
+  const city  = get('ch-city');
+  const state = get('ch-state');
+
+  if (!name)             { alert('Please enter your full name.'); return null; }
+  if (phone.replace(/\D/g,'').length < 10) { alert('Please enter a valid 10-digit phone number.'); return null; }
+  if (!addr)             { alert('Please enter your delivery address.'); return null; }
+  if (pin.length !== 6)  { alert('Please enter a valid 6-digit pincode.'); return null; }
+
+  return {
+    name, phone, email,
+    address: [addr, city, state, pin].filter(Boolean).join(', '),
+    pincode: pin, city, state,
+  };
+}
+
+// ── Disable / enable buttons ───────────────────────────────────────────────
+function setLoading(on) {
+  document.getElementById('btnPayNow').disabled = on;
+  document.getElementById('btnCOD').disabled    = on;
+}
+
+// ── Main submit ────────────────────────────────────────────────────────────
+async function submitOrder(method) {
+  const addr = collectAddr();
+  if (!addr) return;
+  setLoading(true);
+
+  if (method === 'online') {
+    await doRazorpay(addr);
+  } else {
+    await doCOD(addr);
+  }
+}
+
+// ── Razorpay ───────────────────────────────────────────────────────────────
+async function doRazorpay(addr) {
+  const cart = getCart();
+  const amtPaise = Math.round(cart.reduce((s,i)=>s+i.price*i.qty,0)*100);
+
+  try {
+    const res = await fetch('/.netlify/functions/create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: amtPaise, currency: 'INR',
+        receipt: 'ic_' + Date.now(),
+        notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name },
+      }),
+    });
+    if (!res.ok) throw new Error('Order creation failed');
+    const order = await res.json();
+
+    const options = {
+      key:         window.RAZORPAY_KEY_ID,
+      amount:      order.amount,
+      currency:    order.currency,
+      name:        'Ink & Chai',
+      description: `${cart.length} book${cart.length>1?'s':''}`,
+      order_id:    order.id,
+      prefill:     { name: addr.name, email: addr.email, contact: addr.phone },
+      notes:       { shipping_address: addr.address },
+      theme:       { color: '#c9a84c' },
+
+      handler: async function(response) {
+        try {
+          const vRes = await fetch('/.netlify/functions/verify-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              razorpay_order_id:   response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature:  response.razorpay_signature,
+              cart, customer: addr, amount: amtPaise,
+            }),
+          });
+          if (!vRes.ok) throw new Error('Verification failed');
+          clearCart();
+          await autoLogin(addr.email, addr.name, addr.phone);
+          showSuccess('paid', response.razorpay_payment_id, addr);
+        } catch(e) {
+          alert('Payment received but verification failed. Please contact support@inkandchai.in');
+          setLoading(false);
+        }
+      },
+      modal: { ondismiss: () => setLoading(false) },
+    };
+
+    const rzp = new Razorpay(options);
+    rzp.on('payment.failed', r => { alert('Payment failed: ' + r.error.description); setLoading(false); });
+    rzp.open();
+
+  } catch(e) {
+    alert('Could not start checkout: ' + e.message);
+    setLoading(false);
+  }
+}
+
+// ── Cash on Delivery ───────────────────────────────────────────────────────
+async function doCOD(addr) {
+  const cart   = getCart();
+  const amount = cart.reduce((s,i)=>s+i.price*i.qty,0);
+
+  try {
+    const res = await fetch('/.netlify/functions/cod-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cart,
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+        amount,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to place order');
+
+    clearCart();
+    await autoLogin(addr.email, addr.name, addr.phone);
+    showSuccess('cod', data.order_id, addr);
+
+  } catch(e) {
+    alert('Could not place order: ' + e.message);
+    setLoading(false);
+  }
+}
+
+// ── Auto-login after order ─────────────────────────────────────────────────
+async function autoLogin(email, name, phone) {
+  if (!email) return;
+  try {
+    const res = await fetch('/.netlify/functions/auto-login-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, phone }),
+    });
+    if (!res.ok) return;
+    const { token_hash } = await res.json();
+    if (!token_hash || !window.supabase || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) return;
+    const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    await sb.auth.verifyOtp({ token_hash, type: 'magiclink' });
+  } catch(e) { console.warn('Auto-login non-fatal:', e.message); }
+}
+
+// ── Success screen ─────────────────────────────────────────────────────────
+function showSuccess(type, orderId, addr) {
+  document.getElementById('checkoutScreen').style.display = 'none';
+  const s = document.getElementById('successScreen');
+  s.style.display = 'block';
+
+  const isPaid = type === 'paid';
+  s.innerHTML = `
+    <div class="success-icon">${isPaid ? '✦' : '🚚'}</div>
+    <h2 class="success-title">${isPaid ? 'Payment Confirmed!' : 'Order Placed!'}</h2>
+    <p class="success-sub">
+      ${isPaid
+        ? 'Thank you for your purchase. Your books are on their way.'
+        : `Hi ${esc(addr.name.split(' ')[0])}, your books are on their way.<br/>Pay cash when they arrive.`}
+    </p>
+    <p class="success-id">${isPaid ? 'Payment ID' : 'Order ID'}: ${esc(orderId)}</p>
+    ${addr.email ? `
+    <div class="success-email-box">
+      <p style="font-size:0.68rem;color:var(--gold);margin-bottom:0.35rem;letter-spacing:0.07em;">
+        📧 Confirmation sent to ${esc(addr.email)}
+      </p>
+      <p style="font-size:0.64rem;color:var(--cream-dim);line-height:1.75;margin:0;">
+        Your order details have been emailed to you. Click
+        <strong style="color:var(--white);">My Orders</strong> on
+        <a href="/" style="color:var(--gold);">inkandchai.in</a> to track your order anytime.
+      </p>
+    </div>` : ''}
+    <a href="/" class="btn-home">← Continue Shopping</a>
+  `;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+renderSummary();
+
+// Pre-fill from Supabase profile if logged in
+(async () => {
+  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === '') return;
+  try {
+    const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    const email = session.user?.email;
+    const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+    const fill = (id, val) => { const el = document.getElementById(id); if (el && val && !el.value) el.value = val; };
+    fill('ch-name',  profile?.name);
+    fill('ch-email', email);
+    fill('ch-phone', profile?.phone);
+    fill('ch-addr',  profile?.address);
+  } catch(e) {}
+})();
+</script>
+</body>
+</html>

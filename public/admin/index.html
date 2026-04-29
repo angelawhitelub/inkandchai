@@ -170,6 +170,12 @@ tr:hover td{background:rgba(201,168,76,0.025);}
     <button class="btn-green" onclick="exportExcel('all')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       ⬇ All Orders Excel
     </button>
+    <button class="btn-outline" onclick="printLabels()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      🖨 Print Shipping Labels
+    </button>
+    <button class="btn-outline" onclick="copyAllAddresses()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      📋 Copy Addresses
+    </button>
   </div>
 
   <!-- Toolbar -->
@@ -181,10 +187,10 @@ tr:hover td{background:rgba(201,168,76,0.025);}
     <button class="filter-btn" data-status="delivered" onclick="setFilter(this,'delivered')">Delivered</button>
     <button class="filter-btn" data-status="paid" onclick="setFilter(this,'paid')">Paid Online</button>
     <button class="filter-btn" data-status="cancelled" onclick="setFilter(this,'cancelled')">Cancelled</button>
-    <input type="date" id="dateFrom" onchange="renderTable()" title="From date"/>
+    <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
     <span class="date-sep">→</span>
-    <input type="date" id="dateTo" onchange="renderTable()" title="To date"/>
-    <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID" oninput="renderTable()"/>
+    <input type="date" id="dateTo" onchange="applyFilters()" title="To date"/>
+    <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID" oninput="applyFilters()"/>
   </div>
 
   <!-- Table -->
@@ -369,8 +375,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Render Table ───────────────────────────────────────────────────────────
+// applyFilters() already calls _drawTable() at the end via renderTable→_drawTable.
+// To break recursion: renderTable just draws; only stat-changing actions call applyFilters.
 function renderTable() {
-  applyFilters();  // re-run filters then draw
   _drawTable();
 }
 
@@ -520,6 +527,66 @@ async function exportExcel(mode) {
   const fname = `inkandchai-orders-${mode === 'all' ? 'all' : currentFilter || 'filtered'}-${today}.xlsx`;
 
   XLSX.writeFile(wb, fname);
+}
+
+// ── Print Shipping Labels (4 per A4 page) ─────────────────────────────────
+function printLabels() {
+  if (!filtered.length) { alert('No orders to print.'); return; }
+  const html = `<!doctype html><html><head><title>Shipping Labels - Ink & Chai</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
+      body{padding:8mm;background:#fff;color:#000}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:6mm}
+      .label{border:1.5px solid #000;padding:5mm;page-break-inside:avoid;min-height:88mm;display:flex;flex-direction:column}
+      .label-hdr{display:flex;justify-content:space-between;border-bottom:1px solid #000;padding-bottom:2mm;margin-bottom:3mm}
+      .from{font-size:9pt}
+      .from b{font-size:11pt}
+      .oid{font-size:10pt;font-weight:bold;text-align:right}
+      .to-label{font-size:8pt;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:1mm}
+      .to-name{font-size:14pt;font-weight:bold;margin-bottom:2mm}
+      .to-addr{font-size:11pt;line-height:1.5;margin-bottom:3mm;white-space:pre-wrap}
+      .to-phone{font-size:11pt;font-weight:bold}
+      .items{margin-top:auto;border-top:1px dashed #999;padding-top:2mm;font-size:9pt}
+      .items b{display:block;margin-bottom:1mm}
+      .pay{margin-top:2mm;font-size:10pt;font-weight:bold;color:#000;background:#ffe9b3;padding:1mm 2mm;display:inline-block}
+      @media print {body{padding:5mm}.label{break-inside:avoid}}
+    </style></head><body><div class="grid">
+    ${filtered.map(o => {
+      const items = Array.isArray(o.cart_items) ? o.cart_items : [];
+      const isCOD = o.status === 'cod_pending' || !o.razorpay_payment_id;
+      const total = o.amount_paise ? (o.amount_paise/100) : items.reduce((s,i)=>s+i.price*i.qty,0);
+      return `<div class="label">
+        <div class="label-hdr">
+          <div class="from"><b>Ink &amp; Chai</b><br/>2969, Kucha Mai Dass<br/>Sitaram Bazar, New Delhi 110006<br/>+91 96258 36117</div>
+          <div class="oid">${esc(o.razorpay_order_id || o.id || '').slice(0,22)}<br/><span style="font-weight:normal;font-size:8pt">${new Date(o.created_at).toLocaleDateString('en-IN')}</span></div>
+        </div>
+        <div class="to-label">Deliver to:</div>
+        <div class="to-name">${esc(o.customer_name || '—')}</div>
+        <div class="to-addr">${esc(o.customer_address || '—')}</div>
+        <div class="to-phone">📞 ${esc(o.customer_phone || '—')}</div>
+        <div class="items">
+          <b>Contents (${items.reduce((s,i)=>s+(i.qty||0),0)} books):</b>
+          ${items.map(i => `${esc(i.title||'').slice(0,50)} × ${i.qty}`).join('<br/>')}
+        </div>
+        ${isCOD ? `<div class="pay">💰 COLLECT ₹${total.toLocaleString('en-IN')} CASH</div>` : `<div class="pay" style="background:#c8e6c9">✅ PREPAID — ₹${total.toLocaleString('en-IN')}</div>`}
+      </div>`;
+    }).join('')}
+    </div><script>window.onload=()=>window.print();<\/script></body></html>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+// ── Copy all visible addresses to clipboard (for bulk paste) ───────────────
+function copyAllAddresses() {
+  if (!filtered.length) { alert('No orders to copy.'); return; }
+  const text = filtered.map(o => {
+    return `${o.customer_name || '—'}\n${o.customer_address || '—'}\nPhone: ${o.customer_phone || '—'}\nOrder: ${o.razorpay_order_id || o.id || '—'}`;
+  }).join('\n\n———————————\n\n');
+  navigator.clipboard.writeText(text).then(() => {
+    alert(`Copied ${filtered.length} addresses to clipboard.`);
+  }).catch(err => alert('Copy failed: ' + err.message));
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
