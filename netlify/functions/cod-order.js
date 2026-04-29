@@ -12,26 +12,35 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-// ── Send email via Resend ─────────────────────────────────────────────────
+// ── Send email via Resend (with auto-fallback to onboarding@resend.dev) ───
 async function sendEmail({ to, subject, html }) {
   const key = process.env.RESEND_API_KEY;
   if (!key) { console.warn('RESEND_API_KEY not set — email skipped'); return; }
-  try {
+  if (!to)  { console.warn('sendEmail: empty "to" — skipped'); return; }
+
+  async function attempt(from) {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'Ink & Chai <support@inkandchai.in>',
-        to,
-        subject,
-        html,
-      }),
+      body: JSON.stringify({ from, to, subject, html }),
     });
-    const body = await res.json();
-    if (!res.ok) {
-      console.error(`Resend error ${res.status}:`, JSON.stringify(body));
-    } else {
-      console.log('Email sent:', body.id, '→', to);
+    const body = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, body };
+  }
+
+  try {
+    // Try the custom domain first
+    let r = await attempt('Ink & Chai <support@inkandchai.in>');
+    if (r.ok) { console.log('Email sent (custom):', r.body.id, '→', to); return; }
+    console.error(`Resend custom-domain error ${r.status}:`, JSON.stringify(r.body));
+
+    // If domain not verified — fall back to Resend's onboarding sender so
+    // customer still gets the email instead of nothing.
+    const isDomainErr = r.status === 403 || /domain|verified|not.*allowed|testing/i.test(r.body?.message || '');
+    if (isDomainErr) {
+      r = await attempt('Ink & Chai <onboarding@resend.dev>');
+      if (r.ok) { console.log('Email sent (fallback):', r.body.id, '→', to); return; }
+      console.error(`Resend fallback error ${r.status}:`, JSON.stringify(r.body));
     }
   } catch (err) {
     console.error('sendEmail exception:', err.message);
