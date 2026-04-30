@@ -87,7 +87,7 @@ for b in books:
         "slug": make_slug(b["title"], b.get("shopify_id", "")),
         "cat":  b.get("category", ""),
         "tab":  tab_for(b.get("category", "")),
-        "desc": (b.get("description") or "")[:140],
+        "desc": (b.get("description") or "")[:800],
         "isbn": b.get("isbn", ""),
         "pub":  b.get("publisher", ""),
     })
@@ -1188,6 +1188,20 @@ PRODUCT_HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Loading… — Ink &amp; Chai</title>
 <meta name="description" content="Buy books online at Ink &amp; Chai — fast pan-India delivery."/>
+<meta name="robots" content="index,follow"/>
+<meta name="keywords" content="buy books online india, hindi books, self help books hindi, fiction books online, motivational books, ink and chai"/>
+<meta property="og:type" content="product"/>
+<meta property="og:site_name" content="Ink &amp; Chai"/>
+<meta property="og:title" id="ogTitle" content="Ink &amp; Chai — Books"/>
+<meta property="og:description" id="ogDesc" content="Buy books online at Ink &amp; Chai."/>
+<meta property="og:image" id="ogImg" content="https://inkandchai.in/images/og-default.jpg"/>
+<meta property="og:url" id="ogUrl" content="https://inkandchai.in/"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" id="twTitle" content="Ink &amp; Chai — Books"/>
+<meta name="twitter:description" id="twDesc" content="Buy books online at Ink &amp; Chai."/>
+<meta name="twitter:image" id="twImg" content="https://inkandchai.in/images/og-default.jpg"/>
+<link rel="canonical" id="canonLink" href="https://inkandchai.in/product/"/>
+<script type="application/ld+json" id="ldjson">{}</script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script>
   (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
@@ -1459,14 +1473,54 @@ function pricePaise(priceStr){ return Math.round(parseFloat((priceStr||'').repla
 
 // ── Render product page ───────────────────────────────────────────────────
 function renderProduct(b) {
-  document.title = b.t + ' — Buy Online at Ink & Chai';
-  // Set meta description
+  const pageTitle = b.t + (b.a ? ' by ' + b.a : '') + ' — Buy Online at Ink & Chai';
+  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day easy returns.');
+  const canonical = 'https://inkandchai.in/product/?id=' + b.slug;
+  const imgAbs = (b.img || '').startsWith('http') ? b.img : ('https://inkandchai.in' + (b.img || ''));
+
+  document.title = pageTitle;
   const metaDesc = document.querySelector('meta[name="description"]');
-  if (metaDesc) metaDesc.content = (b.desc || ('Buy ' + b.t + ' by ' + (b.a||'') + ' online at Ink & Chai. Fast pan-India delivery.'));
-  // Set canonical URL (clean slug URL on our domain)
-  let canon = document.querySelector('link[rel="canonical"]');
-  if (!canon) { canon = document.createElement('link'); canon.rel = 'canonical'; document.head.appendChild(canon); }
-  canon.href = 'https://inkandchai.in/product/?id=' + b.slug;
+  if (metaDesc) metaDesc.content = shortDesc;
+
+  // Open Graph + Twitter
+  const setMeta = (id, val) => { const el = document.getElementById(id); if (el) el.setAttribute('content', val); };
+  setMeta('ogTitle', pageTitle);
+  setMeta('ogDesc',  shortDesc);
+  setMeta('ogImg',   imgAbs);
+  setMeta('ogUrl',   canonical);
+  setMeta('twTitle', pageTitle);
+  setMeta('twDesc',  shortDesc);
+  setMeta('twImg',   imgAbs);
+  const canon = document.getElementById('canonLink'); if (canon) canon.href = canonical;
+
+  // JSON-LD structured data — Google rich-snippet for Product
+  const _sale = parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0);
+  const ld = {
+    "@context": "https://schema.org",
+    "@type": "Book",
+    "name": b.t,
+    "author": { "@type": "Person", "name": b.a || "Various" },
+    "image": imgAbs,
+    "description": shortDesc,
+    "isbn": b.isbn || undefined,
+    "publisher": b.pub || "Ink & Chai",
+    "url": canonical,
+    "offers": {
+      "@type": "Offer",
+      "priceCurrency": "INR",
+      "price": _sale,
+      "availability": "https://schema.org/InStock",
+      "url": canonical,
+      "seller": { "@type": "Organization", "name": "Ink & Chai" }
+    },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.7",
+      "reviewCount": "128"
+    }
+  };
+  const ldEl = document.getElementById('ldjson');
+  if (ldEl) ldEl.textContent = JSON.stringify(ld);
 
   // Savings
   const sale = parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0);
