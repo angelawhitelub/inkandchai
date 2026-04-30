@@ -108,7 +108,17 @@ coll_data = []
 for name, cats in TOP_CATS:
     total = sum(cat_counts.get(c.title(), 0) + cat_counts.get(c, 0)
                 for c in cats)
-    coll_data.append({"name": name, "count": max(total, 1)})
+    # Pick a sample book image from any of the collection's categories for the thumbnail
+    thumb = ""
+    for c in cats:
+        for b in books:
+            bcat = (b.get("category") or "").lower()
+            if bcat == c.lower() and b.get("img"):
+                thumb = b["img"]
+                break
+        if thumb:
+            break
+    coll_data.append({"name": name, "count": max(total, 1), "cats": cats, "thumb": thumb})
 
 # ── All categories list (for category browser) ───────────────────────────────
 # Use cat_counts but skip very small or duplicate-ish collections
@@ -128,6 +138,17 @@ HTML = r"""<!DOCTYPE html>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Ink & Chai — Books We Love</title>
+<script>
+  // Apply saved theme BEFORE paint to avoid flash of wrong theme
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
+  function toggleTheme() {
+    var cur = document.documentElement.getAttribute('data-theme');
+    var next = cur === 'light' ? '' : 'light';
+    if (next) document.documentElement.setAttribute('data-theme', next);
+    else      document.documentElement.removeAttribute('data-theme');
+    try { localStorage.setItem('iac_theme', next); } catch(e){}
+  }
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet" />
 <style>
   :root {
@@ -135,7 +156,37 @@ HTML = r"""<!DOCTYPE html>
     --gold: #c9a84c; --gold-light: #e8c97a; --gold-dim: #7a6330;
     --cream: #f0e8d8; --cream-dim: #a09080; --white: #faf7f2;
     --border: rgba(201,168,76,0.18);
+    --shadow-color: rgba(0,0,0,0.6);
   }
+  /* LIGHT MODE */
+  html[data-theme="light"] {
+    --bg: #faf7f2; --bg2: #f3ece0; --bg3: #ffffff;
+    --gold: #8a6a1f; --gold-light: #b8902c; --gold-dim: #6a4f10;
+    --cream: #2a2018; --cream-dim: #5a4a38; --white: #0d0b08;
+    --border: rgba(138,106,31,0.28);
+    --shadow-color: rgba(60,40,10,0.12);
+  }
+  html[data-theme="light"] body { background: var(--bg); color: var(--cream); }
+  html[data-theme="light"] nav { background: linear-gradient(to bottom, rgba(250,247,242,0.97) 0%, transparent 100%); }
+  html[data-theme="light"] .promo-banner { background: linear-gradient(90deg,#fff8e6,#fbeec8,#fff8e6); color: #5a4a18; }
+  html[data-theme="light"] .promo-banner code { background: rgba(138,106,31,0.12); color: #6a4f10; border-color: rgba(138,106,31,0.4); }
+  html[data-theme="light"] .marquee-bar { background: var(--gold); }
+  html[data-theme="light"] .marquee-item { color: #fff; }
+  html[data-theme="light"] .book-cover { background: #f0e8d4; }
+  html[data-theme="light"] .coll-overlay { background: linear-gradient(to top, rgba(255,255,255,0.65) 0%, transparent 60%); }
+  html[data-theme="light"] .coll-name, html[data-theme="light"] .section-title, html[data-theme="light"] .hero-title { color: #1a1208; }
+  html[data-theme="light"] .coll-desc { color: #4a3a25; }
+  html[data-theme="light"] .footer { background: #1a1410; color: #e8dcc4; }
+  html[data-theme="light"] .editorial-quote { color: #1a1208; }
+  html[data-theme="light"] .cart-sidebar, html[data-theme="light"] .modal-content { color: var(--cream); }
+
+  /* Theme toggle button */
+  .theme-toggle { background: transparent; border: 1px solid var(--gold-dim); color: var(--gold); width: 38px; height: 38px; border-radius: 50%; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; transition: all 0.3s; margin-right: 0.6rem; }
+  .theme-toggle:hover { background: var(--gold); color: var(--bg); transform: rotate(20deg); }
+  .theme-toggle .sun { display: none; }
+  html[data-theme="light"] .theme-toggle .moon { display: none; }
+  html[data-theme="light"] .theme-toggle .sun { display: inline; }
+
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
   body { background: var(--bg); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 300; overflow-x: hidden; }
@@ -270,6 +321,12 @@ HTML = r"""<!DOCTYPE html>
   .coll-card.large .coll-name { font-size: 2rem; }
   .coll-desc { font-size: 0.7rem; color: var(--cream-dim); margin-top: 0.5rem; line-height: 1.6; display: none; }
   .coll-card.large .coll-desc { display: block; }
+  .coll-thumb { position: absolute; top: 1.4rem; right: 1.4rem; width: 72px; aspect-ratio: 2/3; object-fit: cover; border: 1px solid rgba(201,168,76,0.35); box-shadow: 0 8px 22px rgba(0,0,0,0.5); transform: rotate(4deg); transition: transform 0.4s; z-index: 3; background: #1a0a00; }
+  .coll-card.large .coll-thumb { width: 130px; top: 2rem; right: 2rem; }
+  .coll-card:hover .coll-thumb { transform: rotate(0) scale(1.05); }
+  .coll-cta { font-size: 0.58rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); margin-top: 1rem; opacity: 0; transform: translateY(6px); transition: all 0.3s; font-family: 'Montserrat',sans-serif; }
+  .coll-card:hover .coll-cta { opacity: 1; transform: translateY(0); }
+  .coll-card.large .coll-cta { opacity: 1; transform: none; }
 
   /* EDITORIAL */
   .editorial { background: var(--bg3); padding: 0; display: grid; grid-template-columns: 1fr 1fr; min-height: 500px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
@@ -464,6 +521,7 @@ HTML = r"""<!DOCTYPE html>
     <li><a href="mailto:support@inkandchai.in">Contact Us</a></li>
   </ul>
   <div class="nav-actions">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
     <span class="nav-icon" title="Search" onclick="document.getElementById('searchInput')?.focus();document.getElementById('featured')?.scrollIntoView({behavior:'smooth'})">&#9906;</span>
     <span class="nav-icon" title="Wishlist" onclick="openWishlistModal()">&#9825;<span id="wishBadge" style="display:none;font-size:0.55rem;background:var(--gold);color:var(--bg);border-radius:50%;width:14px;height:14px;display:none;align-items:center;justify-content:center;position:absolute;top:-4px;right:-6px;"></span></span>
     <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
@@ -821,19 +879,69 @@ function renderCollections() {
     'Anime, graphic novels, and sequential art from East and West.',
     'Epics, gods, and the stories that shaped civilisations.',
   ];
-  document.getElementById('collectionsGrid').innerHTML = COLLECTIONS.map((c, i) => `
-    <div class="coll-card ${i === 0 ? 'large' : ''}">
+  document.getElementById('collectionsGrid').innerHTML = COLLECTIONS.map((c, i) => {
+    const catsAttr = encodeURIComponent(JSON.stringify(c.cats || []));
+    return `
+    <div class="coll-card ${i === 0 ? 'large' : ''}" onclick="openCollection('${catsAttr}','${escHtml(c.name)}')" role="button" tabindex="0">
       <div class="coll-inner">
         <div class="coll-bg ${bgClasses[i]}"></div>
         <div class="coll-overlay"></div>
+        ${c.thumb ? `<img class="coll-thumb" src="${escHtml(c.thumb)}" alt="${escHtml(c.name)} thumbnail" loading="lazy" onerror="this.style.display='none'"/>` : ''}
         <div class="coll-content">
           <div class="coll-count">${c.count} Titles</div>
           <div class="coll-name">${escHtml(c.name)}</div>
           <div class="coll-desc">${descs[i]}</div>
+          <div class="coll-cta">Explore Collection →</div>
         </div>
       </div>
     </div>
+  `;}).join('');
+}
+
+// Open a multi-category collection — filter the featured grid to its books
+function openCollection(catsEncoded, name) {
+  let cats = [];
+  try { cats = JSON.parse(decodeURIComponent(catsEncoded)) || []; } catch {}
+  const set = new Set(cats.map(c => (c||'').toLowerCase()));
+  const matches = BOOKS.filter(b => set.has((b.cat||'').toLowerCase()));
+  if (!matches.length) { showToast?.('No books in this collection yet'); return; }
+
+  // Reset other filters
+  activeCat = null;
+  currentTab = 'All';
+  currentQuery = '';
+  const si = document.getElementById('searchInput'); if (si) si.value = '';
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.tab[data-tab="All"]')?.classList.add('active');
+
+  // Render
+  visibleCount = Math.min(matches.length, 200);
+  const grid = document.getElementById('booksGrid');
+  grid.innerHTML = matches.slice(0, visibleCount).map(b => `
+    <div class="book-card" onclick="location.href='/product/?id=${b.slug}'" style="cursor:pointer;">
+      <div class="book-cover">
+        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
+        <div class="book-cover-overlay">
+          <div class="book-cover-title">${escHtml(b.t)}</div>
+          <button class="btn-add" onclick="event.stopPropagation(); addToCartById(this)"
+            data-url="${escHtml(b.url)}" data-title="${escHtml(b.t)}"
+            data-author="${escHtml(b.a||'')}" data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
+            data-img="${escHtml(b.img)}">Add to Cart</button>
+        </div>
+      </div>
+      <div class="book-name">${escHtml(b.t)}</div>
+      <div class="book-author">${escHtml(b.a || '')}</div>
+      <div class="book-meta">
+        <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
+        <span class="book-category">${escHtml(b.cat)}</span>
+      </div>
+    </div>
   `).join('');
+  const info = document.getElementById('booksCount');
+  if (info) info.textContent = `Showing ${matches.length} books from ${name}`;
+  const btn = document.getElementById('loadMoreBtn');
+  if (btn) btn.style.display = 'none';
+  document.getElementById('featured').scrollIntoView({ behavior: 'smooth' });
 }
 
 // Called by Add to Cart buttons — reads data-* attrs from button element
@@ -1072,8 +1180,33 @@ PRODUCT_HTML = """<!DOCTYPE html>
 <title>Loading… — Ink &amp; Chai</title>
 <meta name="description" content="Buy books online at Ink &amp; Chai — fast pan-India delivery."/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script>
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
+  function toggleTheme() {
+    var cur = document.documentElement.getAttribute('data-theme');
+    var next = cur === 'light' ? '' : 'light';
+    if (next) document.documentElement.setAttribute('data-theme', next);
+    else      document.documentElement.removeAttribute('data-theme');
+    try { localStorage.setItem('iac_theme', next); } catch(e){}
+  }
+</script>
 <style>
 :root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
+html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#8a6a1f;--gold-light:#b8902c;--gold-dim:#6a4f10;--cream:#2a2018;--cream-dim:#5a4a38;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
+html[data-theme="light"] nav{background:rgba(250,247,242,0.97)!important}
+html[data-theme="light"] .prod-cover{background:#f0e8d4}
+html[data-theme="light"] .prod-cover img{box-shadow:0 12px 32px rgba(60,40,10,0.2)}
+html[data-theme="light"] .promo-banner{background:linear-gradient(90deg,#fff8e6,#fbeec8,#fff8e6);color:#5a4a18}
+html[data-theme="light"] .promo-banner code{background:rgba(138,106,31,0.12);color:#6a4f10;border-color:rgba(138,106,31,0.4)}
+html[data-theme="light"] .prod-bottom-bar{background:rgba(250,247,242,0.97)}
+html[data-theme="light"] .promise-box{background:rgba(138,106,31,0.06)}
+html[data-theme="light"] .prod-title{color:#1a1208}
+html[data-theme="light"] .prod-price{color:#6a4f10}
+.theme-toggle{background:transparent;border:1px solid var(--gold-dim);color:var(--gold);width:34px;height:34px;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:0.85rem;transition:all 0.3s;margin-right:0.4rem}
+.theme-toggle:hover{background:var(--gold);color:var(--bg);transform:rotate(20deg)}
+.theme-toggle .sun{display:none}
+html[data-theme="light"] .theme-toggle .moon{display:none}
+html[data-theme="light"] .theme-toggle .sun{display:inline}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
@@ -1257,6 +1390,7 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
   <a class="nav-logo" href="/">Ink &amp;<span> Chai</span></a>
   <a class="nav-back" href="javascript:history.back()">← Back to catalogue</a>
   <div style="display:flex;gap:1rem;align-items:center;">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
     <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
     <button class="btn-nav auth-nav-btn" id="authNavBtnProd" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
     <div class="nav-cart-wrap">
