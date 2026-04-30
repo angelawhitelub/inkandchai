@@ -577,6 +577,7 @@ HTML = r"""<!DOCTYPE html>
     <li><a href="#featured">Catalogue</a></li>
     <li><a href="#collections">Collections</a></li>
     <li><a href="#categories">Categories</a></li>
+    <li><a href="/track/">Track Order</a></li>
     <li><a href="/terms/">Terms</a></li>
     <li><a href="/privacy-policy/">Privacy</a></li>
     <li><a href="/refund-policy/">Refund</a></li>

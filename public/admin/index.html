@@ -428,13 +428,15 @@ function _drawTable() {
         <select class="status-sel" onchange="updateStatus('${esc(o.id)}',this.value)">
           <option value="">Update status…</option>
           <option value="confirmed">Confirmed</option>
-          <option value="shipped">Shipped</option>
-          <option value="delivered">Delivered</option>
+          <option value="shipped">📦 Shipped (will prompt for tracking)</option>
+          <option value="out_for_delivery">🚚 Out for Delivery</option>
+          <option value="delivered">✅ Delivered</option>
           <option value="paid">Paid</option>
           <option value="cod_pending">COD Pending</option>
           <option value="cancelled">Cancelled</option>
           <option value="refunded">Refunded</option>
         </select>
+        ${o.tracking_id ? `<div style="margin-top:0.4rem;font-size:0.6rem;color:var(--cream-dim);">${esc(o.courier_name||'')} · <a href="${esc(o.tracking_url||'#')}" target="_blank" style="color:var(--gold);font-family:Menlo,Consolas,monospace;">${esc(o.tracking_id)}</a></div>` : ''}
       </td>
       <td style="font-size:0.65rem;color:var(--cream-dim);max-width:200px;line-height:1.5;">
         ${esc(o.customer_address || '—')}
@@ -444,19 +446,43 @@ function _drawTable() {
 }
 
 // ── Update Status ──────────────────────────────────────────────────────────
+const COURIERS = ['BlueDart','DTDC','Delhivery','IndiaPost','EcomExpress','Shadowfax','XpressBees','Shiprocket','Professional'];
+
 async function updateStatus(id, status) {
   if (!status) return;
+
+  let tracking_id = '', courier_name = '';
+  if (status === 'shipped') {
+    courier_name = prompt('Courier name? (e.g. ' + COURIERS.join(' / ') + ')\n\nThis must match one of the supported names exactly so the customer\'s tracking link works.', 'Delhivery');
+    if (courier_name === null) return;  // user cancelled
+    tracking_id  = prompt('Tracking / AWB number?\n\nThis is the number the courier gave you. The customer will get an email with this and a link to track on the courier\'s website.', '');
+    if (tracking_id === null) return;   // cancelled
+    if (!tracking_id.trim()) { alert('Tracking ID is required when marking as shipped.'); return; }
+  }
+
   try {
     const res = await fetch('/.netlify/functions/update-order-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
-      body: JSON.stringify({ id, status }),
+      body: JSON.stringify({ id, status, tracking_id: tracking_id.trim(), courier_name: courier_name.trim() }),
     });
-    if (!res.ok) throw new Error('Update failed');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || ('HTTP ' + res.status));
+    }
+    const data = await res.json();
     const ord = allOrders.find(o => o.id === id);
-    if (ord) ord.status = status;
+    if (ord) {
+      ord.status = status;
+      if (tracking_id)  ord.tracking_id  = tracking_id.trim();
+      if (courier_name) ord.courier_name = courier_name.trim();
+      if (data.tracking_url) ord.tracking_url = data.tracking_url;
+    }
     updateStats();
     applyFilters();
+    if (status === 'shipped') {
+      alert(`✅ Marked shipped. Customer will receive an email with the tracking link.${data.tracking_url ? '\n\nCourier link: ' + data.tracking_url : ''}`);
+    }
   } catch (err) {
     alert('Could not update status: ' + err.message);
   }
