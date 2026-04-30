@@ -35,15 +35,22 @@ exports.handler = async (event) => {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-    // Look up by razorpay_order_id (the public-facing one we email)
+    // Look up by razorpay_order_id. Use select('*') so we don't depend on
+    // the tracking_id / courier_name / tracking_url / shipped_at columns
+    // existing yet — they're added by SQL_MIGRATIONS.md and we want this
+    // page to work even before the migration is run.
     const { data, error } = await supabase
       .from('orders')
-      .select('razorpay_order_id, status, customer_name, customer_email, customer_phone, customer_address, cart_items, amount_paise, created_at, shipped_at, courier_name, tracking_id, tracking_url, razorpay_payment_id')
+      .select('*')
       .eq('razorpay_order_id', id)
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
+    if (error) {
+      console.error('track-order Supabase error:', error);
+      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Database error: ' + error.message }) };
+    }
+    if (!data) {
       return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found. Check the order ID and try again.' }) };
     }
 

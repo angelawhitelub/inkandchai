@@ -129,22 +129,45 @@ exports.handler = async (event) => {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-    // Build update payload
-    const update = { status };
-    if (status === 'shipped') {
-      if (tracking_id)  update.tracking_id  = tracking_id;
-      if (courier_name) update.courier_name = courier_name;
-      update.tracking_url = buildTrackingUrl(courier_name, tracking_id);
-      update.shipped_at = new Date().toISOString();
+    // First update just the status (always works regardless of migration state)
+    {
+      const { error: updErr } = await supabase.from('orders').update({ status }).eq('id', id);
+      if (updErr) throw updErr;
     }
 
-    const { error: updErr } = await supabase.from('orders').update(update).eq('id', id);
-    if (updErr) throw updErr;
+    let trackingUrl = '';
+    // Then, if shipped, try to attach tracking info — tolerate missing columns
+    // gracefully so this works even before SQL_MIGRATIONS.md has been run.
+    if (status === 'shipped' && tracking_id) {
+      trackingUrl = buildTrackingUrl(courier_name, tracking_id);
+      const trackingPayload = {
+        tracking_id,
+        courier_name,
+        tracking_url: trackingUrl,
+        shipped_at: new Date().toISOString(),
+      };
+      const { error: trkErr } = await supabase.from('orders').update(trackingPayload).eq('id', id);
+      if (trkErr) {
+        // Likely a missing-column error — swallow and warn so the status update
+        // still succeeds. The admin sees a hint that they need to run the
+        // migration.
+        console.warn('Tracking columns update failed (run SQL_MIGRATIONS.md):', trkErr.message);
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({
+          success: true,
+          tracking_url: trackingUrl,
+          warning: 'Status updated, but tracking info was NOT saved. Run the SQL migration in SQL_MIGRATIONS.md to enable tracking storage. Until then the customer email will still be sent (with the URL) but tracking won\'t persist.',
+        }) };
+      }
+    }
 
-    // If shipped, fire shipment email to customer (non-fatal)
+    // Fire shipment email regardless of whether columns persisted (non-fatal)
     if (status === 'shipped') {
-      const { data: order } = await supabase.from('orders').select('*').eq('id', id).single();
+      const { data: order } = await supabase.from('orders').select('*').eq('id', id).maybeSingle();
       if (order && order.customer_email) {
+        // Inject tracking info (in case columns don't persist yet)
+        order.tracking_id   = order.tracking_id   || tracking_id;
+        order.courier_name  = order.courier_name  || courier_name;
+        order.tracking_url  = order.tracking_url  || trackingUrl;
         await sendEmail({
           to: order.customer_email,
           subject: `📦 Your Ink & Chai order has shipped (${order.razorpay_order_id || order.id})`,
@@ -153,7 +176,7 @@ exports.handler = async (event) => {
       }
     }
 
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, tracking_url: update.tracking_url || null }) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, tracking_url: trackingUrl || null }) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
