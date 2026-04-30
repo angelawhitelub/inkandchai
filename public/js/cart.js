@@ -53,12 +53,13 @@ function updateCartUI() {
   const total = cart.reduce((s, i) => s + i.qty, 0);
   const sum   = cart.reduce((s, i) => s + i.price * i.qty, 0);
 
-  // Nav badge
-  const badge = document.getElementById('cartBadge');
-  if (badge) {
-    badge.textContent = total > 0 ? total : '';
-    badge.style.display = total > 0 ? 'inline-flex' : 'none';
-  }
+  // Nav badge (desktop top + mobile bottom)
+  ['cartBadge', 'cartBadgeMobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = total > 0 ? total : '';
+    el.style.display = total > 0 ? 'inline-flex' : 'none';
+  });
 
   // Sidebar items
   const itemsEl = document.getElementById('cartItems');

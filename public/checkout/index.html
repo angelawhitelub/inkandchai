@@ -41,11 +41,22 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
 .form-group{margin-bottom:1rem;}
 label{display:block;font-size:0.56rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.45rem;}
-input{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;transition:border-color 0.2s;}
-input:focus{border-color:rgba(201,168,76,0.5);}
-input::placeholder{color:rgba(160,144,128,0.5);}
+input,textarea{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;transition:border-color 0.2s;-webkit-appearance:none;}
+input:focus,textarea:focus{border-color:rgba(201,168,76,0.5);}
+input::placeholder,textarea::placeholder{color:rgba(160,144,128,0.5);}
 input:disabled{background:var(--bg2);color:var(--gold-dim);cursor:not-allowed;}
 .pincode-row{display:grid;grid-template-columns:110px 1fr 1fr;gap:1rem;margin-bottom:0.3rem;}
+@media(max-width:700px){
+  /* iOS auto-zooms any input with text smaller than 16px — bumping up
+     prevents the form from looking comically huge after focus. */
+  input,textarea,select{font-size:16px!important;padding:0.7rem 0.9rem;}
+  label{font-size:0.62rem;margin-bottom:0.35rem;}
+  .form-row{grid-template-columns:1fr;gap:0;}
+  .pincode-row{grid-template-columns:110px 1fr;gap:0.7rem;}
+  main{padding:2rem 1rem 5rem;}
+  h1{font-size:1.7rem;margin-bottom:1.4rem;}
+  .order-summary{padding:1.2rem;}
+}
 .pin-msg{font-size:0.6rem;min-height:1.1em;margin-bottom:0.8rem;letter-spacing:0.04em;}
 .divider-label{display:flex;align-items:center;gap:1rem;margin:1.6rem 0 1.4rem;}
 .divider-label span{font-size:0.54rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold-dim);white-space:nowrap;}

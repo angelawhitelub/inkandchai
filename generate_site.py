@@ -292,7 +292,9 @@ HTML = r"""<!DOCTYPE html>
   .tab:hover { color: var(--gold-light); }
 
   /* Book grid */
-  .books-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
+  .books-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.4rem; }
+  @media(max-width:1100px){ .books-grid { grid-template-columns: repeat(4, 1fr); } }
+  @media(max-width:880px) { .books-grid { grid-template-columns: repeat(3, 1fr); } }
   .book-card { cursor: pointer; }
   .book-cover { aspect-ratio: 2/3; position: relative; overflow: hidden; margin-bottom: 1.2rem; border: 1px solid var(--border); background: #1a1208; }
   .book-cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.5s ease; }
@@ -304,7 +306,7 @@ HTML = r"""<!DOCTYPE html>
   .btn-add:hover { background: var(--gold-light); }
 
   /* Always-visible Add to Cart button below each book card */
-  .btn-add-card { width: 100%; margin-top: 0.7rem; font-family: 'Montserrat', sans-serif; font-size: 0.58rem; letter-spacing: 0.2em; text-transform: uppercase; padding: 0.65rem; background: transparent; color: var(--gold); border: 1px solid rgba(201,168,76,0.4); cursor: pointer; font-weight: 500; transition: all 0.25s; }
+  .btn-add-card { width: 100%; margin-top: 0.6rem; font-family: 'Montserrat', sans-serif; font-size: 0.54rem; letter-spacing: 0.18em; text-transform: uppercase; padding: 0.55rem 0.4rem; background: transparent; color: var(--gold); border: 1px solid rgba(201,168,76,0.4); cursor: pointer; font-weight: 500; transition: all 0.25s; }
   .btn-add-card:hover { background: var(--gold); color: var(--bg); border-color: var(--gold); }
   .btn-add-card:active { transform: scale(0.98); }
   html[data-theme="light"] .btn-add-card { color: var(--gold); border-color: rgba(138,106,31,0.4); }
@@ -313,12 +315,12 @@ HTML = r"""<!DOCTYPE html>
   /* "NEW" arrival ribbon */
   .new-badge { position: absolute; top: 8px; left: 8px; z-index: 5; background: linear-gradient(135deg, #d4584c, #b94236); color: #fff; font-size: 0.55rem; letter-spacing: 0.2em; font-weight: 600; padding: 0.3rem 0.6rem; font-family: 'Montserrat', sans-serif; box-shadow: 0 4px 10px rgba(185,66,54,0.45); animation: newPulse 2.4s ease-in-out infinite; }
   @keyframes newPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-  .book-name { font-family: 'Cormorant Garamond', serif; font-size: 1.05rem; font-weight: 400; color: var(--cream); margin-bottom: 0.25rem; line-height: 1.3; }
-  .book-author { font-size: 0.62rem; color: var(--cream-dim); letter-spacing: 0.1em; margin-bottom: 0.6rem; }
-  .book-meta { display: flex; justify-content: space-between; align-items: baseline; }
-  .book-price { font-family: 'Cormorant Garamond', serif; font-size: 1.15rem; color: var(--gold); font-weight: 600; }
-  .book-orig-price { font-size: 0.72rem; color: var(--cream-dim); text-decoration: line-through; margin-left: 0.4rem; }
-  .book-category { font-size: 0.55rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold-dim); }
+  .book-name { font-family: 'Cormorant Garamond', serif; font-size: 0.92rem; font-weight: 400; color: var(--cream); margin-bottom: 0.2rem; line-height: 1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:2.3em; }
+  .book-author { font-size: 0.58rem; color: var(--cream-dim); letter-spacing: 0.08em; margin-bottom: 0.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .book-meta { display: flex; justify-content: space-between; align-items: baseline; gap:0.4rem; }
+  .book-price { font-family: 'Cormorant Garamond', serif; font-size: 1rem; color: var(--gold); font-weight: 600; white-space:nowrap; }
+  .book-orig-price { font-size: 0.65rem; color: var(--cream-dim); text-decoration: line-through; margin-left: 0.3rem; }
+  .book-category { font-size: 0.5rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%; }
 
   /* Wishlist button on book cards */
   .wish-btn { position:absolute; top:0.5rem; right:0.5rem; background:rgba(13,11,8,0.7); border:none; color:var(--cream-dim); font-size:1rem; width:30px; height:30px; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.2s; z-index:2; border-radius:0; }
@@ -463,9 +465,9 @@ HTML = r"""<!DOCTYPE html>
   @media (max-width:640px) { .prod-inner { grid-template-columns:1fr; } .prod-img-col { min-height:220px; } }
 
   /* CART SIDEBAR */
-  .cart-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:400; opacity:0; pointer-events:none; transition:opacity 0.35s; }
+  .cart-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9990; opacity:0; pointer-events:none; transition:opacity 0.35s; }
   .cart-overlay.show { opacity:1; pointer-events:all; }
-  .cart-sidebar { position:fixed; top:0; right:0; bottom:0; width:min(420px,100vw); background:var(--bg3); border-left:1px solid var(--border); z-index:500; transform:translateX(100%); transition:transform 0.35s cubic-bezier(0.4,0,0.2,1); display:flex; flex-direction:column; }
+  .cart-sidebar { position:fixed; top:0; right:0; bottom:0; width:min(420px,100vw); background:var(--bg3); border-left:1px solid var(--border); z-index:10001; transform:translateX(100%); transition:transform 0.35s cubic-bezier(0.4,0,0.2,1); display:flex; flex-direction:column; }
   .cart-sidebar.open { transform:translateX(0); }
   .cart-header { display:flex; justify-content:space-between; align-items:center; padding:1.6rem 1.8rem; border-bottom:1px solid var(--border); }
   .cart-title { font-family:'Cormorant Garamond',serif; font-size:1.4rem; font-weight:400; color:var(--white); }
@@ -526,7 +528,19 @@ HTML = r"""<!DOCTYPE html>
   .wa-float{position:fixed;bottom:22px;left:22px;width:54px;height:54px;border-radius:50%;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.7rem;box-shadow:0 6px 20px rgba(37,211,102,0.45);z-index:250;cursor:pointer;text-decoration:none;transition:transform 0.2s,box-shadow 0.2s;animation:waPulse 2.6s ease-in-out infinite}
   .wa-float:hover{transform:scale(1.08);box-shadow:0 8px 28px rgba(37,211,102,0.6)}
   @keyframes waPulse{0%,100%{box-shadow:0 6px 20px rgba(37,211,102,0.45)}50%{box-shadow:0 6px 28px rgba(37,211,102,0.7),0 0 0 8px rgba(37,211,102,0.15)}}
-  @media(max-width:780px){.wa-float{bottom:84px;left:14px;width:48px;height:48px;font-size:1.5rem}}
+  @media(max-width:780px){.wa-float{bottom:88px;left:14px;width:46px;height:46px;font-size:1.3rem}}
+
+  /* MOBILE BOTTOM NAV — Home · Orders · Cart (mobile only) */
+  .mob-nav{display:none}
+  @media(max-width:780px){
+    .mob-nav{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(13,11,8,0.97);border-top:1px solid rgba(201,168,76,0.25);padding:0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom,0px));backdrop-filter:blur(14px);box-shadow:0 -4px 20px rgba(0,0,0,0.4)}
+    body{padding-bottom:64px}
+  }
+  html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-color:rgba(138,106,31,0.3)}
+  .mob-nav a,.mob-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0.45rem 0;background:transparent;border:none;color:var(--cream-dim);font-family:'Montserrat',sans-serif;font-size:0.55rem;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:color 0.2s;position:relative}
+  .mob-nav a:hover,.mob-nav button:hover,.mob-nav a:active,.mob-nav button:active{color:var(--gold)}
+  .mob-nav .mn-icon{font-size:1.25rem;line-height:1}
+  .mob-nav .mn-badge{position:absolute;top:0;right:calc(50% - 18px);background:var(--gold);color:var(--bg);border-radius:50%;width:16px;height:16px;font-size:0.55rem;font-weight:600;display:flex;align-items:center;justify-content:center;letter-spacing:0}
 
   /* Trust strip — Why Choose Ink & Chai */
   .trust-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem;max-width:1200px;margin:0 auto;padding:2.5rem 2rem;border-bottom:1px solid var(--border)}
@@ -549,6 +563,13 @@ HTML = r"""<!DOCTYPE html>
 <a class="wa-float" href="https://wa.me/919625836117?text=Hi%20Ink%20%26%20Chai%2C%20I%20have%20a%20question%20about%20a%20book." target="_blank" rel="noopener" title="Chat with us on WhatsApp" aria-label="WhatsApp support">
   <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
 </a>
+
+<!-- Mobile bottom nav (mobile only via CSS) -->
+<nav class="mob-nav" aria-label="Mobile navigation">
+  <a href="/" title="Home"><span class="mn-icon">⌂</span><span>Home</span></a>
+  <button onclick="window.IAC ? IAC.openMyOrders() : null" title="My Orders"><span class="mn-icon">📦</span><span>Orders</span></button>
+  <button onclick="openCart()" title="Cart"><span class="mn-icon">🛒</span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></button>
+</nav>
 
 <nav>
   <a class="nav-logo" href="#">Ink &amp;<span> Chai</span></a>
@@ -1404,9 +1425,9 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 .rel-price{font-size:0.85rem;color:var(--gold)}
 
 /* CART SIDEBAR (same as homepage) */
-.cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:400;opacity:0;pointer-events:none;transition:opacity 0.35s}
+.cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9990;opacity:0;pointer-events:none;transition:opacity 0.35s}
 .cart-overlay.show{opacity:1;pointer-events:all}
-.cart-sidebar{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);background:var(--bg3);border-left:1px solid var(--border);z-index:500;transform:translateX(100%);transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column}
+.cart-sidebar{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);background:var(--bg3);border-left:1px solid var(--border);z-index:10001;transform:translateX(100%);transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column}
 .cart-sidebar.open{transform:translateX(0)}
 .cart-header{display:flex;justify-content:space-between;align-items:center;padding:1.6rem 1.8rem;border-bottom:1px solid var(--border)}
 .cart-title{font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;color:var(--white)}
@@ -1463,6 +1484,13 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 <a class="wa-float" href="https://wa.me/919625836117?text=Hi%20Ink%20%26%20Chai%2C%20I%20have%20a%20question%20about%20a%20book." target="_blank" rel="noopener" title="Chat with us on WhatsApp" aria-label="WhatsApp support">
   <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
 </a>
+
+<!-- Mobile bottom nav (mobile only) -->
+<nav class="mob-nav" aria-label="Mobile navigation">
+  <a href="/" title="Home"><span class="mn-icon">⌂</span><span>Home</span></a>
+  <button onclick="window.IAC ? IAC.openMyOrders() : null" title="My Orders"><span class="mn-icon">📦</span><span>Orders</span></button>
+  <button onclick="openCart()" title="Cart"><span class="mn-icon">🛒</span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></button>
+</nav>
 
 <!-- POLICY BAR -->
 <div style="background:#1a1612;border-bottom:1px solid rgba(201,168,76,0.12);padding:0.4rem 4rem;display:flex;gap:2rem;justify-content:flex-end;flex-wrap:wrap;">
@@ -1942,11 +1970,22 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
 .form-group{margin-bottom:1rem;}
 label{display:block;font-size:0.56rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.45rem;}
-input{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;transition:border-color 0.2s;}
-input:focus{border-color:rgba(201,168,76,0.5);}
-input::placeholder{color:rgba(160,144,128,0.5);}
+input,textarea{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;transition:border-color 0.2s;-webkit-appearance:none;}
+input:focus,textarea:focus{border-color:rgba(201,168,76,0.5);}
+input::placeholder,textarea::placeholder{color:rgba(160,144,128,0.5);}
 input:disabled{background:var(--bg2);color:var(--gold-dim);cursor:not-allowed;}
 .pincode-row{display:grid;grid-template-columns:110px 1fr 1fr;gap:1rem;margin-bottom:0.3rem;}
+@media(max-width:700px){
+  /* iOS auto-zooms any input with text smaller than 16px — bumping up
+     prevents the form from looking comically huge after focus. */
+  input,textarea,select{font-size:16px!important;padding:0.7rem 0.9rem;}
+  label{font-size:0.62rem;margin-bottom:0.35rem;}
+  .form-row{grid-template-columns:1fr;gap:0;}
+  .pincode-row{grid-template-columns:110px 1fr;gap:0.7rem;}
+  main{padding:2rem 1rem 5rem;}
+  h1{font-size:1.7rem;margin-bottom:1.4rem;}
+  .order-summary{padding:1.2rem;}
+}
 .pin-msg{font-size:0.6rem;min-height:1.1em;margin-bottom:0.8rem;letter-spacing:0.04em;}
 .divider-label{display:flex;align-items:center;gap:1rem;margin:1.6rem 0 1.4rem;}
 .divider-label span{font-size:0.54rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold-dim);white-space:nowrap;}
@@ -2437,11 +2476,25 @@ html[data-theme="light"] .promo-banner{background:linear-gradient(90deg,#fff8e6,
 html[data-theme="light"] .promo-banner code{background:rgba(138,106,31,0.12);color:#6a4f10;border-color:rgba(138,106,31,0.4)}
 .wa-float{position:fixed;bottom:22px;left:22px;width:54px;height:54px;border-radius:50%;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(37,211,102,0.45);z-index:250;cursor:pointer;text-decoration:none;transition:transform 0.2s}
 .wa-float:hover{transform:scale(1.08)}
-@media(max-width:780px){.wa-float{bottom:84px;left:14px;width:48px;height:48px}}
+@media(max-width:780px){.wa-float{bottom:88px;left:14px;width:46px;height:46px}}
+.mob-nav{display:none}
+@media(max-width:780px){
+  .mob-nav{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(13,11,8,0.97);border-top:1px solid rgba(201,168,76,0.25);padding:0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom,0px));backdrop-filter:blur(14px);box-shadow:0 -4px 20px rgba(0,0,0,0.4)}
+  body{padding-bottom:64px}
+}
+html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-color:rgba(138,106,31,0.3)}
+.mob-nav a,.mob-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0.45rem 0;background:transparent;border:none;color:var(--cream-dim);font-family:'Montserrat',sans-serif;font-size:0.55rem;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:color 0.2s}
+.mob-nav a:active,.mob-nav button:active{color:var(--gold)}
+.mob-nav .mn-icon{font-size:1.25rem;line-height:1}
 </style>
 </head>
 <body>
 <div class="promo-banner"><strong>✦ FLAT 10% OFF</strong> on prepaid orders above ₹499 &nbsp;·&nbsp; Free shipping pan-India &nbsp;<code>USE: INKLOVE10</code></div>
+<nav class="mob-nav" aria-label="Mobile navigation">
+  <a href="/" title="Home"><span class="mn-icon">⌂</span><span>Home</span></a>
+  <a href="/" title="My Orders"><span class="mn-icon">📦</span><span>Orders</span></a>
+  <a href="/" title="Cart"><span class="mn-icon">🛒</span><span>Cart</span></a>
+</nav>
 <a class="wa-float" href="https://wa.me/919625836117" target="_blank" rel="noopener" title="Chat on WhatsApp"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
 <nav>
   <a class="nav-logo" href="/">Ink &amp;<span> Chai</span></a>
