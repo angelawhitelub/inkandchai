@@ -118,7 +118,7 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 .btn-share:hover{color:var(--gold)}
 
 /* MOBILE BOTTOM BAR */
-.prod-bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:300;background:rgba(13,11,8,0.97);border-top:1px solid rgba(201,168,76,0.25);padding:0.75rem 1rem;gap:0.6rem;align-items:center;backdrop-filter:blur(16px)}
+.prod-bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:rgba(13,11,8,0.98);border-top:1px solid rgba(201,168,76,0.3);padding:0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom,0px));gap:0.6rem;align-items:center;backdrop-filter:blur(16px);box-shadow:0 -8px 24px rgba(0,0,0,0.5)}
 .pbb-cart{flex:1;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid rgba(201,168,76,0.4);cursor:pointer;font-weight:500;transition:all 0.2s}
 .pbb-buy{flex:1.5;font-family:'Montserrat',sans-serif;font-size:0.63rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:700;transition:all 0.2s}
 .pbb-cart:active{background:var(--gold);color:var(--bg)}
@@ -142,6 +142,40 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 .promise-box-title{font-size:0.56rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold);margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem}
 .promise-box-text{font-size:0.76rem;color:var(--cream-dim);line-height:1.75}
 .promise-box-text strong{color:var(--cream)}
+
+/* FREQUENTLY BOUGHT TOGETHER */
+.fbt{max-width:1100px;margin:2.5rem auto 0;padding:0 2rem}
+.fbt-title{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:400;color:var(--white);margin-bottom:1.4rem}
+.fbt-title em{font-style:italic;color:var(--gold-light)}
+.fbt-box{background:var(--bg2);border:1px solid var(--border);padding:1.6rem}
+html[data-theme="light"] .fbt-box{background:var(--bg3)}
+.fbt-row{display:flex;align-items:center;gap:1rem;padding:0.8rem 0;border-bottom:1px solid var(--border)}
+.fbt-row:last-child{border-bottom:none}
+.fbt-check{flex-shrink:0;width:22px;height:22px;cursor:pointer;accent-color:var(--gold)}
+.fbt-thumb{width:54px;aspect-ratio:2/3;flex-shrink:0;background:var(--bg);border:1px solid var(--border);overflow:hidden;cursor:pointer}
+.fbt-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.fbt-info{flex:1;min-width:0;cursor:pointer}
+.fbt-name{font-family:'Cormorant Garamond',serif;font-size:0.95rem;color:var(--cream);line-height:1.3;margin-bottom:0.2rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fbt-author{font-size:0.65rem;color:var(--cream-dim);letter-spacing:0.05em}
+.fbt-pricecol{font-family:'Cormorant Garamond',serif;text-align:right;flex-shrink:0}
+.fbt-price{font-size:1rem;color:var(--gold);font-weight:600}
+.fbt-orig{display:block;font-size:0.7rem;color:var(--cream-dim);text-decoration:line-through;font-weight:400}
+.fbt-current{background:rgba(201,168,76,0.08);padding:0.2rem 0.5rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-left:0.6rem;border:1px solid rgba(201,168,76,0.3)}
+.fbt-summary{display:flex;justify-content:space-between;align-items:center;margin-top:1.2rem;padding-top:1rem;border-top:1px dashed var(--border);flex-wrap:wrap;gap:1rem}
+.fbt-total{font-family:'Cormorant Garamond',serif}
+.fbt-total-label{font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.2rem;display:block}
+.fbt-total-amt{font-size:1.6rem;color:var(--gold);font-weight:600}
+.fbt-total-orig{font-size:0.85rem;color:var(--cream-dim);text-decoration:line-through;margin-left:0.6rem;font-weight:400}
+.fbt-cta{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.95rem 1.6rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:600;transition:all 0.25s}
+.fbt-cta:hover{background:var(--gold-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.25)}
+@media(max-width:780px){
+  .fbt{padding:0 1rem}
+  .fbt-thumb{width:42px}
+  .fbt-name{font-size:0.82rem}
+  .fbt-price{font-size:0.9rem}
+  .fbt-total-amt{font-size:1.3rem}
+  .fbt-cta{width:100%}
+}
 
 /* RELATED */
 .related{max-width:1100px;margin:0 auto;padding:0 2rem 6rem}
@@ -243,6 +277,7 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 
 <!-- PRODUCT CONTENT (rendered by JS) -->
 <div id="productContent"></div>
+<div id="fbtContent"></div>
 <div id="relatedContent"></div>
 
 <!-- CART OVERLAY + SIDEBAR -->
@@ -468,6 +503,107 @@ function shareBook() {
   }
 }
 
+// ── Frequently Bought Together ────────────────────────────────────────────
+// Picks 2 deterministic same-category companions and shows them with
+// checkboxes + bundle price + "Add Bundle to Cart".
+function renderFBT(b) {
+  const same = BOOKS.filter(x => x.cat === b.cat && x.url !== b.url && x.img && x.p);
+  if (same.length < 2) {
+    // Try same tab if same category is too sparse
+    const fallback = BOOKS.filter(x => x.tab === b.tab && x.url !== b.url && x.img && x.p);
+    if (fallback.length < 2) { document.getElementById('fbtContent').innerHTML = ''; return; }
+    same.push(...fallback.filter(x => !same.includes(x)));
+  }
+  // Pick 2 deterministically (based on slug hash) so a given product always shows
+  // the same companions — looks reliable, not random.
+  const hash = (b.slug || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const pick = (offset) => same[(hash + offset) % same.length];
+  const pair = [pick(7), pick(13)].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i);
+  if (pair.length < 1) { document.getElementById('fbtContent').innerHTML = ''; return; }
+
+  // Stash full items on window so the button handler can read them
+  const items = [b, ...pair];
+  window.__fbtItems = items;
+
+  const priceOf = it => parseFloat((it.p || '').replace(/[^0-9.]/g, '')) || 0;
+  const origOf  = it => parseFloat((it.op || '').replace(/[^0-9.]/g, '')) || 0;
+
+  const rowHtml = (it, idx, isCurrent) => `
+    <div class="fbt-row">
+      <input type="checkbox" class="fbt-check" data-idx="${idx}" ${idx === 0 || true ? 'checked' : ''} onchange="updateFBTTotal()">
+      <a class="fbt-thumb" href="${idx === 0 ? '#' : '/product/?id=' + it.slug}" onclick="${idx === 0 ? 'event.preventDefault();' : ''}">
+        <img src="${esc(it.img)}" alt="${esc(it.t)}" loading="lazy"/>
+      </a>
+      <div class="fbt-info" onclick="${idx === 0 ? '' : `location.href='/product/?id=${it.slug}'`}">
+        <div class="fbt-name">${esc(it.t)}${isCurrent ? '<span class="fbt-current">This item</span>' : ''}</div>
+        <div class="fbt-author">${esc(it.a || '')}</div>
+      </div>
+      <div class="fbt-pricecol">
+        <span class="fbt-price">${esc(it.p)}</span>
+        ${it.op ? `<span class="fbt-orig">${esc(it.op)}</span>` : ''}
+      </div>
+    </div>`;
+
+  document.getElementById('fbtContent').innerHTML = `
+    <section class="fbt">
+      <h2 class="fbt-title">Frequently bought <em>together</em></h2>
+      <div class="fbt-box">
+        ${items.map((it, i) => rowHtml(it, i, i === 0)).join('')}
+        <div class="fbt-summary">
+          <div class="fbt-total">
+            <span class="fbt-total-label">Bundle Total</span>
+            <span class="fbt-total-amt" id="fbtTotal">₹ ${priceOf(items[0]) + priceOf(items[1] || {p:'0'}) + priceOf(items[2] || {p:'0'})}</span>
+            <span class="fbt-total-orig" id="fbtTotalOrig"></span>
+          </div>
+          <button class="fbt-cta" onclick="addBundleToCart()">+ Add Bundle to Cart</button>
+        </div>
+      </div>
+    </section>`;
+  updateFBTTotal();
+}
+
+function updateFBTTotal() {
+  const items = window.__fbtItems || [];
+  const checks = document.querySelectorAll('.fbt-check');
+  let total = 0, totalOrig = 0;
+  checks.forEach(c => {
+    if (c.checked) {
+      const it = items[parseInt(c.dataset.idx)];
+      if (!it) return;
+      total     += parseFloat((it.p  || '').replace(/[^0-9.]/g, '')) || 0;
+      totalOrig += parseFloat((it.op || '').replace(/[^0-9.]/g, '')) || 0;
+    }
+  });
+  const amtEl  = document.getElementById('fbtTotal');
+  const origEl = document.getElementById('fbtTotalOrig');
+  if (amtEl)  amtEl.textContent  = '₹ ' + total.toLocaleString('en-IN');
+  if (origEl) origEl.innerHTML   = (totalOrig > total) ? `₹ ${totalOrig.toLocaleString('en-IN')}` : '';
+}
+
+function addBundleToCart() {
+  const items = window.__fbtItems || [];
+  const checks = document.querySelectorAll('.fbt-check');
+  let added = 0;
+  const CART_KEY = 'akshar_cart';
+  const cart = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
+  checks.forEach(c => {
+    if (!c.checked) return;
+    const it = items[parseInt(c.dataset.idx)];
+    if (!it) return;
+    const price = parseFloat((it.p || '').replace(/[^0-9.]/g, '')) || 0;
+    const id = it.url || it.slug;
+    const existing = cart.find(x => x.id === id);
+    if (existing) { existing.qty += 1; }
+    else { cart.push({ id, title: it.t, author: it.a || '', price, img: it.img || '', url: it.url || '', qty: 1 }); }
+    added++;
+  });
+  if (!added) { showToast?.('Select at least one book'); return; }
+  localStorage.setItem(CART_KEY, JSON.stringify(cart));
+  if (window.refreshCart) refreshCart();
+  if (window.openCart)    openCart();
+  if (window.showToast)   showToast(`${added} books added to cart 🎉`);
+}
+
 // ── Related books ─────────────────────────────────────────────────────────
 function renderRelated(b) {
   const related = BOOKS.filter(x => x.cat === b.cat && x.url !== b.url).slice(0, 4);
@@ -524,6 +660,7 @@ const book    = slug ? BOOK_MAP[slug] : null;
 
 if (book) {
   renderProduct(book);
+  renderFBT(book);
   renderRelated(book);
 } else {
   document.getElementById('productContent').innerHTML = `
