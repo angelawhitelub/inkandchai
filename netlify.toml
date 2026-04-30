@@ -35,23 +35,7 @@
     Referrer-Policy        = "strict-origin-when-cross-origin"
     Permissions-Policy     = "geolocation=(), microphone=()"
 
-# Cache images aggressively, HTML never
-[[headers]]
-  for = "*.jpg"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "*.png"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/index.html"
-  [headers.values]
-    Cache-Control = "no-cache"
-
-[[headers]]
-  for = "/*.js"
-  [headers.values]
-    Cache-Control = "public, max-age=86400"
+# Cache headers are managed by public/_headers — that file uses Netlify's
+# native syntax which has reliable glob matching across subfolders. The TOML
+# [[headers]] rules below ONLY had path-matching bugs (e.g. for="/index.html"
+# missed /product/index.html etc.) and are intentionally omitted here.
