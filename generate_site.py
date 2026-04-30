@@ -4,8 +4,13 @@ embedded from the 99bookstores scrape at ~/InkAndChaiBooks/ALL_BOOKS.json.
 """
 
 import json, re
+from datetime import datetime, timedelta
 from pathlib import Path
 from collections import Counter, defaultdict
+
+# Anything scraped within the last NEW_ARRIVAL_DAYS is flagged as a new arrival.
+NEW_ARRIVAL_DAYS = 30
+_new_cutoff = (datetime.utcnow() - timedelta(days=NEW_ARRIVAL_DAYS)).isoformat()
 
 def make_slug(title, shopify_id):
     """Generate a clean URL slug from title + last 5 chars of shopify_id."""
@@ -77,6 +82,13 @@ for b in books:
     except Exception:
         orig_str = ""
 
+    scraped = b.get("scraped_at", "")
+    sid     = str(b.get("shopify_id") or "")
+    # New-arrival rule: manually-curated additions (CUSTOM-…) OR anything
+    # scraped strictly AFTER the bulk import date.
+    BULK_IMPORT_DATE = "2026-04-23"  # bulk scrape was 2026-04-22
+    is_new = 1 if (sid.startswith("CUSTOM-") or (scraped and scraped[:10] >= BULK_IMPORT_DATE)) else 0
+
     slim.append({
         "t":    b["title"][:80],
         "a":    b.get("author", "")[:50],
@@ -90,9 +102,16 @@ for b in books:
         "desc": (b.get("description") or "")[:800],
         "isbn": b.get("isbn", ""),
         "pub":  b.get("publisher", ""),
+        "n":    is_new,            # 1 = New Arrival
+        "ts":   scraped,           # so we can sort newest-first when needed
     })
 
+# Put new arrivals at the very front so they're discoverable on first scroll
+slim.sort(key=lambda x: (-x["n"], -(x["ts"] or "")[:19].count("0")))  # new first
+
 books_js = json.dumps(slim, ensure_ascii=False)
+new_count = sum(b["n"] for b in slim)
+print(f"New arrivals (last {NEW_ARRIVAL_DAYS} days): {new_count}")
 
 # ── Real collection cards (top 5 by unique count) ───────────────────────────
 cat_counts = Counter(b["category"] for b in books)
@@ -283,6 +302,17 @@ HTML = r"""<!DOCTYPE html>
   .book-cover-title { font-family: 'Cormorant Garamond', serif; font-size: 0.9rem; color: var(--white); text-align: center; line-height: 1.3; }
   .btn-add { font-size: 0.58rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--bg); background: var(--gold); border: none; padding: 0.7rem 1.4rem; cursor: pointer; font-family: 'Montserrat', sans-serif; font-weight: 500; transition: background 0.3s; }
   .btn-add:hover { background: var(--gold-light); }
+
+  /* Always-visible Add to Cart button below each book card */
+  .btn-add-card { width: 100%; margin-top: 0.7rem; font-family: 'Montserrat', sans-serif; font-size: 0.58rem; letter-spacing: 0.2em; text-transform: uppercase; padding: 0.65rem; background: transparent; color: var(--gold); border: 1px solid rgba(201,168,76,0.4); cursor: pointer; font-weight: 500; transition: all 0.25s; }
+  .btn-add-card:hover { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+  .btn-add-card:active { transform: scale(0.98); }
+  html[data-theme="light"] .btn-add-card { color: var(--gold); border-color: rgba(138,106,31,0.4); }
+  html[data-theme="light"] .btn-add-card:hover { background: var(--gold); color: #fff; }
+
+  /* "NEW" arrival ribbon */
+  .new-badge { position: absolute; top: 8px; left: 8px; z-index: 5; background: linear-gradient(135deg, #d4584c, #b94236); color: #fff; font-size: 0.55rem; letter-spacing: 0.2em; font-weight: 600; padding: 0.3rem 0.6rem; font-family: 'Montserrat', sans-serif; box-shadow: 0 4px 10px rgba(185,66,54,0.45); animation: newPulse 2.4s ease-in-out infinite; }
+  @keyframes newPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
   .book-name { font-family: 'Cormorant Garamond', serif; font-size: 1.05rem; font-weight: 400; color: var(--cream); margin-bottom: 0.25rem; line-height: 1.3; }
   .book-author { font-size: 0.62rem; color: var(--cream-dim); letter-spacing: 0.1em; margin-bottom: 0.6rem; }
   .book-meta { display: flex; justify-content: space-between; align-items: baseline; }
@@ -648,6 +678,7 @@ HTML = r"""<!DOCTYPE html>
       <h2 class="section-title">Featured <em>Titles</em></h2>
       <div class="tabs">
         <button class="tab active" data-tab="All"           onclick="setTab(this)">All</button>
+        <button class="tab"        data-tab="New"           onclick="setTab(this)">✨ New Arrivals</button>
         <button class="tab"        data-tab="Fiction"       onclick="setTab(this)">Fiction</button>
         <button class="tab"        data-tab="Non-Fiction"   onclick="setTab(this)">Non-Fiction</button>
         <button class="tab"        data-tab="Poetry"        onclick="setTab(this)">Poetry</button>
@@ -832,7 +863,9 @@ let visibleCount = PAGE_SIZE;
 function filteredBooks() {
   const q = currentQuery.toLowerCase();
   return BOOKS.filter(b => {
-    const tabOk  = currentTab === 'All' || b.tab === currentTab;
+    const tabOk  = currentTab === 'All'
+                || (currentTab === 'New' && b.n === 1)
+                || b.tab === currentTab;
     const queryOk = !q || b.t.toLowerCase().includes(q) || (b.a && b.a.toLowerCase().includes(q));
     return tabOk && queryOk;
   });
@@ -847,19 +880,11 @@ function renderBooks() {
     const wishlisted = window.isWishlisted ? isWishlisted(b.url) : false;
     const priceNum = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
     return `
-    <div class="book-card" onclick="location.href='/product/?id=${b.slug}'" style="cursor:pointer;">
-      <div class="book-cover" style="position:relative;">
+    <div class="book-card" style="cursor:pointer;">
+      <div class="book-cover" style="position:relative;" onclick="location.href='/product/?id=${b.slug}'">
+        ${b.n ? '<span class="new-badge">NEW</span>' : ''}
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
              onerror="this.style.display='none'" />
-        <div class="book-cover-overlay">
-          <div class="book-cover-title">${escHtml(b.t)}</div>
-          <button class="btn-add" onclick="event.stopPropagation(); addToCartById(this)"
-            data-url="${escHtml(b.url)}"
-            data-title="${escHtml(b.t)}"
-            data-author="${escHtml(b.a||'')}"
-            data-price="${priceNum}"
-            data-img="${escHtml(b.img)}">Add to Cart</button>
-        </div>
         <button class="wish-btn ${wishlisted ? 'wishlisted' : ''}"
           data-url="${escHtml(b.url)}"
           title="${wishlisted ? 'Remove from wishlist' : 'Save to wishlist'}"
@@ -867,12 +892,18 @@ function renderBooks() {
           ${wishlisted ? '♥' : '♡'}
         </button>
       </div>
-      <div class="book-name">${escHtml(b.t)}</div>
-      <div class="book-author">${escHtml(b.a || '')}</div>
+      <div class="book-name" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.t)}</div>
+      <div class="book-author" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
       </div>
+      <button class="btn-add-card" onclick="event.stopPropagation(); addToCartById(this)"
+        data-url="${escHtml(b.url)}"
+        data-title="${escHtml(b.t)}"
+        data-author="${escHtml(b.a||'')}"
+        data-price="${priceNum}"
+        data-img="${escHtml(b.img)}">+ Add to Cart</button>
     </div>`;
   }).join('');
 
@@ -1049,25 +1080,23 @@ function renderBooksForCat(cat) {
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
   grid.innerHTML = slice.map(b => `
-    <div class="book-card" onclick="location.href='/product/?id=${b.slug}'" style="cursor:pointer;">
-      <div class="book-cover">
+    <div class="book-card" style="cursor:pointer;">
+      <div class="book-cover" onclick="location.href='/product/?id=${b.slug}'" style="position:relative;">
+        ${b.n ? '<span class="new-badge">NEW</span>' : ''}
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
-        <div class="book-cover-overlay">
-          <div class="book-cover-title">${escHtml(b.t)}</div>
-          <button class="btn-add" onclick="event.stopPropagation(); addToCartById(this)"
-            data-url="${escHtml(b.url)}"
-            data-title="${escHtml(b.t)}"
-            data-author="${escHtml(b.a||'')}"
-            data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
-            data-img="${escHtml(b.img)}">Add to Cart</button>
-        </div>
       </div>
-      <div class="book-name">${escHtml(b.t)}</div>
-      <div class="book-author">${escHtml(b.a || '')}</div>
+      <div class="book-name" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.t)}</div>
+      <div class="book-author" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
       </div>
+      <button class="btn-add-card" onclick="event.stopPropagation(); addToCartById(this)"
+        data-url="${escHtml(b.url)}"
+        data-title="${escHtml(b.t)}"
+        data-author="${escHtml(b.a||'')}"
+        data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
+        data-img="${escHtml(b.img)}">+ Add to Cart</button>
     </div>
   `).join('');
   const btn = document.getElementById('loadMoreBtn');
