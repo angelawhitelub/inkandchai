@@ -104,21 +104,33 @@ TOP_CATS = [
     ("Mythology & Spirituality", ["mythology", "best of spirituality and mythology", "spirituality", "amish tripathi books"]),
 ]
 
+def slugify(s):
+    return "".join(c if c.isalnum() else "-" for c in s.lower()).strip("-").replace("--","-")
+
 coll_data = []
 for name, cats in TOP_CATS:
     total = sum(cat_counts.get(c.title(), 0) + cat_counts.get(c, 0)
                 for c in cats)
-    # Pick a sample book image from any of the collection's categories for the thumbnail
+    # Pick a sample book image from any of the collection's categories for the thumbnail.
+    # NOTE: raw books use 'image_url'; the slim/JS version is renamed to 'img'.
     thumb = ""
     for c in cats:
+        cl = c.lower()
         for b in books:
             bcat = (b.get("category") or "").lower()
-            if bcat == c.lower() and b.get("img"):
-                thumb = b["img"]
+            url  = b.get("image_url") or b.get("img") or ""
+            if bcat == cl and url:
+                thumb = url
                 break
         if thumb:
             break
-    coll_data.append({"name": name, "count": max(total, 1), "cats": cats, "thumb": thumb})
+    coll_data.append({
+        "name": name,
+        "slug": slugify(name),
+        "count": max(total, 1),
+        "cats": cats,
+        "thumb": thumb,
+    })
 
 # ── All categories list (for category browser) ───────────────────────────────
 # Use cat_counts but skip very small or duplicate-ish collections
@@ -879,14 +891,12 @@ function renderCollections() {
     'Anime, graphic novels, and sequential art from East and West.',
     'Epics, gods, and the stories that shaped civilisations.',
   ];
-  document.getElementById('collectionsGrid').innerHTML = COLLECTIONS.map((c, i) => {
-    const catsAttr = encodeURIComponent(JSON.stringify(c.cats || []));
-    return `
-    <div class="coll-card ${i === 0 ? 'large' : ''}" onclick="openCollection('${catsAttr}','${escHtml(c.name)}')" role="button" tabindex="0">
+  document.getElementById('collectionsGrid').innerHTML = COLLECTIONS.map((c, i) => `
+    <a class="coll-card ${i === 0 ? 'large' : ''}" href="/collection/?id=${encodeURIComponent(c.slug || '')}" style="text-decoration:none;color:inherit;">
       <div class="coll-inner">
         <div class="coll-bg ${bgClasses[i]}"></div>
         <div class="coll-overlay"></div>
-        ${c.thumb ? `<img class="coll-thumb" src="${escHtml(c.thumb)}" alt="${escHtml(c.name)} thumbnail" loading="lazy" onerror="this.style.display='none'"/>` : ''}
+        ${c.thumb ? `<img class="coll-thumb" src="${escHtml(c.thumb)}" alt="${escHtml(c.name)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}
         <div class="coll-content">
           <div class="coll-count">${c.count} Titles</div>
           <div class="coll-name">${escHtml(c.name)}</div>
@@ -894,8 +904,8 @@ function renderCollections() {
           <div class="coll-cta">Explore Collection →</div>
         </div>
       </div>
-    </div>
-  `;}).join('');
+    </a>
+  `).join('');
 }
 
 // Open a multi-category collection — filter the featured grid to its books
@@ -1001,11 +1011,10 @@ let activeCat = null;
 
 function renderCats(list) {
   document.getElementById('catGrid').innerHTML = list.map(c => `
-    <div class="cat-card ${activeCat === c.name ? 'active-cat' : ''}"
-         onclick="selectCat('${c.name.replace(/'/g, "\\'")}')">
+    <a class="cat-card" href="/category/?name=${encodeURIComponent(c.name)}" style="text-decoration:none;color:inherit;">
       <div class="cat-name">${escHtml(c.name)}</div>
       <div class="cat-count">${c.count} books</div>
-    </div>
+    </a>
   `).join('');
 }
 
@@ -2132,6 +2141,189 @@ checkout_out = Path(__file__).parent / "public" / "checkout" / "index.html"
 checkout_out.parent.mkdir(parents=True, exist_ok=True)
 checkout_out.write_text(CHECKOUT_HTML, encoding="utf-8")
 print(f"Generated: {checkout_out}")
+
+# ── Collection / Category landing page ──────────────────────────────────────
+# Single template that reads ?id=<slug> (collection) or ?name=<cat> (category)
+# from the URL, finds matching books from BOOKS_DATA, and renders them.
+COLLECTION_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Collection — Ink &amp; Chai</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script>
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
+  function toggleTheme(){ var c = document.documentElement.getAttribute('data-theme'); var n = c === 'light' ? '' : 'light'; if(n) document.documentElement.setAttribute('data-theme', n); else document.documentElement.removeAttribute('data-theme'); try { localStorage.setItem('iac_theme', n); } catch(e){} }
+</script>
+<style>
+:root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
+html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#8a6a1f;--gold-light:#b8902c;--gold-dim:#6a4f10;--cream:#2a2018;--cream-dim:#5a4a38;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
+nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1.2rem 4rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
+html[data-theme="light"] nav{background:rgba(250,247,242,0.97)}
+.nav-logo{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;letter-spacing:0.08em;color:var(--gold);text-decoration:none}
+.nav-logo span{color:var(--cream);font-weight:300;font-style:italic}
+.nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;transition:color 0.3s}
+.nav-back:hover{color:var(--gold)}
+.btn-nav{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.55rem 1.4rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.3s;text-decoration:none}
+.btn-nav:hover{background:var(--gold);color:var(--bg)}
+.theme-toggle{background:transparent;border:1px solid var(--gold-dim);color:var(--gold);width:34px;height:34px;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:0.85rem;transition:all 0.3s}
+.theme-toggle:hover{background:var(--gold);color:var(--bg);transform:rotate(20deg)}
+.theme-toggle .sun{display:none}
+html[data-theme="light"] .theme-toggle .moon{display:none}
+html[data-theme="light"] .theme-toggle .sun{display:inline}
+.collection-hero{padding:4rem 2rem 2.5rem;max-width:1200px;margin:0 auto;text-align:center}
+.coll-eyebrow{font-size:0.62rem;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}
+.coll-h1{font-family:'Cormorant Garamond',serif;font-size:clamp(2.4rem,5vw,4rem);font-weight:300;color:var(--white);line-height:1.1;margin-bottom:1rem}
+.coll-h1 em{font-style:italic;color:var(--gold-light)}
+.coll-sub{font-size:0.85rem;color:var(--cream-dim);max-width:640px;margin:0 auto;line-height:1.8}
+.coll-meta{display:flex;justify-content:center;gap:2rem;margin-top:2rem;font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--gold)}
+.crumb{padding:0 2rem 1rem;max-width:1200px;margin:0 auto;font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--gold-dim)}
+.crumb a{color:var(--gold);text-decoration:none}
+.crumb a:hover{color:var(--gold-light)}
+.toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;max-width:1200px;margin:0 auto;padding:1rem 2rem;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.toolbar input,.toolbar select{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.5rem 0.9rem;font-family:'Montserrat',sans-serif;font-size:0.7rem;outline:none}
+.toolbar input{flex:1;max-width:280px}
+.toolbar input:focus,.toolbar select:focus{border-color:var(--gold)}
+.tools-right{display:flex;gap:0.6rem;align-items:center}
+.count-pill{font-size:0.6rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim)}
+.count-pill b{color:var(--gold);font-weight:500}
+.book-grid{max-width:1200px;margin:0 auto;padding:3rem 2rem 6rem;display:grid;grid-template-columns:repeat(4,1fr);gap:2rem}
+@media(max-width:980px){.book-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:780px){.book-grid{grid-template-columns:repeat(2,1fr);gap:1.2rem;padding:2rem 1rem 4rem}.collection-hero{padding:2.5rem 1rem 1.5rem}.toolbar{padding:0.8rem 1rem}.nav-back{display:none}nav{padding:1rem}}
+.book-card{cursor:pointer;transition:transform 0.3s}
+.book-card:hover{transform:translateY(-4px)}
+.book-cover{aspect-ratio:2/3;background:#1a1208;border:1px solid var(--border);overflow:hidden;margin-bottom:1rem;position:relative}
+html[data-theme="light"] .book-cover{background:#f0e8d4}
+.book-cover img{width:100%;height:100%;object-fit:cover;transition:transform 0.4s}
+.book-card:hover .book-cover img{transform:scale(1.05)}
+.book-name{font-family:'Cormorant Garamond',serif;font-size:0.95rem;color:var(--cream);line-height:1.3;margin-bottom:0.3rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.book-author{font-size:0.65rem;color:var(--cream-dim);letter-spacing:0.05em;margin-bottom:0.5rem}
+.book-price{color:var(--gold);font-size:0.95rem;font-weight:500;font-family:'Cormorant Garamond',serif}
+.book-orig{font-size:0.7rem;color:var(--cream-dim);text-decoration:line-through;margin-left:0.5rem}
+.empty{text-align:center;padding:6rem 2rem;color:var(--cream-dim)}
+.empty h2{font-family:'Cormorant Garamond',serif;font-size:1.8rem;color:var(--white);margin-bottom:1rem}
+.empty a{color:var(--gold);text-decoration:none}
+.promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Montserrat',sans-serif;position:relative;z-index:200}
+.promo-banner strong{color:#c9a84c;font-weight:600;letter-spacing:0.18em}
+.promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
+html[data-theme="light"] .promo-banner{background:linear-gradient(90deg,#fff8e6,#fbeec8,#fff8e6);color:#5a4a18}
+html[data-theme="light"] .promo-banner code{background:rgba(138,106,31,0.12);color:#6a4f10;border-color:rgba(138,106,31,0.4)}
+.wa-float{position:fixed;bottom:22px;left:22px;width:54px;height:54px;border-radius:50%;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(37,211,102,0.45);z-index:250;cursor:pointer;text-decoration:none;transition:transform 0.2s}
+.wa-float:hover{transform:scale(1.08)}
+@media(max-width:780px){.wa-float{bottom:84px;left:14px;width:48px;height:48px}}
+</style>
+</head>
+<body>
+<div class="promo-banner"><strong>✦ FLAT 10% OFF</strong> on prepaid orders above ₹499 &nbsp;·&nbsp; Free shipping pan-India &nbsp;<code>USE: INKLOVE10</code></div>
+<a class="wa-float" href="https://wa.me/919625836117" target="_blank" rel="noopener" title="Chat on WhatsApp"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
+<nav>
+  <a class="nav-logo" href="/">Ink &amp;<span> Chai</span></a>
+  <a class="nav-back" href="/">← Back to home</a>
+  <div style="display:flex;gap:0.8rem;align-items:center;">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode"><span class="moon">🌙</span><span class="sun">☀️</span></button>
+    <a class="btn-nav" href="/">Catalogue</a>
+  </div>
+</nav>
+<div id="page"></div>
+<script>
+const BOOKS = BOOKS_DATA_PLACEHOLDER;
+const COLLECTIONS = COLLECTIONS_DATA_PLACEHOLDER;
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+const params = new URLSearchParams(location.search);
+const collId = params.get('id');
+const catName = params.get('name');
+
+let title = '', subtitle = '', crumbLabel = '', books = [];
+
+if (collId) {
+  const c = COLLECTIONS.find(x => x.slug === collId);
+  if (c) {
+    title = c.name;
+    crumbLabel = c.name;
+    const set = new Set((c.cats||[]).map(x => x.toLowerCase()));
+    books = BOOKS.filter(b => set.has((b.cat||'').toLowerCase()));
+    subtitle = `Curated picks from ${(c.cats||[]).length} matching categories.`;
+    document.title = c.name + ' — Ink & Chai';
+  }
+} else if (catName) {
+  title = catName;
+  crumbLabel = catName;
+  books = BOOKS.filter(b => (b.cat||'').toLowerCase() === catName.toLowerCase());
+  subtitle = `All books in the ${catName} category.`;
+  document.title = catName + ' — Ink & Chai';
+}
+
+if (!books.length) {
+  document.getElementById('page').innerHTML = `
+    <div class="empty">
+      <h2>Nothing here yet</h2>
+      <p>This collection or category is empty. <a href="/">Browse all books →</a></p>
+    </div>`;
+} else {
+  document.getElementById('page').innerHTML = `
+    <div class="collection-hero">
+      <div class="coll-eyebrow">${collId ? 'Curated Collection' : 'Category'}</div>
+      <h1 class="coll-h1">${esc(title.split(' & ')[0])}${title.includes(' & ') ? ` <em>&amp; ${esc(title.split(' & ')[1])}</em>` : ''}</h1>
+      <p class="coll-sub">${esc(subtitle)}</p>
+      <div class="coll-meta"><span><b style="color:var(--gold-light)">${books.length}</b> Books</span></div>
+    </div>
+    <div class="crumb"><a href="/">Home</a> &nbsp;/&nbsp; ${collId ? '<a href="/#collections">Collections</a>' : '<a href="/#categories">Categories</a>'} &nbsp;/&nbsp; ${esc(crumbLabel)}</div>
+    <div class="toolbar">
+      <input id="qfilter" type="text" placeholder="Filter within this collection…" oninput="renderGrid()"/>
+      <div class="tools-right">
+        <span class="count-pill"><b id="visCount">${books.length}</b> shown</span>
+        <select id="sort" onchange="renderGrid()">
+          <option value="popular">Popular</option>
+          <option value="price-asc">Price: Low → High</option>
+          <option value="price-desc">Price: High → Low</option>
+          <option value="alpha">A → Z</option>
+        </select>
+      </div>
+    </div>
+    <div class="book-grid" id="grid"></div>`;
+  renderGrid();
+}
+
+function renderGrid() {
+  const q = (document.getElementById('qfilter')?.value || '').toLowerCase().trim();
+  const sort = document.getElementById('sort')?.value || 'popular';
+  let list = books.filter(b => !q || (b.t + ' ' + (b.a||'')).toLowerCase().includes(q));
+  const priceOf = b => parseFloat((b.p||'').replace(/[^0-9.]/g,''))||0;
+  if (sort === 'price-asc')  list.sort((a,b) => priceOf(a) - priceOf(b));
+  if (sort === 'price-desc') list.sort((a,b) => priceOf(b) - priceOf(a));
+  if (sort === 'alpha')      list.sort((a,b) => (a.t||'').localeCompare(b.t||''));
+  document.getElementById('visCount').textContent = list.length;
+  document.getElementById('grid').innerHTML = list.map(b => `
+    <div class="book-card" onclick="location.href='/product/?id=${b.slug}'">
+      <div class="book-cover">${b.img ? `<img src="${esc(b.img)}" alt="${esc(b.t)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}</div>
+      <div class="book-name">${esc(b.t)}</div>
+      <div class="book-author">${esc(b.a||'')}</div>
+      <div><span class="book-price">${esc(b.p)}</span>${b.op ? `<span class="book-orig">${esc(b.op)}</span>` : ''}</div>
+    </div>
+  `).join('');
+}
+</script>
+</body>
+</html>"""
+
+# Inject the same slim books data + collection metadata
+COLLECTION_HTML = COLLECTION_HTML.replace("BOOKS_DATA_PLACEHOLDER", books_js)
+COLLECTION_HTML = COLLECTION_HTML.replace("COLLECTIONS_DATA_PLACEHOLDER", json.dumps(coll_data, ensure_ascii=False))
+
+coll_out = Path(__file__).parent / "public" / "collection" / "index.html"
+coll_out.parent.mkdir(parents=True, exist_ok=True)
+coll_out.write_text(COLLECTION_HTML, encoding="utf-8")
+print(f"Generated: {coll_out}")
+
+# Same template handles category pages — just write a copy under /category/
+cat_out = Path(__file__).parent / "public" / "category" / "index.html"
+cat_out.parent.mkdir(parents=True, exist_ok=True)
+cat_out.write_text(COLLECTION_HTML, encoding="utf-8")
+print(f"Generated: {cat_out}")
 
 # ── Google Merchant Center Product Feed (feed.xml) ───────────────────────────
 def xml_escape(s):
