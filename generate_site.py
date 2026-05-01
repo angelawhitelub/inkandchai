@@ -168,7 +168,9 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>Ink & Chai — Books We Love</title>
 <script>
   // Apply saved theme BEFORE paint to avoid flash of wrong theme
@@ -220,8 +222,12 @@ HTML = r"""<!DOCTYPE html>
   html[data-theme="light"] .theme-toggle .sun { display: inline; }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-  body { background: var(--bg); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 300; overflow-x: hidden; }
+  html { scroll-behavior: smooth; background: #0d0b08; }
+  html[data-theme="light"] { background: #faf7f2; }
+  body { background: var(--bg); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 300; overflow-x: hidden; min-height: 100vh; }
+  /* Hard fallback: if anything goes wrong with vars, content still readable */
+  html:not([data-theme="light"]) body { background: #0d0b08; color: #f0e8d8; }
+  html[data-theme="light"] body { background: #faf7f2; color: #2a2018; }
 
   body::before {
     content: ''; position: fixed; inset: 0;
@@ -1238,7 +1244,9 @@ PRODUCT_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<meta http-equiv="Cache-Control" content="no-cache, must-revalidate"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <title>Loading… — Ink &amp; Chai</title>
 <meta name="description" content="Buy books online at Ink &amp; Chai — fast pan-India delivery."/>
 <meta name="robots" content="index,follow"/>
@@ -1933,7 +1941,9 @@ CHECKOUT_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<meta http-equiv="Cache-Control" content="no-cache, must-revalidate"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <title>Checkout — Ink &amp; Chai</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -2413,7 +2423,9 @@ COLLECTION_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<meta http-equiv="Cache-Control" content="no-cache, must-revalidate"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <title>Collection — Ink &amp; Chai</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script>
