@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /.netlify/
+
+# Sitemap location
+Sitemap: https://inkandchai.in/sitemap.xml
+
+# Crawl-delay (seconds) — be nice to Google's crawler on this dynamic site
+Crawl-delay: 1

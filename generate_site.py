@@ -171,7 +171,83 @@ HTML = r"""<!DOCTYPE html>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<title>Ink & Chai — Books We Love</title>
+<title>Ink & Chai — Buy Books Online India · Hindi & English · Free Shipping above ₹499</title>
+<meta name="description" content="Buy books online in India at Ink & Chai. 2,300+ titles in Hindi and English — fiction, romance, self-help, mythology, manga & more. Free pan-India shipping above ₹499. Cash on delivery available. Genuine books, 7-day easy returns." />
+<meta name="keywords" content="buy books online india, hindi books online, online bookstore india, self help books hindi, romance books, fiction books, manga books, ana huang books, david goggins hindi, robin sharma, robert kiyosaki, mythology books, books at 99, cash on delivery books, free shipping books india, ink and chai" />
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+<meta name="author" content="Ink & Chai" />
+<meta name="theme-color" content="#0d0b08" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#faf7f2" media="(prefers-color-scheme: light)" />
+<meta name="geo.region" content="IN" />
+<meta name="geo.placename" content="New Delhi" />
+<meta name="language" content="English, Hindi" />
+<link rel="canonical" href="https://inkandchai.in/" />
+<link rel="alternate" type="application/rss+xml" title="Ink & Chai Product Feed" href="/feed.xml" />
+<link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+
+<!-- Open Graph / Facebook / WhatsApp -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Ink & Chai" />
+<meta property="og:title" content="Ink & Chai — Buy Books Online India · Free Shipping above ₹499" />
+<meta property="og:description" content="2,300+ titles in Hindi and English. Curated fiction, romance, self-help, mythology & more. Free pan-India shipping above ₹499. Cash on delivery." />
+<meta property="og:image" content="https://inkandchai.in/images/og-default.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:url" content="https://inkandchai.in/" />
+<meta property="og:locale" content="en_IN" />
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Ink & Chai — Buy Books Online India" />
+<meta name="twitter:description" content="2,300+ titles in Hindi and English. Free shipping above ₹499. COD available." />
+<meta name="twitter:image" content="https://inkandchai.in/images/og-default.jpg" />
+
+<!-- Structured Data: Organization -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "OnlineStore",
+  "name": "Ink & Chai",
+  "alternateName": "Ink and Chai",
+  "url": "https://inkandchai.in",
+  "logo": "https://inkandchai.in/images/og-default.jpg",
+  "description": "Online bookstore in India offering 2,300+ titles in Hindi and English. Free shipping above ₹499, cash on delivery available, 7-day returns.",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "2969, Kucha Mai Dass, Sitaram Bazar",
+    "addressLocality": "New Delhi",
+    "postalCode": "110006",
+    "addressCountry": "IN"
+  },
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "telephone": "+91-9625836117",
+    "contactType": "customer support",
+    "email": "support@inkandchai.in",
+    "availableLanguage": ["English", "Hindi"]
+  },
+  "sameAs": ["https://wa.me/919625836117"],
+  "paymentAccepted": ["Credit Card", "UPI", "Net Banking", "Cash on Delivery"],
+  "currenciesAccepted": "INR",
+  "priceRange": "₹99–₹2999",
+  "areaServed": "IN"
+}
+</script>
+
+<!-- Structured Data: WebSite + SearchAction (sitelinks searchbox in Google) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Ink & Chai",
+  "url": "https://inkandchai.in",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "https://inkandchai.in/?q={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}
+</script>
 <script>
   // Apply saved theme BEFORE paint to avoid flash of wrong theme
   (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
@@ -1586,6 +1662,9 @@ function renderProduct(b) {
   document.title = pageTitle;
   const metaDesc = document.querySelector('meta[name="description"]');
   if (metaDesc) metaDesc.content = shortDesc;
+  // Update keywords meta with author + category for category-specific SEO
+  const metaKw = document.querySelector('meta[name="keywords"]');
+  if (metaKw) metaKw.content = [b.t, b.a, b.cat, 'buy online india', 'free shipping', 'ink and chai'].filter(Boolean).join(', ');
 
   // Open Graph + Twitter
   const setMeta = (id, val) => { const el = document.getElementById(id); if (el) el.setAttribute('content', val); };
@@ -1598,31 +1677,55 @@ function renderProduct(b) {
   setMeta('twImg',   imgAbs);
   const canon = document.getElementById('canonLink'); if (canon) canon.href = canonical;
 
-  // JSON-LD structured data — Google rich-snippet for Product
+  // JSON-LD structured data — Google rich-snippet for Product + Breadcrumbs
   const _sale = parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0);
+  const _orig = parseFloat((b.op||'').replace(/[^0-9.]/g,'')||0);
   const ld = {
     "@context": "https://schema.org",
-    "@type": "Book",
-    "name": b.t,
-    "author": { "@type": "Person", "name": b.a || "Various" },
-    "image": imgAbs,
-    "description": shortDesc,
-    "isbn": b.isbn || undefined,
-    "publisher": b.pub || "Ink & Chai",
-    "url": canonical,
-    "offers": {
-      "@type": "Offer",
-      "priceCurrency": "INR",
-      "price": _sale,
-      "availability": "https://schema.org/InStock",
-      "url": canonical,
-      "seller": { "@type": "Organization", "name": "Ink & Chai" }
-    },
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.7",
-      "reviewCount": "128"
-    }
+    "@graph": [
+      {
+        "@type": "Book",
+        "@id": canonical + '#book',
+        "name": b.t,
+        "author": { "@type": "Person", "name": b.a || "Various" },
+        "image": imgAbs,
+        "description": shortDesc,
+        "isbn": b.isbn || undefined,
+        "publisher": b.pub || "Ink & Chai",
+        "inLanguage": (b.t && /हिं|हि|—\s*[ऀ-ॿ]/.test(b.t)) ? "hi" : "en",
+        "url": canonical,
+        "bookFormat": "https://schema.org/Paperback",
+        "offers": {
+          "@type": "Offer",
+          "priceCurrency": "INR",
+          "price": _sale,
+          "priceValidUntil": new Date(Date.now() + 365*24*60*60*1000).toISOString().slice(0,10),
+          "availability": "https://schema.org/InStock",
+          "itemCondition": "https://schema.org/NewCondition",
+          "url": canonical,
+          "seller": { "@type": "Organization", "name": "Ink & Chai", "url": "https://inkandchai.in" },
+          "shippingDetails": {
+            "@type": "OfferShippingDetails",
+            "shippingRate": { "@type": "MonetaryAmount", "value": _sale >= 499 ? 0 : 40, "currency": "INR" },
+            "shippingDestination": { "@type": "DefinedRegion", "addressCountry": "IN" },
+            "deliveryTime": { "@type": "ShippingDeliveryTime", "businessDays": { "@type": "QuantitativeValue", "minValue": 2, "maxValue": 5 } }
+          }
+        },
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": "4.7",
+          "reviewCount": "128"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://inkandchai.in/" },
+          { "@type": "ListItem", "position": 2, "name": b.cat || "Books", "item": "https://inkandchai.in/category/?name=" + encodeURIComponent(b.cat || "") },
+          { "@type": "ListItem", "position": 3, "name": b.t, "item": canonical }
+        ]
+      }
+    ]
   };
   const ldEl = document.getElementById('ldjson');
   if (ldEl) ldEl.textContent = JSON.stringify(ld);
@@ -2697,3 +2800,70 @@ feed_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 feed_out = Path(__file__).parent / "public" / "feed.xml"
 feed_out.write_text(feed_xml, encoding="utf-8")
 print(f"Generated: {feed_out}  ({len(feed_xml.encode())//1024} KB, {len(items)} products)")
+
+# ── SEO: sitemap.xml + robots.txt ─────────────────────────────────────────────
+from datetime import datetime
+SITE = "https://inkandchai.in"
+TODAY = datetime.utcnow().strftime("%Y-%m-%d")
+
+# Collect URLs: home, static pages, every collection slug, every category, every product
+static_urls = [
+    (SITE + "/",                "1.0",  "daily"),
+    (SITE + "/track/",          "0.7",  "weekly"),
+    (SITE + "/terms/",          "0.4",  "yearly"),
+    (SITE + "/privacy-policy/", "0.4",  "yearly"),
+    (SITE + "/refund-policy/",  "0.4",  "yearly"),
+    (SITE + "/return-policy/",  "0.4",  "yearly"),
+    (SITE + "/shipping-policy/","0.4",  "yearly"),
+]
+url_entries = []
+for url, prio, freq in static_urls:
+    url_entries.append(f"  <url><loc>{url}</loc><lastmod>{TODAY}</lastmod><changefreq>{freq}</changefreq><priority>{prio}</priority></url>")
+
+# Product URLs — every book
+for b in slim:
+    purl = f"{SITE}/product/?id={b['slug']}"
+    img  = b.get('img', '')
+    img_xml = ""
+    if img:
+        img_abs = img if img.startswith("http") else (SITE + img)
+        img_xml = f"<image:image><image:loc>{img_abs.replace('&','&amp;')}</image:loc><image:title>{(b['t'] or '').replace('&','&amp;').replace('<','&lt;')[:200]}</image:title></image:image>"
+    url_entries.append(f"  <url><loc>{purl.replace('&','&amp;')}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority>{img_xml}</url>")
+
+# Collection URLs
+for c in coll_data:
+    curl = f"{SITE}/collection/?id={c['slug']}"
+    url_entries.append(f"  <url><loc>{curl}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>")
+
+# Category URLs (top categories with >= 5 books)
+for c in all_cats:
+    if c['count'] < 5: continue
+    from urllib.parse import quote
+    caturl = f"{SITE}/category/?name={quote(c['name'])}"
+    url_entries.append(f"  <url><loc>{caturl}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>")
+
+sitemap_xml = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n'
+    + "\n".join(url_entries) + "\n"
+    "</urlset>\n"
+)
+sitemap_out = Path(__file__).parent / "public" / "sitemap.xml"
+sitemap_out.write_text(sitemap_xml, encoding="utf-8")
+print(f"Generated: {sitemap_out}  ({len(sitemap_xml.encode())//1024} KB, {len(url_entries)} URLs)")
+
+# robots.txt
+robots_txt = f"""User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /.netlify/
+
+# Sitemap location
+Sitemap: {SITE}/sitemap.xml
+
+# Crawl-delay (seconds) — be nice to Google's crawler on this dynamic site
+Crawl-delay: 1
+"""
+robots_out = Path(__file__).parent / "public" / "robots.txt"
+robots_out.write_text(robots_txt, encoding="utf-8")
+print(f"Generated: {robots_out}")
