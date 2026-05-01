@@ -47,11 +47,20 @@ function clearCart() {
   saveCart([]);
 }
 
+// ── Shipping rules (must match server-side cod-order.js / verify-payment.js) ─
+const FREE_SHIPPING_THRESHOLD = 499;   // ₹499 → free shipping
+const SHIPPING_FEE            = 40;    // Below ₹499 → flat ₹40 Delhivery
+window.calcShipping = function(subtotal) {
+  return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+};
+
 // ── UI helpers ─────────────────────────────────────────────────────────────
 function updateCartUI() {
   const cart  = getCart();
   const total = cart.reduce((s, i) => s + i.qty, 0);
   const sum   = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const shipping = window.calcShipping(sum);
+  const grand    = sum + shipping;
 
   // Nav badge (desktop top + mobile bottom)
   ['cartBadge', 'cartBadgeMobile'].forEach(id => {
@@ -78,7 +87,14 @@ function updateCartUI() {
 
   if (emptyEl)  emptyEl.style.display = 'none';
   if (footerEl) footerEl.style.display = 'flex';
-  if (totalEl)  totalEl.textContent = `₹ ${sum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+  if (totalEl) {
+    if (shipping === 0) {
+      totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.55rem;color:#6dbf6d;letter-spacing:0.15em;text-transform:uppercase;font-family:'Montserrat',sans-serif;font-weight:500;margin-top:4px;">✓ Free Shipping</div>`;
+    } else {
+      const need = FREE_SHIPPING_THRESHOLD - sum;
+      totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.6rem;color:#a09080;font-family:'Montserrat',sans-serif;margin-top:4px;letter-spacing:0.05em;">Subtotal ₹${sum.toLocaleString('en-IN')} + Shipping ₹${shipping}</div><div style="font-size:0.55rem;color:#c9a84c;letter-spacing:0.15em;text-transform:uppercase;font-family:'Montserrat',sans-serif;font-weight:500;margin-top:4px;">Add ₹${need} more for free shipping</div>`;
+    }
+  }
 
   itemsEl.innerHTML = cart.map(item => `
     <div class="cart-item" data-id="${item.id}">

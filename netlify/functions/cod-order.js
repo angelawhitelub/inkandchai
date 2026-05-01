@@ -47,14 +47,16 @@ async function sendEmail({ to, subject, html }) {
   }
 }
 
-function cartTable(cart) {
+function cartTable(cart, shippingFee) {
   const rows = cart.map(i => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:center;">${i.qty}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:right;color:#c9a84c;">₹${(i.price*i.qty).toLocaleString('en-IN')}</td>
     </tr>`).join('');
-  const total = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const ship = (typeof shippingFee === 'number') ? shippingFee : (subtotal >= 499 ? 0 : 40);
+  const total = subtotal + ship;
   return `
     <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
       <thead>
@@ -67,7 +69,15 @@ function cartTable(cart) {
       <tbody>${rows}</tbody>
       <tfoot>
         <tr>
-          <td colspan="2" style="padding:10px 12px;font-weight:500;color:#f0e8d8;">Total (Cash on Delivery)</td>
+          <td colspan="2" style="padding:8px 12px;color:#a09080;">Subtotal</td>
+          <td style="padding:8px 12px;text-align:right;color:#f0e8d8;">₹${subtotal.toLocaleString('en-IN')}</td>
+        </tr>
+        <tr>
+          <td colspan="2" style="padding:8px 12px;color:#a09080;">Shipping (Delhivery)</td>
+          <td style="padding:8px 12px;text-align:right;color:${ship === 0 ? '#6dbf6d' : '#f0e8d8'};">${ship === 0 ? 'FREE' : '₹' + ship}</td>
+        </tr>
+        <tr style="border-top:2px solid #2a2a2a;">
+          <td colspan="2" style="padding:10px 12px;font-weight:500;color:#f0e8d8;">Total</td>
           <td style="padding:10px 12px;text-align:right;font-size:18px;color:#c9a84c;font-weight:600;">₹${total.toLocaleString('en-IN')}</td>
         </tr>
       </tfoot>
@@ -102,7 +112,14 @@ exports.handler = async (event) => {
   const datePart = now.toISOString().slice(0,10).replace(/-/g,'');   // 20260429
   const randPart = Math.random().toString(36).slice(2,7).toUpperCase(); // AB3CD
   const orderId = `IC-${datePart}-${randPart}`;  // e.g. IC-20260429-AB3CD
-  const total   = cart.reduce((s,i)=>s+i.price*i.qty, 0);
+
+  // Shipping rules — must match cart.js + checkout. Calculate server-side
+  // defensively rather than trusting client input.
+  const FREE_SHIPPING_THRESHOLD = 499;
+  const SHIPPING_FEE = 40;
+  const subtotal = cart.reduce((s,i)=>s+i.price*i.qty, 0);
+  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  const total    = subtotal + shipping;
 
   // ── 1. Save to Supabase (non-fatal — emails still send even if DB is down) ──
   try {
@@ -139,7 +156,7 @@ exports.handler = async (event) => {
           <tr><td style="color:#a09080;padding-right:16px;">Email</td><td>${customer.email||'—'}</td></tr>
           <tr><td style="color:#a09080;padding-right:16px;">Address</td><td>${customer.address||'—'}</td></tr>
         </table>
-        ${cartTable(cart)}
+        ${cartTable(cart, shipping)}
         <p style="color:#6dbf6d;font-size:13px;">💰 Collect ₹${total.toLocaleString('en-IN')} cash at delivery.</p>
       `),
     });
@@ -156,7 +173,7 @@ exports.handler = async (event) => {
           Hi ${customer.name?.split(' ')[0]||'there'}, your books are on their way!<br/>
           You'll pay <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> in cash when they arrive.
         </p>
-        ${cartTable(cart)}
+        ${cartTable(cart, shipping)}
         <p style="color:#a09080;font-size:13px;line-height:1.8;">
           <strong style="color:#f0e8d8;">Delivery address:</strong><br/>${customer.address||'—'}
         </p>

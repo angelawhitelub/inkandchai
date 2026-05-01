@@ -2129,6 +2129,11 @@ const CART_KEY = 'akshar_cart';
 function getCart()  { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch { return []; } }
 function clearCart(){ localStorage.removeItem(CART_KEY); }
 
+// Shipping rules — must match cart.js + server functions
+const FREE_SHIPPING_THRESHOLD = 499;
+const SHIPPING_FEE = 40;
+function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE; }
+
 // ── Render order summary ────────────────────────────────────────────────────
 function renderSummary() {
   const cart = getCart();
@@ -2146,7 +2151,9 @@ function renderSummary() {
     return;
   }
 
-  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const shipping = calcShipping(subtotal);
+  const grand    = subtotal + shipping;
   container.innerHTML = cart.map(i => `
     <div class="order-item">
       <div class="item-img">
@@ -2160,14 +2167,23 @@ function renderSummary() {
           <span class="item-price-gold">₹${(i.price * i.qty).toLocaleString('en-IN')}</span>
         </div>
       </div>
-    </div>`).join('');
+    </div>`).join('') + `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.7rem 0;border-top:1px solid var(--border);margin-top:0.5rem;font-size:0.78rem;">
+      <span style="color:var(--cream-dim);letter-spacing:0.04em;">Subtotal</span>
+      <span style="color:var(--cream);">₹${subtotal.toLocaleString('en-IN')}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0 0.7rem;font-size:0.78rem;">
+      <span style="color:var(--cream-dim);letter-spacing:0.04em;">Shipping (Delhivery)</span>
+      <span style="color:${shipping === 0 ? '#6dbf6d' : 'var(--cream)'};">${shipping === 0 ? 'FREE' : '₹' + shipping}</span>
+    </div>
+    ${shipping > 0 ? `<div style="font-size:0.6rem;color:var(--gold);letter-spacing:0.05em;padding:0 0 0.6rem;">💡 Add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more to qualify for free shipping</div>` : ''}`;
 
-  totalEl.textContent = '₹' + total.toLocaleString('en-IN');
+  totalEl.textContent = '₹' + grand.toLocaleString('en-IN');
   totalRow.style.display = 'flex';
 
   // Update Pay Now button label with total
   if (btnPay) {
-    btnPay.textContent = `⚡ Pay Now — ₹${total.toLocaleString('en-IN')}`;
+    btnPay.textContent = `⚡ Pay Now — ₹${grand.toLocaleString('en-IN')}`;
     btnPay.disabled = false;
   }
   if (btnCOD) btnCOD.disabled = false;
@@ -2249,7 +2265,10 @@ async function submitOrder(method) {
 // ── Razorpay ───────────────────────────────────────────────────────────────
 async function doRazorpay(addr) {
   const cart = getCart();
-  const amtPaise = Math.round(cart.reduce((s,i)=>s+i.price*i.qty,0)*100);
+  const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const shipping = calcShipping(subtotal);
+  const grand    = subtotal + shipping;
+  const amtPaise = Math.round(grand * 100);
 
   try {
     const res = await fetch('/.netlify/functions/create-order', {
@@ -2284,7 +2303,7 @@ async function doRazorpay(addr) {
               razorpay_order_id:   response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature:  response.razorpay_signature,
-              cart, customer: addr, amount: amtPaise,
+              cart, customer: addr, amount: amtPaise, shipping,
             }),
           });
           if (!vRes.ok) throw new Error('Verification failed');
@@ -2311,8 +2330,10 @@ async function doRazorpay(addr) {
 
 // ── Cash on Delivery ───────────────────────────────────────────────────────
 async function doCOD(addr) {
-  const cart   = getCart();
-  const amount = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const cart     = getCart();
+  const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const shipping = calcShipping(subtotal);
+  const amount   = subtotal + shipping;
 
   try {
     const res = await fetch('/.netlify/functions/cod-order', {
@@ -2321,7 +2342,7 @@ async function doCOD(addr) {
       body: JSON.stringify({
         cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
-        amount,
+        amount, shipping,
       }),
     });
     const data = await res.json();
