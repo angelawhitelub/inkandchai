@@ -164,7 +164,13 @@ tr:hover td{background:rgba(201,168,76,0.025);}
     <span class="export-label">Export</span>
     <span id="exportCount">0</span>
     <span style="font-size:0.62rem;color:var(--cream-dim);">orders ready</span>
-    <button class="btn-green" onclick="exportExcel('filtered')" style="padding:0.45rem 1rem;font-size:0.58rem;">
+
+    <!-- Limit input — how many rows to export from the filtered list -->
+    <span style="font-size:0.6rem;color:var(--cream-dim);margin-left:1rem;">Limit:</span>
+    <input type="number" id="exportLimit" value="" min="1" placeholder="all" title="Leave blank to export all filtered orders, or set a max row count (e.g. 50, 100, 500)"
+      style="width:78px;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.4rem 0.5rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;text-align:center;outline:none;"/>
+
+    <button class="btn-green" onclick="exportExcel('filtered')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.4rem;">
       ⬇ Download Excel (.xlsx)
     </button>
     <button class="btn-green" onclick="exportExcel('all')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
@@ -176,6 +182,20 @@ tr:hover td{background:rgba(201,168,76,0.025);}
     <button class="btn-outline" onclick="copyAllAddresses()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       📋 Copy Addresses
     </button>
+    <button class="btn-outline" onclick="bulkDeleteFiltered()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(224,80,80,0.4);color:#e05050;" title="Permanently delete every order currently shown by the filters (asks for confirmation)">
+      🗑 Delete Filtered
+    </button>
+  </div>
+
+  <!-- Quick day-range filters -->
+  <div class="toolbar" style="border-bottom:none;padding-bottom:0;">
+    <span style="font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.2em;text-transform:uppercase;align-self:center;margin-right:0.4rem;">Quick range:</span>
+    <button class="filter-btn day-btn" data-days="0"   onclick="setDayRange(this,0)">Today</button>
+    <button class="filter-btn day-btn" data-days="1"   onclick="setDayRange(this,1)">Yesterday</button>
+    <button class="filter-btn day-btn" data-days="7"   onclick="setDayRange(this,7)">Last 7 days</button>
+    <button class="filter-btn day-btn" data-days="30"  onclick="setDayRange(this,30)">Last 30 days</button>
+    <button class="filter-btn day-btn" data-days="90"  onclick="setDayRange(this,90)">Last 90 days</button>
+    <button class="filter-btn day-btn" data-days="-1"  onclick="setDayRange(this,-1)">All time</button>
   </div>
 
   <!-- Toolbar -->
@@ -440,6 +460,12 @@ function _drawTable() {
       </td>
       <td style="font-size:0.65rem;color:var(--cream-dim);max-width:200px;line-height:1.5;">
         ${esc(o.customer_address || '—')}
+        <button onclick="deleteOrder('${esc(o.id)}','${esc(o.razorpay_order_id||o.id)}')" title="Permanently delete this order"
+          style="display:block;margin-top:0.6rem;background:transparent;border:1px solid rgba(224,80,80,0.35);color:#e05050;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;"
+          onmouseover="this.style.background='rgba(224,80,80,0.12)';this.style.borderColor='rgba(224,80,80,0.6)';"
+          onmouseout="this.style.background='transparent';this.style.borderColor='rgba(224,80,80,0.35)';">
+          🗑 Delete
+        </button>
       </td>
     </tr>`;
   }).join('');
@@ -506,6 +532,13 @@ async function exportExcel(mode) {
       orders = data.orders || orders;
     } catch(e) { console.warn('Could not fetch all:', e.message); }
     if (btn) { btn.innerHTML = origText; btn.disabled = false; }
+  }
+
+  // Honour the export-row-limit input — applies to BOTH 'all' and 'filtered' modes
+  const limitRaw = document.getElementById('exportLimit')?.value?.trim();
+  const limit = limitRaw ? Math.max(1, parseInt(limitRaw, 10)) : null;
+  if (limit && orders.length > limit) {
+    orders = orders.slice(0, limit);
   }
 
   if (!orders.length) { alert('No orders to export.'); return; }
@@ -602,6 +635,84 @@ function printLabels() {
   const w = window.open('', '_blank');
   w.document.write(html);
   w.document.close();
+}
+
+// ── Quick date-range filter (Today / Yesterday / 7 / 30 / 90 / all) ────────
+function setDayRange(btn, days) {
+  document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const dateFrom = document.getElementById('dateFrom');
+  const dateTo   = document.getElementById('dateTo');
+  if (days === -1) { dateFrom.value = ''; dateTo.value = ''; applyFilters(); return; }
+
+  const today = new Date();
+  const yyyy_mm_dd = d => d.toISOString().slice(0, 10);
+  if (days === 0) {
+    dateFrom.value = yyyy_mm_dd(today);
+    dateTo.value   = yyyy_mm_dd(today);
+  } else if (days === 1) {
+    const y = new Date(today.getTime() - 86400000);
+    dateFrom.value = yyyy_mm_dd(y);
+    dateTo.value   = yyyy_mm_dd(y);
+  } else {
+    const start = new Date(today.getTime() - (days - 1) * 86400000);
+    dateFrom.value = yyyy_mm_dd(start);
+    dateTo.value   = yyyy_mm_dd(today);
+  }
+  applyFilters();
+}
+
+// ── Delete a single order ──────────────────────────────────────────────────
+async function deleteOrder(id, displayId) {
+  if (!confirm(`Permanently delete order ${displayId}?\n\nThis cannot be undone. The customer will NOT be notified.`)) return;
+  try {
+    const res = await fetch('/.netlify/functions/delete-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || ('HTTP ' + res.status));
+    }
+    // Remove locally so UI updates instantly
+    const idx = allOrders.findIndex(o => o.id === id);
+    if (idx >= 0) allOrders.splice(idx, 1);
+    updateStats();
+    applyFilters();
+  } catch (err) {
+    alert('Could not delete: ' + err.message);
+  }
+}
+
+// ── Bulk-delete every order currently shown by the filters ─────────────────
+async function bulkDeleteFiltered() {
+  if (!filtered.length) { alert('No orders to delete.'); return; }
+  const ids = filtered.map(o => o.id);
+  const msg = `Permanently delete ${ids.length} order${ids.length>1?'s':''}?\n\nThis is everything currently shown by your filters.\nThis cannot be undone. Customers will NOT be notified.\n\nType DELETE to confirm:`;
+  const confirmText = prompt(msg, '');
+  if (confirmText !== 'DELETE') return;
+
+  try {
+    const res = await fetch('/.netlify/functions/delete-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || ('HTTP ' + res.status));
+    }
+    const data = await res.json();
+    // Remove locally
+    const idSet = new Set(ids);
+    allOrders = allOrders.filter(o => !idSet.has(o.id));
+    updateStats();
+    applyFilters();
+    alert(`✅ Deleted ${data.deleted ?? ids.length} orders.`);
+  } catch (err) {
+    alert('Bulk delete failed: ' + err.message);
+  }
 }
 
 // ── Copy all visible addresses to clipboard (for bulk paste) ───────────────
