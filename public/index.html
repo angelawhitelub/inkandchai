@@ -138,7 +138,7 @@
   html[data-theme="light"] .theme-toggle .sun { display: inline; }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; background: #0d0b08; }
+  html { scroll-behavior: smooth; background: #0d0b08; max-width:100%; overflow-x:hidden; }
   html[data-theme="light"] { background: #faf7f2; }
   body { background: var(--bg); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 300; overflow-x: hidden; min-height: 100vh; }
   /* Hard fallback: if anything goes wrong with vars, content still readable */
@@ -186,14 +186,21 @@
   .hero-stats { display: flex; gap: 3rem; margin-top: 4rem; padding-top: 2.5rem; border-top: 1px solid var(--border); }
   .stat-num { font-family: 'Cormorant Garamond', serif; font-size: 2rem; font-weight: 600; color: var(--gold); line-height: 1; }
   .stat-label { font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--cream-dim); margin-top: 0.3rem; }
-  .hero-right { position: relative; overflow: hidden; }
-  .hero-right::before { content: ''; position: absolute; inset: 0; background: linear-gradient(to right, var(--bg) 0%, transparent 30%), linear-gradient(to bottom, transparent 60%, var(--bg) 100%); z-index: 1; }
-  .hero-books-grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(4, 1fr); gap: 8px; padding: 80px 40px 40px 20px; transform: rotate(3deg) scale(1.1) translateY(-20px); animation: floatBooks 8s ease-in-out infinite; }
-  @keyframes floatBooks { 0%, 100% { transform: rotate(3deg) scale(1.1) translateY(-20px); } 50% { transform: rotate(3deg) scale(1.1) translateY(-32px); } }
-  .book-spine { border-radius: 3px; position: relative; overflow: hidden; box-shadow: 4px 4px 20px rgba(0,0,0,0.6), inset -2px 0 6px rgba(0,0,0,0.3); transition: transform 0.3s; }
-  .book-spine:hover { transform: scaleY(1.03); }
-  .book-spine::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to right, rgba(255,255,255,0.1) 0%, transparent 30%, rgba(0,0,0,0.2) 100%); }
-  .b1{background:linear-gradient(135deg,#2c1810,#5a2d1a)}.b2{background:linear-gradient(135deg,#0d2233,#1a4a6b)}.b3{background:linear-gradient(135deg,#1a1a2e,#2d2d5e)}.b4{background:linear-gradient(135deg,#1d3a1d,#2d5a2d)}.b5{background:linear-gradient(135deg,#3a1a0d,#7a3a1a)}.b6{background:linear-gradient(135deg,#2a1a3a,#5a3a7a)}.b7{background:linear-gradient(135deg,#1a2a1a,#3a5a3a)}.b8{background:linear-gradient(135deg,#3a2200,#8a5500)}.b9{background:linear-gradient(135deg,#0a1a2a,#1a3a5a)}.b10{background:linear-gradient(135deg,#2a0a0a,#6a1a1a)}.b11{background:linear-gradient(135deg,#1a2a2a,#3a5a5a)}.b12{background:linear-gradient(135deg,#2a2a0a,#5a5a1a)}
+  .hero-right { position: relative; overflow: hidden; display:flex; align-items:center; justify-content:center; padding:8rem 5rem 5rem 1rem; }
+  .hero-right::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 58% 38%, rgba(201,168,76,0.14), transparent 34%), linear-gradient(to right, var(--bg) 0%, rgba(13,11,8,0.2) 38%, var(--bg) 100%), linear-gradient(to bottom, transparent 58%, var(--bg) 100%); z-index: 1; }
+  .hero-cover-wall { position:relative; z-index:2; width:min(680px,100%); display:grid; grid-template-columns:repeat(4,minmax(105px,1fr)); gap:1.1rem; transform:rotate(2deg); }
+  .hero-cover-card { position:relative; display:block; aspect-ratio:2/3; background:var(--bg2); border:1px solid rgba(201,168,76,0.28); box-shadow:0 18px 42px rgba(0,0,0,0.5); overflow:hidden; transition:transform 0.25s,border-color 0.25s,box-shadow 0.25s; text-decoration:none; }
+  .hero-cover-card:nth-child(2),.hero-cover-card:nth-child(5){transform:translateY(2rem)}
+  .hero-cover-card:nth-child(4),.hero-cover-card:nth-child(7){transform:translateY(-1.2rem)}
+  .hero-cover-card:hover{transform:translateY(-0.35rem) scale(1.02);border-color:rgba(201,168,76,0.7);box-shadow:0 24px 55px rgba(0,0,0,0.65)}
+  .hero-cover-card:nth-child(2):hover,.hero-cover-card:nth-child(5):hover{transform:translateY(1.65rem) scale(1.02)}
+  .hero-cover-card:nth-child(4):hover,.hero-cover-card:nth-child(7):hover{transform:translateY(-1.55rem) scale(1.02)}
+  .hero-cover-card.featured { grid-row:span 2; }
+  .hero-cover-card img { width:100%; height:100%; object-fit:cover; display:block; }
+  .hero-cover-card::after { content:attr(data-label); position:absolute; left:0; right:0; bottom:0; padding:1.6rem 0.7rem 0.65rem; background:linear-gradient(to top,rgba(0,0,0,0.88),transparent); color:var(--cream); font-size:0.54rem; letter-spacing:0.16em; text-transform:uppercase; line-height:1.35; opacity:0; transform:translateY(8px); transition:opacity 0.25s,transform 0.25s; }
+  .hero-cover-card:hover::after { opacity:1; transform:translateY(0); }
+  .hero-note { position:absolute; z-index:3; right:5rem; bottom:6.2rem; max-width:280px; padding:1rem 1.15rem; background:rgba(13,11,8,0.78); border:1px solid rgba(201,168,76,0.28); backdrop-filter:blur(10px); color:var(--cream-dim); font-size:0.64rem; letter-spacing:0.08em; line-height:1.7; text-transform:uppercase; }
+  .hero-note strong { color:var(--gold); font-weight:500; }
 
   /* MARQUEE */
   .marquee-bar { background: var(--gold); padding: 0.75rem 0; overflow: hidden; white-space: nowrap; }
@@ -460,8 +467,10 @@
     nav { padding: 1.2rem 2rem; }
     .nav-links { display: none; }
     .hero { grid-template-columns: 1fr; }
-    .hero-right { display: none; }
-    .hero-left { padding: 9rem 2.5rem 5rem; }
+    .hero-left { padding: 8rem 2.5rem 2rem; }
+    .hero-right { padding:1rem 2.5rem 4rem; }
+    .hero-cover-wall { grid-template-columns:repeat(4,minmax(78px,1fr)); gap:0.8rem; transform:none; }
+    .hero-note { display:none; }
     section { padding: 5rem 2.5rem; }
     .books-grid { grid-template-columns: repeat(2, 1fr); }
     .collections-grid { grid-template-columns: 1fr 1fr; }
@@ -473,12 +482,37 @@
   }
   @media (max-width: 600px) {
     .books-grid { grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .hero { min-height:auto; }
+    .hero-title { font-size:clamp(2.45rem,13vw,3.45rem); line-height:1.04; margin-bottom:1.3rem; }
+    .hero-sub { width:auto; max-width:330px; margin-bottom:1.55rem; font-size:0.76rem; line-height:1.75; }
+    .hero-ctas { flex-direction:column; align-items:stretch; }
+    .hero-eyebrow,.hero-title,.hero-sub,.hero-ctas,.hero-stats{animation:none;opacity:1;transform:none}
+    .hero-stats { display:none; }
+    .stat-num { font-size:1.35rem; }
+    .stat-label { font-size:0.48rem; }
+    .hero-left { padding:5.6rem 1.2rem 1rem; max-width:100vw; overflow:hidden; }
+    .hero-right { padding:0.5rem 1.2rem 3rem; max-width:100vw; }
+    .hero-cover-wall { grid-template-columns:repeat(2,1fr); gap:0.75rem; width:calc(100vw - 2.4rem); max-width:calc(100vw - 2.4rem); }
+    .hero-cover-card:nth-child(2),.hero-cover-card:nth-child(5),.hero-cover-card:nth-child(4),.hero-cover-card:nth-child(7){transform:none}
+    .hero-cover-card:nth-child(7){display:none}
   }
   /* Promo banner above nav */
   .promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Montserrat',sans-serif;position:relative;z-index:200}
   .promo-banner strong{color:#c9a84c;font-weight:600;letter-spacing:0.18em}
   .promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
   @media(max-width:780px){.promo-banner{font-size:0.58rem;padding:0.5rem 0.7rem;letter-spacing:0.06em}}
+  @media(max-width:780px){
+    .hero-title { font-size:clamp(2.45rem,13vw,3.7rem); line-height:1.04; margin-bottom:1.3rem; }
+    .hero-sub { width:calc(100vw - 2.4rem); max-width:calc(100vw - 2.4rem); margin-bottom:1.55rem; font-size:0.76rem; line-height:1.75; }
+    .hero-ctas { flex-direction:column; align-items:stretch; }
+    .hero-stats { display:none; }
+    .hero-eyebrow,.hero-title,.hero-sub,.hero-ctas,.hero-stats{animation:none;opacity:1;transform:none}
+    .hero-left { padding:5.6rem 1.2rem 1rem; max-width:100vw; overflow:hidden; }
+    .hero-right { padding:0.5rem 1.2rem 3rem; max-width:100vw; justify-content:flex-start; }
+    .hero-cover-wall { grid-template-columns:repeat(2,1fr); gap:0.75rem; width:360px; max-width:calc(100vw - 2.4rem); transform:none; }
+    .hero-cover-card:nth-child(2),.hero-cover-card:nth-child(5),.hero-cover-card:nth-child(4),.hero-cover-card:nth-child(7){transform:none}
+    .hero-cover-card:nth-child(7){display:none}
+  }
 
   /* WhatsApp floating button */
   .wa-float{position:fixed;bottom:22px;left:22px;width:54px;height:54px;border-radius:50%;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.7rem;box-shadow:0 6px 20px rgba(37,211,102,0.45);z-index:250;cursor:pointer;text-decoration:none;transition:transform 0.2s,box-shadow 0.2s;animation:waPulse 2.6s ease-in-out infinite}
@@ -585,31 +619,44 @@
 <!-- HERO -->
 <section class="hero" style="padding:0;">
   <div class="hero-left">
-    <div class="hero-eyebrow">inkandchai.in — Books We Love</div>
-    <h1 class="hero-title">Stories that<br/><em>endure</em> the<br/>passage of time.</h1>
-    <p class="hero-sub">Curated fiction, non-fiction, poetry, and rare finds — thoughtfully selected for readers who believe in the transformative power of the written word.</p>
+    <div class="hero-eyebrow">Hindi self-help bestsellers</div>
+    <h1 class="hero-title">Self-help<br/><em>bestsellers</em><br/>in Hindi.</h1>
+    <p class="hero-sub">Read the titles everyone talks about — David Goggins, Ben Horowitz, Daniel Kahneman, Robert Kiyosaki, James Clear, and more — in editions made for Indian readers.</p>
     <div class="hero-ctas">
-      <a href="#featured" class="btn-primary">Explore Books</a>
-      <a href="#collections" class="btn-ghost">View Collections</a>
+      <a href="/category/?name=Hindi%20Books" class="btn-primary">Shop Hindi Editions</a>
+      <a href="#featured" class="btn-ghost">See Bestsellers</a>
     </div>
     <div class="hero-stats">
-      <div><div class="stat-num" id="stat-total">—</div><div class="stat-label">Titles Available</div></div>
-      <div><div class="stat-num">40+</div><div class="stat-label">Genres</div></div>
-      <div><div class="stat-num">2-Day</div><div class="stat-label">Pan-India Delivery</div></div>
+      <div><div class="stat-num">Hindi</div><div class="stat-label">Self-help focus</div></div>
+      <div><div class="stat-num">₹499+</div><div class="stat-label">Free shipping</div></div>
+      <div><div class="stat-num">COD</div><div class="stat-label">UPI available</div></div>
     </div>
   </div>
   <div class="hero-right">
-    <div class="hero-books-grid">
-      <div class="book-spine b1" style="grid-row:span 2;"></div>
-      <div class="book-spine b2"></div><div class="book-spine b3"></div>
-      <div class="book-spine b4" style="grid-row:span 2;"></div>
-      <div class="book-spine b5" style="grid-row:span 2;"></div>
-      <div class="book-spine b6" style="grid-row:span 2;"></div>
-      <div class="book-spine b7"></div><div class="book-spine b8"></div>
-      <div class="book-spine b9" style="grid-row:span 2;"></div>
-      <div class="book-spine b10" style="grid-row:span 2;"></div>
-      <div class="book-spine b11"></div><div class="book-spine b12"></div>
+    <div class="hero-cover-wall" aria-label="Hindi self-help featured books">
+      <a class="hero-cover-card featured" href="/product/?id=can-t-hurt-me-hindi-ME-HI" data-label="Can't Hurt Me · Hindi">
+        <img src="/images/cant-hurt-me-hindi.jpg" alt="Can't Hurt Me Hindi edition" loading="eager" fetchpriority="high"/>
+      </a>
+      <a class="hero-cover-card" href="/product/?id=never-finished-hindi-ED-HI" data-label="Never Finished">
+        <img src="/images/never-finished-hindi.jpg" alt="Never Finished Hindi edition" loading="eager"/>
+      </a>
+      <a class="hero-cover-card featured" href="/product/?id=the-hard-thing-about-hard-things-hindi-NG-HI" data-label="The Hard Thing · Hindi">
+        <img src="/images/hard-thing-about-hard-things-hindi.jpg" alt="The Hard Thing About Hard Things Hindi edition" loading="eager"/>
+      </a>
+      <a class="hero-cover-card" href="/product/?id=thinking-fast-and-slow-hindi-OW-HI" data-label="Thinking, Fast and Slow">
+        <img src="/images/thinking-fast-slow-hindi.jpg" alt="Thinking Fast and Slow Hindi edition" loading="eager"/>
+      </a>
+      <a class="hero-cover-card" href="/product/?id=hindi-rich-dad-poor-dad-80989" data-label="Rich Dad Poor Dad">
+        <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/18a3b96e-fe0b-4de2-99ba-d6900b02f8b0.jpg?v=1697648603" alt="Rich Dad Poor Dad Hindi edition" loading="lazy"/>
+      </a>
+      <a class="hero-cover-card featured" href="/product/?id=hindi-atomic-habits-33309" data-label="Atomic Habits">
+        <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51nmc82kxql-1c1458a1-51a7-4d5d-b100-4255d57076aa.jpg?v=1697649002" alt="Atomic Habits Hindi edition" loading="lazy"/>
+      </a>
+      <a class="hero-cover-card" href="/product/?id=shakti-ke-48-niyam-the-48-laws-of-power-hindi-28157" data-label="48 Laws of Power">
+        <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51-RRmYWh9L._SL1000.jpg?v=1700040895" alt="48 Laws of Power Hindi edition" loading="lazy"/>
+      </a>
     </div>
+    <div class="hero-note"><strong>Translated picks:</strong> motivation, money, business, psychology, discipline.</div>
   </div>
 </section>
 
@@ -1285,7 +1332,8 @@ function subscribeNewsletter(e) {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────
-document.getElementById('stat-total').textContent = BOOKS.length.toLocaleString() + '+';
+const totalStat = document.getElementById('stat-total');
+if (totalStat) totalStat.textContent = BOOKS.length.toLocaleString() + '+';
 document.getElementById('view-all-link').textContent = `View all ${BOOKS.length.toLocaleString()} books`;
 renderBooks();
 renderCollections();
