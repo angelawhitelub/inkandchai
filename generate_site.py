@@ -3011,12 +3011,25 @@ for b in slim:
     slug = b.get("slug", "")
     link = f"{SITE}/product/?id={slug}"
 
+    # Google Merchant Center caps <g:id> at 50 characters. Our slug can be up
+    # to 61 chars (55-char title prefix + "-" + 5-char shopify suffix). When too
+    # long, truncate the title portion but PRESERVE the unique shopify suffix
+    # at the end so two products never collide.
+    feed_id = slug
+    if len(feed_id) > 50:
+        if "-" in feed_id:
+            prefix, suffix = feed_id.rsplit("-", 1)
+            max_prefix = 50 - 1 - len(suffix)
+            feed_id = prefix[:max_prefix].rstrip("-") + "-" + suffix
+        else:
+            feed_id = feed_id[:50]
+
     desc = xml_escape(b.get("desc") or b.get("t") or "")
     if not desc:
         desc = f"Buy {xml_escape(b.get('t',''))} by {xml_escape(b.get('a',''))} online."
 
     items.append(f"""    <item>
-      <g:id>{xml_escape(slug)}</g:id>
+      <g:id>{xml_escape(feed_id)}</g:id>
       <g:title>{xml_escape(b.get('t',''))}</g:title>
       <g:description>{desc}</g:description>
       <g:link>{link}</g:link>
