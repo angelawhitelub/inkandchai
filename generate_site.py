@@ -1795,7 +1795,7 @@ function renderProduct(b) {
       <div class="prod-cover-wrap">
         <div class="prod-cover">
           ${b.img
-            ? `<img src="${esc(b.img)}" alt="${esc(b.t)}" />`
+            ? `<img src="${esc(b.img)}" alt="${esc(b.t)} — ${esc(b.a||'book')} cover" loading="eager" fetchpriority="high" decoding="async" />`
             : `<div class="prod-cover-placeholder"></div>`}
         </div>
         <div class="prod-badges">
