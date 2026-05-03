@@ -202,6 +202,28 @@
   .marquee-dot { color: rgba(13,11,8,0.4); }
   @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
+  /* HERO BANNER CAROUSEL */
+  .banners { position: relative; max-width: 1400px; margin: 2rem auto; padding: 0 1.5rem; }
+  .banner-viewport { position: relative; overflow: hidden; aspect-ratio: 2.5 / 1; background: var(--bg2); border: 1px solid var(--border); }
+  @media(max-width:780px) { .banner-viewport { aspect-ratio: 1.6 / 1; } .banners { padding: 0 0.6rem; margin: 1rem auto; } }
+  .banner-track { display: flex; height: 100%; transition: transform 0.55s cubic-bezier(0.45, 0, 0.15, 1); will-change: transform; }
+  .banner-slide { flex: 0 0 100%; position: relative; cursor: pointer; }
+  .banner-slide img { width: 100%; height: 100%; object-fit: cover; display: block; user-select: none; -webkit-user-drag: none; }
+
+  /* Side arrows (desktop only) */
+  .banner-arrow { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(13,11,8,0.55); color: var(--gold); width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(201,168,76,0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-family: 'Cormorant Garamond', serif; z-index: 3; transition: all 0.25s; backdrop-filter: blur(8px); }
+  .banner-arrow:hover { background: var(--gold); color: var(--bg); transform: translateY(-50%) scale(1.05); }
+  .banner-arrow.prev { left: 1rem; }
+  .banner-arrow.next { right: 1rem; }
+  @media(max-width:780px) { .banner-arrow { display: none; } }
+
+  /* Dots indicator */
+  .banner-dots { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 3; padding: 6px 12px; background: rgba(13,11,8,0.4); border-radius: 30px; backdrop-filter: blur(6px); }
+  .banner-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.5); border: none; cursor: pointer; padding: 0; transition: all 0.3s; }
+  .banner-dot.active { background: var(--gold); width: 24px; border-radius: 4px; }
+  .banner-dot:hover { background: rgba(255,255,255,0.85); }
+  .banner-dot.active:hover { background: var(--gold); }
+
   /* SECTIONS SHARED */
   section { padding: 7rem 6rem; }
   .section-label { font-size: 0.6rem; letter-spacing: 0.35em; text-transform: uppercase; color: var(--gold); margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; }
@@ -582,6 +604,86 @@
     </div>
   </div>
 </section>
+
+<!-- HERO BANNER CAROUSEL -->
+<div class="banners" id="bannerCarousel" aria-roledescription="carousel" aria-label="Promotional banners">
+  <div class="banner-viewport">
+    <div class="banner-track" id="bannerTrack">
+      <div class="banner-slide" data-slide="0" onclick="bannerLink(0)">
+        <picture>
+          <source media="(max-width:780px)" srcset="/images/banners/banner1-mobile.jpg">
+          <img src="/images/banners/banner1.jpg" alt="The Bestseller Haul — Free delivery on orders above ₹599 — Use coupon FREESHIPPING" loading="eager" fetchpriority="high" decoding="async" width="2000" height="800">
+        </picture>
+      </div>
+      <div class="banner-slide" data-slide="1" onclick="bannerLink(1)">
+        <picture>
+          <source media="(max-width:780px)" srcset="/images/banners/banner2-mobile.jpg">
+          <img src="/images/banners/banner2.jpg" alt="Hindi Self Help Books — Up to 50% off" loading="lazy" decoding="async" width="2000" height="800">
+        </picture>
+      </div>
+      <div class="banner-slide" data-slide="2" onclick="bannerLink(2)">
+        <picture>
+          <source media="(max-width:780px)" srcset="/images/banners/banner3-mobile.jpg">
+          <img src="/images/banners/banner3.jpg" alt="Mega Festive Sale — Order above ₹799 and get 1 book free with coupon GET1FREE" loading="lazy" decoding="async" width="2000" height="800">
+        </picture>
+      </div>
+    </div>
+    <button class="banner-arrow prev" onclick="bannerGo(-1)" aria-label="Previous banner">‹</button>
+    <button class="banner-arrow next" onclick="bannerGo(1)"  aria-label="Next banner">›</button>
+    <div class="banner-dots" role="tablist">
+      <button class="banner-dot active" data-i="0" onclick="bannerSet(0)" aria-label="Go to banner 1"></button>
+      <button class="banner-dot"        data-i="1" onclick="bannerSet(1)" aria-label="Go to banner 2"></button>
+      <button class="banner-dot"        data-i="2" onclick="bannerSet(2)" aria-label="Go to banner 3"></button>
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    const track = document.getElementById('bannerTrack');
+    const dots  = document.querySelectorAll('.banner-dot');
+    const N = 3;
+    let i = 0, timer = null, paused = false;
+    const BANNER_LINKS = [
+      '/?cat=All Self Help',                    // Bestseller haul → self-help category
+      '/category/?name=All%20Self%20Help',      // Hindi self-help
+      '/'                                        // Festive sale → homepage
+    ];
+
+    function render() {
+      track.style.transform = `translateX(-${i * 100}%)`;
+      dots.forEach((d, idx) => d.classList.toggle('active', idx === i));
+    }
+    window.bannerSet = function(n) { i = ((n % N) + N) % N; render(); restart(); };
+    window.bannerGo  = function(d) { bannerSet(i + d); };
+    window.bannerLink = function(n) { window.location.href = BANNER_LINKS[n] || '/'; };
+
+    function tick() { if (!paused) { i = (i + 1) % N; render(); } }
+    function start()   { stop(); timer = setInterval(tick, 5000); }
+    function stop()    { if (timer) clearInterval(timer); timer = null; }
+    function restart() { start(); }
+
+    // Pause on hover (desktop)
+    const carousel = document.getElementById('bannerCarousel');
+    carousel.addEventListener('mouseenter', () => { paused = true; });
+    carousel.addEventListener('mouseleave', () => { paused = false; });
+
+    // Touch swipe on mobile
+    let startX = 0, dx = 0;
+    track.addEventListener('touchstart', e => { startX = e.touches[0].clientX; dx = 0; paused = true; }, { passive: true });
+    track.addEventListener('touchmove',  e => { dx = e.touches[0].clientX - startX; }, { passive: true });
+    track.addEventListener('touchend',   () => {
+      if (Math.abs(dx) > 50) bannerGo(dx < 0 ? 1 : -1);
+      paused = false;
+    });
+
+    // Pause when tab hidden — saves CPU
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stop(); else start();
+    });
+
+    start();
+  })();
+</script>
 
 <!-- MARQUEE -->
 <div class="marquee-bar">
