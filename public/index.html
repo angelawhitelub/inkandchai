@@ -738,9 +738,10 @@
   <div class="featured-header">
     <div>
       <div class="section-label">Handpicked for You</div>
-      <h2 class="section-title">Featured <em>Titles</em></h2>
+      <h2 class="section-title">Trending <em>Bestsellers</em></h2>
       <div class="tabs">
         <button class="tab active" data-tab="All"           onclick="setTab(this)">All</button>
+        <button class="tab"        data-tab="Bestsellers"   onclick="setTab(this)">🔥 Bestsellers</button>
         <button class="tab"        data-tab="New"           onclick="setTab(this)">✨ New Arrivals</button>
         <button class="tab"        data-tab="Fiction"       onclick="setTab(this)">Fiction</button>
         <button class="tab"        data-tab="Non-Fiction"   onclick="setTab(this)">Non-Fiction</button>
@@ -846,7 +847,7 @@
         <li><a href="#collections">Collections</a></li>
         <li><a href="#categories">Categories</a></li>
         <li><a href="#featured">New Arrivals</a></li>
-        <li><a href="#featured">Bestsellers</a></li>
+        <li><a href="#featured" onclick="setTab(document.querySelector('.tab[data-tab=&quot;Bestsellers&quot;]'))">Bestsellers</a></li>
       </ul>
     </div>
     <div>
@@ -923,15 +924,66 @@ let currentTab   = 'All';
 let currentQuery = '';
 let visibleCount = PAGE_SIZE;
 
+const TRENDING_PATTERNS = [
+  ['onyx storm', 120],
+  ['sunrise on the reaping', 118],
+  ['the let them theory', 116],
+  ['great big beautiful life', 114],
+  ['the tenant', 112],
+  ['the housemaid', 110],
+  ['king of gluttony', 108],
+  ['twisted love', 106],
+  ['it ends with us', 104],
+  ['atomic habits', 102],
+  ['the psychology of money', 100],
+  ['rich dad poor dad', 98],
+  ["don't believe everything you think", 96],
+  ['dont believe everything you think', 96],
+  ["can't hurt me", 94],
+  ['cant hurt me', 94],
+  ['never finished', 92],
+  ['the hidden hindu', 90],
+  ['the subtle art of not giving', 88],
+  ['48 laws of power', 86],
+  ['ikigai', 84],
+  ['the alchemist', 82],
+];
+
+function trendScore(b) {
+  const hay = `${b.t || ''} ${b.url || ''}`.toLowerCase().replace(/’/g, "'").replace(/\*/g, '');
+  for (const [pattern, score] of TRENDING_PATTERNS) {
+    if (hay.includes(pattern)) return score;
+  }
+  return hay.includes('trending') || hay.includes('bestseller') ? 40 : 0;
+}
+
+function editionPenalty(b) {
+  const t = String(b.t || '').toLowerCase();
+  let penalty = 0;
+  if (t.includes('combo') || t.includes('set of')) penalty += 6;
+  if (t.includes('preloved')) penalty += 5;
+  if (t.includes('workbook')) penalty += 4;
+  if (t.includes('movie edition')) penalty += 2;
+  return penalty;
+}
+
+function homepageRank(a, b) {
+  return trendScore(b) - trendScore(a)
+    || editionPenalty(a) - editionPenalty(b)
+    || (b.n || 0) - (a.n || 0)
+    || a.t.localeCompare(b.t);
+}
+
 function filteredBooks() {
   const q = currentQuery.toLowerCase();
   return BOOKS.filter(b => {
     const tabOk  = currentTab === 'All'
                 || (currentTab === 'New' && b.n === 1)
+                || (currentTab === 'Bestsellers' && trendScore(b) > 0)
                 || b.tab === currentTab;
     const queryOk = !q || b.t.toLowerCase().includes(q) || (b.a && b.a.toLowerCase().includes(q));
     return tabOk && queryOk;
-  });
+  }).sort(homepageRank);
 }
 
 function renderBooks() {
@@ -1023,23 +1075,25 @@ function openCollection(catsEncoded, name) {
   visibleCount = Math.min(matches.length, 200);
   const grid = document.getElementById('booksGrid');
   grid.innerHTML = matches.slice(0, visibleCount).map(b => `
-    <div class="book-card" onclick="location.href='/product/?id=${b.slug}'" style="cursor:pointer;">
-      <div class="book-cover">
+    <div class="book-card" style="cursor:pointer;">
+      <div class="book-cover" onclick="location.href='/product/?id=${b.slug}'">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
         <div class="book-cover-overlay">
           <div class="book-cover-title">${escHtml(b.t)}</div>
-          <button class="btn-add" onclick="event.stopPropagation(); addToCartById(this)"
-            data-url="${escHtml(b.url)}" data-title="${escHtml(b.t)}"
-            data-author="${escHtml(b.a||'')}" data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
-            data-img="${escHtml(b.img)}">Add to Cart</button>
         </div>
       </div>
-      <div class="book-name">${escHtml(b.t)}</div>
-      <div class="book-author">${escHtml(b.a || '')}</div>
+      <div class="book-name" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.t)}</div>
+      <div class="book-author" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
       </div>
+      <button class="btn-add-card" onclick="event.stopPropagation(); addToCartById(this)"
+        data-url="${escHtml(b.url)}"
+        data-title="${escHtml(b.t)}"
+        data-author="${escHtml(b.a||'')}"
+        data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
+        data-img="${escHtml(b.img)}">+ Add to Cart</button>
     </div>
   `).join('');
   const info = document.getElementById('booksCount');
