@@ -154,16 +154,11 @@
   /* NAV */
   nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 4rem; background: linear-gradient(to bottom, rgba(13,11,8,0.97) 0%, transparent 100%); border-bottom: 1px solid var(--border); backdrop-filter: blur(12px); }
   .nav-logo { display: inline-flex; align-items: center; gap: 0.5rem; font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; font-weight: 600; letter-spacing: 0.08em; color: var(--gold); text-decoration: none; }
-  .nav-logo img { height: 38px; width: auto; display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3)); }
-  .nav-logo .nav-logo-text { display: inline; }
-  .nav-logo .nav-logo-text em { color: var(--cream); font-weight: 300; font-style: italic; }
-  .nav-logo span { color: var(--cream); font-weight: 300; font-style: italic; }
-  /* Light mode keeps the logo readable on cream background */
-  html[data-theme="light"] .nav-logo img { filter: none; }
-  @media(max-width:780px) {
-    .nav-logo img { height: 32px; }
-    .nav-logo .nav-logo-text { display: none; }  /* logo image alone on mobile */
-  }
+  .nav-logo .logo-img { height: 38px; width: auto; display: block; }
+  .nav-logo .logo-light { display: none; }
+  html[data-theme="light"] .nav-logo .logo-dark  { display: none; }
+  html[data-theme="light"] .nav-logo .logo-light { display: block; }
+  @media(max-width:780px) { .nav-logo .logo-img { height: 32px; } }
   .nav-links { display: flex; gap: 2.8rem; list-style: none; }
   .nav-links a { font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cream-dim); text-decoration: none; transition: color 0.3s; }
   .nav-links a:hover { color: var(--gold); }
@@ -505,7 +500,10 @@
 </nav>
 
 <nav>
-  <a class="nav-logo" href="/" aria-label="Ink and Chai — home"><img src="/images/logo.png" alt="Ink &amp; Chai logo" width="120" height="38"/></a>
+  <a class="nav-logo" href="/" aria-label="Ink and Chai — home">
+    <img class="logo-img logo-dark"  src="/images/logo-light.png" alt="Ink &amp; Chai logo" width="120" height="38"/>
+    <img class="logo-img logo-light" src="/images/logo.png"       alt="" width="120" height="38" aria-hidden="true"/>
+  </a>
   <ul class="nav-links">
     <li><a href="#featured">Catalogue</a></li>
     <li><a href="#collections">Collections</a></li>

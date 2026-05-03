@@ -22,9 +22,11 @@ body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif
 nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1.2rem 2.5rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
 html[data-theme="light"] nav{background:rgba(250,247,242,0.97)}
 .nav-logo{display:inline-flex;align-items:center;gap:0.5rem;font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;letter-spacing:0.08em;color:var(--gold);text-decoration:none}
-.nav-logo img{height:38px;width:auto;display:block}
-.nav-logo span{color:var(--cream);font-weight:300;font-style:italic}
-@media(max-width:780px){.nav-logo img{height:32px}.nav-logo span{display:none}}
+.nav-logo .logo-img{height:38px;width:auto;display:block}
+.nav-logo .logo-light{display:none}
+html[data-theme="light"] .nav-logo .logo-dark{display:none}
+html[data-theme="light"] .nav-logo .logo-light{display:block}
+@media(max-width:780px){.nav-logo .logo-img{height:32px}}
 .nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;transition:color 0.3s}
 .nav-back:hover{color:var(--gold)}
 .btn-nav{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.55rem 1.4rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;text-decoration:none}
@@ -115,7 +117,10 @@ html[data-theme="light"] .help{background:var(--bg3)}
 </head>
 <body>
 <nav>
-  <a class="nav-logo" href="/" aria-label="Ink and Chai — home"><img src="/images/logo.png" alt="Ink &amp; Chai logo" width="120" height="38"/></a>
+  <a class="nav-logo" href="/" aria-label="Ink and Chai — home">
+    <img class="logo-img logo-dark"  src="/images/logo-light.png" alt="Ink &amp; Chai logo" width="120" height="38"/>
+    <img class="logo-img logo-light" src="/images/logo.png"       alt="" width="120" height="38" aria-hidden="true"/>
+  </a>
   <a class="nav-back" href="/">← Back to home</a>
   <div style="display:flex;gap:0.6rem;align-items:center;">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode"><span class="moon">🌙</span><span class="sun">☀️</span></button>

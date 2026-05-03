@@ -62,10 +62,11 @@ body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif
 /* NAV */
 nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1.2rem 4rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
 .nav-logo{display:inline-flex;align-items:center;gap:0.5rem;font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;letter-spacing:0.08em;color:var(--gold);text-decoration:none}
-.nav-logo img{height:38px;width:auto;display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3))}
-.nav-logo span{color:var(--cream);font-weight:300;font-style:italic}
-html[data-theme="light"] .nav-logo img{filter:none}
-@media(max-width:780px){.nav-logo img{height:32px}.nav-logo span,.nav-logo .nav-logo-text{display:none}}
+.nav-logo .logo-img{height:38px;width:auto;display:block}
+.nav-logo .logo-light{display:none}
+html[data-theme="light"] .nav-logo .logo-dark{display:none}
+html[data-theme="light"] .nav-logo .logo-light{display:block}
+@media(max-width:780px){.nav-logo .logo-img{height:32px}}
 .nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;display:flex;align-items:center;gap:0.5rem;transition:color 0.3s}
 .nav-back:hover{color:var(--gold)}
 .nav-cart-wrap{position:relative}
@@ -305,7 +306,10 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 
 <!-- NAV -->
 <nav>
-  <a class="nav-logo" href="/" aria-label="Ink and Chai — home"><img src="/images/logo.png" alt="Ink &amp; Chai logo" width="120" height="38"/></a>
+  <a class="nav-logo" href="/" aria-label="Ink and Chai — home">
+    <img class="logo-img logo-dark"  src="/images/logo-light.png" alt="Ink &amp; Chai logo" width="120" height="38"/>
+    <img class="logo-img logo-light" src="/images/logo.png"       alt="" width="120" height="38" aria-hidden="true"/>
+  </a>
   <a class="nav-back" href="javascript:history.back()">← Back to catalogue</a>
   <div style="display:flex;gap:1rem;align-items:center;">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
