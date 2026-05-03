@@ -184,6 +184,11 @@ HTML = r"""<!DOCTYPE html>
 <link rel="canonical" href="https://inkandchai.in/" />
 <link rel="alternate" type="application/rss+xml" title="Ink & Chai Product Feed" href="/feed.xml" />
 <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="/images/icon-192.png" />
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png" />
+<link rel="manifest" href="/manifest.json" />
 
 <!-- Open Graph / Facebook / WhatsApp -->
 <meta property="og:type" content="website" />
@@ -313,8 +318,17 @@ HTML = r"""<!DOCTYPE html>
 
   /* NAV */
   nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 4rem; background: linear-gradient(to bottom, rgba(13,11,8,0.97) 0%, transparent 100%); border-bottom: 1px solid var(--border); backdrop-filter: blur(12px); }
-  .nav-logo { font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; font-weight: 600; letter-spacing: 0.08em; color: var(--gold); text-decoration: none; }
+  .nav-logo { display: inline-flex; align-items: center; gap: 0.5rem; font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; font-weight: 600; letter-spacing: 0.08em; color: var(--gold); text-decoration: none; }
+  .nav-logo img { height: 38px; width: auto; display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3)); }
+  .nav-logo .nav-logo-text { display: inline; }
+  .nav-logo .nav-logo-text em { color: var(--cream); font-weight: 300; font-style: italic; }
   .nav-logo span { color: var(--cream); font-weight: 300; font-style: italic; }
+  /* Light mode keeps the logo readable on cream background */
+  html[data-theme="light"] .nav-logo img { filter: none; }
+  @media(max-width:780px) {
+    .nav-logo img { height: 32px; }
+    .nav-logo .nav-logo-text { display: none; }  /* logo image alone on mobile */
+  }
   .nav-links { display: flex; gap: 2.8rem; list-style: none; }
   .nav-links a { font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cream-dim); text-decoration: none; transition: color 0.3s; }
   .nav-links a:hover { color: var(--gold); }
@@ -656,7 +670,7 @@ HTML = r"""<!DOCTYPE html>
 </nav>
 
 <nav>
-  <a class="nav-logo" href="#">Ink &amp;<span> Chai</span></a>
+  <a class="nav-logo" href="/" aria-label="Ink and Chai — home"><img src="/images/logo.png" alt="Ink &amp; Chai logo" width="120" height="38"/></a>
   <ul class="nav-links">
     <li><a href="#featured">Catalogue</a></li>
     <li><a href="#collections">Collections</a></li>
@@ -1340,6 +1354,11 @@ PRODUCT_HTML = """<!DOCTYPE html>
 <meta name="twitter:description" id="twDesc" content="Buy books online at Ink &amp; Chai."/>
 <meta name="twitter:image" id="twImg" content="https://inkandchai.in/images/og-default.jpg"/>
 <link rel="canonical" id="canonLink" href="https://inkandchai.in/product/"/>
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>
+<link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="/images/icon-192.png"/>
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
+<link rel="manifest" href="/manifest.json"/>
 <script type="application/ld+json" id="ldjson">{}</script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script>
@@ -1375,8 +1394,11 @@ body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif
 
 /* NAV */
 nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1.2rem 4rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
-.nav-logo{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;letter-spacing:0.08em;color:var(--gold);text-decoration:none}
+.nav-logo{display:inline-flex;align-items:center;gap:0.5rem;font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;letter-spacing:0.08em;color:var(--gold);text-decoration:none}
+.nav-logo img{height:38px;width:auto;display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3))}
 .nav-logo span{color:var(--cream);font-weight:300;font-style:italic}
+html[data-theme="light"] .nav-logo img{filter:none}
+@media(max-width:780px){.nav-logo img{height:32px}.nav-logo span,.nav-logo .nav-logo-text{display:none}}
 .nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;display:flex;align-items:center;gap:0.5rem;transition:color 0.3s}
 .nav-back:hover{color:var(--gold)}
 .nav-cart-wrap{position:relative}
@@ -1616,7 +1638,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 
 <!-- NAV -->
 <nav>
-  <a class="nav-logo" href="/">Ink &amp;<span> Chai</span></a>
+  <a class="nav-logo" href="/" aria-label="Ink and Chai — home"><img src="/images/logo.png" alt="Ink &amp; Chai logo" width="120" height="38"/></a>
   <a class="nav-back" href="javascript:history.back()">← Back to catalogue</a>
   <div style="display:flex;gap:1rem;align-items:center;">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
@@ -2145,6 +2167,10 @@ CHECKOUT_HTML = """<!DOCTYPE html>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Checkout — Ink &amp; Chai</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>
+<link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
+<link rel="manifest" href="/manifest.json"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
@@ -2648,6 +2674,10 @@ COLLECTION_HTML = r"""<!DOCTYPE html>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Collection — Ink &amp; Chai</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>
+<link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
+<link rel="manifest" href="/manifest.json"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script>
   (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
@@ -2660,8 +2690,11 @@ html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#8a6a1f
 body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
 nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1.2rem 4rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
 html[data-theme="light"] nav{background:rgba(250,247,242,0.97)}
-.nav-logo{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;letter-spacing:0.08em;color:var(--gold);text-decoration:none}
+.nav-logo{display:inline-flex;align-items:center;gap:0.5rem;font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;letter-spacing:0.08em;color:var(--gold);text-decoration:none}
+.nav-logo img{height:38px;width:auto;display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3))}
 .nav-logo span{color:var(--cream);font-weight:300;font-style:italic}
+html[data-theme="light"] .nav-logo img{filter:none}
+@media(max-width:780px){.nav-logo img{height:32px}.nav-logo span,.nav-logo .nav-logo-text{display:none}}
 .nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;transition:color 0.3s}
 .nav-back:hover{color:var(--gold)}
 .btn-nav{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.55rem 1.4rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.3s;text-decoration:none}
@@ -2731,7 +2764,7 @@ html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-c
 </nav>
 <a class="wa-float" href="https://wa.me/919625836117" target="_blank" rel="noopener" title="Chat on WhatsApp"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
 <nav>
-  <a class="nav-logo" href="/">Ink &amp;<span> Chai</span></a>
+  <a class="nav-logo" href="/" aria-label="Ink and Chai — home"><img src="/images/logo.png" alt="Ink &amp; Chai logo" width="120" height="38"/></a>
   <a class="nav-back" href="/">← Back to home</a>
   <div style="display:flex;gap:0.8rem;align-items:center;">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode"><span class="moon">🌙</span><span class="sun">☀️</span></button>

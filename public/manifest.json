@@ -1,0 +1,23 @@
+{
+  "name": "Ink & Chai \u2014 An Indian Bookshop",
+  "short_name": "Ink & Chai",
+  "description": "Buy books online in India. Hindi & English. Free shipping above \u20b9499.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0b08",
+  "theme_color": "#c9a84c",
+  "icons": [
+    {
+      "src": "/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -4,6 +4,9 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Admin — Ink &amp; Chai</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>
+<link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <!-- SheetJS for Excel export -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -12,7 +15,8 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);flex-wrap:wrap;gap:0.8rem;}
-.logo{font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:600;color:var(--gold);}
+.logo{display:inline-flex;align-items:center;gap:0.6rem;font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:600;color:var(--gold);}
+.logo img{height:34px;width:auto;display:block}
 .logo span{color:var(--cream);font-weight:300;font-style:italic}
 .nav-right{display:flex;gap:0.7rem;align-items:center;flex-wrap:wrap;}
 .chip{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.28rem 0.75rem;border:1px solid var(--border);color:var(--cream-dim);}
@@ -98,7 +102,7 @@ tr:hover td{background:rgba(201,168,76,0.025);}
 <body>
 
 <nav>
-  <div class="logo">Ink &amp;<span> Chai</span> <span style="font-size:0.7rem;color:var(--gold-dim);font-family:'Montserrat',sans-serif;letter-spacing:0.15em;"> — Admin</span></div>
+  <div class="logo"><img src="/images/logo.png" alt="Ink &amp; Chai" width="100" height="34"/><span style="font-size:0.7rem;color:var(--gold-dim);font-family:'Montserrat',sans-serif;letter-spacing:0.15em;"> — Admin</span></div>
   <div class="nav-right">
     <span class="chip" id="adminChip" style="display:none;border-color:rgba(109,191,109,0.3);color:var(--green);">● Admin</span>
     <button class="btn-green" id="exportAllBtn" style="display:none;" onclick="exportExcel('all')" title="Download all orders as Excel">
