@@ -1,28 +1,38 @@
 {
-  "_README": "List of customer photos / unboxing videos / testimonials shown in the #InkAndChaiBookstagram strip on EVERY product page. Add real content as you collect it — one entry per card. Empty list = section hidden. See bottom of file for the schema.",
+  "_README": "List of customer photos / unboxing videos shown in the #InkAndChaiBookstagram strip on EVERY product page. Drop new entries in the items[] array; rebuild picks them up. Schema at the bottom.",
 
-  "items": [],
+  "items": [
+    {
+      "type": "video",
+      "src":  "/videos/unboxing-people-magnet.mp4",
+      "poster": "/images/social/unboxing-people-magnet.jpg",
+      "caption": "All India delivery · COD available"
+    },
+    {
+      "type": "video",
+      "src":  "/videos/affordable-novels.mp4",
+      "poster": "/images/social/affordable-novels.jpg",
+      "caption": "Affordable novels from just ₹99"
+    },
+    {
+      "type": "video",
+      "src":  "/videos/rich-dad-collection.mp4",
+      "poster": "/images/social/rich-dad-collection.jpg",
+      "caption": "Different genres · Large collection to choose from"
+    },
+    {
+      "type": "video",
+      "src":  "/videos/customer-thanks.mp4",
+      "poster": "/images/social/customer-thanks.jpg",
+      "caption": "❤️ A note from one of our readers"
+    }
+  ],
 
   "_schema": {
     "type":     "'video' | 'image'",
-    "src":      "Path under /public (e.g. /videos/unboxing-hindi-bestsellers.mp4) OR full https:// URL",
-    "poster":   "Optional thumbnail for video cards (path or URL). Picked up from first frame if omitted.",
-    "caption":  "Short 1-line caption shown over the card (e.g. 'Anjali · Pune · Hindi self-help haul')",
+    "src":      "Path under /public (e.g. /videos/file.mp4) OR full https:// URL",
+    "poster":   "Optional thumbnail (path or URL); auto-extracted from first frame if browser supports it",
+    "caption":  "1-line caption shown over the card",
     "instagram": "Optional Instagram permalink — adds an 'View on Instagram' chip"
-  },
-
-  "_examples_to_paste_when_ready": [
-    {
-      "type": "video",
-      "src":  "/videos/anjali-unboxing.mp4",
-      "poster": "/images/social/anjali-thumb.jpg",
-      "caption": "Anjali · Pune · Self-help haul",
-      "instagram": "https://instagram.com/p/XXXXX"
-    },
-    {
-      "type": "image",
-      "src":  "/images/social/customer-review-1.jpg",
-      "caption": "Rohan · Delhi NCR · Same-day delivery 💛"
-    }
-  ]
+  }
 }
