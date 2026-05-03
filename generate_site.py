@@ -1498,6 +1498,32 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
   .fbt-cta{width:100%}
 }
 
+/* #InkAndChaiBookstagram — horizontal social-proof strip */
+.bkg-section{max-width:1100px;margin:3rem auto 0;padding:0 2rem}
+.bkg-title{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:400;color:var(--white);margin-bottom:0.4rem}
+.bkg-title em{font-style:italic;color:var(--gold-light)}
+.bkg-sub{font-size:0.65rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:1.2rem}
+.bkg-strip{display:flex;gap:1rem;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:1rem;margin:0 -2rem;padding-left:2rem;padding-right:2rem;scrollbar-width:thin;scrollbar-color:var(--gold-dim) var(--bg2)}
+.bkg-strip::-webkit-scrollbar{height:6px}
+.bkg-strip::-webkit-scrollbar-track{background:var(--bg2)}
+.bkg-strip::-webkit-scrollbar-thumb{background:var(--gold-dim);border-radius:3px}
+.bkg-card{flex:0 0 200px;aspect-ratio:9/16;background:var(--bg2);border:1px solid var(--border);position:relative;overflow:hidden;scroll-snap-align:start;cursor:pointer;transition:transform 0.25s,border-color 0.25s}
+.bkg-card:hover{transform:translateY(-4px);border-color:rgba(201,168,76,0.5)}
+.bkg-card img,.bkg-card video{width:100%;height:100%;object-fit:cover;display:block}
+.bkg-card .bkg-overlay{position:absolute;inset:auto 0 0 0;padding:0.7rem;background:linear-gradient(to top,rgba(0,0,0,0.85),transparent);font-size:0.7rem;color:#f0e8d8;line-height:1.3}
+.bkg-card .bkg-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:46px;height:46px;border-radius:50%;background:rgba(13,11,8,0.7);display:flex;align-items:center;justify-content:center;color:var(--gold);font-size:1.2rem;backdrop-filter:blur(8px);pointer-events:none}
+.bkg-card video{display:block}
+.bkg-card.is-playing .bkg-play{display:none}
+.bkg-ig-chip{position:absolute;top:8px;right:8px;background:rgba(13,11,8,0.7);color:var(--gold);font-size:0.5rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.3rem 0.5rem;text-decoration:none;backdrop-filter:blur(8px)}
+.bkg-empty{font-size:0.72rem;color:var(--cream-dim);padding:0.6rem 0 1rem;line-height:1.6}
+.bkg-empty code{background:var(--bg2);color:var(--gold);font-family:Menlo,Consolas,monospace;font-size:0.68rem;padding:0.1rem 0.4rem;border:1px solid var(--border)}
+@media(max-width:780px){
+  .bkg-section{padding:0 1rem;margin-top:2rem}
+  .bkg-strip{margin:0 -1rem;padding-left:1rem;padding-right:1rem}
+  .bkg-card{flex:0 0 160px}
+  .bkg-title{font-size:1.25rem}
+}
+
 /* RELATED */
 .related{max-width:1100px;margin:0 auto;padding:0 2rem 6rem}
 .related-title{font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;color:var(--white);margin-bottom:2rem}
@@ -1606,6 +1632,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 <!-- PRODUCT CONTENT (rendered by JS) -->
 <div id="productContent"></div>
 <div id="fbtContent"></div>
+<div id="bookstagramContent"></div>
 <div id="relatedContent"></div>
 
 <!-- CART OVERLAY + SIDEBAR -->
@@ -1643,6 +1670,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 <script src="/js/auth.js"></script>
 <script>
 const BOOKS = BOOKS_DATA_PLACEHOLDER;
+const SOCIAL_PROOF = SOCIAL_PROOF_PLACEHOLDER;
 
 // ── Lookup book by slug ───────────────────────────────────────────────────
 const BOOK_MAP = {};
@@ -1959,6 +1987,63 @@ function addBundleToCart() {
   if (window.showToast)   showToast(`${added} books added to cart 🎉`);
 }
 
+// ── #InkAndChaiBookstagram social proof strip ─────────────────────────────
+// Reads from SOCIAL_PROOF (data/social_proof.json) — fed at build time. If
+// the list is empty we still render a tiny "coming soon" line so customers
+// know to look here, but no fake content.
+function renderBookstagram() {
+  const el = document.getElementById('bookstagramContent');
+  if (!el) return;
+  const items = (window.SOCIAL_PROOF || []).slice(0, 12);
+  if (!items.length) {
+    el.innerHTML = `
+      <section class="bkg-section">
+        <h2 class="bkg-title">#Ink<em>And</em>ChaiBookstagram</h2>
+        <div class="bkg-sub">Real customers · Real unboxings</div>
+        <div class="bkg-empty">
+          We're collecting unboxing photos and reels from our readers. Tag <code>@inkandchai</code> on Instagram and your post might land here.
+        </div>
+      </section>`;
+    return;
+  }
+  const cards = items.map((it, i) => {
+    const isVideo = (it.type || '').toLowerCase() === 'video' || /\.(mp4|webm|mov)$/i.test(it.src || '');
+    const igChip = it.instagram
+      ? `<a class="bkg-ig-chip" href="${esc(it.instagram)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Instagram</a>`
+      : '';
+    const cap = it.caption ? `<div class="bkg-overlay">${esc(it.caption)}</div>` : '';
+    if (isVideo) {
+      const poster = it.poster ? ` poster="${esc(it.poster)}"` : '';
+      return `
+        <div class="bkg-card" onclick="bkgPlay(this)">
+          <video src="${esc(it.src)}"${poster} preload="metadata" playsinline muted loop></video>
+          <div class="bkg-play">▶</div>
+          ${igChip}${cap}
+        </div>`;
+    }
+    return `
+      <div class="bkg-card" ${it.instagram ? `onclick="window.open('${esc(it.instagram)}','_blank')"` : ''}>
+        <img src="${esc(it.src)}" alt="${esc(it.caption || 'Customer photo')}" loading="lazy"/>
+        ${igChip}${cap}
+      </div>`;
+  }).join('');
+  el.innerHTML = `
+    <section class="bkg-section">
+      <h2 class="bkg-title">#Ink<em>And</em>ChaiBookstagram</h2>
+      <div class="bkg-sub">Real customers · Real unboxings · Real reads</div>
+      <div class="bkg-strip">${cards}</div>
+    </section>`;
+}
+window.bkgPlay = function(card) {
+  const v = card.querySelector('video');
+  if (!v) return;
+  if (v.paused) { v.play().then(() => card.classList.add('is-playing')).catch(()=>{}); }
+  else          { v.pause(); card.classList.remove('is-playing'); }
+};
+
+// Expose social-proof JSON to renderer
+window.SOCIAL_PROOF = SOCIAL_PROOF;
+
 // ── Related books ─────────────────────────────────────────────────────────
 function renderRelated(b) {
   const related = BOOKS.filter(x => x.cat === b.cat && x.url !== b.url).slice(0, 4);
@@ -2016,6 +2101,7 @@ const book    = slug ? BOOK_MAP[slug] : null;
 if (book) {
   renderProduct(book);
   renderFBT(book);
+  renderBookstagram();
   renderRelated(book);
 } else {
   document.getElementById('productContent').innerHTML = `
@@ -2029,7 +2115,16 @@ if (book) {
 </html>
 """
 
+# Social proof items — fed into every product page's #InkAndChaiBookstagram strip
+try:
+    _social = json.loads((Path(__file__).parent / "data" / "social_proof.json").read_text())
+    social_items = [it for it in (_social.get("items") or []) if isinstance(it, dict) and it.get("src")]
+except Exception:
+    social_items = []
+print(f"Social-proof items: {len(social_items)}")
+
 PRODUCT_HTML = PRODUCT_HTML.replace("BOOKS_DATA_PLACEHOLDER",        books_js)
+PRODUCT_HTML = PRODUCT_HTML.replace("SOCIAL_PROOF_PLACEHOLDER",      json.dumps(social_items, ensure_ascii=False))
 PRODUCT_HTML = PRODUCT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",  razorpay_key)
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_URL_PLACEHOLDER",      os.environ.get("SUPABASE_URL", ""))
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER", os.environ.get("SUPABASE_ANON_KEY", ""))

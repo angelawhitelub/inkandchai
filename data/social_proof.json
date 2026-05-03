@@ -1,0 +1,28 @@
+{
+  "_README": "List of customer photos / unboxing videos / testimonials shown in the #InkAndChaiBookstagram strip on EVERY product page. Add real content as you collect it — one entry per card. Empty list = section hidden. See bottom of file for the schema.",
+
+  "items": [],
+
+  "_schema": {
+    "type":     "'video' | 'image'",
+    "src":      "Path under /public (e.g. /videos/unboxing-hindi-bestsellers.mp4) OR full https:// URL",
+    "poster":   "Optional thumbnail for video cards (path or URL). Picked up from first frame if omitted.",
+    "caption":  "Short 1-line caption shown over the card (e.g. 'Anjali · Pune · Hindi self-help haul')",
+    "instagram": "Optional Instagram permalink — adds an 'View on Instagram' chip"
+  },
+
+  "_examples_to_paste_when_ready": [
+    {
+      "type": "video",
+      "src":  "/videos/anjali-unboxing.mp4",
+      "poster": "/images/social/anjali-thumb.jpg",
+      "caption": "Anjali · Pune · Self-help haul",
+      "instagram": "https://instagram.com/p/XXXXX"
+    },
+    {
+      "type": "image",
+      "src":  "/images/social/customer-review-1.jpg",
+      "caption": "Rohan · Delhi NCR · Same-day delivery 💛"
+    }
+  ]
+}
