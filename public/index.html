@@ -251,9 +251,10 @@
   @media(max-width:880px) { .books-grid { grid-template-columns: repeat(3, 1fr); } }
   .book-card { cursor: pointer; }
   .book-cover { aspect-ratio: 2/3; max-height: 320px; position: relative; overflow: hidden; margin-bottom: 1rem; border: 1px solid var(--border); background: #1a1208; display: flex; align-items: center; justify-content: center; }
-  .book-cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.5s ease; }
+  /* contain (not cover) so wide combo images aren't cropped — full image always visible */
+  .book-cover img { width: 100%; height: 100%; object-fit: contain; display: block; transition: transform 0.5s ease; }
+  .book-card:hover .book-cover img { transform: scale(1.04); }
   @media(max-width:780px) { .book-cover { max-height: 220px; margin-bottom: 0.7rem; } }
-  .book-card:hover .book-cover img { transform: scale(1.05); }
   .book-cover-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; opacity: 0; transition: opacity 0.3s; padding: 1rem; }
   .book-card:hover .book-cover-overlay { opacity: 1; }
   .book-cover-title { font-family: 'Cormorant Garamond', serif; font-size: 0.9rem; color: var(--white); text-align: center; line-height: 1.3; }

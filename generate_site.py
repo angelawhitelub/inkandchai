@@ -416,9 +416,10 @@ HTML = r"""<!DOCTYPE html>
   @media(max-width:880px) { .books-grid { grid-template-columns: repeat(3, 1fr); } }
   .book-card { cursor: pointer; }
   .book-cover { aspect-ratio: 2/3; max-height: 320px; position: relative; overflow: hidden; margin-bottom: 1rem; border: 1px solid var(--border); background: #1a1208; display: flex; align-items: center; justify-content: center; }
-  .book-cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.5s ease; }
+  /* contain (not cover) so wide combo images aren't cropped — full image always visible */
+  .book-cover img { width: 100%; height: 100%; object-fit: contain; display: block; transition: transform 0.5s ease; }
+  .book-card:hover .book-cover img { transform: scale(1.04); }
   @media(max-width:780px) { .book-cover { max-height: 220px; margin-bottom: 0.7rem; } }
-  .book-card:hover .book-cover img { transform: scale(1.05); }
   .book-cover-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; opacity: 0; transition: opacity 0.3s; padding: 1rem; }
   .book-card:hover .book-cover-overlay { opacity: 1; }
   .book-cover-title { font-family: 'Cormorant Garamond', serif; font-size: 0.9rem; color: var(--white); text-align: center; line-height: 1.3; }
@@ -1663,7 +1664,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 .rel-card{cursor:pointer;transition:opacity 0.2s}
 .rel-card:hover{opacity:0.85}
 .rel-cover{aspect-ratio:2/3;background:var(--bg2);border:1px solid var(--border);overflow:hidden;margin-bottom:0.8rem}
-.rel-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.rel-cover img{width:100%;height:100%;object-fit:contain;display:block;background:#1a1208}
 .rel-title{font-family:'Cormorant Garamond',serif;font-size:0.95rem;color:var(--cream);line-height:1.3;margin-bottom:0.2rem}
 .rel-price{font-size:0.85rem;color:var(--gold)}
 
@@ -2839,7 +2840,7 @@ html[data-theme="light"] .theme-toggle .sun{display:inline}
 .book-card:hover{transform:translateY(-4px)}
 .book-cover{aspect-ratio:2/3;background:#1a1208;border:1px solid var(--border);overflow:hidden;margin-bottom:1rem;position:relative}
 html[data-theme="light"] .book-cover{background:#f0e8d4}
-.book-cover img{width:100%;height:100%;object-fit:cover;transition:transform 0.4s}
+.book-cover img{width:100%;height:100%;object-fit:contain;transition:transform 0.4s;background:#1a1208}
 .book-card:hover .book-cover img{transform:scale(1.05)}
 .book-name{font-family:'Cormorant Garamond',serif;font-size:0.95rem;color:var(--cream);line-height:1.3;margin-bottom:0.3rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .book-author{font-size:0.65rem;color:var(--cream-dim);letter-spacing:0.05em;margin-bottom:0.5rem}
