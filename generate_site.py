@@ -4,6 +4,7 @@ embedded from the 99bookstores scrape at ~/InkAndChaiBooks/ALL_BOOKS.json.
 """
 
 import json, re
+import shutil
 from html import escape as html_escape
 from urllib.parse import quote
 from datetime import datetime, timedelta
@@ -2464,6 +2465,9 @@ function addBookToCart() {{
 </html>"""
 
 product_root = Path(__file__).parent / "public" / "product"
+for old_product_dir in product_root.iterdir():
+    if old_product_dir.is_dir():
+        shutil.rmtree(old_product_dir)
 for book in slim:
     out = product_root / book["slug"] / "index.html"
     out.parent.mkdir(parents=True, exist_ok=True)
