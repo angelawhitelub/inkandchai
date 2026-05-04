@@ -179,7 +179,7 @@ function renderGrid() {
   if (sort === 'alpha')      list.sort((a,b) => (a.t||'').localeCompare(b.t||''));
   document.getElementById('visCount').textContent = list.length;
   document.getElementById('grid').innerHTML = list.map(b => `
-    <div class="book-card" onclick="location.href='/product/?id=${b.slug}'">
+    <div class="book-card" onclick="location.href='/product/${b.slug}/'">
       <div class="book-cover">${b.img ? `<img src="${esc(b.img)}" alt="${esc(b.t)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}</div>
       <div class="book-name">${esc(b.t)}</div>
       <div class="book-author">${esc(b.a||'')}</div>

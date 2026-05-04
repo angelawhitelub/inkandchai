@@ -4,6 +4,8 @@ embedded from the 99bookstores scrape at ~/InkAndChaiBooks/ALL_BOOKS.json.
 """
 
 import json, re
+from html import escape as html_escape
+from urllib.parse import quote
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections import Counter, defaultdict
@@ -125,6 +127,14 @@ TOP_CATS = [
 
 def slugify(s):
     return "".join(c if c.isalnum() else "-" for c in s.lower()).strip("-").replace("--","-")
+
+SITE = "https://inkandchai.in"
+
+def product_path(slug):
+    return f"/product/{slug}/"
+
+def product_abs_url(slug):
+    return f"{SITE}{product_path(slug)}"
 
 coll_data = []
 for name, cats in TOP_CATS:
@@ -799,25 +809,25 @@ HTML = r"""<!DOCTYPE html>
   </div>
   <div class="hero-right">
     <div class="hero-cover-wall" aria-label="Hindi self-help featured books">
-      <a class="hero-cover-card featured" href="/product/?id=can-t-hurt-me-hindi-ME-HI" data-label="Can't Hurt Me · Hindi">
+      <a class="hero-cover-card featured" href="/product/can-t-hurt-me-hindi-ME-HI/" data-label="Can't Hurt Me · Hindi">
         <img src="/images/cant-hurt-me-hindi.jpg" alt="Can't Hurt Me Hindi edition" loading="eager" fetchpriority="high"/>
       </a>
-      <a class="hero-cover-card" href="/product/?id=never-finished-hindi-ED-HI" data-label="Never Finished">
+      <a class="hero-cover-card" href="/product/never-finished-hindi-ED-HI/" data-label="Never Finished">
         <img src="/images/never-finished-hindi.jpg" alt="Never Finished Hindi edition" loading="eager"/>
       </a>
-      <a class="hero-cover-card featured" href="/product/?id=the-hard-thing-about-hard-things-hindi-NG-HI" data-label="The Hard Thing · Hindi">
+      <a class="hero-cover-card featured" href="/product/the-hard-thing-about-hard-things-hindi-NG-HI/" data-label="The Hard Thing · Hindi">
         <img src="/images/hard-thing-about-hard-things-hindi.jpg" alt="The Hard Thing About Hard Things Hindi edition" loading="eager"/>
       </a>
-      <a class="hero-cover-card" href="/product/?id=thinking-fast-and-slow-hindi-OW-HI" data-label="Thinking, Fast and Slow">
+      <a class="hero-cover-card" href="/product/thinking-fast-and-slow-hindi-OW-HI/" data-label="Thinking, Fast and Slow">
         <img src="/images/thinking-fast-slow-hindi.jpg" alt="Thinking Fast and Slow Hindi edition" loading="eager"/>
       </a>
-      <a class="hero-cover-card" href="/product/?id=hindi-rich-dad-poor-dad-80989" data-label="Rich Dad Poor Dad">
+      <a class="hero-cover-card" href="/product/hindi-rich-dad-poor-dad-80989/" data-label="Rich Dad Poor Dad">
         <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/18a3b96e-fe0b-4de2-99ba-d6900b02f8b0.jpg?v=1697648603" alt="Rich Dad Poor Dad Hindi edition" loading="lazy"/>
       </a>
-      <a class="hero-cover-card featured" href="/product/?id=hindi-atomic-habits-33309" data-label="Atomic Habits">
+      <a class="hero-cover-card featured" href="/product/hindi-atomic-habits-33309/" data-label="Atomic Habits">
         <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51nmc82kxql-1c1458a1-51a7-4d5d-b100-4255d57076aa.jpg?v=1697649002" alt="Atomic Habits Hindi edition" loading="lazy"/>
       </a>
-      <a class="hero-cover-card" href="/product/?id=shakti-ke-48-niyam-the-48-laws-of-power-hindi-28157" data-label="48 Laws of Power">
+      <a class="hero-cover-card" href="/product/shakti-ke-48-niyam-the-48-laws-of-power-hindi-28157/" data-label="48 Laws of Power">
         <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51-RRmYWh9L._SL1000.jpg?v=1700040895" alt="48 Laws of Power Hindi edition" loading="lazy"/>
       </a>
     </div>
@@ -825,99 +835,19 @@ HTML = r"""<!DOCTYPE html>
   </div>
 </section>
 
-<!-- HERO BANNER CAROUSEL -->
-<div class="banners" id="bannerCarousel" aria-roledescription="carousel" aria-label="Promotional banners">
-  <div class="banner-viewport">
-    <div class="banner-track" id="bannerTrack">
-      <div class="banner-slide" data-slide="0" onclick="bannerLink(0)">
-        <picture>
-          <source media="(max-width:780px)" srcset="/images/banners/banner1-mobile.jpg">
-          <img src="/images/banners/banner1.jpg" alt="The Bestseller Haul — Free delivery on orders above ₹599 — Use coupon FREESHIPPING" loading="eager" fetchpriority="high" decoding="async" width="2000" height="800">
-        </picture>
-      </div>
-      <div class="banner-slide" data-slide="1" onclick="bannerLink(1)">
-        <picture>
-          <source media="(max-width:780px)" srcset="/images/banners/banner2-mobile.jpg">
-          <img src="/images/banners/banner2.jpg" alt="Hindi Self Help Books — Up to 50% off" loading="lazy" decoding="async" width="2000" height="800">
-        </picture>
-      </div>
-      <div class="banner-slide" data-slide="2" onclick="bannerLink(2)">
-        <picture>
-          <source media="(max-width:780px)" srcset="/images/banners/banner3-mobile.jpg">
-          <img src="/images/banners/banner3.jpg" alt="Mega Festive Sale — Order above ₹799 and get 1 book free with coupon GET1FREE" loading="lazy" decoding="async" width="2000" height="800">
-        </picture>
-      </div>
-    </div>
-    <button class="banner-arrow prev" onclick="bannerGo(-1)" aria-label="Previous banner">‹</button>
-    <button class="banner-arrow next" onclick="bannerGo(1)"  aria-label="Next banner">›</button>
-    <div class="banner-dots" role="tablist">
-      <button class="banner-dot active" data-i="0" onclick="bannerSet(0)" aria-label="Go to banner 1"></button>
-      <button class="banner-dot"        data-i="1" onclick="bannerSet(1)" aria-label="Go to banner 2"></button>
-      <button class="banner-dot"        data-i="2" onclick="bannerSet(2)" aria-label="Go to banner 3"></button>
-    </div>
-  </div>
-</div>
-<script>
-  (function() {
-    const track = document.getElementById('bannerTrack');
-    const dots  = document.querySelectorAll('.banner-dot');
-    const N = 3;
-    let i = 0, timer = null, paused = false;
-    const BANNER_LINKS = [
-      '/?cat=All Self Help',                    // Bestseller haul → self-help category
-      '/category/?name=All%20Self%20Help',      // Hindi self-help
-      '/'                                        // Festive sale → homepage
-    ];
-
-    function render() {
-      track.style.transform = `translateX(-${i * 100}%)`;
-      dots.forEach((d, idx) => d.classList.toggle('active', idx === i));
-    }
-    window.bannerSet = function(n) { i = ((n % N) + N) % N; render(); restart(); };
-    window.bannerGo  = function(d) { bannerSet(i + d); };
-    window.bannerLink = function(n) { window.location.href = BANNER_LINKS[n] || '/'; };
-
-    function tick() { if (!paused) { i = (i + 1) % N; render(); } }
-    function start()   { stop(); timer = setInterval(tick, 5000); }
-    function stop()    { if (timer) clearInterval(timer); timer = null; }
-    function restart() { start(); }
-
-    // Pause on hover (desktop)
-    const carousel = document.getElementById('bannerCarousel');
-    carousel.addEventListener('mouseenter', () => { paused = true; });
-    carousel.addEventListener('mouseleave', () => { paused = false; });
-
-    // Touch swipe on mobile
-    let startX = 0, dx = 0;
-    track.addEventListener('touchstart', e => { startX = e.touches[0].clientX; dx = 0; paused = true; }, { passive: true });
-    track.addEventListener('touchmove',  e => { dx = e.touches[0].clientX - startX; }, { passive: true });
-    track.addEventListener('touchend',   () => {
-      if (Math.abs(dx) > 50) bannerGo(dx < 0 ? 1 : -1);
-      paused = false;
-    });
-
-    // Pause when tab hidden — saves CPU
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) stop(); else start();
-    });
-
-    start();
-  })();
-</script>
-
 <!-- MARQUEE -->
 <div class="marquee-bar">
   <div class="marquee-track">
-    <span class="marquee-item">Free shipping above ₹499 <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">New arrivals every Friday <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Same-day delivery in Delhi NCR <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Gift wrapping available <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">10% off on orders above ₹999 <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Free shipping above ₹499 <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">New arrivals every Friday <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Same-day delivery in Delhi NCR <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Gift wrapping available <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">10% off on orders above ₹999 <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Extra 10% off prepaid orders with INKLOVE10 <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Cash on delivery available <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">7-day replacement support <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Extra 10% off prepaid orders with INKLOVE10 <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Cash on delivery available <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">7-day replacement support <span class="marquee-dot">◆</span></span>
   </div>
 </div>
 
@@ -1208,7 +1138,7 @@ function renderBooks() {
     const priceNum = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
     return `
     <div class="book-card" style="cursor:pointer;">
-      <div class="book-cover" style="position:relative;" onclick="location.href='/product/?id=${b.slug}'">
+      <div class="book-cover" style="position:relative;" onclick="location.href='/product/${b.slug}/'">
         ${b.n ? '<span class="new-badge">NEW</span>' : ''}
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
              onerror="this.style.display='none'" />
@@ -1219,8 +1149,8 @@ function renderBooks() {
           ${wishlisted ? '♥' : '♡'}
         </button>
       </div>
-      <div class="book-name" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.t)}</div>
-      <div class="book-author" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.a || '')}</div>
+      <div class="book-name" onclick="location.href='/product/${b.slug}/'">${escHtml(b.t)}</div>
+      <div class="book-author" onclick="location.href='/product/${b.slug}/'">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
@@ -1288,14 +1218,14 @@ function openCollection(catsEncoded, name) {
   const grid = document.getElementById('booksGrid');
   grid.innerHTML = matches.slice(0, visibleCount).map(b => `
     <div class="book-card" style="cursor:pointer;">
-      <div class="book-cover" onclick="location.href='/product/?id=${b.slug}'">
+      <div class="book-cover" onclick="location.href='/product/${b.slug}/'">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
         <div class="book-cover-overlay">
           <div class="book-cover-title">${escHtml(b.t)}</div>
         </div>
       </div>
-      <div class="book-name" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.t)}</div>
-      <div class="book-author" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.a || '')}</div>
+      <div class="book-name" onclick="location.href='/product/${b.slug}/'">${escHtml(b.t)}</div>
+      <div class="book-author" onclick="location.href='/product/${b.slug}/'">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
@@ -1410,12 +1340,12 @@ function renderBooksForCat(cat) {
   const grid  = document.getElementById('booksGrid');
   grid.innerHTML = slice.map(b => `
     <div class="book-card" style="cursor:pointer;">
-      <div class="book-cover" onclick="location.href='/product/?id=${b.slug}'" style="position:relative;">
+      <div class="book-cover" onclick="location.href='/product/${b.slug}/'" style="position:relative;">
         ${b.n ? '<span class="new-badge">NEW</span>' : ''}
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
       </div>
-      <div class="book-name" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.t)}</div>
-      <div class="book-author" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.a || '')}</div>
+      <div class="book-name" onclick="location.href='/product/${b.slug}/'">${escHtml(b.t)}</div>
+      <div class="book-author" onclick="location.href='/product/${b.slug}/'">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
@@ -1655,6 +1585,8 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-price{font-family:'Cormorant Garamond',serif;font-size:2.4rem;color:var(--gold);font-weight:600;line-height:1}
 .prod-orig{font-size:1rem;color:var(--cream-dim);text-decoration:line-through}
 .prod-saving{font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:#6dbf6d;background:rgba(109,191,109,0.1);padding:0.3rem 0.7rem;border:1px solid rgba(109,191,109,0.25)}
+.prod-trust-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.55rem;margin-top:-0.2rem}
+.prod-trust-row span{border:1px solid rgba(201,168,76,0.18);background:rgba(201,168,76,0.05);color:var(--cream);font-size:0.68rem;line-height:1.4;padding:0.55rem 0.7rem}
 .prod-desc-title{font-size:0.6rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem}
 .prod-desc{font-size:0.82rem;color:var(--cream-dim);line-height:1.9;letter-spacing:0.03em}
 .prod-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem 2rem}
@@ -1668,6 +1600,8 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .btn-cart:hover{background:var(--gold-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.25)}
 .btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid var(--gold-dim);cursor:pointer;font-weight:500;transition:all 0.3s}
 .btn-cod:hover{background:var(--gold);color:var(--bg);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.2)}
+.btn-whatsapp{width:100%;font-family:'Montserrat',sans-serif;font-size:0.64rem;letter-spacing:0.22em;text-transform:uppercase;padding:1rem;background:#25d366;color:#08160d;border:1px solid rgba(37,211,102,0.7);cursor:pointer;font-weight:700;transition:all 0.3s;text-align:center;text-decoration:none}
+.btn-whatsapp:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(37,211,102,0.22)}
 .btn-share{font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:0.4rem;transition:color 0.2s;font-family:'Montserrat',sans-serif}
 .btn-share:hover{color:var(--gold)}
 
@@ -1920,7 +1854,7 @@ function pricePaise(priceStr){ return Math.round(parseFloat((priceStr||'').repla
 function renderProduct(b) {
   const pageTitle = b.t + (b.a ? ' by ' + b.a : '') + ' — Buy Online at Ink & Chai';
   const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day easy returns.');
-  const canonical = 'https://inkandchai.in/product/?id=' + b.slug;
+  const canonical = 'https://inkandchai.in/product/' + b.slug + '/';
   const imgAbs = (b.img || '').startsWith('http') ? b.img : ('https://inkandchai.in' + (b.img || ''));
 
   document.title = pageTitle;
@@ -1956,7 +1890,7 @@ function renderProduct(b) {
         "description": shortDesc,
         "isbn": b.isbn || undefined,
         "publisher": b.pub || "Ink & Chai",
-        "inLanguage": (b.t && /हिं|हि|—\s*[ऀ-ॿ]/.test(b.t)) ? "hi" : "en",
+        "inLanguage": (b.t && /हिं|हि|—\\s*[ऀ-ॿ]/.test(b.t)) ? "hi" : "en",
         "url": canonical,
         "bookFormat": "https://schema.org/Paperback",
         "offers": {
@@ -2039,6 +1973,13 @@ function renderProduct(b) {
           ${savePct ? `<span class="prod-saving">Save ${savePct}%</span>` : ''}
         </div>
 
+        <div class="prod-trust-row" aria-label="Purchase benefits">
+          <span>🚚 2–5 day delivery</span>
+          <span>💵 COD available</span>
+          <span>💳 UPI/cards</span>
+          <span>🛡 7-day replacement</span>
+        </div>
+
         ${b.desc ? `
           <div>
             <div class="prod-desc-title">About this book</div>
@@ -2052,7 +1993,7 @@ function renderProduct(b) {
           ${b.isbn ? `<div class="prod-meta-item"><div class="prod-meta-label">ISBN</div><div class="prod-meta-val">${esc(b.isbn)}</div></div>` : ''}
           <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India · 2–5 days</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day easy returns</div></div>
-          <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">UPI · Cards · Net Banking</div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">COD · UPI · Cards</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Sold by</div><div class="prod-meta-val">Ink &amp; Chai</div></div>
         </div>
 
@@ -2074,6 +2015,9 @@ function renderProduct(b) {
           <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
             ⚡ Buy Now — ${esc(b.p)}
           </button>
+          <a class="btn-whatsapp" href="https://wa.me/919625836117?text=${encodeURIComponent('Hi Ink & Chai, I want to order ' + b.t)}" target="_blank" rel="noopener">
+            WhatsApp Order
+          </a>
           <div style="display:flex;gap:0.6rem;margin-top:0.2rem">
             <button class="btn-share" onclick="shareBook()">↗ Share</button>
             <button id="prodWishBtn"
@@ -2150,10 +2094,10 @@ function renderFBT(b) {
   const rowHtml = (it, idx, isCurrent) => `
     <div class="fbt-row">
       <input type="checkbox" class="fbt-check" data-idx="${idx}" ${idx === 0 || true ? 'checked' : ''} onchange="updateFBTTotal()">
-      <a class="fbt-thumb" href="${idx === 0 ? '#' : '/product/?id=' + it.slug}" onclick="${idx === 0 ? 'event.preventDefault();' : ''}">
+      <a class="fbt-thumb" href="${idx === 0 ? '#' : '/product/' + it.slug + '/'}" onclick="${idx === 0 ? 'event.preventDefault();' : ''}">
         <img src="${esc(it.img)}" alt="${esc(it.t)}" loading="lazy"/>
       </a>
-      <div class="fbt-info" onclick="${idx === 0 ? '' : `location.href='/product/?id=${it.slug}'`}">
+      <div class="fbt-info" onclick="${idx === 0 ? '' : `location.href='/product/${it.slug}/'`}">
         <div class="fbt-name">${esc(it.t)}${isCurrent ? '<span class="fbt-current">This item</span>' : ''}</div>
         <div class="fbt-author">${esc(it.a || '')}</div>
       </div>
@@ -2243,7 +2187,7 @@ function renderBookstagram() {
     return;
   }
   const cards = items.map((it, i) => {
-    const isVideo = (it.type || '').toLowerCase() === 'video' || /\.(mp4|webm|mov)$/i.test(it.src || '');
+    const isVideo = (it.type || '').toLowerCase() === 'video' || /\\.(mp4|webm|mov)$/i.test(it.src || '');
     const igChip = it.instagram
       ? `<a class="bkg-ig-chip" href="${esc(it.instagram)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Instagram</a>`
       : '';
@@ -2289,7 +2233,7 @@ function renderRelated(b) {
       <h2 class="related-title">More from <em>${esc(b.cat)}</em></h2>
       <div class="related-grid">
         ${related.map(r => `
-          <div class="rel-card" onclick="location.href='/product/?id=${r.slug}'">
+          <div class="rel-card" onclick="location.href='/product/${r.slug}/'">
             <div class="rel-cover">
               ${r.img ? `<img src="${esc(r.img)}" alt="${esc(r.t)}" loading="lazy"/>` : ''}
             </div>
@@ -2331,7 +2275,9 @@ function addBookToCart(bookSlug) {
 
 // ── Init ──────────────────────────────────────────────────────────────────
 const params  = new URLSearchParams(window.location.search);
-const slug    = params.get('id');
+const pathParts = window.location.pathname.split('/').filter(Boolean);
+const pathSlug = pathParts[0] === 'product' && pathParts[1] ? pathParts[1] : '';
+const slug    = params.get('id') || pathSlug;
 const book    = slug ? BOOK_MAP[slug] : null;
 
 if (book) {
@@ -2370,6 +2316,190 @@ prod_out.parent.mkdir(parents=True, exist_ok=True)
 prod_out.write_text(PRODUCT_HTML, encoding="utf-8")
 print(f"Generated: {prod_out}  ({len(PRODUCT_HTML.encode())//1024} KB)")
 print(f"Books embedded: {len(slim)}")
+
+# ── Crawlable Product + SEO Landing Pages ────────────────────────────────────
+def price_number(book):
+    try:
+        return float((book.get("p") or "").replace("₹", "").replace(",", "").strip())
+    except Exception:
+        return 0.0
+
+def absolute_img(book):
+    img = book.get("img") or ""
+    return img if img.startswith("http") else f"https://inkandchai.in{img}"
+
+def book_description(book):
+    desc = (book.get("desc") or "").strip()
+    if desc:
+        return desc[:320]
+    author = f" by {book.get('a')}" if book.get("a") else ""
+    return f"Buy {book.get('t','this book')}{author} online at Ink & Chai with pan-India delivery, COD, UPI, cards, and 7-day replacement support."
+
+def is_hindi_book(book):
+    hay = f"{book.get('t','')} {book.get('cat','')}".lower()
+    return "hindi" in hay or bool(re.search(r"[\u0900-\u097f]", book.get("t", "")))
+
+def product_json_ld(book):
+    price = price_number(book)
+    canonical = product_abs_url(book["slug"])
+    ld = {
+        "@context": "https://schema.org",
+        "@type": "Book",
+        "name": book.get("t", ""),
+        "author": {"@type": "Person", "name": book.get("a") or "Various"},
+        "image": absolute_img(book),
+        "description": book_description(book),
+        "isbn": book.get("isbn") or None,
+        "publisher": book.get("pub") or "Ink & Chai",
+        "inLanguage": "hi" if is_hindi_book(book) else "en",
+        "bookFormat": "https://schema.org/Paperback",
+        "url": canonical,
+        "offers": {
+            "@type": "Offer",
+            "url": canonical,
+            "priceCurrency": "INR",
+            "price": price,
+            "availability": "https://schema.org/InStock",
+            "itemCondition": "https://schema.org/NewCondition",
+            "seller": {"@type": "Organization", "name": "Ink & Chai"},
+            "shippingDetails": {
+                "@type": "OfferShippingDetails",
+                "shippingRate": {"@type": "MonetaryAmount", "value": 0 if price >= 499 else 40, "currency": "INR"},
+                "shippingDestination": {"@type": "DefinedRegion", "addressCountry": "IN"},
+                "deliveryTime": {"@type": "ShippingDeliveryTime", "businessDays": {"@type": "QuantitativeValue", "minValue": 2, "maxValue": 5}},
+            },
+            "hasMerchantReturnPolicy": {
+                "@type": "MerchantReturnPolicy",
+                "applicableCountry": "IN",
+                "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
+                "merchantReturnDays": 7,
+                "returnMethod": "https://schema.org/ReturnByMail",
+            },
+        },
+    }
+    return json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
+
+def static_product_html(book):
+    title = html_escape(book.get("t", "Book"))
+    author = html_escape(book.get("a") or "Various")
+    cat = html_escape(book.get("cat") or "Books")
+    price = html_escape(book.get("p") or "")
+    orig = html_escape(book.get("op") or "")
+    desc = html_escape(book_description(book))
+    canonical = product_abs_url(book["slug"])
+    img = html_escape(absolute_img(book))
+    wa = "https://wa.me/919625836117?text=" + quote(f"Hi Ink & Chai, I want to order {book.get('t','this book')}")
+    cart_item = json.dumps({
+        "id": book.get("url") or book.get("slug"),
+        "url": book.get("url") or book.get("slug"),
+        "title": book.get("t", ""),
+        "author": book.get("a", ""),
+        "price": price_number(book),
+        "img": book.get("img", ""),
+        "qty": 1,
+    }, ensure_ascii=False).replace("</", "<\\/")
+    return f"""<!DOCTYPE html>
+<html lang="{'hi' if is_hindi_book(book) else 'en'}">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{title} | Buy Online in India | Ink &amp; Chai</title>
+<meta name="description" content="{html_escape(book_description(book)[:155])}"/>
+<meta name="robots" content="index,follow"/>
+<link rel="canonical" href="{canonical}"/>
+<meta property="og:type" content="product"/>
+<meta property="og:title" content="{title} | Ink &amp; Chai"/>
+<meta property="og:description" content="{desc}"/>
+<meta property="og:image" content="{img}"/>
+<meta property="og:url" content="{canonical}"/>
+<script type="application/ld+json">{product_json_ld(book)}</script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{{--bg:#0d0b08;--panel:#17130f;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.22)}}
+*{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--cream);font-family:Montserrat,sans-serif;font-weight:300}} a{{color:inherit}}
+.promo{{padding:.62rem 1rem;text-align:center;border-bottom:1px solid var(--border);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}} .promo strong{{color:var(--gold)}}
+nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(13,11,8,.96);position:sticky;top:0;z-index:5}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
+.wrap{{max-width:1120px;margin:0 auto;padding:clamp(1.2rem,4vw,4rem) 1rem 4rem;display:grid;grid-template-columns:minmax(260px,.8fr) 1.2fr;gap:clamp(1.4rem,5vw,5rem)}} .cover{{background:var(--panel);border:1px solid var(--border);padding:clamp(1rem,4vw,2.5rem);display:flex;align-items:center;justify-content:center}} .cover img{{max-width:100%;max-height:520px;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,.5)}}
+.crumb{{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}} h1{{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}} .author{{color:var(--muted);letter-spacing:.08em;margin-bottom:1.2rem}} .price{{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}} .orig{{color:var(--muted);text-decoration:line-through;margin-left:.8rem}} .stock{{display:inline-block;margin:1rem 0;color:#7fd37f;border:1px solid rgba(127,211,127,.3);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}}
+.trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(201,168,76,.05);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:#0d0b08}} .secondary{{background:transparent;color:var(--gold)}} .wa{{grid-column:1/-1;background:#25d366;color:#07130b;border-color:#25d366}}
+.desc,.details{{border-top:1px solid var(--border);padding-top:1.2rem;margin-top:1.2rem;color:var(--muted);font-size:.9rem;line-height:1.8}} .label{{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}} .details dl{{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}} .details dt{{color:var(--gold)}} .details dd{{margin:0;color:var(--cream)}}
+@media(max-width:760px){{.wrap{{display:block;padding-bottom:7rem}} .cover{{margin-bottom:1.2rem}} .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;background:rgba(13,11,8,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border)}} .wa{{display:none}} .trust{{grid-template-columns:1fr}}}}
+</style>
+</head>
+<body>
+<div class="promo"><strong>Free delivery on ₹499+</strong> · Extra 10% off prepaid with <strong>INKLOVE10</strong> · COD available</div>
+<nav><a class="logo" href="/">Ink &amp; Chai</a><a class="back" href="/">← Catalogue</a></nav>
+<main class="wrap">
+  <section class="cover"><img src="{img}" alt="{title} book cover" loading="eager" fetchpriority="high"/></section>
+  <section>
+    <div class="crumb"><a href="/">Home</a> / <a href="/category/?name={quote(book.get('cat') or 'Books')}">{cat}</a></div>
+    <h1>{title}</h1>
+    <div class="author">by {author}</div>
+    <div><span class="price">{price}</span>{f'<span class="orig">{orig}</span>' if orig else ''}</div>
+    <span class="stock">In Stock</span>
+    <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
+    <div class="actions">
+      <button class="secondary" onclick="addBookToCart('{html_escape(book['slug'])}')">Add to Cart</button>
+      <button class="primary" onclick="addBookToCart('{html_escape(book['slug'])}'); location.href='/checkout/'">Buy Now</button>
+      <a class="btn wa" href="{wa}" target="_blank" rel="noopener">WhatsApp Order</a>
+    </div>
+    <div class="desc"><div class="label">About this book</div>{desc}</div>
+    <div class="details"><div class="label">Details</div><dl><dt>Category</dt><dd>{cat}</dd><dt>Publisher</dt><dd>{html_escape(book.get('pub') or 'Ink & Chai')}</dd><dt>ISBN</dt><dd>{html_escape(book.get('isbn') or 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
+  </section>
+</main>
+<script src="/js/cart.js"></script>
+<script>
+function addBookToCart() {{
+  const item = {cart_item};
+  const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
+  const existing = cart.find(x => x.id === item.id);
+  if (existing) existing.qty = (existing.qty || 1) + 1; else cart.push(item);
+  localStorage.setItem('akshar_cart', JSON.stringify(cart));
+  if (window.refreshCart) refreshCart();
+  if (window.openCart) openCart();
+  if (window.showToast) showToast('Added to cart');
+}}
+</script>
+</body>
+</html>"""
+
+product_root = Path(__file__).parent / "public" / "product"
+for book in slim:
+    out = product_root / book["slug"] / "index.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(static_product_html(book), encoding="utf-8")
+print(f"Generated crawlable product pages: {len(slim)}")
+
+LANDING_PAGES = [
+    ("hindi-self-help-books", "Hindi Self Help Books Online", "Motivational, psychology, money, and discipline books translated for Indian readers.", lambda b: is_hindi_book(b) and any(k in f"{b.get('t','')} {b.get('cat','')}".lower() for k in ["self", "help", "habit", "hurt", "finished", "rich dad", "psychology", "power", "think", "hard thing", "atomic", "goggins"])),
+    ("business-books-hindi", "Best Business Books in Hindi", "Business, money, startup, and investing books in Hindi editions.", lambda b: is_hindi_book(b) and any(k in b.get("t","").lower() for k in ["rich dad", "hard thing", "business", "money", "finance", "invest", "psychology", "atomic habits"])),
+    ("manga-books-india", "Manga Books Online in India", "Popular manga, comics, and graphic novels delivered across India.", lambda b: any(k in f"{b.get('t','')} {b.get('cat','')}".lower() for k in ["manga", "comic", "naruto", "death note", "demon slayer", "one piece", "jujutsu"])),
+    ("book-combos", "Book Combos Online", "Value book combos and boxsets for self-help, fiction, romance, and manga readers.", lambda b: any(k in f"{b.get('t','')} {b.get('cat','')}".lower() for k in ["combo", "boxset", "box set", "collection", "set of"])),
+    ("cod-books-online", "COD Books Online India", "Bestselling books you can order with cash on delivery, UPI, cards, and pan-India shipping.", lambda b: price_number(b) > 0),
+]
+
+def landing_html(slug, heading, intro, selected):
+    cards = "\n".join(f"""
+      <a class="card" href="{product_path(b['slug'])}">
+        <span class="cover"><img src="{html_escape(absolute_img(b))}" alt="{html_escape(b.get('t',''))} cover" loading="lazy"/></span>
+        <strong>{html_escape(b.get('t',''))}</strong>
+        <small>{html_escape(b.get('a') or b.get('cat') or 'Ink & Chai')}</small>
+        <span class="price">{html_escape(b.get('p') or '')}</span>
+      </a>""" for b in selected[:36])
+    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{html_escape(heading)} | Ink &amp; Chai</title><meta name="description" content="{html_escape(intro)} Buy online at Ink & Chai with COD, UPI, cards, and free delivery on ₹499+ orders."/>
+<link rel="canonical" href="{SITE}/{slug}/"/><meta name="robots" content="index,follow"/>
+<style>:root{{--bg:#0d0b08;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.2)}}*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--cream);font-family:Montserrat,Arial,sans-serif}}nav{{padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);display:flex;justify-content:space-between}}a{{color:inherit;text-decoration:none}}.logo{{font-family:serif;font-size:1.5rem;color:var(--gold)}}main{{max-width:1180px;margin:auto;padding:clamp(2rem,6vw,5rem) 1rem}}.eyebrow{{color:var(--gold);letter-spacing:.24em;text-transform:uppercase;font-size:.65rem}}h1{{font-family:serif;font-size:clamp(2.5rem,7vw,5rem);font-weight:400;line-height:1;margin:.8rem 0}}p{{color:var(--muted);max-width:760px;line-height:1.8}}.grid{{display:grid;grid-template-columns:repeat(6,1fr);gap:1.4rem;margin-top:2.5rem}}.card{{min-width:0}}.cover{{display:flex;aspect-ratio:2/3;background:#17130f;border:1px solid var(--border);align-items:center;justify-content:center;margin-bottom:.8rem}}img{{max-width:100%;max-height:100%;object-fit:contain}}strong{{display:block;font-family:serif;font-size:1.05rem;line-height:1.25}}small{{display:block;color:var(--muted);margin:.25rem 0 .4rem}}.price{{color:var(--gold);font-weight:700}}.trust{{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.4rem;color:var(--gold);font-size:.8rem}}@media(max-width:900px){{.grid{{grid-template-columns:repeat(3,1fr)}}}}@media(max-width:560px){{.grid{{grid-template-columns:repeat(2,1fr);gap:1rem}}}}</style></head>
+<body><nav><a class="logo" href="/">Ink &amp; Chai</a><a href="/">Catalogue</a></nav><main><div class="eyebrow">Curated collection</div><h1>{html_escape(heading)}</h1><p>{html_escape(intro)}</p><div class="trust"><span>Free delivery on ₹499+</span><span>COD available</span><span>UPI/cards accepted</span><span>7-day replacement support</span></div><section class="grid">{cards}</section></main></body></html>"""
+
+for slug, heading, intro, predicate in LANDING_PAGES:
+    selected = [b for b in slim if predicate(b)]
+    if slug == "cod-books-online":
+        selected = sorted(selected, key=lambda b: (not is_hindi_book(b), -price_number(b)))[:36]
+    out = Path(__file__).parent / "public" / slug / "index.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(landing_html(slug, heading, intro, selected), encoding="utf-8")
+print(f"Generated SEO landing pages: {len(LANDING_PAGES)}")
 
 # ── Checkout Page ─────────────────────────────────────────────────────────────
 CHECKOUT_HTML = """<!DOCTYPE html>
@@ -3074,7 +3204,7 @@ function renderGrid() {
   if (sort === 'alpha')      list.sort((a,b) => (a.t||'').localeCompare(b.t||''));
   document.getElementById('visCount').textContent = list.length;
   document.getElementById('grid').innerHTML = list.map(b => `
-    <div class="book-card" onclick="location.href='/product/?id=${b.slug}'">
+    <div class="book-card" onclick="location.href='/product/${b.slug}/'">
       <div class="book-cover">${b.img ? `<img src="${esc(b.img)}" alt="${esc(b.t)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}</div>
       <div class="book-name">${esc(b.t)}</div>
       <div class="book-author">${esc(b.a||'')}</div>
@@ -3126,7 +3256,7 @@ for b in slim:
         img = SITE + img
 
     slug = b.get("slug", "")
-    link = f"{SITE}/product/?id={slug}"
+    link = f"{SITE}/product/{slug}/"
 
     # Google Merchant Center caps <g:id> at 50 characters. Our slug can be up
     # to 61 chars (55-char title prefix + "-" + 5-char shopify suffix). When too
@@ -3182,6 +3312,11 @@ TODAY = datetime.utcnow().strftime("%Y-%m-%d")
 # Collect URLs: home, static pages, every collection slug, every category, every product
 static_urls = [
     (SITE + "/",                "1.0",  "daily"),
+    (SITE + "/hindi-self-help-books/", "0.9", "weekly"),
+    (SITE + "/business-books-hindi/",  "0.8", "weekly"),
+    (SITE + "/manga-books-india/",     "0.8", "weekly"),
+    (SITE + "/book-combos/",           "0.8", "weekly"),
+    (SITE + "/cod-books-online/",      "0.8", "weekly"),
     (SITE + "/track/",          "0.7",  "weekly"),
     (SITE + "/terms/",          "0.4",  "yearly"),
     (SITE + "/privacy-policy/", "0.4",  "yearly"),
@@ -3195,12 +3330,13 @@ for url, prio, freq in static_urls:
 
 # Product URLs — every book
 for b in slim:
-    purl = f"{SITE}/product/?id={b['slug']}"
+    purl = f"{SITE}/product/{b['slug']}/"
     img  = b.get('img', '')
     img_xml = ""
     if img:
         img_abs = img if img.startswith("http") else (SITE + img)
-        img_xml = f"<image:image><image:loc>{img_abs.replace('&','&amp;')}</image:loc><image:title>{(b['t'] or '').replace('&','&amp;').replace('<','&lt;')[:200]}</image:title></image:image>"
+        image_title = re.sub(r"\s+", " ", (b['t'] or '')).strip()
+        img_xml = f"<image:image><image:loc>{img_abs.replace('&','&amp;')}</image:loc><image:title>{image_title.replace('&','&amp;').replace('<','&lt;')[:200]}</image:title></image:image>"
     url_entries.append(f"  <url><loc>{purl.replace('&','&amp;')}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority>{img_xml}</url>")
 
 # Collection URLs

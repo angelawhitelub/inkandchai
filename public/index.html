@@ -634,25 +634,25 @@
   </div>
   <div class="hero-right">
     <div class="hero-cover-wall" aria-label="Hindi self-help featured books">
-      <a class="hero-cover-card featured" href="/product/?id=can-t-hurt-me-hindi-ME-HI" data-label="Can't Hurt Me · Hindi">
+      <a class="hero-cover-card featured" href="/product/can-t-hurt-me-hindi-ME-HI/" data-label="Can't Hurt Me · Hindi">
         <img src="/images/cant-hurt-me-hindi.jpg" alt="Can't Hurt Me Hindi edition" loading="eager" fetchpriority="high"/>
       </a>
-      <a class="hero-cover-card" href="/product/?id=never-finished-hindi-ED-HI" data-label="Never Finished">
+      <a class="hero-cover-card" href="/product/never-finished-hindi-ED-HI/" data-label="Never Finished">
         <img src="/images/never-finished-hindi.jpg" alt="Never Finished Hindi edition" loading="eager"/>
       </a>
-      <a class="hero-cover-card featured" href="/product/?id=the-hard-thing-about-hard-things-hindi-NG-HI" data-label="The Hard Thing · Hindi">
+      <a class="hero-cover-card featured" href="/product/the-hard-thing-about-hard-things-hindi-NG-HI/" data-label="The Hard Thing · Hindi">
         <img src="/images/hard-thing-about-hard-things-hindi.jpg" alt="The Hard Thing About Hard Things Hindi edition" loading="eager"/>
       </a>
-      <a class="hero-cover-card" href="/product/?id=thinking-fast-and-slow-hindi-OW-HI" data-label="Thinking, Fast and Slow">
+      <a class="hero-cover-card" href="/product/thinking-fast-and-slow-hindi-OW-HI/" data-label="Thinking, Fast and Slow">
         <img src="/images/thinking-fast-slow-hindi.jpg" alt="Thinking Fast and Slow Hindi edition" loading="eager"/>
       </a>
-      <a class="hero-cover-card" href="/product/?id=hindi-rich-dad-poor-dad-80989" data-label="Rich Dad Poor Dad">
+      <a class="hero-cover-card" href="/product/hindi-rich-dad-poor-dad-80989/" data-label="Rich Dad Poor Dad">
         <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/18a3b96e-fe0b-4de2-99ba-d6900b02f8b0.jpg?v=1697648603" alt="Rich Dad Poor Dad Hindi edition" loading="lazy"/>
       </a>
-      <a class="hero-cover-card featured" href="/product/?id=hindi-atomic-habits-33309" data-label="Atomic Habits">
+      <a class="hero-cover-card featured" href="/product/hindi-atomic-habits-33309/" data-label="Atomic Habits">
         <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51nmc82kxql-1c1458a1-51a7-4d5d-b100-4255d57076aa.jpg?v=1697649002" alt="Atomic Habits Hindi edition" loading="lazy"/>
       </a>
-      <a class="hero-cover-card" href="/product/?id=shakti-ke-48-niyam-the-48-laws-of-power-hindi-28157" data-label="48 Laws of Power">
+      <a class="hero-cover-card" href="/product/shakti-ke-48-niyam-the-48-laws-of-power-hindi-28157/" data-label="48 Laws of Power">
         <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51-RRmYWh9L._SL1000.jpg?v=1700040895" alt="48 Laws of Power Hindi edition" loading="lazy"/>
       </a>
     </div>
@@ -660,99 +660,19 @@
   </div>
 </section>
 
-<!-- HERO BANNER CAROUSEL -->
-<div class="banners" id="bannerCarousel" aria-roledescription="carousel" aria-label="Promotional banners">
-  <div class="banner-viewport">
-    <div class="banner-track" id="bannerTrack">
-      <div class="banner-slide" data-slide="0" onclick="bannerLink(0)">
-        <picture>
-          <source media="(max-width:780px)" srcset="/images/banners/banner1-mobile.jpg">
-          <img src="/images/banners/banner1.jpg" alt="The Bestseller Haul — Free delivery on orders above ₹599 — Use coupon FREESHIPPING" loading="eager" fetchpriority="high" decoding="async" width="2000" height="800">
-        </picture>
-      </div>
-      <div class="banner-slide" data-slide="1" onclick="bannerLink(1)">
-        <picture>
-          <source media="(max-width:780px)" srcset="/images/banners/banner2-mobile.jpg">
-          <img src="/images/banners/banner2.jpg" alt="Hindi Self Help Books — Up to 50% off" loading="lazy" decoding="async" width="2000" height="800">
-        </picture>
-      </div>
-      <div class="banner-slide" data-slide="2" onclick="bannerLink(2)">
-        <picture>
-          <source media="(max-width:780px)" srcset="/images/banners/banner3-mobile.jpg">
-          <img src="/images/banners/banner3.jpg" alt="Mega Festive Sale — Order above ₹799 and get 1 book free with coupon GET1FREE" loading="lazy" decoding="async" width="2000" height="800">
-        </picture>
-      </div>
-    </div>
-    <button class="banner-arrow prev" onclick="bannerGo(-1)" aria-label="Previous banner">‹</button>
-    <button class="banner-arrow next" onclick="bannerGo(1)"  aria-label="Next banner">›</button>
-    <div class="banner-dots" role="tablist">
-      <button class="banner-dot active" data-i="0" onclick="bannerSet(0)" aria-label="Go to banner 1"></button>
-      <button class="banner-dot"        data-i="1" onclick="bannerSet(1)" aria-label="Go to banner 2"></button>
-      <button class="banner-dot"        data-i="2" onclick="bannerSet(2)" aria-label="Go to banner 3"></button>
-    </div>
-  </div>
-</div>
-<script>
-  (function() {
-    const track = document.getElementById('bannerTrack');
-    const dots  = document.querySelectorAll('.banner-dot');
-    const N = 3;
-    let i = 0, timer = null, paused = false;
-    const BANNER_LINKS = [
-      '/?cat=All Self Help',                    // Bestseller haul → self-help category
-      '/category/?name=All%20Self%20Help',      // Hindi self-help
-      '/'                                        // Festive sale → homepage
-    ];
-
-    function render() {
-      track.style.transform = `translateX(-${i * 100}%)`;
-      dots.forEach((d, idx) => d.classList.toggle('active', idx === i));
-    }
-    window.bannerSet = function(n) { i = ((n % N) + N) % N; render(); restart(); };
-    window.bannerGo  = function(d) { bannerSet(i + d); };
-    window.bannerLink = function(n) { window.location.href = BANNER_LINKS[n] || '/'; };
-
-    function tick() { if (!paused) { i = (i + 1) % N; render(); } }
-    function start()   { stop(); timer = setInterval(tick, 5000); }
-    function stop()    { if (timer) clearInterval(timer); timer = null; }
-    function restart() { start(); }
-
-    // Pause on hover (desktop)
-    const carousel = document.getElementById('bannerCarousel');
-    carousel.addEventListener('mouseenter', () => { paused = true; });
-    carousel.addEventListener('mouseleave', () => { paused = false; });
-
-    // Touch swipe on mobile
-    let startX = 0, dx = 0;
-    track.addEventListener('touchstart', e => { startX = e.touches[0].clientX; dx = 0; paused = true; }, { passive: true });
-    track.addEventListener('touchmove',  e => { dx = e.touches[0].clientX - startX; }, { passive: true });
-    track.addEventListener('touchend',   () => {
-      if (Math.abs(dx) > 50) bannerGo(dx < 0 ? 1 : -1);
-      paused = false;
-    });
-
-    // Pause when tab hidden — saves CPU
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) stop(); else start();
-    });
-
-    start();
-  })();
-</script>
-
 <!-- MARQUEE -->
 <div class="marquee-bar">
   <div class="marquee-track">
-    <span class="marquee-item">Free shipping above ₹499 <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">New arrivals every Friday <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Same-day delivery in Delhi NCR <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Gift wrapping available <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">10% off on orders above ₹999 <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Free shipping above ₹499 <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">New arrivals every Friday <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Same-day delivery in Delhi NCR <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Gift wrapping available <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">10% off on orders above ₹999 <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Extra 10% off prepaid orders with INKLOVE10 <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Cash on delivery available <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">7-day replacement support <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Extra 10% off prepaid orders with INKLOVE10 <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Cash on delivery available <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">7-day replacement support <span class="marquee-dot">◆</span></span>
   </div>
 </div>
 
@@ -1043,7 +963,7 @@ function renderBooks() {
     const priceNum = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
     return `
     <div class="book-card" style="cursor:pointer;">
-      <div class="book-cover" style="position:relative;" onclick="location.href='/product/?id=${b.slug}'">
+      <div class="book-cover" style="position:relative;" onclick="location.href='/product/${b.slug}/'">
         ${b.n ? '<span class="new-badge">NEW</span>' : ''}
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
              onerror="this.style.display='none'" />
@@ -1054,8 +974,8 @@ function renderBooks() {
           ${wishlisted ? '♥' : '♡'}
         </button>
       </div>
-      <div class="book-name" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.t)}</div>
-      <div class="book-author" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.a || '')}</div>
+      <div class="book-name" onclick="location.href='/product/${b.slug}/'">${escHtml(b.t)}</div>
+      <div class="book-author" onclick="location.href='/product/${b.slug}/'">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
@@ -1123,14 +1043,14 @@ function openCollection(catsEncoded, name) {
   const grid = document.getElementById('booksGrid');
   grid.innerHTML = matches.slice(0, visibleCount).map(b => `
     <div class="book-card" style="cursor:pointer;">
-      <div class="book-cover" onclick="location.href='/product/?id=${b.slug}'">
+      <div class="book-cover" onclick="location.href='/product/${b.slug}/'">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
         <div class="book-cover-overlay">
           <div class="book-cover-title">${escHtml(b.t)}</div>
         </div>
       </div>
-      <div class="book-name" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.t)}</div>
-      <div class="book-author" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.a || '')}</div>
+      <div class="book-name" onclick="location.href='/product/${b.slug}/'">${escHtml(b.t)}</div>
+      <div class="book-author" onclick="location.href='/product/${b.slug}/'">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
@@ -1245,12 +1165,12 @@ function renderBooksForCat(cat) {
   const grid  = document.getElementById('booksGrid');
   grid.innerHTML = slice.map(b => `
     <div class="book-card" style="cursor:pointer;">
-      <div class="book-cover" onclick="location.href='/product/?id=${b.slug}'" style="position:relative;">
+      <div class="book-cover" onclick="location.href='/product/${b.slug}/'" style="position:relative;">
         ${b.n ? '<span class="new-badge">NEW</span>' : ''}
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
       </div>
-      <div class="book-name" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.t)}</div>
-      <div class="book-author" onclick="location.href='/product/?id=${b.slug}'">${escHtml(b.a || '')}</div>
+      <div class="book-name" onclick="location.href='/product/${b.slug}/'">${escHtml(b.t)}</div>
+      <div class="book-author" onclick="location.href='/product/${b.slug}/'">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>

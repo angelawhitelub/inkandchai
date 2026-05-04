@@ -112,6 +112,8 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-price{font-family:'Cormorant Garamond',serif;font-size:2.4rem;color:var(--gold);font-weight:600;line-height:1}
 .prod-orig{font-size:1rem;color:var(--cream-dim);text-decoration:line-through}
 .prod-saving{font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:#6dbf6d;background:rgba(109,191,109,0.1);padding:0.3rem 0.7rem;border:1px solid rgba(109,191,109,0.25)}
+.prod-trust-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.55rem;margin-top:-0.2rem}
+.prod-trust-row span{border:1px solid rgba(201,168,76,0.18);background:rgba(201,168,76,0.05);color:var(--cream);font-size:0.68rem;line-height:1.4;padding:0.55rem 0.7rem}
 .prod-desc-title{font-size:0.6rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem}
 .prod-desc{font-size:0.82rem;color:var(--cream-dim);line-height:1.9;letter-spacing:0.03em}
 .prod-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem 2rem}
@@ -125,6 +127,8 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .btn-cart:hover{background:var(--gold-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.25)}
 .btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid var(--gold-dim);cursor:pointer;font-weight:500;transition:all 0.3s}
 .btn-cod:hover{background:var(--gold);color:var(--bg);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.2)}
+.btn-whatsapp{width:100%;font-family:'Montserrat',sans-serif;font-size:0.64rem;letter-spacing:0.22em;text-transform:uppercase;padding:1rem;background:#25d366;color:#08160d;border:1px solid rgba(37,211,102,0.7);cursor:pointer;font-weight:700;transition:all 0.3s;text-align:center;text-decoration:none}
+.btn-whatsapp:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(37,211,102,0.22)}
 .btn-share{font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:0.4rem;transition:color 0.2s;font-family:'Montserrat',sans-serif}
 .btn-share:hover{color:var(--gold)}
 
@@ -377,7 +381,7 @@ function pricePaise(priceStr){ return Math.round(parseFloat((priceStr||'').repla
 function renderProduct(b) {
   const pageTitle = b.t + (b.a ? ' by ' + b.a : '') + ' — Buy Online at Ink & Chai';
   const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day easy returns.');
-  const canonical = 'https://inkandchai.in/product/?id=' + b.slug;
+  const canonical = 'https://inkandchai.in/product/' + b.slug + '/';
   const imgAbs = (b.img || '').startsWith('http') ? b.img : ('https://inkandchai.in' + (b.img || ''));
 
   document.title = pageTitle;
@@ -496,6 +500,13 @@ function renderProduct(b) {
           ${savePct ? `<span class="prod-saving">Save ${savePct}%</span>` : ''}
         </div>
 
+        <div class="prod-trust-row" aria-label="Purchase benefits">
+          <span>🚚 2–5 day delivery</span>
+          <span>💵 COD available</span>
+          <span>💳 UPI/cards</span>
+          <span>🛡 7-day replacement</span>
+        </div>
+
         ${b.desc ? `
           <div>
             <div class="prod-desc-title">About this book</div>
@@ -509,7 +520,7 @@ function renderProduct(b) {
           ${b.isbn ? `<div class="prod-meta-item"><div class="prod-meta-label">ISBN</div><div class="prod-meta-val">${esc(b.isbn)}</div></div>` : ''}
           <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India · 2–5 days</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day easy returns</div></div>
-          <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">UPI · Cards · Net Banking</div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">COD · UPI · Cards</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Sold by</div><div class="prod-meta-val">Ink &amp; Chai</div></div>
         </div>
 
@@ -531,6 +542,9 @@ function renderProduct(b) {
           <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
             ⚡ Buy Now — ${esc(b.p)}
           </button>
+          <a class="btn-whatsapp" href="https://wa.me/919625836117?text=${encodeURIComponent('Hi Ink & Chai, I want to order ' + b.t)}" target="_blank" rel="noopener">
+            WhatsApp Order
+          </a>
           <div style="display:flex;gap:0.6rem;margin-top:0.2rem">
             <button class="btn-share" onclick="shareBook()">↗ Share</button>
             <button id="prodWishBtn"
@@ -607,10 +621,10 @@ function renderFBT(b) {
   const rowHtml = (it, idx, isCurrent) => `
     <div class="fbt-row">
       <input type="checkbox" class="fbt-check" data-idx="${idx}" ${idx === 0 || true ? 'checked' : ''} onchange="updateFBTTotal()">
-      <a class="fbt-thumb" href="${idx === 0 ? '#' : '/product/?id=' + it.slug}" onclick="${idx === 0 ? 'event.preventDefault();' : ''}">
+      <a class="fbt-thumb" href="${idx === 0 ? '#' : '/product/' + it.slug + '/'}" onclick="${idx === 0 ? 'event.preventDefault();' : ''}">
         <img src="${esc(it.img)}" alt="${esc(it.t)}" loading="lazy"/>
       </a>
-      <div class="fbt-info" onclick="${idx === 0 ? '' : `location.href='/product/?id=${it.slug}'`}">
+      <div class="fbt-info" onclick="${idx === 0 ? '' : `location.href='/product/${it.slug}/'`}">
         <div class="fbt-name">${esc(it.t)}${isCurrent ? '<span class="fbt-current">This item</span>' : ''}</div>
         <div class="fbt-author">${esc(it.a || '')}</div>
       </div>
@@ -746,7 +760,7 @@ function renderRelated(b) {
       <h2 class="related-title">More from <em>${esc(b.cat)}</em></h2>
       <div class="related-grid">
         ${related.map(r => `
-          <div class="rel-card" onclick="location.href='/product/?id=${r.slug}'">
+          <div class="rel-card" onclick="location.href='/product/${r.slug}/'">
             <div class="rel-cover">
               ${r.img ? `<img src="${esc(r.img)}" alt="${esc(r.t)}" loading="lazy"/>` : ''}
             </div>
@@ -788,7 +802,9 @@ function addBookToCart(bookSlug) {
 
 // ── Init ──────────────────────────────────────────────────────────────────
 const params  = new URLSearchParams(window.location.search);
-const slug    = params.get('id');
+const pathParts = window.location.pathname.split('/').filter(Boolean);
+const pathSlug = pathParts[0] === 'product' && pathParts[1] ? pathParts[1] : '';
+const slug    = params.get('id') || pathSlug;
 const book    = slug ? BOOK_MAP[slug] : null;
 
 if (book) {
