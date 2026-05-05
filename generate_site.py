@@ -54,14 +54,26 @@ NONFICTION_CATS = {
     "dale carnegie books", "stephen hawking books", "sadguru jaggi vasudev books",
 }
 POETRY_CATS = {"poetry"}
+POETRY_TITLE_HINTS = {
+    "poetry", "poem", "poems", "shayari", "ghazal", "gitanjali",
+    "rumi", "jaun elia", "sun and her flowers", "milk and honey",
+    "all this love", "all this light", "please love me at my worst",
+    "the curse of letting go", "tamanna", "love poems",
+}
 INDIAN_CATS = {
     "mythology", "amish tripathi books", "indian writing", "spirituality",
     "best of spirituality and mythology", "chitra banerjee divakaruni books",
     "kevin missal books", "sudha murti special", "akshat gupta books",
 }
 
-def tab_for(cat):
+def is_poetry_book(book):
+    hay = " ".join(str(book.get(k, "")) for k in ("title", "author", "category", "tags")).lower()
+    return (book.get("category", "").lower() in POETRY_CATS
+            or any(hint in hay for hint in POETRY_TITLE_HINTS))
+
+def tab_for(cat, book=None):
     c = cat.lower()
+    if book and is_poetry_book(book): return "Poetry"
     if c in FICTION_CATS:       return "Fiction"
     if c in NONFICTION_CATS:    return "Non-Fiction"
     if c in POETRY_CATS:        return "Poetry"
@@ -101,7 +113,7 @@ for b in books:
         "url":  b.get("url", ""),   # kept for cart ID compatibility
         "slug": make_slug(b["title"], b.get("shopify_id", "")),
         "cat":  b.get("category", ""),
-        "tab":  tab_for(b.get("category", "")),
+        "tab":  tab_for(b.get("category", ""), b),
         "desc": (b.get("description") or "")[:800],
         "isbn": b.get("isbn", ""),
         "pub":  b.get("publisher", ""),
