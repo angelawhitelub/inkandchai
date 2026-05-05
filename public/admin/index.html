@@ -186,6 +186,13 @@ tr:hover td{background:rgba(201,168,76,0.025);}
     <button class="btn-outline" onclick="copyAllAddresses()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       📋 Copy Addresses
     </button>
+    <button class="btn-outline" onclick="downloadBulkTemplate()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ Bulk Template
+    </button>
+    <button class="btn-outline" onclick="document.getElementById('bulkUpdateFile').click()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬆ Bulk Update CSV
+    </button>
+    <input type="file" id="bulkUpdateFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="bulkUpdateFromFile(this.files[0]); this.value='';"/>
     <button class="btn-outline" onclick="bulkDeleteFiltered()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(224,80,80,0.4);color:#e05050;" title="Permanently delete every order currently shown by the filters (asks for confirmation)">
       🗑 Delete Filtered
     </button>
@@ -569,6 +576,9 @@ async function exportExcel(mode) {
       'Amount (₹)':       total,
       'Payment Method':   isCOD ? 'Cash on Delivery' : 'Online (Razorpay)',
       'Status':           (o.status || '').replace(/_/g,' '),
+      'Courier':          o.courier_name || '',
+      'AWB / Tracking ID': o.tracking_id || '',
+      'Tracking URL':      o.tracking_url || '',
     };
   });
 
@@ -578,7 +588,7 @@ async function exportExcel(mode) {
   // Column widths
   ws['!cols'] = [
     {wch:22},{wch:24},{wch:22},{wch:20},{wch:14},{wch:28},{wch:40},
-    {wch:50},{wch:10},{wch:12},{wch:20},{wch:14}
+    {wch:50},{wch:10},{wch:12},{wch:20},{wch:14},{wch:16},{wch:22},{wch:44}
   ];
 
   const wb = XLSX.utils.book_new();
@@ -590,6 +600,101 @@ async function exportExcel(mode) {
   const fname = `inkandchai-orders-${mode === 'all' ? 'all' : currentFilter || 'filtered'}-${today}.xlsx`;
 
   XLSX.writeFile(wb, fname);
+}
+
+// ── Bulk status/tracking update from CSV/XLSX ─────────────────────────────
+function normalizeHeader(h) {
+  return String(h || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
+function pick(row, names) {
+  for (const name of names) {
+    const v = row[name];
+    if (v !== undefined && v !== null && String(v).trim()) return String(v).trim();
+  }
+  return '';
+}
+
+function normalizeStatus(s, hasTracking) {
+  const raw = String(s || '').toLowerCase().trim().replace(/[\s-]+/g, '_');
+  const aliases = {
+    cod: 'cod_pending',
+    cod_pending: 'cod_pending',
+    pending_cod: 'cod_pending',
+    confirm: 'confirmed',
+    confirmed: 'confirmed',
+    ship: 'shipped',
+    shipped: 'shipped',
+    out_for_delivery: 'out_for_delivery',
+    ofd: 'out_for_delivery',
+    delivered: 'delivered',
+    paid: 'paid',
+    cancelled: 'cancelled',
+    canceled: 'cancelled',
+    refunded: 'refunded',
+  };
+  return aliases[raw] || (hasTracking ? 'shipped' : raw);
+}
+
+function downloadBulkTemplate() {
+  const rows = [{
+    order_id: 'order_XXXXXXXXXXXXXX',
+    status: 'shipped',
+    courier_name: 'Delhivery',
+    tracking_id: 'AWB123456789',
+  }];
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Bulk Update Template');
+  XLSX.writeFile(wb, 'inkandchai-bulk-order-update-template.xlsx');
+}
+
+async function bulkUpdateFromFile(file) {
+  if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    const rows = rawRows.map(raw => {
+      const row = {};
+      Object.entries(raw).forEach(([k, v]) => { row[normalizeHeader(k)] = v; });
+      const order_id = pick(row, ['order_id','orderid','razorpay_order_id','razorpay_id','id']);
+      const tracking_id = pick(row, ['tracking_id','tracking','awb','awb_number','awb_no','tracking_number','waybill']);
+      const courier_name = pick(row, ['courier_name','courier','shipping_partner','carrier']);
+      const status = normalizeStatus(pick(row, ['status','order_status']), !!tracking_id);
+      return { order_id, status, tracking_id, courier_name };
+    }).filter(r => r.order_id && r.status);
+
+    if (!rows.length) {
+      alert('No valid rows found. Use columns: order_id, status, courier_name, tracking_id.');
+      return;
+    }
+
+    const shippedWithTracking = rows.filter(r => r.status === 'shipped' && r.tracking_id).length;
+    const msg = `Bulk update ${rows.length} order${rows.length>1?'s':''}?\n\nRows marked shipped with AWB: ${shippedWithTracking}\nShipment emails will be sent for shipped rows.\n\nExpected columns: order_id, status, courier_name, tracking_id/AWB.`;
+    if (!confirm(msg)) return;
+
+    const res = await fetch('/.netlify/functions/bulk-update-orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ updates: rows }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+    const resultMap = new Map((data.results || []).filter(r => r.success && r.order).map(r => [String(r.order.id), r.order]));
+    const resultByOrderId = new Map((data.results || []).filter(r => r.success && r.order).map(r => [String(r.order.razorpay_order_id || ''), r.order]));
+    allOrders = allOrders.map(o => resultMap.get(String(o.id)) || resultByOrderId.get(String(o.razorpay_order_id || '')) || o);
+    updateStats();
+    applyFilters();
+
+    const failed = data.failed || 0;
+    const sampleErrors = (data.results || []).filter(r => !r.success).slice(0, 5).map(r => `• ${r.order_id}: ${r.error}`).join('\n');
+    alert(`✅ Bulk update complete.\n\nUpdated: ${data.updated || 0}\nEmails sent: ${data.emails_sent || 0}\nFailed: ${failed}${sampleErrors ? '\n\nFirst errors:\n' + sampleErrors : ''}`);
+  } catch (err) {
+    alert('Bulk update failed: ' + err.message);
+  }
 }
 
 // ── Print Shipping Labels (4 per A4 page) ─────────────────────────────────
