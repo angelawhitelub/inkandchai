@@ -725,7 +725,7 @@ function printLabels() {
       const total = o.amount_paise ? (o.amount_paise/100) : items.reduce((s,i)=>s+i.price*i.qty,0);
       return `<div class="label">
         <div class="label-hdr">
-          <div class="from"><b>Ink &amp; Chai</b><br/>2969, Kucha Mai Dass<br/>Sitaram Bazar, New Delhi 110006<br/>+91 96258 36117</div>
+          <div class="from"><b>Ink &amp; Chai</b><br/>2969, Kucha Mai Dass<br/>Sitaram Bazar, New Delhi 110006<br/>+91 92171 75546</div>
           <div class="oid">${esc(o.razorpay_order_id || o.id || '').slice(0,22)}<br/><span style="font-weight:normal;font-size:8pt">${new Date(o.created_at).toLocaleDateString('en-IN')}</span></div>
         </div>
         <div class="to-label">Deliver to:</div>

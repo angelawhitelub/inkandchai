@@ -114,7 +114,7 @@ for b in books:
         "slug": make_slug(b["title"], b.get("shopify_id", "")),
         "cat":  b.get("category", ""),
         "tab":  tab_for(b.get("category", ""), b),
-        "desc": (b.get("description") or "")[:800],
+        "desc": (b.get("description") or "")[:1400],
         "isbn": b.get("isbn", ""),
         "pub":  b.get("publisher", ""),
         "n":    is_new,            # 1 = New Arrival
@@ -249,12 +249,12 @@ HTML = r"""<!DOCTYPE html>
   },
   "contactPoint": {
     "@type": "ContactPoint",
-    "telephone": "+91-9625836117",
+    "telephone": "+91-9217175546",
     "contactType": "customer support",
     "email": "support@inkandchai.in",
     "availableLanguage": ["English", "Hindi"]
   },
-  "sameAs": ["https://wa.me/919625836117"],
+  "sameAs": ["https://wa.me/919217175546"],
   "paymentAccepted": ["Credit Card", "UPI", "Net Banking", "Cash on Delivery"],
   "currenciesAccepted": "INR",
   "priceRange": "₹99–₹2999",
@@ -740,7 +740,7 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <!-- Floating WhatsApp support button -->
-<a class="wa-float" href="https://wa.me/919625836117?text=Hi%20Ink%20%26%20Chai%2C%20I%20have%20a%20question%20about%20a%20book." target="_blank" rel="noopener" title="Chat with us on WhatsApp" aria-label="WhatsApp support">
+<a class="wa-float" href="https://wa.me/919217175546?text=Hi%20Ink%20%26%20Chai%2C%20I%20have%20a%20question%20about%20a%20book." target="_blank" rel="noopener" title="Chat with us on WhatsApp" aria-label="WhatsApp support">
   <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
 </a>
 
@@ -990,7 +990,7 @@ HTML = r"""<!DOCTYPE html>
         <div class="footer-col-title">Contact Us</div>
         <p style="font-size:0.72rem;color:var(--cream-dim);line-height:2;letter-spacing:0.03em;">
           📧 <a href="mailto:support@inkandchai.in" style="color:var(--gold);text-decoration:none;">support@inkandchai.in</a><br/>
-          💬 <a href="https://wa.me/919625836117" target="_blank" style="color:var(--gold);text-decoration:none;">+91 96258 36117 (WhatsApp)</a><br/>
+          💬 <a href="https://wa.me/919217175546" target="_blank" style="color:var(--gold);text-decoration:none;">+91 92171 75546 (WhatsApp)</a><br/>
           📍 New Delhi – 110006
         </p>
       </div>
@@ -1012,7 +1012,7 @@ HTML = r"""<!DOCTYPE html>
         <li><a href="/return-policy/">Returns</a></li>
         <li><a href="/refund-policy/">Refund Policy</a></li>
         <li><a href="mailto:support@inkandchai.in">Contact Us</a></li>
-        <li><a href="https://wa.me/919625836117" target="_blank">WhatsApp Support</a></li>
+        <li><a href="https://wa.me/919217175546" target="_blank">WhatsApp Support</a></li>
       </ul>
     </div>
     <div>
@@ -1037,7 +1037,7 @@ HTML = r"""<!DOCTYPE html>
 </footer>
 
 <!-- Floating WhatsApp Button -->
-<a href="https://wa.me/919625836117" target="_blank" rel="noopener"
+<a href="https://wa.me/919217175546" target="_blank" rel="noopener"
    style="position:fixed;bottom:2rem;right:2rem;z-index:9000;
           width:56px;height:56px;border-radius:50%;
           background:#25D366;display:flex;align-items:center;justify-content:center;
@@ -1775,7 +1775,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 </div>
 
 <!-- WhatsApp -->
-<a class="wa-float" href="https://wa.me/919625836117?text=Hi%20Ink%20%26%20Chai%2C%20I%20have%20a%20question%20about%20a%20book." target="_blank" rel="noopener" title="Chat with us on WhatsApp" aria-label="WhatsApp support">
+<a class="wa-float" href="https://wa.me/919217175546?text=Hi%20Ink%20%26%20Chai%2C%20I%20have%20a%20question%20about%20a%20book." target="_blank" rel="noopener" title="Chat with us on WhatsApp" aria-label="WhatsApp support">
   <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
 </a>
 
@@ -2029,7 +2029,7 @@ function renderProduct(b) {
           <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
             ⚡ Buy Now — ${esc(b.p)}
           </button>
-          <a class="btn-whatsapp" href="https://wa.me/919625836117?text=${encodeURIComponent('Hi Ink & Chai, I want to order ' + b.t)}" target="_blank" rel="noopener">
+          <a class="btn-whatsapp" href="https://wa.me/919217175546?text=${encodeURIComponent('Hi Ink & Chai, I want to order ' + b.t)}" target="_blank" rel="noopener">
             WhatsApp Order
           </a>
           <div style="display:flex;gap:0.6rem;margin-top:0.2rem">
@@ -2055,7 +2055,7 @@ function renderProduct(b) {
       <button class="pbb-buy" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
         Buy Now · ${esc(b.p)}
       </button>
-      <a class="pbb-whatsapp" href="https://wa.me/919625836117?text=${encodeURIComponent('Hi Ink & Chai, I want to order ' + b.t)}" target="_blank" rel="noopener">
+      <a class="pbb-whatsapp" href="https://wa.me/919217175546?text=${encodeURIComponent('Hi Ink & Chai, I want to order ' + b.t)}" target="_blank" rel="noopener">
         WhatsApp Order
       </a>
     </div>
@@ -2345,12 +2345,15 @@ def absolute_img(book):
     img = book.get("img") or ""
     return img if img.startswith("http") else f"https://inkandchai.in{img}"
 
-def book_description(book):
+def book_description(book, limit=None):
     desc = (book.get("desc") or "").strip()
-    if desc:
-        return desc[:320]
-    author = f" by {book.get('a')}" if book.get("a") else ""
-    return f"Buy {book.get('t','this book')}{author} online at Ink & Chai with pan-India delivery, COD, UPI, cards, and 7-day replacement support."
+    if not desc:
+        author = f" by {book.get('a')}" if book.get("a") else ""
+        desc = f"Buy {book.get('t','this book')}{author} online at Ink & Chai with pan-India delivery, COD, UPI, cards, and 7-day replacement support."
+    if limit and len(desc) > limit:
+        clipped = desc[:limit].rsplit(" ", 1)[0].rstrip(".,;:—- ")
+        return f"{clipped}..."
+    return desc
 
 def is_hindi_book(book):
     hay = f"{book.get('t','')} {book.get('cat','')}".lower()
@@ -2405,7 +2408,7 @@ def static_product_html(book):
     desc = html_escape(book_description(book))
     canonical = product_abs_url(book["slug"])
     img = html_escape(absolute_img(book))
-    wa = "https://wa.me/919625836117?text=" + quote(f"Hi Ink & Chai, I want to order {book.get('t','this book')}")
+    wa = "https://wa.me/919217175546?text=" + quote(f"Hi Ink & Chai, I want to order {book.get('t','this book')}")
     cart_item = json.dumps({
         "id": book.get("url") or book.get("slug"),
         "url": book.get("url") or book.get("slug"),
@@ -2421,7 +2424,7 @@ def static_product_html(book):
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>{title} | Buy Online in India | Ink &amp; Chai</title>
-<meta name="description" content="{html_escape(book_description(book)[:155])}"/>
+<meta name="description" content="{html_escape(book_description(book, 155))}"/>
 <meta name="robots" content="index,follow"/>
 <link rel="canonical" href="{canonical}"/>
 <meta property="og:type" content="product"/>
@@ -3141,7 +3144,7 @@ html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-c
   <a href="/" title="My Orders"><span class="mn-icon">📦</span><span>Orders</span></a>
   <a href="/" title="Cart"><span class="mn-icon">🛒</span><span>Cart</span></a>
 </nav>
-<a class="wa-float" href="https://wa.me/919625836117" target="_blank" rel="noopener" title="Chat on WhatsApp"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
+<a class="wa-float" href="https://wa.me/919217175546" target="_blank" rel="noopener" title="Chat on WhatsApp"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
 <nav>
   <a class="nav-logo" href="/" aria-label="Ink and Chai — home">
     <img class="logo-img logo-dark"  src="/images/logo-light.png" alt="Ink &amp; Chai logo" width="120" height="38"/>
