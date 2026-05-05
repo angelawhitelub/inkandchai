@@ -45,6 +45,10 @@ function text(v) {
   return String(v || '').trim();
 }
 
+function isUuid(v) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text(v));
+}
+
 async function sendEmail({ to, subject, html }) {
   const key = process.env.RESEND_API_KEY;
   if (!key || !to) return false;
@@ -156,7 +160,10 @@ exports.handler = async (event) => {
         continue;
       }
 
-      let lookup = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+      let lookup = { data: null, error: null };
+      if (isUuid(orderId)) {
+        lookup = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+      }
       if (!lookup.data && !lookup.error) {
         lookup = await supabase.from('orders').select('*').eq('razorpay_order_id', orderId).maybeSingle();
       }
