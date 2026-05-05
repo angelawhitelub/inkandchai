@@ -29,10 +29,10 @@
 <script type="application/ld+json" id="ldjson">{}</script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script>
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t !== 'dark') document.documentElement.setAttribute('data-theme','light'); } catch(e){ document.documentElement.setAttribute('data-theme','light'); } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
-    var next = cur === 'light' ? '' : 'light';
+    var next = cur === 'light' ? 'dark' : 'light';
     if (next) document.documentElement.setAttribute('data-theme', next);
     else      document.documentElement.removeAttribute('data-theme');
     try { localStorage.setItem('iac_theme', next); } catch(e){}
@@ -78,7 +78,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .product-page{max-width:1100px;margin:0 auto;padding:4rem 2rem 6rem;display:grid;grid-template-columns:1fr 1.4fr;gap:5rem;align-items:start}
 @media(max-width:780px){
   html,body{overflow-x:hidden}
-  .product-page{grid-template-columns:1fr;gap:1.2rem;padding:0 1rem 90px;display:block}
+  .product-page{grid-template-columns:1fr;gap:1.2rem;padding:0 1rem 150px;display:block}
   .prod-cover-wrap{position:sticky;top:55px;z-index:50;background:var(--bg);padding:0.6rem 0;margin:0 -1rem 0.8rem;padding-left:1rem;padding-right:1rem;border-bottom:1px solid var(--border)}
   .prod-cover{min-height:auto;padding:0.6rem;background:transparent;border:none}
   .prod-cover img{max-height:160px;box-shadow:0 6px 20px rgba(0,0,0,0.6)}
@@ -136,6 +136,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:rgba(13,11,8,0.98);border-top:1px solid rgba(201,168,76,0.3);padding:0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom,0px));gap:0.6rem;align-items:center;backdrop-filter:blur(16px);box-shadow:0 -8px 24px rgba(0,0,0,0.5)}
 .pbb-cart{flex:1;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid rgba(201,168,76,0.4);cursor:pointer;font-weight:500;transition:all 0.2s}
 .pbb-buy{flex:1.5;font-family:'Montserrat',sans-serif;font-size:0.63rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:700;transition:all 0.2s}
+.pbb-whatsapp{flex-basis:100%;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.82rem 0.5rem;background:#25d366;color:#07130b;border:1px solid rgba(37,211,102,0.75);cursor:pointer;font-weight:700;text-align:center;text-decoration:none}
 .pbb-cart:active{background:var(--gold);color:var(--bg)}
 .pbb-buy:active{background:var(--gold-light)}
 
@@ -568,6 +569,9 @@ function renderProduct(b) {
       <button class="pbb-buy" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
         Buy Now · ${esc(b.p)}
       </button>
+      <a class="pbb-whatsapp" href="https://wa.me/919625836117?text=${encodeURIComponent('Hi Ink & Chai, I want to order ' + b.t)}" target="_blank" rel="noopener">
+        WhatsApp Order
+      </a>
     </div>
   `;
   // Set initial wishlist state

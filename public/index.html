@@ -89,11 +89,11 @@
 }
 </script>
 <script>
-  // Apply saved theme BEFORE paint to avoid flash of wrong theme
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
+  // Apply saved theme BEFORE paint; light is the default storefront theme.
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t !== 'dark') document.documentElement.setAttribute('data-theme','light'); } catch(e){ document.documentElement.setAttribute('data-theme','light'); } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
-    var next = cur === 'light' ? '' : 'light';
+    var next = cur === 'light' ? 'dark' : 'light';
     if (next) document.documentElement.setAttribute('data-theme', next);
     else      document.documentElement.removeAttribute('data-theme');
     try { localStorage.setItem('iac_theme', next); } catch(e){}

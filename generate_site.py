@@ -277,11 +277,11 @@ HTML = r"""<!DOCTYPE html>
 }
 </script>
 <script>
-  // Apply saved theme BEFORE paint to avoid flash of wrong theme
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
+  // Apply saved theme BEFORE paint; light is the default storefront theme.
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t !== 'dark') document.documentElement.setAttribute('data-theme','light'); } catch(e){ document.documentElement.setAttribute('data-theme','light'); } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
-    var next = cur === 'light' ? '' : 'light';
+    var next = cur === 'light' ? 'dark' : 'light';
     if (next) document.documentElement.setAttribute('data-theme', next);
     else      document.documentElement.removeAttribute('data-theme');
     try { localStorage.setItem('iac_theme', next); } catch(e){}
@@ -1515,10 +1515,10 @@ PRODUCT_HTML = """<!DOCTYPE html>
 <script type="application/ld+json" id="ldjson">{}</script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script>
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t !== 'dark') document.documentElement.setAttribute('data-theme','light'); } catch(e){ document.documentElement.setAttribute('data-theme','light'); } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
-    var next = cur === 'light' ? '' : 'light';
+    var next = cur === 'light' ? 'dark' : 'light';
     if (next) document.documentElement.setAttribute('data-theme', next);
     else      document.documentElement.removeAttribute('data-theme');
     try { localStorage.setItem('iac_theme', next); } catch(e){}
@@ -1564,7 +1564,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .product-page{max-width:1100px;margin:0 auto;padding:4rem 2rem 6rem;display:grid;grid-template-columns:1fr 1.4fr;gap:5rem;align-items:start}
 @media(max-width:780px){
   html,body{overflow-x:hidden}
-  .product-page{grid-template-columns:1fr;gap:1.2rem;padding:0 1rem 90px;display:block}
+  .product-page{grid-template-columns:1fr;gap:1.2rem;padding:0 1rem 150px;display:block}
   .prod-cover-wrap{position:sticky;top:55px;z-index:50;background:var(--bg);padding:0.6rem 0;margin:0 -1rem 0.8rem;padding-left:1rem;padding-right:1rem;border-bottom:1px solid var(--border)}
   .prod-cover{min-height:auto;padding:0.6rem;background:transparent;border:none}
   .prod-cover img{max-height:160px;box-shadow:0 6px 20px rgba(0,0,0,0.6)}
@@ -1622,6 +1622,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:rgba(13,11,8,0.98);border-top:1px solid rgba(201,168,76,0.3);padding:0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom,0px));gap:0.6rem;align-items:center;backdrop-filter:blur(16px);box-shadow:0 -8px 24px rgba(0,0,0,0.5)}
 .pbb-cart{flex:1;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid rgba(201,168,76,0.4);cursor:pointer;font-weight:500;transition:all 0.2s}
 .pbb-buy{flex:1.5;font-family:'Montserrat',sans-serif;font-size:0.63rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:700;transition:all 0.2s}
+.pbb-whatsapp{flex-basis:100%;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.82rem 0.5rem;background:#25d366;color:#07130b;border:1px solid rgba(37,211,102,0.75);cursor:pointer;font-weight:700;text-align:center;text-decoration:none}
 .pbb-cart:active{background:var(--gold);color:var(--bg)}
 .pbb-buy:active{background:var(--gold-light)}
 
@@ -2054,6 +2055,9 @@ function renderProduct(b) {
       <button class="pbb-buy" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
         Buy Now · ${esc(b.p)}
       </button>
+      <a class="pbb-whatsapp" href="https://wa.me/919625836117?text=${encodeURIComponent('Hi Ink & Chai, I want to order ' + b.t)}" target="_blank" rel="noopener">
+        WhatsApp Order
+      </a>
     </div>
   `;
   // Set initial wishlist state
@@ -2428,15 +2432,15 @@ def static_product_html(book):
 <script type="application/ld+json">{product_json_ld(book)}</script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet"/>
 <style>
-:root{{--bg:#0d0b08;--panel:#17130f;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.22)}}
+:root{{--bg:#faf7f2;--panel:#fff;--gold:#8a6a1f;--cream:#2a2018;--muted:#5a4a38;--border:rgba(138,106,31,.28)}}
 *{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--cream);font-family:Montserrat,sans-serif;font-weight:300}} a{{color:inherit}}
 .promo{{padding:.62rem 1rem;text-align:center;border-bottom:1px solid var(--border);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}} .promo strong{{color:var(--gold)}}
-nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(13,11,8,.96);position:sticky;top:0;z-index:5}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
+nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(250,247,242,.96);position:sticky;top:0;z-index:5}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
 .wrap{{max-width:1120px;margin:0 auto;padding:clamp(1.2rem,4vw,4rem) 1rem 4rem;display:grid;grid-template-columns:minmax(260px,.8fr) 1.2fr;gap:clamp(1.4rem,5vw,5rem)}} .cover{{background:var(--panel);border:1px solid var(--border);padding:clamp(1rem,4vw,2.5rem);display:flex;align-items:center;justify-content:center}} .cover img{{max-width:100%;max-height:520px;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,.5)}}
 .crumb{{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}} h1{{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}} .author{{color:var(--muted);letter-spacing:.08em;margin-bottom:1.2rem}} .price{{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}} .orig{{color:var(--muted);text-decoration:line-through;margin-left:.8rem}} .stock{{display:inline-block;margin:1rem 0;color:#7fd37f;border:1px solid rgba(127,211,127,.3);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}}
-.trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(201,168,76,.05);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:#0d0b08}} .secondary{{background:transparent;color:var(--gold)}} .wa{{grid-column:1/-1;background:#25d366;color:#07130b;border-color:#25d366}}
+.trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(138,106,31,.06);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:#fff}} .secondary{{background:transparent;color:var(--gold)}} .wa{{grid-column:1/-1;background:#25d366;color:#07130b;border-color:#25d366}}
 .desc,.details{{border-top:1px solid var(--border);padding-top:1.2rem;margin-top:1.2rem;color:var(--muted);font-size:.9rem;line-height:1.8}} .label{{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}} .details dl{{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}} .details dt{{color:var(--gold)}} .details dd{{margin:0;color:var(--cream)}}
-@media(max-width:760px){{.wrap{{display:block;padding-bottom:7rem}} .cover{{margin-bottom:1.2rem}} .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;background:rgba(13,11,8,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border)}} .wa{{display:none}} .trust{{grid-template-columns:1fr}}}}
+@media(max-width:760px){{.wrap{{display:block;padding-bottom:11rem}} .cover{{margin-bottom:1.2rem}} .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;background:rgba(250,247,242,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);box-shadow:0 -10px 26px rgba(60,40,10,.12)}} .wa{{display:block}} .trust{{grid-template-columns:1fr}}}}
 </style>
 </head>
 <body>
@@ -3054,8 +3058,8 @@ COLLECTION_HTML = r"""<!DOCTYPE html>
 <link rel="manifest" href="/manifest.json"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script>
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){} })();
-  function toggleTheme(){ var c = document.documentElement.getAttribute('data-theme'); var n = c === 'light' ? '' : 'light'; if(n) document.documentElement.setAttribute('data-theme', n); else document.documentElement.removeAttribute('data-theme'); try { localStorage.setItem('iac_theme', n); } catch(e){} }
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t !== 'dark') document.documentElement.setAttribute('data-theme','light'); } catch(e){ document.documentElement.setAttribute('data-theme','light'); } })();
+  function toggleTheme(){ var c = document.documentElement.getAttribute('data-theme'); var n = c === 'light' ? 'dark' : 'light'; if(n) document.documentElement.setAttribute('data-theme', n); else document.documentElement.removeAttribute('data-theme'); try { localStorage.setItem('iac_theme', n); } catch(e){} }
 </script>
 <style>
 :root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
