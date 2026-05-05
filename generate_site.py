@@ -494,10 +494,19 @@ HTML = r"""<!DOCTYPE html>
   .books-count { font-size: 0.62rem; color: var(--cream-dim); letter-spacing: 0.1em; margin-top: 1rem; }
 
   /* Search bar */
-  .search-wrap { margin-bottom: 2rem; }
-  .search-input { width: 100%; max-width: 480px; background: var(--bg3); border: 1px solid var(--border); color: var(--cream); padding: 0.75rem 1.2rem; font-family: 'Montserrat', sans-serif; font-size: 0.78rem; outline: none; transition: border-color 0.3s; letter-spacing: 0.04em; }
+  .search-wrap { margin-bottom: 2rem; max-width: 760px; }
+  .search-box { position: relative; display: flex; align-items: center; background: var(--bg3); border: 1px solid var(--border); transition: border-color 0.25s, box-shadow 0.25s; }
+  .search-box:focus-within { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(201,168,76,0.12); }
+  .search-icon { position: absolute; left: 1rem; color: var(--gold); font-size: 0.9rem; opacity: 0.9; pointer-events: none; }
+  .search-input { width: 100%; background: transparent; border: 0; color: var(--cream); padding: 0.95rem 3rem 0.95rem 2.7rem; font-family: 'Montserrat', sans-serif; font-size: 0.86rem; outline: none; transition: border-color 0.3s; letter-spacing: 0.02em; }
   .search-input::placeholder { color: var(--cream-dim); }
-  .search-input:focus { border-color: var(--gold-dim); }
+  .search-clear { position: absolute; right: 0.45rem; width: 34px; height: 34px; border: 0; background: transparent; color: var(--cream-dim); cursor: pointer; font-size: 1.15rem; line-height: 1; display: none; align-items: center; justify-content: center; }
+  .search-clear.show { display: inline-flex; }
+  .search-clear:hover { color: var(--gold); }
+  .search-hints { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.75rem; }
+  .search-chip { border: 1px solid var(--border); background: transparent; color: var(--cream-dim); font-family: 'Montserrat', sans-serif; font-size: 0.58rem; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.42rem 0.7rem; cursor: pointer; }
+  .search-chip:hover { color: var(--gold); border-color: var(--gold-dim); }
+  .search-status { min-height: 1.2rem; margin-top: 0.65rem; color: var(--cream-dim); font-size: 0.66rem; letter-spacing: 0.08em; }
 
   /* COLLECTIONS */
   .collections { background: var(--bg); }
@@ -685,6 +694,10 @@ HTML = r"""<!DOCTYPE html>
     .book-price { display: inline-block; max-width: 100%; }
     .book-orig-price { margin-left: 0.25rem; }
     .btn-add-card { font-size: 0.5rem; letter-spacing: 0.14em; padding: 0.62rem 0.25rem; }
+    .search-wrap { max-width: none; margin-bottom: 1.4rem; }
+    .search-input { font-size: 0.9rem; padding-top: 0.9rem; padding-bottom: 0.9rem; }
+    .search-hints { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 0.15rem; }
+    .search-chip { flex: 0 0 auto; }
     .hero { min-height:auto; }
     .hero-title { font-size:clamp(2.45rem,13vw,3.45rem); line-height:1.04; margin-bottom:1.3rem; }
     .hero-sub { width:auto; max-width:330px; margin-bottom:1.55rem; font-size:0.76rem; line-height:1.75; }
@@ -923,7 +936,18 @@ HTML = r"""<!DOCTYPE html>
   </div>
 
   <div class="search-wrap">
-    <input class="search-input" type="text" id="searchInput" placeholder="Search by title or author…" oninput="onSearch()" />
+    <div class="search-box">
+      <span class="search-icon" aria-hidden="true">⌕</span>
+      <input class="search-input" type="search" id="searchInput" placeholder="Search title, author, ISBN, category…" autocomplete="off" oninput="onSearch()" onkeydown="onSearchKey(event)" />
+      <button class="search-clear" id="searchClear" type="button" aria-label="Clear search" onclick="clearSearch()">×</button>
+    </div>
+    <div class="search-hints" aria-label="Popular searches">
+      <button class="search-chip" type="button" onclick="quickSearch('cant hurt me hindi')">Can’t Hurt Me Hindi</button>
+      <button class="search-chip" type="button" onclick="quickSearch('rich dad poor dad')">Rich Dad</button>
+      <button class="search-chip" type="button" onclick="quickSearch('atomic habits')">Atomic Habits</button>
+      <button class="search-chip" type="button" onclick="quickSearch('poetry')">Poetry</button>
+    </div>
+    <div class="search-status" id="searchStatus"></div>
   </div>
 
   <div class="books-grid" id="booksGrid"></div>
@@ -1093,6 +1117,7 @@ const PAGE_SIZE = 16;
 let currentTab   = 'All';
 let currentQuery = '';
 let visibleCount = PAGE_SIZE;
+let searchTimer  = null;
 
 const TRENDING_PATTERNS = [
   ['onyx storm', 120],
@@ -1144,16 +1169,107 @@ function homepageRank(a, b) {
     || a.t.localeCompare(b.t);
 }
 
+function normalizeSearchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[`’‘´]/g, "'")
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9\u0900-\u097f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function searchAliases(text) {
+  const aliases = [text];
+  const compact = text.replace(/\s+/g, '');
+  if (compact && compact !== text) aliases.push(compact);
+  const withoutThe = text.replace(/\bthe\b/g, ' ').replace(/\s+/g, ' ').trim();
+  if (withoutThe && withoutThe !== text) aliases.push(withoutThe);
+  return aliases;
+}
+
+function bookSearchDoc(b) {
+  if (b._searchDoc) return b._searchDoc;
+  const title = normalizeSearchText(b.t);
+  const author = normalizeSearchText(b.a);
+  const category = normalizeSearchText(b.cat);
+  const isbn = normalizeSearchText(b.isbn);
+  const publisher = normalizeSearchText(b.pub);
+  const desc = normalizeSearchText(b.desc);
+  const slug = normalizeSearchText(b.slug || b.url);
+  const full = normalizeSearchText([b.t, b.a, b.cat, b.isbn, b.pub, b.desc, b.slug, b.url].join(' '));
+  b._searchDoc = { title, author, category, isbn, publisher, desc, slug, full };
+  return b._searchDoc;
+}
+
+function fuzzyWordHit(word, field) {
+  if (!word || word.length < 4 || !field) return false;
+  for (const candidate of field.split(' ')) {
+    if (Math.abs(candidate.length - word.length) > 1) continue;
+    let i = 0, j = 0, edits = 0;
+    while (i < word.length && j < candidate.length) {
+      if (word[i] === candidate[j]) { i++; j++; continue; }
+      edits++;
+      if (edits > 1) break;
+      if (word.length > candidate.length) i++;
+      else if (candidate.length > word.length) j++;
+      else { i++; j++; }
+    }
+    edits += (word.length - i) + (candidate.length - j);
+    if (edits <= 1) return true;
+  }
+  return false;
+}
+
+function searchScore(book, rawQuery) {
+  const q = normalizeSearchText(rawQuery);
+  if (!q) return 0;
+  const doc = bookSearchDoc(book);
+  const tokens = q.split(' ').filter(Boolean);
+  const aliases = searchAliases(q);
+  let score = 0;
+
+  if (aliases.some(a => doc.title === a || doc.isbn === a)) score += 900;
+  if (aliases.some(a => doc.title.startsWith(a))) score += 620;
+  if (aliases.some(a => doc.title.includes(a))) score += 420;
+  if (aliases.some(a => doc.author.includes(a))) score += 280;
+  if (aliases.some(a => doc.category.includes(a))) score += 150;
+  if (aliases.some(a => doc.publisher.includes(a) || doc.slug.includes(a))) score += 80;
+  if (aliases.some(a => doc.full.includes(a))) score += 60;
+
+  let matched = 0;
+  for (const token of tokens) {
+    if (doc.title.split(' ').some(w => w === token)) { score += 95; matched++; continue; }
+    if (doc.title.includes(token)) { score += 70; matched++; continue; }
+    if (doc.author.includes(token)) { score += 50; matched++; continue; }
+    if (doc.isbn.includes(token)) { score += 45; matched++; continue; }
+    if (doc.category.includes(token)) { score += 35; matched++; continue; }
+    if (doc.full.includes(token)) { score += 16; matched++; continue; }
+    if (fuzzyWordHit(token, doc.title) || fuzzyWordHit(token, doc.author)) { score += 10; matched++; }
+  }
+  if (tokens.length && matched < Math.ceil(tokens.length * 0.7)) return 0;
+  if (matched === tokens.length && tokens.length > 1) score += 110;
+
+  score += Math.min(trendScore(book), 120) * 0.35;
+  score += book.n ? 12 : 0;
+  score -= editionPenalty(book) * 2;
+  return score;
+}
+
 function filteredBooks() {
-  const q = currentQuery.toLowerCase();
-  return BOOKS.filter(b => {
-    const tabOk  = currentTab === 'All'
-                || (currentTab === 'New' && b.n === 1)
-                || (currentTab === 'Bestsellers' && trendScore(b) > 0)
-                || b.tab === currentTab;
-    const queryOk = !q || b.t.toLowerCase().includes(q) || (b.a && b.a.toLowerCase().includes(q));
-    return tabOk && queryOk;
-  }).sort(homepageRank);
+  const q = normalizeSearchText(currentQuery);
+  const tabFiltered = BOOKS.filter(b => currentTab === 'All'
+    || (currentTab === 'New' && b.n === 1)
+    || (currentTab === 'Bestsellers' && trendScore(b) > 0)
+    || b.tab === currentTab);
+  if (!q) return tabFiltered.sort(homepageRank);
+
+  const ranked = BOOKS.map(b => ({ b, score: searchScore(b, q) }))
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score || homepageRank(a.b, b.b));
+  return ranked.map(x => x.b);
 }
 
 function renderBooks() {
@@ -1196,7 +1312,9 @@ function renderBooks() {
   const info = document.getElementById('booksCount');
   const showing = Math.min(visibleCount, books.length);
   info.textContent = `Showing ${showing} of ${books.length} books`;
+  updateSearchStatus(books.length);
   btn.style.display = books.length > visibleCount ? 'inline-block' : 'none';
+  btn.onclick = loadMore;
 }
 
 function renderCollections() {
@@ -1299,9 +1417,58 @@ function setTab(el) {
 }
 
 function onSearch() {
-  currentQuery = document.getElementById('searchInput').value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    currentQuery = document.getElementById('searchInput').value;
+    visibleCount = PAGE_SIZE;
+    renderBooks();
+  }, 90);
+  const clear = document.getElementById('searchClear');
+  if (clear) clear.classList.toggle('show', !!document.getElementById('searchInput').value.trim());
+}
+
+function clearSearch() {
+  const input = document.getElementById('searchInput');
+  input.value = '';
+  currentQuery = '';
   visibleCount = PAGE_SIZE;
+  document.getElementById('searchClear')?.classList.remove('show');
   renderBooks();
+  input.focus();
+}
+
+function quickSearch(query) {
+  const input = document.getElementById('searchInput');
+  input.value = query;
+  currentQuery = query;
+  visibleCount = PAGE_SIZE;
+  document.getElementById('searchClear')?.classList.add('show');
+  renderBooks();
+  document.getElementById('featured')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function onSearchKey(event) {
+  if (event.key === 'Escape') clearSearch();
+  if (event.key === 'Enter') {
+    currentQuery = document.getElementById('searchInput').value;
+    const first = filteredBooks()[0];
+    if (first) location.href = `/product/${first.slug}/`;
+  }
+}
+
+function updateSearchStatus(count) {
+  const status = document.getElementById('searchStatus');
+  const clear = document.getElementById('searchClear');
+  const q = currentQuery.trim();
+  if (clear) clear.classList.toggle('show', !!q);
+  if (!status) return;
+  if (!q) {
+    status.textContent = 'Search across title, author, ISBN, category, and Hindi editions.';
+  } else if (count) {
+    status.textContent = `${count} match${count === 1 ? '' : 'es'} for “${q}”`;
+  } else {
+    status.textContent = `No matches for “${q}”. Try fewer words or author name.`;
+  }
 }
 
 function loadMore() {
