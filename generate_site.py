@@ -131,6 +131,7 @@ for b in books:
         "p":    price_str,
         "op":   orig_str,
         "img":  public_image_url(b.get("image_url", "")),
+        "back_img": public_image_url(b.get("back_image_url", "")),
         "url":  product_path(slug),
         "slug": slug,
         "cat":  clean_text(b.get("category", "")),
@@ -1774,6 +1775,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
   .prod-cover-wrap{position:sticky;top:55px;z-index:50;background:var(--bg);padding:0.6rem 0;margin:0 -1rem 0.8rem;padding-left:1rem;padding-right:1rem;border-bottom:1px solid var(--border)}
   .prod-cover{min-height:auto;padding:0.6rem;background:transparent;border:none}
   .prod-cover img{max-height:160px;box-shadow:0 6px 20px rgba(0,0,0,0.6)}
+  .prod-cover-secondary{display:none}
   .prod-badges{margin-top:0.5rem}
   .prod-actions{display:none}
   .prod-bottom-bar{display:flex!important}
@@ -1786,6 +1788,8 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-cover-wrap{position:sticky;top:6rem}
 .prod-cover{background:var(--bg2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;padding:2.5rem;min-height:380px}
 .prod-cover img{max-height:480px;max-width:100%;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,0.6);display:block}
+.prod-cover-secondary{margin-top:1rem;background:var(--bg2);border:1px solid var(--border);padding:1rem;display:flex;align-items:center;justify-content:center}
+.prod-cover-secondary img{max-height:260px;max-width:100%;object-fit:contain;box-shadow:0 14px 36px rgba(0,0,0,0.45);display:block}
 .prod-cover-placeholder{width:200px;height:300px;background:linear-gradient(135deg,#1a0a00,#3a1500)}
 .prod-badges{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1.2rem}
 .badge{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.35rem 0.8rem;border:1px solid var(--border);color:var(--cream-dim)}
@@ -2164,6 +2168,10 @@ function renderProduct(b) {
             ? `<img src="${esc(b.img)}" alt="${esc(b.t)} — ${esc(b.a||'book')} cover" loading="eager" fetchpriority="high" decoding="async" />`
             : `<div class="prod-cover-placeholder"></div>`}
         </div>
+        ${b.back_img ? `
+          <div class="prod-cover-secondary">
+            <img src="${esc(b.back_img)}" alt="${esc(b.t)} back cover" loading="lazy" decoding="async" />
+          </div>` : ''}
         <div class="prod-badges">
           <span class="badge">${esc(b.cat)}</span>
           ${savePct ? `<span class="badge sale">Save ${savePct}%</span>` : ''}
@@ -2551,6 +2559,12 @@ def absolute_img(book):
     img = book.get("img") or ""
     return img if img.startswith("http") else f"https://inkandchai.in{img}"
 
+def absolute_back_img(book):
+    img = book.get("back_img") or ""
+    if not img:
+        return ""
+    return img if img.startswith("http") else f"https://inkandchai.in{img}"
+
 def book_description(book, limit=None):
     desc = (book.get("desc") or "").strip()
     if not desc:
@@ -2614,6 +2628,9 @@ def static_product_html(book):
     desc = html_escape(book_description(book))
     canonical = product_abs_url(book["slug"])
     img = html_escape(absolute_img(book))
+    back_img = html_escape(absolute_back_img(book))
+    static_cover_class = "cover cover-gallery" if back_img else "cover"
+    static_back_cover = f'<img src="{back_img}" alt="{title} back cover" loading="lazy"/>' if back_img else ""
     wa = "https://wa.me/919217175546?text=" + quote(f"Hi Ink & Chai, I want to order {book.get('t','this book')}")
     cart_item = json.dumps({
         "id": book.get("url") or book.get("slug"),
@@ -2645,7 +2662,7 @@ def static_product_html(book):
 *{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--cream);font-family:Montserrat,sans-serif;font-weight:300}} a{{color:inherit}}
 .promo{{padding:.62rem 1rem;text-align:center;border-bottom:1px solid var(--border);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}} .promo strong{{color:var(--gold)}}
 nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(250,247,242,.96);position:sticky;top:0;z-index:5}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
-.wrap{{max-width:1120px;margin:0 auto;padding:clamp(1.2rem,4vw,4rem) 1rem 4rem;display:grid;grid-template-columns:minmax(260px,.8fr) 1.2fr;gap:clamp(1.4rem,5vw,5rem)}} .cover{{background:var(--panel);border:1px solid var(--border);padding:clamp(1rem,4vw,2.5rem);display:flex;align-items:center;justify-content:center}} .cover img{{max-width:100%;max-height:520px;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,.5)}}
+.wrap{{max-width:1120px;margin:0 auto;padding:clamp(1.2rem,4vw,4rem) 1rem 4rem;display:grid;grid-template-columns:minmax(260px,.8fr) 1.2fr;gap:clamp(1.4rem,5vw,5rem)}} .cover{{background:var(--panel);border:1px solid var(--border);padding:clamp(1rem,4vw,2.5rem);display:flex;align-items:center;justify-content:center;gap:1rem;flex-wrap:wrap}} .cover img{{max-width:100%;max-height:520px;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,.5)}} .cover-gallery img{{max-width:min(46%,340px)}} .cover-gallery img+img{{max-height:500px}}
 .crumb{{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}} h1{{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}} .author{{color:var(--muted);letter-spacing:.08em;margin-bottom:1.2rem}} .price{{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}} .orig{{color:var(--muted);text-decoration:line-through;margin-left:.8rem}} .stock{{display:inline-block;margin:1rem 0;color:#7fd37f;border:1px solid rgba(127,211,127,.3);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}}
 .trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(138,106,31,.06);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:#fff}} .secondary{{background:transparent;color:var(--gold)}} .wa{{grid-column:1/-1;background:#25d366;color:#07130b;border-color:#25d366}}
 .desc,.details{{border-top:1px solid var(--border);padding-top:1.2rem;margin-top:1.2rem;color:var(--muted);font-size:.9rem;line-height:1.8}} .label{{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}} .details dl{{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}} .details dt{{color:var(--gold)}} .details dd{{margin:0;color:var(--cream)}}
@@ -2656,7 +2673,7 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 <div class="promo"><strong>Free delivery on ₹499+</strong> · Extra 10% off prepaid with <strong>INKLOVE10</strong> · COD available</div>
 <nav><a class="logo" href="/">Ink &amp; Chai</a><a class="back" href="/">← Catalogue</a></nav>
 <main class="wrap">
-  <section class="cover"><img src="{img}" alt="{title} book cover" loading="eager" fetchpriority="high"/></section>
+  <section class="{static_cover_class}"><img src="{img}" alt="{title} book cover" loading="eager" fetchpriority="high"/>{static_back_cover}</section>
   <section>
     <div class="crumb"><a href="/">Home</a> / <a href="/category/?name={quote(book.get('cat') or 'Books')}">{cat}</a></div>
     <h1>{title}</h1>
