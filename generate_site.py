@@ -3,7 +3,7 @@ Generates akshar_co.html — the Akshar & Co. homepage with real book data
 embedded from the 99bookstores scrape at ~/InkAndChaiBooks/ALL_BOOKS.json.
 """
 
-import json, re
+import base64, json, re
 import shutil
 from html import escape as html_escape
 from urllib.parse import quote
@@ -21,6 +21,17 @@ def make_slug(title, shopify_id):
     slug = slug.strip('-')[:55]
     suffix = str(shopify_id or '')[-5:]
     return f"{slug}-{suffix}" if suffix else slug
+
+def clean_text(value):
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+def public_image_url(url):
+    """Hide third-party CDN fingerprints from public HTML while keeping images loadable."""
+    url = str(url or "").strip()
+    if not url or not url.startswith("http"):
+        return url
+    token = base64.urlsafe_b64encode(url.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"/.netlify/functions/image-proxy?u={token}"
 
 # ── Load & deduplicate ───────────────────────────────────────────────────────
 # Data lives in data/ALL_BOOKS.json (relative to this script) — works both locally and on Netlify
@@ -105,18 +116,18 @@ for b in books:
     is_new = 1 if (sid.startswith("CUSTOM-") or (scraped and scraped[:10] >= BULK_IMPORT_DATE)) else 0
 
     slim.append({
-        "t":    b["title"][:80],
-        "a":    b.get("author", "")[:50],
+        "t":    clean_text(b["title"])[:80],
+        "a":    clean_text(b.get("author", ""))[:50],
         "p":    price_str,
         "op":   orig_str,
-        "img":  b.get("image_url", ""),
+        "img":  public_image_url(b.get("image_url", "")),
         "url":  b.get("url", ""),   # kept for cart ID compatibility
         "slug": make_slug(b["title"], b.get("shopify_id", "")),
-        "cat":  b.get("category", ""),
+        "cat":  clean_text(b.get("category", "")),
         "tab":  tab_for(b.get("category", ""), b),
         "desc": (b.get("description") or "")[:1400],
-        "isbn": b.get("isbn", ""),
-        "pub":  b.get("publisher", ""),
+        "isbn": clean_text(b.get("isbn", "")),
+        "pub":  clean_text(b.get("publisher", "")),
         "n":    is_new,            # 1 = New Arrival
         "ts":   scraped,           # so we can sort newest-first when needed
     })
@@ -160,7 +171,7 @@ for name, cats in TOP_CATS:
         cl = c.lower()
         for b in books:
             bcat = (b.get("category") or "").lower()
-            url  = b.get("image_url") or b.get("img") or ""
+            url  = public_image_url(b.get("image_url") or b.get("img") or "")
             if bcat == cl and url:
                 thumb = url
                 break
@@ -863,13 +874,13 @@ HTML = r"""<!DOCTYPE html>
         <img src="/images/thinking-fast-slow-hindi.jpg" alt="Thinking Fast and Slow Hindi edition" loading="eager"/>
       </a>
       <a class="hero-cover-card" href="/product/hindi-rich-dad-poor-dad-80989/" data-label="Rich Dad Poor Dad">
-        <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/18a3b96e-fe0b-4de2-99ba-d6900b02f8b0.jpg?v=1697648603" alt="Rich Dad Poor Dad Hindi edition" loading="lazy"/>
+        <img src="RICH_DAD_HINDI_IMAGE_PLACEHOLDER" alt="Rich Dad Poor Dad Hindi edition" loading="lazy"/>
       </a>
       <a class="hero-cover-card featured" href="/product/hindi-atomic-habits-33309/" data-label="Atomic Habits">
-        <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51nmc82kxql-1c1458a1-51a7-4d5d-b100-4255d57076aa.jpg?v=1697649002" alt="Atomic Habits Hindi edition" loading="lazy"/>
+        <img src="ATOMIC_HABITS_HINDI_IMAGE_PLACEHOLDER" alt="Atomic Habits Hindi edition" loading="lazy"/>
       </a>
       <a class="hero-cover-card" href="/product/shakti-ke-48-niyam-the-48-laws-of-power-hindi-28157/" data-label="48 Laws of Power">
-        <img src="https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51-RRmYWh9L._SL1000.jpg?v=1700040895" alt="48 Laws of Power Hindi edition" loading="lazy"/>
+        <img src="LAWS_48_HINDI_IMAGE_PLACEHOLDER" alt="48 Laws of Power Hindi edition" loading="lazy"/>
       </a>
     </div>
     <div class="hero-note"><strong>Translated picks:</strong> motivation, money, business, psychology, discipline.</div>
@@ -1653,6 +1664,9 @@ import os
 HTML = HTML.replace("BOOKS_DATA_PLACEHOLDER",         books_js)
 HTML = HTML.replace("COLLECTIONS_DATA_PLACEHOLDER",   json.dumps(coll_data, ensure_ascii=False))
 HTML = HTML.replace("ALL_CATS_DATA_PLACEHOLDER",      all_cats_js)
+HTML = HTML.replace("RICH_DAD_HINDI_IMAGE_PLACEHOLDER", public_image_url("https://cdn.shopify.com/s/files/1/0777/8100/8701/files/18a3b96e-fe0b-4de2-99ba-d6900b02f8b0.jpg?v=1697648603"))
+HTML = HTML.replace("ATOMIC_HABITS_HINDI_IMAGE_PLACEHOLDER", public_image_url("https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51nmc82kxql-1c1458a1-51a7-4d5d-b100-4255d57076aa.jpg?v=1697649002"))
+HTML = HTML.replace("LAWS_48_HINDI_IMAGE_PLACEHOLDER", public_image_url("https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51-RRmYWh9L._SL1000.jpg?v=1700040895"))
 HTML = HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",   os.environ.get("RAZORPAY_KEY_ID", "rzp_test_CHANGE_ME"))
 HTML = HTML.replace("SUPABASE_URL_PLACEHOLDER",       os.environ.get("SUPABASE_URL", ""))
 HTML = HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER",  os.environ.get("SUPABASE_ANON_KEY", ""))
