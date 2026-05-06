@@ -36,6 +36,22 @@ def public_image_url(url):
     IMAGE_PROXY_MAP[token] = url
     return f"/.netlify/functions/image-proxy?i={token}"
 
+def crawlable_image_url(url):
+    """Use direct image URLs for Merchant Center and sitemaps.
+
+    Public pages can hide source CDN fingerprints behind our proxy, but Google
+    Merchant needs a plain crawlable image URL. Proxy URLs live under
+    /.netlify/, which robots.txt blocks, so they must never be used in feeds.
+    """
+    url = str(url or "").strip()
+    if not url:
+        return ""
+    if url.startswith("http"):
+        return url
+    if url.startswith("/"):
+        return SITE + url
+    return url
+
 def product_path(slug):
     return f"/product/{slug}/"
 
@@ -102,6 +118,7 @@ def tab_for(cat, book=None):
 
 # ── Slim book objects for JS ─────────────────────────────────────────────────
 slim = []
+feed_image_by_slug = {}
 for b in books:
     price = b.get("price_inr", "")
     try:
@@ -125,6 +142,7 @@ for b in books:
     is_new = 1 if (sid.startswith("CUSTOM-") or (scraped and scraped[:10] >= BULK_IMPORT_DATE)) else 0
 
     slug = make_slug(b["title"], b.get("shopify_id", ""))
+    feed_image_by_slug[slug] = crawlable_image_url(b.get("image_url", ""))
     slim.append({
         "t":    clean_text(b["title"])[:80],
         "a":    clean_text(b.get("author", ""))[:50],
@@ -3570,10 +3588,7 @@ for b in slim:
         if price_val == "0.00 INR":
             continue   # skip books with no price
 
-    img = b.get("img", "")
-    # Make relative image URLs absolute
-    if img and img.startswith("/"):
-        img = SITE + img
+    img = feed_image_by_slug.get(b.get("slug", "")) or crawlable_image_url(b.get("img", ""))
 
     slug = b.get("slug", "")
     link = f"{SITE}/product/{slug}/"
@@ -3655,10 +3670,10 @@ for url, prio, freq in static_urls:
 # Product URLs — every book
 for b in slim:
     purl = f"{SITE}/product/{b['slug']}/"
-    img  = b.get('img', '')
+    img  = feed_image_by_slug.get(b.get('slug', '')) or b.get('img', '')
     img_xml = ""
     if img:
-        img_abs = img if img.startswith("http") else (SITE + img)
+        img_abs = crawlable_image_url(img)
         image_title = re.sub(r"\s+", " ", (b['t'] or '')).strip()
         img_xml = f"<image:image><image:loc>{img_abs.replace('&','&amp;')}</image:loc><image:title>{image_title.replace('&','&amp;').replace('<','&lt;')[:200]}</image:title></image:image>"
     url_entries.append(f"  <url><loc>{purl.replace('&','&amp;')}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority>{img_xml}</url>")
