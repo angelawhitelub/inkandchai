@@ -785,9 +785,9 @@ HTML = r"""<!DOCTYPE html>
     <img class="logo-img logo-light" src="/images/logo.png"       alt="" width="120" height="38" aria-hidden="true"/>
   </a>
   <ul class="nav-links">
-    <li><a href="#featured">Catalogue</a></li>
-    <li><a href="#collections">Collections</a></li>
-    <li><a href="#categories">Categories</a></li>
+    <li><a href="/self-help-books/">Catalogue</a></li>
+    <li><a href="/book-combos/">Collections</a></li>
+    <li><a href="/hindi-books/">Categories</a></li>
     <li><a href="/track/">Track Order</a></li>
     <li><a href="/terms/">Terms</a></li>
     <li><a href="/privacy-policy/">Privacy</a></li>
@@ -840,7 +840,7 @@ HTML = r"""<!DOCTYPE html>
     <p class="hero-sub">Read the titles everyone talks about — David Goggins, Ben Horowitz, Daniel Kahneman, Robert Kiyosaki, James Clear, and more — in editions made for Indian readers.</p>
     <div class="hero-ctas">
       <a href="/category/?name=Hindi%20Books" class="btn-primary">Shop Hindi Editions</a>
-      <a href="#featured" class="btn-ghost">See Bestsellers</a>
+      <a href="/bestsellers/" class="btn-ghost">See Bestsellers</a>
     </div>
     <div class="hero-stats">
       <div><div class="stat-num">Hindi</div><div class="stat-label">Self-help focus</div></div>
@@ -932,7 +932,7 @@ HTML = r"""<!DOCTYPE html>
         <button class="tab"        data-tab="Indian Authors" onclick="setTab(this)">Indian Authors</button>
       </div>
     </div>
-    <a href="#" class="btn-ghost" style="margin-bottom:1rem;" id="view-all-link">View all books</a>
+    <a href="/self-help-books/" class="btn-ghost" style="margin-bottom:1rem;" id="view-all-link">View self-help books</a>
   </div>
 
   <div class="search-wrap">
@@ -1037,11 +1037,11 @@ HTML = r"""<!DOCTYPE html>
     <div>
       <div class="footer-col-title">Shop</div>
       <ul class="footer-links">
-        <li><a href="#featured">All Books</a></li>
-        <li><a href="#collections">Collections</a></li>
-        <li><a href="#categories">Categories</a></li>
-        <li><a href="#featured">New Arrivals</a></li>
-        <li><a href="#featured" onclick="setTab(document.querySelector('.tab[data-tab=&quot;Bestsellers&quot;]'))">Bestsellers</a></li>
+        <li><a href="/self-help-books/">Self-Help Books</a></li>
+        <li><a href="/hindi-books/">Hindi Books</a></li>
+        <li><a href="/book-combos/">Book Combos</a></li>
+        <li><a href="/new-arrivals/">New Arrivals</a></li>
+        <li><a href="/bestsellers/">Bestsellers</a></li>
       </ul>
     </div>
     <div>
@@ -1624,7 +1624,7 @@ function subscribeNewsletter(e) {
 // ── INIT ──────────────────────────────────────────────────────────────────
 const totalStat = document.getElementById('stat-total');
 if (totalStat) totalStat.textContent = BOOKS.length.toLocaleString() + '+';
-document.getElementById('view-all-link').textContent = `View all ${BOOKS.length.toLocaleString()} books`;
+document.getElementById('view-all-link').textContent = `View self-help books`;
 renderBooks();
 renderCollections();
 renderCats(ALL_CATS);
@@ -2675,30 +2675,79 @@ for book in slim:
     out.write_text(static_product_html(book), encoding="utf-8")
 print(f"Generated crawlable product pages: {len(slim)}")
 
+SELF_HELP_TERMS = ["self", "help", "habit", "hurt", "finished", "rich dad", "psychology", "money", "power", "think", "mindset", "discipline", "atomic", "goggins", "ikigai", "motivation"]
+COMBO_TERMS = ["combo", "boxset", "box set", "collection", "set of", "special 99 box"]
+PY_TRENDING_PATTERNS = [
+    ("onyx storm", 120), ("sunrise on the reaping", 118), ("the let them theory", 116),
+    ("great big beautiful life", 114), ("the tenant", 112), ("the housemaid", 110),
+    ("king of gluttony", 108), ("twisted love", 106), ("it ends with us", 104),
+    ("atomic habits", 102), ("the psychology of money", 100), ("rich dad poor dad", 98),
+    ("don't believe everything you think", 96), ("dont believe everything you think", 96),
+    ("can't hurt me", 94), ("cant hurt me", 94), ("never finished", 92),
+    ("the hidden hindu", 90), ("the subtle art of not giving", 88),
+    ("48 laws of power", 86), ("ikigai", 84), ("the alchemist", 82),
+]
+
+def py_trend_score(book):
+    hay = f"{book.get('t','')} {book.get('url','')}".lower().replace("’", "'").replace("*", "")
+    for pattern, score in PY_TRENDING_PATTERNS:
+        if pattern in hay:
+            return score
+    return 40 if ("trending" in hay or "bestseller" in hay) else 0
+
+def py_edition_penalty(book):
+    title = str(book.get("t", "")).lower()
+    penalty = 0
+    if "combo" in title or "set of" in title:
+        penalty += 6
+    if "preloved" in title:
+        penalty += 5
+    if "workbook" in title:
+        penalty += 4
+    if "movie edition" in title:
+        penalty += 2
+    return penalty
+
 LANDING_PAGES = [
-    ("hindi-self-help-books", "Hindi Self Help Books Online", "Motivational, psychology, money, and discipline books translated for Indian readers.", lambda b: is_hindi_book(b) and any(k in f"{b.get('t','')} {b.get('cat','')}".lower() for k in ["self", "help", "habit", "hurt", "finished", "rich dad", "psychology", "power", "think", "hard thing", "atomic", "goggins"])),
+    ("hindi-books", "Hindi Books Online", "Shop Hindi editions of bestselling self-help, money, psychology, business, and motivational books.", lambda b: is_hindi_book(b)),
+    ("self-help-books", "Self-Help Books Online", "Discover practical books on habits, mindset, discipline, money, productivity, psychology, and personal growth.", lambda b: any(k in f"{b.get('t','')} {b.get('cat','')} {b.get('desc','')}".lower() for k in SELF_HELP_TERMS)),
+    ("bestsellers", "Bestselling Books Online", "Explore the most popular and trending books at Ink & Chai, including Hindi self-help, romance, fiction, and BookTok favourites.", lambda b: py_trend_score(b) > 0 or "bestseller" in f"{b.get('t','')} {b.get('desc','')} {b.get('cat','')}".lower()),
+    ("new-arrivals", "New Arrival Books", "Freshly added books and latest arrivals across Hindi editions, self-help, fiction, romance, manga, and more.", lambda b: b.get("n") == 1),
+    ("book-combos", "Book Combos Online", "Value book combos and boxsets for self-help, fiction, romance, manga, and readers who want more books for less.", lambda b: any(k in f"{b.get('t','')} {b.get('cat','')}".lower() for k in COMBO_TERMS)),
+    # Legacy SEO URLs kept alive so old indexed links continue to work.
+    ("hindi-self-help-books", "Hindi Self Help Books Online", "Motivational, psychology, money, and discipline books translated for Indian readers.", lambda b: is_hindi_book(b) and any(k in f"{b.get('t','')} {b.get('cat','')} {b.get('desc','')}".lower() for k in SELF_HELP_TERMS)),
     ("business-books-hindi", "Best Business Books in Hindi", "Business, money, startup, and investing books in Hindi editions.", lambda b: is_hindi_book(b) and any(k in b.get("t","").lower() for k in ["rich dad", "hard thing", "business", "money", "finance", "invest", "psychology", "atomic habits"])),
     ("manga-books-india", "Manga Books Online in India", "Popular manga, comics, and graphic novels delivered across India.", lambda b: any(k in f"{b.get('t','')} {b.get('cat','')}".lower() for k in ["manga", "comic", "naruto", "death note", "demon slayer", "one piece", "jujutsu"])),
-    ("book-combos", "Book Combos Online", "Value book combos and boxsets for self-help, fiction, romance, and manga readers.", lambda b: any(k in f"{b.get('t','')} {b.get('cat','')}".lower() for k in ["combo", "boxset", "box set", "collection", "set of"])),
     ("cod-books-online", "COD Books Online India", "Bestselling books you can order with cash on delivery, UPI, cards, and pan-India shipping.", lambda b: price_number(b) > 0),
 ]
 
+def landing_rank(book):
+    return (
+        -py_trend_score(book),
+        -int(bool(book.get("n"))),
+        py_edition_penalty(book),
+        -price_number(book),
+        book.get("t", ""),
+    )
+
 def landing_html(slug, heading, intro, selected):
+    def clean(value):
+        return re.sub(r"\s+", " ", str(value or "")).strip()
     cards = "\n".join(f"""
       <a class="card" href="{product_path(b['slug'])}">
-        <span class="cover"><img src="{html_escape(absolute_img(b))}" alt="{html_escape(b.get('t',''))} cover" loading="lazy"/></span>
-        <strong>{html_escape(b.get('t',''))}</strong>
-        <small>{html_escape(b.get('a') or b.get('cat') or 'Ink & Chai')}</small>
-        <span class="price">{html_escape(b.get('p') or '')}</span>
+        <span class="cover"><img src="{html_escape(absolute_img(b))}" alt="{html_escape(clean(b.get('t')))} cover" loading="lazy"/></span>
+        <strong>{html_escape(clean(b.get('t')))}</strong>
+        <small>{html_escape(clean(b.get('a') or b.get('cat') or 'Ink & Chai'))}</small>
+        <span class="price">{html_escape(clean(b.get('p')))}</span>
       </a>""" for b in selected[:36])
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>{html_escape(heading)} | Ink &amp; Chai</title><meta name="description" content="{html_escape(intro)} Buy online at Ink & Chai with COD, UPI, cards, and free delivery on ₹499+ orders."/>
 <link rel="canonical" href="{SITE}/{slug}/"/><meta name="robots" content="index,follow"/>
-<style>:root{{--bg:#0d0b08;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.2)}}*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--cream);font-family:Montserrat,Arial,sans-serif}}nav{{padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);display:flex;justify-content:space-between}}a{{color:inherit;text-decoration:none}}.logo{{font-family:serif;font-size:1.5rem;color:var(--gold)}}main{{max-width:1180px;margin:auto;padding:clamp(2rem,6vw,5rem) 1rem}}.eyebrow{{color:var(--gold);letter-spacing:.24em;text-transform:uppercase;font-size:.65rem}}h1{{font-family:serif;font-size:clamp(2.5rem,7vw,5rem);font-weight:400;line-height:1;margin:.8rem 0}}p{{color:var(--muted);max-width:760px;line-height:1.8}}.grid{{display:grid;grid-template-columns:repeat(6,1fr);gap:1.4rem;margin-top:2.5rem}}.card{{min-width:0}}.cover{{display:flex;aspect-ratio:2/3;background:#17130f;border:1px solid var(--border);align-items:center;justify-content:center;margin-bottom:.8rem}}img{{max-width:100%;max-height:100%;object-fit:contain}}strong{{display:block;font-family:serif;font-size:1.05rem;line-height:1.25}}small{{display:block;color:var(--muted);margin:.25rem 0 .4rem}}.price{{color:var(--gold);font-weight:700}}.trust{{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.4rem;color:var(--gold);font-size:.8rem}}@media(max-width:900px){{.grid{{grid-template-columns:repeat(3,1fr)}}}}@media(max-width:560px){{.grid{{grid-template-columns:repeat(2,1fr);gap:1rem}}}}</style></head>
-<body><nav><a class="logo" href="/">Ink &amp; Chai</a><a href="/">Catalogue</a></nav><main><div class="eyebrow">Curated collection</div><h1>{html_escape(heading)}</h1><p>{html_escape(intro)}</p><div class="trust"><span>Free delivery on ₹499+</span><span>COD available</span><span>UPI/cards accepted</span><span>7-day replacement support</span></div><section class="grid">{cards}</section></main></body></html>"""
+<style>:root{{--bg:#0d0b08;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.2)}}*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--cream);font-family:Montserrat,Arial,sans-serif}}nav{{padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:1rem;align-items:center}}a{{color:inherit;text-decoration:none}}.logo{{font-family:serif;font-size:1.5rem;color:var(--gold)}}.links{{display:flex;gap:1rem;flex-wrap:wrap;color:var(--muted);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase}}main{{max-width:1180px;margin:auto;padding:clamp(2rem,6vw,5rem) 1rem}}.eyebrow{{color:var(--gold);letter-spacing:.24em;text-transform:uppercase;font-size:.65rem}}h1{{font-family:serif;font-size:clamp(2.5rem,7vw,5rem);font-weight:400;line-height:1;margin:.8rem 0}}p{{color:var(--muted);max-width:760px;line-height:1.8}}.grid{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1.4rem;margin-top:2.5rem}}.card{{min-width:0}}.cover{{display:flex;aspect-ratio:2/3;background:#17130f;border:1px solid var(--border);align-items:center;justify-content:center;margin-bottom:.8rem}}img{{max-width:100%;max-height:100%;object-fit:contain}}strong{{display:block;font-family:serif;font-size:1.05rem;line-height:1.25}}small{{display:block;color:var(--muted);margin:.25rem 0 .4rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.price{{color:var(--gold);font-weight:700}}.trust{{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.4rem;color:var(--gold);font-size:.8rem}}.cta{{margin-top:1.6rem;display:inline-block;border:1px solid var(--gold);padding:.8rem 1.2rem;color:var(--gold);font-size:.7rem;letter-spacing:.16em;text-transform:uppercase}}@media(max-width:900px){{.grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}@media(max-width:560px){{nav{{align-items:flex-start;flex-direction:column}}.links{{font-size:.62rem}}.grid{{grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}}}}</style></head>
+<body><nav><a class="logo" href="/">Ink &amp; Chai</a><div class="links"><a href="/hindi-books/">Hindi</a><a href="/self-help-books/">Self-help</a><a href="/bestsellers/">Bestsellers</a><a href="/new-arrivals/">New</a><a href="/book-combos/">Combos</a></div></nav><main><div class="eyebrow">Curated collection</div><h1>{html_escape(heading)}</h1><p>{html_escape(intro)}</p><div class="trust"><span>Free delivery on ₹499+</span><span>COD available</span><span>UPI/cards accepted</span><span>7-day replacement support</span></div><a class="cta" href="/">Search full catalogue</a><section class="grid">{cards}</section></main></body></html>"""
 
 for slug, heading, intro, predicate in LANDING_PAGES:
-    selected = [b for b in slim if predicate(b)]
+    selected = sorted([b for b in slim if predicate(b)], key=landing_rank)
     if slug == "cod-books-online":
         selected = sorted(selected, key=lambda b: (not is_hindi_book(b), -price_number(b)))[:36]
     out = Path(__file__).parent / "public" / slug / "index.html"
@@ -3517,10 +3566,14 @@ TODAY = datetime.utcnow().strftime("%Y-%m-%d")
 # Collect URLs: home, static pages, every collection slug, every category, every product
 static_urls = [
     (SITE + "/",                "1.0",  "daily"),
+    (SITE + "/hindi-books/",    "0.95", "weekly"),
+    (SITE + "/self-help-books/","0.95", "weekly"),
+    (SITE + "/bestsellers/",    "0.95", "daily"),
+    (SITE + "/new-arrivals/",   "0.9",  "daily"),
+    (SITE + "/book-combos/",    "0.9",  "weekly"),
     (SITE + "/hindi-self-help-books/", "0.9", "weekly"),
     (SITE + "/business-books-hindi/",  "0.8", "weekly"),
     (SITE + "/manga-books-india/",     "0.8", "weekly"),
-    (SITE + "/book-combos/",           "0.8", "weekly"),
     (SITE + "/cod-books-online/",      "0.8", "weekly"),
     (SITE + "/track/",          "0.7",  "weekly"),
     (SITE + "/terms/",          "0.4",  "yearly"),

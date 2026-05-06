@@ -597,9 +597,9 @@
     <img class="logo-img logo-light" src="/images/logo.png"       alt="" width="120" height="38" aria-hidden="true"/>
   </a>
   <ul class="nav-links">
-    <li><a href="#featured">Catalogue</a></li>
-    <li><a href="#collections">Collections</a></li>
-    <li><a href="#categories">Categories</a></li>
+    <li><a href="/self-help-books/">Catalogue</a></li>
+    <li><a href="/book-combos/">Collections</a></li>
+    <li><a href="/hindi-books/">Categories</a></li>
     <li><a href="/track/">Track Order</a></li>
     <li><a href="/terms/">Terms</a></li>
     <li><a href="/privacy-policy/">Privacy</a></li>
@@ -652,7 +652,7 @@
     <p class="hero-sub">Read the titles everyone talks about — David Goggins, Ben Horowitz, Daniel Kahneman, Robert Kiyosaki, James Clear, and more — in editions made for Indian readers.</p>
     <div class="hero-ctas">
       <a href="/category/?name=Hindi%20Books" class="btn-primary">Shop Hindi Editions</a>
-      <a href="#featured" class="btn-ghost">See Bestsellers</a>
+      <a href="/bestsellers/" class="btn-ghost">See Bestsellers</a>
     </div>
     <div class="hero-stats">
       <div><div class="stat-num">Hindi</div><div class="stat-label">Self-help focus</div></div>
@@ -744,7 +744,7 @@
         <button class="tab"        data-tab="Indian Authors" onclick="setTab(this)">Indian Authors</button>
       </div>
     </div>
-    <a href="#" class="btn-ghost" style="margin-bottom:1rem;" id="view-all-link">View all books</a>
+    <a href="/self-help-books/" class="btn-ghost" style="margin-bottom:1rem;" id="view-all-link">View self-help books</a>
   </div>
 
   <div class="search-wrap">
@@ -849,11 +849,11 @@
     <div>
       <div class="footer-col-title">Shop</div>
       <ul class="footer-links">
-        <li><a href="#featured">All Books</a></li>
-        <li><a href="#collections">Collections</a></li>
-        <li><a href="#categories">Categories</a></li>
-        <li><a href="#featured">New Arrivals</a></li>
-        <li><a href="#featured" onclick="setTab(document.querySelector('.tab[data-tab=&quot;Bestsellers&quot;]'))">Bestsellers</a></li>
+        <li><a href="/self-help-books/">Self-Help Books</a></li>
+        <li><a href="/hindi-books/">Hindi Books</a></li>
+        <li><a href="/book-combos/">Book Combos</a></li>
+        <li><a href="/new-arrivals/">New Arrivals</a></li>
+        <li><a href="/bestsellers/">Bestsellers</a></li>
       </ul>
     </div>
     <div>
@@ -1436,7 +1436,7 @@ function subscribeNewsletter(e) {
 // ── INIT ──────────────────────────────────────────────────────────────────
 const totalStat = document.getElementById('stat-total');
 if (totalStat) totalStat.textContent = BOOKS.length.toLocaleString() + '+';
-document.getElementById('view-all-link').textContent = `View all ${BOOKS.length.toLocaleString()} books`;
+document.getElementById('view-all-link').textContent = `View self-help books`;
 renderBooks();
 renderCollections();
 renderCats(ALL_CATS);
