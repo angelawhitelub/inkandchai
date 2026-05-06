@@ -207,6 +207,29 @@ all_cats = [
 ]
 all_cats_js = json.dumps(all_cats, ensure_ascii=False)
 
+META_PIXEL_CODE = """<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1702042431242274');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->"""
+
+def with_meta_pixel(html: str) -> str:
+    if "1702042431242274" in html:
+        return html
+    return html.replace("</head>", f"{META_PIXEL_CODE}\n</head>", 1)
+
 # ── HTML template ────────────────────────────────────────────────────────────
 HTML = r"""<!DOCTYPE html>
 <html lang="en">
@@ -1681,6 +1704,7 @@ HTML = HTML.replace("LAWS_48_HINDI_IMAGE_PLACEHOLDER", public_image_url("https:/
 HTML = HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",   os.environ.get("RAZORPAY_KEY_ID", "rzp_test_CHANGE_ME"))
 HTML = HTML.replace("SUPABASE_URL_PLACEHOLDER",       os.environ.get("SUPABASE_URL", ""))
 HTML = HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER",  os.environ.get("SUPABASE_ANON_KEY", ""))
+HTML = with_meta_pixel(HTML)
 
 out = Path(__file__).parent / "public" / "index.html"
 out.parent.mkdir(parents=True, exist_ok=True)
@@ -2541,6 +2565,7 @@ PRODUCT_HTML = PRODUCT_HTML.replace("SOCIAL_PROOF_PLACEHOLDER",      json.dumps(
 PRODUCT_HTML = PRODUCT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",  razorpay_key)
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_URL_PLACEHOLDER",      os.environ.get("SUPABASE_URL", ""))
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER", os.environ.get("SUPABASE_ANON_KEY", ""))
+PRODUCT_HTML = with_meta_pixel(PRODUCT_HTML)
 
 prod_out = Path(__file__).parent / "public" / "product" / "index.html"
 prod_out.parent.mkdir(parents=True, exist_ok=True)
@@ -2713,7 +2738,7 @@ for old_product_dir in product_root.iterdir():
 for book in slim:
     out = product_root / book["slug"] / "index.html"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(static_product_html(book), encoding="utf-8")
+    out.write_text(with_meta_pixel(static_product_html(book)), encoding="utf-8")
 print(f"Generated crawlable product pages: {len(slim)}")
 
 SELF_HELP_TERMS = ["self", "help", "habit", "hurt", "finished", "rich dad", "psychology", "money", "power", "think", "mindset", "discipline", "atomic", "goggins", "ikigai", "motivation"]
@@ -2793,7 +2818,7 @@ for slug, heading, intro, predicate in LANDING_PAGES:
         selected = sorted(selected, key=lambda b: (not is_hindi_book(b), -price_number(b)))[:36]
     out = Path(__file__).parent / "public" / slug / "index.html"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(landing_html(slug, heading, intro, selected), encoding="utf-8")
+    out.write_text(with_meta_pixel(landing_html(slug, heading, intro, selected)), encoding="utf-8")
 print(f"Generated SEO landing pages: {len(LANDING_PAGES)}")
 
 # ── Checkout Page ─────────────────────────────────────────────────────────────
@@ -3312,7 +3337,7 @@ CHECKOUT_HTML = CHECKOUT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER",os.environ
 
 checkout_out = Path(__file__).parent / "public" / "checkout" / "index.html"
 checkout_out.parent.mkdir(parents=True, exist_ok=True)
-checkout_out.write_text(CHECKOUT_HTML, encoding="utf-8")
+checkout_out.write_text(with_meta_pixel(CHECKOUT_HTML), encoding="utf-8")
 print(f"Generated: {checkout_out}")
 
 # ── Collection / Category landing page ──────────────────────────────────────
@@ -3517,13 +3542,13 @@ COLLECTION_HTML = COLLECTION_HTML.replace("COLLECTIONS_DATA_PLACEHOLDER", json.d
 
 coll_out = Path(__file__).parent / "public" / "collection" / "index.html"
 coll_out.parent.mkdir(parents=True, exist_ok=True)
-coll_out.write_text(COLLECTION_HTML, encoding="utf-8")
+coll_out.write_text(with_meta_pixel(COLLECTION_HTML), encoding="utf-8")
 print(f"Generated: {coll_out}")
 
 # Same template handles category pages — just write a copy under /category/
 cat_out = Path(__file__).parent / "public" / "category" / "index.html"
 cat_out.parent.mkdir(parents=True, exist_ok=True)
-cat_out.write_text(COLLECTION_HTML, encoding="utf-8")
+cat_out.write_text(with_meta_pixel(COLLECTION_HTML), encoding="utf-8")
 print(f"Generated: {cat_out}")
 
 # ── Google Merchant Center Product Feed (feed.xml) ───────────────────────────
