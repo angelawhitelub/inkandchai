@@ -11,10 +11,10 @@
 <!-- SheetJS for Excel export -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
-:root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18);--green:#6dbf6d;--orange:#e8a030;--red:#e06060}
+:root{--bg:#f7f3eb;--bg2:#fffdf8;--bg3:#ffffff;--gold:#8a6a1f;--gold-light:#a98224;--gold-dim:#9b8858;--cream:#241b13;--cream-dim:#6f6255;--white:#100d09;--border:rgba(138,106,31,0.24);--green:#237a3b;--orange:#b56b12;--red:#c93636;--shadow:0 14px 36px rgba(70,52,24,0.08)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
-nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);flex-wrap:wrap;gap:0.8rem;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;background:rgba(255,253,248,0.97);border-bottom:1px solid var(--border);box-shadow:var(--shadow);flex-wrap:wrap;gap:0.8rem;}
 .logo{display:inline-flex;align-items:center;gap:0.6rem;font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:600;color:var(--gold);}
 .logo img{height:34px;width:auto;display:block}
 .logo span{color:var(--cream);font-weight:300;font-style:italic}
@@ -25,12 +25,12 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2
 .btn-gold:disabled{opacity:0.5;cursor:not-allowed;}
 .btn-outline{font-family:'Montserrat',sans-serif;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.5rem 1.1rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;}
 .btn-outline:hover{background:var(--gold);color:var(--bg);}
-.btn-green{font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.6rem 1.4rem;background:#1a3a1a;color:var(--green);border:1px solid rgba(109,191,109,0.4);cursor:pointer;font-weight:500;transition:all 0.2s;}
-.btn-green:hover{background:var(--green);color:var(--bg);}
+.btn-green{font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.6rem 1.4rem;background:#eaf7ee;color:var(--green);border:1px solid rgba(35,122,59,0.35);cursor:pointer;font-weight:500;transition:all 0.2s;}
+.btn-green:hover{background:var(--green);color:#fff;}
 .btn-green:disabled{opacity:0.4;cursor:not-allowed;}
 
 /* Login */
-#loginPanel{max-width:420px;margin:8rem auto;background:var(--bg3);border:1px solid var(--border);padding:2.4rem;}
+#loginPanel{max-width:420px;margin:8rem auto;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:2.4rem;}
 #loginPanel h2{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:var(--white);margin-bottom:1.5rem;}
 .form-row{margin-bottom:1rem;}
 .form-row label{display:block;font-size:0.56rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.4rem;}
@@ -45,10 +45,10 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:v
 .subtitle{font-size:0.65rem;color:var(--cream-dim);letter-spacing:0.08em;margin-top:0.2rem;}
 
 /* Stats */
-.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:2rem;}
+.stats-row{display:grid;grid-template-columns:repeat(6,1fr);gap:1rem;margin-bottom:2rem;}
 @media(max-width:900px){.stats-row{grid-template-columns:repeat(3,1fr);}}
 @media(max-width:550px){.stats-row{grid-template-columns:repeat(2,1fr);}}
-.stat-card{background:var(--bg3);border:1px solid var(--border);padding:1.3rem;cursor:pointer;transition:border-color 0.2s;}
+.stat-card{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1.3rem;cursor:pointer;transition:border-color 0.2s,background 0.2s;}
 .stat-card:hover{border-color:var(--gold-dim);}
 .stat-card.active{border-color:var(--gold);background:rgba(201,168,76,0.06);}
 .stat-label{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.5rem;}
@@ -60,22 +60,29 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:v
 .filter-btn.active,.filter-btn:hover{border-color:var(--gold-dim);color:var(--gold);background:rgba(201,168,76,0.07);}
 .search-box{background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.42rem 0.9rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;outline:none;min-width:220px;}
 .search-box:focus{border-color:rgba(201,168,76,0.4);}
-input[type="date"]{background:var(--bg3);border:1px solid var(--border);color:var(--cream-dim);padding:0.4rem 0.7rem;font-family:'Montserrat',sans-serif;font-size:0.7rem;outline:none;color-scheme:dark;}
+input[type="date"]{background:var(--bg3);border:1px solid var(--border);color:var(--cream-dim);padding:0.4rem 0.7rem;font-family:'Montserrat',sans-serif;font-size:0.7rem;outline:none;color-scheme:light;}
 input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .date-sep{font-size:0.6rem;color:var(--gold-dim);padding:0 0.2rem;}
 
 /* Export bar */
-.export-bar{display:flex;gap:0.7rem;align-items:center;padding:0.9rem 1.2rem;background:var(--bg3);border:1px solid var(--border);margin-bottom:1.2rem;flex-wrap:wrap;}
+.export-bar{display:flex;gap:0.7rem;align-items:center;padding:0.9rem 1.2rem;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:1.2rem;flex-wrap:wrap;}
 .export-label{font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold-dim);margin-right:0.4rem;}
 #exportCount{font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--gold);}
+.focus-panel{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:#fff8e8;border:1px solid rgba(181,107,18,0.28);box-shadow:var(--shadow);padding:1rem 1.2rem;margin:-0.8rem 0 1.4rem;flex-wrap:wrap;}
+.focus-panel strong{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--gold);}
+.focus-panel p{font-size:0.68rem;color:var(--cream-dim);line-height:1.55;margin-top:0.15rem;}
+.focus-actions{display:flex;gap:0.6rem;flex-wrap:wrap;}
 
 /* Table */
-.tbl-wrap{overflow-x:auto;}
+.tbl-wrap{overflow-x:auto;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);}
 table{width:100%;border-collapse:collapse;font-size:0.73rem;}
 th{font-size:0.52rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);padding:0.75rem 0.85rem;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
 th:hover{color:var(--gold-light);}
-td{padding:0.75rem 0.85rem;border-bottom:1px solid rgba(201,168,76,0.06);color:var(--cream);vertical-align:top;}
-tr:hover td{background:rgba(201,168,76,0.025);}
+td{padding:0.75rem 0.85rem;border-bottom:1px solid rgba(138,106,31,0.11);color:var(--cream);vertical-align:top;}
+tr:hover td{background:rgba(138,106,31,0.055);}
+tr.selected-row td{background:rgba(35,122,59,0.08);}
+.select-cell{width:38px;text-align:center;}
+.order-check,.select-all-check{width:16px;height:16px;accent-color:var(--green);cursor:pointer;}
 .badge{display:inline-block;font-size:0.5rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.22rem 0.55rem;border:1px solid;white-space:nowrap;}
 .b-cod_pending,.b-pending{border-color:rgba(232,160,48,0.5);color:var(--orange);}
 .b-paid{border-color:rgba(109,191,109,0.5);color:var(--green);}
@@ -83,6 +90,7 @@ tr:hover td{background:rgba(201,168,76,0.025);}
 .b-delivered{border-color:rgba(109,191,109,0.6);color:var(--green);}
 .b-cancelled,.b-refunded{border-color:rgba(224,96,96,0.5);color:var(--red);}
 .b-confirmed{border-color:rgba(160,144,128,0.4);color:var(--cream-dim);}
+.b-out_for_delivery{border-color:rgba(70,120,210,0.5);color:#315fba;}
 .status-sel{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.28rem 0.5rem;font-family:'Montserrat',sans-serif;font-size:0.6rem;cursor:pointer;margin-top:0.4rem;}
 .order-id{font-size:0.62rem;color:var(--gold-dim);}
 .pay-id{font-size:0.56rem;color:#4a3a1a;margin-top:0.15rem;}
@@ -96,13 +104,15 @@ tr:hover td{background:rgba(201,168,76,0.025);}
 .load-more-btn{display:block;width:100%;margin-top:1.2rem;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.8rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
 .load-more-btn:hover{background:var(--gold);color:var(--bg);}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(201,168,76,0.3);border-top-color:var(--gold);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px;}
+.section-title{font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.2em;text-transform:uppercase;align-self:center;margin-right:0.4rem;}
+.hint{font-size:0.62rem;color:var(--cream-dim);}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 
 <nav>
-  <div class="logo"><img src="/images/logo-light.png" alt="Ink &amp; Chai" width="100" height="34"/><span style="font-size:0.7rem;color:var(--gold-dim);font-family:'Montserrat',sans-serif;letter-spacing:0.15em;"> — Admin</span></div>
+  <div class="logo"><img src="/images/logo.png" alt="Ink &amp; Chai" width="100" height="34"/><span style="font-size:0.7rem;color:var(--gold-dim);font-family:'Montserrat',sans-serif;letter-spacing:0.15em;"> — Admin</span></div>
   <div class="nav-right">
     <span class="chip" id="adminChip" style="display:none;border-color:rgba(109,191,109,0.3);color:var(--green);">● Admin</span>
     <button class="btn-green" id="exportAllBtn" style="display:none;" onclick="exportExcel('all')" title="Download all orders as Excel">
@@ -141,19 +151,23 @@ tr:hover td{background:rgba(201,168,76,0.025);}
 
   <!-- Stats (click to filter) -->
   <div class="stats-row">
-    <div class="stat-card active" onclick="setFilter(this,'')">
+    <div class="stat-card active" data-status="" onclick="setFilter(this,'')">
       <div class="stat-label">Total Orders</div>
       <div class="stat-val" id="statTotal">—</div>
     </div>
-    <div class="stat-card" onclick="setFilter(this,'cod_pending')">
+    <div class="stat-card" data-status="__unshipped" onclick="setFilter(this,'__unshipped')">
+      <div class="stat-label">Unshipped</div>
+      <div class="stat-val" id="statUnshipped" style="color:var(--red);">—</div>
+    </div>
+    <div class="stat-card" data-status="cod_pending" onclick="setFilter(this,'cod_pending')">
       <div class="stat-label">COD Pending</div>
       <div class="stat-val" id="statCod" style="color:var(--orange);">—</div>
     </div>
-    <div class="stat-card" onclick="setFilter(this,'paid')">
+    <div class="stat-card" data-status="paid" onclick="setFilter(this,'paid')">
       <div class="stat-label">Paid Online</div>
       <div class="stat-val" id="statPaid" style="color:var(--green);">—</div>
     </div>
-    <div class="stat-card" onclick="setFilter(this,'shipped')">
+    <div class="stat-card" data-status="shipped" onclick="setFilter(this,'shipped')">
       <div class="stat-label">Shipped</div>
       <div class="stat-val" id="statShipped" style="color:var(--gold);">—</div>
     </div>
@@ -163,11 +177,24 @@ tr:hover td{background:rgba(201,168,76,0.025);}
     </div>
   </div>
 
+  <section class="focus-panel">
+    <div>
+      <strong>Unshipped orders</strong>
+      <p>Orders without shipment tracking and not marked shipped, out for delivery, delivered, cancelled, or refunded.</p>
+    </div>
+    <div class="focus-actions">
+      <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
+      <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
+    </div>
+  </section>
+
   <!-- Export bar -->
   <div class="export-bar" id="exportBar" style="display:none;">
     <span class="export-label">Export</span>
     <span id="exportCount">0</span>
-    <span style="font-size:0.62rem;color:var(--cream-dim);">orders ready</span>
+    <span class="hint">orders ready</span>
+    <span class="export-label" style="margin-left:1rem;">Selected</span>
+    <span id="selectedCount" style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--green);">0</span>
 
     <!-- Limit input — how many rows to export from the filtered list -->
     <span style="font-size:0.6rem;color:var(--cream-dim);margin-left:1rem;">Limit:</span>
@@ -179,6 +206,18 @@ tr:hover td{background:rgba(201,168,76,0.025);}
     </button>
     <button class="btn-green" onclick="exportExcel('all')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       ⬇ All Orders Excel
+    </button>
+    <button class="btn-green" onclick="exportSelectedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ Selected CSV
+    </button>
+    <button class="btn-green" onclick="exportUnshippedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ Unshipped CSV
+    </button>
+    <button class="btn-outline" onclick="selectVisibleOrders()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      Select Visible
+    </button>
+    <button class="btn-outline" onclick="clearSelection()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      Clear Selection
     </button>
     <button class="btn-outline" onclick="printLabels()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       🖨 Print Shipping Labels
@@ -200,7 +239,7 @@ tr:hover td{background:rgba(201,168,76,0.025);}
 
   <!-- Quick day-range filters -->
   <div class="toolbar" style="border-bottom:none;padding-bottom:0;">
-    <span style="font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.2em;text-transform:uppercase;align-self:center;margin-right:0.4rem;">Quick range:</span>
+    <span class="section-title">Quick range:</span>
     <button class="filter-btn day-btn" data-days="0"   onclick="setDayRange(this,0)">Today</button>
     <button class="filter-btn day-btn" data-days="1"   onclick="setDayRange(this,1)">Yesterday</button>
     <button class="filter-btn day-btn" data-days="7"   onclick="setDayRange(this,7)">Last 7 days</button>
@@ -212,6 +251,7 @@ tr:hover td{background:rgba(201,168,76,0.025);}
   <!-- Toolbar -->
   <div class="toolbar">
     <button class="filter-btn active" data-status="" onclick="setFilter(this,'')">All</button>
+    <button class="filter-btn" data-status="__unshipped" onclick="setFilter(this,'__unshipped')">Unshipped</button>
     <button class="filter-btn" data-status="cod_pending" onclick="setFilter(this,'cod_pending')">COD Pending</button>
     <button class="filter-btn" data-status="confirmed" onclick="setFilter(this,'confirmed')">Confirmed</button>
     <button class="filter-btn" data-status="shipped" onclick="setFilter(this,'shipped')">Shipped</button>
@@ -229,6 +269,7 @@ tr:hover td{background:rgba(201,168,76,0.025);}
     <table>
       <thead>
         <tr>
+          <th class="select-cell" onclick="event.stopPropagation()"><input class="select-all-check" type="checkbox" id="selectAllVisible" onchange="toggleAllVisible(this.checked)" title="Select all visible orders"/></th>
           <th onclick="sortBy('razorpay_order_id')">Order ID ↕</th>
           <th onclick="sortBy('created_at')">Date ↕</th>
           <th onclick="sortBy('customer_name')">Customer ↕</th>
@@ -258,6 +299,7 @@ let sortAsc       = false;
 let page          = 1;
 let hasMore       = false;
 const PAGE        = 100;  // load 100 at a time
+const selectedOrderIds = new Set();
 
 // ── Login ──────────────────────────────────────────────────────────────────
 function doLogin() {
@@ -271,6 +313,7 @@ function doLogin() {
 function logout() {
   adminKey = '';
   allOrders = [];
+  selectedOrderIds.clear();
   ['loginPanel','loginErr'].forEach(id => document.getElementById(id).style.display = id === 'loginPanel' ? '' : 'none');
   document.getElementById('dashboard').style.display = 'none';
   ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
@@ -286,7 +329,7 @@ async function fetchOrders(reset = false) {
 
   try {
     const params = new URLSearchParams({ page, limit: PAGE });
-    if (currentFilter) params.set('status', currentFilter);
+    if (currentFilter && currentFilter !== '__unshipped') params.set('status', currentFilter);
 
     const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
       headers: { 'X-Admin-Key': adminKey },
@@ -332,16 +375,68 @@ function showLoginErr(msg) {
 
 function loadMore() { fetchOrders(false); }
 
+function orderIsUnshipped(o) {
+  const status = String(o?.status || '').toLowerCase();
+  const shippedStatuses = new Set(['shipped','out_for_delivery','delivered','cancelled','refunded']);
+  return !shippedStatuses.has(status) && !o?.tracking_id;
+}
+
+function orderKey(o) {
+  return String(o?.id || o?.razorpay_order_id || '');
+}
+
+function getSelectedOrders() {
+  return allOrders.filter(o => selectedOrderIds.has(orderKey(o)));
+}
+
+function toggleOrderSelection(id, checked) {
+  if (checked) selectedOrderIds.add(String(id));
+  else selectedOrderIds.delete(String(id));
+  renderTable();
+}
+
+function toggleAllVisible(checked) {
+  filtered.forEach(o => {
+    const id = orderKey(o);
+    if (!id) return;
+    if (checked) selectedOrderIds.add(id);
+    else selectedOrderIds.delete(id);
+  });
+  renderTable();
+}
+
+function selectVisibleOrders() {
+  toggleAllVisible(true);
+}
+
+function clearSelection() {
+  selectedOrderIds.clear();
+  renderTable();
+}
+
+function syncSelectionUi() {
+  const selectedCount = document.getElementById('selectedCount');
+  if (selectedCount) selectedCount.textContent = selectedOrderIds.size;
+  const allBox = document.getElementById('selectAllVisible');
+  if (!allBox) return;
+  const visibleIds = filtered.map(orderKey).filter(Boolean);
+  const selectedVisible = visibleIds.filter(id => selectedOrderIds.has(id)).length;
+  allBox.checked = !!visibleIds.length && selectedVisible === visibleIds.length;
+  allBox.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
+}
+
 // ── Stats ──────────────────────────────────────────────────────────────────
 function updateStats() {
   const cod     = allOrders.filter(o => o.status === 'cod_pending').length;
   const paid    = allOrders.filter(o => o.status === 'paid').length;
   const shipped = allOrders.filter(o => o.status === 'shipped').length;
+  const unshipped = allOrders.filter(orderIsUnshipped).length;
   const rev     = allOrders
     .filter(o => ['paid','delivered','shipped'].includes(o.status))
     .reduce((s,o) => s + (o.amount_paise || 0), 0);
 
   document.getElementById('statTotal').textContent   = allOrders.length;
+  document.getElementById('statUnshipped').textContent = unshipped;
   document.getElementById('statCod').textContent     = cod;
   document.getElementById('statPaid').textContent    = paid;
   document.getElementById('statShipped').textContent = shipped;
@@ -353,7 +448,8 @@ function updateStats() {
 // ── Filter + Search + Date ─────────────────────────────────────────────────
 function setFilter(el, status) {
   document.querySelectorAll('.filter-btn,.stat-card').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
+  document.querySelectorAll(`[data-status="${status}"]`).forEach(b => b.classList.add('active'));
+  if (el) el.classList.add('active');
   currentFilter = status;
   fetchOrders(true);
 }
@@ -372,6 +468,7 @@ function applyFilters() {
   const dateTo   = document.getElementById('dateTo')?.value;
 
   filtered = allOrders.filter(o => {
+    if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
     // Search
     if (q) {
       const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
@@ -395,6 +492,7 @@ function applyFilters() {
 
   // Update export count
   document.getElementById('exportCount').textContent = filtered.length;
+  syncSelectionUi();
   renderTable();
 }
 
@@ -418,6 +516,7 @@ function _drawTable() {
     body.innerHTML = '';
     document.getElementById('emptyState').style.display = '';
     document.getElementById('loadMoreBtn').style.display = 'none';
+    syncSelectionUi();
     return;
   }
   document.getElementById('emptyState').style.display = 'none';
@@ -432,7 +531,12 @@ function _drawTable() {
       : '—';
     const bc = 'b-' + (o.status || 'confirmed');
 
-    return `<tr>
+    const checked = selectedOrderIds.has(String(o.id)) ? 'checked' : '';
+
+    return `<tr class="${checked ? 'selected-row' : ''}">
+      <td class="select-cell">
+        <input class="order-check" type="checkbox" ${checked} onchange="toggleOrderSelection('${esc(o.id)}', this.checked)" onclick="event.stopPropagation()" title="Select order"/>
+      </td>
       <td>
         <div class="order-id">${esc(o.razorpay_order_id || o.id || '—')}</div>
         ${o.razorpay_payment_id ? `<div class="pay-id">${esc(o.razorpay_payment_id)}</div>` : ''}
@@ -480,6 +584,7 @@ function _drawTable() {
       </td>
     </tr>`;
   }).join('');
+  syncSelectionUi();
 }
 
 // ── Update Status ──────────────────────────────────────────────────────────
@@ -554,33 +659,7 @@ async function exportExcel(mode) {
 
   if (!orders.length) { alert('No orders to export.'); return; }
 
-  // Build rows
-  const rows = orders.map(o => {
-    const items  = Array.isArray(o.cart_items) ? o.cart_items : [];
-    const isCOD  = o.status === 'cod_pending' || !o.razorpay_payment_id;
-    const total  = o.amount_paise ? (o.amount_paise / 100) : items.reduce((s,i)=>s+i.price*i.qty,0);
-
-    // Parse address parts (best-effort)
-    const addr = o.customer_address || '';
-
-    return {
-      'Order ID':         o.razorpay_order_id || o.id || '',
-      'Payment ID':       o.razorpay_payment_id || '',
-      'Date':             o.created_at ? new Date(o.created_at).toLocaleString('en-IN') : '',
-      'Customer Name':    o.customer_name || '',
-      'Phone':            o.customer_phone || '',
-      'Email':            o.customer_email || '',
-      'Delivery Address': addr,
-      'Items':            items.map(i => `${i.title} x${i.qty}`).join(' | '),
-      'Item Count':       items.reduce((s,i) => s + i.qty, 0),
-      'Amount (₹)':       total,
-      'Payment Method':   isCOD ? 'Cash on Delivery' : 'Online (Razorpay)',
-      'Status':           (o.status || '').replace(/_/g,' '),
-      'Courier':          o.courier_name || '',
-      'AWB / Tracking ID': o.tracking_id || '',
-      'Tracking URL':      o.tracking_url || '',
-    };
-  });
+  const rows = orders.map(orderToExportRow);
 
   // Create workbook
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -600,6 +679,83 @@ async function exportExcel(mode) {
   const fname = `inkandchai-orders-${mode === 'all' ? 'all' : currentFilter || 'filtered'}-${today}.xlsx`;
 
   XLSX.writeFile(wb, fname);
+}
+
+function orderToExportRow(o) {
+  const items  = Array.isArray(o.cart_items) ? o.cart_items : [];
+  const isCOD  = o.status === 'cod_pending' || !o.razorpay_payment_id;
+  const total  = o.amount_paise ? (o.amount_paise / 100) : items.reduce((s,i)=>s+(Number(i.price)||0)*(Number(i.qty)||0),0);
+  return {
+    'Order ID':          o.razorpay_order_id || o.id || '',
+    'Payment ID':        o.razorpay_payment_id || '',
+    'Date':              o.created_at ? new Date(o.created_at).toLocaleString('en-IN') : '',
+    'Customer Name':     o.customer_name || '',
+    'Phone':             o.customer_phone || '',
+    'Email':             o.customer_email || '',
+    'Delivery Address':  o.customer_address || '',
+    'Items':             items.map(i => `${i.title || ''} x${i.qty || 1}`).join(' | '),
+    'Item Count':        items.reduce((s,i) => s + (Number(i.qty)||0), 0),
+    'Amount INR':        total,
+    'Payment Method':    isCOD ? 'Cash on Delivery' : 'Online (Razorpay)',
+    'Status':            (o.status || '').replace(/_/g,' '),
+    'Courier':           o.courier_name || '',
+    'AWB / Tracking ID': o.tracking_id || '',
+    'Tracking URL':      o.tracking_url || '',
+  };
+}
+
+async function fetchAllOrdersForExport() {
+  const res = await fetch('/.netlify/functions/get-orders?page=1&limit=5000', {
+    headers: { 'X-Admin-Key': adminKey },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data.orders || [];
+}
+
+function downloadCsv(rows, filename) {
+  if (!rows.length) { alert('No orders to export.'); return; }
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(','),
+    ...rows.map(row => headers.map(h => csvCell(row[h])).join(','))
+  ].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value) {
+  const s = String(value ?? '');
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+}
+
+function exportSelectedCsv() {
+  const orders = getSelectedOrders();
+  if (!orders.length) { alert('Select one or more orders first.'); return; }
+  const today = new Date().toISOString().slice(0,10);
+  downloadCsv(orders.map(orderToExportRow), `inkandchai-selected-orders-${today}.csv`);
+}
+
+async function exportUnshippedCsv() {
+  const btn = event?.currentTarget;
+  const oldText = btn?.innerHTML;
+  if (btn) { btn.innerHTML = '<span class="spinner"></span>Preparing…'; btn.disabled = true; }
+  try {
+    const orders = (await fetchAllOrdersForExport()).filter(orderIsUnshipped);
+    const today = new Date().toISOString().slice(0,10);
+    downloadCsv(orders.map(orderToExportRow), `inkandchai-unshipped-orders-${today}.csv`);
+  } catch (err) {
+    alert('Could not export unshipped orders: ' + err.message);
+  } finally {
+    if (btn) { btn.innerHTML = oldText; btn.disabled = false; }
+  }
 }
 
 // ── Bulk status/tracking update from CSV/XLSX ─────────────────────────────
@@ -787,6 +943,7 @@ async function deleteOrder(id, displayId) {
     // Remove locally so UI updates instantly
     const idx = allOrders.findIndex(o => o.id === id);
     if (idx >= 0) allOrders.splice(idx, 1);
+    selectedOrderIds.delete(String(id));
     updateStats();
     applyFilters();
   } catch (err) {
@@ -816,6 +973,7 @@ async function bulkDeleteFiltered() {
     // Remove locally
     const idSet = new Set(ids);
     allOrders = allOrders.filter(o => !idSet.has(o.id));
+    ids.forEach(id => selectedOrderIds.delete(String(id)));
     updateStats();
     applyFilters();
     alert(`✅ Deleted ${data.deleted ?? ids.length} orders.`);
