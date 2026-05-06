@@ -50,7 +50,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem c
 <script src="/js/cart.js"></script>
 <script>
 function addBookToCart() {
-  const item = {"id": "https://inkandchai.in/product/?id=hard-thing-about-hard-things-hindi-horowitz", "url": "https://inkandchai.in/product/?id=hard-thing-about-hard-things-hindi-horowitz", "title": "The Hard Thing About Hard Things (Hindi) - द हार्ड थिंग अबाउट द हार्ड थिंग्स", "author": "Ben Horowitz", "price": 299.0, "img": "/images/hard-thing-about-hard-things-hindi.jpg", "qty": 1};
+  const item = {"id": "/product/the-hard-thing-about-hard-things-hindi-NG-HI/", "url": "/product/the-hard-thing-about-hard-things-hindi-NG-HI/", "title": "The Hard Thing About Hard Things (Hindi) - द हार्ड थिंग अबाउट द हार्ड थिंग्स", "author": "Ben Horowitz", "price": 299.0, "img": "/images/hard-thing-about-hard-things-hindi.jpg", "qty": 1};
   const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
   const existing = cart.find(x => x.id === item.id);
   if (existing) existing.qty = (existing.qty || 1) + 1; else cart.push(item);

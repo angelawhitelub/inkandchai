@@ -50,7 +50,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem c
 <script src="/js/cart.js"></script>
 <script>
 function addBookToCart() {
-  const item = {"id": "https://inkandchai.in/product/?id=never-finished-hindi-goggins", "url": "https://inkandchai.in/product/?id=never-finished-hindi-goggins", "title": "Never Finished (Hindi) - नेवर फिनिश्ड", "author": "David Goggins", "price": 299.0, "img": "/images/never-finished-hindi.jpg", "qty": 1};
+  const item = {"id": "/product/never-finished-hindi-ED-HI/", "url": "/product/never-finished-hindi-ED-HI/", "title": "Never Finished (Hindi) - नेवर फिनिश्ड", "author": "David Goggins", "price": 299.0, "img": "/images/never-finished-hindi.jpg", "qty": 1};
   const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
   const existing = cart.find(x => x.id === item.id);
   if (existing) existing.qty = (existing.qty || 1) + 1; else cart.push(item);

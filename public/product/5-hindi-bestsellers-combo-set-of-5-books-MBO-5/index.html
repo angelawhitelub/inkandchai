@@ -50,7 +50,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem c
 <script src="/js/cart.js"></script>
 <script>
 function addBookToCart() {
-  const item = {"id": "https://inkandchai.in/product/?id=5-hindi-bestsellers-combo-set-of-5-books", "url": "https://inkandchai.in/product/?id=5-hindi-bestsellers-combo-set-of-5-books", "title": "5 Hindi Bestsellers Combo (Set of 5 Books)", "author": "Ink & Chai Curated", "price": 999.0, "img": "/images/hindi-bestsellers-combo-5.png", "qty": 1};
+  const item = {"id": "/product/5-hindi-bestsellers-combo-set-of-5-books-MBO-5/", "url": "/product/5-hindi-bestsellers-combo-set-of-5-books-MBO-5/", "title": "5 Hindi Bestsellers Combo (Set of 5 Books)", "author": "Ink & Chai Curated", "price": 999.0, "img": "/images/hindi-bestsellers-combo-5.png", "qty": 1};
   const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
   const existing = cart.find(x => x.id === item.id);
   if (existing) existing.qty = (existing.qty || 1) + 1; else cart.push(item);

@@ -68,7 +68,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem c
 <script src="/js/cart.js"></script>
 <script>
 function addBookToCart() {
-  const item = {"id": "https://inkandchai.in/product/?id=cant-hurt-me-never-finished-combo-hindi-goggins", "url": "https://inkandchai.in/product/?id=cant-hurt-me-never-finished-combo-hindi-goggins", "title": "David Goggins Combo (Hindi) — Can't Hurt Me + Never Finished (Set of 2 Books)", "author": "David Goggins", "price": 549.0, "img": "/images/cant-hurt-me-never-finished-combo-hindi.jpg", "qty": 1};
+  const item = {"id": "/product/david-goggins-combo-hindi-can-t-hurt-me-never-finished--BO-HI/", "url": "/product/david-goggins-combo-hindi-can-t-hurt-me-never-finished--BO-HI/", "title": "David Goggins Combo (Hindi) — Can't Hurt Me + Never Finished (Set of 2 Books)", "author": "David Goggins", "price": 549.0, "img": "/images/cant-hurt-me-never-finished-combo-hindi.jpg", "qty": 1};
   const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
   const existing = cart.find(x => x.id === item.id);
   if (existing) existing.qty = (existing.qty || 1) + 1; else cart.push(item);

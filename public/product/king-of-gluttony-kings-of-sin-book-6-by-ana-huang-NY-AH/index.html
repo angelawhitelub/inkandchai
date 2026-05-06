@@ -50,7 +50,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem c
 <script src="/js/cart.js"></script>
 <script>
 function addBookToCart() {
-  const item = {"id": "https://inkandchai.in/product/?id=king-of-gluttony-ana-huang-OF-AH", "url": "https://inkandchai.in/product/?id=king-of-gluttony-ana-huang-OF-AH", "title": "King of Gluttony - Kings of Sin Book 6 by Ana Huang", "author": "Ana Huang", "price": 299.0, "img": "/images/king-of-gluttony.jpg", "qty": 1};
+  const item = {"id": "/product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-NY-AH/", "url": "/product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-NY-AH/", "title": "King of Gluttony - Kings of Sin Book 6 by Ana Huang", "author": "Ana Huang", "price": 299.0, "img": "/images/king-of-gluttony.jpg", "qty": 1};
   const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
   const existing = cart.find(x => x.id === item.id);
   if (existing) existing.qty = (existing.qty || 1) + 1; else cart.push(item);

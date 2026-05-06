@@ -50,7 +50,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem c
 <script src="/js/cart.js"></script>
 <script>
 function addBookToCart() {
-  const item = {"id": "https://inkandchai.in/product/?id=cant-hurt-me-hindi-goggins", "url": "https://inkandchai.in/product/?id=cant-hurt-me-hindi-goggins", "title": "Can't Hurt Me (Hindi) - कांट हर्ट मी", "author": "David Goggins", "price": 299.0, "img": "/images/cant-hurt-me-hindi.jpg", "qty": 1};
+  const item = {"id": "/product/can-t-hurt-me-hindi-ME-HI/", "url": "/product/can-t-hurt-me-hindi-ME-HI/", "title": "Can't Hurt Me (Hindi) - कांट हर्ट मी", "author": "David Goggins", "price": 299.0, "img": "/images/cant-hurt-me-hindi.jpg", "qty": 1};
   const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
   const existing = cart.find(x => x.id === item.id);
   if (existing) existing.qty = (existing.qty || 1) + 1; else cart.push(item);

@@ -3,7 +3,7 @@ Generates akshar_co.html — the Akshar & Co. homepage with real book data
 embedded from the 99bookstores scrape at ~/InkAndChaiBooks/ALL_BOOKS.json.
 """
 
-import base64, json, re
+import hashlib, json, re
 import shutil
 from html import escape as html_escape
 from urllib.parse import quote
@@ -14,6 +14,8 @@ from collections import Counter, defaultdict
 # Anything scraped within the last NEW_ARRIVAL_DAYS is flagged as a new arrival.
 NEW_ARRIVAL_DAYS = 30
 _new_cutoff = (datetime.utcnow() - timedelta(days=NEW_ARRIVAL_DAYS)).isoformat()
+SITE = "https://inkandchai.in"
+IMAGE_PROXY_MAP = {}
 
 def make_slug(title, shopify_id):
     """Generate a clean URL slug from title + last 5 chars of shopify_id."""
@@ -30,8 +32,15 @@ def public_image_url(url):
     url = str(url or "").strip()
     if not url or not url.startswith("http"):
         return url
-    token = base64.urlsafe_b64encode(url.encode("utf-8")).decode("ascii").rstrip("=")
-    return f"/.netlify/functions/image-proxy?u={token}"
+    token = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24]
+    IMAGE_PROXY_MAP[token] = url
+    return f"/.netlify/functions/image-proxy?i={token}"
+
+def product_path(slug):
+    return f"/product/{slug}/"
+
+def product_abs_url(slug):
+    return f"{SITE}{product_path(slug)}"
 
 # ── Load & deduplicate ───────────────────────────────────────────────────────
 # Data lives in data/ALL_BOOKS.json (relative to this script) — works both locally and on Netlify
@@ -115,14 +124,15 @@ for b in books:
     BULK_IMPORT_DATE = "2026-04-23"  # bulk scrape was 2026-04-22
     is_new = 1 if (sid.startswith("CUSTOM-") or (scraped and scraped[:10] >= BULK_IMPORT_DATE)) else 0
 
+    slug = make_slug(b["title"], b.get("shopify_id", ""))
     slim.append({
         "t":    clean_text(b["title"])[:80],
         "a":    clean_text(b.get("author", ""))[:50],
         "p":    price_str,
         "op":   orig_str,
         "img":  public_image_url(b.get("image_url", "")),
-        "url":  b.get("url", ""),   # kept for cart ID compatibility
-        "slug": make_slug(b["title"], b.get("shopify_id", "")),
+        "url":  product_path(slug),
+        "slug": slug,
         "cat":  clean_text(b.get("category", "")),
         "tab":  tab_for(b.get("category", ""), b),
         "desc": (b.get("description") or "")[:1400],
@@ -3648,3 +3658,10 @@ Crawl-delay: 1
 robots_out = Path(__file__).parent / "public" / "robots.txt"
 robots_out.write_text(robots_txt, encoding="utf-8")
 print(f"Generated: {robots_out}")
+
+# Server-side lookup for proxied legacy CDN images. Public pages only expose
+# opaque image IDs, while the source URLs stay inside the Netlify function.
+image_map_out = Path(__file__).parent / "netlify" / "functions" / "image-map.json"
+image_map_out.parent.mkdir(parents=True, exist_ok=True)
+image_map_out.write_text(json.dumps(IMAGE_PROXY_MAP, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+print(f"Generated: {image_map_out}  ({len(IMAGE_PROXY_MAP)} proxied images)")

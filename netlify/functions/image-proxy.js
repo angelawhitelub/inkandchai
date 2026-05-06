@@ -1,15 +1,10 @@
 const ALLOWED_HOSTS = new Set(["cdn.shopify.com"]);
-
-function decodeUrl(token) {
-  if (!token || typeof token !== "string") return "";
-  const normalized = token.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
-  return Buffer.from(padded, "base64").toString("utf8");
-}
+const IMAGE_MAP = require("./image-map.json");
 
 exports.handler = async (event) => {
   try {
-    const source = decodeUrl(event.queryStringParameters?.u || "");
+    const imageId = event.queryStringParameters?.i || "";
+    const source = IMAGE_MAP[imageId] || "";
     const url = new URL(source);
 
     if (url.protocol !== "https:" || !ALLOWED_HOSTS.has(url.hostname)) {
