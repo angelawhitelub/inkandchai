@@ -39,6 +39,12 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color
 .item-author{font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.06em;margin-bottom:0.3rem;}
 .item-qty-price{font-size:0.68rem;color:var(--cream-dim);}
 .item-price-gold{color:var(--gold);font-family:'Cormorant Garamond',serif;font-size:1rem;}
+.checkout-qty-row{display:flex;align-items:center;gap:0.55rem;margin-top:0.55rem;flex-wrap:wrap;}
+.checkout-qty-btn{width:28px;height:28px;border:1px solid var(--border);background:var(--bg2);color:var(--cream);font-size:1rem;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
+.checkout-qty-btn:hover{border-color:var(--gold);color:var(--gold);}
+.checkout-qty-num{min-width:24px;text-align:center;color:var(--cream);font-size:0.78rem;font-weight:500;}
+.checkout-remove{border:none;background:transparent;color:#c97a7a;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;margin-left:0.2rem;}
+.checkout-remove:hover{color:#e06060;}
 .summary-total{display:flex;justify-content:space-between;align-items:baseline;padding-top:1.2rem;margin-top:0.4rem;border-top:1px solid var(--border);}
 .total-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);}
 .total-amt{font-family:'Cormorant Garamond',serif;font-size:1.8rem;color:var(--gold);font-weight:600;}
@@ -237,6 +243,26 @@ function checkoutSessionId() {
 const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
 function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE; }
+function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
+function itemPrice(item) { return Number(item?.price) || 0; }
+function cartSubtotal(cart) { return cart.reduce((s, i) => s + itemPrice(i) * itemQty(i), 0); }
+function saveCart(cart) { localStorage.setItem(CART_KEY, JSON.stringify(cart)); }
+function updateCheckoutQty(index, delta) {
+  const cart = getCart();
+  if (!cart[index]) return;
+  cart[index].qty = Math.max(1, itemQty(cart[index]) + delta);
+  saveCart(cart);
+  renderSummary();
+  if (typeof scheduleAbandonedCapture === 'function') scheduleAbandonedCapture();
+}
+function removeCheckoutItem(index) {
+  const cart = getCart();
+  if (!cart[index]) return;
+  cart.splice(index, 1);
+  saveCart(cart);
+  renderSummary();
+  if (typeof scheduleAbandonedCapture === 'function') scheduleAbandonedCapture();
+}
 
 // ── Render order summary ────────────────────────────────────────────────────
 function renderSummary() {
@@ -255,10 +281,10 @@ function renderSummary() {
     return;
   }
 
-  const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
   const grand    = subtotal + shipping;
-  container.innerHTML = cart.map(i => `
+  container.innerHTML = cart.map((i, idx) => `
     <div class="order-item">
       <div class="item-img">
         ${i.img ? `<img src="${esc(i.img)}" alt="" />` : ''}
@@ -267,8 +293,15 @@ function renderSummary() {
         <div class="item-title">${esc(i.title)}</div>
         ${i.author ? `<div class="item-author">${esc(i.author)}</div>` : ''}
         <div class="item-qty-price">
-          Qty: ${i.qty} &nbsp;·&nbsp;
-          <span class="item-price-gold">₹${(i.price * i.qty).toLocaleString('en-IN')}</span>
+          <span>₹${itemPrice(i).toLocaleString('en-IN')} each</span>
+          &nbsp;·&nbsp;
+          <span class="item-price-gold">₹${(itemPrice(i) * itemQty(i)).toLocaleString('en-IN')}</span>
+        </div>
+        <div class="checkout-qty-row">
+          <button type="button" class="checkout-qty-btn" onclick="updateCheckoutQty(${idx}, -1)" aria-label="Decrease quantity">-</button>
+          <span class="checkout-qty-num">Qty ${itemQty(i)}</span>
+          <button type="button" class="checkout-qty-btn" onclick="updateCheckoutQty(${idx}, 1)" aria-label="Increase quantity">+</button>
+          <button type="button" class="checkout-remove" onclick="removeCheckoutItem(${idx})">Remove</button>
         </div>
       </div>
     </div>`).join('') + `
@@ -322,7 +355,7 @@ async function saveAbandonedCheckout(status = 'open', orderId = '') {
   const cart = getCart();
   const customer = collectPartialAddr();
   if (!cart.length || !(customer.email || customer.phone || customer.name)) return;
-  const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
   try {
     await fetch('/.netlify/functions/save-abandoned-checkout', {
@@ -416,7 +449,7 @@ async function submitOrder(method) {
 // ── Razorpay ───────────────────────────────────────────────────────────────
 async function doRazorpay(addr) {
   const cart = getCart();
-  const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
   const grand    = subtotal + shipping;
   const amtPaise = Math.round(grand * 100);
@@ -484,7 +517,7 @@ async function doRazorpay(addr) {
 // ── Cash on Delivery ───────────────────────────────────────────────────────
 async function doCOD(addr) {
   const cart     = getCart();
-  const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
   const amount   = subtotal + shipping;
 
