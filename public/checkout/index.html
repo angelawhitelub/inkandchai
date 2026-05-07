@@ -223,6 +223,15 @@ window.SUPABASE_ANON_KEY = "";
 const CART_KEY = 'akshar_cart';
 function getCart()  { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch { return []; } }
 function clearCart(){ localStorage.removeItem(CART_KEY); }
+const ABANDONED_SESSION_KEY = 'iac_abandoned_checkout_session';
+function checkoutSessionId() {
+  let id = localStorage.getItem(ABANDONED_SESSION_KEY);
+  if (!id) {
+    id = 'iac_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem(ABANDONED_SESSION_KEY, id);
+  }
+  return id;
+}
 
 // Shipping rules — must match cart.js + server functions
 const FREE_SHIPPING_THRESHOLD = 499;
@@ -288,6 +297,52 @@ function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Abandoned checkout capture ─────────────────────────────────────────────
+let _abandonedTimer = null;
+function collectPartialAddr() {
+  const get = id => document.getElementById(id)?.value.trim() || '';
+  const addr = get('ch-addr');
+  const city = get('ch-city');
+  const state = get('ch-state');
+  const pin = get('ch-pin').replace(/\D/g,'');
+  return {
+    name: get('ch-name'),
+    phone: get('ch-phone'),
+    email: get('ch-email'),
+    address: [addr, city, state, pin].filter(Boolean).join(', '),
+  };
+}
+
+function scheduleAbandonedCapture() {
+  clearTimeout(_abandonedTimer);
+  _abandonedTimer = setTimeout(() => saveAbandonedCheckout('open'), 900);
+}
+
+async function saveAbandonedCheckout(status = 'open', orderId = '') {
+  const cart = getCart();
+  const customer = collectPartialAddr();
+  if (!cart.length || !(customer.email || customer.phone || customer.name)) return;
+  const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const shipping = calcShipping(subtotal);
+  try {
+    await fetch('/.netlify/functions/save-abandoned-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
+      body: JSON.stringify({
+        session_id: checkoutSessionId(),
+        cart,
+        customer,
+        shipping,
+        status,
+        order_id: orderId,
+      }),
+    });
+  } catch(e) {
+    console.warn('abandoned checkout capture skipped:', e.message);
+  }
+}
+
 // ── Pincode → City / State ─────────────────────────────────────────────────
 let _pinTimer = null;
 function handlePin(val) {
@@ -349,6 +404,7 @@ async function submitOrder(method) {
   const addr = collectAddr();
   if (!addr) return;
   setLoading(true);
+  await saveAbandonedCheckout('open');
 
   if (method === 'online') {
     await doRazorpay(addr);
@@ -402,6 +458,8 @@ async function doRazorpay(addr) {
             }),
           });
           if (!vRes.ok) throw new Error('Verification failed');
+          await saveAbandonedCheckout('converted', response.razorpay_order_id);
+          localStorage.removeItem(ABANDONED_SESSION_KEY);
           clearCart();
           await autoLogin(addr.email, addr.name, addr.phone);
           showSuccess('paid', response.razorpay_payment_id, addr);
@@ -443,6 +501,8 @@ async function doCOD(addr) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to place order');
 
+    await saveAbandonedCheckout('converted', data.order_id);
+    localStorage.removeItem(ABANDONED_SESSION_KEY);
     clearCart();
     await autoLogin(addr.email, addr.name, addr.phone);
     showSuccess('cod', data.order_id, addr);
@@ -503,6 +563,13 @@ function showSuccess(type, orderId, addr) {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 renderSummary();
+
+['ch-name','ch-phone','ch-email','ch-addr','ch-pin','ch-city','ch-state'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('input', scheduleAbandonedCapture);
+  el.addEventListener('blur', () => saveAbandonedCheckout('open'));
+});
 
 // Pre-fill from Supabase profile if logged in
 (async () => {

@@ -72,6 +72,15 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .focus-panel strong{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--gold);}
 .focus-panel p{font-size:0.68rem;color:var(--cream-dim);line-height:1.55;margin-top:0.15rem;}
 .focus-actions{display:flex;gap:0.6rem;flex-wrap:wrap;}
+.abandoned-panel{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1rem 1.2rem;margin:0 0 1.4rem;}
+.abandoned-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;}
+.abandoned-head h2{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:400;color:var(--white);}
+.abandoned-head p{font-size:0.66rem;color:var(--cream-dim);line-height:1.6;margin-top:0.2rem;}
+.mini-table{width:100%;border-collapse:collapse;font-size:0.68rem;}
+.mini-table th,.mini-table td{padding:0.55rem 0.65rem;}
+.mini-table th{font-size:0.5rem;}
+.mini-actions{display:flex;gap:0.45rem;flex-wrap:wrap;}
+.lead-empty{font-size:0.7rem;color:var(--cream-dim);padding:1rem 0;}
 
 /* Table */
 .tbl-wrap{overflow-x:auto;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);}
@@ -188,6 +197,35 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     </div>
   </section>
 
+  <section class="abandoned-panel">
+    <div class="abandoned-head">
+      <div>
+        <h2>Abandoned checkouts</h2>
+        <p>Customers who entered contact details and left checkout without completing an order. Default view shows leads older than 30 minutes.</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-outline" onclick="fetchAbandonedCheckouts()">Refresh Leads</button>
+        <button class="btn-green" onclick="exportAbandonedCsv()">Download Leads CSV</button>
+      </div>
+    </div>
+    <div class="hint" id="abandonedMeta">Lead capture activates after the Supabase migration is run.</div>
+    <div class="tbl-wrap" style="box-shadow:none;margin-top:0.8rem;">
+      <table class="mini-table">
+        <thead>
+          <tr>
+            <th>Updated</th>
+            <th>Customer</th>
+            <th>Cart</th>
+            <th>Amount</th>
+            <th>Follow up</th>
+          </tr>
+        </thead>
+        <tbody id="abandonedBody"></tbody>
+      </table>
+    </div>
+    <div class="lead-empty" id="abandonedEmpty" style="display:none;">No abandoned checkouts ready for follow-up.</div>
+  </section>
+
   <!-- Export bar -->
   <div class="export-bar" id="exportBar" style="display:none;">
     <span class="export-label">Export</span>
@@ -300,6 +338,7 @@ let page          = 1;
 let hasMore       = false;
 const PAGE        = 100;  // load 100 at a time
 const selectedOrderIds = new Set();
+let abandonedLeads = [];
 
 // ── Login ──────────────────────────────────────────────────────────────────
 function doLogin() {
@@ -359,6 +398,7 @@ async function fetchOrders(reset = false) {
 
     updateStats();
     applyFilters();
+    fetchAbandonedCheckouts();
 
   } catch (err) {
     showLoginErr('Error: ' + err.message);
@@ -734,6 +774,122 @@ function downloadCsv(rows, filename) {
 function csvCell(value) {
   const s = String(value ?? '');
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+}
+
+function leadToExportRow(lead) {
+  const items = Array.isArray(lead.cart_items) ? lead.cart_items : [];
+  return {
+    'Updated': lead.updated_at ? new Date(lead.updated_at).toLocaleString('en-IN') : '',
+    'Name': lead.customer_name || '',
+    'Phone': lead.customer_phone || '',
+    'Email': lead.customer_email || '',
+    'Address': lead.customer_address || '',
+    'Items': items.map(i => `${i.title || ''} x${i.qty || 1}`).join(' | '),
+    'Item Count': items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0),
+    'Amount INR': lead.amount_paise ? (lead.amount_paise / 100) : '',
+    'WhatsApp Link': abandonedWhatsappUrl(lead),
+  };
+}
+
+async function fetchAbandonedCheckouts() {
+  const body = document.getElementById('abandonedBody');
+  const empty = document.getElementById('abandonedEmpty');
+  const meta = document.getElementById('abandonedMeta');
+  if (!adminKey || !body || !meta) return;
+  meta.textContent = 'Loading abandoned checkouts…';
+  try {
+    const res = await fetch('/.netlify/functions/get-abandoned-checkouts?limit=100&min_age_minutes=30', {
+      headers: { 'X-Admin-Key': adminKey },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    abandonedLeads = data.checkouts || [];
+    meta.textContent = `${abandonedLeads.length} lead${abandonedLeads.length === 1 ? '' : 's'} ready for follow-up · older than ${data.min_age_minutes || 30} min`;
+    renderAbandonedCheckouts();
+  } catch (err) {
+    abandonedLeads = [];
+    body.innerHTML = '';
+    if (empty) {
+      empty.style.display = '';
+      empty.textContent = 'Could not load abandoned checkouts. Run the Supabase migration first, then refresh.';
+    }
+    meta.textContent = 'Lead capture not ready: ' + err.message;
+  }
+}
+
+function renderAbandonedCheckouts() {
+  const body = document.getElementById('abandonedBody');
+  const empty = document.getElementById('abandonedEmpty');
+  if (!body || !empty) return;
+  if (!abandonedLeads.length) {
+    body.innerHTML = '';
+    empty.style.display = '';
+    empty.textContent = 'No abandoned checkouts ready for follow-up.';
+    return;
+  }
+  empty.style.display = 'none';
+  body.innerHTML = abandonedLeads.map(lead => {
+    const items = Array.isArray(lead.cart_items) ? lead.cart_items : [];
+    const amount = lead.amount_paise ? '₹' + (lead.amount_paise / 100).toLocaleString('en-IN') : '—';
+    const updated = lead.updated_at ? new Date(lead.updated_at).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+    return `<tr>
+      <td style="white-space:nowrap;color:var(--cream-dim);">${updated}</td>
+      <td>
+        <div class="cust-name">${esc(lead.customer_name || '—')}</div>
+        <div class="cust-sub">${esc(lead.customer_phone || '')}</div>
+        <div class="cust-sub">${esc(lead.customer_email || '')}</div>
+      </td>
+      <td class="items-cell">
+        ${items.slice(0,3).map(i=>`<div>· ${esc(i.title || '')} ×${i.qty || 1}</div>`).join('')}
+        ${items.length > 3 ? `<div style="color:var(--gold-dim);">+${items.length-3} more</div>` : ''}
+      </td>
+      <td><div class="amount">${amount}</div></td>
+      <td>
+        <div class="mini-actions">
+          ${lead.customer_phone ? `<a class="btn-outline" href="${esc(abandonedWhatsappUrl(lead))}" target="_blank" style="text-decoration:none;padding:0.35rem 0.7rem;font-size:0.52rem;">WhatsApp</a>` : ''}
+          ${lead.customer_email ? `<button class="btn-outline" onclick="sendAbandonedEmail('${esc(lead.id)}')" style="padding:0.35rem 0.7rem;font-size:0.52rem;">Send Email</button>` : ''}
+          ${lead.followup_email_sent_at ? `<span class="hint">emailed</span>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function abandonedWhatsappUrl(lead) {
+  const phone = String(lead.customer_phone || '').replace(/\D/g, '').slice(-10);
+  const phoneWithCountry = phone ? '91' + phone : '';
+  const text = `Hi ${lead.customer_name || 'there'}, this is Ink & Chai. We noticed you left a few books in checkout. If you need help completing your order, reply here and we'll assist you.`;
+  return phoneWithCountry ? `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(text)}` : '';
+}
+
+function abandonedEmailText(lead) {
+  const items = Array.isArray(lead.cart_items) ? lead.cart_items : [];
+  return `Hi ${lead.customer_name || 'there'},\n\nYou had selected these books at Ink & Chai:\n${items.map(i => `- ${i.title || 'Book'} x${i.qty || 1}`).join('\n')}\n\nYou can complete your order here: https://inkandchai.in/checkout/\n\nNeed help? Reply to this email or WhatsApp us at +91 9217175546.\n\nInk & Chai`;
+}
+
+function exportAbandonedCsv() {
+  if (!abandonedLeads.length) { alert('No abandoned checkout leads to export.'); return; }
+  const today = new Date().toISOString().slice(0,10);
+  downloadCsv(abandonedLeads.map(leadToExportRow), `inkandchai-abandoned-checkouts-${today}.csv`);
+}
+
+async function sendAbandonedEmail(id) {
+  if (!confirm('Send a checkout recovery email to this customer?')) return;
+  try {
+    const res = await fetch('/.netlify/functions/send-abandoned-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const lead = abandonedLeads.find(l => String(l.id) === String(id));
+    if (lead) lead.followup_email_sent_at = new Date().toISOString();
+    renderAbandonedCheckouts();
+    alert('Email sent.');
+  } catch (err) {
+    alert('Could not send email: ' + err.message);
+  }
 }
 
 function exportSelectedCsv() {
