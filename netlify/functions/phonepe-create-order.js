@@ -2,31 +2,22 @@
  * Netlify Function: phonepe-create-order
  * POST /.netlify/functions/phonepe-create-order
  *
- * Initiates a PhonePe Standard Checkout v1 payment. The frontend posts
- * { cart, customer, amount } here; we:
- *   1. Generate a merchantTransactionId (IC-YYYYMMDD-XXXXX, same scheme as
- *      our COD orders so the webhook + admin panel + tracking page all
- *      treat them identically).
- *   2. Insert a 'pending_phonepe' order row in Supabase so we have the
- *      cart/customer/address persisted before the customer leaves the site.
- *   3. Compute X-VERIFY = SHA256(base64Payload + "/pg/v1/pay" + saltKey)
- *      + "###" + saltIndex.
- *   4. POST to PhonePe's /pg/v1/pay; receive back a redirectUrl.
- *   5. Return the redirectUrl + orderId to the browser, which then
- *      window.location's the customer over to PhonePe.
+ * Initiates a PhonePe PG v2 (PG_CHECKOUT) hosted-page payment.
+ * Frontend posts { cart, customer }; we:
+ *   1. Generate a merchantOrderId (IC-YYYYMMDD-XXXXX, same scheme as COD).
+ *   2. Pre-insert a 'pending_phonepe' row in Supabase.
+ *   3. Fetch an OAuth token from PhonePe identity-manager (cached).
+ *   4. POST to /pg/checkout/v2/pay → get back { redirectUrl }.
+ *   5. Return redirectUrl to the browser, which window.location's there.
  *
- * After payment, PhonePe redirects the customer back to the redirectUrl
- * we set (the verify-status function below) AND posts to the webhook.
- *
- * Required env vars:
- *   PHONEPE_MERCHANT_ID     (from PhonePe Business → Developer Settings)
- *   PHONEPE_SALT_KEY        (same place; never expose client-side)
- *   PHONEPE_SALT_INDEX      (usually "1")
- *   PHONEPE_HOST            (default api.phonepe.com — set api-preprod.phonepe.com for sandbox)
- *   SITE_URL                (e.g. https://inkandchai.in — used for redirectUrl)
+ * Required env vars (PhonePe Business → Developer Settings → API Keys):
+ *   PHONEPE_CLIENT_ID
+ *   PHONEPE_CLIENT_SECRET
+ *   PHONEPE_CLIENT_VERSION   (default "1")
+ *   PHONEPE_HOST             (default https://api.phonepe.com/apis  — use api-preprod-net for sandbox)
+ *   SITE_URL                 (https://inkandchai.in)
  */
 
-const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
 const CORS = {
@@ -38,18 +29,50 @@ const CORS = {
 const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
 
+// ── OAuth token cache (warm-function reuse) ───────────────────────────────
+let _tokenCache = { token: null, expiresAt: 0 };
+
+async function getAccessToken(host) {
+  // Refresh 60s before actual expiry to avoid races
+  if (_tokenCache.token && Date.now() < _tokenCache.expiresAt - 60_000) {
+    return _tokenCache.token;
+  }
+  const body = new URLSearchParams({
+    client_id:      process.env.PHONEPE_CLIENT_ID,
+    client_secret:  process.env.PHONEPE_CLIENT_SECRET,
+    client_version: process.env.PHONEPE_CLIENT_VERSION || '1',
+    grant_type:     'client_credentials',
+  });
+  const res = await fetch(`${host}/identity-manager/v1/oauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.access_token) {
+    throw new Error('PhonePe OAuth failed: ' + (data.message || data.error || ('HTTP ' + res.status)));
+  }
+  _tokenCache = {
+    token: data.access_token,
+    // expires_in is seconds-from-now; expires_at is absolute epoch seconds
+    expiresAt: data.expires_at ? data.expires_at * 1000 : Date.now() + (data.expires_in || 3300) * 1000,
+  };
+  return _tokenCache.token;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST')    return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
 
-  const merchantId = process.env.PHONEPE_MERCHANT_ID;
-  const saltKey    = process.env.PHONEPE_SALT_KEY;
-  const saltIndex  = process.env.PHONEPE_SALT_INDEX || '1';
-  const host       = process.env.PHONEPE_HOST || 'https://api.phonepe.com/apis/hermes';
-  const siteUrl    = process.env.SITE_URL || 'https://inkandchai.in';
+  const clientId     = process.env.PHONEPE_CLIENT_ID;
+  const clientSecret = process.env.PHONEPE_CLIENT_SECRET;
+  const host         = process.env.PHONEPE_HOST || 'https://api.phonepe.com/apis';
+  const siteUrl      = process.env.SITE_URL || 'https://inkandchai.in';
 
-  if (!merchantId || !saltKey) {
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'PhonePe credentials not configured. Set PHONEPE_MERCHANT_ID + PHONEPE_SALT_KEY in Netlify env vars.' }) };
+  if (!clientId || !clientSecret) {
+    return { statusCode: 500, headers: CORS, body: JSON.stringify({
+      error: 'PhonePe v2 credentials not configured. Set PHONEPE_CLIENT_ID + PHONEPE_CLIENT_SECRET in Netlify env vars (from PhonePe Business → Developer Settings → API Keys).'
+    }) };
   }
 
   let body;
@@ -61,27 +84,27 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
   }
 
-  // Re-derive total server-side (don't trust client)
-  const subtotal = cart.reduce((s, i) => s + (i.price * i.qty), 0);
-  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-  const total    = subtotal + shipping;
+  // Re-derive total server-side
+  const subtotal    = cart.reduce((s, i) => s + (i.price * i.qty), 0);
+  const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  const total       = subtotal + shipping;
   const amountPaise = Math.round(total * 100);
   if (amountPaise < 100) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Amount too low' }) };
   }
 
-  // Order id with same scheme as COD so webhook + admin treat them identically
-  const now = new Date();
+  // Order id (same scheme as COD so admin/tracking/webhook treat them identically)
+  const now      = new Date();
   const datePart = now.toISOString().slice(0,10).replace(/-/g,'');
   const randPart = Math.random().toString(36).slice(2,7).toUpperCase();
   const orderId  = `IC-${datePart}-${randPart}`;
 
-  // ── 1. Save pending order to Supabase ────────────────────────────────────
+  // ── 1. Save pending order to Supabase (non-fatal) ─────────────────────────
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { error: dbErr } = await supabase.from('orders').insert({
-      razorpay_order_id:   orderId,         // re-using existing column for our merchant order id
-      razorpay_payment_id: null,            // filled when webhook confirms
+      razorpay_order_id:   orderId,
+      razorpay_payment_id: null,
       amount_paise:        amountPaise,
       status:              'pending_phonepe',
       customer_name:       customer.name    || '',
@@ -95,58 +118,64 @@ exports.handler = async (event) => {
     console.error('Supabase exception (non-fatal):', err.message);
   }
 
-  // ── 2. Build PhonePe payload + X-VERIFY signature ────────────────────────
-  const redirectUrl = `${siteUrl}/.netlify/functions/phonepe-verify-status?id=${encodeURIComponent(orderId)}`;
-  const payload = {
-    merchantId,
-    merchantTransactionId: orderId,
-    merchantUserId: 'IAC-' + (customer.email || customer.phone || 'guest').replace(/[^a-zA-Z0-9]/g, '').slice(0, 30),
-    amount: amountPaise,
-    redirectUrl,
-    redirectMode: 'REDIRECT',
-    callbackUrl: `${siteUrl}/.netlify/functions/phonepe-webhook`,
-    mobileNumber: (customer.phone || '').replace(/\D/g, '').slice(-10),
-    paymentInstrument: { type: 'PAY_PAGE' },
-  };
-
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64');
-  const stringToHash = payloadB64 + '/pg/v1/pay' + saltKey;
-  const xVerify = crypto.createHash('sha256').update(stringToHash).digest('hex') + '###' + saltIndex;
-
-  // ── 3. POST to PhonePe ───────────────────────────────────────────────────
+  // ── 2. Get OAuth token + create the payment ──────────────────────────────
   try {
-    const res = await fetch(`${host}/pg/v1/pay`, {
+    const token = await getAccessToken(host);
+
+    const payload = {
+      merchantOrderId: orderId,
+      amount: amountPaise,
+      expireAfter: 1200,           // 20 minutes for the customer to complete
+      metaInfo: {
+        udf1: customer.name?.slice(0, 80)  || '',
+        udf2: customer.phone?.slice(0, 20) || '',
+        udf3: customer.email?.slice(0, 80) || '',
+      },
+      paymentFlow: {
+        type: 'PG_CHECKOUT',
+        message: `Ink & Chai order ${orderId}`,
+        merchantUrls: {
+          redirectUrl: `${siteUrl}/.netlify/functions/phonepe-verify-status?id=${encodeURIComponent(orderId)}`,
+        },
+      },
+    };
+
+    const res = await fetch(`${host}/pg/checkout/v2/pay`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'X-VERIFY': xVerify,
+        'Content-Type':  'application/json',
+        'Authorization': 'O-Bearer ' + token,
       },
-      body: JSON.stringify({ request: payloadB64 }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
 
-    if (!res.ok || !data.success) {
-      console.error('PhonePe pay error:', res.status, JSON.stringify(data));
+    if (!res.ok || !data.redirectUrl) {
+      console.error('PhonePe v2 pay error:', res.status, JSON.stringify(data));
       return {
         statusCode: 502,
         headers: CORS,
-        body: JSON.stringify({ error: 'PhonePe error: ' + (data.message || data.code || ('HTTP ' + res.status)) }),
+        body: JSON.stringify({ error: 'PhonePe error: ' + (data.message || data.code || data.errorCode || ('HTTP ' + res.status)) }),
       };
-    }
-
-    const redirectTo = data.data?.instrumentResponse?.redirectInfo?.url;
-    if (!redirectTo) {
-      return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: 'PhonePe did not return a redirect URL' }) };
     }
 
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ success: true, order_id: orderId, redirect_url: redirectTo }),
+      body: JSON.stringify({
+        success: true,
+        order_id: orderId,
+        redirect_url: data.redirectUrl,
+        phonepe_order_id: data.orderId,
+      }),
     };
 
   } catch (err) {
-    console.error('PhonePe network error:', err);
-    return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: 'Could not reach PhonePe: ' + err.message }) };
+    console.error('PhonePe network/auth error:', err);
+    return {
+      statusCode: 502,
+      headers: CORS,
+      body: JSON.stringify({ error: err.message || 'PhonePe checkout failed' }),
+    };
   }
 };

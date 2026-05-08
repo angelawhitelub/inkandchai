@@ -2,53 +2,61 @@
  * Netlify Function: phonepe-verify-status
  * GET /.netlify/functions/phonepe-verify-status?id=<orderId>
  *
- * PhonePe redirects the customer here after payment. We:
- *   1. Call PhonePe's /pg/v1/status/{merchantId}/{orderId} to get the
- *      authoritative status (don't trust query string params alone).
- *   2. Look at the result and 302 the customer to:
- *        - /checkout/success/?id=<orderId>   on COMPLETED
- *        - /checkout/?failed=1&id=<orderId>  on FAILED/CANCELLED
+ * PhonePe redirects the customer here after payment. We hit the v2
+ * status endpoint with an OAuth token, then 302 the customer to:
+ *   - /checkout/?paid=1&id=<orderId>     on COMPLETED
+ *   - /checkout/?failed=1&id=<orderId>   on FAILED / CANCELLED / unknown
  *
- * The webhook (separate function) does the actual database update +
- * email — this function only handles the customer-visible redirect.
+ * The webhook (separate function) does the DB write + email — this
+ * function only handles the customer-visible redirect after PhonePe.
  */
 
-const crypto = require('crypto');
+let _tokenCache = { token: null, expiresAt: 0 };
+
+async function getAccessToken(host) {
+  if (_tokenCache.token && Date.now() < _tokenCache.expiresAt - 60_000) {
+    return _tokenCache.token;
+  }
+  const body = new URLSearchParams({
+    client_id:      process.env.PHONEPE_CLIENT_ID,
+    client_secret:  process.env.PHONEPE_CLIENT_SECRET,
+    client_version: process.env.PHONEPE_CLIENT_VERSION || '1',
+    grant_type:     'client_credentials',
+  });
+  const res = await fetch(`${host}/identity-manager/v1/oauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.access_token) {
+    throw new Error('PhonePe OAuth failed: ' + (data.message || data.error || ('HTTP ' + res.status)));
+  }
+  _tokenCache = {
+    token: data.access_token,
+    expiresAt: data.expires_at ? data.expires_at * 1000 : Date.now() + (data.expires_in || 3300) * 1000,
+  };
+  return _tokenCache.token;
+}
 
 exports.handler = async (event) => {
   const id = event.queryStringParameters?.id;
   const siteUrl = process.env.SITE_URL || 'https://inkandchai.in';
+  const host = process.env.PHONEPE_HOST || 'https://api.phonepe.com/apis';
 
   if (!id) {
     return { statusCode: 302, headers: { Location: siteUrl + '/checkout/?failed=1' }, body: '' };
   }
 
-  const merchantId = process.env.PHONEPE_MERCHANT_ID;
-  const saltKey    = process.env.PHONEPE_SALT_KEY;
-  const saltIndex  = process.env.PHONEPE_SALT_INDEX || '1';
-  const host       = process.env.PHONEPE_HOST || 'https://api.phonepe.com/apis/hermes';
-
-  if (!merchantId || !saltKey) {
-    console.error('PhonePe credentials missing');
-    return { statusCode: 302, headers: { Location: siteUrl + '/checkout/?failed=1&id=' + encodeURIComponent(id) }, body: '' };
-  }
-
-  // X-VERIFY for status endpoint = SHA256(/pg/v1/status/{mid}/{txn} + saltKey) + ### + saltIndex
-  const path = `/pg/v1/status/${merchantId}/${id}`;
-  const xVerify = crypto.createHash('sha256').update(path + saltKey).digest('hex') + '###' + saltIndex;
-
   try {
-    const res = await fetch(host + path, {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-VERIFY': xVerify,
-        'X-MERCHANT-ID': merchantId,
-      },
+    const token = await getAccessToken(host);
+    const res = await fetch(`${host}/pg/checkout/v2/order/${encodeURIComponent(id)}/status`, {
+      headers: { 'Authorization': 'O-Bearer ' + token },
     });
     const data = await res.json().catch(() => ({}));
-    const code = data.code || data.data?.responseCode || '';
+    const state = (data.state || '').toUpperCase();
 
-    if (code === 'PAYMENT_SUCCESS' || data.data?.state === 'COMPLETED') {
+    if (state === 'COMPLETED') {
       return {
         statusCode: 302,
         headers: { Location: `${siteUrl}/checkout/?paid=1&id=${encodeURIComponent(id)}` },
@@ -57,11 +65,11 @@ exports.handler = async (event) => {
     }
     return {
       statusCode: 302,
-      headers: { Location: `${siteUrl}/checkout/?failed=1&id=${encodeURIComponent(id)}&code=${encodeURIComponent(code)}` },
+      headers: { Location: `${siteUrl}/checkout/?failed=1&id=${encodeURIComponent(id)}&code=${encodeURIComponent(state || 'UNKNOWN')}` },
       body: '',
     };
   } catch (err) {
-    console.error('PhonePe status verify error:', err);
+    console.error('PhonePe v2 status error:', err);
     return {
       statusCode: 302,
       headers: { Location: `${siteUrl}/checkout/?failed=1&id=${encodeURIComponent(id)}` },
