@@ -516,9 +516,7 @@ async function doPhonePe(addr) {
     // handle confirmation and the redirect back to /checkout/?paid=1&id=…
     window.location.href = data.redirect_url;
   } catch (e) {
-    alert('PhonePe checkout failed: ' + e.message + '
-
-Please try Razorpay or Cash on Delivery.');
+    alert('PhonePe checkout failed: ' + e.message + '. Please try Razorpay or Cash on Delivery.');
     setLoading(false);
   }
 }
