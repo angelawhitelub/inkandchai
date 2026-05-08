@@ -2915,6 +2915,19 @@ input:disabled{background:var(--bg2);color:var(--gold-dim);cursor:not-allowed;}
 .divider-label{display:flex;align-items:center;gap:1rem;margin:1.6rem 0 1.4rem;}
 .divider-label span{font-size:0.54rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold-dim);white-space:nowrap;}
 .divider-label::before,.divider-label::after{content:'';flex:1;height:1px;background:var(--border);}
+/* Payment method selector */
+.pay-methods{display:flex;flex-direction:column;gap:0.6rem;margin-bottom:1rem;}
+.pay-method{display:flex;align-items:center;gap:0.9rem;padding:0.8rem 1rem;background:var(--bg3);border:1.5px solid var(--border);cursor:pointer;transition:all 0.2s;}
+.pay-method:hover{border-color:var(--gold-dim);}
+.pay-method.active{border-color:var(--gold);background:rgba(201,168,76,0.06);}
+.pay-method input[type="radio"]{accent-color:var(--gold);width:18px;height:18px;cursor:pointer;flex-shrink:0;}
+.pay-method-icon{width:38px;height:38px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;border-radius:6px;font-family:'Montserrat',sans-serif;}
+.pay-method-body{flex:1;min-width:0;}
+.pay-method-title{font-family:'Montserrat',sans-serif;font-size:0.78rem;color:var(--cream);font-weight:500;letter-spacing:0.04em;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;}
+.pay-method-badge{font-size:0.5rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);background:rgba(201,168,76,0.12);padding:0.2rem 0.5rem;border:1px solid rgba(201,168,76,0.3);font-weight:500;}
+.pay-method-sub{font-size:0.62rem;color:var(--cream-dim);margin-top:0.2rem;letter-spacing:0.04em;}
+@media(max-width:780px){.pay-method-icon{width:32px;height:32px;font-size:1rem;}.pay-method{padding:0.7rem 0.8rem;gap:0.7rem;}}
+
 .btn-pay{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.25s;margin-bottom:0.8rem;line-height:1.4;white-space:normal;overflow-wrap:anywhere;}
 .btn-pay:hover{opacity:0.88;transform:translateY(-1px);}
 .btn-pay:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
@@ -3009,6 +3022,26 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         <div id="pinMsg" class="pin-msg"></div>
 
         <div class="divider-label"><span>Choose Payment</span></div>
+
+        <!-- Payment method selector — PhonePe default, Razorpay alt, COD always available -->
+        <div class="pay-methods" role="radiogroup" aria-label="Payment method">
+          <label class="pay-method active" data-method="phonepe">
+            <input type="radio" name="payMethod" value="phonepe" checked/>
+            <div class="pay-method-icon" style="background:#5f259f;color:#fff;font-weight:700;">P</div>
+            <div class="pay-method-body">
+              <div class="pay-method-title">PhonePe <span class="pay-method-badge">Recommended</span></div>
+              <div class="pay-method-sub">UPI · Cards · Wallets · NetBanking</div>
+            </div>
+          </label>
+          <label class="pay-method" data-method="razorpay">
+            <input type="radio" name="payMethod" value="razorpay"/>
+            <div class="pay-method-icon" style="background:#0c2451;color:#fff;font-weight:700;">R</div>
+            <div class="pay-method-body">
+              <div class="pay-method-title">Razorpay</div>
+              <div class="pay-method-sub">UPI · Cards · NetBanking</div>
+            </div>
+          </label>
+        </div>
 
         <button class="btn-pay" id="btnPayNow" onclick="submitOrder('online')">
           ⚡ Pay Now
@@ -3261,6 +3294,18 @@ function setLoading(on) {
   document.getElementById('btnCOD').disabled    = on;
 }
 
+// ── Payment method radio swap ──────────────────────────────────────────────
+function selectedPayMethod() {
+  const sel = document.querySelector('input[name="payMethod"]:checked');
+  return sel ? sel.value : 'phonepe';
+}
+document.addEventListener('change', e => {
+  if (e.target?.name === 'payMethod') {
+    document.querySelectorAll('.pay-method').forEach(m => m.classList.remove('active'));
+    e.target.closest('.pay-method')?.classList.add('active');
+  }
+});
+
 // ── Main submit ────────────────────────────────────────────────────────────
 async function submitOrder(method) {
   const addr = collectAddr();
@@ -3269,9 +3314,39 @@ async function submitOrder(method) {
   await saveAbandonedCheckout('open');
 
   if (method === 'online') {
-    await doRazorpay(addr);
+    const pm = selectedPayMethod();
+    if (pm === 'phonepe') {
+      await doPhonePe(addr);
+    } else {
+      await doRazorpay(addr);
+    }
   } else {
     await doCOD(addr);
+  }
+}
+
+// ── PhonePe Standard Checkout ──────────────────────────────────────────────
+async function doPhonePe(addr) {
+  const cart = getCart();
+  try {
+    const res = await fetch('/.netlify/functions/phonepe-create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cart,
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success || !data.redirect_url) {
+      throw new Error(data.error || 'Could not start PhonePe checkout');
+    }
+    // PhonePe takes over from here. The webhook + /phonepe-verify-status route
+    // handle confirmation and the redirect back to /checkout/?paid=1&id=…
+    window.location.href = data.redirect_url;
+  } catch (e) {
+    alert('PhonePe checkout failed: ' + e.message + '\n\nPlease try Razorpay or Cash on Delivery.');
+    setLoading(false);
   }
 }
 
@@ -3422,6 +3497,30 @@ function showSuccess(type, orderId, addr) {
     <a href="/" class="btn-home">← Continue Shopping</a>
   `;
 }
+
+// ── PhonePe redirect-back handler ──────────────────────────────────────────
+// PhonePe → /phonepe-verify-status → /checkout/?paid=1&id=… (or ?failed=1)
+(function() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('paid') === '1' && p.get('id')) {
+    clearCart();
+    // Show success screen — try to read customer email from saved abandoned checkout
+    let savedEmail = '';
+    try {
+      const sess = JSON.parse(localStorage.getItem('iac_checkout_lead') || '{}');
+      savedEmail = sess.email || sess.customer_email || '';
+    } catch {}
+    showSuccess('paid', p.get('id'), { email: savedEmail });
+    // Clean URL so refresh doesn't re-trigger success
+    history.replaceState({}, '', '/checkout/');
+    return;
+  }
+  if (p.get('failed') === '1') {
+    const code = p.get('code') || '';
+    setTimeout(() => alert('PhonePe payment was cancelled or failed' + (code ? ' (' + code + ')' : '') + '. Please try again or use Cash on Delivery.'), 100);
+    history.replaceState({}, '', '/checkout/');
+  }
+})();
 
 // ── Init ───────────────────────────────────────────────────────────────────
 renderSummary();
