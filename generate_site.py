@@ -3454,19 +3454,9 @@ async function doCOD(addr) {
 
 // ── Auto-login after order ─────────────────────────────────────────────────
 async function autoLogin(email, name, phone) {
-  if (!email) return;
-  try {
-    const res = await fetch('/.netlify/functions/auto-login-token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, name, phone }),
-    });
-    if (!res.ok) return;
-    const { token_hash } = await res.json();
-    if (!token_hash || !window.supabase || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) return;
-    const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
-    await sb.auth.verifyOtp({ token_hash, type: 'magiclink' });
-  } catch(e) { console.warn('Auto-login non-fatal:', e.message); }
+  // Security: do not create a customer session just because an email was typed
+  // during checkout. Customers can sign in from My Orders using an emailed link.
+  return;
 }
 
 // ── Success screen ─────────────────────────────────────────────────────────

@@ -29,12 +29,14 @@
     currentUser = session?.user || null;
     if (currentUser) await fetchProfile();
     updateNav();
+    openOrdersFromEmailLink();
 
     sb.auth.onAuthStateChange(async (_event, session) => {
       currentUser = session?.user || null;
       if (currentUser) await fetchProfile();
       else currentProfile = null;
       updateNav();
+      openOrdersFromEmailLink();
     });
   }
 
@@ -57,6 +59,19 @@
         btn.onclick = openAuthModal;
       }
     });
+  }
+
+  function openOrdersFromEmailLink() {
+    if (!currentUser) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('orders') !== '1') return;
+    params.delete('orders');
+    const next = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', next);
+    setTimeout(() => {
+      openAccountModal();
+      window.iacSwitchTab?.('acct-orders-tab');
+    }, 250);
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -97,41 +112,10 @@
   };
 
   // ── Auto-login after order (called from checkout.js) ──────────────────────
-  // Calls server to generate a one-time token, then verifies it client-side
-  // to create a real Supabase session — no email click required.
+  // Disabled intentionally: a customer must verify via Supabase email/password
+  // or an emailed magic link before we create a browser session.
   window.autoLoginAfterOrder = async function (email, name, phone) {
-    const sb = getSB();
-    if (!sb || !email) return;
-    try {
-      // If already logged in, just update profile
-      const { data: { session } } = await sb.auth.getSession();
-      if (session) {
-        updateNav();
-        return;
-      }
-
-      // Ask server to create/find user and return a one-time token
-      const res = await fetch('/.netlify/functions/auto-login-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, phone }),
-      });
-      if (!res.ok) throw new Error('auto-login-token failed');
-      const { token_hash } = await res.json();
-
-      // Exchange token for a real session — user is now logged in instantly
-      const { data, error } = await sb.auth.verifyOtp({
-        token_hash,
-        type: 'magiclink',
-      });
-      if (error) throw error;
-
-      currentUser = data.user;
-      await fetchProfile();
-      updateNav();
-    } catch (e) {
-      console.warn('Auto-login error (non-fatal):', e.message);
-    }
+    return;
   };
 
   // ── My Orders entry point ─────────────────────────────────────────────────
@@ -213,31 +197,24 @@
     const sb = getSB();
     if (!sb) { if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Auth not configured.'; } return; }
 
-    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Logging you in…'; }
+    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending secure login link…'; }
     try {
-      // Auto-login via server token (instant, no email click needed)
-      const res = await fetch('/.netlify/functions/auto-login-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/?orders=1`,
+          shouldCreateUser: true,
+        },
       });
-      const { token_hash, error: tokenErr } = await res.json();
-      if (!res.ok || !token_hash) throw new Error(tokenErr || 'Could not generate token');
-
-      const { data, error } = await sb.auth.verifyOtp({ token_hash, type: 'magiclink' });
       if (error) throw error;
 
-      currentUser = data.user;
-      await fetchProfile();
-      updateNav();
-
-      // Close guest modal and open account modal on orders tab
-      removeModal('iacGuestOrdersModal');
-      openAccountModal();
-      setTimeout(() => window.iacSwitchTab?.('acct-orders-tab'), 200);
+      if (msg) {
+        msg.style.color = '#6dbf6d';
+        msg.textContent = 'Check your email for the secure login link.';
+      }
 
     } catch (e) {
-      if (msg) { msg.style.color = '#e06060'; msg.textContent = e.message || 'Login failed. Please try again.'; }
+      if (msg) { msg.style.color = '#e06060'; msg.textContent = e.message || 'Could not send login link. Please try again.'; }
     }
   };
 
