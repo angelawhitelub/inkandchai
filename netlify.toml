@@ -19,6 +19,20 @@
   status = 200
   force  = false
 
+# Merchant Center was given this older mixed-case generated URL. Keep it
+# permanently available and point crawlers to the current canonical product URL.
+[[redirects]]
+  from   = "/product/david-goggins-combo-hindi-can-t-hurt-me-never-finished--BO-HI/"
+  to     = "/product/david-goggins-combo-hindi-cant-hurt-me-never-finished/"
+  status = 301
+  force  = true
+
+[[redirects]]
+  from   = "/product/david-goggins-combo-hindi-can-t-hurt-me-never-finished--bo-hi/"
+  to     = "/product/david-goggins-combo-hindi-cant-hurt-me-never-finished/"
+  status = 301
+  force  = true
+
 # Redirect all non-file requests to index (SPA-style)
 [[redirects]]
   from   = "/*"
