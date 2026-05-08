@@ -21,6 +21,8 @@ def make_slug(title, shopify_id):
     """Generate a clean URL slug from title + last 5 chars of shopify_id."""
     if str(shopify_id or "") == "CUSTOM-KINGS-OF-SIN-COMPLETE-SET-6-AH":
         return "kings-of-sin-series-complete-set-6-books-ana-huang"
+    if str(shopify_id or "") == "CUSTOM-HINDI-BESTSELLERS-COMBO-5":
+        return "5-hindi-bestsellers-combo-set-of-5-books-MBO-5"
     slug = re.sub(r'[^a-z0-9]+', '-', (title or '').lower())
     slug = slug.strip('-')[:55]
     suffix = str(shopify_id or '')[-5:]
@@ -146,7 +148,7 @@ for b in books:
     slug = make_slug(b["title"], b.get("shopify_id", ""))
     feed_image_by_slug[slug] = crawlable_image_url(b.get("image_url", ""))
     slim.append({
-        "t":    clean_text(b["title"])[:180] if sid == "CUSTOM-KINGS-OF-SIN-COMPLETE-SET-6-AH" else clean_text(b["title"])[:80],
+        "t":    clean_text(b["title"])[:220] if sid in {"CUSTOM-KINGS-OF-SIN-COMPLETE-SET-6-AH", "CUSTOM-HINDI-BESTSELLERS-COMBO-5"} else clean_text(b["title"])[:80],
         "a":    clean_text(b.get("author", ""))[:50],
         "p":    price_str,
         "op":   orig_str,
