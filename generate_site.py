@@ -2115,7 +2115,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
   <img id="lightboxImg" src="" alt="" onclick="event.stopPropagation()"/>
 </div>
 
-<!-- Sample PDF preview modal -->
+<!-- Sample PDF preview modal — PDF.js canvas render (no iframe = no X-Frame issues) -->
 <div class="pdf-modal" id="pdfModal" role="dialog" aria-label="Book sample preview">
   <div class="pdf-modal-frame" onclick="event.stopPropagation()">
     <div class="pdf-modal-head">
@@ -2125,9 +2125,12 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
         <button class="pdf-close" onclick="closeSamplePdf()">✕ Close</button>
       </div>
     </div>
-    <iframe id="pdfFrame" src="" title="Sample pages preview"></iframe>
+    <div id="pdfPagesContainer" style="flex:1;overflow-y:auto;padding:1.2rem;display:flex;flex-direction:column;align-items:center;gap:1rem;background:#1a1410;">
+      <div style="color:#a09080;font-size:0.85rem;padding:3rem 1rem;text-align:center;">Loading sample pages...</div>
+    </div>
   </div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 
 <script>
 // Image lightbox
@@ -2144,24 +2147,66 @@ function closeLightbox() {
   document.body.style.overflow = '';
 }
 
-// Sample PDF modal
-function openSamplePdf(pdfUrl, title) {
+// Sample PDF modal — uses PDF.js to render pages as canvas (no iframe ⇒ no X-Frame-Options blocking)
+async function openSamplePdf(pdfUrl, title) {
   const m = document.getElementById('pdfModal');
-  const frame = document.getElementById('pdfFrame');
   const dl = document.getElementById('pdfDownloadLink');
-  // #toolbar=1&navpanes=0 lets browsers show their built-in PDF UI
-  frame.src = pdfUrl + '#toolbar=1&navpanes=0&view=FitH';
+  const pages = document.getElementById('pdfPagesContainer');
   dl.href = pdfUrl;
   document.getElementById('pdfModalTitle').textContent = (title || 'Sample Pages') + ' — Free Sample';
   m.classList.add('show');
   document.body.style.overflow = 'hidden';
-  // Meta Pixel: ViewContent on sample read — useful conversion signal
   if (window.fbq) fbq('trackCustom', 'ReadSample', { content_name: title || '', content_type: 'product_sample' });
+
+  pages.innerHTML = '<div style="color:#a09080;font-size:0.85rem;padding:3rem 1rem;text-align:center;">Loading sample pages...</div>';
+
+  // Wait for pdf.js to load (deferred script)
+  let tries = 0;
+  while (typeof pdfjsLib === 'undefined' && tries < 60) {
+    await new Promise(r => setTimeout(r, 100));
+    tries++;
+  }
+  if (typeof pdfjsLib === 'undefined') {
+    pages.innerHTML = '<div style="color:#e05050;padding:2rem;text-align:center;">Could not load PDF viewer. <a href="' + pdfUrl + '" download style="color:var(--gold);">Download instead</a></div>';
+    return;
+  }
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  try {
+    const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+    pages.innerHTML = '';
+    const containerWidth = pages.clientWidth - 40;
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(2.5, containerWidth / baseViewport.width);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width  = Math.floor(viewport.width  * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.style.width    = Math.floor(viewport.width) + 'px';
+      canvas.style.height   = Math.floor(viewport.height) + 'px';
+      canvas.style.maxWidth = '100%';
+      canvas.style.boxShadow = '0 12px 32px rgba(0,0,0,0.5)';
+      canvas.style.background = '#fff';
+      ctx.scale(dpr, dpr);
+      pages.appendChild(canvas);
+      await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+    }
+    const note = document.createElement('div');
+    note.style.cssText = 'color:var(--cream-dim);font-size:0.7rem;letter-spacing:0.18em;text-transform:uppercase;padding:1rem;text-align:center;border-top:1px solid var(--border);margin-top:0.5rem;width:100%;';
+    note.innerHTML = 'End of sample · <a href="javascript:closeSamplePdf()" style="color:var(--gold);">Buy the full book →</a>';
+    pages.appendChild(note);
+  } catch (err) {
+    pages.innerHTML = '<div style="color:#e05050;padding:2rem;text-align:center;">Could not render the PDF. <a href="' + pdfUrl + '" download style="color:var(--gold);">Download instead</a></div>';
+  }
 }
 function closeSamplePdf() {
   const m = document.getElementById('pdfModal');
   m.classList.remove('show');
-  document.getElementById('pdfFrame').src = 'about:blank';  // stop any in-page audio/video
+  document.getElementById('pdfPagesContainer').innerHTML = '';
   document.body.style.overflow = '';
 }
 
@@ -2841,8 +2886,10 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 <div class="promo"><strong>Free delivery on ₹499+</strong> · Extra 10% off prepaid with <strong>INKLOVE10</strong> · COD available</div>
 <nav><a class="logo" href="/">Ink &amp; Chai</a><a class="back" href="/">← Catalogue</a></nav>
 <main class="wrap">
-  <section class="{static_cover_class}"><img src="{img}" alt="{title} book cover" loading="eager" fetchpriority="high" onclick="openLB(this.src,this.alt)" style="cursor:zoom-in"/>{static_back_cover}</section>
-  {sample_pdf_html}
+  <div>
+    <section class="{static_cover_class}"><img src="{img}" alt="{title} book cover" loading="eager" fetchpriority="high" onclick="openLB(this.src,this.alt)" style="cursor:zoom-in"/>{static_back_cover}</section>
+    {sample_pdf_html}
+  </div>
   <section>
     <div class="crumb"><a href="/">Home</a> / <a href="/category/?name={quote(book.get('cat') or 'Books')}">{cat}</a></div>
     <h1>{title}</h1>
@@ -2866,19 +2913,22 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
   <img id="lbI" src="" alt="" onclick="event.stopPropagation()" style="max-width:96vw;max-height:92vh;object-fit:contain;box-shadow:0 30px 80px rgba(0,0,0,.6);background:#1a1208;cursor:zoom-out"/>
 </div>
 
-<!-- Sample PDF modal -->
+<!-- Sample PDF modal — renders pages as canvas via PDF.js (no iframe, no X-Frame issues) -->
 <div id="pdfM" style="position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10600;display:none;align-items:center;justify-content:center;padding:1rem;backdrop-filter:blur(8px)" role="dialog" aria-label="Sample preview">
-  <div onclick="event.stopPropagation()" style="position:relative;width:100%;max-width:980px;height:92vh;background:#fff;border:1px solid rgba(138,106,31,.35);display:flex;flex-direction:column">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.1rem;border-bottom:1px solid rgba(138,106,31,.28);background:#faf7f2;gap:.7rem">
-      <div id="pdfT" style="font-family:'Cormorant Garamond',serif;font-size:1rem;color:#2a2018;font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Sample Pages</div>
-      <a id="pdfDl" href="#" download target="_blank" rel="noopener" style="font:600 .55rem Montserrat,sans-serif;letter-spacing:.18em;text-transform:uppercase;padding:.5rem .85rem;background:#fff;color:#5a4a38;border:1px solid rgba(138,106,31,.35);text-decoration:none;cursor:pointer">⬇ Download</a>
-      <button onclick="closePdf()" style="font:600 .55rem Montserrat,sans-serif;letter-spacing:.18em;text-transform:uppercase;padding:.5rem .85rem;background:rgba(138,106,31,.1);color:#8a6a1f;border:1px solid #8a6a1f;cursor:pointer">✕ Close</button>
+  <div onclick="event.stopPropagation()" style="position:relative;width:100%;max-width:780px;height:92vh;background:#1a1410;border:1px solid rgba(138,106,31,.35);display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.1rem;border-bottom:1px solid rgba(138,106,31,.28);background:#0f0c08;gap:.7rem">
+      <div id="pdfT" style="font-family:'Cormorant Garamond',serif;font-size:1rem;color:#f0e8d8;font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Sample Pages</div>
+      <a id="pdfDl" href="#" download target="_blank" rel="noopener" style="font:600 .55rem Montserrat,sans-serif;letter-spacing:.18em;text-transform:uppercase;padding:.5rem .85rem;background:transparent;color:#c9a84c;border:1px solid rgba(201,168,76,.4);text-decoration:none;cursor:pointer">⬇ Download</a>
+      <button onclick="closePdf()" style="font:600 .55rem Montserrat,sans-serif;letter-spacing:.18em;text-transform:uppercase;padding:.5rem .85rem;background:rgba(201,168,76,.12);color:#c9a84c;border:1px solid #c9a84c;cursor:pointer">✕ Close</button>
     </div>
-    <iframe id="pdfF" src="" title="Sample preview" style="flex:1;width:100%;border:none;background:#1a1410"></iframe>
+    <div id="pdfPages" style="flex:1;overflow-y:auto;padding:1.2rem;display:flex;flex-direction:column;align-items:center;gap:1rem;background:#1a1410">
+      <div id="pdfLoading" style="color:#a09080;font-size:.85rem;padding:3rem 1rem;text-align:center">Loading sample pages...</div>
+    </div>
   </div>
 </div>
 
 <script src="/js/cart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 <script>
 function addBookToCart() {{
   const item = {cart_item};
@@ -2900,17 +2950,62 @@ function closeLB() {{
   document.getElementById('lb').style.display = 'none';
   document.body.style.overflow = '';
 }}
-function openPdf(url, title) {{
-  document.getElementById('pdfF').src = url + '#toolbar=1&navpanes=0&view=FitH';
+async function openPdf(url, title) {{
   document.getElementById('pdfDl').href = url;
   document.getElementById('pdfT').textContent = (title || 'Sample Pages') + ' — Free Sample';
   document.getElementById('pdfM').style.display = 'flex';
   document.body.style.overflow = 'hidden';
   if (window.fbq) fbq('trackCustom', 'ReadSample', {{ content_name: title || '', content_type: 'product_sample' }});
+
+  const pagesDiv = document.getElementById('pdfPages');
+  pagesDiv.innerHTML = '<div style="color:#a09080;font-size:.85rem;padding:3rem 1rem;text-align:center">Loading sample pages...</div>';
+
+  // Wait for pdf.js to be ready (it's loaded with `defer`)
+  let tries = 0;
+  while (typeof pdfjsLib === 'undefined' && tries < 60) {{
+    await new Promise(r => setTimeout(r, 100));
+    tries++;
+  }}
+  if (typeof pdfjsLib === 'undefined') {{
+    pagesDiv.innerHTML = '<div style="color:#e05050;padding:2rem;text-align:center">Could not load PDF viewer. <a href="' + url + '" download style="color:#c9a84c">Download instead</a></div>';
+    return;
+  }}
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  try {{
+    const pdf = await pdfjsLib.getDocument(url).promise;
+    pagesDiv.innerHTML = '';
+    const containerWidth = pagesDiv.clientWidth - 40;  // padding allowance
+    for (let i = 1; i <= pdf.numPages; i++) {{
+      const page = await pdf.getPage(i);
+      const baseViewport = page.getViewport({{ scale: 1 }});
+      const scale = Math.min(2.5, containerWidth / baseViewport.width);
+      const viewport = page.getViewport({{ scale }});
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width  = Math.floor(viewport.width  * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.style.width  = Math.floor(viewport.width)  + 'px';
+      canvas.style.height = Math.floor(viewport.height) + 'px';
+      canvas.style.maxWidth = '100%';
+      canvas.style.boxShadow = '0 12px 32px rgba(0,0,0,.5)';
+      canvas.style.background = '#fff';
+      ctx.scale(dpr, dpr);
+      pagesDiv.appendChild(canvas);
+      await page.render({{ canvasContext: ctx, viewport: viewport }}).promise;
+    }}
+    const note = document.createElement('div');
+    note.style.cssText = 'color:#a09080;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;padding:1rem;text-align:center;border-top:1px solid rgba(201,168,76,.18);margin-top:.5rem;width:100%';
+    note.innerHTML = 'End of sample · <a href="javascript:closePdf()" style="color:#c9a84c">Buy the full book →</a>';
+    pagesDiv.appendChild(note);
+  }} catch (err) {{
+    pagesDiv.innerHTML = '<div style="color:#e05050;padding:2rem;text-align:center">Could not render the PDF. <a href="' + url + '" download style="color:#c9a84c">Download instead</a></div>';
+  }}
 }}
 function closePdf() {{
   document.getElementById('pdfM').style.display = 'none';
-  document.getElementById('pdfF').src = 'about:blank';
+  document.getElementById('pdfPages').innerHTML = '';
   document.body.style.overflow = '';
 }}
 document.addEventListener('keydown', e => {{
