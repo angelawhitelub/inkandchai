@@ -165,6 +165,8 @@ for b in books:
         "pub":  clean_text(b.get("publisher", "")),
         "n":    is_new,            # 1 = New Arrival
         "ts":   scraped,           # so we can sort newest-first when needed
+        "pdf":  b.get("sample_pdf") or "",  # path to sample PDF (read-first-pages preview)
+        "pdf_pages": b.get("sample_pdf_pages") or 0,
     })
 
 # Put new arrivals at the very front so they're discoverable on first scroll
@@ -1835,7 +1837,37 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 /* LEFT — cover */
 .prod-cover-wrap{position:sticky;top:6rem}
 .prod-cover{background:var(--bg2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;padding:2rem;min-height:0}
-.prod-cover img{max-height:480px;max-width:100%;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,0.6);display:block}
+.prod-cover img{max-height:480px;max-width:100%;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,0.6);display:block;cursor:zoom-in;transition:transform 0.25s}
+.prod-cover img:hover{transform:scale(1.02)}
+.prod-cover-secondary img{cursor:zoom-in}
+
+/* Sample PDF "Read inside" button — sits below cover */
+.sample-pdf-row{margin-top:1rem;display:flex;justify-content:center}
+.btn-sample-pdf{display:inline-flex;align-items:center;gap:0.6rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.7rem 1.2rem;background:rgba(201,168,76,0.08);color:var(--gold);border:1px dashed rgba(201,168,76,0.45);cursor:pointer;font-weight:500;transition:all 0.2s;text-decoration:none}
+.btn-sample-pdf:hover{background:var(--gold);color:var(--bg);border-style:solid}
+.btn-sample-pdf .ic{font-size:0.95rem}
+
+/* Lightbox / image-zoom modal */
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,0.94);z-index:10500;display:none;align-items:center;justify-content:center;padding:2rem;cursor:zoom-out;backdrop-filter:blur(8px)}
+.lightbox.show{display:flex;animation:lbFade 0.25s ease}
+@keyframes lbFade{from{opacity:0}to{opacity:1}}
+.lightbox img{max-width:96vw;max-height:92vh;object-fit:contain;box-shadow:0 30px 80px rgba(0,0,0,0.6);background:#1a1208;cursor:zoom-out}
+.lightbox-close{position:absolute;top:1.4rem;right:1.4rem;width:42px;height:42px;border-radius:50%;background:rgba(13,11,8,0.85);color:var(--gold);border:1px solid rgba(201,168,76,0.4);cursor:pointer;font-size:1.4rem;display:flex;align-items:center;justify-content:center;transition:all 0.2s}
+.lightbox-close:hover{background:var(--gold);color:var(--bg)}
+@media(max-width:780px){.lightbox{padding:0.5rem}.lightbox-close{top:0.6rem;right:0.6rem;width:36px;height:36px}}
+
+/* PDF preview modal */
+.pdf-modal{position:fixed;inset:0;background:rgba(0,0,0,0.94);z-index:10600;display:none;align-items:center;justify-content:center;padding:1.5rem;backdrop-filter:blur(8px)}
+.pdf-modal.show{display:flex;animation:lbFade 0.25s ease}
+.pdf-modal-frame{position:relative;width:100%;max-width:980px;height:92vh;background:var(--bg2);border:1px solid var(--border);display:flex;flex-direction:column}
+.pdf-modal-head{display:flex;align-items:center;justify-content:space-between;padding:0.9rem 1.2rem;border-bottom:1px solid var(--border);background:var(--bg3);gap:0.8rem}
+.pdf-modal-title{font-family:'Cormorant Garamond',serif;font-size:1.05rem;color:var(--cream);font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdf-modal-actions{display:flex;gap:0.5rem;align-items:center}
+.pdf-modal-actions a,.pdf-modal-actions button{font-family:'Montserrat',sans-serif;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.5rem 0.9rem;background:transparent;color:var(--cream-dim);border:1px solid var(--border);cursor:pointer;text-decoration:none;transition:all 0.2s}
+.pdf-modal-actions a:hover,.pdf-modal-actions button:hover{border-color:var(--gold);color:var(--gold)}
+.pdf-modal-actions .pdf-close{background:rgba(201,168,76,0.1);color:var(--gold);border-color:var(--gold-dim)}
+.pdf-modal iframe{flex:1;width:100%;border:none;background:#1a1410}
+@media(max-width:780px){.pdf-modal{padding:0}.pdf-modal-frame{height:100vh}.pdf-modal-title{font-size:0.85rem}}
 .prod-cover-secondary{margin-top:1rem;background:var(--bg2);border:1px solid var(--border);padding:1rem;display:flex;align-items:center;justify-content:center}
 .prod-cover-secondary img{max-height:340px;max-width:100%;object-fit:contain;box-shadow:0 14px 36px rgba(0,0,0,0.45);display:block}
 .prod-cover-placeholder{width:200px;height:300px;background:linear-gradient(135deg,#1a0a00,#3a1500)}
@@ -2077,6 +2109,70 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 <div id="bookstagramContent"></div>
 <div id="relatedContent"></div>
 
+<!-- Image lightbox (opens when cover is clicked) -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()" role="dialog" aria-label="Book cover preview">
+  <button class="lightbox-close" onclick="event.stopPropagation();closeLightbox()" aria-label="Close">✕</button>
+  <img id="lightboxImg" src="" alt="" onclick="event.stopPropagation()"/>
+</div>
+
+<!-- Sample PDF preview modal -->
+<div class="pdf-modal" id="pdfModal" role="dialog" aria-label="Book sample preview">
+  <div class="pdf-modal-frame" onclick="event.stopPropagation()">
+    <div class="pdf-modal-head">
+      <div class="pdf-modal-title" id="pdfModalTitle">Sample Pages</div>
+      <div class="pdf-modal-actions">
+        <a id="pdfDownloadLink" href="#" download target="_blank" rel="noopener">⬇ Download</a>
+        <button class="pdf-close" onclick="closeSamplePdf()">✕ Close</button>
+      </div>
+    </div>
+    <iframe id="pdfFrame" src="" title="Sample pages preview"></iframe>
+  </div>
+</div>
+
+<script>
+// Image lightbox
+function openLightbox(src, alt) {
+  const lb = document.getElementById('lightbox');
+  const img = document.getElementById('lightboxImg');
+  img.src = src;
+  img.alt = alt || '';
+  lb.classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+// Sample PDF modal
+function openSamplePdf(pdfUrl, title) {
+  const m = document.getElementById('pdfModal');
+  const frame = document.getElementById('pdfFrame');
+  const dl = document.getElementById('pdfDownloadLink');
+  // #toolbar=1&navpanes=0 lets browsers show their built-in PDF UI
+  frame.src = pdfUrl + '#toolbar=1&navpanes=0&view=FitH';
+  dl.href = pdfUrl;
+  document.getElementById('pdfModalTitle').textContent = (title || 'Sample Pages') + ' — Free Sample';
+  m.classList.add('show');
+  document.body.style.overflow = 'hidden';
+  // Meta Pixel: ViewContent on sample read — useful conversion signal
+  if (window.fbq) fbq('trackCustom', 'ReadSample', { content_name: title || '', content_type: 'product_sample' });
+}
+function closeSamplePdf() {
+  const m = document.getElementById('pdfModal');
+  m.classList.remove('show');
+  document.getElementById('pdfFrame').src = 'about:blank';  // stop any in-page audio/video
+  document.body.style.overflow = '';
+}
+
+// ESC closes either modal
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('lightbox')?.classList.contains('show')) closeLightbox();
+  if (document.getElementById('pdfModal')?.classList.contains('show')) closeSamplePdf();
+});
+</script>
+
 <!-- CART OVERLAY + SIDEBAR -->
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
 <div class="cart-sidebar" id="cartSidebar">
@@ -2213,12 +2309,18 @@ function renderProduct(b) {
       <div class="prod-cover-wrap">
         <div class="prod-cover">
           ${b.img
-            ? `<img src="${esc(b.img)}" alt="${esc(b.t)} — ${esc(b.a||'book')} cover" loading="eager" fetchpriority="high" decoding="async" />`
+            ? `<img src="${esc(b.img)}" alt="${esc(b.t)} — ${esc(b.a||'book')} cover" loading="eager" fetchpriority="high" decoding="async" onclick="openLightbox(this.src, this.alt)" />`
             : `<div class="prod-cover-placeholder"></div>`}
         </div>
         ${b.back_img ? `
           <div class="prod-cover-secondary">
-            <img src="${esc(b.back_img)}" alt="${esc(b.t)} back cover" loading="lazy" decoding="async" />
+            <img src="${esc(b.back_img)}" alt="${esc(b.t)} back cover" loading="lazy" decoding="async" onclick="openLightbox(this.src, this.alt)" />
+          </div>` : ''}
+        ${b.pdf ? `
+          <div class="sample-pdf-row">
+            <a class="btn-sample-pdf" href="${esc(b.pdf)}" data-pdf="${esc(b.pdf)}" data-title="${esc(b.t)}" onclick="openSamplePdf(this.dataset.pdf, this.dataset.title); return false;" target="_blank" rel="noopener" title="Read first ${b.pdf_pages || 'few'} pages free">
+              <span class="ic">📖</span><span>Read inside · Free Sample${b.pdf_pages ? ` (${b.pdf_pages} pages)` : ''}</span>
+            </a>
           </div>` : ''}
         <div class="prod-badges">
           <span class="badge">${esc(b.cat)}</span>
