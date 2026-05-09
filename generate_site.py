@@ -1903,8 +1903,6 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .btn-cart:hover{background:var(--gold-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.25)}
 .btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid var(--gold-dim);cursor:pointer;font-weight:500;transition:all 0.3s}
 .btn-cod:hover{background:var(--gold);color:var(--bg);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.2)}
-.btn-whatsapp{width:100%;font-family:'Montserrat',sans-serif;font-size:0.64rem;letter-spacing:0.22em;text-transform:uppercase;padding:1rem;background:#25d366;color:#08160d;border:1px solid rgba(37,211,102,0.7);cursor:pointer;font-weight:700;transition:all 0.3s;text-align:center;text-decoration:none}
-.btn-whatsapp:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(37,211,102,0.22)}
 .btn-share{font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:0.4rem;transition:color 0.2s;font-family:'Montserrat',sans-serif}
 .btn-share:hover{color:var(--gold)}
 
@@ -1912,7 +1910,6 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:rgba(13,11,8,0.98);border-top:1px solid rgba(201,168,76,0.3);padding:0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom,0px));gap:0.6rem;align-items:center;backdrop-filter:blur(16px);box-shadow:0 -8px 24px rgba(0,0,0,0.5)}
 .pbb-cart{flex:1;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid rgba(201,168,76,0.4);cursor:pointer;font-weight:500;transition:all 0.2s}
 .pbb-buy{flex:1.5;font-family:'Montserrat',sans-serif;font-size:0.63rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:700;transition:all 0.2s}
-.pbb-whatsapp{flex-basis:100%;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.82rem 0.5rem;background:#25d366;color:#07130b;border:1px solid rgba(37,211,102,0.75);cursor:pointer;font-weight:700;text-align:center;text-decoration:none}
 .pbb-cart:active{background:var(--gold);color:var(--bg)}
 .pbb-buy:active{background:var(--gold-light)}
 
@@ -2438,9 +2435,6 @@ function renderProduct(b) {
           <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
             ⚡ Buy Now — ${esc(b.p)}
           </button>
-          <a class="btn-whatsapp" href="https://wa.me/919217175546?text=${encodeURIComponent('Hi Ink & Chai, I want to order ' + b.t)}" target="_blank" rel="noopener">
-            WhatsApp Order
-          </a>
           <div style="display:flex;gap:0.6rem;margin-top:0.2rem">
             <button class="btn-share" onclick="shareBook()">↗ Share</button>
             <button id="prodWishBtn"
@@ -2464,9 +2458,6 @@ function renderProduct(b) {
       <button class="pbb-buy" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
         Buy Now · ${esc(b.p)}
       </button>
-      <a class="pbb-whatsapp" href="https://wa.me/919217175546?text=${encodeURIComponent('Hi Ink & Chai, I want to order ' + b.t)}" target="_blank" rel="noopener">
-        WhatsApp Order
-      </a>
     </div>
   `;
   // Set initial wishlist state
@@ -2844,7 +2835,6 @@ def static_product_html(book):
             f'cursor:pointer;text-decoration:none;transition:all .2s">'
             f'<span>📖</span><span>Read inside · Free Sample{pages_label}</span></a></div>'
         )
-    wa = "https://wa.me/919217175546?text=" + quote(f"Hi Ink & Chai, I want to order {book.get('t','this book')}")
     cart_item = json.dumps({
         "id": book.get("url") or book.get("slug"),
         "url": book.get("url") or book.get("slug"),
@@ -2877,9 +2867,9 @@ def static_product_html(book):
 nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(250,247,242,.96);position:sticky;top:0;z-index:5}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
 .wrap{{max-width:1260px;margin:0 auto;padding:clamp(1.2rem,4vw,4rem) 1rem 4rem;display:grid;grid-template-columns:minmax(360px,.95fr) 1.05fr;gap:clamp(1.4rem,4vw,4rem);align-items:start}} .cover{{align-self:start;background:var(--panel);border:1px solid var(--border);padding:clamp(1rem,2.5vw,1.8rem);display:flex;align-items:center;justify-content:center;gap:.85rem;flex-wrap:wrap}} .cover img{{max-width:100%;max-height:560px;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,.5)}} .cover-gallery img{{width:calc((100% - .85rem)/2);max-width:310px}} .cover-gallery img+img{{max-height:540px}}
 .crumb{{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}} h1{{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}} .author{{color:var(--muted);letter-spacing:.08em;margin-bottom:1.2rem}} .price{{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}} .orig{{color:var(--muted);text-decoration:line-through;margin-left:.8rem}} .stock{{display:inline-block;margin:1rem 0;color:#7fd37f;border:1px solid rgba(127,211,127,.3);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}}
-.trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(138,106,31,.06);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:#fff}} .secondary{{background:transparent;color:var(--gold)}} .wa{{grid-column:1/-1;background:#25d366;color:#07130b;border-color:#25d366}}
+.trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(138,106,31,.06);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:#fff}} .secondary{{background:transparent;color:var(--gold)}}
 .desc,.details{{border-top:1px solid var(--border);padding-top:1.2rem;margin-top:1.2rem;color:var(--muted);font-size:.9rem;line-height:1.8}} .label{{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}} .details dl{{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}} .details dt{{color:var(--gold)}} .details dd{{margin:0;color:var(--cream)}}
-@media(max-width:760px){{.wrap{{display:block;padding-bottom:11rem}} .cover{{margin-bottom:1.2rem}} .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;background:rgba(250,247,242,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);box-shadow:0 -10px 26px rgba(60,40,10,.12)}} .wa{{display:block}} .trust{{grid-template-columns:1fr}}}}
+@media(max-width:760px){{.wrap{{display:block;padding-bottom:8rem}} .cover{{margin-bottom:1.2rem}} .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;background:rgba(250,247,242,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);box-shadow:0 -10px 26px rgba(60,40,10,.12)}} .trust{{grid-template-columns:1fr}}}}
 </style>
 </head>
 <body>
@@ -2900,7 +2890,6 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
     <div class="actions">
       <button class="secondary" onclick="addBookToCart('{html_escape(book['slug'])}')">Add to Cart</button>
       <button class="primary" onclick="addBookToCart('{html_escape(book['slug'])}'); location.href='/checkout/'">Buy Now</button>
-      <a class="btn wa" href="{wa}" target="_blank" rel="noopener">WhatsApp Order</a>
     </div>
     <div class="desc"><div class="label">About this book</div>{desc}</div>
     <div class="details"><div class="label">Details</div><dl><dt>Category</dt><dd>{cat}</dd><dt>Publisher</dt><dd>{html_escape(book.get('pub') or 'Ink & Chai')}</dd><dt>ISBN</dt><dd>{html_escape(book.get('isbn') or 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
