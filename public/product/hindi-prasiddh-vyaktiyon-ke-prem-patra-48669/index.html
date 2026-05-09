@@ -47,7 +47,8 @@ src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
 <div class="promo"><strong>Free delivery on ₹499+</strong> · Extra 10% off prepaid with <strong>INKLOVE10</strong> · COD available</div>
 <nav><a class="logo" href="/">Ink &amp; Chai</a><a class="back" href="/">← Catalogue</a></nav>
 <main class="wrap">
-  <section class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=f3087d5133c036486ee87e8c" alt="Hindi Prasiddh Vyaktiyon Ke Prem Patra/प्रसिद्ध व्यक्तियों के प्रेम-पत्र book cover" loading="eager" fetchpriority="high"/></section>
+  <section class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=f3087d5133c036486ee87e8c" alt="Hindi Prasiddh Vyaktiyon Ke Prem Patra/प्रसिद्ध व्यक्तियों के प्रेम-पत्र book cover" loading="eager" fetchpriority="high" onclick="openLB(this.src,this.alt)" style="cursor:zoom-in"/></section>
+  
   <section>
     <div class="crumb"><a href="/">Home</a> / <a href="/category/?name=Hindi%20Books">Hindi Books</a></div>
     <h1>Hindi Prasiddh Vyaktiyon Ke Prem Patra/प्रसिद्ध व्यक्तियों के प्रेम-पत्र</h1>
@@ -64,6 +65,25 @@ src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
     <div class="details"><div class="label">Details</div><dl><dt>Category</dt><dd>Hindi Books</dd><dt>Publisher</dt><dd>Prakash Books</dd><dt>ISBN</dt><dd>Available on request</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
+
+<!-- Image lightbox -->
+<div id="lb" onclick="closeLB()" style="position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10500;display:none;align-items:center;justify-content:center;padding:1.5rem;cursor:zoom-out;backdrop-filter:blur(8px)" role="dialog" aria-label="Cover preview">
+  <button onclick="event.stopPropagation();closeLB()" aria-label="Close" style="position:absolute;top:1rem;right:1rem;width:38px;height:38px;border-radius:50%;background:rgba(13,11,8,.85);color:#c9a84c;border:1px solid rgba(201,168,76,.4);cursor:pointer;font-size:1.2rem;display:flex;align-items:center;justify-content:center">✕</button>
+  <img id="lbI" src="" alt="" onclick="event.stopPropagation()" style="max-width:96vw;max-height:92vh;object-fit:contain;box-shadow:0 30px 80px rgba(0,0,0,.6);background:#1a1208;cursor:zoom-out"/>
+</div>
+
+<!-- Sample PDF modal -->
+<div id="pdfM" style="position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10600;display:none;align-items:center;justify-content:center;padding:1rem;backdrop-filter:blur(8px)" role="dialog" aria-label="Sample preview">
+  <div onclick="event.stopPropagation()" style="position:relative;width:100%;max-width:980px;height:92vh;background:#fff;border:1px solid rgba(138,106,31,.35);display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.1rem;border-bottom:1px solid rgba(138,106,31,.28);background:#faf7f2;gap:.7rem">
+      <div id="pdfT" style="font-family:'Cormorant Garamond',serif;font-size:1rem;color:#2a2018;font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Sample Pages</div>
+      <a id="pdfDl" href="#" download target="_blank" rel="noopener" style="font:600 .55rem Montserrat,sans-serif;letter-spacing:.18em;text-transform:uppercase;padding:.5rem .85rem;background:#fff;color:#5a4a38;border:1px solid rgba(138,106,31,.35);text-decoration:none;cursor:pointer">⬇ Download</a>
+      <button onclick="closePdf()" style="font:600 .55rem Montserrat,sans-serif;letter-spacing:.18em;text-transform:uppercase;padding:.5rem .85rem;background:rgba(138,106,31,.1);color:#8a6a1f;border:1px solid #8a6a1f;cursor:pointer">✕ Close</button>
+    </div>
+    <iframe id="pdfF" src="" title="Sample preview" style="flex:1;width:100%;border:none;background:#1a1410"></iframe>
+  </div>
+</div>
+
 <script src="/js/cart.js"></script>
 <script>
 function addBookToCart() {
@@ -76,6 +96,34 @@ function addBookToCart() {
   if (window.openCart) openCart();
   if (window.showToast) showToast('Added to cart');
 }
+function openLB(src, alt) {
+  document.getElementById('lbI').src = src;
+  document.getElementById('lbI').alt = alt || '';
+  document.getElementById('lb').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function closeLB() {
+  document.getElementById('lb').style.display = 'none';
+  document.body.style.overflow = '';
+}
+function openPdf(url, title) {
+  document.getElementById('pdfF').src = url + '#toolbar=1&navpanes=0&view=FitH';
+  document.getElementById('pdfDl').href = url;
+  document.getElementById('pdfT').textContent = (title || 'Sample Pages') + ' — Free Sample';
+  document.getElementById('pdfM').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  if (window.fbq) fbq('trackCustom', 'ReadSample', { content_name: title || '', content_type: 'product_sample' });
+}
+function closePdf() {
+  document.getElementById('pdfM').style.display = 'none';
+  document.getElementById('pdfF').src = 'about:blank';
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('lb').style.display === 'flex') closeLB();
+  if (document.getElementById('pdfM').style.display === 'flex') closePdf();
+});
 </script>
 </body>
 </html>
