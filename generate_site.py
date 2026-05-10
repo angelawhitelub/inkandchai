@@ -1912,6 +1912,10 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .btn-cart:hover{background:var(--gold-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.25)}
 .btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid var(--gold-dim);cursor:pointer;font-weight:500;transition:all 0.3s}
 .btn-cod:hover{background:var(--gold);color:var(--bg);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.2)}
+.btn-cart.is-loading,.btn-cod.is-loading,.pbb-cart.is-loading,.pbb-buy.is-loading{position:relative;pointer-events:none;opacity:0.78;color:transparent!important}
+.btn-cart.is-loading::after,.btn-cod.is-loading::after,.pbb-cart.is-loading::after,.pbb-buy.is-loading::after{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:var(--bg)}
+.btn-cod.is-loading::after,.pbb-cart.is-loading::after{color:var(--gold)}
+@keyframes spinBtn{to{transform:rotate(360deg)}}
 .btn-share{font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:0.4rem;transition:color 0.2s;font-family:'Montserrat',sans-serif}
 .btn-share:hover{color:var(--gold)}
 
@@ -2455,10 +2459,10 @@ function renderProduct(b) {
         </div>
 
         <div class="prod-actions">
-          <button class="btn-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug)">
+          <button class="btn-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug, this)">
             + Add to Cart
           </button>
-          <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
+          <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="buyNowBook(this.dataset.slug, this)">
             ⚡ Buy Now — ${esc(b.p)}
           </button>
           <div style="display:flex;gap:0.6rem;margin-top:0.2rem">
@@ -2499,10 +2503,10 @@ function renderProduct(b) {
 
     <!-- Mobile sticky bottom bar (shown only on mobile via CSS) -->
     <div class="prod-bottom-bar">
-      <button class="pbb-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug)">
+      <button class="pbb-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug, this)">
         + Add to Cart
       </button>
-      <button class="pbb-buy" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug); window.location.href='/checkout/';">
+      <button class="pbb-buy" data-slug="${esc(b.slug)}" onclick="buyNowBook(this.dataset.slug, this)">
         Buy Now · ${esc(b.p)}
       </button>
     </div>
@@ -2720,11 +2724,23 @@ function adjQty(d) {
   el.textContent = Math.max(1, Math.min(10, (parseInt(el.textContent) || 1) + d));
 }
 
-function addBookToCart(bookSlug) {
+function buttonLoading(btn, on) {
+  if (!btn) return;
+  btn.classList.toggle('is-loading', !!on);
+  btn.disabled = !!on;
+}
+
+function cartItemForBook(b, bookSlug, qty) {
+  const price = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
+  return { id: b.url || bookSlug, title: b.t, author: b.a||'', price, img: b.img||'', url: b.url||'', qty };
+}
+
+function addBookToCart(bookSlug, trigger) {
   const b = BOOK_MAP[bookSlug];
   if (!b) return;
-  const price = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
-  const item  = { id: b.url || bookSlug, title: b.t, author: b.a||'', price, img: b.img||'', url: b.url||'' };
+  buttonLoading(trigger, true);
+  localStorage.removeItem('iac_buy_now_cart');
+  const item  = cartItemForBook(b, bookSlug, getQty());
   const qty   = getQty();
   // Directly write to localStorage to support qty > 1
   const CART_KEY = 'akshar_cart';
@@ -2733,8 +2749,19 @@ function addBookToCart(bookSlug) {
   if (existing) { existing.qty += qty; } else { cart.push({ ...item, qty }); }
   localStorage.setItem(CART_KEY, JSON.stringify(cart));
   if (window.refreshCart) refreshCart();
-  if (window.openCart)    openCart();
-  if (window.showToast)   showToast(`${qty > 1 ? qty + '× ' : ''}"${item.title.slice(0,28)}…" added to cart`);
+  setTimeout(() => {
+    buttonLoading(trigger, false);
+    if (window.openCart)    openCart();
+    if (window.showToast)   showToast(`${qty > 1 ? qty + '× ' : ''}"${item.title.slice(0,28)}…" added to cart`);
+  }, 220);
+}
+
+function buyNowBook(bookSlug, trigger) {
+  const b = BOOK_MAP[bookSlug];
+  if (!b) return;
+  buttonLoading(trigger, true);
+  localStorage.setItem('iac_buy_now_cart', JSON.stringify([cartItemForBook(b, bookSlug, getQty())]));
+  setTimeout(() => { window.location.href = '/checkout/'; }, 260);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
@@ -3045,7 +3072,7 @@ def static_product_html(book):
 nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(250,247,242,.96);position:sticky;top:0;z-index:5}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
 .wrap{{max-width:1260px;margin:0 auto;padding:clamp(1.2rem,4vw,4rem) 1rem 4rem;display:grid;grid-template-columns:minmax(360px,.95fr) 1.05fr;gap:clamp(1.4rem,4vw,4rem);align-items:start}} .cover{{align-self:start;background:var(--panel);border:1px solid var(--border);padding:clamp(1rem,2.5vw,1.8rem);display:flex;align-items:center;justify-content:center;gap:.85rem;flex-wrap:wrap}} .cover img{{max-width:100%;max-height:560px;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,.5)}} .cover-gallery img{{width:calc((100% - .85rem)/2);max-width:310px}} .cover-gallery img+img{{max-height:540px}}
 .crumb{{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}} h1{{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}} .author{{color:var(--muted);letter-spacing:.08em;margin-bottom:1rem}} .order-badge{{display:inline-flex;margin:0 0 1rem;border:1px solid rgba(138,106,31,.32);background:rgba(138,106,31,.08);color:var(--gold);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;padding:.42rem .75rem}} .rating-line{{display:flex;align-items:center;gap:.55rem;margin:0 0 1rem;color:var(--muted);font-size:.72rem}} .stars{{color:var(--gold);letter-spacing:.04em}} .price{{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}} .orig{{color:var(--muted);text-decoration:line-through;margin-left:.8rem}} .stock{{display:inline-block;margin:1rem 0;color:#7fd37f;border:1px solid rgba(127,211,127,.3);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}}
-.trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(138,106,31,.06);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:#fff}} .secondary{{background:transparent;color:var(--gold)}}
+.trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(138,106,31,.06);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:#fff}} .secondary{{background:transparent;color:var(--gold)}} .is-loading{{position:relative;color:transparent!important;pointer-events:none;opacity:.78}} .is-loading::after{{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:#fff}} .secondary.is-loading::after{{color:var(--gold)}} @keyframes spinBtn{{to{{transform:rotate(360deg)}}}}
 .desc,.details{{border-top:1px solid var(--border);padding-top:1.2rem;margin-top:1.2rem;color:var(--muted);font-size:.9rem;line-height:1.8}} .label{{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}} .details dl{{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}} .details dt{{color:var(--gold)}} .details dd{{margin:0;color:var(--cream)}}
 .reviews{{border:1px solid var(--border);background:rgba(138,106,31,.055);padding:1.15rem;margin-top:1.3rem;color:var(--muted);line-height:1.7}} .review-head{{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}} .review-head h2{{font-size:1.45rem;margin:.1rem 0 0}} .score{{text-align:right;flex-shrink:0}} .score strong{{display:block;font-family:"Cormorant Garamond",serif;font-size:2.2rem;color:var(--gold);line-height:.9}} .score span{{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}} .review-media{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:.9rem}} .review-media figure{{margin:0;border:1px solid var(--border);background:#fff;overflow:hidden}} .review-media img,.review-media video{{display:block;width:100%;height:240px;object-fit:cover;background:#f4efe7}} .review-media figcaption{{padding:.65rem .75rem;font-size:.65rem;letter-spacing:.08em;color:var(--muted)}}
 @media(max-width:760px){{.wrap{{display:block;padding-bottom:8rem}} .cover{{margin-bottom:1.2rem}} .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;background:rgba(250,247,242,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);box-shadow:0 -10px 26px rgba(60,40,10,.12)}} .trust{{grid-template-columns:1fr}} .review-head{{display:block}} .score{{text-align:left;margin-top:.7rem}} .review-media{{grid-template-columns:1fr}} .review-media img,.review-media video{{height:auto;max-height:360px;object-fit:contain}}}}
@@ -3069,8 +3096,8 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
     <span class="stock">In Stock</span>
     <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
     <div class="actions">
-      <button class="secondary" onclick="addBookToCart('{html_escape(book['slug'])}')">Add to Cart</button>
-      <button class="primary" onclick="addBookToCart('{html_escape(book['slug'])}'); location.href='/checkout/'">Buy Now</button>
+      <button class="secondary" onclick="addBookToCart(this)">Add to Cart</button>
+      <button class="primary" onclick="buyNowBook(this)">Buy Now</button>
     </div>
     <div class="desc"><div class="label">About this book</div>{desc}</div>
 {review_html}
@@ -3103,15 +3130,31 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 <script src="/js/cart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 <script>
-function addBookToCart() {{
+function setBtnLoading(btn,on) {{
+  if (!btn) return;
+  btn.classList.toggle('is-loading', !!on);
+  btn.disabled = !!on;
+}}
+function addBookToCart(btn) {{
+  setBtnLoading(btn, true);
+  localStorage.removeItem('iac_buy_now_cart');
   const item = {cart_item};
   const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
   const existing = cart.find(x => x.id === item.id);
   if (existing) existing.qty = (existing.qty || 1) + 1; else cart.push(item);
   localStorage.setItem('akshar_cart', JSON.stringify(cart));
   if (window.refreshCart) refreshCart();
-  if (window.openCart) openCart();
-  if (window.showToast) showToast('Added to cart');
+  setTimeout(() => {{
+    setBtnLoading(btn, false);
+    if (window.openCart) openCart();
+    if (window.showToast) showToast('Added to cart');
+  }}, 180);
+}}
+function buyNowBook(btn) {{
+  setBtnLoading(btn, true);
+  const item = {cart_item};
+  localStorage.setItem('iac_buy_now_cart', JSON.stringify([item]));
+  setTimeout(() => {{ location.href='/checkout/'; }}, 220);
 }}
 function openLB(src, alt) {{
   document.getElementById('lbI').src = src;
@@ -3296,11 +3339,11 @@ CHECKOUT_HTML = """<!DOCTYPE html>
 <link rel="manifest" href="/manifest.json"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
-:root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
+:root{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#8a6a1f;--gold-dim:#6a4f10;--cream:#2a2018;--cream-dim:#5a4a38;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{max-width:100%;overflow-x:hidden;}
 body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
-nav{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 3rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 3rem;background:rgba(250,247,242,0.97);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
 .logo{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;color:var(--gold);text-decoration:none;}
 .logo span{color:var(--cream);font-weight:300;font-style:italic}
 .nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;transition:color 0.2s;}
@@ -3365,12 +3408,16 @@ input:disabled{background:var(--bg2);color:var(--gold-dim);cursor:not-allowed;}
 .pay-method-sub{font-size:0.62rem;color:var(--cream-dim);margin-top:0.2rem;letter-spacing:0.04em;}
 @media(max-width:780px){.pay-method-icon{width:32px;height:32px;font-size:1rem;}.pay-method{padding:0.7rem 0.8rem;gap:0.7rem;}}
 
-.btn-pay{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.25s;margin-bottom:0.8rem;line-height:1.4;white-space:normal;overflow-wrap:anywhere;}
+.btn-pay{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:var(--gold);color:#fff;border:none;cursor:pointer;font-weight:500;transition:all 0.25s;margin-bottom:0.8rem;line-height:1.4;white-space:normal;overflow-wrap:anywhere;}
 .btn-pay:hover{opacity:0.88;transform:translateY(-1px);}
-.btn-pay:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+.btn-pay:disabled{opacity:0.72;cursor:not-allowed;transform:none;}
 .btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;padding:1rem;background:transparent;color:var(--cream);border:1px solid rgba(201,168,76,0.35);cursor:pointer;font-weight:400;transition:all 0.25s;line-height:1.4;white-space:normal;overflow-wrap:anywhere;}
 .btn-cod:hover{border-color:var(--gold);color:var(--gold);}
-.btn-cod:disabled{opacity:0.5;cursor:not-allowed;}
+.btn-cod:disabled{opacity:0.72;cursor:not-allowed;}
+.btn-pay.is-loading,.btn-cod.is-loading{position:relative;color:transparent!important;pointer-events:none}
+.btn-pay.is-loading::after,.btn-cod.is-loading::after{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:#fff}
+.btn-cod.is-loading::after{color:var(--gold)}
+@keyframes spinBtn{to{transform:rotate(360deg)}}
 .trust-row{display:flex;gap:1.5rem;justify-content:center;margin-top:1.2rem;font-size:0.6rem;color:var(--gold-dim);letter-spacing:0.06em;flex-wrap:wrap;}
 /* Success screen */
 #successScreen{display:none;text-align:center;padding:4rem 2rem;max-width:560px;margin:0 auto;}
@@ -3526,8 +3573,10 @@ window.SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY_PLACEHOLDER";
 <script>
 // ── Cart (must match cart.js CART_KEY) ────────────────────────────────────
 const CART_KEY = 'akshar_cart';
-function getCart()  { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch { return []; } }
-function clearCart(){ localStorage.removeItem(CART_KEY); }
+const BUY_NOW_KEY = 'iac_buy_now_cart';
+function activeCartKey() { return localStorage.getItem(BUY_NOW_KEY) ? BUY_NOW_KEY : CART_KEY; }
+function getCart()  { try { return JSON.parse(localStorage.getItem(activeCartKey()) || '[]'); } catch { return []; } }
+function clearCart(){ localStorage.removeItem(activeCartKey()); }
 const ABANDONED_SESSION_KEY = 'iac_abandoned_checkout_session';
 function checkoutSessionId() {
   let id = localStorage.getItem(ABANDONED_SESSION_KEY);
@@ -3545,7 +3594,7 @@ function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
 function cartSubtotal(cart) { return cart.reduce((s, i) => s + itemPrice(i) * itemQty(i), 0); }
-function saveCart(cart) { localStorage.setItem(CART_KEY, JSON.stringify(cart)); }
+function saveCart(cart) { localStorage.setItem(activeCartKey(), JSON.stringify(cart)); }
 function updateCheckoutQty(index, delta) {
   const cart = getCart();
   if (!cart[index]) return;
@@ -3726,9 +3775,19 @@ function collectAddr() {
 }
 
 // ── Disable / enable buttons ───────────────────────────────────────────────
-function setLoading(on) {
-  document.getElementById('btnPayNow').disabled = on;
-  document.getElementById('btnCOD').disabled    = on;
+let _loadingMethod = '';
+function setLoading(on, method = '') {
+  _loadingMethod = on ? method : '';
+  const pay = document.getElementById('btnPayNow');
+  const cod = document.getElementById('btnCOD');
+  if (pay) {
+    pay.disabled = on;
+    pay.classList.toggle('is-loading', on && method === 'online');
+  }
+  if (cod) {
+    cod.disabled = on;
+    cod.classList.toggle('is-loading', on && method === 'cod');
+  }
 }
 
 // ── Payment method radio swap ──────────────────────────────────────────────
@@ -3747,7 +3806,7 @@ document.addEventListener('change', e => {
 async function submitOrder(method) {
   const addr = collectAddr();
   if (!addr) return;
-  setLoading(true);
+  setLoading(true, method);
   await saveAbandonedCheckout('open');
 
   if (method === 'online') {
