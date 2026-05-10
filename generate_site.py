@@ -260,10 +260,25 @@ src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
 /></noscript>
 <!-- End Meta Pixel Code -->"""
 
+GOOGLE_ADS_TAG = """<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-18119332653"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'AW-18119332653');
+</script>
+<!-- End Google tag -->"""
+
 def with_meta_pixel(html: str) -> str:
-    if "1702042431242274" in html:
+    tags = []
+    if "1702042431242274" not in html:
+        tags.append(META_PIXEL_CODE)
+    if "googletagmanager.com/gtag/js?id=AW-18119332653" not in html:
+        tags.append(GOOGLE_ADS_TAG)
+    if not tags:
         return html
-    return html.replace("</head>", f"{META_PIXEL_CODE}\n</head>", 1)
+    return html.replace("</head>", "\n".join(tags) + "\n</head>", 1)
 
 # ── HTML template ────────────────────────────────────────────────────────────
 HTML = r"""<!DOCTYPE html>
@@ -4045,7 +4060,19 @@ async function autoLogin(email, name, phone) {
 }
 
 // ── Success screen ─────────────────────────────────────────────────────────
+function trackGoogleAdsPurchase(orderId) {
+  if (!orderId || typeof gtag !== 'function') return;
+  const key = 'iac_google_ads_purchase_' + orderId;
+  if (localStorage.getItem(key)) return;
+  gtag('event', 'conversion', {
+    send_to: 'AW-18119332653/dQPCCJ7L8KQcEK2m_L9D',
+    transaction_id: String(orderId),
+  });
+  localStorage.setItem(key, '1');
+}
+
 function showSuccess(type, orderId, addr) {
+  trackGoogleAdsPurchase(orderId);
   document.getElementById('checkoutScreen').style.display = 'none';
   const s = document.getElementById('successScreen');
   s.style.display = 'block';
