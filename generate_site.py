@@ -167,11 +167,17 @@ for b in books:
         "ts":   scraped,           # so we can sort newest-first when needed
         "pdf":  b.get("sample_pdf") or "",  # path to sample PDF (read-first-pages preview)
         "pdf_pages": b.get("sample_pdf_pages") or 0,
+<<<<<<< HEAD
         "rating": b.get("rating_value") or "",
         "review_count": b.get("review_count") or "",
         "order_badge": clean_text(b.get("order_badge", "")),
         "review_image": public_image_url(b.get("review_image_url", "")),
         "review_video": b.get("review_video_url") or "",
+=======
+        # Customer reviews — list of { name, rating (1-5), text } objects.
+        # Rendered on both SSR + dynamic product pages, contributes to JSON-LD.
+        "reviews": list(b.get("reviews") or []),
+>>>>>>> 046fa6d9 (Restore bookstagram videos + add Customer Reviews on SSR product pages)
     })
 
 # Put new arrivals at the very front so they're discoverable on first scroll
@@ -2849,12 +2855,34 @@ def product_json_ld(book):
             },
         },
     }
+<<<<<<< HEAD
     if rating_value and review_count:
         ld["aggregateRating"] = {
             "@type": "AggregateRating",
             "ratingValue": str(rating_value),
             "reviewCount": str(review_count),
         }
+=======
+    # Per-product reviews → AggregateRating + Review nodes (Google rich snippets)
+    reviews = book.get("reviews") or []
+    if reviews:
+        ratings = [int(r.get("rating") or 5) for r in reviews]
+        avg = sum(ratings) / len(ratings)
+        ld["aggregateRating"] = {
+            "@type": "AggregateRating",
+            "ratingValue": round(avg, 1),
+            "reviewCount": len(reviews),
+            "bestRating": 5,
+        }
+        ld["review"] = [
+            {
+                "@type": "Review",
+                "author": {"@type": "Person", "name": r.get("name") or "Verified Buyer"},
+                "reviewRating": {"@type": "Rating", "ratingValue": int(r.get("rating") or 5), "bestRating": 5},
+                "reviewBody": r.get("text") or "",
+            } for r in reviews
+        ]
+>>>>>>> 046fa6d9 (Restore bookstagram videos + add Customer Reviews on SSR product pages)
     return json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
 
 def static_product_html(book):
@@ -2918,6 +2946,85 @@ def static_product_html(book):
         "img": book.get("img", ""),
         "qty": 1,
     }, ensure_ascii=False).replace("</", "<\\/")
+
+    # ── Customer reviews block (renders only when book has reviews) ──────
+    reviews = book.get("reviews") or []
+    reviews_html = ""
+    if reviews:
+        ratings = [int(r.get("rating") or 5) for r in reviews]
+        avg = round(sum(ratings) / len(ratings), 1)
+        full_stars = int(avg)
+        half_star  = 1 if (avg - full_stars) >= 0.4 else 0
+        empty_stars = 5 - full_stars - half_star
+        stars_str = ("★" * full_stars) + ("⯨" * half_star) + ("☆" * empty_stars)
+        review_cards = []
+        for r in reviews:
+            r_stars = "★" * int(r.get("rating") or 5) + "☆" * (5 - int(r.get("rating") or 5))
+            initial = (r.get("name") or "?")[0].upper()
+            review_cards.append(
+                f'<article style="background:#fff;border:1px solid var(--border);padding:1.1rem 1.2rem">'
+                f'<div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.55rem">'
+                f'<div style="width:34px;height:34px;border-radius:50%;background:rgba(138,106,31,.15);'
+                f'color:#8a6a1f;display:flex;align-items:center;justify-content:center;font-weight:700;'
+                f'font-family:Montserrat,sans-serif">{html_escape(initial)}</div>'
+                f'<div style="flex:1;min-width:0"><div style="font-weight:600;color:#2a2018;font-size:.85rem">'
+                f'{html_escape(r.get("name") or "Verified Buyer")}</div>'
+                f'<div style="font-size:.6rem;letter-spacing:.18em;color:#5a4a38;text-transform:uppercase">'
+                f'<span style="color:#c9a84c;letter-spacing:.05em;font-size:.85rem">{r_stars}</span>'
+                f' &nbsp; ✓ Verified Buyer</div></div></div>'
+                f'<div style="color:#2a2018;font-size:.85rem;line-height:1.7">{html_escape(r.get("text") or "")}</div>'
+                f'</article>'
+            )
+        reviews_html = (
+            f'<section style="max-width:1260px;margin:1.5rem auto 0;padding:0 1rem">'
+            f'<div style="border-top:1px solid var(--border);padding-top:1.6rem">'
+            f'<div style="display:flex;align-items:baseline;gap:.7rem;margin-bottom:1.1rem;flex-wrap:wrap">'
+            f'<h2 style="font-family:\'Cormorant Garamond\',serif;font-size:1.6rem;font-weight:500;color:#2a2018;margin:0">'
+            f'Customer Reviews</h2>'
+            f'<span style="color:#c9a84c;font-size:1.1rem;letter-spacing:.05em">{stars_str}</span>'
+            f'<span style="color:#5a4a38;font-size:.78rem">{avg}/5 · {len(reviews)} review{"s" if len(reviews)!=1 else ""}</span>'
+            f'</div>'
+            f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem">'
+            f'{"".join(review_cards)}'
+            f'</div></div></section>'
+        )
+
+    # ── Bookstagram / customer reels strip (loaded from data/social_proof.json) ──
+    bkg_html = ""
+    if social_items:
+        cards = []
+        for it in social_items[:6]:
+            src = it.get("src") or ""
+            poster = it.get("poster") or ""
+            cap = html_escape(it.get("caption") or "")
+            if it.get("type") == "video" and src:
+                cards.append(
+                    f'<div style="flex:0 0 200px;aspect-ratio:9/16;background:#1a1208;border:1px solid var(--border);'
+                    f'position:relative;overflow:hidden;scroll-snap-align:start">'
+                    f'<video src="{html_escape(src)}" {"poster=\"" + html_escape(poster) + "\"" if poster else ""} '
+                    f'preload="metadata" muted playsinline loop controls '
+                    f'style="width:100%;height:100%;object-fit:cover;display:block"></video>'
+                    f'{f"<div style=\"position:absolute;left:0;right:0;bottom:0;padding:.6rem;background:linear-gradient(to top,rgba(0,0,0,.85),transparent);font-size:.65rem;color:#f0e8d8;line-height:1.3\">{cap}</div>" if cap else ""}'
+                    f'</div>'
+                )
+            elif src:
+                cards.append(
+                    f'<div style="flex:0 0 200px;aspect-ratio:9/16;background:#1a1208;border:1px solid var(--border);'
+                    f'position:relative;overflow:hidden;scroll-snap-align:start">'
+                    f'<img src="{html_escape(src)}" alt="{cap}" loading="lazy" '
+                    f'style="width:100%;height:100%;object-fit:cover;display:block"/>'
+                    f'{f"<div style=\"position:absolute;left:0;right:0;bottom:0;padding:.6rem;background:linear-gradient(to top,rgba(0,0,0,.85),transparent);font-size:.65rem;color:#f0e8d8;line-height:1.3\">{cap}</div>" if cap else ""}'
+                    f'</div>'
+                )
+        bkg_html = (
+            f'<section style="max-width:1260px;margin:2rem auto 0;padding:0 1rem">'
+            f'<div style="border-top:1px solid var(--border);padding-top:1.6rem">'
+            f'<h2 style="font-family:\'Cormorant Garamond\',serif;font-size:1.4rem;font-weight:500;color:#2a2018;margin:0 0 1rem">'
+            f'#InkAndChaiBookstagram <span style="color:#5a4a38;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-family:Montserrat,sans-serif">Real customer unboxings</span></h2>'
+            f'<div style="display:flex;gap:.85rem;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:.5rem;-webkit-overflow-scrolling:touch">'
+            f'{"".join(cards)}'
+            f'</div></div></section>'
+        )
     return f"""<!DOCTYPE html>
 <html lang="{'hi' if is_hindi_book(book) else 'en'}">
 <head>
@@ -2973,6 +3080,8 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
     <div class="details"><div class="label">Details</div><dl><dt>Category</dt><dd>{cat}</dd><dt>Publisher</dt><dd>{html_escape(book.get('pub') or 'Ink & Chai')}</dd><dt>ISBN</dt><dd>{html_escape(book.get('isbn') or 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
+{reviews_html}
+{bkg_html}
 
 <!-- Image lightbox -->
 <div id="lb" onclick="closeLB()" style="position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10500;display:none;align-items:center;justify-content:center;padding:1.5rem;cursor:zoom-out;backdrop-filter:blur(8px)" role="dialog" aria-label="Cover preview">
