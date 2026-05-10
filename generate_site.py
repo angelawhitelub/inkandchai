@@ -167,17 +167,15 @@ for b in books:
         "ts":   scraped,           # so we can sort newest-first when needed
         "pdf":  b.get("sample_pdf") or "",  # path to sample PDF (read-first-pages preview)
         "pdf_pages": b.get("sample_pdf_pages") or 0,
-<<<<<<< HEAD
+        # Codex-added review proof fields (kept alongside the new structured reviews)
         "rating": b.get("rating_value") or "",
         "review_count": b.get("review_count") or "",
         "order_badge": clean_text(b.get("order_badge", "")),
         "review_image": public_image_url(b.get("review_image_url", "")),
         "review_video": b.get("review_video_url") or "",
-=======
         # Customer reviews — list of { name, rating (1-5), text } objects.
         # Rendered on both SSR + dynamic product pages, contributes to JSON-LD.
         "reviews": list(b.get("reviews") or []),
->>>>>>> 046fa6d9 (Restore bookstagram videos + add Customer Reviews on SSR product pages)
     })
 
 # Put new arrivals at the very front so they're discoverable on first scroll
@@ -2855,15 +2853,9 @@ def product_json_ld(book):
             },
         },
     }
-<<<<<<< HEAD
-    if rating_value and review_count:
-        ld["aggregateRating"] = {
-            "@type": "AggregateRating",
-            "ratingValue": str(rating_value),
-            "reviewCount": str(review_count),
-        }
-=======
-    # Per-product reviews → AggregateRating + Review nodes (Google rich snippets)
+    # Per-product reviews → AggregateRating + Review nodes (Google rich snippets).
+    # Prefer the structured `reviews` list when present (richer schema); fall back
+    # to the codex-added `rating_value` + `review_count` manual summary.
     reviews = book.get("reviews") or []
     if reviews:
         ratings = [int(r.get("rating") or 5) for r in reviews]
@@ -2882,7 +2874,12 @@ def product_json_ld(book):
                 "reviewBody": r.get("text") or "",
             } for r in reviews
         ]
->>>>>>> 046fa6d9 (Restore bookstagram videos + add Customer Reviews on SSR product pages)
+    elif rating_value and review_count:
+        ld["aggregateRating"] = {
+            "@type": "AggregateRating",
+            "ratingValue": str(rating_value),
+            "reviewCount": str(review_count),
+        }
     return json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
 
 def static_product_html(book):
