@@ -167,6 +167,11 @@ for b in books:
         "ts":   scraped,           # so we can sort newest-first when needed
         "pdf":  b.get("sample_pdf") or "",  # path to sample PDF (read-first-pages preview)
         "pdf_pages": b.get("sample_pdf_pages") or 0,
+        "rating": b.get("rating_value") or "",
+        "review_count": b.get("review_count") or "",
+        "order_badge": clean_text(b.get("order_badge", "")),
+        "review_image": public_image_url(b.get("review_image_url", "")),
+        "review_video": b.get("review_video_url") or "",
     })
 
 # Put new arrivals at the very front so they're discoverable on first scroll
@@ -1925,6 +1930,20 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-rating{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.2rem}
 .prod-stars{color:#c9a84c;font-size:1.05rem;letter-spacing:0.04em}
 .prod-rating-label{font-size:0.7rem;color:var(--cream-dim)}
+.prod-order-badge{display:inline-flex;align-items:center;gap:0.4rem;width:max-content;margin-top:-0.25rem;border:1px solid rgba(201,168,76,0.35);background:rgba(201,168,76,0.1);color:var(--gold-light);font-size:0.62rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.42rem 0.75rem}
+.review-panel{border:1px solid rgba(201,168,76,0.24);background:rgba(201,168,76,0.045);padding:1.15rem;margin-top:0.35rem}
+.review-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:0.95rem}
+.review-kicker{font-size:0.56rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold);margin-bottom:0.25rem}
+.review-title{font-family:'Cormorant Garamond',serif;font-size:1.35rem;color:var(--white);line-height:1.1}
+.review-score{text-align:right;flex-shrink:0}
+.review-score strong{font-family:'Cormorant Garamond',serif;font-size:2rem;color:var(--gold);line-height:1}
+.review-score span{display:block;font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.12em;text-transform:uppercase;margin-top:0.2rem}
+.review-media{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem}
+.review-media figure{margin:0;border:1px solid rgba(201,168,76,0.22);background:rgba(0,0,0,0.18);overflow:hidden}
+.review-media img,.review-media video{width:100%;height:220px;object-fit:cover;display:block;background:#090704}
+.review-media figcaption{padding:0.65rem 0.75rem;font-size:0.62rem;color:var(--cream-dim);letter-spacing:0.09em;line-height:1.5}
+.review-note{font-size:0.74rem;color:var(--cream-dim);line-height:1.7;margin-top:0.9rem}
+@media(max-width:720px){.review-head{display:block}.review-score{text-align:left;margin-top:0.7rem}.review-media{grid-template-columns:1fr}.review-media img,.review-media video{height:auto;max-height:360px;object-fit:contain}}
 
 /* INK & CHAI PROMISE */
 .promise-box{border:1px solid rgba(201,168,76,0.2);background:rgba(201,168,76,0.04);padding:1rem 1.2rem;border-radius:2px}
@@ -2288,6 +2307,8 @@ function renderProduct(b) {
   // JSON-LD structured data — Google rich-snippet for Product + Breadcrumbs
   const _sale = parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0);
   const _orig = parseFloat((b.op||'').replace(/[^0-9.]/g,'')||0);
+  const _rating = parseFloat(b.rating || '4.7') || 4.7;
+  const _reviewCount = parseInt(b.review_count || '128', 10) || 128;
   const ld = {
     "@context": "https://schema.org",
     "@graph": [
@@ -2321,8 +2342,8 @@ function renderProduct(b) {
         },
         "aggregateRating": {
           "@type": "AggregateRating",
-          "ratingValue": "4.7",
-          "reviewCount": "128"
+          "ratingValue": _rating.toFixed(1),
+          "reviewCount": String(_reviewCount)
         }
       },
       {
@@ -2380,9 +2401,10 @@ function renderProduct(b) {
 
         <h1 class="prod-title">${esc(b.t)}</h1>
         ${b.a ? `<div class="prod-author">by <span>${esc(b.a)}</span></div>` : ''}
+        ${b.order_badge ? `<div class="prod-order-badge">🔥 ${esc(b.order_badge)}</div>` : ''}
         <div class="prod-rating">
           <span class="prod-stars">★★★★★</span>
-          <span class="prod-rating-label">Bestseller · Loved by readers across India</span>
+          <span class="prod-rating-label">${b.rating && b.review_count ? `${esc(b.rating)} rating · ${esc(String(b.review_count))} customer reviews` : 'Bestseller · Loved by readers across India'}</span>
         </div>
 
         <div class="divider"></div>
@@ -2447,6 +2469,27 @@ function renderProduct(b) {
           <div class="promise-box-title">🛡 Ink &amp; Chai Promise</div>
           <div class="promise-box-text">Get a <strong>free replacement</strong> if you receive a damaged, misprinted, or wrong book — no questions asked. Reply to your order email within 24 hours of delivery.</div>
         </div>
+
+        ${b.review_count ? `
+        <section class="review-panel" aria-label="Customer reviews">
+          <div class="review-head">
+            <div>
+              <div class="review-kicker">Reader reviews</div>
+              <div class="review-title">Trusted by Hindi self-help readers</div>
+            </div>
+            <div class="review-score">
+              <strong>${esc(b.rating || '4.6')}</strong>
+              <span>${esc(String(b.review_count))} reviews</span>
+            </div>
+          </div>
+          <div class="prod-stars" aria-label="${esc(b.rating || '4.6')} out of 5 stars">★★★★★</div>
+          ${(b.review_image || b.review_video) ? `
+          <div class="review-media">
+            ${b.review_image ? `<figure><img src="${esc(b.review_image)}" alt="${esc(b.t)} customer review photo" loading="lazy" onclick="openLightbox(this.src, this.alt)" /><figcaption>Customer photo shared after delivery</figcaption></figure>` : ''}
+            ${b.review_video ? `<figure><video src="${esc(b.review_video)}" controls playsinline preload="metadata"></video><figcaption>Customer video review / unboxing</figcaption></figure>` : ''}
+          </div>` : ''}
+          <p class="review-note">Readers commonly choose this Hindi edition for discipline, mindset and motivation. Order through checkout for tracking, email updates and replacement support.</p>
+        </section>` : ''}
       </div>
     </div>
 
@@ -2769,6 +2812,8 @@ def is_hindi_book(book):
 def product_json_ld(book):
     price = price_number(book)
     canonical = product_abs_url(book["slug"])
+    rating_value = book.get("rating") or book.get("rating_value")
+    review_count = book.get("review_count")
     ld = {
         "@context": "https://schema.org",
         "@type": "Book",
@@ -2804,6 +2849,12 @@ def product_json_ld(book):
             },
         },
     }
+    if rating_value and review_count:
+        ld["aggregateRating"] = {
+            "@type": "AggregateRating",
+            "ratingValue": str(rating_value),
+            "reviewCount": str(review_count),
+        }
     return json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
 
 def static_product_html(book):
@@ -2820,6 +2871,29 @@ def static_product_html(book):
     static_back_cover = f'<img src="{back_img}" alt="{title} back cover" loading="lazy" onclick="openLB(this.src,this.alt)" style="cursor:zoom-in"/>' if back_img else ""
     sample_pdf = book.get("pdf") or ""
     sample_pdf_pages = book.get("pdf_pages") or 0
+    rating = html_escape(str(book.get("rating") or book.get("rating_value") or ""))
+    review_count = html_escape(str(book.get("review_count") or ""))
+    order_badge = html_escape(book.get("order_badge") or "")
+    review_image = html_escape(book.get("review_image") or book.get("review_image_url") or "")
+    review_video = html_escape(book.get("review_video") or book.get("review_video_url") or "")
+    review_media_html = ""
+    if review_count and (review_image or review_video):
+        review_media_html = (
+            '<div class="review-media">'
+            + (f'<figure><img src="{review_image}" alt="{title} customer review photo" loading="lazy" onclick="openLB(this.src,this.alt)" style="cursor:zoom-in"/><figcaption>Customer photo shared after delivery</figcaption></figure>' if review_image else "")
+            + (f'<figure><video src="{review_video}" controls playsinline preload="metadata"></video><figcaption>Customer video review / unboxing</figcaption></figure>' if review_video else "")
+            + '</div>'
+        )
+    review_html = ""
+    if review_count:
+        review_html = (
+            f'<section class="reviews"><div class="review-head"><div><div class="label">Reader reviews</div>'
+            f'<h2>Trusted by Hindi self-help readers</h2></div><div class="score"><strong>{rating or "4.6"}</strong><span>{review_count} reviews</span></div></div>'
+            f'<div class="stars" aria-label="{rating or "4.6"} out of 5 stars">★★★★★</div>{review_media_html}'
+            f'<p>Readers commonly choose this Hindi edition for discipline, mindset and motivation. Order through checkout for tracking, email updates and replacement support.</p></section>'
+        )
+    order_badge_html = f'<div class="order-badge">🔥 {order_badge}</div>' if order_badge else ""
+    rating_line_html = f'<div class="rating-line"><span class="stars">★★★★★</span><span>{rating} rating · {review_count} customer reviews</span></div>' if review_count else ""
     sample_pdf_html = ""
     if sample_pdf:
         pages_label = f" ({sample_pdf_pages} pages)" if sample_pdf_pages else ""
@@ -2866,10 +2940,11 @@ def static_product_html(book):
 .promo{{padding:.62rem 1rem;text-align:center;border-bottom:1px solid var(--border);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}} .promo strong{{color:var(--gold)}}
 nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(250,247,242,.96);position:sticky;top:0;z-index:5}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
 .wrap{{max-width:1260px;margin:0 auto;padding:clamp(1.2rem,4vw,4rem) 1rem 4rem;display:grid;grid-template-columns:minmax(360px,.95fr) 1.05fr;gap:clamp(1.4rem,4vw,4rem);align-items:start}} .cover{{align-self:start;background:var(--panel);border:1px solid var(--border);padding:clamp(1rem,2.5vw,1.8rem);display:flex;align-items:center;justify-content:center;gap:.85rem;flex-wrap:wrap}} .cover img{{max-width:100%;max-height:560px;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,.5)}} .cover-gallery img{{width:calc((100% - .85rem)/2);max-width:310px}} .cover-gallery img+img{{max-height:540px}}
-.crumb{{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}} h1{{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}} .author{{color:var(--muted);letter-spacing:.08em;margin-bottom:1.2rem}} .price{{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}} .orig{{color:var(--muted);text-decoration:line-through;margin-left:.8rem}} .stock{{display:inline-block;margin:1rem 0;color:#7fd37f;border:1px solid rgba(127,211,127,.3);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}}
+.crumb{{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}} h1{{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}} .author{{color:var(--muted);letter-spacing:.08em;margin-bottom:1rem}} .order-badge{{display:inline-flex;margin:0 0 1rem;border:1px solid rgba(138,106,31,.32);background:rgba(138,106,31,.08);color:var(--gold);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;padding:.42rem .75rem}} .rating-line{{display:flex;align-items:center;gap:.55rem;margin:0 0 1rem;color:var(--muted);font-size:.72rem}} .stars{{color:var(--gold);letter-spacing:.04em}} .price{{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}} .orig{{color:var(--muted);text-decoration:line-through;margin-left:.8rem}} .stock{{display:inline-block;margin:1rem 0;color:#7fd37f;border:1px solid rgba(127,211,127,.3);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}}
 .trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(138,106,31,.06);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:#fff}} .secondary{{background:transparent;color:var(--gold)}}
 .desc,.details{{border-top:1px solid var(--border);padding-top:1.2rem;margin-top:1.2rem;color:var(--muted);font-size:.9rem;line-height:1.8}} .label{{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}} .details dl{{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}} .details dt{{color:var(--gold)}} .details dd{{margin:0;color:var(--cream)}}
-@media(max-width:760px){{.wrap{{display:block;padding-bottom:8rem}} .cover{{margin-bottom:1.2rem}} .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;background:rgba(250,247,242,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);box-shadow:0 -10px 26px rgba(60,40,10,.12)}} .trust{{grid-template-columns:1fr}}}}
+.reviews{{border:1px solid var(--border);background:rgba(138,106,31,.055);padding:1.15rem;margin-top:1.3rem;color:var(--muted);line-height:1.7}} .review-head{{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}} .review-head h2{{font-size:1.45rem;margin:.1rem 0 0}} .score{{text-align:right;flex-shrink:0}} .score strong{{display:block;font-family:"Cormorant Garamond",serif;font-size:2.2rem;color:var(--gold);line-height:.9}} .score span{{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}} .review-media{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:.9rem}} .review-media figure{{margin:0;border:1px solid var(--border);background:#fff;overflow:hidden}} .review-media img,.review-media video{{display:block;width:100%;height:240px;object-fit:cover;background:#f4efe7}} .review-media figcaption{{padding:.65rem .75rem;font-size:.65rem;letter-spacing:.08em;color:var(--muted)}}
+@media(max-width:760px){{.wrap{{display:block;padding-bottom:8rem}} .cover{{margin-bottom:1.2rem}} .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;background:rgba(250,247,242,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);box-shadow:0 -10px 26px rgba(60,40,10,.12)}} .trust{{grid-template-columns:1fr}} .review-head{{display:block}} .score{{text-align:left;margin-top:.7rem}} .review-media{{grid-template-columns:1fr}} .review-media img,.review-media video{{height:auto;max-height:360px;object-fit:contain}}}}
 </style>
 </head>
 <body>
@@ -2884,6 +2959,8 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
     <div class="crumb"><a href="/">Home</a> / <a href="/category/?name={quote(book.get('cat') or 'Books')}">{cat}</a></div>
     <h1>{title}</h1>
     <div class="author">by {author}</div>
+{order_badge_html}
+{rating_line_html}
     <div><span class="price">{price}</span>{f'<span class="orig">{orig}</span>' if orig else ''}</div>
     <span class="stock">In Stock</span>
     <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
@@ -2892,6 +2969,7 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
       <button class="primary" onclick="addBookToCart('{html_escape(book['slug'])}'); location.href='/checkout/'">Buy Now</button>
     </div>
     <div class="desc"><div class="label">About this book</div>{desc}</div>
+{review_html}
     <div class="details"><div class="label">Details</div><dl><dt>Category</dt><dd>{cat}</dd><dt>Publisher</dt><dd>{html_escape(book.get('pub') or 'Ink & Chai')}</dd><dt>ISBN</dt><dd>{html_escape(book.get('isbn') or 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
