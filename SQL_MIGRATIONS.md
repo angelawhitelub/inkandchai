@@ -56,3 +56,18 @@ create index if not exists abandoned_checkouts_contact_idx
 After running this, the checkout page will quietly save leads while customers
 type. The admin dashboard will show open abandoned checkouts older than 30
 minutes, with CSV export plus WhatsApp/email follow-up links.
+
+## 2026-05-10 — Partial payment (10% advance + 90% COD)
+
+For orders above ₹599 customers can pay 10% upfront online and 90% on
+delivery. Reduces fake/RTO COD orders since the customer has skin in
+the game. Adds one column to track how much was paid online.
+
+```sql
+alter table orders add column if not exists advance_paid_paise integer not null default 0;
+```
+
+After running, the new "💰 Partial Payment" option at checkout becomes
+active (it stays hidden until total > ₹599). When the advance is paid
+the row flips to status='partial_cod_pending' and advance_paid_paise
+gets set; the COD-due amount is `amount_paise - advance_paid_paise`.
