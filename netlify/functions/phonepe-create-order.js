@@ -29,6 +29,16 @@ const CORS = {
 const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
 
+function normalizeCouponCode(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function couponDiscount(subtotal, code) {
+  const normalized = normalizeCouponCode(code);
+  if (normalized !== 'INKLOVE10' || subtotal < 499) return { code: '', discount: 0 };
+  return { code: normalized, discount: Math.floor(subtotal * 0.10) };
+}
+
 // ── OAuth token cache (warm-function reuse) ───────────────────────────────
 let _tokenCache = { token: null, expiresAt: 0 };
 
@@ -79,7 +89,7 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body); }
   catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
-  const { cart, customer } = body;
+  const { cart, customer, coupon } = body;
   if (!cart?.length || !customer?.phone) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
   }
@@ -87,7 +97,8 @@ exports.handler = async (event) => {
   // Re-derive total server-side
   const subtotal    = cart.reduce((s, i) => s + (i.price * i.qty), 0);
   const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-  const total       = subtotal + shipping;
+  const couponInfo  = couponDiscount(subtotal, coupon);
+  const total       = Math.max(1, subtotal + shipping - couponInfo.discount);
   const amountPaise = Math.round(total * 100);
   if (amountPaise < 100) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Amount too low' }) };
@@ -130,6 +141,7 @@ exports.handler = async (event) => {
         udf1: customer.name?.slice(0, 80)  || '',
         udf2: customer.phone?.slice(0, 20) || '',
         udf3: customer.email?.slice(0, 80) || '',
+        udf4: couponInfo.code || '',
       },
       paymentFlow: {
         type: 'PG_CHECKOUT',

@@ -777,7 +777,7 @@ HTML = r"""<!DOCTYPE html>
     .nav-actions { gap: 0.7rem; min-width: 0; }
     .nav-actions .btn-nav, .nav-actions .nav-cart-wrap { display: none; }
     .theme-toggle { width: 34px; height: 34px; margin-right: 0; flex: 0 0 auto; }
-    .nav-icon { flex: 0 0 auto; }
+    .nav-icon { flex: 0 0 44px; width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center; font-size:1.18rem; }
     section { padding: 3.2rem 0.85rem; overflow-x: hidden; }
     .featured-header { display: block; margin-bottom: 1.8rem; }
     .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 0.2rem; }
@@ -790,7 +790,10 @@ HTML = r"""<!DOCTYPE html>
     .book-orig-price { margin-left: 0.25rem; }
     .btn-add-card { font-size: 0.5rem; letter-spacing: 0.14em; padding: 0.62rem 0.25rem; }
     .search-wrap { max-width: none; margin-bottom: 1.4rem; }
-    .search-input { font-size: 0.9rem; padding-top: 0.9rem; padding-bottom: 0.9rem; }
+    .search-box { min-height:54px; }
+    .search-icon { left:0.95rem; font-size:1.05rem; }
+    .search-input { font-size:16px; padding:1rem 3.5rem 1rem 2.75rem; min-height:54px; }
+    .search-clear { width:44px; height:44px; right:0.25rem; font-size:1.3rem; }
     .search-hints { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 0.15rem; }
     .search-chip { flex: 0 0 auto; }
     .hero { min-height:auto; }
@@ -3477,6 +3480,16 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color
 .checkout-qty-num{min-width:24px;text-align:center;color:var(--cream);font-size:0.78rem;font-weight:500;}
 .checkout-remove{border:none;background:transparent;color:#c97a7a;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;margin-left:0.2rem;}
 .checkout-remove:hover{color:#e06060;}
+.coupon-box{border-top:1px solid var(--border);margin-top:1rem;padding-top:1rem;}
+.coupon-row{display:grid;grid-template-columns:1fr auto;gap:0.55rem;align-items:stretch;}
+.coupon-input{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.12em;}
+.coupon-btn{font-family:'Montserrat',sans-serif;font-size:0.55rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.75rem 0.9rem;background:var(--bg2);color:var(--gold);border:1px solid var(--border);cursor:pointer;font-weight:500;}
+.coupon-btn:hover{border-color:var(--gold);background:rgba(138,106,31,0.08);}
+.coupon-msg{min-height:1.2em;margin-top:0.45rem;font-size:0.58rem;letter-spacing:0.05em;color:var(--cream-dim);line-height:1.5;}
+.summary-line{display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;font-size:0.78rem;gap:1rem;}
+.summary-line-label{color:var(--cream-dim);letter-spacing:0.04em;}
+.summary-line-value{color:var(--cream);text-align:right;white-space:nowrap;}
+.summary-line-discount .summary-line-value{color:#5d9b55;}
 .summary-total{display:flex;justify-content:space-between;align-items:baseline;padding-top:1.2rem;margin-top:0.4rem;border-top:1px solid var(--border);}
 .total-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);}
 .total-amt{font-family:'Cormorant Garamond',serif;font-size:1.8rem;color:var(--gold);font-weight:600;}
@@ -3544,6 +3557,8 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
   .form-row{grid-template-columns:1fr;gap:0;}
   .pincode-row{grid-template-columns:110px 1fr;gap:0.7rem;}
   .pincode-row>div:nth-child(3){grid-column:1 / -1;}
+  .coupon-row{grid-template-columns:1fr;}
+  .coupon-btn{min-height:44px;}
   .btn-pay,.btn-cod{letter-spacing:0.14em;padding:1rem 0.75rem;}
   .trust-row{display:grid;gap:0.55rem;font-size:0.58rem;}
   footer{padding:1.5rem 1rem;line-height:1.8;overflow-wrap:anywhere;}
@@ -3655,6 +3670,14 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
             <a href="/" style="color:var(--gold);">Browse books →</a>
           </div>
         </div>
+        <div class="coupon-box" id="couponBox" style="display:none;">
+          <label for="couponCode">Coupon Code</label>
+          <div class="coupon-row">
+            <input class="coupon-input" id="couponCode" type="text" placeholder="INKLOVE10" autocomplete="off" onkeydown="handleCouponKey(event)"/>
+            <button class="coupon-btn" type="button" onclick="applyCoupon()">Apply</button>
+          </div>
+          <div class="coupon-msg" id="couponMsg"></div>
+        </div>
         <div class="summary-total" id="orderTotal" style="display:none;">
           <span class="total-label">Total</span>
           <span class="total-amt" id="totalAmt">₹0</span>
@@ -3696,11 +3719,37 @@ function checkoutSessionId() {
 // Shipping rules — must match cart.js + server functions
 const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
+const COUPON_KEY = 'iac_checkout_coupon';
+const COUPONS = {
+  INKLOVE10: { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
+};
+let appliedCouponCode = (localStorage.getItem(COUPON_KEY) || '').toUpperCase();
 function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE; }
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
 function cartSubtotal(cart) { return cart.reduce((s, i) => s + itemPrice(i) * itemQty(i), 0); }
 function saveCart(cart) { localStorage.setItem(activeCartKey(), JSON.stringify(cart)); }
+function normalizeCouponCode(value) { return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function couponDiscount(subtotal, method = 'online') {
+  const code = normalizeCouponCode(appliedCouponCode);
+  const coupon = COUPONS[code];
+  if (!coupon) return { code: '', discount: 0, message: '' };
+  if (subtotal < coupon.minSubtotal) {
+    return { code, discount: 0, message: `Add ₹${(coupon.minSubtotal - subtotal).toLocaleString('en-IN')} more to use ${code}.` };
+  }
+  if (coupon.onlineOnly && method === 'cod') {
+    return { code, discount: 0, message: `${code} is valid only on Pay Now orders.` };
+  }
+  const discount = coupon.type === 'percent' ? Math.floor(subtotal * coupon.value / 100) : Math.floor(coupon.value);
+  return { code, discount: Math.max(0, discount), message: `${coupon.label} applied.` };
+}
+function orderTotals(cart, method = 'online') {
+  const subtotal = cartSubtotal(cart);
+  const shipping = calcShipping(subtotal);
+  const coupon = couponDiscount(subtotal, method);
+  const grand = Math.max(1, subtotal + shipping - coupon.discount);
+  return { subtotal, shipping, discount: coupon.discount, couponCode: coupon.code, couponMessage: coupon.message, total: grand };
+}
 function updateCheckoutQty(index, delta) {
   const cart = getCart();
   if (!cart[index]) return;
@@ -3718,6 +3767,39 @@ function removeCheckoutItem(index) {
   if (typeof scheduleAbandonedCapture === 'function') scheduleAbandonedCapture();
 }
 
+function handleCouponKey(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    applyCoupon();
+  }
+}
+
+function applyCoupon() {
+  const input = document.getElementById('couponCode');
+  const msg = document.getElementById('couponMsg');
+  const code = normalizeCouponCode(input?.value);
+  if (!code) {
+    appliedCouponCode = '';
+    localStorage.removeItem(COUPON_KEY);
+    if (msg) {
+      msg.textContent = 'Coupon removed.';
+      msg.style.color = 'var(--cream-dim)';
+    }
+    renderSummary();
+    return;
+  }
+  if (!COUPONS[code]) {
+    if (msg) {
+      msg.textContent = 'This coupon code is not valid.';
+      msg.style.color = '#c97a7a';
+    }
+    return;
+  }
+  appliedCouponCode = code;
+  localStorage.setItem(COUPON_KEY, code);
+  renderSummary();
+}
+
 // ── Render order summary ────────────────────────────────────────────────────
 function renderSummary() {
   const cart = getCart();
@@ -3726,18 +3808,26 @@ function renderSummary() {
   const totalEl   = document.getElementById('totalAmt');
   const btnPay    = document.getElementById('btnPayNow');
   const btnCOD    = document.getElementById('btnCOD');
+  const couponBox = document.getElementById('couponBox');
+  const couponInput = document.getElementById('couponCode');
+  const couponMsg = document.getElementById('couponMsg');
 
   if (!cart.length) {
     container.innerHTML = '<div class="empty-cart">Your cart is empty.<br/><a href="/" style="color:var(--gold);">Browse books →</a></div>';
     totalRow.style.display = 'none';
+    if (couponBox) couponBox.style.display = 'none';
     if (btnPay) btnPay.disabled = true;
     if (btnCOD) btnCOD.disabled = true;
     return;
   }
 
-  const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
-  const grand    = subtotal + shipping;
+  const { subtotal, shipping, discount, couponCode, couponMessage, total: grand } = orderTotals(cart, 'online');
+  if (couponBox) couponBox.style.display = 'block';
+  if (couponInput && couponInput.value !== appliedCouponCode) couponInput.value = appliedCouponCode;
+  if (couponMsg) {
+    couponMsg.textContent = couponMessage || 'Use INKLOVE10 for 10% off prepaid orders above ₹499.';
+    couponMsg.style.color = couponCode && discount > 0 ? '#5d9b55' : (couponMessage ? '#c97a7a' : 'var(--cream-dim)');
+  }
   container.innerHTML = cart.map((i, idx) => `
     <div class="order-item">
       <div class="item-img">
@@ -3759,13 +3849,17 @@ function renderSummary() {
         </div>
       </div>
     </div>`).join('') + `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.7rem 0;border-top:1px solid var(--border);margin-top:0.5rem;font-size:0.78rem;">
-      <span style="color:var(--cream-dim);letter-spacing:0.04em;">Subtotal</span>
-      <span style="color:var(--cream);">₹${subtotal.toLocaleString('en-IN')}</span>
+    <div class="summary-line" style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.7rem;">
+      <span class="summary-line-label">Subtotal</span>
+      <span class="summary-line-value">₹${subtotal.toLocaleString('en-IN')}</span>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0 0.7rem;font-size:0.78rem;">
-      <span style="color:var(--cream-dim);letter-spacing:0.04em;">Shipping (Delhivery)</span>
-      <span style="color:${shipping === 0 ? '#6dbf6d' : 'var(--cream)'};">${shipping === 0 ? 'FREE' : '₹' + shipping}</span>
+    ${discount > 0 ? `<div class="summary-line summary-line-discount">
+      <span class="summary-line-label">Coupon (${couponCode})</span>
+      <span class="summary-line-value">- ₹${discount.toLocaleString('en-IN')}</span>
+    </div>` : ''}
+    <div class="summary-line" style="padding-bottom:0.7rem;">
+      <span class="summary-line-label">Shipping (Delhivery)</span>
+      <span class="summary-line-value" style="color:${shipping === 0 ? '#5d9b55' : 'var(--cream)'};">${shipping === 0 ? 'FREE' : '₹' + shipping}</span>
     </div>
     ${shipping > 0 ? `<div style="font-size:0.6rem;color:var(--gold);letter-spacing:0.05em;padding:0 0 0.6rem;">💡 Add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more to qualify for free shipping</div>` : ''}`;
 
@@ -3777,7 +3871,11 @@ function renderSummary() {
     btnPay.textContent = `⚡ Pay Now — ₹${grand.toLocaleString('en-IN')}`;
     btnPay.disabled = false;
   }
-  if (btnCOD) btnCOD.disabled = false;
+  if (btnCOD) {
+    const codTotal = orderTotals(cart, 'cod').total;
+    btnCOD.textContent = `🚚 Cash on Delivery — ₹${codTotal.toLocaleString('en-IN')}`;
+    btnCOD.disabled = false;
+  }
 }
 
 function esc(s) {
@@ -3905,6 +4003,7 @@ document.addEventListener('change', e => {
   if (e.target?.name === 'payMethod') {
     document.querySelectorAll('.pay-method').forEach(m => m.classList.remove('active'));
     e.target.closest('.pay-method')?.classList.add('active');
+    renderSummary();
   }
 });
 
@@ -3930,6 +4029,7 @@ async function submitOrder(method) {
 // ── PhonePe Standard Checkout ──────────────────────────────────────────────
 async function doPhonePe(addr) {
   const cart = getCart();
+  const totals = orderTotals(cart, 'online');
   try {
     const res = await fetch('/.netlify/functions/phonepe-create-order', {
       method: 'POST',
@@ -3937,6 +4037,7 @@ async function doPhonePe(addr) {
       body: JSON.stringify({
         cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+        coupon: totals.discount > 0 ? totals.couponCode : '',
       }),
     });
     const data = await res.json();
@@ -3955,10 +4056,8 @@ async function doPhonePe(addr) {
 // ── Razorpay ───────────────────────────────────────────────────────────────
 async function doRazorpay(addr) {
   const cart = getCart();
-  const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
-  const grand    = subtotal + shipping;
-  const amtPaise = Math.round(grand * 100);
+  const totals = orderTotals(cart, 'online');
+  const amtPaise = Math.round(totals.total * 100);
 
   try {
     const res = await fetch('/.netlify/functions/create-order', {
@@ -3967,7 +4066,7 @@ async function doRazorpay(addr) {
       body: JSON.stringify({
         amount: amtPaise, currency: 'INR',
         receipt: 'ic_' + Date.now(),
-        notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name },
+        notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, coupon: totals.couponCode || '' },
       }),
     });
     if (!res.ok) throw new Error('Order creation failed');
@@ -3993,7 +4092,7 @@ async function doRazorpay(addr) {
               razorpay_order_id:   response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature:  response.razorpay_signature,
-              cart, customer: addr, amount: amtPaise, shipping,
+              cart, customer: addr, amount: amtPaise, shipping: totals.shipping, coupon: totals.couponCode, discount: totals.discount,
             }),
           });
           if (!vRes.ok) throw new Error('Verification failed');
@@ -4023,9 +4122,12 @@ async function doRazorpay(addr) {
 // ── Cash on Delivery ───────────────────────────────────────────────────────
 async function doCOD(addr) {
   const cart     = getCart();
-  const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
-  const amount   = subtotal + shipping;
+  const totals = orderTotals(cart, 'cod');
+  if (appliedCouponCode && couponDiscount(cartSubtotal(cart), 'cod').message) {
+    alert('INKLOVE10 is valid only for Pay Now orders. Please use Pay Now to get the discount, or clear the coupon for COD.');
+    setLoading(false);
+    return;
+  }
 
   try {
     const res = await fetch('/.netlify/functions/cod-order', {
@@ -4034,7 +4136,7 @@ async function doCOD(addr) {
       body: JSON.stringify({
         cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
-        amount, shipping,
+        amount: totals.total, shipping: totals.shipping,
       }),
     });
     const data = await res.json();

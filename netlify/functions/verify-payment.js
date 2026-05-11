@@ -45,7 +45,7 @@ async function sendEmail({ to, subject, html }) {
   }
 }
 
-function cartTable(cart, shippingFee) {
+function cartTable(cart, shippingFee, discount = 0, coupon = '') {
   const rows = cart.map(i => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
@@ -54,7 +54,8 @@ function cartTable(cart, shippingFee) {
     </tr>`).join('');
   const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
   const ship = (typeof shippingFee === 'number') ? shippingFee : (subtotal >= 499 ? 0 : 40);
-  const total = subtotal + ship;
+  const safeDiscount = Math.max(0, Number(discount) || 0);
+  const total = Math.max(1, subtotal + ship - safeDiscount);
   return `
     <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
       <thead>
@@ -74,6 +75,10 @@ function cartTable(cart, shippingFee) {
           <td colspan="2" style="padding:8px 12px;color:#a09080;">Shipping (Delhivery)</td>
           <td style="padding:8px 12px;text-align:right;color:${ship === 0 ? '#6dbf6d' : '#f0e8d8'};">${ship === 0 ? 'FREE' : '₹' + ship}</td>
         </tr>
+        ${safeDiscount > 0 ? `<tr>
+          <td colspan="2" style="padding:8px 12px;color:#a09080;">Coupon ${coupon ? `(${coupon})` : ''}</td>
+          <td style="padding:8px 12px;text-align:right;color:#6dbf6d;">- ₹${safeDiscount.toLocaleString('en-IN')}</td>
+        </tr>` : ''}
         <tr style="border-top:2px solid #2a2a2a;">
           <td colspan="2" style="padding:10px 12px;font-weight:500;color:#f0e8d8;">Total (Online Payment)</td>
           <td style="padding:10px 12px;text-align:right;font-size:18px;color:#c9a84c;font-weight:600;">₹${total.toLocaleString('en-IN')}</td>
@@ -111,6 +116,8 @@ exports.handler = async (event) => {
     customer,
     amount,
     shipping,
+    coupon,
+    discount,
   } = body;
   // Re-derive shipping defensively if not provided by client
   const subtotalRupees = cart ? cart.reduce((s,i)=>s+i.price*i.qty,0) : 0;
@@ -130,7 +137,9 @@ exports.handler = async (event) => {
   }
 
   // ── 2. Save to Supabase ───────────────────────────────────────────────────
-  const total = cart ? cart.reduce((s, i) => s + i.price * i.qty, 0) : Math.round(amount / 100);
+  const paidTotal = Math.round((Number(amount) || 0) / 100);
+  const discountRupees = Math.max(0, Number(discount) || 0);
+  const couponCode = String(coupon || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
   try {
     const supabase = createClient(
@@ -162,7 +171,7 @@ exports.handler = async (event) => {
   if (ownerEmail && cart?.length) {
     await sendEmail({
       to: ownerEmail,
-      subject: `💳 New Online Order — ₹${total.toLocaleString('en-IN')} (${razorpay_payment_id})`,
+      subject: `💳 New Online Order — ₹${paidTotal.toLocaleString('en-IN')} (${razorpay_payment_id})`,
       html: emailBase(`
         <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">New Online Payment Received</h2>
         <p style="color:#a09080;margin-bottom:16px;">
@@ -175,7 +184,7 @@ exports.handler = async (event) => {
           <tr><td style="color:#a09080;padding-right:16px;">Email</td><td>${customer?.email||'—'}</td></tr>
           <tr><td style="color:#a09080;padding-right:16px;">Address</td><td>${customer?.address||'—'}</td></tr>
         </table>
-        ${cartTable(cart, shipFee)}
+        ${cartTable(cart, shipFee, discountRupees, couponCode)}
         <p style="color:#6dbf6d;font-size:13px;">✅ Payment confirmed. Ready to ship!</p>
       `),
     });
@@ -190,9 +199,9 @@ exports.handler = async (event) => {
         <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Order Confirmed 📚</h2>
         <p style="color:#a09080;line-height:1.8;margin-bottom:16px;">
           Hi ${customer.name?.split(' ')[0]||'there'}, your books are on their way!<br/>
-          Your payment of <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> was received successfully.
+          Your payment of <strong style="color:#c9a84c;">₹${paidTotal.toLocaleString('en-IN')}</strong> was received successfully.
         </p>
-        ${cartTable(cart, shipFee)}
+        ${cartTable(cart, shipFee, discountRupees, couponCode)}
         <p style="color:#a09080;font-size:13px;line-height:1.8;">
           <strong style="color:#f0e8d8;">Delivery address:</strong><br/>${customer.address||'—'}
         </p>
