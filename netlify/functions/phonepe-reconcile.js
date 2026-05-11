@@ -78,7 +78,10 @@ async function sendEmail({ to, subject, html }) {
 
 function paidEmailHtml(order) {
   const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const meta = items[0]?._payment || {};
+  const isPartial = meta.mode === 'partial_cod' || order.status === 'partial_cod_pending';
   const total = order.amount_paise ? (order.amount_paise / 100) : 0;
+  const balance = isPartial ? Math.max(0, Number(meta.balance) || 0) : 0;
   const rows = items.map(i => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
@@ -89,10 +92,11 @@ function paidEmailHtml(order) {
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
       <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
       <p style="color:#a09080;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;">inkandchai.in</p>
-      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">✅ Payment received</h2>
+      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">${isPartial ? '✅ Booking payment received' : '✅ Payment received'}</h2>
       <p style="color:#a09080;line-height:1.8;margin:14px 0;">
-        Hi ${order.customer_name?.split(' ')[0] || 'there'}, we received your payment of
-        <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> via PhonePe.
+        Hi ${order.customer_name?.split(' ')[0] || 'there'}, ${isPartial
+          ? `we received your 10% booking payment of <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> via PhonePe. Please pay the remaining <strong style="color:#c9a84c;">₹${balance.toLocaleString('en-IN')}</strong> on delivery.`
+          : `we received your payment of <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> via PhonePe.`}
       </p>
       <table style="width:100%;border-collapse:collapse;margin:18px 0;font-size:14px;">
         <thead><tr style="background:#1c1916;">
@@ -119,7 +123,7 @@ async function reconcileOne(supabase, host, token, orderId) {
     .maybeSingle();
 
   if (!existing) return { orderId, result: 'not_in_db' };
-  if (existing.status === 'paid')      return { orderId, result: 'already_paid' };
+  if (existing.status === 'paid' || existing.status === 'partial_cod_pending') return { orderId, result: 'already_paid' };
   if (existing.status === 'cancelled') return { orderId, result: 'already_cancelled' };
 
   // Hit PhonePe v2 status endpoint
@@ -134,7 +138,8 @@ async function reconcileOne(supabase, host, token, orderId) {
                || data.paymentDetails?.[0]?.paymentId
                || data.orderId
                || null;
-    const update = { status: 'paid' };
+    const meta = Array.isArray(existing.cart_items) ? existing.cart_items[0]?._payment : null;
+    const update = { status: (existing.status === 'pending_partial_phonepe' || meta?.mode === 'partial_cod') ? 'partial_cod_pending' : 'paid' };
     if (txnId) update.razorpay_payment_id = txnId;
     if (data.amount) update.amount_paise = data.amount;
 
@@ -192,12 +197,12 @@ exports.handler = async (event) => {
     if (body.id)             ids = [body.id];
     else if (Array.isArray(body.ids)) ids = body.ids;
     else if (body.all_pending) {
-      // Last 30 days of pending_phonepe orders
+      // Last 30 days of PhonePe pending orders
       const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
       const { data } = await supabase
         .from('orders')
         .select('razorpay_order_id')
-        .eq('status', 'pending_phonepe')
+        .in('status', ['pending_phonepe', 'pending_partial_phonepe'])
         .gte('created_at', since)
         .limit(200);
       ids = (data || []).map(o => o.razorpay_order_id).filter(Boolean);

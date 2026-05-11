@@ -98,9 +98,14 @@ input:disabled{background:var(--bg2);color:var(--gold-dim);cursor:not-allowed;}
 .btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;padding:1rem;background:transparent;color:var(--cream);border:1px solid rgba(201,168,76,0.35);cursor:pointer;font-weight:400;transition:all 0.25s;line-height:1.4;white-space:normal;overflow-wrap:anywhere;}
 .btn-cod:hover{border-color:var(--gold);color:var(--gold);}
 .btn-cod:disabled{opacity:0.72;cursor:not-allowed;}
-.btn-pay.is-loading,.btn-cod.is-loading{position:relative;color:transparent!important;pointer-events:none}
-.btn-pay.is-loading::after,.btn-cod.is-loading::after{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:#fff}
+.btn-partial{width:100%;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;padding:1rem;background:#f7efe0;color:var(--gold);border:1px solid rgba(138,106,31,0.38);cursor:pointer;font-weight:500;transition:all 0.25s;margin-bottom:0.8rem;line-height:1.5;white-space:normal;overflow-wrap:anywhere;}
+.btn-partial:hover{background:#f1e3c9;border-color:var(--gold);}
+.btn-partial:disabled{opacity:0.72;cursor:not-allowed;}
+.partial-note{font-size:0.58rem;color:var(--cream-dim);letter-spacing:0.04em;line-height:1.6;margin:-0.25rem 0 0.75rem;}
+.btn-pay.is-loading,.btn-cod.is-loading,.btn-partial.is-loading{position:relative;color:transparent!important;pointer-events:none}
+.btn-pay.is-loading::after,.btn-cod.is-loading::after,.btn-partial.is-loading::after{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:#fff}
 .btn-cod.is-loading::after{color:var(--gold)}
+.btn-partial.is-loading::after{color:var(--gold)}
 @keyframes spinBtn{to{transform:rotate(360deg)}}
 .trust-row{display:flex;gap:1.5rem;justify-content:center;margin-top:1.2rem;font-size:0.6rem;color:var(--gold-dim);letter-spacing:0.06em;flex-wrap:wrap;}
 /* Success screen */
@@ -124,7 +129,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
   .pincode-row>div:nth-child(3){grid-column:1 / -1;}
   .coupon-row{grid-template-columns:1fr;}
   .coupon-btn{min-height:44px;}
-  .btn-pay,.btn-cod{letter-spacing:0.14em;padding:1rem 0.75rem;}
+  .btn-pay,.btn-cod,.btn-partial{letter-spacing:0.14em;padding:1rem 0.75rem;}
   .trust-row{display:grid;gap:0.55rem;font-size:0.58rem;}
   footer{padding:1.5rem 1rem;line-height:1.8;overflow-wrap:anywhere;}
 }
@@ -242,6 +247,10 @@ gtag('config', 'AW-18119332653');
         <button class="btn-pay" id="btnPayNow" onclick="submitOrder('online')">
           ⚡ Pay Now
         </button>
+        <button class="btn-partial" id="btnPartial" onclick="submitOrder('partial')">
+          Pay 10% Now · 90% on Delivery
+        </button>
+        <div class="partial-note" id="partialNote">Available on orders above ₹599.</div>
         <button class="btn-cod" id="btnCOD" onclick="submitOrder('cod')">
           🚚 Cash on Delivery
         </button>
@@ -314,6 +323,8 @@ const COUPON_KEY = 'iac_checkout_coupon';
 const COUPONS = {
   INKLOVE10: { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
 };
+const PARTIAL_PAYMENT_THRESHOLD = 599;
+const PARTIAL_PAYMENT_RATE = 0.10;
 let appliedCouponCode = (localStorage.getItem(COUPON_KEY) || '').toUpperCase();
 function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE; }
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
@@ -340,6 +351,15 @@ function orderTotals(cart, method = 'online') {
   const coupon = couponDiscount(subtotal, method);
   const grand = Math.max(1, subtotal + shipping - coupon.discount);
   return { subtotal, shipping, discount: coupon.discount, couponCode: coupon.code, couponMessage: coupon.message, total: grand };
+}
+function partialPaymentTotals(cart) {
+  const base = orderTotals(cart, 'cod');
+  const eligible = base.total > PARTIAL_PAYMENT_THRESHOLD;
+  const deposit = eligible ? Math.max(1, Math.ceil(base.total * PARTIAL_PAYMENT_RATE)) : 0;
+  return { ...base, eligible, deposit, balance: Math.max(0, base.total - deposit), rate: PARTIAL_PAYMENT_RATE };
+}
+function cartWithPaymentMeta(cart, meta) {
+  return cart.map((item, index) => index === 0 ? { ...item, _payment: meta } : item);
 }
 function updateCheckoutQty(index, delta) {
   const cart = getCart();
@@ -398,6 +418,8 @@ function renderSummary() {
   const totalRow  = document.getElementById('orderTotal');
   const totalEl   = document.getElementById('totalAmt');
   const btnPay    = document.getElementById('btnPayNow');
+  const btnPartial = document.getElementById('btnPartial');
+  const partialNote = document.getElementById('partialNote');
   const btnCOD    = document.getElementById('btnCOD');
   const couponBox = document.getElementById('couponBox');
   const couponInput = document.getElementById('couponCode');
@@ -408,6 +430,8 @@ function renderSummary() {
     totalRow.style.display = 'none';
     if (couponBox) couponBox.style.display = 'none';
     if (btnPay) btnPay.disabled = true;
+    if (btnPartial) btnPartial.disabled = true;
+    if (partialNote) partialNote.textContent = 'Available on orders above ₹599.';
     if (btnCOD) btnCOD.disabled = true;
     return;
   }
@@ -461,6 +485,18 @@ function renderSummary() {
   if (btnPay) {
     btnPay.textContent = `⚡ Pay Now — ₹${grand.toLocaleString('en-IN')}`;
     btnPay.disabled = false;
+  }
+  if (btnPartial) {
+    const partial = partialPaymentTotals(cart);
+    btnPartial.disabled = !partial.eligible;
+    btnPartial.textContent = partial.eligible
+      ? `Pay 10% Now — ₹${partial.deposit.toLocaleString('en-IN')} · Collect ₹${partial.balance.toLocaleString('en-IN')}`
+      : 'Pay 10% Now · 90% on Delivery';
+    if (partialNote) {
+      partialNote.textContent = partial.eligible
+        ? `Partial COD: customer pays ₹${partial.deposit.toLocaleString('en-IN')} now and ₹${partial.balance.toLocaleString('en-IN')} on delivery.`
+        : `Available on orders above ₹599. Add ₹${(PARTIAL_PAYMENT_THRESHOLD + 1 - partial.total).toLocaleString('en-IN')} more to enable.`;
+    }
   }
   if (btnCOD) {
     const codTotal = orderTotals(cart, 'cod').total;
@@ -579,6 +615,11 @@ function setLoading(on, method = '') {
     pay.disabled = on;
     pay.classList.toggle('is-loading', on && method === 'online');
   }
+  const partial = document.getElementById('btnPartial');
+  if (partial) {
+    partial.disabled = on || !partialPaymentTotals(getCart()).eligible;
+    partial.classList.toggle('is-loading', on && method === 'partial');
+  }
   if (cod) {
     cod.disabled = on;
     cod.classList.toggle('is-loading', on && method === 'cod');
@@ -612,23 +653,51 @@ async function submitOrder(method) {
     } else {
       await doRazorpay(addr);
     }
+  } else if (method === 'partial') {
+    await doPartialPayment(addr);
   } else {
     await doCOD(addr);
   }
 }
 
+async function doPartialPayment(addr) {
+  const cart = getCart();
+  const partial = partialPaymentTotals(cart);
+  if (!partial.eligible) {
+    alert('Partial payment is available only for orders above ₹599.');
+    setLoading(false);
+    return;
+  }
+  const pm = selectedPayMethod();
+  if (pm === 'razorpay') {
+    await doRazorpay(addr, 'partial');
+  } else {
+    await doPhonePe(addr, 'partial');
+  }
+}
+
 // ── PhonePe Standard Checkout ──────────────────────────────────────────────
-async function doPhonePe(addr) {
+async function doPhonePe(addr, paymentMode = 'online') {
   const cart = getCart();
   const totals = orderTotals(cart, 'online');
+  const partial = partialPaymentTotals(cart);
+  const isPartial = paymentMode === 'partial';
+  const paymentMeta = isPartial ? {
+    mode: 'partial_cod',
+    full_total: partial.total,
+    deposit: partial.deposit,
+    balance: partial.balance,
+    rate: partial.rate,
+  } : {};
   try {
     const res = await fetch('/.netlify/functions/phonepe-create-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        cart,
+        cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
-        coupon: totals.discount > 0 ? totals.couponCode : '',
+        payment_mode: isPartial ? 'partial_cod' : 'online',
+        coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
       }),
     });
     const data = await res.json();
@@ -645,10 +714,20 @@ async function doPhonePe(addr) {
 }
 
 // ── Razorpay ───────────────────────────────────────────────────────────────
-async function doRazorpay(addr) {
+async function doRazorpay(addr, paymentMode = 'online') {
   const cart = getCart();
   const totals = orderTotals(cart, 'online');
-  const amtPaise = Math.round(totals.total * 100);
+  const partial = partialPaymentTotals(cart);
+  const isPartial = paymentMode === 'partial';
+  const paymentMeta = isPartial ? {
+    mode: 'partial_cod',
+    full_total: partial.total,
+    deposit: partial.deposit,
+    balance: partial.balance,
+    rate: partial.rate,
+  } : {};
+  const payable = isPartial ? partial.deposit : totals.total;
+  const amtPaise = Math.round(payable * 100);
 
   try {
     const res = await fetch('/.netlify/functions/create-order', {
@@ -657,7 +736,7 @@ async function doRazorpay(addr) {
       body: JSON.stringify({
         amount: amtPaise, currency: 'INR',
         receipt: 'ic_' + Date.now(),
-        notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, coupon: totals.couponCode || '' },
+        notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, coupon: isPartial ? '' : (totals.couponCode || ''), payment_mode: isPartial ? 'partial_cod' : 'online' },
       }),
     });
     if (!res.ok) throw new Error('Order creation failed');
@@ -668,7 +747,7 @@ async function doRazorpay(addr) {
       amount:      order.amount,
       currency:    order.currency,
       name:        'Ink & Chai',
-      description: `${cart.length} book${cart.length>1?'s':''}`,
+      description: isPartial ? `10% deposit for Ink & Chai order` : `${cart.length} book${cart.length>1?'s':''}`,
       order_id:    order.id,
       prefill:     { name: addr.name, email: addr.email, contact: addr.phone },
       notes:       { shipping_address: addr.address },
@@ -683,7 +762,13 @@ async function doRazorpay(addr) {
               razorpay_order_id:   response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature:  response.razorpay_signature,
-              cart, customer: addr, amount: amtPaise, shipping: totals.shipping, coupon: totals.couponCode, discount: totals.discount,
+              cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
+              customer: addr,
+              amount: amtPaise,
+              shipping: isPartial ? partial.shipping : totals.shipping,
+              coupon: isPartial ? '' : totals.couponCode,
+              discount: isPartial ? 0 : totals.discount,
+              payment_mode: isPartial ? 'partial_cod' : 'online',
             }),
           });
           if (!vRes.ok) throw new Error('Verification failed');

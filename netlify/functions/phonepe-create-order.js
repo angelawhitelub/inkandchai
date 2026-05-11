@@ -39,6 +39,11 @@ function couponDiscount(subtotal, code) {
   return { code: normalized, discount: Math.floor(subtotal * 0.10) };
 }
 
+function paymentMeta(cart) {
+  const first = Array.isArray(cart) ? cart[0] : null;
+  return first && typeof first._payment === 'object' ? first._payment : {};
+}
+
 // ── OAuth token cache (warm-function reuse) ───────────────────────────────
 let _tokenCache = { token: null, expiresAt: 0 };
 
@@ -89,7 +94,7 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body); }
   catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
-  const { cart, customer, coupon } = body;
+  const { cart, customer, coupon, payment_mode } = body;
   if (!cart?.length || !customer?.phone) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
   }
@@ -98,8 +103,20 @@ exports.handler = async (event) => {
   const subtotal    = cart.reduce((s, i) => s + (i.price * i.qty), 0);
   const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   const couponInfo  = couponDiscount(subtotal, coupon);
-  const total       = Math.max(1, subtotal + shipping - couponInfo.discount);
-  const amountPaise = Math.round(total * 100);
+  const meta        = paymentMeta(cart);
+  const isPartial   = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
+  const fullTotal   = Math.max(1, subtotal + shipping - (isPartial ? 0 : couponInfo.discount));
+  const deposit     = isPartial ? Math.max(1, Math.ceil(fullTotal * 0.10)) : fullTotal;
+  if (isPartial && cart[0]) {
+    cart[0]._payment = {
+      mode: 'partial_cod',
+      full_total: fullTotal,
+      deposit,
+      balance: Math.max(0, fullTotal - deposit),
+      rate: 0.10,
+    };
+  }
+  const amountPaise = Math.round(deposit * 100);
   if (amountPaise < 100) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Amount too low' }) };
   }
@@ -117,7 +134,7 @@ exports.handler = async (event) => {
       razorpay_order_id:   orderId,
       razorpay_payment_id: null,
       amount_paise:        amountPaise,
-      status:              'pending_phonepe',
+      status:              isPartial ? 'pending_partial_phonepe' : 'pending_phonepe',
       customer_name:       customer.name    || '',
       customer_email:      customer.email   || '',
       customer_phone:      customer.phone,
@@ -141,7 +158,7 @@ exports.handler = async (event) => {
         udf1: customer.name?.slice(0, 80)  || '',
         udf2: customer.phone?.slice(0, 20) || '',
         udf3: customer.email?.slice(0, 80) || '',
-        udf4: couponInfo.code || '',
+        udf4: isPartial ? 'partial_cod' : (couponInfo.code || ''),
       },
       paymentFlow: {
         type: 'PG_CHECKOUT',

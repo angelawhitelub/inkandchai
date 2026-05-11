@@ -93,7 +93,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .select-cell{width:38px;text-align:center;}
 .order-check,.select-all-check{width:16px;height:16px;accent-color:var(--green);cursor:pointer;}
 .badge{display:inline-block;font-size:0.5rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.22rem 0.55rem;border:1px solid;white-space:nowrap;}
-.b-cod_pending,.b-pending{border-color:rgba(232,160,48,0.5);color:var(--orange);}
+.b-cod_pending,.b-partial_cod_pending,.b-pending,.b-pending_partial_phonepe{border-color:rgba(232,160,48,0.5);color:var(--orange);}
 .b-paid{border-color:rgba(109,191,109,0.5);color:var(--green);}
 .b-shipped{border-color:rgba(201,168,76,0.5);color:var(--gold);}
 .b-delivered{border-color:rgba(109,191,109,0.6);color:var(--green);}
@@ -108,6 +108,8 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .items-cell{font-size:0.63rem;color:var(--cream-dim);max-width:190px;}
 .items-cell div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:0.1rem;}
 .amount{font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--gold);}
+.amount-sub{font-size:0.55rem;color:var(--cream-dim);line-height:1.5;margin-top:0.15rem;}
+.amount-sub strong{color:var(--gold-dim);font-weight:500;}
 .method-badge{font-size:0.5rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--cream-dim);}
 .empty{text-align:center;padding:4rem;color:var(--cream-dim);font-size:0.82rem;}
 .load-more-btn{display:block;width:100%;margin-top:1.2rem;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.8rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
@@ -171,6 +173,10 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <div class="stat-card" data-status="cod_pending" onclick="setFilter(this,'cod_pending')">
       <div class="stat-label">COD Pending</div>
       <div class="stat-val" id="statCod" style="color:var(--orange);">—</div>
+    </div>
+    <div class="stat-card" data-status="partial_cod_pending" onclick="setFilter(this,'partial_cod_pending')">
+      <div class="stat-label">Partial COD</div>
+      <div class="stat-val" id="statPartial" style="color:var(--orange);">—</div>
     </div>
     <div class="stat-card" data-status="paid" onclick="setFilter(this,'paid')">
       <div class="stat-label">Paid Online</div>
@@ -294,6 +300,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <button class="filter-btn active" data-status="" onclick="setFilter(this,'')">All</button>
     <button class="filter-btn" data-status="__unshipped" onclick="setFilter(this,'__unshipped')">Unshipped</button>
     <button class="filter-btn" data-status="cod_pending" onclick="setFilter(this,'cod_pending')">COD Pending</button>
+    <button class="filter-btn" data-status="partial_cod_pending" onclick="setFilter(this,'partial_cod_pending')">Partial COD</button>
     <button class="filter-btn" data-status="confirmed" onclick="setFilter(this,'confirmed')">Confirmed</button>
     <button class="filter-btn" data-status="shipped" onclick="setFilter(this,'shipped')">Shipped</button>
     <button class="filter-btn" data-status="delivered" onclick="setFilter(this,'delivered')">Delivered</button>
@@ -428,6 +435,31 @@ function orderKey(o) {
   return String(o?.id || o?.razorpay_order_id || '');
 }
 
+function orderPaymentMeta(o) {
+  const items = Array.isArray(o?.cart_items) ? o.cart_items : [];
+  return items[0]?._payment || {};
+}
+
+function isPartialOrder(o) {
+  const meta = orderPaymentMeta(o);
+  return meta.mode === 'partial_cod' || o?.status === 'partial_cod_pending' || o?.status === 'pending_partial_phonepe';
+}
+
+function orderPaymentBreakdown(o) {
+  const items = Array.isArray(o?.cart_items) ? o.cart_items : [];
+  const itemTotal = items.reduce((s,i)=>s+(Number(i.price)||0)*(Number(i.qty)||0),0);
+  const paid = o?.amount_paise ? (o.amount_paise / 100) : 0;
+  const meta = orderPaymentMeta(o);
+  if (isPartialOrder(o)) {
+    const balance = Number(meta.balance) || 0;
+    const full = Number(meta.full_total) || (paid + balance) || itemTotal;
+    return { full, paid, balance, method: 'Partial COD' };
+  }
+  const full = paid || itemTotal;
+  const isCOD = o?.status === 'cod_pending' || !o?.razorpay_payment_id;
+  return { full, paid: isCOD ? 0 : paid, balance: isCOD ? full : 0, method: isCOD ? 'Cash on Delivery' : 'Online' };
+}
+
 function getSelectedOrders() {
   return allOrders.filter(o => selectedOrderIds.has(orderKey(o)));
 }
@@ -471,16 +503,19 @@ function syncSelectionUi() {
 // ── Stats ──────────────────────────────────────────────────────────────────
 function updateStats() {
   const cod     = allOrders.filter(o => o.status === 'cod_pending').length;
+  const partial = allOrders.filter(isPartialOrder).length;
   const paid    = allOrders.filter(o => o.status === 'paid').length;
   const shipped = allOrders.filter(o => o.status === 'shipped').length;
   const unshipped = allOrders.filter(orderIsUnshipped).length;
   const rev     = allOrders
     .filter(o => ['paid','delivered','shipped'].includes(o.status))
-    .reduce((s,o) => s + (o.amount_paise || 0), 0);
+    .reduce((s,o) => s + Math.round(orderPaymentBreakdown(o).full * 100), 0);
 
   document.getElementById('statTotal').textContent   = allOrders.length;
   document.getElementById('statUnshipped').textContent = unshipped;
   document.getElementById('statCod').textContent     = cod;
+  const partialEl = document.getElementById('statPartial');
+  if (partialEl) partialEl.textContent = partial;
   document.getElementById('statPaid').textContent    = paid;
   document.getElementById('statShipped').textContent = shipped;
   document.getElementById('statRev').textContent     = '₹' + Math.round(rev / 100).toLocaleString('en-IN');
@@ -567,8 +602,10 @@ function _drawTable() {
 
   body.innerHTML = filtered.map(o => {
     const items   = Array.isArray(o.cart_items) ? o.cart_items : [];
-    const amount  = o.amount_paise ? '₹' + (o.amount_paise / 100).toLocaleString('en-IN') : '—';
-    const isCOD   = o.status === 'cod_pending' || !o.razorpay_payment_id;
+    const payInfo = orderPaymentBreakdown(o);
+    const amount  = payInfo.full ? '₹' + payInfo.full.toLocaleString('en-IN') : '—';
+    const partial = isPartialOrder(o);
+    const isCOD   = partial || o.status === 'cod_pending' || !o.razorpay_payment_id;
     const date    = o.created_at
       ? new Date(o.created_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
       : '—';
@@ -594,10 +631,13 @@ function _drawTable() {
         ${items.slice(0,4).map(i=>`<div>· ${esc(i.title||'')} ×${i.qty}</div>`).join('')}
         ${items.length > 4 ? `<div style="color:var(--gold-dim);">+${items.length-4} more</div>` : ''}
       </td>
-      <td><div class="amount">${amount}</div></td>
+      <td>
+        <div class="amount">${amount}</div>
+        ${partial ? `<div class="amount-sub"><strong>Paid:</strong> ₹${payInfo.paid.toLocaleString('en-IN')}<br/><strong>Collect:</strong> ₹${payInfo.balance.toLocaleString('en-IN')}</div>` : ''}
+      </td>
       <td>
         <div class="method-badge" style="color:${isCOD ? 'var(--orange)' : 'var(--green)'};">
-          ${isCOD ? '🚚 COD' : '💳 Online'}
+          ${partial ? '💰 10% + COD' : (isCOD ? '🚚 COD' : '💳 Online')}
         </div>
       </td>
       <td>
@@ -611,11 +651,12 @@ function _drawTable() {
           <option value="delivered">✅ Delivered</option>
           <option value="paid">Paid</option>
           <option value="cod_pending">COD Pending</option>
+          <option value="partial_cod_pending">Partial COD Pending</option>
           <option value="cancelled">Cancelled</option>
           <option value="refunded">Refunded</option>
         </select>
         ${o.tracking_id ? `<div style="margin-top:0.4rem;font-size:0.6rem;color:var(--cream-dim);">${esc(o.courier_name||'')} · <a href="${esc(o.tracking_url||'#')}" target="_blank" style="color:var(--gold);font-family:Menlo,Consolas,monospace;">${esc(o.tracking_id)}</a></div>` : ''}
-        ${o.status === 'pending_phonepe' ? `<button onclick="reconcilePhonePe('${esc(o.razorpay_order_id||o.id)}', this)" title="Re-check PhonePe and mark paid if completed"
+        ${['pending_phonepe','pending_partial_phonepe'].includes(o.status) ? `<button onclick="reconcilePhonePe('${esc(o.razorpay_order_id||o.id)}', this)" title="Re-check PhonePe and mark paid if completed"
           style="display:block;margin-top:0.5rem;background:rgba(95,37,159,0.12);border:1px solid rgba(95,37,159,0.5);color:#a275d6;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">🔄 Re-check PhonePe</button>` : ''}
       </td>
       <td style="font-size:0.65rem;color:var(--cream-dim);max-width:200px;line-height:1.5;">
@@ -728,8 +769,7 @@ async function exportExcel(mode) {
 
 function orderToExportRow(o) {
   const items  = Array.isArray(o.cart_items) ? o.cart_items : [];
-  const isCOD  = o.status === 'cod_pending' || !o.razorpay_payment_id;
-  const total  = o.amount_paise ? (o.amount_paise / 100) : items.reduce((s,i)=>s+(Number(i.price)||0)*(Number(i.qty)||0),0);
+  const payInfo = orderPaymentBreakdown(o);
   return {
     'Order ID':          o.razorpay_order_id || o.id || '',
     'Payment ID':        o.razorpay_payment_id || '',
@@ -740,8 +780,10 @@ function orderToExportRow(o) {
     'Delivery Address':  o.customer_address || '',
     'Items':             items.map(i => `${i.title || ''} x${i.qty || 1}`).join(' | '),
     'Item Count':        items.reduce((s,i) => s + (Number(i.qty)||0), 0),
-    'Amount INR':        total,
-    'Payment Method':    isCOD ? 'Cash on Delivery' : 'Online (Razorpay)',
+    'Amount INR':        payInfo.full,
+    'Paid Online INR':   payInfo.paid,
+    'Collect COD INR':   payInfo.balance,
+    'Payment Method':    payInfo.method,
     'Status':            (o.status || '').replace(/_/g,' '),
     'Courier':           o.courier_name || '',
     'AWB / Tracking ID': o.tracking_id || '',

@@ -69,7 +69,10 @@ function verifyAuth(event) {
 
 function paidEmailHtml(order) {
   const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const meta = items[0]?._payment || {};
+  const isPartial = meta.mode === 'partial_cod' || order.status === 'partial_cod_pending';
   const total = order.amount_paise ? (order.amount_paise / 100) : 0;
+  const balance = isPartial ? Math.max(0, Number(meta.balance) || 0) : 0;
   const rows = items.map(i => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
@@ -81,11 +84,11 @@ function paidEmailHtml(order) {
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
       <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
       <p style="color:#a09080;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;">inkandchai.in</p>
-      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">✅ Payment received</h2>
+      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">${isPartial ? '✅ Booking payment received' : '✅ Payment received'}</h2>
       <p style="color:#a09080;line-height:1.8;margin:14px 0;">
-        Hi ${order.customer_name?.split(' ')[0] || 'there'}, we received your payment of
-        <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> via PhonePe.
-        Your books are being packed and we'll email a tracking link as soon as the courier picks them up.
+        Hi ${order.customer_name?.split(' ')[0] || 'there'}, ${isPartial
+          ? `we received your 10% booking payment of <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> via PhonePe. Please pay the remaining <strong style="color:#c9a84c;">₹${balance.toLocaleString('en-IN')}</strong> on delivery.`
+          : `we received your payment of <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> via PhonePe. Your books are being packed and we'll email a tracking link as soon as the courier picks them up.`}
       </p>
       <table style="width:100%;border-collapse:collapse;margin:18px 0;font-size:14px;">
         <thead><tr style="background:#1c1916;">
@@ -151,6 +154,15 @@ exports.handler = async (event) => {
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('status,cart_items')
+      .eq('razorpay_order_id', orderId)
+      .maybeSingle();
+    const meta = Array.isArray(existing?.cart_items) ? existing.cart_items[0]?._payment : null;
+    if (dbStatus === 'paid' && (existing?.status === 'pending_partial_phonepe' || meta?.mode === 'partial_cod')) {
+      dbStatus = 'partial_cod_pending';
+    }
 
     const update = { status: dbStatus };
     if (txnId)  update.razorpay_payment_id = txnId;

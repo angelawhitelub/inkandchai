@@ -66,8 +66,12 @@ exports.handler = async (event) => {
     const phoneMasked = data.customer_phone
       ? data.customer_phone.replace(/\D/g, '').replace(/.(?=.{4})/g, '•').replace(/(.{4})/g, '$1 ')
       : '';
-    const isCOD = !data.razorpay_payment_id;
-    const total = data.amount_paise ? (data.amount_paise / 100) : null;
+    const items = data.cart_items || [];
+    const meta = Array.isArray(items) ? items[0]?._payment : null;
+    const isPartial = meta?.mode === 'partial_cod' || data.status === 'partial_cod_pending';
+    const isCOD = isPartial || !data.razorpay_payment_id;
+    const paidNow = data.amount_paise ? (data.amount_paise / 100) : null;
+    const total = isPartial ? (Number(meta?.full_total) || ((paidNow || 0) + (Number(meta?.balance) || 0))) : paidNow;
 
     return {
       statusCode: 200,
@@ -80,9 +84,11 @@ exports.handler = async (event) => {
           name:            data.customer_name,
           phone_masked:    phoneMasked,
           address:         data.customer_address,
-          items:           data.cart_items || [],
+          items,
           total,
-          payment_method:  isCOD ? 'cod' : 'online',
+          paid_now:        paidNow,
+          balance_due:     isPartial ? Number(meta?.balance) || 0 : 0,
+          payment_method:  isPartial ? 'partial_cod' : (isCOD ? 'cod' : 'online'),
           placed_at:       data.created_at,
           shipped_at:      data.shipped_at,
           courier_name:    data.courier_name,

@@ -87,6 +87,11 @@ function cartTable(cart, shippingFee, discount = 0, coupon = '') {
     </table>`;
 }
 
+function paymentMeta(cart) {
+  const first = Array.isArray(cart) ? cart[0] : null;
+  return first && typeof first._payment === 'object' ? first._payment : {};
+}
+
 function emailBase(content) {
   return `
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
@@ -118,6 +123,7 @@ exports.handler = async (event) => {
     shipping,
     coupon,
     discount,
+    payment_mode,
   } = body;
   // Re-derive shipping defensively if not provided by client
   const subtotalRupees = cart ? cart.reduce((s,i)=>s+i.price*i.qty,0) : 0;
@@ -140,6 +146,20 @@ exports.handler = async (event) => {
   const paidTotal = Math.round((Number(amount) || 0) / 100);
   const discountRupees = Math.max(0, Number(discount) || 0);
   const couponCode = String(coupon || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const meta = paymentMeta(cart);
+  const isPartial = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
+  const computedFullTotal = Math.max(1, subtotalRupees + shipFee);
+  if (isPartial && cart?.[0]) {
+    cart[0]._payment = {
+      mode: 'partial_cod',
+      full_total: computedFullTotal,
+      deposit: paidTotal,
+      balance: Math.max(0, computedFullTotal - paidTotal),
+      rate: 0.10,
+    };
+  }
+  const balanceDue = isPartial ? Math.max(0, computedFullTotal - paidTotal) : 0;
+  const fullTotal = isPartial ? computedFullTotal : paidTotal;
 
   try {
     const supabase = createClient(
@@ -151,7 +171,7 @@ exports.handler = async (event) => {
       razorpay_order_id,
       razorpay_payment_id,
       amount_paise:     amount,
-      status:           'paid',
+      status:           isPartial ? 'partial_cod_pending' : 'paid',
       customer_name:    customer?.name    || '',
       customer_email:   customer?.email   || '',
       customer_phone:   customer?.phone   || '',
@@ -171,9 +191,11 @@ exports.handler = async (event) => {
   if (ownerEmail && cart?.length) {
     await sendEmail({
       to: ownerEmail,
-      subject: `💳 New Online Order — ₹${paidTotal.toLocaleString('en-IN')} (${razorpay_payment_id})`,
+      subject: isPartial
+        ? `💰 Partial COD Order — ₹${paidTotal.toLocaleString('en-IN')} paid · collect ₹${balanceDue.toLocaleString('en-IN')}`
+        : `💳 New Online Order — ₹${paidTotal.toLocaleString('en-IN')} (${razorpay_payment_id})`,
       html: emailBase(`
-        <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">New Online Payment Received</h2>
+        <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">${isPartial ? 'New Partial COD Order' : 'New Online Payment Received'}</h2>
         <p style="color:#a09080;margin-bottom:16px;">
           Razorpay Order: <strong style="color:#c9a84c;">${razorpay_order_id}</strong><br/>
           Payment ID: <strong style="color:#c9a84c;">${razorpay_payment_id}</strong>
@@ -185,7 +207,7 @@ exports.handler = async (event) => {
           <tr><td style="color:#a09080;padding-right:16px;">Address</td><td>${customer?.address||'—'}</td></tr>
         </table>
         ${cartTable(cart, shipFee, discountRupees, couponCode)}
-        <p style="color:#6dbf6d;font-size:13px;">✅ Payment confirmed. Ready to ship!</p>
+        ${isPartial ? `<p style="color:#c9a84c;font-size:13px;background:#1c1916;padding:10px 14px;">Customer paid ₹${paidTotal.toLocaleString('en-IN')} now. Collect ₹${balanceDue.toLocaleString('en-IN')} on delivery. Full order value: ₹${fullTotal.toLocaleString('en-IN')}.</p>` : `<p style="color:#6dbf6d;font-size:13px;">✅ Payment confirmed. Ready to ship!</p>`}
       `),
     });
   }
@@ -199,7 +221,9 @@ exports.handler = async (event) => {
         <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Order Confirmed 📚</h2>
         <p style="color:#a09080;line-height:1.8;margin-bottom:16px;">
           Hi ${customer.name?.split(' ')[0]||'there'}, your books are on their way!<br/>
-          Your payment of <strong style="color:#c9a84c;">₹${paidTotal.toLocaleString('en-IN')}</strong> was received successfully.
+          ${isPartial
+            ? `We received your 10% booking payment of <strong style="color:#c9a84c;">₹${paidTotal.toLocaleString('en-IN')}</strong>. Please pay the remaining <strong style="color:#c9a84c;">₹${balanceDue.toLocaleString('en-IN')}</strong> when your books are delivered.`
+            : `Your payment of <strong style="color:#c9a84c;">₹${paidTotal.toLocaleString('en-IN')}</strong> was received successfully.`}
         </p>
         ${cartTable(cart, shipFee, discountRupees, couponCode)}
         <p style="color:#a09080;font-size:13px;line-height:1.8;">

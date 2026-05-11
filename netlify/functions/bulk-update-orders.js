@@ -5,7 +5,7 @@
  * Admin endpoint — bulk update order status/tracking from CSV/XLSX rows.
  * Each update accepts:
  *   order_id       Supabase id OR razorpay_order_id
- *   status         cod_pending | confirmed | shipped | out_for_delivery | delivered | paid | cancelled | refunded
+ *   status         cod_pending | partial_cod_pending | confirmed | shipped | out_for_delivery | delivered | paid | cancelled | refunded
  *   tracking_id    AWB / tracking number (optional, required for shipped emails with tracking)
  *   courier_name   courier name used to build tracking URL
  *
@@ -20,7 +20,7 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-const VALID_STATUSES = ['cod_pending', 'confirmed', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'paid', 'refunded'];
+const VALID_STATUSES = ['cod_pending', 'partial_cod_pending', 'confirmed', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'paid', 'refunded'];
 
 const COURIER_URLS = {
   'bluedart':     'https://www.bluedart.com/tracking?trackingNumber={id}',
@@ -78,8 +78,11 @@ async function sendEmail({ to, subject, html }) {
 
 function shipmentEmailHtml(order) {
   const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const meta = items[0]?._payment || {};
+  const isPartial = meta.mode === 'partial_cod' || order.status === 'partial_cod_pending';
   const total = order.amount_paise ? (order.amount_paise / 100) : items.reduce((s, i) => s + i.price * i.qty, 0);
-  const isCOD = order.status === 'cod_pending' || !order.razorpay_payment_id;
+  const balance = isPartial ? Math.max(0, Number(meta.balance) || 0) : 0;
+  const isCOD = isPartial || order.status === 'cod_pending' || !order.razorpay_payment_id;
   const rows = items.map(i => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
@@ -110,7 +113,7 @@ function shipmentEmailHtml(order) {
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      ${isCOD ? `<p style="color:#6dbf6d;font-size:13px;background:rgba(109,191,109,0.1);padding:10px 14px;">💰 Cash on Delivery — please keep ₹${total.toLocaleString('en-IN')} ready when the delivery arrives.</p>` : ''}
+      ${isPartial ? `<p style="color:#6dbf6d;font-size:13px;background:rgba(109,191,109,0.1);padding:10px 14px;">💰 Partial COD — ₹${total.toLocaleString('en-IN')} paid. Please keep ₹${balance.toLocaleString('en-IN')} ready for delivery.</p>` : (isCOD ? `<p style="color:#6dbf6d;font-size:13px;background:rgba(109,191,109,0.1);padding:10px 14px;">💰 Cash on Delivery — please keep ₹${total.toLocaleString('en-IN')} ready when the delivery arrives.</p>` : '')}
       <p style="margin-top:18px;color:#a09080;font-size:13px;">
         You can also track this order anytime at
         <a href="https://inkandchai.in/track/?id=${encodeURIComponent(order.razorpay_order_id || order.id)}" style="color:#c9a84c;">inkandchai.in/track</a>
