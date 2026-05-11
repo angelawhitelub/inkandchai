@@ -3731,7 +3731,7 @@ const SHIPPING_FEE = 40;
 const COUPON_KEY = 'iac_checkout_coupon';
 const COUPONS = {
   INKLOVE10: { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
-  CHAI10BACK: { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: 'Private 10% recovery discount' },
+  CHAI10BACK: { type: 'percent', value: 10, minSubtotal: 299, onlineOnly: true, label: 'Private 10% recovery discount' },
 };
 const PARTIAL_PAYMENT_THRESHOLD = 599;
 const PARTIAL_PAYMENT_RATE = 0.10;

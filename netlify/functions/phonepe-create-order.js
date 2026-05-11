@@ -35,7 +35,8 @@ function normalizeCouponCode(value) {
 
 function couponDiscount(subtotal, code) {
   const normalized = normalizeCouponCode(code);
-  if (!['INKLOVE10', 'CHAI10BACK'].includes(normalized) || subtotal < 499) return { code: '', discount: 0 };
+  const minSubtotal = normalized === 'CHAI10BACK' ? 299 : 499;
+  if (!['INKLOVE10', 'CHAI10BACK'].includes(normalized) || subtotal < minSubtotal) return { code: '', discount: 0 };
   return { code: normalized, discount: Math.floor(subtotal * 0.10) };
 }
 

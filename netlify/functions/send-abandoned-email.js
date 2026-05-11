@@ -89,7 +89,7 @@ exports.handler = async (event) => {
         <div style="border:1px dashed #8a6a1f;background:#faf7f2;padding:16px;margin:18px 0;text-align:center;">
           <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#8a7a62;margin-bottom:8px;">Use private coupon</div>
           <div style="font-size:24px;letter-spacing:3px;font-weight:700;color:#8a6a1f;">${RECOVERY_COUPON}</div>
-          <div style="font-size:13px;color:#5a4a38;margin-top:8px;">Get 10% off on your prepaid order above ₹499.</div>
+          <div style="font-size:13px;color:#5a4a38;margin-top:8px;">Get 10% off on your prepaid order above ₹299.</div>
         </div>
         <p style="line-height:1.7;">Apply the coupon at checkout before you pay. This code is not shown publicly on the website.</p>
         <p><a href="https://inkandchai.in/checkout/" style="display:inline-block;background:#8a6a1f;color:#fff;text-decoration:none;padding:12px 20px;font-size:12px;letter-spacing:2px;text-transform:uppercase;">Complete Checkout</a></p>
