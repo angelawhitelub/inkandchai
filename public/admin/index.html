@@ -273,6 +273,9 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <button class="btn-outline" onclick="bulkDeleteFiltered()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(224,80,80,0.4);color:#e05050;" title="Permanently delete every order currently shown by the filters (asks for confirmation)">
       🗑 Delete Filtered
     </button>
+    <button class="btn-outline" onclick="bulkReconcilePhonePe(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(95,37,159,0.5);color:#a275d6;" title="Re-check every order stuck on 'pending_phonepe' from the last 30 days">
+      🔄 Re-check All Pending PhonePe
+    </button>
   </div>
 
   <!-- Quick day-range filters -->
@@ -612,6 +615,8 @@ function _drawTable() {
           <option value="refunded">Refunded</option>
         </select>
         ${o.tracking_id ? `<div style="margin-top:0.4rem;font-size:0.6rem;color:var(--cream-dim);">${esc(o.courier_name||'')} · <a href="${esc(o.tracking_url||'#')}" target="_blank" style="color:var(--gold);font-family:Menlo,Consolas,monospace;">${esc(o.tracking_id)}</a></div>` : ''}
+        ${o.status === 'pending_phonepe' ? `<button onclick="reconcilePhonePe('${esc(o.razorpay_order_id||o.id)}', this)" title="Re-check PhonePe and mark paid if completed"
+          style="display:block;margin-top:0.5rem;background:rgba(95,37,159,0.12);border:1px solid rgba(95,37,159,0.5);color:#a275d6;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">🔄 Re-check PhonePe</button>` : ''}
       </td>
       <td style="font-size:0.65rem;color:var(--cream-dim);max-width:200px;line-height:1.5;">
         ${esc(o.customer_address || '—')}
@@ -1135,6 +1140,72 @@ async function bulkDeleteFiltered() {
     alert(`✅ Deleted ${data.deleted ?? ids.length} orders.`);
   } catch (err) {
     alert('Bulk delete failed: ' + err.message);
+  }
+}
+
+// ── PhonePe reconcile — single order ───────────────────────────────────────
+async function reconcilePhonePe(orderId, btn) {
+  if (!orderId) return;
+  const origLabel = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking…'; }
+  try {
+    const res = await fetch('/.netlify/functions/phonepe-reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ id: orderId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const r = data.results?.[0] || {};
+    if (r.result === 'paid') {
+      // Update local row + UI immediately
+      const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+      if (ord) {
+        ord.status = 'paid';
+        if (r.txnId) ord.razorpay_payment_id = r.txnId;
+      }
+      updateStats();
+      applyFilters();
+      alert('✅ Order marked PAID. Customer + owner emails sent.');
+    } else if (r.result === 'already_paid') {
+      alert('Order is already marked paid in the database (the webhook likely beat us to it). Refreshing the table.');
+      fetchOrders(true);
+    } else if (r.result === 'still_pending') {
+      alert(`PhonePe still reports state="${r.state}". Customer may not have completed payment — try again in a minute, or contact them.`);
+    } else if (r.result === 'cancelled') {
+      alert('PhonePe reports this order was cancelled. Marked as cancelled.');
+      fetchOrders(true);
+    } else {
+      alert(`Result: ${r.result}${r.error ? '\nError: ' + r.error : ''}`);
+    }
+  } catch (err) {
+    alert('Re-check failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
+  }
+}
+
+// ── PhonePe reconcile — all pending_phonepe orders (last 30 days) ──────────
+async function bulkReconcilePhonePe(btn) {
+  if (!confirm('Re-check every order stuck on "pending_phonepe" from the last 30 days?\n\nFor each, we ask PhonePe for the latest status — orders that PhonePe says are COMPLETED will be marked paid and confirmation emails will be sent.')) return;
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking…'; }
+  try {
+    const res = await fetch('/.netlify/functions/phonepe-reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ all_pending: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const s = data.summary || {};
+    const lines = Object.entries(s).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+    alert(`Re-check complete:\n\n${lines || '  (no pending orders found)'}\n\nReloading orders…`);
+    fetchOrders(true);
+  } catch (err) {
+    alert('Bulk re-check failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
 }
 
