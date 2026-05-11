@@ -905,13 +905,13 @@ function renderAbandonedCheckouts() {
 function abandonedWhatsappUrl(lead) {
   const phone = String(lead.customer_phone || '').replace(/\D/g, '').slice(-10);
   const phoneWithCountry = phone ? '91' + phone : '';
-  const text = `Hi ${lead.customer_name || 'there'}, this is Ink & Chai. We noticed you left a few books in checkout. If you need help completing your order, reply here and we'll assist you.`;
+  const text = `Hi ${lead.customer_name || 'there'}, this is Ink & Chai. The books you selected are still waiting in checkout. Use private coupon CHAI10BACK for 10% off on your prepaid order above ₹499. This code is only for checkout recovery and is not shown publicly on our website: https://inkandchai.in/checkout/`;
   return phoneWithCountry ? `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(text)}` : '';
 }
 
 function abandonedEmailText(lead) {
   const items = Array.isArray(lead.cart_items) ? lead.cart_items : [];
-  return `Hi ${lead.customer_name || 'there'},\n\nYou had selected these books at Ink & Chai:\n${items.map(i => `- ${i.title || 'Book'} x${i.qty || 1}`).join('\n')}\n\nYou can complete your order here: https://inkandchai.in/checkout/\n\nNeed help? Reply to this email or WhatsApp us at +91 9217175546.\n\nInk & Chai`;
+  return `Hi ${lead.customer_name || 'there'},\n\nThe books you selected at Ink & Chai are still waiting:\n${items.map(i => `- ${i.title || 'Book'} x${i.qty || 1}`).join('\n')}\n\nUse private coupon CHAI10BACK for 10% off on your prepaid order above ₹499. This code is not shown publicly on our website.\n\nComplete checkout here: https://inkandchai.in/checkout/\n\nInk & Chai`;
 }
 
 function exportAbandonedCsv() {
