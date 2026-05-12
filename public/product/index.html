@@ -561,6 +561,37 @@ function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
 
 function pricePaise(priceStr){ return Math.round(parseFloat((priceStr||'').replace(/[^0-9.]/g,'')||0)); }
 
+function priceToText(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? '₹ ' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '';
+}
+
+function applyProductOverride(book, override) {
+  if (!book || !override) return book;
+  const next = { ...book };
+  if (override.title) next.t = override.title;
+  if (override.author) next.a = override.author;
+  if (override.category) {
+    next.cat = override.category;
+    next.tab = override.category;
+  }
+  if (override.price_inr !== null && override.price_inr !== undefined) next.p = priceToText(override.price_inr);
+  if (override.original_price_inr !== null && override.original_price_inr !== undefined) next.op = priceToText(override.original_price_inr);
+  return next;
+}
+
+async function loadSingleProductOverride(slug) {
+  try {
+    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.overrides || []).find(o => o.slug === slug) || null;
+  } catch (err) {
+    console.warn('Product override unavailable:', err.message);
+    return null;
+  }
+}
+
 // ── Render product page ───────────────────────────────────────────────────
 function renderProduct(b) {
   const pageTitle = b.t + (b.a ? ' by ' + b.a : '') + ' — Buy Online at Ink & Chai';
@@ -1046,10 +1077,13 @@ const slug    = params.get('id') || pathSlug;
 const book    = slug ? BOOK_MAP[slug] : null;
 
 if (book) {
-  renderProduct(book);
-  renderFBT(book);
-  renderBookstagram();
-  renderRelated(book);
+  (async () => {
+    const liveBook = applyProductOverride(book, await loadSingleProductOverride(book.slug));
+    renderProduct(liveBook);
+    renderFBT(liveBook);
+    renderBookstagram();
+    renderRelated(liveBook);
+  })();
 } else {
   document.getElementById('productContent').innerHTML = `
     <div class="not-found">

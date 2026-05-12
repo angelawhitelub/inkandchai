@@ -105,6 +105,47 @@ gtag('config', 'AW-18119332653');
 <script src="/js/cart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 <script>
+let currentItem = {"id": "/product/hardcover-big-panda-and-tiny-dragon-29373/", "url": "/product/hardcover-big-panda-and-tiny-dragon-29373/", "title": "Hardcover Big Panda and Tiny Dragon", "author": "", "price": 499.0, "img": "/.netlify/functions/image-proxy?i=61eac4d27d24d14d3f8a6a37", "qty": 1};
+function priceText(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? '₹ ' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '';
+}
+async function applyRuntimeProductOverride() {
+  try {
+    const slug = location.pathname.split('/').filter(Boolean)[1] || '';
+    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const override = (data.overrides || []).find(o => o.slug === slug);
+    if (!override) return;
+    if (override.title) {
+      currentItem.title = override.title;
+      const h1 = document.querySelector('h1');
+      if (h1) h1.textContent = override.title;
+      document.querySelectorAll('.crumb').forEach(el => {
+        const parts = el.innerHTML.split('&nbsp;/&nbsp;');
+        if (parts.length) parts[parts.length - 1] = override.title;
+        el.innerHTML = parts.join('&nbsp;/&nbsp;');
+      });
+    }
+    if (override.author) {
+      currentItem.author = override.author;
+      const author = document.querySelector('.author');
+      if (author) author.textContent = 'by ' + override.author;
+    }
+    if (override.price_inr !== null && override.price_inr !== undefined) {
+      currentItem.price = Number(override.price_inr) || currentItem.price;
+      const price = document.querySelector('.price');
+      if (price) price.textContent = priceText(override.price_inr);
+    }
+    if (override.original_price_inr !== null && override.original_price_inr !== undefined) {
+      const orig = document.querySelector('.orig');
+      if (orig) orig.textContent = priceText(override.original_price_inr);
+    }
+  } catch (err) {
+    console.warn('Product override unavailable:', err.message);
+  }
+}
 function setBtnLoading(btn,on) {
   if (!btn) return;
   btn.classList.toggle('is-loading', !!on);
@@ -113,7 +154,7 @@ function setBtnLoading(btn,on) {
 function addBookToCart(btn) {
   setBtnLoading(btn, true);
   localStorage.removeItem('iac_buy_now_cart');
-  const item = {"id": "/product/hardcover-big-panda-and-tiny-dragon-29373/", "url": "/product/hardcover-big-panda-and-tiny-dragon-29373/", "title": "Hardcover Big Panda and Tiny Dragon", "author": "", "price": 499.0, "img": "/.netlify/functions/image-proxy?i=61eac4d27d24d14d3f8a6a37", "qty": 1};
+  const item = { ...currentItem };
   const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
   const existing = cart.find(x => x.id === item.id);
   if (existing) existing.qty = (existing.qty || 1) + 1; else cart.push(item);
@@ -127,7 +168,7 @@ function addBookToCart(btn) {
 }
 function buyNowBook(btn) {
   setBtnLoading(btn, true);
-  const item = {"id": "/product/hardcover-big-panda-and-tiny-dragon-29373/", "url": "/product/hardcover-big-panda-and-tiny-dragon-29373/", "title": "Hardcover Big Panda and Tiny Dragon", "author": "", "price": 499.0, "img": "/.netlify/functions/image-proxy?i=61eac4d27d24d14d3f8a6a37", "qty": 1};
+  const item = { ...currentItem };
   localStorage.setItem('iac_buy_now_cart', JSON.stringify([item]));
   setTimeout(() => { location.href='/checkout/'; }, 220);
 }
@@ -204,6 +245,7 @@ document.addEventListener('keydown', e => {
   if (document.getElementById('lb').style.display === 'flex') closeLB();
   if (document.getElementById('pdfM').style.display === 'flex') closePdf();
 });
+applyRuntimeProductOverride();
 </script>
 </body>
 </html>

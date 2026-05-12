@@ -71,3 +71,28 @@ After running, the new "💰 Partial Payment" option at checkout becomes
 active (it stays hidden until total > ₹599). When the advance is paid
 the row flips to status='partial_cod_pending' and advance_paid_paise
 gets set; the COD-due amount is `amount_paise - advance_paid_paise`.
+
+## 2026-05-12 — Product attribute overrides from admin
+
+Lets the admin panel edit product attributes such as sale price, MRP, title,
+author, and category without changing code. The storefront reads these
+overrides at runtime.
+
+```sql
+create table if not exists product_overrides (
+  slug text primary key,
+  title text,
+  author text,
+  category text,
+  price_inr numeric(10,2),
+  original_price_inr numeric(10,2),
+  is_active boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists product_overrides_active_idx
+  on product_overrides (is_active, updated_at desc);
+```
+
+After running this, open `/admin/`, sign in, use **Product editor**, search a
+book, edit fields, and save. Changes apply on the storefront after refresh.

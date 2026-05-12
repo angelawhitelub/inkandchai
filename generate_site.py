@@ -1221,6 +1221,35 @@ let currentQuery = '';
 let visibleCount = PAGE_SIZE;
 let searchTimer  = null;
 
+function priceToText(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? '₹ ' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '';
+}
+
+function applyProductOverride(book, override) {
+  if (!book || !override) return;
+  if (override.title) book.t = override.title;
+  if (override.author) book.a = override.author;
+  if (override.category) {
+    book.cat = override.category;
+    book.tab = override.category;
+  }
+  if (override.price_inr !== null && override.price_inr !== undefined) book.p = priceToText(override.price_inr);
+  if (override.original_price_inr !== null && override.original_price_inr !== undefined) book.op = priceToText(override.original_price_inr);
+}
+
+async function loadProductOverrides() {
+  try {
+    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const bySlug = new Map((data.overrides || []).map(o => [o.slug, o]));
+    BOOKS.forEach(book => applyProductOverride(book, bySlug.get(book.slug)));
+  } catch (err) {
+    console.warn('Product overrides unavailable:', err.message);
+  }
+}
+
 // Trending scores refreshed May 2026 from Amazon.in / Flipkart / Storizen
 // India-bestseller data + BookTok/Bookstagram viral signals. Higher score
 // = more prominent on the homepage Bestsellers tab.
@@ -1816,7 +1845,7 @@ function subscribeNewsletter(e) {
 const totalStat = document.getElementById('stat-total');
 if (totalStat) totalStat.textContent = BOOKS.length.toLocaleString() + '+';
 document.getElementById('view-all-link').textContent = `View self-help books`;
-renderBooks();
+loadProductOverrides().finally(renderBooks);
 renderCollections();
 renderCats(ALL_CATS);
 
@@ -2398,6 +2427,37 @@ function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
 
 function pricePaise(priceStr){ return Math.round(parseFloat((priceStr||'').replace(/[^0-9.]/g,'')||0)); }
 
+function priceToText(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? '₹ ' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '';
+}
+
+function applyProductOverride(book, override) {
+  if (!book || !override) return book;
+  const next = { ...book };
+  if (override.title) next.t = override.title;
+  if (override.author) next.a = override.author;
+  if (override.category) {
+    next.cat = override.category;
+    next.tab = override.category;
+  }
+  if (override.price_inr !== null && override.price_inr !== undefined) next.p = priceToText(override.price_inr);
+  if (override.original_price_inr !== null && override.original_price_inr !== undefined) next.op = priceToText(override.original_price_inr);
+  return next;
+}
+
+async function loadSingleProductOverride(slug) {
+  try {
+    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.overrides || []).find(o => o.slug === slug) || null;
+  } catch (err) {
+    console.warn('Product override unavailable:', err.message);
+    return null;
+  }
+}
+
 // ── Render product page ───────────────────────────────────────────────────
 function renderProduct(b) {
   const pageTitle = b.t + (b.a ? ' by ' + b.a : '') + ' — Buy Online at Ink & Chai';
@@ -2883,10 +2943,13 @@ const slug    = params.get('id') || pathSlug;
 const book    = slug ? BOOK_MAP[slug] : null;
 
 if (book) {
-  renderProduct(book);
-  renderFBT(book);
-  renderBookstagram();
-  renderRelated(book);
+  (async () => {
+    const liveBook = applyProductOverride(book, await loadSingleProductOverride(book.slug));
+    renderProduct(liveBook);
+    renderFBT(liveBook);
+    renderBookstagram();
+    renderRelated(liveBook);
+  })();
 } else {
   document.getElementById('productContent').innerHTML = `
     <div class="not-found">
@@ -3241,6 +3304,47 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 <script src="/js/cart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 <script>
+let currentItem = {cart_item};
+function priceText(value) {{
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? '₹ ' + n.toLocaleString('en-IN', {{ maximumFractionDigits: 0 }}) : '';
+}}
+async function applyRuntimeProductOverride() {{
+  try {{
+    const slug = location.pathname.split('/').filter(Boolean)[1] || '';
+    const res = await fetch('/.netlify/functions/get-product-overrides', {{ cache: 'no-store' }});
+    if (!res.ok) return;
+    const data = await res.json();
+    const override = (data.overrides || []).find(o => o.slug === slug);
+    if (!override) return;
+    if (override.title) {{
+      currentItem.title = override.title;
+      const h1 = document.querySelector('h1');
+      if (h1) h1.textContent = override.title;
+      document.querySelectorAll('.crumb').forEach(el => {{
+        const parts = el.innerHTML.split('&nbsp;/&nbsp;');
+        if (parts.length) parts[parts.length - 1] = override.title;
+        el.innerHTML = parts.join('&nbsp;/&nbsp;');
+      }});
+    }}
+    if (override.author) {{
+      currentItem.author = override.author;
+      const author = document.querySelector('.author');
+      if (author) author.textContent = 'by ' + override.author;
+    }}
+    if (override.price_inr !== null && override.price_inr !== undefined) {{
+      currentItem.price = Number(override.price_inr) || currentItem.price;
+      const price = document.querySelector('.price');
+      if (price) price.textContent = priceText(override.price_inr);
+    }}
+    if (override.original_price_inr !== null && override.original_price_inr !== undefined) {{
+      const orig = document.querySelector('.orig');
+      if (orig) orig.textContent = priceText(override.original_price_inr);
+    }}
+  }} catch (err) {{
+    console.warn('Product override unavailable:', err.message);
+  }}
+}}
 function setBtnLoading(btn,on) {{
   if (!btn) return;
   btn.classList.toggle('is-loading', !!on);
@@ -3249,7 +3353,7 @@ function setBtnLoading(btn,on) {{
 function addBookToCart(btn) {{
   setBtnLoading(btn, true);
   localStorage.removeItem('iac_buy_now_cart');
-  const item = {cart_item};
+  const item = {{ ...currentItem }};
   const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
   const existing = cart.find(x => x.id === item.id);
   if (existing) existing.qty = (existing.qty || 1) + 1; else cart.push(item);
@@ -3263,7 +3367,7 @@ function addBookToCart(btn) {{
 }}
 function buyNowBook(btn) {{
   setBtnLoading(btn, true);
-  const item = {cart_item};
+  const item = {{ ...currentItem }};
   localStorage.setItem('iac_buy_now_cart', JSON.stringify([item]));
   setTimeout(() => {{ location.href='/checkout/'; }}, 220);
 }}
@@ -3340,6 +3444,7 @@ document.addEventListener('keydown', e => {{
   if (document.getElementById('lb').style.display === 'flex') closeLB();
   if (document.getElementById('pdfM').style.display === 'flex') closePdf();
 }});
+applyRuntimeProductOverride();
 </script>
 </body>
 </html>"""

@@ -962,6 +962,35 @@ let currentQuery = '';
 let visibleCount = PAGE_SIZE;
 let searchTimer  = null;
 
+function priceToText(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? '₹ ' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '';
+}
+
+function applyProductOverride(book, override) {
+  if (!book || !override) return;
+  if (override.title) book.t = override.title;
+  if (override.author) book.a = override.author;
+  if (override.category) {
+    book.cat = override.category;
+    book.tab = override.category;
+  }
+  if (override.price_inr !== null && override.price_inr !== undefined) book.p = priceToText(override.price_inr);
+  if (override.original_price_inr !== null && override.original_price_inr !== undefined) book.op = priceToText(override.original_price_inr);
+}
+
+async function loadProductOverrides() {
+  try {
+    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const bySlug = new Map((data.overrides || []).map(o => [o.slug, o]));
+    BOOKS.forEach(book => applyProductOverride(book, bySlug.get(book.slug)));
+  } catch (err) {
+    console.warn('Product overrides unavailable:', err.message);
+  }
+}
+
 // Trending scores refreshed May 2026 from Amazon.in / Flipkart / Storizen
 // India-bestseller data + BookTok/Bookstagram viral signals. Higher score
 // = more prominent on the homepage Bestsellers tab.
@@ -1557,7 +1586,7 @@ function subscribeNewsletter(e) {
 const totalStat = document.getElementById('stat-total');
 if (totalStat) totalStat.textContent = BOOKS.length.toLocaleString() + '+';
 document.getElementById('view-all-link').textContent = `View self-help books`;
-renderBooks();
+loadProductOverrides().finally(renderBooks);
 renderCollections();
 renderCats(ALL_CATS);
 

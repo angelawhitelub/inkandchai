@@ -81,6 +81,23 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .mini-table th{font-size:0.5rem;}
 .mini-actions{display:flex;gap:0.45rem;flex-wrap:wrap;}
 .lead-empty{font-size:0.7rem;color:var(--cream-dim);padding:1rem 0;}
+.product-panel{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1rem 1.2rem;margin:0 0 1.4rem;}
+.product-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.9rem;}
+.product-head h2{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:400;color:var(--white);}
+.product-head p{font-size:0.66rem;color:var(--cream-dim);line-height:1.6;margin-top:0.2rem;}
+.product-grid{display:grid;grid-template-columns:minmax(260px,1fr) minmax(320px,1.4fr);gap:1rem;align-items:start;}
+.product-list{border:1px solid var(--border);background:var(--bg2);max-height:360px;overflow:auto;}
+.product-row{display:grid;grid-template-columns:42px 1fr auto;gap:0.65rem;align-items:center;padding:0.65rem;border-bottom:1px solid rgba(138,106,31,0.11);cursor:pointer;}
+.product-row:hover,.product-row.active{background:rgba(138,106,31,0.075);}
+.product-row img{width:38px;height:52px;object-fit:cover;background:#eee;border:1px solid var(--border);}
+.product-row-title{font-size:0.72rem;color:var(--cream);line-height:1.35;}
+.product-row-meta{font-size:0.58rem;color:var(--cream-dim);margin-top:0.2rem;}
+.product-row-price{font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--gold);white-space:nowrap;}
+.product-editor{border:1px solid var(--border);background:var(--bg2);padding:1rem;}
+.product-editor .form-row input{background:var(--bg3);}
+.product-editor-actions{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.8rem;}
+.override-pill{display:inline-block;font-size:0.48rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--green);border:1px solid rgba(35,122,59,0.3);padding:0.15rem 0.4rem;margin-left:0.35rem;}
+@media(max-width:800px){.product-grid{grid-template-columns:1fr}.product-list{max-height:280px}}
 
 /* Table */
 .tbl-wrap{overflow-x:auto;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);}
@@ -200,6 +217,65 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <div class="focus-actions">
       <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
+    </div>
+  </section>
+
+  <section class="product-panel">
+    <div class="product-head">
+      <div>
+        <h2>Product editor</h2>
+        <p>Search a listing and update sale price, MRP, title, author, or category without editing code. These are live storefront overrides.</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-outline" onclick="fetchProducts()">Refresh Products</button>
+      </div>
+    </div>
+    <div class="toolbar" style="margin-bottom:0.8rem;">
+      <input class="search-box" id="productSearch" placeholder="🔍 Search product title, author, slug" oninput="renderProductList()"/>
+      <span class="hint" id="productMeta">Product editor loads after login.</span>
+    </div>
+    <div class="product-grid">
+      <div class="product-list" id="productList"></div>
+      <div class="product-editor">
+        <div class="hint" id="productEditorEmpty">Select a product to edit.</div>
+        <div id="productEditorForm" style="display:none;">
+          <div class="form-row">
+            <label>Product slug</label>
+            <input id="prodSlug" readonly/>
+          </div>
+          <div class="form-row">
+            <label>Title</label>
+            <input id="prodTitle"/>
+          </div>
+          <div class="form-row">
+            <label>Author</label>
+            <input id="prodAuthor"/>
+          </div>
+          <div class="form-row">
+            <label>Category</label>
+            <input id="prodCategory"/>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
+            <div class="form-row">
+              <label>Sale price INR</label>
+              <input id="prodPrice" inputmode="decimal" placeholder="299"/>
+            </div>
+            <div class="form-row">
+              <label>Original / MRP INR</label>
+              <input id="prodOriginalPrice" inputmode="decimal" placeholder="499"/>
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:var(--cream-dim);margin-top:0.2rem;">
+            <input type="checkbox" id="prodActive" checked style="accent-color:var(--green);"/> Override active
+          </label>
+          <div class="product-editor-actions">
+            <button class="btn-green" onclick="saveProductOverride()">Save Product Override</button>
+            <button class="btn-outline" onclick="openSelectedProduct()">Open Product Page</button>
+            <button class="btn-outline" onclick="clearProductOverride()" style="border-color:rgba(224,80,80,0.35);color:#c93636;">Disable Override</button>
+          </div>
+          <p class="hint" id="productSaveMsg" style="margin-top:0.7rem;"></p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -349,6 +425,8 @@ let hasMore       = false;
 const PAGE        = 100;  // load 100 at a time
 const selectedOrderIds = new Set();
 let abandonedLeads = [];
+let productRows = [];
+let selectedProduct = null;
 
 // ── Login ──────────────────────────────────────────────────────────────────
 function doLogin() {
@@ -409,6 +487,7 @@ async function fetchOrders(reset = false) {
     updateStats();
     applyFilters();
     fetchAbandonedCheckouts();
+    fetchProducts();
 
   } catch (err) {
     showLoginErr('Error: ' + err.message);
@@ -942,6 +1021,142 @@ async function sendAbandonedEmail(id) {
   } catch (err) {
     alert('Could not send email: ' + err.message);
   }
+}
+
+// ── Product editor ────────────────────────────────────────────────────────
+function moneyText(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—';
+}
+
+function productImageSrc(url) {
+  const s = String(url || '');
+  if (!s) return '/images/placeholder.png';
+  if (s.startsWith('http') || s.startsWith('/')) return s;
+  return '/' + s;
+}
+
+function mergedProduct(row) {
+  const o = row.override || {};
+  return {
+    ...row,
+    title: o.title || row.title || '',
+    author: o.author || row.author || '',
+    category: o.category || row.category || '',
+    price_inr: o.price_inr ?? row.price_inr ?? '',
+    original_price_inr: o.original_price_inr ?? row.original_price_inr ?? '',
+    is_active: o.is_active !== false,
+  };
+}
+
+async function fetchProducts() {
+  const meta = document.getElementById('productMeta');
+  const list = document.getElementById('productList');
+  if (!adminKey || !meta || !list) return;
+  meta.textContent = 'Loading products…';
+  try {
+    const res = await fetch('/.netlify/functions/get-products-admin', {
+      headers: { 'X-Admin-Key': adminKey },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const overrides = new Map((data.overrides || []).map(o => [o.slug, o]));
+    productRows = (data.products || []).map(p => ({ ...p, override: overrides.get(p.slug) || null }));
+    meta.textContent = `${productRows.length.toLocaleString('en-IN')} products loaded · ${(data.overrides || []).length} override${(data.overrides || []).length === 1 ? '' : 's'}`;
+    renderProductList();
+  } catch (err) {
+    meta.textContent = 'Product editor not ready: ' + err.message;
+    list.innerHTML = '<div class="lead-empty">Run the product_overrides SQL migration, then refresh.</div>';
+  }
+}
+
+function renderProductList() {
+  const list = document.getElementById('productList');
+  if (!list) return;
+  const q = (document.getElementById('productSearch')?.value || '').toLowerCase().trim();
+  const rows = productRows.filter(row => {
+    const p = mergedProduct(row);
+    if (!q) return true;
+    return [p.title, p.author, p.category, p.slug, p.shopify_id].join(' ').toLowerCase().includes(q);
+  }).slice(0, 80);
+  if (!rows.length) {
+    list.innerHTML = '<div class="lead-empty">No matching products.</div>';
+    return;
+  }
+  list.innerHTML = rows.map(row => {
+    const p = mergedProduct(row);
+    const active = selectedProduct?.slug === row.slug ? 'active' : '';
+    const edited = row.override && row.override.is_active !== false ? '<span class="override-pill">edited</span>' : '';
+    return `<div class="product-row ${active}" onclick="selectProduct('${esc(row.slug)}')">
+      <img src="${esc(productImageSrc(row.image_url))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"/>
+      <div>
+        <div class="product-row-title">${esc(p.title)}${edited}</div>
+        <div class="product-row-meta">${esc(p.author || '—')} · ${esc(p.category || 'Books')}</div>
+      </div>
+      <div class="product-row-price">${moneyText(p.price_inr)}</div>
+    </div>`;
+  }).join('');
+}
+
+function selectProduct(slug) {
+  const row = productRows.find(p => p.slug === slug);
+  if (!row) return;
+  selectedProduct = row;
+  const p = mergedProduct(row);
+  document.getElementById('productEditorEmpty').style.display = 'none';
+  document.getElementById('productEditorForm').style.display = '';
+  document.getElementById('prodSlug').value = row.slug;
+  document.getElementById('prodTitle').value = p.title;
+  document.getElementById('prodAuthor').value = p.author;
+  document.getElementById('prodCategory').value = p.category;
+  document.getElementById('prodPrice').value = p.price_inr;
+  document.getElementById('prodOriginalPrice').value = p.original_price_inr;
+  document.getElementById('prodActive').checked = p.is_active !== false;
+  document.getElementById('productSaveMsg').textContent = row.override ? 'This product has a live override.' : 'No override saved yet.';
+  renderProductList();
+}
+
+async function saveProductOverride(activeOverride = true) {
+  if (!selectedProduct) return;
+  const msg = document.getElementById('productSaveMsg');
+  const payload = {
+    slug: document.getElementById('prodSlug').value,
+    title: document.getElementById('prodTitle').value,
+    author: document.getElementById('prodAuthor').value,
+    category: document.getElementById('prodCategory').value,
+    price_inr: document.getElementById('prodPrice').value,
+    original_price_inr: document.getElementById('prodOriginalPrice').value,
+    is_active: activeOverride && document.getElementById('prodActive').checked,
+  };
+  msg.textContent = 'Saving…';
+  try {
+    const res = await fetch('/.netlify/functions/update-product-override', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    selectedProduct.override = data.override;
+    const idx = productRows.findIndex(p => p.slug === selectedProduct.slug);
+    if (idx >= 0) productRows[idx] = selectedProduct;
+    msg.textContent = data.override?.is_active === false ? 'Override disabled. Storefront will use generated catalogue values.' : 'Saved. Refresh the storefront product page to see the update.';
+    renderProductList();
+  } catch (err) {
+    msg.textContent = 'Could not save: ' + err.message;
+  }
+}
+
+function clearProductOverride() {
+  if (!selectedProduct) return;
+  if (!confirm('Disable this product override and return to generated catalogue values?')) return;
+  document.getElementById('prodActive').checked = false;
+  saveProductOverride(false);
+}
+
+function openSelectedProduct() {
+  if (!selectedProduct) return;
+  window.open('/product/' + selectedProduct.slug + '/', '_blank');
 }
 
 function exportSelectedCsv() {
