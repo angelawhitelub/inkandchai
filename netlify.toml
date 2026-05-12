@@ -6,6 +6,9 @@
 [build.environment]
   NODE_VERSION = "20"
 
+[functions]
+  included_files = ["data/ALL_BOOKS.json"]
+
 # Static assets — never redirect
 [[redirects]]
   from   = "/images/*"

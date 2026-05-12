@@ -24,6 +24,17 @@ function money(v) {
   return Number.isFinite(n) ? n.toFixed(2) : '';
 }
 
+function findCataloguePath() {
+  const candidates = [
+    path.join(process.cwd(), 'data', 'ALL_BOOKS.json'),
+    path.join(__dirname, '..', '..', 'data', 'ALL_BOOKS.json'),
+    path.join('/var/task', 'data', 'ALL_BOOKS.json'),
+  ];
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!found) throw new Error(`Catalogue file not found. Checked: ${candidates.join(', ')}`);
+  return found;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'GET') return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method Not Allowed' }) };
@@ -35,7 +46,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const dataPath = path.join(__dirname, '..', '..', 'data', 'ALL_BOOKS.json');
+    const dataPath = findCataloguePath();
     const raw = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
     const seen = new Set();
     const products = [];
