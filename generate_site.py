@@ -3266,7 +3266,7 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
     <div class="author">by {author}</div>
 {order_badge_html}
 {rating_line_html}
-    <div><span class="price">{price}</span>{f'<span class="orig">{orig}</span>' if orig else ''}</div>
+    <div><span class="price" data-product-price>{price}</span>{f'<span class="orig" data-product-original-price>{orig}</span>' if orig else ''}</div>
     <span class="stock">In Stock</span>
     <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
     <div class="actions">
@@ -3334,12 +3334,18 @@ async function applyRuntimeProductOverride() {{
     }}
     if (override.price_inr !== null && override.price_inr !== undefined) {{
       currentItem.price = Number(override.price_inr) || currentItem.price;
-      const price = document.querySelector('.price');
-      if (price) price.textContent = priceText(override.price_inr);
+      const saleText = priceText(override.price_inr);
+      document.querySelectorAll('[data-product-price], .price, .prod-price').forEach(el => {{
+        el.textContent = saleText;
+        el.setAttribute('data-live-override', 'price');
+      }});
     }}
     if (override.original_price_inr !== null && override.original_price_inr !== undefined) {{
-      const orig = document.querySelector('.orig');
-      if (orig) orig.textContent = priceText(override.original_price_inr);
+      const mrpText = priceText(override.original_price_inr);
+      document.querySelectorAll('[data-product-original-price], .orig, .prod-orig').forEach(el => {{
+        el.textContent = mrpText;
+        el.setAttribute('data-live-override', 'original-price');
+      }});
     }}
   }} catch (err) {{
     console.warn('Product override unavailable:', err.message);
