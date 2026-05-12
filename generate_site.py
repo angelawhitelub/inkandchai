@@ -25,6 +25,8 @@ def make_slug(title, shopify_id):
         return "5-hindi-bestsellers-combo-set-of-5-books-MBO-5"
     if str(shopify_id or "") == "CUSTOM-GOGGINS-COMBO-HI":
         return "david-goggins-combo-hindi-cant-hurt-me-never-finished"
+    if str(shopify_id or "") == "CUSTOM-MOTHER-MARY-COMES-TO-ME-HI-ARUNDHATI-ROY":
+        return "mother-mary-comes-to-me-hindi-edition-arundhati-roy"
     slug = re.sub(r'[^a-z0-9]+', '-', (title or '').lower())
     slug = slug.strip('-')[:55]
     suffix = str(shopify_id or '')[-5:]
