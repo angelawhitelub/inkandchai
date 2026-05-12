@@ -59,3 +59,6 @@
 # 6. Feed.xml — short cache so Google sees product updates
 /feed.xml
   Cache-Control: public, max-age=600
+
+/robots.txt
+  Cache-Control: public, max-age=0, must-revalidate
