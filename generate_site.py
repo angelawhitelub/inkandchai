@@ -4701,11 +4701,7 @@ Allow: /
 Disallow: /admin/
 Disallow: /.netlify/
 
-# Sitemap location
 Sitemap: {SITE}/sitemap.xml
-
-# Crawl-delay (seconds) — be nice to Google's crawler on this dynamic site
-Crawl-delay: 1
 """
 robots_out = Path(__file__).parent / "public" / "robots.txt"
 robots_out.write_text(robots_txt, encoding="utf-8")
