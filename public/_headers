@@ -16,7 +16,7 @@
 /category/*
   Cache-Control: public, max-age=0, must-revalidate
 /admin/*
-  Cache-Control: public, max-age=0, must-revalidate
+  Cache-Control: no-store, max-age=0
 /terms/*
   Cache-Control: public, max-age=0, must-revalidate
 /privacy-policy/*
