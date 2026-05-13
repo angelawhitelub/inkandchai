@@ -288,6 +288,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
       <div class="mini-actions">
         <button class="btn-outline" onclick="fetchAbandonedCheckouts()">Refresh Leads</button>
         <button class="btn-green" onclick="exportAbandonedCsv()">Download Leads CSV</button>
+        <button class="btn-outline" onclick="deleteVisibleAbandonedLeads()" style="border-color:rgba(224,80,80,0.35);color:#c93636;">Delete Visible Leads</button>
       </div>
     </div>
     <div class="hint" id="abandonedMeta">Lead capture activates after the Supabase migration is run.</div>
@@ -974,6 +975,7 @@ function renderAbandonedCheckouts() {
         <div class="mini-actions">
           ${lead.customer_phone ? `<a class="btn-outline" href="${esc(abandonedWhatsappUrl(lead))}" target="_blank" style="text-decoration:none;padding:0.35rem 0.7rem;font-size:0.52rem;">WhatsApp</a>` : ''}
           ${lead.customer_email ? `<button class="btn-outline" onclick="sendAbandonedEmail('${esc(lead.id)}')" style="padding:0.35rem 0.7rem;font-size:0.52rem;">Send Email</button>` : ''}
+          <button class="btn-outline" onclick="deleteAbandonedLead('${esc(lead.id)}')" style="padding:0.35rem 0.7rem;font-size:0.52rem;border-color:rgba(224,80,80,0.35);color:#c93636;">Delete</button>
           ${lead.followup_email_sent_at ? `<span class="hint">emailed</span>` : ''}
         </div>
       </td>
@@ -1020,6 +1022,37 @@ async function sendAbandonedEmail(id) {
     alert('Email sent.');
   } catch (err) {
     alert('Could not send email: ' + err.message);
+  }
+}
+
+async function deleteAbandonedLead(id) {
+  if (!confirm('Delete this abandoned checkout lead permanently?')) return;
+  await deleteAbandonedLeads([id]);
+}
+
+async function deleteVisibleAbandonedLeads() {
+  if (!abandonedLeads.length) { alert('No abandoned checkout leads to delete.'); return; }
+  const confirmText = prompt(`Delete ${abandonedLeads.length} visible abandoned checkout lead${abandonedLeads.length === 1 ? '' : 's'} permanently?\n\nType DELETE to confirm:`, '');
+  if (confirmText !== 'DELETE') return;
+  await deleteAbandonedLeads(abandonedLeads.map(lead => lead.id));
+}
+
+async function deleteAbandonedLeads(ids) {
+  try {
+    const res = await fetch('/.netlify/functions/delete-abandoned-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ ids }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const idSet = new Set(ids.map(String));
+    abandonedLeads = abandonedLeads.filter(lead => !idSet.has(String(lead.id)));
+    renderAbandonedCheckouts();
+    const meta = document.getElementById('abandonedMeta');
+    if (meta) meta.textContent = `${abandonedLeads.length} lead${abandonedLeads.length === 1 ? '' : 's'} ready for follow-up · deleted ${data.deleted ?? ids.length}`;
+  } catch (err) {
+    alert('Could not delete abandoned checkout lead: ' + err.message);
   }
 }
 

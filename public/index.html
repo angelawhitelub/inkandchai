@@ -984,8 +984,8 @@ async function loadProductOverrides() {
     const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
     if (!res.ok) return;
     const data = await res.json();
-    const bySlug = new Map((data.overrides || []).map(o => [o.slug, o]));
-    BOOKS.forEach(book => applyProductOverride(book, bySlug.get(book.slug)));
+    const bySlug = new Map((data.overrides || []).map(o => [String(o.slug || '').toLowerCase(), o]));
+    BOOKS.forEach(book => applyProductOverride(book, bySlug.get(String(book.slug || '').toLowerCase())));
   } catch (err) {
     console.warn('Product overrides unavailable:', err.message);
   }

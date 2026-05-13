@@ -124,7 +124,8 @@ async function applyRuntimeProductOverride() {
     const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
     if (!res.ok) return;
     const data = await res.json();
-    const override = (data.overrides || []).find(o => o.slug === slug);
+    const key = String(slug || '').toLowerCase();
+    const override = (data.overrides || []).find(o => String(o.slug || '').toLowerCase() === key);
     if (!override) return;
     if (override.title) {
       currentItem.title = override.title;

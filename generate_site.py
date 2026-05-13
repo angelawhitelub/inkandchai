@@ -1243,8 +1243,8 @@ async function loadProductOverrides() {
     const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
     if (!res.ok) return;
     const data = await res.json();
-    const bySlug = new Map((data.overrides || []).map(o => [o.slug, o]));
-    BOOKS.forEach(book => applyProductOverride(book, bySlug.get(book.slug)));
+    const bySlug = new Map((data.overrides || []).map(o => [String(o.slug || '').toLowerCase(), o]));
+    BOOKS.forEach(book => applyProductOverride(book, bySlug.get(String(book.slug || '').toLowerCase())));
   } catch (err) {
     console.warn('Product overrides unavailable:', err.message);
   }
@@ -2451,7 +2451,8 @@ async function loadSingleProductOverride(slug) {
     const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
     if (!res.ok) return null;
     const data = await res.json();
-    return (data.overrides || []).find(o => o.slug === slug) || null;
+    const key = String(slug || '').toLowerCase();
+    return (data.overrides || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
   } catch (err) {
     console.warn('Product override unavailable:', err.message);
     return null;
@@ -3315,7 +3316,8 @@ async function applyRuntimeProductOverride() {{
     const res = await fetch('/.netlify/functions/get-product-overrides', {{ cache: 'no-store' }});
     if (!res.ok) return;
     const data = await res.json();
-    const override = (data.overrides || []).find(o => o.slug === slug);
+    const key = String(slug || '').toLowerCase();
+    const override = (data.overrides || []).find(o => String(o.slug || '').toLowerCase() === key);
     if (!override) return;
     if (override.title) {{
       currentItem.title = override.title;
