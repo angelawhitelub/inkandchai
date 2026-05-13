@@ -73,6 +73,8 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .focus-panel strong{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--gold);}
 .focus-panel p{font-size:0.68rem;color:var(--cream-dim);line-height:1.55;margin-top:0.15rem;}
 .focus-actions{display:flex;gap:0.6rem;flex-wrap:wrap;}
+.admin-jumps{display:flex;gap:0.6rem;flex-wrap:wrap;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:0.8rem 1rem;margin:-0.7rem 0 1.2rem;}
+.admin-jumps .btn-outline{background:#fffdf8;}
 .abandoned-panel{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1rem 1.2rem;margin:0 0 1.4rem;}
 .abandoned-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;}
 .abandoned-head h2{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:400;color:var(--white);}
@@ -180,6 +182,12 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     </div>
   </div>
 
+  <div class="admin-jumps">
+    <button class="btn-outline" onclick="document.getElementById('productEditorSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Edit Products / Prices</button>
+    <button class="btn-outline" onclick="document.getElementById('abandonedCheckoutSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Abandoned Checkouts</button>
+    <button class="btn-outline" onclick="document.getElementById('ordersTableSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Orders</button>
+  </div>
+
   <!-- Stats (click to filter) -->
   <div class="stats-row">
     <div class="stat-card active" data-status="" onclick="setFilter(this,'')">
@@ -223,7 +231,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     </div>
   </section>
 
-  <section class="product-panel">
+  <section class="product-panel" id="productEditorSection">
     <div class="product-head">
       <div>
         <h2>Product editor</h2>
@@ -282,7 +290,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     </div>
   </section>
 
-  <section class="abandoned-panel">
+  <section class="abandoned-panel" id="abandonedCheckoutSection">
     <div class="abandoned-head">
       <div>
         <h2>Abandoned checkouts</h2>
@@ -394,7 +402,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
   </div>
 
   <!-- Table -->
-  <div class="tbl-wrap">
+  <div class="tbl-wrap" id="ordersTableSection">
     <table>
       <thead>
         <tr>
