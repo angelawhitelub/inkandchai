@@ -243,6 +243,11 @@ all_cats = [
     if count >= 2 and cat.lower() not in SKIP_CATS
 ]
 all_cats_js = json.dumps(all_cats, ensure_ascii=False)
+nav_categories_html = "\n        ".join(
+    f'<a href="/category/{slugify(cat["name"])}/" role="menuitem">'
+    f'<span>{html_escape(cat["name"])}</span><span class="nav-cat-count">{int(cat["count"])} books</span></a>'
+    for cat in all_cats
+)
 
 META_PIXEL_CODE = """<!-- Meta Pixel Code -->
 <script>
@@ -447,9 +452,22 @@ HTML = r"""<!DOCTYPE html>
   .nav-links { display: flex; gap: 2.8rem; list-style: none; }
   .nav-links a { font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cream-dim); text-decoration: none; transition: color 0.3s; }
   .nav-links a:hover { color: var(--gold); }
+  .nav-links li { position: relative; }
+  .nav-cat-menu::after { content: ''; position: absolute; left: -1rem; right: -1rem; top: 100%; height: 1rem; }
+  .nav-cat-trigger { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .nav-cat-trigger::after { content: '⌄'; font-size: 0.72em; line-height: 1; color: var(--gold-dim); }
+  .nav-cat-dropdown { position: absolute; top: calc(100% + 0.9rem); left: 50%; transform: translateX(-50%) translateY(8px); width: min(760px, 90vw); max-height: 70vh; overflow: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.15rem 0.75rem; padding: 1rem; background: rgba(13,11,8,0.97); border: 1px solid var(--border); box-shadow: 0 18px 50px rgba(0,0,0,0.32); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.18s, transform 0.18s, visibility 0.18s; z-index: 350; }
+  html[data-theme="light"] .nav-cat-dropdown { background: rgba(250,247,242,0.98); box-shadow: 0 18px 48px rgba(80,55,20,0.14); }
+  .nav-cat-menu:hover .nav-cat-dropdown, .nav-cat-menu:focus-within .nav-cat-dropdown { opacity: 1; visibility: visible; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  .nav-cat-dropdown a { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; padding: 0.55rem 0.65rem; border: 1px solid transparent; font-size: 0.58rem; letter-spacing: 0.12em; line-height: 1.35; white-space: normal; }
+  .nav-cat-dropdown a:hover { border-color: var(--border); background: rgba(201,168,76,0.08); }
+  .nav-cat-count { flex: 0 0 auto; color: var(--gold-dim); font-size: 0.72em; letter-spacing: 0.04em; text-transform: none; }
   .nav-actions { display: flex; gap: 1.4rem; align-items: center; }
   .nav-icon { color: var(--cream-dim); cursor: pointer; transition: color 0.3s; font-size: 1rem; }
   .nav-icon:hover { color: var(--gold); }
+  .nav-search-btn { color: var(--cream-dim); cursor: pointer; transition: color 0.3s, border-color 0.3s, background 0.3s; font: inherit; background: transparent; border: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
+  .nav-search-btn:hover { color: var(--gold); }
+  .nav-search-label { display: none; }
   .btn-nav { font-family: 'Montserrat', sans-serif; font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; padding: 0.55rem 1.4rem; border: 1px solid var(--gold-dim); color: var(--gold); background: transparent; cursor: pointer; transition: all 0.3s; text-decoration: none; }
   .btn-nav:hover { background: var(--gold); color: var(--bg); border-color: var(--gold); }
 
@@ -780,6 +798,9 @@ HTML = r"""<!DOCTYPE html>
     .nav-actions .btn-nav, .nav-actions .nav-cart-wrap { display: none; }
     .theme-toggle { width: 34px; height: 34px; margin-right: 0; flex: 0 0 auto; }
     .nav-icon { flex: 0 0 44px; width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center; font-size:1.18rem; }
+    .nav-search-btn { flex: 0 0 auto; min-width: 86px; height: 42px; border: 1px solid var(--border); padding: 0 0.75rem; gap: 0.42rem; font-family: 'Montserrat', sans-serif; color: var(--gold); background: rgba(201,168,76,0.06); }
+    .nav-search-btn span:first-child { font-size: 1rem; line-height: 1; }
+    .nav-search-label { display: inline; font-size: 0.56rem; letter-spacing: 0.14em; text-transform: uppercase; }
     section { padding: 3.2rem 0.85rem; overflow-x: hidden; }
     .featured-header { display: block; margin-bottom: 1.8rem; }
     .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 0.2rem; }
@@ -875,6 +896,7 @@ HTML = r"""<!DOCTYPE html>
 <!-- Mobile bottom nav (mobile only via CSS) -->
 <nav class="mob-nav" aria-label="Mobile navigation">
   <a href="/" title="Home"><span class="mn-icon">⌂</span><span>Home</span></a>
+  <button onclick="window.IAC ? (IAC.getUser() ? IAC.openAccountModal() : IAC.openAuthModal()) : null" title="Account"><span class="mn-icon">👤</span><span>Account</span></button>
   <button onclick="window.IAC ? IAC.openMyOrders() : null" title="My Orders"><span class="mn-icon">📦</span><span>Orders</span></button>
   <button onclick="openCart()" title="Cart"><span class="mn-icon">🛒</span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></button>
 </nav>
@@ -887,7 +909,12 @@ HTML = r"""<!DOCTYPE html>
   <ul class="nav-links">
     <li><a href="/self-help-books/">Catalogue</a></li>
     <li><a href="/book-combos/">Collections</a></li>
-    <li><a href="/hindi-books/">Categories</a></li>
+    <li class="nav-cat-menu">
+      <a class="nav-cat-trigger" href="/#categories" aria-haspopup="true">Categories</a>
+      <div class="nav-cat-dropdown" role="menu" aria-label="Book categories">
+        NAV_CATEGORIES_PLACEHOLDER
+      </div>
+    </li>
     <li><a href="/track/">Track Order</a></li>
     <li><a href="/terms/">Terms</a></li>
     <li><a href="/privacy-policy/">Privacy</a></li>
@@ -898,7 +925,7 @@ HTML = r"""<!DOCTYPE html>
   </ul>
   <div class="nav-actions">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
-    <span class="nav-icon" title="Search" onclick="document.getElementById('searchInput')?.focus();document.getElementById('featured')?.scrollIntoView({behavior:'smooth'})">&#9906;</span>
+    <button class="nav-search-btn" type="button" title="Search books" aria-label="Search books" onclick="focusSiteSearch()"><span aria-hidden="true">⌕</span><span class="nav-search-label">Search</span></button>
     <span class="nav-icon" title="Wishlist" onclick="openWishlistModal()">&#9825;<span id="wishBadge" style="display:none;font-size:0.55rem;background:var(--gold);color:var(--bg);border-radius:50%;width:14px;height:14px;display:none;align-items:center;justify-content:center;position:absolute;top:-4px;right:-6px;"></span></span>
     <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
     <button class="btn-nav auth-nav-btn" id="authNavBtnMain" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
@@ -1657,6 +1684,13 @@ function clearSearch() {
   input.focus();
 }
 
+function focusSiteSearch() {
+  const featured = document.getElementById('featured');
+  const input = document.getElementById('searchInput');
+  featured?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.setTimeout(() => input?.focus(), 320);
+}
+
 function quickSearch(query) {
   const input = document.getElementById('searchInput');
   input.value = query;
@@ -1873,6 +1907,7 @@ import os
 HTML = HTML.replace("BOOKS_DATA_PLACEHOLDER",         books_js)
 HTML = HTML.replace("COLLECTIONS_DATA_PLACEHOLDER",   json.dumps(coll_data, ensure_ascii=False))
 HTML = HTML.replace("ALL_CATS_DATA_PLACEHOLDER",      all_cats_js)
+HTML = HTML.replace("NAV_CATEGORIES_PLACEHOLDER",     nav_categories_html)
 HTML = HTML.replace("RICH_DAD_HINDI_IMAGE_PLACEHOLDER", public_image_url("https://cdn.shopify.com/s/files/1/0777/8100/8701/files/18a3b96e-fe0b-4de2-99ba-d6900b02f8b0.jpg?v=1697648603"))
 HTML = HTML.replace("ATOMIC_HABITS_HINDI_IMAGE_PLACEHOLDER", public_image_url("https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51nmc82kxql-1c1458a1-51a7-4d5d-b100-4255d57076aa.jpg?v=1697649002"))
 HTML = HTML.replace("LAWS_48_HINDI_IMAGE_PLACEHOLDER", public_image_url("https://cdn.shopify.com/s/files/1/0777/8100/8701/files/51-RRmYWh9L._SL1000.jpg?v=1700040895"))
