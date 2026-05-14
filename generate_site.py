@@ -839,7 +839,7 @@ HTML = r"""<!DOCTYPE html>
   .promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Montserrat',sans-serif;position:relative;z-index:200}
   .promo-banner strong{color:#c9a84c;font-weight:600;letter-spacing:0.18em}
   .promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
-  @media(max-width:780px){.promo-banner{font-size:0.58rem;padding:0.5rem 0.7rem;letter-spacing:0.06em}}
+  @media(max-width:780px){.promo-banner{font-size:0.56rem;line-height:1.4;padding:0.45rem 0.7rem;letter-spacing:0.04em}.promo-banner code{display:none}}
   @media(max-width:780px){
     .hero-title { font-size:clamp(2.45rem,13vw,3.7rem); line-height:1.04; margin-bottom:1.3rem; }
     .hero-sub { width:calc(100vw - 2.4rem); max-width:calc(100vw - 2.4rem); margin-bottom:1.55rem; font-size:0.76rem; line-height:1.75; }
@@ -973,7 +973,7 @@ HTML = r"""<!DOCTYPE html>
     <h1 class="hero-title">Self-help<br/><em>bestsellers</em><br/>in Hindi.</h1>
     <p class="hero-sub">Read the titles everyone talks about — David Goggins, Ben Horowitz, Daniel Kahneman, Robert Kiyosaki, James Clear, and more — in editions made for Indian readers.</p>
     <div class="hero-ctas">
-      <a href="/category/?name=Hindi%20Books" class="btn-primary">Shop Hindi Editions</a>
+      <a href="/category/hindi-books/" class="btn-primary">Shop Hindi Editions</a>
       <a href="/bestsellers/" class="btn-ghost">See Bestsellers</a>
     </div>
     <div class="hero-stats">
@@ -1661,6 +1661,10 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function slugifyName(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-');
+}
+
 // ── CONTROLS ──────────────────────────────────────────────────────────────
 function setTab(el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1758,7 +1762,7 @@ let activeCat = null;
 
 function renderCats(list) {
   document.getElementById('catGrid').innerHTML = list.map(c => `
-    <a class="cat-card" href="/category/?name=${encodeURIComponent(c.name)}" style="text-decoration:none;color:inherit;">
+    <a class="cat-card" href="/category/${slugifyName(c.name)}/" style="text-decoration:none;color:inherit;">
       <div class="cat-name">${escHtml(c.name)}</div>
       <div class="cat-count">${c.count} books</div>
     </a>
@@ -2255,7 +2259,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 .promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Montserrat',sans-serif;position:relative;z-index:200}
 .promo-banner strong{color:#c9a84c;font-weight:600;letter-spacing:0.18em}
 .promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
-@media(max-width:780px){.promo-banner{font-size:0.58rem;padding:0.5rem 0.7rem;letter-spacing:0.06em}}
+@media(max-width:780px){.promo-banner{font-size:0.56rem;line-height:1.4;padding:0.45rem 0.7rem;letter-spacing:0.04em}.promo-banner code{display:none}}
 
 /* WhatsApp floating */
 .wa-float{position:fixed;bottom:22px;left:22px;width:54px;height:54px;border-radius:50%;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(37,211,102,0.45);z-index:250;cursor:pointer;text-decoration:none;transition:transform 0.2s}
@@ -4590,6 +4594,7 @@ html[data-theme="light"] .book-cover{background:#f0e8d4}
 .promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
 html[data-theme="light"] .promo-banner{background:linear-gradient(90deg,#fff8e6,#fbeec8,#fff8e6);color:#5a4a18}
 html[data-theme="light"] .promo-banner code{background:rgba(138,106,31,0.12);color:#6a4f10;border-color:rgba(138,106,31,0.4)}
+@media(max-width:780px){.promo-banner{font-size:0.56rem;line-height:1.4;padding:0.45rem 0.7rem;letter-spacing:0.04em}.promo-banner code{display:none}}
 .wa-float{position:fixed;bottom:22px;left:22px;width:54px;height:54px;border-radius:50%;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(37,211,102,0.45);z-index:250;cursor:pointer;text-decoration:none;transition:transform 0.2s}
 .wa-float:hover{transform:scale(1.08)}
 @media(max-width:780px){.wa-float{bottom:88px;left:14px;width:46px;height:46px}}
@@ -4628,10 +4633,18 @@ html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-c
 const BOOKS = BOOKS_DATA_PLACEHOLDER;
 const COLLECTIONS = COLLECTIONS_DATA_PLACEHOLDER;
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function slugifyName(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').replace(/-+/g,'-')}
 
 const params = new URLSearchParams(location.search);
-const collId = params.get('id');
-const catName = params.get('name');
+const pathParts = location.pathname.split('/').filter(Boolean);
+const pathType = pathParts[0] || '';
+const pathSlug = pathParts[1] ? decodeURIComponent(pathParts[1]) : '';
+const collId = params.get('id') || (pathType === 'collection' ? pathSlug : '');
+let catName = params.get('name') || '';
+if (!catName && pathType === 'category' && pathSlug) {
+  const cats = Array.from(new Set(BOOKS.map(b => b.cat).filter(Boolean)));
+  catName = cats.find(c => slugifyName(c) === pathSlug) || '';
+}
 
 let title = '', subtitle = '', crumbLabel = '', books = [];
 
@@ -4838,8 +4851,7 @@ for c in coll_data:
 # Category URLs (top categories with >= 5 books)
 for c in all_cats:
     if c['count'] < 5: continue
-    from urllib.parse import quote
-    caturl = f"{SITE}/category/?name={quote(c['name'])}"
+    caturl = f"{SITE}/category/{slugify(c['name'])}/"
     url_entries.append(f"  <url><loc>{caturl}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>")
 
 sitemap_xml = (

@@ -549,7 +549,7 @@
   .promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Montserrat',sans-serif;position:relative;z-index:200}
   .promo-banner strong{color:#c9a84c;font-weight:600;letter-spacing:0.18em}
   .promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
-  @media(max-width:780px){.promo-banner{font-size:0.58rem;padding:0.5rem 0.7rem;letter-spacing:0.06em}}
+  @media(max-width:780px){.promo-banner{font-size:0.56rem;line-height:1.4;padding:0.45rem 0.7rem;letter-spacing:0.04em}.promo-banner code{display:none}}
   @media(max-width:780px){
     .hero-title { font-size:clamp(2.45rem,13vw,3.7rem); line-height:1.04; margin-bottom:1.3rem; }
     .hero-sub { width:calc(100vw - 2.4rem); max-width:calc(100vw - 2.4rem); margin-bottom:1.55rem; font-size:0.76rem; line-height:1.75; }
@@ -744,7 +744,7 @@ gtag('config', 'AW-18119332653');
     <h1 class="hero-title">Self-help<br/><em>bestsellers</em><br/>in Hindi.</h1>
     <p class="hero-sub">Read the titles everyone talks about — David Goggins, Ben Horowitz, Daniel Kahneman, Robert Kiyosaki, James Clear, and more — in editions made for Indian readers.</p>
     <div class="hero-ctas">
-      <a href="/category/?name=Hindi%20Books" class="btn-primary">Shop Hindi Editions</a>
+      <a href="/category/hindi-books/" class="btn-primary">Shop Hindi Editions</a>
       <a href="/bestsellers/" class="btn-ghost">See Bestsellers</a>
     </div>
     <div class="hero-stats">
@@ -1432,6 +1432,10 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function slugifyName(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-');
+}
+
 // ── CONTROLS ──────────────────────────────────────────────────────────────
 function setTab(el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1529,7 +1533,7 @@ let activeCat = null;
 
 function renderCats(list) {
   document.getElementById('catGrid').innerHTML = list.map(c => `
-    <a class="cat-card" href="/category/?name=${encodeURIComponent(c.name)}" style="text-decoration:none;color:inherit;">
+    <a class="cat-card" href="/category/${slugifyName(c.name)}/" style="text-decoration:none;color:inherit;">
       <div class="cat-name">${escHtml(c.name)}</div>
       <div class="cat-count">${c.count} books</div>
     </a>

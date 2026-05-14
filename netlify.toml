@@ -22,6 +22,19 @@
   status = 200
   force  = false
 
+# Pretty collection/category URLs, e.g. /category/hindi-books/
+[[redirects]]
+  from   = "/category/*"
+  to     = "/category/index.html"
+  status = 200
+  force  = false
+
+[[redirects]]
+  from   = "/collection/*"
+  to     = "/collection/index.html"
+  status = 200
+  force  = false
+
 # Merchant Center was given this older mixed-case generated URL. Keep it
 # permanently available and point crawlers to the current canonical product URL.
 [[redirects]]
