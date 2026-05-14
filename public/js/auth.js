@@ -43,8 +43,29 @@
   async function fetchProfile() {
     const sb = getSB();
     if (!sb || !currentUser) return;
-    const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
-    currentProfile = data;
+    const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
+    if (data) {
+      currentProfile = data;
+      return;
+    }
+
+    const meta = currentUser.user_metadata || {};
+    const fallbackProfile = {
+      id: currentUser.id,
+      name: meta.name || meta.full_name || '',
+      phone: meta.phone || '',
+      updated_at: new Date().toISOString(),
+    };
+    if (fallbackProfile.name || fallbackProfile.phone) {
+      const { data: created } = await sb
+        .from('profiles')
+        .upsert(fallbackProfile)
+        .select('*')
+        .maybeSingle();
+      currentProfile = created || fallbackProfile;
+    } else {
+      currentProfile = null;
+    }
   }
 
   // ── Nav button ─────────────────────────────────────────────────────────────
@@ -344,26 +365,42 @@
       const name  = document.getElementById('iacFullName')?.value.trim() || '';
       const phone = document.getElementById('iacPhone')?.value.trim()    || '';
 
-      const { data, error } = await sb.auth.signUp({ email, password });
-      if (error) {
-        msg.textContent = error.message;
+      const signupRes = await fetch('/.netlify/functions/signup-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password,
+          name,
+          phone,
+          redirectTo: `${window.location.origin}/`,
+        }),
+      });
+      const signupJson = await signupRes.json().catch(() => ({}));
+      if (!signupRes.ok) {
+        msg.textContent = signupJson.error || 'Could not send confirmation email. Please try again.';
         btn.disabled = false;
         btn.textContent = 'Create Account →';
         return;
       }
-      if (data.user) {
-        await sb.from('profiles').upsert({ id: data.user.id, name, phone });
-        currentUser    = data.user;
-        currentProfile = { name, phone };
-      }
+
+      currentUser = null;
+      currentProfile = null;
       msg.style.color = '#6dbf6d';
-      msg.textContent = '✓ Account created! Check your email to confirm.';
-      setTimeout(() => removeModal('iacAuthModal'), 2000);
+      msg.innerHTML = `${signupJson.message || 'Confirmation email sent. Please check inbox/spam, then click the link to activate your account.'}<br>
+        <button type="button" onclick="iacResendSignupEmail()" style="margin-top:0.7rem;background:none;border:none;color:#c9a84c;text-decoration:underline;cursor:pointer;font-family:'Montserrat',sans-serif;font-size:0.7rem;">
+          Resend confirmation email
+        </button>`;
+      btn.disabled = false;
+      btn.textContent = 'Create Account →';
 
     } else {
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
       if (error) {
-        msg.textContent = error.message;
+        const unconfirmed = /confirm|verified|verification/i.test(error.message || '');
+        msg.innerHTML = unconfirmed
+          ? `${error.message}<br><button type="button" onclick="iacResendSignupEmail()" style="margin-top:0.7rem;background:none;border:none;color:#c9a84c;text-decoration:underline;cursor:pointer;font-family:'Montserrat',sans-serif;font-size:0.7rem;">Resend confirmation email</button>`
+          : error.message;
         btn.disabled = false;
         btn.textContent = 'Sign In →';
         return;
@@ -375,6 +412,62 @@
       setTimeout(() => removeModal('iacAuthModal'), 800);
     }
     updateNav();
+  };
+
+  window.iacResendSignupEmail = async function () {
+    const sb = getSB();
+    const msg = document.getElementById('iacAuthMsg');
+    const email = document.getElementById('iacEmail')?.value.trim();
+    const password = document.getElementById('iacPassword')?.value || '';
+    const name = document.getElementById('iacFullName')?.value.trim() || '';
+    const phone = document.getElementById('iacPhone')?.value.trim() || '';
+    if (!sb || !email) {
+      if (msg) {
+        msg.style.color = '#e06060';
+        msg.textContent = 'Please enter your email first.';
+      }
+      return;
+    }
+    if (!password || password.length < 6) {
+      if (msg) {
+        msg.style.color = '#e06060';
+        msg.textContent = 'Please enter your password first so we can send the secure account link.';
+      }
+      return;
+    }
+    if (msg) {
+      msg.style.color = '#a09080';
+      msg.textContent = 'Sending confirmation email again...';
+    }
+    let error = null;
+    let message = 'Confirmation email sent again. Please check inbox and spam.';
+    try {
+      const res = await fetch('/.netlify/functions/signup-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password,
+          name,
+          phone,
+          redirectTo: `${window.location.origin}/`,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Could not resend confirmation email.');
+      message = json.message || message;
+    } catch (e) {
+      error = e;
+    }
+    if (msg) {
+      if (error) {
+        msg.style.color = '#e06060';
+        msg.textContent = error.message || 'Could not resend confirmation email.';
+      } else {
+        msg.style.color = '#6dbf6d';
+        msg.textContent = message;
+      }
+    }
   };
 
   // ─────────────────────────────────────────────────────────────────────────
