@@ -728,9 +728,106 @@
                               font-size:0.55rem;">Deliver to</span><br/>
                  ${escHtml(o.customer_address)}
                </div>` : ''}
+          ${returnRequestBlock(o)}
         </div>`;
     }).join('');
   }
+
+  function returnWindowInfo(order) {
+    const anchor = order.delivered_at || order.shipped_at || order.created_at;
+    const anchorTime = anchor ? new Date(anchor).getTime() : NaN;
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    if (!Number.isFinite(anchorTime)) return { eligible: false, daysLeft: 0 };
+    const msLeft = anchorTime + sevenDays - Date.now();
+    const status = String(order.status || '').toLowerCase();
+    const eligible = msLeft >= 0 && !['cancelled', 'refunded'].includes(status);
+    return { eligible, daysLeft: Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000))) };
+  }
+
+  function returnRequestBlock(order) {
+    const info = returnWindowInfo(order);
+    if (!info.eligible) {
+      return `
+        <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid rgba(201,168,76,0.08);
+                    font-size:0.58rem;color:#7a6330;letter-spacing:0.08em;line-height:1.6;text-transform:uppercase;">
+          Return window closed
+        </div>`;
+    }
+    return `
+      <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                  display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">
+        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
+          7-day return window · ${info.daysLeft} day${info.daysLeft === 1 ? '' : 's'} left
+        </div>
+        <button onclick="iacOpenReturnModal('${escJs(order.id)}')"
+          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                 padding:0.65rem 1rem;background:transparent;border:1px solid rgba(201,168,76,0.35);
+                 color:#c9a84c;cursor:pointer;">
+          Initiate Return
+        </button>
+      </div>`;
+  }
+
+  window.iacOpenReturnModal = function (orderId) {
+    removeModal('iacReturnModal');
+    const modal = document.createElement('div');
+    modal.id = 'iacReturnModal';
+    modal.style.cssText = `
+      position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
+      display:flex;align-items:center;justify-content:center;z-index:9100;padding:1rem;
+    `;
+    modal.innerHTML = `
+      <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);width:min(460px,96vw);padding:2rem;position:relative;">
+        <button onclick="document.getElementById('iacReturnModal')?.remove()"
+          style="position:absolute;top:1rem;right:1.1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
+        <div style="font-size:0.58rem;letter-spacing:0.3em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.6rem;">Return Request</div>
+        <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:#faf7f2;margin-bottom:0.8rem;">Tell us what went wrong</h3>
+        <p style="font-size:0.72rem;color:#a09080;line-height:1.7;margin-bottom:1rem;">Return requests are available within 7 days. We will review and email you the next steps.</p>
+        <textarea id="iacReturnReason" rows="4" placeholder="Reason for return"
+          style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);color:#f0e8d8;padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.78rem;outline:none;resize:vertical;"></textarea>
+        <button id="iacReturnSubmit" onclick="iacSubmitReturn('${escJs(orderId)}')"
+          style="width:100%;margin-top:1rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.95rem;background:#c9a84c;color:#0d0b08;border:none;cursor:pointer;font-weight:500;">
+          Submit Return Request
+        </button>
+        <p id="iacReturnMsg" style="font-size:0.7rem;margin-top:0.85rem;min-height:1.2em;text-align:center;"></p>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    setTimeout(() => document.getElementById('iacReturnReason')?.focus(), 80);
+  };
+
+  window.iacSubmitReturn = async function (orderId) {
+    const sb = getSB();
+    const btn = document.getElementById('iacReturnSubmit');
+    const msg = document.getElementById('iacReturnMsg');
+    const reason = document.getElementById('iacReturnReason')?.value.trim() || '';
+    if (!sb || !currentUser) {
+      if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please sign in again.'; }
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending request...'; }
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('/.netlify/functions/request-return', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ order_id: orderId, reason }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Could not submit return request.');
+      if (msg) { msg.style.color = '#6dbf6d'; msg.textContent = json.message || 'Return request submitted.'; }
+      setTimeout(() => removeModal('iacReturnModal'), 1500);
+    } catch (err) {
+      if (msg) { msg.style.color = '#e06060'; msg.textContent = err.message || 'Could not submit return request.'; }
+      btn.disabled = false;
+      btn.textContent = 'Submit Return Request';
+    }
+  };
 
   // ── Wishlist ───────────────────────────────────────────────────────────────
   const WISH_KEY = 'iac_wishlist';
@@ -811,6 +908,10 @@
 
   function escHtmlAttr(s) {
     return escHtml(s).replace(/"/g, '&quot;');
+  }
+
+  function escJs(s) {
+    return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
   }
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────

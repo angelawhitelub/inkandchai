@@ -37,7 +37,7 @@ async function sendEmail({ to, name, actionLink, isExisting }) {
 
   const firstName = clean(name || 'reader', 80).split(' ')[0] || 'reader';
   const subject = isExisting
-    ? 'Your secure Ink & Chai login link'
+    ? 'Confirm your Ink & Chai email'
     : 'Confirm your Ink & Chai account';
 
   const html = `
@@ -45,12 +45,12 @@ async function sendEmail({ to, name, actionLink, isExisting }) {
       <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;margin:0 0 12px;">Ink &amp; Chai</h2>
       <p>Hi ${esc(firstName)},</p>
       <p>${isExisting
-        ? 'Use the secure button below to sign in to your Ink &amp; Chai account.'
+        ? 'Please confirm this email address for your Ink &amp; Chai account.'
         : 'Please confirm your email address to activate your Ink &amp; Chai account.'}</p>
       <p style="margin:26px 0;">
         <a href="${esc(actionLink)}"
            style="background:#8a6a1f;color:#fff;text-decoration:none;padding:13px 20px;display:inline-block;letter-spacing:0.08em;text-transform:uppercase;font-size:12px;">
-          ${isExisting ? 'Sign in securely' : 'Confirm account'}
+          ${isExisting ? 'Confirm email' : 'Confirm account'}
         </a>
       </p>
       <p style="font-size:13px;line-height:1.6;color:#5a4a38;">If the button does not work, copy and paste this link into your browser:<br>
@@ -142,9 +142,9 @@ exports.handler = async (event) => {
       headers: CORS,
       body: JSON.stringify({
         ok: true,
-        mode: isExisting ? 'existing_login_link' : 'signup_confirmation',
+        mode: isExisting ? 'email_confirmation' : 'signup_confirmation',
         message: isExisting
-          ? 'Secure login link sent. Please check your inbox and spam.'
+          ? 'Email confirmation link sent. Please check your inbox and spam.'
           : 'Confirmation email sent. Please check your inbox and spam.',
       }),
     };
