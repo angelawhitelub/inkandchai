@@ -163,14 +163,16 @@
   .nav-links a { font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cream-dim); text-decoration: none; transition: color 0.3s; }
   .nav-links a:hover { color: var(--gold); }
   .nav-links li { position: relative; }
-  .nav-cat-menu::after { content: ''; position: absolute; left: -1rem; right: -1rem; top: 100%; height: 1rem; }
-  .nav-cat-trigger { display: inline-flex; align-items: center; gap: 0.35rem; }
-  .nav-cat-trigger::after { content: '⌄'; font-size: 0.72em; line-height: 1; color: var(--gold-dim); }
-  .nav-cat-dropdown { position: absolute; top: calc(100% + 0.9rem); left: 50%; transform: translateX(-50%) translateY(8px); width: min(760px, 90vw); max-height: 70vh; overflow: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.15rem 0.75rem; padding: 1rem; background: rgba(13,11,8,0.97); border: 1px solid var(--border); box-shadow: 0 18px 50px rgba(0,0,0,0.32); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.18s, transform 0.18s, visibility 0.18s; z-index: 350; }
-  html[data-theme="light"] .nav-cat-dropdown { background: rgba(250,247,242,0.98); box-shadow: 0 18px 48px rgba(80,55,20,0.14); }
-  .nav-cat-menu:hover .nav-cat-dropdown, .nav-cat-menu:focus-within .nav-cat-dropdown { opacity: 1; visibility: visible; pointer-events: auto; transform: translateX(-50%) translateY(0); }
-  .nav-cat-dropdown a { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; padding: 0.55rem 0.65rem; border: 1px solid transparent; font-size: 0.58rem; letter-spacing: 0.12em; line-height: 1.35; white-space: normal; }
-  .nav-cat-dropdown a:hover { border-color: var(--border); background: rgba(201,168,76,0.08); }
+  .nav-dropdown-menu::after { content: ''; position: absolute; left: -1rem; right: -1rem; top: 100%; height: 1rem; }
+  .nav-dropdown-trigger { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .nav-dropdown-trigger::after { content: '⌄'; font-size: 0.72em; line-height: 1; color: var(--gold-dim); }
+  .nav-dropdown { position: absolute; top: calc(100% + 0.9rem); left: 50%; transform: translateX(-50%) translateY(8px); max-height: 70vh; overflow: auto; display: grid; gap: 0.15rem 0.75rem; padding: 1rem; background: rgba(13,11,8,0.97); border: 1px solid var(--border); box-shadow: 0 18px 50px rgba(0,0,0,0.32); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.18s, transform 0.18s, visibility 0.18s; z-index: 350; }
+  .nav-cat-dropdown { width: min(760px, 90vw); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .nav-policy-dropdown { width: min(310px, 82vw); grid-template-columns: 1fr; }
+  html[data-theme="light"] .nav-dropdown { background: rgba(250,247,242,0.98); box-shadow: 0 18px 48px rgba(80,55,20,0.14); }
+  .nav-dropdown-menu:hover .nav-dropdown, .nav-dropdown-menu:focus-within .nav-dropdown { opacity: 1; visibility: visible; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  .nav-dropdown a { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; padding: 0.55rem 0.65rem; border: 1px solid transparent; font-size: 0.58rem; letter-spacing: 0.12em; line-height: 1.35; white-space: normal; }
+  .nav-dropdown a:hover { border-color: var(--border); background: rgba(201,168,76,0.08); }
   .nav-cat-count { flex: 0 0 auto; color: var(--gold-dim); font-size: 0.72em; letter-spacing: 0.04em; text-transform: none; }
   .nav-actions { display: flex; gap: 1.4rem; align-items: center; }
   .nav-icon { color: var(--cream-dim); cursor: pointer; transition: color 0.3s; font-size: 1rem; }
@@ -645,9 +647,9 @@ gtag('config', 'AW-18119332653');
   <ul class="nav-links">
     <li><a href="/self-help-books/">Catalogue</a></li>
     <li><a href="/book-combos/">Collections</a></li>
-    <li class="nav-cat-menu">
-      <a class="nav-cat-trigger" href="/#categories" aria-haspopup="true">Categories</a>
-      <div class="nav-cat-dropdown" role="menu" aria-label="Book categories">
+    <li class="nav-dropdown-menu nav-cat-menu">
+      <a class="nav-dropdown-trigger" href="/#categories" aria-haspopup="true">Categories</a>
+      <div class="nav-dropdown nav-cat-dropdown" role="menu" aria-label="Book categories">
         <a href="/category/preloved-books/" role="menuitem"><span>Preloved Books</span><span class="nav-cat-count">474 books</span></a>
         <a href="/category/all-self-help/" role="menuitem"><span>All Self Help</span><span class="nav-cat-count">398 books</span></a>
         <a href="/category/all-romance-books/" role="menuitem"><span>All Romance Books</span><span class="nav-cat-count">274 books</span></a>
@@ -687,11 +689,16 @@ gtag('config', 'AW-18119332653');
       </div>
     </li>
     <li><a href="/track/">Track Order</a></li>
-    <li><a href="/terms/">Terms</a></li>
-    <li><a href="/privacy-policy/">Privacy</a></li>
-    <li><a href="/refund-policy/">Refund</a></li>
-    <li><a href="/return-policy/">Returns</a></li>
-    <li><a href="/shipping-policy/">Shipping</a></li>
+    <li class="nav-dropdown-menu nav-policy-menu">
+      <a class="nav-dropdown-trigger" href="/terms/" aria-haspopup="true">Policies</a>
+      <div class="nav-dropdown nav-policy-dropdown" role="menu" aria-label="Store policies">
+        <a href="/terms/" role="menuitem"><span>Terms</span></a>
+        <a href="/privacy-policy/" role="menuitem"><span>Privacy</span></a>
+        <a href="/refund-policy/" role="menuitem"><span>Refund</span></a>
+        <a href="/return-policy/" role="menuitem"><span>Returns</span></a>
+        <a href="/shipping-policy/" role="menuitem"><span>Shipping</span></a>
+      </div>
+    </li>
     <li><a href="mailto:support@inkandchai.in">Contact Us</a></li>
   </ul>
   <div class="nav-actions">
