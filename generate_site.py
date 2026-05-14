@@ -696,23 +696,45 @@ HTML = r"""<!DOCTYPE html>
   .hero-ctas     { animation: fadeUp 0.8s ease 0.8s both; }
   .hero-stats    { animation: fadeUp 0.8s ease 1s both; }
 
+  /* HORIZONTAL SHELF ROWS */
+  .shelves-section { background: var(--bg); padding: 5rem 6rem; border-top: 1px solid var(--border); }
+  .shelf-block { margin-bottom: 4rem; }
+  .shelf-block:last-child { margin-bottom: 0; }
+  .shelf-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem; }
+  .shelf-label { font-size: 0.55rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); margin-bottom: 0.35rem; }
+  .shelf-title { font-family: 'Cormorant Garamond', serif; font-size: 1.8rem; font-weight: 300; color: var(--white); line-height: 1.1; }
+  .shelf-title em { font-style: italic; color: var(--gold-light); }
+  .shelf-link { font-size: 0.58rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); text-decoration: none; white-space: nowrap; padding: 0.5rem 1rem; border: 1px solid rgba(201,168,76,0.4); transition: all 0.2s; }
+  .shelf-link:hover { background: var(--gold); color: var(--bg); }
+  .shelf-row { display: flex; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 0.5rem; }
+  .shelf-row::-webkit-scrollbar { display: none; }
+  .shelf-card { flex: 0 0 155px; scroll-snap-align: start; cursor: pointer; }
+  .shelf-card-cover { aspect-ratio: 2/3; background: var(--bg2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 0.6rem; transition: border-color 0.25s; }
+  .shelf-card:hover .shelf-card-cover { border-color: var(--gold-dim); }
+  .shelf-card-cover img { width: 100%; height: 100%; object-fit: contain; display: block; transition: transform 0.35s; }
+  .shelf-card:hover .shelf-card-cover img { transform: scale(1.04); }
+  .shelf-card-name { font-family: 'Cormorant Garamond', serif; font-size: 0.88rem; color: var(--cream); line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.2em; }
+  .shelf-card-price { font-size: 0.85rem; color: var(--gold); font-weight: 600; margin-top: 0.25rem; }
+  .shelf-card-btn { width: 100%; margin-top: 0.45rem; font-size: 0.5rem; letter-spacing: 0.15em; text-transform: uppercase; padding: 0.52rem 0.25rem; background: transparent; color: var(--gold); border: 1px solid rgba(201,168,76,0.4); cursor: pointer; font-family: 'Montserrat', sans-serif; font-weight: 500; transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .shelf-card-btn:hover { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+  @media(max-width:1100px) { .shelves-section { padding: 5rem 2.5rem; } }
+  @media(max-width:600px) { .shelves-section { padding: 3.2rem 0.85rem; } .shelf-card { flex: 0 0 128px; } .shelf-title { font-size: 1.4rem; } }
+
   /* ALL CATEGORIES */
   .all-categories { background: var(--bg3); border-top: 1px solid var(--border); }
-  .cat-search-wrap { margin: 2rem 0 2.5rem; }
-  .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+  .cat-search-wrap { margin: 2rem 0 2rem; }
+  .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; }
   .cat-card {
-    border: 1px solid var(--border); padding: 1.4rem 1.6rem; cursor: pointer;
-    transition: border-color 0.3s, background 0.3s; position: relative; overflow: hidden;
+    display: flex; flex-direction: column; padding: 1rem 1.1rem;
+    border: 1px solid var(--border); background: var(--bg2);
+    cursor: pointer; transition: all 0.25s; text-decoration: none; color: inherit;
   }
-  .cat-card:hover { border-color: var(--gold-dim); background: rgba(201,168,76,0.05); }
-  .cat-card.active-cat { border-color: var(--gold); background: rgba(201,168,76,0.08); }
-  .cat-card::before {
-    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
-    background: var(--gold); transform: scaleY(0); transition: transform 0.3s; transform-origin: bottom;
-  }
-  .cat-card:hover::before, .cat-card.active-cat::before { transform: scaleY(1); }
-  .cat-name { font-family: 'Cormorant Garamond', serif; font-size: 1rem; color: var(--cream); line-height: 1.3; margin-bottom: 0.3rem; }
-  .cat-count { font-size: 0.58rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold-dim); }
+  .cat-card:hover { border-color: var(--gold); background: rgba(201,168,76,0.06); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+  .cat-card.active-cat { border-color: var(--gold); background: rgba(201,168,76,0.1); }
+  .cat-icon { font-size: 1.6rem; margin-bottom: 0.5rem; line-height: 1; }
+  .cat-name { font-family: 'Montserrat', sans-serif; font-size: 0.72rem; font-weight: 500; color: var(--cream); line-height: 1.3; }
+  .cat-count { font-size: 0.5rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold-dim); margin-top: 0.25rem; }
+  @media(max-width:600px) { .cat-grid { grid-template-columns: repeat(3, 1fr); gap: 0.6rem; } .cat-card { padding: 0.75rem 0.75rem; } .cat-icon { font-size: 1.3rem; } .cat-name { font-size: 0.65rem; } }
 
   /* PRODUCT MODAL */
   .prod-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:600; opacity:0; pointer-events:none; transition:opacity 0.3s; backdrop-filter:blur(4px); }
@@ -1105,6 +1127,50 @@ HTML = r"""<!DOCTYPE html>
   <div class="section-label">Browse by Theme</div>
   <h2 class="section-title">Curated <em>Collections</em></h2>
   <div class="collections-grid" id="collectionsGrid"></div>
+</section>
+
+<!-- HORIZONTAL SHELVES -->
+<section class="shelves-section" id="shelves">
+  <div class="shelf-block">
+    <div class="shelf-header">
+      <div>
+        <div class="shelf-label">Curated for You</div>
+        <div class="shelf-title">Self-Help <em>Bestsellers</em></div>
+      </div>
+      <a class="shelf-link" href="/category/?name=All%20Self%20Help">View all →</a>
+    </div>
+    <div class="shelf-row" id="shelfSelfHelp"></div>
+  </div>
+  <div class="shelf-block">
+    <div class="shelf-header">
+      <div>
+        <div class="shelf-label">Page-Turners</div>
+        <div class="shelf-title">Fiction <em>Favourites</em></div>
+      </div>
+      <a class="shelf-link" href="/category/?name=Fiction">View all →</a>
+    </div>
+    <div class="shelf-row" id="shelfFiction"></div>
+  </div>
+  <div class="shelf-block">
+    <div class="shelf-header">
+      <div>
+        <div class="shelf-label">Love &amp; Drama</div>
+        <div class="shelf-title">Romance <em>Picks</em></div>
+      </div>
+      <a class="shelf-link" href="/category/?name=All%20Romance%20Books">View all →</a>
+    </div>
+    <div class="shelf-row" id="shelfRomance"></div>
+  </div>
+  <div class="shelf-block">
+    <div class="shelf-header">
+      <div>
+        <div class="shelf-label">Little Readers</div>
+        <div class="shelf-title">Books for <em>Kids</em></div>
+      </div>
+      <a class="shelf-link" href="/category/?name=Kids%20Book">View all →</a>
+    </div>
+    <div class="shelf-row" id="shelfKids"></div>
+  </div>
 </section>
 
 <!-- ALL CATEGORIES -->
@@ -1763,14 +1829,66 @@ const BOOK_MAP = {};
 BOOKS.forEach(b => { BOOK_MAP[b.slug] = b; });
 
 
+// ── HORIZONTAL SHELF ROWS ─────────────────────────────────────────────────
+const CAT_ICONS = {
+  'self': '💪', 'fiction': '📖', 'romance': '💕',
+  'kid': '🧒', 'child': '🧒', 'business': '💼', 'finance': '💼',
+  'hindi': '🇮🇳', 'language': '🌐', 'manga': '🎌', 'comic': '🦸',
+  'poetry': '✍️', 'thriller': '🔪', 'mystery': '🕵️',
+  'biograph': '👤', 'memoir': '👤', 'history': '🏛️', 'science': '🔬',
+  'travel': '✈️', 'cook': '🍳', 'fantasy': '🧙', 'horror': '👻',
+  'religion': '🙏', 'spiritual': '🙏', 'art': '🎨',
+  'preloved': '♻️', 'new arrival': '✨', 'graphic': '🎨',
+};
+
+function getCatIcon(name) {
+  const n = (name || '').toLowerCase();
+  for (const [k, v] of Object.entries(CAT_ICONS)) { if (n.includes(k)) return v; }
+  return '📚';
+}
+
+function renderShelf(rowId, filterFn, limit) {
+  const books = BOOKS.filter(b => filterFn(b) && b.img).slice(0, limit || 16);
+  const el = document.getElementById(rowId);
+  if (!el || !books.length) { if (el) el.closest('.shelf-block').style.display='none'; return; }
+  el.innerHTML = books.map(b => {
+    const price = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
+    return `<div class="shelf-card" onclick="location.href='/product/${b.slug}/'">
+      <div class="shelf-card-cover">
+        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
+      </div>
+      <div class="shelf-card-name">${escHtml(b.t)}</div>
+      <div class="shelf-card-price">${escHtml(b.p)}</div>
+      <button class="shelf-card-btn" onclick="event.stopPropagation(); addToCartById(this)"
+        data-url="${escHtml(b.url)}" data-title="${escHtml(b.t)}"
+        data-author="${escHtml(b.a||'')}" data-price="${price}"
+        data-img="${escHtml(b.img)}">+ Add to Cart</button>
+    </div>`;
+  }).join('');
+}
+
+function renderShelves() {
+  renderShelf('shelfSelfHelp', b => (b.cat||'').toLowerCase().includes('self'), 16);
+  renderShelf('shelfFiction',  b => {
+    const c = (b.cat||'').toLowerCase();
+    return c.includes('fiction') && !c.includes('romance');
+  }, 16);
+  renderShelf('shelfRomance',  b => (b.cat||'').toLowerCase().includes('romance'), 16);
+  renderShelf('shelfKids',     b => {
+    const c = (b.cat||'').toLowerCase();
+    return c.includes('kid') || c.includes('child');
+  }, 16);
+}
+
 // ── CATEGORIES ────────────────────────────────────────────────────────────
 let activeCat = null;
 
 function renderCats(list) {
   document.getElementById('catGrid').innerHTML = list.map(c => `
-    <a class="cat-card" href="/category/${slugifyName(c.name)}/" style="text-decoration:none;color:inherit;">
+    <a class="cat-card" href="/category/${slugifyName(c.name)}/">
+      <div class="cat-icon">${getCatIcon(c.name)}</div>
       <div class="cat-name">${escHtml(c.name)}</div>
-      <div class="cat-count">${c.count} books</div>
+      <div class="cat-count">${c.count} book${c.count !== 1 ? 's' : ''}</div>
     </a>
   `).join('');
 }
@@ -1898,6 +2016,7 @@ if (totalStat) totalStat.textContent = BOOKS.length.toLocaleString() + '+';
 document.getElementById('view-all-link').textContent = `View self-help books`;
 loadProductOverrides().finally(renderBooks);
 renderCollections();
+renderShelves();
 renderCats(ALL_CATS);
 
 // Intersection observer for initial cards
