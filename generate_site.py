@@ -287,6 +287,97 @@ def with_meta_pixel(html: str) -> str:
         return html
     return html.replace("</head>", "\n".join(tags) + "\n</head>", 1)
 
+READER_ACTIVITY_CSS = r"""
+/* Animated reader activity notification */
+.reader-activity-toast{position:fixed;left:22px;bottom:96px;width:min(340px,calc(100vw - 32px));display:grid;grid-template-columns:58px 1fr 28px;gap:.85rem;align-items:center;padding:.72rem .72rem;background:rgba(250,247,242,.97);border:1px solid rgba(138,106,31,.25);box-shadow:0 18px 44px rgba(30,20,8,.18);z-index:8997;color:#2a2018;opacity:0;transform:translateY(18px);pointer-events:none;transition:opacity .35s ease,transform .35s ease;backdrop-filter:blur(12px)}
+html:not([data-theme="light"]) .reader-activity-toast{background:rgba(20,18,16,.96);border-color:rgba(201,168,76,.24);box-shadow:0 18px 44px rgba(0,0,0,.42);color:#f0e8d8}
+.reader-activity-toast.show{opacity:1;transform:translateY(0);pointer-events:auto}
+.reader-activity-img{width:58px;height:78px;object-fit:cover;background:#f0e8d4;border:1px solid rgba(138,106,31,.22)}
+.reader-activity-kicker{font-size:.58rem;letter-spacing:.13em;text-transform:uppercase;color:#8a6a1f;margin-bottom:.22rem}
+html:not([data-theme="light"]) .reader-activity-kicker{color:#c9a84c}
+.reader-activity-title{font-family:'Cormorant Garamond',serif;font-size:1rem;line-height:1.15;color:inherit;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.reader-activity-time{font-size:.62rem;color:#7d6d5b;margin-top:.35rem}
+html:not([data-theme="light"]) .reader-activity-time{color:#a09080}
+.reader-activity-close{width:28px;height:28px;border:0;background:transparent;color:inherit;font-size:1.15rem;line-height:1;cursor:pointer;opacity:.62}
+.reader-activity-close:hover{opacity:1}
+@media(max-width:780px){.reader-activity-toast{left:14px;bottom:146px;width:min(330px,calc(100vw - 28px));grid-template-columns:54px 1fr 26px;padding:.65rem}.reader-activity-img{width:54px;height:72px}.reader-activity-title{font-size:.95rem}}
+@media(prefers-reduced-motion:reduce){.reader-activity-toast{transition:none}}
+"""
+
+READER_ACTIVITY_JS = r"""
+<script>
+(function(){
+  const names = ['Aarav','Ananya','Riya','Kabir','Priya','Arjun','Meera','Ishaan','Neha','Rohan','Sanya','Aditya','Kavya','Rahul','Nisha','Vivaan'];
+  const cities = ['Delhi','Mumbai','Pune','Jaipur','Lucknow','Bengaluru','Hyderabad','Chandigarh','Ahmedabad','Indore','Kolkata','Surat'];
+  const actions = ['is viewing', 'is browsing', 'is reading about', 'is interested in'];
+  const times = ['just now','2 minutes ago','5 minutes ago','12 minutes ago','today'];
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const esc = s => String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  function booksPool(){
+    try {
+      if (typeof BOOKS === 'undefined' || !Array.isArray(BOOKS)) return [];
+      return BOOKS.filter(b => b && b.t && b.img && (b.url || b.slug))
+        .filter(b => (b.n || /hindi|self help|romance|bestseller|combo/i.test((b.cat || '') + ' ' + b.t)))
+        .slice(0, 180);
+    } catch(e) { return []; }
+  }
+  function ensureToast(){
+    let el = document.getElementById('readerActivityToast');
+    if (el) return el;
+    el = document.createElement('aside');
+    el.id = 'readerActivityToast';
+    el.className = 'reader-activity-toast';
+    el.setAttribute('aria-live','polite');
+    el.setAttribute('aria-label','Reader activity');
+    document.body.appendChild(el);
+    return el;
+  }
+  function showActivity(){
+    if (sessionStorage.getItem('iac_reader_activity_closed') === '1') return;
+    const pool = booksPool();
+    if (!pool.length) return;
+    const b = pick(pool);
+    const name = pick(names), city = pick(cities), action = pick(actions);
+    const url = b.url || ('/product/' + b.slug + '/');
+    const el = ensureToast();
+    el.innerHTML = `
+      <img class="reader-activity-img" src="${esc(b.img)}" alt="" loading="lazy"/>
+      <div>
+        <div class="reader-activity-kicker">${esc(name)} from ${esc(city)} ${esc(action)}</div>
+        <div class="reader-activity-title">${esc(b.t)}</div>
+        <div class="reader-activity-time">${esc(pick(times))}</div>
+      </div>
+      <button class="reader-activity-close" type="button" aria-label="Hide reader activity">×</button>`;
+    el.onclick = e => { if (!e.target.closest('button')) location.href = url; };
+    el.querySelector('button').onclick = e => {
+      e.stopPropagation();
+      el.classList.remove('show');
+      sessionStorage.setItem('iac_reader_activity_closed','1');
+    };
+    requestAnimationFrame(() => el.classList.add('show'));
+    window.clearTimeout(el._hideTimer);
+    el._hideTimer = window.setTimeout(() => el.classList.remove('show'), 6200);
+  }
+  function schedule(){
+    const delay = 12000 + Math.floor(Math.random() * 12000);
+    window.setTimeout(() => { showActivity(); schedule(); }, delay);
+  }
+  window.addEventListener('load', () => {
+    if (sessionStorage.getItem('iac_reader_activity_closed') === '1') return;
+    window.setTimeout(showActivity, 5200);
+    schedule();
+  });
+})();
+</script>
+"""
+
+def with_reader_activity(html: str) -> str:
+    if "reader-activity-toast" not in html:
+        html = html.replace("</style>", READER_ACTIVITY_CSS + "\n</style>", 1)
+    if "readerActivityToast" not in html:
+        html = html.replace("</body>", READER_ACTIVITY_JS + "\n</body>", 1)
+    return html
+
 # ── HTML template ────────────────────────────────────────────────────────────
 HTML = r"""<!DOCTYPE html>
 <html lang="en">
@@ -2050,6 +2141,7 @@ HTML = HTML.replace("LAWS_48_HINDI_IMAGE_PLACEHOLDER", public_image_url("https:/
 HTML = HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",   os.environ.get("RAZORPAY_KEY_ID", "rzp_test_CHANGE_ME"))
 HTML = HTML.replace("SUPABASE_URL_PLACEHOLDER",       os.environ.get("SUPABASE_URL", ""))
 HTML = HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER",  os.environ.get("SUPABASE_ANON_KEY", ""))
+HTML = with_reader_activity(HTML)
 HTML = with_meta_pixel(HTML)
 
 out = Path(__file__).parent / "public" / "index.html"
@@ -3147,6 +3239,7 @@ PRODUCT_HTML = PRODUCT_HTML.replace("SOCIAL_PROOF_PLACEHOLDER",      json.dumps(
 PRODUCT_HTML = PRODUCT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",  razorpay_key)
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_URL_PLACEHOLDER",      os.environ.get("SUPABASE_URL", ""))
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER", os.environ.get("SUPABASE_ANON_KEY", ""))
+PRODUCT_HTML = with_reader_activity(PRODUCT_HTML)
 PRODUCT_HTML = with_meta_pixel(PRODUCT_HTML)
 
 prod_out = Path(__file__).parent / "public" / "product" / "index.html"
@@ -4847,6 +4940,7 @@ function renderGrid() {
 # Inject the same slim books data + collection metadata
 COLLECTION_HTML = COLLECTION_HTML.replace("BOOKS_DATA_PLACEHOLDER", books_js)
 COLLECTION_HTML = COLLECTION_HTML.replace("COLLECTIONS_DATA_PLACEHOLDER", json.dumps(coll_data, ensure_ascii=False))
+COLLECTION_HTML = with_reader_activity(COLLECTION_HTML)
 
 coll_out = Path(__file__).parent / "public" / "collection" / "index.html"
 coll_out.parent.mkdir(parents=True, exist_ok=True)
