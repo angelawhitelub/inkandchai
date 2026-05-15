@@ -250,6 +250,7 @@
     .badge-new{background:var(--lv);color:#fff}
     .badge-sale{background:var(--pk);color:#fff}
     .badge-hot{background:#ff9500;color:#fff}
+    .badge-b1g1{background:#7c3aed;color:#fff}
     .prod-img-wrap{
       background:linear-gradient(135deg,var(--bg3),var(--lv3));
       aspect-ratio:1;display:flex;align-items:center;justify-content:center;
@@ -322,6 +323,28 @@
     @keyframes scrollDeco{from{transform:translateX(0)}to{transform:translateX(-50%)}}
     .deco-item{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:var(--txt2);white-space:nowrap}
     .deco-item .di{font-size:18px}
+
+    /* ── Combo Section ──────────────────────────────────────────────────── */
+    .combo-section{background:var(--bg3);border-radius:0;padding:40px 20px}
+    .combo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;max-width:1280px;margin:0 auto}
+    .combo-card{
+      background:linear-gradient(135deg,#3d1a2e 0%,#5a2040 100%);
+      border-radius:var(--r);padding:24px 20px;text-align:center;color:#fff;
+      border:1.5px solid rgba(255,107,157,.3);transition:all .22s;
+      box-shadow:0 4px 20px rgba(61,26,46,.3);
+    }
+    .combo-card:hover{transform:translateY(-4px);box-shadow:0 12px 36px rgba(61,26,46,.4);border-color:var(--pk)}
+    .combo-icon{font-size:40px;margin-bottom:10px}
+    .combo-name{font-family:var(--f-head);font-size:16px;font-weight:700;margin-bottom:6px;color:var(--pk2)}
+    .combo-desc{font-size:12px;opacity:.7;margin-bottom:14px;line-height:1.5}
+    .combo-price{font-size:28px;font-weight:800;color:#fff;font-family:var(--f-head);margin-bottom:16px}
+    .combo-wa-btn{
+      display:inline-flex;align-items:center;gap:8px;
+      background:#25d366;color:#fff;border:none;border-radius:20px;
+      padding:10px 20px;font-size:13px;font-weight:700;text-decoration:none;
+      transition:all .15s;
+    }
+    .combo-wa-btn:hover{background:#1ebe5d;transform:scale(1.04)}
 
     /* ── Horizontal Shelf (Best Sellers) ────────────────────────────────── */
     .shelf-row{
@@ -502,12 +525,12 @@
       <span class="logo-icon">🌸</span>
       <span>
         Kawaii Corner
-        <span class="logo-sub">Korean Stationery</span>
+        <span class="logo-sub">Cute Stationery</span>
       </span>
     </a>
     <div class="nav-search">
       <span class="srch-icon">🔍</span>
-      <input type="search" id="searchInput" placeholder="Search pens, notebooks, stickers…" autocomplete="off"/>
+      <input type="search" id="searchInput" placeholder="Search stickers, washi tape, notebooks…" autocomplete="off"/>
     </div>
     <div class="nav-actions">
       <button class="cart-btn" onclick="openCart()">
@@ -521,14 +544,16 @@
 <div class="cat-strip">
   <div class="cat-strip-inner" id="catPills">
     <button class="cat-pill active" data-cat="all" onclick="filterCat(this,'all')"><span class="pill-icon">✨</span> All</button>
-    <button class="cat-pill" data-cat="pens" onclick="filterCat(this,'pens')"><span class="pill-icon">✏️</span> Gel Pens</button>
-    <button class="cat-pill" data-cat="notebooks" onclick="filterCat(this,'notebooks')"><span class="pill-icon">📓</span> Notebooks</button>
-    <button class="cat-pill" data-cat="stickers" onclick="filterCat(this,'stickers')"><span class="pill-icon">🌟</span> Stickers</button>
+    <button class="cat-pill" data-cat="stickers" onclick="filterCat(this,'stickers')"><span class="pill-icon">🌸</span> Stickers</button>
     <button class="cat-pill" data-cat="washi" onclick="filterCat(this,'washi')"><span class="pill-icon">🎀</span> Washi Tape</button>
-    <button class="cat-pill" data-cat="planners" onclick="filterCat(this,'planners')"><span class="pill-icon">📅</span> Planners</button>
     <button class="cat-pill" data-cat="sticky" onclick="filterCat(this,'sticky')"><span class="pill-icon">🗒️</span> Sticky Notes</button>
-    <button class="cat-pill" data-cat="highlighters" onclick="filterCat(this,'highlighters')"><span class="pill-icon">🖊️</span> Pens &amp; Markers</button>
-    <button class="cat-pill" data-cat="planners" onclick="filterCat(this,'planners')"><span class="pill-icon">🎁</span> Journaling Kits</button>
+    <button class="cat-pill" data-cat="notebooks" onclick="filterCat(this,'notebooks')"><span class="pill-icon">📓</span> Notebooks</button>
+    <button class="cat-pill" data-cat="pens" onclick="filterCat(this,'pens')"><span class="pill-icon">🖊️</span> Pens &amp; Highlights</button>
+    <button class="cat-pill" data-cat="art" onclick="filterCat(this,'art')"><span class="pill-icon">🎨</span> Art Supplies</button>
+    <button class="cat-pill" data-cat="craft" onclick="filterCat(this,'craft')"><span class="pill-icon">🧵</span> Craft Material</button>
+    <button class="cat-pill" data-cat="kits" onclick="filterCat(this,'kits')"><span class="pill-icon">🎁</span> Journaling Kits</button>
+    <button class="cat-pill" data-cat="packaging" onclick="filterCat(this,'packaging')"><span class="pill-icon">📦</span> Packaging</button>
+    <button class="cat-pill" data-cat="combos" onclick="filterCat(this,'combos')"><span class="pill-icon">🔥</span> Combo Deals</button>
   </div>
 </div>
 
@@ -541,10 +566,10 @@
       <p class="hero-p">Washi tapes, journaling stickers, aesthetic diaries, sticky notes, pastel highlighters — everything your desk and bullet journal needs. ✿</p>
       <div class="hero-ctas">
         <button class="btn-primary" onclick="document.getElementById('allProducts').scrollIntoView({behavior:'smooth'})">Shop Now 🛍️</button>
-        <button class="btn-secondary" onclick="filterCat(document.querySelector('[data-cat=stickers]'),'stickers')">Browse Stickers 🌟</button>
+        <button class="btn-secondary" onclick="filterCat(document.querySelector('[data-cat=stickers]'),'stickers')">Browse Stickers 🌸</button>
       </div>
       <div class="hero-stats">
-        <div class="stat-item"><div class="stat-num">50+</div><div class="stat-lbl">Products</div></div>
+        <div class="stat-item"><div class="stat-num">55+</div><div class="stat-lbl">Products</div></div>
         <div class="stat-item"><div class="stat-num">66%</div><div class="stat-lbl">Max Discount</div></div>
         <div class="stat-item"><div class="stat-num">4.9⭐</div><div class="stat-lbl">Rating</div></div>
       </div>
@@ -577,7 +602,7 @@
 <!-- USP Strip -->
 <div class="usp-strip">
   <div class="usp-item"><span class="usp-icon">🚚</span><div><div class="usp-title">Free Shipping ₹499+</div><div class="usp-desc">Pan India via Delhivery</div></div></div>
-  <div class="usp-item"><span class="usp-icon">✅</span><div><div class="usp-title">100% Authentic</div><div class="usp-desc">Genuine Korean brands</div></div></div>
+  <div class="usp-item"><span class="usp-icon">✅</span><div><div class="usp-title">100% Authentic</div><div class="usp-desc">Genuine kawaii brands</div></div></div>
   <div class="usp-item"><span class="usp-icon">📦</span><div><div class="usp-title">Cute Packaging</div><div class="usp-desc">Gift-ready boxes</div></div></div>
   <div class="usp-item"><span class="usp-icon">💳</span><div><div class="usp-title">Pay on Delivery</div><div class="usp-desc">COD available pan India</div></div></div>
 </div>
@@ -591,8 +616,8 @@
     <span class="deco-item"><span class="di">📓</span> Aesthetic Diaries</span>
     <span class="deco-item"><span class="di">🖊️</span> Pastel Highlighters</span>
     <span class="deco-item"><span class="di">🎁</span> Journaling Kits</span>
-    <span class="deco-item"><span class="di">🎨</span> Paint Markers</span>
-    <span class="deco-item"><span class="di">🌟</span> Up to 66% Off</span>
+    <span class="deco-item"><span class="di">🎨</span> Art Supplies</span>
+    <span class="deco-item"><span class="di">🔥</span> Combo Deals</span>
     <span class="deco-item"><span class="di">💜</span> Kawaii Corner</span>
     <!-- duplicated for seamless loop -->
     <span class="deco-item"><span class="di">🌸</span> Journaling Stickers</span>
@@ -601,16 +626,26 @@
     <span class="deco-item"><span class="di">📓</span> Aesthetic Diaries</span>
     <span class="deco-item"><span class="di">🖊️</span> Pastel Highlighters</span>
     <span class="deco-item"><span class="di">🎁</span> Journaling Kits</span>
-    <span class="deco-item"><span class="di">🎨</span> Paint Markers</span>
-    <span class="deco-item"><span class="di">🌟</span> Up to 66% Off</span>
+    <span class="deco-item"><span class="di">🎨</span> Art Supplies</span>
+    <span class="deco-item"><span class="di">🔥</span> Combo Deals</span>
     <span class="deco-item"><span class="di">💜</span> Kawaii Corner</span>
   </div>
 </div>
 
+<!-- Combo Deals -->
+<section class="kw-section combo-section" id="combosSection">
+  <div class="section-header">
+    <div class="section-title"><span class="s-icon">🔥</span> Combo Deals <span class="s-pill">Best Value</span></div>
+  </div>
+  <div class="combo-grid" id="comboGrid">
+    <!-- 5 combo cards generated by JS -->
+  </div>
+</section>
+
 <!-- Best Sellers Shelf -->
 <section class="kw-section" style="padding-bottom:0">
   <div class="section-header">
-    <div class="section-title"><span class="s-icon">🔥</span> Best Sellers <span class="s-pill">Trending</span></div>
+    <div class="section-title"><span class="s-icon">⭐</span> Best Sellers <span class="s-pill">Trending</span></div>
     <a href="#allProducts" class="see-all">See All →</a>
   </div>
   <div class="shelf-row" id="bestSellerShelf"></div>
@@ -632,13 +667,25 @@
       <div class="cc-icon">🗒️</div><div class="cc-name">Sticky Notes</div><div class="cc-count">9 products</div>
     </div>
     <div class="cat-card" onclick="filterCat(document.querySelector('[data-cat=notebooks]'),'notebooks')">
-      <div class="cc-icon">📓</div><div class="cc-name">Diaries &amp; Notebooks</div><div class="cc-count">5 products</div>
+      <div class="cc-icon">📓</div><div class="cc-name">Notebooks</div><div class="cc-count">5 products</div>
     </div>
-    <div class="cat-card" onclick="filterCat(document.querySelector('[data-cat=highlighters]'),'highlighters')">
-      <div class="cc-icon">🖊️</div><div class="cc-name">Pens &amp; Markers</div><div class="cc-count">4 products</div>
+    <div class="cat-card" onclick="filterCat(document.querySelector('[data-cat=pens]'),'pens')">
+      <div class="cc-icon">🖊️</div><div class="cc-name">Pens &amp; Highlights</div><div class="cc-count">2 products</div>
     </div>
-    <div class="cat-card" onclick="filterCat(document.querySelector('[data-cat=planners]'),'planners')">
+    <div class="cat-card" onclick="filterCat(document.querySelector('[data-cat=art]'),'art')">
+      <div class="cc-icon">🎨</div><div class="cc-name">Art Supplies</div><div class="cc-count">3 products</div>
+    </div>
+    <div class="cat-card" onclick="filterCat(document.querySelector('[data-cat=craft]'),'craft')">
+      <div class="cc-icon">🧵</div><div class="cc-name">Craft Material</div><div class="cc-count">4 products</div>
+    </div>
+    <div class="cat-card" onclick="filterCat(document.querySelector('[data-cat=kits]'),'kits')">
       <div class="cc-icon">🎁</div><div class="cc-name">Journaling Kits</div><div class="cc-count">2 products</div>
+    </div>
+    <div class="cat-card" onclick="filterCat(document.querySelector('[data-cat=packaging]'),'packaging')">
+      <div class="cc-icon">📦</div><div class="cc-name">Packaging</div><div class="cc-count">6 products</div>
+    </div>
+    <div class="cat-card" onclick="filterCat(document.querySelector('[data-cat=combos]'),'combos')">
+      <div class="cc-icon">🔥</div><div class="cc-name">Combo Deals</div><div class="cc-count">5 bundles</div>
     </div>
   </div>
 </section>
@@ -648,14 +695,14 @@
   <div class="feat-text">
     <h2>🎁 Van Gogh Journaling Kits — Up to 50% Off</h2>
     <p>The iconic Van Gogh Premium &amp; Starry Night journaling kits — everything you need to start bullet journaling beautifully. Limited stock!</p>
-    <button class="btn-white" onclick="filterCat(document.querySelector('[data-cat=planners]'),'planners');return false">Shop Journaling Kits 🌸</button>
+    <button class="btn-white" onclick="filterCat(document.querySelector('[data-cat=kits]'),'kits');return false">Shop Journaling Kits 🌸</button>
   </div>
 </div>
 
 <!-- All Products -->
 <section class="kw-section" id="allProducts">
   <div class="section-header">
-    <div class="section-title"><span class="s-icon">🛍️</span> All Products <span class="s-pill" id="activeCatLabel">All</span></div>
+    <div class="section-title"><span class="s-icon">🛍️</span> All Products <span class="s-pill" id="activeCatLabel">All Products (55)</span></div>
   </div>
   <div class="filter-bar">
     <span class="filter-label">Sort by:</span>
@@ -682,16 +729,17 @@
   <div class="footer-inner">
     <div class="footer-brand">
       <div class="fb-logo">Kawaii <span>Corner</span></div>
-      <p>Korean stationery & cute supplies, shipped to your door across India. Part of the Ink &amp; Chai family.</p>
+      <p>Cute stationery &amp; journaling supplies, shipped to your door across India. Part of the Ink &amp; Chai family at inkandchai.in/kawaii/</p>
     </div>
     <div class="footer-col">
       <h4>Shop</h4>
       <ul>
         <li><a href="#allProducts">All Products</a></li>
-        <li><a href="#" onclick="filterCat(document.querySelector('[data-cat=pens]'),'pens');return false">Gel Pens</a></li>
         <li><a href="#" onclick="filterCat(document.querySelector('[data-cat=stickers]'),'stickers');return false">Stickers</a></li>
-        <li><a href="#" onclick="filterCat(document.querySelector('[data-cat=notebooks]'),'notebooks');return false">Notebooks</a></li>
         <li><a href="#" onclick="filterCat(document.querySelector('[data-cat=washi]'),'washi');return false">Washi Tape</a></li>
+        <li><a href="#" onclick="filterCat(document.querySelector('[data-cat=notebooks]'),'notebooks');return false">Notebooks</a></li>
+        <li><a href="#" onclick="filterCat(document.querySelector('[data-cat=kits]'),'kits');return false">Journaling Kits</a></li>
+        <li><a href="#" onclick="filterCat(document.querySelector('[data-cat=combos]'),'combos');return false">Combo Deals 🔥</a></li>
       </ul>
     </div>
     <div class="footer-col">
@@ -737,69 +785,95 @@
 <div class="kw-toast" id="toast"></div>
 
 <script>
-// ── Product Data — sourced from Inkarto ──────────────────────────────────
+// ── Product Data ──────────────────────────────────────────────────────────
 const PRODUCTS = [
-  // ── Stickers ──────────────────────────────────────────────────────────
-  { id:'ink001', name:'Premium Aesthetic Vintage Stickers Book (20 Sheets)', brand:'Inkarto', cat:'stickers', price:349, mrp:500, emoji:'📖', badge:'sale', rating:4.8, reviews:142, isNew:false },
-  { id:'ink002', name:'Premium Floral Journaling Stickers (4 Sheets)', brand:'Inkarto', cat:'stickers', price:149, mrp:290, emoji:'🌸', badge:'sale', rating:4.7, reviews:98, isNew:false },
-  { id:'ink003', name:'Premium English Quote Stickers (6 Sheets)', brand:'Inkarto', cat:'stickers', price:180, mrp:250, emoji:'🖋️', badge:'', rating:4.6, reviews:74, isNew:false },
-  { id:'ink004', name:'Vintage Aesthetic Sticker Collection – Coffee / Travel / Camping (4 Sheets)', brand:'Inkarto', cat:'stickers', price:189, mrp:249, emoji:'☕', badge:'', rating:4.7, reviews:87, isNew:false },
-  { id:'ink005', name:'Premium Fantasy-Themed Journaling Stickers (6 Sheets)', brand:'Inkarto', cat:'stickers', price:149, mrp:199, emoji:'🌙', badge:'', rating:4.6, reviews:63, isNew:false },
-  { id:'ink006', name:'Aesthetic Floral & Foliage Sticker Collection (6 Sheets)', brand:'Inkarto', cat:'stickers', price:159, mrp:399, emoji:'🍃', badge:'sale', rating:4.9, reviews:211, isNew:false },
-  { id:'ink007', name:'Premium Character Sticker Book (20 Sheets)', brand:'Inkarto', cat:'stickers', price:399, mrp:799, emoji:'🐱', badge:'hot', rating:4.9, reviews:189, isNew:false },
-  { id:'ink008', name:'Premium Floral Journaling Stickers – Botanical (6 Sheets)', brand:'Inkarto', cat:'stickers', price:149, mrp:199, emoji:'🌺', badge:'new', rating:4.7, reviews:54, isNew:true },
-  { id:'ink009', name:'Beautiful Landscape Aesthetic Sticker Sheets', brand:'Inkarto', cat:'stickers', price:169, mrp:299, emoji:'🏔️', badge:'', rating:4.7, reviews:92, isNew:false },
-  { id:'ink010', name:'Cute 3D Animal Sticker Sheet', brand:'Inkarto', cat:'stickers', price:169, mrp:299, emoji:'🦊', badge:'new', rating:4.8, reviews:47, isNew:true },
-  { id:'ink011', name:'Kawaii Cartoon Sticker Sheets (4-Pack)', brand:'Inkarto', cat:'stickers', price:179, mrp:249, emoji:'🌈', badge:'', rating:4.7, reviews:118, isNew:false },
-  { id:'ink012', name:'Vintage Black Text Stickers (6-Sheet Pack)', brand:'Inkarto', cat:'stickers', price:199, mrp:318, emoji:'🖋️', badge:'', rating:4.5, reviews:66, isNew:false },
-  { id:'ink013', name:'Vintage Floral Frame Journaling Sticker (6 Sheets)', brand:'Inkarto', cat:'stickers', price:210, mrp:420, emoji:'🌷', badge:'sale', rating:4.8, reviews:103, isNew:false },
-  { id:'ink014', name:'Memory Text Stickers Vintage Scrapbook (6 Sheets)', brand:'Inkarto', cat:'stickers', price:149, mrp:280, emoji:'💌', badge:'', rating:4.6, reviews:71, isNew:false },
-  { id:'ink015', name:'Premium Washi Collage Stickers (300 Pieces)', brand:'Inkarto', cat:'stickers', price:199, mrp:599, emoji:'🎭', badge:'hot', rating:4.9, reviews:224, isNew:false },
-  { id:'ink016', name:'Forestry Journal Aesthetic Stickers (700 Pieces)', brand:'Inkarto', cat:'stickers', price:399, mrp:899, emoji:'🌲', badge:'hot', rating:4.9, reviews:176, isNew:false },
-  { id:'ink017', name:'Premium Kawaii Bear Paper Sticker Book', brand:'Inkarto', cat:'stickers', price:329, mrp:350, emoji:'🐻', badge:'new', rating:4.8, reviews:39, isNew:true },
-  { id:'ink018', name:'Journaling Sticker Box – 100 Sheets / 640 Stickers', brand:'Inkarto', cat:'stickers', price:699, mrp:1200, emoji:'📦', badge:'hot', rating:4.9, reviews:197, isNew:false },
-  { id:'ink019', name:'Natural Dried Flower Sheet Stickers (8-Packet Set)', brand:'Inkarto', cat:'stickers', price:699, mrp:699, emoji:'🌼', badge:'', rating:4.8, reviews:83, isNew:false },
+  // ── STICKERS ──────────────────────────────────────────────────────────────
+  { id:'s01', name:'Premium Aesthetic Vintage Stickers Book (20 Sheets)', cat:'stickers', price:349, mrp:500, emoji:'📖', badge:'b1g1', rating:4.8, reviews:142 },
+  { id:'s02', name:'Premium Floral Journaling Stickers (4 Sheets)', cat:'stickers', price:149, mrp:290, emoji:'🌸', badge:'b1g1', rating:4.7, reviews:98 },
+  { id:'s03', name:'Premium English Quote Stickers (6 Sheets)', cat:'stickers', price:180, mrp:250, emoji:'🖋️', badge:'', rating:4.6, reviews:74 },
+  { id:'s04', name:'Vintage Aesthetic Sticker Collection — Coffee / Travel / Camping (4 Sheets)', cat:'stickers', price:189, mrp:249, emoji:'☕', badge:'b1g1', rating:4.7, reviews:87 },
+  { id:'s05', name:'Premium Fantasy-Themed Journaling Stickers (6 Sheets)', cat:'stickers', price:149, mrp:199, emoji:'🌙', badge:'', rating:4.6, reviews:63 },
+  { id:'s06', name:'Aesthetic Floral & Foliage Sticker Collection (6 Sheets)', cat:'stickers', price:159, mrp:399, emoji:'🍃', badge:'b1g1', rating:4.9, reviews:211 },
+  { id:'s07', name:'Premium Character Sticker Book (20 Sheets)', cat:'stickers', price:399, mrp:799, emoji:'🐱', badge:'hot', rating:4.9, reviews:189 },
+  { id:'s08', name:'Premium Floral Journaling Stickers — Botanical (6 Sheets)', cat:'stickers', price:149, mrp:199, emoji:'🌺', badge:'new', rating:4.7, reviews:54 },
+  { id:'s09', name:'Beautiful Landscape Aesthetic Sticker Sheets', cat:'stickers', price:169, mrp:299, emoji:'🏔️', badge:'b1g1', rating:4.7, reviews:92 },
+  { id:'s10', name:'Cute 3D Animal Sticker Sheet', cat:'stickers', price:169, mrp:299, emoji:'🦊', badge:'b1g1', rating:4.8, reviews:47 },
+  { id:'s11', name:'Kawaii Cartoon Sticker Sheets (4-Pack)', cat:'stickers', price:179, mrp:249, emoji:'🌈', badge:'b1g1', rating:4.7, reviews:118 },
+  { id:'s12', name:'Vintage Black Text Stickers (6-Sheet Pack)', cat:'stickers', price:199, mrp:318, emoji:'🖋️', badge:'b1g1', rating:4.5, reviews:66 },
+  { id:'s13', name:'Vintage Floral Frame Journaling Sticker (6 Sheets)', cat:'stickers', price:210, mrp:420, emoji:'🌷', badge:'b1g1', rating:4.8, reviews:103 },
+  { id:'s14', name:'Memory Text Stickers — Vintage Scrapbook (6 Sheets)', cat:'stickers', price:149, mrp:280, emoji:'💌', badge:'b1g1', rating:4.6, reviews:71 },
+  { id:'s15', name:'Premium Washi Collage Stickers (300 Pieces)', cat:'stickers', price:199, mrp:599, emoji:'🎭', badge:'hot', rating:4.9, reviews:224 },
+  { id:'s16', name:'Forestry Journal Aesthetic Stickers (700 Pieces)', cat:'stickers', price:399, mrp:899, emoji:'🌲', badge:'hot', rating:4.9, reviews:176 },
+  { id:'s17', name:'Premium Kawaii Bear Paper Sticker Book', cat:'stickers', price:329, mrp:350, emoji:'🐻', badge:'b1g1', rating:4.8, reviews:39 },
+  { id:'s18', name:'Journaling Sticker Box — 100 Sheets / 640 Stickers', cat:'stickers', price:699, mrp:1200, emoji:'📦', badge:'hot', rating:4.9, reviews:197 },
+  { id:'s19', name:'Natural Dried Flower Sheet Stickers (8-Packet Set)', cat:'stickers', price:699, mrp:699, emoji:'🌼', badge:'', rating:4.8, reviews:83 },
 
-  // ── Washi Tape ────────────────────────────────────────────────────────
-  { id:'ink020', name:'Vintage Stamp Washi Tape 6cm × 2m (Buy 1 Get 1 Free)', brand:'Inkarto', cat:'washi', price:219, mrp:400, emoji:'📬', badge:'sale', rating:4.8, reviews:91, isNew:false },
-  { id:'ink021', name:'Colorful Rainbow Pastel Masking Tape (Pack of 5)', brand:'Inkarto', cat:'washi', price:159, mrp:299, emoji:'🌈', badge:'', rating:4.7, reviews:137, isNew:false },
-  { id:'ink022', name:'Kawaii Decorative Paper Tape (Pack of 10)', brand:'Inkarto', cat:'washi', price:139, mrp:399, emoji:'🐱', badge:'hot', rating:4.9, reviews:204, isNew:false },
-  { id:'ink023', name:'Van Gogh Space Theme Washi Tape (Pack of 10)', brand:'Inkarto', cat:'washi', price:539, mrp:899, emoji:'🌌', badge:'', rating:4.8, reviews:78, isNew:false },
-  { id:'ink024', name:'JUMBO Premium Vintage Washi Tape Collection (Pack of 20)', brand:'Inkarto', cat:'washi', price:375, mrp:625, emoji:'📜', badge:'hot', rating:4.9, reviews:162, isNew:false },
-  { id:'ink025', name:'Van Gogh Washi Tape – Rare Edition (Buy 1 Get 1 Free)', brand:'Inkarto', cat:'washi', price:69, mrp:138, emoji:'🎨', badge:'sale', rating:4.7, reviews:88, isNew:false },
-  { id:'ink026', name:'Cute Animal Washi Tape – Assorted Design', brand:'Inkarto', cat:'washi', price:99, mrp:160, emoji:'🦊', badge:'', rating:4.8, reviews:143, isNew:false },
-  { id:'ink027', name:'Cute Heart Mini Washi Tape with Dispenser (9 Tapes)', brand:'Inkarto', cat:'washi', price:99, mrp:199, emoji:'💝', badge:'new', rating:4.8, reviews:56, isNew:true },
-  { id:'ink028', name:'Green Floral Mini Washi Tape with Dispenser (9 Tapes)', brand:'Inkarto', cat:'washi', price:99, mrp:199, emoji:'🌿', badge:'', rating:4.7, reviews:61, isNew:false },
-  { id:'ink029', name:'Universal Starry Washi Tape Set – 9 Pcs 15mm × 2m', brand:'Inkarto', cat:'washi', price:269, mrp:269, emoji:'⭐', badge:'new', rating:4.8, reviews:42, isNew:true },
-  { id:'ink030', name:'Green Washi Tape Aesthetic (10 Tapes)', brand:'Inkarto', cat:'washi', price:179, mrp:358, emoji:'🌱', badge:'', rating:4.6, reviews:74, isNew:false },
+  // ── WASHI TAPE ────────────────────────────────────────────────────────────
+  { id:'w01', name:'Vintage Stamp Washi Tape 6cm × 2m', cat:'washi', price:219, mrp:400, emoji:'📬', badge:'b1g1', rating:4.8, reviews:91 },
+  { id:'w02', name:'Colorful Rainbow Pastel Masking Tape (Pack of 5)', cat:'washi', price:159, mrp:299, emoji:'🌈', badge:'', rating:4.7, reviews:137 },
+  { id:'w03', name:'Kawaii Decorative Paper Tape (Pack of 10)', cat:'washi', price:139, mrp:399, emoji:'🐱', badge:'hot', rating:4.9, reviews:204 },
+  { id:'w04', name:'Van Gogh Space Theme Washi Tape (Pack of 10)', cat:'washi', price:539, mrp:899, emoji:'🌌', badge:'', rating:4.8, reviews:78 },
+  { id:'w05', name:'JUMBO Premium Vintage Washi Tape Collection (Pack of 20)', cat:'washi', price:375, mrp:625, emoji:'📜', badge:'hot', rating:4.9, reviews:162 },
+  { id:'w06', name:'Van Gogh Washi Tape — Rare Edition', cat:'washi', price:69, mrp:138, emoji:'🎨', badge:'b1g1', rating:4.7, reviews:88 },
+  { id:'w07', name:'Cute Animal Washi Tape — Assorted Design', cat:'washi', price:99, mrp:160, emoji:'🦊', badge:'b1g1', rating:4.8, reviews:143 },
+  { id:'w08', name:'Cute Heart Mini Washi Tape with Dispenser (9 + 1 Tapes)', cat:'washi', price:99, mrp:199, emoji:'💝', badge:'new', rating:4.8, reviews:56 },
+  { id:'w09', name:'Green Floral Mini Washi Tape with Dispenser (9 + 1 Tapes)', cat:'washi', price:99, mrp:199, emoji:'🌿', badge:'', rating:4.7, reviews:61 },
+  { id:'w10', name:'Universal Starry Washi Tape Set — 9 Pcs 15mm × 2m', cat:'washi', price:269, mrp:269, emoji:'⭐', badge:'new', rating:4.8, reviews:42 },
+  { id:'w11', name:'Green Washi Tape Aesthetic (10 Tapes)', cat:'washi', price:179, mrp:358, emoji:'🌱', badge:'', rating:4.6, reviews:74 },
 
-  // ── Sticky Notes ──────────────────────────────────────────────────────
-  { id:'ink031', name:'Transparent Sticky Notes 3×3 inch (50–80 Sheets)', brand:'Inkarto', cat:'sticky', price:129, mrp:250, emoji:'🔍', badge:'', rating:4.7, reviews:112, isNew:false },
-  { id:'ink032', name:'Aesthetic Van Gogh Sticky Notes for Books & Planners', brand:'Inkarto', cat:'sticky', price:139, mrp:199, emoji:'🌻', badge:'new', rating:4.8, reviews:67, isNew:true },
-  { id:'ink033', name:'Coffee / Bakery Printed Sticky Notes (440 Notes)', brand:'Inkarto', cat:'sticky', price:299, mrp:500, emoji:'☕', badge:'hot', rating:4.9, reviews:188, isNew:false },
-  { id:'ink034', name:'Cute Fruit Sticky Notes (30 Sheets)', brand:'Inkarto', cat:'sticky', price:89, mrp:189, emoji:'🍊', badge:'', rating:4.7, reviews:94, isNew:false },
-  { id:'ink035', name:'Mini Cute Animal Sticky Notes 3×3 (30 Sheets)', brand:'Inkarto', cat:'sticky', price:89, mrp:199, emoji:'🐻', badge:'', rating:4.7, reviews:103, isNew:false },
-  { id:'ink036', name:'Cute Capybara Sticky Notes 120-Sheet Roll', brand:'Inkarto', cat:'sticky', price:99, mrp:159, emoji:'🦫', badge:'new', rating:4.8, reviews:59, isNew:true },
-  { id:'ink037', name:'Cute Candy Sticky Note Memo Pad (440 Pieces)', brand:'Inkarto', cat:'sticky', price:199, mrp:398, emoji:'🍬', badge:'', rating:4.6, reviews:77, isNew:false },
-  { id:'ink038', name:'Cute Kawaii Sticky Notes 3×3 (50 Sheets)', brand:'Inkarto', cat:'sticky', price:89, mrp:89, emoji:'🌸', badge:'', rating:4.6, reviews:83, isNew:false },
-  { id:'ink039', name:'Neon Sticky Notes 5-Color Set (100 Sheets)', brand:'Inkarto', cat:'sticky', price:59, mrp:125, emoji:'🟡', badge:'hot', rating:4.7, reviews:147, isNew:false },
+  // ── STICKY NOTES ──────────────────────────────────────────────────────────
+  { id:'sn01', name:'Neon Sticky Notes — 5 Colors, 100 Sheets 12×45mm', cat:'sticky', price:59, mrp:125, emoji:'🟡', badge:'hot', rating:4.7, reviews:147 },
+  { id:'sn02', name:'Cute Capybara Sticky Notes (120-Sheet Roll)', cat:'sticky', price:99, mrp:159, emoji:'🦫', badge:'new', rating:4.8, reviews:59 },
+  { id:'sn03', name:'Cute Candy Sticky Note Memo Pad (440 Pieces)', cat:'sticky', price:199, mrp:398, emoji:'🍬', badge:'', rating:4.6, reviews:77 },
+  { id:'sn04', name:'Coffee & Bakery Printed Sticky Notes (440 Notes)', cat:'sticky', price:299, mrp:500, emoji:'☕', badge:'hot', rating:4.9, reviews:188 },
+  { id:'sn05', name:'Cute Kawaii Sticky Notes 3×3 (50 Sheets)', cat:'sticky', price:89, mrp:89, emoji:'🌸', badge:'b1g1', rating:4.6, reviews:83 },
+  { id:'sn06', name:'Aesthetic Van Gogh Sticky Notes for Planners', cat:'sticky', price:139, mrp:199, emoji:'🌻', badge:'new', rating:4.8, reviews:67 },
+  { id:'sn07', name:'Transparent Sticky Notes 3×3 inch (50–80 Sheets)', cat:'sticky', price:129, mrp:250, emoji:'🔍', badge:'', rating:4.7, reviews:112 },
+  { id:'sn08', name:'Cute Fruit Sticky Notes (30 Sheets)', cat:'sticky', price:89, mrp:189, emoji:'🍊', badge:'', rating:4.7, reviews:94 },
+  { id:'sn09', name:'Mini Cute Animal Sticky Notes 3×3 (30 Sheets)', cat:'sticky', price:89, mrp:199, emoji:'🐻', badge:'', rating:4.7, reviews:103 },
 
-  // ── Diaries & Notebooks ───────────────────────────────────────────────
-  { id:'ink040', name:'"Forest Kingdom" Nature Ruled Diary A6', brand:'Inkarto', cat:'notebooks', price:165, mrp:281, emoji:'🌲', badge:'', rating:4.7, reviews:88, isNew:false },
-  { id:'ink041', name:'"Less Monday More Summer Aloha" Ruled Diary A7', brand:'Inkarto', cat:'notebooks', price:108, mrp:184, emoji:'🌊', badge:'', rating:4.6, reviews:72, isNew:false },
-  { id:'ink042', name:'"Light Flower" Themed Ruled Diary A5', brand:'Inkarto', cat:'notebooks', price:260, mrp:520, emoji:'🌸', badge:'sale', rating:4.8, reviews:116, isNew:false },
-  { id:'ink043', name:'Premium Cute Cat & Tulip Mini Diary A7', brand:'Inkarto', cat:'notebooks', price:149, mrp:299, emoji:'🐱', badge:'hot', rating:4.9, reviews:143, isNew:false },
-  { id:'ink044', name:'A7 Printed Pocket Notebook', brand:'Inkarto', cat:'notebooks', price:179, mrp:399, emoji:'📒', badge:'', rating:4.7, reviews:61, isNew:false },
+  // ── NOTEBOOKS & DIARIES ───────────────────────────────────────────────────
+  { id:'n01', name:'"Forest Kingdom" Nature Ruled Diary A6', cat:'notebooks', price:165, mrp:281, emoji:'🌲', badge:'', rating:4.7, reviews:88 },
+  { id:'n02', name:'"Less Monday More Summer Aloha" Ruled Diary A7', cat:'notebooks', price:108, mrp:184, emoji:'🌊', badge:'', rating:4.6, reviews:72 },
+  { id:'n03', name:'"Light Flower" Themed Ruled Diary A5', cat:'notebooks', price:260, mrp:520, emoji:'🌸', badge:'hot', rating:4.8, reviews:116 },
+  { id:'n04', name:'Premium Cute Cat & Tulip Mini Diary A7', cat:'notebooks', price:149, mrp:299, emoji:'🐱', badge:'b1g1', rating:4.9, reviews:143 },
+  { id:'n05', name:'A7 Printed Pocket Notebook', cat:'notebooks', price:179, mrp:399, emoji:'📒', badge:'b1g1', rating:4.7, reviews:61 },
 
-  // ── Pens & Markers ────────────────────────────────────────────────────
-  { id:'ink045', name:'"So Sweet" Pastel Highlighters (6-Piece Set)', brand:'Inkarto', cat:'highlighters', price:149, mrp:223, emoji:'🖊️', badge:'hot', rating:4.8, reviews:198, isNew:false },
-  { id:'ink046', name:'Acrylic Paint Markers (Metallic & Bright)', brand:'Inkarto', cat:'highlighters', price:599, mrp:900, emoji:'🎨', badge:'sale', rating:4.7, reviews:87, isNew:false },
-  { id:'ink047', name:'Premium Acrylic Paint Marker 24-Shade Box', brand:'Inkarto', cat:'highlighters', price:1199, mrp:2999, emoji:'🖌️', badge:'hot', rating:4.9, reviews:134, isNew:false },
-  { id:'ink048', name:'Macaron Sketching Pencil Set', brand:'Inkarto', cat:'highlighters', price:699, mrp:999, emoji:'✏️', badge:'', rating:4.7, reviews:92, isNew:false },
+  // ── PENS & HIGHLIGHTERS ───────────────────────────────────────────────────
+  { id:'p01', name:'"So Sweet" Pastel Highlighters (6-Piece Set)', cat:'pens', price:149, mrp:223, emoji:'🖊️', badge:'hot', rating:4.8, reviews:198 },
+  { id:'p02', name:'Macaron Sketching Pencil Set', cat:'pens', price:699, mrp:999, emoji:'✏️', badge:'', rating:4.7, reviews:92 },
 
-  // ── Journaling Kits ───────────────────────────────────────────────────
-  { id:'ink049', name:'Van Gogh Premium Journaling Kit', brand:'Inkarto', cat:'planners', price:1499, mrp:2999, emoji:'🎁', badge:'hot', rating:4.9, reviews:167, isNew:false },
-  { id:'ink050', name:'Van Gogh Starry Night Journaling Kit', brand:'Inkarto', cat:'planners', price:1399, mrp:2499, emoji:'🌟', badge:'', rating:4.8, reviews:129, isNew:false },
+  // ── ART SUPPLIES ──────────────────────────────────────────────────────────
+  { id:'a01', name:'Acrylic Paint Markers — Metallic & Bright Colors', cat:'art', price:599, mrp:900, emoji:'🎨', badge:'hot', rating:4.7, reviews:87 },
+  { id:'a02', name:'Premium Acrylic Paint Marker — 24-Shade Box', cat:'art', price:1199, mrp:2999, emoji:'🖌️', badge:'hot', rating:4.9, reviews:134 },
+  { id:'a03', name:'Yellow Sponge Paint Rollers (3-Piece Set)', cat:'art', price:149, mrp:173, emoji:'🟡', badge:'b1g1', rating:4.5, reviews:44 },
+
+  // ── CRAFT MATERIAL ────────────────────────────────────────────────────────
+  { id:'c01', name:'DIY Beads Box — 32-Item Creative Set', cat:'craft', price:499, mrp:1000, emoji:'📿', badge:'hot', rating:4.7, reviews:96 },
+  { id:'c02', name:'Threads Soft Cotton Mix — 50-Piece Colour Set', cat:'craft', price:575, mrp:900, emoji:'🧵', badge:'', rating:4.6, reviews:72 },
+  { id:'c03', name:'Mini Electric Drill Machine for Craft', cat:'craft', price:950, mrp:1900, emoji:'🔧', badge:'hot', rating:4.7, reviews:58 },
+  { id:'c04', name:'Smart Play Combo — Ludo + Chess Board Game', cat:'craft', price:149, mrp:250, emoji:'🎮', badge:'', rating:4.5, reviews:63 },
+
+  // ── JOURNALING KITS ───────────────────────────────────────────────────────
+  { id:'k01', name:'Van Gogh Premium Journaling Kit', cat:'kits', price:1499, mrp:2999, emoji:'🎁', badge:'hot', rating:4.9, reviews:167 },
+  { id:'k02', name:'Van Gogh Starry Night Journaling Kit', cat:'kits', price:1399, mrp:2499, emoji:'🌟', badge:'', rating:4.8, reviews:129 },
+
+  // ── PACKAGING ─────────────────────────────────────────────────────────────
+  { id:'pkg01', name:'Small Business PP Bags (Pack)', cat:'packaging', price:299, mrp:710, emoji:'🛍️', badge:'hot', rating:4.6, reviews:84 },
+  { id:'pkg02', name:'Wrapping Paper Sheets — 20-Pack', cat:'packaging', price:299, mrp:499, emoji:'🎀', badge:'', rating:4.5, reviews:47 },
+  { id:'pkg03', name:'Premium Craft Flower Making Tape — Dark Green', cat:'packaging', price:149, mrp:199, emoji:'🌿', badge:'b1g1', rating:4.4, reviews:33 },
+  { id:'pkg04', name:'Premium Craft Flower Making Tape — Green', cat:'packaging', price:149, mrp:250, emoji:'🌱', badge:'b1g1', rating:4.4, reviews:28 },
+  { id:'pkg05', name:'Jumbo Roll Thank You Paper Tape (500 stickers/roll)', cat:'packaging', price:90, mrp:150, emoji:'🎊', badge:'', rating:4.5, reviews:41 },
+  { id:'pkg06', name:'Double Sided Foam Mounting Tape 20mm × 2.5m', cat:'packaging', price:99, mrp:160, emoji:'🔲', badge:'', rating:4.3, reviews:29 },
+];
+
+// ── Combo Data ────────────────────────────────────────────────────────────
+const COMBOS = [
+  { icon:'🎨', name:'Any 5 Products', desc:'Pick any 5 items from our full collection', price:'₹600', wa:'Hi! I want to order the combo: Any 5 Products for ₹600' },
+  { icon:'📦', name:'Any 10 Products', desc:'Pick any 10 items from our full collection', price:'₹1,200', wa:'Hi! I want to order the combo: Any 10 Products for ₹1200' },
+  { icon:'⭐', name:'Any 10 Premium Products', desc:'Pick any 10 premium items from our collection', price:'₹1,999', wa:'Hi! I want to order the combo: Any 10 Premium Products for ₹1999' },
+  { icon:'🏠', name:'Any 10 Miniatures', desc:'Pick any 10 miniature decorative pieces', price:'₹999', wa:'Hi! I want to order the combo: Any 10 Miniatures for ₹999' },
+  { icon:'🧪', name:'Any 10 Resin Moulds', desc:'Pick any 10 resin moulds from our collection', price:'₹1,499', wa:'Hi! I want to order the combo: Any 10 Resin Moulds for ₹1499' },
 ];
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -807,7 +881,7 @@ let cart = [];
 let activeCat = 'all';
 let searchQ = '';
 
-// ── Cart persistence (shared with main site) ──────────────────────────────
+// ── Cart persistence ──────────────────────────────────────────────────────
 function loadCart() {
   try { cart = JSON.parse(localStorage.getItem('kw_cart') || '[]'); } catch { cart = []; }
 }
@@ -829,12 +903,12 @@ function renderProducts() {
   const sort = document.getElementById('sortSelect').value;
   let list = PRODUCTS.filter(p => {
     const matchCat = activeCat === 'all' || p.cat === activeCat;
-    const matchQ = !searchQ || p.name.toLowerCase().includes(searchQ) || p.brand.toLowerCase().includes(searchQ);
+    const matchQ = !searchQ || p.name.toLowerCase().includes(searchQ);
     return matchCat && matchQ;
   });
   if (sort === 'low') list.sort((a,b) => a.price - b.price);
   else if (sort === 'high') list.sort((a,b) => b.price - a.price);
-  else if (sort === 'new') list.sort((a,b) => (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0));
+  else if (sort === 'new') list.sort((a,b) => (b.badge === 'new' ? 1 : 0) - (a.badge === 'new' ? 1 : 0));
   else if (sort === 'discount') list.sort((a,b) => disc(b) - disc(a));
 
   document.getElementById('resultCount').textContent = `${list.length} product${list.length !== 1 ? 's' : ''}`;
@@ -847,13 +921,13 @@ function renderProducts() {
     const d = disc(p);
     const inCart = cart.find(i => i.id === p.id);
     return `<div class="prod-card">
-      ${p.badge ? `<span class="prod-badge badge-${p.badge}">${p.badge === 'hot' ? '🔥 Hot' : p.badge === 'sale' ? '% Sale' : '✨ New'}</span>` : ''}
+      ${p.badge ? `<span class="prod-badge badge-${p.badge === 'b1g1' ? 'b1g1' : p.badge}">${p.badge === 'hot' ? '🔥 Hot' : p.badge === 'sale' ? '% Sale' : p.badge === 'new' ? '✨ New' : p.badge === 'b1g1' ? '🎁 B1G1' : ''}</span>` : ''}
       <div class="prod-img-wrap">
         <span class="prod-emoji">${p.emoji}</span>
         <div class="prod-wishlist" title="Wishlist">🤍</div>
       </div>
       <div class="prod-body">
-        <div class="prod-brand">${p.brand}</div>
+        <div class="prod-brand">Kawaii Corner</div>
         <div class="prod-name">${p.name}</div>
         <div class="prod-rating">
           <span class="prod-stars">${stars(p.rating)}</span>
@@ -884,13 +958,26 @@ function renderBestSellers() {
     </div>`).join('');
 }
 
+function renderCombos() {
+  document.getElementById('comboGrid').innerHTML = COMBOS.map(c => `
+    <div class="combo-card">
+      <div class="combo-icon">${c.icon}</div>
+      <div class="combo-name">${c.name}</div>
+      <div class="combo-desc">${c.desc}</div>
+      <div class="combo-price">${c.price}</div>
+      <a class="combo-wa-btn" href="https://wa.me/919217175546?text=${encodeURIComponent(c.wa)}" target="_blank">
+        💬 WhatsApp to Order
+      </a>
+    </div>`).join('');
+}
+
 // ── Add to Cart ───────────────────────────────────────────────────────────
 function addToCart(id, btn) {
   const p = PRODUCTS.find(x => x.id === id);
   if (!p) return;
   const existing = cart.find(i => i.id === id);
   if (existing) { existing.qty++; }
-  else { cart.push({ id: p.id, name: p.name, brand: p.brand, price: p.price, emoji: p.emoji, qty: 1 }); }
+  else { cart.push({ id: p.id, name: p.name, brand: 'Kawaii Corner', price: p.price, emoji: p.emoji, qty: 1 }); }
   saveCart();
   if (btn) { btn.classList.add('added'); btn.textContent = '✓ Added'; setTimeout(() => { btn.classList.remove('added'); btn.textContent = '+ Add to Cart'; }, 1500); }
   showToast(`${p.emoji} ${p.name.split(' ').slice(0,4).join(' ')}… added to cart!`);
@@ -901,7 +988,11 @@ function filterCat(btn, cat) {
   activeCat = cat;
   document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  const label = cat === 'all' ? 'All' : (btn ? btn.textContent.trim().replace(/^[^\w]+/,'') : cat);
+  if (cat === 'combos') {
+    document.getElementById('combosSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  const label = cat === 'all' ? 'All Products (55)' : (btn ? btn.textContent.trim().replace(/^[^\w]+/,'') : cat);
   document.getElementById('activeCatLabel').textContent = label;
   document.getElementById('allProducts').scrollIntoView({ behavior: 'smooth', block: 'start' });
   setTimeout(renderProducts, 100);
@@ -965,7 +1056,6 @@ function removeItem(id) {
   saveCart();
 }
 function goCheckout() {
-  // Pass kawaii cart to checkout
   localStorage.setItem('kawaii_checkout_cart', JSON.stringify(cart));
   window.location.href = '/checkout/?kawaii=1';
 }
@@ -982,6 +1072,7 @@ function showToast(msg) {
 
 // ── Init ──────────────────────────────────────────────────────────────────
 loadCart();
+renderCombos();
 renderBestSellers();
 renderProducts();
 updateCartUI();
