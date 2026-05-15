@@ -331,11 +331,12 @@ const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
 const COUPON_KEY = 'iac_checkout_coupon';
 const COUPONS = {
+  SUMMER10:  { type: 'percent', value: 10, minSubtotal: 299, onlineOnly: false, label: '☀️ Summer Sale 10% off', expiresAt: '2026-05-19T18:30:00Z' },
   INKLOVE10: { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
-  '499HIT': { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
-  SAVE12: { type: 'percent', value: 12, minSubtotal: 999, onlineOnly: true, label: '12% prepaid discount' },
-  SAVE15: { type: 'percent', value: 15, minSubtotal: 1499, onlineOnly: true, label: '15% prepaid discount' },
-  CHAI10BACK: { type: 'percent', value: 10, minSubtotal: 299, onlineOnly: true, label: 'Private 10% recovery discount' },
+  '499HIT':  { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
+  SAVE12:    { type: 'percent', value: 12, minSubtotal: 999, onlineOnly: true, label: '12% prepaid discount' },
+  SAVE15:    { type: 'percent', value: 15, minSubtotal: 1499, onlineOnly: true, label: '15% prepaid discount' },
+  CHAI10BACK:{ type: 'percent', value: 10, minSubtotal: 299, onlineOnly: true, label: 'Private 10% recovery discount' },
 };
 const PARTIAL_PAYMENT_THRESHOLD = 599;
 const PARTIAL_PAYMENT_RATE = 0.10;
@@ -350,6 +351,9 @@ function couponDiscount(subtotal, method = 'online') {
   const code = normalizeCouponCode(appliedCouponCode);
   const coupon = COUPONS[code];
   if (!coupon) return { code: '', discount: 0, message: '' };
+  if (coupon.expiresAt && Date.now() > new Date(coupon.expiresAt).getTime()) {
+    return { code, discount: 0, message: `${code} expired. Sale has ended.` };
+  }
   if (subtotal < coupon.minSubtotal) {
     return { code, discount: 0, message: `Add ₹${(coupon.minSubtotal - subtotal).toLocaleString('en-IN')} more to use ${code}.` };
   }

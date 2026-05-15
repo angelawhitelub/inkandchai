@@ -740,6 +740,52 @@ HTML = r"""<!DOCTYPE html>
   .section-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 300; color: var(--white); line-height: 1.15; margin-bottom: 1rem; }
   .section-title em { font-style: italic; color: var(--gold-light); }
 
+  /* ── SUMMER SALE BANNER ──────────────────────────────────────────── */
+  .summer-sale-banner { background: linear-gradient(135deg,#8b1a1a 0%,#6b0f0f 45%,#8b1a1a 100%); border-bottom: 1px solid rgba(255,120,120,0.25); padding: 2.8rem 6rem; position: relative; overflow: hidden; }
+  .summer-sale-banner::before { content:''; position:absolute; inset:0; background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"); }
+  .summer-sale-inner { display:flex; align-items:center; justify-content:space-between; gap:2rem; position:relative; }
+  .summer-sale-left { flex:1; }
+  .sale-eyebrow { font-size:0.52rem; letter-spacing:0.3em; text-transform:uppercase; color:rgba(255,200,200,0.85); margin-bottom:0.5rem; }
+  .sale-headline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.7rem,3.5vw,2.6rem); font-weight:300; color:#fff; line-height:1.1; margin-bottom:0.55rem; }
+  .sale-headline em { font-style:italic; color:#ffb3b3; }
+  .sale-code-row { display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; }
+  .sale-code-label { font-size:0.62rem; color:rgba(255,255,255,0.75); letter-spacing:0.08em; }
+  .sale-code { background:rgba(255,255,255,0.15); border:1px dashed rgba(255,255,255,0.5); color:#fff; font-family:'Montserrat',sans-serif; font-size:0.78rem; font-weight:700; letter-spacing:0.22em; padding:0.3rem 0.75rem; cursor:pointer; transition:background 0.2s; }
+  .sale-code:hover { background:rgba(255,255,255,0.25); }
+  /* Countdown */
+  .sale-countdown-wrap { flex-shrink:0; text-align:center; }
+  .sale-countdown-label { font-size:0.5rem; letter-spacing:0.25em; text-transform:uppercase; color:rgba(255,200,200,0.8); margin-bottom:0.6rem; }
+  .sale-countdown { display:flex; align-items:flex-start; gap:0.4rem; }
+  .cd-block { background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.18); padding:0.65rem 0.85rem; text-align:center; min-width:56px; backdrop-filter:blur(4px); }
+  .cd-num { font-family:'Montserrat',sans-serif; font-size:1.7rem; font-weight:700; color:#fff; line-height:1; display:block; }
+  .cd-label { font-size:0.4rem; letter-spacing:0.18em; text-transform:uppercase; color:rgba(255,255,255,0.65); display:block; margin-top:0.2rem; }
+  .cd-sep { font-size:1.6rem; color:rgba(255,255,255,0.5); line-height:1.15; padding-top:0.55rem; font-weight:300; align-self:flex-start; }
+  @media(max-width:1100px) { .summer-sale-banner { padding:2rem 2.5rem; } }
+  @media(max-width:780px) {
+    .summer-sale-banner { padding:1.4rem 0.85rem; }
+    .summer-sale-inner { flex-direction:column; gap:1.2rem; align-items:flex-start; }
+    .cd-block { min-width:48px; padding:0.5rem 0.6rem; }
+    .cd-num { font-size:1.3rem; }
+    .sale-headline { font-size:1.45rem; }
+  }
+  /* Sale price on product page */
+  .prod-sale-box { margin:0.75rem 0 0.25rem; padding:0.75rem 1rem; background:rgba(139,26,26,0.12); border:1px solid rgba(180,40,40,0.3); border-left:3px solid #c0392b; }
+  .prod-sale-box-head { font-size:0.55rem; letter-spacing:0.2em; text-transform:uppercase; color:#e87070; margin-bottom:0.4rem; }
+  .prod-sale-price { font-family:'Cormorant Garamond',serif; font-size:1.5rem; color:#e87070; font-weight:600; }
+  .prod-sale-saving { font-size:0.65rem; color:rgba(232,112,112,0.8); margin-left:0.5rem; }
+  .prod-sale-code { margin-top:0.4rem; font-size:0.6rem; color:rgba(255,200,200,0.8); letter-spacing:0.06em; }
+  .prod-sale-code strong { color:#e87070; letter-spacing:0.15em; cursor:pointer; }
+  /* Sale badge on book cards */
+  .summer-badge { position:absolute; top:8px; right:8px; z-index:5; background:linear-gradient(135deg,#c0392b,#962d22); color:#fff; font-size:0.48rem; letter-spacing:0.16em; font-weight:700; padding:0.28rem 0.5rem; font-family:'Montserrat',sans-serif; box-shadow:0 3px 8px rgba(192,57,43,0.5); }
+  /* Product page sale countdown */
+  .prod-sale-timer { display:flex; align-items:center; gap:0.6rem; margin-top:0.5rem; flex-wrap:wrap; }
+  .prod-cd-label { font-size:0.52rem; letter-spacing:0.14em; text-transform:uppercase; color:#e87070; }
+  .prod-cd { display:flex; gap:0.25rem; align-items:flex-start; }
+  .prod-cd-block { background:rgba(139,26,26,0.2); border:1px solid rgba(180,40,40,0.35); padding:0.3rem 0.45rem; text-align:center; min-width:34px; }
+  .prod-cd-num { font-family:'Montserrat',sans-serif; font-size:0.9rem; font-weight:700; color:#e87070; display:block; line-height:1; }
+  .prod-cd-lbl { font-size:0.35rem; letter-spacing:0.1em; text-transform:uppercase; color:rgba(232,112,112,0.7); display:block; }
+  .prod-cd-sep { font-size:0.9rem; color:rgba(232,112,112,0.5); line-height:1.4; font-weight:300; }
+
   /* FEATURED BOOKS */
   .featured { background: var(--bg2); }
   .featured-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 4rem; }
@@ -1058,7 +1104,7 @@ HTML = r"""<!DOCTYPE html>
   .promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Montserrat',sans-serif;position:relative;z-index:200}
   .promo-banner strong{color:#c9a84c;font-weight:600;letter-spacing:0.18em}
   .promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
-  @media(max-width:780px){.promo-banner{display:none}}
+  @media(max-width:780px){.promo-banner{font-size:0.56rem;padding:0.4rem 0.7rem;letter-spacing:0.05em;}}
   @media(max-width:780px){
     .hero-title { font-size:clamp(2.45rem,13vw,3.7rem); line-height:1.04; margin-bottom:1.3rem; }
     .hero-sub { width:calc(100vw - 2.4rem); max-width:calc(100vw - 2.4rem); margin-bottom:1.55rem; font-size:0.76rem; line-height:1.75; }
@@ -1107,10 +1153,28 @@ HTML = r"""<!DOCTYPE html>
 </head>
 <body>
 
-<!-- Promo banner (PhonePe-style limited offer) -->
-<div class="promo-banner">
-  <strong>✦ PREPAID OFFERS</strong> 10% ₹499+ &nbsp;·&nbsp; 12% ₹999+ &nbsp;·&nbsp; 15% ₹1499+
+<!-- Promo banner -->
+<div class="promo-banner" id="promoBanner">
+  <strong>☀️ SUMMER SALE</strong> &nbsp;10% OFF on ₹299+ &nbsp;·&nbsp; Code: <code onclick="navigator.clipboard?.writeText('SUMMER10')" title="Click to copy" style="cursor:pointer;">SUMMER10</code> &nbsp;·&nbsp; Ends in: <span id="promoTimer" style="font-weight:600;color:#f0c060;letter-spacing:0.08em;"></span>
 </div>
+
+<!-- SUMMER SALE BANNER -->
+<section class="summer-sale-banner" id="summerSale">
+  <div class="summer-sale-inner">
+    <div class="summer-sale-left">
+      <div class="sale-eyebrow">☀️ Limited Time &nbsp;·&nbsp; Summer 2026</div>
+      <div class="sale-headline">10% Off on All Books<br/><em>₹299 &amp; Above</em></div>
+      <div class="sale-code-row" style="margin-top:0.7rem;">
+        <span class="sale-code-label">Use code at checkout:</span>
+        <span class="sale-code" onclick="navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='SUMMER10',2000)" title="Click to copy">SUMMER10</span>
+      </div>
+    </div>
+    <div class="sale-countdown-wrap">
+      <div class="sale-countdown-label">Sale ends in</div>
+      <div class="sale-countdown" id="saleCountdown"></div>
+    </div>
+  </div>
+</section>
 
 <!-- Floating WhatsApp support button -->
 <a class="wa-float" href="https://wa.me/919217175546?text=Hi%20Ink%20%26%20Chai%2C%20I%20have%20a%20question%20about%20a%20book." target="_blank" rel="noopener" title="Chat with us on WhatsApp" aria-label="WhatsApp support">
@@ -2209,6 +2273,49 @@ function subscribeNewsletter(e) {
   document.getElementById('nlEmail').value = '';
 }
 
+// ── SUMMER SALE COUNTDOWN ─────────────────────────────────────────────────
+const SALE_END_DATE = new Date('2026-05-19T18:30:00Z'); // midnight IST May 19
+
+function formatCountdown(diff) {
+  if (diff <= 0) return null;
+  const d = Math.floor(diff / 86400000);
+  const h = Math.floor((diff % 86400000) / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+  return { d, h: String(h).padStart(2,'0'), m: String(m).padStart(2,'0'), s: String(s).padStart(2,'0') };
+}
+
+function updateSaleCountdown() {
+  const diff = SALE_END_DATE.getTime() - Date.now();
+  const t = formatCountdown(diff);
+
+  // Big banner countdown
+  const big = document.getElementById('saleCountdown');
+  if (big) {
+    if (!t) { document.getElementById('summerSale')?.remove(); return; }
+    big.innerHTML =
+      `<div class="cd-block"><span class="cd-num">${t.d}</span><span class="cd-label">Days</span></div>` +
+      `<span class="cd-sep">:</span>` +
+      `<div class="cd-block"><span class="cd-num">${t.h}</span><span class="cd-label">Hours</span></div>` +
+      `<span class="cd-sep">:</span>` +
+      `<div class="cd-block"><span class="cd-num">${t.m}</span><span class="cd-label">Mins</span></div>` +
+      `<span class="cd-sep">:</span>` +
+      `<div class="cd-block"><span class="cd-num">${t.s}</span><span class="cd-label">Secs</span></div>`;
+  }
+
+  // Promo bar mini timer
+  const mini = document.getElementById('promoTimer');
+  if (mini && t) mini.textContent = `${t.d}d ${t.h}h ${t.m}m ${t.s}s`;
+  else if (mini && !t) mini.textContent = '';
+}
+
+if (Date.now() < SALE_END_DATE.getTime()) {
+  updateSaleCountdown();
+  setInterval(updateSaleCountdown, 1000);
+} else {
+  document.getElementById('summerSale')?.remove();
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────
 const totalStat = document.getElementById('stat-total');
 if (totalStat) totalStat.textContent = BOOKS.length.toLocaleString() + '+';
@@ -2966,6 +3073,18 @@ function renderProduct(b) {
           ${savePct ? `<span class="prod-saving">Save ${savePct}%</span>` : ''}
         </div>
 
+        ${sale >= 299 && Date.now() < new Date('2026-05-19T18:30:00Z').getTime() ? `
+        <div class="prod-sale-box">
+          <div class="prod-sale-box-head">☀️ Summer Sale Price</div>
+          <span class="prod-sale-price">₹${Math.round(sale * 0.9).toLocaleString('en-IN')}</span>
+          <span class="prod-sale-saving">You save ₹${Math.round(sale * 0.1).toLocaleString('en-IN')} (10%)</span>
+          <div class="prod-sale-code">Use code <strong onclick="navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='SUMMER10',2000)" title="Click to copy">SUMMER10</strong> at checkout</div>
+          <div class="prod-sale-timer" style="margin-top:0.5rem;">
+            <span class="prod-cd-label">Ends in</span>
+            <div class="prod-cd" id="prodCountdown"></div>
+          </div>
+        </div>` : ''}
+
         <div class="prod-trust-row" aria-label="Purchase benefits">
           <span>🚚 2–5 day delivery</span>
           <span>💵 COD available</span>
@@ -3056,6 +3175,31 @@ function renderProduct(b) {
   `;
   // Set initial wishlist state
   setTimeout(updateProdWishBtn, 100);
+
+  // Product page sale countdown
+  const _saleEnd = new Date('2026-05-19T18:30:00Z');
+  function _tickProd() {
+    const el = document.getElementById('prodCountdown');
+    if (!el) return;
+    const diff = _saleEnd.getTime() - Date.now();
+    if (diff <= 0) { el.closest('.prod-sale-box')?.remove(); return; }
+    const d = Math.floor(diff / 86400000);
+    const h = String(Math.floor((diff % 86400000) / 3600000)).padStart(2,'0');
+    const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2,'0');
+    const s = String(Math.floor((diff % 60000) / 1000)).padStart(2,'0');
+    el.innerHTML =
+      `<div class="prod-cd-block"><span class="prod-cd-num">${d}</span><span class="prod-cd-lbl">d</span></div>` +
+      `<span class="prod-cd-sep">:</span>` +
+      `<div class="prod-cd-block"><span class="prod-cd-num">${h}</span><span class="prod-cd-lbl">h</span></div>` +
+      `<span class="prod-cd-sep">:</span>` +
+      `<div class="prod-cd-block"><span class="prod-cd-num">${m}</span><span class="prod-cd-lbl">m</span></div>` +
+      `<span class="prod-cd-sep">:</span>` +
+      `<div class="prod-cd-block"><span class="prod-cd-num">${s}</span><span class="prod-cd-lbl">s</span></div>`;
+  }
+  if (Date.now() < _saleEnd.getTime()) {
+    _tickProd();
+    const _prodTimer = setInterval(() => { if (!document.getElementById('prodCountdown')) { clearInterval(_prodTimer); return; } _tickProd(); }, 1000);
+  }
 }
 
 function updateProdWishBtn() {
@@ -4229,11 +4373,12 @@ const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
 const COUPON_KEY = 'iac_checkout_coupon';
 const COUPONS = {
+  SUMMER10:  { type: 'percent', value: 10, minSubtotal: 299, onlineOnly: false, label: '☀️ Summer Sale 10% off', expiresAt: '2026-05-19T18:30:00Z' },
   INKLOVE10: { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
-  '499HIT': { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
-  SAVE12: { type: 'percent', value: 12, minSubtotal: 999, onlineOnly: true, label: '12% prepaid discount' },
-  SAVE15: { type: 'percent', value: 15, minSubtotal: 1499, onlineOnly: true, label: '15% prepaid discount' },
-  CHAI10BACK: { type: 'percent', value: 10, minSubtotal: 299, onlineOnly: true, label: 'Private 10% recovery discount' },
+  '499HIT':  { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
+  SAVE12:    { type: 'percent', value: 12, minSubtotal: 999, onlineOnly: true, label: '12% prepaid discount' },
+  SAVE15:    { type: 'percent', value: 15, minSubtotal: 1499, onlineOnly: true, label: '15% prepaid discount' },
+  CHAI10BACK:{ type: 'percent', value: 10, minSubtotal: 299, onlineOnly: true, label: 'Private 10% recovery discount' },
 };
 const PARTIAL_PAYMENT_THRESHOLD = 599;
 const PARTIAL_PAYMENT_RATE = 0.10;
@@ -4248,6 +4393,9 @@ function couponDiscount(subtotal, method = 'online') {
   const code = normalizeCouponCode(appliedCouponCode);
   const coupon = COUPONS[code];
   if (!coupon) return { code: '', discount: 0, message: '' };
+  if (coupon.expiresAt && Date.now() > new Date(coupon.expiresAt).getTime()) {
+    return { code, discount: 0, message: `${code} expired. Sale has ended.` };
+  }
   if (subtotal < coupon.minSubtotal) {
     return { code, discount: 0, message: `Add ₹${(coupon.minSubtotal - subtotal).toLocaleString('en-IN')} more to use ${code}.` };
   }
