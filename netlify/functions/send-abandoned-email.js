@@ -6,6 +6,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { sendWhatsApp } = require('./utils/whatsapp');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -101,6 +102,19 @@ exports.handler = async (event) => {
     }
 
     await supabase.from('abandoned_checkouts').update({ followup_email_sent_at: new Date().toISOString() }).eq('id', id);
+
+    // WhatsApp cart reminder (in addition to email, if phone exists)
+    if (lead.customer_phone) {
+      const itemCount = items.length > 0 ? `${items.length} book${items.length > 1 ? 's' : ''}` : 'books';
+      const amtRaw = lead.amount_paise ? `₹${Math.round(lead.amount_paise / 100)}` : '';
+      await sendWhatsApp({
+        to: lead.customer_phone,
+        template: 'cart_reminder',
+        params: [String(lead.customer_name || 'there').split(' ')[0], itemCount, amtRaw],
+      });
+      await supabase.from('abandoned_checkouts').update({ followup_whatsapp_clicked_at: new Date().toISOString() }).eq('id', id);
+    }
+
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true }) };
   } catch (err) {
     console.error('send-abandoned-email error:', err.message);

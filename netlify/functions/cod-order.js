@@ -5,6 +5,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { sendWhatsApp } = require('./utils/whatsapp');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -186,6 +187,17 @@ exports.handler = async (event) => {
           </p>
         </div>
       `),
+    });
+  }
+
+  // ── 4. WhatsApp confirmation to CUSTOMER ─────────────────────────────────
+  if (customer.phone) {
+    const firstName = (customer.name || 'there').split(' ')[0];
+    const addrShort = (customer.address || '').slice(0, 80);
+    await sendWhatsApp({
+      to: customer.phone,
+      template: 'order_confirmed',
+      params: [firstName, orderId, `₹${total.toLocaleString('en-IN')} (COD)`, addrShort],
     });
   }
 

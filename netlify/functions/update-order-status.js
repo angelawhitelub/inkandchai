@@ -14,6 +14,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { sendWhatsApp } = require('./utils/whatsapp');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -164,19 +165,33 @@ exports.handler = async (event) => {
       }
     }
 
-    // Fire shipment email regardless of whether columns persisted (non-fatal)
+    // Fire shipment email + WhatsApp regardless of whether columns persisted (non-fatal)
     if (status === 'shipped') {
       const { data: order } = await supabase.from('orders').select('*').eq('id', id).maybeSingle();
-      if (order && order.customer_email) {
+      if (order) {
         // Inject tracking info (in case columns don't persist yet)
         order.tracking_id   = order.tracking_id   || tracking_id;
         order.courier_name  = order.courier_name  || courier_name;
         order.tracking_url  = order.tracking_url  || trackingUrl;
-        await sendEmail({
-          to: order.customer_email,
-          subject: `📦 Your Ink & Chai order has shipped (${order.razorpay_order_id || order.id})`,
-          html: shipmentEmailHtml(order),
-        });
+
+        if (order.customer_email) {
+          await sendEmail({
+            to: order.customer_email,
+            subject: `📦 Your Ink & Chai order has shipped (${order.razorpay_order_id || order.id})`,
+            html: shipmentEmailHtml(order),
+          });
+        }
+
+        // WhatsApp shipment notification
+        if (order.customer_phone) {
+          const firstName = (order.customer_name || 'there').split(' ')[0];
+          const trkUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(order.razorpay_order_id || order.id)}`;
+          await sendWhatsApp({
+            to: order.customer_phone,
+            template: 'order_shipped',
+            params: [firstName, order.courier_name || 'Courier', order.tracking_id || '—', trkUrl],
+          });
+        }
       }
     }
 

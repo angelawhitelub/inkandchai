@@ -6,6 +6,7 @@
 
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const { sendWhatsApp } = require('./utils/whatsapp');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -238,6 +239,20 @@ exports.handler = async (event) => {
           </p>
         </div>
       `),
+    });
+  }
+
+  // ── 5. WhatsApp confirmation to CUSTOMER ─────────────────────────────────
+  if (customer?.phone) {
+    const firstName = (customer.name || 'there').split(' ')[0];
+    const amtDisplay = isPartial
+      ? `₹${paidTotal.toLocaleString('en-IN')} (10% advance) + ₹${balanceDue.toLocaleString('en-IN')} COD`
+      : `₹${paidTotal.toLocaleString('en-IN')}`;
+    const addrShort = (customer.address || '').slice(0, 80);
+    await sendWhatsApp({
+      to: customer.phone,
+      template: 'order_confirmed',
+      params: [firstName, razorpay_order_id, amtDisplay, addrShort],
     });
   }
 
