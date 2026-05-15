@@ -189,7 +189,36 @@ try:
     recent_order_activity = json.loads(recent_order_activity_path.read_text()) if recent_order_activity_path.exists() else []
 except Exception:
     recent_order_activity = []
-recent_order_activity_js = json.dumps(recent_order_activity, ensure_ascii=False)
+def _norm_activity_title(value):
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+def _match_activity_book(title):
+    needle = _norm_activity_title(str(title or "").split("+")[0])
+    if not needle:
+        return None
+    for book in slim:
+        hay = _norm_activity_title(book.get("t", "") + " " + book.get("a", ""))
+        hay_prefix = hay[:38].strip()
+        if (len(needle) >= 6 and needle in hay) or (len(hay_prefix) >= 10 and hay_prefix in needle):
+            return book
+    words = [w for w in needle.split() if len(w) > 3][:4]
+    if len(words) >= 2:
+        for book in slim:
+            hay = _norm_activity_title(book.get("t", "") + " " + book.get("a", ""))
+            if all(w in hay for w in words):
+                return book
+    return None
+
+enriched_recent_order_activity = []
+for item in recent_order_activity:
+    matched = _match_activity_book(item.get("title", ""))
+    enriched_recent_order_activity.append({
+        "name": clean_text(item.get("name", "")),
+        "title": clean_text(item.get("title", "")),
+        "img": matched.get("img", "") if matched else "",
+        "url": matched.get("url", "") if matched else "",
+    })
+recent_order_activity_js = json.dumps(enriched_recent_order_activity, ensure_ascii=False)
 new_count = sum(b["n"] for b in slim)
 print(f"New arrivals (last {NEW_ARRIVAL_DAYS} days): {new_count}")
 
@@ -322,9 +351,29 @@ READER_ACTIVITY_JS = r"""
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
   const esc = s => String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  function stopActivity(){
+    sessionStorage.setItem('iac_reader_activity_closed','1');
+    const el = document.getElementById('readerActivityToast');
+    if (el) {
+      el.classList.remove('show');
+      window.clearTimeout(el._hideTimer);
+    }
+  }
+  window.stopReaderActivity = stopActivity;
   function booksPool(){
     try {
-      if (typeof BOOKS === 'undefined' || !Array.isArray(BOOKS)) return [];
+      if (typeof BOOKS === 'undefined' || !Array.isArray(BOOKS)) {
+        if (typeof currentItem !== 'undefined' && currentItem && currentItem.title && currentItem.img) {
+          return [{
+            t: currentItem.title,
+            a: currentItem.author || '',
+            img: currentItem.img,
+            url: currentItem.url && String(currentItem.url).startsWith('/product/') ? currentItem.url : location.pathname,
+            slug: ''
+          }];
+        }
+        return [];
+      }
       return BOOKS.filter(b => b && b.t && b.img && (b.url || b.slug))
         .filter(b => (b.n || /hindi|self help|romance|bestseller|combo/i.test((b.cat || '') + ' ' + b.t)))
         .slice(0, 180);
@@ -349,8 +398,8 @@ READER_ACTIVITY_JS = r"""
         city: 'India',
         action: pick(orderActions),
         title: order.title || match.t,
-        img: match.img,
-        url: match.url || ('/product/' + match.slug + '/'),
+        img: order.img || match.img,
+        url: order.url || match.url || ('/product/' + match.slug + '/'),
         time: pick(['yesterday','today','12 minutes ago','5 minutes ago'])
       };
     }
@@ -409,6 +458,15 @@ READER_ACTIVITY_JS = r"""
     window.setTimeout(showActivity, 5200);
     schedule();
   });
+  document.addEventListener('click', event => {
+    const target = event.target.closest('button,a');
+    if (!target) return;
+    const onclick = target.getAttribute('onclick') || '';
+    const href = target.getAttribute('href') || '';
+    if (/buyNowBook|addBookToCart|checkout/i.test(onclick) || /\/checkout\/?/i.test(href)) {
+      stopActivity();
+    }
+  }, true);
 })();
 </script>
 """
@@ -3665,6 +3723,7 @@ function setBtnLoading(btn,on) {{
   btn.disabled = !!on;
 }}
 function addBookToCart(btn) {{
+  if (window.stopReaderActivity) stopReaderActivity();
   setBtnLoading(btn, true);
   localStorage.removeItem('iac_buy_now_cart');
   const item = {{ ...currentItem }};
@@ -3680,6 +3739,7 @@ function addBookToCart(btn) {{
   }}, 180);
 }}
 function buyNowBook(btn) {{
+  if (window.stopReaderActivity) stopReaderActivity();
   setBtnLoading(btn, true);
   const item = {{ ...currentItem }};
   localStorage.setItem('iac_buy_now_cart', JSON.stringify([item]));
@@ -3770,7 +3830,7 @@ for old_product_dir in product_root.iterdir():
 for book in slim:
     out = product_root / book["slug"] / "index.html"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(with_meta_pixel(static_product_html(book)), encoding="utf-8")
+    out.write_text(with_meta_pixel(with_reader_activity(static_product_html(book))), encoding="utf-8")
 print(f"Generated crawlable product pages: {len(slim)}")
 
 SELF_HELP_TERMS = ["self", "help", "habit", "hurt", "finished", "rich dad", "psychology", "money", "power", "think", "mindset", "discipline", "atomic", "goggins", "ikigai", "motivation"]
