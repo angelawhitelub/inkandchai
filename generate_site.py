@@ -184,6 +184,12 @@ for b in books:
 slim.sort(key=lambda x: (-x["n"], -(x["ts"] or "")[:19].count("0")))  # new first
 
 books_js = json.dumps(slim, ensure_ascii=False)
+recent_order_activity_path = Path(__file__).parent / "data" / "recent_order_activity.json"
+try:
+    recent_order_activity = json.loads(recent_order_activity_path.read_text()) if recent_order_activity_path.exists() else []
+except Exception:
+    recent_order_activity = []
+recent_order_activity_js = json.dumps(recent_order_activity, ensure_ascii=False)
 new_count = sum(b["n"] for b in slim)
 print(f"New arrivals (last {NEW_ARRIVAL_DAYS} days): {new_count}")
 
@@ -307,12 +313,15 @@ html:not([data-theme="light"]) .reader-activity-time{color:#a09080}
 READER_ACTIVITY_JS = r"""
 <script>
 (function(){
+  const recentOrders = RECENT_ORDER_ACTIVITY_PLACEHOLDER;
   const names = ['Aarav','Ananya','Riya','Kabir','Priya','Arjun','Meera','Ishaan','Neha','Rohan','Sanya','Aditya','Kavya','Rahul','Nisha','Vivaan'];
   const cities = ['Delhi','Mumbai','Pune','Jaipur','Lucknow','Bengaluru','Hyderabad','Chandigarh','Ahmedabad','Indore','Kolkata','Surat'];
-  const actions = ['is viewing', 'is browsing', 'is reading about', 'is interested in'];
-  const times = ['just now','2 minutes ago','5 minutes ago','12 minutes ago','today'];
+  const browseActions = ['added to cart', 'is checking out', 'is browsing', 'is viewing'];
+  const orderActions = ['ordered', 'purchased'];
+  const times = ['just now','2 minutes ago','5 minutes ago','12 minutes ago','today','yesterday'];
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
   const esc = s => String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   function booksPool(){
     try {
       if (typeof BOOKS === 'undefined' || !Array.isArray(BOOKS)) return [];
@@ -320,6 +329,41 @@ READER_ACTIVITY_JS = r"""
         .filter(b => (b.n || /hindi|self help|romance|bestseller|combo/i.test((b.cat || '') + ' ' + b.t)))
         .slice(0, 180);
     } catch(e) { return []; }
+  }
+  function matchBook(title, pool){
+    const needle = norm(String(title || '').split('+')[0]);
+    if (!needle || !pool.length) return null;
+    return pool.find(b => norm(b.t).includes(needle) || needle.includes(norm(b.t).slice(0, 38))) ||
+      pool.find(b => {
+        const words = needle.split(' ').filter(w => w.length > 3).slice(0, 4);
+        const hay = norm(b.t + ' ' + (b.a || ''));
+        return words.length >= 2 && words.every(w => hay.includes(w));
+      }) || null;
+  }
+  function activityItem(pool){
+    if (Array.isArray(recentOrders) && recentOrders.length && Math.random() < 0.58) {
+      const order = pick(recentOrders);
+      const match = matchBook(order.title, pool) || pick(pool);
+      return {
+        name: order.name || pick(names),
+        city: 'India',
+        action: pick(orderActions),
+        title: order.title || match.t,
+        img: match.img,
+        url: match.url || ('/product/' + match.slug + '/'),
+        time: pick(['yesterday','today','12 minutes ago','5 minutes ago'])
+      };
+    }
+    const b = pick(pool);
+    return {
+      name: pick(names),
+      city: pick(cities),
+      action: pick(browseActions),
+      title: b.t,
+      img: b.img,
+      url: b.url || ('/product/' + b.slug + '/'),
+      time: pick(times)
+    };
   }
   function ensureToast(){
     let el = document.getElementById('readerActivityToast');
@@ -336,19 +380,17 @@ READER_ACTIVITY_JS = r"""
     if (sessionStorage.getItem('iac_reader_activity_closed') === '1') return;
     const pool = booksPool();
     if (!pool.length) return;
-    const b = pick(pool);
-    const name = pick(names), city = pick(cities), action = pick(actions);
-    const url = b.url || ('/product/' + b.slug + '/');
+    const item = activityItem(pool);
     const el = ensureToast();
     el.innerHTML = `
-      <img class="reader-activity-img" src="${esc(b.img)}" alt="" loading="lazy"/>
+      <img class="reader-activity-img" src="${esc(item.img)}" alt="" loading="lazy"/>
       <div>
-        <div class="reader-activity-kicker">${esc(name)} from ${esc(city)} ${esc(action)}</div>
-        <div class="reader-activity-title">${esc(b.t)}</div>
-        <div class="reader-activity-time">${esc(pick(times))}</div>
+        <div class="reader-activity-kicker">${esc(item.name)} from ${esc(item.city)} ${esc(item.action)}</div>
+        <div class="reader-activity-title">${esc(item.title)}</div>
+        <div class="reader-activity-time">${esc(item.time)}</div>
       </div>
       <button class="reader-activity-close" type="button" aria-label="Hide reader activity">×</button>`;
-    el.onclick = e => { if (!e.target.closest('button')) location.href = url; };
+    el.onclick = e => { if (!e.target.closest('button')) location.href = item.url; };
     el.querySelector('button').onclick = e => {
       e.stopPropagation();
       el.classList.remove('show');
@@ -375,7 +417,7 @@ def with_reader_activity(html: str) -> str:
     if "reader-activity-toast" not in html:
         html = html.replace("</style>", READER_ACTIVITY_CSS + "\n</style>", 1)
     if "readerActivityToast" not in html:
-        html = html.replace("</body>", READER_ACTIVITY_JS + "\n</body>", 1)
+        html = html.replace("</body>", READER_ACTIVITY_JS.replace("RECENT_ORDER_ACTIVITY_PLACEHOLDER", recent_order_activity_js) + "\n</body>", 1)
     return html
 
 # ── HTML template ────────────────────────────────────────────────────────────
