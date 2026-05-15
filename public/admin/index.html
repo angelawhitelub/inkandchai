@@ -766,25 +766,81 @@ function _drawTable() {
 }
 
 // ── Update Status ──────────────────────────────────────────────────────────
-const COURIERS = ['BlueDart','DTDC','Delhivery','IndiaPost','EcomExpress','Shadowfax','XpressBees','Shiprocket','Professional'];
+const COURIERS = ['Amazon','BlueDart','DTDC','Delhivery','IndiaPost','EcomExpress','Shadowfax','XpressBees','Shiprocket','Professional'];
+
+// ── Ship modal ────────────────────────────────────────────────────────────
+let _shipResolve = null;
+
+(function injectShipModal() {
+  const modal = document.createElement('div');
+  modal.id = 'shipModal';
+  modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.3);padding:1.8rem 2rem;width:min(420px,92vw);box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+      <h3 style="margin:0 0 1.2rem;font-family:serif;font-weight:400;font-size:1.25rem;color:#f0e8d8;">📦 Mark as Shipped</h3>
+      <label style="display:block;font-size:0.65rem;letter-spacing:0.15em;text-transform:uppercase;color:#a09080;margin-bottom:0.4rem;">Courier</label>
+      <select id="shipCourier" style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.7rem 0.9rem;font-size:0.82rem;margin-bottom:1rem;outline:none;">
+        ${COURIERS.map(c => `<option value="${c}"${c==='Amazon'?' selected':''}>${c}</option>`).join('')}
+      </select>
+      <label style="display:block;font-size:0.65rem;letter-spacing:0.15em;text-transform:uppercase;color:#a09080;margin-bottom:0.4rem;">AWB / Tracking Number</label>
+      <input id="shipAwb" type="text" placeholder="e.g. 74372838181" autocomplete="off"
+        style="width:100%;box-sizing:border-box;background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.7rem 0.9rem;font-size:0.88rem;font-family:Menlo,Consolas,monospace;outline:none;margin-bottom:1.4rem;" />
+      <div style="display:flex;gap:0.8rem;justify-content:flex-end;">
+        <button onclick="closeShipModal(false)" style="background:transparent;border:1px solid rgba(201,168,76,0.3);color:#a09080;padding:0.6rem 1.2rem;cursor:pointer;font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;">Cancel</button>
+        <button onclick="closeShipModal(true)" style="background:#c9a84c;border:none;color:#0d0b08;padding:0.6rem 1.4rem;cursor:pointer;font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;font-weight:600;">Confirm &amp; Email Customer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  // Enter key confirms
+  modal.querySelector('#shipAwb').addEventListener('keydown', e => { if (e.key === 'Enter') closeShipModal(true); });
+  modal.addEventListener('click', e => { if (e.target === modal) closeShipModal(false); });
+})();
+
+function openShipModal() {
+  const modal = document.getElementById('shipModal');
+  document.getElementById('shipAwb').value = '';
+  document.getElementById('shipCourier').value = 'Amazon';
+  modal.style.display = 'flex';
+  setTimeout(() => document.getElementById('shipAwb').focus(), 80);
+  return new Promise(resolve => { _shipResolve = resolve; });
+}
+
+function closeShipModal(confirmed) {
+  const modal = document.getElementById('shipModal');
+  modal.style.display = 'none';
+  if (!_shipResolve) return;
+  if (confirmed) {
+    const courier = document.getElementById('shipCourier').value;
+    const awb = document.getElementById('shipAwb').value.trim();
+    _shipResolve(awb ? { courier, awb } : null);
+  } else {
+    _shipResolve(null);
+  }
+  _shipResolve = null;
+}
 
 async function updateStatus(id, status) {
   if (!status) return;
 
   let tracking_id = '', courier_name = '';
   if (status === 'shipped') {
-    courier_name = prompt('Courier name? (e.g. ' + COURIERS.join(' / ') + ')\n\nThis must match one of the supported names exactly so the customer\'s tracking link works.', 'Delhivery');
-    if (courier_name === null) return;  // user cancelled
-    tracking_id  = prompt('Tracking / AWB number?\n\nThis is the number the courier gave you. The customer will get an email with this and a link to track on the courier\'s website.', '');
-    if (tracking_id === null) return;   // cancelled
-    if (!tracking_id.trim()) { alert('Tracking ID is required when marking as shipped.'); return; }
+    const result = await openShipModal();
+    if (!result) {
+      // user cancelled — revert select back to previous status
+      const ord = allOrders.find(o => o.id === id);
+      applyFilters();
+      return;
+    }
+    courier_name = result.courier;
+    tracking_id  = result.awb;
   }
 
   try {
     const res = await fetch('/.netlify/functions/update-order-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
-      body: JSON.stringify({ id, status, tracking_id: tracking_id.trim(), courier_name: courier_name.trim() }),
+      body: JSON.stringify({ id, status, tracking_id, courier_name }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -794,14 +850,15 @@ async function updateStatus(id, status) {
     const ord = allOrders.find(o => o.id === id);
     if (ord) {
       ord.status = status;
-      if (tracking_id)  ord.tracking_id  = tracking_id.trim();
-      if (courier_name) ord.courier_name = courier_name.trim();
+      if (tracking_id)  ord.tracking_id  = tracking_id;
+      if (courier_name) ord.courier_name = courier_name;
       if (data.tracking_url) ord.tracking_url = data.tracking_url;
     }
     updateStats();
     applyFilters();
     if (status === 'shipped') {
-      alert(`✅ Marked shipped. Customer will receive an email with the tracking link.${data.tracking_url ? '\n\nCourier link: ' + data.tracking_url : ''}`);
+      const trackUrl = data.tracking_url || '';
+      alert(`✅ Shipped! Customer email sent with AWB ${tracking_id}.${trackUrl ? '\n\n' + trackUrl : ''}`);
     }
   } catch (err) {
     alert('Could not update status: ' + err.message);

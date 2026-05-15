@@ -25,6 +25,7 @@ const VALID_STATUSES = ['cod_pending', 'partial_cod_pending', 'confirmed', 'ship
 
 // Known Indian couriers + their tracking URL templates
 const COURIER_URLS = {
+  'amazon':       'https://track.amazon.in/tracking/{id}?trackingId={id}',
   'bluedart':     'https://www.bluedart.com/tracking?trackingNumber={id}',
   'dtdc':         'https://www.dtdc.in/tracking/tracking_results.asp?action=track&Type=awb&strCnno={id}',
   'delhivery':    'https://www.delhivery.com/tracking/package/{id}',
@@ -40,7 +41,7 @@ function buildTrackingUrl(courier, trackingId) {
   if (!trackingId) return '';
   const key = (courier || '').toLowerCase().replace(/\s+/g, '');
   const tpl = COURIER_URLS[key];
-  return tpl ? tpl.replace('{id}', encodeURIComponent(trackingId)) : '';
+  return tpl ? tpl.split('{id}').join(encodeURIComponent(trackingId)) : '';
 }
 
 // ── Send email via Resend (auto-fallback to onboarding@resend.dev) ────────
