@@ -1093,11 +1093,14 @@ HTML = r"""<!DOCTYPE html>
   .mob-nav .mn-badge{position:absolute;top:0;right:calc(50% - 18px);background:var(--gold);color:var(--bg);border-radius:50%;width:16px;height:16px;font-size:0.55rem;font-weight:600;display:flex;align-items:center;justify-content:center;letter-spacing:0}
 
   /* Trust strip — Why Choose Ink & Chai */
-  .trust-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem;max-width:1200px;margin:0 auto;padding:2.5rem 2rem;border-bottom:1px solid var(--border)}
+  .trust-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:1.5rem;max-width:1200px;margin:0 auto;padding:2.5rem 2rem;border-bottom:1px solid var(--border)}
   .trust-item{display:flex;flex-direction:column;align-items:center;text-align:center;gap:0.5rem}
+  .trust-link{text-decoration:none}
+  .trust-link:hover .trust-title{color:var(--gold)}
   .trust-icon{font-size:1.6rem;color:var(--gold)}
   .trust-title{font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--cream);font-weight:500}
   .trust-text{font-size:0.7rem;color:var(--cream-dim);line-height:1.5;letter-spacing:0.03em}
+  @media(max-width:980px){.trust-strip{grid-template-columns:repeat(3,1fr)}}
   @media(max-width:780px){.trust-strip{grid-template-columns:repeat(2,1fr);gap:1.2rem;padding:1.8rem 1rem}.trust-title{font-size:0.85rem}.trust-text{font-size:0.62rem}}
 
 </style>
@@ -1106,7 +1109,7 @@ HTML = r"""<!DOCTYPE html>
 
 <!-- Promo banner (PhonePe-style limited offer) -->
 <div class="promo-banner">
-  <strong>✦ FLAT 10% OFF</strong> on prepaid orders above ₹499 &nbsp;·&nbsp; Free shipping pan-India &nbsp;<code>USE: INKLOVE10</code>
+  <strong>✦ PREPAID OFFERS</strong> 10% ₹499+ &nbsp;·&nbsp; 12% ₹999+ &nbsp;·&nbsp; 15% ₹1499+
 </div>
 
 <!-- Floating WhatsApp support button -->
@@ -1233,12 +1236,12 @@ HTML = r"""<!DOCTYPE html>
 <div class="marquee-bar">
   <div class="marquee-track">
     <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Extra 10% off prepaid orders with INKLOVE10 <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Prepaid offers: 10% on ₹499+, 12% on ₹999+, 15% on ₹1499+ <span class="marquee-dot">◆</span></span>
     <span class="marquee-item">Cash on delivery available <span class="marquee-dot">◆</span></span>
     <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot">◆</span></span>
     <span class="marquee-item">7-day replacement support <span class="marquee-dot">◆</span></span>
     <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Extra 10% off prepaid orders with INKLOVE10 <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Prepaid offers: 10% on ₹499+, 12% on ₹999+, 15% on ₹1499+ <span class="marquee-dot">◆</span></span>
     <span class="marquee-item">Cash on delivery available <span class="marquee-dot">◆</span></span>
     <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot">◆</span></span>
     <span class="marquee-item">7-day replacement support <span class="marquee-dot">◆</span></span>
@@ -1267,6 +1270,11 @@ HTML = r"""<!DOCTYPE html>
     <div class="trust-title">Genuine Books Only</div>
     <div class="trust-text">Every book sourced directly from publishers. 100% original.</div>
   </div>
+  <a class="trust-item trust-link" href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener">
+    <div class="trust-icon">◎</div>
+    <div class="trust-title">12.4K Instagram Readers</div>
+    <div class="trust-text">Follow @theinkandchai.in for customer highlights, book drops, and unboxings.</div>
+  </a>
 </section>
 
 <!-- FEATURED BOOKS -->
@@ -2588,7 +2596,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 
 <!-- Promo banner -->
 <div class="promo-banner">
-  <strong>✦ FLAT 10% OFF</strong> on prepaid orders above ₹499 &nbsp;·&nbsp; Free shipping pan-India &nbsp;<code>USE: INKLOVE10</code>
+  <strong>✦ PREPAID OFFERS</strong> 10% ₹499+ &nbsp;·&nbsp; 12% ₹999+ &nbsp;·&nbsp; 15% ₹1499+
 </div>
 
 <!-- WhatsApp -->
@@ -3618,7 +3626,7 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 </style>
 </head>
 <body>
-<div class="promo"><strong>Free delivery on ₹499+</strong> · Extra 10% off prepaid with <strong>INKLOVE10</strong> · COD available</div>
+<div class="promo"><strong>Free delivery on ₹499+</strong> · Prepaid offers up to <strong>15% off</strong> · COD available</div>
 <nav><a class="logo" href="/">Ink &amp; Chai</a><a class="back" href="/">← Catalogue</a></nav>
 <main class="wrap">
   <div>
@@ -3963,6 +3971,7 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color
 .checkout-remove:hover{color:#e06060;}
 .coupon-box{border-top:1px solid var(--border);margin-top:1rem;padding-top:1rem;}
 .coupon-row{display:grid;grid-template-columns:1fr auto;gap:0.55rem;align-items:stretch;}
+.coupon-select{width:100%;margin-bottom:0.55rem;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;letter-spacing:0.08em;outline:none;}
 .coupon-input{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.12em;}
 .coupon-btn{font-family:'Montserrat',sans-serif;font-size:0.55rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.75rem 0.9rem;background:var(--bg2);color:var(--gold);border:1px solid var(--border);cursor:pointer;font-weight:500;}
 .coupon-btn:hover{border-color:var(--gold);background:rgba(138,106,31,0.08);}
@@ -3980,8 +3989,9 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
 .form-group{margin-bottom:1rem;}
 label{display:block;font-size:0.56rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.45rem;}
-input,textarea{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;transition:border-color 0.2s;-webkit-appearance:none;}
-input:focus,textarea:focus{border-color:rgba(201,168,76,0.5);}
+input,textarea,select{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;transition:border-color 0.2s;}
+input,textarea{-webkit-appearance:none;}
+input:focus,textarea:focus,select:focus{border-color:rgba(201,168,76,0.5);}
 input::placeholder,textarea::placeholder{color:rgba(160,144,128,0.5);}
 input:disabled{background:var(--bg2);color:var(--gold-dim);cursor:not-allowed;}
 .pincode-row{display:grid;grid-template-columns:110px 1fr 1fr;gap:1rem;margin-bottom:0.3rem;}
@@ -4161,9 +4171,17 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
           </div>
         </div>
         <div class="coupon-box" id="couponBox" style="display:none;">
+          <label for="couponSelect">Available Coupons</label>
+          <select class="coupon-select" id="couponSelect" onchange="handleCouponSelect(this.value)">
+            <option value="">Choose a prepaid offer</option>
+            <option value="INKLOVE10">INKLOVE10 · 10% off prepaid above ₹499</option>
+            <option value="SAVE12">SAVE12 · 12% off prepaid above ₹999</option>
+            <option value="SAVE15">SAVE15 · 15% off prepaid above ₹1499</option>
+            <option value="499HIT">499HIT · 10% off prepaid above ₹499</option>
+          </select>
           <label for="couponCode">Coupon Code</label>
           <div class="coupon-row">
-            <input class="coupon-input" id="couponCode" type="text" placeholder="INKLOVE10" autocomplete="off" onkeydown="handleCouponKey(event)"/>
+            <input class="coupon-input" id="couponCode" type="text" placeholder="Or enter private code" autocomplete="off" onkeydown="handleCouponKey(event)"/>
             <button class="coupon-btn" type="button" onclick="applyCoupon()">Apply</button>
           </div>
           <div class="coupon-msg" id="couponMsg"></div>
@@ -4212,6 +4230,9 @@ const SHIPPING_FEE = 40;
 const COUPON_KEY = 'iac_checkout_coupon';
 const COUPONS = {
   INKLOVE10: { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
+  '499HIT': { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
+  SAVE12: { type: 'percent', value: 12, minSubtotal: 999, onlineOnly: true, label: '12% prepaid discount' },
+  SAVE15: { type: 'percent', value: 15, minSubtotal: 1499, onlineOnly: true, label: '15% prepaid discount' },
   CHAI10BACK: { type: 'percent', value: 10, minSubtotal: 299, onlineOnly: true, label: 'Private 10% recovery discount' },
 };
 const PARTIAL_PAYMENT_THRESHOLD = 599;
@@ -4276,13 +4297,21 @@ function handleCouponKey(event) {
   }
 }
 
+function handleCouponSelect(value) {
+  const input = document.getElementById('couponCode');
+  if (input) input.value = value || '';
+  applyCoupon();
+}
+
 function applyCoupon() {
   const input = document.getElementById('couponCode');
+  const select = document.getElementById('couponSelect');
   const msg = document.getElementById('couponMsg');
   const code = normalizeCouponCode(input?.value);
   if (!code) {
     appliedCouponCode = '';
     localStorage.removeItem(COUPON_KEY);
+    if (select) select.value = '';
     if (msg) {
       msg.textContent = 'Coupon removed.';
       msg.style.color = 'var(--cream-dim)';
@@ -4299,6 +4328,10 @@ function applyCoupon() {
   }
   appliedCouponCode = code;
   localStorage.setItem(COUPON_KEY, code);
+  if (select) {
+    const hasVisibleOption = Array.from(select.options).some(option => option.value === code);
+    select.value = hasVisibleOption ? code : '';
+  }
   renderSummary();
 }
 
@@ -4314,6 +4347,7 @@ function renderSummary() {
   const btnCOD    = document.getElementById('btnCOD');
   const couponBox = document.getElementById('couponBox');
   const couponInput = document.getElementById('couponCode');
+  const couponSelect = document.getElementById('couponSelect');
   const couponMsg = document.getElementById('couponMsg');
 
   if (!cart.length) {
@@ -4330,8 +4364,12 @@ function renderSummary() {
   const { subtotal, shipping, discount, couponCode, couponMessage, total: grand } = orderTotals(cart, 'online');
   if (couponBox) couponBox.style.display = 'block';
   if (couponInput && couponInput.value !== appliedCouponCode) couponInput.value = appliedCouponCode;
+  if (couponSelect) {
+    const hasVisibleOption = Array.from(couponSelect.options).some(option => option.value === appliedCouponCode);
+    couponSelect.value = hasVisibleOption ? appliedCouponCode : '';
+  }
   if (couponMsg) {
-    couponMsg.textContent = couponMessage || 'Use INKLOVE10 for 10% off prepaid orders above ₹499.';
+    couponMsg.textContent = couponMessage || 'Choose a prepaid offer: 10% above ₹499, 12% above ₹999, or 15% above ₹1499.';
     couponMsg.style.color = couponCode && discount > 0 ? '#5d9b55' : (couponMessage ? '#c97a7a' : 'var(--cream-dim)');
   }
   container.innerHTML = cart.map((i, idx) => `
@@ -4930,7 +4968,7 @@ html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-c
 </style>
 </head>
 <body>
-<div class="promo-banner"><strong>✦ FLAT 10% OFF</strong> on prepaid orders above ₹499 &nbsp;·&nbsp; Free shipping pan-India &nbsp;<code>USE: INKLOVE10</code></div>
+<div class="promo-banner"><strong>✦ PREPAID OFFERS</strong> 10% ₹499+ &nbsp;·&nbsp; 12% ₹999+ &nbsp;·&nbsp; 15% ₹1499+</div>
 <nav class="mob-nav" aria-label="Mobile navigation">
   <a href="/" title="Home"><span class="mn-icon">⌂</span><span>Home</span></a>
   <a href="/" title="My Orders"><span class="mn-icon">📦</span><span>Orders</span></a>
