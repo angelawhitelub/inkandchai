@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title id="pageTitle">Product – Kawaii Corner | Ink &amp; Chai</title>
+  <meta name="description" id="pageDesc" content="Shop cute stationery at Kawaii Corner – Ink & Chai"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --pk:#FF6B9D;--pk2:#ff8fb5;--pk3:#ffd6e7;
+      --lv:#C084FC;--lv2:#d8b4fe;--lv3:#f3e8ff;
+      --bg:#FFF5F7;--bg2:#fff;--bg3:#fdf0f5;
+      --txt:#3d1a2e;--txt2:#7a4460;--txt3:#b07090;
+      --border:#f9d0e4;
+      --shadow:0 4px 20px rgba(255,107,157,.13);
+      --shadow-lg:0 8px 36px rgba(255,107,157,.18);
+      --r:16px;--r-sm:10px;
+      --f-body:'Nunito',sans-serif;--f-head:'Poppins',sans-serif;
+    }
+    html{scroll-behavior:smooth}
+    body{background:var(--bg);color:var(--txt);font-family:var(--f-body);font-size:15px;line-height:1.6;min-height:100vh}
+    a{text-decoration:none;color:inherit}
+    img{max-width:100%;display:block}
+    button{cursor:pointer;font-family:var(--f-body)}
+
+    /* ── Nav ── */
+    .kw-nav{background:#fff;border-bottom:2px solid var(--pk3);position:sticky;top:0;z-index:100;box-shadow:0 2px 16px rgba(255,107,157,.1)}
+    .nav-inner{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:16px;padding:0 20px;height:64px}
+    .back-link{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2);font-weight:600;letter-spacing:.5px;white-space:nowrap;background:var(--bg3);border:1.5px solid var(--border);padding:6px 12px;border-radius:20px;transition:all .2s}
+    .back-link:hover{background:var(--pk3);color:var(--pk);border-color:var(--pk2)}
+    .kw-logo{display:flex;align-items:center;gap:10px;font-family:var(--f-head);font-size:22px;font-weight:700;color:var(--pk);white-space:nowrap}
+    .kw-logo .logo-sub{font-size:10px;color:var(--lv);font-weight:600;letter-spacing:1.5px;text-transform:uppercase;display:block;line-height:1}
+    .nav-actions{display:flex;align-items:center;gap:10px;margin-left:auto}
+    .cart-btn{display:flex;align-items:center;gap:8px;background:var(--pk);color:#fff;border:none;border-radius:24px;padding:10px 18px;font-size:14px;font-weight:700;transition:all .2s;position:relative}
+    .cart-btn:hover{background:#e55589;transform:translateY(-1px)}
+    .cart-badge{background:#fff;color:var(--pk);font-size:11px;font-weight:800;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;line-height:1}
+
+    /* ── Breadcrumb ── */
+    .breadcrumb-bar{max-width:1280px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--txt3);flex-wrap:wrap}
+    .breadcrumb-bar a{color:var(--pk);font-weight:600}
+    .breadcrumb-bar a:hover{text-decoration:underline}
+    .breadcrumb-bar span{color:var(--txt3)}
+
+    /* ── Product Layout ── */
+    .product-page{max-width:1280px;margin:0 auto;padding:0 20px 40px}
+    .product-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start}
+    @media(max-width:768px){.product-grid{grid-template-columns:1fr;gap:24px}}
+
+    /* ── Image Panel ── */
+    .img-panel{position:sticky;top:80px}
+    .main-img-wrap{position:relative;border-radius:var(--r);overflow:hidden;background:#fff;border:2px solid var(--pk3);aspect-ratio:1/1}
+    .main-img-wrap img{width:100%;height:100%;object-fit:cover}
+    .main-img-placeholder{display:flex;align-items:center;justify-content:center;font-size:80px;height:100%;background:var(--bg3)}
+    .badge-overlay{position:absolute;top:16px;left:16px;font-size:12px;font-weight:800;padding:5px 12px;border-radius:20px;letter-spacing:.5px}
+    .badge-hot{background:#ff4757;color:#fff}
+    .badge-new{background:#8b5cf6;color:#fff}
+    .badge-sale{background:#ff9f43;color:#fff}
+    .badge-b1g1{background:#10b981;color:#fff}
+
+    /* ── Info Panel ── */
+    .info-panel{}
+    .prod-brand-tag{display:inline-block;background:var(--lv3);color:var(--lv);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:4px 12px;border-radius:20px;margin-bottom:12px}
+    .prod-title{font-family:var(--f-head);font-size:clamp(18px,3vw,26px);font-weight:700;color:var(--txt);line-height:1.35;margin-bottom:14px}
+    .prod-rating-row{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+    .stars{color:#f59e0b;font-size:16px;letter-spacing:1px}
+    .rating-val{font-weight:700;color:var(--txt)}
+    .rating-cnt{color:var(--txt3);font-size:13px}
+
+    .price-block{background:var(--bg3);border:1.5px solid var(--border);border-radius:var(--r-sm);padding:16px 20px;margin-bottom:20px}
+    .price-main{font-family:var(--f-head);font-size:32px;font-weight:800;color:var(--pk)}
+    .price-mrp{font-size:16px;color:var(--txt3);text-decoration:line-through;margin-left:10px}
+    .price-off{font-size:14px;font-weight:700;color:#10b981;background:#dcfce7;border-radius:20px;padding:3px 10px;margin-left:8px}
+    .price-savings{font-size:13px;color:var(--txt2);margin-top:6px}
+
+    .highlights{margin-bottom:20px}
+    .highlights h3{font-size:13px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--txt3);margin-bottom:10px}
+    .highlights ul{list-style:none;display:flex;flex-direction:column;gap:6px}
+    .highlights ul li{font-size:14px;color:var(--txt2);display:flex;align-items:flex-start;gap:8px}
+    .highlights ul li::before{content:"✓";color:var(--pk);font-weight:800;flex-shrink:0;margin-top:1px}
+
+    .tags-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+    .tag{background:var(--pk3);color:var(--pk);font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px}
+
+    .action-row{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+    .atc-btn{flex:1;min-width:160px;background:var(--pk);color:#fff;border:none;border-radius:28px;padding:14px 24px;font-size:15px;font-weight:800;letter-spacing:.3px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+    .atc-btn:hover{background:#e55589;transform:translateY(-2px);box-shadow:0 8px 24px rgba(255,107,157,.35)}
+    .atc-btn.added{background:#10b981}
+    .wa-btn{background:#25d366;color:#fff;border:none;border-radius:28px;padding:14px 20px;font-size:15px;font-weight:700;transition:all .2s;display:flex;align-items:center;gap:8px;white-space:nowrap}
+    .wa-btn:hover{background:#1fa954;transform:translateY(-2px)}
+
+    .trust-strip{display:flex;gap:16px;flex-wrap:wrap;border-top:1.5px solid var(--border);padding-top:16px}
+    .trust-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2);font-weight:600}
+
+    /* ── Similar Products ── */
+    .similar-section{max-width:1280px;margin:0 auto;padding:0 20px 60px}
+    .similar-section h2{font-family:var(--f-head);font-size:22px;font-weight:700;color:var(--txt);margin-bottom:20px;padding-top:20px;border-top:2px solid var(--border)}
+    .similar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px}
+
+    /* ── Product cards (mini) ── */
+    .mini-card{background:#fff;border-radius:var(--r);overflow:hidden;border:1.5px solid var(--border);cursor:pointer;transition:transform .2s,box-shadow .2s}
+    .mini-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg);border-color:var(--pk2)}
+    .mini-img{aspect-ratio:1/1;position:relative;overflow:hidden;background:var(--bg3)}
+    .mini-img img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+    .mini-emoji{display:flex;align-items:center;justify-content:center;height:100%;font-size:40px}
+    .mini-body{padding:10px 12px 12px}
+    .mini-name{font-size:12px;font-weight:700;color:var(--txt);line-height:1.4;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .mini-price{font-size:14px;font-weight:800;color:var(--pk)}
+    .mini-mrp{font-size:11px;color:var(--txt3);text-decoration:line-through;margin-left:6px}
+    .mini-add{width:100%;margin-top:8px;background:var(--bg3);color:var(--pk);border:1.5px solid var(--pk3);border-radius:20px;padding:6px;font-size:12px;font-weight:700;transition:all .2s}
+    .mini-add:hover{background:var(--pk);color:#fff}
+
+    /* ── Toast ── */
+    #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--txt);color:#fff;border-radius:24px;padding:12px 24px;font-size:14px;font-weight:700;z-index:9999;transition:transform .3s;white-space:nowrap;pointer-events:none}
+    #toast.show{transform:translateX(-50%) translateY(0)}
+
+    /* ── Cart Drawer ── */
+    .cart-overlay{position:fixed;inset:0;background:rgba(61,26,46,.45);z-index:200;opacity:0;pointer-events:none;transition:opacity .3s}
+    .cart-overlay.open{opacity:1;pointer-events:all}
+    .cart-drawer{position:fixed;right:-420px;top:0;bottom:0;width:min(420px,100vw);background:#fff;z-index:201;display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(255,107,157,.15);transition:right .3s}
+    .cart-drawer.open{right:0}
+    .cart-head{padding:20px 24px;border-bottom:2px solid var(--pk3);display:flex;align-items:center;justify-content:space-between}
+    .cart-head h2{font-family:var(--f-head);font-size:18px;font-weight:700;color:var(--txt)}
+    .cart-close{background:var(--bg3);border:none;color:var(--txt);border-radius:50%;width:36px;height:36px;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .cart-body{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:12px}
+    .cart-empty{text-align:center;padding:40px 0;color:var(--txt3);font-size:15px}
+    .cart-item{display:flex;gap:12px;align-items:flex-start;padding:12px;background:var(--bg3);border-radius:var(--r-sm)}
+    .ci-img{width:52px;height:52px;border-radius:8px;flex-shrink:0;overflow:hidden;background:var(--pk3);display:flex;align-items:center;justify-content:center;font-size:22px}
+    .ci-img img{width:100%;height:100%;object-fit:cover}
+    .ci-info{flex:1;min-width:0}
+    .ci-name{font-size:13px;font-weight:700;line-height:1.3;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ci-brand{font-size:11px;color:var(--txt3);margin-top:2px}
+    .ci-price{font-size:14px;font-weight:800;color:var(--pk);margin-top:4px}
+    .ci-qty{display:flex;align-items:center;gap:8px;margin-top:6px}
+    .qty-btn{background:#fff;border:1.5px solid var(--border);color:var(--txt);border-radius:50%;width:26px;height:26px;font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1}
+    .qty-btn:hover{border-color:var(--pk);color:var(--pk)}
+    .qty-num{font-size:14px;font-weight:700;width:24px;text-align:center}
+    .cart-foot{padding:20px 24px;border-top:2px solid var(--pk3)}
+    .cart-total{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;font-size:16px;font-weight:700}
+    .cart-total span:last-child{color:var(--pk);font-size:20px;font-weight:800}
+    .checkout-btn{width:100%;background:var(--pk);color:#fff;border:none;border-radius:28px;padding:16px;font-size:16px;font-weight:800;letter-spacing:.5px;cursor:pointer;transition:all .2s}
+    .checkout-btn:hover{background:#e55589;transform:translateY(-1px)}
+    .ship-note{text-align:center;font-size:12px;color:var(--txt3);margin-top:8px}
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="kw-nav">
+  <div class="nav-inner">
+    <a href="/kawaii/" class="back-link">← Back</a>
+    <a href="/kawaii/" class="kw-logo">
+      <span>🌸</span>
+      <span>Kawaii Corner<span class="logo-sub">by Ink &amp; Chai</span></span>
+    </a>
+    <div class="nav-actions">
+      <button class="cart-btn" onclick="openCart()">
+        🛒 Cart <span class="cart-badge" id="cartBadge">0</span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- Breadcrumb -->
+<div class="breadcrumb-bar" id="breadcrumb">
+  <a href="/">Ink &amp; Chai</a>
+  <span>›</span>
+  <a href="/kawaii/">Kawaii Corner</a>
+  <span>›</span>
+  <span id="bcCat" style="color:var(--txt2)">...</span>
+  <span>›</span>
+  <span id="bcName" style="color:var(--txt);font-weight:600">...</span>
+</div>
+
+<!-- Product -->
+<div class="product-page">
+  <div class="product-grid" id="productGrid">
+    <!-- filled by JS -->
+  </div>
+</div>
+
+<!-- Similar Products -->
+<div class="similar-section">
+  <h2>You might also like</h2>
+  <div class="similar-grid" id="similarGrid"></div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Cart Overlay & Drawer -->
+<div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
+<div class="cart-drawer" id="cartDrawer">
+  <div class="cart-head">
+    <h2>🛒 Your Cart</h2>
+    <button class="cart-close" onclick="closeCart()">✕</button>
+  </div>
+  <div class="cart-body" id="cartBody"></div>
+  <div class="cart-foot">
+    <div class="cart-total">
+      <span>Total</span>
+      <span id="cartTotal">₹0</span>
+    </div>
+    <button class="checkout-btn" onclick="checkout()">Checkout →</button>
+    <div class="ship-note">🚚 Free shipping on orders above ₹499</div>
+  </div>
+</div>
+
+<script src="/kawaii/products.js"></script>
+<script>
+// ── State & Cart ──────────────────────────────────────────────────────────
+let cart = [];
+
+function loadCart() {
+  try { cart = JSON.parse(localStorage.getItem('kw_cart') || '[]'); } catch { cart = []; }
+}
+function saveCart() {
+  localStorage.setItem('kw_cart', JSON.stringify(cart));
+  updateCartUI();
+}
+function updateCartUI() {
+  const count = cart.reduce((s,i) => s + i.qty, 0);
+  document.getElementById('cartBadge').textContent = count;
+  renderCartBody();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function disc(p) { return p.mrp > p.price ? Math.round((p.mrp - p.price) / p.mrp * 100) : 0; }
+function stars(r) { const f = Math.round(r); return '★'.repeat(f) + '☆'.repeat(5-f); }
+function slug(id) { return `/kawaii/product/?id=${id}`; }
+function catLabel(cat) {
+  return {stickers:'Stickers',washi:'Washi Tape',sticky:'Sticky Notes',notebooks:'Notebooks',pens:'Pens & Highlighters',art:'Art Supplies',craft:'Craft Material',kits:'Journaling Kits',packaging:'Packaging'}[cat] || cat;
+}
+function catHighlights(cat, name) {
+  const base = [
+    'Sourced from trusted artisan brands',
+    'Fast delivery across India (3–7 days)',
+    'Easy returns within 7 days',
+  ];
+  const extra = {
+    stickers:   ['Premium paper with vivid print quality','Acid-free & safe for all journals','Works on notebooks, planners, envelopes'],
+    washi:      ['Repositionable & residue-free adhesive','Perfect for bullet journals & planners','Tear by hand — no scissors needed'],
+    sticky:     ['Strong adhesive — stays put on any surface','Vibrant colours that pop on every page','Perfect for reminders, notes & planners'],
+    notebooks:  ['Smooth ruling for effortless writing','Compact pocket-friendly size','Lay-flat binding for comfortable writing'],
+    pens:       ['Smooth ink flow with rich pigment','Comfortable grip for long writing sessions','Great for journaling, highlighting & doodling'],
+    art:        ['Professional-grade pigments','Wide colour range for creative projects','Works on paper, canvas and mixed media'],
+    craft:      ['Food-grade / child-safe materials where applicable','Great for DIY home décor & gifting','Easy to work with for all skill levels'],
+    kits:       ['Everything you need in one box','Curated by journaling enthusiasts','Makes the perfect gift set'],
+    packaging:  ['Eco-friendly materials','Professional finish for small businesses','Bulk-friendly packing'],
+  };
+  const picks = extra[cat] || base;
+  return [...picks, ...base].slice(0, 4);
+}
+
+// ── Render product detail ─────────────────────────────────────────────────
+function renderProduct(p) {
+  const d = disc(p);
+  const saving = p.mrp - p.price;
+  const highlights = catHighlights(p.cat, p.name);
+  const waText = encodeURIComponent(`Hi! I want to order: ${p.name} – ₹${p.price}`);
+  const badgeHtml = p.badge ? `<span class="badge-overlay badge-${p.badge === 'b1g1' ? 'b1g1' : p.badge}">${p.badge === 'hot' ? '🔥 Hot' : p.badge === 'new' ? '✨ New' : p.badge === 'b1g1' ? '🎁 Buy 1 Get 1' : p.badge === 'sale' ? '% Sale' : ''}</span>` : '';
+
+  document.getElementById('productGrid').innerHTML = `
+    <!-- Left: Image -->
+    <div class="img-panel">
+      <div class="main-img-wrap">
+        ${p.img ? `<img src="${p.img}" alt="${p.name}"/>` : `<div class="main-img-placeholder">🌸</div>`}
+        ${badgeHtml}
+      </div>
+    </div>
+
+    <!-- Right: Info -->
+    <div class="info-panel">
+      <span class="prod-brand-tag">Inkarto × Kawaii Corner</span>
+      <h1 class="prod-title">${p.name}</h1>
+
+      <div class="prod-rating-row">
+        <span class="stars">${stars(p.rating)}</span>
+        <span class="rating-val">${p.rating}</span>
+        <span class="rating-cnt">(${p.reviews} reviews)</span>
+      </div>
+
+      <div class="price-block">
+        <div style="display:flex;align-items:baseline;flex-wrap:wrap;gap:6px">
+          <span class="price-main">₹${p.price.toLocaleString('en-IN')}</span>
+          ${p.mrp > p.price ? `<span class="price-mrp">₹${p.mrp.toLocaleString('en-IN')}</span><span class="price-off">${d}% off</span>` : ''}
+        </div>
+        ${p.mrp > p.price ? `<div class="price-savings">You save ₹${saving.toLocaleString('en-IN')}</div>` : ''}
+        <div style="margin-top:8px;font-size:12px;color:#10b981;font-weight:700">✓ In stock &nbsp;·&nbsp; ✓ Inclusive of all taxes</div>
+      </div>
+
+      <div class="highlights">
+        <h3>Highlights</h3>
+        <ul>${highlights.map(h => `<li>${h}</li>`).join('')}</ul>
+      </div>
+
+      <div class="tags-row">
+        <span class="tag">${catLabel(p.cat)}</span>
+        ${p.badge === 'b1g1' ? '<span class="tag">🎁 Buy 1 Get 1</span>' : ''}
+        ${p.badge === 'hot' ? '<span class="tag">🔥 Best Seller</span>' : ''}
+        ${p.badge === 'new' ? '<span class="tag">✨ New Arrival</span>' : ''}
+        <span class="tag">🚚 Fast Delivery</span>
+      </div>
+
+      <div class="action-row">
+        <button class="atc-btn" id="mainAtcBtn" onclick="addToCartFromDetail('${p.id}')">
+          🛒 Add to Cart
+        </button>
+        <a class="wa-btn" href="https://wa.me/919217175546?text=${waText}" target="_blank" rel="noopener">
+          💬 WhatsApp
+        </a>
+      </div>
+
+      <div class="trust-strip">
+        <div class="trust-item">🚚 Free ship above ₹499</div>
+        <div class="trust-item">🔄 7-day returns</div>
+        <div class="trust-item">🔒 Secure checkout</div>
+        <div class="trust-item">📦 Ships in 1–2 days</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSimilar(currentId, cat) {
+  const similar = PRODUCTS.filter(p => p.cat === cat && p.id !== currentId).slice(0, 8);
+  if (!similar.length) return;
+  document.getElementById('similarGrid').innerHTML = similar.map(p => `
+    <div class="mini-card" onclick="window.location='${slug(p.id)}'">
+      <div class="mini-img">
+        ${p.img ? `<img src="${p.img}" alt="${p.name}" loading="lazy"/>` : `<div class="mini-emoji">🌸</div>`}
+      </div>
+      <div class="mini-body">
+        <div class="mini-name">${p.name}</div>
+        <div>
+          <span class="mini-price">₹${p.price}</span>
+          ${p.mrp > p.price ? `<span class="mini-mrp">₹${p.mrp}</span>` : ''}
+        </div>
+        <button class="mini-add" onclick="event.stopPropagation();addToCart('${p.id}',this)">+ Add to Cart</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Cart Actions ──────────────────────────────────────────────────────────
+function addToCartFromDetail(id) {
+  const btn = document.getElementById('mainAtcBtn');
+  addToCart(id, btn);
+}
+
+function addToCart(id, btn) {
+  const p = PRODUCTS.find(x => x.id === id);
+  if (!p) return;
+  const existing = cart.find(i => i.id === id);
+  if (existing) { existing.qty++; }
+  else { cart.push({ id: p.id, name: p.name, brand: 'Inkarto', price: p.price, img: p.img || '', qty: 1 }); }
+  saveCart();
+  if (btn) {
+    const orig = btn.innerHTML;
+    btn.classList.add('added');
+    btn.innerHTML = '✓ Added!';
+    setTimeout(() => { btn.classList.remove('added'); btn.innerHTML = orig; }, 1500);
+  }
+  showToast(`🛒 Added to cart!`);
+}
+
+function changeQty(id, delta) {
+  const item = cart.find(i => i.id === id);
+  if (!item) return;
+  item.qty += delta;
+  if (item.qty <= 0) cart = cart.filter(i => i.id !== id);
+  saveCart();
+}
+
+function renderCartBody() {
+  const body = document.getElementById('cartBody');
+  if (!cart.length) {
+    body.innerHTML = '<div class="cart-empty">🌸<br/>Your cart is empty</div>';
+    document.getElementById('cartTotal').textContent = '₹0';
+    return;
+  }
+  body.innerHTML = cart.map(item => `
+    <div class="cart-item">
+      <div class="ci-img">
+        ${item.img ? `<img src="${item.img}" alt="${item.name}" style="width:100%;height:100%;object-fit:cover"/>` : '🌸'}
+      </div>
+      <div class="ci-info">
+        <div class="ci-name" title="${item.name}">${item.name}</div>
+        <div class="ci-brand">Inkarto</div>
+        <div class="ci-price">₹${(item.price * item.qty).toLocaleString('en-IN')}</div>
+        <div class="ci-qty">
+          <button class="qty-btn" onclick="changeQty('${item.id}',-1)">−</button>
+          <span class="qty-num">${item.qty}</span>
+          <button class="qty-btn" onclick="changeQty('${item.id}',1)">+</button>
+        </div>
+      </div>
+    </div>`).join('');
+  const total = cart.reduce((s,i) => s + i.price * i.qty, 0);
+  document.getElementById('cartTotal').textContent = `₹${total.toLocaleString('en-IN')}`;
+}
+
+function openCart() {
+  document.getElementById('cartOverlay').classList.add('open');
+  document.getElementById('cartDrawer').classList.add('open');
+}
+function closeCart() {
+  document.getElementById('cartOverlay').classList.remove('open');
+  document.getElementById('cartDrawer').classList.remove('open');
+}
+function checkout() {
+  window.location.href = '/checkout/?kawaii=1';
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+function init() {
+  loadCart();
+  updateCartUI();
+
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('id');
+  const p = PRODUCTS.find(x => x.id === id);
+
+  if (!p) {
+    document.getElementById('productGrid').innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--txt3)">
+        <div style="font-size:60px;margin-bottom:16px">😢</div>
+        <h2 style="font-size:20px;margin-bottom:10px">Product not found</h2>
+        <a href="/kawaii/" style="color:var(--pk);font-weight:700">← Back to Kawaii Corner</a>
+      </div>`;
+    return;
+  }
+
+  // Page title & meta
+  document.getElementById('pageTitle').textContent = `${p.name} – Kawaii Corner | Ink & Chai`;
+  document.getElementById('pageDesc').content = `Buy ${p.name} at ₹${p.price}. ${catLabel(p.cat)} from Kawaii Corner at Ink & Chai. Fast delivery across India.`;
+
+  // Breadcrumb
+  document.getElementById('bcCat').textContent = catLabel(p.cat);
+  document.getElementById('bcName').textContent = p.name.length > 40 ? p.name.slice(0,40) + '…' : p.name;
+
+  renderProduct(p);
+  renderSimilar(p.id, p.cat);
+}
+
+init();
+</script>
+</body>
+</html>

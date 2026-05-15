@@ -239,7 +239,7 @@
       border:1.5px solid var(--border);
       overflow:hidden;transition:all .22s;
       box-shadow:0 2px 10px rgba(255,107,157,.06);
-      position:relative;
+      position:relative;cursor:pointer;
     }
     .prod-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg);border-color:var(--pk2)}
     .prod-badge{
@@ -959,7 +959,7 @@ function renderProducts() {
   grid.innerHTML = list.map(p => {
     const d = disc(p);
     const inCart = cart.find(i => i.id === p.id);
-    return `<div class="prod-card">
+    return `<div class="prod-card" onclick="window.location='/kawaii/product/?id=${p.id}'" style="cursor:pointer">
       ${p.badge ? `<span class="prod-badge badge-${p.badge === 'b1g1' ? 'b1g1' : p.badge}">${p.badge === 'hot' ? '🔥 Hot' : p.badge === 'sale' ? '% Sale' : p.badge === 'new' ? '✨ New' : p.badge === 'b1g1' ? '🎁 B1G1' : ''}</span>` : ''}
       <div class="prod-img-wrap" style="position:relative">
         ${p.img ? `<img src="${p.img}" alt="${p.name}" loading="lazy" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:0"/>` : `<span class="prod-emoji">🌸</span>`}
@@ -976,7 +976,7 @@ function renderProducts() {
           <span class="prod-price">₹${p.price}</span>
           ${p.mrp > p.price ? `<span class="prod-mrp">₹${p.mrp}</span><span class="prod-discount">${d}% off</span>` : ''}
         </div>
-        <button class="prod-add-btn ${inCart ? 'added' : ''}" onclick="addToCart('${p.id}',this)">
+        <button class="prod-add-btn ${inCart ? 'added' : ''}" onclick="event.stopPropagation();addToCart('${p.id}',this)">
           ${inCart ? '✓ Added' : '+ Add to Cart'}
         </button>
       </div>
@@ -987,12 +987,12 @@ function renderProducts() {
 function renderBestSellers() {
   const top = [...PRODUCTS].sort((a,b) => b.reviews - a.reviews).slice(0, 10);
   document.getElementById('bestSellerShelf').innerHTML = top.map(p => `
-    <div class="shelf-card">
+    <div class="shelf-card" onclick="window.location='/kawaii/product/?id=${p.id}'" style="cursor:pointer">
       <div class="shelf-cover" style="position:relative;overflow:hidden">${p.img ? `<img src="${p.img}" alt="${p.name}" loading="lazy" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0"/>` : `<span style="font-size:52px">🌸</span>`}</div>
       <div class="shelf-body">
         <div class="shelf-name">${p.name}</div>
         <div class="shelf-price">₹${p.price}</div>
-        <button class="shelf-btn" onclick="addToCart('${p.id}',this)">+ Add</button>
+        <button class="shelf-btn" onclick="event.stopPropagation();addToCart('${p.id}',this)">+ Add</button>
       </div>
     </div>`).join('');
 }
