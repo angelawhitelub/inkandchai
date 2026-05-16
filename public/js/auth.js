@@ -734,18 +734,49 @@
     }).join('');
   }
 
-  // ── Cancel order block (COD only, pre-dispatch) ──────────────────────────
+  // ── Cancel order block (COD + prepaid within 30 min) ─────────────────────
+  const PREPAID_CANCEL_WINDOW = 30 * 60 * 1000; // 30 minutes
+
   function cancelOrderBlock(order) {
     const status = String(order.status || '').toLowerCase();
-    const cancellable = ['cod_pending', 'partial_cod_pending', 'confirmed'].includes(status);
-    if (!cancellable) return '';
+    const isCOD      = ['cod_pending', 'partial_cod_pending', 'confirmed'].includes(status);
+    const isPrepaid  = status === 'paid';
+
+    if (!isCOD && !isPrepaid) return '';
+
+    if (isPrepaid) {
+      const createdAt = order.created_at ? new Date(order.created_at).getTime() : 0;
+      const msLeft    = PREPAID_CANCEL_WINDOW - (Date.now() - createdAt);
+      if (msLeft <= 0) return ''; // window expired — don't show button
+      const mins = String(Math.floor(msLeft / 60000)).padStart(2, '0');
+      const secs = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, '0');
+      return `
+        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                    display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">
+          <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
+            Cancellation window:
+            <span id="cancel-timer-${escJs(order.id)}"
+                  data-deadline="${createdAt + PREPAID_CANCEL_WINDOW}"
+                  style="color:#e8a030;font-weight:600;">${mins}:${secs}</span>
+          </div>
+          <button onclick="iacCancelOrder('${escJs(order.id)}', true)"
+            id="cancel-btn-${escJs(order.id)}"
+            style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                   padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,112,112,0.4);
+                   color:#e87070;cursor:pointer;transition:all 0.2s;">
+            Cancel &amp; Refund
+          </button>
+        </div>`;
+    }
+
+    // COD
     return `
       <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
                   display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">
         <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
           COD order · not yet dispatched
         </div>
-        <button onclick="iacCancelOrder('${escJs(order.id)}')"
+        <button onclick="iacCancelOrder('${escJs(order.id)}', false)"
           id="cancel-btn-${escJs(order.id)}"
           style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
                  padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,112,112,0.4);
@@ -755,8 +786,30 @@
       </div>`;
   }
 
-  window.iacCancelOrder = async function (orderId) {
-    if (!confirm('Are you sure you want to cancel this order? This cannot be undone.')) return;
+  // Tick countdown timers for prepaid cancel windows
+  (function startCancelTimers() {
+    setInterval(() => {
+      document.querySelectorAll('[id^="cancel-timer-"]').forEach(el => {
+        const deadline = parseInt(el.dataset.deadline, 10);
+        const msLeft = deadline - Date.now();
+        if (msLeft <= 0) {
+          // Hide the whole cancel row
+          const row = el.closest('div[style*="border-top"]');
+          if (row) row.style.display = 'none';
+          return;
+        }
+        const mins = String(Math.floor(msLeft / 60000)).padStart(2, '0');
+        const secs = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, '0');
+        el.textContent = `${mins}:${secs}`;
+      });
+    }, 1000);
+  })();
+
+  window.iacCancelOrder = async function (orderId, isPrepaid) {
+    const confirmMsg = isPrepaid
+      ? 'Cancel this prepaid order and request a refund? Refund takes 5–7 business days. This cannot be undone.'
+      : 'Are you sure you want to cancel this order? This cannot be undone.';
+    if (!confirm(confirmMsg)) return;
 
     const btn = document.getElementById(`cancel-btn-${orderId}`);
     if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
@@ -774,11 +827,11 @@
 
       if (!res.ok) throw new Error(json.error || 'Cancellation failed');
 
-      // Refresh the orders list to reflect the new status
+      alert(json.message || 'Order cancelled successfully.');
       await openMyOrders();
     } catch (err) {
       alert('Could not cancel order: ' + err.message);
-      if (btn) { btn.disabled = false; btn.textContent = 'Cancel Order'; }
+      if (btn) { btn.disabled = false; btn.textContent = isPrepaid ? 'Cancel & Refund' : 'Cancel Order'; }
     }
   };
 
