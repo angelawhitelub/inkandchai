@@ -23,6 +23,8 @@ def make_slug(title, shopify_id):
         return "kings-of-sin-series-complete-set-6-books-ana-huang"
     if str(shopify_id or "") == "CUSTOM-HINDI-BESTSELLERS-COMBO-5":
         return "5-hindi-bestsellers-combo-set-of-5-books-MBO-5"
+    if str(shopify_id or "") == "CUSTOM-100M-HINDI-COMBO-2":
+        return "100m-leads-hindi-100m-offers-hindi-combo-2-books"
     if str(shopify_id or "") == "CUSTOM-GOGGINS-COMBO-HI":
         return "david-goggins-combo-hindi-cant-hurt-me-never-finished"
     if str(shopify_id or "") == "CUSTOM-MOTHER-MARY-COMES-TO-ME-HI-ARUNDHATI-ROY":
@@ -152,7 +154,7 @@ for b in books:
     slug = make_slug(b["title"], b.get("shopify_id", ""))
     feed_image_by_slug[slug] = crawlable_image_url(b.get("image_url", ""))
     slim.append({
-        "t":    clean_text(b["title"])[:220] if sid in {"CUSTOM-KINGS-OF-SIN-COMPLETE-SET-6-AH", "CUSTOM-HINDI-BESTSELLERS-COMBO-5"} else clean_text(b["title"])[:80],
+        "t":    clean_text(b["title"])[:220] if sid in {"CUSTOM-KINGS-OF-SIN-COMPLETE-SET-6-AH", "CUSTOM-HINDI-BESTSELLERS-COMBO-5", "CUSTOM-100M-HINDI-COMBO-2"} else clean_text(b["title"])[:80],
         "a":    clean_text(b.get("author", ""))[:50],
         "p":    price_str,
         "op":   orig_str,
