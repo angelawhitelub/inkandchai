@@ -573,7 +573,7 @@ HTML = r"""<!DOCTYPE html>
 </script>
 <script>
   // Apply saved theme BEFORE paint; light is the default storefront theme.
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t !== 'dark') document.documentElement.setAttribute('data-theme','light'); } catch(e){ document.documentElement.setAttribute('data-theme','light'); } })();
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){ /* dark default */ } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
     var next = cur === 'light' ? 'dark' : 'light';
@@ -582,7 +582,7 @@ HTML = r"""<!DOCTYPE html>
     try { localStorage.setItem('iac_theme', next); } catch(e){}
   }
 </script>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet" />
 <style>
   :root {
     --bg: #0d0b08; --bg2: #141210; --bg3: #1c1916;
@@ -623,7 +623,7 @@ HTML = r"""<!DOCTYPE html>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; background: #0d0b08; max-width:100%; overflow-x:hidden; }
   html[data-theme="light"] { background: #faf7f2; }
-  body { background: var(--bg); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 300; overflow-x: hidden; min-height: 100vh; }
+  body { background: var(--bg); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 400; overflow-x: hidden; min-height: 100vh; }
   /* Hard fallback: if anything goes wrong with vars, content still readable */
   html:not([data-theme="light"]) body { background: #0d0b08; color: #f0e8d8; }
   html[data-theme="light"] body { background: #faf7f2; color: #2a2018; }
@@ -671,7 +671,7 @@ HTML = r"""<!DOCTYPE html>
   .hero-left { display: flex; flex-direction: column; justify-content: center; padding: 10rem 5rem 6rem 6rem; position: relative; z-index: 2; }
   .hero-eyebrow { font-size: 0.62rem; letter-spacing: 0.35em; text-transform: uppercase; color: var(--gold); margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; }
   .hero-eyebrow::before { content: ''; display: inline-block; width: 40px; height: 1px; background: var(--gold); }
-  .hero-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(3.2rem, 6vw, 5.5rem); font-weight: 300; line-height: 1.08; color: var(--white); margin-bottom: 2rem; }
+  .hero-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(3.2rem, 6vw, 5.5rem); font-weight: 400; line-height: 1.06; color: var(--white); margin-bottom: 2rem; letter-spacing: -0.01em; }
   .hero-title em { font-style: italic; color: var(--gold-light); }
   .hero-sub { font-size: 0.82rem; line-height: 1.9; color: var(--cream-dim); max-width: 380px; margin-bottom: 3.5rem; letter-spacing: 0.04em; }
   .hero-ctas { display: flex; gap: 1.2rem; align-items: center; }
@@ -739,7 +739,7 @@ HTML = r"""<!DOCTYPE html>
   section { padding: 7rem 6rem; }
   .section-label { font-size: 0.6rem; letter-spacing: 0.35em; text-transform: uppercase; color: var(--gold); margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; }
   .section-label::before { content: ''; display: inline-block; width: 30px; height: 1px; background: var(--gold); }
-  .section-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 300; color: var(--white); line-height: 1.15; margin-bottom: 1rem; }
+  .section-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 400; color: var(--white); line-height: 1.12; margin-bottom: 1rem; letter-spacing: -0.01em; }
   .section-title em { font-style: italic; color: var(--gold-light); }
 
   /* ── SUMMER SALE BANNER ──────────────────────────────────────────── */
@@ -748,7 +748,7 @@ HTML = r"""<!DOCTYPE html>
   .summer-sale-inner { display:flex; align-items:center; justify-content:space-between; gap:2rem; position:relative; }
   .summer-sale-left { flex:1; }
   .sale-eyebrow { font-size:0.52rem; letter-spacing:0.3em; text-transform:uppercase; color:rgba(255,200,200,0.85); margin-bottom:0.5rem; }
-  .sale-headline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.7rem,3.5vw,2.6rem); font-weight:300; color:#fff; line-height:1.1; margin-bottom:0.55rem; }
+  .sale-headline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.7rem,3.5vw,2.6rem); font-weight:400; color:#fff; line-height:1.1; margin-bottom:0.55rem; }
   .sale-headline em { font-style:italic; color:#ffb3b3; }
   .sale-code-row { display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; }
   .sale-code-label { font-size:0.62rem; color:rgba(255,255,255,0.75); letter-spacing:0.08em; }
@@ -801,10 +801,11 @@ HTML = r"""<!DOCTYPE html>
   @media(max-width:1100px){ .books-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   @media(max-width:880px) { .books-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   .book-card { cursor: pointer; min-width: 0; max-width: 100%; }
-  .book-cover { aspect-ratio: 2/3; max-height: 320px; position: relative; overflow: hidden; margin-bottom: 1rem; border: 1px solid var(--border); background: #1a1208; display: flex; align-items: center; justify-content: center; }
+  .book-cover { aspect-ratio: 2/3; max-height: 320px; position: relative; overflow: hidden; margin-bottom: 1rem; border: 1px solid var(--border); background: #1a1208; display: flex; align-items: center; justify-content: center; transition: border-color 0.35s ease, box-shadow 0.35s ease; }
+  .book-card:hover .book-cover { border-color: rgba(201,168,76,0.55); box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(201,168,76,0.15); }
   /* contain (not cover) so wide combo images aren't cropped — full image always visible */
   .book-cover img { width: 100%; height: 100%; object-fit: contain; display: block; transition: transform 0.5s ease; }
-  .book-card:hover .book-cover img { transform: scale(1.04); }
+  .book-card:hover .book-cover img { transform: scale(1.06); }
   @media(max-width:780px) { .book-cover { max-height: 220px; margin-bottom: 0.7rem; } }
   .book-cover-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; opacity: 0; transition: opacity 0.3s; padding: 1rem; }
   .book-card:hover .book-cover-overlay { opacity: 1; }
@@ -928,12 +929,19 @@ HTML = r"""<!DOCTYPE html>
   .footer-bottom-links a:hover { color: var(--gold); }
 
   /* ANIMATIONS */
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
-  .hero-eyebrow { animation: fadeUp 0.8s ease 0.2s both; }
-  .hero-title    { animation: fadeUp 0.8s ease 0.4s both; }
-  .hero-sub      { animation: fadeUp 0.8s ease 0.6s both; }
-  .hero-ctas     { animation: fadeUp 0.8s ease 0.8s both; }
-  .hero-stats    { animation: fadeUp 0.8s ease 1s both; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes revealSection { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+  .hero-eyebrow { animation: fadeUp 0.9s cubic-bezier(0.22,1,0.36,1) 0.15s both; }
+  .hero-title    { animation: fadeUp 0.9s cubic-bezier(0.22,1,0.36,1) 0.3s both; }
+  .hero-sub      { animation: fadeUp 0.9s cubic-bezier(0.22,1,0.36,1) 0.48s both; }
+  .hero-ctas     { animation: fadeUp 0.9s cubic-bezier(0.22,1,0.36,1) 0.62s both; }
+  .hero-stats    { animation: fadeUp 0.9s cubic-bezier(0.22,1,0.36,1) 0.78s both; }
+  /* Scroll-reveal utility */
+  .sr { opacity: 0; transform: translateY(22px); transition: opacity 0.7s cubic-bezier(0.22,1,0.36,1), transform 0.7s cubic-bezier(0.22,1,0.36,1); }
+  .sr.in { opacity: 1; transform: none; }
+  /* Page-load body fade */
+  @keyframes bodyFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  body { animation: bodyFadeIn 0.4s ease both; }
 
   /* HORIZONTAL SHELF ROWS */
   .shelves-section { background: var(--bg); padding: 5rem 6rem; border-top: 1px solid var(--border); }
@@ -2327,19 +2335,71 @@ renderCollections();
 renderShelves();
 renderCats(ALL_CATS);
 
-// Intersection observer for initial cards
+// ── Scroll-reveal: collection cards ──────────────────────────────────────
 const obs = new IntersectionObserver(entries => {
   entries.forEach(e => {
     if (e.isIntersecting) {
       e.target.style.opacity = '1';
       e.target.style.transform = 'translateY(0)';
+      obs.unobserve(e.target);
     }
   });
 }, { threshold: 0.08 });
-document.querySelectorAll('.coll-card').forEach(el => {
-  el.style.opacity = '0'; el.style.transform = 'translateY(25px)';
-  el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+document.querySelectorAll('.coll-card').forEach((el, i) => {
+  el.style.opacity = '0';
+  el.style.transform = 'translateY(25px)';
+  el.style.transition = `opacity 0.65s cubic-bezier(0.22,1,0.36,1) ${(i%4)*0.08}s, transform 0.65s cubic-bezier(0.22,1,0.36,1) ${(i%4)*0.08}s`;
   obs.observe(el);
+});
+
+// ── Scroll-reveal: section headings & banners ─────────────────────────────
+const srObs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); srObs.unobserve(e.target); }
+  });
+}, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' });
+document.querySelectorAll('.section-label, .section-title, .summer-sale-banner, .marquee-bar, .editorial-section').forEach(el => {
+  el.classList.add('sr');
+  srObs.observe(el);
+});
+
+// ── Book card staggered reveal ────────────────────────────────────────────
+const bookObs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); bookObs.unobserve(e.target); }
+  });
+}, { threshold: 0.04 });
+document.querySelectorAll('.book-card').forEach((el, i) => {
+  el.classList.add('sr');
+  el.style.transitionDelay = `${(i % 5) * 0.07}s`;
+  bookObs.observe(el);
+});
+
+// ── Stat counter animation ────────────────────────────────────────────────
+document.querySelectorAll('.stat-num').forEach(el => {
+  const raw = el.textContent.trim();
+  const num = parseFloat(raw.replace(/[^\d.]/g, ''));
+  if (isNaN(num) || num === 0) return;
+  const suffix = raw.match(/[^\d.]+$/)?.[0] || '';
+  const prefix = raw.match(/^[^0-9]*/)?.[0] || '';
+  el.setAttribute('data-target', num);
+  el.setAttribute('data-suffix', suffix);
+  el.setAttribute('data-prefix', prefix);
+  el.textContent = prefix + '0' + suffix;
+  const statObs = new IntersectionObserver(entries => {
+    if (!entries[0].isIntersecting) return;
+    const start = performance.now();
+    const dur = 1400;
+    (function tick(now) {
+      const p = Math.min((now - start) / dur, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      const val = Math.round(num * ease);
+      el.textContent = prefix + val + suffix;
+      if (p < 1) requestAnimationFrame(tick);
+    })(start);
+    statObs.unobserve(el);
+  }, { threshold: 0.6 });
+  statObs.observe(el);
 });
 </script>
 </body>
@@ -2399,9 +2459,9 @@ PRODUCT_HTML = """<!DOCTYPE html>
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <script type="application/ld+json" id="ldjson">{}</script>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <script>
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t !== 'dark') document.documentElement.setAttribute('data-theme','light'); } catch(e){ document.documentElement.setAttribute('data-theme','light'); } })();
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){ /* dark default */ } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
     var next = cur === 'light' ? 'dark' : 'light';
@@ -4082,7 +4142,7 @@ CHECKOUT_HTML = """<!DOCTYPE html>
 <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
 <link rel="manifest" href="/manifest.json"/>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#8a6a1f;--gold-dim:#6a4f10;--cream:#2a2018;--cream-dim:#5a4a38;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -5047,9 +5107,9 @@ COLLECTION_HTML = r"""<!DOCTYPE html>
 <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
 <link rel="manifest" href="/manifest.json"/>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <script>
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t !== 'dark') document.documentElement.setAttribute('data-theme','light'); } catch(e){ document.documentElement.setAttribute('data-theme','light'); } })();
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){ /* dark default */ } })();
   function toggleTheme(){ var c = document.documentElement.getAttribute('data-theme'); var n = c === 'light' ? 'dark' : 'light'; if(n) document.documentElement.setAttribute('data-theme', n); else document.documentElement.removeAttribute('data-theme'); try { localStorage.setItem('iac_theme', n); } catch(e){} }
 </script>
 <style>
