@@ -1095,7 +1095,6 @@ function removeItem(id) {
   saveCart();
 }
 function goCheckout() {
-  localStorage.setItem('kawaii_checkout_cart', JSON.stringify(cart));
   window.location.href = '/checkout/?kawaii=1';
 }
 
