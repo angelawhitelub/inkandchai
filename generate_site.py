@@ -4358,6 +4358,10 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         <button class="btn-pay" id="btnPayNow" onclick="submitOrder('online')">
           ⚡ Pay Now
         </button>
+        <div style="display:flex;align-items:center;gap:0.45rem;margin-top:0.35rem;font-size:0.7rem;color:#6dbf6d;letter-spacing:0.04em;">
+          <span style="font-size:0.9rem;">✅</span>
+          <span><strong>100% refund guaranteed</strong> if you're not satisfied with the product</span>
+        </div>
         <button class="btn-partial" id="btnPartial" onclick="submitOrder('partial')">
           Pay 10% Now · 90% on Delivery
         </button>
