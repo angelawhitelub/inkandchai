@@ -26,7 +26,16 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: [], warning: error.message }) };
     }
 
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: data || [] }) };
+    let customProducts = [];
+    const { data: customData, error: customError } = await supabase
+      .from('custom_products')
+      .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,publisher,isbn,seo_title,meta_description,tags,is_active,updated_at')
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false });
+    if (customError) console.warn('custom_products unavailable:', customError.message);
+    else customProducts = customData || [];
+
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: data || [], custom_products: customProducts }) };
   } catch (err) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: [], warning: err.message }) };
   }

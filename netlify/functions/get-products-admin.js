@@ -67,14 +67,38 @@ exports.handler = async (event) => {
     }
 
     let overrides = [];
+    let customProducts = [];
     if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
       const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
       const { data, error } = await supabase.from('product_overrides').select('*');
       if (error) console.warn('product_overrides unavailable:', error.message);
       else overrides = data || [];
+
+      const { data: customData, error: customError } = await supabase
+        .from('custom_products')
+        .select('*')
+        .order('updated_at', { ascending: false });
+      if (customError) console.warn('custom_products unavailable:', customError.message);
+      else customProducts = customData || [];
     }
 
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ products, overrides }) };
+    for (const p of customProducts) {
+      if (!p?.slug || seen.has(`CUSTOM:${p.slug}`)) continue;
+      products.unshift({
+        slug: p.slug,
+        shopify_id: `CUSTOM:${p.slug}`,
+        title: p.title || '',
+        author: p.author || '',
+        category: p.category || 'Books',
+        price_inr: money(p.price_inr),
+        original_price_inr: money(p.original_price_inr),
+        image_url: p.image_url || '',
+        is_custom: true,
+        description: p.description || '',
+      });
+    }
+
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ products, overrides, custom_products: customProducts }) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }

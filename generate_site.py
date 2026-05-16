@@ -1617,6 +1617,36 @@ function applyProductOverride(book, override) {
   if (override.original_price_inr !== null && override.original_price_inr !== undefined) book.op = priceToText(override.original_price_inr);
 }
 
+function customProductToBook(product) {
+  if (!product || !product.slug || !product.title) return null;
+  return {
+    t: product.title || '',
+    a: product.author || '',
+    p: priceToText(product.price_inr),
+    op: priceToText(product.original_price_inr),
+    img: product.image_url || '/images/og-default.jpg',
+    back_img: '',
+    url: '/product/' + product.slug + '/',
+    slug: product.slug,
+    cat: product.category || 'Books',
+    tab: product.category || 'Books',
+    desc: product.description || '',
+    isbn: product.isbn || '',
+    pub: product.publisher || 'Ink & Chai',
+    n: 1,
+    ts: product.updated_at || new Date().toISOString(),
+    pdf: '',
+    pdf_pages: 0,
+    rating: '',
+    review_count: '',
+    order_badge: '',
+    review_image: '',
+    review_video: '',
+    reviews: [],
+    custom: true,
+  };
+}
+
 async function loadProductOverrides() {
   try {
     const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
@@ -1624,6 +1654,12 @@ async function loadProductOverrides() {
     const data = await res.json();
     const bySlug = new Map((data.overrides || []).map(o => [String(o.slug || '').toLowerCase(), o]));
     BOOKS.forEach(book => applyProductOverride(book, bySlug.get(String(book.slug || '').toLowerCase())));
+    (data.custom_products || []).forEach(product => {
+      const book = customProductToBook(product);
+      if (book && !BOOKS.some(existing => String(existing.slug || '').toLowerCase() === String(book.slug).toLowerCase())) {
+        BOOKS.unshift(book);
+      }
+    });
   } catch (err) {
     console.warn('Product overrides unavailable:', err.message);
   }
@@ -2986,16 +3022,48 @@ function applyProductOverride(book, override) {
   return next;
 }
 
+function customProductToBook(product) {
+  if (!product || !product.slug || !product.title) return null;
+  return {
+    t: product.title || '',
+    a: product.author || '',
+    p: priceToText(product.price_inr),
+    op: priceToText(product.original_price_inr),
+    img: product.image_url || '/images/og-default.jpg',
+    back_img: '',
+    url: '/product/' + product.slug + '/',
+    slug: product.slug,
+    cat: product.category || 'Books',
+    tab: product.category || 'Books',
+    desc: product.description || '',
+    isbn: product.isbn || '',
+    pub: product.publisher || 'Ink & Chai',
+    n: 1,
+    ts: product.updated_at || new Date().toISOString(),
+    pdf: '',
+    pdf_pages: 0,
+    rating: '',
+    review_count: '',
+    order_badge: '',
+    review_image: '',
+    review_video: '',
+    reviews: [],
+    custom: true,
+  };
+}
+
 async function loadSingleProductOverride(slug) {
   try {
     const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
-    if (!res.ok) return null;
+    if (!res.ok) return { override: null, customProduct: null };
     const data = await res.json();
     const key = String(slug || '').toLowerCase();
-    return (data.overrides || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
+    const override = (data.overrides || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
+    const customProduct = (data.custom_products || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
+    return { override, customProduct };
   } catch (err) {
     console.warn('Product override unavailable:', err.message);
-    return null;
+    return { override: null, customProduct: null };
   }
 }
 
@@ -3518,23 +3586,25 @@ const params  = new URLSearchParams(window.location.search);
 const pathParts = window.location.pathname.split('/').filter(Boolean);
 const pathSlug = pathParts[0] === 'product' && pathParts[1] ? pathParts[1] : '';
 const slug    = params.get('id') || pathSlug;
-const book    = slug ? BOOK_MAP[slug] : null;
 
-if (book) {
-  (async () => {
-    const liveBook = applyProductOverride(book, await loadSingleProductOverride(book.slug));
+(async () => {
+  const foundBook = slug ? BOOK_MAP[slug] : null;
+  const liveData = slug ? await loadSingleProductOverride(slug) : { override: null, customProduct: null };
+  const book = foundBook || customProductToBook(liveData.customProduct);
+  if (book) {
+    const liveBook = applyProductOverride(book, liveData.override);
     renderProduct(liveBook);
     renderFBT(liveBook);
     renderBookstagram();
     renderRelated(liveBook);
-  })();
-} else {
-  document.getElementById('productContent').innerHTML = `
-    <div class="not-found">
-      <h2>Book not found</h2>
-      <p>This page may have moved. <a href="/" style="color:var(--gold)">Browse all books →</a></p>
-    </div>`;
-}
+  } else {
+    document.getElementById('productContent').innerHTML = `
+      <div class="not-found">
+        <h2>Book not found</h2>
+        <p>This page may have moved. <a href="/" style="color:var(--gold)">Browse all books →</a></p>
+      </div>`;
+  }
+})();
 </script>
 </body>
 </html>

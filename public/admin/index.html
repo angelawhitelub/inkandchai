@@ -35,8 +35,9 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2
 #loginPanel h2{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:var(--white);margin-bottom:1.5rem;}
 .form-row{margin-bottom:1rem;}
 .form-row label{display:block;font-size:0.56rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.4rem;}
-.form-row input{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.7rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.78rem;outline:none;}
-.form-row input:focus{border-color:rgba(201,168,76,0.5);}
+.form-row input,.form-row textarea,.form-row select{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.7rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.78rem;outline:none;}
+.form-row textarea{min-height:130px;resize:vertical;line-height:1.6;}
+.form-row input:focus,.form-row textarea:focus,.form-row select:focus{border-color:rgba(201,168,76,0.5);}
 .err{font-size:0.7rem;color:var(--red);margin-top:0.6rem;}
 
 /* Dashboard */
@@ -102,6 +103,12 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .product-editor .form-row input{background:var(--bg3);}
 .product-editor-actions{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.8rem;}
 .override-pill{display:inline-block;font-size:0.48rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--green);border:1px solid rgba(35,122,59,0.3);padding:0.15rem 0.4rem;margin-left:0.35rem;}
+.creator-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.85rem;}
+.creator-grid .wide{grid-column:1/-1;}
+.image-preview{display:flex;align-items:center;gap:0.9rem;border:1px dashed var(--border);background:var(--bg2);padding:0.8rem;margin-top:0.5rem;}
+.image-preview img{width:70px;height:94px;object-fit:cover;border:1px solid var(--border);background:#fff;}
+.image-preview span{font-size:0.64rem;color:var(--cream-dim);line-height:1.5;}
+@media(max-width:760px){.creator-grid{grid-template-columns:1fr}}
 @media(max-width:800px){.product-grid{grid-template-columns:1fr}.product-list{max-height:280px}}
 
 /* Table */
@@ -183,6 +190,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
   </div>
 
   <div class="admin-jumps">
+    <button class="btn-outline" onclick="document.getElementById('productCreatorSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Create Listing</button>
     <button class="btn-outline" onclick="document.getElementById('productEditorSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Edit Products / Prices</button>
     <button class="btn-outline" onclick="document.getElementById('abandonedCheckoutSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Abandoned Checkouts</button>
     <button class="btn-outline" onclick="document.getElementById('ordersTableSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Orders</button>
@@ -229,6 +237,69 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
       <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
     </div>
+  </section>
+
+  <section class="product-panel" id="productCreatorSection">
+    <div class="product-head">
+      <div>
+        <h2>Create new listing</h2>
+        <p>Add any book from the admin panel. It creates a live SEO product page with title, description, price, MRP, and cover image.</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-outline" onclick="clearCreateProductForm()">Clear Form</button>
+      </div>
+    </div>
+    <div class="creator-grid">
+      <div class="form-row wide">
+        <label>Product title *</label>
+        <input id="newProdTitle" placeholder="e.g. Atomic Habits Hindi Edition"/>
+      </div>
+      <div class="form-row">
+        <label>Author</label>
+        <input id="newProdAuthor" placeholder="Author name"/>
+      </div>
+      <div class="form-row">
+        <label>Category</label>
+        <input id="newProdCategory" placeholder="All Self Help"/>
+      </div>
+      <div class="form-row">
+        <label>Sale price INR *</label>
+        <input id="newProdPrice" inputmode="decimal" placeholder="299"/>
+      </div>
+      <div class="form-row">
+        <label>MRP INR</label>
+        <input id="newProdOriginalPrice" inputmode="decimal" placeholder="499"/>
+      </div>
+      <div class="form-row">
+        <label>Publisher</label>
+        <input id="newProdPublisher" placeholder="Ink & Chai"/>
+      </div>
+      <div class="form-row">
+        <label>ISBN</label>
+        <input id="newProdIsbn" placeholder="Optional"/>
+      </div>
+      <div class="form-row wide">
+        <label>Product description *</label>
+        <textarea id="newProdDescription" placeholder="Write the book description customers should see on the product detail page."></textarea>
+      </div>
+      <div class="form-row wide">
+        <label>SEO keywords / tags</label>
+        <input id="newProdTags" placeholder="hindi books, self help, motivation, paperback"/>
+      </div>
+      <div class="form-row wide">
+        <label>Cover image *</label>
+        <input id="newProdImage" type="file" accept="image/png,image/jpeg,image/webp" onchange="previewCreateProductImage(this.files[0])"/>
+        <div class="image-preview" id="newProdImagePreview" style="display:none;">
+          <img id="newProdImagePreviewImg" alt="Cover preview"/>
+          <span id="newProdImagePreviewText">Cover selected.</span>
+        </div>
+      </div>
+    </div>
+    <div class="product-editor-actions">
+      <button class="btn-green" id="createProductBtn" onclick="createProductListing()">Create SEO Product Page</button>
+      <button class="btn-outline" id="openCreatedProductBtn" onclick="openCreatedProduct()" style="display:none;">Open New Product</button>
+    </div>
+    <p class="hint" id="createProductMsg" style="margin-top:0.7rem;">New listings appear in catalogue/search after refresh and have a direct `/product/.../` URL immediately.</p>
   </section>
 
   <section class="product-panel" id="productEditorSection">
@@ -441,6 +512,8 @@ const selectedOrderIds = new Set();
 let abandonedLeads = [];
 let productRows = [];
 let selectedProduct = null;
+let newProductImageDataUrl = '';
+let createdProductUrl = '';
 
 // ── Login ──────────────────────────────────────────────────────────────────
 function doLogin() {
@@ -1137,10 +1210,118 @@ async function deleteAbandonedLeads(ids) {
   }
 }
 
-// ── Product editor ────────────────────────────────────────────────────────
+// ── Product creator / editor ──────────────────────────────────────────────
 function moneyText(v) {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—';
+}
+
+function productSlugFromTitle(title) {
+  return String(title || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+function previewCreateProductImage(file) {
+  const preview = document.getElementById('newProdImagePreview');
+  const img = document.getElementById('newProdImagePreviewImg');
+  const text = document.getElementById('newProdImagePreviewText');
+  newProductImageDataUrl = '';
+  if (!file) {
+    if (preview) preview.style.display = 'none';
+    return;
+  }
+  if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) {
+    alert('Please upload a JPG, PNG, or WebP cover image.');
+    document.getElementById('newProdImage').value = '';
+    return;
+  }
+  if (file.size > 4 * 1024 * 1024) {
+    alert('Please upload an image below 4 MB.');
+    document.getElementById('newProdImage').value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    newProductImageDataUrl = String(reader.result || '');
+    if (img) img.src = newProductImageDataUrl;
+    if (text) text.textContent = `${file.name} · ${(file.size / 1024).toFixed(0)} KB`;
+    if (preview) preview.style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearCreateProductForm() {
+  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdDescription','newProdTags']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const file = document.getElementById('newProdImage');
+  if (file) file.value = '';
+  const preview = document.getElementById('newProdImagePreview');
+  if (preview) preview.style.display = 'none';
+  newProductImageDataUrl = '';
+  createdProductUrl = '';
+  const openBtn = document.getElementById('openCreatedProductBtn');
+  if (openBtn) openBtn.style.display = 'none';
+  const msg = document.getElementById('createProductMsg');
+  if (msg) msg.textContent = 'New listings appear in catalogue/search after refresh and have a direct `/product/.../` URL immediately.';
+}
+
+async function createProductListing() {
+  const btn = document.getElementById('createProductBtn');
+  const msg = document.getElementById('createProductMsg');
+  const title = document.getElementById('newProdTitle').value.trim();
+  const price = document.getElementById('newProdPrice').value.trim();
+  const description = document.getElementById('newProdDescription').value.trim();
+  if (!title || !price || !description || !newProductImageDataUrl) {
+    alert('Please add title, sale price, description, and cover image.');
+    return;
+  }
+
+  const oldText = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Creating…'; }
+  if (msg) msg.textContent = 'Creating SEO product page…';
+
+  const payload = {
+    title,
+    slug: productSlugFromTitle(title),
+    author: document.getElementById('newProdAuthor').value,
+    category: document.getElementById('newProdCategory').value || 'Books',
+    price_inr: price,
+    original_price_inr: document.getElementById('newProdOriginalPrice').value,
+    publisher: document.getElementById('newProdPublisher').value,
+    isbn: document.getElementById('newProdIsbn').value,
+    description,
+    tags: document.getElementById('newProdTags').value,
+    image_data_url: newProductImageDataUrl,
+    is_active: true,
+  };
+
+  try {
+    const res = await fetch('/.netlify/functions/create-product-listing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    createdProductUrl = data.url || ('/product/' + payload.slug + '/');
+    const openBtn = document.getElementById('openCreatedProductBtn');
+    if (openBtn) openBtn.style.display = '';
+    if (msg) msg.innerHTML = `Created: <a href="${esc(createdProductUrl)}" target="_blank" rel="noopener">${esc(createdProductUrl)}</a>`;
+    await fetchProducts();
+  } catch (err) {
+    if (msg) msg.textContent = 'Could not create listing: ' + err.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = oldText; }
+  }
+}
+
+function openCreatedProduct() {
+  if (createdProductUrl) window.open(createdProductUrl, '_blank');
 }
 
 function productImageSrc(url) {

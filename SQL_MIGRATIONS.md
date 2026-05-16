@@ -96,3 +96,45 @@ create index if not exists product_overrides_active_idx
 
 After running this, open `/admin/`, sign in, use **Product editor**, search a
 book, edit fields, and save. Changes apply on the storefront after refresh.
+
+## 2026-05-17 — Admin-created product listings
+
+Lets the admin panel create brand-new product listings with title, author,
+category, description, price, MRP, and cover image. New listings are stored in
+Supabase and served by a dynamic SEO product page at `/product/<slug>/`.
+
+```sql
+create table if not exists custom_products (
+  slug text primary key,
+  title text not null,
+  author text,
+  category text,
+  description text,
+  price_inr numeric(10,2) not null,
+  original_price_inr numeric(10,2),
+  image_url text,
+  publisher text,
+  isbn text,
+  seo_title text,
+  meta_description text,
+  tags text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists custom_products_active_idx
+  on custom_products (is_active, updated_at desc);
+```
+
+Optional but recommended for uploaded covers:
+
+```sql
+insert into storage.buckets (id, name, public)
+values ('product-images', 'product-images', true)
+on conflict (id) do update set public = true;
+```
+
+After running this, open `/admin/`, sign in, use **Create new listing**, upload
+a cover, enter details, and save. The returned product URL is immediately
+available and also appears in storefront search/catalogue after refresh.

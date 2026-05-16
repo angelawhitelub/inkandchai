@@ -63,6 +63,14 @@
   status = 404
   force  = true
 
+# Dynamic admin-created product pages. Existing generated product files still
+# win first because this redirect is not forced.
+[[redirects]]
+  from   = "/product/*"
+  to     = "/.netlify/functions/product-page?slug=:splat"
+  status = 200
+  force  = false
+
 # Redirect all non-file requests to index (SPA-style)
 [[redirects]]
   from   = "/*"
