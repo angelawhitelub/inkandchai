@@ -815,6 +815,7 @@
     if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
 
     try {
+      const sb = getSB();
       const { data: { session } } = await sb.auth.getSession();
       const token = session?.access_token || '';
 
