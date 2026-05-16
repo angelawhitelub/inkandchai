@@ -865,6 +865,22 @@ HTML = r"""<!DOCTYPE html>
   .search-chip:hover { color: var(--gold); border-color: var(--gold-dim); }
   .search-status { min-height: 1.2rem; margin-top: 0.65rem; color: var(--cream-dim); font-size: 0.66rem; letter-spacing: 0.08em; }
 
+  /* SEARCH OVERLAY */
+  .srch-overlay{position:fixed;inset:0;z-index:9800;pointer-events:none;opacity:0;transition:opacity 0.2s;}
+  .srch-overlay.open{pointer-events:all;opacity:1;}
+  .srch-backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.62);backdrop-filter:blur(4px);}
+  .srch-panel{position:absolute;top:0;left:0;right:0;background:var(--bg);border-bottom:1px solid var(--border);padding:4.8rem 2rem 1.6rem;transform:translateY(-8px);transition:transform 0.25s cubic-bezier(0.22,1,0.36,1);box-shadow:0 24px 60px rgba(0,0,0,0.5);}
+  .srch-overlay.open .srch-panel{transform:translateY(0);}
+  .srch-inner{max-width:760px;margin:0 auto;}
+  .srch-row{position:relative;display:flex;align-items:center;background:var(--bg3);border:1px solid var(--gold-dim);transition:border-color 0.2s,box-shadow 0.2s;}
+  .srch-row:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,168,76,0.15);}
+  .srch-ic{position:absolute;left:1rem;color:var(--gold);font-size:1.05rem;pointer-events:none;}
+  .srch-input{flex:1;background:transparent;border:0;color:var(--cream);padding:1rem 3rem 1rem 3rem;font-family:'Montserrat',sans-serif;font-size:0.9rem;outline:none;letter-spacing:0.02em;}
+  .srch-input::placeholder{color:var(--cream-dim);}
+  .srch-cls{background:none;border:none;color:var(--cream-dim);cursor:pointer;font-size:1.4rem;padding:0.9rem 1rem;line-height:1;transition:color 0.2s;}
+  .srch-cls:hover{color:var(--gold);}
+  .srch-chips{display:flex;flex-wrap:wrap;gap:0.45rem;margin-top:0.85rem;}
+
   /* COLLECTIONS */
   .collections { background: var(--bg); }
   .collections-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; grid-template-rows: auto auto; gap: 1.5rem; margin-top: 3.5rem; }
@@ -1238,6 +1254,29 @@ HTML = r"""<!DOCTYPE html>
     </div>
   </div>
 </nav>
+
+<!-- SEARCH OVERLAY -->
+<div class="srch-overlay" id="srchOverlay" role="dialog" aria-label="Search">
+  <div class="srch-backdrop" onclick="closeSiteSearch()"></div>
+  <div class="srch-panel">
+    <div class="srch-inner">
+      <div class="srch-row">
+        <span class="srch-ic" aria-hidden="true">⌕</span>
+        <input class="srch-input" id="srchInput" type="search" placeholder="Search title, author, ISBN, category…"
+               autocomplete="off" oninput="srchType()" onkeydown="srchKey(event)" />
+        <button class="srch-cls" onclick="closeSiteSearch()" title="Close search" aria-label="Close">✕</button>
+      </div>
+      <div class="srch-chips">
+        <button class="search-chip" onclick="srchQuick('Ana Huang')">Ana Huang</button>
+        <button class="search-chip" onclick="srchQuick('Onyx Storm')">Onyx Storm</button>
+        <button class="search-chip" onclick="srchQuick('Freida McFadden')">Freida McFadden</button>
+        <button class="search-chip" onclick="srchQuick('Atomic Habits')">Atomic Habits</button>
+        <button class="search-chip" onclick="srchQuick('Hindi self help')">Hindi Self Help</button>
+        <button class="search-chip" onclick="srchQuick('book combo')">Book Combos</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- CART OVERLAY + SIDEBAR -->
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
@@ -2077,10 +2116,45 @@ function clearSearch() {
 }
 
 function focusSiteSearch() {
-  const featured = document.getElementById('featured');
-  const input = document.getElementById('searchInput');
-  featured?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  window.setTimeout(() => input?.focus(), 320);
+  const overlay = document.getElementById('srchOverlay');
+  if (!overlay) return;
+  // Sync current search value into overlay input
+  const mainVal = document.getElementById('searchInput')?.value || '';
+  const srchIn  = document.getElementById('srchInput');
+  if (srchIn) srchIn.value = mainVal;
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => srchIn?.focus(), 60);
+}
+
+function closeSiteSearch() {
+  document.getElementById('srchOverlay')?.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function srchType() {
+  const val = document.getElementById('srchInput')?.value || '';
+  const mainInput = document.getElementById('searchInput');
+  if (mainInput) mainInput.value = val;
+  currentQuery = val;
+  visibleCount = PAGE_SIZE;
+  renderBooks();
+}
+
+function srchKey(e) {
+  if (e.key === 'Escape') { closeSiteSearch(); return; }
+  if (e.key === 'Enter') {
+    closeSiteSearch();
+    document.getElementById('featured')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function srchQuick(query) {
+  const srchIn = document.getElementById('srchInput');
+  if (srchIn) srchIn.value = query;
+  srchType();
+  closeSiteSearch();
+  document.getElementById('featured')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function quickSearch(query) {
@@ -2953,6 +3027,7 @@ function closeSamplePdf() {
 // ESC closes either modal
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
+  if (document.getElementById('srchOverlay')?.classList.contains('open')) { closeSiteSearch(); return; }
   if (document.getElementById('lightbox')?.classList.contains('show')) closeLightbox();
   if (document.getElementById('pdfModal')?.classList.contains('show')) closeSamplePdf();
 });
