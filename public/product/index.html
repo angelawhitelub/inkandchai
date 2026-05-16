@@ -745,6 +745,18 @@ function renderProduct(b) {
           ${savePct ? `<span class="prod-saving">Save ${savePct}%</span>` : ''}
         </div>
 
+        ${sale >= 299 && Date.now() < new Date('2026-05-19T18:30:00Z').getTime() ? `
+        <div class="prod-sale-box">
+          <div class="prod-sale-box-head">☀️ Summer Sale Price</div>
+          <span class="prod-sale-price">₹${Math.round(sale * 0.9).toLocaleString('en-IN')}</span>
+          <span class="prod-sale-saving">You save ₹${Math.round(sale * 0.1).toLocaleString('en-IN')} (10%)</span>
+          <div class="prod-sale-code">Use code <strong onclick="navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='SUMMER10',2000)" title="Click to copy">SUMMER10</strong> at checkout</div>
+          <div class="prod-sale-timer" style="margin-top:0.5rem;">
+            <span class="prod-cd-label">Ends in</span>
+            <div class="prod-cd" id="prodCountdown"></div>
+          </div>
+        </div>` : ''}
+
         <div class="prod-trust-row" aria-label="Purchase benefits">
           <span>🚚 2–5 day delivery</span>
           <span>💵 COD available</span>
@@ -835,6 +847,31 @@ function renderProduct(b) {
   `;
   // Set initial wishlist state
   setTimeout(updateProdWishBtn, 100);
+
+  // Product page sale countdown
+  const _saleEnd = new Date('2026-05-19T18:30:00Z');
+  function _tickProd() {
+    const el = document.getElementById('prodCountdown');
+    if (!el) return;
+    const diff = _saleEnd.getTime() - Date.now();
+    if (diff <= 0) { el.closest('.prod-sale-box')?.remove(); return; }
+    const d = Math.floor(diff / 86400000);
+    const h = String(Math.floor((diff % 86400000) / 3600000)).padStart(2,'0');
+    const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2,'0');
+    const s = String(Math.floor((diff % 60000) / 1000)).padStart(2,'0');
+    el.innerHTML =
+      `<div class="prod-cd-block"><span class="prod-cd-num">${d}</span><span class="prod-cd-lbl">d</span></div>` +
+      `<span class="prod-cd-sep">:</span>` +
+      `<div class="prod-cd-block"><span class="prod-cd-num">${h}</span><span class="prod-cd-lbl">h</span></div>` +
+      `<span class="prod-cd-sep">:</span>` +
+      `<div class="prod-cd-block"><span class="prod-cd-num">${m}</span><span class="prod-cd-lbl">m</span></div>` +
+      `<span class="prod-cd-sep">:</span>` +
+      `<div class="prod-cd-block"><span class="prod-cd-num">${s}</span><span class="prod-cd-lbl">s</span></div>`;
+  }
+  if (Date.now() < _saleEnd.getTime()) {
+    _tickProd();
+    const _prodTimer = setInterval(() => { if (!document.getElementById('prodCountdown')) { clearInterval(_prodTimer); return; } _tickProd(); }, 1000);
+  }
 }
 
 function updateProdWishBtn() {

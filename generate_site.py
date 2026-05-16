@@ -3819,6 +3819,7 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 </div>
 
 <script src="/js/cart.js"></script>
+<script src="/js/summer-sale.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 <script>
 let currentItem = {cart_item};
