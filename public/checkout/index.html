@@ -312,8 +312,14 @@ window.SUPABASE_ANON_KEY = "";
 <script>
 // ── Cart (must match cart.js CART_KEY) ────────────────────────────────────
 const CART_KEY = 'akshar_cart';
+const KW_CART_KEY = 'kw_cart';
 const BUY_NOW_KEY = 'iac_buy_now_cart';
-function activeCartKey() { return localStorage.getItem(BUY_NOW_KEY) ? BUY_NOW_KEY : CART_KEY; }
+const IS_KAWAII = new URLSearchParams(location.search).get('kawaii') === '1';
+function activeCartKey() {
+  if (localStorage.getItem(BUY_NOW_KEY)) return BUY_NOW_KEY;
+  if (IS_KAWAII) return KW_CART_KEY;
+  return CART_KEY;
+}
 function getCart()  { try { return JSON.parse(localStorage.getItem(activeCartKey()) || '[]'); } catch { return []; } }
 function clearCart(){ localStorage.removeItem(activeCartKey()); }
 const ABANDONED_SESSION_KEY = 'iac_abandoned_checkout_session';
@@ -457,7 +463,9 @@ function renderSummary() {
   const couponMsg = document.getElementById('couponMsg');
 
   if (!cart.length) {
-    container.innerHTML = '<div class="empty-cart">Your cart is empty.<br/><a href="/" style="color:var(--gold);">Browse books →</a></div>';
+    container.innerHTML = IS_KAWAII
+      ? '<div class="empty-cart">Your cart is empty.<br/><a href="/kawaii/" style="color:var(--gold);">Browse Kawaii Corner →</a></div>'
+      : '<div class="empty-cart">Your cart is empty.<br/><a href="/" style="color:var(--gold);">Browse books →</a></div>';
     totalRow.style.display = 'none';
     if (couponBox) couponBox.style.display = 'none';
     if (btnPay) btnPay.disabled = true;
