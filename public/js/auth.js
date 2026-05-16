@@ -728,10 +728,59 @@
                               font-size:0.55rem;">Deliver to</span><br/>
                  ${escHtml(o.customer_address)}
                </div>` : ''}
+          ${cancelOrderBlock(o)}
           ${returnRequestBlock(o)}
         </div>`;
     }).join('');
   }
+
+  // ── Cancel order block (COD only, pre-dispatch) ──────────────────────────
+  function cancelOrderBlock(order) {
+    const status = String(order.status || '').toLowerCase();
+    const cancellable = ['cod_pending', 'partial_cod_pending', 'confirmed'].includes(status);
+    if (!cancellable) return '';
+    return `
+      <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                  display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">
+        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
+          COD order · not yet dispatched
+        </div>
+        <button onclick="iacCancelOrder('${escJs(order.id)}')"
+          id="cancel-btn-${escJs(order.id)}"
+          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                 padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,112,112,0.4);
+                 color:#e87070;cursor:pointer;transition:all 0.2s;">
+          Cancel Order
+        </button>
+      </div>`;
+  }
+
+  window.iacCancelOrder = async function (orderId) {
+    if (!confirm('Are you sure you want to cancel this order? This cannot be undone.')) return;
+
+    const btn = document.getElementById(`cancel-btn-${orderId}`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
+
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token || '';
+
+      const res = await fetch('/.netlify/functions/cancel-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ order_id: orderId }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) throw new Error(json.error || 'Cancellation failed');
+
+      // Refresh the orders list to reflect the new status
+      await openMyOrders();
+    } catch (err) {
+      alert('Could not cancel order: ' + err.message);
+      if (btn) { btn.disabled = false; btn.textContent = 'Cancel Order'; }
+    }
+  };
 
   function returnWindowInfo(order) {
     const anchor = order.delivered_at || order.shipped_at || order.created_at;
