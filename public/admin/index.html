@@ -435,7 +435,8 @@ let sortField     = 'created_at';
 let sortAsc       = false;
 let page          = 1;
 let hasMore       = false;
-const PAGE        = 100;  // load 100 at a time
+let serverTotal   = null; // total count from server (shown immediately, before all pages load)
+const PAGE        = 100;  // rows per request (auto-paginates until all loaded)
 const selectedOrderIds = new Set();
 let abandonedLeads = [];
 let productRows = [];
@@ -453,6 +454,7 @@ function doLogin() {
 function logout() {
   adminKey = '';
   allOrders = [];
+  serverTotal = null;
   selectedOrderIds.clear();
   ['loginPanel','loginErr'].forEach(id => document.getElementById(id).style.display = id === 'loginPanel' ? '' : 'none');
   document.getElementById('dashboard').style.display = 'none';
@@ -486,10 +488,11 @@ async function fetchOrders(reset = false) {
     if (reset) allOrders = data.orders || [];
     else        allOrders = [...allOrders, ...(data.orders || [])];
 
-    hasMore = allOrders.length < (data.total || 0);
+    serverTotal = data.total ?? serverTotal;
+    hasMore = allOrders.length < (serverTotal || 0);
     page++;
 
-    // Show dashboard
+    // Show dashboard on first load
     document.getElementById('loginPanel').style.display = 'none';
     document.getElementById('dashboard').style.display  = '';
     ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
@@ -501,6 +504,12 @@ async function fetchOrders(reset = false) {
     applyFilters();
     fetchAbandonedCheckouts();
     fetchProducts();
+
+    // Auto-paginate: keep loading until all orders are in memory
+    if (hasMore) {
+      fetchOrders(false);
+      return; // skip finally btn-reset; it will fire when last page completes
+    }
 
   } catch (err) {
     showLoginErr('Error: ' + err.message);
@@ -603,16 +612,19 @@ function updateStats() {
     .filter(o => ['paid','delivered','shipped'].includes(o.status))
     .reduce((s,o) => s + Math.round(orderPaymentBreakdown(o).full * 100), 0);
 
-  document.getElementById('statTotal').textContent   = allOrders.length;
-  document.getElementById('statUnshipped').textContent = unshipped;
-  document.getElementById('statCod').textContent     = cod;
+  const displayTotal = serverTotal != null ? serverTotal : allOrders.length;
+  const stillLoading = serverTotal != null && allOrders.length < serverTotal;
+  document.getElementById('statTotal').textContent   = displayTotal;
+  document.getElementById('statUnshipped').textContent = stillLoading ? '…' : unshipped;
+  document.getElementById('statCod').textContent     = stillLoading ? '…' : cod;
   const partialEl = document.getElementById('statPartial');
-  if (partialEl) partialEl.textContent = partial;
-  document.getElementById('statPaid').textContent    = paid;
-  document.getElementById('statShipped').textContent = shipped;
-  document.getElementById('statRev').textContent     = '₹' + Math.round(rev / 100).toLocaleString('en-IN');
-  document.getElementById('dashSubtitle').textContent =
-    `${allOrders.length} orders · refreshed ${new Date().toLocaleTimeString('en-IN')}`;
+  if (partialEl) partialEl.textContent = stillLoading ? '…' : partial;
+  document.getElementById('statPaid').textContent    = stillLoading ? '…' : paid;
+  document.getElementById('statShipped').textContent = stillLoading ? '…' : shipped;
+  document.getElementById('statRev').textContent     = stillLoading ? '…' : '₹' + Math.round(rev / 100).toLocaleString('en-IN');
+  document.getElementById('dashSubtitle').textContent = stillLoading
+    ? `${displayTotal} orders · loading ${allOrders.length} of ${displayTotal}…`
+    : `${displayTotal} orders · refreshed ${new Date().toLocaleTimeString('en-IN')}`;
 }
 
 // ── Filter + Search + Date ─────────────────────────────────────────────────
