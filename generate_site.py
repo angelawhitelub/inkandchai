@@ -3207,7 +3207,7 @@ function renderProduct(b) {
           <div class="review-head">
             <div>
               <div class="review-kicker">Reader reviews</div>
-              <div class="review-title">Trusted by Hindi self-help readers</div>
+              <div class="review-title">Trusted by readers across India</div>
             </div>
             <div class="review-score">
               <strong>${esc(b.rating || '4.6')}</strong>
@@ -3220,7 +3220,7 @@ function renderProduct(b) {
             ${b.review_image ? `<figure><img src="${esc(b.review_image)}" alt="${esc(b.t)} customer review photo" loading="lazy" onclick="openLightbox(this.src, this.alt)" /><figcaption>Customer photo shared after delivery</figcaption></figure>` : ''}
             ${b.review_video ? `<figure><video src="${esc(b.review_video)}" controls playsinline preload="metadata"></video><figcaption>Customer video review / unboxing</figcaption></figure>` : ''}
           </div>` : ''}
-          <p class="review-note">Readers commonly choose this Hindi edition for discipline, mindset and motivation. Order through checkout for tracking, email updates and replacement support.</p>
+          <p class="review-note">Readers choose Ink &amp; Chai for fast delivery, careful packing and checkout-backed order updates.</p>
         </section>` : ''}
       </div>
     </div>
@@ -3642,8 +3642,8 @@ def product_json_ld(book):
         avg = sum(ratings) / len(ratings)
         ld["aggregateRating"] = {
             "@type": "AggregateRating",
-            "ratingValue": round(avg, 1),
-            "reviewCount": len(reviews),
+            "ratingValue": str(rating_value or round(avg, 1)),
+            "reviewCount": str(review_count or len(reviews)),
             "bestRating": 5,
         }
         ld["review"] = [
@@ -3693,9 +3693,9 @@ def static_product_html(book):
     if review_count:
         review_html = (
             f'<section class="reviews"><div class="review-head"><div><div class="label">Reader reviews</div>'
-            f'<h2>Trusted by Hindi self-help readers</h2></div><div class="score"><strong>{rating or "4.6"}</strong><span>{review_count} reviews</span></div></div>'
+            f'<h2>Trusted by readers across India</h2></div><div class="score"><strong>{rating or "4.6"}</strong><span>{review_count} reviews</span></div></div>'
             f'<div class="stars" aria-label="{rating or "4.6"} out of 5 stars">★★★★★</div>{review_media_html}'
-            f'<p>Readers commonly choose this Hindi edition for discipline, mindset and motivation. Order through checkout for tracking, email updates and replacement support.</p></section>'
+            f'<p>Readers choose Ink &amp; Chai for fast delivery, careful packing and checkout-backed order updates.</p></section>'
         )
     order_badge_html = f'<div class="order-badge">🔥 {order_badge}</div>' if order_badge else ""
     rating_line_html = f'<div class="rating-line"><span class="stars">★★★★★</span><span>{rating} rating · {review_count} customer reviews</span></div>' if review_count else ""
@@ -3729,9 +3729,11 @@ def static_product_html(book):
     reviews_html = ""
     if reviews:
         ratings = [int(r.get("rating") or 5) for r in reviews]
-        avg = round(sum(ratings) / len(ratings), 1)
-        full_stars = int(avg)
-        half_star  = 1 if (avg - full_stars) >= 0.4 else 0
+        avg = str(book.get("rating") or book.get("rating_value") or round(sum(ratings) / len(ratings), 1))
+        displayed_review_count = str(book.get("review_count") or len(reviews))
+        star_avg = float(avg) if str(avg).replace(".", "", 1).isdigit() else round(sum(ratings) / len(ratings), 1)
+        full_stars = int(star_avg)
+        half_star  = 1 if (star_avg - full_stars) >= 0.4 else 0
         empty_stars = 5 - full_stars - half_star
         stars_str = ("★" * full_stars) + ("⯨" * half_star) + ("☆" * empty_stars)
         review_cards = []
@@ -3759,7 +3761,7 @@ def static_product_html(book):
             f'<h2 style="font-family:\'Cormorant Garamond\',serif;font-size:1.6rem;font-weight:500;color:var(--cream);margin:0">'
             f'Customer Reviews</h2>'
             f'<span style="color:#c9a84c;font-size:1.1rem;letter-spacing:.05em">{stars_str}</span>'
-            f'<span style="color:var(--muted);font-size:.78rem">{avg}/5 · {len(reviews)} review{"s" if len(reviews)!=1 else ""}</span>'
+            f'<span style="color:var(--muted);font-size:.78rem">{avg}/5 · {displayed_review_count} reviews</span>'
             f'</div>'
             f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem">'
             f'{"".join(review_cards)}'
