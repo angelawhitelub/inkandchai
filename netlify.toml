@@ -9,6 +9,10 @@
 [functions]
   included_files = ["data/ALL_BOOKS.json"]
 
+# Abandoned cart recovery — runs every hour automatically
+[functions."auto-recover-carts"]
+  schedule = "@hourly"
+
 # Static assets — never redirect
 [[redirects]]
   from   = "/images/*"
