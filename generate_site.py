@@ -3555,8 +3555,8 @@ function renderBookstagram() {
     if (isVideo) {
       const poster = it.poster ? ` poster="${esc(it.poster)}"` : '';
       return `
-        <div class="bkg-card" onclick="bkgPlay(this)">
-          <video src="${esc(it.src)}"${poster} preload="metadata" playsinline muted loop></video>
+        <div class="bkg-card is-playing" onclick="bkgPlay(this)">
+          <video src="${esc(it.src)}"${poster} autoplay muted playsinline loop preload="auto"></video>
           <div class="bkg-play">▶</div>
           ${igChip}${cap}
         </div>`;
@@ -3580,6 +3580,15 @@ window.bkgPlay = function(card) {
   if (v.paused) { v.play().then(() => card.classList.add('is-playing')).catch(()=>{}); }
   else          { v.pause(); card.classList.remove('is-playing'); }
 };
+
+// Auto-mark cards whose video is already playing (autoplay case)
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.bkg-card video').forEach(function(v) {
+    if (!v.paused) v.closest('.bkg-card')?.classList.add('is-playing');
+    v.addEventListener('play', function() { v.closest('.bkg-card')?.classList.add('is-playing'); });
+    v.addEventListener('pause', function() { v.closest('.bkg-card')?.classList.remove('is-playing'); });
+  });
+});
 
 // Expose social-proof JSON to renderer
 window.SOCIAL_PROOF = SOCIAL_PROOF;
@@ -3926,7 +3935,7 @@ def static_product_html(book):
                     f'<div style="flex:0 0 200px;aspect-ratio:9/16;background:#1a1208;border:1px solid var(--border);'
                     f'position:relative;overflow:hidden;scroll-snap-align:start">'
                     f'<video src="{html_escape(src)}" {"poster=\"" + html_escape(poster) + "\"" if poster else ""} '
-                    f'preload="metadata" muted playsinline loop controls '
+                    f'autoplay muted playsinline loop preload="auto" '
                     f'style="width:100%;height:100%;object-fit:cover;display:block"></video>'
                     f'{f"<div style=\"position:absolute;left:0;right:0;bottom:0;padding:.6rem;background:linear-gradient(to top,rgba(0,0,0,.85),transparent);font-size:.65rem;color:#f0e8d8;line-height:1.3\">{cap}</div>" if cap else ""}'
                     f'</div>'
