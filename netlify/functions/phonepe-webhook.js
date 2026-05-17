@@ -23,6 +23,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { sendWhatsApp }  = require('./utils/whatsapp');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -65,6 +66,43 @@ function verifyAuth(event) {
   let mismatch = 0;
   for (let i = 0; i < got.length; i++) mismatch |= got.charCodeAt(i) ^ expected.charCodeAt(i);
   return mismatch === 0;
+}
+
+// ── Admin/owner notification (shows order + customer info, not addressed to customer) ──
+function ownerNotifHtml(order) {
+  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const meta = items[0]?._payment || {};
+  const isPartial = meta.mode === 'partial_cod' || order.status === 'partial_cod_pending';
+  const paid = order.amount_paise ? (order.amount_paise / 100) : 0;
+  const balance = isPartial ? Math.max(0, Number(meta.balance) || 0) : 0;
+  const rows = items.map(i => `
+    <tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #2a2a2a;text-align:center;">${i.qty}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #2a2a2a;text-align:right;color:#c9a84c;">₹${(i.price*i.qty).toLocaleString('en-IN')}</td>
+    </tr>`).join('');
+  return `
+    <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
+      <h1 style="color:#c9a84c;font-size:22px;font-weight:400;">Ink &amp; Chai — ${isPartial ? '💰 New Partial COD (PhonePe)' : '💳 New PhonePe Payment'}</h1>
+      <p style="color:#a09080;font-size:12px;margin-bottom:20px;">Order ID: <strong style="color:#c9a84c;">${order.razorpay_order_id || order.id}</strong></p>
+      <table style="font-size:14px;line-height:2;color:#f0e8d8;margin-bottom:18px;">
+        <tr><td style="color:#a09080;padding-right:18px;">Name</td><td>${order.customer_name || '—'}</td></tr>
+        <tr><td style="color:#a09080;padding-right:18px;">Phone</td><td>${order.customer_phone || '—'}</td></tr>
+        <tr><td style="color:#a09080;padding-right:18px;">Email</td><td>${order.customer_email || '—'}</td></tr>
+        <tr><td style="color:#a09080;padding-right:18px;">Address</td><td>${order.customer_address || '—'}</td></tr>
+      </table>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr style="background:#1c1916;">
+          <th style="padding:8px 10px;text-align:left;color:#c9a84c;font-weight:500;">Book</th>
+          <th style="padding:8px 10px;text-align:center;color:#c9a84c;font-weight:500;">Qty</th>
+          <th style="padding:8px 10px;text-align:right;color:#c9a84c;font-weight:500;">Amount</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${isPartial
+        ? `<p style="margin-top:16px;background:#1c1916;padding:12px 14px;color:#c9a84c;font-size:13px;">Paid now: ₹${paid.toLocaleString('en-IN')} · Collect on delivery: ₹${balance.toLocaleString('en-IN')}</p>`
+        : `<p style="margin-top:16px;color:#6dbf6d;font-size:13px;">✅ Full payment received — ₹${paid.toLocaleString('en-IN')}. Ready to ship!</p>`}
+    </div>`;
 }
 
 function paidEmailHtml(order) {
@@ -182,19 +220,54 @@ exports.handler = async (event) => {
 
     const order = rows[0];
 
-    if (dbStatus === 'paid' && order.customer_email) {
-      await sendEmail({
-        to: order.customer_email,
-        subject: `✅ Payment received — Ink & Chai order ${order.razorpay_order_id || order.id}`,
-        html: paidEmailHtml(order),
-      });
+    // Send notifications for both full payment and partial COD booking payment
+    const isNotified = dbStatus === 'paid' || dbStatus === 'partial_cod_pending';
+    const isPartialNotif = dbStatus === 'partial_cod_pending';
+    const paidAmt = order.amount_paise ? (order.amount_paise / 100) : 0;
+    const items   = Array.isArray(order.cart_items) ? order.cart_items : [];
+    const metaNotif = items[0]?._payment || {};
+    const balanceNotif = isPartialNotif ? Math.max(0, Number(metaNotif.balance) || 0) : 0;
+
+    if (isNotified) {
+      // Customer email
+      if (order.customer_email) {
+        await sendEmail({
+          to: order.customer_email,
+          subject: isPartialNotif
+            ? `✅ Booking confirmed — Ink & Chai order ${order.razorpay_order_id || order.id}`
+            : `✅ Payment received — Ink & Chai order ${order.razorpay_order_id || order.id}`,
+          html: paidEmailHtml(order),
+        });
+      }
+
+      // Owner email (admin-style — shows customer info, not "Hi customer")
       const ownerEmail = process.env.STORE_OWNER_EMAIL;
       if (ownerEmail) {
         await sendEmail({
           to: ownerEmail,
-          subject: `💳 PhonePe payment received — ${order.razorpay_order_id} · ₹${(order.amount_paise/100).toLocaleString('en-IN')}`,
-          html: paidEmailHtml(order),
+          subject: isPartialNotif
+            ? `💰 Partial COD PhonePe — ₹${paidAmt.toLocaleString('en-IN')} paid · collect ₹${balanceNotif.toLocaleString('en-IN')} — ${order.razorpay_order_id}`
+            : `💳 PhonePe payment received — ${order.razorpay_order_id} · ₹${paidAmt.toLocaleString('en-IN')}`,
+          html: ownerNotifHtml(order),
         });
+      }
+
+      // WhatsApp confirmation to customer
+      if (order.customer_phone) {
+        const firstName  = String(order.customer_name || 'there').split(' ')[0];
+        const amtDisplay = isPartialNotif
+          ? `₹${paidAmt.toLocaleString('en-IN')} (10% advance) + ₹${balanceNotif.toLocaleString('en-IN')} COD`
+          : `₹${paidAmt.toLocaleString('en-IN')}`;
+        const addrShort = (order.customer_address || '').slice(0, 80);
+        try {
+          await sendWhatsApp({
+            to:       order.customer_phone,
+            template: 'order_confirmed',
+            params:   [firstName, order.razorpay_order_id || order.id, amtDisplay, addrShort],
+          });
+        } catch (waErr) {
+          console.error('WhatsApp failed for PhonePe order:', waErr.message);
+        }
       }
     }
 
