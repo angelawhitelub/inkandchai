@@ -3559,21 +3559,40 @@ function shareBook() {
 }
 
 // ── Frequently Bought Together ────────────────────────────────────────────
-// Picks 2 deterministic same-category companions and shows them with
-// checkboxes + bundle price + "Add Bundle to Cart".
+// Picks 2-3 smart companions and shows them with checkboxes + bundle price.
 function renderFBT(b) {
-  const same = BOOKS.filter(x => x.cat === b.cat && x.url !== b.url && x.img && x.p);
-  if (same.length < 2) {
-    // Try same tab if same category is too sparse
-    const fallback = BOOKS.filter(x => x.tab === b.tab && x.url !== b.url && x.img && x.p);
-    if (fallback.length < 2) { document.getElementById('fbtContent').innerHTML = ''; return; }
-    same.push(...fallback.filter(x => !same.includes(x)));
-  }
-  // Pick 2 deterministically (based on slug hash) so a given product always shows
-  // the same companions — looks reliable, not random.
-  const hash = (b.slug || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  const pick = (offset) => same[(hash + offset) % same.length];
-  const pair = [pick(7), pick(13)].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i);
+  const stop = new Set(['the','and','with','for','book','books','edition','paperback','by','of','a','an']);
+  const tokens = value => new Set(String(value || '').toLowerCase().replace(/[^a-z0-9\\u0900-\\u097f]+/g,' ').split(/\\s+/).filter(w => w.length > 2 && !stop.has(w)));
+  const baseWords = tokens(`${b.t} ${b.a || ''} ${b.cat || ''} ${b.desc || ''}`);
+  const baseCat = String(b.cat || '').toLowerCase();
+  const baseAuthor = String(b.a || '').toLowerCase();
+  const hash = value => String(value || '').split('').reduce((a, c) => ((a * 31) + c.charCodeAt(0)) >>> 0, 7);
+  const score = x => {
+    let s = 0;
+    const cat = String(x.cat || '').toLowerCase();
+    const author = String(x.a || '').toLowerCase();
+    if (baseCat && cat && baseCat === cat) s += 70;
+    if (baseCat.includes('hindi') && cat.includes('hindi')) s += 18;
+    if (baseCat.includes('romance') && cat.includes('romance')) s += 16;
+    if (baseCat.includes('self') && cat.includes('self')) s += 16;
+    if (baseAuthor && author && baseAuthor === author) s += 55;
+    const words = tokens(`${x.t} ${x.a || ''} ${x.cat || ''} ${x.desc || ''}`);
+    let overlap = 0;
+    baseWords.forEach(w => { if (words.has(w)) overlap++; });
+    s += Math.min(overlap * 8, 48);
+    const bp = parseFloat((b.p || '').replace(/[^0-9.]/g,'')) || 0;
+    const xp = parseFloat((x.p || '').replace(/[^0-9.]/g,'')) || 0;
+    const diff = Math.abs(bp - xp);
+    s += diff <= 75 ? 14 : diff <= 175 ? 8 : diff <= 350 ? 3 : 0;
+    if (/combo|set|series|bestseller|trending|hindi|self help|romance/i.test(`${x.t} ${x.cat}`)) s += 7;
+    return s + (hash(`${b.slug}:${x.slug}`) % 11);
+  };
+  const pair = BOOKS
+    .filter(x => x.slug !== b.slug && x.url !== b.url && x.img && x.p)
+    .map(x => ({ x, s: score(x) }))
+    .sort((a, c) => c.s - a.s)
+    .slice(0, 3)
+    .map(row => row.x);
   if (pair.length < 1) { document.getElementById('fbtContent').innerHTML = ''; return; }
 
   // Stash full items on window so the button handler can read them
@@ -3607,7 +3626,7 @@ function renderFBT(b) {
         <div class="fbt-summary">
           <div class="fbt-total">
             <span class="fbt-total-label">Bundle Total</span>
-            <span class="fbt-total-amt" id="fbtTotal">₹ ${priceOf(items[0]) + priceOf(items[1] || {p:'0'}) + priceOf(items[2] || {p:'0'})}</span>
+            <span class="fbt-total-amt" id="fbtTotal">₹ ${items.reduce((sum, it) => sum + priceOf(it), 0).toLocaleString('en-IN')}</span>
             <span class="fbt-total-orig" id="fbtTotalOrig"></span>
           </div>
           <button class="fbt-cta" onclick="addBundleToCart()">+ Add Bundle to Cart</button>
