@@ -582,7 +582,7 @@ HTML = r"""<!DOCTYPE html>
     try { localStorage.setItem('iac_theme', next); } catch(e){}
   }
 </script>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&family=Cinzel:wght@400;700;900&display=swap" rel="stylesheet" />
 <style>
   :root {
     --bg: #0d0b08; --bg2: #141210; --bg3: #1c1916;
@@ -734,6 +734,102 @@ HTML = r"""<!DOCTYPE html>
   .banner-dot.active { background: var(--gold); width: 24px; border-radius: 4px; }
   .banner-dot:hover { background: rgba(255,255,255,0.85); }
   .banner-dot.active:hover { background: var(--gold); }
+
+  /* ── KING OF GLUTTONY FEATURED BANNER ───────────────────────────── */
+  .kog-banner-wrap { display:block; text-decoration:none; max-width:1400px; margin:2rem auto; padding:0 1.5rem; }
+  @media(max-width:780px){ .kog-banner-wrap { padding:0; margin:0.8rem auto; } }
+  .kog-banner {
+    width:100%; position:relative; overflow:hidden;
+    background:linear-gradient(135deg,#0d0a05 0%,#1c1408 40%,#0f0c06 100%);
+    border:1px solid rgba(212,175,55,0.3);
+    aspect-ratio:2.8/1;
+    cursor:pointer;
+  }
+  @media(max-width:780px){ .kog-banner { aspect-ratio:unset; min-height:200px; } }
+  .kog-banner::before {
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background-image:
+      radial-gradient(ellipse 60% 80% at 70% 50%,rgba(212,175,55,0.06) 0%,transparent 70%),
+      radial-gradient(ellipse 30% 40% at 20% 50%,rgba(212,175,55,0.04) 0%,transparent 60%);
+  }
+  .kog-banner::after {
+    content:''; position:absolute; top:10px; left:10px; right:10px; bottom:10px;
+    border:1px solid rgba(212,175,55,0.13); pointer-events:none;
+  }
+  /* Book image — floats on the right */
+  .kog-book-wrap {
+    position:absolute; right:5%; top:50%; transform:translateY(-50%) rotate(-4deg);
+    width:min(180px,22%);
+    filter:drop-shadow(-16px 16px 36px rgba(0,0,0,0.8)) drop-shadow(-3px 3px 10px rgba(212,175,55,0.2));
+    animation:kogFloat 4s ease-in-out infinite; z-index:2;
+  }
+  .kog-book-wrap img { width:100%; display:block; border-radius:2px; }
+  @keyframes kogFloat {
+    0%,100%{ transform:translateY(-50%) rotate(-4deg); }
+    50%{ transform:translateY(calc(-50% - 7px)) rotate(-3deg); }
+  }
+  /* Price tag */
+  .kog-price {
+    position:absolute; right:calc(5% + min(180px,22%) - 30px); bottom:14%;
+    z-index:3; background:linear-gradient(135deg,#c9a227,#e8c84a,#b8891e);
+    color:#1a1209; font-family:'Cinzel',serif; font-weight:700; font-size:clamp(13px,1.5vw,18px);
+    padding:6px 16px; letter-spacing:1px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.2);
+    animation:kogPricePulse 3s ease-in-out infinite;
+  }
+  .kog-price::before { content:'₹'; font-size:0.72em; vertical-align:super; margin-right:1px; }
+  @keyframes kogPricePulse {
+    0%,100%{ box-shadow:0 4px 20px rgba(0,0,0,0.5),0 0 0 0 rgba(212,175,55,0); }
+    50%{ box-shadow:0 4px 20px rgba(0,0,0,0.5),0 0 18px 4px rgba(212,175,55,0.3); }
+  }
+  /* Left content */
+  .kog-content {
+    position:absolute; left:0; top:0; bottom:0; width:60%;
+    display:flex; flex-direction:column; justify-content:center;
+    padding:clamp(20px,3vw,40px) clamp(24px,3vw,40px) clamp(20px,3vw,40px) clamp(28px,4vw,50px);
+    z-index:2;
+  }
+  .kog-store-label { font-family:'Cinzel',serif; font-size:clamp(7px,0.65vw,10px); letter-spacing:5px; color:rgba(212,175,55,0.6); text-transform:uppercase; margin-bottom:clamp(8px,1.2vw,16px); animation:kogFadeUp 0.8s ease both; }
+  .kog-series { display:inline-flex; align-items:center; gap:8px; margin-bottom:clamp(6px,1vw,12px); animation:kogFadeUp 0.9s ease both; }
+  .kog-series-line { width:20px; height:1px; background:rgba(212,175,55,0.5); }
+  .kog-series-text { font-family:'Cormorant Garamond',serif; font-size:clamp(8px,0.85vw,11px); letter-spacing:3px; color:rgba(212,175,55,0.7); text-transform:uppercase; font-style:italic; }
+  .kog-title { font-family:'Cinzel',serif; font-weight:900; font-size:clamp(20px,4vw,44px); line-height:1; color:transparent; background:linear-gradient(180deg,#f0d060 0%,#c9a227 40%,#a07818 100%); -webkit-background-clip:text; background-clip:text; letter-spacing:2px; margin-bottom:6px; animation:kogFadeUp 1s ease both; }
+  .kog-subtitle { font-family:'Cormorant Garamond',serif; font-size:clamp(8px,0.95vw,13px); letter-spacing:4px; color:rgba(212,175,55,0.5); text-transform:uppercase; margin-bottom:clamp(8px,1.4vw,18px); animation:kogFadeUp 1.1s ease both; }
+  .kog-divider { width:50px; height:1px; background:linear-gradient(90deg,rgba(212,175,55,0.6),transparent); margin-bottom:clamp(8px,1.2vw,16px); animation:kogFadeUp 1.2s ease both; }
+  .kog-author { font-family:'Cormorant Garamond',serif; font-size:clamp(9px,1vw,15px); letter-spacing:2px; color:rgba(255,255,255,0.5); margin-bottom:2px; animation:kogFadeUp 1.3s ease both; }
+  .kog-author strong { color:rgba(255,255,255,0.82); font-weight:600; }
+  .kog-bestseller { font-family:'Cormorant Garamond',serif; font-size:clamp(7px,0.8vw,11px); letter-spacing:3px; color:rgba(212,175,55,0.5); font-style:italic; text-transform:uppercase; margin-bottom:clamp(10px,1.6vw,22px); animation:kogFadeUp 1.35s ease both; }
+  .kog-cta {
+    display:inline-flex; align-items:center; gap:8px;
+    border:1px solid rgba(212,175,55,0.5); color:rgba(212,175,55,0.9);
+    font-family:'Cinzel',serif; font-size:clamp(7px,0.75vw,11px); letter-spacing:3px;
+    padding:clamp(8px,1vw,12px) clamp(14px,2vw,24px); text-transform:uppercase;
+    width:fit-content; position:relative; overflow:hidden;
+    transition:border-color 0.3s,color 0.3s; animation:kogFadeUp 1.5s ease both;
+    text-decoration:none; background:transparent;
+  }
+  .kog-cta::before { content:''; position:absolute; inset:0; background:rgba(212,175,55,0.08); transform:translateX(-100%); transition:transform 0.4s ease; }
+  .kog-banner:hover .kog-cta::before { transform:translateX(0); }
+  .kog-banner:hover .kog-cta { border-color:rgba(212,175,55,0.9); color:#f0d060; }
+  .kog-cta-arrow { font-size:1.1em; transition:transform 0.3s ease; }
+  .kog-banner:hover .kog-cta-arrow { transform:translateX(4px); }
+  /* Spark particles */
+  .kog-spark { position:absolute; border-radius:50%; background:#e8832a; z-index:1; }
+  .kog-spark-1 { width:3px; height:3px; right:calc(5% + min(180px,22%) + 18px); top:50%; animation:kogSpark1 3s ease-in-out infinite; }
+  .kog-spark-2 { width:2px; height:2px; right:calc(5% + min(180px,22%) + 44px); top:54%; animation:kogSpark2 4s ease-in-out infinite 0.5s; }
+  .kog-spark-3 { width:3px; height:3px; background:#d4661a; right:calc(5% + min(180px,22%) + 6px); top:52%; animation:kogSpark3 3.5s ease-in-out infinite 1s; }
+  @keyframes kogSpark1 { 0%,100%{opacity:0;transform:translate(0,0) scale(1)} 30%{opacity:.8} 100%{transform:translate(-8px,-20px) scale(0);opacity:0} }
+  @keyframes kogSpark2 { 0%,100%{opacity:0;transform:translate(0,0) scale(1)} 40%{opacity:.6} 100%{transform:translate(4px,-18px) scale(0);opacity:0} }
+  @keyframes kogSpark3 { 0%,100%{opacity:0;transform:translate(0,0) scale(1)} 35%{opacity:.7} 100%{transform:translate(-3px,-22px) scale(0);opacity:0} }
+  @keyframes kogFadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .kog-crown { position:absolute; top:clamp(10px,2vw,28px); left:clamp(16px,3vw,50px); font-size:clamp(12px,1.5vw,18px); opacity:0.4; z-index:2; animation:kogFadeUp 0.7s ease both; }
+  /* Mobile adjustments */
+  @media(max-width:600px){
+    .kog-content{ width:68%; padding:14px 10px 14px 16px; }
+    .kog-book-wrap{ width:28%; right:3%; }
+    .kog-price{ right:calc(3% + 28% - 20px); font-size:11px; padding:4px 10px; }
+    .kog-spark-1,.kog-spark-2,.kog-spark-3{ display:none; }
+  }
 
   /* SECTIONS SHARED */
   section { padding: 7rem 6rem; }
@@ -1344,6 +1440,39 @@ HTML = r"""<!DOCTYPE html>
     <div class="hero-note"><strong>Translated picks:</strong> motivation, money, business, psychology, discipline.</div>
   </div>
 </section>
+
+<!-- KING OF GLUTTONY FEATURED BANNER -->
+<a class="kog-banner-wrap" href="/product/?id=king-of-gluttony-ana-huang-OF-AH" aria-label="Shop King of Gluttony by Ana Huang — ₹299">
+  <div class="kog-banner">
+    <!-- Spark particles -->
+    <div class="kog-spark kog-spark-1"></div>
+    <div class="kog-spark kog-spark-2"></div>
+    <div class="kog-spark kog-spark-3"></div>
+    <div class="kog-crown">♛</div>
+    <!-- Book image (clickable via parent link) -->
+    <div class="kog-book-wrap">
+      <img src="/images/king-of-gluttony.jpg" alt="King of Gluttony by Ana Huang" width="200" height="300"
+           onerror="this.parentElement.style.display='none'" loading="eager" />
+    </div>
+    <!-- Price tag -->
+    <div class="kog-price">299</div>
+    <!-- Left content -->
+    <div class="kog-content">
+      <div class="kog-store-label">Ink &amp; Chai — inkandchai.in</div>
+      <div class="kog-series">
+        <span class="kog-series-line"></span>
+        <span class="kog-series-text">Kings of Sin · Book 6</span>
+        <span class="kog-series-line"></span>
+      </div>
+      <div class="kog-title">King of<br/>Gluttony</div>
+      <div class="kog-subtitle">A Dark Romance</div>
+      <div class="kog-divider"></div>
+      <div class="kog-author">by <strong>Ana Huang</strong></div>
+      <div class="kog-bestseller">#1 New York Times Bestselling Author</div>
+      <span class="kog-cta">Order Now <span class="kog-cta-arrow">→</span></span>
+    </div>
+  </div>
+</a>
 
 <!-- MARQUEE -->
 <div class="marquee-bar">

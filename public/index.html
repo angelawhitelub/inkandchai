@@ -90,7 +90,7 @@
 </script>
 <script>
   // Apply saved theme BEFORE paint; light is the default storefront theme.
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t !== 'dark') document.documentElement.setAttribute('data-theme','light'); } catch(e){ document.documentElement.setAttribute('data-theme','light'); } })();
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){ /* dark default */ } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
     var next = cur === 'light' ? 'dark' : 'light';
@@ -99,7 +99,7 @@
     try { localStorage.setItem('iac_theme', next); } catch(e){}
   }
 </script>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&family=Cinzel:wght@400;700;900&display=swap" rel="stylesheet" />
 <style>
   :root {
     --bg: #0d0b08; --bg2: #141210; --bg3: #1c1916;
@@ -140,7 +140,7 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; background: #0d0b08; max-width:100%; overflow-x:hidden; }
   html[data-theme="light"] { background: #faf7f2; }
-  body { background: var(--bg); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 300; overflow-x: hidden; min-height: 100vh; }
+  body { background: var(--bg); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 400; overflow-x: hidden; min-height: 100vh; }
   /* Hard fallback: if anything goes wrong with vars, content still readable */
   html:not([data-theme="light"]) body { background: #0d0b08; color: #f0e8d8; }
   html[data-theme="light"] body { background: #faf7f2; color: #2a2018; }
@@ -188,7 +188,7 @@
   .hero-left { display: flex; flex-direction: column; justify-content: center; padding: 10rem 5rem 6rem 6rem; position: relative; z-index: 2; }
   .hero-eyebrow { font-size: 0.62rem; letter-spacing: 0.35em; text-transform: uppercase; color: var(--gold); margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; }
   .hero-eyebrow::before { content: ''; display: inline-block; width: 40px; height: 1px; background: var(--gold); }
-  .hero-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(3.2rem, 6vw, 5.5rem); font-weight: 300; line-height: 1.08; color: var(--white); margin-bottom: 2rem; }
+  .hero-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(3.2rem, 6vw, 5.5rem); font-weight: 400; line-height: 1.06; color: var(--white); margin-bottom: 2rem; letter-spacing: -0.01em; }
   .hero-title em { font-style: italic; color: var(--gold-light); }
   .hero-sub { font-size: 0.82rem; line-height: 1.9; color: var(--cream-dim); max-width: 380px; margin-bottom: 3.5rem; letter-spacing: 0.04em; }
   .hero-ctas { display: flex; gap: 1.2rem; align-items: center; }
@@ -252,11 +252,107 @@
   .banner-dot:hover { background: rgba(255,255,255,0.85); }
   .banner-dot.active:hover { background: var(--gold); }
 
+  /* ── KING OF GLUTTONY FEATURED BANNER ───────────────────────────── */
+  .kog-banner-wrap { display:block; text-decoration:none; max-width:1400px; margin:2rem auto; padding:0 1.5rem; }
+  @media(max-width:780px){ .kog-banner-wrap { padding:0; margin:0.8rem auto; } }
+  .kog-banner {
+    width:100%; position:relative; overflow:hidden;
+    background:linear-gradient(135deg,#0d0a05 0%,#1c1408 40%,#0f0c06 100%);
+    border:1px solid rgba(212,175,55,0.3);
+    aspect-ratio:2.8/1;
+    cursor:pointer;
+  }
+  @media(max-width:780px){ .kog-banner { aspect-ratio:unset; min-height:200px; } }
+  .kog-banner::before {
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background-image:
+      radial-gradient(ellipse 60% 80% at 70% 50%,rgba(212,175,55,0.06) 0%,transparent 70%),
+      radial-gradient(ellipse 30% 40% at 20% 50%,rgba(212,175,55,0.04) 0%,transparent 60%);
+  }
+  .kog-banner::after {
+    content:''; position:absolute; top:10px; left:10px; right:10px; bottom:10px;
+    border:1px solid rgba(212,175,55,0.13); pointer-events:none;
+  }
+  /* Book image — floats on the right */
+  .kog-book-wrap {
+    position:absolute; right:5%; top:50%; transform:translateY(-50%) rotate(-4deg);
+    width:min(180px,22%);
+    filter:drop-shadow(-16px 16px 36px rgba(0,0,0,0.8)) drop-shadow(-3px 3px 10px rgba(212,175,55,0.2));
+    animation:kogFloat 4s ease-in-out infinite; z-index:2;
+  }
+  .kog-book-wrap img { width:100%; display:block; border-radius:2px; }
+  @keyframes kogFloat {
+    0%,100%{ transform:translateY(-50%) rotate(-4deg); }
+    50%{ transform:translateY(calc(-50% - 7px)) rotate(-3deg); }
+  }
+  /* Price tag */
+  .kog-price {
+    position:absolute; right:calc(5% + min(180px,22%) - 30px); bottom:14%;
+    z-index:3; background:linear-gradient(135deg,#c9a227,#e8c84a,#b8891e);
+    color:#1a1209; font-family:'Cinzel',serif; font-weight:700; font-size:clamp(13px,1.5vw,18px);
+    padding:6px 16px; letter-spacing:1px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.2);
+    animation:kogPricePulse 3s ease-in-out infinite;
+  }
+  .kog-price::before { content:'₹'; font-size:0.72em; vertical-align:super; margin-right:1px; }
+  @keyframes kogPricePulse {
+    0%,100%{ box-shadow:0 4px 20px rgba(0,0,0,0.5),0 0 0 0 rgba(212,175,55,0); }
+    50%{ box-shadow:0 4px 20px rgba(0,0,0,0.5),0 0 18px 4px rgba(212,175,55,0.3); }
+  }
+  /* Left content */
+  .kog-content {
+    position:absolute; left:0; top:0; bottom:0; width:60%;
+    display:flex; flex-direction:column; justify-content:center;
+    padding:clamp(20px,3vw,40px) clamp(24px,3vw,40px) clamp(20px,3vw,40px) clamp(28px,4vw,50px);
+    z-index:2;
+  }
+  .kog-store-label { font-family:'Cinzel',serif; font-size:clamp(7px,0.65vw,10px); letter-spacing:5px; color:rgba(212,175,55,0.6); text-transform:uppercase; margin-bottom:clamp(8px,1.2vw,16px); animation:kogFadeUp 0.8s ease both; }
+  .kog-series { display:inline-flex; align-items:center; gap:8px; margin-bottom:clamp(6px,1vw,12px); animation:kogFadeUp 0.9s ease both; }
+  .kog-series-line { width:20px; height:1px; background:rgba(212,175,55,0.5); }
+  .kog-series-text { font-family:'Cormorant Garamond',serif; font-size:clamp(8px,0.85vw,11px); letter-spacing:3px; color:rgba(212,175,55,0.7); text-transform:uppercase; font-style:italic; }
+  .kog-title { font-family:'Cinzel',serif; font-weight:900; font-size:clamp(20px,4vw,44px); line-height:1; color:transparent; background:linear-gradient(180deg,#f0d060 0%,#c9a227 40%,#a07818 100%); -webkit-background-clip:text; background-clip:text; letter-spacing:2px; margin-bottom:6px; animation:kogFadeUp 1s ease both; }
+  .kog-subtitle { font-family:'Cormorant Garamond',serif; font-size:clamp(8px,0.95vw,13px); letter-spacing:4px; color:rgba(212,175,55,0.5); text-transform:uppercase; margin-bottom:clamp(8px,1.4vw,18px); animation:kogFadeUp 1.1s ease both; }
+  .kog-divider { width:50px; height:1px; background:linear-gradient(90deg,rgba(212,175,55,0.6),transparent); margin-bottom:clamp(8px,1.2vw,16px); animation:kogFadeUp 1.2s ease both; }
+  .kog-author { font-family:'Cormorant Garamond',serif; font-size:clamp(9px,1vw,15px); letter-spacing:2px; color:rgba(255,255,255,0.5); margin-bottom:2px; animation:kogFadeUp 1.3s ease both; }
+  .kog-author strong { color:rgba(255,255,255,0.82); font-weight:600; }
+  .kog-bestseller { font-family:'Cormorant Garamond',serif; font-size:clamp(7px,0.8vw,11px); letter-spacing:3px; color:rgba(212,175,55,0.5); font-style:italic; text-transform:uppercase; margin-bottom:clamp(10px,1.6vw,22px); animation:kogFadeUp 1.35s ease both; }
+  .kog-cta {
+    display:inline-flex; align-items:center; gap:8px;
+    border:1px solid rgba(212,175,55,0.5); color:rgba(212,175,55,0.9);
+    font-family:'Cinzel',serif; font-size:clamp(7px,0.75vw,11px); letter-spacing:3px;
+    padding:clamp(8px,1vw,12px) clamp(14px,2vw,24px); text-transform:uppercase;
+    width:fit-content; position:relative; overflow:hidden;
+    transition:border-color 0.3s,color 0.3s; animation:kogFadeUp 1.5s ease both;
+    text-decoration:none; background:transparent;
+  }
+  .kog-cta::before { content:''; position:absolute; inset:0; background:rgba(212,175,55,0.08); transform:translateX(-100%); transition:transform 0.4s ease; }
+  .kog-banner:hover .kog-cta::before { transform:translateX(0); }
+  .kog-banner:hover .kog-cta { border-color:rgba(212,175,55,0.9); color:#f0d060; }
+  .kog-cta-arrow { font-size:1.1em; transition:transform 0.3s ease; }
+  .kog-banner:hover .kog-cta-arrow { transform:translateX(4px); }
+  /* Spark particles */
+  .kog-spark { position:absolute; border-radius:50%; background:#e8832a; z-index:1; }
+  .kog-spark-1 { width:3px; height:3px; right:calc(5% + min(180px,22%) + 18px); top:50%; animation:kogSpark1 3s ease-in-out infinite; }
+  .kog-spark-2 { width:2px; height:2px; right:calc(5% + min(180px,22%) + 44px); top:54%; animation:kogSpark2 4s ease-in-out infinite 0.5s; }
+  .kog-spark-3 { width:3px; height:3px; background:#d4661a; right:calc(5% + min(180px,22%) + 6px); top:52%; animation:kogSpark3 3.5s ease-in-out infinite 1s; }
+  @keyframes kogSpark1 { 0%,100%{opacity:0;transform:translate(0,0) scale(1)} 30%{opacity:.8} 100%{transform:translate(-8px,-20px) scale(0);opacity:0} }
+  @keyframes kogSpark2 { 0%,100%{opacity:0;transform:translate(0,0) scale(1)} 40%{opacity:.6} 100%{transform:translate(4px,-18px) scale(0);opacity:0} }
+  @keyframes kogSpark3 { 0%,100%{opacity:0;transform:translate(0,0) scale(1)} 35%{opacity:.7} 100%{transform:translate(-3px,-22px) scale(0);opacity:0} }
+  @keyframes kogFadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .kog-crown { position:absolute; top:clamp(10px,2vw,28px); left:clamp(16px,3vw,50px); font-size:clamp(12px,1.5vw,18px); opacity:0.4; z-index:2; animation:kogFadeUp 0.7s ease both; }
+  /* Mobile adjustments */
+  @media(max-width:600px){
+    .kog-content{ width:68%; padding:14px 10px 14px 16px; }
+    .kog-book-wrap{ width:28%; right:3%; }
+    .kog-price{ right:calc(3% + 28% - 20px); font-size:11px; padding:4px 10px; }
+    .kog-spark-1,.kog-spark-2,.kog-spark-3{ display:none; }
+  }
+
   /* SECTIONS SHARED */
   section { padding: 7rem 6rem; }
   .section-label { font-size: 0.6rem; letter-spacing: 0.35em; text-transform: uppercase; color: var(--gold); margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; }
   .section-label::before { content: ''; display: inline-block; width: 30px; height: 1px; background: var(--gold); }
-  .section-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 300; color: var(--white); line-height: 1.15; margin-bottom: 1rem; }
+  .section-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 400; color: var(--white); line-height: 1.12; margin-bottom: 1rem; letter-spacing: -0.01em; }
   .section-title em { font-style: italic; color: var(--gold-light); }
 
   /* ── SUMMER SALE BANNER ──────────────────────────────────────────── */
@@ -265,7 +361,7 @@
   .summer-sale-inner { display:flex; align-items:center; justify-content:space-between; gap:2rem; position:relative; }
   .summer-sale-left { flex:1; }
   .sale-eyebrow { font-size:0.52rem; letter-spacing:0.3em; text-transform:uppercase; color:rgba(255,200,200,0.85); margin-bottom:0.5rem; }
-  .sale-headline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.7rem,3.5vw,2.6rem); font-weight:300; color:#fff; line-height:1.1; margin-bottom:0.55rem; }
+  .sale-headline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.7rem,3.5vw,2.6rem); font-weight:400; color:#fff; line-height:1.1; margin-bottom:0.55rem; }
   .sale-headline em { font-style:italic; color:#ffb3b3; }
   .sale-code-row { display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; }
   .sale-code-label { font-size:0.62rem; color:rgba(255,255,255,0.75); letter-spacing:0.08em; }
@@ -318,10 +414,11 @@
   @media(max-width:1100px){ .books-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   @media(max-width:880px) { .books-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   .book-card { cursor: pointer; min-width: 0; max-width: 100%; }
-  .book-cover { aspect-ratio: 2/3; max-height: 320px; position: relative; overflow: hidden; margin-bottom: 1rem; border: 1px solid var(--border); background: #1a1208; display: flex; align-items: center; justify-content: center; }
+  .book-cover { aspect-ratio: 2/3; max-height: 320px; position: relative; overflow: hidden; margin-bottom: 1rem; border: 1px solid var(--border); background: #1a1208; display: flex; align-items: center; justify-content: center; transition: border-color 0.35s ease, box-shadow 0.35s ease; }
+  .book-card:hover .book-cover { border-color: rgba(201,168,76,0.55); box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(201,168,76,0.15); }
   /* contain (not cover) so wide combo images aren't cropped — full image always visible */
   .book-cover img { width: 100%; height: 100%; object-fit: contain; display: block; transition: transform 0.5s ease; }
-  .book-card:hover .book-cover img { transform: scale(1.04); }
+  .book-card:hover .book-cover img { transform: scale(1.06); }
   @media(max-width:780px) { .book-cover { max-height: 220px; margin-bottom: 0.7rem; } }
   .book-cover-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; opacity: 0; transition: opacity 0.3s; padding: 1rem; }
   .book-card:hover .book-cover-overlay { opacity: 1; }
@@ -380,6 +477,22 @@
   .search-chip { border: 1px solid var(--border); background: transparent; color: var(--cream-dim); font-family: 'Montserrat', sans-serif; font-size: 0.58rem; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.42rem 0.7rem; cursor: pointer; }
   .search-chip:hover { color: var(--gold); border-color: var(--gold-dim); }
   .search-status { min-height: 1.2rem; margin-top: 0.65rem; color: var(--cream-dim); font-size: 0.66rem; letter-spacing: 0.08em; }
+
+  /* SEARCH OVERLAY */
+  .srch-overlay{position:fixed;inset:0;z-index:9800;pointer-events:none;opacity:0;transition:opacity 0.2s;}
+  .srch-overlay.open{pointer-events:all;opacity:1;}
+  .srch-backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.62);backdrop-filter:blur(4px);}
+  .srch-panel{position:absolute;top:0;left:0;right:0;background:var(--bg);border-bottom:1px solid var(--border);padding:4.8rem 2rem 1.6rem;transform:translateY(-8px);transition:transform 0.25s cubic-bezier(0.22,1,0.36,1);box-shadow:0 24px 60px rgba(0,0,0,0.5);}
+  .srch-overlay.open .srch-panel{transform:translateY(0);}
+  .srch-inner{max-width:760px;margin:0 auto;}
+  .srch-row{position:relative;display:flex;align-items:center;background:var(--bg3);border:1px solid var(--gold-dim);transition:border-color 0.2s,box-shadow 0.2s;}
+  .srch-row:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,168,76,0.15);}
+  .srch-ic{position:absolute;left:1rem;color:var(--gold);font-size:1.05rem;pointer-events:none;}
+  .srch-input{flex:1;background:transparent;border:0;color:var(--cream);padding:1rem 3rem 1rem 3rem;font-family:'Montserrat',sans-serif;font-size:0.9rem;outline:none;letter-spacing:0.02em;}
+  .srch-input::placeholder{color:var(--cream-dim);}
+  .srch-cls{background:none;border:none;color:var(--cream-dim);cursor:pointer;font-size:1.4rem;padding:0.9rem 1rem;line-height:1;transition:color 0.2s;}
+  .srch-cls:hover{color:var(--gold);}
+  .srch-chips{display:flex;flex-wrap:wrap;gap:0.45rem;margin-top:0.85rem;}
 
   /* COLLECTIONS */
   .collections { background: var(--bg); }
@@ -445,12 +558,19 @@
   .footer-bottom-links a:hover { color: var(--gold); }
 
   /* ANIMATIONS */
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
-  .hero-eyebrow { animation: fadeUp 0.8s ease 0.2s both; }
-  .hero-title    { animation: fadeUp 0.8s ease 0.4s both; }
-  .hero-sub      { animation: fadeUp 0.8s ease 0.6s both; }
-  .hero-ctas     { animation: fadeUp 0.8s ease 0.8s both; }
-  .hero-stats    { animation: fadeUp 0.8s ease 1s both; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes revealSection { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+  .hero-eyebrow { animation: fadeUp 0.9s cubic-bezier(0.22,1,0.36,1) 0.15s both; }
+  .hero-title    { animation: fadeUp 0.9s cubic-bezier(0.22,1,0.36,1) 0.3s both; }
+  .hero-sub      { animation: fadeUp 0.9s cubic-bezier(0.22,1,0.36,1) 0.48s both; }
+  .hero-ctas     { animation: fadeUp 0.9s cubic-bezier(0.22,1,0.36,1) 0.62s both; }
+  .hero-stats    { animation: fadeUp 0.9s cubic-bezier(0.22,1,0.36,1) 0.78s both; }
+  /* Scroll-reveal utility */
+  .sr { opacity: 0; transform: translateY(22px); transition: opacity 0.7s cubic-bezier(0.22,1,0.36,1), transform 0.7s cubic-bezier(0.22,1,0.36,1); }
+  .sr.in { opacity: 1; transform: none; }
+  /* Page-load body fade */
+  @keyframes bodyFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  body { animation: bodyFadeIn 0.4s ease both; }
 
   /* HORIZONTAL SHELF ROWS */
   .shelves-section { background: var(--bg); padding: 5rem 6rem; border-top: 1px solid var(--border); }
@@ -825,6 +945,29 @@ gtag('config', 'AW-18119332653');
   </div>
 </nav>
 
+<!-- SEARCH OVERLAY -->
+<div class="srch-overlay" id="srchOverlay" role="dialog" aria-label="Search">
+  <div class="srch-backdrop" onclick="closeSiteSearch()"></div>
+  <div class="srch-panel">
+    <div class="srch-inner">
+      <div class="srch-row">
+        <span class="srch-ic" aria-hidden="true">⌕</span>
+        <input class="srch-input" id="srchInput" type="search" placeholder="Search title, author, ISBN, category…"
+               autocomplete="off" oninput="srchType()" onkeydown="srchKey(event)" />
+        <button class="srch-cls" onclick="closeSiteSearch()" title="Close search" aria-label="Close">✕</button>
+      </div>
+      <div class="srch-chips">
+        <button class="search-chip" onclick="srchQuick('Ana Huang')">Ana Huang</button>
+        <button class="search-chip" onclick="srchQuick('Onyx Storm')">Onyx Storm</button>
+        <button class="search-chip" onclick="srchQuick('Freida McFadden')">Freida McFadden</button>
+        <button class="search-chip" onclick="srchQuick('Atomic Habits')">Atomic Habits</button>
+        <button class="search-chip" onclick="srchQuick('Hindi self help')">Hindi Self Help</button>
+        <button class="search-chip" onclick="srchQuick('book combo')">Book Combos</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- CART OVERLAY + SIDEBAR -->
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
 <div class="cart-sidebar" id="cartSidebar">
@@ -891,6 +1034,39 @@ gtag('config', 'AW-18119332653');
     <div class="hero-note"><strong>Translated picks:</strong> motivation, money, business, psychology, discipline.</div>
   </div>
 </section>
+
+<!-- KING OF GLUTTONY FEATURED BANNER -->
+<a class="kog-banner-wrap" href="/product/?id=king-of-gluttony-ana-huang-OF-AH" aria-label="Shop King of Gluttony by Ana Huang — ₹299">
+  <div class="kog-banner">
+    <!-- Spark particles -->
+    <div class="kog-spark kog-spark-1"></div>
+    <div class="kog-spark kog-spark-2"></div>
+    <div class="kog-spark kog-spark-3"></div>
+    <div class="kog-crown">♛</div>
+    <!-- Book image (clickable via parent link) -->
+    <div class="kog-book-wrap">
+      <img src="/images/king-of-gluttony.jpg" alt="King of Gluttony by Ana Huang" width="200" height="300"
+           onerror="this.parentElement.style.display='none'" loading="eager" />
+    </div>
+    <!-- Price tag -->
+    <div class="kog-price">299</div>
+    <!-- Left content -->
+    <div class="kog-content">
+      <div class="kog-store-label">Ink &amp; Chai — inkandchai.in</div>
+      <div class="kog-series">
+        <span class="kog-series-line"></span>
+        <span class="kog-series-text">Kings of Sin · Book 6</span>
+        <span class="kog-series-line"></span>
+      </div>
+      <div class="kog-title">King of<br/>Gluttony</div>
+      <div class="kog-subtitle">A Dark Romance</div>
+      <div class="kog-divider"></div>
+      <div class="kog-author">by <strong>Ana Huang</strong></div>
+      <div class="kog-bestseller">#1 New York Times Bestselling Author</div>
+      <span class="kog-cta">Order Now <span class="kog-cta-arrow">→</span></span>
+    </div>
+  </div>
+</a>
 
 <!-- MARQUEE -->
 <div class="marquee-bar">
@@ -1663,10 +1839,45 @@ function clearSearch() {
 }
 
 function focusSiteSearch() {
-  const featured = document.getElementById('featured');
-  const input = document.getElementById('searchInput');
-  featured?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  window.setTimeout(() => input?.focus(), 320);
+  const overlay = document.getElementById('srchOverlay');
+  if (!overlay) return;
+  // Sync current search value into overlay input
+  const mainVal = document.getElementById('searchInput')?.value || '';
+  const srchIn  = document.getElementById('srchInput');
+  if (srchIn) srchIn.value = mainVal;
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => srchIn?.focus(), 60);
+}
+
+function closeSiteSearch() {
+  document.getElementById('srchOverlay')?.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function srchType() {
+  const val = document.getElementById('srchInput')?.value || '';
+  const mainInput = document.getElementById('searchInput');
+  if (mainInput) mainInput.value = val;
+  currentQuery = val;
+  visibleCount = PAGE_SIZE;
+  renderBooks();
+}
+
+function srchKey(e) {
+  if (e.key === 'Escape') { closeSiteSearch(); return; }
+  if (e.key === 'Enter') {
+    closeSiteSearch();
+    document.getElementById('featured')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function srchQuick(query) {
+  const srchIn = document.getElementById('srchInput');
+  if (srchIn) srchIn.value = query;
+  srchType();
+  closeSiteSearch();
+  document.getElementById('featured')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function quickSearch(query) {
@@ -1957,19 +2168,71 @@ renderCollections();
 renderShelves();
 renderCats(ALL_CATS);
 
-// Intersection observer for initial cards
+// ── Scroll-reveal: collection cards ──────────────────────────────────────
 const obs = new IntersectionObserver(entries => {
   entries.forEach(e => {
     if (e.isIntersecting) {
       e.target.style.opacity = '1';
       e.target.style.transform = 'translateY(0)';
+      obs.unobserve(e.target);
     }
   });
 }, { threshold: 0.08 });
-document.querySelectorAll('.coll-card').forEach(el => {
-  el.style.opacity = '0'; el.style.transform = 'translateY(25px)';
-  el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+document.querySelectorAll('.coll-card').forEach((el, i) => {
+  el.style.opacity = '0';
+  el.style.transform = 'translateY(25px)';
+  el.style.transition = `opacity 0.65s cubic-bezier(0.22,1,0.36,1) ${(i%4)*0.08}s, transform 0.65s cubic-bezier(0.22,1,0.36,1) ${(i%4)*0.08}s`;
   obs.observe(el);
+});
+
+// ── Scroll-reveal: section headings & banners ─────────────────────────────
+const srObs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); srObs.unobserve(e.target); }
+  });
+}, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' });
+document.querySelectorAll('.section-label, .section-title, .summer-sale-banner, .marquee-bar, .editorial-section').forEach(el => {
+  el.classList.add('sr');
+  srObs.observe(el);
+});
+
+// ── Book card staggered reveal ────────────────────────────────────────────
+const bookObs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); bookObs.unobserve(e.target); }
+  });
+}, { threshold: 0.04 });
+document.querySelectorAll('.book-card').forEach((el, i) => {
+  el.classList.add('sr');
+  el.style.transitionDelay = `${(i % 5) * 0.07}s`;
+  bookObs.observe(el);
+});
+
+// ── Stat counter animation ────────────────────────────────────────────────
+document.querySelectorAll('.stat-num').forEach(el => {
+  const raw = el.textContent.trim();
+  const num = parseFloat(raw.replace(/[^\d.]/g, ''));
+  if (isNaN(num) || num === 0) return;
+  const suffix = raw.match(/[^\d.]+$/)?.[0] || '';
+  const prefix = raw.match(/^[^0-9]*/)?.[0] || '';
+  el.setAttribute('data-target', num);
+  el.setAttribute('data-suffix', suffix);
+  el.setAttribute('data-prefix', prefix);
+  el.textContent = prefix + '0' + suffix;
+  const statObs = new IntersectionObserver(entries => {
+    if (!entries[0].isIntersecting) return;
+    const start = performance.now();
+    const dur = 1400;
+    (function tick(now) {
+      const p = Math.min((now - start) / dur, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      const val = Math.round(num * ease);
+      el.textContent = prefix + val + suffix;
+      if (p < 1) requestAnimationFrame(tick);
+    })(start);
+    statObs.unobserve(el);
+  }, { threshold: 0.6 });
+  statObs.observe(el);
 });
 </script>
 
