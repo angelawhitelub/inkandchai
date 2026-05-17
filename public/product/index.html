@@ -274,9 +274,8 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 .related-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:1.2rem}
 @media(max-width:1100px){.related-grid{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:780px){.related-grid{grid-template-columns:repeat(2,1fr);gap:.9rem}}
-.rel-card{cursor:pointer;transition:transform 0.2s,border-color 0.2s;border:1px solid transparent;color:inherit}
-.rel-card:hover{transform:translateY(-3px)}
-.rel-card:hover .rel-cover{border-color:rgba(201,168,76,0.55)}
+.rel-card{cursor:pointer;transition:transform 0.2s,border-color 0.2s;border:1px solid transparent;color:inherit;touch-action:manipulation}
+@media(hover:hover){.rel-card:hover{transform:translateY(-3px)}.rel-card:hover .rel-cover{border-color:rgba(201,168,76,0.55)}}
 .rel-cover{aspect-ratio:2/3;background:var(--bg2);border:1px solid var(--border);overflow:hidden;margin-bottom:0.65rem;transition:border-color 0.2s}
 .rel-cover img{width:100%;height:100%;object-fit:contain;display:block;background:#1a1208}
 .rel-title{font-family:'Cormorant Garamond',serif;font-size:0.88rem;color:var(--cream);line-height:1.3;margin-bottom:0.2rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}

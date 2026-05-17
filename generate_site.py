@@ -687,16 +687,18 @@ HTML = r"""<!DOCTYPE html>
   .hero-right { position: relative; overflow: hidden; display:flex; align-items:center; justify-content:center; padding:8rem 5rem 5rem 1rem; }
   .hero-right::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 58% 38%, rgba(201,168,76,0.14), transparent 34%), linear-gradient(to right, var(--bg) 0%, rgba(13,11,8,0.2) 38%, var(--bg) 100%), linear-gradient(to bottom, transparent 58%, var(--bg) 100%); z-index: 1; }
   .hero-cover-wall { position:relative; z-index:2; width:min(680px,100%); display:grid; grid-template-columns:repeat(4,minmax(105px,1fr)); gap:1.1rem; transform:rotate(2deg); }
-  .hero-cover-card { position:relative; display:block; aspect-ratio:2/3; background:var(--bg2); border:1px solid rgba(201,168,76,0.28); box-shadow:0 18px 42px rgba(0,0,0,0.5); overflow:hidden; transition:transform 0.25s,border-color 0.25s,box-shadow 0.25s; text-decoration:none; }
+  .hero-cover-card { position:relative; display:block; aspect-ratio:2/3; background:var(--bg2); border:1px solid rgba(201,168,76,0.28); box-shadow:0 18px 42px rgba(0,0,0,0.5); overflow:hidden; transition:transform 0.25s,border-color 0.25s,box-shadow 0.25s; text-decoration:none; touch-action:manipulation; }
   .hero-cover-card:nth-child(2),.hero-cover-card:nth-child(5){transform:translateY(2rem)}
   .hero-cover-card:nth-child(4),.hero-cover-card:nth-child(7){transform:translateY(-1.2rem)}
-  .hero-cover-card:hover{transform:translateY(-0.35rem) scale(1.02);border-color:rgba(201,168,76,0.7);box-shadow:0 24px 55px rgba(0,0,0,0.65)}
-  .hero-cover-card:nth-child(2):hover,.hero-cover-card:nth-child(5):hover{transform:translateY(1.65rem) scale(1.02)}
-  .hero-cover-card:nth-child(4):hover,.hero-cover-card:nth-child(7):hover{transform:translateY(-1.55rem) scale(1.02)}
+  @media(hover:hover) {
+    .hero-cover-card:hover{transform:translateY(-0.35rem) scale(1.02);border-color:rgba(201,168,76,0.7);box-shadow:0 24px 55px rgba(0,0,0,0.65)}
+    .hero-cover-card:nth-child(2):hover,.hero-cover-card:nth-child(5):hover{transform:translateY(1.65rem) scale(1.02)}
+    .hero-cover-card:nth-child(4):hover,.hero-cover-card:nth-child(7):hover{transform:translateY(-1.55rem) scale(1.02)}
+    .hero-cover-card:hover::after { opacity:1; transform:translateY(0); }
+  }
   .hero-cover-card.featured { grid-row:span 2; }
   .hero-cover-card img { width:100%; height:100%; object-fit:cover; display:block; }
-  .hero-cover-card::after { content:attr(data-label); position:absolute; left:0; right:0; bottom:0; padding:1.6rem 0.7rem 0.65rem; background:linear-gradient(to top,rgba(0,0,0,0.88),transparent); color:var(--cream); font-size:0.54rem; letter-spacing:0.16em; text-transform:uppercase; line-height:1.35; opacity:0; transform:translateY(8px); transition:opacity 0.25s,transform 0.25s; }
-  .hero-cover-card:hover::after { opacity:1; transform:translateY(0); }
+  .hero-cover-card::after { content:attr(data-label); position:absolute; left:0; right:0; bottom:0; padding:1.6rem 0.7rem 0.65rem; background:linear-gradient(to top,rgba(0,0,0,0.88),transparent); color:var(--cream); font-size:0.54rem; letter-spacing:0.16em; text-transform:uppercase; line-height:1.35; opacity:0; transform:translateY(8px); transition:opacity 0.25s,transform 0.25s; pointer-events:none; }
   .hero-note { position:absolute; z-index:3; right:5rem; bottom:6.2rem; max-width:280px; padding:1rem 1.15rem; background:rgba(13,11,8,0.78); border:1px solid rgba(201,168,76,0.28); backdrop-filter:blur(10px); color:var(--cream-dim); font-size:0.64rem; letter-spacing:0.08em; line-height:1.7; text-transform:uppercase; }
   .hero-note strong { color:var(--gold); font-weight:500; }
 
@@ -896,15 +898,20 @@ HTML = r"""<!DOCTYPE html>
   .books-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1.4rem; width: 100%; max-width: 100%; }
   @media(max-width:1100px){ .books-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   @media(max-width:880px) { .books-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-  .book-card { cursor: pointer; min-width: 0; max-width: 100%; }
-  .book-cover { aspect-ratio: 2/3; max-height: 320px; position: relative; overflow: hidden; margin-bottom: 1rem; border: 1px solid var(--border); background: #1a1208; display: flex; align-items: center; justify-content: center; transition: border-color 0.35s ease, box-shadow 0.35s ease; }
-  .book-card:hover .book-cover { border-color: rgba(201,168,76,0.55); box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(201,168,76,0.15); }
+  .book-card { cursor: pointer; min-width: 0; max-width: 100%; touch-action: manipulation; }
+  .book-cover { aspect-ratio: 2/3; max-height: 320px; position: relative; overflow: hidden; margin-bottom: 1rem; border: 1px solid var(--border); background: #1a1208; display: flex; align-items: center; justify-content: center; transition: border-color 0.35s ease, box-shadow 0.35s ease; touch-action: manipulation; }
+  /* Hover effects only on devices that truly support hover (mouse/trackpad).
+     On touch-only screens :hover is sticky — it activates on first tap and
+     blocks navigation until the second tap. @media(hover:hover) prevents this. */
+  @media(hover:hover) {
+    .book-card:hover .book-cover { border-color: rgba(201,168,76,0.55); box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(201,168,76,0.15); }
+    .book-card:hover .book-cover img { transform: scale(1.06); }
+    .book-card:hover .book-cover-overlay { opacity: 1; }
+  }
   /* contain (not cover) so wide combo images aren't cropped — full image always visible */
   .book-cover img { width: 100%; height: 100%; object-fit: contain; display: block; transition: transform 0.5s ease; }
-  .book-card:hover .book-cover img { transform: scale(1.06); }
   @media(max-width:780px) { .book-cover { max-height: 220px; margin-bottom: 0.7rem; } }
-  .book-cover-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; opacity: 0; transition: opacity 0.3s; padding: 1rem; }
-  .book-card:hover .book-cover-overlay { opacity: 1; }
+  .book-cover-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; opacity: 0; transition: opacity 0.3s; padding: 1rem; pointer-events: none; }
   .book-cover-title { font-family: 'Cormorant Garamond', serif; font-size: 0.9rem; color: var(--white); text-align: center; line-height: 1.3; }
   .btn-add { font-size: 0.58rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--bg); background: var(--gold); border: none; padding: 0.7rem 1.4rem; cursor: pointer; font-family: 'Montserrat', sans-serif; font-weight: 500; transition: background 0.3s; }
   .btn-add:hover { background: var(--gold-light); }
@@ -1067,11 +1074,13 @@ HTML = r"""<!DOCTYPE html>
   .shelf-link:hover { background: var(--gold); color: var(--bg); }
   .shelf-row { display: flex; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 0.5rem; }
   .shelf-row::-webkit-scrollbar { display: none; }
-  .shelf-card { flex: 0 0 155px; scroll-snap-align: start; cursor: pointer; }
+  .shelf-card { flex: 0 0 155px; scroll-snap-align: start; cursor: pointer; touch-action: manipulation; }
   .shelf-card-cover { aspect-ratio: 2/3; background: var(--bg2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 0.6rem; transition: border-color 0.25s; }
-  .shelf-card:hover .shelf-card-cover { border-color: var(--gold-dim); }
   .shelf-card-cover img { width: 100%; height: 100%; object-fit: contain; display: block; transition: transform 0.35s; }
-  .shelf-card:hover .shelf-card-cover img { transform: scale(1.04); }
+  @media(hover:hover) {
+    .shelf-card:hover .shelf-card-cover { border-color: var(--gold-dim); }
+    .shelf-card:hover .shelf-card-cover img { transform: scale(1.04); }
+  }
   .shelf-card-name { font-family: 'Cormorant Garamond', serif; font-size: 0.88rem; color: var(--cream); line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.2em; }
   .shelf-card-price { font-size: 0.85rem; color: var(--gold); font-weight: 600; margin-top: 0.25rem; }
   .shelf-card-btn { width: 100%; margin-top: 0.45rem; font-size: 0.5rem; letter-spacing: 0.15em; text-transform: uppercase; padding: 0.52rem 0.25rem; background: transparent; color: var(--gold); border: 1px solid rgba(201,168,76,0.4); cursor: pointer; font-family: 'Montserrat', sans-serif; font-weight: 500; transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2945,9 +2954,8 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 .related-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:1.2rem}
 @media(max-width:1100px){.related-grid{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:780px){.related-grid{grid-template-columns:repeat(2,1fr);gap:.9rem}}
-.rel-card{cursor:pointer;transition:transform 0.2s,border-color 0.2s;border:1px solid transparent;color:inherit}
-.rel-card:hover{transform:translateY(-3px)}
-.rel-card:hover .rel-cover{border-color:rgba(201,168,76,0.55)}
+.rel-card{cursor:pointer;transition:transform 0.2s,border-color 0.2s;border:1px solid transparent;color:inherit;touch-action:manipulation}
+@media(hover:hover){.rel-card:hover{transform:translateY(-3px)}.rel-card:hover .rel-cover{border-color:rgba(201,168,76,0.55)}}
 .rel-cover{aspect-ratio:2/3;background:var(--bg2);border:1px solid var(--border);overflow:hidden;margin-bottom:0.65rem;transition:border-color 0.2s}
 .rel-cover img{width:100%;height:100%;object-fit:contain;display:block;background:#1a1208}
 .rel-title{font-family:'Cormorant Garamond',serif;font-size:0.88rem;color:var(--cream);line-height:1.3;margin-bottom:0.2rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
