@@ -27,9 +27,9 @@
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <script type="application/ld+json" id="ldjson">{}</script>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <script>
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t !== 'dark') document.documentElement.setAttribute('data-theme','light'); } catch(e){ document.documentElement.setAttribute('data-theme','light'); } })();
+  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){ /* dark default */ } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
     var next = cur === 'light' ? 'dark' : 'light';
@@ -57,7 +57,7 @@ html[data-theme="light"] .theme-toggle .moon{display:none}
 html[data-theme="light"] .theme-toggle .sun{display:inline}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
+body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:400;min-height:100vh}
 
 /* NAV */
 nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1.2rem 4rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
@@ -267,18 +267,21 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
   .bkg-title{font-size:1.25rem}
 }
 
-/* RELATED */
-.related{max-width:1100px;margin:0 auto;padding:0 2rem 6rem}
-.related-title{font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;color:var(--white);margin-bottom:2rem}
+/* RELATED / YOU MAY ALSO LIKE */
+.related{max-width:1260px;margin:0 auto;padding:0 2rem 6rem}
+.related-title{font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:400;color:var(--white);margin-bottom:2rem}
 .related-title em{font-style:italic;color:var(--gold-light)}
-.related-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem}
-@media(max-width:780px){.related-grid{grid-template-columns:repeat(2,1fr)}}
-.rel-card{cursor:pointer;transition:opacity 0.2s}
-.rel-card:hover{opacity:0.85}
-.rel-cover{aspect-ratio:2/3;background:var(--bg2);border:1px solid var(--border);overflow:hidden;margin-bottom:0.8rem}
+.related-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:1.2rem}
+@media(max-width:1100px){.related-grid{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:780px){.related-grid{grid-template-columns:repeat(2,1fr);gap:.9rem}}
+.rel-card{cursor:pointer;transition:transform 0.2s,border-color 0.2s;border:1px solid transparent;color:inherit}
+.rel-card:hover{transform:translateY(-3px)}
+.rel-card:hover .rel-cover{border-color:rgba(201,168,76,0.55)}
+.rel-cover{aspect-ratio:2/3;background:var(--bg2);border:1px solid var(--border);overflow:hidden;margin-bottom:0.65rem;transition:border-color 0.2s}
 .rel-cover img{width:100%;height:100%;object-fit:contain;display:block;background:#1a1208}
-.rel-title{font-family:'Cormorant Garamond',serif;font-size:0.95rem;color:var(--cream);line-height:1.3;margin-bottom:0.2rem}
-.rel-price{font-size:0.85rem;color:var(--gold)}
+.rel-title{font-family:'Cormorant Garamond',serif;font-size:0.88rem;color:var(--cream);line-height:1.3;margin-bottom:0.2rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rel-author{font-size:0.68rem;color:var(--muted);letter-spacing:0.04em;margin-bottom:0.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rel-price{font-size:0.82rem;color:var(--gold);font-weight:600}
 
 /* CART SIDEBAR (same as homepage) */
 .cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9990;opacity:0;pointer-events:none;transition:opacity 0.35s}
@@ -527,6 +530,7 @@ function closeSamplePdf() {
 // ESC closes either modal
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
+  if (document.getElementById('srchOverlay')?.classList.contains('open')) { closeSiteSearch(); return; }
   if (document.getElementById('lightbox')?.classList.contains('show')) closeLightbox();
   if (document.getElementById('pdfModal')?.classList.contains('show')) closeSamplePdf();
 });
@@ -1054,8 +1058,8 @@ function renderBookstagram() {
     if (isVideo) {
       const poster = it.poster ? ` poster="${esc(it.poster)}"` : '';
       return `
-        <div class="bkg-card" onclick="bkgPlay(this)">
-          <video src="${esc(it.src)}"${poster} preload="metadata" playsinline muted loop></video>
+        <div class="bkg-card is-playing" onclick="bkgPlay(this)">
+          <video src="${esc(it.src)}"${poster} autoplay muted playsinline loop preload="auto"></video>
           <div class="bkg-play">▶</div>
           ${igChip}${cap}
         </div>`;
@@ -1080,25 +1084,71 @@ window.bkgPlay = function(card) {
   else          { v.pause(); card.classList.remove('is-playing'); }
 };
 
+// Auto-mark cards whose video is already playing (autoplay case)
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.bkg-card video').forEach(function(v) {
+    if (!v.paused) v.closest('.bkg-card')?.classList.add('is-playing');
+    v.addEventListener('play', function() { v.closest('.bkg-card')?.classList.add('is-playing'); });
+    v.addEventListener('pause', function() { v.closest('.bkg-card')?.classList.remove('is-playing'); });
+  });
+});
+
 // Expose social-proof JSON to renderer
 window.SOCIAL_PROOF = SOCIAL_PROOF;
 
-// ── Related books ─────────────────────────────────────────────────────────
+// ── Related books — scored by author › category › tab ────────────────────
 function renderRelated(b) {
-  const related = BOOKS.filter(x => x.cat === b.cat && x.url !== b.url).slice(0, 4);
-  if (!related.length) return;
+  // Score every book that isn't the current one
+  const authorNorm = (b.a || '').toLowerCase().trim();
+  const scored = BOOKS
+    .filter(x => x.url !== b.url && x.slug !== b.slug)
+    .map(x => {
+      let score = 0;
+      const xAuthor = (x.a || '').toLowerCase().trim();
+      // Same author — strongest signal (catches series books)
+      if (xAuthor && xAuthor === authorNorm) score += 8;
+      // Partial author match (shared word — e.g. both "Ana Huang" books)
+      else if (authorNorm && xAuthor) {
+        const aParts = authorNorm.split(/\s+/);
+        const xParts = xAuthor.split(/\s+/);
+        if (aParts.some(w => w.length > 2 && xParts.includes(w))) score += 3;
+      }
+      // Same category
+      if (x.cat && x.cat === b.cat) score += 4;
+      // Same broad tab (Fiction / Non-Fiction / Hindi / etc.)
+      if (x.tab && x.tab === b.tab) score += 1;
+      // Slight preference for books with images & reviews
+      if (x.img) score += 0.5;
+      return { x, score };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map(({ x }) => x);
+
+  // Fallback: same category if no author matches at all
+  const pool = scored.length >= 3 ? scored
+    : BOOKS.filter(x => x.cat === b.cat && x.url !== b.url && x.slug !== b.slug).slice(0, 6);
+
+  if (!pool.length) return;
+
+  const heading = scored.length && scored[0].a === b.a
+    ? `More by <em>${esc(b.a)}</em>`
+    : `You May Also <em>Like</em>`;
+
   document.getElementById('relatedContent').innerHTML = `
     <div class="related">
-      <h2 class="related-title">More from <em>${esc(b.cat)}</em></h2>
+      <h2 class="related-title">${heading}</h2>
       <div class="related-grid">
-        ${related.map(r => `
-          <div class="rel-card" onclick="location.href='/product/${r.slug}/'">
+        ${pool.map(r => `
+          <a class="rel-card" href="/product/${r.slug}/" style="text-decoration:none;display:block">
             <div class="rel-cover">
               ${r.img ? `<img src="${esc(r.img)}" alt="${esc(r.t)}" loading="lazy"/>` : ''}
             </div>
             <div class="rel-title">${esc(r.t)}</div>
+            <div class="rel-author">${esc(r.a || '')}</div>
             <div class="rel-price">${esc(r.p)}</div>
-          </div>`).join('')}
+          </a>`).join('')}
       </div>
     </div>
   `;

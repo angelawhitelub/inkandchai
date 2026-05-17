@@ -1442,7 +1442,7 @@ HTML = r"""<!DOCTYPE html>
 </section>
 
 <!-- KING OF GLUTTONY FEATURED BANNER -->
-<a class="kog-banner-wrap" href="/product/?id=king-of-gluttony-ana-huang-OF-AH" aria-label="Shop King of Gluttony by Ana Huang — ₹299">
+<a class="kog-banner-wrap" href="/product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-ny-ah/" aria-label="Shop King of Gluttony by Ana Huang — ₹299">
   <div class="kog-banner">
     <!-- Spark particles -->
     <div class="kog-spark kog-spark-1"></div>
@@ -2938,18 +2938,21 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
   .bkg-title{font-size:1.25rem}
 }
 
-/* RELATED */
-.related{max-width:1100px;margin:0 auto;padding:0 2rem 6rem}
+/* RELATED / YOU MAY ALSO LIKE */
+.related{max-width:1260px;margin:0 auto;padding:0 2rem 6rem}
 .related-title{font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:400;color:var(--white);margin-bottom:2rem}
 .related-title em{font-style:italic;color:var(--gold-light)}
-.related-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem}
-@media(max-width:780px){.related-grid{grid-template-columns:repeat(2,1fr)}}
-.rel-card{cursor:pointer;transition:opacity 0.2s}
-.rel-card:hover{opacity:0.85}
-.rel-cover{aspect-ratio:2/3;background:var(--bg2);border:1px solid var(--border);overflow:hidden;margin-bottom:0.8rem}
+.related-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:1.2rem}
+@media(max-width:1100px){.related-grid{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:780px){.related-grid{grid-template-columns:repeat(2,1fr);gap:.9rem}}
+.rel-card{cursor:pointer;transition:transform 0.2s,border-color 0.2s;border:1px solid transparent;color:inherit}
+.rel-card:hover{transform:translateY(-3px)}
+.rel-card:hover .rel-cover{border-color:rgba(201,168,76,0.55)}
+.rel-cover{aspect-ratio:2/3;background:var(--bg2);border:1px solid var(--border);overflow:hidden;margin-bottom:0.65rem;transition:border-color 0.2s}
 .rel-cover img{width:100%;height:100%;object-fit:contain;display:block;background:#1a1208}
-.rel-title{font-family:'Cormorant Garamond',serif;font-size:0.95rem;color:var(--cream);line-height:1.3;margin-bottom:0.2rem}
-.rel-price{font-size:0.85rem;color:var(--gold)}
+.rel-title{font-family:'Cormorant Garamond',serif;font-size:0.88rem;color:var(--cream);line-height:1.3;margin-bottom:0.2rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rel-author{font-size:0.68rem;color:var(--muted);letter-spacing:0.04em;margin-bottom:0.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rel-price{font-size:0.82rem;color:var(--gold);font-weight:600}
 
 /* CART SIDEBAR (same as homepage) */
 .cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9990;opacity:0;pointer-events:none;transition:opacity 0.35s}
@@ -3722,22 +3725,59 @@ document.addEventListener('DOMContentLoaded', function() {
 // Expose social-proof JSON to renderer
 window.SOCIAL_PROOF = SOCIAL_PROOF;
 
-// ── Related books ─────────────────────────────────────────────────────────
+// ── Related books — scored by author › category › tab ────────────────────
 function renderRelated(b) {
-  const related = BOOKS.filter(x => x.cat === b.cat && x.url !== b.url).slice(0, 4);
-  if (!related.length) return;
+  // Score every book that isn't the current one
+  const authorNorm = (b.a || '').toLowerCase().trim();
+  const scored = BOOKS
+    .filter(x => x.url !== b.url && x.slug !== b.slug)
+    .map(x => {
+      let score = 0;
+      const xAuthor = (x.a || '').toLowerCase().trim();
+      // Same author — strongest signal (catches series books)
+      if (xAuthor && xAuthor === authorNorm) score += 8;
+      // Partial author match (shared word — e.g. both "Ana Huang" books)
+      else if (authorNorm && xAuthor) {
+        const aParts = authorNorm.split(/\s+/);
+        const xParts = xAuthor.split(/\s+/);
+        if (aParts.some(w => w.length > 2 && xParts.includes(w))) score += 3;
+      }
+      // Same category
+      if (x.cat && x.cat === b.cat) score += 4;
+      // Same broad tab (Fiction / Non-Fiction / Hindi / etc.)
+      if (x.tab && x.tab === b.tab) score += 1;
+      // Slight preference for books with images & reviews
+      if (x.img) score += 0.5;
+      return { x, score };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map(({ x }) => x);
+
+  // Fallback: same category if no author matches at all
+  const pool = scored.length >= 3 ? scored
+    : BOOKS.filter(x => x.cat === b.cat && x.url !== b.url && x.slug !== b.slug).slice(0, 6);
+
+  if (!pool.length) return;
+
+  const heading = scored.length && scored[0].a === b.a
+    ? `More by <em>${esc(b.a)}</em>`
+    : `You May Also <em>Like</em>`;
+
   document.getElementById('relatedContent').innerHTML = `
     <div class="related">
-      <h2 class="related-title">More from <em>${esc(b.cat)}</em></h2>
+      <h2 class="related-title">${heading}</h2>
       <div class="related-grid">
-        ${related.map(r => `
-          <div class="rel-card" onclick="location.href='/product/${r.slug}/'">
+        ${pool.map(r => `
+          <a class="rel-card" href="/product/${r.slug}/" style="text-decoration:none;display:block">
             <div class="rel-cover">
               ${r.img ? `<img src="${esc(r.img)}" alt="${esc(r.t)}" loading="lazy"/>` : ''}
             </div>
             <div class="rel-title">${esc(r.t)}</div>
+            <div class="rel-author">${esc(r.a || '')}</div>
             <div class="rel-price">${esc(r.p)}</div>
-          </div>`).join('')}
+          </a>`).join('')}
       </div>
     </div>
   `;
@@ -3945,6 +3985,42 @@ def product_json_ld(book):
         }
     return json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
 
+def related_books_for(book, count=6):
+    """Return up to `count` related books scored by author › category › tab."""
+    current_url  = book.get("url", "")
+    current_slug = book.get("slug", "")
+    author_norm  = (book.get("a") or "").lower().strip()
+    cat          = book.get("cat", "")
+    tab          = book.get("tab", "")
+
+    def score(b):
+        s = 0
+        ba = (b.get("a") or "").lower().strip()
+        # Exact same author — strongest signal (catches series)
+        if ba and ba == author_norm: s += 8
+        elif author_norm and ba:
+            # Partial author match (shared meaningful word)
+            a_words = set(w for w in author_norm.split() if len(w) > 2)
+            b_words = set(w for w in ba.split() if len(w) > 2)
+            if a_words & b_words: s += 3
+        if b.get("cat") == cat: s += 4
+        if b.get("tab") == tab: s += 1
+        if b.get("img"): s += 0.5
+        return s
+
+    candidates = [
+        b for b in slim
+        if b.get("url") != current_url and b.get("slug") != current_slug
+    ]
+    scored = sorted(candidates, key=score, reverse=True)
+    # Keep only books with at least a minimal relevance score
+    filtered = [b for b in scored if score(b) > 0]
+    # Fallback to same category when nothing scores
+    if len(filtered) < 3:
+        filtered = [b for b in candidates if b.get("cat") == cat]
+    return filtered[:count]
+
+
 def static_product_html(book):
     title = html_escape(book.get("t", "Book"))
     author = html_escape(book.get("a") or "Various")
@@ -4087,6 +4163,44 @@ def static_product_html(book):
             f'{"".join(cards)}'
             f'</div></div></section>'
         )
+
+    # ── You May Also Like section (pre-computed at build time) ──────────────
+    related_books = related_books_for(book)
+    author_label = html_escape(book.get("a") or "")
+    if related_books and related_books[0].get("a", "").lower().strip() == (book.get("a") or "").lower().strip():
+        also_heading = f'More by <em>{author_label}</em>'
+    else:
+        also_heading = 'You May Also <em>Like</em>'
+
+    also_like_html = ""
+    if related_books:
+        cards_html = ""
+        for r in related_books:
+            r_title  = html_escape(r.get("t", ""))
+            r_author = html_escape(r.get("a", ""))
+            r_price  = html_escape(r.get("p", ""))
+            r_img    = html_escape(r.get("img", ""))
+            r_slug   = r.get("slug", "")
+            img_tag  = f'<img src="{r_img}" alt="{r_title}" loading="lazy" style="width:100%;height:100%;object-fit:contain;display:block;background:#1a1208"/>' if r_img else ""
+            cards_html += (
+                f'<a href="/product/{r_slug}/" style="text-decoration:none;color:inherit;display:block">'
+                f'<div style="aspect-ratio:2/3;background:#1a1208;border:1px solid rgba(201,168,76,.18);overflow:hidden;margin-bottom:.6rem;transition:border-color .2s">'
+                f'{img_tag}</div>'
+                f'<div style="font-family:\'Cormorant Garamond\',serif;font-size:.88rem;color:#f0e8d8;line-height:1.3;margin-bottom:.15rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{r_title}</div>'
+                f'<div style="font-size:.68rem;color:#a09080;letter-spacing:.04em;margin-bottom:.18rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{r_author}</div>'
+                f'<div style="font-size:.82rem;color:#c9a84c;font-weight:600">{r_price}</div>'
+                f'</a>'
+            )
+        also_like_html = (
+            f'<section style="max-width:1260px;margin:0 auto;padding:2.5rem 1.5rem 4rem;border-top:1px solid rgba(201,168,76,.15)">'
+            f'<h2 style="font-family:\'Cormorant Garamond\',serif;font-size:1.7rem;font-weight:400;color:#faf7f2;margin:0 0 1.6rem">'
+            f'{also_heading}</h2>'
+            f'<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:1.1rem" class="also-grid">'
+            f'{cards_html}'
+            f'</div>'
+            f'</section>'
+        )
+
     return f"""<!DOCTYPE html>
 <html lang="{'hi' if is_hindi_book(book) else 'en'}">
 <head>
@@ -4117,6 +4231,8 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 .desc,.details{{border-top:1px solid var(--border);padding-top:1.2rem;margin-top:1.2rem;color:var(--muted);font-size:.9rem;line-height:1.8}} .label{{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}} .details dl{{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}} .details dt{{color:var(--gold)}} .details dd{{margin:0;color:var(--cream)}}
 .reviews{{border:1px solid var(--border);background:rgba(138,106,31,.055);padding:1.15rem;margin-top:1.3rem;color:var(--muted);line-height:1.7}} .review-head{{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}} .review-head h2{{font-size:1.45rem;margin:.1rem 0 0}} .score{{text-align:right;flex-shrink:0}} .score strong{{display:block;font-family:"Cormorant Garamond",serif;font-size:2.2rem;color:var(--gold);line-height:.9}} .score span{{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}} .review-media{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:.9rem}} .review-media figure{{margin:0;border:1px solid var(--border);background:#fff;overflow:hidden}} .review-media img,.review-media video{{display:block;width:100%;height:240px;object-fit:cover;background:#f4efe7}} .review-media figcaption{{padding:.65rem .75rem;font-size:.65rem;letter-spacing:.08em;color:var(--muted)}}
 @media(max-width:760px){{.wrap{{display:block;padding-bottom:8rem}} .cover{{margin-bottom:1.2rem}} .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;background:rgba(13,11,8,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);box-shadow:0 -10px 26px rgba(60,40,10,.12)}} .trust{{grid-template-columns:1fr}} .review-head{{display:block}} .score{{text-align:left;margin-top:.7rem}} .review-media{{grid-template-columns:1fr}} .review-media img,.review-media video{{height:auto;max-height:360px;object-fit:contain}}}}
+@media(max-width:1100px){{.also-grid{{grid-template-columns:repeat(4,1fr)!important}}}}
+@media(max-width:640px){{.also-grid{{grid-template-columns:repeat(2,1fr)!important;gap:.7rem!important}}}}
 html[data-theme="light"] .actions{{background:rgba(250,247,242,.98)}}
 </style>
 </head>
@@ -4147,6 +4263,7 @@ html[data-theme="light"] .actions{{background:rgba(250,247,242,.98)}}
   </section>
 </main>
 {reviews_html}
+{also_like_html}
 {bkg_html}
 
 <!-- Image lightbox -->
