@@ -616,7 +616,11 @@ function orderPaymentMeta(o) {
 
 function isPartialOrder(o) {
   const meta = orderPaymentMeta(o);
-  return meta.mode === 'partial_cod' || o?.status === 'partial_cod_pending' || o?.status === 'pending_partial_phonepe';
+  const status = String(o?.status || '').toLowerCase();
+  return meta.mode === 'partial_cod' ||
+         status === 'partial_cod_pending' ||
+         status === 'pending_partial_phonepe' ||
+         status.includes('partial');
 }
 
 function orderPaymentBreakdown(o) {
@@ -625,12 +629,14 @@ function orderPaymentBreakdown(o) {
   const paid = o?.amount_paise ? (o.amount_paise / 100) : 0;
   const meta = orderPaymentMeta(o);
   if (isPartialOrder(o)) {
-    const balance = Number(meta.balance) || 0;
+    // balance from meta; fall back to itemTotal − deposit if meta is absent
+    const balance = Number(meta.balance) || Math.max(0, itemTotal - paid);
     const full = Number(meta.full_total) || (paid + balance) || itemTotal;
     return { full, paid, balance, method: 'Partial COD' };
   }
+  const status = String(o?.status || '').toLowerCase();
+  const isCOD = status === 'cod_pending' || status === 'partial_cod_pending' || !o?.razorpay_payment_id;
   const full = paid || itemTotal;
-  const isCOD = o?.status === 'cod_pending' || !o?.razorpay_payment_id;
   return { full, paid: isCOD ? 0 : paid, balance: isCOD ? full : 0, method: isCOD ? 'Cash on Delivery' : 'Online' };
 }
 
