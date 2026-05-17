@@ -141,6 +141,7 @@ exports.handler = async (event) => {
     }
 
     let trackingUrl = '';
+    let trackingWarning = null;
     // Then, if shipped, try to attach tracking info — tolerate missing columns
     // gracefully so this works even before SQL_MIGRATIONS.md has been run.
     if (status === 'shipped' && tracking_id) {
@@ -153,19 +154,14 @@ exports.handler = async (event) => {
       };
       const { error: trkErr } = await supabase.from('orders').update(trackingPayload).eq('id', id);
       if (trkErr) {
-        // Likely a missing-column error — swallow and warn so the status update
-        // still succeeds. The admin sees a hint that they need to run the
-        // migration.
+        // Likely a missing-column error — log and continue. Do NOT return early
+        // here: we still need to send the WhatsApp + email notifications below.
         console.warn('Tracking columns update failed (run SQL_MIGRATIONS.md):', trkErr.message);
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({
-          success: true,
-          tracking_url: trackingUrl,
-          warning: 'Status updated, but tracking info was NOT saved. Run the SQL migration in SQL_MIGRATIONS.md to enable tracking storage. Until then the customer email will still be sent (with the URL) but tracking won\'t persist.',
-        }) };
+        trackingWarning = 'Status updated, but tracking info was NOT saved. Run the SQL migration in SQL_MIGRATIONS.md to enable tracking storage.';
       }
     }
 
-    // Fire shipment email + WhatsApp regardless of whether columns persisted (non-fatal)
+    // Fire shipment email + WhatsApp — always runs when shipped (non-fatal if tracking save failed)
     if (status === 'shipped') {
       const { data: order } = await supabase.from('orders').select('*').eq('id', id).maybeSingle();
       if (order) {
@@ -195,7 +191,9 @@ exports.handler = async (event) => {
       }
     }
 
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, tracking_url: trackingUrl || null }) };
+    const result = { success: true, tracking_url: trackingUrl || null };
+    if (trackingWarning) result.warning = trackingWarning;
+    return { statusCode: 200, headers: CORS, body: JSON.stringify(result) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
