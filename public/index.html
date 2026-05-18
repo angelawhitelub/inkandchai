@@ -1687,31 +1687,31 @@ function renderBooks() {
     const wishlisted = window.isWishlisted ? isWishlisted(b.url) : false;
     const priceNum = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
     return `
-    <div class="book-card" style="cursor:pointer;">
-      <div class="book-cover" style="position:relative;" onclick="location.href='/product/${b.slug}/'">
+    <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
+      <div class="book-cover" style="position:relative;">
         ${b.n ? '<span class="new-badge">NEW</span>' : ''}
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
              onerror="this.style.display='none'" />
         <button class="wish-btn ${wishlisted ? 'wishlisted' : ''}"
           data-url="${escHtml(b.url)}"
           title="${wishlisted ? 'Remove from wishlist' : 'Save to wishlist'}"
-          onclick="event.stopPropagation(); if(window.toggleWishlist) toggleWishlist({url:'${escHtml(b.url)}',title:'${escHtml(b.t).replace(/'/g,"\\'")}',img:'${escHtml(b.img)}',price:${priceNum}}); updateWishlistBadge();">
+          onclick="event.preventDefault(); event.stopPropagation(); if(window.toggleWishlist) toggleWishlist({url:'${escHtml(b.url)}',title:'${escHtml(b.t).replace(/'/g,"\\'")}',img:'${escHtml(b.img)}',price:${priceNum}}); updateWishlistBadge();">
           ${wishlisted ? '♥' : '♡'}
         </button>
       </div>
-      <div class="book-name" onclick="location.href='/product/${b.slug}/'">${escHtml(b.t)}</div>
-      <div class="book-author" onclick="location.href='/product/${b.slug}/'">${escHtml(b.a || '')}</div>
+      <div class="book-name">${escHtml(b.t)}</div>
+      <div class="book-author">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
       </div>
-      <button class="btn-add-card" onclick="event.stopPropagation(); addToCartById(this)"
+      <button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
         data-url="${escHtml(b.url)}"
         data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}"
         data-price="${priceNum}"
         data-img="${escHtml(b.img)}">+ Add to Cart</button>
-    </div>`;
+    </a>`;
   }).join('');
 
   const btn = document.getElementById('loadMoreBtn');
@@ -1769,26 +1769,23 @@ function openCollection(catsEncoded, name) {
   visibleCount = Math.min(matches.length, 200);
   const grid = document.getElementById('booksGrid');
   grid.innerHTML = matches.slice(0, visibleCount).map(b => `
-    <div class="book-card" style="cursor:pointer;">
-      <div class="book-cover" onclick="location.href='/product/${b.slug}/'">
+    <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
+      <div class="book-cover">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
-        <div class="book-cover-overlay">
-          <div class="book-cover-title">${escHtml(b.t)}</div>
-        </div>
       </div>
-      <div class="book-name" onclick="location.href='/product/${b.slug}/'">${escHtml(b.t)}</div>
-      <div class="book-author" onclick="location.href='/product/${b.slug}/'">${escHtml(b.a || '')}</div>
+      <div class="book-name">${escHtml(b.t)}</div>
+      <div class="book-author">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
       </div>
-      <button class="btn-add-card" onclick="event.stopPropagation(); addToCartById(this)"
+      <button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
         data-url="${escHtml(b.url)}"
         data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}"
         data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
         data-img="${escHtml(b.img)}">+ Add to Cart</button>
-    </div>
+    </a>
   `).join('');
   const info = document.getElementById('booksCount');
   if (info) info.textContent = `Showing ${matches.length} books from ${name}`;
@@ -1968,17 +1965,17 @@ function renderShelf(rowId, filterFn, limit) {
   if (!el || !books.length) { if (el) el.closest('.shelf-block').style.display='none'; return; }
   el.innerHTML = books.map(b => {
     const price = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
-    return `<div class="shelf-card" onclick="location.href='/product/${b.slug}/'">
+    return `<a class="shelf-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
       <div class="shelf-card-cover">
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
       </div>
       <div class="shelf-card-name">${escHtml(b.t)}</div>
       <div class="shelf-card-price">${escHtml(b.p)}</div>
-      <button class="shelf-card-btn" onclick="event.stopPropagation(); addToCartById(this)"
+      <button class="shelf-card-btn" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
         data-url="${escHtml(b.url)}" data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}" data-price="${price}"
         data-img="${escHtml(b.img)}">+ Add to Cart</button>
-    </div>`;
+    </a>`;
   }).join('');
 }
 
@@ -2038,24 +2035,24 @@ function renderBooksForCat(cat) {
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
   grid.innerHTML = slice.map(b => `
-    <div class="book-card" style="cursor:pointer;">
-      <div class="book-cover" onclick="location.href='/product/${b.slug}/'" style="position:relative;">
+    <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
+      <div class="book-cover" style="position:relative;">
         ${b.n ? '<span class="new-badge">NEW</span>' : ''}
         <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
       </div>
-      <div class="book-name" onclick="location.href='/product/${b.slug}/'">${escHtml(b.t)}</div>
-      <div class="book-author" onclick="location.href='/product/${b.slug}/'">${escHtml(b.a || '')}</div>
+      <div class="book-name">${escHtml(b.t)}</div>
+      <div class="book-author">${escHtml(b.a || '')}</div>
       <div class="book-meta">
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
       </div>
-      <button class="btn-add-card" onclick="event.stopPropagation(); addToCartById(this)"
+      <button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
         data-url="${escHtml(b.url)}"
         data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}"
         data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
         data-img="${escHtml(b.img)}">+ Add to Cart</button>
-    </div>
+    </a>
   `).join('');
   const btn = document.getElementById('loadMoreBtn');
   const info = document.getElementById('booksCount');
