@@ -4288,7 +4288,7 @@ html[data-theme="light"] .actions{{background:rgba(250,247,242,.98)}}
     <div class="author">by {author}</div>
 {order_badge_html}
 {rating_line_html}
-    <div><span class="price" data-product-price>{price}</span>{f'<span class="orig" data-product-original-price>{orig}</span>' if orig else ''}</div>
+    <div><span class="price" data-product-price style="opacity:0;transition:opacity 0.15s">{price}</span>{f'<span class="orig" data-product-original-price style="opacity:0;transition:opacity 0.15s">{orig}</span>' if orig else ''}</div>
     <span class="stock">In Stock</span>
     <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
     <div class="actions">
@@ -4333,15 +4333,20 @@ function priceText(value) {{
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? '₹ ' + n.toLocaleString('en-IN', {{ maximumFractionDigits: 0 }}) : '';
 }}
+function revealPrice() {{
+  document.querySelectorAll('[data-product-price],[data-product-original-price]').forEach(el => {{
+    el.style.opacity = '1';
+  }});
+}}
 async function applyRuntimeProductOverride() {{
   try {{
     const slug = location.pathname.split('/').filter(Boolean)[1] || '';
     const res = await fetch('/.netlify/functions/get-product-overrides', {{ cache: 'no-store' }});
-    if (!res.ok) return;
+    if (!res.ok) {{ revealPrice(); return; }}
     const data = await res.json();
     const key = String(slug || '').toLowerCase();
     const override = (data.overrides || []).find(o => String(o.slug || '').toLowerCase() === key);
-    if (!override) return;
+    if (!override) {{ revealPrice(); return; }}
     if (override.title) {{
       currentItem.title = override.title;
       const h1 = document.querySelector('h1');
@@ -4374,6 +4379,8 @@ async function applyRuntimeProductOverride() {{
     }}
   }} catch (err) {{
     console.warn('Product override unavailable:', err.message);
+  }} finally {{
+    revealPrice();
   }}
 }}
 function setBtnLoading(btn,on) {{
