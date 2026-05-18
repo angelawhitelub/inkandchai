@@ -186,6 +186,20 @@ for b in books:
 slim.sort(key=lambda x: (-x["n"], -(x["ts"] or "")[:19].count("0")))  # new first
 
 books_js = json.dumps(slim, ensure_ascii=False)
+
+# ── Lightweight version for homepage/category/collection pages ───────────────
+# The homepage grid never shows descriptions, ISBNs, reviews, PDFs, etc.
+# Stripping those fields cuts the embedded JSON from ~2.3MB to ~600KB,
+# reducing bandwidth by ~1.5MB per homepage visit (uncompressed).
+# We keep desc truncated to 150 chars so inline search still works.
+_HOMEPAGE_KEEP = {"t","a","p","op","img","url","slug","cat","tab","n","back_img","order_badge"}
+slim_homepage = [
+    {k: (v[:150] if k == "desc" else v)
+     for k, v in b.items()
+     if k in _HOMEPAGE_KEEP or k == "desc"}
+    for b in slim
+]
+books_js_homepage = json.dumps(slim_homepage, ensure_ascii=False)
 recent_order_activity_path = Path(__file__).parent / "data" / "recent_order_activity.json"
 try:
     recent_order_activity = json.loads(recent_order_activity_path.read_text()) if recent_order_activity_path.exists() else []
@@ -1425,16 +1439,16 @@ HTML = r"""<!DOCTYPE html>
   <div class="hero-right">
     <div class="hero-cover-wall" aria-label="Hindi self-help featured books">
       <a class="hero-cover-card featured" href="/product/can-t-hurt-me-hindi-ME-HI/" data-label="Can't Hurt Me · Hindi">
-        <img src="/images/cant-hurt-me-hindi.jpg" alt="Can't Hurt Me Hindi edition" loading="eager" fetchpriority="high"/>
+        <picture><source srcset="/images/cant-hurt-me-hindi.webp" type="image/webp"><img src="/images/cant-hurt-me-hindi.jpg" alt="Can't Hurt Me Hindi edition" loading="eager" fetchpriority="high"/></picture>
       </a>
       <a class="hero-cover-card" href="/product/never-finished-hindi-ED-HI/" data-label="Never Finished">
-        <img src="/images/never-finished-hindi.jpg" alt="Never Finished Hindi edition" loading="eager"/>
+        <picture><source srcset="/images/never-finished-hindi.webp" type="image/webp"><img src="/images/never-finished-hindi.jpg" alt="Never Finished Hindi edition" loading="eager"/></picture>
       </a>
       <a class="hero-cover-card featured" href="/product/the-hard-thing-about-hard-things-hindi-NG-HI/" data-label="The Hard Thing · Hindi">
-        <img src="/images/hard-thing-about-hard-things-hindi.jpg" alt="The Hard Thing About Hard Things Hindi edition" loading="eager"/>
+        <picture><source srcset="/images/hard-thing-about-hard-things-hindi.webp" type="image/webp"><img src="/images/hard-thing-about-hard-things-hindi.jpg" alt="The Hard Thing About Hard Things Hindi edition" loading="eager"/></picture>
       </a>
       <a class="hero-cover-card" href="/product/thinking-fast-and-slow-hindi-OW-HI/" data-label="Thinking, Fast and Slow">
-        <img src="/images/thinking-fast-slow-hindi.jpg" alt="Thinking Fast and Slow Hindi edition" loading="eager"/>
+        <picture><source srcset="/images/thinking-fast-slow-hindi.webp" type="image/webp"><img src="/images/thinking-fast-slow-hindi.jpg" alt="Thinking Fast and Slow Hindi edition" loading="eager"/></picture>
       </a>
       <a class="hero-cover-card" href="/product/hindi-rich-dad-poor-dad-80989/" data-label="Rich Dad Poor Dad">
         <img src="RICH_DAD_HINDI_IMAGE_PLACEHOLDER" alt="Rich Dad Poor Dad Hindi edition" loading="lazy"/>
@@ -1460,8 +1474,8 @@ HTML = r"""<!DOCTYPE html>
     <div class="kog-crown">♛</div>
     <!-- Book image (clickable via parent link) -->
     <div class="kog-book-wrap">
-      <img src="/images/king-of-gluttony.jpg" alt="King of Gluttony by Ana Huang" width="200" height="300"
-           onerror="this.parentElement.style.display='none'" loading="eager" />
+      <picture><source srcset="/images/king-of-gluttony.webp" type="image/webp"><img src="/images/king-of-gluttony.jpg" alt="King of Gluttony by Ana Huang" width="200" height="300"
+           onerror="this.parentElement.style.display='none'" loading="eager" /></picture>
     </div>
     <!-- Price tag -->
     <div class="kog-price">299</div>
@@ -2653,7 +2667,7 @@ document.querySelectorAll('.stat-num').forEach(el => {
 
 # ── Inject real data ─────────────────────────────────────────────────────────
 import os
-HTML = HTML.replace("BOOKS_DATA_PLACEHOLDER",         books_js)
+HTML = HTML.replace("BOOKS_DATA_PLACEHOLDER",         books_js_homepage)  # lightweight — no heavy desc/reviews
 HTML = HTML.replace("COLLECTIONS_DATA_PLACEHOLDER",   json.dumps(coll_data, ensure_ascii=False))
 HTML = HTML.replace("ALL_CATS_DATA_PLACEHOLDER",      all_cats_js)
 HTML = HTML.replace("NAV_CATEGORIES_PLACEHOLDER",     nav_categories_html)
@@ -5741,7 +5755,7 @@ function renderGrid() {
 </html>"""
 
 # Inject the same slim books data + collection metadata
-COLLECTION_HTML = COLLECTION_HTML.replace("BOOKS_DATA_PLACEHOLDER", books_js)
+COLLECTION_HTML = COLLECTION_HTML.replace("BOOKS_DATA_PLACEHOLDER", books_js_homepage)  # lightweight
 COLLECTION_HTML = COLLECTION_HTML.replace("COLLECTIONS_DATA_PLACEHOLDER", json.dumps(coll_data, ensure_ascii=False))
 COLLECTION_HTML = with_reader_activity(COLLECTION_HTML)
 
