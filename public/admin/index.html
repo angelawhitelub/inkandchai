@@ -615,12 +615,18 @@ function orderPaymentMeta(o) {
 }
 
 function isPartialOrder(o) {
-  const meta = orderPaymentMeta(o);
+  const items = Array.isArray(o?.cart_items) ? o.cart_items : [];
+  // Check _payment on ANY cart item (not just first) in case ordering varies
+  const anyPartialMeta = items.some(i => i?._payment?.mode === 'partial_cod');
+  const meta = items[0]?._payment || {};
   const status = String(o?.status || '').toLowerCase();
-  return meta.mode === 'partial_cod' ||
+  return anyPartialMeta ||
+         meta.mode === 'partial_cod' ||
          status === 'partial_cod_pending' ||
          status === 'pending_partial_phonepe' ||
-         status.includes('partial');
+         status.includes('partial') ||
+         // balance field present means a COD balance is still owed
+         Number(meta.balance) > 0;
 }
 
 function orderPaymentBreakdown(o) {
@@ -632,7 +638,8 @@ function orderPaymentBreakdown(o) {
     // balance from meta; fall back to itemTotal − deposit if meta is absent
     const balance = Number(meta.balance) || Math.max(0, itemTotal - paid);
     const full = Number(meta.full_total) || (paid + balance) || itemTotal;
-    return { full, paid, balance, method: 'Partial COD' };
+    // CSV shows "Cash on Delivery" — the balance is what the delivery agent collects
+    return { full, paid, balance, method: 'Cash on Delivery' };
   }
   const status = String(o?.status || '').toLowerCase();
   const isCOD = status === 'cod_pending' || status === 'partial_cod_pending' || !o?.razorpay_payment_id;

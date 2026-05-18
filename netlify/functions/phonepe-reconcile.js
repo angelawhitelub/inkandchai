@@ -123,7 +123,19 @@ async function reconcileOne(supabase, host, token, orderId) {
     .maybeSingle();
 
   if (!existing) return { orderId, result: 'not_in_db' };
-  if (existing.status === 'paid' || existing.status === 'partial_cod_pending') return { orderId, result: 'already_paid' };
+
+  // Never touch orders that have already been fulfilled or are partial COD
+  // (partial COD deposit is a one-time PhonePe charge; the remaining balance is
+  //  collected on delivery — PhonePe will report the original deposit order as
+  //  FAILED/CANCELLED once the checkout session expires, which must NOT cancel our order)
+  const cartMeta = Array.isArray(existing.cart_items) ? existing.cart_items[0]?._payment : null;
+  const isPartialCod = cartMeta?.mode === 'partial_cod' ||
+                       existing.status === 'partial_cod_pending' ||
+                       (existing.status || '').includes('partial');
+  if (isPartialCod) return { orderId, result: 'already_paid' };
+
+  const SAFE_STATUSES = new Set(['paid', 'confirmed', 'shipped', 'out_for_delivery', 'delivered', 'refunded']);
+  if (SAFE_STATUSES.has(existing.status)) return { orderId, result: 'already_processed' };
   if (existing.status === 'cancelled') return { orderId, result: 'already_cancelled' };
 
   // Hit PhonePe v2 status endpoint
