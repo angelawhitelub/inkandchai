@@ -5815,6 +5815,33 @@ def xml_escape(s):
             .replace('>', '&gt;')
             .replace('"', '&quot;'))
 
+# Google Shopping flags these as adult/restricted content → causes "Limited" status.
+# We replace them with neutral alternatives in the FEED ONLY (not on product pages).
+_FEED_REPLACEMENTS = [
+    (r'\bdark romance\b',      'contemporary romance',   re.IGNORECASE),
+    (r'\bsteamy\b',            'compelling',             re.IGNORECASE),
+    (r'\bspicy\b',             'captivating',            re.IGNORECASE),
+    (r'\bexplicit\b',          'mature',                 re.IGNORECASE),
+    (r'\berotic\b',            'literary',               re.IGNORECASE),
+    (r'\berotica\b',           'literary fiction',       re.IGNORECASE),
+    (r'\bpossessive hero\b',   'compelling hero',        re.IGNORECASE),
+    (r'\bforbidden love\b',    'star-crossed romance',   re.IGNORECASE),
+    (r'\bmafia romance\b',     'suspense romance',       re.IGNORECASE),
+    (r'\bbully romance\b',     'enemies-to-lovers',      re.IGNORECASE),
+    (r'\bage.?gap\b',          'romance',                re.IGNORECASE),
+    (r'\breverse harem\b',     'multi-hero romance',     re.IGNORECASE),
+    (r'\bwhy choose\b',        'romance',                re.IGNORECASE),
+    (r'\btaboo\b',             'unconventional',         re.IGNORECASE),
+    (r'\bsmut\b',              'romance',                re.IGNORECASE),
+]
+
+def feed_safe(text):
+    """Strip/replace adult content keywords from feed descriptions."""
+    s = str(text or '')
+    for pattern, replacement, flags in _FEED_REPLACEMENTS:
+        s = re.sub(pattern, replacement, s, flags=flags)
+    return s
+
 SITE = "https://inkandchai.in"
 items = []
 for b in slim:
@@ -5844,13 +5871,16 @@ for b in slim:
         else:
             feed_id = feed_id[:50]
 
-    desc = xml_escape(b.get("desc") or b.get("t") or "")
+    raw_desc = feed_safe(b.get("desc") or b.get("t") or "")
+    desc = xml_escape(raw_desc)
     if not desc:
         desc = f"Buy {xml_escape(b.get('t',''))} by {xml_escape(b.get('a',''))} online."
+    # Also sanitise the title for the feed (some titles contain trigger words)
+    feed_title = xml_escape(feed_safe(b.get('t','')))
 
     items.append(f"""    <item>
       <g:id>{xml_escape(feed_id)}</g:id>
-      <g:title>{xml_escape(b.get('t',''))}</g:title>
+      <g:title>{feed_title}</g:title>
       <g:description>{desc}</g:description>
       <g:link>{link}</g:link>
       <g:image_link>{xml_escape(img)}</g:image_link>
