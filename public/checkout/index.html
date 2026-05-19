@@ -961,6 +961,34 @@ function showSuccess(type, orderId, addr) {
   }
 })();
 
+// ── Google Shopping ?buy=SLUG handler ─────────────────────────────────────
+// When a customer arrives from Google Shopping via the checkout_link_template
+// (https://inkandchai.in/checkout/?buy={id}), pre-load that book into the cart.
+(async () => {
+  const buyId = new URLSearchParams(location.search).get('buy');
+  if (!buyId) return;
+  try {
+    const res = await fetch('/.netlify/functions/get-book?id=' + encodeURIComponent(buyId));
+    if (!res.ok) return;
+    const book = await res.json();
+    if (!book || !book.title) return;
+    const item = {
+      id:     book.slug,
+      url:    book.slug,
+      title:  book.title,
+      author: book.author || '',
+      price:  book.price,
+      img:    book.img || '',
+      qty:    1,
+    };
+    // Set as buy-now so checkout shows just this item
+    localStorage.setItem(BUY_NOW_KEY, JSON.stringify([item]));
+    // Clean ?buy= from URL so refresh doesn't re-trigger
+    history.replaceState({}, '', '/checkout/');
+    renderSummary();
+  } catch (e) { /* silently ignore — customer can add manually */ }
+})();
+
 // ── Init ───────────────────────────────────────────────────────────────────
 renderSummary();
 
