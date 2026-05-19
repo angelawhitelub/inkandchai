@@ -31,6 +31,34 @@ def make_slug(title, shopify_id):
         return "mother-mary-comes-to-me-hindi-edition-arundhati-roy"
     if str(shopify_id or "") == "CUSTOM-SHAKTI-GOGGINS-COMBO-3-HI":
         return "shakti-ke-48-niyam-cant-hurt-me-never-finished-hindi-combo-3-books"
+    if str(shopify_id or "") == "CUSTOM-HIDDEN-HINDU-TRILOGY-3":
+        return "hidden-hindu-complete-trilogy-3-books-akshat-gupta"
+    if str(shopify_id or "") == "CUSTOM-COLLEEN-HOOVER-STARTER-3":
+        return "colleen-hoover-3-book-starter-set-it-ends-verity-reminders"
+    if str(shopify_id or "") == "CUSTOM-ANA-HUANG-TWISTED-SPECIAL-3":
+        return "ana-huang-twisted-special-editions-3-pack"
+    if str(shopify_id or "") == "CUSTOM-ROBERT-GREENE-POWER-TRILOGY-3":
+        return "robert-greene-power-trilogy-48-laws-human-nature-seduction"
+    if str(shopify_id or "") == "CUSTOM-MARK-DOUGLAS-TRADING-DUO-2":
+        return "mark-douglas-trading-duo-zone-disciplined-trader"
+    if str(shopify_id or "") == "CUSTOM-HINDI-MOTIVATION-BIG-4":
+        return "hindi-motivation-big-4-atomic-habits-rich-dad-shakti-think"
+    if str(shopify_id or "") == "CUSTOM-FELUDA-4-PACK":
+        return "feluda-complete-mysteries-4-book-set-satyajit-ray"
+    if str(shopify_id or "") == "CUSTOM-STOIC-ESSENTIALS-TRIO-3":
+        return "stoic-essentials-trio-ego-daily-stoic-meditations"
+    if str(shopify_id or "") == "CUSTOM-ENID-BLYTON-FAMOUS-FIVE-1-3":
+        return "enid-blyton-famous-five-books-1-2-3-starter-set"
+    if str(shopify_id or "") == "CUSTOM-WEALTH-PACK-299":
+        return "wealth-starter-pack-psychology-of-money-rich-dad-think-grow"
+    if str(shopify_id or "") == "CUSTOM-KIDS-ACTIVITY-4-PACK":
+        return "kids-activity-4-pack-pete-cat-wipe-clean-learning"
+    if str(shopify_id or "") == "CUSTOM-CLASSIC-POCKET-TRIO-3":
+        return "classic-pocket-trio-diary-young-girl-alice-meditations"
+    if str(shopify_id or "") == "CUSTOM-OSHO-DUO-2":
+        return "osho-duo-dhyan-darshan-nari-aur-kranti"
+    if str(shopify_id or "") == "CUSTOM-ANA-HUANG-KINGS-SIN-1-3":
+        return "ana-huang-kings-of-sin-series-books-1-2-3"
     slug = re.sub(r'[^a-z0-9]+', '-', (title or '').lower())
     slug = slug.strip('-')[:55]
     suffix = str(shopify_id or '')[-5:]
