@@ -27,6 +27,7 @@ function makeSlug(title, shopifyId) {
   if (sid === 'CUSTOM-100M-HINDI-COMBO-2') return '100m-leads-hindi-100m-offers-hindi-combo-2-books';
   if (sid === 'CUSTOM-GOGGINS-COMBO-HI') return 'david-goggins-combo-hindi-cant-hurt-me-never-finished';
   if (sid === 'CUSTOM-MOTHER-MARY-COMES-TO-ME-HI-ARUNDHATI-ROY') return 'mother-mary-comes-to-me-hindi-edition-arundhati-roy';
+  if (sid === 'CUSTOM-OFF-CAMPUS-COMBO-3-EK') return 'the-deal-the-mistake-the-score-elle-kennedy-off-campus-combo';
   const base = String(title || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
