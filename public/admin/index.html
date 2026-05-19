@@ -544,7 +544,12 @@ async function fetchOrders(reset = false) {
 
   try {
     const params = new URLSearchParams({ page, limit: PAGE });
-    if (currentFilter && currentFilter !== '__unshipped') params.set('status', currentFilter);
+    // partial_cod_pending is detected client-side via isPartialOrder() across
+    // multiple status values — don't pass it as a server filter or we miss
+    // confirmed/shipped partial orders that still need balance collection.
+    if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending') {
+      params.set('status', currentFilter);
+    }
 
     const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
       headers: { 'X-Admin-Key': adminKey },
@@ -737,6 +742,7 @@ function applyFilters() {
 
   filtered = allOrders.filter(o => {
     if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
+    if (currentFilter === 'partial_cod_pending' && !isPartialOrder(o)) return false;
     // Search
     if (q) {
       const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
