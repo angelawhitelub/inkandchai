@@ -5875,8 +5875,8 @@ for b in slim:
     desc = xml_escape(raw_desc)
     if not desc:
         desc = f"Buy {xml_escape(b.get('t',''))} by {xml_escape(b.get('a',''))} online."
-    # Also sanitise the title for the feed (some titles contain trigger words)
-    feed_title = xml_escape(feed_safe(b.get('t','')))
+    # Keep title identical to landing page — Google flags title mismatches as Limited
+    feed_title = xml_escape(b.get('t',''))
 
     items.append(f"""    <item>
       <g:id>{xml_escape(feed_id)}</g:id>
