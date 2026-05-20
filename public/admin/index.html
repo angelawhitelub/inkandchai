@@ -47,7 +47,8 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:v
 .subtitle{font-size:0.65rem;color:var(--cream-dim);letter-spacing:0.08em;margin-top:0.2rem;}
 
 /* Stats */
-.stats-row{display:grid;grid-template-columns:repeat(6,1fr);gap:1rem;margin-bottom:2rem;}
+.stats-row{display:grid;grid-template-columns:repeat(7,1fr);gap:1rem;margin-bottom:2rem;}
+@media(max-width:1100px){.stats-row{grid-template-columns:repeat(4,1fr);}}
 @media(max-width:900px){.stats-row{grid-template-columns:repeat(3,1fr);}}
 @media(max-width:550px){.stats-row{grid-template-columns:repeat(2,1fr);}}
 .stat-card{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1.3rem;cursor:pointer;transition:border-color 0.2s,background 0.2s;}
@@ -213,6 +214,10 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <div class="stat-card" data-status="partial_cod_pending" onclick="setFilter(this,'partial_cod_pending')">
       <div class="stat-label">Partial COD</div>
       <div class="stat-val" id="statPartial" style="color:var(--orange);">—</div>
+    </div>
+    <div class="stat-card" data-status="online_pending" onclick="setFilter(this,'online_pending')">
+      <div class="stat-label">Online Pending</div>
+      <div class="stat-val" id="statOnlinePending" style="color:#a275d6;">—</div>
     </div>
     <div class="stat-card" data-status="paid" onclick="setFilter(this,'paid')">
       <div class="stat-label">Paid Online</div>
@@ -461,6 +466,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <button class="filter-btn" data-status="__unshipped" onclick="setFilter(this,'__unshipped')">Unshipped</button>
     <button class="filter-btn" data-status="cod_pending" onclick="setFilter(this,'cod_pending')">COD Pending</button>
     <button class="filter-btn" data-status="partial_cod_pending" onclick="setFilter(this,'partial_cod_pending')">Partial COD</button>
+    <button class="filter-btn" data-status="online_pending" onclick="setFilter(this,'online_pending')" style="border-color:rgba(162,117,214,0.5);color:#a275d6;">Online Pending</button>
     <button class="filter-btn" data-status="confirmed" onclick="setFilter(this,'confirmed')">Confirmed</button>
     <button class="filter-btn" data-status="shipped" onclick="setFilter(this,'shipped')">Shipped</button>
     <button class="filter-btn" data-status="delivered" onclick="setFilter(this,'delivered')">Delivered</button>
@@ -547,7 +553,7 @@ async function fetchOrders(reset = false) {
     // partial_cod_pending is detected client-side via isPartialOrder() across
     // multiple status values — don't pass it as a server filter or we miss
     // confirmed/shipped partial orders that still need balance collection.
-    if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending') {
+    if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending') {
       params.set('status', currentFilter);
     }
 
@@ -617,6 +623,12 @@ function orderKey(o) {
 function orderPaymentMeta(o) {
   const items = Array.isArray(o?.cart_items) ? o.cart_items : [];
   return items[0]?._payment || {};
+}
+
+function isPendingOnlineOrder(o) {
+  const status = String(o?.status || '').toLowerCase();
+  // Orders where online payment was initiated but not yet completed
+  return (status === 'pending' || status === 'pending_phonepe') && !isPartialOrder(o);
 }
 
 function isPartialOrder(o) {
@@ -696,6 +708,7 @@ function syncSelectionUi() {
 function updateStats() {
   const cod     = allOrders.filter(o => o.status === 'cod_pending').length;
   const partial = allOrders.filter(isPartialOrder).length;
+  const onlinePending = allOrders.filter(isPendingOnlineOrder).length;
   const paid    = allOrders.filter(o => o.status === 'paid').length;
   const shipped = allOrders.filter(o => o.status === 'shipped').length;
   const unshipped = allOrders.filter(orderIsUnshipped).length;
@@ -710,6 +723,8 @@ function updateStats() {
   document.getElementById('statCod').textContent     = stillLoading ? '…' : cod;
   const partialEl = document.getElementById('statPartial');
   if (partialEl) partialEl.textContent = stillLoading ? '…' : partial;
+  const onlinePendingEl = document.getElementById('statOnlinePending');
+  if (onlinePendingEl) onlinePendingEl.textContent = stillLoading ? '…' : onlinePending;
   document.getElementById('statPaid').textContent    = stillLoading ? '…' : paid;
   document.getElementById('statShipped').textContent = stillLoading ? '…' : shipped;
   document.getElementById('statRev').textContent     = stillLoading ? '…' : '₹' + Math.round(rev / 100).toLocaleString('en-IN');
@@ -743,6 +758,7 @@ function applyFilters() {
   filtered = allOrders.filter(o => {
     if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
     if (currentFilter === 'partial_cod_pending' && !isPartialOrder(o)) return false;
+    if (currentFilter === 'online_pending' && !isPendingOnlineOrder(o)) return false;
     // Search
     if (q) {
       const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
