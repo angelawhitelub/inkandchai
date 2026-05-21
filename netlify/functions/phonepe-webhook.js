@@ -259,11 +259,15 @@ exports.handler = async (event) => {
           ? `₹${paidAmt.toLocaleString('en-IN')} (10% advance) + ₹${balanceNotif.toLocaleString('en-IN')} COD`
           : `₹${paidAmt.toLocaleString('en-IN')}`;
         const addrShort = (order.customer_address || '').slice(0, 80);
+        const cartItems = Array.isArray(order.cart_items) ? order.cart_items : [];
+        const bookList = cartItems.length
+          ? cartItems.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200)
+          : 'your books';
         try {
           await sendWhatsApp({
             to:       order.customer_phone,
             template: 'order_confirmed',
-            params:   [firstName, order.razorpay_order_id || order.id, amtDisplay, addrShort],
+            params:   [firstName, order.razorpay_order_id || order.id, amtDisplay, addrShort, bookList],
           });
         } catch (waErr) {
           console.error('WhatsApp failed for PhonePe order:', waErr.message);

@@ -249,10 +249,13 @@ exports.handler = async (event) => {
       ? `₹${paidTotal.toLocaleString('en-IN')} (10% advance) + ₹${balanceDue.toLocaleString('en-IN')} COD`
       : `₹${paidTotal.toLocaleString('en-IN')}`;
     const addrShort = (customer.address || '').slice(0, 80);
+    const bookList = Array.isArray(cart) && cart.length
+      ? cart.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200)
+      : 'your books';
     await sendWhatsApp({
       to: customer.phone,
       template: 'order_confirmed',
-      params: [firstName, razorpay_order_id, amtDisplay, addrShort],
+      params: [firstName, razorpay_order_id, amtDisplay, addrShort, bookList],
     });
   }
 
