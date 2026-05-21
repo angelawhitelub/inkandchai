@@ -1584,23 +1584,42 @@ async function bulkUpdateFromFile(file) {
     const msg = `Bulk update ${rows.length} order${rows.length>1?'s':''}?\n\nRows marked shipped with AWB: ${shippedWithTracking}\nShipment emails will be sent for shipped rows.\n\nExpected columns: order_id, status, courier_name, tracking_id/AWB.`;
     if (!confirm(msg)) return;
 
-    const res = await fetch('/.netlify/functions/bulk-update-orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
-      body: JSON.stringify({ updates: rows }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    // ── Send in batches of 8 to avoid Netlify's 26s timeout ──────────────────
+    const BATCH = 8;
+    const allResults = [];
+    let totalUpdated = 0, totalFailed = 0, totalEmails = 0;
+    const batches = Math.ceil(rows.length / BATCH);
 
-    const resultMap = new Map((data.results || []).filter(r => r.success && r.order).map(r => [String(r.order.id), r.order]));
-    const resultByOrderId = new Map((data.results || []).filter(r => r.success && r.order).map(r => [String(r.order.razorpay_order_id || ''), r.order]));
-    allOrders = allOrders.map(o => resultMap.get(String(o.id)) || resultByOrderId.get(String(o.razorpay_order_id || '')) || o);
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const chunk = rows.slice(i, i + BATCH);
+      const batchNum = Math.floor(i / BATCH) + 1;
+      // Update button label to show progress (button may not exist but harmless)
+      const progMsg = batches > 1 ? ` (batch ${batchNum}/${batches})` : '';
+      console.log(`Bulk update${progMsg}: sending ${chunk.length} rows`);
+
+      const res = await fetch('/.netlify/functions/bulk-update-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+        body: JSON.stringify({ updates: chunk }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data.error || ('HTTP ' + res.status)) + progMsg);
+
+      allResults.push(...(data.results || []));
+      totalUpdated += data.updated  || 0;
+      totalFailed  += data.failed   || 0;
+      totalEmails  += data.emails_sent || 0;
+    }
+
+    // Merge updated orders back into the in-memory list
+    const resultMap     = new Map(allResults.filter(r => r.success && r.order).map(r => [String(r.order.id), r.order]));
+    const resultByRpId  = new Map(allResults.filter(r => r.success && r.order).map(r => [String(r.order.razorpay_order_id || ''), r.order]));
+    allOrders = allOrders.map(o => resultMap.get(String(o.id)) || resultByRpId.get(String(o.razorpay_order_id || '')) || o);
     updateStats();
     applyFilters();
 
-    const failed = data.failed || 0;
-    const sampleErrors = (data.results || []).filter(r => !r.success).slice(0, 5).map(r => `• ${r.order_id}: ${r.error}`).join('\n');
-    alert(`✅ Bulk update complete.\n\nUpdated: ${data.updated || 0}\nEmails sent: ${data.emails_sent || 0}\nFailed: ${failed}${sampleErrors ? '\n\nFirst errors:\n' + sampleErrors : ''}`);
+    const sampleErrors = allResults.filter(r => !r.success).slice(0, 5).map(r => `• ${r.order_id}: ${r.error}`).join('\n');
+    alert(`✅ Bulk update complete.\n\nUpdated: ${totalUpdated}\nEmails sent: ${totalEmails}\nFailed: ${totalFailed}${sampleErrors ? '\n\nFirst errors:\n' + sampleErrors : ''}`);
   } catch (err) {
     alert('Bulk update failed: ' + err.message);
   }
