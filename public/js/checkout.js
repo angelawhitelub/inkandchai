@@ -6,16 +6,31 @@
 
 const RAZORPAY_KEY = window.RAZORPAY_KEY_ID || '';
 
-// ── Pincode → City / State (India Post API) ───────────────────────────────
+// ── Pincode → City / State ────────────────────────────────────────────────
+// Tries two public APIs in sequence so a single outage doesn't break checkout.
 async function fetchPincodeData(pin) {
+  // 1. postalpincode.in — detailed India Post data
   try {
     const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
-    const data = await res.json();
-    if (data[0].Status === 'Success' && data[0].PostOffice?.length) {
-      const po = data[0].PostOffice[0];
-      return { city: po.District || po.Division || po.Name, state: po.State };
+    if (res.ok) {
+      const data = await res.json();
+      if (data[0]?.Status === 'Success' && data[0].PostOffice?.length) {
+        const po = data[0].PostOffice[0];
+        return { city: po.District || po.Division || po.Name, state: po.State };
+      }
+    }
+  } catch (e) { /* fall through to next API */ }
+
+  // 2. zippopotam.us — reliable global fallback
+  try {
+    const res = await fetch(`https://api.zippopotam.us/in/${pin}`);
+    if (res.ok) {
+      const data = await res.json();
+      const place = data.places?.[0];
+      if (place) return { city: place['place name'], state: place['state'] };
     }
   } catch (e) { /* ignore */ }
+
   return null;
 }
 
