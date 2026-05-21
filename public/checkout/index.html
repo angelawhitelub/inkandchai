@@ -360,7 +360,7 @@ const COUPONS = {
 };
 const PARTIAL_PAYMENT_THRESHOLD = 599;
 const PARTIAL_PAYMENT_RATE = 0.10;
-let appliedCouponCode = (localStorage.getItem(COUPON_KEY) || '').toUpperCase();
+let appliedCouponCode = ''; // never auto-apply from storage — user must apply each session
 function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE; }
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
@@ -453,7 +453,6 @@ function applyCoupon() {
     return;
   }
   appliedCouponCode = code;
-  localStorage.setItem(COUPON_KEY, code);
   if (select) {
     const hasVisibleOption = Array.from(select.options).some(option => option.value === code);
     select.value = hasVisibleOption ? code : '';
