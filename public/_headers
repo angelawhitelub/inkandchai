@@ -28,7 +28,13 @@
 /shipping-policy/*
   Cache-Control: public, max-age=0, must-revalidate
 
-# 3. JS — short cache + must-revalidate (so JS bug fixes ship same-day)
+# 3. Versioned books-data JS — cache 1 year (content hash in filename changes each deploy)
+/js/books-full-*.js
+  Cache-Control: public, max-age=31536000, immutable
+/js/books-lite-*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+# 4. Other JS — short cache + must-revalidate (so JS bug fixes ship same-day)
 /*.js
   Cache-Control: public, max-age=300, must-revalidate
 /js/*
@@ -56,9 +62,9 @@
 /*.woff2
   Cache-Control: public, max-age=31536000, immutable
 
-# 6. Feed.xml — short cache so Google sees product updates
+# 6. Feed.xml — 1 hour cache (Google crawls ~daily; 10-min was causing ~13 GB/month)
 /feed.xml
-  Cache-Control: public, max-age=600
+  Cache-Control: public, max-age=3600
 
 /robots.txt
   Cache-Control: public, max-age=0, must-revalidate

@@ -238,6 +238,31 @@ slim_homepage = [
     for b in slim
 ]
 books_js_homepage = json.dumps(slim_homepage, ensure_ascii=False)
+
+# ── Write books data as versioned external JS files (avoids re-downloading
+#    2+ MB of book data on every page visit; browser caches for 1 year) ──────
+_js_dir = Path(__file__).parent / "public" / "js"
+_js_dir.mkdir(parents=True, exist_ok=True)
+
+_books_full_hash = hashlib.md5(books_js.encode()).hexdigest()[:8]
+_books_lite_hash = hashlib.md5(books_js_homepage.encode()).hexdigest()[:8]
+_books_full_file = f"books-full-{_books_full_hash}.js"
+_books_lite_file = f"books-lite-{_books_lite_hash}.js"
+
+# Clean up old versioned files so public/js/ doesn't grow unboundedly
+for _old in _js_dir.glob("books-full-*.js"):
+    if _old.name != _books_full_file:
+        _old.unlink(missing_ok=True)
+for _old in _js_dir.glob("books-lite-*.js"):
+    if _old.name != _books_lite_file:
+        _old.unlink(missing_ok=True)
+
+(_js_dir / _books_full_file).write_text(f"window.BOOKS_PRELOAD={books_js};", encoding="utf-8")
+(_js_dir / _books_lite_file).write_text(f"window.BOOKS_PRELOAD={books_js_homepage};", encoding="utf-8")
+
+BOOKS_FULL_TAG = f'<script src="/js/{_books_full_file}"></script>'
+BOOKS_LITE_TAG = f'<script src="/js/{_books_lite_file}"></script>'
+
 recent_order_activity_path = Path(__file__).parent / "data" / "recent_order_activity.json"
 try:
     recent_order_activity = json.loads(recent_order_activity_path.read_text()) if recent_order_activity_path.exists() else []
@@ -2705,7 +2730,9 @@ document.querySelectorAll('.stat-num').forEach(el => {
 
 # ── Inject real data ─────────────────────────────────────────────────────────
 import os
-HTML = HTML.replace("BOOKS_DATA_PLACEHOLDER",         books_js_homepage)  # lightweight — no heavy desc/reviews
+HTML = HTML.replace("BOOKS_DATA_PLACEHOLDER",         "window.BOOKS_PRELOAD||[]")
+HTML = HTML.replace('<script src="/js/auth.js"></script>\n\n<script>\n// ── DATA',
+                    f'{BOOKS_LITE_TAG}\n\n<script>\n// ── DATA')  # inject external data script
 HTML = HTML.replace("COLLECTIONS_DATA_PLACEHOLDER",   json.dumps(coll_data, ensure_ascii=False))
 HTML = HTML.replace("ALL_CATS_DATA_PLACEHOLDER",      all_cats_js)
 HTML = HTML.replace("NAV_CATEGORIES_PLACEHOLDER",     nav_categories_html)
@@ -3947,7 +3974,9 @@ except Exception:
     social_items = []
 print(f"Social-proof items: {len(social_items)}")
 
-PRODUCT_HTML = PRODUCT_HTML.replace("BOOKS_DATA_PLACEHOLDER",        books_js)
+PRODUCT_HTML = PRODUCT_HTML.replace("BOOKS_DATA_PLACEHOLDER",        "window.BOOKS_PRELOAD||[]")
+PRODUCT_HTML = PRODUCT_HTML.replace('<script src="/js/auth.js"></script>\n<script>\nconst BOOKS = window.BOOKS_PRELOAD||[];',
+                                    f'<script src="/js/auth.js"></script>\n{BOOKS_FULL_TAG}\n<script>\nconst BOOKS = window.BOOKS_PRELOAD||[];')
 PRODUCT_HTML = PRODUCT_HTML.replace("SOCIAL_PROOF_PLACEHOLDER",      json.dumps(social_items, ensure_ascii=False))
 PRODUCT_HTML = PRODUCT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",  razorpay_key)
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_URL_PLACEHOLDER",      os.environ.get("SUPABASE_URL", ""))
@@ -5828,7 +5857,9 @@ function renderGrid() {
 </html>"""
 
 # Inject the same slim books data + collection metadata
-COLLECTION_HTML = COLLECTION_HTML.replace("BOOKS_DATA_PLACEHOLDER", books_js_homepage)  # lightweight
+COLLECTION_HTML = COLLECTION_HTML.replace("BOOKS_DATA_PLACEHOLDER", "window.BOOKS_PRELOAD||[]")
+COLLECTION_HTML = COLLECTION_HTML.replace('<div id="page"></div>\n<script>\nconst BOOKS = window.BOOKS_PRELOAD||[];',
+                                          f'<div id="page"></div>\n{BOOKS_LITE_TAG}\n<script>\nconst BOOKS = window.BOOKS_PRELOAD||[];')
 COLLECTION_HTML = COLLECTION_HTML.replace("COLLECTIONS_DATA_PLACEHOLDER", json.dumps(coll_data, ensure_ascii=False))
 COLLECTION_HTML = with_reader_activity(COLLECTION_HTML)
 
