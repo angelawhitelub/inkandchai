@@ -360,7 +360,7 @@ const COUPONS = {
 };
 const PARTIAL_PAYMENT_THRESHOLD = 599;
 const PARTIAL_PAYMENT_RATE = 0.10;
-let appliedCouponCode = ''; // never auto-apply from storage — user must apply each session
+let appliedCouponCode = (localStorage.getItem(COUPON_KEY) || '').toUpperCase();
 function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE; }
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
@@ -453,6 +453,7 @@ function applyCoupon() {
     return;
   }
   appliedCouponCode = code;
+  localStorage.setItem(COUPON_KEY, code);
   if (select) {
     const hasVisibleOption = Array.from(select.options).some(option => option.value === code);
     select.value = hasVisibleOption ? code : '';
@@ -855,11 +856,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
 async function doCOD(addr) {
   const cart     = getCart();
   const totals = orderTotals(cart, 'cod');
-  // Only block COD if the coupon would actually give a discount on a Pay Now order
-  // (i.e. minimum met + online-only). Ignore if cart is below the minimum — coupon
-  // wasn't doing anything anyway and blocking the order would frustrate the customer.
-  const _couponObj = COUPONS[normalizeCouponCode(appliedCouponCode)];
-  if (_couponObj?.onlineOnly && cartSubtotal(cart) >= _couponObj.minSubtotal) {
+  if (appliedCouponCode && couponDiscount(cartSubtotal(cart), 'cod').message) {
     alert(appliedCouponCode + ' is valid only for Pay Now orders. Please use Pay Now to get the discount, or clear the coupon for COD.');
     setLoading(false);
     return;

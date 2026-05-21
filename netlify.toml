@@ -13,6 +13,10 @@
 [functions."auto-recover-carts"]
   schedule = "@hourly"
 
+# Daily unshipped orders CSV report — runs at 9 PM IST (15:30 UTC) every day
+[functions."daily-unshipped-report"]
+  schedule = "30 15 * * *"
+
 # Static assets — never redirect
 [[redirects]]
   from   = "/images/*"

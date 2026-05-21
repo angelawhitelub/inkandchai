@@ -14,7 +14,8 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-const { sendEmail } = require('./utils/email');
+const { sendEmail }    = require('./utils/email');
+const { sendWhatsApp } = require('./utils/whatsapp');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -120,16 +121,43 @@ exports.handler = async (event) => {
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const results = [];
-    let updated = 0;
-    let emailsSent = 0;
 
-    for (const raw of updates) {
-      const orderId = text(raw.order_id || raw.id || raw.razorpay_order_id);
-      const status = text(raw.status).toLowerCase();
-      const trackingId = text(raw.tracking_id || raw.awb || raw.tracking_number);
-      const courierName = text(raw.courier_name || raw.courier || raw.carrier);
+    // ── 1. Normalise + validate each row up-front ─────────────────────────────
+    const rows = updates.map(raw => ({
+      orderId:     text(raw.order_id || raw.id || raw.razorpay_order_id),
+      status:      text(raw.status).toLowerCase(),
+      trackingId:  text(raw.tracking_id || raw.awb || raw.tracking_number),
+      courierName: text(raw.courier_name || raw.courier || raw.carrier),
+    }));
 
+    // ── 2. Batch-fetch all orders in TWO queries (UUIDs + IC-* IDs) ──────────
+    //    This avoids N sequential SELECTs — was the cause of 504 timeouts.
+    const uuidIds    = rows.map(r => r.orderId).filter(isUuid);
+    const razorpayIds = rows.map(r => r.orderId).filter(id => id && !isUuid(id));
+
+    const [uuidRes, rpRes] = await Promise.all([
+      uuidIds.length
+        ? supabase.from('orders').select('*').in('id', uuidIds)
+        : Promise.resolve({ data: [], error: null }),
+      razorpayIds.length
+        ? supabase.from('orders').select('*').in('razorpay_order_id', razorpayIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (uuidRes.error)  console.error('UUID batch fetch error:', uuidRes.error.message);
+    if (rpRes.error)    console.error('RazorPay batch fetch error:', rpRes.error.message);
+
+    // Build lookup maps: id → order  and  razorpay_order_id → order
+    const byUuid = new Map((uuidRes.data || []).map(o => [String(o.id), o]));
+    const byRpId = new Map((rpRes.data  || []).map(o => [String(o.razorpay_order_id), o]));
+
+    // ── 3. Process each row (only DB calls left are UPDATEs + emails) ─────────
+    const results    = [];
+    let updated      = 0;
+    let emailsSent   = 0;
+    const shippedAt  = new Date().toISOString();
+
+    for (const { orderId, status, trackingId, courierName } of rows) {
       if (!orderId) {
         results.push({ success: false, order_id: orderId, error: 'Missing order_id' });
         continue;
@@ -139,30 +167,19 @@ exports.handler = async (event) => {
         continue;
       }
 
-      let lookup = { data: null, error: null };
-      if (isUuid(orderId)) {
-        lookup = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
-      }
-      if (!lookup.data && !lookup.error) {
-        lookup = await supabase.from('orders').select('*').eq('razorpay_order_id', orderId).maybeSingle();
-      }
-      if (lookup.error) {
-        results.push({ success: false, order_id: orderId, error: lookup.error.message });
-        continue;
-      }
-      if (!lookup.data) {
+      const order = byUuid.get(orderId) || byRpId.get(orderId);
+      if (!order) {
         results.push({ success: false, order_id: orderId, error: 'Order not found' });
         continue;
       }
 
-      const order = lookup.data;
       const trackingUrl = status === 'shipped' && trackingId ? buildTrackingUrl(courierName, trackingId) : '';
       const payload = { status };
       if (status === 'shipped') {
-        if (trackingId) payload.tracking_id = trackingId;
-        if (courierName) payload.courier_name = courierName;
-        if (trackingUrl) payload.tracking_url = trackingUrl;
-        payload.shipped_at = new Date().toISOString();
+        if (trackingId)   payload.tracking_id   = trackingId;
+        if (courierName)  payload.courier_name  = courierName;
+        if (trackingUrl)  payload.tracking_url  = trackingUrl;
+        payload.shipped_at = shippedAt;
       }
 
       const { data: saved, error: updateErr } = await supabase
@@ -178,13 +195,25 @@ exports.handler = async (event) => {
       }
 
       let emailSent = false;
-      if (status === 'shipped' && saved?.customer_email) {
-        emailSent = await sendEmail({
-          to: saved.customer_email,
-          subject: `📦 Your Ink & Chai order has shipped (${saved.razorpay_order_id || saved.id})`,
-          html: shipmentEmailHtml(saved),
-        });
-        if (emailSent) emailsSent++;
+      if (status === 'shipped' && saved) {
+        if (saved.customer_email) {
+          await sendEmail({
+            to: saved.customer_email,
+            subject: `📦 Your Ink & Chai order has shipped (${saved.razorpay_order_id || saved.id})`,
+            html: shipmentEmailHtml(saved),
+          });
+          emailSent = true;
+          emailsSent++;
+        }
+        if (saved.customer_phone) {
+          const firstName = (saved.customer_name || 'there').split(' ')[0];
+          const trkUrl = saved.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(saved.razorpay_order_id || saved.id)}`;
+          await sendWhatsApp({
+            to: saved.customer_phone,
+            template: 'order_shipped',
+            params: [firstName, saved.courier_name || 'Courier', saved.tracking_id || '—', trkUrl],
+          });
+        }
       }
 
       updated++;
