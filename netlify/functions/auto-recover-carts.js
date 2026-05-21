@@ -21,29 +21,14 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 
+const { sendEmail } = require('./utils/email');
+
 const RECOVERY_COUPON = 'CHAI10BACK';
 const MIN_ABANDON_HOURS = 1;   // don't message sooner than 1 hour
 const MAX_ABANDON_HOURS = 48;  // ignore leads older than 48 hours
 const MAX_PER_RUN       = 30;  // safety cap — avoid blasting on first deploy
 
 // ── Email helper (mirrors send-abandoned-email.js) ───────────────────────────
-async function sendEmail({ to, subject, html }) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key || !to) return { ok: false };
-  async function attempt(from) {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to, subject, html }),
-    });
-    return { ok: res.ok, status: res.status };
-  }
-  try {
-    let r = await attempt('Ink & Chai <support@inkandchai.in>');
-    if (!r.ok) r = await attempt('Ink & Chai <onboarding@resend.dev>');
-    return r;
-  } catch { return { ok: false }; }
-}
 
 function recoveryEmailHtml(lead) {
   const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');

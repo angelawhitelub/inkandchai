@@ -20,6 +20,8 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 
+const { sendEmail } = require('./utils/email');
+
 let _tokenCache = { token: null, expiresAt: 0 };
 
 async function getAccessToken(host) {
@@ -49,25 +51,6 @@ async function getAccessToken(host) {
 }
 
 // ── Email via Resend (with onboarding fallback) ────────────────────────────
-async function sendEmail({ to, subject, html }) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key || !to) return;
-  async function attempt(from) {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to, subject, html }),
-    });
-    return { ok: res.ok, status: res.status, body: await res.json().catch(() => ({})) };
-  }
-  try {
-    let r = await attempt('Ink & Chai <support@inkandchai.in>');
-    if (!r.ok && (r.status === 403 || /domain|verified|not.*allowed|testing/i.test(r.body?.message || ''))) {
-      r = await attempt('Ink & Chai <onboarding@resend.dev>');
-    }
-    if (!r.ok) console.error('Resend error:', r.status, JSON.stringify(r.body));
-  } catch (err) { console.error('sendEmail exception:', err.message); }
-}
 
 // ── Admin/owner notification (shows order + customer info, not addressed to customer) ──
 function ownerNotifHtml(order) {

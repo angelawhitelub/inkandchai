@@ -9,6 +9,8 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
+const { sendEmail } = require('./utils/email');
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -40,17 +42,6 @@ function withinReturnWindow(order) {
   return Date.now() <= anchorTime + sevenDays;
 }
 
-async function sendEmail({ to, subject, html }) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key || !to) return false;
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: 'Ink & Chai <support@inkandchai.in>', to, subject, html }),
-  });
-  if (!res.ok) console.error('return email error:', res.status, await res.text().catch(() => ''));
-  return res.ok;
-}
 
 function ownerEmailHtml(order, reason) {
   const items = Array.isArray(order.cart_items) ? order.cart_items : [];

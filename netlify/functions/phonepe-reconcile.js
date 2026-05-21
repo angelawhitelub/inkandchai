@@ -22,6 +22,8 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
+const { sendEmail } = require('./utils/email');
+
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
@@ -56,25 +58,6 @@ async function getAccessToken(host) {
   return _tokenCache.token;
 }
 
-async function sendEmail({ to, subject, html }) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key || !to) return;
-  async function attempt(from) {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to, subject, html }),
-    });
-    return { ok: res.ok, status: res.status, body: await res.json().catch(() => ({})) };
-  }
-  try {
-    let r = await attempt('Ink & Chai <support@inkandchai.in>');
-    if (!r.ok && (r.status === 403 || /domain|verified|not.*allowed|testing/i.test(r.body?.message || ''))) {
-      r = await attempt('Ink & Chai <onboarding@resend.dev>');
-    }
-    if (!r.ok) console.error('Resend error:', r.status, JSON.stringify(r.body));
-  } catch (err) { console.error('sendEmail exception:', err.message); }
-}
 
 function paidEmailHtml(order) {
   const items = Array.isArray(order.cart_items) ? order.cart_items : [];

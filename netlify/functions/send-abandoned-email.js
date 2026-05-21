@@ -8,6 +8,8 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 
+const { sendEmail } = require('./utils/email');
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
@@ -16,22 +18,6 @@ const CORS = {
 
 const RECOVERY_COUPON = 'CHAI10BACK';
 
-async function sendEmail({ to, subject, html }) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return { ok: false, error: 'RESEND_API_KEY not set' };
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: process.env.FROM_EMAIL || 'Ink & Chai <orders@inkandchai.in>',
-      to,
-      subject,
-      html,
-    }),
-  });
-  const body = await res.json().catch(() => ({}));
-  return { ok: res.ok, status: res.status, body };
-}
 
 function emailBase(content) {
   return `<!doctype html><html><body style="margin:0;background:#faf7f2;font-family:Arial,sans-serif;color:#2a2018;">
