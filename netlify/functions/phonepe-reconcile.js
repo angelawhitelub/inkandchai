@@ -124,19 +124,16 @@ async function reconcileOne(supabase, host, token, orderId) {
 
   if (!existing) return { orderId, result: 'not_in_db' };
 
-  // Never touch orders that have already been fulfilled or are partial COD
-  // (partial COD deposit is a one-time PhonePe charge; the remaining balance is
-  //  collected on delivery — PhonePe will report the original deposit order as
-  //  FAILED/CANCELLED once the checkout session expires, which must NOT cancel our order)
-  const cartMeta = Array.isArray(existing.cart_items) ? existing.cart_items[0]?._payment : null;
-  const isPartialCod = cartMeta?.mode === 'partial_cod' ||
-                       existing.status === 'partial_cod_pending' ||
-                       (existing.status || '').includes('partial');
-  if (isPartialCod) return { orderId, result: 'already_paid' };
-
+  // Never touch orders that are already fulfilled
   const SAFE_STATUSES = new Set(['paid', 'confirmed', 'shipped', 'out_for_delivery', 'delivered', 'refunded']);
   if (SAFE_STATUSES.has(existing.status)) return { orderId, result: 'already_processed' };
   if (existing.status === 'cancelled') return { orderId, result: 'already_cancelled' };
+  // Partial deposit already confirmed — nothing left to reconcile
+  if (existing.status === 'partial_cod_pending') return { orderId, result: 'already_paid' };
+
+  // pending_partial_phonepe = 10% deposit not yet confirmed by PhonePe — MUST reconcile.
+  // Do NOT cancel these on FAILED/CANCELLED: PhonePe reports the checkout session as
+  // FAILED once it expires, which does NOT mean the customer won't pay. Leave as-is.
 
   // Hit PhonePe v2 status endpoint
   const res = await fetch(`${host}/pg/checkout/v2/order/${encodeURIComponent(orderId)}/status`, {
@@ -159,8 +156,9 @@ async function reconcileOne(supabase, host, token, orderId) {
       .from('orders').update(update).eq('razorpay_order_id', orderId).select('*');
     if (error) return { orderId, result: 'db_update_failed', error: error.message };
     const order = rows?.[0];
+    const finalStatus = update.status; // 'paid' or 'partial_cod_pending'
 
-    // Fire emails — webhook will skip when it sees status=paid
+    // Fire emails — webhook will skip when it sees status=paid/partial_cod_pending
     if (order?.customer_email) {
       await sendEmail({
         to: order.customer_email,
@@ -176,11 +174,18 @@ async function reconcileOne(supabase, host, token, orderId) {
         html: paidEmailHtml(order),
       });
     }
-    return { orderId, result: 'paid', txnId };
+    return { orderId, result: finalStatus === 'partial_cod_pending' ? 'partial_cod_confirmed' : 'paid', txnId };
   }
   if (state === 'FAILED' || state === 'DECLINED' || state === 'CANCELLED') {
-    await supabase.from('orders').update({ status: 'cancelled' }).eq('razorpay_order_id', orderId);
-    return { orderId, result: 'cancelled', state };
+    // Do NOT cancel pending_partial_phonepe orders — PhonePe session expiry shows as
+    // FAILED/CANCELLED but the customer's COD balance commitment still stands.
+    const cartMeta2 = Array.isArray(existing.cart_items) ? existing.cart_items[0]?._payment : null;
+    const isPartialPending = existing.status === 'pending_partial_phonepe' || cartMeta2?.mode === 'partial_cod';
+    if (!isPartialPending) {
+      await supabase.from('orders').update({ status: 'cancelled' }).eq('razorpay_order_id', orderId);
+      return { orderId, result: 'cancelled', state };
+    }
+    return { orderId, result: 'still_pending', state };
   }
   return { orderId, result: 'still_pending', state };
 }

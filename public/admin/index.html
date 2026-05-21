@@ -1759,8 +1759,14 @@ async function reconcilePhonePe(orderId, btn) {
       updateStats();
       applyFilters();
       alert('✅ Order marked PAID. Customer + owner emails sent.');
+    } else if (r.result === 'partial_cod_confirmed') {
+      const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+      if (ord) { ord.status = 'partial_cod_pending'; if (r.txnId) ord.razorpay_payment_id = r.txnId; }
+      updateStats();
+      applyFilters();
+      alert('✅ 10% deposit confirmed. Order marked Partial COD Pending.');
     } else if (r.result === 'already_paid') {
-      alert('Order is already marked paid in the database (the webhook likely beat us to it). Refreshing the table.');
+      alert('10% deposit already confirmed in the database. Refreshing the table.');
       fetchOrders(true);
     } else if (r.result === 'still_pending') {
       alert(`PhonePe still reports state="${r.state}". Customer may not have completed payment — try again in a minute, or contact them.`);
