@@ -64,13 +64,27 @@ async function sendEmail({ to, subject, html }) {
   const brevoKey  = process.env.BREVO_API_KEY;
   const resendKey = process.env.RESEND_API_KEY;
 
-  try {
-    if (brevoKey)  return await sendViaBrevo(brevoKey, { to, subject, html });
-    if (resendKey) return await sendViaResend(resendKey, { to, subject, html });
-    console.warn('No email provider configured (set BREVO_API_KEY or RESEND_API_KEY)');
-  } catch (err) {
-    console.error('sendEmail error:', err.message);
+  // Try Brevo first
+  if (brevoKey) {
+    try {
+      return await sendViaBrevo(brevoKey, { to, subject, html });
+    } catch (err) {
+      console.error('Brevo failed, trying Resend fallback:', err.message);
+      // Fall through to Resend
+    }
   }
+
+  // Resend fallback (also used when BREVO_API_KEY not set)
+  if (resendKey) {
+    try {
+      return await sendViaResend(resendKey, { to, subject, html });
+    } catch (err) {
+      console.error('Resend also failed:', err.message);
+    }
+    return;
+  }
+
+  console.warn('No email provider configured (set BREVO_API_KEY or RESEND_API_KEY)');
 }
 
 module.exports = { sendEmail };
