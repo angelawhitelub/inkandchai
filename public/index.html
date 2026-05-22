@@ -1362,7 +1362,7 @@ gtag('config', 'AW-18119332653');
 <!-- Cart, Checkout & Auth -->
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
-<script src="/js/books-lite-039940e0.js"></script>
+<script src="/js/books-lite-c213bbf8.js"></script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -1576,9 +1576,10 @@ function editionPenalty(b) {
 }
 
 function homepageRank(a, b) {
+  // New arrivals always appear first on All tab
+  if ((b.n || 0) !== (a.n || 0)) return (b.n || 0) - (a.n || 0);
   return trendScore(b) - trendScore(a)
     || editionPenalty(a) - editionPenalty(b)
-    || (b.n || 0) - (a.n || 0)
     || a.t.localeCompare(b.t);
 }
 

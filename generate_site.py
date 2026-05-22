@@ -187,8 +187,10 @@ for b in books:
     # For CUSTOM- listings with no scraped_at, use today so they sort newest-first
     TODAY_ISO = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
     effective_ts = scraped or (TODAY_ISO if sid.startswith("CUSTOM-") else "")
-    # New-arrival rule: added within last NEW_ARRIVAL_DAYS days
-    is_new = 1 if (effective_ts and effective_ts[:10] >= _new_cutoff[:10]) else 0
+    # New-arrival rule: manually-curated additions (CUSTOM-…) OR anything
+    # scraped strictly AFTER the bulk import date (bulk was 2026-04-22).
+    BULK_IMPORT_DATE = "2026-04-23"
+    is_new = 1 if (sid.startswith("CUSTOM-") or (scraped and scraped[:10] >= BULK_IMPORT_DATE)) else 0
 
     slug = make_slug(b["title"], b.get("shopify_id", ""))
     feed_image_by_slug[slug] = crawlable_image_url(b.get("image_url", ""))
@@ -2055,9 +2057,10 @@ function editionPenalty(b) {
 }
 
 function homepageRank(a, b) {
+  // New arrivals always appear first on All tab
+  if ((b.n || 0) !== (a.n || 0)) return (b.n || 0) - (a.n || 0);
   return trendScore(b) - trendScore(a)
     || editionPenalty(a) - editionPenalty(b)
-    || (b.n || 0) - (a.n || 0)
     || a.t.localeCompare(b.t);
 }
 
