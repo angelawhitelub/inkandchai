@@ -835,6 +835,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
           if (!vRes.ok) throw new Error('Verification failed');
           await saveAbandonedCheckout('converted', response.razorpay_order_id);
           localStorage.removeItem(ABANDONED_SESSION_KEY);
+          saveAddressAfterOrder(addr);
           clearCart();
           await autoLogin(addr.email, addr.name, addr.phone);
           showSuccess('paid', response.razorpay_payment_id, addr);
@@ -881,6 +882,7 @@ async function doCOD(addr) {
 
     await saveAbandonedCheckout('converted', data.order_id);
     localStorage.removeItem(ABANDONED_SESSION_KEY);
+    saveAddressAfterOrder(addr);
     clearCart();
     await autoLogin(addr.email, addr.name, addr.phone);
     showSuccess('cod', data.order_id, addr);
@@ -946,6 +948,15 @@ function showSuccess(type, orderId, addr) {
 (function() {
   const p = new URLSearchParams(location.search);
   if (p.get('paid') === '1' && p.get('id')) {
+    // Save address from form fields if still populated (same-tab PhonePe redirect)
+    try {
+      const get = id => document.getElementById(id)?.value?.trim() || '';
+      const addrForSave = {
+        name: get('ch-name'), phone: get('ch-phone'), email: get('ch-email'),
+        address: get('ch-addr'), pincode: get('ch-pin'), city: get('ch-city'), state: get('ch-state'),
+      };
+      if (addrForSave.phone || addrForSave.name) saveAddressAfterOrder(addrForSave);
+    } catch(e) {}
     clearCart();
     // Show success screen — try to read customer email from saved abandoned checkout
     let savedEmail = '';
@@ -993,6 +1004,43 @@ function showSuccess(type, orderId, addr) {
   } catch (e) { /* silently ignore — customer can add manually */ }
 })();
 
+// ── Saved address helpers ──────────────────────────────────────────────────
+const SAVED_ADDR_KEY = 'iac_saved_address';
+
+function saveAddressLocally(addr) {
+  try {
+    localStorage.setItem(SAVED_ADDR_KEY, JSON.stringify({
+      name: addr.name, phone: addr.phone, email: addr.email,
+      addr: addr.address?.split(',')[0]?.trim() || '',   // just house/street part
+      pincode: addr.pincode, city: addr.city, state: addr.state,
+    }));
+  } catch(e) {}
+}
+
+async function saveAddressToProfile(addr) {
+  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === '') return;
+  try {
+    const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    await sb.from('profiles').upsert({
+      id:      session.user.id,
+      name:    addr.name,
+      phone:   addr.phone,
+      address: addr.address?.split(',')[0]?.trim() || '',
+      pincode: addr.pincode,
+      city:    addr.city,
+      state:   addr.state,
+    }, { onConflict: 'id' });
+  } catch(e) {}
+}
+
+// Call after every successful order (COD or paid)
+function saveAddressAfterOrder(addr) {
+  saveAddressLocally(addr);
+  saveAddressToProfile(addr);
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 renderSummary();
 
@@ -1003,20 +1051,58 @@ renderSummary();
   el.addEventListener('blur', () => saveAbandonedCheckout('open'));
 });
 
-// Pre-fill from Supabase profile if logged in
+// Pre-fill address: Supabase profile (logged-in users) → localStorage fallback
 (async () => {
-  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === '') return;
+  const fill = (id, val) => { const el = document.getElementById(id); if (el && val && !el.value) el.value = val; };
+
+  // 1. Try Supabase profile first
+  if (window.supabase && window.SUPABASE_URL && window.SUPABASE_URL !== '') {
+    try {
+      const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) {
+        const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+        if (profile) {
+          fill('ch-name',    profile.name);
+          fill('ch-email',   session.user?.email);
+          fill('ch-phone',   profile.phone);
+          fill('ch-addr',    profile.address);
+          fill('ch-pin',     profile.pincode);
+          fill('ch-city',    profile.city);
+          fill('ch-state',   profile.state);
+          // Trigger pincode display update if pincode was filled
+          if (profile.pincode && document.getElementById('ch-pin')?.value) {
+            const pinMsg = document.getElementById('pinMsg');
+            if (pinMsg && profile.city && profile.state) {
+              pinMsg.textContent = '✓ ' + profile.city + ', ' + profile.state;
+              pinMsg.style.color = '#8fa87a';
+            }
+          }
+          return; // Profile filled — skip localStorage
+        }
+      }
+    } catch(e) {}
+  }
+
+  // 2. Fallback: localStorage (works for all users including guests)
   try {
-    const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) return;
-    const email = session.user?.email;
-    const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
-    const fill = (id, val) => { const el = document.getElementById(id); if (el && val && !el.value) el.value = val; };
-    fill('ch-name',  profile?.name);
-    fill('ch-email', email);
-    fill('ch-phone', profile?.phone);
-    fill('ch-addr',  profile?.address);
+    const saved = JSON.parse(localStorage.getItem(SAVED_ADDR_KEY) || 'null');
+    if (saved) {
+      fill('ch-name',  saved.name);
+      fill('ch-email', saved.email);
+      fill('ch-phone', saved.phone);
+      fill('ch-addr',  saved.addr);
+      fill('ch-pin',   saved.pincode);
+      fill('ch-city',  saved.city);
+      fill('ch-state', saved.state);
+      if (saved.pincode && saved.city && saved.state) {
+        const pinMsg = document.getElementById('pinMsg');
+        if (pinMsg) {
+          pinMsg.textContent = '✓ ' + saved.city + ', ' + saved.state + ' (saved)';
+          pinMsg.style.color = '#8fa87a';
+        }
+      }
+    }
   } catch(e) {}
 })();
 </script>
