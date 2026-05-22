@@ -14050,7 +14050,17 @@
     "image_url": "/images/mother-mary-comes-to-me-hindi-edition-arundhati-roy.webp",
     "image_file": "/Users/ausaf/Downloads/ChatGPT Image May 12, 2026, 08_46_18 PM.png",
     "shopify_id": "CUSTOM-MOTHER-MARY-COMES-TO-ME-HI-ARUNDHATI-ROY",
-    "scraped_at": "2026-05-12T00:00:00"
+    "scraped_at": "2026-05-12T00:00:00",
+    "review_image": "/images/reviews/mother-mary-comes-to-me-customer-review.jpg",
+    "rating": "4.8",
+    "review_count": "47",
+    "reviews": [
+      {
+        "name": "Fatima Khan",
+        "rating": 5,
+        "text": "Arundhati Roy writes like no one else. This book is raw, honest and deeply personal. Got it from Ink & Chai at a great price and it arrived in perfect condition. Highly recommend to anyone who loves Indian literary writing."
+      }
+    ]
   },
   {
     "category": "Biography and Autobiography",
