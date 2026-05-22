@@ -2950,7 +2950,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .review-score{text-align:right;flex-shrink:0}
 .review-score strong{font-family:'Cormorant Garamond',serif;font-size:2rem;color:var(--gold);line-height:1}
 .review-score span{display:block;font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.12em;text-transform:uppercase;margin-top:0.2rem}
-.review-media{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem}
+.review-media{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0.8rem}
 .review-media figure{margin:0;border:1px solid rgba(201,168,76,0.22);background:rgba(0,0,0,0.18);overflow:hidden}
 .review-media img,.review-media video{width:100%;height:220px;object-fit:cover;display:block;background:#090704}
 .review-media figcaption{padding:0.65rem 0.75rem;font-size:0.62rem;color:var(--cream-dim);letter-spacing:0.09em;line-height:1.5}
@@ -3574,9 +3574,11 @@ function renderProduct(b) {
             </div>
           </div>
           <div class="prod-stars" aria-label="${esc(b.rating || '4.6')} out of 5 stars">★★★★★</div>
-          ${(b.review_image || b.review_video) ? `
+          ${(b.review_image || b.review_images?.length || b.review_video) ? `
           <div class="review-media">
-            ${b.review_image ? `<figure><img src="${esc(b.review_image)}" alt="${esc(b.t)} customer review photo" loading="lazy" onclick="openLightbox(this.src, this.alt)" /><figcaption>Customer photo shared after delivery</figcaption></figure>` : ''}
+            ${(b.review_images && b.review_images.length > 1)
+              ? b.review_images.map((img,i) => `<figure><img src="${esc(img)}" alt="${esc(b.t)} customer review photo ${i+1}" loading="lazy" onclick="openLightbox(this.src, this.alt)" style="cursor:zoom-in"/><figcaption>Customer photo</figcaption></figure>`).join('')
+              : b.review_image ? `<figure><img src="${esc(b.review_image)}" alt="${esc(b.t)} customer review photo" loading="lazy" onclick="openLightbox(this.src, this.alt)" /><figcaption>Customer photo shared after delivery</figcaption></figure>` : ''}
             ${b.review_video ? `<figure><video src="${esc(b.review_video)}" controls playsinline preload="metadata"></video><figcaption>Customer video review / unboxing</figcaption></figure>` : ''}
           </div>` : ''}
           <p class="review-note">Readers choose Ink &amp; Chai for fast delivery, careful packing and checkout-backed order updates.</p>
@@ -4144,12 +4146,20 @@ def static_product_html(book):
     review_count = html_escape(str(book.get("review_count") or ""))
     order_badge = html_escape(book.get("order_badge") or "")
     review_image = html_escape(book.get("review_image") or book.get("review_image_url") or "")
+    review_images_list = book.get("review_images") or []
     review_video = html_escape(book.get("review_video") or book.get("review_video_url") or "")
     review_media_html = ""
-    if review_count and (review_image or review_video):
+    if review_count and (review_image or review_images_list or review_video):
+        if len(review_images_list) > 1:
+            imgs_html = "".join(
+                f'<figure><img src="{html_escape(img)}" alt="{title} customer review photo {i+1}" loading="lazy" onclick="openLB(this.src,this.alt)" style="cursor:zoom-in"/><figcaption>Customer photo</figcaption></figure>'
+                for i, img in enumerate(review_images_list)
+            )
+        else:
+            imgs_html = f'<figure><img src="{review_image}" alt="{title} customer review photo" loading="lazy" onclick="openLB(this.src,this.alt)" style="cursor:zoom-in"/><figcaption>Customer photo shared after delivery</figcaption></figure>' if review_image else ""
         review_media_html = (
             '<div class="review-media">'
-            + (f'<figure><img src="{review_image}" alt="{title} customer review photo" loading="lazy" onclick="openLB(this.src,this.alt)" style="cursor:zoom-in"/><figcaption>Customer photo shared after delivery</figcaption></figure>' if review_image else "")
+            + imgs_html
             + (f'<figure><video src="{review_video}" controls playsinline preload="metadata"></video><figcaption>Customer video review / unboxing</figcaption></figure>' if review_video else "")
             + '</div>'
         )
@@ -4334,7 +4344,7 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 .crumb{{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}} h1{{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}} .author{{color:var(--muted);letter-spacing:.08em;margin-bottom:1rem}} .order-badge{{display:inline-flex;margin:0 0 1rem;border:1px solid rgba(138,106,31,.32);background:rgba(138,106,31,.08);color:var(--gold);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;padding:.42rem .75rem}} .rating-line{{display:flex;align-items:center;gap:.55rem;margin:0 0 1rem;color:var(--muted);font-size:.72rem}} .stars{{color:var(--gold);letter-spacing:.04em}} .price{{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}} .orig{{color:var(--muted);text-decoration:line-through;margin-left:.8rem}} .stock{{display:inline-block;margin:1rem 0;color:#7fd37f;border:1px solid rgba(127,211,127,.3);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}}
 .trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(138,106,31,.06);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:var(--bg)}} .secondary{{background:transparent;color:var(--gold)}} .is-loading{{position:relative;color:transparent!important;pointer-events:none;opacity:.78}} .is-loading::after{{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:#fff}} .secondary.is-loading::after{{color:var(--gold)}} @keyframes spinBtn{{to{{transform:rotate(360deg)}}}}
 .desc,.details{{border-top:1px solid var(--border);padding-top:1.2rem;margin-top:1.2rem;color:var(--muted);font-size:.9rem;line-height:1.8}} .label{{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}} .details dl{{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}} .details dt{{color:var(--gold)}} .details dd{{margin:0;color:var(--cream)}}
-.reviews{{border:1px solid var(--border);background:rgba(138,106,31,.055);padding:1.15rem;margin-top:1.3rem;color:var(--muted);line-height:1.7}} .review-head{{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}} .review-head h2{{font-size:1.45rem;margin:.1rem 0 0}} .score{{text-align:right;flex-shrink:0}} .score strong{{display:block;font-family:"Cormorant Garamond",serif;font-size:2.2rem;color:var(--gold);line-height:.9}} .score span{{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}} .review-media{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:.9rem}} .review-media figure{{margin:0;border:1px solid var(--border);background:#fff;overflow:hidden}} .review-media img,.review-media video{{display:block;width:100%;height:240px;object-fit:cover;background:#f4efe7}} .review-media figcaption{{padding:.65rem .75rem;font-size:.65rem;letter-spacing:.08em;color:var(--muted)}}
+.reviews{{border:1px solid var(--border);background:rgba(138,106,31,.055);padding:1.15rem;margin-top:1.3rem;color:var(--muted);line-height:1.7}} .review-head{{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}} .review-head h2{{font-size:1.45rem;margin:.1rem 0 0}} .score{{text-align:right;flex-shrink:0}} .score strong{{display:block;font-family:"Cormorant Garamond",serif;font-size:2.2rem;color:var(--gold);line-height:.9}} .score span{{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}} .review-media{{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.8rem;margin-top:.9rem}} .review-media figure{{margin:0;border:1px solid var(--border);background:#fff;overflow:hidden}} .review-media img,.review-media video{{display:block;width:100%;height:240px;object-fit:cover;background:#f4efe7}} .review-media figcaption{{padding:.65rem .75rem;font-size:.65rem;letter-spacing:.08em;color:var(--muted)}}
 @media(max-width:760px){{.wrap{{display:block;padding-bottom:8rem}} .cover{{margin-bottom:1.2rem}} .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;background:rgba(13,11,8,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);box-shadow:0 -10px 26px rgba(60,40,10,.12)}} .trust{{grid-template-columns:1fr}} .review-head{{display:block}} .score{{text-align:left;margin-top:.7rem}} .review-media{{grid-template-columns:1fr}} .review-media img,.review-media video{{height:auto;max-height:360px;object-fit:contain}}}}
 @media(max-width:1100px){{.also-grid{{grid-template-columns:repeat(4,1fr)!important}}}}
 @media(max-width:640px){{.also-grid{{grid-template-columns:repeat(2,1fr)!important;gap:.7rem!important}}}}
