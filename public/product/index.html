@@ -194,7 +194,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .review-score{text-align:right;flex-shrink:0}
 .review-score strong{font-family:'Cormorant Garamond',serif;font-size:2rem;color:var(--gold);line-height:1}
 .review-score span{display:block;font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.12em;text-transform:uppercase;margin-top:0.2rem}
-.review-media{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem}
+.review-media{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0.8rem}
 .review-media figure{margin:0;border:1px solid rgba(201,168,76,0.22);background:rgba(0,0,0,0.18);overflow:hidden}
 .review-media img,.review-media video{width:100%;height:220px;object-fit:cover;display:block;background:#090704}
 .review-media figcaption{padding:0.65rem 0.75rem;font-size:0.62rem;color:var(--cream-dim);letter-spacing:0.09em;line-height:1.5}
@@ -568,7 +568,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-full-a2ea304e.js"></script>
+<script src="/js/books-full-1371e4dc.js"></script>
 <script>
 const BOOKS = window.BOOKS_PRELOAD||[];
 const SOCIAL_PROOF = [{"type": "video", "src": "/videos/unboxing-people-magnet.mp4", "poster": "/images/social/unboxing-people-magnet.jpg", "caption": "All India delivery · COD available"}, {"type": "video", "src": "/videos/affordable-novels.mp4", "poster": "/images/social/affordable-novels.jpg", "caption": "Affordable novels from just ₹99"}, {"type": "video", "src": "/videos/rich-dad-collection.mp4", "poster": "/images/social/rich-dad-collection.jpg", "caption": "Different genres · Large collection to choose from"}, {"type": "video", "src": "/videos/customer-thanks.mp4", "poster": "/images/social/customer-thanks.jpg", "caption": "❤️ A note from one of our readers"}];
@@ -861,9 +861,11 @@ function renderProduct(b) {
             </div>
           </div>
           <div class="prod-stars" aria-label="${esc(b.rating || '4.6')} out of 5 stars">★★★★★</div>
-          ${(b.review_image || b.review_video) ? `
+          ${(b.review_image || b.review_images?.length || b.review_video) ? `
           <div class="review-media">
-            ${b.review_image ? `<figure><img src="${esc(b.review_image)}" alt="${esc(b.t)} customer review photo" loading="lazy" onclick="openLightbox(this.src, this.alt)" /><figcaption>Customer photo shared after delivery</figcaption></figure>` : ''}
+            ${(b.review_images && b.review_images.length > 1)
+              ? b.review_images.map((img,i) => `<figure><img src="${esc(img)}" alt="${esc(b.t)} customer review photo ${i+1}" loading="lazy" onclick="openLightbox(this.src, this.alt)" style="cursor:zoom-in"/><figcaption>Customer photo</figcaption></figure>`).join('')
+              : b.review_image ? `<figure><img src="${esc(b.review_image)}" alt="${esc(b.t)} customer review photo" loading="lazy" onclick="openLightbox(this.src, this.alt)" /><figcaption>Customer photo shared after delivery</figcaption></figure>` : ''}
             ${b.review_video ? `<figure><video src="${esc(b.review_video)}" controls playsinline preload="metadata"></video><figcaption>Customer video review / unboxing</figcaption></figure>` : ''}
           </div>` : ''}
           <p class="review-note">Readers choose Ink &amp; Chai for fast delivery, careful packing and checkout-backed order updates.</p>
