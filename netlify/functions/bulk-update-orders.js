@@ -28,7 +28,7 @@ const VALID_STATUSES = ['cod_pending', 'partial_cod_pending', 'confirmed', 'ship
 const COURIER_URLS = {
   'bluedart':     'https://www.bluedart.com/tracking?trackingNumber={id}',
   'dtdc':         'https://www.dtdc.in/tracking/tracking_results.asp?action=track&Type=awb&strCnno={id}',
-  'delhivery':    'https://www.delhivery.com/tracking/package/{id}',
+  'delhivery':    'https://www.delhivery.com/track-v2/package/{id}',
   'indiapost':    'https://www.indiapost.gov.in/_layouts/15/dop.portal.tracking/trackconsignment.aspx?id={id}',
   'ecomexpress':  'https://ecomexpress.in/tracking/?awb_field={id}',
   'shadowfax':    'https://shadowfax.in/tracking/?awb={id}',
