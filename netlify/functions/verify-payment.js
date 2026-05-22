@@ -134,6 +134,12 @@ exports.handler = async (event) => {
   const balanceDue = isPartial ? Math.max(0, computedFullTotal - paidTotal) : 0;
   const fullTotal = isPartial ? computedFullTotal : paidTotal;
 
+  // Generate a consistent IC- order ID for Razorpay orders (same format as PhonePe/COD)
+  const now = new Date();
+  const datePart = now.toISOString().slice(0,10).replace(/-/g,'');
+  const randPart = Math.random().toString(36).substring(2,7).toUpperCase();
+  const inkOrderId = `IC-${datePart}-${randPart}`;
+
   try {
     const supabase = createClient(
       process.env.SUPABASE_URL,
@@ -141,8 +147,8 @@ exports.handler = async (event) => {
     );
 
     const { error } = await supabase.from('orders').insert({
-      razorpay_order_id,
-      razorpay_payment_id,
+      razorpay_order_id:   inkOrderId,          // IC- format — consistent across all payment methods
+      razorpay_payment_id: razorpay_payment_id, // pay_XXXXX — actual Razorpay payment ID (for refunds)
       amount_paise:     amount,
       status:           isPartial ? 'partial_cod_pending' : 'paid',
       customer_name:    customer?.name    || '',
@@ -170,8 +176,8 @@ exports.handler = async (event) => {
       html: emailBase(`
         <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">${isPartial ? 'New Partial COD Order' : 'New Online Payment Received'}</h2>
         <p style="color:#a09080;margin-bottom:16px;">
-          Razorpay Order: <strong style="color:#c9a84c;">${razorpay_order_id}</strong><br/>
-          Payment ID: <strong style="color:#c9a84c;">${razorpay_payment_id}</strong>
+          Order ID: <strong style="color:#c9a84c;">${inkOrderId}</strong><br/>
+          Razorpay Payment ID: <strong style="color:#c9a84c;">${razorpay_payment_id}</strong>
         </p>
         <table style="font-size:14px;line-height:1.8;color:#f0e8d8;">
           <tr><td style="color:#a09080;padding-right:16px;">Name</td><td>${customer?.name||'—'}</td></tr>
@@ -202,10 +208,10 @@ exports.handler = async (event) => {
         <p style="color:#a09080;font-size:13px;line-height:1.8;">
           <strong style="color:#f0e8d8;">Delivery address:</strong><br/>${customer.address||'—'}
         </p>
-        <p style="margin-top:16px;color:#7a6330;font-size:12px;">Order ID: <strong style="color:#c9a84c;">${razorpay_order_id}</strong> · Payment ID: ${razorpay_payment_id}</p>
+        <p style="margin-top:16px;color:#7a6330;font-size:12px;">Order ID: <strong style="color:#c9a84c;">${inkOrderId}</strong></p>
         <div style="margin-top:20px;padding:14px 16px;background:#1c1916;border-left:3px solid #c9a84c;">
           <p style="color:#f0e8d8;font-size:13px;margin:0 0 10px;">📦 Track your order any time</p>
-          <a href="https://inkandchai.in/track/?id=${encodeURIComponent(razorpay_order_id)}&q=${encodeURIComponent(customer.email||customer.phone||'')}" style="display:inline-block;background:#c9a84c;color:#0d0b08;padding:10px 22px;text-decoration:none;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Track Order →</a>
+          <a href="https://inkandchai.in/track/?id=${encodeURIComponent(inkOrderId)}&q=${encodeURIComponent(customer.email||customer.phone||'')}" style="display:inline-block;background:#c9a84c;color:#0d0b08;padding:10px 22px;text-decoration:none;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Track Order →</a>
           <p style="color:#a09080;font-size:11px;line-height:1.7;margin:10px 0 0;">
             We'll email you again as soon as the courier picks up your books, with the tracking number.
           </p>
@@ -227,7 +233,7 @@ exports.handler = async (event) => {
     await sendWhatsApp({
       to: customer.phone,
       template: 'order_confirmed',
-      params: [firstName, razorpay_order_id, amtDisplay, addrShort, bookList],
+      params: [firstName, inkOrderId, amtDisplay, addrShort, bookList],
     });
   }
 

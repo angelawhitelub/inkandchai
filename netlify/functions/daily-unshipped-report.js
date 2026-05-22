@@ -34,12 +34,11 @@ function csvEscape(val) {
   return s;
 }
 
-function orderToCsvRow(o) {
+// Returns one CSV row per item in the order (multiple rows for multi-item orders)
+function orderToCsvRows(o) {
   const items = Array.isArray(o.cart_items) ? o.cart_items : [];
-  const subtotal = items.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.qty) || 0), 0);
   const totalPaise = o.amount_paise || 0;
   const totalRs = (totalPaise / 100).toFixed(2);
-  const bookTitles = items.map(i => `${i.title || i.name || '—'} x${i.qty || 1}`).join(' | ');
 
   const meta = items[0]?._payment || {};
   const isPartial = meta.mode === 'partial_cod' || o.status === 'partial_cod_pending';
@@ -47,25 +46,41 @@ function orderToCsvRow(o) {
     o.status === 'cod_pending' ? 'COD' : 'Prepaid'
   );
 
-  return [
-    o.razorpay_order_id || o.id,
-    o.created_at ? new Date(o.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
+  const orderId   = o.razorpay_order_id || o.id;
+  const dateStr   = o.created_at ? new Date(o.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '';
+  const itemCount = items.length || 1;
+
+  // If no items, return a single row with blank book fields
+  if (items.length === 0) {
+    return [[
+      orderId, dateStr, o.status, payType,
+      o.customer_name || '', o.customer_phone || '', o.customer_email || '',
+      o.customer_address || '', totalRs, '', '1', '1', o.tracking_id || '',
+    ].map(csvEscape).join(',')];
+  }
+
+  // One row per item — repeat order-level fields, vary book fields
+  return items.map((item, idx) => [
+    orderId,
+    dateStr,
     o.status,
     payType,
     o.customer_name || '',
     o.customer_phone || '',
     o.customer_email || '',
     o.customer_address || '',
-    totalRs,
-    bookTitles,
+    idx === 0 ? totalRs : '',           // show total only on first row
+    item.title || item.name || '—',     // one book per row
+    item.qty || 1,                      // quantity of this item
+    itemCount,                          // total items in order
     o.tracking_id || '',
-  ].map(csvEscape).join(',');
+  ].map(csvEscape).join(','));
 }
 
 const CSV_HEADER = [
   'Order ID', 'Date (IST)', 'Status', 'Payment Type',
   'Customer Name', 'Phone', 'Email', 'Address',
-  'Total (₹)', 'Items', 'Tracking ID',
+  'Total (₹)', 'Book Title', 'Qty', 'Total Items in Order', 'Tracking ID',
 ].map(csvEscape).join(',');
 
 // ── Email HTML wrapper ────────────────────────────────────────────────────────
@@ -146,7 +161,8 @@ exports.handler = async () => {
       return { statusCode: 200, body: 'No unshipped orders — empty report sent.' };
     }
 
-    const csvLines  = [CSV_HEADER, ...unshipped.map(orderToCsvRow)];
+    // Flatten: each order may produce multiple rows (one per item)
+    const csvLines  = [CSV_HEADER, ...unshipped.flatMap(orderToCsvRows)];
     const csvContent = csvLines.join('\n');
 
     await sendEmail({
