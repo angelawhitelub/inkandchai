@@ -33,11 +33,23 @@ function normalizeCouponCode(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
+// Must stay in sync with COUPONS object in public/checkout/index.html
+const COUPONS = {
+  INKLOVE10:  { type: 'percent', value: 10, minSubtotal: 499  },
+  '499HIT':   { type: 'percent', value: 10, minSubtotal: 499  },
+  SAVE12:     { type: 'percent', value: 12, minSubtotal: 999  },
+  SAVE15:     { type: 'percent', value: 15, minSubtotal: 1499 },
+  CHAI10BACK: { type: 'percent', value: 10, minSubtotal: 299  },
+};
+
 function couponDiscount(subtotal, code) {
   const normalized = normalizeCouponCode(code);
-  const minSubtotal = normalized === 'CHAI10BACK' ? 299 : 499;
-  if (!['INKLOVE10', 'CHAI10BACK'].includes(normalized) || subtotal < minSubtotal) return { code: '', discount: 0 };
-  return { code: normalized, discount: Math.floor(subtotal * 0.10) };
+  const coupon = COUPONS[normalized];
+  if (!coupon || subtotal < coupon.minSubtotal) return { code: '', discount: 0 };
+  const discount = coupon.type === 'percent'
+    ? Math.floor(subtotal * coupon.value / 100)
+    : Math.floor(coupon.value);
+  return { code: normalized, discount: Math.max(0, discount) };
 }
 
 function paymentMeta(cart) {
