@@ -210,10 +210,11 @@ for b in books:
         "pdf":  b.get("sample_pdf") or "",  # path to sample PDF (read-first-pages preview)
         "pdf_pages": b.get("sample_pdf_pages") or 0,
         # Codex-added review proof fields (kept alongside the new structured reviews)
-        "rating": b.get("rating_value") or "",
+        "rating": b.get("rating_value") or b.get("rating") or "",
         "review_count": b.get("review_count") or "",
         "order_badge": clean_text(b.get("order_badge", "")),
-        "review_image": public_image_url(b.get("review_image_url", "")),
+        "review_image": public_image_url(b.get("review_image") or b.get("review_image_url", "")),
+        "review_images": [public_image_url(img) for img in (b.get("review_images") or [])],
         "review_video": b.get("review_video_url") or "",
         # Customer reviews — list of { name, rating (1-5), text } objects.
         # Rendered on both SSR + dynamic product pages, contributes to JSON-LD.
