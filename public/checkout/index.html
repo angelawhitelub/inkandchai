@@ -623,14 +623,18 @@ function handlePin(val) {
   msg.style.color = '#a09080';
   _pinTimer = setTimeout(async () => {
     try {
-      const res  = await fetch(`https://api.postalpincode.in/pincode/${val}`);
+      const res  = await fetch(`/.netlify/functions/pincode-lookup?pin=${val}`);
       const data = await res.json();
-      if (data[0].Status === 'Success' && data[0].PostOffice?.length) {
-        const po = data[0].PostOffice[0];
-        document.getElementById('ch-city').value  = po.District || po.Division || po.Name || '';
-        document.getElementById('ch-state').value = po.State || '';
-        msg.textContent = '✓ ' + (po.District || po.Name) + ', ' + po.State;
-        msg.style.color = '#8fa87a';
+      if (res.ok && data.state) {
+        if (data.city) document.getElementById('ch-city').value  = data.city;
+        document.getElementById('ch-state').value = data.state;
+        if (data.city) {
+          msg.textContent = '✓ ' + data.city + ', ' + data.state;
+          msg.style.color = '#8fa87a';
+        } else {
+          msg.textContent = '✓ ' + data.state + ' — please enter your city.';
+          msg.style.color = '#c9a84c';
+        }
         return;
       }
     } catch(e){}
