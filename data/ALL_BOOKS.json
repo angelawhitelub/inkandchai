@@ -79,7 +79,13 @@
     ],
     "rating": "4.9",
     "review_count": "128",
-    "order_badge": "BookTok Favourite"
+    "order_badge": "BookTok Favourite",
+    "review_image": "/images/reviews/off-campus-series-customer-review-1.jpg",
+    "review_images": [
+      "/images/reviews/off-campus-series-customer-review-1.jpg",
+      "/images/reviews/off-campus-series-customer-review-2.jpg",
+      "/images/reviews/off-campus-series-customer-review-3.jpg"
+    ]
   },
   {
     "shopify_id": "CUSTOM-HIDDEN-HINDU-TRILOGY-3",
@@ -2712,11 +2718,11 @@
         "text": "Really enjoyed this one! The fake dating plot was super engaging and I loved how Elle Kennedy builds the tension slowly. Garrett is swoony but not in an unrealistic way. Would give 5 stars but I found the pacing slightly slow in the middle — though it picks up beautifully at the end. Overall a 9/10 read, will definitely continue the series."
       }
     ],
-    "review_image": "/images/reviews/off-campus-series-customer-review-1.jpg",
+    "review_image": "/images/reviews/the-deal-customer-review-1.jpg",
     "review_images": [
-      "/images/reviews/off-campus-series-customer-review-1.jpg",
-      "/images/reviews/off-campus-series-customer-review-2.jpg",
-      "/images/reviews/off-campus-series-customer-review-3.jpg"
+      "/images/reviews/the-deal-customer-review-1.jpg",
+      "/images/reviews/the-deal-customer-review-2.jpg",
+      "/images/reviews/the-deal-customer-review-3.jpg"
     ]
   },
   {
@@ -62246,11 +62252,11 @@
         "text": "Really enjoyed this one! The fake dating plot was super engaging and I loved how Elle Kennedy builds the tension slowly. Garrett is swoony but not in an unrealistic way. Would give 5 stars but I found the pacing slightly slow in the middle — though it picks up beautifully at the end. Overall a 9/10 read, will definitely continue the series."
       }
     ],
-    "review_image": "/images/reviews/off-campus-series-customer-review-1.jpg",
+    "review_image": "/images/reviews/the-deal-customer-review-1.jpg",
     "review_images": [
-      "/images/reviews/off-campus-series-customer-review-1.jpg",
-      "/images/reviews/off-campus-series-customer-review-2.jpg",
-      "/images/reviews/off-campus-series-customer-review-3.jpg"
+      "/images/reviews/the-deal-customer-review-1.jpg",
+      "/images/reviews/the-deal-customer-review-2.jpg",
+      "/images/reviews/the-deal-customer-review-3.jpg"
     ]
   },
   {
