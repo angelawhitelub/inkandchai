@@ -184,10 +184,11 @@ for b in books:
 
     scraped = b.get("scraped_at", "")
     sid     = str(b.get("shopify_id") or "")
-    # New-arrival rule: manually-curated additions (CUSTOM-…) OR anything
-    # scraped strictly AFTER the bulk import date.
-    BULK_IMPORT_DATE = "2026-04-23"  # bulk scrape was 2026-04-22
-    is_new = 1 if (sid.startswith("CUSTOM-") or (scraped and scraped[:10] >= BULK_IMPORT_DATE)) else 0
+    # For CUSTOM- listings with no scraped_at, use today so they sort newest-first
+    TODAY_ISO = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    effective_ts = scraped or (TODAY_ISO if sid.startswith("CUSTOM-") else "")
+    # New-arrival rule: added within last NEW_ARRIVAL_DAYS days
+    is_new = 1 if (effective_ts and effective_ts[:10] >= _new_cutoff[:10]) else 0
 
     slug = make_slug(b["title"], b.get("shopify_id", ""))
     feed_image_by_slug[slug] = crawlable_image_url(b.get("image_url", ""))
@@ -206,7 +207,7 @@ for b in books:
         "isbn": clean_text(b.get("isbn", "")),
         "pub":  clean_text(b.get("publisher", "")),
         "n":    is_new,            # 1 = New Arrival
-        "ts":   scraped,           # so we can sort newest-first when needed
+        "ts":   effective_ts,      # ISO timestamp used for newest-first sort
         "pdf":  b.get("sample_pdf") or "",  # path to sample PDF (read-first-pages preview)
         "pdf_pages": b.get("sample_pdf_pages") or 0,
         # Codex-added review proof fields (kept alongside the new structured reviews)
@@ -221,8 +222,9 @@ for b in books:
         "reviews": list(b.get("reviews") or []),
     })
 
-# Put new arrivals at the very front so they're discoverable on first scroll
-slim.sort(key=lambda x: (-x["n"], -(x["ts"] or "")[:19].count("0")))  # new first
+# Put new arrivals at the very front, newest-first within each group
+slim.sort(key=lambda x: x["ts"] or "", reverse=True)   # step 1: newest date first
+slim.sort(key=lambda x: x["n"], reverse=True)           # step 2: new-arrivals (n=1) before rest (stable)
 
 books_js = json.dumps(slim, ensure_ascii=False)
 
