@@ -222,7 +222,7 @@ exports.handler = async (event) => {
 
     if (!userText) return { statusCode: 200, body: 'ok' };
 
-    console.log(`WhatsApp bot message from ${from}: ${userText.slice(0, 80)}`);
+    console.log(`[IN]  ${from}: ${userText.slice(0, 120)}`);
 
     // ── Check if message contains an Order ID — look it up ───────────────────
     let extraContext = '';
@@ -255,6 +255,7 @@ exports.handler = async (event) => {
     }
 
     await sendReply(from, reply);
+    console.log(`[OUT] ${from}: ${reply.slice(0, 120)}`);
 
   } catch (err) {
     console.error('whatsapp-bot error:', err.message);
