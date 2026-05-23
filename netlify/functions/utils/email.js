@@ -63,32 +63,32 @@ async function sendEmail({ to, subject, html }) {
   if (!to)      { console.warn('sendEmail: empty "to" — skipped'); return { ok: false }; }
   if (!subject) { console.warn('sendEmail: empty subject — skipped'); return { ok: false }; }
 
-  const brevoKey  = process.env.BREVO_API_KEY;
   const resendKey = process.env.RESEND_API_KEY;
+  const brevoKey  = process.env.BREVO_API_KEY;
 
-  // Try Brevo first
-  if (brevoKey) {
-    try {
-      await sendViaBrevo(brevoKey, { to, subject, html });
-      return { ok: true };
-    } catch (err) {
-      console.error('Brevo failed, trying Resend fallback:', err.message);
-      // Fall through to Resend
-    }
-  }
-
-  // Resend fallback (also used when BREVO_API_KEY not set)
+  // Try Resend first
   if (resendKey) {
     try {
       await sendViaResend(resendKey, { to, subject, html });
       return { ok: true };
     } catch (err) {
-      console.error('Resend also failed:', err.message);
+      console.error('Resend failed, trying Brevo fallback:', err.message);
+      // Fall through to Brevo
+    }
+  }
+
+  // Brevo fallback (also used when RESEND_API_KEY not set)
+  if (brevoKey) {
+    try {
+      await sendViaBrevo(brevoKey, { to, subject, html });
+      return { ok: true };
+    } catch (err) {
+      console.error('Brevo also failed:', err.message);
     }
     return { ok: false };
   }
 
-  console.warn('No email provider configured (set BREVO_API_KEY or RESEND_API_KEY)');
+  console.warn('No email provider configured (set RESEND_API_KEY or BREVO_API_KEY)');
   return { ok: false };
 }
 
