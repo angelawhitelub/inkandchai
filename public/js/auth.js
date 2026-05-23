@@ -157,7 +157,7 @@
     modal.id = 'iacGuestOrdersModal';
     modal.style.cssText = `
       position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
-      display:flex;align-items:center;justify-content:center;z-index:9000;padding:1.5rem;
+      display:flex;align-items:center;justify-content:center;z-index:10010;padding:1.5rem;
     `;
     modal.innerHTML = `
       <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);
@@ -248,7 +248,7 @@
     modal.id = 'iacAuthModal';
     modal.style.cssText = `
       position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
-      display:flex;align-items:center;justify-content:center;z-index:9000;
+      display:flex;align-items:center;justify-content:center;z-index:10010;
     `;
     modal.innerHTML = `
       <div id="iacAuthBox" style="
@@ -479,7 +479,7 @@
     modal.id = 'iacAccountModal';
     modal.style.cssText = `
       position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
-      display:flex;align-items:flex-start;justify-content:center;z-index:9000;overflow-y:auto;
+      display:flex;align-items:flex-start;justify-content:center;z-index:10010;overflow-y:auto;
       padding:4rem 1rem;
     `;
     const email = currentUser?.email || '';

@@ -2848,6 +2848,8 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
   .prod-badges{margin-top:0.5rem}
   .prod-actions{display:none}
   .prod-bottom-bar{display:flex!important}
+  .mob-nav{display:none!important}
+  #authNavBtnProd{display:inline-flex!important}
   .prod-info{gap:1rem}
   .prod-title{font-size:1.5rem!important}
   .prod-price{font-size:2rem!important}
