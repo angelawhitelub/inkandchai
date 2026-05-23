@@ -55,11 +55,13 @@ async function sendViaResend(key, { to, subject, html }) {
 
 /**
  * Send a transactional email. Non-fatal — logs errors but never throws.
+ * Always returns { ok: boolean } so callers can check success.
  * @param {{ to: string, subject: string, html: string }} opts
+ * @returns {{ ok: boolean }}
  */
 async function sendEmail({ to, subject, html }) {
-  if (!to)      { console.warn('sendEmail: empty "to" — skipped'); return; }
-  if (!subject) { console.warn('sendEmail: empty subject — skipped'); return; }
+  if (!to)      { console.warn('sendEmail: empty "to" — skipped'); return { ok: false }; }
+  if (!subject) { console.warn('sendEmail: empty subject — skipped'); return { ok: false }; }
 
   const brevoKey  = process.env.BREVO_API_KEY;
   const resendKey = process.env.RESEND_API_KEY;
@@ -67,7 +69,8 @@ async function sendEmail({ to, subject, html }) {
   // Try Brevo first
   if (brevoKey) {
     try {
-      return await sendViaBrevo(brevoKey, { to, subject, html });
+      await sendViaBrevo(brevoKey, { to, subject, html });
+      return { ok: true };
     } catch (err) {
       console.error('Brevo failed, trying Resend fallback:', err.message);
       // Fall through to Resend
@@ -77,14 +80,16 @@ async function sendEmail({ to, subject, html }) {
   // Resend fallback (also used when BREVO_API_KEY not set)
   if (resendKey) {
     try {
-      return await sendViaResend(resendKey, { to, subject, html });
+      await sendViaResend(resendKey, { to, subject, html });
+      return { ok: true };
     } catch (err) {
       console.error('Resend also failed:', err.message);
     }
-    return;
+    return { ok: false };
   }
 
   console.warn('No email provider configured (set BREVO_API_KEY or RESEND_API_KEY)');
+  return { ok: false };
 }
 
 module.exports = { sendEmail };
