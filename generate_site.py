@@ -2738,7 +2738,7 @@ document.querySelectorAll('.stat-num').forEach(el => {
 import os
 HTML = HTML.replace("BOOKS_DATA_PLACEHOLDER",         "window.BOOKS_PRELOAD||[]")
 HTML = HTML.replace('<script src="/js/auth.js"></script>\n\n<script>\n// ── DATA',
-                    f'{BOOKS_LITE_TAG}\n\n<script>\n// ── DATA')  # inject external data script
+                    f'<script src="/js/auth.js"></script>\n{BOOKS_LITE_TAG}\n\n<script>\n// ── DATA')  # inject external data script, keep auth.js
 HTML = HTML.replace("COLLECTIONS_DATA_PLACEHOLDER",   json.dumps(coll_data, ensure_ascii=False))
 HTML = HTML.replace("ALL_CATS_DATA_PLACEHOLDER",      all_cats_js)
 HTML = HTML.replace("NAV_CATEGORIES_PLACEHOLDER",     nav_categories_html)
