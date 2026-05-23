@@ -59,9 +59,12 @@ async function sendViaResend(key, { to, subject, html }) {
  * @param {{ to: string, subject: string, html: string }} opts
  * @returns {{ ok: boolean }}
  */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 async function sendEmail({ to, subject, html }) {
-  if (!to)      { console.warn('sendEmail: empty "to" — skipped'); return { ok: false }; }
-  if (!subject) { console.warn('sendEmail: empty subject — skipped'); return { ok: false }; }
+  if (!to)              { console.warn('sendEmail: empty "to" — skipped'); return { ok: false }; }
+  if (!EMAIL_RE.test(to)) { console.warn(`sendEmail: invalid address "${to}" — skipped`); return { ok: false }; }
+  if (!subject)         { console.warn('sendEmail: empty subject — skipped'); return { ok: false }; }
 
   const resendKey = process.env.RESEND_API_KEY;
   const brevoKey  = process.env.BREVO_API_KEY;
