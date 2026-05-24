@@ -86,6 +86,8 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
   .prod-badges{margin-top:0.5rem}
   .prod-actions{display:none}
   .prod-bottom-bar{display:flex!important}
+  .mob-nav{display:none!important}
+  #authNavBtnProd{display:inline-flex!important}
   .prod-info{gap:1rem}
   .prod-title{font-size:1.5rem!important}
   .prod-price{font-size:2rem!important}
@@ -147,6 +149,21 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-saving{font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:#6dbf6d;background:rgba(109,191,109,0.1);padding:0.3rem 0.7rem;border:1px solid rgba(109,191,109,0.25)}
 .prod-trust-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.55rem;margin-top:-0.2rem}
 .prod-trust-row span{border:1px solid rgba(201,168,76,0.18);background:rgba(201,168,76,0.05);color:var(--cream);font-size:0.68rem;line-height:1.4;padding:0.55rem 0.7rem}
+/* Ship-by widget */
+.ship-by-box{display:flex;align-items:flex-start;gap:0.65rem;padding:0.75rem 1rem;background:rgba(109,191,109,0.07);border:1px solid rgba(109,191,109,0.22);border-radius:2px}
+.ship-by-icon{font-size:1.15rem;line-height:1;flex-shrink:0;margin-top:0.1rem}
+.ship-by-text{display:flex;flex-direction:column;gap:0.18rem}
+.ship-by-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:#6dbf6d}
+.ship-by-date{font-size:0.95rem;font-weight:600;color:#faf7f2;font-family:'Cormorant Garamond',serif}
+.ship-by-sub{font-size:0.62rem;color:#a09080;margin-top:0.1rem}
+.ship-by-limited{font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#c9a84c;margin-top:0.15rem}
+/* Courier partners */
+.prod-courier-row{display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap}
+.prod-courier-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:#a09080;flex-shrink:0}
+.prod-courier-logos{display:flex;gap:0.4rem;flex-wrap:wrap}
+.prod-courier-tag{font-size:0.6rem;letter-spacing:0.1em;padding:0.25rem 0.6rem;border:1px solid rgba(201,168,76,0.2);color:#c9a84c;background:rgba(201,168,76,0.05);border-radius:2px;white-space:nowrap}
+/* Delivery guarantee */
+.prod-refund-guarantee{font-size:0.72rem;line-height:1.6;color:#f0e8d8;padding:0.65rem 0.9rem;background:rgba(109,191,109,0.06);border-left:3px solid #6dbf6d}
 .prod-desc-title{font-size:0.6rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem}
 .prod-desc{font-size:0.82rem;color:var(--cream-dim);line-height:1.9;letter-spacing:0.03em}
 .prod-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem 2rem}
@@ -568,7 +585,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-full-ff751559.js"></script>
+<script src="/js/books-full-6cab1a70.js"></script>
 <script>
 const BOOKS = window.BOOKS_PRELOAD||[];
 const SOCIAL_PROOF = [{"type": "video", "src": "/videos/unboxing-people-magnet.mp4", "poster": "/images/social/unboxing-people-magnet.jpg", "caption": "All India delivery · COD available"}, {"type": "video", "src": "/videos/affordable-novels.mp4", "poster": "/images/social/affordable-novels.jpg", "caption": "Affordable novels from just ₹99"}, {"type": "video", "src": "/videos/rich-dad-collection.mp4", "poster": "/images/social/rich-dad-collection.jpg", "caption": "Different genres · Large collection to choose from"}, {"type": "video", "src": "/videos/customer-thanks.mp4", "poster": "/images/social/customer-thanks.jpg", "caption": "❤️ A note from one of our readers"}];
@@ -578,6 +595,42 @@ const BOOK_MAP = {};
 BOOKS.forEach(b => { BOOK_MAP[b.slug] = b; });
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Ship-by date widget ───────────────────────────────────────────────────────
+// Threshold: midnight IST (12:00 AM). Orders before midnight → ships tomorrow.
+// After midnight (00:00–00:59 IST) → ships day after tomorrow (warehouse closed).
+// Exception: Off Campus 5-book collection → always 2 days (limited stock).
+const SLOW_SHIP_SLUGS = new Set(['off-campus-complete-5-book-collection-elle-kennedy']);
+
+function getShipByHTML(slug) {
+  // Current IST time (UTC+5:30)
+  const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  const istHour = nowIST.getUTCHours(); // 0–23
+
+  const isLimited = SLOW_SHIP_SLUGS.has(slug);
+  // After midnight (hour 0) warehouse is closed → add 2 days; else add 1
+  const daysToAdd = isLimited ? 2 : (istHour === 0 ? 2 : 1);
+
+  const shipDate = new Date(nowIST.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+  const shipStr  = new Intl.DateTimeFormat('en-IN', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata'
+  }).format(shipDate);
+
+  const subText = isLimited
+    ? 'Limited stock — allow extra processing time'
+    : (daysToAdd === 1 ? 'Order now to get it dispatched tomorrow' : 'Order now — dispatches day after tomorrow');
+
+  return `
+    <div class="ship-by-box">
+      <div class="ship-by-icon">📦</div>
+      <div class="ship-by-text">
+        <div class="ship-by-label">Ships by</div>
+        <div class="ship-by-date">${shipStr}</div>
+        <div class="ship-by-sub">${subText}</div>
+        ${isLimited ? '<div class="ship-by-limited">⚡ Limited stock</div>' : ''}
+      </div>
+    </div>`;
+}
 
 function pricePaise(priceStr){ return Math.round(parseFloat((priceStr||'').replace(/[^0-9.]/g,'')||0)); }
 
@@ -792,6 +845,21 @@ function renderProduct(b) {
             <div class="prod-cd" id="prodCountdown"></div>
           </div>
         </div>` : ''}
+
+        ${getShipByHTML(b.slug)}
+
+        <div class="prod-courier-row">
+          <span class="prod-courier-label">Shipped via</span>
+          <span class="prod-courier-logos">
+            <span class="prod-courier-tag">Delhivery</span>
+            <span class="prod-courier-tag">Amazon Shipping</span>
+            <span class="prod-courier-tag">Xpressbees</span>
+          </span>
+        </div>
+
+        <div class="prod-refund-guarantee">
+          🛡️ <strong>100% Delivery Guarantee</strong> — If your order is not delivered for any reason, a full refund will be issued within 24 hours. No questions asked.
+        </div>
 
         <div class="prod-trust-row" aria-label="Purchase benefits">
           <span>🚚 2–5 day delivery</span>
@@ -1079,8 +1147,8 @@ function renderBookstagram() {
     if (isVideo) {
       const poster = it.poster ? ` poster="${esc(it.poster)}"` : '';
       return `
-        <div class="bkg-card is-playing" onclick="bkgPlay(this)">
-          <video src="${esc(it.src)}"${poster} autoplay muted playsinline loop preload="auto"></video>
+        <div class="bkg-card" onclick="bkgPlay(this)">
+          <video data-src="${esc(it.src)}"${poster} muted playsinline loop preload="none"></video>
           <div class="bkg-play">▶</div>
           ${igChip}${cap}
         </div>`;
@@ -1101,15 +1169,32 @@ function renderBookstagram() {
 window.bkgPlay = function(card) {
   const v = card.querySelector('video');
   if (!v) return;
+  // Load video on first click if lazy-load hasn't fired yet
+  if (v.dataset.src && !v.getAttribute('src')) { v.src = v.dataset.src; }
   if (v.paused) { v.play().then(() => card.classList.add('is-playing')).catch(()=>{}); }
   else          { v.pause(); card.classList.remove('is-playing'); }
 };
 
-// Auto-mark cards whose video is already playing (autoplay case)
+// Lazy-load bookstagram videos: only start downloading when card scrolls into view
 document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.bkg-card video').forEach(function(v) {
-    if (!v.paused) v.closest('.bkg-card')?.classList.add('is-playing');
-    v.addEventListener('play', function() { v.closest('.bkg-card')?.classList.add('is-playing'); });
+  const bkgVidObs = ('IntersectionObserver' in window)
+    ? new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (!entry.isIntersecting) return;
+          const v = entry.target;
+          if (v.dataset.src && !v.getAttribute('src')) {
+            v.src = v.dataset.src;
+            v.play().catch(function(){});
+          }
+          bkgVidObs.unobserve(v);
+        });
+      }, { rootMargin: '400px' })
+    : null;
+
+  document.querySelectorAll('.bkg-card video[data-src]').forEach(function(v) {
+    if (bkgVidObs) { bkgVidObs.observe(v); }
+    else { v.src = v.dataset.src; v.play().catch(function(){}); }
+    v.addEventListener('play',  function() { v.closest('.bkg-card')?.classList.add('is-playing'); });
     v.addEventListener('pause', function() { v.closest('.bkg-card')?.classList.remove('is-playing'); });
   });
 });

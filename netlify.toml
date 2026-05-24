@@ -17,6 +17,14 @@
 [functions."daily-unshipped-report"]
   schedule = "30 15 * * *"
 
+# favicon.ico — redirect to the actual PNG; browsers cache the 301 permanently
+# (previously /favicon.ico had no file → fell through to index.html → 55 KB per hit → ~534 MB/week)
+[[redirects]]
+  from   = "/favicon.ico"
+  to     = "/images/favicon-96.png"
+  status = 301
+  force  = true
+
 # Static assets — never redirect
 [[redirects]]
   from   = "/images/*"
@@ -86,7 +94,7 @@
   status = 200
   force  = false
 
-# Security headers
+# Security headers — production
 [[headers]]
   for = "/*"
   [headers.values]
@@ -94,6 +102,15 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy        = "strict-origin-when-cross-origin"
     Permissions-Policy     = "geolocation=(), microphone=()"
+
+# Deploy-preview context: tell search engines not to index preview URLs.
+# This prevents bots from crawling deploy-preview--*.netlify.app URLs,
+# which currently account for ~2.5 GB/month of wasted bandwidth.
+[context.deploy-preview]
+  [[context.deploy-preview.headers]]
+    for = "/*"
+    [context.deploy-preview.headers.values]
+      X-Robots-Tag = "noindex, nofollow"
 
 # Cache headers are managed by public/_headers — that file uses Netlify's
 # native syntax which has reliable glob matching across subfolders. The TOML

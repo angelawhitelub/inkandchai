@@ -214,6 +214,7 @@ function itemFromFbtProduct(product) {
     price: Number(product.price) || 0,
     img: product.img || '',
     url: product.url || `/product/${product.slug}/`,
+    sku: product.sku || '',
     qty: 1,
   };
 }

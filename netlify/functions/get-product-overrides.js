@@ -35,7 +35,10 @@ exports.handler = async (event) => {
     if (customError) console.warn('custom_products unavailable:', customError.message);
     else customProducts = customData || [];
 
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: data || [], custom_products: customProducts }) };
+    // Cache at CDN edge for 5 min; stale-while-revalidate keeps it snappy after expiry.
+    // Product overrides change rarely (admin action), so 5-min staleness is fine.
+    const cacheHeaders = { ...CORS, 'Cache-Control': 'public, max-age=300, stale-while-revalidate=60' };
+    return { statusCode: 200, headers: cacheHeaders, body: JSON.stringify({ overrides: data || [], custom_products: customProducts }) };
   } catch (err) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: [], warning: err.message }) };
   }

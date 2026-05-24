@@ -222,6 +222,7 @@ for b in books:
         # Customer reviews — list of { name, rating (1-5), text } objects.
         # Rendered on both SSR + dynamic product pages, contributes to JSON-LD.
         "reviews": list(b.get("reviews") or []),
+        "sku":  b.get("sku", ""),    # Stock-keeping unit — used in cart items and daily report
     })
 
 # Put new arrivals at the very front, newest-first within each group
@@ -2199,7 +2200,8 @@ function renderBooks() {
         data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}"
         data-price="${priceNum}"
-        data-img="${escHtml(b.img)}">+ Add to Cart</button>
+        data-img="${escHtml(b.img)}"
+        data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>
     </a>`;
   }).join('');
 
@@ -2292,6 +2294,7 @@ function addToCartById(btn) {
     price:  parseFloat(btn.dataset.price || '0'),
     img:    btn.dataset.img,
     url:    btn.dataset.url,
+    sku:    btn.dataset.sku || '',
   });
 }
 
@@ -2463,7 +2466,7 @@ function renderShelf(rowId, filterFn, limit) {
       <button class="shelf-card-btn" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
         data-url="${escHtml(b.url)}" data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}" data-price="${price}"
-        data-img="${escHtml(b.img)}">+ Add to Cart</button>
+        data-img="${escHtml(b.img)}" data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>
     </a>`;
   }).join('');
 }
@@ -3866,8 +3869,8 @@ function renderBookstagram() {
     if (isVideo) {
       const poster = it.poster ? ` poster="${esc(it.poster)}"` : '';
       return `
-        <div class="bkg-card is-playing" onclick="bkgPlay(this)">
-          <video src="${esc(it.src)}"${poster} autoplay muted playsinline loop preload="auto"></video>
+        <div class="bkg-card" onclick="bkgPlay(this)">
+          <video data-src="${esc(it.src)}"${poster} muted playsinline loop preload="none"></video>
           <div class="bkg-play">▶</div>
           ${igChip}${cap}
         </div>`;
@@ -3888,15 +3891,32 @@ function renderBookstagram() {
 window.bkgPlay = function(card) {
   const v = card.querySelector('video');
   if (!v) return;
+  // Load video on first click if lazy-load hasn't fired yet
+  if (v.dataset.src && !v.getAttribute('src')) { v.src = v.dataset.src; }
   if (v.paused) { v.play().then(() => card.classList.add('is-playing')).catch(()=>{}); }
   else          { v.pause(); card.classList.remove('is-playing'); }
 };
 
-// Auto-mark cards whose video is already playing (autoplay case)
+// Lazy-load bookstagram videos: only start downloading when card scrolls into view
 document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.bkg-card video').forEach(function(v) {
-    if (!v.paused) v.closest('.bkg-card')?.classList.add('is-playing');
-    v.addEventListener('play', function() { v.closest('.bkg-card')?.classList.add('is-playing'); });
+  const bkgVidObs = ('IntersectionObserver' in window)
+    ? new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (!entry.isIntersecting) return;
+          const v = entry.target;
+          if (v.dataset.src && !v.getAttribute('src')) {
+            v.src = v.dataset.src;
+            v.play().catch(function(){});
+          }
+          bkgVidObs.unobserve(v);
+        });
+      }, { rootMargin: '400px' })
+    : null;
+
+  document.querySelectorAll('.bkg-card video[data-src]').forEach(function(v) {
+    if (bkgVidObs) { bkgVidObs.observe(v); }
+    else { v.src = v.dataset.src; v.play().catch(function(){}); }
+    v.addEventListener('play',  function() { v.closest('.bkg-card')?.classList.add('is-playing'); });
     v.addEventListener('pause', function() { v.closest('.bkg-card')?.classList.remove('is-playing'); });
   });
 });
@@ -4269,6 +4289,7 @@ def static_product_html(book):
         "author": book.get("a", ""),
         "price": price_number(book),
         "img": book.get("img", ""),
+        "sku": book.get("sku", ""),
         "qty": 1,
     }, ensure_ascii=False).replace("</", "<\\/")
 
@@ -4328,8 +4349,8 @@ def static_product_html(book):
                 cards.append(
                     f'<div style="flex:0 0 200px;aspect-ratio:9/16;background:#1a1208;border:1px solid var(--border);'
                     f'position:relative;overflow:hidden;scroll-snap-align:start">'
-                    f'<video src="{html_escape(src)}" {"poster=\"" + html_escape(poster) + "\"" if poster else ""} '
-                    f'autoplay muted playsinline loop preload="auto" '
+                    f'<video data-src="{html_escape(src)}" {"poster=\"" + html_escape(poster) + "\"" if poster else ""} '
+                    f'muted playsinline loop preload="none" class="bkg-pv-lazy" '
                     f'style="width:100%;height:100%;object-fit:cover;display:block"></video>'
                     f'{f"<div style=\"position:absolute;left:0;right:0;bottom:0;padding:.6rem;background:linear-gradient(to top,rgba(0,0,0,.85),transparent);font-size:.65rem;color:#f0e8d8;line-height:1.3\">{cap}</div>" if cap else ""}'
                     f'</div>'
@@ -4636,6 +4657,26 @@ document.addEventListener('keydown', e => {{
   if (document.getElementById('pdfM').style.display === 'flex') closePdf();
 }});
 applyRuntimeProductOverride();
+// Lazy-load bookstagram videos embedded in static product page HTML
+(function() {{
+  var pvObs = ('IntersectionObserver' in window)
+    ? new IntersectionObserver(function(e) {{
+        e.forEach(function(en) {{
+          if (!en.isIntersecting) return;
+          var v = en.target;
+          if (v.dataset.src && !v.getAttribute('src')) {{
+            v.src = v.dataset.src;
+            v.play().catch(function() {{}});
+          }}
+          pvObs.unobserve(v);
+        }});
+      }}, {{rootMargin: '400px'}})
+    : null;
+  document.querySelectorAll('.bkg-pv-lazy[data-src]').forEach(function(v) {{
+    if (pvObs) {{ pvObs.observe(v); }}
+    else {{ v.src = v.dataset.src; v.play().catch(function() {{}}); }}
+  }});
+}}());
 </script>
 </body>
 </html>"""
