@@ -2919,6 +2919,13 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .ship-by-date{font-size:0.95rem;font-weight:600;color:#faf7f2;font-family:'Cormorant Garamond',serif}
 .ship-by-sub{font-size:0.62rem;color:#a09080;margin-top:0.1rem}
 .ship-by-limited{font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#c9a84c;margin-top:0.15rem}
+/* Courier partners */
+.prod-courier-row{display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap}
+.prod-courier-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:#a09080;flex-shrink:0}
+.prod-courier-logos{display:flex;gap:0.4rem;flex-wrap:wrap}
+.prod-courier-tag{font-size:0.6rem;letter-spacing:0.1em;padding:0.25rem 0.6rem;border:1px solid rgba(201,168,76,0.2);color:#c9a84c;background:rgba(201,168,76,0.05);border-radius:2px;white-space:nowrap}
+/* Delivery guarantee */
+.prod-refund-guarantee{font-size:0.72rem;line-height:1.6;color:#f0e8d8;padding:0.65rem 0.9rem;background:rgba(109,191,109,0.06);border-left:3px solid #6dbf6d}
 .prod-desc-title{font-size:0.6rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem}
 .prod-desc{font-size:0.82rem;color:var(--cream-dim);line-height:1.9;letter-spacing:0.03em}
 .prod-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem 2rem}
@@ -3559,6 +3566,19 @@ function renderProduct(b) {
         </div>` : ''}
 
         ${getShipByHTML(b.slug)}
+
+        <div class="prod-courier-row">
+          <span class="prod-courier-label">Shipped via</span>
+          <span class="prod-courier-logos">
+            <span class="prod-courier-tag">Delhivery</span>
+            <span class="prod-courier-tag">Amazon Shipping</span>
+            <span class="prod-courier-tag">Xpressbees</span>
+          </span>
+        </div>
+
+        <div class="prod-refund-guarantee">
+          🛡️ <strong>100% Delivery Guarantee</strong> — If your order is not delivered for any reason, a full refund will be issued within 24 hours. No questions asked.
+        </div>
 
         <div class="prod-trust-row" aria-label="Purchase benefits">
           <span>🚚 2–5 day delivery</span>
