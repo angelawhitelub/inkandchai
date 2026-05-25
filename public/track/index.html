@@ -184,8 +184,9 @@ function statusToStepIdx(s) {
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 async function doTrack() {
-  // Strip all internal whitespace and uppercase — handles "IC- 20260521-85YX6" → "IC-20260521-85YX6"
-  const oid = document.getElementById('oid').value.trim().replace(/\s+/g, '').toUpperCase();
+  // Strip all internal whitespace — handles "IC- 20260521-85YX6" → "IC-20260521-85YX6"
+  // Do NOT uppercase — Razorpay order_ IDs are case-sensitive
+  const oid = document.getElementById('oid').value.trim().replace(/\s+/g, '');
   const oq  = document.getElementById('oq').value.trim();
   const btn = document.getElementById('trackBtn');
   const errBox = document.getElementById('errBox');
@@ -273,7 +274,7 @@ function renderOrder(o) {
 
 // Auto-fill from URL params (e.g. tracking link in email)
 const params = new URLSearchParams(location.search);
-if (params.get('id')) document.getElementById('oid').value = params.get('id').trim().replace(/\s+/g,'').toUpperCase();
+if (params.get('id')) document.getElementById('oid').value = params.get('id').trim().replace(/\s+/g,'');
 if (params.get('q'))  document.getElementById('oq').value  = params.get('q');
 if (params.get('id') && params.get('q')) setTimeout(doTrack, 200);
 </script>

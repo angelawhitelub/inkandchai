@@ -25,9 +25,9 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
 
   const params = event.queryStringParameters || {};
-  // Normalise order ID: strip ALL whitespace and uppercase so "IC- 20260521-85YX6"
-  // or "ic-20260521-85yx6" both resolve correctly regardless of how the customer typed it.
-  const id = (params.id || '').trim().replace(/\s+/g, '').toUpperCase();
+  // Normalise order ID: strip ALL internal whitespace so "IC- 20260521-85YX6" → "IC-20260521-85YX6".
+  // Do NOT uppercase — Razorpay's order_ IDs are case-sensitive (order_SsW3Rzrk7HkHdT).
+  const id = (params.id || '').trim().replace(/\s+/g, '');
   const q  = (params.q  || '').trim();
 
   if (!id || !q) {
@@ -37,11 +37,10 @@ exports.handler = async (event) => {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-    // Look up by razorpay_order_id. Use select('*') so we don't depend on
-    // the tracking_id / courier_name / tracking_url / shipped_at columns
-    // existing yet — they're added by SQL_MIGRATIONS.md and we want this
-    // page to work even before the migration is run.
-    const { data, error } = await supabase
+    // Look up by razorpay_order_id.
+    // Strategy 1 — exact match (required for old Razorpay order_ IDs which are case-sensitive)
+    // Strategy 2 — case-insensitive ilike fallback (handles IC- IDs typed in wrong case)
+    let { data, error } = await supabase
       .from('orders')
       .select('*')
       .eq('razorpay_order_id', id)
@@ -49,9 +48,25 @@ exports.handler = async (event) => {
       .maybeSingle();
 
     if (error) {
-      console.error('track-order Supabase error:', error);
+      console.error('track-order Supabase error (eq):', error);
       return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Database error: ' + error.message }) };
     }
+
+    // Fallback: case-insensitive search — catches IC- IDs entered in lowercase
+    if (!data) {
+      const r2 = await supabase
+        .from('orders')
+        .select('*')
+        .ilike('razorpay_order_id', id)
+        .limit(1)
+        .maybeSingle();
+      if (r2.error) {
+        console.error('track-order Supabase error (ilike):', r2.error);
+      } else {
+        data = r2.data;
+      }
+    }
+
     if (!data) {
       return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found. Check the order ID and try again.' }) };
     }
