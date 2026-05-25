@@ -224,7 +224,19 @@ async function applyRuntimeProductOverride() {
     }
     if (override.original_price_inr !== null && override.original_price_inr !== undefined) {
       const mrpText = priceText(override.original_price_inr);
-      document.querySelectorAll('[data-product-original-price], .orig, .prod-orig').forEach(el => {
+      let origEls = document.querySelectorAll('[data-product-original-price], .orig, .prod-orig');
+      if (origEls.length === 0) {
+        // Book had no MRP in catalogue — create the element next to the sale price
+        const priceEl = document.querySelector('[data-product-price], .price');
+        if (priceEl && priceEl.parentNode) {
+          const span = document.createElement('span');
+          span.className = 'orig';
+          span.setAttribute('data-product-original-price', '');
+          priceEl.parentNode.insertBefore(span, priceEl.nextSibling);
+          origEls = [span];
+        }
+      }
+      origEls.forEach(el => {
         el.textContent = mrpText;
         el.setAttribute('data-live-override', 'original-price');
       });
