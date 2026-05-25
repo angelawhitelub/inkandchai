@@ -25,7 +25,9 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
 
   const params = event.queryStringParameters || {};
-  const id = (params.id || '').trim();
+  // Normalise order ID: strip ALL whitespace and uppercase so "IC- 20260521-85YX6"
+  // or "ic-20260521-85yx6" both resolve correctly regardless of how the customer typed it.
+  const id = (params.id || '').trim().replace(/\s+/g, '').toUpperCase();
   const q  = (params.q  || '').trim();
 
   if (!id || !q) {
