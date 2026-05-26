@@ -124,6 +124,16 @@ _SKU_LOOKUP = sorted(ITEM_SKU_MAP.items(), key=lambda x: len(x[0]), reverse=True
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+_NAN_STRINGS = {'nan', 'none', 'null', 'n/a', 'na', '#n/a', ''}
+
+def clean_val(v):
+    """Return '' for any pandas NaN / None / 'nan' string, else stripped string."""
+    if v is None:
+        return ''
+    s = str(v).strip()
+    return '' if s.lower() in _NAN_STRINGS else s
+
+
 def clean_phone(phone):
     digits = ''.join(c for c in str(phone) if c.isdigit())
     return digits[-10:] if len(digits) > 10 else digits
@@ -233,17 +243,22 @@ def parse_items_from_new_format(row, max_slots=10):
     """
     Parse Product(N)/SKU(N)/Qty(N) columns from new wide-format export.
     Returns list of {'product': str, 'sku': str, 'qty': int}
+
+    NaN handling: pandas dtype=str converts missing cells to the literal string 'nan'.
+    clean_val() normalises those to '' so we stop iteration correctly.
+    SKU: if the CSV SKU is blank/nan, auto-derive it from the product name.
     """
     result = []
     for n in range(1, max_slots + 1):
-        product = str(row.get(f'Product({n})', '') or '').strip()
+        product = clean_val(row.get(f'Product({n})', ''))
         if not product:
-            break
-        sku_val = str(row.get(f'SKU({n})', '') or '').strip()
+            break                           # no more items for this order
+        # SKU: use CSV value if present, else smart-derive from product name
+        sku_val = clean_val(row.get(f'SKU({n})', ''))
         if not sku_val:
-            sku_val = get_sku(product)   # fallback to keyword lookup
+            sku_val = get_sku(product)
         try:
-            qty = int(str(row.get(f'Qty({n})', 1) or 1))
+            qty = int(clean_val(row.get(f'Qty({n})', '')) or 1)
         except (ValueError, TypeError):
             qty = 1
         result.append({'product': product, 'sku': sku_val, 'qty': qty})
@@ -268,25 +283,25 @@ def map_orders(input_file):
 
     for _, r in df.iterrows():
         # ── Customer info ──────────────────────────────────────────────────
-        name = str(r.get('Customer Name', '') or '').strip()
+        name = clean_val(r.get('Customer Name', ''))
         name_parts = name.split(None, 1)
         first = name_parts[0] if name_parts else ''
         last  = name_parts[1] if len(name_parts) > 1 else ''
         phone = clean_phone(r.get('Phone', ''))
 
         # ── Address ────────────────────────────────────────────────────────
-        addr1, addr2, city, state, pincode = parse_address(r.get('Delivery Address', ''))
+        addr1, addr2, city, state, pincode = parse_address(clean_val(r.get('Delivery Address', '')))
 
         # ── Payment / amounts ──────────────────────────────────────────────
         total_amount = 0.0
         try:
-            total_amount = float(str(r.get('Amount INR', '0') or '0').replace(',', ''))
+            total_amount = float(clean_val(r.get('Amount INR', '')) or '0')
         except ValueError:
             pass
 
         collect_cod = 0.0
         try:
-            collect_cod = float(str(r.get('Collect COD INR', '0') or '0').replace(',', ''))
+            collect_cod = float(clean_val(r.get('Collect COD INR', '')) or '0')
         except ValueError:
             pass
 
@@ -360,7 +375,8 @@ def map_orders(input_file):
     output_file = os.path.join(downloads, f'inkandchai_delhivery_{timestamp}.csv')
 
     out = pd.DataFrame(rows, columns=DELHIVERY_COLS)
-    out.to_csv(output_file, index=False)
+    out = out.fillna('')                  # ensure no NaN leaks into output
+    out.to_csv(output_file, index=False, na_rep='')
 
     return out, output_file, unknown_items
 
