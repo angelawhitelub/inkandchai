@@ -164,46 +164,8 @@ def get_sku(title):
 
 
 def estimate_weight_dims(items):
-    """
-    Returns (weight_g, length_cm, height_cm, breadth_cm) based on items.
-    Detects multi-book combos from product names.
-    """
-    def book_count_from_name(name):
-        n = str(name).lower()
-        # Explicit counts in name
-        for word, cnt in [('10 book', 10), ('9 book', 9), ('8 book', 8),
-                          ('7 book', 7), ('6 book', 6), ('5 book', 5),
-                          ('set of 6', 6), ('set of 5', 5), ('set of 4', 4),
-                          ('set of 3', 3), ('set of 2', 2),
-                          ('complete collection', 5), ('complete set', 5),
-                          ('4 book', 4), ('3 book', 3), ('2 book', 2)]:
-            if word in n:
-                return cnt
-        # Count "+" separators (e.g. "Atomic Habits + Psychology + Ikigai + Courage" = 4 books)
-        plus_count = n.count(' + ')
-        if plus_count >= 1:
-            return plus_count + 1
-        # Combo/duo/trio keywords
-        if 'trio' in n or '3-book' in n or '3 book' in n:
-            return 3
-        if 'duo' in n or '2-book' in n or '2 book' in n:
-            return 2
-        if 'quad' in n or '4-book' in n or '4 book' in n:
-            return 4
-        return 1
-
-    total_books = sum(book_count_from_name(i['product']) * i['qty'] for i in items)
-
-    if total_books <= 1:
-        return 300, 22, 2, 14
-    elif total_books == 2:
-        return 560, 24, 4, 15
-    elif total_books == 3:
-        return 840, 25, 5, 16
-    elif total_books <= 5:
-        return 250 * total_books, 26, 7, 17
-    else:
-        return 220 * total_books, 28, 10, 18
+    """Fixed weight 300g for all orders regardless of item count or combo size."""
+    return 300, 22, 2, 14
 
 
 def parse_items_from_old_format(items_str):
