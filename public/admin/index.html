@@ -195,6 +195,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <button class="btn-outline" onclick="document.getElementById('productEditorSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Edit Products / Prices</button>
     <button class="btn-outline" onclick="document.getElementById('abandonedCheckoutSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Abandoned Checkouts</button>
     <button class="btn-outline" onclick="document.getElementById('ordersTableSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Orders</button>
+    <button class="btn-outline" id="reviewsJumpBtn" onclick="document.getElementById('reviewsModerationSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 6px;font-size:.6rem;margin-left:4px"></span></button>
   </div>
 
   <!-- Stats (click to filter) -->
@@ -395,6 +396,21 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
       </table>
     </div>
     <div class="lead-empty" id="abandonedEmpty" style="display:none;">No abandoned checkouts ready for follow-up.</div>
+  </section>
+
+  <!-- Reviews Moderation -->
+  <section class="product-panel" id="reviewsModerationSection">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem;flex-wrap:wrap">
+      <div>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;margin-bottom:.2rem">Product Reviews</h2>
+        <p style="font-size:.65rem;color:var(--cream-dim)">Approve or reject customer reviews before they appear on product pages.</p>
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn-outline" onclick="fetchPendingReviews()">↻ Refresh</button>
+        <button class="btn-outline" onclick="fetchAllReviews()">All Reviews</button>
+      </div>
+    </div>
+    <div id="reviewsModerationList"><p style="font-size:.7rem;color:var(--cream-dim);padding:.5rem 0">Loading reviews…</p></div>
   </section>
 
   <!-- Export bar -->
@@ -1860,6 +1876,93 @@ function esc(s) {
 setInterval(() => { if (adminKey) fetchOrders(true); }, 90000);
 
 document.getElementById('adminPass').focus();
+
+// ── Reviews Moderation ──────────────────────────────────────────────────────
+let reviewsShowAll = false;
+
+async function fetchPendingReviews() {
+  reviewsShowAll = false;
+  await loadReviews('/.netlify/functions/get-reviews?pending=1');
+}
+
+async function fetchAllReviews() {
+  reviewsShowAll = true;
+  await loadReviews('/.netlify/functions/get-reviews?all=1');
+}
+
+async function loadReviews(url) {
+  const container = document.getElementById('reviewsModerationList');
+  container.innerHTML = '<p style="font-size:.7rem;color:var(--cream-dim)">Loading…</p>';
+  try {
+    const res  = await fetch(url);
+    const data = await res.json();
+    const reviews = data.reviews || [];
+
+    // Update badge
+    const badge = document.getElementById('pendingReviewsBadge');
+    if (!reviewsShowAll) {
+      if (reviews.length > 0) { badge.style.display = 'inline'; badge.textContent = reviews.length; }
+      else { badge.style.display = 'none'; }
+    }
+
+    if (reviews.length === 0) {
+      container.innerHTML = '<p style="font-size:.7rem;color:var(--cream-dim);padding:.5rem 0">' +
+        (reviewsShowAll ? 'No reviews yet.' : 'No pending reviews 🎉') + '</p>';
+      return;
+    }
+
+    container.innerHTML = reviews.map(r => {
+      const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+      const date  = new Date(r.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+      return `<div id="rev-${r.id}" style="background:#fff;border:1px solid var(--border);padding:.9rem 1rem;margin-bottom:.6rem;border-radius:2px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.3rem;flex-wrap:wrap">
+              <span style="color:#f0a020;font-size:.9rem">${stars}</span>
+              <span style="font-size:.58rem;color:#888;letter-spacing:.06em">${date}</span>
+              ${r.approved ? '<span style="font-size:.55rem;color:#5d9b55;letter-spacing:.1em;text-transform:uppercase">✓ Approved</span>' : '<span style="font-size:.55rem;color:#e07020;letter-spacing:.1em;text-transform:uppercase">Pending</span>'}
+              ${r.verified_buyer ? '<span style="font-size:.55rem;color:#5d9b55;letter-spacing:.1em;text-transform:uppercase">✓ Verified</span>' : ''}
+            </div>
+            <div style="font-size:.72rem;font-weight:600;color:#2a2018;margin-bottom:.2rem">${r.customer_name || 'Anonymous'}</div>
+            <div style="font-size:.65rem;color:#888;margin-bottom:.4rem">Product: <a href="/product/${r.product_slug}/" target="_blank" style="color:var(--gold)">${r.product_slug}</a> &nbsp;·&nbsp; Order: ${r.order_id}</div>
+            ${r.comment ? `<div style="font-size:.72rem;color:#444;line-height:1.65">${r.comment}</div>` : '<div style="font-size:.68rem;color:#aaa;font-style:italic">No comment</div>'}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.4rem;flex-shrink:0">
+            ${!r.approved ? `<button onclick="moderateReview('${r.id}','approve')" style="background:#5d9b55;color:#fff;border:none;padding:.45rem .9rem;font-size:.62rem;letter-spacing:.1em;cursor:pointer;text-transform:uppercase;font-weight:600">✓ Approve</button>` : ''}
+            <button onclick="moderateReview('${r.id}','reject')" style="background:#c05050;color:#fff;border:none;padding:.45rem .9rem;font-size:.62rem;letter-spacing:.1em;cursor:pointer;text-transform:uppercase;font-weight:600">✕ Delete</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    container.innerHTML = `<p style="font-size:.7rem;color:#c05050">Error loading reviews: ${e.message}</p>`;
+  }
+}
+
+async function moderateReview(reviewId, action) {
+  const card = document.getElementById('rev-' + reviewId);
+  if (card) card.style.opacity = '0.4';
+  try {
+    const res = await fetch('/.netlify/functions/moderate-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ review_id: reviewId, action }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      if (card) card.remove();
+    } else {
+      if (card) card.style.opacity = '1';
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  } catch(e) {
+    if (card) card.style.opacity = '1';
+    alert('Error: ' + e.message);
+  }
+}
+
+// Load pending reviews on page load
+fetchPendingReviews();
 </script>
 </body>
 </html>

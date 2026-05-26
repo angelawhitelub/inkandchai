@@ -395,7 +395,24 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'AW-18119332653');
 </script>
-<!-- End Google tag -->"""
+<!-- End Google tag -->
+<!-- Google Merchant Reviews Badge -->
+<script id='merchantWidgetScript' src="https://www.gstatic.com/shopping/merchant/merchantwidget.js" defer></script>
+<script>
+(function(){
+  function initMerchantBadge(){
+    if(typeof merchantwidget === 'undefined') return;
+    merchantwidget.start({
+      merchant_id: 5511019734,
+      position: 'BOTTOM_RIGHT',
+      region: 'IN',
+    });
+  }
+  var s = document.getElementById('merchantWidgetScript');
+  if(s) s.addEventListener('load', initMerchantBadge);
+})();
+</script>
+<!-- End Google Merchant Reviews Badge -->"""
 
 def with_meta_pixel(html: str) -> str:
     tags = []
@@ -2992,6 +3009,19 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .review-note{font-size:0.74rem;color:var(--cream-dim);line-height:1.7;margin-top:0.9rem}
 @media(max-width:720px){.review-head{display:block}.review-score{text-align:left;margin-top:0.7rem}.review-media{grid-template-columns:1fr}.review-media img,.review-media video{height:auto;max-height:360px;object-fit:contain}}
 
+/* LIVE CUSTOMER REVIEWS */
+.live-reviews-section{margin-top:1.2rem;border-top:1px solid var(--border);padding-top:1.2rem}
+.live-reviews-head{display:flex;align-items:center;gap:.75rem;margin-bottom:1rem}
+.live-reviews-title{font-size:.6rem;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
+.live-reviews-badge{font-size:.55rem;letter-spacing:.1em;color:var(--cream-dim);background:var(--bg3);border:1px solid var(--border);padding:.2rem .55rem}
+.live-review-card{background:var(--bg3);border:1px solid var(--border);padding:1rem 1.1rem;margin-bottom:.6rem}
+.live-review-top{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.4rem}
+.live-review-stars{color:#f0c040;font-size:.9rem;letter-spacing:.05rem}
+.live-review-date{font-size:.56rem;color:var(--cream-dim);letter-spacing:.06em}
+.live-review-name{font-size:.68rem;font-weight:600;color:var(--cream);margin-bottom:.35rem}
+.live-review-body{font-size:.72rem;color:var(--cream-dim);line-height:1.7}
+.live-review-verified{font-size:.52rem;letter-spacing:.12em;text-transform:uppercase;color:#5d9b55;margin-top:.4rem}
+
 /* INK & CHAI PROMISE */
 .promise-box{border:1px solid rgba(201,168,76,0.2);background:rgba(201,168,76,0.04);padding:1rem 1.2rem;border-radius:2px}
 .promise-box-title{font-size:0.56rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold);margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem}
@@ -3678,6 +3708,15 @@ function renderProduct(b) {
           </div>` : ''}
           <p class="review-note">Readers choose Ink &amp; Chai for fast delivery, careful packing and checkout-backed order updates.</p>
         </section>` : ''}
+
+        <!-- Live customer reviews loaded from Supabase -->
+        <section class="live-reviews-section" id="liveReviewsSection" style="display:none">
+          <div class="live-reviews-head">
+            <div class="live-reviews-title">Customer Reviews</div>
+            <span class="live-reviews-badge" id="liveReviewsBadge"></span>
+          </div>
+          <div id="liveReviewsList"></div>
+        </section>
       </div>
     </div>
 
@@ -3693,6 +3732,8 @@ function renderProduct(b) {
   `;
   // Set initial wishlist state
   setTimeout(updateProdWishBtn, 100);
+  // Load live reviews
+  if (b && b.slug) loadLiveReviews(b.slug);
 
   // Product page sale countdown
   const _saleEnd = new Date('2026-05-19T18:30:00Z');
@@ -3728,6 +3769,37 @@ function updateProdWishBtn() {
   btn.innerHTML = wished ? '♥ Wishlisted' : '♡ Save to Wishlist';
   btn.style.color = wished ? '#e05050' : '#a09080';
   btn.style.borderColor = wished ? 'rgba(224,80,80,0.4)' : 'rgba(201,168,76,0.3)';
+}
+
+// ── Load live customer reviews for current product ──────────────────────────
+async function loadLiveReviews(slug) {
+  if (!slug) return;
+  try {
+    const res = await fetch('/.netlify/functions/get-reviews?slug=' + encodeURIComponent(slug));
+    if (!res.ok) return;
+    const { reviews } = await res.json();
+    if (!reviews || reviews.length === 0) return;
+    const section = document.getElementById('liveReviewsSection');
+    const list    = document.getElementById('liveReviewsList');
+    const badge   = document.getElementById('liveReviewsBadge');
+    if (!section || !list) return;
+    const avg = (reviews.reduce((s,r) => s + r.rating, 0) / reviews.length).toFixed(1);
+    badge.textContent = avg + ' ★  ·  ' + reviews.length + ' verified review' + (reviews.length > 1 ? 's' : '');
+    list.innerHTML = reviews.map(r => {
+      const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+      const date  = new Date(r.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+      return \`<div class="live-review-card">
+        <div class="live-review-top">
+          <span class="live-review-stars">\${stars}</span>
+          <span class="live-review-date">\${date}</span>
+        </div>
+        <div class="live-review-name">\${r.customer_name || 'Verified Buyer'}</div>
+        \${r.comment ? \`<div class="live-review-body">\${r.comment.replace(/</g,'&lt;')}</div>\` : ''}
+        \${r.verified_buyer ? '<div class="live-review-verified">✓ Verified Purchase</div>' : ''}
+      </div>\`;
+    }).join('');
+    section.style.display = 'block';
+  } catch(e) { /* silent fail */ }
 }
 
 function shareBook() {

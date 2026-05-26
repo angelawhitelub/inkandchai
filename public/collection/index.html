@@ -131,6 +131,23 @@ gtag('js', new Date());
 gtag('config', 'AW-18119332653');
 </script>
 <!-- End Google tag -->
+<!-- Google Merchant Reviews Badge -->
+<script id='merchantWidgetScript' src="https://www.gstatic.com/shopping/merchant/merchantwidget.js" defer></script>
+<script>
+(function(){
+  function initMerchantBadge(){
+    if(typeof merchantwidget === 'undefined') return;
+    merchantwidget.start({
+      merchant_id: 5511019734,
+      position: 'BOTTOM_RIGHT',
+      region: 'IN',
+    });
+  }
+  var s = document.getElementById('merchantWidgetScript');
+  if(s) s.addEventListener('load', initMerchantBadge);
+})();
+</script>
+<!-- End Google Merchant Reviews Badge -->
 </head>
 <body>
 <div class="promo-banner"><strong>✦ PREPAID OFFERS</strong> 10% ₹499+ &nbsp;·&nbsp; 12% ₹999+ &nbsp;·&nbsp; 15% ₹1499+</div>
