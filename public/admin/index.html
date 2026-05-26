@@ -1014,16 +1014,17 @@ async function exportExcel(mode) {
 
   if (!orders.length) { alert('No orders to export.'); return; }
 
-  const rows = orders.map(orderToExportRow);
+  const rows = ordersToExportRows(orders);
 
   // Create workbook
   const ws = XLSX.utils.json_to_sheet(rows);
 
-  // Column widths
-  ws['!cols'] = [
-    {wch:22},{wch:24},{wch:22},{wch:20},{wch:14},{wch:28},{wch:40},
-    {wch:50},{wch:10},{wch:12},{wch:20},{wch:14},{wch:16},{wch:22},{wch:44}
-  ];
+  // Column widths — fixed base cols + 3 cols per product slot
+  const baseCols = [{wch:22},{wch:24},{wch:22},{wch:20},{wch:14},{wch:28},{wch:40},
+                    {wch:10},{wch:12},{wch:20},{wch:14},{wch:16},{wch:22},{wch:22},{wch:44}];
+  const maxP = Math.max(1, ...orders.map(o => Array.isArray(o.cart_items) ? o.cart_items.length : 1));
+  const prodCols = Array.from({length: maxP}, () => [{wch:46},{wch:20},{wch:6}]).flat();
+  ws['!cols'] = [...baseCols, ...prodCols];
 
   const wb = XLSX.utils.book_new();
   const sheetName = mode === 'all' ? 'All Orders' : 'Filtered Orders';
@@ -1036,10 +1037,17 @@ async function exportExcel(mode) {
   XLSX.writeFile(wb, fname);
 }
 
-function orderToExportRow(o) {
-  const items  = Array.isArray(o.cart_items) ? o.cart_items : [];
+// Wide-format export — one row per order, Product(N)/SKU(N)/Qty(N) columns
+function ordersToExportRows(orders) {
+  const maxP = Math.max(1, ...orders.map(o => Array.isArray(o.cart_items) ? o.cart_items.length : 1));
+  return orders.map(o => orderToExportRow(o, maxP));
+}
+
+function orderToExportRow(o, maxProducts) {
+  maxProducts = maxProducts || 1;
+  const items   = Array.isArray(o.cart_items) ? o.cart_items : [];
   const payInfo = orderPaymentBreakdown(o);
-  return {
+  const row = {
     'Order ID':          o.razorpay_order_id || o.id || '',
     'Payment ID':        o.razorpay_payment_id || '',
     'Date':              o.created_at ? new Date(o.created_at).toLocaleString('en-IN') : '',
@@ -1047,7 +1055,6 @@ function orderToExportRow(o) {
     'Phone':             o.customer_phone || '',
     'Email':             o.customer_email || '',
     'Delivery Address':  o.customer_address || '',
-    'Items':             items.map(i => `${i.title || ''} x${i.qty || 1}`).join(' | '),
     'Item Count':        items.reduce((s,i) => s + (Number(i.qty)||0), 0),
     'Amount INR':        payInfo.full,
     'Paid Online INR':   payInfo.paid,
@@ -1058,6 +1065,13 @@ function orderToExportRow(o) {
     'AWB / Tracking ID': o.tracking_id || '',
     'Tracking URL':      o.tracking_url || '',
   };
+  for (let i = 0; i < maxProducts; i++) {
+    const item = items[i];
+    row[`Product(${i+1})`] = item ? (item.title || item.name || '') : '';
+    row[`SKU(${i+1})`]     = item ? (item.sku   || '')              : '';
+    row[`Qty(${i+1})`]     = item ? (Number(item.qty) || 1)         : '';
+  }
+  return row;
 }
 
 async function fetchAllOrdersForExport() {
@@ -1493,7 +1507,7 @@ function exportSelectedCsv() {
   const orders = getSelectedOrders();
   if (!orders.length) { alert('Select one or more orders first.'); return; }
   const today = new Date().toISOString().slice(0,10);
-  downloadCsv(orders.map(orderToExportRow), `inkandchai-selected-orders-${today}.csv`);
+  downloadCsv(ordersToExportRows(orders), `inkandchai-selected-orders-${today}.csv`);
 }
 
 async function exportUnshippedCsv() {
@@ -1503,7 +1517,7 @@ async function exportUnshippedCsv() {
   try {
     const orders = (await fetchAllOrdersForExport()).filter(orderIsUnshipped);
     const today = new Date().toISOString().slice(0,10);
-    downloadCsv(orders.map(orderToExportRow), `inkandchai-unshipped-orders-${today}.csv`);
+    downloadCsv(ordersToExportRows(orders), `inkandchai-unshipped-orders-${today}.csv`);
   } catch (err) {
     alert('Could not export unshipped orders: ' + err.message);
   } finally {
