@@ -73,6 +73,13 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem c
 @media(max-width:1100px){.also-grid{grid-template-columns:repeat(4,1fr)!important}}
 @media(max-width:640px){.also-grid{grid-template-columns:repeat(2,1fr)!important;gap:.7rem!important}}
 html[data-theme="light"] .actions{background:rgba(250,247,242,.98)}
+.insta-trust{display:flex;align-items:center;gap:.75rem;padding:.7rem .9rem;margin:.2rem 0 .6rem;background:linear-gradient(135deg,rgba(131,58,180,.08),rgba(253,29,29,.06),rgba(252,176,69,.08));border:1px solid rgba(195,80,170,.25);border-radius:3px;text-decoration:none;color:inherit;transition:border-color .2s,background .2s}
+.insta-trust:hover{border-color:rgba(195,80,170,.55);background:linear-gradient(135deg,rgba(131,58,180,.14),rgba(253,29,29,.1),rgba(252,176,69,.12))}
+.insta-trust-icon{font-size:1.3rem;flex-shrink:0}
+.insta-trust-text{display:flex;flex-direction:column;gap:.1rem;flex:1;min-width:0}
+.insta-trust-title{font-size:.75rem;font-weight:600;color:var(--cream);letter-spacing:.01em}
+.insta-trust-sub{font-size:.6rem;color:#a09080;letter-spacing:.03em}
+.insta-trust-arrow{font-size:.9rem;color:rgba(195,80,170,.7);flex-shrink:0}
 
 /* Animated reader activity notification */
 .reader-activity-toast{position:fixed;left:22px;bottom:96px;width:min(340px,calc(100vw - 32px));display:grid;grid-template-columns:58px 1fr 28px;gap:.85rem;align-items:center;padding:.72rem .72rem;background:rgba(250,247,242,.97);border:1px solid rgba(138,106,31,.25);box-shadow:0 18px 44px rgba(30,20,8,.18);z-index:8997;color:#2a2018;opacity:0;transform:translateY(18px);pointer-events:none;transition:opacity .35s ease,transform .35s ease;backdrop-filter:blur(12px)}
@@ -135,6 +142,14 @@ gtag('config', 'AW-18119332653');
     <span class="stock">In Stock</span>
     <div id="staticShipBy"></div>
     <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
+    <a href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener" class="insta-trust">
+      <span class="insta-trust-icon">📸</span>
+      <span class="insta-trust-text">
+        <span class="insta-trust-title">Still Doubtful? Check our Bookstagram</span>
+        <span class="insta-trust-sub">@theinkandchai.in · Real unboxings from real customers</span>
+      </span>
+      <span class="insta-trust-arrow">→</span>
+    </a>
     <div class="actions">
       <button class="secondary" onclick="addBookToCart(this)">Add to Cart</button>
       <button class="primary" onclick="buyNowBook(this)">Buy Now</button>

@@ -2936,6 +2936,15 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-meta-label{font-size:0.55rem;letter-spacing:0.25em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:0.2rem}
 .prod-meta-val{font-size:0.78rem;color:var(--cream)}
 
+/* Instagram trust button */
+.insta-trust-btn{display:flex;align-items:center;gap:.75rem;padding:.65rem .85rem;margin:.4rem 0 .2rem;background:linear-gradient(135deg,rgba(131,58,180,.08),rgba(253,29,29,.06),rgba(252,176,69,.08));border:1px solid rgba(195,80,170,.25);border-radius:3px;text-decoration:none;color:inherit;transition:border-color .2s,background .2s;cursor:pointer}
+.insta-trust-btn:hover{border-color:rgba(195,80,170,.55);background:linear-gradient(135deg,rgba(131,58,180,.14),rgba(253,29,29,.1),rgba(252,176,69,.12))}
+.insta-trust-btn-icon{font-size:1.25rem;flex-shrink:0}
+.insta-trust-btn-body{display:flex;flex-direction:column;gap:.1rem;flex:1;min-width:0}
+.insta-trust-btn-title{font-size:.72rem;font-weight:600;color:var(--cream);letter-spacing:.01em}
+.insta-trust-btn-sub{font-size:.58rem;color:var(--cream-dim);letter-spacing:.03em}
+.insta-trust-btn-arrow{font-size:.9rem;color:rgba(195,80,170,.7);flex-shrink:0}
+
 /* ACTIONS */
 .prod-actions{display:flex;flex-direction:column;gap:0.8rem;margin-top:0.5rem}
 .btn-cart{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.3s}
@@ -3589,6 +3598,15 @@ function renderProduct(b) {
           <span>💳 UPI/cards</span>
           <span>🛡 7-day replacement</span>
         </div>
+
+        <a href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener" class="insta-trust-btn">
+          <span class="insta-trust-btn-icon">📸</span>
+          <span class="insta-trust-btn-body">
+            <span class="insta-trust-btn-title">Still Doubtful? Check our Bookstagram</span>
+            <span class="insta-trust-btn-sub">@theinkandchai.in · Real unboxings from real customers</span>
+          </span>
+          <span class="insta-trust-btn-arrow">→</span>
+        </a>
 
         ${b.desc ? `
           <div>
@@ -4476,6 +4494,13 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 @media(max-width:1100px){{.also-grid{{grid-template-columns:repeat(4,1fr)!important}}}}
 @media(max-width:640px){{.also-grid{{grid-template-columns:repeat(2,1fr)!important;gap:.7rem!important}}}}
 html[data-theme="light"] .actions{{background:rgba(250,247,242,.98)}}
+.insta-trust{{display:flex;align-items:center;gap:.75rem;padding:.7rem .9rem;margin:.2rem 0 .6rem;background:linear-gradient(135deg,rgba(131,58,180,.08),rgba(253,29,29,.06),rgba(252,176,69,.08));border:1px solid rgba(195,80,170,.25);border-radius:3px;text-decoration:none;color:inherit;transition:border-color .2s,background .2s}}
+.insta-trust:hover{{border-color:rgba(195,80,170,.55);background:linear-gradient(135deg,rgba(131,58,180,.14),rgba(253,29,29,.1),rgba(252,176,69,.12))}}
+.insta-trust-icon{{font-size:1.3rem;flex-shrink:0}}
+.insta-trust-text{{display:flex;flex-direction:column;gap:.1rem;flex:1;min-width:0}}
+.insta-trust-title{{font-size:.75rem;font-weight:600;color:var(--cream);letter-spacing:.01em}}
+.insta-trust-sub{{font-size:.6rem;color:#a09080;letter-spacing:.03em}}
+.insta-trust-arrow{{font-size:.9rem;color:rgba(195,80,170,.7);flex-shrink:0}}
 </style>
 </head>
 <body>
@@ -4496,6 +4521,14 @@ html[data-theme="light"] .actions{{background:rgba(250,247,242,.98)}}
     <span class="stock">In Stock</span>
     <div id="staticShipBy"></div>
     <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
+    <a href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener" class="insta-trust">
+      <span class="insta-trust-icon">📸</span>
+      <span class="insta-trust-text">
+        <span class="insta-trust-title">Still Doubtful? Check our Bookstagram</span>
+        <span class="insta-trust-sub">@theinkandchai.in · Real unboxings from real customers</span>
+      </span>
+      <span class="insta-trust-arrow">→</span>
+    </a>
     <div class="actions">
       <button class="secondary" onclick="addBookToCart(this)">Add to Cart</button>
       <button class="primary" onclick="buyNowBook(this)">Buy Now</button>
