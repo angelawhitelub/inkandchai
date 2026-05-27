@@ -75,8 +75,15 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .focus-panel strong{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--gold);}
 .focus-panel p{font-size:0.68rem;color:var(--cream-dim);line-height:1.55;margin-top:0.15rem;}
 .focus-actions{display:flex;gap:0.6rem;flex-wrap:wrap;}
-.admin-jumps{display:flex;gap:0.6rem;flex-wrap:wrap;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:0.8rem 1rem;margin:-0.7rem 0 1.2rem;}
-.admin-jumps .btn-outline{background:#fffdf8;}
+.admin-jumps{display:none;}
+/* Tab navigation */
+.admin-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin:-0.5rem 0 1.6rem;overflow-x:auto;scrollbar-width:none;}
+.admin-tabs::-webkit-scrollbar{display:none}
+.admin-tab{flex-shrink:0;padding:.65rem 1.3rem;font-family:'Montserrat',sans-serif;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;}
+.admin-tab:hover{color:var(--cream);}
+.admin-tab.active{color:var(--gold);border-bottom-color:var(--gold);}
+.admin-section{display:none;}
+.admin-section.active{display:block;}
 .abandoned-panel{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1rem 1.2rem;margin:0 0 1.4rem;}
 .abandoned-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;}
 .abandoned-head h2{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:400;color:var(--white);}
@@ -190,13 +197,17 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     </div>
   </div>
 
-  <div class="admin-jumps">
-    <button class="btn-outline" onclick="document.getElementById('productCreatorSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Create Listing</button>
-    <button class="btn-outline" onclick="document.getElementById('productEditorSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Edit Products / Prices</button>
-    <button class="btn-outline" onclick="document.getElementById('abandonedCheckoutSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Abandoned Checkouts</button>
-    <button class="btn-outline" onclick="document.getElementById('ordersTableSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Orders</button>
-    <button class="btn-outline" id="reviewsJumpBtn" onclick="document.getElementById('reviewsModerationSection')?.scrollIntoView({behavior:'smooth',block:'start'})">Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 6px;font-size:.6rem;margin-left:4px"></span></button>
-  </div>
+  <!-- Tab bar (hidden until login) -->
+  <nav class="admin-tabs" id="adminTabBar" style="display:none">
+    <button class="admin-tab" data-tab="orders"    onclick="switchTab('orders')">📦 Orders</button>
+    <button class="admin-tab" data-tab="create"    onclick="switchTab('create')">➕ Create Listing</button>
+    <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
+    <button class="admin-tab" data-tab="abandoned" onclick="switchTab('abandoned')">🛒 Abandoned Carts</button>
+    <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+  </nav>
+
+  <!-- ═══ ORDERS TAB ═══ -->
+  <div class="admin-section" id="tab-orders">
 
   <!-- Stats (click to filter) -->
   <div class="stats-row">
@@ -308,6 +319,11 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <p class="hint" id="createProductMsg" style="margin-top:0.7rem;">New listings appear in catalogue/search after refresh and have a direct `/product/.../` URL immediately.</p>
   </section>
 
+  </div><!-- /tab-create -->
+
+  <!-- ═══ PRODUCTS TAB ═══ -->
+  <div class="admin-section" id="tab-products">
+
   <section class="product-panel" id="productEditorSection">
     <div class="product-head">
       <div>
@@ -367,6 +383,11 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     </div>
   </section>
 
+  </div><!-- /tab-products -->
+
+  <!-- ═══ ABANDONED CARTS TAB ═══ -->
+  <div class="admin-section" id="tab-abandoned">
+
   <section class="abandoned-panel" id="abandonedCheckoutSection">
     <div class="abandoned-head">
       <div>
@@ -398,6 +419,11 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <div class="lead-empty" id="abandonedEmpty" style="display:none;">No abandoned checkouts ready for follow-up.</div>
   </section>
 
+  </div><!-- /tab-abandoned -->
+
+  <!-- ═══ REVIEWS TAB ═══ -->
+  <div class="admin-section" id="tab-reviews">
+
   <!-- Reviews Moderation -->
   <section class="product-panel" id="reviewsModerationSection">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem;flex-wrap:wrap">
@@ -413,7 +439,9 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <div id="reviewsModerationList"><p style="font-size:.7rem;color:var(--cream-dim);padding:.5rem 0">Loading reviews…</p></div>
   </section>
 
-  <!-- Export bar -->
+  </div><!-- /tab-reviews -->
+
+  <!-- Export bar (inside orders tab — moved by JS) -->
   <div class="export-bar" id="exportBar" style="display:none;">
     <span class="export-label">Export</span>
     <span id="exportCount">0</span>
@@ -516,7 +544,10 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
   <div class="empty" id="emptyState" style="display:none;">No orders found.</div>
   <button class="load-more-btn" id="loadMoreBtn" style="display:none;" onclick="loadMore()">Load More Orders</button>
 
-</main>
+  </div><!-- /tab-orders -->
+
+  <!-- ═══ CREATE LISTING TAB ═══ -->
+  <div class="admin-section" id="tab-create">
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
@@ -595,14 +626,17 @@ async function fetchOrders(reset = false) {
     // Show dashboard on first load
     document.getElementById('loginPanel').style.display = 'none';
     document.getElementById('dashboard').style.display  = '';
-    ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
+    ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn']
       .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
 
     document.getElementById('loginErr').style.display = 'none';
 
+    // Init tab navigation
+    document.getElementById('adminTabBar').style.display = 'flex';
+    initTabFromHash();
+
     updateStats();
     applyFilters();
-    fetchAbandonedCheckouts();
     fetchProducts();
 
     // Auto-paginate: keep loading until all orders are in memory
@@ -1876,6 +1910,52 @@ function esc(s) {
 setInterval(() => { if (adminKey) fetchOrders(true); }, 90000);
 
 document.getElementById('adminPass').focus();
+
+// ── Tab navigation ──────────────────────────────────────────────────────────
+const TABS = ['orders','create','products','abandoned','reviews'];
+
+function switchTab(tab, pushState = true) {
+  if (!TABS.includes(tab)) tab = 'orders';
+
+  // Show/hide panels
+  TABS.forEach(t => {
+    const panel = document.getElementById('tab-' + t);
+    if (panel) panel.classList.toggle('active', t === tab);
+  });
+
+  // Highlight active tab button
+  document.querySelectorAll('.admin-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  // Update URL hash without page jump
+  if (pushState) history.pushState(null, '', '/admin/#' + tab);
+
+  // Lazy-load data for the activated tab
+  if (tab === 'products' && adminKey) fetchProducts();
+  if (tab === 'abandoned' && adminKey) fetchAbandonedCheckouts();
+  if (tab === 'reviews') fetchPendingReviews();
+
+  // Scroll to top of content
+  document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
+}
+
+// Read hash on load / back-forward
+function initTabFromHash() {
+  const hash = location.hash.replace('#','') || 'orders';
+  switchTab(hash, false);
+}
+
+window.addEventListener('popstate', () => initTabFromHash());
+
+// Called after successful login — init tabs
+const _origShowDash = window.showDashboard;
+window.showDashboard = function(...args) {
+  if (_origShowDash) _origShowDash(...args);
+  // Show tab bar
+  document.getElementById('adminTabBar').style.display = 'flex';
+  initTabFromHash();
+};
 
 // ── Reviews Moderation ──────────────────────────────────────────────────────
 let reviewsShowAll = false;
