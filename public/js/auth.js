@@ -218,7 +218,7 @@
     const sb = getSB();
     if (!sb) { if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Auth not configured.'; } return; }
 
-    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending secure login link…'; }
+    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending 6-digit code…'; }
     try {
       const { error } = await sb.auth.signInWithOtp({
         email,
@@ -229,9 +229,49 @@
       });
       if (error) throw error;
 
-      if (msg) {
+      _otpEmail = email;
+      // Replace the email input with OTP boxes inline
+      const container = document.getElementById('guestOrderEmail')?.closest('div') || null;
+      if (container) {
+        container.innerHTML = `
+          <p style="font-size:.7rem;color:#a09080;margin-bottom:.8rem;">Enter the 6-digit code sent to <strong style="color:#c9a84c">${email}</strong></p>
+          <div style="display:flex;gap:.5rem;margin-bottom:.8rem;">
+            ${[0,1,2,3,4,5].map(i => `
+              <input id="guestOtp${i}" type="text" inputmode="numeric" maxlength="1"
+                style="width:40px;height:48px;text-align:center;font-size:1.3rem;font-weight:600;
+                       background:var(--bg3,#1c1916);border:1px solid rgba(201,168,76,0.25);
+                       color:var(--cream,#f0e8d8);font-family:'Montserrat',sans-serif;outline:none;"
+                onfocus="this.style.borderColor='rgba(201,168,76,0.7)'"
+                onblur="this.style.borderColor='rgba(201,168,76,0.25)'"
+                oninput="(function(el,i){el.value=el.value.replace(/\\D/g,'').slice(-1);if(el.value&&i<5)document.getElementById('guestOtp'+(i+1))?.focus();const c=[0,1,2,3,4,5].map(j=>document.getElementById('guestOtp'+j)?.value||'').join('');if(c.length===6)verifyGuestOtp();})(this,${i})"
+                onkeydown="if(event.key==='Backspace'&&!this.value&&${i}>0)document.getElementById('guestOtp'+(${i}-1))?.focus()"/>
+            `).join('')}
+          </div>
+          <button onclick="verifyGuestOtp()"
+            style="width:100%;padding:.8rem;background:#c9a84c;color:#0d0b08;
+                   font-family:'Montserrat',sans-serif;font-size:.62rem;letter-spacing:.2em;
+                   text-transform:uppercase;border:none;cursor:pointer;font-weight:600;">
+            Verify Code →
+          </button>
+          <p id="guestOtpMsg" style="font-size:.68rem;color:#e06060;margin-top:.5rem;min-height:1em;"></p>`;
+        document.getElementById('guestOtp0')?.focus();
+
+        window.verifyGuestOtp = async function() {
+          const code = [0,1,2,3,4,5].map(i => document.getElementById('guestOtp'+i)?.value||'').join('');
+          const gmsg = document.getElementById('guestOtpMsg');
+          if (code.length < 6) { if(gmsg){gmsg.textContent='Enter all 6 digits.';} return; }
+          const { data, error: vErr } = await sb.auth.verifyOtp({ email: _otpEmail, token: code, type: 'email' });
+          if (vErr) { if(gmsg){gmsg.textContent=vErr.message||'Invalid code. Try again.';} return; }
+          currentUser = data.user;
+          await fetchProfile();
+          updateNav();
+          removeModal('iacGuestOrderModal');
+          openAccountModal();
+          setTimeout(() => window.iacSwitchTab?.('acct-orders-tab'), 300);
+        };
+      } else if (msg) {
         msg.style.color = '#6dbf6d';
-        msg.textContent = 'Check your email for the secure login link.';
+        msg.textContent = 'Code sent! Check your email.';
       }
 
     } catch (e) {
@@ -240,179 +280,236 @@
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // AUTH MODAL (Login / Sign-up)
+  // AUTH MODAL — OTP-based (passwordless)
+  // Step 1: enter email → send 6-digit code
+  // Step 2: enter code → verified & signed in
   // ─────────────────────────────────────────────────────────────────────────
-  function openAuthModal(mode = 'login') {
+
+  // Shared state across steps
+  let _otpEmail = '';
+
+  function openAuthModal() {
     removeModal('iacAuthModal');
     const modal = document.createElement('div');
     modal.id = 'iacAuthModal';
     modal.style.cssText = `
       position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
-      display:flex;align-items:center;justify-content:center;z-index:10010;
+      display:flex;align-items:center;justify-content:center;z-index:10010;padding:1rem;
     `;
     modal.innerHTML = `
       <div id="iacAuthBox" style="
         background:#1c1916;border:1px solid rgba(201,168,76,0.22);
-        width:min(440px,92vw);padding:2.6rem;position:relative;
+        width:min(420px,100%);padding:2.4rem;position:relative;
       ">
         <button onclick="document.getElementById('iacAuthModal').remove()"
           style="position:absolute;top:1rem;right:1.2rem;background:none;border:none;
                  color:#a09080;font-size:1.3rem;cursor:pointer;line-height:1;">✕</button>
-
-        <div style="font-size:0.58rem;letter-spacing:0.35em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.6rem;">
-          Ink &amp; Chai
-        </div>
-        <h3 id="iacAuthTitle" style="font-family:'Cormorant Garamond',serif;font-size:1.9rem;font-weight:300;
-               color:#faf7f2;margin-bottom:1.8rem;">Welcome back</h3>
-
-        <div id="iacAuthFields"></div>
-
-        <button id="iacAuthSubmit" onclick="iacSubmit()"
-          style="width:100%;margin-top:0.4rem;font-family:'Montserrat',sans-serif;font-size:0.65rem;
-                 letter-spacing:0.25em;text-transform:uppercase;padding:1rem 2rem;
-                 background:#c9a84c;color:#0d0b08;border:none;cursor:pointer;font-weight:500;">
-          Sign In →
-        </button>
-
-        <p id="iacAuthMsg" style="font-size:0.7rem;color:#e06060;margin-top:0.8rem;min-height:1.2em;text-align:center;"></p>
-
-        <p style="text-align:center;margin-top:1.2rem;font-size:0.7rem;color:#a09080;">
-          <span id="iacToggleText">Don't have an account?</span>
-          <button id="iacToggleBtn" onclick="iacToggleMode()"
-            style="background:none;border:none;color:#c9a84c;cursor:pointer;
-                   font-family:'Montserrat',sans-serif;font-size:0.7rem;margin-left:0.4rem;
-                   text-decoration:underline;">Create account</button>
-        </p>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    window._iacMode = 'login';
-    renderAuthFields('login');
-    if (mode === 'signup') iacToggleMode();
-    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  }
-
-  function renderAuthFields(mode) {
-    const fields = document.getElementById('iacAuthFields');
-    if (!fields) return;
-    if (mode === 'signup') {
-      fields.innerHTML = `
-        ${authInput('iacFullName',  'text',     'Full Name *',     'Your full name')}
-        ${authInput('iacEmail',     'email',    'Email *',         'you@example.com')}
-        ${authInput('iacPhone',     'tel',      'Phone Number',    '10-digit mobile')}
-        ${authInput('iacPassword',  'password', 'Password *',      'Minimum 6 characters')}
-      `;
-      document.getElementById('iacAuthTitle').textContent  = 'Create account';
-      document.getElementById('iacAuthSubmit').textContent = 'Create Account →';
-      document.getElementById('iacToggleText').textContent  = 'Already have an account?';
-      document.getElementById('iacToggleBtn').textContent   = 'Sign in';
-    } else {
-      fields.innerHTML = `
-        ${authInput('iacEmail',    'email',    'Email *',    'you@example.com')}
-        ${authInput('iacPassword', 'password', 'Password *', 'Your password')}
-      `;
-      document.getElementById('iacAuthTitle').textContent  = 'Welcome back';
-      document.getElementById('iacAuthSubmit').textContent = 'Sign In →';
-      document.getElementById('iacToggleText').textContent  = "Don't have an account?";
-      document.getElementById('iacToggleBtn').textContent   = 'Create account';
-    }
-    setTimeout(() => document.getElementById('iacEmail')?.focus(), 50);
-  }
-
-  function authInput(id, type, label, placeholder) {
-    return `
-      <div style="margin-bottom:1rem;">
-        <label for="${id}" style="display:block;font-size:0.58rem;letter-spacing:0.18em;
-               text-transform:uppercase;color:#a09080;margin-bottom:0.4rem;">${label}</label>
-        <input id="${id}" type="${type}" placeholder="${placeholder}" autocomplete="on"
-          onkeydown="if(event.key==='Enter')iacSubmit()"
-          style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);
-                 color:#f0e8d8;padding:0.7rem 1rem;font-family:'Montserrat',sans-serif;
-                 font-size:0.78rem;outline:none;"
-          onfocus="this.style.borderColor='rgba(201,168,76,0.5)'"
-          onblur="this.style.borderColor='rgba(201,168,76,0.18)'"/>
+        <div id="iacAuthInner"></div>
       </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    renderOtpStep1();
   }
 
-  window.iacToggleMode = function () {
-    window._iacMode = window._iacMode === 'login' ? 'signup' : 'login';
-    renderAuthFields(window._iacMode);
-    document.getElementById('iacAuthMsg').textContent = '';
+  function renderOtpStep1() {
+    const inner = document.getElementById('iacAuthInner');
+    if (!inner) return;
+    inner.innerHTML = `
+      <div style="font-size:.55rem;letter-spacing:.35em;text-transform:uppercase;color:#c9a84c;margin-bottom:.5rem;">Ink &amp; Chai</div>
+      <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.9rem;font-weight:300;color:#faf7f2;margin-bottom:.4rem;">Sign in</h3>
+      <p style="font-size:.68rem;color:#a09080;margin-bottom:1.8rem;line-height:1.6;">We'll send a 6-digit code to your email. No password needed.</p>
+
+      <label for="iacOtpEmail" style="display:block;font-size:.55rem;letter-spacing:.18em;text-transform:uppercase;color:#a09080;margin-bottom:.4rem;">Email address</label>
+      <input id="iacOtpEmail" type="email" placeholder="you@example.com" autocomplete="email"
+        onkeydown="if(event.key==='Enter')iacSendOtp()"
+        style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);color:#f0e8d8;
+               padding:.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:16px;outline:none;
+               margin-bottom:1rem;"
+        onfocus="this.style.borderColor='rgba(201,168,76,0.5)'"
+        onblur="this.style.borderColor='rgba(201,168,76,0.18)'"/>
+
+      <button onclick="iacSendOtp()" id="iacOtpSendBtn"
+        style="width:100%;padding:.95rem;background:#c9a84c;color:#0d0b08;font-family:'Montserrat',sans-serif;
+               font-size:.65rem;letter-spacing:.25em;text-transform:uppercase;border:none;cursor:pointer;font-weight:600;">
+        Send Code →
+      </button>
+      <p id="iacOtpMsg" style="font-size:.7rem;color:#e06060;margin-top:.75rem;min-height:1.1em;text-align:center;line-height:1.5;"></p>
+    `;
+    setTimeout(() => document.getElementById('iacOtpEmail')?.focus(), 50);
+  }
+
+  function renderOtpStep2(email) {
+    const inner = document.getElementById('iacAuthInner');
+    if (!inner) return;
+    inner.innerHTML = `
+      <div style="font-size:.55rem;letter-spacing:.35em;text-transform:uppercase;color:#c9a84c;margin-bottom:.5rem;">Ink &amp; Chai</div>
+      <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.9rem;font-weight:300;color:#faf7f2;margin-bottom:.4rem;">Enter code</h3>
+      <p style="font-size:.68rem;color:#a09080;margin-bottom:.3rem;line-height:1.6;">We sent a 6-digit code to</p>
+      <p style="font-size:.75rem;color:#c9a84c;margin-bottom:1.8rem;font-weight:500;">${email}</p>
+
+      <div id="iacOtpBoxes" style="display:flex;gap:.6rem;justify-content:center;margin-bottom:1.4rem;">
+        ${[0,1,2,3,4,5].map(i => `
+          <input id="iacOtp${i}" type="text" inputmode="numeric" maxlength="1"
+            style="width:48px;height:56px;text-align:center;font-size:1.4rem;font-weight:600;
+                   background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;
+                   font-family:'Montserrat',sans-serif;outline:none;border-radius:0;"
+            onfocus="this.style.borderColor='rgba(201,168,76,0.7)'"
+            onblur="this.style.borderColor='rgba(201,168,76,0.25)'"
+            oninput="iacOtpInput(this,${i})"
+            onkeydown="iacOtpKey(event,${i})"/>`
+        ).join('')}
+      </div>
+
+      <button onclick="iacVerifyOtp()" id="iacOtpVerifyBtn"
+        style="width:100%;padding:.95rem;background:#c9a84c;color:#0d0b08;font-family:'Montserrat',sans-serif;
+               font-size:.65rem;letter-spacing:.25em;text-transform:uppercase;border:none;cursor:pointer;font-weight:600;">
+        Verify →
+      </button>
+      <p id="iacOtpMsg" style="font-size:.7rem;color:#e06060;margin-top:.75rem;min-height:1.1em;text-align:center;"></p>
+      <p style="text-align:center;margin-top:1rem;font-size:.66rem;color:#a09080;">
+        Wrong email?
+        <button onclick="renderOtpStep1()" style="background:none;border:none;color:#c9a84c;cursor:pointer;
+          font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;margin-left:.3rem;">
+          Go back
+        </button>
+        &nbsp;·&nbsp;
+        <button onclick="iacSendOtp(true)" style="background:none;border:none;color:#c9a84c;cursor:pointer;
+          font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;">
+          Resend
+        </button>
+      </p>
+    `;
+    setTimeout(() => document.getElementById('iacOtp0')?.focus(), 50);
+  }
+
+  // OTP box keyboard handling — auto-advance, backspace, paste
+  window.iacOtpInput = function(el, idx) {
+    el.value = el.value.replace(/\D/g, '').slice(-1);
+    if (el.value && idx < 5) document.getElementById('iacOtp' + (idx + 1))?.focus();
+    // Auto-verify when all 6 filled
+    const code = [0,1,2,3,4,5].map(i => document.getElementById('iacOtp'+i)?.value||'').join('');
+    if (code.length === 6) iacVerifyOtp();
   };
 
-  window.iacSubmit = async function () {
-    const btn = document.getElementById('iacAuthSubmit');
-    const msg = document.getElementById('iacAuthMsg');
-    btn.disabled = true;
-    btn.textContent = 'Please wait…';
-    msg.textContent = '';
-    msg.style.color = '#e06060';
+  window.iacOtpKey = function(e, idx) {
+    if (e.key === 'Backspace' && !e.target.value && idx > 0) {
+      document.getElementById('iacOtp' + (idx - 1))?.focus();
+    }
+    // Handle paste on any box
+    if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      navigator.clipboard?.readText().then(text => {
+        const digits = text.replace(/\D/g,'').slice(0,6);
+        digits.split('').forEach((d,i) => {
+          const box = document.getElementById('iacOtp'+i);
+          if (box) box.value = d;
+        });
+        document.getElementById('iacOtp5')?.focus();
+        if (digits.length === 6) iacVerifyOtp();
+      });
+    }
+  };
 
-    const sb = getSB();
-    if (!sb) { msg.textContent = 'Auth not configured.'; btn.disabled = false; return; }
+  window.iacSendOtp = async function(resend = false) {
+    const emailEl = resend ? null : document.getElementById('iacOtpEmail');
+    const email   = resend ? _otpEmail : (emailEl?.value.trim() || '');
+    const msg     = document.getElementById('iacOtpMsg');
+    const btn     = document.getElementById('iacOtpSendBtn');
 
-    const email    = document.getElementById('iacEmail')?.value.trim();
-    const password = document.getElementById('iacPassword')?.value;
-
-    if (!email || !password) {
-      msg.textContent = 'Please fill in all required fields.';
-      btn.disabled = false;
-      btn.textContent = window._iacMode === 'signup' ? 'Create Account →' : 'Sign In →';
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      if (msg) { msg.style.color='#e06060'; msg.textContent='Please enter a valid email address.'; }
       return;
     }
 
-    if (window._iacMode === 'signup') {
-      const name  = document.getElementById('iacFullName')?.value.trim() || '';
-      const phone = document.getElementById('iacPhone')?.value.trim()    || '';
+    const sb = getSB();
+    if (!sb) { if (msg) { msg.style.color='#e06060'; msg.textContent='Auth not available.'; } return; }
 
-      const signupRes = await fetch('/.netlify/functions/signup-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          password,
-          name,
-          phone,
-          redirectTo: `${window.location.origin}/`,
-        }),
+    if (btn) { btn.disabled=true; btn.textContent='Sending…'; }
+    if (msg) { msg.style.color='#a09080'; msg.textContent=''; }
+
+    try {
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: true },
       });
-      const signupJson = await signupRes.json().catch(() => ({}));
-      if (!signupRes.ok) {
-        msg.textContent = signupJson.error || 'Could not send confirmation email. Please try again.';
-        btn.disabled = false;
-        btn.textContent = 'Create Account →';
-        return;
+      if (error) throw error;
+      _otpEmail = email;
+      if (!resend) {
+        renderOtpStep2(email);
+      } else {
+        if (msg) { msg.style.color='#6dbf6d'; msg.textContent='New code sent! Check your inbox.'; }
+        // Clear boxes
+        [0,1,2,3,4,5].forEach(i => { const b = document.getElementById('iacOtp'+i); if(b) b.value=''; });
+        document.getElementById('iacOtp0')?.focus();
       }
+    } catch(e) {
+      if (msg) { msg.style.color='#e06060'; msg.textContent = e.message || 'Could not send code. Try again.'; }
+      if (btn) { btn.disabled=false; btn.textContent='Send Code →'; }
+    }
+  };
 
-      currentUser = null;
-      currentProfile = null;
-      msg.style.color = '#6dbf6d';
-      msg.innerHTML = `${signupJson.message || 'Confirmation email sent. Please check inbox/spam, then click the link to activate your account.'}<br>
-        <button type="button" onclick="iacResendSignupEmail()" style="margin-top:0.7rem;background:none;border:none;color:#c9a84c;text-decoration:underline;cursor:pointer;font-family:'Montserrat',sans-serif;font-size:0.7rem;">
-          Resend confirmation email
-        </button>`;
-      btn.disabled = false;
-      btn.textContent = 'Create Account →';
+  window.iacVerifyOtp = async function() {
+    const code = [0,1,2,3,4,5].map(i => document.getElementById('iacOtp'+i)?.value||'').join('');
+    const msg  = document.getElementById('iacOtpMsg');
+    const btn  = document.getElementById('iacOtpVerifyBtn');
 
-    } else {
-      const { data, error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) {
-        const unconfirmed = /confirm|verified|verification/i.test(error.message || '');
-        msg.innerHTML = unconfirmed
-          ? `${error.message}<br><button type="button" onclick="iacResendSignupEmail()" style="margin-top:0.7rem;background:none;border:none;color:#c9a84c;text-decoration:underline;cursor:pointer;font-family:'Montserrat',sans-serif;font-size:0.7rem;">Resend confirmation email</button>`
-          : error.message;
-        btn.disabled = false;
-        btn.textContent = 'Sign In →';
-        return;
-      }
+    if (code.length < 6) {
+      if (msg) { msg.style.color='#e06060'; msg.textContent='Please enter all 6 digits.'; }
+      return;
+    }
+
+    const sb = getSB();
+    if (!sb || !_otpEmail) return;
+
+    if (btn) { btn.disabled=true; btn.textContent='Verifying…'; }
+    if (msg) { msg.textContent=''; }
+
+    try {
+      const { data, error } = await sb.auth.verifyOtp({
+        email: _otpEmail,
+        token: code,
+        type: 'email',
+      });
+      if (error) throw error;
+
       currentUser = data.user;
       await fetchProfile();
-      msg.style.color = '#6dbf6d';
-      msg.textContent = '✓ Signed in!';
-      setTimeout(() => removeModal('iacAuthModal'), 800);
+      updateNav();
+
+      // Success animation
+      const box = document.getElementById('iacAuthBox');
+      if (box) {
+        box.innerHTML = `
+          <div style="text-align:center;padding:2rem 1rem;">
+            <div style="font-size:2.5rem;margin-bottom:1rem;">✓</div>
+            <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;color:#faf7f2;margin-bottom:.5rem;">
+              ${currentProfile?.name ? 'Welcome, ' + currentProfile.name.split(' ')[0] + '!' : 'Signed in!'}
+            </h3>
+            <p style="font-size:.7rem;color:#a09080;">Redirecting…</p>
+          </div>`;
+      }
+      setTimeout(() => removeModal('iacAuthModal'), 1200);
+
+    } catch(e) {
+      const isExpired = /expired|invalid/i.test(e.message || '');
+      if (msg) {
+        msg.style.color='#e06060';
+        msg.textContent = isExpired ? 'Code expired or invalid. Request a new one.' : (e.message || 'Verification failed.');
+      }
+      if (btn) { btn.disabled=false; btn.textContent='Verify →'; }
+      // Shake the boxes
+      [0,1,2,3,4,5].forEach(i => {
+        const b = document.getElementById('iacOtp'+i);
+        if(b) { b.style.borderColor='rgba(220,80,80,0.7)'; b.value=''; }
+      });
+      document.getElementById('iacOtp0')?.focus();
     }
-    updateNav();
   };
+
+  // Keep iacToggleMode as no-op for any lingering references
+  window.iacToggleMode = function() {};
+  window.iacSubmit     = function() {};
+  window.iacResendSignupEmail = function() {};
 
   window.iacResendSignupEmail = async function () {
     const sb = getSB();
