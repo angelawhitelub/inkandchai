@@ -7,6 +7,8 @@
  * checks serviceability → creates shipment → stores AWB back in order.
  *
  * Required env vars (set in Netlify → Site Settings → Environment Variables):
+ *   NIMBUSPOST_API_KEY        your NimbusPost API key
+ *                             → ship.nimbuspost.com → Settings → API → Reset API Key
  *   NIMBUSPOST_EMAIL          your NimbusPost login email
  *   NIMBUSPOST_PASSWORD       your NimbusPost login password
  *   NIMBUSPOST_WAREHOUSE_ID   warehouse ID from NimbusPost → Settings → Warehouses
@@ -87,7 +89,11 @@ function estimateDims(cartItems) {
 
 // ── NimbusPost API helpers ─────────────────────────────────────────────────
 async function npFetch(path, { method = 'GET', token, body } = {}) {
+  const apiKey = process.env.NIMBUSPOST_API_KEY;
   const headers = { 'Content-Type': 'application/json' };
+  // x-api-key is required by AWS API Gateway on EVERY request (including /authenticate)
+  if (apiKey) headers['x-api-key'] = apiKey;
+  // After auth, pass the JWT token as NP-API-SECRET
   if (token) headers['NP-API-SECRET'] = token;
 
   const res = await fetch(`${NP_BASE}${path}`, {
@@ -104,6 +110,9 @@ async function npFetch(path, { method = 'GET', token, body } = {}) {
 async function npAuthenticate() {
   const email    = process.env.NIMBUSPOST_EMAIL;
   const password = process.env.NIMBUSPOST_PASSWORD;
+  const apiKey   = process.env.NIMBUSPOST_API_KEY;
+
+  if (!apiKey) throw new Error('NIMBUSPOST_API_KEY env var not set. Generate it at ship.nimbuspost.com → Settings → API → Reset API Key');
   if (!email || !password) throw new Error('NIMBUSPOST_EMAIL / NIMBUSPOST_PASSWORD env vars not set');
 
   const { ok, data } = await npFetch('/authenticate', {
