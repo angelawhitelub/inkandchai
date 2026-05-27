@@ -1856,6 +1856,8 @@ HTML = r"""<!DOCTYPE html>
 </script>
 <!-- Razorpay SDK -->
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<!-- Razorpay Affordability Widget -->
+<script src="https://cdn.razorpay.com/widgets/affordability/affordability.js"></script>
 <!-- Razorpay public key (set via env at build time) -->
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
 <!-- Cart, Checkout & Auth -->
@@ -3590,10 +3592,12 @@ function renderProduct(b) {
         <div class="divider"></div>
 
         <div class="prod-price-row">
-          <span class="prod-price">${esc(b.p)}</span>
-          ${b.op ? `<span class="prod-orig">${esc(b.op)}</span>` : ''}
+          <span class="prod-price" data-product-price="${sale}">${esc(b.p)}</span>
+          ${b.op ? `<span class="prod-orig" data-product-original-price="${b.op}">${esc(b.op)}</span>` : ''}
           ${savePct ? `<span class="prod-saving">Save ${savePct}%</span>` : ''}
         </div>
+
+        <div id="razorpay-affordability-widget"></div>
 
         ${sale >= 299 && Date.now() < new Date('2026-05-19T18:30:00Z').getTime() ? `
         <div class="prod-sale-box">
@@ -3734,6 +3738,18 @@ function renderProduct(b) {
   setTimeout(updateProdWishBtn, 100);
   // Load live reviews
   if (b && b.slug) loadLiveReviews(b.slug);
+  // Razorpay Affordability Widget
+  (function() {
+    try {
+      const priceEl = document.querySelector('[data-product-price]');
+      const amountPaise = priceEl ? Math.round(parseFloat(priceEl.dataset.productPrice) * 100) : 0;
+      if (!amountPaise || !window.RAZORPAY_KEY_ID || !window.RazorpayAffordabilitySuite) return;
+      // Clear any previous render
+      const widgetEl = document.getElementById('razorpay-affordability-widget');
+      if (widgetEl) widgetEl.innerHTML = '';
+      new window.RazorpayAffordabilitySuite({ key: window.RAZORPAY_KEY_ID, amount: amountPaise }).render();
+    } catch(e) { /* silent — widget optional */ }
+  })();
 
   // Product page sale countdown
   const _saleEnd = new Date('2026-05-19T18:30:00Z');

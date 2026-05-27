@@ -624,7 +624,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-full-8c367d86.js"></script>
+<script src="/js/books-full-3701964f.js"></script>
 <script>
 const BOOKS = window.BOOKS_PRELOAD||[];
 const SOCIAL_PROOF = [{"type": "video", "src": "/videos/unboxing-people-magnet.mp4", "poster": "/images/social/unboxing-people-magnet.jpg", "caption": "All India delivery · COD available"}, {"type": "video", "src": "/videos/affordable-novels.mp4", "poster": "/images/social/affordable-novels.jpg", "caption": "Affordable novels from just ₹99"}, {"type": "video", "src": "/videos/rich-dad-collection.mp4", "poster": "/images/social/rich-dad-collection.jpg", "caption": "Different genres · Large collection to choose from"}, {"type": "video", "src": "/videos/customer-thanks.mp4", "poster": "/images/social/customer-thanks.jpg", "caption": "❤️ A note from one of our readers"}];
@@ -868,10 +868,12 @@ function renderProduct(b) {
         <div class="divider"></div>
 
         <div class="prod-price-row">
-          <span class="prod-price">${esc(b.p)}</span>
-          ${b.op ? `<span class="prod-orig">${esc(b.op)}</span>` : ''}
+          <span class="prod-price" data-product-price="${sale}">${esc(b.p)}</span>
+          ${b.op ? `<span class="prod-orig" data-product-original-price="${b.op}">${esc(b.op)}</span>` : ''}
           ${savePct ? `<span class="prod-saving">Save ${savePct}%</span>` : ''}
         </div>
+
+        <div id="razorpay-affordability-widget"></div>
 
         ${sale >= 299 && Date.now() < new Date('2026-05-19T18:30:00Z').getTime() ? `
         <div class="prod-sale-box">
@@ -1012,6 +1014,18 @@ function renderProduct(b) {
   setTimeout(updateProdWishBtn, 100);
   // Load live reviews
   if (b && b.slug) loadLiveReviews(b.slug);
+  // Razorpay Affordability Widget
+  (function() {
+    try {
+      const priceEl = document.querySelector('[data-product-price]');
+      const amountPaise = priceEl ? Math.round(parseFloat(priceEl.dataset.productPrice) * 100) : 0;
+      if (!amountPaise || !window.RAZORPAY_KEY_ID || !window.RazorpayAffordabilitySuite) return;
+      // Clear any previous render
+      const widgetEl = document.getElementById('razorpay-affordability-widget');
+      if (widgetEl) widgetEl.innerHTML = '';
+      new window.RazorpayAffordabilitySuite({ key: window.RAZORPAY_KEY_ID, amount: amountPaise }).render();
+    } catch(e) { /* silent — widget optional */ }
+  })();
 
   // Product page sale countdown
   const _saleEnd = new Date('2026-05-19T18:30:00Z');
