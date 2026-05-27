@@ -628,7 +628,7 @@ async function fetchOrders(reset = false) {
     // Show dashboard on first load
     document.getElementById('loginPanel').style.display = 'none';
     document.getElementById('dashboard').style.display  = '';
-    ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn']
+    ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
       .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
 
     document.getElementById('loginErr').style.display = 'none';
