@@ -21,12 +21,12 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2
 .logo span{color:var(--cream);font-weight:300;font-style:italic}
 .nav-right{display:flex;gap:0.7rem;align-items:center;flex-wrap:wrap;}
 .chip{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.28rem 0.75rem;border:1px solid var(--border);color:var(--cream-dim);}
-.btn-gold{font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.6rem 1.4rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;}
+.btn-gold{font-family:'Montserrat',sans-serif;font-size:0.72rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.65rem 1.5rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;}
 .btn-gold:hover{background:var(--gold-light);}
 .btn-gold:disabled{opacity:0.5;cursor:not-allowed;}
-.btn-outline{font-family:'Montserrat',sans-serif;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.5rem 1.1rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;}
+.btn-outline{font-family:'Montserrat',sans-serif;font-size:0.68rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.55rem 1.2rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;}
 .btn-outline:hover{background:var(--gold);color:var(--bg);}
-.btn-green{font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.6rem 1.4rem;background:#eaf7ee;color:var(--green);border:1px solid rgba(35,122,59,0.35);cursor:pointer;font-weight:500;transition:all 0.2s;}
+.btn-green{font-family:'Montserrat',sans-serif;font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.62rem 1.4rem;background:#eaf7ee;color:var(--green);border:1px solid rgba(35,122,59,0.35);cursor:pointer;font-weight:500;transition:all 0.2s;}
 .btn-green:hover{background:var(--green);color:#fff;}
 .btn-green:disabled{opacity:0.4;cursor:not-allowed;}
 
@@ -34,102 +34,102 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2
 #loginPanel{max-width:420px;margin:8rem auto;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:2.4rem;}
 #loginPanel h2{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:var(--white);margin-bottom:1.5rem;}
 .form-row{margin-bottom:1rem;}
-.form-row label{display:block;font-size:0.56rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.4rem;}
-.form-row input,.form-row textarea,.form-row select{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.7rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.78rem;outline:none;}
+.form-row label{display:block;font-size:0.66rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.45rem;}
+.form-row input,.form-row textarea,.form-row select{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.88rem;outline:none;}
 .form-row textarea{min-height:130px;resize:vertical;line-height:1.6;}
 .form-row input:focus,.form-row textarea:focus,.form-row select:focus{border-color:rgba(201,168,76,0.5);}
 .err{font-size:0.7rem;color:var(--red);margin-top:0.6rem;}
 
-/* Dashboard */
-main{max-width:1300px;margin:0 auto;padding:2rem 1.5rem;}
-.dash-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:2rem;flex-wrap:wrap;gap:1rem;}
-h1{font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:var(--white);}
-.subtitle{font-size:0.65rem;color:var(--cream-dim);letter-spacing:0.08em;margin-top:0.2rem;}
+/* Dashboard — full width, larger text */
+main{width:100%;max-width:100%;margin:0;padding:1.6rem 2.4rem;box-sizing:border-box;}
+.dash-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:1.6rem;flex-wrap:wrap;gap:1rem;}
+h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color:var(--white);}
+.subtitle{font-size:0.82rem;color:var(--cream-dim);letter-spacing:0.06em;margin-top:0.25rem;}
 
 /* Stats */
-.stats-row{display:grid;grid-template-columns:repeat(7,1fr);gap:1rem;margin-bottom:2rem;}
-@media(max-width:1100px){.stats-row{grid-template-columns:repeat(4,1fr);}}
-@media(max-width:900px){.stats-row{grid-template-columns:repeat(3,1fr);}}
-@media(max-width:550px){.stats-row{grid-template-columns:repeat(2,1fr);}}
+.stats-row{display:grid;grid-template-columns:repeat(8,1fr);gap:1rem;margin-bottom:1.8rem;}
+@media(max-width:1200px){.stats-row{grid-template-columns:repeat(4,1fr);}}
+@media(max-width:800px){.stats-row{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:500px){.stats-row{grid-template-columns:repeat(2,1fr);}}
 .stat-card{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1.3rem;cursor:pointer;transition:border-color 0.2s,background 0.2s;}
 .stat-card:hover{border-color:var(--gold-dim);}
 .stat-card.active{border-color:var(--gold);background:rgba(201,168,76,0.06);}
-.stat-label{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.5rem;}
-.stat-val{font-family:'Cormorant Garamond',serif;font-size:2rem;color:var(--gold);font-weight:400;line-height:1;}
+.stat-label{font-size:0.66rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.5rem;}
+.stat-val{font-family:'Cormorant Garamond',serif;font-size:2.2rem;color:var(--gold);font-weight:400;line-height:1;}
 
 /* Toolbar */
 .toolbar{display:flex;gap:0.7rem;margin-bottom:1.2rem;flex-wrap:wrap;align-items:center;}
-.filter-btn{font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.4rem 0.9rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;white-space:nowrap;}
+.filter-btn{font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.45rem 1rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;white-space:nowrap;}
 .filter-btn.active,.filter-btn:hover{border-color:var(--gold-dim);color:var(--gold);background:rgba(201,168,76,0.07);}
-.search-box{background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.42rem 0.9rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;outline:none;min-width:220px;}
+.search-box{background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.5rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.82rem;outline:none;min-width:260px;}
 .search-box:focus{border-color:rgba(201,168,76,0.4);}
-input[type="date"]{background:var(--bg3);border:1px solid var(--border);color:var(--cream-dim);padding:0.4rem 0.7rem;font-family:'Montserrat',sans-serif;font-size:0.7rem;outline:none;color-scheme:light;}
+input[type="date"]{background:var(--bg3);border:1px solid var(--border);color:var(--cream-dim);padding:0.45rem 0.8rem;font-family:'Montserrat',sans-serif;font-size:0.78rem;outline:none;color-scheme:light;}
 input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
-.date-sep{font-size:0.6rem;color:var(--gold-dim);padding:0 0.2rem;}
+.date-sep{font-size:0.72rem;color:var(--gold-dim);padding:0 0.2rem;}
 
 /* Export bar */
 .export-bar{display:flex;gap:0.7rem;align-items:center;padding:0.9rem 1.2rem;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:1.2rem;flex-wrap:wrap;}
-.export-label{font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold-dim);margin-right:0.4rem;}
-#exportCount{font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--gold);}
-.focus-panel{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:#fff8e8;border:1px solid rgba(181,107,18,0.28);box-shadow:var(--shadow);padding:1rem 1.2rem;margin:-0.8rem 0 1.4rem;flex-wrap:wrap;}
-.focus-panel strong{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--gold);}
-.focus-panel p{font-size:0.68rem;color:var(--cream-dim);line-height:1.55;margin-top:0.15rem;}
+.export-label{font-size:0.68rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold-dim);margin-right:0.4rem;}
+#exportCount{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--gold);}
+.focus-panel{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:#fff8e8;border:1px solid rgba(181,107,18,0.28);box-shadow:var(--shadow);padding:1rem 1.4rem;margin:-0.4rem 0 1.4rem;flex-wrap:wrap;}
+.focus-panel strong{font-family:'Cormorant Garamond',serif;font-size:1.35rem;color:var(--gold);}
+.focus-panel p{font-size:0.78rem;color:var(--cream-dim);line-height:1.55;margin-top:0.15rem;}
 .focus-actions{display:flex;gap:0.6rem;flex-wrap:wrap;}
 .admin-jumps{display:none;}
 /* Tab navigation */
-.admin-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin:-0.5rem 0 1.6rem;overflow-x:auto;scrollbar-width:none;}
+.admin-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin:-0.2rem 0 1.8rem;overflow-x:auto;scrollbar-width:none;}
 .admin-tabs::-webkit-scrollbar{display:none}
-.admin-tab{flex-shrink:0;padding:.65rem 1.3rem;font-family:'Montserrat',sans-serif;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;}
+.admin-tab{flex-shrink:0;padding:.75rem 1.6rem;font-family:'Montserrat',sans-serif;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;}
 .admin-tab:hover{color:var(--cream);}
 .admin-tab.active{color:var(--gold);border-bottom-color:var(--gold);}
 .admin-section{display:none;}
 .admin-section.active{display:block;}
-.abandoned-panel{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1rem 1.2rem;margin:0 0 1.4rem;}
+.abandoned-panel{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1.2rem 1.5rem;margin:0 0 1.4rem;}
 .abandoned-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;}
-.abandoned-head h2{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:400;color:var(--white);}
-.abandoned-head p{font-size:0.66rem;color:var(--cream-dim);line-height:1.6;margin-top:0.2rem;}
-.mini-table{width:100%;border-collapse:collapse;font-size:0.68rem;}
-.mini-table th,.mini-table td{padding:0.55rem 0.65rem;}
-.mini-table th{font-size:0.5rem;}
-.btn-danger{font-family:'Montserrat',sans-serif;font-size:0.52rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.35rem 0.7rem;border:1px solid rgba(224,80,80,0.45);color:#c93636;background:#fff7f4;cursor:pointer;}
+.abandoned-head h2{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:400;color:var(--white);}
+.abandoned-head p{font-size:0.78rem;color:var(--cream-dim);line-height:1.6;margin-top:0.2rem;}
+.mini-table{width:100%;border-collapse:collapse;font-size:0.8rem;}
+.mini-table th,.mini-table td{padding:0.65rem 0.8rem;}
+.mini-table th{font-size:0.62rem;}
+.btn-danger{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.4rem 0.85rem;border:1px solid rgba(224,80,80,0.45);color:#c93636;background:#fff7f4;cursor:pointer;}
 .btn-danger:hover{background:#c93636;color:#fff;border-color:#c93636;}
-.mini-actions{display:flex;gap:0.45rem;flex-wrap:wrap;}
-.lead-empty{font-size:0.7rem;color:var(--cream-dim);padding:1rem 0;}
-.product-panel{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1rem 1.2rem;margin:0 0 1.4rem;}
+.mini-actions{display:flex;gap:0.5rem;flex-wrap:wrap;}
+.lead-empty{font-size:0.82rem;color:var(--cream-dim);padding:1rem 0;}
+.product-panel{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1.2rem 1.5rem;margin:0 0 1.4rem;}
 .product-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.9rem;}
-.product-head h2{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:400;color:var(--white);}
-.product-head p{font-size:0.66rem;color:var(--cream-dim);line-height:1.6;margin-top:0.2rem;}
-.product-grid{display:grid;grid-template-columns:minmax(260px,1fr) minmax(320px,1.4fr);gap:1rem;align-items:start;}
-.product-list{border:1px solid var(--border);background:var(--bg2);max-height:360px;overflow:auto;}
-.product-row{display:grid;grid-template-columns:42px 1fr auto;gap:0.65rem;align-items:center;padding:0.65rem;border-bottom:1px solid rgba(138,106,31,0.11);cursor:pointer;}
+.product-head h2{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:400;color:var(--white);}
+.product-head p{font-size:0.78rem;color:var(--cream-dim);line-height:1.6;margin-top:0.2rem;}
+.product-grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(380px,1.6fr);gap:1.2rem;align-items:start;}
+.product-list{border:1px solid var(--border);background:var(--bg2);max-height:420px;overflow:auto;}
+.product-row{display:grid;grid-template-columns:46px 1fr auto;gap:0.7rem;align-items:center;padding:0.75rem;border-bottom:1px solid rgba(138,106,31,0.11);cursor:pointer;}
 .product-row:hover,.product-row.active{background:rgba(138,106,31,0.075);}
-.product-row img{width:38px;height:52px;object-fit:cover;background:#eee;border:1px solid var(--border);}
-.product-row-title{font-size:0.72rem;color:var(--cream);line-height:1.35;}
-.product-row-meta{font-size:0.58rem;color:var(--cream-dim);margin-top:0.2rem;}
-.product-row-price{font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--gold);white-space:nowrap;}
-.product-editor{border:1px solid var(--border);background:var(--bg2);padding:1rem;}
+.product-row img{width:42px;height:58px;object-fit:cover;background:#eee;border:1px solid var(--border);}
+.product-row-title{font-size:0.82rem;color:var(--cream);line-height:1.35;}
+.product-row-meta{font-size:0.68rem;color:var(--cream-dim);margin-top:0.2rem;}
+.product-row-price{font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--gold);white-space:nowrap;}
+.product-editor{border:1px solid var(--border);background:var(--bg2);padding:1.2rem;}
 .product-editor .form-row input{background:var(--bg3);}
 .product-editor-actions{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.8rem;}
-.override-pill{display:inline-block;font-size:0.48rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--green);border:1px solid rgba(35,122,59,0.3);padding:0.15rem 0.4rem;margin-left:0.35rem;}
-.creator-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.85rem;}
+.override-pill{display:inline-block;font-size:0.58rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--green);border:1px solid rgba(35,122,59,0.3);padding:0.18rem 0.5rem;margin-left:0.35rem;}
+.creator-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
 .creator-grid .wide{grid-column:1/-1;}
 .image-preview{display:flex;align-items:center;gap:0.9rem;border:1px dashed var(--border);background:var(--bg2);padding:0.8rem;margin-top:0.5rem;}
-.image-preview img{width:70px;height:94px;object-fit:cover;border:1px solid var(--border);background:#fff;}
-.image-preview span{font-size:0.64rem;color:var(--cream-dim);line-height:1.5;}
+.image-preview img{width:75px;height:100px;object-fit:cover;border:1px solid var(--border);background:#fff;}
+.image-preview span{font-size:0.75rem;color:var(--cream-dim);line-height:1.5;}
 @media(max-width:760px){.creator-grid{grid-template-columns:1fr}}
 @media(max-width:800px){.product-grid{grid-template-columns:1fr}.product-list{max-height:280px}}
 
 /* Table */
 .tbl-wrap{overflow-x:auto;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);}
-table{width:100%;border-collapse:collapse;font-size:0.73rem;}
-th{font-size:0.52rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);padding:0.75rem 0.85rem;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
+table{width:100%;border-collapse:collapse;font-size:0.85rem;}
+th{font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold);padding:0.85rem 1rem;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
 th:hover{color:var(--gold-light);}
-td{padding:0.75rem 0.85rem;border-bottom:1px solid rgba(138,106,31,0.11);color:var(--cream);vertical-align:top;}
+td{padding:0.85rem 1rem;border-bottom:1px solid rgba(138,106,31,0.11);color:var(--cream);vertical-align:top;}
 tr:hover td{background:rgba(138,106,31,0.055);}
 tr.selected-row td{background:rgba(35,122,59,0.08);}
-.select-cell{width:38px;text-align:center;}
-.order-check,.select-all-check{width:16px;height:16px;accent-color:var(--green);cursor:pointer;}
-.badge{display:inline-block;font-size:0.5rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.22rem 0.55rem;border:1px solid;white-space:nowrap;}
+.select-cell{width:42px;text-align:center;}
+.order-check,.select-all-check{width:17px;height:17px;accent-color:var(--green);cursor:pointer;}
+.badge{display:inline-block;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;padding:0.26rem 0.65rem;border:1px solid;white-space:nowrap;}
 .b-cod_pending,.b-partial_cod_pending,.b-pending,.b-pending_partial_phonepe{border-color:rgba(232,160,48,0.5);color:var(--orange);}
 .b-paid{border-color:rgba(109,191,109,0.5);color:var(--green);}
 .b-shipped{border-color:rgba(201,168,76,0.5);color:var(--gold);}
@@ -137,23 +137,23 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .b-cancelled,.b-refunded{border-color:rgba(224,96,96,0.5);color:var(--red);}
 .b-confirmed{border-color:rgba(160,144,128,0.4);color:var(--cream-dim);}
 .b-out_for_delivery{border-color:rgba(70,120,210,0.5);color:#315fba;}
-.status-sel{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.28rem 0.5rem;font-family:'Montserrat',sans-serif;font-size:0.6rem;cursor:pointer;margin-top:0.4rem;}
-.order-id{font-size:0.62rem;color:var(--gold-dim);}
-.pay-id{font-size:0.56rem;color:#4a3a1a;margin-top:0.15rem;}
-.cust-name{font-size:0.78rem;color:var(--cream);}
-.cust-sub{font-size:0.62rem;color:var(--cream-dim);margin-top:0.1rem;}
-.items-cell{font-size:0.63rem;color:var(--cream-dim);max-width:190px;}
+.status-sel{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.32rem 0.6rem;font-family:'Montserrat',sans-serif;font-size:0.7rem;cursor:pointer;margin-top:0.4rem;}
+.order-id{font-size:0.72rem;color:var(--gold-dim);}
+.pay-id{font-size:0.65rem;color:#4a3a1a;margin-top:0.15rem;}
+.cust-name{font-size:0.9rem;color:var(--cream);}
+.cust-sub{font-size:0.72rem;color:var(--cream-dim);margin-top:0.1rem;}
+.items-cell{font-size:0.75rem;color:var(--cream-dim);max-width:220px;}
 .items-cell div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:0.1rem;}
-.amount{font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--gold);}
-.amount-sub{font-size:0.55rem;color:var(--cream-dim);line-height:1.5;margin-top:0.15rem;}
+.amount{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--gold);}
+.amount-sub{font-size:0.65rem;color:var(--cream-dim);line-height:1.5;margin-top:0.15rem;}
 .amount-sub strong{color:var(--gold-dim);font-weight:500;}
-.method-badge{font-size:0.5rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--cream-dim);}
-.empty{text-align:center;padding:4rem;color:var(--cream-dim);font-size:0.82rem;}
-.load-more-btn{display:block;width:100%;margin-top:1.2rem;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.8rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
+.method-badge{font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--cream-dim);}
+.empty{text-align:center;padding:4rem;color:var(--cream-dim);font-size:0.9rem;}
+.load-more-btn{display:block;width:100%;margin-top:1.2rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
 .load-more-btn:hover{background:var(--gold);color:var(--bg);}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(201,168,76,0.3);border-top-color:var(--gold);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px;}
-.section-title{font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.2em;text-transform:uppercase;align-self:center;margin-right:0.4rem;}
-.hint{font-size:0.62rem;color:var(--cream-dim);}
+.section-title{font-size:0.72rem;color:var(--cream-dim);letter-spacing:0.16em;text-transform:uppercase;align-self:center;margin-right:0.4rem;}
+.hint{font-size:0.74rem;color:var(--cream-dim);}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
@@ -253,8 +253,121 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <div class="focus-actions">
       <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
+      <button class="btn-green" onclick="npBulkShip()" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);">🚀 Bulk Ship via NimbusPost</button>
     </div>
   </section>
+
+  <!-- ── Export bar ─────────────────────────────────────────── -->
+  <div class="export-bar" id="exportBar" style="display:none;">
+    <span class="export-label">Export</span>
+    <span id="exportCount">0</span>
+    <span class="hint">orders ready</span>
+    <span class="export-label" style="margin-left:1rem;">Selected</span>
+    <span id="selectedCount" style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--green);">0</span>
+
+    <!-- Limit input — how many rows to export from the filtered list -->
+    <span style="font-size:0.6rem;color:var(--cream-dim);margin-left:1rem;">Limit:</span>
+    <input type="number" id="exportLimit" value="" min="1" placeholder="all" title="Leave blank to export all filtered orders, or set a max row count (e.g. 50, 100, 500)"
+      style="width:78px;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.4rem 0.5rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;text-align:center;outline:none;"/>
+
+    <button class="btn-green" onclick="exportExcel('filtered')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.4rem;">
+      ⬇ Download Excel (.xlsx)
+    </button>
+    <button class="btn-green" onclick="exportExcel('all')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ All Orders Excel
+    </button>
+    <button class="btn-green" onclick="exportSelectedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ Selected CSV
+    </button>
+    <button class="btn-green" onclick="exportUnshippedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ Unshipped CSV
+    </button>
+    <button onclick="npBulkShip()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.45);color:var(--gold);cursor:pointer;font-family:'Montserrat',sans-serif;letter-spacing:0.08em;text-transform:uppercase;transition:background 0.2s;"
+      onmouseover="this.style.background='rgba(201,168,76,0.22)';" onmouseout="this.style.background='rgba(201,168,76,0.12)';">
+      🚀 NimbusPost All
+    </button>
+    <button class="btn-outline" onclick="selectVisibleOrders()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      Select Visible
+    </button>
+    <button class="btn-outline" onclick="clearSelection()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      Clear Selection
+    </button>
+    <button class="btn-outline" onclick="printLabels()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      🖨 Print Shipping Labels
+    </button>
+    <button class="btn-outline" onclick="copyAllAddresses()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      📋 Copy Addresses
+    </button>
+    <button class="btn-outline" onclick="downloadBulkTemplate()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ Bulk Template
+    </button>
+    <button class="btn-outline" onclick="document.getElementById('bulkUpdateFile').click()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬆ Bulk Update CSV
+    </button>
+    <input type="file" id="bulkUpdateFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="bulkUpdateFromFile(this.files[0]); this.value='';"/>
+    <button class="btn-outline" onclick="bulkDeleteFiltered()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(224,80,80,0.4);color:#e05050;" title="Permanently delete every order currently shown by the filters (asks for confirmation)">
+      🗑 Delete Filtered
+    </button>
+    <button class="btn-outline" onclick="bulkReconcilePhonePe(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(95,37,159,0.5);color:#a275d6;" title="Re-check every order stuck on 'pending_phonepe' from the last 30 days">
+      🔄 Re-check All Pending PhonePe
+    </button>
+  </div>
+
+  <!-- ── Day-range filters ──────────────────────────────────── -->
+  <div class="toolbar" style="border-bottom:none;padding-bottom:0;">
+    <span class="section-title">Quick range:</span>
+    <button class="filter-btn day-btn" data-days="0"   onclick="setDayRange(this,0)">Today</button>
+    <button class="filter-btn day-btn" data-days="1"   onclick="setDayRange(this,1)">Yesterday</button>
+    <button class="filter-btn day-btn" data-days="7"   onclick="setDayRange(this,7)">Last 7 days</button>
+    <button class="filter-btn day-btn" data-days="30"  onclick="setDayRange(this,30)">Last 30 days</button>
+    <button class="filter-btn day-btn" data-days="90"  onclick="setDayRange(this,90)">Last 90 days</button>
+    <button class="filter-btn day-btn" data-days="-1"  onclick="setDayRange(this,-1)">All time</button>
+  </div>
+
+  <!-- ── Status filters + search ────────────────────────────── -->
+  <div class="toolbar">
+    <button class="filter-btn active" data-status="" onclick="setFilter(this,'')">All</button>
+    <button class="filter-btn" data-status="__unshipped" onclick="setFilter(this,'__unshipped')">Unshipped</button>
+    <button class="filter-btn" data-status="cod_pending" onclick="setFilter(this,'cod_pending')">COD Pending</button>
+    <button class="filter-btn" data-status="partial_cod_pending" onclick="setFilter(this,'partial_cod_pending')">Partial COD</button>
+    <button class="filter-btn" data-status="online_pending" onclick="setFilter(this,'online_pending')" style="border-color:rgba(162,117,214,0.5);color:#a275d6;">Online Pending</button>
+    <button class="filter-btn" data-status="confirmed" onclick="setFilter(this,'confirmed')">Confirmed</button>
+    <button class="filter-btn" data-status="shipped" onclick="setFilter(this,'shipped')">Shipped</button>
+    <button class="filter-btn" data-status="delivered" onclick="setFilter(this,'delivered')">Delivered</button>
+    <button class="filter-btn" data-status="paid" onclick="setFilter(this,'paid')">Paid Online</button>
+    <button class="filter-btn" data-status="cancelled" onclick="setFilter(this,'cancelled')">Cancelled</button>
+    <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
+    <span class="date-sep">→</span>
+    <input type="date" id="dateTo" onchange="applyFilters()" title="To date"/>
+    <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID" oninput="applyFilters()"/>
+  </div>
+
+  <!-- ── Orders table ───────────────────────────────────────── -->
+  <div class="tbl-wrap" id="ordersTableSection">
+    <table>
+      <thead>
+        <tr>
+          <th class="select-cell" onclick="event.stopPropagation()"><input class="select-all-check" type="checkbox" id="selectAllVisible" onchange="toggleAllVisible(this.checked)" title="Select all visible orders"/></th>
+          <th onclick="sortBy('razorpay_order_id')">Order ID ↕</th>
+          <th onclick="sortBy('created_at')">Date ↕</th>
+          <th onclick="sortBy('customer_name')">Customer ↕</th>
+          <th>Items</th>
+          <th onclick="sortBy('amount_paise')">Amount ↕</th>
+          <th>Payment</th>
+          <th onclick="sortBy('status')">Status ↕</th>
+          <th>Delivery Address</th>
+        </tr>
+      </thead>
+      <tbody id="ordersBody"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="emptyState" style="display:none;">No orders found.</div>
+  <button class="load-more-btn" id="loadMoreBtn" style="display:none;" onclick="loadMore()">Load More Orders</button>
+
+  </div><!-- /tab-orders -->
+
+  <!-- ═══ CREATE LISTING TAB ═══ -->
+  <div class="admin-section" id="tab-create">
 
   <section class="product-panel" id="productCreatorSection">
     <div class="product-head">
@@ -321,7 +434,6 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 
   </div><!-- /tab-create -->
 
-  <!-- ═══ PRODUCTS TAB ═══ -->
   <div class="admin-section" id="tab-products">
 
   <section class="product-panel" id="productEditorSection">
@@ -385,7 +497,6 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 
   </div><!-- /tab-products -->
 
-  <!-- ═══ ABANDONED CARTS TAB ═══ -->
   <div class="admin-section" id="tab-abandoned">
 
   <section class="abandoned-panel" id="abandonedCheckoutSection">
@@ -421,7 +532,6 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 
   </div><!-- /tab-abandoned -->
 
-  <!-- ═══ REVIEWS TAB ═══ -->
   <div class="admin-section" id="tab-reviews">
 
   <!-- Reviews Moderation -->
@@ -440,114 +550,6 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
   </section>
 
   </div><!-- /tab-reviews -->
-
-  <!-- Export bar (inside orders tab — moved by JS) -->
-  <div class="export-bar" id="exportBar" style="display:none;">
-    <span class="export-label">Export</span>
-    <span id="exportCount">0</span>
-    <span class="hint">orders ready</span>
-    <span class="export-label" style="margin-left:1rem;">Selected</span>
-    <span id="selectedCount" style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--green);">0</span>
-
-    <!-- Limit input — how many rows to export from the filtered list -->
-    <span style="font-size:0.6rem;color:var(--cream-dim);margin-left:1rem;">Limit:</span>
-    <input type="number" id="exportLimit" value="" min="1" placeholder="all" title="Leave blank to export all filtered orders, or set a max row count (e.g. 50, 100, 500)"
-      style="width:78px;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.4rem 0.5rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;text-align:center;outline:none;"/>
-
-    <button class="btn-green" onclick="exportExcel('filtered')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.4rem;">
-      ⬇ Download Excel (.xlsx)
-    </button>
-    <button class="btn-green" onclick="exportExcel('all')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      ⬇ All Orders Excel
-    </button>
-    <button class="btn-green" onclick="exportSelectedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      ⬇ Selected CSV
-    </button>
-    <button class="btn-green" onclick="exportUnshippedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      ⬇ Unshipped CSV
-    </button>
-    <button class="btn-outline" onclick="selectVisibleOrders()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      Select Visible
-    </button>
-    <button class="btn-outline" onclick="clearSelection()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      Clear Selection
-    </button>
-    <button class="btn-outline" onclick="printLabels()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      🖨 Print Shipping Labels
-    </button>
-    <button class="btn-outline" onclick="copyAllAddresses()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      📋 Copy Addresses
-    </button>
-    <button class="btn-outline" onclick="downloadBulkTemplate()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      ⬇ Bulk Template
-    </button>
-    <button class="btn-outline" onclick="document.getElementById('bulkUpdateFile').click()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      ⬆ Bulk Update CSV
-    </button>
-    <input type="file" id="bulkUpdateFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="bulkUpdateFromFile(this.files[0]); this.value='';"/>
-    <button class="btn-outline" onclick="bulkDeleteFiltered()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(224,80,80,0.4);color:#e05050;" title="Permanently delete every order currently shown by the filters (asks for confirmation)">
-      🗑 Delete Filtered
-    </button>
-    <button class="btn-outline" onclick="bulkReconcilePhonePe(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(95,37,159,0.5);color:#a275d6;" title="Re-check every order stuck on 'pending_phonepe' from the last 30 days">
-      🔄 Re-check All Pending PhonePe
-    </button>
-  </div>
-
-  <!-- Quick day-range filters -->
-  <div class="toolbar" style="border-bottom:none;padding-bottom:0;">
-    <span class="section-title">Quick range:</span>
-    <button class="filter-btn day-btn" data-days="0"   onclick="setDayRange(this,0)">Today</button>
-    <button class="filter-btn day-btn" data-days="1"   onclick="setDayRange(this,1)">Yesterday</button>
-    <button class="filter-btn day-btn" data-days="7"   onclick="setDayRange(this,7)">Last 7 days</button>
-    <button class="filter-btn day-btn" data-days="30"  onclick="setDayRange(this,30)">Last 30 days</button>
-    <button class="filter-btn day-btn" data-days="90"  onclick="setDayRange(this,90)">Last 90 days</button>
-    <button class="filter-btn day-btn" data-days="-1"  onclick="setDayRange(this,-1)">All time</button>
-  </div>
-
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <button class="filter-btn active" data-status="" onclick="setFilter(this,'')">All</button>
-    <button class="filter-btn" data-status="__unshipped" onclick="setFilter(this,'__unshipped')">Unshipped</button>
-    <button class="filter-btn" data-status="cod_pending" onclick="setFilter(this,'cod_pending')">COD Pending</button>
-    <button class="filter-btn" data-status="partial_cod_pending" onclick="setFilter(this,'partial_cod_pending')">Partial COD</button>
-    <button class="filter-btn" data-status="online_pending" onclick="setFilter(this,'online_pending')" style="border-color:rgba(162,117,214,0.5);color:#a275d6;">Online Pending</button>
-    <button class="filter-btn" data-status="confirmed" onclick="setFilter(this,'confirmed')">Confirmed</button>
-    <button class="filter-btn" data-status="shipped" onclick="setFilter(this,'shipped')">Shipped</button>
-    <button class="filter-btn" data-status="delivered" onclick="setFilter(this,'delivered')">Delivered</button>
-    <button class="filter-btn" data-status="paid" onclick="setFilter(this,'paid')">Paid Online</button>
-    <button class="filter-btn" data-status="cancelled" onclick="setFilter(this,'cancelled')">Cancelled</button>
-    <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
-    <span class="date-sep">→</span>
-    <input type="date" id="dateTo" onchange="applyFilters()" title="To date"/>
-    <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID" oninput="applyFilters()"/>
-  </div>
-
-  <!-- Table -->
-  <div class="tbl-wrap" id="ordersTableSection">
-    <table>
-      <thead>
-        <tr>
-          <th class="select-cell" onclick="event.stopPropagation()"><input class="select-all-check" type="checkbox" id="selectAllVisible" onchange="toggleAllVisible(this.checked)" title="Select all visible orders"/></th>
-          <th onclick="sortBy('razorpay_order_id')">Order ID ↕</th>
-          <th onclick="sortBy('created_at')">Date ↕</th>
-          <th onclick="sortBy('customer_name')">Customer ↕</th>
-          <th>Items</th>
-          <th onclick="sortBy('amount_paise')">Amount ↕</th>
-          <th>Payment</th>
-          <th onclick="sortBy('status')">Status ↕</th>
-          <th>Delivery Address</th>
-        </tr>
-      </thead>
-      <tbody id="ordersBody"></tbody>
-    </table>
-  </div>
-  <div class="empty" id="emptyState" style="display:none;">No orders found.</div>
-  <button class="load-more-btn" id="loadMoreBtn" style="display:none;" onclick="loadMore()">Load More Orders</button>
-
-  </div><!-- /tab-orders -->
-
-  <!-- ═══ CREATE LISTING TAB ═══ -->
-  <div class="admin-section" id="tab-create">
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
@@ -923,8 +925,14 @@ function _drawTable() {
       </td>
       <td style="font-size:0.65rem;color:var(--cream-dim);max-width:200px;line-height:1.5;">
         ${esc(o.customer_address || '—')}
+        ${orderIsUnshipped(o) ? `<button onclick="npShipOrder('${esc(o.razorpay_order_id||o.id)}', this)" title="Create shipment on NimbusPost and get AWB automatically"
+          style="display:block;margin-top:0.5rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;width:100%;"
+          onmouseover="this.style.background='rgba(201,168,76,0.18)';"
+          onmouseout="this.style.background='rgba(201,168,76,0.08)';">
+          🚀 Ship via NimbusPost
+        </button>` : ''}
         <button onclick="deleteOrder('${esc(o.id)}','${esc(o.razorpay_order_id||o.id)}')" title="Permanently delete this order"
-          style="display:block;margin-top:0.6rem;background:transparent;border:1px solid rgba(224,80,80,0.35);color:#e05050;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;"
+          style="display:block;margin-top:0.4rem;background:transparent;border:1px solid rgba(224,80,80,0.35);color:#e05050;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;"
           onmouseover="this.style.background='rgba(224,80,80,0.12)';this.style.borderColor='rgba(224,80,80,0.6)';"
           onmouseout="this.style.background='transparent';this.style.borderColor='rgba(224,80,80,0.35)';">
           🗑 Delete
@@ -1032,6 +1040,112 @@ async function updateStatus(id, status) {
     }
   } catch (err) {
     alert('Could not update status: ' + err.message);
+  }
+}
+
+// ── NimbusPost Auto-Ship ───────────────────────────────────────────────────
+
+async function _npCall(body) {
+  const res = await fetch('/.netlify/functions/nimbuspost-ship', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+  return data;
+}
+
+// Ship a single order via NimbusPost
+async function npShipOrder(orderId, btn) {
+  if (!confirm(`Create NimbusPost shipment for ${orderId}?\n\nThis will auto-select the cheapest available courier and generate an AWB.`)) return;
+
+  const origText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Creating…'; }
+
+  try {
+    const data = await _npCall({ order_id: orderId });
+    const shipped = data.shipped?.[0];
+    const skipped = data.skipped?.[0];
+    const failed  = data.failures?.[0];
+
+    if (shipped) {
+      // Update local order cache
+      const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+      if (ord) {
+        ord.status       = 'shipped';
+        ord.tracking_id  = shipped.awb;
+        ord.courier_name = shipped.courier_name;
+        ord.tracking_url = shipped.tracking_url;
+      }
+      updateStats();
+      applyFilters();
+      alert(`✅ Shipment created!\n\nAWB: ${shipped.awb}\nCourier: ${shipped.courier_name}\n${shipped.tracking_url ? '\n' + shipped.tracking_url : ''}`);
+    } else if (skipped) {
+      alert(`⚠️ Order ${orderId} already has tracking: ${skipped.reason}`);
+    } else if (failed) {
+      alert(`❌ Failed: ${failed.error}`);
+    }
+  } catch (err) {
+    alert('NimbusPost error: ' + err.message);
+    if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+  }
+}
+
+// Bulk ship all currently-visible unshipped orders via NimbusPost
+async function npBulkShip() {
+  const unshipped = (currentFilter === '__unshipped' ? filteredOrders : allOrders).filter(orderIsUnshipped);
+  if (!unshipped.length) { alert('No unshipped orders to process.'); return; }
+
+  const proceed = confirm(
+    `🚀 Bulk NimbusPost Ship\n\n` +
+    `This will create shipments for ${unshipped.length} unshipped order(s).\n` +
+    `AWBs will be auto-assigned to the cheapest available courier for each pincode.\n\n` +
+    `Proceed?`
+  );
+  if (!proceed) return;
+
+  const ids = unshipped.map(o => o.razorpay_order_id || o.id);
+
+  // Show progress
+  const progressMsg = document.createElement('div');
+  progressMsg.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#1c1916;border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:1rem 1.5rem;font-size:0.75rem;z-index:9999;font-family:Montserrat,sans-serif;letter-spacing:0.08em;';
+  progressMsg.textContent = `⏳ Creating ${ids.length} shipments on NimbusPost…`;
+  document.body.appendChild(progressMsg);
+
+  try {
+    const data = await _npCall({ order_ids: ids });
+    document.body.removeChild(progressMsg);
+
+    const shipped  = data.shipped  || [];
+    const skipped  = data.skipped  || [];
+    const failures = data.failures || [];
+
+    // Update local cache
+    for (const s of shipped) {
+      const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === s.order_id);
+      if (ord) {
+        ord.status       = 'shipped';
+        ord.tracking_id  = s.awb;
+        ord.courier_name = s.courier_name;
+        ord.tracking_url = s.tracking_url;
+      }
+    }
+    updateStats();
+    applyFilters();
+
+    let msg = `✅ Bulk NimbusPost complete!\n\n`;
+    if (shipped.length)  msg += `Shipped: ${shipped.length}\n`;
+    if (skipped.length)  msg += `Skipped (already had AWB): ${skipped.length}\n`;
+    if (failures.length) {
+      msg += `\n❌ Failed (${failures.length}):\n`;
+      failures.slice(0, 5).forEach(f => { msg += `• ${f.order_id}: ${f.error}\n`; });
+      if (failures.length > 5) msg += `… and ${failures.length - 5} more\n`;
+    }
+    alert(msg);
+  } catch (err) {
+    document.body.removeChild(progressMsg);
+    alert('Bulk ship failed: ' + err.message);
   }
 }
 

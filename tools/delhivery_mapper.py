@@ -1,3 +1,4 @@
+import csv
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -338,7 +339,32 @@ def map_orders(input_file):
 
     out = pd.DataFrame(rows, columns=DELHIVERY_COLS)
     out = out.fillna('')                  # ensure no NaN leaks into output
-    out.to_csv(output_file, index=False, na_rep='')
+
+    # Force string type on ID / phone / pincode columns so pandas doesn't
+    # store them as integers (which would then be written unquoted and Excel
+    # would display them in scientific notation for large values).
+    str_cols = [
+        'Order ID*',
+        'Shipping Phone Number*', 'Shipping Pincode*',
+        'Billing Phone Number',   'Billing Pincode',
+    ]
+    for col in str_cols:
+        if col in out.columns:
+            out[col] = out[col].astype(str).replace({'nan': '', '0': ''})
+
+    # encoding='utf-8-sig'       → BOM prefix; tells Excel this is UTF-8
+    #                               (fixes Hindi / Bengali / other non-ASCII text)
+    # quoting=csv.QUOTE_NONNUMERIC → wraps every string cell in double-quotes;
+    #                               Excel respects quoted strings and will NOT
+    #                               auto-convert phone / order-id numbers to
+    #                               scientific notation.
+    out.to_csv(
+        output_file,
+        index=False,
+        na_rep='',
+        encoding='utf-8-sig',
+        quoting=csv.QUOTE_NONNUMERIC,
+    )
 
     return out, output_file, unknown_items
 
