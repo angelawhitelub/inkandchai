@@ -204,6 +204,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
     <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
     <button class="admin-tab" data-tab="abandoned" onclick="switchTab('abandoned')">🛒 Abandoned Carts</button>
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
   </nav>
 
   <!-- ═══ ORDERS TAB ═══ -->
@@ -550,6 +551,42 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
   </section>
 
   </div><!-- /tab-reviews -->
+
+  <!-- ═══ RETURNS TAB ═══ -->
+  <div class="admin-section" id="tab-returns">
+
+  <section class="abandoned-panel">
+    <div class="abandoned-head">
+      <div>
+        <h2>Return Requests</h2>
+        <p>Customer return requests. Approve, reject, or create a NimbusPost reverse pickup (customer → Delhi office).</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-outline" onclick="fetchReturnRequests()">↻ Refresh</button>
+      </div>
+    </div>
+    <div class="hint" id="returnsMeta" style="margin-bottom:0.8rem;">Loading return requests…</div>
+    <div class="tbl-wrap" style="box-shadow:none;">
+      <table class="mini-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Items</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>AWB</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="returnsBody"></tbody>
+      </table>
+    </div>
+    <div class="lead-empty" id="returnsEmpty" style="display:none;">No return requests found.</div>
+  </section>
+
+  </div><!-- /tab-returns -->
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
@@ -2026,7 +2063,7 @@ setInterval(() => { if (adminKey) fetchOrders(true); }, 90000);
 document.getElementById('adminPass').focus();
 
 // ── Tab navigation ──────────────────────────────────────────────────────────
-const TABS = ['orders','create','products','abandoned','reviews'];
+const TABS = ['orders','create','products','abandoned','reviews','returns'];
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
@@ -2049,6 +2086,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'products' && adminKey) fetchProducts();
   if (tab === 'abandoned' && adminKey) fetchAbandonedCheckouts();
   if (tab === 'reviews') fetchPendingReviews();
+  if (tab === 'returns' && adminKey) fetchReturnRequests();
 
   // Scroll to top of content
   document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -2157,6 +2195,137 @@ async function moderateReview(reviewId, action) {
 
 // Load pending reviews on page load
 fetchPendingReviews();
+
+// ── Returns ─────────────────────────────────────────────────────────────────
+let allReturnRequests = [];
+
+async function fetchReturnRequests() {
+  const meta = document.getElementById('returnsMeta');
+  const badge = document.getElementById('pendingReturnsBadge');
+  if (meta) meta.textContent = 'Loading…';
+  try {
+    const res = await fetch('/.netlify/functions/get-return-requests', {
+      headers: { 'X-Admin-Key': adminKey },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    allReturnRequests = data.returns || [];
+
+    const pending = allReturnRequests.filter(r => r.status === 'pending').length;
+    if (badge) {
+      badge.textContent = pending;
+      badge.style.display = pending > 0 ? 'inline' : 'none';
+    }
+    if (meta) meta.textContent = `${allReturnRequests.length} return request${allReturnRequests.length !== 1 ? 's' : ''}`;
+    renderReturns();
+  } catch (e) {
+    if (meta) meta.textContent = 'Error: ' + e.message;
+  }
+}
+
+const RETURN_STATUS_COLORS = {
+  pending:          'border-color:rgba(232,160,48,0.5);color:#b56b12;',
+  approved:         'border-color:rgba(35,122,59,0.4);color:#237a3b;',
+  rejected:         'border-color:rgba(201,80,80,0.5);color:#c93636;',
+  pickup_scheduled: 'border-color:rgba(201,168,76,0.5);color:#8a6a1f;',
+};
+
+function renderReturns() {
+  const tbody = document.getElementById('returnsBody');
+  const empty = document.getElementById('returnsEmpty');
+  if (!tbody) return;
+
+  if (!allReturnRequests.length) {
+    tbody.innerHTML = '';
+    if (empty) empty.style.display = '';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  tbody.innerHTML = allReturnRequests.map(r => {
+    const date = r.created_at ? new Date(r.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+    const items = Array.isArray(r.items) ? r.items.map(i => `${i.title||'Book'} ×${i.qty||1}`).join('<br>') : '—';
+    const statusStyle = RETURN_STATUS_COLORS[r.status] || 'border-color:rgba(160,144,128,0.4);color:#6f6255;';
+    const statusLabel = (r.status || 'pending').replace(/_/g, ' ');
+    const awbHtml = r.awb
+      ? `<span style="font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--gold);">${r.awb}</span><br><span style="font-size:0.62rem;color:var(--cream-dim);">${r.courier_name||''}</span>`
+      : '—';
+
+    const canPickup = !r.awb && r.status !== 'rejected';
+    const canApprove = r.status === 'pending';
+    const canReject  = r.status === 'pending';
+
+    return `<tr>
+      <td style="white-space:nowrap;font-size:0.72rem;">${date}</td>
+      <td style="font-size:0.75rem;color:var(--gold-dim);">${r.order_display_id||r.order_id||'—'}</td>
+      <td>
+        <div style="font-size:0.82rem;">${r.customer_name||'—'}</div>
+        <div style="font-size:0.65rem;color:var(--cream-dim);">${r.customer_email||''}</div>
+        <div style="font-size:0.65rem;color:var(--cream-dim);">${r.customer_phone||''}</div>
+      </td>
+      <td style="font-size:0.72rem;">${items}</td>
+      <td style="font-size:0.75rem;max-width:200px;">${r.reason ? r.reason.slice(0,150) + (r.reason.length>150?'…':'') : '<span style="color:var(--cream-dim)">No reason given</span>'}</td>
+      <td><span class="badge" style="${statusStyle}">${statusLabel}</span></td>
+      <td>${awbHtml}</td>
+      <td>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          ${canPickup ? `<button class="btn-gold" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturn('${r.id}',this)">🚚 Create Pickup</button>` : ''}
+          ${canApprove ? `<button class="btn-green" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="approveReturn('${r.id}',this)">✓ Approve</button>` : ''}
+          ${canReject  ? `<button class="btn-danger" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="rejectReturn('${r.id}',this)">✗ Reject</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function _returnCall(body, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const res = await fetch('/.netlify/functions/process-return', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function processReturn(returnId, btn) {
+  if (!confirm('Create NimbusPost reverse pickup for this return?\n\nPickup from customer address → Delhi office.')) return;
+  try {
+    const data = await _returnCall({ return_request_id: returnId }, btn);
+    alert(`✅ Reverse pickup created!\nAWB: ${data.awb}\nCourier: ${data.courier_name}\nFrom: ${data.pickup_from}`);
+    await fetchReturnRequests();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🚚 Create Pickup'; }
+  }
+}
+
+async function approveReturn(returnId, btn) {
+  try {
+    await _returnCall({ return_request_id: returnId, action: 'approve' }, btn);
+    await fetchReturnRequests();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Approve'; }
+  }
+}
+
+async function rejectReturn(returnId, btn) {
+  if (!confirm('Reject this return request?')) return;
+  try {
+    await _returnCall({ return_request_id: returnId, action: 'reject' }, btn);
+    await fetchReturnRequests();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✗ Reject'; }
+  }
+}
 </script>
 </body>
 </html>

@@ -123,6 +123,20 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'The 7-day return window has expired for this order.' }) };
     }
 
+    // Save return request to Supabase
+    await supabase.from('return_requests').insert({
+      order_id:         order.id,
+      order_display_id: order.razorpay_order_id || order.id,
+      customer_name:    order.customer_name    || '',
+      customer_email:   order.customer_email   || '',
+      customer_phone:   order.customer_phone   || '',
+      customer_address: order.customer_address || '',
+      items:            order.cart_items       || [],
+      amount_paise:     order.amount_paise     || 0,
+      reason:           reason,
+      status:           'pending',
+    });
+
     const ownerTo = process.env.STORE_OWNER_EMAIL || 'support@inkandchai.in';
     await sendEmail({
       to: ownerTo,

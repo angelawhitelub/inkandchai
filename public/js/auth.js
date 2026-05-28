@@ -334,9 +334,114 @@
         Send Code →
       </button>
       <p id="iacOtpMsg" style="font-size:.7rem;color:#e06060;margin-top:.75rem;min-height:1.1em;text-align:center;line-height:1.5;"></p>
+
+      <p style="text-align:center;margin-top:.6rem;font-size:.66rem;color:#a09080;">
+        Have a password?
+        <button onclick="renderPasswordStep()" style="background:none;border:none;color:#c9a84c;cursor:pointer;
+          font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;margin-left:.3rem;">
+          Sign in with password →
+        </button>
+      </p>
     `;
     setTimeout(() => document.getElementById('iacOtpEmail')?.focus(), 50);
   }
+
+  function renderPasswordStep() {
+    const inner = document.getElementById('iacAuthInner');
+    if (!inner) return;
+    inner.innerHTML = `
+      <div style="font-size:.55rem;letter-spacing:.35em;text-transform:uppercase;color:#c9a84c;margin-bottom:.5rem;">Ink &amp; Chai</div>
+      <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.9rem;font-weight:300;color:#faf7f2;margin-bottom:.4rem;">Sign in</h3>
+      <p style="font-size:.68rem;color:#a09080;margin-bottom:1.6rem;line-height:1.6;">Sign in with your email and password.</p>
+
+      <label for="iacPwEmail" style="display:block;font-size:.55rem;letter-spacing:.18em;text-transform:uppercase;color:#a09080;margin-bottom:.4rem;">Email address</label>
+      <input id="iacPwEmail" type="email" placeholder="you@example.com" autocomplete="email"
+        onkeydown="if(event.key==='Enter')document.getElementById('iacPwPassword')?.focus()"
+        style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);color:#f0e8d8;
+               padding:.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:16px;outline:none;
+               margin-bottom:.85rem;"
+        onfocus="this.style.borderColor='rgba(201,168,76,0.5)'"
+        onblur="this.style.borderColor='rgba(201,168,76,0.18)'"/>
+
+      <label for="iacPwPassword" style="display:block;font-size:.55rem;letter-spacing:.18em;text-transform:uppercase;color:#a09080;margin-bottom:.4rem;">Password</label>
+      <input id="iacPwPassword" type="password" placeholder="Your password" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')iacSignInWithPassword()"
+        style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);color:#f0e8d8;
+               padding:.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:16px;outline:none;
+               margin-bottom:1rem;"
+        onfocus="this.style.borderColor='rgba(201,168,76,0.5)'"
+        onblur="this.style.borderColor='rgba(201,168,76,0.18)'"/>
+
+      <button onclick="iacSignInWithPassword()" id="iacPwSignInBtn"
+        style="width:100%;padding:.95rem;background:#c9a84c;color:#0d0b08;font-family:'Montserrat',sans-serif;
+               font-size:.65rem;letter-spacing:.25em;text-transform:uppercase;border:none;cursor:pointer;font-weight:600;">
+        Sign In →
+      </button>
+      <p id="iacPwMsg" style="font-size:.7rem;color:#e06060;margin-top:.75rem;min-height:1.1em;text-align:center;line-height:1.5;"></p>
+
+      <p style="text-align:center;margin-top:.6rem;font-size:.66rem;color:#a09080;">
+        No password?
+        <button onclick="renderOtpStep1()" style="background:none;border:none;color:#c9a84c;cursor:pointer;
+          font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;margin-left:.3rem;">
+          Use OTP instead →
+        </button>
+      </p>
+    `;
+    setTimeout(() => document.getElementById('iacPwEmail')?.focus(), 50);
+  }
+
+  window.iacSignInWithPassword = async function () {
+    const email    = document.getElementById('iacPwEmail')?.value.trim() || '';
+    const password = document.getElementById('iacPwPassword')?.value || '';
+    const msg      = document.getElementById('iacPwMsg');
+    const btn      = document.getElementById('iacPwSignInBtn');
+
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please enter a valid email address.'; }
+      return;
+    }
+    if (!password) {
+      if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please enter your password.'; }
+      return;
+    }
+
+    const sb = getSB();
+    if (!sb) { if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Auth not available.'; } return; }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
+    if (msg) { msg.textContent = ''; }
+
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+
+      currentUser = data.user;
+      await fetchProfile();
+      updateNav();
+
+      const box = document.getElementById('iacAuthBox');
+      if (box) {
+        box.innerHTML = `
+          <div style="text-align:center;padding:2rem 1rem;">
+            <div style="font-size:2.5rem;margin-bottom:1rem;">✓</div>
+            <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;color:#faf7f2;margin-bottom:.5rem;">
+              ${currentProfile?.name ? 'Welcome, ' + currentProfile.name.split(' ')[0] + '!' : 'Signed in!'}
+            </h3>
+            <p style="font-size:.7rem;color:#a09080;">Redirecting…</p>
+          </div>`;
+      }
+      setTimeout(() => removeModal('iacAuthModal'), 1200);
+
+    } catch (e) {
+      if (msg) {
+        msg.style.color = '#e06060';
+        msg.textContent = /invalid|credentials|wrong/i.test(e.message)
+          ? 'Incorrect email or password. Try again.'
+          : (e.message || 'Sign in failed. Please try again.');
+      }
+      if (btn) { btn.disabled = false; btn.textContent = 'Sign In →'; }
+    }
+  };
 
   function renderOtpStep2(email) {
     const inner = document.getElementById('iacAuthInner');
