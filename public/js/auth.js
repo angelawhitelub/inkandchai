@@ -390,6 +390,10 @@
     setTimeout(() => document.getElementById('iacPwEmail')?.focus(), 50);
   }
 
+  // Expose render helpers to global scope (called from inline onclick)
+  window.renderPasswordStep = function () { renderPasswordStep(); };
+  window.renderOtpStep1     = function () { renderOtpStep1(); };
+
   window.iacSignInWithPassword = async function () {
     const email    = document.getElementById('iacPwEmail')?.value.trim() || '';
     const password = document.getElementById('iacPwPassword')?.value || '';
