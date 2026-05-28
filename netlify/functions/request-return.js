@@ -142,7 +142,7 @@ exports.handler = async (event) => {
     }
 
     // Save return request to Supabase
-    await supabase.from('return_requests').insert({
+    const { error: insertErr } = await supabase.from('return_requests').insert({
       order_id:         order.id,
       order_display_id: order.razorpay_order_id || order.id,
       customer_name:    order.customer_name    || '',
@@ -154,6 +154,7 @@ exports.handler = async (event) => {
       reason:           reason,
       status:           'pending',
     });
+    if (insertErr) throw insertErr;
 
     const ownerTo = process.env.STORE_OWNER_EMAIL || 'support@inkandchai.in';
     await sendEmail({
