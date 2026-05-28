@@ -55,16 +55,35 @@ exports.handler = async (event) => {
     const { data, error } = await supabase
       .from('orders')
       .select('*')
-      .ilike('customer_email', lookupEmail)   // case-insensitive match
+      .ilike('customer_email', lookupEmail)
       .order('created_at', { ascending: false })
       .limit(30);
 
     if (error) throw error;
 
+    const orders = data || [];
+
+    // Fetch return requests for this customer and mark orders that already have one
+    if (orders.length) {
+      const orderIds = orders.map(o => o.id);
+      const { data: returns } = await supabase
+        .from('return_requests')
+        .select('order_id, status')
+        .in('order_id', orderIds);
+
+      const returnMap = {};
+      (returns || []).forEach(r => { returnMap[r.order_id] = r.status; });
+      orders.forEach(o => {
+        if (returnMap[o.id]) {
+          o.return_request_status = returnMap[o.id];
+        }
+      });
+    }
+
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ orders: data || [] }),
+      body: JSON.stringify({ orders }),
     };
   } catch (err) {
     console.error('get-my-orders error:', err.message);

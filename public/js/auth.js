@@ -1054,6 +1054,22 @@
   }
 
   function returnRequestBlock(order) {
+    // Already submitted — show status, no button
+    if (order.return_request_status) {
+      const statusLabel = order.return_request_status.replace(/_/g, ' ');
+      return `
+        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                    display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;">
+          <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
+                       padding:0.28rem 0.7rem;border:1px solid rgba(201,168,76,0.35);color:#c9a84c;">
+            Return ${statusLabel}
+          </span>
+          <span style="font-size:0.62rem;color:#a09080;line-height:1.5;">
+            Our team will be in touch. Please keep the package ready to hand over to the courier.
+          </span>
+        </div>`;
+    }
+
     const info = returnWindowInfo(order);
     if (!info.eligible) {
       return `
@@ -1128,9 +1144,19 @@
         body: JSON.stringify({ order_id: orderId, reason }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Could not submit return request.');
+      if (!res.ok) {
+        if (json.already_submitted) {
+          // Show inline message and close modal — no re-submit possible
+          if (msg) { msg.style.color = '#c9a84c'; msg.textContent = json.error; }
+          btn.disabled = true;
+          btn.textContent = 'Already Submitted';
+          setTimeout(() => { removeModal('iacReturnModal'); loadMyOrders(); }, 3000);
+          return;
+        }
+        throw new Error(json.error || 'Could not submit return request.');
+      }
       if (msg) { msg.style.color = '#6dbf6d'; msg.textContent = json.message || 'Return request submitted.'; }
-      setTimeout(() => removeModal('iacReturnModal'), 1500);
+      setTimeout(() => { removeModal('iacReturnModal'); loadMyOrders(); }, 1500);
     } catch (err) {
       if (msg) { msg.style.color = '#e06060'; msg.textContent = err.message || 'Could not submit return request.'; }
       btn.disabled = false;

@@ -123,6 +123,24 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'The 7-day return window has expired for this order.' }) };
     }
 
+    // Reject duplicate return requests for the same order
+    const { data: existing } = await supabase
+      .from('return_requests')
+      .select('id, status')
+      .eq('order_id', order.id)
+      .maybeSingle();
+
+    if (existing) {
+      return {
+        statusCode: 400,
+        headers: CORS,
+        body: JSON.stringify({
+          error: 'A return request has already been submitted for this order. Our team will be in touch shortly. Please keep the package ready to hand over to the courier.',
+          already_submitted: true,
+        }),
+      };
+    }
+
     // Save return request to Supabase
     await supabase.from('return_requests').insert({
       order_id:         order.id,
