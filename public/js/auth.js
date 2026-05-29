@@ -308,7 +308,7 @@
       </div>`;
     document.body.appendChild(modal);
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-    renderOtpStep1();
+    renderPasswordStep();
   }
 
   function renderOtpStep1() {
@@ -352,7 +352,7 @@
     inner.innerHTML = `
       <div style="font-size:.55rem;letter-spacing:.35em;text-transform:uppercase;color:#c9a84c;margin-bottom:.5rem;">Ink &amp; Chai</div>
       <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.9rem;font-weight:300;color:#faf7f2;margin-bottom:.4rem;">Sign in</h3>
-      <p style="font-size:.68rem;color:#a09080;margin-bottom:1.6rem;line-height:1.6;">Sign in with your email and password.</p>
+      <p style="font-size:.68rem;color:#a09080;margin-bottom:1.6rem;line-height:1.6;">Welcome back. Enter your email and password to continue.</p>
 
       <label for="iacPwEmail" style="display:block;font-size:.55rem;letter-spacing:.18em;text-transform:uppercase;color:#a09080;margin-bottom:.4rem;">Email address</label>
       <input id="iacPwEmail" type="email" placeholder="you@example.com" autocomplete="email"
@@ -383,7 +383,7 @@
         No password?
         <button onclick="renderOtpStep1()" style="background:none;border:none;color:#c9a84c;cursor:pointer;
           font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;margin-left:.3rem;">
-          Use OTP instead →
+          Sign in with OTP →
         </button>
       </p>
     `;
