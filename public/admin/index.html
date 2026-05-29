@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Admin — Ink &amp; Chai</title>
-<meta name="admin-build" content="abandoned-delete-v2"/>
+<meta name="admin-build" content="admin-readable-type-v1"/>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>
 <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
@@ -155,6 +155,81 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .section-title{font-size:0.72rem;color:var(--cream-dim);letter-spacing:0.16em;text-transform:uppercase;align-self:center;margin-right:0.4rem;}
 .hint{font-size:0.74rem;color:var(--cream-dim);}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Readability upgrade: larger text, stronger contrast, easier scanning */
+:root{
+  --cream:#1b130d;
+  --cream-dim:#514538;
+  --white:#0d0905;
+  --gold:#7a5815;
+  --gold-dim:#806a3a;
+  --border:rgba(122,88,21,0.32);
+}
+body{font-size:16px;font-weight:400;line-height:1.55;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+nav{padding:1.1rem 2rem;}
+.logo{font-size:1.65rem;}
+.logo span{font-size:0.82rem!important;color:var(--cream-dim)!important;font-weight:500;}
+.chip,.section-title,.export-label,.stat-label,.form-row label,th{
+  font-weight:600;
+  color:var(--gold);
+}
+.chip{font-size:0.68rem;padding:0.36rem 0.9rem;}
+.btn-gold,.btn-outline,.btn-green,.filter-btn,.load-more-btn,.btn-danger{
+  font-size:0.72rem;
+  font-weight:600;
+  letter-spacing:0.13em;
+  min-height:42px;
+}
+.btn-gold,.btn-green{padding:0.75rem 1.45rem;}
+.btn-outline{padding:0.68rem 1.18rem;background:#fffdf8;}
+.btn-danger{font-size:0.64rem;padding:0.48rem 0.82rem;background:#fff3ef;}
+#loginPanel h2{font-size:2.05rem;color:var(--white);}
+.form-row label{font-size:0.7rem;letter-spacing:0.14em;margin-bottom:0.5rem;}
+.form-row input,.form-row textarea,.form-row select,.search-box,input[type="date"],.status-sel{
+  font-size:0.95rem;
+  font-weight:500;
+  color:var(--cream);
+  border-color:rgba(122,88,21,0.38);
+}
+.form-row input,.form-row textarea,.form-row select{padding:0.86rem 1rem;}
+.search-box{font-size:0.92rem;padding:0.62rem 0.95rem;min-width:280px;}
+input[type="date"]{font-size:0.88rem;padding:0.58rem 0.75rem;}
+h1{font-size:2.45rem;font-weight:400;color:var(--white);}
+.subtitle{font-size:0.86rem;color:var(--cream-dim);font-weight:500;}
+.stat-card{padding:1.45rem;background:#fffefa;}
+.stat-label{font-size:0.68rem;letter-spacing:0.15em;}
+.stat-val{font-size:2.35rem;color:#73530f;}
+.focus-panel strong,.product-head h2,.abandoned-head h2{font-size:1.65rem;color:var(--white);}
+.focus-panel p,.product-head p,.abandoned-head p,.hint,.lead-empty{font-size:0.86rem;color:var(--cream-dim);font-weight:500;}
+.admin-jumps,.export-bar,.product-panel,.abandoned-panel,.tbl-wrap{border-color:rgba(122,88,21,0.34);}
+.mini-table,table{font-size:0.92rem;}
+th{font-size:0.68rem;letter-spacing:0.13em;padding:0.9rem 0.95rem;background:#fff9ed;}
+td{font-size:0.9rem;padding:0.95rem;border-bottom-color:rgba(122,88,21,0.16);}
+tr:hover td{background:rgba(122,88,21,0.075);}
+.order-id{font-size:0.78rem;color:#6f571f;font-weight:600;}
+.pay-id{font-size:0.72rem;color:#514538;font-weight:500;}
+.cust-name{font-size:1rem;color:var(--white);font-weight:600;}
+.cust-sub{font-size:0.82rem;color:var(--cream-dim);font-weight:500;line-height:1.45;}
+.items-cell{font-size:0.84rem;color:#4b4034;max-width:260px;font-weight:500;}
+.amount{font-size:1.45rem;color:#73530f;font-weight:600;}
+.amount-sub{font-size:0.75rem;color:var(--cream-dim);font-weight:500;}
+.method-badge,.badge{font-size:0.68rem;font-weight:700;letter-spacing:0.1em;}
+.badge{padding:0.34rem 0.65rem;background:#fffdf8;}
+.status-sel{font-size:0.84rem;padding:0.48rem 0.6rem;min-width:190px;background:#fffefa;}
+.product-row-title{font-size:0.94rem;font-weight:600;color:var(--white);}
+.product-row-meta{font-size:0.76rem;color:var(--cream-dim);font-weight:500;}
+.product-row-price{font-size:1.25rem;color:#73530f;font-weight:600;}
+.image-preview span{font-size:0.84rem;color:var(--cream-dim);}
+#exportLimit{font-size:0.88rem!important;font-weight:600!important;color:var(--cream)!important;}
+@media(max-width:720px){
+  body{font-size:15px;}
+  nav{padding:0.95rem 1rem;}
+  main{padding:1.25rem 0.85rem;}
+  .search-box{min-width:100%;width:100%;}
+  .toolbar{gap:0.55rem;}
+  .btn-gold,.btn-outline,.btn-green,.filter-btn{width:auto;min-height:44px;}
+  th,td{padding:0.82rem 0.75rem;}
+}
 </style>
 </head>
 <body>
