@@ -482,13 +482,17 @@
           Go back
         </button>
         &nbsp;·&nbsp;
-        <button onclick="iacSendOtp(true)" style="background:none;border:none;color:#c9a84c;cursor:pointer;
+        <button id="iacOtpResendBtn" onclick="iacSendOtp(true)" style="background:none;border:none;color:#c9a84c;cursor:pointer;
           font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;">
           Resend
         </button>
       </p>
     `;
-    setTimeout(() => document.getElementById('iacOtp0')?.focus(), 50);
+    setTimeout(() => {
+      document.getElementById('iacOtp0')?.focus();
+      // Start cooldown immediately — code was just sent to get here
+      startOtpCooldown('iacOtpResendBtn', 'iacOtpMsg');
+    }, 50);
   }
 
   // OTP box keyboard handling — auto-advance, backspace, paste
@@ -519,14 +523,44 @@
     }
   };
 
+  // Track last OTP send time to enforce client-side cooldown
+  let _otpLastSentAt = 0;
+  const OTP_COOLDOWN_SEC = 60;
+
+  function startOtpCooldown(btnId, msgId) {
+    const end = Date.now() + OTP_COOLDOWN_SEC * 1000;
+    const tick = () => {
+      const btn = document.getElementById(btnId);
+      const msg = document.getElementById(msgId);
+      const secsLeft = Math.ceil((end - Date.now()) / 1000);
+      if (secsLeft <= 0) {
+        if (btn) { btn.disabled = false; btn.textContent = btnId === 'iacOtpSendBtn' ? 'Send Code →' : 'Resend'; }
+        if (msg && msg.dataset.cooldown) { msg.textContent = ''; delete msg.dataset.cooldown; }
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = `Wait ${secsLeft}s`; }
+      if (msg) { msg.dataset.cooldown = '1'; msg.style.color = '#a09080'; msg.textContent = `Code sent — check your inbox. You can resend in ${secsLeft}s.`; }
+      setTimeout(tick, 1000);
+    };
+    tick();
+  }
+
   window.iacSendOtp = async function(resend = false) {
     const emailEl = resend ? null : document.getElementById('iacOtpEmail');
     const email   = resend ? _otpEmail : (emailEl?.value.trim() || '');
     const msg     = document.getElementById('iacOtpMsg');
-    const btn     = document.getElementById('iacOtpSendBtn');
+    const btn     = document.getElementById(resend ? 'iacOtpResendBtn' : 'iacOtpSendBtn');
 
     if (!email || !/\S+@\S+\.\S+/.test(email)) {
       if (msg) { msg.style.color='#e06060'; msg.textContent='Please enter a valid email address.'; }
+      return;
+    }
+
+    // Client-side cooldown — prevent spam clicking
+    const secsSinceLast = (Date.now() - _otpLastSentAt) / 1000;
+    if (secsSinceLast < OTP_COOLDOWN_SEC) {
+      const wait = Math.ceil(OTP_COOLDOWN_SEC - secsSinceLast);
+      if (msg) { msg.style.color='#e06060'; msg.textContent=`Please wait ${wait}s before requesting another code.`; }
       return;
     }
 
@@ -542,18 +576,27 @@
         options: { shouldCreateUser: true },
       });
       if (error) throw error;
+
       _otpEmail = email;
+      _otpLastSentAt = Date.now();
+
       if (!resend) {
-        renderOtpStep2(email);
+        renderOtpStep2(email); // step 2 render starts its own cooldown on Resend
       } else {
-        if (msg) { msg.style.color='#6dbf6d'; msg.textContent='New code sent! Check your inbox.'; }
-        // Clear boxes
+        // Clear boxes and start cooldown on resend button
         [0,1,2,3,4,5].forEach(i => { const b = document.getElementById('iacOtp'+i); if(b) b.value=''; });
         document.getElementById('iacOtp0')?.focus();
+        startOtpCooldown('iacOtpResendBtn', 'iacOtpMsg');
       }
     } catch(e) {
-      if (msg) { msg.style.color='#e06060'; msg.textContent = e.message || 'Could not send code. Try again.'; }
-      if (btn) { btn.disabled=false; btn.textContent='Send Code →'; }
+      const isRateLimit = /rate.limit|too.many|wait/i.test(e.message || '');
+      if (msg) {
+        msg.style.color='#e06060';
+        msg.textContent = isRateLimit
+          ? 'Too many attempts. Please wait a minute before trying again.'
+          : (e.message || 'Could not send code. Try again.');
+      }
+      if (btn) { btn.disabled=false; btn.textContent = resend ? 'Resend' : 'Send Code →'; }
     }
   };
 
