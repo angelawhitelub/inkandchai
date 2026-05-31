@@ -120,13 +120,33 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 @media(max-width:800px){.product-grid{grid-template-columns:1fr}.product-list{max-height:280px}}
 
 /* Table */
-.tbl-wrap{overflow-x:auto;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);}
+.tbl-wrap{overflow-x:auto;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);position:relative;}
 table{width:100%;border-collapse:collapse;font-size:0.85rem;}
 th{font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold);padding:0.85rem 1rem;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
 th:hover{color:var(--gold-light);}
 td{padding:0.85rem 1rem;border-bottom:1px solid rgba(138,106,31,0.11);color:var(--cream);vertical-align:top;}
 tr:hover td{background:rgba(138,106,31,0.055);}
 tr.selected-row td{background:rgba(35,122,59,0.08);}
+
+/* Loading overlay on table — dims existing rows while refetching */
+.tbl-wrap.tbl-loading::after{
+  content:'';position:absolute;inset:0;background:rgba(13,11,8,0.55);z-index:5;pointer-events:none;
+}
+.tbl-wrap.tbl-loading::before{
+  content:'Loading…';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:6;font-size:0.65rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--gold);
+  background:var(--bg2);border:1px solid var(--border);padding:0.6rem 1.4rem;pointer-events:none;
+}
+
+/* Skeleton shimmer rows shown before first data arrives */
+@keyframes shimmer{0%{background-position:-600px 0}100%{background-position:600px 0}}
+.skeleton-row td{padding:0.85rem 1rem;border-bottom:1px solid rgba(138,106,31,0.08);}
+.skeleton-row td>div{
+  height:12px;border-radius:2px;
+  background:linear-gradient(90deg,rgba(138,106,31,0.08) 25%,rgba(138,106,31,0.18) 50%,rgba(138,106,31,0.08) 75%);
+  background-size:600px 100%;
+  animation:shimmer 1.4s infinite linear;
+}
 .select-cell{width:42px;text-align:center;}
 .order-check,.select-all-check{width:17px;height:17px;accent-color:var(--green);cursor:pointer;}
 .badge{display:inline-block;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;padding:0.26rem 0.65rem;border:1px solid;white-space:nowrap;}
@@ -718,8 +738,27 @@ function logout() {
 // ── Fetch ──────────────────────────────────────────────────────────────────
 async function fetchOrders(reset = false) {
   if (reset) { page = 1; allOrders = []; }
-  const btn = document.getElementById('refreshBtn');
+  const btn     = document.getElementById('refreshBtn');
+  const tblWrap = document.querySelector('.tbl-wrap');
   if (btn) btn.innerHTML = '<span class="spinner"></span>Refreshing…';
+
+  if (reset) {
+    // Show skeleton rows instead of blanking the table — no scroll jump
+    const body = document.getElementById('ordersBody');
+    if (body) {
+      const COLS = 7;
+      const WIDTHS = ['60%','45%','70%','30%','40%','55%','80%'];
+      body.innerHTML = Array(8).fill(0).map(() =>
+        `<tr class="skeleton-row">${WIDTHS.map(w =>
+          `<td><div style="width:${w};"></div></td>`
+        ).join('')}</tr>`
+      ).join('');
+    }
+    document.getElementById('emptyState').style.display = 'none';
+  } else {
+    // Subsequent pages: dim existing table without removing it
+    if (tblWrap) tblWrap.classList.add('tbl-loading');
+  }
 
   try {
     const params = new URLSearchParams({ page, limit: PAGE });
@@ -776,8 +815,12 @@ async function fetchOrders(reset = false) {
 
   } catch (err) {
     showLoginErr('Error: ' + err.message);
+    // Clear skeleton on error so user doesn't see endless shimmer
+    const body = document.getElementById('ordersBody');
+    if (body) body.innerHTML = '';
   } finally {
     if (btn) btn.innerHTML = '↻ Refresh';
+    if (tblWrap) tblWrap.classList.remove('tbl-loading');
   }
 }
 
@@ -1015,6 +1058,10 @@ function renderTable() {
 
 function _drawTable() {
   const body = document.getElementById('ordersBody');
+
+  // Preserve scroll position — prevents page jumping to top on redraw
+  const savedY = window.scrollY;
+
   if (!filtered.length) {
     body.innerHTML = '';
     document.getElementById('emptyState').style.display = '';
@@ -1102,6 +1149,9 @@ function _drawTable() {
     </tr>`;
   }).join('');
   syncSelectionUi();
+
+  // Restore scroll position after DOM rewrite — prevents page jumping
+  requestAnimationFrame(() => window.scrollTo({ top: savedY, behavior: 'instant' }));
 }
 
 // ── Update Status ──────────────────────────────────────────────────────────
