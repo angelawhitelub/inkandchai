@@ -923,11 +923,46 @@
       const date   = new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
       const amount = o.amount_paise ? '₹' + (o.amount_paise / 100).toLocaleString('en-IN') : '—';
       const items  = Array.isArray(o.cart_items) ? o.cart_items : [];
+
+      // Complete status colour map — covers every status the NimbusPost webhook can set
       const statusColor = {
-        paid: '#6dbf6d', shipped: '#c9a84c', delivered: '#6dbf6d',
-        cod_pending: '#e8a030', confirmed: '#a09080', cancelled: '#e06060',
+        // Payment states
+        pending:              '#a09080',
+        paid:                 '#6dbf6d',
+        confirmed:            '#c9a84c',
+        cod_pending:          '#e8a030',
+        partial_cod_pending:  '#e8a030',
+        pending_phonepe:      '#a09080',
+        // Shipping progression
+        shipped:              '#c9a84c',
+        out_for_delivery:     '#4db8ff',   // bright blue — action needed for COD
+        delivered:            '#6dbf6d',
+        // Problem states
+        undelivered:          '#e8a030',
+        rto:                  '#e06060',
+        lost:                 '#e06060',
+        cancelled:            '#e06060',
+        refunded:             '#a09080',
       }[o.status] || '#a09080';
-      const statusLabel = (o.status || 'pending').replace('_', ' ').toUpperCase();
+
+      // Human-readable label — replace ALL underscores, add emoji for key states
+      const STATUS_LABEL = {
+        pending:              'Pending',
+        paid:                 '✅ Paid',
+        confirmed:            'Confirmed',
+        cod_pending:          'COD — Pay on Delivery',
+        partial_cod_pending:  'Partial COD — Pay Balance on Delivery',
+        pending_phonepe:      'Awaiting Payment',
+        shipped:              '📦 Shipped',
+        out_for_delivery:     '🚚 Out for Delivery',
+        delivered:            '✅ Delivered',
+        undelivered:          '⚠️ Delivery Attempted',
+        rto:                  '↩ Returning to Sender',
+        lost:                 '⚠️ Lost in Transit',
+        cancelled:            '✕ Cancelled',
+        refunded:             '↩ Refunded',
+      };
+      const statusLabel = STATUS_LABEL[o.status] || (o.status || 'Pending').replace(/_/g, ' ');
 
       return `
         <div style="border:1px solid rgba(201,168,76,0.14);margin-bottom:1.2rem;padding:1.4rem;">
@@ -977,10 +1012,74 @@
                               font-size:0.55rem;">Deliver to</span><br/>
                  ${escHtml(o.customer_address)}
                </div>` : ''}
+          ${orderTrackingBlock(o)}
           ${cancelOrderBlock(o)}
           ${returnRequestBlock(o)}
         </div>`;
     }).join('');
+  }
+
+  // ── Tracking / shipping progress block ────────────────────────────────────
+  function orderTrackingBlock(order) {
+    const status = String(order.status || '').toLowerCase();
+    const shippingStatuses = ['shipped','out_for_delivery','delivered','undelivered','rto','lost'];
+    if (!shippingStatuses.includes(status)) return '';
+
+    // Progress steps
+    const STEPS = ['shipped', 'out_for_delivery', 'delivered'];
+    const stepLabels = { shipped: 'Shipped', out_for_delivery: 'Out for Delivery', delivered: 'Delivered' };
+    const activeIdx = STEPS.indexOf(status);  // -1 for rto/undelivered/lost
+
+    const stepsHtml = STEPS.map((s, i) => {
+      const done    = activeIdx >= 0 && i <= activeIdx;
+      const current = i === activeIdx;
+      const dotColor = done ? '#c9a84c' : 'rgba(201,168,76,0.2)';
+      const lineColor = (activeIdx >= 0 && i < activeIdx) ? '#c9a84c' : 'rgba(201,168,76,0.15)';
+      return `
+        <div style="display:flex;flex-direction:column;align-items:center;flex:1;position:relative;">
+          ${i > 0 ? `<div style="position:absolute;top:6px;right:50%;width:100%;height:2px;background:${lineColor};z-index:0;"></div>` : ''}
+          <div style="width:14px;height:14px;border-radius:50%;background:${dotColor};
+                      border:2px solid ${current ? '#c9a84c' : dotColor};
+                      z-index:1;flex-shrink:0;${current ? 'box-shadow:0 0 0 3px rgba(201,168,76,0.25);' : ''}"></div>
+          <div style="font-size:0.5rem;letter-spacing:0.08em;text-transform:uppercase;margin-top:0.35rem;
+                      color:${done ? '#c9a84c' : '#5a4a38'};text-align:center;line-height:1.3;">
+            ${stepLabels[s]}
+          </div>
+        </div>`;
+    }).join('');
+
+    // Courier + AWB info
+    const courierLine = [
+      order.courier_name,
+      order.tracking_id ? `AWB: ${order.tracking_id}` : null,
+    ].filter(Boolean).join(' · ');
+
+    // Track button
+    const trackUrl = order.tracking_url
+      || `https://inkandchai.in/track/?id=${encodeURIComponent(order.razorpay_order_id || order.id)}&q=${encodeURIComponent(order.customer_email || order.customer_phone || '')}`;
+
+    const issueNote = {
+      undelivered: '⚠️ Delivery was attempted but unsuccessful. Please ensure someone is available or contact us.',
+      rto:         '↩ Your package is being returned to us. Please contact support for a refund or re-delivery.',
+      lost:        '⚠️ Package marked lost in transit. Please contact our support team immediately.',
+    }[status] || '';
+
+    return `
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(201,168,76,0.1);">
+        ${STEPS.includes(status) ? `
+        <div style="display:flex;align-items:flex-start;padding:0 0.5rem;margin-bottom:0.9rem;">
+          ${stepsHtml}
+        </div>` : ''}
+        ${issueNote ? `<div style="font-size:0.65rem;color:#e8a030;margin-bottom:0.7rem;line-height:1.5;">${escHtml(issueNote)}</div>` : ''}
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.6rem;">
+          ${courierLine ? `<div style="font-size:0.58rem;color:#7a6330;letter-spacing:0.05em;">${escHtml(courierLine)}</div>` : '<div></div>'}
+          <a href="${escHtmlAttr(trackUrl)}" target="_blank" rel="noopener"
+             style="font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;
+                    padding:0.35rem 0.85rem;background:transparent;
+                    border:1px solid rgba(201,168,76,0.45);color:#c9a84c;text-decoration:none;
+                    transition:all 0.2s;">Track Package →</a>
+        </div>
+      </div>`;
   }
 
   // ── Cancel order block (COD + prepaid within 30 min) ─────────────────────
