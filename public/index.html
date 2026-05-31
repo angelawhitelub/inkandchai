@@ -226,7 +226,7 @@
   /* Image-only slide overrides */
   .promo-slide.slide-sale { min-height:unset; }
   /* Dots */
-  .promo-dots { position:absolute; bottom:2rem; left:50%; transform:translateX(-50%); display:flex; gap:0.6rem; z-index:10; }
+  .promo-dots { position:absolute; bottom:1.5rem; left:50%; transform:translateX(-50%); display:flex; gap:0.6rem; z-index:10; }
   .promo-dot { width:8px; height:8px; border-radius:50%; border:1px solid rgba(201,168,76,0.6); background:transparent; cursor:pointer; transition:all 0.3s; padding:0; }
   .promo-dot.active { background:var(--gold); border-color:var(--gold); transform:scale(1.2); }
   /* Arrows */
@@ -240,14 +240,9 @@
   .slide-sale { background:#fef3e8; display:flex!important; align-items:stretch; justify-content:center; min-height:unset!important; }
   .sale-banner-link { display:flex; align-items:center; justify-content:center; width:100%; position:relative; text-decoration:none; }
   .sale-banner-link picture { display:block; width:100%; }
-  .sale-banner-link img { width:100%; display:block; max-height:100vh; object-fit:cover; object-position:left center; }
+  .sale-banner-link img { width:100%; display:block; object-fit:contain; }
   .sale-banner-code-badge { position:absolute; bottom:1.5rem; left:50%; transform:translateX(-50%); background:rgba(200,70,0,0.9); color:#fff; font-family:'Montserrat',sans-serif; font-size:0.7rem; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; padding:0.6rem 1.4rem; cursor:pointer; white-space:nowrap; border:2px solid rgba(255,255,255,0.5); transition:background 0.2s; z-index:3; }
   .sale-banner-code-badge:hover { background:rgba(200,70,0,1); }
-  @media(max-width:780px) {
-    .slide-sale { min-height:unset!important; }
-    .sale-banner-link img { max-height:52vw; object-position:20% center; }
-    .sale-banner-code-badge { font-size:0.6rem; padding:0.5rem 1rem; bottom:0.8rem; }
-  }
 
   /* SLIDE 2 — OFF CAMPUS */
   .slide-campus { background:linear-gradient(135deg,#0d0a1a 0%,#1a1230 50%,#0a0d1a 100%); }
@@ -263,13 +258,58 @@
   .campus-price-badge { position:absolute; top:-1rem; right:-1rem; background:var(--gold); color:var(--bg); font-family:'Montserrat',sans-serif; font-size:1.1rem; font-weight:800; width:72px; height:72px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.1; box-shadow:0 8px 24px rgba(201,168,76,0.4); }
   .campus-price-badge span { font-size:0.5rem; letter-spacing:0.1em; font-weight:500; }
 
+  /* ── MOBILE: carousel collapses to compact cards ── */
   @media(max-width:900px) {
+    /* Non-image hero slides: single column, compact height */
     .promo-carousel { min-height:auto; }
-    .promo-slide { position:relative; }
-    .promo-slide:not(.active) { display:none; }
-    .campus-img-wrap { width:min(280px,80vw); }
-    .sale-code-card { padding:1.5rem 2rem; }
-    .sale-code-card-code { font-size:1.6rem; }
+    .promo-slide { min-height:unset; }
+    .promo-slide:not(.active) { display:none; position:absolute; }
+
+    /* Collapse hero grid to single column */
+    .promo-carousel .hero {
+      display:flex; flex-direction:column;
+      min-height:unset; padding:0;
+    }
+    /* On mobile show the image first (top), text below */
+    .promo-carousel .hero-right {
+      order:1; padding:1.5rem 1rem 0.5rem;
+      justify-content:center;
+    }
+    .promo-carousel .hero-left {
+      order:2; padding:1.8rem 1.2rem 4rem;
+    }
+    /* Tighten up text for small screens */
+    .promo-carousel .hero-title { font-size:clamp(2rem,7vw,3rem); margin-bottom:1rem; }
+    .promo-carousel .hero-sub { font-size:0.78rem; margin-bottom:1.5rem; max-width:100%; }
+    .promo-carousel .hero-stats { gap:1.5rem; margin-top:1.5rem; padding-top:1.2rem; }
+    .promo-carousel .hero-ctas { flex-direction:column; gap:0.8rem; align-items:flex-start; }
+    .promo-carousel .hero-note { display:none; }
+
+    /* Cover wall: smaller grid on mobile */
+    .promo-carousel .hero-cover-wall {
+      grid-template-columns:repeat(4,minmax(62px,1fr)); gap:0.55rem;
+      transform:rotate(1deg); width:100%;
+    }
+    .promo-carousel .hero-right::before { display:none; }
+
+    /* Hide long descriptions on mobile — keep slide compact */
+    .promo-carousel .hero-sub-desktop { display:none; }
+
+    /* Off Campus image */
+    .campus-img-wrap { width:min(240px,70vw); margin:0 auto; }
+    .campus-price-badge { width:58px; height:58px; font-size:0.9rem; top:-0.6rem; right:-0.6rem; }
+
+    /* Summer sale banner: full-width, natural aspect ratio */
+    .slide-sale { min-height:unset!important; }
+    .sale-banner-link img { width:100%; object-fit:contain; max-height:none; }
+    .sale-banner-code-badge { font-size:0.58rem; padding:0.45rem 0.9rem; bottom:0.6rem; }
+
+    /* Dots: inside the slide, above bottom nav */
+    .promo-dots { position:relative; bottom:auto; left:auto; transform:none; justify-content:center; padding:0.8rem 0 0.4rem; background:var(--bg); }
+  }
+  @media(max-width:480px) {
+    .promo-carousel .hero-title { font-size:clamp(1.8rem,6.5vw,2.4rem); }
+    .promo-carousel .hero-cover-wall { grid-template-columns:repeat(4,minmax(52px,1fr)); gap:0.4rem; }
   }
 
   /* MARQUEE */
@@ -1130,14 +1170,15 @@ gtag('config', 'AW-18119332653');
     <div class="hero-left">
       <div class="hero-eyebrow">Elle Kennedy · Complete Series</div>
       <h2 class="hero-title">Off Campus<br/><em>all 5 books</em><br/>one order.</h2>
-      <p class="hero-sub">The Deal, The Mistake, The Score, The Goal, The Legacy — the complete Off Campus series by Elle Kennedy. Addictive college romance that fans can't stop rereading. Now at our best price.</p>
+      <p class="hero-sub" style="display:none;" aria-hidden="true"></p><!-- hidden on mobile via CSS override below -->
+      <p class="hero-sub hero-sub-desktop">The Deal, The Mistake, The Score, The Goal, The Legacy — complete Off Campus by Elle Kennedy. Addictive college romance that fans can't stop rereading.</p>
       <div class="hero-ctas">
         <a href="/product/off-campus-complete-5-book-collection-elle-kennedy/" class="btn-primary">Shop the Set — ₹1,499</a>
         <a href="/category/?name=All%20Romance%20Books" class="btn-ghost">More Romance</a>
       </div>
       <div class="hero-stats">
         <div><div class="stat-num">5</div><div class="stat-label">Books in one box</div></div>
-        <div><div class="stat-num">₹1,499</div><div class="stat-label">Complete set price</div></div>
+        <div><div class="stat-num">₹1,499</div><div class="stat-label">Complete set</div></div>
         <div><div class="stat-num">COD</div><div class="stat-label">UPI available</div></div>
       </div>
     </div>
@@ -1157,7 +1198,7 @@ gtag('config', 'AW-18119332653');
     <div class="hero-left">
       <div class="hero-eyebrow">Hindi self-help bestsellers</div>
       <h2 class="hero-title">Self-help<br/><em>bestsellers</em><br/>in Hindi.</h2>
-      <p class="hero-sub">Read the titles everyone talks about — David Goggins, Ben Horowitz, Daniel Kahneman, Robert Kiyosaki, James Clear, and more — in editions made for Indian readers.</p>
+      <p class="hero-sub hero-sub-desktop">Read the titles everyone talks about — David Goggins, Ben Horowitz, Daniel Kahneman, Robert Kiyosaki, James Clear, and more — in editions made for Indian readers.</p>
       <div class="hero-ctas">
         <a href="/hindi-books/" class="btn-primary">Shop Hindi Editions</a>
         <a href="/bestsellers/" class="btn-ghost">See Bestsellers</a>
