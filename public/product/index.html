@@ -624,7 +624,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-full-212e6c23.js"></script>
+<script src="/js/books-full-e1fb83ea.js"></script>
 <script>
 const BOOKS = window.BOOKS_PRELOAD||[];
 const SOCIAL_PROOF = [{"type": "video", "src": "/videos/unboxing-people-magnet.mp4", "poster": "/images/social/unboxing-people-magnet.jpg", "caption": "All India delivery · COD available"}, {"type": "video", "src": "/videos/affordable-novels.mp4", "poster": "/images/social/affordable-novels.jpg", "caption": "Affordable novels from just ₹99"}, {"type": "video", "src": "/videos/rich-dad-collection.mp4", "poster": "/images/social/rich-dad-collection.jpg", "caption": "Different genres · Large collection to choose from"}, {"type": "video", "src": "/videos/customer-thanks.mp4", "poster": "/images/social/customer-thanks.jpg", "caption": "❤️ A note from one of our readers"}];
@@ -735,6 +735,17 @@ async function loadSingleProductOverride(slug) {
     console.warn('Product override unavailable:', err.message);
     return { override: null, customProduct: null };
   }
+}
+
+// ── Track recently viewed products (for future "Based on what you viewed") ──
+function trackProductView(b) {
+  try {
+    const key = 'iac_viewed';
+    const entry = { slug: b.slug, t: b.t, a: b.a, img: b.img, p: b.p, cat: b.cat, ts: Date.now() };
+    const prev = JSON.parse(localStorage.getItem(key) || '[]');
+    const updated = [entry, ...prev.filter(e => e.slug !== b.slug)].slice(0, 30);
+    localStorage.setItem(key, JSON.stringify(updated));
+  } catch(e) {}
 }
 
 // ── Render product page ───────────────────────────────────────────────────
@@ -1306,62 +1317,160 @@ document.addEventListener('DOMContentLoaded', function() {
 // Expose social-proof JSON to renderer
 window.SOCIAL_PROOF = SOCIAL_PROOF;
 
-// ── Related books — scored by author › category › tab ────────────────────
+// ── Related books — multi-signal scoring ────────────────────────────────
+// Signals: author, series/title keywords, tags, category, description
+// genre-words, price proximity, trending, new arrival.
+(function() {
+  const STOP = new Set(['the','a','an','of','and','by','in','to','for','with',
+    'book','books','edition','special','hindi','volume','vol','series','set',
+    'complete','collection','combo','part','chapter','tale','story']);
+  const GENRE_SIGNALS = ['romance','thriller','mystery','fantasy','horror',
+    'mythology','psychology','money','finance','hockey','college','magic',
+    'war','history','discipline','self-help','motivation','manga','comic',
+    'biography','spiritual','yoga','crime','detective','vampire','werewolf',
+    'enemies','lovers','spicy','dark','academia','mafia','billionaire',
+    'arranged','marriage','forced','proximity','second','chance'];
+
+  function titleWords(t) {
+    return (t||'').toLowerCase().split(/\s+/)
+      .filter(w => w.length > 3 && !STOP.has(w));
+  }
+  function tagSet(b) {
+    return new Set((b.tags||'').toLowerCase().split(/[\s,]+/).filter(w=>w.length>2));
+  }
+  function descSignals(d) {
+    const lower = (d||'').toLowerCase();
+    return GENRE_SIGNALS.filter(g => lower.includes(g));
+  }
+
+  function scoreBook(b, x) {
+    let s = 0;
+    const bA = (b.a||'').toLowerCase().trim();
+    const xA = (x.a||'').toLowerCase().trim();
+
+    // ① Exact author match — strongest (catches all books by same author)
+    if (bA && xA === bA) s += 12;
+    else if (bA && xA) {
+      const bW = bA.split(/\s+/), xW = new Set(xA.split(/\s+/));
+      if (bW.some(w => w.length > 2 && xW.has(w))) s += 4;
+    }
+
+    // ② Series / title keyword overlap (e.g. "Off Campus", "Kings of Sin")
+    const bTW = titleWords(b.t), xTWSet = new Set(titleWords(x.t));
+    const titleOverlap = bTW.filter(w => xTWSet.has(w)).length;
+    s += titleOverlap * 6;   // 1 shared word = +6, "Off Campus" = +12
+
+    // ③ Shared tags
+    const bTags = tagSet(b), xTags = tagSet(x);
+    let tagHits = 0;
+    bTags.forEach(t => { if (xTags.has(t)) tagHits++; });
+    s += Math.min(tagHits * 2, 10);   // cap at +10
+
+    // ④ Same category
+    if (x.cat && x.cat === b.cat) s += 6;
+
+    // ⑤ Description genre-word overlap
+    const bSig = new Set(descSignals(b.desc));
+    const xSig = descSignals(x.desc);
+    const descHits = xSig.filter(g => bSig.has(g)).length;
+    s += Math.min(descHits * 1.5, 6);
+
+    // ⑥ Same broad tab
+    if (x.tab && x.tab === b.tab) s += 2;
+
+    // ⑦ Price proximity (same budget = same shopper)
+    const bp = parseFloat(b.p)||0, xp = parseFloat(x.p)||0;
+    if (bp && xp) {
+      const diff = Math.abs(bp-xp)/Math.max(bp,xp);
+      if (diff < 0.15) s += 3;
+      else if (diff < 0.35) s += 1.5;
+    }
+
+    // ⑧ Quality / freshness signals
+    if (x.img) s += 0.5;
+    if (x.n)   s += 1;   // new arrival
+    if (parseFloat(x.rating||0) >= 4.5) s += 1;
+
+    return s;
+  }
+
+  window._scoreBook = scoreBook;   // expose for search-aware boost below
+})();
+
 function renderRelated(b) {
-  // Score every book that isn't the current one
-  const authorNorm = (b.a || '').toLowerCase().trim();
-  const scored = BOOKS
-    .filter(x => x.url !== b.url && x.slug !== b.slug)
-    .map(x => {
-      let score = 0;
-      const xAuthor = (x.a || '').toLowerCase().trim();
-      // Same author — strongest signal (catches series books)
-      if (xAuthor && xAuthor === authorNorm) score += 8;
-      // Partial author match (shared word — e.g. both "Ana Huang" books)
-      else if (authorNorm && xAuthor) {
-        const aParts = authorNorm.split(/\s+/);
-        const xParts = xAuthor.split(/\s+/);
-        if (aParts.some(w => w.length > 2 && xParts.includes(w))) score += 3;
-      }
-      // Same category
-      if (x.cat && x.cat === b.cat) score += 4;
-      // Same broad tab (Fiction / Non-Fiction / Hindi / etc.)
-      if (x.tab && x.tab === b.tab) score += 1;
-      // Slight preference for books with images & reviews
-      if (x.img) score += 0.5;
-      return { x, score };
-    })
-    .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6)
-    .map(({ x }) => x);
+  const candidates = BOOKS.filter(x => x.url !== b.url && x.slug !== b.slug);
 
-  // Fallback: same category if no author matches at all
-  const pool = scored.length >= 3 ? scored
-    : BOOKS.filter(x => x.cat === b.cat && x.url !== b.url && x.slug !== b.slug).slice(0, 6);
+  // Score every candidate
+  const withScore = candidates
+    .map(x => ({ x, s: window._scoreBook(b, x) }))
+    .filter(({ s }) => s > 0)
+    .sort((a, z) => z.s - a.s);
 
-  if (!pool.length) return;
+  // ── Section A: same author / same series (top 5) ──
+  const authorNorm = (b.a||'').toLowerCase().trim();
+  const sameAuthor = withScore
+    .filter(({ x }) => (x.a||'').toLowerCase().trim() === authorNorm)
+    .slice(0, 5).map(({ x }) => x);
 
-  const heading = scored.length && scored[0].a === b.a
-    ? `More by <em>${esc(b.a)}</em>`
-    : `You May Also <em>Like</em>`;
+  // ── Section B: "You May Also Like" — genre/tag/category matches
+  //    Exclude anything already in sameAuthor
+  const saSet = new Set(sameAuthor.map(r => r.slug));
+  let alsoLike = withScore
+    .filter(({ x }) => !saSet.has(x.slug))
+    .slice(0, 10).map(({ x }) => x);
 
-  document.getElementById('relatedContent').innerHTML = `
-    <div class="related">
-      <h2 class="related-title">${heading}</h2>
-      <div class="related-grid">
-        ${pool.map(r => `
-          <a class="rel-card" href="/product/${r.slug}/" style="text-decoration:none;display:block">
-            <div class="rel-cover">
-              ${r.img ? `<img src="${esc(r.img)}" alt="${esc(r.t)}" loading="lazy"/>` : ''}
-            </div>
-            <div class="rel-title">${esc(r.t)}</div>
-            <div class="rel-author">${esc(r.a || '')}</div>
-            <div class="rel-price">${esc(r.p)}</div>
-          </a>`).join('')}
+  // Fallback when scores are too low
+  if (alsoLike.length < 4) {
+    alsoLike = BOOKS
+      .filter(x => x.cat === b.cat && x.url !== b.url && !saSet.has(x.slug))
+      .slice(0, 8);
+  }
+
+  // ── Search-aware boost: recently searched terms ───────────────────────
+  // Reads from localStorage key 'iac_searches' (written by search overlay)
+  try {
+    const searches = JSON.parse(localStorage.getItem('iac_searches') || '[]');
+    if (searches.length) {
+      const needle = searches.slice(-5).join(' ').toLowerCase();
+      alsoLike.sort((a, z) => {
+        const aHit = (a.t+' '+(a.tags||'')).toLowerCase().includes(needle) ? 1 : 0;
+        const zHit = (z.t+' '+(z.tags||'')).toLowerCase().includes(needle) ? 1 : 0;
+        return zHit - aHit;
+      });
+    }
+  } catch(e) {}
+
+  const container = document.getElementById('relatedContent');
+  if (!container) return;
+
+  const makeCard = r => `
+    <a class="rel-card" href="/product/${r.slug}/" style="text-decoration:none;display:block">
+      <div class="rel-cover">
+        ${r.img ? `<img src="${esc(r.img)}" alt="${esc(r.t)}" loading="lazy"/>` : ''}
+        ${r.n ? '<span style="position:absolute;top:6px;left:6px;background:var(--gold);color:var(--bg);font-size:0.42rem;letter-spacing:0.2em;padding:2px 6px;font-family:Montserrat,sans-serif;font-weight:700;text-transform:uppercase;">NEW</span>' : ''}
       </div>
-    </div>
-  `;
+      <div class="rel-title">${esc(r.t)}</div>
+      <div class="rel-author">${esc(r.a||'')}</div>
+      <div class="rel-price">₹${esc(r.p)}${r.op && r.op!==r.p ? ` <span style="text-decoration:line-through;color:var(--muted);font-size:0.75em">₹${esc(r.op)}</span>` : ''}</div>
+    </a>`;
+
+  let html = '';
+
+  if (sameAuthor.length) {
+    html += `<div class="related">
+      <h2 class="related-title">More by <em>${esc(b.a)}</em></h2>
+      <div class="related-grid">${sameAuthor.map(makeCard).join('')}</div>
+    </div>`;
+  }
+
+  if (alsoLike.length) {
+    html += `<div class="related" style="margin-top:${sameAuthor.length?'2.5rem':'0'}">
+      <h2 class="related-title">You May Also <em>Like</em></h2>
+      <div class="related-grid">${alsoLike.map(makeCard).join('')}</div>
+    </div>`;
+  }
+
+  if (html) container.innerHTML = html;
 }
 
 // ── Safe cart helper (avoids quoting issues in inline onclick) ────────────
@@ -1428,6 +1537,7 @@ const slug    = params.get('id') || pathSlug;
   if (book) {
     const liveBook = applyProductOverride(book, liveData.override);
     renderProduct(liveBook);
+    trackProductView(liveBook);
     renderFBT(liveBook);
     renderBookstagram();
     renderRelated(liveBook);

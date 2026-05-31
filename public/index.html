@@ -2131,6 +2131,15 @@ function srchType() {
 function srchKey(e) {
   if (e.key === 'Escape') { closeSiteSearch(); return; }
   if (e.key === 'Enter') {
+    // Track search query for recommendation personalisation
+    const q = (document.getElementById('srchInput')?.value || '').trim();
+    if (q.length > 2) {
+      try {
+        const prev = JSON.parse(localStorage.getItem('iac_searches') || '[]');
+        const updated = [...prev.filter(s => s !== q), q].slice(-20);
+        localStorage.setItem('iac_searches', JSON.stringify(updated));
+      } catch(e) {}
+    }
     closeSiteSearch();
     document.getElementById('featured')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
