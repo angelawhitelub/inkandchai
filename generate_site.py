@@ -803,9 +803,11 @@ HTML = r"""<!DOCTYPE html>
   .hero-note strong { color:var(--gold); font-weight:500; }
 
   /* PROMO CAROUSEL WRAPPER */
-  .promo-carousel { position:relative; min-height:100vh; overflow:hidden; }
-  .promo-slide { position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity 0.75s ease; z-index:0; }
-  .promo-slide.active { opacity:1; pointer-events:auto; z-index:1; }
+  .promo-carousel { position:relative; overflow:hidden; }
+  .promo-slide { position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity 0.75s ease; z-index:0; min-height:100vh; }
+  .promo-slide.active { opacity:1; pointer-events:auto; z-index:1; position:relative; }
+  /* Image-only slide overrides */
+  .promo-slide.slide-sale { min-height:unset; }
   /* Dots */
   .promo-dots { position:absolute; bottom:2rem; left:50%; transform:translateX(-50%); display:flex; gap:0.6rem; z-index:10; }
   .promo-dot { width:8px; height:8px; border-radius:50%; border:1px solid rgba(201,168,76,0.6); background:transparent; cursor:pointer; transition:all 0.3s; padding:0; }
@@ -817,22 +819,18 @@ HTML = r"""<!DOCTYPE html>
   .promo-arrow.next { right:1.5rem; }
   @media(max-width:900px) { .promo-arrow { display:none; } .promo-dots { bottom:1.2rem; } }
 
-  /* SLIDE 1 — SUMMER SALE */
-  .slide-sale { background:linear-gradient(135deg,#6b0f0f 0%,#8b1a1a 50%,#5a0b0b 100%); }
-  .slide-sale .hero-eyebrow { color:rgba(255,180,180,0.9); }
-  .slide-sale .hero-title { color:#fff; }
-  .slide-sale .hero-title em { color:#ffb3b3; }
-  .slide-sale .hero-sub { color:rgba(255,220,220,0.82); }
-  .slide-sale .hero-stats { border-color:rgba(255,255,255,0.15); }
-  .slide-sale .stat-num { color:#ffb3b3; }
-  .slide-sale .stat-label { color:rgba(255,220,220,0.7); }
-  .slide-sale-right { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.5rem; }
-  .sale-big-code { font-family:'Cormorant Garamond',serif; font-size:clamp(3.5rem,8vw,7rem); font-weight:400; color:#fff; letter-spacing:0.08em; line-height:1; text-align:center; opacity:0.12; user-select:none; }
-  .sale-code-card { background:rgba(255,255,255,0.08); border:1px dashed rgba(255,255,255,0.45); padding:2.5rem 3.5rem; text-align:center; backdrop-filter:blur(6px); }
-  .sale-code-card-label { font-size:0.55rem; letter-spacing:0.3em; text-transform:uppercase; color:rgba(255,200,200,0.8); margin-bottom:1rem; }
-  .sale-code-card-code { font-family:'Montserrat',sans-serif; font-size:2.2rem; font-weight:800; color:#fff; letter-spacing:0.3em; cursor:pointer; transition:color 0.2s; }
-  .sale-code-card-code:hover { color:#ffb3b3; }
-  .sale-code-card-sub { font-size:0.6rem; color:rgba(255,220,220,0.65); margin-top:0.8rem; letter-spacing:0.12em; }
+  /* SLIDE 1 — SUMMER SALE (full banner image) */
+  .slide-sale { background:#fef3e8; display:flex!important; align-items:stretch; justify-content:center; min-height:unset!important; }
+  .sale-banner-link { display:flex; align-items:center; justify-content:center; width:100%; position:relative; text-decoration:none; }
+  .sale-banner-link picture { display:block; width:100%; }
+  .sale-banner-link img { width:100%; display:block; max-height:100vh; object-fit:cover; object-position:left center; }
+  .sale-banner-code-badge { position:absolute; bottom:1.5rem; left:50%; transform:translateX(-50%); background:rgba(200,70,0,0.9); color:#fff; font-family:'Montserrat',sans-serif; font-size:0.7rem; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; padding:0.6rem 1.4rem; cursor:pointer; white-space:nowrap; border:2px solid rgba(255,255,255,0.5); transition:background 0.2s; z-index:3; }
+  .sale-banner-code-badge:hover { background:rgba(200,70,0,1); }
+  @media(max-width:780px) {
+    .slide-sale { min-height:unset!important; }
+    .sale-banner-link img { max-height:52vw; object-position:20% center; }
+    .sale-banner-code-badge { font-size:0.6rem; padding:0.5rem 1rem; bottom:0.8rem; }
+  }
 
   /* SLIDE 2 — OFF CAMPUS */
   .slide-campus { background:linear-gradient(135deg,#0d0a1a 0%,#1a1230 50%,#0a0d1a 100%); }
@@ -982,10 +980,26 @@ HTML = r"""<!DOCTYPE html>
   .kog-crown { position:absolute; top:clamp(10px,2vw,28px); left:clamp(16px,3vw,50px); font-size:clamp(12px,1.5vw,18px); opacity:0.4; z-index:2; animation:kogFadeUp 0.7s ease both; }
   /* Mobile adjustments */
   @media(max-width:600px){
-    .kog-content{ width:68%; padding:14px 10px 14px 16px; }
-    .kog-book-wrap{ width:28%; right:3%; }
-    .kog-price{ right:calc(3% + 28% - 20px); font-size:11px; padding:4px 10px; }
-    .kog-spark-1,.kog-spark-2,.kog-spark-3{ display:none; }
+    .kog-banner { aspect-ratio:unset; min-height:unset; display:flex; flex-direction:row; align-items:center; padding:0; }
+    .kog-content { position:static; width:auto; flex:1; padding:16px 14px 16px 16px; }
+    .kog-store-label { display:none; }
+    .kog-series { margin-bottom:4px; }
+    .kog-title { font-size:clamp(18px,5.5vw,26px); margin-bottom:4px; }
+    .kog-subtitle { font-size:9px; margin-bottom:8px; letter-spacing:2px; }
+    .kog-divider { margin-bottom:8px; }
+    .kog-author { font-size:10px; }
+    .kog-bestseller { font-size:8px; margin-bottom:12px; }
+    .kog-cta { font-size:8px; padding:8px 14px; letter-spacing:2px; }
+    .kog-book-wrap {
+      position:static; transform:none; animation:none;
+      width:38%; flex-shrink:0; padding:12px 12px 12px 0;
+      filter:drop-shadow(-6px 8px 16px rgba(0,0,0,0.7));
+    }
+    .kog-price { position:static; margin:8px 0 0; display:inline-block; font-size:12px; padding:4px 12px; }
+    .kog-spark-1,.kog-spark-2,.kog-spark-3,.kog-crown,.kog-banner::after { display:none; }
+    /* Re-order: content left, book right */
+    .kog-book-wrap { order:2; }
+    .kog-content { order:1; }
   }
 
   /* SECTIONS SHARED */
@@ -1579,31 +1593,15 @@ HTML = r"""<!DOCTYPE html>
 <!-- HERO PROMO CAROUSEL -->
 <div class="promo-carousel" id="promoCarousel">
 
-  <!-- ── SLIDE 1: Summer Sale ── -->
-  <section class="hero promo-slide slide-sale active" style="padding:0;" aria-label="Summer Sale promotion">
-    <div class="hero-left">
-      <div class="hero-eyebrow">☀️ Limited Time · Summer 2026</div>
-      <h1 class="hero-title">10% Off<br/><em>Every Book</em><br/>₹299 &amp; above.</h1>
-      <p class="hero-sub">Use code <strong style="color:#ffb3b3;letter-spacing:0.15em;">SUMMER10</strong> at checkout. Valid on all titles — fiction, self-help, Hindi editions, manga, and combos. No minimum on books priced ₹299+.</p>
-      <div class="hero-ctas">
-        <a href="/bestsellers/" class="btn-primary" style="background:#c0392b;color:#fff;">Shop Now →</a>
-        <a href="/book-combos/" class="btn-ghost" style="color:rgba(255,200,200,0.8);">View Combos</a>
-      </div>
-      <div class="hero-stats">
-        <div><div class="stat-num" style="color:#ffb3b3;">10%</div><div class="stat-label" style="color:rgba(255,220,220,0.7);">Off all books</div></div>
-        <div><div class="stat-num" style="color:#ffb3b3;">₹299+</div><div class="stat-label" style="color:rgba(255,220,220,0.7);">Qualifying order</div></div>
-        <div><div class="stat-num" style="color:#ffb3b3;">COD</div><div class="stat-label" style="color:rgba(255,220,220,0.7);">UPI available</div></div>
-      </div>
-    </div>
-    <div class="hero-right slide-sale-right">
-      <div class="sale-big-code">SUMMER10</div>
-      <div class="sale-code-card">
-        <div class="sale-code-card-label">Use this code at checkout</div>
-        <div class="sale-code-card-code" onclick="navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='SUMMER10',2200)" title="Click to copy">SUMMER10</div>
-        <div class="sale-code-card-sub">Click to copy · Applies 10% off on books ₹299 &amp; above</div>
-      </div>
-      <div class="sale-countdown" id="saleCountdownHero" style="margin-top:0.5rem;"></div>
-    </div>
+  <!-- ── SLIDE 1: Summer Sale (banner image) ── -->
+  <section class="promo-slide slide-sale active" aria-label="Summer Sale promotion">
+    <a href="/bestsellers/" class="sale-banner-link" aria-label="Summer Sale — Shop Now">
+      <picture>
+        <source srcset="/images/summer-sale-banner.webp" type="image/webp"/>
+        <img src="/images/summer-sale-banner.png" alt="Summer Sale — Up to 60% off on selected books. Use code SUMMER10 at checkout." loading="eager" fetchpriority="high"/>
+      </picture>
+      <div class="sale-banner-code-badge" onclick="event.preventDefault();navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Code: SUMMER10',2000)" title="Click to copy code">Code: SUMMER10</div>
+    </a>
   </section>
 
   <!-- ── SLIDE 2: Off Campus Series ── -->
