@@ -251,7 +251,7 @@
     "description": "The Deal + The Mistake + The Score by Elle Kennedy brings together the first three bestselling Off-Campus romance novels in one value paperback combo. Set around Briar University and its hockey world, this set is perfect for readers who love college romance, sports romance, witty banter, slow-burn chemistry, second chances and BookTok-favourite couples. A strong pick for fans of Ana Huang, Hannah Grace, Lauren Asher and Ali Hazelwood. Great for gifting, binge-reading or starting the Off-Campus series. Pan-India delivery, COD available.",
     "image_url": "/images/elle-kennedy-off-campus-combo-3.webp",
     "rating": "4.8",
-    "review_count": 89,
+    "review_count": "89",
     "order_badge": "Series Starter Pack",
     "reviews": [
       {
@@ -268,6 +268,16 @@
         "name": "Sneha R.",
         "rating": 5,
         "text": "These books have ruined me for all other romances 😭 The hockey boys from Briar University live in my head rent free. The combo deal is amazing — would have cost double on Amazon. Fast delivery too!"
+      },
+      {
+        "name": "Kavya Reddy",
+        "rating": 5,
+        "text": "Started The Deal on a Sunday evening and finished all 3 by Tuesday 😭 These books are dangerously addictive. Came well packaged with no bent covers. The combo price is unbeatable — I checked Amazon and Flipkart and this was ₹200+ cheaper. 100% coming back for the full 5-book set!"
+      },
+      {
+        "name": "Ananya Singh",
+        "rating": 5,
+        "text": "The Mistake might actually be my favourite romance book of all time. Tucker Cassidy I'm not okay 🥺 The 3-book set arrived quickly (Mumbai delivery in 2 days!) and the Bloom Books editions are so pretty. Highly recommend this combo if you are new to the series."
       }
     ],
     "review_images": [
@@ -325,7 +335,34 @@
       "/images/reviews/off-campus-series-customer-review-2.jpg",
       "/images/reviews/off-campus-series-customer-review-3.jpg"
     ],
-    "sku": "OCS-COMPLETE"
+    "sku": "OCS-COMPLETE",
+    "reviews": [
+      {
+        "name": "Anika Verma",
+        "rating": 5,
+        "text": "Finally caved and got the complete set after reading The Deal on Kindle and I have ZERO regrets. All 5 books came perfectly packed, covers look exactly like the photos. The Legacy is my favourite of the whole series — that ending destroyed me. Best ₹1,499 I have ever spent 📚🔥"
+      },
+      {
+        "name": "Priya Nair",
+        "rating": 5,
+        "text": "The Bloom Books editions are gorgeous!! The spines look so pretty lined up on my shelf. Got this as a birthday gift for myself and Ink & Chai delivered in 3 days to Bangalore — faster than I expected. If you are debating between buying 1 or all 5, just get all 5. Trust me."
+      },
+      {
+        "name": "Megha Joshi",
+        "rating": 5,
+        "text": "I have been a fan of Off Campus since 2022 and this is my 2nd set — gifted the first one to my best friend 😂 The quality is perfect, no damaged corners, no printing issues. The Score and The Goal are criminally underrated. So happy to finally own the physical copies of all 5."
+      },
+      {
+        "name": "Diya Kapoor",
+        "rating": 4,
+        "text": "Books arrived in good condition, nicely bubble-wrapped. The Deal is obviously amazing but honestly The Goal surprised me — didn't expect to fall that hard for Logan. One star off because delivery took a bit longer than expected but customer support was responsive. Would still recommend!"
+      },
+      {
+        "name": "Ishaan M.",
+        "rating": 5,
+        "text": "Bought this for my girlfriend and she hasn't put them down since they arrived 😭 She says the packaging was lovely and the books feel premium. Already planning to order the Twisted series next. Great combo price — way cheaper than buying individually from Amazon."
+      }
+    ]
   },
   {
     "shopify_id": "CUSTOM-HIDDEN-HINDU-TRILOGY-3",
