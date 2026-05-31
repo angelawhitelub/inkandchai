@@ -802,6 +802,61 @@ HTML = r"""<!DOCTYPE html>
   .hero-note { position:absolute; z-index:3; right:5rem; bottom:6.2rem; max-width:280px; padding:1rem 1.15rem; background:rgba(13,11,8,0.78); border:1px solid rgba(201,168,76,0.28); backdrop-filter:blur(10px); color:var(--cream-dim); font-size:0.64rem; letter-spacing:0.08em; line-height:1.7; text-transform:uppercase; }
   .hero-note strong { color:var(--gold); font-weight:500; }
 
+  /* PROMO CAROUSEL WRAPPER */
+  .promo-carousel { position:relative; min-height:100vh; overflow:hidden; }
+  .promo-slide { position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity 0.75s ease; z-index:0; }
+  .promo-slide.active { opacity:1; pointer-events:auto; z-index:1; }
+  /* Dots */
+  .promo-dots { position:absolute; bottom:2rem; left:50%; transform:translateX(-50%); display:flex; gap:0.6rem; z-index:10; }
+  .promo-dot { width:8px; height:8px; border-radius:50%; border:1px solid rgba(201,168,76,0.6); background:transparent; cursor:pointer; transition:all 0.3s; padding:0; }
+  .promo-dot.active { background:var(--gold); border-color:var(--gold); transform:scale(1.2); }
+  /* Arrows */
+  .promo-arrow { position:absolute; top:50%; transform:translateY(-50%); z-index:10; background:rgba(13,11,8,0.55); color:var(--gold); width:44px; height:44px; border-radius:50%; border:1px solid rgba(201,168,76,0.4); cursor:pointer; font-size:1.2rem; display:flex; align-items:center; justify-content:center; transition:all 0.25s; backdrop-filter:blur(8px); }
+  .promo-arrow:hover { background:var(--gold); color:var(--bg); }
+  .promo-arrow.prev { left:1.5rem; }
+  .promo-arrow.next { right:1.5rem; }
+  @media(max-width:900px) { .promo-arrow { display:none; } .promo-dots { bottom:1.2rem; } }
+
+  /* SLIDE 1 — SUMMER SALE */
+  .slide-sale { background:linear-gradient(135deg,#6b0f0f 0%,#8b1a1a 50%,#5a0b0b 100%); }
+  .slide-sale .hero-eyebrow { color:rgba(255,180,180,0.9); }
+  .slide-sale .hero-title { color:#fff; }
+  .slide-sale .hero-title em { color:#ffb3b3; }
+  .slide-sale .hero-sub { color:rgba(255,220,220,0.82); }
+  .slide-sale .hero-stats { border-color:rgba(255,255,255,0.15); }
+  .slide-sale .stat-num { color:#ffb3b3; }
+  .slide-sale .stat-label { color:rgba(255,220,220,0.7); }
+  .slide-sale-right { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.5rem; }
+  .sale-big-code { font-family:'Cormorant Garamond',serif; font-size:clamp(3.5rem,8vw,7rem); font-weight:400; color:#fff; letter-spacing:0.08em; line-height:1; text-align:center; opacity:0.12; user-select:none; }
+  .sale-code-card { background:rgba(255,255,255,0.08); border:1px dashed rgba(255,255,255,0.45); padding:2.5rem 3.5rem; text-align:center; backdrop-filter:blur(6px); }
+  .sale-code-card-label { font-size:0.55rem; letter-spacing:0.3em; text-transform:uppercase; color:rgba(255,200,200,0.8); margin-bottom:1rem; }
+  .sale-code-card-code { font-family:'Montserrat',sans-serif; font-size:2.2rem; font-weight:800; color:#fff; letter-spacing:0.3em; cursor:pointer; transition:color 0.2s; }
+  .sale-code-card-code:hover { color:#ffb3b3; }
+  .sale-code-card-sub { font-size:0.6rem; color:rgba(255,220,220,0.65); margin-top:0.8rem; letter-spacing:0.12em; }
+
+  /* SLIDE 2 — OFF CAMPUS */
+  .slide-campus { background:linear-gradient(135deg,#0d0a1a 0%,#1a1230 50%,#0a0d1a 100%); }
+  .slide-campus .hero-eyebrow { color:rgba(180,160,255,0.85); }
+  .slide-campus .hero-title { color:#f0ebff; }
+  .slide-campus .hero-title em { color:#c9a84c; }
+  .slide-campus .hero-sub { color:rgba(200,190,240,0.78); }
+  .slide-campus .hero-stats { border-color:rgba(180,160,255,0.2); }
+  .slide-campus .stat-num { color:#c9a84c; }
+  .slide-campus .stat-label { color:rgba(200,190,240,0.65); }
+  .campus-img-wrap { width:min(420px,90%); position:relative; z-index:2; }
+  .campus-img-wrap img { width:100%; display:block; filter:drop-shadow(0 24px 48px rgba(0,0,0,0.6)); }
+  .campus-price-badge { position:absolute; top:-1rem; right:-1rem; background:var(--gold); color:var(--bg); font-family:'Montserrat',sans-serif; font-size:1.1rem; font-weight:800; width:72px; height:72px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.1; box-shadow:0 8px 24px rgba(201,168,76,0.4); }
+  .campus-price-badge span { font-size:0.5rem; letter-spacing:0.1em; font-weight:500; }
+
+  @media(max-width:900px) {
+    .promo-carousel { min-height:auto; }
+    .promo-slide { position:relative; }
+    .promo-slide:not(.active) { display:none; }
+    .campus-img-wrap { width:min(280px,80vw); }
+    .sale-code-card { padding:1.5rem 2rem; }
+    .sale-code-card-code { font-size:1.6rem; }
+  }
+
   /* MARQUEE */
   .marquee-bar { background: var(--gold); padding: 0.75rem 0; overflow: hidden; white-space: nowrap; }
   .marquee-track { display: inline-flex; animation: marquee 30s linear infinite; }
@@ -1521,49 +1576,117 @@ HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<!-- HERO -->
-<section class="hero" style="padding:0;">
-  <div class="hero-left">
-    <div class="hero-eyebrow">Hindi self-help bestsellers</div>
-    <h1 class="hero-title">Self-help<br/><em>bestsellers</em><br/>in Hindi.</h1>
-    <p class="hero-sub">Read the titles everyone talks about — David Goggins, Ben Horowitz, Daniel Kahneman, Robert Kiyosaki, James Clear, and more — in editions made for Indian readers.</p>
-    <div class="hero-ctas">
-      <a href="/category/hindi-books/" class="btn-primary">Shop Hindi Editions</a>
-      <a href="/bestsellers/" class="btn-ghost">See Bestsellers</a>
+<!-- HERO PROMO CAROUSEL -->
+<div class="promo-carousel" id="promoCarousel">
+
+  <!-- ── SLIDE 1: Summer Sale ── -->
+  <section class="hero promo-slide slide-sale active" style="padding:0;" aria-label="Summer Sale promotion">
+    <div class="hero-left">
+      <div class="hero-eyebrow">☀️ Limited Time · Summer 2026</div>
+      <h1 class="hero-title">10% Off<br/><em>Every Book</em><br/>₹299 &amp; above.</h1>
+      <p class="hero-sub">Use code <strong style="color:#ffb3b3;letter-spacing:0.15em;">SUMMER10</strong> at checkout. Valid on all titles — fiction, self-help, Hindi editions, manga, and combos. No minimum on books priced ₹299+.</p>
+      <div class="hero-ctas">
+        <a href="/bestsellers/" class="btn-primary" style="background:#c0392b;color:#fff;">Shop Now →</a>
+        <a href="/book-combos/" class="btn-ghost" style="color:rgba(255,200,200,0.8);">View Combos</a>
+      </div>
+      <div class="hero-stats">
+        <div><div class="stat-num" style="color:#ffb3b3;">10%</div><div class="stat-label" style="color:rgba(255,220,220,0.7);">Off all books</div></div>
+        <div><div class="stat-num" style="color:#ffb3b3;">₹299+</div><div class="stat-label" style="color:rgba(255,220,220,0.7);">Qualifying order</div></div>
+        <div><div class="stat-num" style="color:#ffb3b3;">COD</div><div class="stat-label" style="color:rgba(255,220,220,0.7);">UPI available</div></div>
+      </div>
     </div>
-    <div class="hero-stats">
-      <div><div class="stat-num">Hindi</div><div class="stat-label">Self-help focus</div></div>
-      <div><div class="stat-num">₹499+</div><div class="stat-label">Free shipping</div></div>
-      <div><div class="stat-num">COD</div><div class="stat-label">UPI available</div></div>
+    <div class="hero-right slide-sale-right">
+      <div class="sale-big-code">SUMMER10</div>
+      <div class="sale-code-card">
+        <div class="sale-code-card-label">Use this code at checkout</div>
+        <div class="sale-code-card-code" onclick="navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='SUMMER10',2200)" title="Click to copy">SUMMER10</div>
+        <div class="sale-code-card-sub">Click to copy · Applies 10% off on books ₹299 &amp; above</div>
+      </div>
+      <div class="sale-countdown" id="saleCountdownHero" style="margin-top:0.5rem;"></div>
     </div>
+  </section>
+
+  <!-- ── SLIDE 2: Off Campus Series ── -->
+  <section class="hero promo-slide slide-campus" style="padding:0;" aria-label="Off Campus series promotion">
+    <div class="hero-left">
+      <div class="hero-eyebrow">Elle Kennedy · Complete Series</div>
+      <h2 class="hero-title">Off Campus<br/><em>all 5 books</em><br/>one order.</h2>
+      <p class="hero-sub">The Deal, The Mistake, The Score, The Goal, The Legacy — the complete Off Campus series by Elle Kennedy. Addictive college romance that fans can't stop rereading. Now at our best price.</p>
+      <div class="hero-ctas">
+        <a href="/product/off-campus-complete-5-book-collection-elle-kennedy/" class="btn-primary">Shop the Set — ₹1,499</a>
+        <a href="/category/?name=All%20Romance%20Books" class="btn-ghost">More Romance</a>
+      </div>
+      <div class="hero-stats">
+        <div><div class="stat-num">5</div><div class="stat-label">Books in one box</div></div>
+        <div><div class="stat-num">₹1,499</div><div class="stat-label">Complete set price</div></div>
+        <div><div class="stat-num">COD</div><div class="stat-label">UPI available</div></div>
+      </div>
+    </div>
+    <div class="hero-right" style="justify-content:center;">
+      <div class="campus-img-wrap">
+        <picture>
+          <source srcset="/images/off-campus-5-book-collection-elle-kennedy-covers.webp" type="image/webp"/>
+          <img src="/images/off-campus-5-book-collection-elle-kennedy-covers.webp" alt="Off Campus complete 5-book collection by Elle Kennedy" loading="lazy" width="420"/>
+        </picture>
+        <div class="campus-price-badge"><span>Only</span>₹1,499<span>5 books</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── SLIDE 3: Hindi Self-Help Bestsellers ── -->
+  <section class="hero promo-slide" style="padding:0;" aria-label="Hindi self-help bestsellers">
+    <div class="hero-left">
+      <div class="hero-eyebrow">Hindi self-help bestsellers</div>
+      <h2 class="hero-title">Self-help<br/><em>bestsellers</em><br/>in Hindi.</h2>
+      <p class="hero-sub">Read the titles everyone talks about — David Goggins, Ben Horowitz, Daniel Kahneman, Robert Kiyosaki, James Clear, and more — in editions made for Indian readers.</p>
+      <div class="hero-ctas">
+        <a href="/hindi-books/" class="btn-primary">Shop Hindi Editions</a>
+        <a href="/bestsellers/" class="btn-ghost">See Bestsellers</a>
+      </div>
+      <div class="hero-stats">
+        <div><div class="stat-num">Hindi</div><div class="stat-label">Self-help focus</div></div>
+        <div><div class="stat-num">₹499+</div><div class="stat-label">Free shipping</div></div>
+        <div><div class="stat-num">COD</div><div class="stat-label">UPI available</div></div>
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="hero-cover-wall" aria-label="Hindi self-help featured books">
+        <a class="hero-cover-card featured" href="/product/can-t-hurt-me-hindi-ME-HI/" data-label="Can't Hurt Me · Hindi">
+          <picture><source srcset="/images/cant-hurt-me-hindi.webp" type="image/webp"><img src="/images/cant-hurt-me-hindi.jpg" alt="Can't Hurt Me Hindi edition" loading="lazy"/></picture>
+        </a>
+        <a class="hero-cover-card" href="/product/never-finished-hindi-ED-HI/" data-label="Never Finished">
+          <picture><source srcset="/images/never-finished-hindi.webp" type="image/webp"><img src="/images/never-finished-hindi.jpg" alt="Never Finished Hindi edition" loading="lazy"/></picture>
+        </a>
+        <a class="hero-cover-card featured" href="/product/the-hard-thing-about-hard-things-hindi-NG-HI/" data-label="The Hard Thing · Hindi">
+          <picture><source srcset="/images/hard-thing-about-hard-things-hindi.webp" type="image/webp"><img src="/images/hard-thing-about-hard-things-hindi.jpg" alt="The Hard Thing About Hard Things Hindi edition" loading="lazy"/></picture>
+        </a>
+        <a class="hero-cover-card" href="/product/thinking-fast-and-slow-hindi-OW-HI/" data-label="Thinking, Fast and Slow">
+          <picture><source srcset="/images/thinking-fast-slow-hindi.webp" type="image/webp"><img src="/images/thinking-fast-slow-hindi.jpg" alt="Thinking Fast and Slow Hindi edition" loading="lazy"/></picture>
+        </a>
+        <a class="hero-cover-card" href="/product/hindi-rich-dad-poor-dad-80989/" data-label="Rich Dad Poor Dad">
+          <img src="RICH_DAD_HINDI_IMAGE_PLACEHOLDER" alt="Rich Dad Poor Dad Hindi edition" loading="lazy"/>
+        </a>
+        <a class="hero-cover-card featured" href="/product/hindi-atomic-habits-33309/" data-label="Atomic Habits">
+          <img src="ATOMIC_HABITS_HINDI_IMAGE_PLACEHOLDER" alt="Atomic Habits Hindi edition" loading="lazy"/>
+        </a>
+        <a class="hero-cover-card" href="/product/shakti-ke-48-niyam-the-48-laws-of-power-hindi-28157/" data-label="48 Laws of Power">
+          <img src="LAWS_48_HINDI_IMAGE_PLACEHOLDER" alt="48 Laws of Power Hindi edition" loading="lazy"/>
+        </a>
+      </div>
+      <div class="hero-note"><strong>Translated picks:</strong> motivation, money, business, psychology, discipline.</div>
+    </div>
+  </section>
+
+  <!-- Navigation dots -->
+  <div class="promo-dots" aria-label="Slide navigation">
+    <button class="promo-dot active" aria-label="Slide 1: Summer Sale"></button>
+    <button class="promo-dot" aria-label="Slide 2: Off Campus Series"></button>
+    <button class="promo-dot" aria-label="Slide 3: Hindi Bestsellers"></button>
   </div>
-  <div class="hero-right">
-    <div class="hero-cover-wall" aria-label="Hindi self-help featured books">
-      <a class="hero-cover-card featured" href="/product/can-t-hurt-me-hindi-ME-HI/" data-label="Can't Hurt Me · Hindi">
-        <picture><source srcset="/images/cant-hurt-me-hindi.webp" type="image/webp"><img src="/images/cant-hurt-me-hindi.jpg" alt="Can't Hurt Me Hindi edition" loading="eager" fetchpriority="high"/></picture>
-      </a>
-      <a class="hero-cover-card" href="/product/never-finished-hindi-ED-HI/" data-label="Never Finished">
-        <picture><source srcset="/images/never-finished-hindi.webp" type="image/webp"><img src="/images/never-finished-hindi.jpg" alt="Never Finished Hindi edition" loading="eager"/></picture>
-      </a>
-      <a class="hero-cover-card featured" href="/product/the-hard-thing-about-hard-things-hindi-NG-HI/" data-label="The Hard Thing · Hindi">
-        <picture><source srcset="/images/hard-thing-about-hard-things-hindi.webp" type="image/webp"><img src="/images/hard-thing-about-hard-things-hindi.jpg" alt="The Hard Thing About Hard Things Hindi edition" loading="eager"/></picture>
-      </a>
-      <a class="hero-cover-card" href="/product/thinking-fast-and-slow-hindi-OW-HI/" data-label="Thinking, Fast and Slow">
-        <picture><source srcset="/images/thinking-fast-slow-hindi.webp" type="image/webp"><img src="/images/thinking-fast-slow-hindi.jpg" alt="Thinking Fast and Slow Hindi edition" loading="eager"/></picture>
-      </a>
-      <a class="hero-cover-card" href="/product/hindi-rich-dad-poor-dad-80989/" data-label="Rich Dad Poor Dad">
-        <img src="RICH_DAD_HINDI_IMAGE_PLACEHOLDER" alt="Rich Dad Poor Dad Hindi edition" loading="lazy"/>
-      </a>
-      <a class="hero-cover-card featured" href="/product/hindi-atomic-habits-33309/" data-label="Atomic Habits">
-        <img src="ATOMIC_HABITS_HINDI_IMAGE_PLACEHOLDER" alt="Atomic Habits Hindi edition" loading="lazy"/>
-      </a>
-      <a class="hero-cover-card" href="/product/shakti-ke-48-niyam-the-48-laws-of-power-hindi-28157/" data-label="48 Laws of Power">
-        <img src="LAWS_48_HINDI_IMAGE_PLACEHOLDER" alt="48 Laws of Power Hindi edition" loading="lazy"/>
-      </a>
-    </div>
-    <div class="hero-note"><strong>Translated picks:</strong> motivation, money, business, psychology, discipline.</div>
-  </div>
-</section>
+  <!-- Arrows -->
+  <button class="promo-arrow prev" aria-label="Previous slide">&#8592;</button>
+  <button class="promo-arrow next" aria-label="Next slide">&#8594;</button>
+</div>
 
 <!-- KING OF GLUTTONY FEATURED BANNER -->
 <a class="kog-banner-wrap" href="/product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-ny-ah/" aria-label="Shop King of Gluttony by Ana Huang — ₹299">
@@ -2753,7 +2876,7 @@ function updateSaleCountdown() {
   const diff = SALE_END_DATE.getTime() - Date.now();
   const t = formatCountdown(diff);
 
-  // Big banner countdown
+  // Big banner countdown (standalone section)
   const big = document.getElementById('saleCountdown');
   if (big) {
     if (!t) { document.getElementById('summerSale')?.remove(); return; }
@@ -2765,6 +2888,20 @@ function updateSaleCountdown() {
       `<div class="cd-block"><span class="cd-num">${t.m}</span><span class="cd-label">Mins</span></div>` +
       `<span class="cd-sep">:</span>` +
       `<div class="cd-block"><span class="cd-num">${t.s}</span><span class="cd-label">Secs</span></div>`;
+  }
+  // Hero carousel sale slide countdown
+  const heroCountdown = document.getElementById('saleCountdownHero');
+  if (heroCountdown && t) {
+    heroCountdown.innerHTML =
+      `<div style="display:flex;gap:0.5rem;align-items:flex-start;">` +
+      `<div class="cd-block" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.25);"><span class="cd-num">${t.d}</span><span class="cd-label">Days</span></div>` +
+      `<span class="cd-sep" style="color:rgba(255,255,255,0.4);">:</span>` +
+      `<div class="cd-block" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.25);"><span class="cd-num">${t.h}</span><span class="cd-label">Hrs</span></div>` +
+      `<span class="cd-sep" style="color:rgba(255,255,255,0.4);">:</span>` +
+      `<div class="cd-block" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.25);"><span class="cd-num">${t.m}</span><span class="cd-label">Min</span></div>` +
+      `<span class="cd-sep" style="color:rgba(255,255,255,0.4);">:</span>` +
+      `<div class="cd-block" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.25);"><span class="cd-num">${t.s}</span><span class="cd-label">Sec</span></div>` +
+      `</div>`;
   }
 
   // Promo bar mini timer
@@ -2779,6 +2916,40 @@ if (Date.now() < SALE_END_DATE.getTime()) {
 } else {
   document.getElementById('summerSale')?.remove();
 }
+
+// ── PROMO CAROUSEL ────────────────────────────────────────────────────────
+(function() {
+  const carousel = document.getElementById('promoCarousel');
+  if (!carousel) return;
+  const slides = carousel.querySelectorAll('.promo-slide');
+  const dots   = carousel.querySelectorAll('.promo-dot');
+  if (!slides.length) return;
+  let cur = 0, timer;
+
+  function goTo(n) {
+    slides[cur].classList.remove('active');
+    dots[cur].classList.remove('active');
+    cur = ((n % slides.length) + slides.length) % slides.length;
+    slides[cur].classList.add('active');
+    dots[cur].classList.add('active');
+  }
+  function startTimer() { timer = setInterval(() => goTo(cur + 1), 6000); }
+  function resetTimer() { clearInterval(timer); startTimer(); }
+
+  carousel.querySelector('.promo-arrow.prev')?.addEventListener('click', () => { goTo(cur - 1); resetTimer(); });
+  carousel.querySelector('.promo-arrow.next')?.addEventListener('click', () => { goTo(cur + 1); resetTimer(); });
+  dots.forEach((d, i) => d.addEventListener('click', () => { goTo(i); resetTimer(); }));
+
+  // Touch/swipe support
+  let tx = 0;
+  carousel.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, {passive:true});
+  carousel.addEventListener('touchend',   e => {
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 40) { goTo(dx < 0 ? cur + 1 : cur - 1); resetTimer(); }
+  }, {passive:true});
+
+  startTimer();
+})();
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 const totalStat = document.getElementById('stat-total');
