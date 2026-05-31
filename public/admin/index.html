@@ -387,6 +387,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="btn-outline" onclick="bulkReconcilePhonePe(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(95,37,159,0.5);color:#a275d6;" title="Re-check every order stuck on 'pending_phonepe' from the last 30 days">
       🔄 Re-check All Pending PhonePe
     </button>
+    <span id="autoRecheckBadge" style="font-size:0.52rem;color:#a275d6;margin-left:0.6rem;opacity:0.75;cursor:default;"></span>
   </div>
 
   <!-- ── Day-range filters ──────────────────────────────────── -->
@@ -752,6 +753,9 @@ async function fetchOrders(reset = false) {
     updateStats();
     applyFilters();
     fetchProducts();
+
+    // Trigger first auto-recheck 10s after initial load (gives time for all pages to load)
+    if (reset && page === 2) setTimeout(() => { autoRecheckPhonePe(); updateAutoRecheckBadge(); }, 10000);
 
     // Auto-paginate: keep loading until all orders are in memory
     if (hasMore) {
@@ -2132,8 +2136,105 @@ function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ── Auto-refresh every 90s ─────────────────────────────────────────────────
+// ── Auto-refresh orders every 90s ─────────────────────────────────────────
 setInterval(() => { if (adminKey) fetchOrders(true); }, 90000);
+
+// ── Auto-recheck pending PhonePe orders every 3 minutes ───────────────────
+// Silently polls PhonePe for any order stuck on pending_phonepe or
+// pending_partial_phonepe. Updates the UI without any confirm dialogs.
+let _lastAutoRecheck = 0;
+
+async function autoRecheckPhonePe() {
+  if (!adminKey) return;
+  const pendingOrders = allOrders.filter(o =>
+    o.status === 'pending_phonepe' || o.status === 'pending_partial_phonepe'
+  );
+  if (!pendingOrders.length) return;   // nothing to do
+
+  const ids = pendingOrders
+    .map(o => o.razorpay_order_id || o.id)
+    .filter(Boolean);
+
+  try {
+    const res = await fetch('/.netlify/functions/phonepe-reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    _lastAutoRecheck = Date.now();
+
+    const results = data.results || [];
+    let changed = false;
+
+    results.forEach(r => {
+      const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === r.orderId);
+      if (!ord) return;
+      if (r.result === 'paid') {
+        ord.status = 'paid';
+        if (r.txnId) ord.razorpay_payment_id = r.txnId;
+        changed = true;
+      } else if (r.result === 'partial_cod_confirmed') {
+        ord.status = 'partial_cod_pending';
+        if (r.txnId) ord.razorpay_payment_id = r.txnId;
+        changed = true;
+      } else if (r.result === 'cancelled') {
+        ord.status = 'cancelled';
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      updateStats();
+      applyFilters();
+      // Show a brief non-intrusive toast
+      showAutoRecheckToast(results);
+    }
+    updateAutoRecheckBadge();
+  } catch (e) {
+    console.warn('Auto PhonePe recheck failed:', e.message);
+  }
+}
+
+function showAutoRecheckToast(results) {
+  const paid       = results.filter(r => r.result === 'paid' || r.result === 'partial_cod_confirmed').length;
+  const cancelled  = results.filter(r => r.result === 'cancelled').length;
+  if (!paid && !cancelled) return;
+  const msg = [
+    paid      ? `✅ ${paid} order${paid>1?'s':''} confirmed paid` : '',
+    cancelled ? `🚫 ${cancelled} order${cancelled>1?'s':''} cancelled (payment failed)` : '',
+  ].filter(Boolean).join(' · ');
+
+  let toast = document.getElementById('autoRecheckToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'autoRecheckToast';
+    toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#1c1916;border:1px solid #c9a84c;color:#f0e8d8;font-size:0.72rem;padding:0.7rem 1.1rem;border-radius:4px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.6);transition:opacity 0.4s;max-width:320px;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 5000);
+}
+
+function updateAutoRecheckBadge() {
+  const badge = document.getElementById('autoRecheckBadge');
+  if (!badge) return;
+  const mins = Math.round((Date.now() - _lastAutoRecheck) / 60000);
+  const pending = allOrders.filter(o =>
+    o.status === 'pending_phonepe' || o.status === 'pending_partial_phonepe'
+  ).length;
+  badge.textContent = pending
+    ? `⟳ ${pending} pending · checked ${mins < 1 ? 'just now' : mins + 'm ago'}`
+    : `⟳ Auto-check active · 0 pending`;
+  badge.title = 'PhonePe auto-recheck runs every 3 minutes';
+}
+
+// Run every 3 minutes; also update the badge every 30s
+setInterval(autoRecheckPhonePe, 3 * 60 * 1000);
+setInterval(updateAutoRecheckBadge, 30_000);
 
 document.getElementById('adminPass').focus();
 

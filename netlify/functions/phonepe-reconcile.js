@@ -115,8 +115,7 @@ async function reconcileOne(supabase, host, token, orderId) {
   if (existing.status === 'partial_cod_pending') return { orderId, result: 'already_paid' };
 
   // pending_partial_phonepe = 10% deposit not yet confirmed by PhonePe — MUST reconcile.
-  // Do NOT cancel these on FAILED/CANCELLED: PhonePe reports the checkout session as
-  // FAILED once it expires, which does NOT mean the customer won't pay. Leave as-is.
+  // On COMPLETED → mark partial_cod_pending. On FAILED/CANCELLED → cancel the order.
 
   // Hit PhonePe v2 status endpoint
   const res = await fetch(`${host}/pg/checkout/v2/order/${encodeURIComponent(orderId)}/status`, {
@@ -160,15 +159,15 @@ async function reconcileOne(supabase, host, token, orderId) {
     return { orderId, result: finalStatus === 'partial_cod_pending' ? 'partial_cod_confirmed' : 'paid', txnId };
   }
   if (state === 'FAILED' || state === 'DECLINED' || state === 'CANCELLED') {
-    // Do NOT cancel pending_partial_phonepe orders — PhonePe session expiry shows as
-    // FAILED/CANCELLED but the customer's COD balance commitment still stands.
-    const cartMeta2 = Array.isArray(existing.cart_items) ? existing.cart_items[0]?._payment : null;
-    const isPartialPending = existing.status === 'pending_partial_phonepe' || cartMeta2?.mode === 'partial_cod';
-    if (!isPartialPending) {
+    // Cancel both full-PhonePe AND partial-COD deposit orders when PhonePe
+    // reports failure. If the customer hasn't paid the 10% deposit, the
+    // order is not committed — cancel it so the admin doesn't ship unpaid stock.
+    const CANCELABLE = new Set(['pending', 'pending_phonepe', 'pending_partial_phonepe']);
+    if (CANCELABLE.has(existing.status)) {
       await supabase.from('orders').update({ status: 'cancelled' }).eq('razorpay_order_id', orderId);
       return { orderId, result: 'cancelled', state };
     }
-    return { orderId, result: 'still_pending', state };
+    return { orderId, result: 'already_cancelled', state };
   }
   return { orderId, result: 'still_pending', state };
 }

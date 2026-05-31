@@ -253,8 +253,6 @@ exports.handler = async (event) => {
 
     if (state === 'COMPLETED') {
       // Safety net: update DB + email if the webhook hasn't arrived yet.
-      // Awaited so the success screen the customer sees reflects the
-      // committed DB state.
       await reconcilePaidOrder(id, txnId, amount);
       return {
         statusCode: 302,
@@ -262,6 +260,33 @@ exports.handler = async (event) => {
         body: '',
       };
     }
+
+    // ── Payment failed / declined / cancelled — mark order cancelled ──────
+    // This covers both full PhonePe orders (pending_phonepe) and partial COD
+    // 10% deposit orders (pending_partial_phonepe). If PhonePe says the
+    // payment failed, the customer has not paid anything — cancel the order.
+    if (['FAILED', 'DECLINED', 'CANCELLED'].includes(state)) {
+      try {
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const { data: existing } = await supabase
+          .from('orders')
+          .select('status')
+          .eq('razorpay_order_id', id)
+          .maybeSingle();
+        // Only cancel if still in a pending-payment state — never touch paid/shipped/etc.
+        const CANCELABLE = new Set(['pending', 'pending_phonepe', 'pending_partial_phonepe']);
+        if (existing && CANCELABLE.has(existing.status)) {
+          await supabase
+            .from('orders')
+            .update({ status: 'cancelled' })
+            .eq('razorpay_order_id', id);
+          console.log(`Auto-cancelled order ${id} — PhonePe state: ${state}`);
+        }
+      } catch (cancelErr) {
+        console.error('Failed to auto-cancel order on payment failure:', cancelErr.message);
+      }
+    }
+
     return {
       statusCode: 302,
       headers: { Location: `${siteUrl}/checkout/?failed=1&id=${encodeURIComponent(id)}&code=${encodeURIComponent(state || 'UNKNOWN')}` },
