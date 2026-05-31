@@ -1188,6 +1188,21 @@ HTML = r"""<!DOCTYPE html>
   @media(max-width:1100px) { .shelves-section { padding: 5rem 2.5rem; } }
   @media(max-width:600px) { .shelves-section { padding: 3.2rem 0.85rem; } .shelf-card { flex: 0 0 128px; } .shelf-title { font-size: 1.4rem; } }
 
+  /* AUTHOR SPOTLIGHT */
+  .author-spotlight { max-width: 1400px; margin: 0 auto; padding: 5rem 3rem 4.5rem; }
+  .author-row { display: flex; gap: 1.8rem; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 0.8rem; margin-top: 2.5rem; }
+  .author-row::-webkit-scrollbar { display: none; }
+  .author-card { flex: 0 0 172px; scroll-snap-align: start; text-decoration: none; text-align: center; }
+  .author-photo-wrap { width: 100%; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 10px; border: 1px solid var(--border); background: var(--bg2); margin-bottom: 1rem; }
+  .author-photo-wrap img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; transition: transform 0.35s; }
+  .author-card:hover .author-photo-wrap img { transform: scale(1.05); }
+  .author-card:hover .author-photo-wrap { border-color: var(--gold-dim); }
+  .author-card-label { font-size: 0.52rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); margin-bottom: 0.3rem; }
+  .author-card-name { font-family: 'Cormorant Garamond', serif; font-size: 1.05rem; font-weight: 400; color: var(--cream); line-height: 1.25; }
+  .author-card-cta { font-size: 0.54rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-dim); margin-top: 0.25rem; }
+  @media(max-width:1100px) { .author-spotlight { padding: 4rem 2.5rem; } }
+  @media(max-width:600px) { .author-spotlight { padding: 3.2rem 1rem; } .author-card { flex: 0 0 130px; } }
+
   /* ALL CATEGORIES */
   .all-categories { background: var(--bg3); border-top: 1px solid var(--border); }
   .cat-search-wrap { margin: 2rem 0 2rem; }
@@ -1720,6 +1735,95 @@ HTML = r"""<!DOCTYPE html>
       <a class="shelf-link" href="/category/?name=Kids%20Book">View all →</a>
     </div>
     <div class="shelf-row" id="shelfKids"></div>
+  </div>
+</section>
+
+<!-- AUTHOR SPOTLIGHT -->
+<section class="author-spotlight">
+  <div class="section-label">Browse by Author</div>
+  <h2 class="section-title">Author <em>Spotlight</em></h2>
+  <div class="author-row">
+
+    <a class="author-card" href="/category/?name=Colleen%20Hoover%20Special">
+      <div class="author-photo-wrap">
+        <picture>
+          <img src="/images/colleen-hoover-author.jpg" alt="Colleen Hoover" loading="lazy" width="172" height="172"/>
+        </picture>
+      </div>
+      <div class="author-card-label">Romance</div>
+      <div class="author-card-name">Colleen Hoover</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Ana%20Huang%20books">
+      <div class="author-photo-wrap">
+        <img src="/images/ana-huang-author.jpg" alt="Ana Huang" loading="lazy" width="172" height="172"/>
+      </div>
+      <div class="author-card-label">Romance</div>
+      <div class="author-card-name">Ana Huang</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Freida%20McFadden%20Special">
+      <div class="author-photo-wrap">
+        <img src="/images/freida-mcfadden-author.jpg" alt="Freida McFadden" loading="lazy" width="172" height="172"/>
+      </div>
+      <div class="author-card-label">Thriller</div>
+      <div class="author-card-name">Freida McFadden</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Lauren%20Asher%20Special">
+      <div class="author-photo-wrap">
+        <img src="/images/lauren-asher-author.jpg" alt="Lauren Asher" loading="lazy" width="172" height="172"/>
+      </div>
+      <div class="author-card-label">Romance</div>
+      <div class="author-card-name">Lauren Asher</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Ali%20Hazelwood%20Special">
+      <div class="author-photo-wrap">
+        <img src="/images/ali-hazelwood-author.jpg" alt="Ali Hazelwood" loading="lazy" width="172" height="172"/>
+      </div>
+      <div class="author-card-label">Romance</div>
+      <div class="author-card-name">Ali Hazelwood</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=All%20Romance%20Books">
+      <div class="author-photo-wrap">
+        <picture>
+          <source srcset="/images/elle-kennedy-author.webp" type="image/webp"/>
+          <img src="/images/elle-kennedy-author.webp" alt="Elle Kennedy" loading="lazy" width="172" height="172"/>
+        </picture>
+      </div>
+      <div class="author-card-label">Romance</div>
+      <div class="author-card-name">Elle Kennedy</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Robert%20Greene%20Special">
+      <div class="author-photo-wrap">
+        <picture>
+          <source srcset="/images/robert-greene-power-trilogy.webp" type="image/webp"/>
+          <img src="/images/robert-greene-power-trilogy.webp" alt="Robert Greene" loading="lazy" width="172" height="172" style="object-position:center center;"/>
+        </picture>
+      </div>
+      <div class="author-card-label">Strategy</div>
+      <div class="author-card-name">Robert Greene</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Akshat%20Gupta%20Books">
+      <div class="author-photo-wrap">
+        <img src="/.netlify/functions/image-proxy?i=e6d2a8df9059fd77f79ab8ed" alt="Akshat Gupta" loading="lazy" width="172" height="172" style="object-position:center center;"/>
+      </div>
+      <div class="author-card-label">Mythology</div>
+      <div class="author-card-name">Akshat Gupta</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
   </div>
 </section>
 

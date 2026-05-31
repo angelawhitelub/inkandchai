@@ -605,6 +605,21 @@
   @media(max-width:1100px) { .shelves-section { padding: 5rem 2.5rem; } }
   @media(max-width:600px) { .shelves-section { padding: 3.2rem 0.85rem; } .shelf-card { flex: 0 0 128px; } .shelf-title { font-size: 1.4rem; } }
 
+  /* AUTHOR SPOTLIGHT */
+  .author-spotlight { max-width: 1400px; margin: 0 auto; padding: 5rem 3rem 4.5rem; }
+  .author-row { display: flex; gap: 1.8rem; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 0.8rem; margin-top: 2.5rem; }
+  .author-row::-webkit-scrollbar { display: none; }
+  .author-card { flex: 0 0 172px; scroll-snap-align: start; text-decoration: none; text-align: center; }
+  .author-photo-wrap { width: 100%; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 10px; border: 1px solid var(--border); background: var(--bg2); margin-bottom: 1rem; }
+  .author-photo-wrap img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; transition: transform 0.35s; }
+  .author-card:hover .author-photo-wrap img { transform: scale(1.05); }
+  .author-card:hover .author-photo-wrap { border-color: var(--gold-dim); }
+  .author-card-label { font-size: 0.52rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); margin-bottom: 0.3rem; }
+  .author-card-name { font-family: 'Cormorant Garamond', serif; font-size: 1.05rem; font-weight: 400; color: var(--cream); line-height: 1.25; }
+  .author-card-cta { font-size: 0.54rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-dim); margin-top: 0.25rem; }
+  @media(max-width:1100px) { .author-spotlight { padding: 4rem 2.5rem; } }
+  @media(max-width:600px) { .author-spotlight { padding: 3.2rem 1rem; } .author-card { flex: 0 0 130px; } }
+
   /* ALL CATEGORIES */
   .all-categories { background: var(--bg3); border-top: 1px solid var(--border); }
   .cat-search-wrap { margin: 2rem 0 2rem; }
@@ -908,10 +923,10 @@ gtag('config', 'AW-18119332653');
       <a class="nav-dropdown-trigger" href="/#categories" aria-haspopup="true">Categories</a>
       <div class="nav-dropdown nav-cat-dropdown" role="menu" aria-label="Book categories">
         <a href="/category/preloved-books/" role="menuitem"><span>Preloved Books</span><span class="nav-cat-count">474 books</span></a>
-        <a href="/category/all-self-help/" role="menuitem"><span>All Self Help</span><span class="nav-cat-count">415 books</span></a>
-        <a href="/category/fiction/" role="menuitem"><span>Fiction</span><span class="nav-cat-count">275 books</span></a>
-        <a href="/category/all-romance-books/" role="menuitem"><span>All Romance Books</span><span class="nav-cat-count">274 books</span></a>
-        <a href="/category/kids-book/" role="menuitem"><span>Kids Book</span><span class="nav-cat-count">251 books</span></a>
+        <a href="/category/all-self-help/" role="menuitem"><span>All Self Help</span><span class="nav-cat-count">432 books</span></a>
+        <a href="/category/fiction/" role="menuitem"><span>Fiction</span><span class="nav-cat-count">299 books</span></a>
+        <a href="/category/all-romance-books/" role="menuitem"><span>All Romance Books</span><span class="nav-cat-count">280 books</span></a>
+        <a href="/category/kids-book/" role="menuitem"><span>Kids Book</span><span class="nav-cat-count">258 books</span></a>
         <a href="/category/hindi-books/" role="menuitem"><span>Hindi Books</span><span class="nav-cat-count">202 books</span></a>
         <a href="/category/self-help-on-sale/" role="menuitem"><span>Self-help (On Sale)</span><span class="nav-cat-count">135 books</span></a>
         <a href="/category/romance-on-sale/" role="menuitem"><span>Romance (On Sale)</span><span class="nav-cat-count">95 books</span></a>
@@ -920,12 +935,12 @@ gtag('config', 'AW-18119332653');
         <a href="/category/manga/" role="menuitem"><span>Manga</span><span class="nav-cat-count">55 books</span></a>
         <a href="/category/best-self-help-books-from-publishers/" role="menuitem"><span>Best Self Help Books from Publishers</span><span class="nav-cat-count">43 books</span></a>
         <a href="/category/board-books/" role="menuitem"><span>Board Books</span><span class="nav-cat-count">30 books</span></a>
+        <a href="/category/best-of-spirituality-and-mythology/" role="menuitem"><span>Best of Spirituality and Mythology</span><span class="nav-cat-count">25 books</span></a>
         <a href="/category/business-and-finance/" role="menuitem"><span>Business and Finance</span><span class="nav-cat-count">25 books</span></a>
         <a href="/category/other-languages/" role="menuitem"><span>OTHER LANGUAGES</span><span class="nav-cat-count">25 books</span></a>
         <a href="/category/all-romance/" role="menuitem"><span>All Romance</span><span class="nav-cat-count">19 books</span></a>
         <a href="/category/bengali-books/" role="menuitem"><span>Bengali Books</span><span class="nav-cat-count">19 books</span></a>
         <a href="/category/biography-and-autobiography/" role="menuitem"><span>Biography and Autobiography</span><span class="nav-cat-count">19 books</span></a>
-        <a href="/category/best-of-spirituality-and-mythology/" role="menuitem"><span>Best of Spirituality and Mythology</span><span class="nav-cat-count">18 books</span></a>
         <a href="/category/classics/" role="menuitem"><span>Classics</span><span class="nav-cat-count">17 books</span></a>
         <a href="/category/boxsets/" role="menuitem"><span>Boxsets</span><span class="nav-cat-count">15 books</span></a>
         <a href="/category/marathi-books/" role="menuitem"><span>Marathi Books</span><span class="nav-cat-count">14 books</span></a>
@@ -933,10 +948,10 @@ gtag('config', 'AW-18119332653');
         <a href="/category/colleen-hoover-special/" role="menuitem"><span>Colleen Hoover Special</span><span class="nav-cat-count">10 books</span></a>
         <a href="/category/coloring-books/" role="menuitem"><span>Coloring Books</span><span class="nav-cat-count">10 books</span></a>
         <a href="/category/indian-mythology/" role="menuitem"><span>Indian Mythology</span><span class="nav-cat-count">8 books</span></a>
+        <a href="/category/science/" role="menuitem"><span>Science</span><span class="nav-cat-count">7 books</span></a>
         <a href="/category/akshat-gupta-books/" role="menuitem"><span>Akshat Gupta Books</span><span class="nav-cat-count">6 books</span></a>
         <a href="/category/fiction--romance-combos/" role="menuitem"><span>Fiction &amp; Romance Combos🔥</span><span class="nav-cat-count">6 books</span></a>
         <a href="/category/thriller--mystery/" role="menuitem"><span>Thriller &amp; Mystery</span><span class="nav-cat-count">6 books</span></a>
-        <a href="/category/science/" role="menuitem"><span>Science</span><span class="nav-cat-count">5 books</span></a>
         <a href="/category/self-help--finance-combos/" role="menuitem"><span>Self-help &amp; Finance Combos🔥</span><span class="nav-cat-count">5 books</span></a>
         <a href="/category/sudha-murti-special/" role="menuitem"><span>Sudha Murti Special</span><span class="nav-cat-count">5 books</span></a>
         <a href="/category/freida-mcfadden-special/" role="menuitem"><span>Freida McFadden Special</span><span class="nav-cat-count">4 books</span></a>
@@ -952,6 +967,7 @@ gtag('config', 'AW-18119332653');
         <a href="/category/business--finance/" role="menuitem"><span>Business &amp; Finance</span><span class="nav-cat-count">2 books</span></a>
         <a href="/category/hardcover-store/" role="menuitem"><span>Hardcover Store</span><span class="nav-cat-count">2 books</span></a>
         <a href="/category/kids-book-age-12/" role="menuitem"><span>KIDS BOOK Age: 12+</span><span class="nav-cat-count">2 books</span></a>
+        <a href="/category/biography/" role="menuitem"><span>Biography</span><span class="nav-cat-count">2 books</span></a>
       </div>
     </li>
     <li><a href="/track/">Track Order</a></li>
@@ -1243,6 +1259,95 @@ gtag('config', 'AW-18119332653');
   </div>
 </section>
 
+<!-- AUTHOR SPOTLIGHT -->
+<section class="author-spotlight">
+  <div class="section-label">Browse by Author</div>
+  <h2 class="section-title">Author <em>Spotlight</em></h2>
+  <div class="author-row">
+
+    <a class="author-card" href="/category/?name=Colleen%20Hoover%20Special">
+      <div class="author-photo-wrap">
+        <picture>
+          <img src="/images/colleen-hoover-author.jpg" alt="Colleen Hoover" loading="lazy" width="172" height="172"/>
+        </picture>
+      </div>
+      <div class="author-card-label">Romance</div>
+      <div class="author-card-name">Colleen Hoover</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Ana%20Huang%20books">
+      <div class="author-photo-wrap">
+        <img src="/images/ana-huang-author.jpg" alt="Ana Huang" loading="lazy" width="172" height="172"/>
+      </div>
+      <div class="author-card-label">Romance</div>
+      <div class="author-card-name">Ana Huang</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Freida%20McFadden%20Special">
+      <div class="author-photo-wrap">
+        <img src="/images/freida-mcfadden-author.jpg" alt="Freida McFadden" loading="lazy" width="172" height="172"/>
+      </div>
+      <div class="author-card-label">Thriller</div>
+      <div class="author-card-name">Freida McFadden</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Lauren%20Asher%20Special">
+      <div class="author-photo-wrap">
+        <img src="/images/lauren-asher-author.jpg" alt="Lauren Asher" loading="lazy" width="172" height="172"/>
+      </div>
+      <div class="author-card-label">Romance</div>
+      <div class="author-card-name">Lauren Asher</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Ali%20Hazelwood%20Special">
+      <div class="author-photo-wrap">
+        <img src="/images/ali-hazelwood-author.jpg" alt="Ali Hazelwood" loading="lazy" width="172" height="172"/>
+      </div>
+      <div class="author-card-label">Romance</div>
+      <div class="author-card-name">Ali Hazelwood</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=All%20Romance%20Books">
+      <div class="author-photo-wrap">
+        <picture>
+          <source srcset="/images/elle-kennedy-author.webp" type="image/webp"/>
+          <img src="/images/elle-kennedy-author.webp" alt="Elle Kennedy" loading="lazy" width="172" height="172"/>
+        </picture>
+      </div>
+      <div class="author-card-label">Romance</div>
+      <div class="author-card-name">Elle Kennedy</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Robert%20Greene%20Special">
+      <div class="author-photo-wrap">
+        <picture>
+          <source srcset="/images/robert-greene-power-trilogy.webp" type="image/webp"/>
+          <img src="/images/robert-greene-power-trilogy.webp" alt="Robert Greene" loading="lazy" width="172" height="172" style="object-position:center center;"/>
+        </picture>
+      </div>
+      <div class="author-card-label">Strategy</div>
+      <div class="author-card-name">Robert Greene</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+    <a class="author-card" href="/category/?name=Akshat%20Gupta%20Books">
+      <div class="author-photo-wrap">
+        <img src="/.netlify/functions/image-proxy?i=e6d2a8df9059fd77f79ab8ed" alt="Akshat Gupta" loading="lazy" width="172" height="172" style="object-position:center center;"/>
+      </div>
+      <div class="author-card-label">Mythology</div>
+      <div class="author-card-name">Akshat Gupta</div>
+      <div class="author-card-cta">View books →</div>
+    </a>
+
+  </div>
+</section>
+
 <!-- ALL CATEGORIES -->
 <section class="all-categories" id="categories">
   <div class="section-label">Every Genre</div>
@@ -1384,14 +1489,14 @@ gtag('config', 'AW-18119332653');
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-lite-3d67de4c.js"></script>
+<script src="/js/books-lite-aa99909a.js"></script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
 const BOOKS = window.BOOKS_PRELOAD||[];
 
-const COLLECTIONS = [{"name": "Fiction & Romance", "slug": "fiction--romance", "count": 644, "cats": ["fiction", "all romance books", "romance (on sale)"], "thumb": "/images/the-mistake-elle-kennedy-off-campus.webp"}, {"name": "Self-Help", "slug": "self-help", "count": 415, "cats": ["all self help", "self-help (on sale)", "best self help books from publishers"], "thumb": "/images/psychology-of-money-hindi-thinking-fast-slow-hindi-combo-2.webp"}, {"name": "Kids & Young Adult", "slug": "kids--young-adult", "count": 251, "cats": ["kids book", "kids book age: 3-5", "kids book age: 2-6", "kids book age: 5-8", "kids book age: 8-11"], "thumb": "/.netlify/functions/image-proxy?i=c7de220e0fc2b70d19f74362"}, {"name": "Manga & Comics", "slug": "manga--comics", "count": 125, "cats": ["manga", "comics", "dc comics", "marvel comics"], "thumb": "/.netlify/functions/image-proxy?i=f4386050f1607b6dec01dd76"}, {"name": "Mythology & Spirituality", "slug": "mythology--spirituality", "count": 14, "cats": ["mythology", "best of spirituality and mythology", "spirituality", "amish tripathi books"], "thumb": "/.netlify/functions/image-proxy?i=5b49e020dff2350769597e29"}];
-const ALL_CATS    = [{"name": "Preloved Books", "count": 474}, {"name": "All Self Help", "count": 415}, {"name": "Fiction", "count": 275}, {"name": "All Romance Books", "count": 274}, {"name": "Kids Book", "count": 251}, {"name": "Hindi Books", "count": 202}, {"name": "Self-help (On Sale)", "count": 135}, {"name": "Romance (On Sale)", "count": 95}, {"name": "Comics", "count": 70}, {"name": "Children Books", "count": 66}, {"name": "Manga", "count": 55}, {"name": "Best Self Help Books from Publishers", "count": 43}, {"name": "Board Books", "count": 30}, {"name": "Business and Finance", "count": 25}, {"name": "OTHER LANGUAGES", "count": 25}, {"name": "All Romance", "count": 19}, {"name": "Bengali Books", "count": 19}, {"name": "Biography and Autobiography", "count": 19}, {"name": "Best of Spirituality and Mythology", "count": 18}, {"name": "Classics", "count": 17}, {"name": "Boxsets", "count": 15}, {"name": "Marathi Books", "count": 14}, {"name": "Amish Tripathi Books", "count": 10}, {"name": "Colleen Hoover Special", "count": 10}, {"name": "Coloring Books", "count": 10}, {"name": "Indian Mythology", "count": 8}, {"name": "Akshat Gupta Books", "count": 6}, {"name": "Fiction & Romance Combos🔥", "count": 6}, {"name": "Thriller & Mystery", "count": 6}, {"name": "Science", "count": 5}, {"name": "Self-help & Finance Combos🔥", "count": 5}, {"name": "Sudha Murti Special", "count": 5}, {"name": "Freida McFadden Special", "count": 4}, {"name": "Mythology", "count": 4}, {"name": "Poetry", "count": 4}, {"name": "Ali Hazelwood Special", "count": 3}, {"name": "Ana Huang books", "count": 3}, {"name": "Lauren Asher Special", "count": 3}, {"name": "Malayalam Books", "count": 3}, {"name": "Sunday Sale", "count": 3}, {"name": "Self Help", "count": 2}, {"name": "Non Fiction", "count": 2}, {"name": "Business & Finance", "count": 2}, {"name": "Hardcover Store", "count": 2}, {"name": "KIDS BOOK Age: 12+", "count": 2}];
+const COLLECTIONS = [{"name": "Fiction & Romance", "slug": "fiction--romance", "count": 674, "cats": ["fiction", "all romance books", "romance (on sale)"], "thumb": "/images/the-mistake-elle-kennedy-off-campus.webp"}, {"name": "Self-Help", "slug": "self-help", "count": 432, "cats": ["all self help", "self-help (on sale)", "best self help books from publishers"], "thumb": "/images/psychology-of-money-hindi-thinking-fast-slow-hindi-combo-2.webp"}, {"name": "Kids & Young Adult", "slug": "kids--young-adult", "count": 258, "cats": ["kids book", "kids book age: 3-5", "kids book age: 2-6", "kids book age: 5-8", "kids book age: 8-11"], "thumb": "/.netlify/functions/image-proxy?i=c7de220e0fc2b70d19f74362"}, {"name": "Manga & Comics", "slug": "manga--comics", "count": 125, "cats": ["manga", "comics", "dc comics", "marvel comics"], "thumb": "/.netlify/functions/image-proxy?i=f4386050f1607b6dec01dd76"}, {"name": "Mythology & Spirituality", "slug": "mythology--spirituality", "count": 14, "cats": ["mythology", "best of spirituality and mythology", "spirituality", "amish tripathi books"], "thumb": "/.netlify/functions/image-proxy?i=5b49e020dff2350769597e29"}];
+const ALL_CATS    = [{"name": "Preloved Books", "count": 474}, {"name": "All Self Help", "count": 432}, {"name": "Fiction", "count": 299}, {"name": "All Romance Books", "count": 280}, {"name": "Kids Book", "count": 258}, {"name": "Hindi Books", "count": 202}, {"name": "Self-help (On Sale)", "count": 135}, {"name": "Romance (On Sale)", "count": 95}, {"name": "Comics", "count": 70}, {"name": "Children Books", "count": 66}, {"name": "Manga", "count": 55}, {"name": "Best Self Help Books from Publishers", "count": 43}, {"name": "Board Books", "count": 30}, {"name": "Best of Spirituality and Mythology", "count": 25}, {"name": "Business and Finance", "count": 25}, {"name": "OTHER LANGUAGES", "count": 25}, {"name": "All Romance", "count": 19}, {"name": "Bengali Books", "count": 19}, {"name": "Biography and Autobiography", "count": 19}, {"name": "Classics", "count": 17}, {"name": "Boxsets", "count": 15}, {"name": "Marathi Books", "count": 14}, {"name": "Amish Tripathi Books", "count": 10}, {"name": "Colleen Hoover Special", "count": 10}, {"name": "Coloring Books", "count": 10}, {"name": "Indian Mythology", "count": 8}, {"name": "Science", "count": 7}, {"name": "Akshat Gupta Books", "count": 6}, {"name": "Fiction & Romance Combos🔥", "count": 6}, {"name": "Thriller & Mystery", "count": 6}, {"name": "Self-help & Finance Combos🔥", "count": 5}, {"name": "Sudha Murti Special", "count": 5}, {"name": "Freida McFadden Special", "count": 4}, {"name": "Mythology", "count": 4}, {"name": "Poetry", "count": 4}, {"name": "Ali Hazelwood Special", "count": 3}, {"name": "Ana Huang books", "count": 3}, {"name": "Lauren Asher Special", "count": 3}, {"name": "Malayalam Books", "count": 3}, {"name": "Sunday Sale", "count": 3}, {"name": "Self Help", "count": 2}, {"name": "Non Fiction", "count": 2}, {"name": "Business & Finance", "count": 2}, {"name": "Hardcover Store", "count": 2}, {"name": "KIDS BOOK Age: 12+", "count": 2}, {"name": "Biography", "count": 2}];
 
 // ── STATE ─────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 16;
