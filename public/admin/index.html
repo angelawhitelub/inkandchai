@@ -315,11 +315,19 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       <div class="stat-label">Shipped</div>
       <div class="stat-val" id="statShipped" style="color:var(--gold);">—</div>
     </div>
+    <div class="stat-card" data-status="delivered" onclick="setFilter(this,'delivered')">
+      <div class="stat-label">Delivered</div>
+      <div class="stat-val" id="statDelivered" style="color:var(--green);">—</div>
+    </div>
     <div class="stat-card">
       <div class="stat-label">Revenue</div>
       <div class="stat-val" id="statRev" style="font-size:1.4rem;">—</div>
     </div>
   </div>
+
+  <!-- Full status breakdown — shows every status so the maths always adds up to Total -->
+  <div id="statusBreakdown" style="font-size:0.58rem;color:#7a6330;letter-spacing:0.06em;
+       padding:0.5rem 0.2rem;margin:-0.5rem 0 0.8rem;flex-wrap:wrap;display:flex;gap:0.9rem;"></div>
 
   <section class="focus-panel">
     <div>
@@ -874,31 +882,65 @@ function syncSelectionUi() {
 
 // ── Stats ──────────────────────────────────────────────────────────────────
 function updateStats() {
-  const cod     = allOrders.filter(o => o.status === 'cod_pending').length;
-  const partial = allOrders.filter(isPartialOrder).length;
-  const onlinePending = allOrders.filter(isPendingOnlineOrder).length;
-  const paid    = allOrders.filter(o => o.status === 'paid').length;
-  const shipped = allOrders.filter(o => o.status === 'shipped').length;
-  const unshipped = allOrders.filter(orderIsUnshipped).length;
-  const rev     = allOrders
-    .filter(o => ['paid','delivered','shipped'].includes(o.status))
+  const cod          = allOrders.filter(o => o.status === 'cod_pending').length;
+  const partial      = allOrders.filter(isPartialOrder).length;
+  const onlinePending= allOrders.filter(isPendingOnlineOrder).length;
+  const paid         = allOrders.filter(o => o.status === 'paid').length;
+  const shipped      = allOrders.filter(o => o.status === 'shipped').length;
+  const delivered    = allOrders.filter(o => o.status === 'delivered').length;
+  const unshipped    = allOrders.filter(orderIsUnshipped).length;
+  const rev          = allOrders
+    .filter(o => ['paid','delivered','shipped','out_for_delivery','confirmed','cod_pending','partial_cod_pending'].includes(o.status))
     .reduce((s,o) => s + Math.round(orderPaymentBreakdown(o).full * 100), 0);
 
   const displayTotal = serverTotal != null ? serverTotal : allOrders.length;
   const stillLoading = serverTotal != null && allOrders.length < serverTotal;
-  document.getElementById('statTotal').textContent   = displayTotal;
+
+  document.getElementById('statTotal').textContent     = displayTotal;
   document.getElementById('statUnshipped').textContent = stillLoading ? '…' : unshipped;
-  document.getElementById('statCod').textContent     = stillLoading ? '…' : cod;
+  document.getElementById('statCod').textContent       = stillLoading ? '…' : cod;
   const partialEl = document.getElementById('statPartial');
   if (partialEl) partialEl.textContent = stillLoading ? '…' : partial;
   const onlinePendingEl = document.getElementById('statOnlinePending');
   if (onlinePendingEl) onlinePendingEl.textContent = stillLoading ? '…' : onlinePending;
-  document.getElementById('statPaid').textContent    = stillLoading ? '…' : paid;
-  document.getElementById('statShipped').textContent = stillLoading ? '…' : shipped;
-  document.getElementById('statRev').textContent     = stillLoading ? '…' : '₹' + Math.round(rev / 100).toLocaleString('en-IN');
-  document.getElementById('dashSubtitle').textContent = stillLoading
+  document.getElementById('statPaid').textContent      = stillLoading ? '…' : paid;
+  document.getElementById('statShipped').textContent   = stillLoading ? '…' : shipped;
+  const delEl = document.getElementById('statDelivered');
+  if (delEl) delEl.textContent = stillLoading ? '…' : delivered;
+  document.getElementById('statRev').textContent       = stillLoading ? '…' : '₹' + Math.round(rev / 100).toLocaleString('en-IN');
+  document.getElementById('dashSubtitle').textContent  = stillLoading
     ? `${displayTotal} orders · loading ${allOrders.length} of ${displayTotal}…`
     : `${displayTotal} orders · refreshed ${new Date().toLocaleTimeString('en-IN')}`;
+
+  // Full breakdown — every status so the maths adds up to Total
+  if (!stillLoading) {
+    const counts = {};
+    allOrders.forEach(o => { const s = o.status || 'unknown'; counts[s] = (counts[s]||0)+1; });
+    const ORDER = ['cod_pending','partial_cod_pending','paid','confirmed','shipped',
+                   'out_for_delivery','delivered','undelivered','rto','lost','cancelled','refunded'];
+    const LABEL = {
+      cod_pending:'COD', partial_cod_pending:'Partial COD', paid:'Paid Online',
+      confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery',
+      delivered:'Delivered', undelivered:'Undelivered', rto:'RTO', lost:'Lost',
+      cancelled:'Cancelled', refunded:'Refunded',
+    };
+    const COLOR = {
+      shipped:'#c9a84c', out_for_delivery:'#4db8ff', delivered:'#6dbf6d',
+      cancelled:'#e06060', rto:'#e06060', undelivered:'#e8a030', lost:'#e06060',
+      refunded:'#a09080', paid:'#6dbf6d', confirmed:'#c9a84c',
+      cod_pending:'#e8a030', partial_cod_pending:'#e8a030',
+    };
+    const parts = [...ORDER, ...Object.keys(counts).filter(s => !ORDER.includes(s))]
+      .filter(s => counts[s])
+      .map(s => {
+        const n = counts[s], lbl = LABEL[s]||s.replace(/_/g,' '), col = COLOR[s]||'#7a6330';
+        return `<span style="cursor:pointer;color:${col};" onclick="setFilter(null,'${s}')" title="Click to filter by ${lbl}">${n} ${lbl}</span>`;
+      });
+    const total = Object.values(counts).reduce((a,b)=>a+b,0);
+    const el = document.getElementById('statusBreakdown');
+    if (el) el.innerHTML = parts.join('<span style="color:#3a2a18;"> · </span>')
+      + `<span style="color:#3a2a18;margin-left:0.4rem;"> = ${total} total</span>`;
+  }
 }
 
 // ── Filter + Search + Date ─────────────────────────────────────────────────
