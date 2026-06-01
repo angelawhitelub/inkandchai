@@ -164,10 +164,6 @@ def get_sku(title):
     return ''
 
 
-def estimate_weight_dims(items):
-    """Fixed weight 300g for all orders regardless of item count or combo size."""
-    return 300, 22, 2, 14
-
 
 def parse_items_from_old_format(items_str):
     """
@@ -295,7 +291,7 @@ def map_orders(input_file):
                 unknown_items.add(item['product'])
 
         # ── Weight / dimensions ────────────────────────────────────────────
-        weight, length, height, breadth = estimate_weight_dims(items)
+        weight, length, height, breadth = 300, 15, 10, 10
 
         # ── Price distribution across items ────────────────────────────────
         total_qty = sum(i['qty'] for i in items)
@@ -352,17 +348,17 @@ def map_orders(input_file):
         if col in out.columns:
             out[col] = out[col].astype(str).replace({'nan': '', '0': ''})
 
-    # encoding='utf-8-sig'       → BOM prefix; tells Excel this is UTF-8
-    #                               (fixes Hindi / Bengali / other non-ASCII text)
     # quoting=csv.QUOTE_NONNUMERIC → wraps every string cell in double-quotes;
     #                               Excel respects quoted strings and will NOT
     #                               auto-convert phone / order-id numbers to
     #                               scientific notation.
+    # encoding='utf-8' (no BOM)  → Delhivery's importer rejects files with a
+    #                               UTF-8 BOM; utf-8-sig must NOT be used here.
     out.to_csv(
         output_file,
         index=False,
         na_rep='',
-        encoding='utf-8-sig',
+        encoding='utf-8',
         quoting=csv.QUOTE_NONNUMERIC,
     )
 
