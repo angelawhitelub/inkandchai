@@ -1130,6 +1130,8 @@ function _drawTable() {
         ${o.tracking_id ? `<div style="margin-top:0.4rem;font-size:0.6rem;color:var(--cream-dim);">${esc(o.courier_name||'')} · <a href="${esc(o.tracking_url||'#')}" target="_blank" style="color:var(--gold);font-family:Menlo,Consolas,monospace;">${esc(o.tracking_id)}</a></div>` : ''}
         ${['pending_phonepe','pending_partial_phonepe'].includes(o.status) ? `<button onclick="reconcilePhonePe('${esc(o.razorpay_order_id||o.id)}', this)" title="Re-check PhonePe and mark paid if completed"
           style="display:block;margin-top:0.5rem;background:rgba(95,37,159,0.12);border:1px solid rgba(95,37,159,0.5);color:#a275d6;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">🔄 Re-check PhonePe</button>` : ''}
+        ${o.status === 'refund_pending' ? `<button onclick="processPhonePeRefund('${esc(o.razorpay_order_id||o.id)}', this)" title="Issue PhonePe refund for ₹${o.amount_paise ? Math.round(o.amount_paise/100).toLocaleString('en-IN') : '?'}"
+          style="display:block;margin-top:0.5rem;background:rgba(224,80,80,0.1);border:1px solid rgba(224,80,80,0.5);color:#e06060;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">💸 Process Refund</button>` : ''}
       </td>
       <td style="font-size:0.65rem;color:var(--cream-dim);max-width:200px;line-height:1.5;">
         ${esc(o.customer_address || '—')}
@@ -2188,6 +2190,32 @@ async function reconcilePhonePe(orderId, btn) {
     alert('Re-check failed: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
+  }
+}
+
+// ── PhonePe refund: issue refund for refund_pending orders ────────────────
+async function processPhonePeRefund(orderId, btn) {
+  const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+  const amt = ord?.amount_paise ? `₹${Math.round(ord.amount_paise/100).toLocaleString('en-IN')}` : '';
+  if (!confirm(`Issue PhonePe refund of ${amt} for order ${orderId}?\n\nThis calls PhonePe's API directly. Customer will receive a refund confirmation email.`)) return;
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Processing…'; }
+  try {
+    const res = await fetch('/.netlify/functions/phonepe-refund', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    // Update local state
+    if (ord) ord.status = 'refunded';
+    updateStats(); applyFilters();
+    alert(`✅ ${data.message}\n\nRefund ID: ${data.refund_id}\nState: ${data.state}`);
+  } catch (err) {
+    alert(`Refund failed: ${err.message}\n\nIf the PhonePe API is unavailable, process manually at business.phonepe.com`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
 }
 
