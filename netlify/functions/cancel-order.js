@@ -160,9 +160,20 @@ exports.handler = async (event) => {
                 status === 'refunded'      ? 'This order is already refunded.' :
                 status === 'refund_pending'? 'Your refund is already being processed.' :
                 ['shipped','out_for_delivery'].includes(status)
-                  ? 'This order has already shipped. Please use the return option after delivery.'
+                  ? 'This order has already been dispatched. Cancellation is not possible once shipped.'
+                  : status === 'delivered'
+                  ? 'This order has been delivered. Please use the return option if needed.'
                   : 'This order cannot be cancelled at this stage.';
     return { statusCode: 422, headers: CORS, body: JSON.stringify({ error: msg }) };
+  }
+
+  // Extra guard: if a tracking ID is already assigned, courier has picked it up —
+  // block cancellation regardless of what the status field says.
+  if (order.tracking_id) {
+    return {
+      statusCode: 422, headers: CORS,
+      body: JSON.stringify({ error: 'This order has already been dispatched (AWB: ' + order.tracking_id + '). Cancellation is not possible once a courier has picked it up.' }),
+    };
   }
 
   // ── Case 1: COD order ────────────────────────────────────────────────────

@@ -1087,6 +1087,15 @@
 
   function cancelOrderBlock(order) {
     const status = String(order.status || '').toLowerCase();
+
+    // Hard block: once shipped/dispatched, no cancellation under any circumstance
+    const SHIPPED_STATUSES = ['shipped', 'out_for_delivery', 'delivered', 'cancelled',
+                               'refunded', 'refund_pending', 'rto', 'undelivered', 'lost'];
+    if (SHIPPED_STATUSES.includes(status)) return '';
+
+    // Also block if a tracking ID is already assigned — courier has collected the parcel
+    if (order.tracking_id) return '';
+
     const isCOD      = ['cod_pending', 'partial_cod_pending', 'confirmed'].includes(status);
     const isPrepaid  = status === 'paid';
 
