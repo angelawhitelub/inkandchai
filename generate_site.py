@@ -69,7 +69,7 @@ def make_slug(title, shopify_id):
         return "taiwan-travelogue-yang-shuang-zi-international-booker-prize"
     slug = re.sub(r'[^a-z0-9]+', '-', (title or '').lower())
     slug = slug.strip('-')[:55]
-    suffix = str(shopify_id or '')[-5:]
+    suffix = str(shopify_id or '')[-5:].lower()   # lowercase so URL always matches
     return f"{slug}-{suffix}" if suffix else slug
 
 def clean_text(value):
@@ -4791,6 +4791,18 @@ def static_product_html(book):
     review_image = html_escape(book.get("review_image") or book.get("review_image_url") or "")
     review_images_list = book.get("review_images") or []
     review_video = html_escape(book.get("review_video") or book.get("review_video_url") or "")
+
+    # ── Description banners (Amazon A+-style) ─────────────────────────────
+    desc_banners_list = book.get("description_banners") or []
+    desc_banners_html = ""
+    if desc_banners_list:
+        desc_banners_html = '<div style="margin-top:1.4rem;">' + "".join(
+            f'<img src="{html_escape(src)}" alt="{title} — product detail {i+1}" loading="lazy" '
+            f'style="width:100%;display:block;margin-bottom:0.5rem;border-radius:4px;cursor:zoom-in" '
+            f'onclick="openLB(this.src,this.alt)"/>'
+            for i, src in enumerate(desc_banners_list)
+        ) + '</div>'
+
     review_media_html = ""
     if review_count and (review_image or review_images_list or review_video):
         if len(review_images_list) > 1:
@@ -5065,6 +5077,7 @@ html[data-theme="light"] .actions{{background:rgba(250,247,242,.98)}}
       <button class="primary" onclick="buyNowBook(this)">Buy Now</button>
     </div>
     <div class="desc"><div class="label">About this book</div>{desc}</div>
+{desc_banners_html}
 {review_html}
     <div class="details"><div class="label">Details</div><dl><dt>Category</dt><dd>{cat}</dd><dt>Publisher</dt><dd>{html_escape(book.get('pub') or 'Ink & Chai')}</dd><dt>ISBN</dt><dd>{html_escape(book.get('isbn') or 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
