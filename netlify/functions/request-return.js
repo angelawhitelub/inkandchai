@@ -29,17 +29,15 @@ function clean(value, max = 1000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-function returnAnchor(order) {
-  return order.delivered_at || order.shipped_at || order.created_at;
-}
-
 function withinReturnWindow(order) {
-  const anchor = returnAnchor(order);
-  if (!anchor) return false;
-  const anchorTime = new Date(anchor).getTime();
-  if (!Number.isFinite(anchorTime)) return false;
+  // Returns are ONLY allowed after the order has been delivered.
+  // Using delivered_at exclusively — shipped_at / created_at are not valid
+  // anchors because the customer hasn't received the book yet.
+  if (!order.delivered_at) return false;
+  const deliveredTime = new Date(order.delivered_at).getTime();
+  if (!Number.isFinite(deliveredTime)) return false;
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
-  return Date.now() <= anchorTime + sevenDays;
+  return Date.now() <= deliveredTime + sevenDays;
 }
 
 
@@ -116,8 +114,13 @@ exports.handler = async (event) => {
     if (!order || String(order.customer_email || '').toLowerCase() !== email) {
       return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found for this account.' }) };
     }
-    if (['cancelled', 'refunded'].includes(String(order.status || '').toLowerCase())) {
+    const orderStatus = String(order.status || '').toLowerCase();
+    if (['cancelled', 'refunded'].includes(orderStatus)) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'This order is not eligible for return.' }) };
+    }
+    // Must be delivered before a return can be raised
+    if (orderStatus !== 'delivered') {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Returns can only be initiated after the order has been delivered. Please wait until delivery is confirmed.' }) };
     }
     if (!withinReturnWindow(order)) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'The 7-day return window has expired for this order.' }) };

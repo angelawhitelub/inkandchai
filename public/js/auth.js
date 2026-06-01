@@ -1185,33 +1185,69 @@
   };
 
   function returnWindowInfo(order) {
-    const anchor = order.delivered_at || order.shipped_at || order.created_at;
-    const anchorTime = anchor ? new Date(anchor).getTime() : NaN;
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
-    if (!Number.isFinite(anchorTime)) return { eligible: false, daysLeft: 0 };
-    const msLeft = anchorTime + sevenDays - Date.now();
     const status = String(order.status || '').toLowerCase();
-    const eligible = msLeft >= 0 && !['cancelled', 'refunded'].includes(status);
-    return { eligible, daysLeft: Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000))) };
+    // Returns only allowed AFTER delivery — not for shipped/in-transit orders
+    if (status !== 'delivered') return { eligible: false, daysLeft: 0, reason: 'not_delivered' };
+    if (['cancelled', 'refunded'].includes(status)) return { eligible: false, daysLeft: 0, reason: 'cancelled' };
+    // Window starts from delivery date
+    const anchorTime = order.delivered_at ? new Date(order.delivered_at).getTime() : NaN;
+    if (!Number.isFinite(anchorTime)) return { eligible: false, daysLeft: 0, reason: 'no_delivery_date' };
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    const msLeft = anchorTime + sevenDays - Date.now();
+    const eligible = msLeft >= 0;
+    return { eligible, daysLeft: Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000))), reason: eligible ? 'ok' : 'expired' };
   }
 
   function returnRequestBlock(order) {
-    // Already submitted — show status, no button
+    const status = String(order.status || '').toLowerCase();
+
+    // ── Return already submitted ─────────────────────────────────────────────
     if (order.return_request_status) {
-      const statusLabel = order.return_request_status.replace(/_/g, ' ');
+      const rstatus = order.return_request_status;
+      const statusLabel = rstatus.replace(/_/g, ' ');
+      const isPending = rstatus === 'pending';
+
+      const statusColors = { pending: '#e8a030', approved: '#6dbf6d', rejected: '#e06060', processing: '#4db8ff' };
+      const badgeColor = statusColors[rstatus] || '#a09080';
+
       return `
-        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
-                    display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;">
-          <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
-                       padding:0.28rem 0.7rem;border:1px solid rgba(201,168,76,0.35);color:#c9a84c;">
-            Return ${statusLabel}
-          </span>
-          <span style="font-size:0.62rem;color:#a09080;line-height:1.5;">
-            Our team will be in touch. Please keep the package ready to hand over to the courier.
-          </span>
+        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
+          <div style="display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;margin-bottom:${isPending ? '0.7rem' : '0'};">
+            <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
+                         padding:0.28rem 0.7rem;border:1px solid ${badgeColor}44;color:${badgeColor};">
+              ↩ Return ${statusLabel}
+            </span>
+            <span style="font-size:0.62rem;color:#a09080;line-height:1.5;">
+              ${rstatus === 'pending' ? 'Our team will review and be in touch. Keep the package ready.' : ''}
+              ${rstatus === 'approved' ? 'Pickup has been arranged. Keep the package ready.' : ''}
+              ${rstatus === 'rejected' ? 'Return was not approved. Contact support for details.' : ''}
+              ${rstatus === 'processing' ? 'Pickup scheduled — handover to courier when they arrive.' : ''}
+            </span>
+          </div>
+          ${isPending ? `
+          <button onclick="iacCancelReturn('${escJs(order.id)}')"
+            style="font-family:'Montserrat',sans-serif;font-size:0.52rem;letter-spacing:0.14em;text-transform:uppercase;
+                   padding:0.4rem 0.8rem;background:transparent;border:1px solid rgba(224,96,96,0.4);
+                   color:#e06060;cursor:pointer;">
+            Cancel Return Request
+          </button>` : ''}
         </div>`;
     }
 
+    // ── Not delivered yet — no return option ────────────────────────────────
+    if (status !== 'delivered') {
+      // Only show a note for shipped/in-transit orders (not for pending/paid which are pre-shipment)
+      if (['shipped', 'out_for_delivery'].includes(status)) {
+        return `
+          <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid rgba(201,168,76,0.08);
+                      font-size:0.58rem;color:#7a6330;letter-spacing:0.06em;line-height:1.6;">
+            Return option available after delivery
+          </div>`;
+      }
+      return '';
+    }
+
+    // ── Delivered — check window ─────────────────────────────────────────────
     const info = returnWindowInfo(order);
     if (!info.eligible) {
       return `
@@ -1220,6 +1256,7 @@
           Return window closed
         </div>`;
     }
+
     return `
       <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
                   display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">
@@ -1303,6 +1340,30 @@
       if (msg) { msg.style.color = '#e06060'; msg.textContent = err.message || 'Could not submit return request.'; }
       btn.disabled = false;
       btn.textContent = 'Submit Return Request';
+    }
+  };
+
+  // ── Cancel Return Request ──────────────────────────────────────────────────
+  window.iacCancelReturn = async function (orderId) {
+    if (!confirm('Cancel your return request?\n\nYou can submit a new one anytime within the 7-day window.')) return;
+    const sb = getSB();
+    if (!sb || !currentUser) return;
+
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('/.netlify/functions/cancel-return', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ order_id: orderId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Could not cancel return request.');
+      loadMyOrders();
+    } catch (err) {
+      alert('Error: ' + err.message);
     }
   };
 
