@@ -2214,7 +2214,9 @@ async function reconcileShippedOrders(btn) {
       s.out_for_delivery ? `🚚 Marked out for delivery: ${s.out_for_delivery}` : '',
       s.rto              ? `↩ Marked RTO: ${s.rto}` : '',
       s.undelivered      ? `⚠️ Marked undelivered: ${s.undelivered}` : '',
-      s.no_change        ? `No change: ${s.no_change}` : '',
+      s.no_change        ? `No change (already correct): ${s.no_change}` : '',
+      s.not_found        ? `Not found in NimbusPost API: ${s.not_found}` : '',
+      (!s.updated && data.debug_api_sample) ? `\nDebug — NimbusPost API returned:\n${data.debug_api_sample}` : '',
     ].filter(Boolean).join('\n');
     alert(`NimbusPost sync complete:\n\n${lines}\n\nReloading orders…`);
     fetchOrders(true);

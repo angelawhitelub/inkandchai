@@ -77,16 +77,45 @@ async function npAuthenticate() {
   return data.token;
 }
 
-// NimbusPost tracking endpoint — POST /shipments/track with { awbs: [...] }
+// NimbusPost tracking endpoint — tries multiple formats since docs are private
+// NimbusPost uses POST /courier/track with awb_numbers[] based on their webhook format
 async function npTrackBatch(token, awbs) {
-  const { ok, data } = await npFetch('/shipments/track', {
-    method: 'POST',
-    token,
+  // Try 1: POST /courier/track  { awb_numbers: [...] }   ← most likely correct
+  const r1 = await npFetch('/courier/track', {
+    method: 'POST', token,
+    body: { awb_numbers: awbs },
+  });
+  console.log('[NimbusPost Reconcile] /courier/track response status:', r1.status,
+    'ok:', r1.ok, 'data keys:', Object.keys(r1.data || {}));
+
+  if (r1.ok && (r1.data?.data || r1.data?.status)) {
+    return r1.data?.data || r1.data;
+  }
+
+  // Try 2: POST /shipments/track  { awbs: [...] }
+  const r2 = await npFetch('/shipments/track', {
+    method: 'POST', token,
     body: { awbs },
   });
-  if (!ok) throw new Error(`NimbusPost track failed: ${JSON.stringify(data)}`);
-  // Response: { status: true, data: { AWB1: { status: "...", ... }, ... } }
-  return data.data || data;
+  console.log('[NimbusPost Reconcile] /shipments/track response status:', r2.status,
+    'ok:', r2.ok, 'data keys:', Object.keys(r2.data || {}));
+
+  if (r2.ok && (r2.data?.data || r2.data?.status)) {
+    return r2.data?.data || r2.data;
+  }
+
+  // Try 3: POST /courier/track  { awbs: [...] }
+  const r3 = await npFetch('/courier/track', {
+    method: 'POST', token,
+    body: { awbs },
+  });
+  console.log('[NimbusPost Reconcile] /courier/track+awbs response status:', r3.status,
+    'data:', JSON.stringify(r3.data).slice(0, 300));
+
+  if (r3.ok) return r3.data?.data || r3.data;
+
+  // All failed — return raw error for debugging
+  throw new Error(`NimbusPost track API failed. Tried 3 formats. Last response: ${JSON.stringify(r3.data).slice(0, 300)}`);
 }
 
 // ── Notification helpers ───────────────────────────────────────────────────────
@@ -181,11 +210,14 @@ exports.handler = async (event) => {
     const allAwbs = Object.keys(awbToOrder);
 
     let trackingResults = {};
+    let rawApiSample = null;
     for (let i = 0; i < allAwbs.length; i += BATCH_SIZE) {
       const batch = allAwbs.slice(i, i + BATCH_SIZE);
       const result = await npTrackBatch(token, batch);
+      if (!rawApiSample) rawApiSample = JSON.stringify(result).slice(0, 500); // save first batch sample
       Object.assign(trackingResults, result);
     }
+    console.log('[NimbusPost Reconcile] Sample tracking API response:', rawApiSample);
 
     // ── Apply updates ───────────────────────────────────────────────────────
     const summary = { total: allAwbs.length, updated: 0, delivered: 0, out_for_delivery: 0,
@@ -224,7 +256,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ success: true, summary }),
+      body: JSON.stringify({ success: true, summary, debug_api_sample: rawApiSample }),
     };
 
   } catch (err) {
