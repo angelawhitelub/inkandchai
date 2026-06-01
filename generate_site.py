@@ -222,6 +222,8 @@ for b in books:
         # Customer reviews — list of { name, rating (1-5), text } objects.
         # Rendered on both SSR + dynamic product pages, contributes to JSON-LD.
         "reviews": list(b.get("reviews") or []),
+        # Description banners — Amazon A+-style wide images shown below description
+        "description_banners": [public_image_url(img) for img in (b.get("description_banners") or [])],
         "sku":  b.get("sku", ""),    # Stock-keeping unit — used in cart items and daily report
     })
 
@@ -3980,6 +3982,14 @@ function renderProduct(b) {
           <div>
             <div class="prod-desc-title">About this book</div>
             <p class="prod-desc" id="descText">${esc(b.desc)}</p>
+          </div>` : ''}
+
+        ${(b.description_banners && b.description_banners.length) ? `
+          <div style="margin-top:1.8rem;">
+            ${b.description_banners.map((src,i) => `
+              <img src="${esc(src)}" alt="${esc(b.t)} — product detail ${i+1}"
+                   loading="lazy" style="width:100%;display:block;margin-bottom:0.5rem;border-radius:4px;"
+                   onclick="openLightbox(this.src, this.alt)" />`).join('')}
           </div>` : ''}
 
         <div class="prod-meta-grid">

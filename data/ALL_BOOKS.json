@@ -173,7 +173,39 @@
     "rating_value": "4.6",
     "review_count": "31",
     "order_badge": "GMA Book Club Pick",
-    "sku": "FICT-YESTERYEAR-CCB"
+    "sku": "FICT-YESTERYEAR-CCB",
+    "review_images": [
+      "/images/reviews/yesteryear-review-1.jpg",
+      "/images/reviews/yesteryear-review-2.jpg",
+      "/images/reviews/yesteryear-review-3.jpg"
+    ],
+    "reviews": [
+      {
+        "name": "Priya Sharma",
+        "rating": 5,
+        "text": "Oh my god this book destroyed me in the best way 😭 I started it at 10pm thinking I'd read a chapter and ended up finishing the whole thing at 4am. Natalie's journey is so darkly funny and terrifying at the same time. The 1855 sequences are visceral and real. Ink & Chai packaging was perfect — came beautifully wrapped and arrived in 3 days!"
+      },
+      {
+        "name": "Ananya Gupta",
+        "rating": 5,
+        "text": "This is the best novel I have read in 2026, no contest. If you love Lessons in Chemistry and The Handmaid's Tale you NEED this. The satire of influencer culture is so sharp and painfully accurate. Can't believe this is a debut! Book arrived in perfect condition, great quality hardcover."
+      },
+      {
+        "name": "Meera R.",
+        "rating": 5,
+        "text": "Picked this up after seeing it everywhere on BookTok and oh wow. Caro Claire Burke has written something genuinely special — funny, scary, and deeply human all at once. The ending gutted me. Beautiful hardcover edition, the GMA Book Club sticker is a nice touch. Fast delivery from Ink & Chai as always 📚"
+      },
+      {
+        "name": "Divya Krishnan",
+        "rating": 4,
+        "text": "Gripping, witty, and incredibly thought-provoking. The concept is brilliant — a social media tradwife getting time-travelled to actual 1855 where her aesthetic becomes survival. Some parts were slow in the middle but the payoff is absolutely worth it. Lovely hardcover, well packaged."
+      }
+    ],
+    "description_banners": [
+      "/images/yesteryear-banner-1.jpg",
+      "/images/yesteryear-banner-2.jpg",
+      "/images/yesteryear-banner-3.jpg"
+    ]
   },
   {
     "shopify_id": "CUSTOM-CORRESPONDENT-MYFRIENDS-MYHUSBAND-WIFE-3",
