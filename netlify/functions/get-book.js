@@ -66,7 +66,8 @@ exports.handler = async (event) => {
     const index = getIndex();
     const book = index[id];
     if (!book) {
-      return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Book not found' }) };
+      // Return null book rather than 404 to avoid analytics noise
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ book: null }) };
     }
     return { statusCode: 200, headers: CORS, body: JSON.stringify(book) };
   } catch (err) {
