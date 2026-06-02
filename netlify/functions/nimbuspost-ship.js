@@ -88,23 +88,16 @@ function estimateDims(cartItems) {
 }
 
 // ── NimbusPost API helpers ─────────────────────────────────────────────────
-// Shipper API (ship.nimbuspost.com) — different from Partners API
-// Auth flow: POST /authenticate with email+password → JWT token
-// Headers: x-api-key (AWS Gateway key) + NP-API-SECRET (JWT token)
+// NimbusPost Partners API — POST /v1/users/login → Authorization: Bearer {token}
+// (Old x-api-key + NP-API-SECRET format is no longer accepted by NimbusPost)
 async function npFetch(path, { method = 'GET', token, body } = {}) {
-  const apiKey = process.env.NIMBUSPOST_API_KEY;
   const headers = { 'Content-Type': 'application/json' };
-  // x-api-key is required by AWS API Gateway on EVERY request (including /authenticate)
-  if (apiKey) headers['x-api-key'] = apiKey;
-  // After auth, pass the JWT token as NP-API-SECRET
-  if (token) headers['NP-API-SECRET'] = token;
-
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${NP_BASE}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
-
   let data;
   try { data = await res.json(); } catch { data = {}; }
   return { ok: res.ok, status: res.status, data };
@@ -113,24 +106,34 @@ async function npFetch(path, { method = 'GET', token, body } = {}) {
 async function npAuthenticate() {
   const email    = process.env.NIMBUSPOST_EMAIL;
   const password = process.env.NIMBUSPOST_PASSWORD;
-  const apiKey   = process.env.NIMBUSPOST_API_KEY;
-
-  if (!apiKey) throw new Error('NIMBUSPOST_API_KEY env var not set. Get it from ship.nimbuspost.com → Settings → API → Reset API Key');
   if (!email || !password) throw new Error('NIMBUSPOST_EMAIL / NIMBUSPOST_PASSWORD env vars not set');
 
-  const { ok, data } = await npFetch('/authenticate', {
+  const { ok, data } = await npFetch('/users/login', {
     method: 'POST',
     body: { email, password },
   });
+  // Response: { status: true, data: "JWT_TOKEN_STRING" }
   const token = data.data || data.token;
-  if (!ok || !token) throw new Error(`NimbusPost auth failed: ${JSON.stringify(data)}`);
+  if (!ok || !token) throw new Error(`NimbusPost login failed: ${JSON.stringify(data)}`);
   return token;
 }
 
 async function npGetWarehouses(token) {
-  const { ok, data } = await npFetch('/client/warehouses', { token });
-  if (!ok) throw new Error(`NimbusPost warehouses failed: ${JSON.stringify(data)}`);
-  return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+  // Try Partners API endpoint first
+  const r1 = await npFetch('/client/warehouses', { token });
+  if (r1.ok) return Array.isArray(r1.data?.data) ? r1.data.data : (Array.isArray(r1.data) ? r1.data : []);
+
+  // Fallback: some accounts use /warehouses
+  const r2 = await npFetch('/warehouses', { token });
+  if (r2.ok) return Array.isArray(r2.data?.data) ? r2.data.data : (Array.isArray(r2.data) ? r2.data : []);
+
+  throw new Error(
+    `NimbusPost warehouses API not accessible (${r1.status}). ` +
+    `Fix: In Netlify env vars, set NIMBUSPOST_WAREHOUSE_ID to your warehouse ID ` +
+    `(find it at ship.nimbuspost.com → Settings → Warehouses). ` +
+    `This will skip the warehouse API call entirely. ` +
+    `Raw error: ${JSON.stringify(r1.data).slice(0, 200)}`
+  );
 }
 
 async function npServiceability(token, { destination_pincode, weight, is_cod }) {
