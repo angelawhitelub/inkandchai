@@ -71,7 +71,14 @@ async function npAuthenticate() {
   const email    = process.env.NIMBUSPOST_EMAIL;
   const password = process.env.NIMBUSPOST_PASSWORD;
   const apiKey   = process.env.NIMBUSPOST_API_KEY;
-  if (!apiKey || !email || !password) throw new Error('NIMBUSPOST_API_KEY / EMAIL / PASSWORD not set');
+
+  // Diagnose missing env vars clearly
+  const missing = [];
+  if (!apiKey)    missing.push('NIMBUSPOST_API_KEY (get from ship.nimbuspost.com → Settings → API → Reset API Key)');
+  if (!email)     missing.push('NIMBUSPOST_EMAIL');
+  if (!password)  missing.push('NIMBUSPOST_PASSWORD');
+  if (missing.length) throw new Error('Missing Netlify env vars: ' + missing.join(', '));
+
   const { ok, data } = await npFetch('/authenticate', { method: 'POST', body: { email, password } });
   if (!ok || !data.token) throw new Error(`NimbusPost auth failed: ${JSON.stringify(data)}`);
   return data.token;
