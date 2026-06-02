@@ -45,6 +45,8 @@ exports.handler = async (event) => {
     category: cleanText(body.category, 120),
     price_inr: money(body.price_inr),
     original_price_inr: money(body.original_price_inr),
+    // scarcity: shows "Only 4 left" urgency badge — always pinned, never runs out
+    scarcity: body.scarcity === true || body.scarcity === 'true',
     is_active: body.is_active !== false,
     updated_at: new Date().toISOString(),
   };

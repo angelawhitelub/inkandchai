@@ -18,7 +18,7 @@ exports.handler = async (event) => {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { data, error } = await supabase
       .from('product_overrides')
-      .select('slug,title,author,category,price_inr,original_price_inr,is_active,updated_at')
+      .select('slug,title,author,category,price_inr,original_price_inr,scarcity,is_active,updated_at')
       .eq('is_active', true);
 
     if (error) {

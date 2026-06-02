@@ -164,6 +164,21 @@ def tab_for(cat, book=None):
     if c in INDIAN_CATS:        return "Indian Authors"
     return "All"
 
+# ── Scarcity / urgency: products shown as "Only 4 left" (always pinned, never runs out)
+# Add slugs of high-traffic listings here. Admin can also toggle via Products tab.
+SCARCITY_SLUGS = {
+    # Off Campus combos — highest traffic
+    "off-campus-complete-5-book-collection-elle-kennedy",
+    "the-deal-the-mistake-the-score-elle-kennedy-off-campus-combo",
+    # Top reviewed bundles
+    "the-off-campus-series-complete-collection-5-books-by-elle-ke-nnedy",
+    "the-deal-the-mistake-the-score-by-elle-kennedy-off-campus-se--3-ek",
+    "colleen-hoover-3-book-starter-set-it-ends-with-us-verity-rem-ter-3",
+    "wealth-starter-pack-299-psychology-of-money-rich-dad-poor-da-k-299",
+    "hindi-motivation-big-4-atomic-habits-rich-dad-poor-dad-shakt-big-4",
+    "robert-greene-power-trilogy-48-laws-of-power-laws-of-human-n-ogy-3",
+}
+
 # ── Slim book objects for JS ─────────────────────────────────────────────────
 slim = []
 feed_image_by_slug = {}
@@ -225,6 +240,8 @@ for b in books:
         # Description banners — Amazon A+-style wide images shown below description
         "description_banners": [public_image_url(img) for img in (b.get("description_banners") or [])],
         "sku":  b.get("sku", ""),    # Stock-keeping unit — used in cart items and daily report
+        # Scarcity flag — shows "Only 4 left" urgency badge (always pinned, never runs out)
+        "sc":   1 if (slug in SCARCITY_SLUGS or b.get("scarcity")) else 0,
     })
 
 # Put new arrivals at the very front, newest-first within each group
@@ -2162,6 +2179,7 @@ function applyProductOverride(book, override) {
   }
   if (override.price_inr !== null && override.price_inr !== undefined) book.p = priceToText(override.price_inr);
   if (override.original_price_inr !== null && override.original_price_inr !== undefined) book.op = priceToText(override.original_price_inr);
+  if (override.scarcity != null) book.sc = override.scarcity ? 1 : 0;
 }
 
 function customProductToBook(product) {
@@ -3271,6 +3289,10 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-courier-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:#a09080;flex-shrink:0}
 .prod-courier-logos{display:flex;gap:0.4rem;flex-wrap:wrap}
 .prod-courier-tag{font-size:0.6rem;letter-spacing:0.1em;padding:0.25rem 0.6rem;border:1px solid rgba(201,168,76,0.2);color:#c9a84c;background:rgba(201,168,76,0.05);border-radius:2px;white-space:nowrap}
+/* Scarcity / urgency badge */
+.prod-scarcity{display:inline-flex;align-items:center;gap:0.5rem;margin:0.6rem 0 0.2rem;padding:0.45rem 0.85rem;background:rgba(220,60,40,0.1);border:1px solid rgba(220,60,40,0.3);border-radius:2px;font-size:0.73rem;color:#f07060;letter-spacing:0.04em}
+.scarcity-dot{width:7px;height:7px;border-radius:50%;background:#e05040;box-shadow:0 0 0 3px rgba(220,60,40,0.25);animation:scarcity-pulse 1.5s ease-in-out infinite}
+@keyframes scarcity-pulse{0%,100%{box-shadow:0 0 0 3px rgba(220,60,40,0.25)}50%{box-shadow:0 0 0 6px rgba(220,60,40,0.08)}}
 /* Delivery guarantee */
 .prod-refund-guarantee{font-size:0.72rem;line-height:1.6;color:#f0e8d8;padding:0.65rem 0.9rem;background:rgba(109,191,109,0.06);border-left:3px solid #6dbf6d}
 .prod-desc-title{font-size:0.6rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem}
@@ -3738,6 +3760,7 @@ function applyProductOverride(book, override) {
   }
   if (override.price_inr !== null && override.price_inr !== undefined) next.p = priceToText(override.price_inr);
   if (override.original_price_inr !== null && override.original_price_inr !== undefined) next.op = priceToText(override.original_price_inr);
+  if (override.scarcity != null) next.sc = override.scarcity ? 1 : 0;
   return next;
 }
 
@@ -3945,6 +3968,11 @@ function renderProduct(b) {
             <span class="prod-cd-label">Ends in</span>
             <div class="prod-cd" id="prodCountdown"></div>
           </div>
+        </div>` : ''}
+
+        ${b.sc ? `<div class="prod-scarcity">
+          <span class="scarcity-dot"></span>
+          <span>🔥 Hurry! Only <strong>4 left</strong> in stock</span>
         </div>` : ''}
 
         ${getShipByHTML(b.slug)}
@@ -4792,6 +4820,17 @@ def static_product_html(book):
     review_images_list = book.get("review_images") or []
     review_video = html_escape(book.get("review_video") or book.get("review_video_url") or "")
 
+    # ── Scarcity badge ─────────────────────────────────────────────────────
+    is_scarce = bool(book.get("sc") or book.get("scarcity") or book.get("slug", "") in SCARCITY_SLUGS)
+    scarcity_badge_html = (
+        '<div class="prod-scarcity" style="display:inline-flex;align-items:center;gap:0.5rem;'
+        'margin:0.6rem 0 0.2rem;padding:0.45rem 0.85rem;background:rgba(220,60,40,0.1);'
+        'border:1px solid rgba(220,60,40,0.3);border-radius:2px;font-size:0.73rem;color:#f07060;">'
+        '<span style="width:7px;height:7px;border-radius:50%;background:#e05040;'
+        'box-shadow:0 0 0 3px rgba(220,60,40,0.25);display:inline-block;flex-shrink:0;"></span>'
+        '🔥 Hurry! Only <strong>&nbsp;4 left</strong>&nbsp;in stock</div>'
+    ) if is_scarce else ''
+
     # ── Description banners (Amazon A+-style) ─────────────────────────────
     desc_banners_list = book.get("description_banners") or []
     desc_banners_html = ""
@@ -5061,7 +5100,7 @@ html[data-theme="light"] .actions{{background:rgba(250,247,242,.98)}}
 {order_badge_html}
 {rating_line_html}
     <div><span class="price" data-product-price style="opacity:0;transition:opacity 0.15s">{price}</span>{f'<span class="orig" data-product-original-price style="opacity:0;transition:opacity 0.15s">{orig}</span>' if orig else ''}</div>
-    <span class="stock">In Stock</span>
+    {scarcity_badge_html if scarcity_badge_html else '<span class="stock">In Stock</span>'}
     <div id="staticShipBy"></div>
     <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
     <a href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener" class="insta-trust">

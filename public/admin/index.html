@@ -590,9 +590,14 @@ tr:hover td{background:rgba(122,88,21,0.075);}
               <input id="prodOriginalPrice" inputmode="decimal" placeholder="499"/>
             </div>
           </div>
-          <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:var(--cream-dim);margin-top:0.2rem;">
-            <input type="checkbox" id="prodActive" checked style="accent-color:var(--green);"/> Override active
-          </label>
+          <div style="display:flex;gap:1.2rem;margin-top:0.4rem;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:var(--cream-dim);">
+              <input type="checkbox" id="prodActive" checked style="accent-color:var(--green);"/> Override active
+            </label>
+            <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:#f07060;" title="Shows a pulsing red badge: 🔥 Hurry! Only 4 left — stock is always pinned at 4, never runs out">
+              <input type="checkbox" id="prodScarcity" style="accent-color:#e05040;"/> 🔥 Scarcity badge (Only 4 left)
+            </label>
+          </div>
           <div class="product-editor-actions">
             <button class="btn-green" onclick="saveProductOverride()">Save Product Override</button>
             <button class="btn-outline" onclick="openSelectedProduct()">Open Product Page</button>
@@ -1914,6 +1919,7 @@ function selectProduct(slug) {
   document.getElementById('prodPrice').value = p.price_inr;
   document.getElementById('prodOriginalPrice').value = p.original_price_inr;
   document.getElementById('prodActive').checked = p.is_active !== false;
+  document.getElementById('prodScarcity').checked = !!(row.sc || (row.override && row.override.scarcity));
   document.getElementById('productSaveMsg').textContent = row.override ? 'This product has a live override.' : 'No override saved yet.';
   renderProductList();
 }
@@ -1929,6 +1935,7 @@ async function saveProductOverride(activeOverride = true) {
     price_inr: document.getElementById('prodPrice').value,
     original_price_inr: document.getElementById('prodOriginalPrice').value,
     is_active: activeOverride && document.getElementById('prodActive').checked,
+    scarcity: document.getElementById('prodScarcity').checked,
   };
   msg.textContent = 'Saving…';
   try {
