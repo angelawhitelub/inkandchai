@@ -300,6 +300,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="admin-tab" data-tab="abandoned" onclick="switchTab('abandoned')">🛒 Abandoned Carts</button>
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab" data-tab="botinbox"  onclick="switchTab('botinbox')">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
   </nav>
 
   <!-- ═══ ORDERS TAB ═══ -->
@@ -694,6 +695,86 @@ tr:hover td{background:rgba(122,88,21,0.075);}
   </section>
 
   </div><!-- /tab-returns -->
+
+  <!-- ═══ BOT INBOX TAB ═══ -->
+  <div class="admin-section" id="tab-botinbox">
+  <style>
+    .inbox-layout{display:grid;grid-template-columns:300px 1fr;gap:1rem;height:calc(100vh - 220px);min-height:500px;}
+    @media(max-width:700px){.inbox-layout{grid-template-columns:1fr;height:auto;}}
+    .inbox-sidebar{border:1px solid var(--border);border-radius:6px;overflow-y:auto;background:var(--card);}
+    .inbox-thread{border:1px solid var(--border);border-radius:6px;display:flex;flex-direction:column;background:var(--card);}
+    .inbox-conv{padding:0.8rem 1rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
+    .inbox-conv:hover,.inbox-conv.active{background:rgba(201,168,76,0.07);}
+    .inbox-conv-name{font-weight:600;font-size:0.82rem;color:var(--cream);}
+    .inbox-conv-preview{font-size:0.73rem;color:var(--cream-dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;}
+    .inbox-conv-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;}
+    .inbox-conv-time{font-size:0.65rem;color:var(--cream-dim);}
+    .inbox-unread{background:#1a7fcf;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.6rem;font-weight:700;}
+    .inbox-takeover-badge{background:#e07020;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.6rem;font-weight:700;margin-left:4px;}
+    .inbox-resolved-badge{background:#888;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.6rem;margin-left:4px;}
+    .thread-header{padding:0.8rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;}
+    .thread-name{font-weight:600;font-size:0.88rem;color:var(--cream);}
+    .thread-phone{font-size:0.72rem;color:var(--cream-dim);}
+    .thread-actions{display:flex;gap:0.4rem;flex-wrap:wrap;}
+    .thread-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.6rem;}
+    .msg-bubble{max-width:72%;padding:0.55rem 0.85rem;border-radius:12px;font-size:0.83rem;line-height:1.45;word-break:break-word;}
+    .msg-user{background:rgba(255,255,255,0.06);color:var(--cream);align-self:flex-start;border-bottom-left-radius:3px;}
+    .msg-bot{background:rgba(201,168,76,0.12);color:var(--cream);align-self:flex-end;border-bottom-right-radius:3px;}
+    .msg-admin{background:#1a7fcf22;color:#7cc0f0;align-self:flex-end;border-bottom-right-radius:3px;border:1px solid #1a7fcf44;}
+    .msg-time{font-size:0.6rem;color:var(--cream-dim);margin-top:2px;text-align:right;}
+    .thread-input-row{padding:0.75rem 1rem;border-top:1px solid var(--border);display:flex;gap:0.5rem;}
+    .thread-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.9rem;border-radius:6px;font-size:0.83rem;font-family:inherit;resize:none;}
+    .thread-input:focus{outline:none;border-color:var(--gold-dim);}
+    .inbox-empty{display:flex;align-items:center;justify-content:center;flex:1;color:var(--cream-dim);font-size:0.83rem;}
+    .inbox-filter-row{display:flex;gap:0.4rem;padding:0.6rem 0.8rem;border-bottom:1px solid var(--border);}
+    .inbox-filter-btn{font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.3rem 0.7rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;border-radius:3px;font-family:'Montserrat',sans-serif;}
+    .inbox-filter-btn.active{border-color:var(--gold-dim);color:var(--gold);background:rgba(201,168,76,0.07);}
+  </style>
+
+  <section class="abandoned-panel">
+    <div class="abandoned-head">
+      <div>
+        <h2>💬 Bot Inbox</h2>
+        <p>All customer WhatsApp conversations. Click a chat to read it, take over from the bot, or reply directly.</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-outline" onclick="fetchInbox()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div class="inbox-layout" id="inboxLayout">
+      <!-- Sidebar: conversation list -->
+      <div class="inbox-sidebar" id="inboxSidebar">
+        <div class="inbox-filter-row">
+          <button class="inbox-filter-btn active" data-filter="all"      onclick="setInboxFilter('all',this)">All</button>
+          <button class="inbox-filter-btn"         data-filter="active"   onclick="setInboxFilter('active',this)">Active</button>
+          <button class="inbox-filter-btn"         data-filter="takeover" onclick="setInboxFilter('takeover',this)">Human</button>
+          <button class="inbox-filter-btn"         data-filter="resolved" onclick="setInboxFilter('resolved',this)">Resolved</button>
+        </div>
+        <div id="inboxConvList"><div style="padding:1.5rem;color:var(--cream-dim);font-size:0.8rem;">Loading conversations…</div></div>
+      </div>
+
+      <!-- Thread panel -->
+      <div class="inbox-thread" id="inboxThreadPanel">
+        <div class="inbox-empty" id="inboxEmptyState">Select a conversation to view it</div>
+        <div id="inboxThreadContent" style="display:none;flex:1;display:none;flex-direction:column;overflow:hidden;">
+          <div class="thread-header">
+            <div>
+              <div class="thread-name" id="threadName">—</div>
+              <div class="thread-phone" id="threadPhone">—</div>
+            </div>
+            <div class="thread-actions" id="threadActions"></div>
+          </div>
+          <div class="thread-messages" id="threadMessages"></div>
+          <div class="thread-input-row" id="threadInputRow">
+            <textarea class="thread-input" id="threadReplyInput" rows="2" placeholder="Type a message and press Send…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAdminReply();}"></textarea>
+            <button class="btn-gold" onclick="sendAdminReply()" style="align-self:flex-end;">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  </div><!-- /tab-botinbox -->
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
@@ -2422,6 +2503,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'abandoned' && adminKey) fetchAbandonedCheckouts();
   if (tab === 'reviews') fetchPendingReviews();
   if (tab === 'returns' && adminKey) fetchReturnRequests();
+  if (tab === 'botinbox' && adminKey) fetchInbox();
 
   // Scroll to top of content
   document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -2661,6 +2743,212 @@ async function rejectReturn(returnId, btn) {
     if (btn) { btn.disabled = false; btn.textContent = '✗ Reject'; }
   }
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BOT INBOX
+// ══════════════════════════════════════════════════════════════════════════════
+
+let inboxConversations = [];
+let activeInboxPhone   = null;
+let inboxFilter        = 'all';
+let inboxPollTimer     = null;
+
+function setInboxFilter(filter, btn) {
+  inboxFilter = filter;
+  document.querySelectorAll('.inbox-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderInboxList();
+}
+
+async function fetchInbox() {
+  try {
+    const res  = await fetch('/.netlify/functions/bot-inbox?action=list', {
+      headers: { 'Authorization': 'Bearer ' + adminKey }
+    });
+    const data = await res.json();
+    inboxConversations = data.conversations || [];
+    renderInboxList();
+    updateBotUnreadBadge();
+    // If a thread is open, refresh it too
+    if (activeInboxPhone) loadThread(activeInboxPhone, false);
+  } catch (e) {
+    document.getElementById('inboxConvList').innerHTML =
+      `<div style="padding:1rem;color:#c93636;font-size:0.8rem;">Error loading: ${e.message}</div>`;
+  }
+}
+
+function updateBotUnreadBadge() {
+  const total = inboxConversations.reduce((s, c) => s + (c.unread_count || 0), 0);
+  const badge = document.getElementById('botUnreadBadge');
+  if (!badge) return;
+  if (total > 0) { badge.style.display = ''; badge.textContent = total; }
+  else badge.style.display = 'none';
+}
+
+function renderInboxList() {
+  const list = document.getElementById('inboxConvList');
+  let convs = inboxConversations;
+  if (inboxFilter === 'active')   convs = convs.filter(c => c.status !== 'resolved');
+  if (inboxFilter === 'takeover') convs = convs.filter(c => c.human_takeover);
+  if (inboxFilter === 'resolved') convs = convs.filter(c => c.status === 'resolved');
+
+  if (!convs.length) {
+    list.innerHTML = '<div style="padding:1.5rem;color:var(--cream-dim);font-size:0.8rem;">No conversations yet.</div>';
+    return;
+  }
+
+  list.innerHTML = convs.map(c => {
+    const phone   = c.customer_phone;
+    const name    = c.customer_name || phone;
+    const preview = c.last_message || '';
+    const time    = c.last_message_at ? relTime(c.last_message_at) : '';
+    const unread  = c.unread_count > 0 ? `<span class="inbox-unread">${c.unread_count}</span>` : '';
+    const taken   = c.human_takeover ? `<span class="inbox-takeover-badge">You</span>` : '';
+    const resolved= c.status === 'resolved' ? `<span class="inbox-resolved-badge">Done</span>` : '';
+    const active  = phone === activeInboxPhone ? ' active' : '';
+    return `<div class="inbox-conv${active}" onclick="loadThread('${esc(phone)}')" data-phone="${esc(phone)}">
+      <div class="inbox-conv-meta">
+        <span class="inbox-conv-name">${esc(name)}${taken}${resolved}</span>
+        <span class="inbox-conv-time">${time} ${unread}</span>
+      </div>
+      <div class="inbox-conv-preview">${esc(preview)}</div>
+    </div>`;
+  }).join('');
+}
+
+function relTime(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60000)    return 'just now';
+  if (diff < 3600000)  return Math.floor(diff / 60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+  return Math.floor(diff / 86400000) + 'd ago';
+}
+
+async function loadThread(phone, scroll = true) {
+  activeInboxPhone = phone;
+
+  // Highlight in sidebar
+  document.querySelectorAll('.inbox-conv').forEach(el => {
+    el.classList.toggle('active', el.dataset.phone === phone);
+  });
+
+  // Show thread panel
+  document.getElementById('inboxEmptyState').style.display = 'none';
+  const content = document.getElementById('inboxThreadContent');
+  content.style.display = 'flex';
+
+  // Set header
+  const conv = inboxConversations.find(c => c.customer_phone === phone) || {};
+  document.getElementById('threadName').textContent  = conv.customer_name || phone;
+  document.getElementById('threadPhone').textContent = phone;
+  renderThreadActions(phone, conv);
+
+  // Load messages
+  try {
+    const res  = await fetch(`/.netlify/functions/bot-inbox?action=thread&phone=${encodeURIComponent(phone)}`, {
+      headers: { 'Authorization': 'Bearer ' + adminKey }
+    });
+    const data = await res.json();
+    renderMessages(data.messages || []);
+  } catch (e) {
+    document.getElementById('threadMessages').innerHTML =
+      `<div style="color:#c93636;font-size:0.8rem;">Error: ${e.message}</div>`;
+  }
+
+  // Mark as read
+  await fetch('/.netlify/functions/bot-inbox', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'mark_read', phone }),
+  });
+  // Update local count
+  const convObj = inboxConversations.find(c => c.customer_phone === phone);
+  if (convObj) convObj.unread_count = 0;
+  updateBotUnreadBadge();
+  renderInboxList();
+}
+
+function renderMessages(messages) {
+  const container = document.getElementById('threadMessages');
+  if (!messages.length) {
+    container.innerHTML = '<div style="color:var(--cream-dim);font-size:0.8rem;text-align:center;padding:2rem;">No messages yet.</div>';
+    return;
+  }
+  container.innerHTML = messages.map(m => {
+    const cls = m.role === 'user' ? 'msg-user' : m.role === 'admin' ? 'msg-admin' : 'msg-bot';
+    const who = m.role === 'user' ? '👤' : m.role === 'admin' ? '🧑‍💼 You' : '🤖 Bot';
+    const time = m.created_at ? new Date(m.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '';
+    return `<div class="msg-bubble ${cls}">
+      <div>${esc(m.message)}</div>
+      <div class="msg-time">${who} · ${time}</div>
+    </div>`;
+  }).join('');
+  // Scroll to bottom
+  container.scrollTop = container.scrollHeight;
+}
+
+function renderThreadActions(phone, conv) {
+  const actions = document.getElementById('threadActions');
+  const isTaken   = conv.human_takeover;
+  const isResolved= conv.status === 'resolved';
+
+  actions.innerHTML = `
+    ${!isTaken ? `<button class="btn-outline" style="font-size:0.65rem;" onclick="inboxAction('takeover','${esc(phone)}')">🙋 Take Over</button>` : ''}
+    ${isTaken  ? `<button class="btn-outline" style="font-size:0.65rem;" onclick="inboxAction('release','${esc(phone)}')">🤖 Hand to Bot</button>` : ''}
+    ${!isResolved ? `<button class="btn-green" style="font-size:0.65rem;" onclick="inboxAction('resolve','${esc(phone)}')">✓ Resolve</button>` : ''}
+    <a href="https://wa.me/${esc(phone)}" target="_blank" style="font-size:0.65rem;" class="btn-outline">Open in WhatsApp ↗</a>
+  `;
+}
+
+async function inboxAction(action, phone) {
+  try {
+    await fetch('/.netlify/functions/bot-inbox', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, phone }),
+    });
+    await fetchInbox();
+    if (activeInboxPhone === phone) {
+      const conv = inboxConversations.find(c => c.customer_phone === phone) || {};
+      renderThreadActions(phone, conv);
+    }
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function sendAdminReply() {
+  const input = document.getElementById('threadReplyInput');
+  const text  = input.value.trim();
+  if (!text || !activeInboxPhone) return;
+
+  input.value = '';
+  input.disabled = true;
+
+  try {
+    const res  = await fetch('/.netlify/functions/bot-inbox', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'send', phone: activeInboxPhone, text }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Send failed');
+    await loadThread(activeInboxPhone, false);
+  } catch (e) {
+    alert('Failed to send: ' + e.message);
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+// Auto-refresh inbox every 30 seconds while the tab is active
+function startInboxPolling() {
+  if (inboxPollTimer) return;
+  inboxPollTimer = setInterval(() => {
+    const tab = document.querySelector('.admin-tab[data-tab="botinbox"]');
+    if (tab?.classList.contains('active')) fetchInbox();
+  }, 30000);
+}
+startInboxPolling();
 </script>
 </body>
 </html>

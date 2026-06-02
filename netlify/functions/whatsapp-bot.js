@@ -103,11 +103,9 @@ ORDER STATUS LOOKUP:
 - If the conversation includes order details (from the system), present them clearly including AWB and tracking link
 - If customer mentions an Order ID but no data is provided, ask them to share it so you can look it up`;
 
-// ── Per-user conversation memory (in-memory, resets on cold start) ────────────
-// For production persistence use Supabase, but in-memory works for 90% of cases
-// since Netlify keeps functions warm for ~15 min between messages.
+// ── Per-user conversation memory (in-memory cache + Supabase persistence) ────
 const conversationHistory = new Map(); // phone → [{role, content}]
-const MAX_HISTORY = 10; // last 10 messages kept per user
+const MAX_HISTORY = 10;
 
 function getHistory(phone) {
   return conversationHistory.get(phone) || [];
@@ -116,9 +114,53 @@ function getHistory(phone) {
 function appendHistory(phone, role, content) {
   const hist = getHistory(phone);
   hist.push({ role, content });
-  // Keep only last MAX_HISTORY messages
   if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY);
   conversationHistory.set(phone, hist);
+}
+
+// ── Persist a message to Supabase + update conversation row ──────────────────
+async function persistMessage(phone, role, message, customerName = null) {
+  try {
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const now = new Date().toISOString();
+    const preview = (role === 'user' ? message : `[Bot]: ${message}`).slice(0, 100);
+
+    // Insert message
+    await db.from('bot_messages').insert({ customer_phone: phone, role, message, created_at: now });
+
+    // Upsert conversation summary
+    const convUpdate = {
+      customer_phone:  phone,
+      last_message:    preview,
+      last_message_at: now,
+      status:          'active',
+    };
+    if (customerName) convUpdate.customer_name = customerName;
+    // Only increment unread for inbound customer messages
+    if (role === 'user') {
+      // Use raw SQL increment via rpc — fallback: just set a flag
+      const { data: existing } = await db.from('bot_conversations')
+        .select('unread_count').eq('customer_phone', phone).maybeSingle();
+      convUpdate.unread_count = ((existing?.unread_count) || 0) + 1;
+    }
+
+    await db.from('bot_conversations').upsert(convUpdate, { onConflict: 'customer_phone' });
+  } catch (e) {
+    // Non-fatal — don't break the main flow
+    console.error('persistMessage error:', e.message);
+  }
+}
+
+// ── Check if this conversation has human takeover active ──────────────────────
+async function isHumanTakeover(phone) {
+  try {
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data } = await db.from('bot_conversations')
+      .select('human_takeover')
+      .eq('customer_phone', phone)
+      .maybeSingle();
+    return data?.human_takeover === true;
+  } catch { return false; }
 }
 
 // ── Look up order by IC- display ID in Supabase ──────────────────────────────
@@ -282,6 +324,15 @@ exports.handler = async (event) => {
 
     console.log(`[IN]  ${from}: ${userText.slice(0, 120)}`);
 
+    // ── Persist inbound message ───────────────────────────────────────────────
+    await persistMessage(from, 'user', userText);
+
+    // ── If human has taken over this conversation, just persist + stop ────────
+    if (await isHumanTakeover(from)) {
+      console.log(`[TAKEOVER] ${from} — bot suppressed, human handling`);
+      return { statusCode: 200, body: 'ok' };
+    }
+
     // ── Check if message contains an Order ID — look it up ───────────────────
     let extraContext = '';
     const orderId = extractOrderId(userText);
@@ -319,18 +370,30 @@ exports.handler = async (event) => {
     // ── Get AI reply ──────────────────────────────────────────────────────────
     let reply = await askOpenAI(from, userText, extraContext);
 
-    // If AI flagged escalation, notify owner and soften message
+    // If AI flagged escalation, notify owner and switch to human takeover
     if (reply.includes('[ESCALATE]')) {
       reply = reply.replace('[ESCALATE]', '').trim();
       const ownerPhone = process.env.STORE_OWNER_PHONE;
       if (ownerPhone) {
         await sendReply(ownerPhone,
-          `⚠️ WhatsApp bot escalation needed\nFrom: ${from}\nMessage: "${userText.slice(0, 200)}"`
+          `⚠️ Bot escalation needed\nFrom: wa.me/${from}\nMessage: "${userText.slice(0, 200)}"\n\nCustomer needs human help. Go to admin panel → Bot Inbox to take over.`
         );
       }
+      // Auto-enable human takeover so the bot stops replying
+      try {
+        const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        await db.from('bot_conversations').upsert({
+          customer_phone: from,
+          human_takeover: true,
+          status: 'active',
+          last_message_at: new Date().toISOString(),
+        }, { onConflict: 'customer_phone' });
+      } catch (e) { console.error('takeover upsert error:', e.message); }
     }
 
     await sendReply(from, reply);
+    // Persist bot reply (reset unread — bot replied so nothing new for admin)
+    await persistMessage(from, 'bot', reply);
     console.log(`[OUT] ${from}: ${reply.slice(0, 120)}`);
 
   } catch (err) {
