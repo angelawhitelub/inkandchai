@@ -88,13 +88,12 @@ function estimateDims(cartItems) {
 }
 
 // ── NimbusPost API helpers ─────────────────────────────────────────────────
+// Partners API docs: https://documenter.getpostman.com/view/9692837/TW6wHnoz
+// Login:  POST /v1/users/login  { email, password }  → { token }
+// Auth:   Authorization: Bearer {token}  (no x-api-key needed)
 async function npFetch(path, { method = 'GET', token, body } = {}) {
-  const apiKey = process.env.NIMBUSPOST_API_KEY;
   const headers = { 'Content-Type': 'application/json' };
-  // x-api-key is required by AWS API Gateway on EVERY request (including /authenticate)
-  if (apiKey) headers['x-api-key'] = apiKey;
-  // After auth, pass the JWT token as NP-API-SECRET
-  if (token) headers['NP-API-SECRET'] = token;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${NP_BASE}${path}`, {
     method,
@@ -110,16 +109,14 @@ async function npFetch(path, { method = 'GET', token, body } = {}) {
 async function npAuthenticate() {
   const email    = process.env.NIMBUSPOST_EMAIL;
   const password = process.env.NIMBUSPOST_PASSWORD;
-  const apiKey   = process.env.NIMBUSPOST_API_KEY;
 
-  if (!apiKey) throw new Error('NIMBUSPOST_API_KEY env var not set. Generate it at ship.nimbuspost.com → Settings → API → Reset API Key');
   if (!email || !password) throw new Error('NIMBUSPOST_EMAIL / NIMBUSPOST_PASSWORD env vars not set');
 
-  const { ok, data } = await npFetch('/authenticate', {
+  const { ok, data } = await npFetch('/users/login', {
     method: 'POST',
     body: { email, password },
   });
-  if (!ok || !data.token) throw new Error(`NimbusPost auth failed: ${JSON.stringify(data)}`);
+  if (!ok || !data.token) throw new Error(`NimbusPost login failed: ${JSON.stringify(data)}`);
   return data.token;
 }
 

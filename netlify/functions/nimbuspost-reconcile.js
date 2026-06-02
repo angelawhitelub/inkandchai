@@ -52,12 +52,13 @@ function normalizeStatus(s) {
   return STATUS_MAP[(s || '').toLowerCase().trim()] || null;
 }
 
-// ── NimbusPost helpers (same pattern as nimbuspost-ship.js) ───────────────────
+// ── NimbusPost helpers ────────────────────────────────────────────────────────
+// Partners API docs: https://documenter.getpostman.com/view/9692837/TW6wHnoz
+// Login:  POST /v1/users/login  { email, password }  → { token }
+// Auth:   Authorization: Bearer {token}  (no x-api-key needed)
 async function npFetch(path, { method = 'GET', token, body } = {}) {
-  const apiKey = process.env.NIMBUSPOST_API_KEY;
   const headers = { 'Content-Type': 'application/json' };
-  if (apiKey) headers['x-api-key'] = apiKey;
-  if (token)  headers['NP-API-SECRET'] = token;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${NP_BASE}${path}`, {
     method, headers,
     body: body ? JSON.stringify(body) : undefined,
@@ -70,59 +71,51 @@ async function npFetch(path, { method = 'GET', token, body } = {}) {
 async function npAuthenticate() {
   const email    = process.env.NIMBUSPOST_EMAIL;
   const password = process.env.NIMBUSPOST_PASSWORD;
-  const apiKey   = process.env.NIMBUSPOST_API_KEY;
 
-  // Diagnose missing env vars clearly
-  const missing = [];
-  if (!apiKey)    missing.push('NIMBUSPOST_API_KEY (get from ship.nimbuspost.com → Settings → API → Reset API Key)');
-  if (!email)     missing.push('NIMBUSPOST_EMAIL');
-  if (!password)  missing.push('NIMBUSPOST_PASSWORD');
-  if (missing.length) throw new Error('Missing Netlify env vars: ' + missing.join(', '));
+  if (!email)    throw new Error('Missing env var: NIMBUSPOST_EMAIL');
+  if (!password) throw new Error('Missing env var: NIMBUSPOST_PASSWORD');
 
-  const { ok, data } = await npFetch('/authenticate', { method: 'POST', body: { email, password } });
-  if (!ok || !data.token) throw new Error(`NimbusPost auth failed: ${JSON.stringify(data)}`);
+  // Correct endpoint per NimbusPost Partners API docs
+  const { ok, data } = await npFetch('/users/login', { method: 'POST', body: { email, password } });
+  if (!ok || !data.token) throw new Error(`NimbusPost login failed: ${JSON.stringify(data)}`);
   return data.token;
 }
 
-// NimbusPost tracking endpoint — tries multiple formats since docs are private
-// NimbusPost uses POST /courier/track with awb_numbers[] based on their webhook format
+// NimbusPost tracking — Partners API has no dedicated tracking endpoint.
+// We try a few patterns; the correct one may be undocumented.
+// Confirmed endpoints from docs: /users/login, /shipments, /shipments/cancel,
+// /shipments/manifest, /courier, /courier/serviceability, /ndr
 async function npTrackBatch(token, awbs) {
-  // Try 1: POST /courier/track  { awb_numbers: [...] }   ← most likely correct
-  const r1 = await npFetch('/courier/track', {
-    method: 'POST', token,
-    body: { awb_numbers: awbs },
-  });
-  console.log('[NimbusPost Reconcile] /courier/track response status:', r1.status,
-    'ok:', r1.ok, 'data keys:', Object.keys(r1.data || {}));
+  const attempts = [
+    // Partners API most likely pattern
+    { path: '/shipments/track', body: { awb_numbers: awbs } },
+    // GET with AWB as query (for single AWB) — try first AWB to probe
+    { path: `/shipments/${awbs[0]}`, body: null, method: 'GET' },
+    // Alternative POST formats
+    { path: '/courier/track', body: { awb_numbers: awbs } },
+    { path: '/courier/track', body: { awbs } },
+  ];
 
-  if (r1.ok && (r1.data?.data || r1.data?.status)) {
-    return r1.data?.data || r1.data;
+  for (const attempt of attempts) {
+    const r = await npFetch(attempt.path, {
+      method: attempt.method || 'POST', token,
+      body: attempt.body,
+    });
+    console.log(`[NimbusPost Reconcile] ${attempt.method||'POST'} ${attempt.path} → ${r.status}`,
+      JSON.stringify(r.data).slice(0, 200));
+    if (r.ok && r.data && (r.data.data || r.data.status || r.data.awb_number || Array.isArray(r.data))) {
+      return r.data?.data || r.data;
+    }
   }
 
-  // Try 2: POST /shipments/track  { awbs: [...] }
-  const r2 = await npFetch('/shipments/track', {
-    method: 'POST', token,
-    body: { awbs },
-  });
-  console.log('[NimbusPost Reconcile] /shipments/track response status:', r2.status,
-    'ok:', r2.ok, 'data keys:', Object.keys(r2.data || {}));
-
-  if (r2.ok && (r2.data?.data || r2.data?.status)) {
-    return r2.data?.data || r2.data;
-  }
-
-  // Try 3: POST /courier/track  { awbs: [...] }
-  const r3 = await npFetch('/courier/track', {
-    method: 'POST', token,
-    body: { awbs },
-  });
-  console.log('[NimbusPost Reconcile] /courier/track+awbs response status:', r3.status,
-    'data:', JSON.stringify(r3.data).slice(0, 300));
-
-  if (r3.ok) return r3.data?.data || r3.data;
-
-  // All failed — return raw error for debugging
-  throw new Error(`NimbusPost track API failed. Tried 3 formats. Last response: ${JSON.stringify(r3.data).slice(0, 300)}`);
+  // All attempts failed — return debug info so admin can see responses
+  const last = await npFetch('/courier/serviceability', { method: 'GET', token });
+  throw new Error(
+    `NimbusPost tracking API not available. Auth is working (login succeeded). ` +
+    `The Partners API (documenter.getpostman.com/view/9692837/TW6wHnoz) does not expose a tracking endpoint. ` +
+    `Your orders will update automatically via the NimbusPost webhook as deliveries happen. ` +
+    `Serviceability check: ${last.status} ${JSON.stringify(last.data).slice(0,100)}`
+  );
 }
 
 // ── Notification helpers ───────────────────────────────────────────────────────
