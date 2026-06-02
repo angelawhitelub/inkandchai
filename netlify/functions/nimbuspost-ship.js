@@ -88,12 +88,16 @@ function estimateDims(cartItems) {
 }
 
 // ── NimbusPost API helpers ─────────────────────────────────────────────────
-// Partners API docs: https://documenter.getpostman.com/view/9692837/TW6wHnoz
-// Login:  POST /v1/users/login  { email, password }  → { token }
-// Auth:   Authorization: Bearer {token}  (no x-api-key needed)
+// Shipper API (ship.nimbuspost.com) — different from Partners API
+// Auth flow: POST /authenticate with email+password → JWT token
+// Headers: x-api-key (AWS Gateway key) + NP-API-SECRET (JWT token)
 async function npFetch(path, { method = 'GET', token, body } = {}) {
+  const apiKey = process.env.NIMBUSPOST_API_KEY;
   const headers = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  // x-api-key is required by AWS API Gateway on EVERY request (including /authenticate)
+  if (apiKey) headers['x-api-key'] = apiKey;
+  // After auth, pass the JWT token as NP-API-SECRET
+  if (token) headers['NP-API-SECRET'] = token;
 
   const res = await fetch(`${NP_BASE}${path}`, {
     method,
@@ -109,16 +113,17 @@ async function npFetch(path, { method = 'GET', token, body } = {}) {
 async function npAuthenticate() {
   const email    = process.env.NIMBUSPOST_EMAIL;
   const password = process.env.NIMBUSPOST_PASSWORD;
+  const apiKey   = process.env.NIMBUSPOST_API_KEY;
 
+  if (!apiKey) throw new Error('NIMBUSPOST_API_KEY env var not set. Get it from ship.nimbuspost.com → Settings → API → Reset API Key');
   if (!email || !password) throw new Error('NIMBUSPOST_EMAIL / NIMBUSPOST_PASSWORD env vars not set');
 
-  const { ok, data } = await npFetch('/users/login', {
+  const { ok, data } = await npFetch('/authenticate', {
     method: 'POST',
     body: { email, password },
   });
-  // Response format: { status: true, data: "JWT_TOKEN_STRING" }
   const token = data.data || data.token;
-  if (!ok || !token) throw new Error(`NimbusPost login failed: ${JSON.stringify(data)}`);
+  if (!ok || !token) throw new Error(`NimbusPost auth failed: ${JSON.stringify(data)}`);
   return token;
 }
 
