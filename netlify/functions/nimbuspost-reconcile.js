@@ -77,8 +77,10 @@ async function npAuthenticate() {
 
   // Correct endpoint per NimbusPost Partners API docs
   const { ok, data } = await npFetch('/users/login', { method: 'POST', body: { email, password } });
-  if (!ok || !data.token) throw new Error(`NimbusPost login failed: ${JSON.stringify(data)}`);
-  return data.token;
+  // Response format: { status: true, data: "JWT_TOKEN_STRING" }
+  const token = data.data || data.token;
+  if (!ok || !token) throw new Error(`NimbusPost login failed: ${JSON.stringify(data)}`);
+  return token;
 }
 
 // NimbusPost tracking — Partners API has no dedicated tracking endpoint.
