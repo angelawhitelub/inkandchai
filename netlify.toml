@@ -25,12 +25,6 @@
   status = 301
   force  = true
 
-# /admin without trailing slash → redirect to /admin/ (10 hits/month)
-[[redirects]]
-  from   = "/admin"
-  to     = "/admin/"
-  status = 301
-  force  = true
 
 # Source map requests from browser devtools — return 404 cleanly instead of
 # falling through to index.html (which wastes bandwidth)
