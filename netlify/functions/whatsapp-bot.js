@@ -52,9 +52,11 @@ COUPONS (share only when customer asks about discounts):
 - Coupons only apply to Pay Now (not COD)
 
 ORDER TRACKING — "where is my order?" / "order status?" / "AWB?":
-- Ask for their Order ID (format IC-YYYYMMDD-XXXXX) if not already shared
-- Once you have the order details (from system context), share the AWB/tracking number and courier name
-- Tell them to track at: https://www.delhivery.com/track-v2/package/{AWB} or inkandchai.in/track
+- If order details are already in the system context (looked up by their phone number), share them immediately — do NOT ask for the order ID again
+- If multiple orders are in context, mention all of them briefly and highlight the most recent
+- If no order details are in context, ask for their Order ID (format IC-YYYYMMDD-XXXXX — they can find it in their confirmation SMS/email or at inkandchai.in → My Orders)
+- Once you have the order details, share the AWB/tracking number and courier name
+- Tell them to track at: https://inkandchai.in/track or delhivery.com (if Delhivery AWB)
 - If order is not yet shipped, reassure them it will be dispatched soon
 
 DELIVERY TIME — "when will I get my order?" / "kitne din mein aayega?":
@@ -119,17 +121,41 @@ function appendHistory(phone, role, content) {
   conversationHistory.set(phone, hist);
 }
 
-// ── Look up order by ID in Supabase ──────────────────────────────────────────
+// ── Look up order by IC- display ID in Supabase ──────────────────────────────
+// All order types (Razorpay, PhonePe, COD) store the IC-YYYYMMDD-XXXXX id
+// in the razorpay_order_id column. The `id` column is a UUID — never query it
+// with an IC- string or Supabase throws a UUID format error.
 async function lookupOrder(orderId) {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('orders')
       .select('razorpay_order_id, status, customer_name, amount_paise, created_at, tracking_id, courier_name, tracking_url')
-      .or(`razorpay_order_id.eq.${orderId},id.eq.${orderId}`)
+      .eq('razorpay_order_id', orderId.toUpperCase())
       .maybeSingle();
+    if (error) console.error('lookupOrder error:', error.message);
     return data || null;
-  } catch { return null; }
+  } catch (e) { console.error('lookupOrder exception:', e.message); return null; }
+}
+
+// ── Look up most recent orders by customer phone ──────────────────────────────
+// Called when customer messages without sharing an order ID — lets us proactively
+// show their latest order status without asking them to type the order ID.
+async function lookupOrdersByPhone(phone) {
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    // Normalise: strip country code to get 10-digit number, then try both formats
+    const digits = phone.replace(/\D/g, '');
+    const ten = digits.length >= 10 ? digits.slice(-10) : digits;
+    const { data, error } = await supabase
+      .from('orders')
+      .select('razorpay_order_id, status, customer_name, amount_paise, created_at, tracking_id, courier_name, tracking_url')
+      .or(`customer_phone.eq.${ten},customer_phone.eq.91${ten},customer_phone.eq.+91${ten}`)
+      .order('created_at', { ascending: false })
+      .limit(3);
+    if (error) console.error('lookupOrdersByPhone error:', error.message);
+    return data || [];
+  } catch (e) { console.error('lookupOrdersByPhone exception:', e.message); return []; }
 }
 
 // ── Send a plain text WhatsApp message ───────────────────────────────────────
@@ -259,16 +285,34 @@ exports.handler = async (event) => {
     // ── Check if message contains an Order ID — look it up ───────────────────
     let extraContext = '';
     const orderId = extractOrderId(userText);
+
+    // Helper: format a single order row into readable context for the AI
+    function formatOrderContext(order, displayId) {
+      const id    = displayId || order.razorpay_order_id || '—';
+      const amt   = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '—';
+      const date  = order.created_at ? new Date(order.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+      const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
+      const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
+      return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nTracking: ${track}\nTrack URL: ${trackUrl}`;
+    }
+
     if (orderId) {
+      // Customer explicitly shared an order ID — look it up directly
       const order = await lookupOrder(orderId);
       if (order) {
-        const amt   = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '—';
-        const date  = order.created_at ? new Date(order.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-        const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
-        const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(orderId)}`;
-        extraContext = `Order ID: ${orderId}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nTracking: ${track}\nTrack URL: ${trackUrl}`;
+        extraContext = formatOrderContext(order, orderId);
       } else {
-        extraContext = `Order ID ${orderId} was not found in our system.`;
+        extraContext = `Order ID ${orderId} was searched in our database but was not found. This could mean the customer typed it incorrectly, or it belongs to a different account. Ask them to double-check the order ID from their confirmation email/SMS or from My Orders on inkandchai.in.`;
+      }
+    } else {
+      // No order ID in message — check if message is order-related and look up by phone
+      const isOrderQuery = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book/i.test(userText);
+      if (isOrderQuery) {
+        const orders = await lookupOrdersByPhone(from);
+        if (orders.length > 0) {
+          extraContext = `Customer's recent orders (looked up by their WhatsApp number):\n` +
+            orders.map((o, i) => `--- Order ${i + 1} ---\n${formatOrderContext(o, o.razorpay_order_id)}`).join('\n');
+        }
       }
     }
 
