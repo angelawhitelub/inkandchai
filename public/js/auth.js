@@ -1040,6 +1040,7 @@
           ${orderTrackingBlock(o)}
           ${cancelOrderBlock(o)}
           ${returnRequestBlock(o)}
+          ${invoiceDownloadBlock(o)}
         </div>`;
     }).join('');
   }
@@ -1106,6 +1107,199 @@
         </div>
       </div>`;
   }
+
+  // ── Invoice download block ────────────────────────────────────────────────
+  function invoiceDownloadBlock(order) {
+    // Only show for paid / confirmed / shipped / delivered orders
+    const paid = ['paid','confirmed','cod_pending','partial_cod_pending','shipped',
+                  'out_for_delivery','delivered'].includes(order.status);
+    if (!paid) return '';
+    const oid = escHtmlAttr(JSON.stringify(order).replace(/'/g,"&#39;"));
+    return `
+      <div style="margin-top:0.8rem;padding-top:0.8rem;border-top:1px solid rgba(201,168,76,0.08);">
+        <button onclick='iacDownloadInvoice(${oid})'
+          style="background:none;border:1px solid rgba(201,168,76,0.3);color:#c9a84c;
+                 font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.16em;
+                 text-transform:uppercase;padding:0.45rem 1rem;cursor:pointer;display:inline-flex;
+                 align-items:center;gap:0.4rem;">
+          ⬇ Download Invoice
+        </button>
+      </div>`;
+  }
+
+  window.iacDownloadInvoice = function(order) {
+    const o     = typeof order === 'string' ? JSON.parse(order) : order;
+    const date  = new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+    const items = Array.isArray(o.cart_items) ? o.cart_items : [];
+    const subtotal = items.reduce((s, i) => s + (i.price * (i.qty || 1)), 0);
+    const total  = o.amount_paise ? o.amount_paise / 100 : subtotal;
+    const shipping = Math.max(0, Math.round(total - subtotal));
+    const orderId = o.razorpay_order_id || o.id || '—';
+
+    const payMethod = {
+      paid: 'Prepaid (Online)',
+      confirmed: 'Prepaid (Online)',
+      cod_pending: 'Cash on Delivery',
+      partial_cod_pending: 'Partial COD',
+      shipped: o.status === 'cod_pending' ? 'Cash on Delivery' : 'Prepaid (Online)',
+      out_for_delivery: 'Prepaid / COD',
+      delivered: 'Paid',
+    }[o.status] || 'Online';
+
+    const rows = items.map((i, idx) => `
+      <tr style="${idx % 2 ? 'background:#f9f7f4;' : ''}">
+        <td style="padding:10px 12px;font-size:13px;color:#2a1a08;">${escHtml(i.title || 'Book')}</td>
+        <td style="padding:10px 12px;text-align:center;font-size:13px;">${i.qty || 1}</td>
+        <td style="padding:10px 12px;text-align:right;font-size:13px;">₹${Number(i.price).toLocaleString('en-IN')}</td>
+        <td style="padding:10px 12px;text-align:right;font-size:13px;font-weight:600;">
+          ₹${(i.price * (i.qty || 1)).toLocaleString('en-IN')}
+        </td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Invoice ${orderId} — Ink &amp; Chai</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #fff; color: #2a1a08; font-size: 14px; }
+  .page { max-width: 760px; margin: 0 auto; padding: 40px 36px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; border-bottom: 2px solid #c9a84c; padding-bottom: 20px; }
+  .logo { font-family: Georgia, serif; font-size: 28px; color: #8a6a1f; font-weight: 700; letter-spacing: 0.02em; }
+  .logo span { font-weight: 300; color: #a09080; }
+  .invoice-meta { text-align: right; }
+  .invoice-meta h2 { font-size: 22px; color: #8a6a1f; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; margin-bottom: 6px; }
+  .invoice-meta p { font-size: 12px; color: #888; line-height: 1.6; }
+  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px; }
+  .party-box { background: #fdf8ef; border: 1px solid #e8d9b0; padding: 16px 18px; border-radius: 4px; }
+  .party-box h4 { font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: #8a6a1f; margin-bottom: 8px; font-weight: 600; }
+  .party-box p { font-size: 13px; line-height: 1.7; color: #2a1a08; }
+  .party-box strong { font-weight: 600; font-size: 14px; }
+  .order-info { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  .info-chip { background: #fdf8ef; border: 1px solid #e8d9b0; padding: 10px 16px; border-radius: 4px; font-size: 12px; }
+  .info-chip span { display: block; font-size: 10px; color: #8a6a1f; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+  thead th { background: #8a6a1f; color: #fff; padding: 11px 12px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; text-align: left; font-weight: 600; }
+  thead th:nth-child(2), thead th:nth-child(3), thead th:nth-child(4) { text-align: center; }
+  thead th:nth-child(3), thead th:nth-child(4) { text-align: right; }
+  tbody tr:last-child td { border-bottom: 2px solid #c9a84c; }
+  .totals { display: flex; justify-content: flex-end; margin-top: 0; }
+  .totals-box { min-width: 240px; }
+  .totals-row { display: flex; justify-content: space-between; padding: 7px 12px; font-size: 13px; border-bottom: 1px solid #f0e8d0; }
+  .totals-row.grand { background: #8a6a1f; color: #fff; font-weight: 700; font-size: 15px; padding: 10px 12px; border-radius: 0 0 4px 4px; }
+  .footer { margin-top: 36px; border-top: 1px solid #e8d9b0; padding-top: 18px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .footer-note { font-size: 11px; color: #a09080; line-height: 1.7; }
+  .thanks { font-family: Georgia, serif; font-size: 18px; color: #8a6a1f; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .no-print { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Print / Save button (hidden on print) -->
+  <div class="no-print" style="text-align:right;margin-bottom:20px;">
+    <button onclick="window.print()"
+      style="background:#8a6a1f;color:#fff;border:none;padding:10px 24px;font-size:13px;
+             letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;border-radius:3px;">
+      🖨 Print / Save as PDF
+    </button>
+  </div>
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="logo">Ink &amp; <span>Chai</span></div>
+      <p style="font-size:12px;color:#a09080;margin-top:4px;">inkandchai.in</p>
+    </div>
+    <div class="invoice-meta">
+      <h2>Tax Invoice</h2>
+      <p>${orderId}<br/>${date}</p>
+    </div>
+  </div>
+
+  <!-- Sold By / Ship To -->
+  <div class="parties">
+    <div class="party-box">
+      <h4>Sold By</h4>
+      <p>
+        <strong>Ink &amp; Chai</strong><br/>
+        211, Gali Arya Samaj Wali<br/>
+        Sitaram Bazar, Delhi – 110002<br/>
+        India<br/>
+        <span style="color:#8a6a1f;">support@inkandchai.in</span>
+      </p>
+    </div>
+    <div class="party-box">
+      <h4>Ship To</h4>
+      <p>
+        <strong>${escHtml(o.customer_name || '—')}</strong><br/>
+        ${escHtml(o.customer_address || '—')}<br/>
+        ${o.customer_phone ? `<span style="color:#555;">📞 ${escHtml(o.customer_phone)}</span>` : ''}
+      </p>
+    </div>
+  </div>
+
+  <!-- Order chips -->
+  <div class="order-info">
+    <div class="info-chip"><span>Order ID</span>${orderId}</div>
+    <div class="info-chip"><span>Order Date</span>${date}</div>
+    <div class="info-chip"><span>Payment</span>${payMethod}</div>
+    ${o.tracking_id ? `<div class="info-chip"><span>AWB / Tracking</span>${escHtml(o.tracking_id)}</div>` : ''}
+  </div>
+
+  <!-- Items table -->
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th style="text-align:center;">Qty</th>
+        <th style="text-align:right;">Unit Price</th>
+        <th style="text-align:right;">Amount</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+  <!-- Totals -->
+  <div class="totals">
+    <div class="totals-box">
+      <div class="totals-row"><span>Subtotal</span><span>₹${subtotal.toLocaleString('en-IN')}</span></div>
+      <div class="totals-row"><span>Shipping</span><span>${shipping > 0 ? '₹' + shipping.toLocaleString('en-IN') : 'FREE'}</span></div>
+      <div class="totals-row grand"><span>Total</span><span>₹${total.toLocaleString('en-IN')}</span></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-note">
+      Books are non-returnable after 7 days of delivery.<br/>
+      For support: support@inkandchai.in · +91 92171 75546<br/>
+      This is a computer-generated invoice.
+    </div>
+    <div class="thanks">Thank you! 📚☕</div>
+  </div>
+
+</div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    } else {
+      // Fallback: blob download
+      const blob = new Blob([html], { type: 'text/html' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `invoice-${orderId}.html`;
+      a.click();
+    }
+  };
 
   // ── Cancel order block (COD + prepaid within 30 min) ─────────────────────
   const PREPAID_CANCEL_WINDOW = 30 * 60 * 1000; // 30 minutes
