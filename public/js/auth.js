@@ -380,10 +380,14 @@
       <p id="iacPwMsg" style="font-size:.7rem;color:#e06060;margin-top:.75rem;min-height:1.1em;text-align:center;line-height:1.5;"></p>
 
       <p style="text-align:center;margin-top:.6rem;font-size:.66rem;color:#a09080;">
-        No password?
+        <button onclick="iacForgotPassword()" style="background:none;border:none;color:#c9a84c;cursor:pointer;
+          font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;">
+          Forgot password?
+        </button>
+        &nbsp;·&nbsp;
         <button onclick="renderOtpStep1()" style="background:none;border:none;color:#c9a84c;cursor:pointer;
-          font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;margin-left:.3rem;">
-          Sign in with OTP →
+          font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;">
+          Use OTP instead
         </button>
       </p>
     `;
@@ -444,6 +448,27 @@
           : (e.message || 'Sign in failed. Please try again.');
       }
       if (btn) { btn.disabled = false; btn.textContent = 'Sign In →'; }
+    }
+  };
+
+  window.iacForgotPassword = async function() {
+    const email = document.getElementById('iacPwEmail')?.value.trim() || '';
+    const msg   = document.getElementById('iacPwMsg');
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      if (msg) { msg.style.color='#e06060'; msg.textContent='Enter your email above first, then click Forgot password.'; }
+      return;
+    }
+    const sb = getSB();
+    if (!sb) return;
+    if (msg) { msg.style.color='#a09080'; msg.textContent='Sending reset link…'; }
+    try {
+      const { error } = await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: 'https://inkandchai.in/account/',
+      });
+      if (error) throw error;
+      if (msg) { msg.style.color='#6dbf6d'; msg.textContent='✓ Password reset link sent! Check your inbox (and spam folder).'; }
+    } catch(e) {
+      if (msg) { msg.style.color='#e06060'; msg.textContent = e.message || 'Could not send reset email. Try OTP login instead.'; }
     }
   };
 
