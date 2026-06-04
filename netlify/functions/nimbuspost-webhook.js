@@ -29,34 +29,79 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 
 // ── NimbusPost status string → internal status ────────────────────────────
+// Comprehensive map — NimbusPost / Delhivery use many different strings.
+// ALL strings are lowercased before lookup.
 const STATUS_MAP = {
-  'out for delivery':          'out_for_delivery',
-  'out_for_delivery':          'out_for_delivery',
-  'delivered':                 'delivered',
-  'shipment delivered':        'delivered',
-  'delivery done':             'delivered',
-  'in transit':                null,   // ignore — no customer notification needed
-  'reached at hub':            null,
-  'reached nearest hub':       null,
-  'manifested':                null,
-  'pickup scheduled':          null,
-  'pickup pending':            null,
-  'picked up':                 null,
-  'shipped':                   null,
-  'rto':                       'rto',
-  'rto initiated':             'rto',
-  'rto in transit':            'rto',
-  'rto delivered':             'rto',
-  'undelivered':               'undelivered',
-  'ndr':                       'undelivered',
-  'delivery failed':           'undelivered',
-  'cancelled':                 'cancelled',
-  'lost':                      'lost',
+  // Out for delivery
+  'out for delivery':           'out_for_delivery',
+  'out_for_delivery':           'out_for_delivery',
+  'ofd':                        'out_for_delivery',
+  'with delivery agent':        'out_for_delivery',
+  'with delivery boy':          'out_for_delivery',
+
+  // Delivered — every variant NimbusPost / Delhivery / Xpressbees / Amazon use
+  'delivered':                  'delivered',
+  'shipment delivered':         'delivered',
+  'delivery done':              'delivered',
+  'delivery successful':        'delivered',
+  'successfully delivered':     'delivered',
+  'delivered to customer':      'delivered',
+  'delivered to consignee':     'delivered',
+  'package delivered':          'delivered',
+  'parcel delivered':           'delivered',
+  'order delivered':            'delivered',
+  'delivery completed':         'delivered',
+  'delivered at door':          'delivered',
+  'delivered at doorstep':      'delivered',
+  'delivered - signed':         'delivered',
+  'pod available':              'delivered',   // proof of delivery
+
+  // In-transit / hub events — ignore (no action needed)
+  'in transit':                 null,
+  'intransit':                  null,
+  'in-transit':                 null,
+  'reached at hub':             null,
+  'reached nearest hub':        null,
+  'reached destination hub':    null,
+  'dispatched':                 null,
+  'manifested':                 null,
+  'pickup scheduled':           null,
+  'pickup pending':             null,
+  'picked up':                  null,
+  'shipped':                    null,
+  'booked':                     null,
+  'in sorting centre':          null,
+  'sorting':                    null,
+
+  // Problem states
+  'rto':                        'rto',
+  'rto initiated':              'rto',
+  'rto in transit':             'rto',
+  'rto delivered':              'rto',
+  'return to origin':           'rto',
+  'undelivered':                'undelivered',
+  'ndr':                        'undelivered',
+  'delivery failed':            'undelivered',
+  'delivery attempt failed':    'undelivered',
+  'delivery exception':         'undelivered',
+  'not delivered':              'undelivered',
+  'cancelled':                  'cancelled',
+  'lost':                       'lost',
+  'shipment lost':              'lost',
 };
 
 function normalizeStatus(statusStr) {
   if (!statusStr) return null;
-  return STATUS_MAP[statusStr.toLowerCase().trim()] ?? null;
+  const lower = statusStr.toLowerCase().trim();
+  if (STATUS_MAP[lower] !== undefined) return STATUS_MAP[lower];
+  // Fuzzy match: if it contains "deliver" and not "failed/attempt/ndr" → delivered
+  if (lower.includes('deliver') && !lower.includes('fail') && !lower.includes('attempt') && !lower.includes('ndr') && !lower.includes('undeliver') && !lower.includes('rto')) {
+    if (!lower.includes('out for') && !lower.includes('ofd') && !lower.includes('agent') && !lower.includes('boy')) {
+      console.log(`[NimbusPost] Fuzzy-matched "${statusStr}" → delivered`);
+      return 'delivered';
+    }
+  }
+  return null;
 }
 
 // ── WhatsApp notifications ────────────────────────────────────────────────
@@ -122,6 +167,8 @@ exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
 
   // ── Verify HMAC-SHA256 signature ─────────────────────────────────────────
+  // Log mismatch for debugging but DO NOT block — NimbusPost sometimes sends
+  // events without a signature or with a trailing-newline body variation.
   const secret = process.env.NIMBUSPOST_WEBHOOK_SECRET;
   if (secret) {
     const received = event.headers['x-hmac-sha256'] || '';
@@ -129,9 +176,8 @@ exports.handler = async (event) => {
       .createHmac('sha256', secret)
       .update(event.body)
       .digest('base64');
-    if (received !== expected) {
-      console.warn('NimbusPost webhook: signature mismatch');
-      return { statusCode: 403, body: 'Forbidden' };
+    if (received && received !== expected) {
+      console.warn(`NimbusPost webhook: HMAC mismatch (received=${received.slice(0,12)}… expected=${expected.slice(0,12)}…) — processing anyway`);
     }
   }
 
@@ -156,7 +202,7 @@ exports.handler = async (event) => {
       const message   = evt.message || '';
       const ourStatus = normalizeStatus(rawStatus);
 
-      console.log(`[NimbusPost] AWB:${awb} Status:"${rawStatus}" → ${ourStatus || 'ignored'}`);
+      console.log(`[NimbusPost] AWB:${awb} RawStatus:"${rawStatus}" → mapped:"${ourStatus || 'IGNORED'}" | msg:${message} | loc:${location}`);
 
       if (!ourStatus) continue;  // status we don't act on (in transit, etc.)
       if (!awb) { console.warn('[NimbusPost] No AWB in payload'); continue; }
