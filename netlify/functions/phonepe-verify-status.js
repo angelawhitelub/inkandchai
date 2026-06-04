@@ -19,8 +19,8 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
-
-const { sendEmail } = require('./utils/email');
+const { sendEmail }     = require('./utils/email');
+const { pushOrderToShiprocket } = require('./utils/shiprocket');
 
 let _tokenCache = { token: null, expiresAt: 0 };
 
@@ -170,6 +170,19 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
     if (error) { console.error('reconcile update error:', error); return; }
     const order = rows?.[0];
     if (!order) return;
+
+    // ── Auto-push to Shiprocket panel ─────────────────────────────────────
+    pushOrderToShiprocket({
+      inkOrderId:      order.razorpay_order_id,
+      customerName:    order.customer_name    || '',
+      customerEmail:   order.customer_email   || '',
+      customerPhone:   order.customer_phone   || '',
+      customerAddress: order.customer_address || '',
+      cartItems:       order.cart_items,
+      amountPaise:     order.amount_paise,
+      status:          update.status,
+      createdAt:       order.created_at,
+    }).catch(e => console.error('[Shiprocket] push failed (non-fatal):', e.message));
 
     // Send customer + owner confirmations (only because we just transitioned
     // — webhook will skip when it eventually arrives, dedupe works both ways)

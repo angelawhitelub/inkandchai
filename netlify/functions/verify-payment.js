@@ -7,8 +7,8 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
-
-const { sendEmail } = require('./utils/email');
+const { sendEmail }    = require('./utils/email');
+const { pushOrderToShiprocket } = require('./utils/shiprocket');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -159,6 +159,20 @@ exports.handler = async (event) => {
     });
 
     if (error) throw error;
+
+    // ── Auto-push to Shiprocket panel ─────────────────────────────────────
+    pushOrderToShiprocket({
+      inkOrderId:       inkOrderId,
+      customerName:     customer?.name    || '',
+      customerEmail:    customer?.email   || '',
+      customerPhone:    customer?.phone   || '',
+      customerAddress:  customer?.address || '',
+      cartItems:        cart,
+      amountPaise:      amount,
+      status:           isPartial ? 'partial_cod_pending' : 'paid',
+      createdAt:        new Date().toISOString(),
+    }).catch(e => console.error('[Shiprocket] push failed (non-fatal):', e.message));
+    // Non-fatal: fire & forget — don't block the response if Shiprocket is slow
 
   } catch (err) {
     console.error('Supabase save error:', err);
