@@ -250,6 +250,37 @@ tr:hover td{background:rgba(122,88,21,0.075);}
   .btn-gold,.btn-outline,.btn-green,.filter-btn{width:auto;min-height:44px;}
   th,td{padding:0.82rem 0.75rem;}
 }
+/* ── Bot Inbox ── */
+.inbox-layout{display:grid;grid-template-columns:300px 1fr;gap:1rem;height:calc(100vh - 220px);min-height:500px;}
+@media(max-width:700px){.inbox-layout{grid-template-columns:1fr;height:auto;}}
+.inbox-sidebar{border:1px solid var(--border);border-radius:6px;overflow-y:auto;background:var(--card);}
+.inbox-thread{border:1px solid var(--border);border-radius:6px;display:flex;flex-direction:column;background:var(--card);}
+.inbox-conv{padding:0.8rem 1rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
+.inbox-conv:hover,.inbox-conv.active{background:rgba(201,168,76,0.07);}
+.inbox-conv-name{font-weight:600;font-size:0.82rem;color:var(--cream);}
+.inbox-conv-preview{font-size:0.73rem;color:var(--cream-dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;}
+.inbox-conv-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;}
+.inbox-conv-time{font-size:0.65rem;color:var(--cream-dim);}
+.inbox-unread{background:#1a7fcf;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.6rem;font-weight:700;}
+.inbox-takeover-badge{background:#e07020;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.6rem;font-weight:700;margin-left:4px;}
+.inbox-resolved-badge{background:#888;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.6rem;margin-left:4px;}
+.thread-header{padding:0.8rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;}
+.thread-name{font-weight:600;font-size:0.88rem;color:var(--cream);}
+.thread-phone{font-size:0.72rem;color:var(--cream-dim);}
+.thread-actions{display:flex;gap:0.4rem;flex-wrap:wrap;}
+.thread-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.6rem;}
+.msg-bubble{max-width:72%;padding:0.55rem 0.85rem;border-radius:12px;font-size:0.83rem;line-height:1.45;word-break:break-word;}
+.msg-user{background:rgba(255,255,255,0.06);color:var(--cream);align-self:flex-start;border-bottom-left-radius:3px;}
+.msg-bot{background:rgba(201,168,76,0.12);color:var(--cream);align-self:flex-end;border-bottom-right-radius:3px;}
+.msg-admin{background:#1a7fcf22;color:#7cc0f0;align-self:flex-end;border-bottom-right-radius:3px;border:1px solid #1a7fcf44;}
+.msg-time{font-size:0.6rem;color:var(--cream-dim);margin-top:2px;text-align:right;}
+.thread-input-row{padding:0.75rem 1rem;border-top:1px solid var(--border);display:flex;gap:0.5rem;}
+.thread-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.9rem;border-radius:6px;font-size:0.83rem;font-family:inherit;resize:none;}
+.thread-input:focus{outline:none;border-color:var(--gold-dim);}
+.inbox-empty{display:flex;align-items:center;justify-content:center;flex:1;color:var(--cream-dim);font-size:0.83rem;}
+.inbox-filter-row{display:flex;gap:0.4rem;padding:0.6rem 0.8rem;border-bottom:1px solid var(--border);}
+.inbox-filter-btn{font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.3rem 0.7rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;border-radius:3px;font-family:'Montserrat',sans-serif;}
+.inbox-filter-btn.active{border-color:var(--gold-dim);color:var(--gold);background:rgba(201,168,76,0.07);}
 </style>
 </head>
 <body>
@@ -729,39 +760,6 @@ tr:hover td{background:rgba(122,88,21,0.075);}
 
   <!-- ═══ BOT INBOX TAB ═══ -->
   <div class="admin-section" id="tab-botinbox">
-  <style>
-    .inbox-layout{display:grid;grid-template-columns:300px 1fr;gap:1rem;height:calc(100vh - 220px);min-height:500px;}
-    @media(max-width:700px){.inbox-layout{grid-template-columns:1fr;height:auto;}}
-    .inbox-sidebar{border:1px solid var(--border);border-radius:6px;overflow-y:auto;background:var(--card);}
-    .inbox-thread{border:1px solid var(--border);border-radius:6px;display:flex;flex-direction:column;background:var(--card);}
-    .inbox-conv{padding:0.8rem 1rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
-    .inbox-conv:hover,.inbox-conv.active{background:rgba(201,168,76,0.07);}
-    .inbox-conv-name{font-weight:600;font-size:0.82rem;color:var(--cream);}
-    .inbox-conv-preview{font-size:0.73rem;color:var(--cream-dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;}
-    .inbox-conv-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;}
-    .inbox-conv-time{font-size:0.65rem;color:var(--cream-dim);}
-    .inbox-unread{background:#1a7fcf;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.6rem;font-weight:700;}
-    .inbox-takeover-badge{background:#e07020;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.6rem;font-weight:700;margin-left:4px;}
-    .inbox-resolved-badge{background:#888;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.6rem;margin-left:4px;}
-    .thread-header{padding:0.8rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;}
-    .thread-name{font-weight:600;font-size:0.88rem;color:var(--cream);}
-    .thread-phone{font-size:0.72rem;color:var(--cream-dim);}
-    .thread-actions{display:flex;gap:0.4rem;flex-wrap:wrap;}
-    .thread-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.6rem;}
-    .msg-bubble{max-width:72%;padding:0.55rem 0.85rem;border-radius:12px;font-size:0.83rem;line-height:1.45;word-break:break-word;}
-    .msg-user{background:rgba(255,255,255,0.06);color:var(--cream);align-self:flex-start;border-bottom-left-radius:3px;}
-    .msg-bot{background:rgba(201,168,76,0.12);color:var(--cream);align-self:flex-end;border-bottom-right-radius:3px;}
-    .msg-admin{background:#1a7fcf22;color:#7cc0f0;align-self:flex-end;border-bottom-right-radius:3px;border:1px solid #1a7fcf44;}
-    .msg-time{font-size:0.6rem;color:var(--cream-dim);margin-top:2px;text-align:right;}
-    .thread-input-row{padding:0.75rem 1rem;border-top:1px solid var(--border);display:flex;gap:0.5rem;}
-    .thread-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.9rem;border-radius:6px;font-size:0.83rem;font-family:inherit;resize:none;}
-    .thread-input:focus{outline:none;border-color:var(--gold-dim);}
-    .inbox-empty{display:flex;align-items:center;justify-content:center;flex:1;color:var(--cream-dim);font-size:0.83rem;}
-    .inbox-filter-row{display:flex;gap:0.4rem;padding:0.6rem 0.8rem;border-bottom:1px solid var(--border);}
-    .inbox-filter-btn{font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.3rem 0.7rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;border-radius:3px;font-family:'Montserrat',sans-serif;}
-    .inbox-filter-btn.active{border-color:var(--gold-dim);color:var(--gold);background:rgba(201,168,76,0.07);}
-  </style>
-
   <section class="abandoned-panel">
     <div class="abandoned-head">
       <div>
@@ -788,7 +786,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       <!-- Thread panel -->
       <div class="inbox-thread" id="inboxThreadPanel">
         <div class="inbox-empty" id="inboxEmptyState">Select a conversation to view it</div>
-        <div id="inboxThreadContent" style="display:none;flex:1;display:none;flex-direction:column;overflow:hidden;">
+        <div id="inboxThreadContent" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
           <div class="thread-header">
             <div>
               <div class="thread-name" id="threadName">—</div>
