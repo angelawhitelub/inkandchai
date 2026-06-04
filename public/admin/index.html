@@ -301,6 +301,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="botinbox"  onclick="switchTab('botinbox')">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab" data-tab="recover"   onclick="switchTab('recover')">⚡ Recover Payment</button>
   </nav>
 
   <!-- ═══ ORDERS TAB ═══ -->
@@ -700,6 +701,31 @@ tr:hover td{background:rgba(122,88,21,0.075);}
   </section>
 
   </div><!-- /tab-returns -->
+
+  <!-- ═══ RECOVER PAYMENT TAB ═══ -->
+  <div class="admin-section" id="tab-recover">
+  <section class="abandoned-panel">
+    <div class="abandoned-head">
+      <div>
+        <h2>⚡ Recover Missed Payment</h2>
+        <p>Customer paid but order not created (browser closed mid-UPI, processing timeout). Enter the Razorpay Payment ID or Order ID to check and recover.</p>
+      </div>
+    </div>
+    <div style="max-width:520px;">
+      <div class="form-row" style="margin-bottom:1rem;">
+        <label>Razorpay Payment ID <span style="color:#a09080;font-size:.6rem;">(pay_XXXXX from Razorpay dashboard)</span></label>
+        <input id="recoverPaymentId" placeholder="pay_XXXXXXXXXXXXX" style="font-family:monospace;"/>
+      </div>
+      <div style="color:#a09080;font-size:.65rem;margin-bottom:.6rem;text-align:center;">— OR —</div>
+      <div class="form-row" style="margin-bottom:1.2rem;">
+        <label>Razorpay Order ID <span style="color:#a09080;font-size:.6rem;">(order_XXXXX from Razorpay dashboard)</span></label>
+        <input id="recoverOrderId" placeholder="order_XXXXXXXXXXXXX" style="font-family:monospace;"/>
+      </div>
+      <button class="btn-gold" onclick="recoverPayment()">🔍 Check &amp; Recover Order</button>
+      <div id="recoverResult" style="margin-top:1.2rem;font-size:.78rem;line-height:1.7;"></div>
+    </div>
+  </section>
+  </div><!-- /tab-recover -->
 
   <!-- ═══ BOT INBOX TAB ═══ -->
   <div class="admin-section" id="tab-botinbox">
@@ -2748,6 +2774,51 @@ async function rejectReturn(returnId, btn) {
   } catch (e) {
     alert('Error: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = '✗ Reject'; }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RECOVER PAYMENT
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function recoverPayment() {
+  const payId  = document.getElementById('recoverPaymentId')?.value.trim();
+  const ordId  = document.getElementById('recoverOrderId')?.value.trim();
+  const result = document.getElementById('recoverResult');
+  if (!payId && !ordId) { result.innerHTML = '<span style="color:#e06060;">Enter a Payment ID or Order ID first.</span>'; return; }
+
+  result.innerHTML = '<span style="color:#a09080;">Checking Razorpay… please wait.</span>';
+
+  try {
+    const res  = await fetch('/.netlify/functions/razorpay-reconcile', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        razorpay_payment_id: payId || undefined,
+        razorpay_order_id:   ordId || undefined,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+    if (data.already_exists) {
+      result.innerHTML = `<span style="color:#6dbf6d;">✓ Already in system</span><br/>
+        Our Order ID: <strong>${data.our_order_id}</strong><br/>
+        Status: <strong>${data.our_status}</strong><br/>
+        Razorpay: <strong>${data.razorpay_status}</strong>`;
+    } else if (data.created) {
+      result.innerHTML = `<span style="color:#6dbf6d;font-size:.85rem;">✅ Order Recovered!</span><br/>
+        New Order ID: <strong>${data.our_order_id}</strong><br/>
+        Amount: <strong>${data.amount_paise ? '₹'+(data.amount_paise/100).toLocaleString('en-IN') : '—'}</strong><br/>
+        Customer: <strong>${data.customer_phone}</strong><br/>
+        WhatsApp confirmation sent to customer.`;
+      fetchOrders(true);
+    } else {
+      result.innerHTML = `<span style="color:#e8a030;">${data.message || 'Could not recover.'}</span><br/>
+        Razorpay status: <strong>${data.razorpay_status || '—'}</strong>`;
+    }
+  } catch(e) {
+    result.innerHTML = `<span style="color:#e06060;">Error: ${e.message}</span>`;
   }
 }
 

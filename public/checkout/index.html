@@ -865,7 +865,27 @@ async function doRazorpay(addr, paymentMode = 'online') {
     };
 
     const rzp = new Razorpay(options);
-    rzp.on('payment.failed', r => { alert('Payment failed: ' + r.error.description); setLoading(false); });
+    rzp.on('payment.failed', async function(r) {
+      const reason = (r.error?.reason || '').toLowerCase();
+      const desc   = r.error?.description || 'Payment could not be processed.';
+      const rzpOrderId = r.error?.metadata?.order_id || order.id;
+
+      // UPI processing / bank timeout — money may have been deducted.
+      // Poll verify-payment-status for 10 minutes.
+      if (reason === 'payment_pending' || reason === 'processing' ||
+          desc.toLowerCase().includes('process') || desc.toLowerCase().includes('pending') ||
+          desc.toLowerCase().includes('timeout') || desc.toLowerCase().includes('deducted')) {
+        showPaymentProcessing(rzpOrderId, cart, addr, amtPaise,
+          isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
+          isPartial ? partial.shipping : totals.shipping,
+          isPartial ? '' : totals.couponCode,
+          isPartial ? 0 : totals.discount,
+          isPartial ? 'partial_cod' : 'online');
+      } else {
+        alert('Payment failed: ' + desc);
+        setLoading(false);
+      }
+    });
     rzp.open();
 
   } catch(e) {
@@ -1122,6 +1142,117 @@ renderSummary();
     }
   } catch(e) {}
 })();
+
+// ── Payment processing — poll for 10 minutes ─────────────────────────────
+// Called when Razorpay fires payment.failed with reason "processing/pending".
+// UPI payments can show bank debit before Razorpay confirms — we wait and check.
+async function showPaymentProcessing(rzpOrderId, cart, addr, amtPaise, cartData, shipping, coupon, discount, mode) {
+  const s = document.getElementById('successScreen');
+  if (s) {
+    s.style.display = 'block';
+    s.innerHTML = `
+      <div style="text-align:center;padding:3rem 1rem;max-width:480px;margin:0 auto;">
+        <div style="font-size:2.5rem;margin-bottom:1rem;animation:spin 2s linear infinite;display:inline-block;">⏳</div>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;margin-bottom:.6rem;">Verifying Payment…</h2>
+        <p style="color:#a09080;font-size:.78rem;line-height:1.8;margin-bottom:1.4rem;">
+          Your bank may have processed the payment. We're checking with Razorpay.<br/>
+          <strong style="color:#f0e8d8;">Please do not close this page.</strong>
+        </p>
+        <div id="pollStatus" style="font-size:.72rem;color:#c9a84c;margin-bottom:1rem;">Checking… (will retry for 10 minutes)</div>
+        <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.15);padding:1rem;margin-top:1rem;font-size:.68rem;color:#a09080;line-height:1.7;">
+          If your bank shows a debit but this page doesn't confirm,<br/>
+          your money will be <strong style="color:#f0e8d8;">automatically refunded within 5–7 business days</strong>.<br/>
+          You can also WhatsApp us at <strong style="color:#c9a84c;">+91 92171 75546</strong> with your payment screenshot.
+        </div>
+      </div>`;
+  }
+
+  // Hide the form
+  document.getElementById('checkoutForm')?.style.setProperty('display','none');
+  document.querySelectorAll('.section-card').forEach(el => el.style.display = 'none');
+
+  // Poll every 30 seconds for 10 minutes (20 attempts)
+  const MAX_ATTEMPTS = 20;
+  const INTERVAL_MS  = 30_000;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    await new Promise(r => setTimeout(r, INTERVAL_MS));
+
+    const statusEl = document.getElementById('pollStatus');
+    if (statusEl) statusEl.textContent = `Checking… attempt ${attempt}/${MAX_ATTEMPTS}`;
+
+    try {
+      const res  = await fetch('/.netlify/functions/razorpay-check-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ razorpay_order_id: rzpOrderId }),
+      });
+      const data = await res.json();
+
+      if (data.payment_captured && data.razorpay_payment_id) {
+        // Payment found! Verify and save the order
+        if (statusEl) statusEl.textContent = '✓ Payment found! Confirming order…';
+        try {
+          const vRes = await fetch('/.netlify/functions/verify-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              razorpay_order_id:   rzpOrderId,
+              razorpay_payment_id: data.razorpay_payment_id,
+              razorpay_signature:  data.razorpay_signature || '',
+              cart: cartData,
+              customer: addr,
+              amount: amtPaise,
+              shipping, coupon, discount,
+              payment_mode: mode,
+              skip_signature_check: true,  // webhook already verified this
+            }),
+          });
+          if (vRes.ok) {
+            clearCart();
+            saveAddressAfterOrder(addr);
+            showSuccess('paid', data.razorpay_payment_id, addr);
+            return;
+          }
+        } catch(e) {
+          console.error('verify after poll:', e.message);
+        }
+      }
+
+      if (data.payment_failed) {
+        // Definitively failed — no recovery
+        if (s) s.innerHTML = `
+          <div style="text-align:center;padding:3rem 1rem;">
+            <div style="font-size:2rem;margin-bottom:1rem;">✕</div>
+            <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;color:#e06060;">Payment Failed</h2>
+            <p style="color:#a09080;font-size:.75rem;line-height:1.8;">Your payment was not captured. If your bank shows a debit, it will be automatically refunded within 5–7 business days.</p>
+            <a href="/checkout/" style="display:inline-block;margin-top:1.5rem;background:#c9a84c;color:#0d0b08;padding:.8rem 2rem;font-size:.65rem;letter-spacing:.2em;text-transform:uppercase;text-decoration:none;">Try Again →</a>
+          </div>`;
+        return;
+      }
+    } catch(e) {
+      console.warn(`Poll attempt ${attempt} error:`, e.message);
+    }
+  }
+
+  // Timeout — 10 minutes elapsed, still no confirmation
+  if (s) s.innerHTML = `
+    <div style="text-align:center;padding:3rem 1rem;max-width:480px;margin:0 auto;">
+      <div style="font-size:2rem;margin-bottom:1rem;">⚠️</div>
+      <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:300;">Payment Status Unknown</h2>
+      <p style="color:#a09080;font-size:.75rem;line-height:1.8;margin-bottom:1rem;">
+        We couldn't confirm your payment after 10 minutes. This can happen with slow UPI bank processing.
+      </p>
+      <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.15);padding:1rem;font-size:.7rem;color:#a09080;line-height:1.8;text-align:left;">
+        <strong style="color:#f0e8d8;">What to do:</strong><br/>
+        1. Check your bank/UPI app — if <strong>no debit</strong>, try placing the order again.<br/>
+        2. If <strong>money was deducted</strong>, WhatsApp us 👉 <a href="https://wa.me/919217175546" style="color:#c9a84c;">+91 92171 75546</a><br/>
+        &nbsp;&nbsp;&nbsp;with a screenshot of your payment — we'll confirm your order manually.<br/>
+        3. Or email: <a href="mailto:support@inkandchai.in" style="color:#c9a84c;">support@inkandchai.in</a>
+      </div>
+      <a href="/" style="display:inline-block;margin-top:1.5rem;background:transparent;border:1px solid rgba(201,168,76,0.35);color:#c9a84c;padding:.7rem 1.8rem;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;text-decoration:none;">← Back to Store</a>
+    </div>`;
+}
 </script>
 </body>
 </html>
