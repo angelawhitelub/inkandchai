@@ -2540,7 +2540,7 @@ setInterval(updateAutoRecheckBadge, 30_000);
 document.getElementById('adminPass').focus();
 
 // ── Tab navigation ──────────────────────────────────────────────────────────
-const TABS = ['orders','create','products','abandoned','reviews','returns'];
+const TABS = ['orders','create','products','abandoned','reviews','returns','botinbox','recover'];
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
