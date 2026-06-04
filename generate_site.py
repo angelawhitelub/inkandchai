@@ -1,6 +1,6 @@
 """
-Generates akshar_co.html — the Akshar & Co. homepage with real book data
-embedded from the 99bookstores scrape at ~/InkAndChaiBooks/ALL_BOOKS.json.
+Generates the Ink & Chai homepage with real book data
+from ALL_BOOKS.json.
 """
 
 import hashlib, json, re
