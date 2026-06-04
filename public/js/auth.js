@@ -51,7 +51,7 @@
       const cached = JSON.parse(sessionStorage.getItem(PROFILE_CACHE_KEY) || 'null');
       if (cached && cached.id === currentUser.id) {
         currentProfile = cached;
-        window.IACAuth?.prefillCheckout?.();  // fill checkout immediately
+        window.IAC?.prefillCheckout?.();  // fill checkout immediately from cache
       }
     } catch(e) {}
 
@@ -60,6 +60,7 @@
     if (data) {
       currentProfile = data;
       try { sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data)); } catch(e) {}
+      window.IAC?.prefillCheckout?.();  // fill checkout with fresh data
       return;
     }
 
@@ -550,7 +551,7 @@
   // OTP box keyboard handling — auto-advance, backspace, paste
   window.iacOtpInput = function(el, idx) {
     el.value = el.value.replace(/\D/g, '').slice(-1);
-    if (el.value && idx < 5) document.getElementById('iacOtp' + (idx + 1))?.focus();
+    if (el.value && idx < 7) document.getElementById('iacOtp' + (idx + 1))?.focus();
     // Auto-verify when all 6 filled
     const code = [0,1,2,3,4,5,6,7].map(i => document.getElementById('iacOtp'+i)?.value||'').join('');
     if (code.length === 8) iacVerifyOtp();
@@ -564,7 +565,7 @@
     if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       navigator.clipboard?.readText().then(text => {
-        const digits = text.replace(/\D/g,'').slice(0,6);
+        const digits = text.replace(/\D/g,'').slice(0,8);
         digits.split('').forEach((d,i) => {
           const box = document.getElementById('iacOtp'+i);
           if (box) box.value = d;
@@ -783,10 +784,13 @@
       display:flex;align-items:flex-start;justify-content:center;z-index:10010;overflow-y:auto;
       padding:4rem 1rem;
     `;
-    const email = currentUser?.email || '';
-    const name  = currentProfile?.name  || '';
-    const phone = currentProfile?.phone || '';
-    const addr  = currentProfile?.address || '';
+    const email   = currentUser?.email || '';
+    const name    = currentProfile?.name    || '';
+    const phone   = currentProfile?.phone   || '';
+    const addr    = currentProfile?.address || '';
+    const pincode = currentProfile?.pincode || '';
+    const city    = currentProfile?.city    || '';
+    const state   = currentProfile?.state   || '';
 
     modal.innerHTML = `
       <div style="
@@ -820,7 +824,16 @@
             ${acctField('acct-phone',   'tel',   'Phone Number',      phone)}
             ${acctField('acct-email',   'email', 'Email',             email, true)}
             <div style="grid-column:span 2">
-              ${acctField('acct-address','text',  'Default Address',   addr)}
+              ${acctField('acct-address','text',  'House / Street / Locality', addr)}
+            </div>
+            <div>
+              ${acctField('acct-pin',  'text', 'Pincode', pincode)}
+            </div>
+            <div>
+              ${acctField('acct-city', 'text', 'City',    city)}
+            </div>
+            <div style="grid-column:span 2">
+              ${acctField('acct-state','text', 'State',   state)}
             </div>
           </div>
           <button onclick="iacSaveProfile()"
@@ -897,17 +910,23 @@
     const name    = document.getElementById('acct-name')?.value.trim()    || '';
     const phone   = document.getElementById('acct-phone')?.value.trim()   || '';
     const address = document.getElementById('acct-address')?.value.trim() || '';
+    const pincode = document.getElementById('acct-pin')?.value.trim()     || '';
+    const city    = document.getElementById('acct-city')?.value.trim()    || '';
+    const state   = document.getElementById('acct-state')?.value.trim()   || '';
     const msg     = document.getElementById('acct-profile-msg');
 
     const { error } = await sb.from('profiles').upsert({
-      id: currentUser.id, name, phone, address, updated_at: new Date().toISOString(),
+      id: currentUser.id, name, phone, address, pincode, city, state,
+      updated_at: new Date().toISOString(),
     });
 
     if (error) {
       msg.style.color = '#e06060';
       msg.textContent = 'Could not save: ' + error.message;
     } else {
-      currentProfile = { ...currentProfile, name, phone, address };
+      currentProfile = { ...currentProfile, name, phone, address, pincode, city, state };
+      // Update checkout autofill immediately after save
+      window.IAC?.prefillCheckout?.();
       msg.style.color = '#6dbf6d';
       msg.textContent = '✓ Details saved!';
       updateNav();

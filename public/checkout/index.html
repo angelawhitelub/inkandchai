@@ -184,6 +184,18 @@ gtag('config', 'AW-18119332653');
       position: 'BOTTOM_RIGHT',
       region: 'IN',
     });
+    // Raise the badge above mobile bottom bar after it renders
+    setTimeout(function raiseBadge(){
+      var found = false;
+      document.querySelectorAll('body > div').forEach(function(el){
+        var s = el.style;
+        if(s.position==='fixed' && (s.right==='20px'||s.right==='16px'||s.right==='0px')){
+          s.bottom = '80px';
+          found = true;
+        }
+      });
+      if(!found) setTimeout(raiseBadge, 500);
+    }, 800);
   }
   var s = document.getElementById('merchantWidgetScript');
   if(s) s.addEventListener('load', initMerchantBadge);
@@ -1205,7 +1217,7 @@ async function showPaymentProcessing(rzpOrderId, cart, addr, amtPaise, cartData,
               amount: amtPaise,
               shipping, coupon, discount,
               payment_mode: mode,
-              skip_signature_check: true,  // webhook already verified this
+              skip_signature_check: true,
             }),
           });
           if (vRes.ok) {
@@ -1220,7 +1232,6 @@ async function showPaymentProcessing(rzpOrderId, cart, addr, amtPaise, cartData,
       }
 
       if (data.payment_failed) {
-        // Definitively failed — no recovery
         if (s) s.innerHTML = `
           <div style="text-align:center;padding:3rem 1rem;">
             <div style="font-size:2rem;margin-bottom:1rem;">✕</div>
