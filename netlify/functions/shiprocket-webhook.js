@@ -2,22 +2,25 @@
  * Netlify Function: shiprocket-webhook
  * POST /.netlify/functions/shiprocket-webhook
  *
- * Receives real-time shipment status updates from Shiprocket.
- * Shiprocket pulls status from Delhivery/other couriers and pushes here.
+ * Receives real-time shipment status updates from Shiprocket and:
+ *   1. Updates the order status in Supabase
+ *   2. Sends WhatsApp notification to the customer
+ *   3. Notifies store owner on NDR / delivery failure
  *
- * Setup (one-time in Shiprocket Dashboard):
- *   Settings → Webhooks → Add Webhook
+ * One-time Shiprocket setup:
+ *   Dashboard → Settings → Webhooks → Add Webhook
  *   URL: https://inkandchai.in/.netlify/functions/shiprocket-webhook
- *   Events: Shipment status updates
+ *   Events: All shipment status events
  *
- * Optional: set SHIPROCKET_WEBHOOK_SECRET env var and Shiprocket will
- * send it as X-Shiprocket-Token header for verification.
+ * Optional env var:
+ *   SHIPROCKET_WEBHOOK_SECRET — if set, Shiprocket must send it as X-Shiprocket-Token
  *
- * Status flow triggered:
- *   Shipped          → already handled by admin panel
- *   Out for Delivery → updates DB + sends WhatsApp OFD notification
- *   Delivered        → updates DB + sends WhatsApp delivery confirmation + review link
- *   NDR / Failed     → updates DB + notifies store owner
+ * Status flow:
+ *   AWB Assigned / Pickup Scheduled → save AWB to DB (no notification yet)
+ *   Shipped / In Transit            → status=shipped, WhatsApp "shipped" message with tracking
+ *   Out for Delivery                → status=out_for_delivery, WhatsApp OFD message
+ *   Delivered                       → status=delivered, WhatsApp delivery + review link
+ *   NDR / Undelivered / RTO         → status=undelivered/rto, WhatsApp owner alert
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -29,67 +32,157 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-// ── Shiprocket status code → our internal status ──────────────────────────
-// https://apidocs.shiprocket.in/#tag/Tracking/operation/ShipmentTrackingV2
+// ── Status string → our internal status ──────────────────────────────────────
+// Shiprocket sends inconsistent strings; normalise aggressively.
 const STATUS_MAP = {
-  // Shiprocket status strings (normalized to lowercase)
-  'out for delivery':     'out_for_delivery',
-  'out_for_delivery':     'out_for_delivery',
-  'delivered':            'delivered',
-  'shipment delivered':   'delivered',
-  'undelivered':          'undelivered',
-  'ndr':                  'undelivered',
-  'rto initiated':        'rto',
-  'rto delivered':        'rto',
-  'lost':                 'lost',
-  'cancelled':            'cancelled',
+  // Shipped / In transit
+  'shipped':                    'shipped',
+  'in transit':                 'shipped',
+  'intransit':                  'shipped',
+  'in_transit':                 'shipped',
+  'dispatched':                 'shipped',
+  'picked up':                  'shipped',
+  'picked_up':                  'shipped',
+  'out of delivery area':       'shipped',
+
+  // Out for delivery
+  'out for delivery':           'out_for_delivery',
+  'out_for_delivery':           'out_for_delivery',
+  'ofd':                        'out_for_delivery',
+
+  // Delivered
+  'delivered':                  'delivered',
+  'shipment delivered':         'delivered',
+  'delivery confirmed':         'delivered',
+  'pod available':              'delivered',
+  'delivery successful':        'delivered',
+  'successfully delivered':     'delivered',
+
+  // NDR / failed
+  'ndr':                        'undelivered',
+  'undelivered':                'undelivered',
+  'delivery failed':            'undelivered',
+  'delivery attempt failed':    'undelivered',
+  'not delivered':              'undelivered',
+  'delivery exception':         'undelivered',
+
+  // RTO
+  'rto initiated':              'rto',
+  'rto delivered':              'rto',
+  'return to origin':           'rto',
+  'rto':                        'rto',
+
+  // Terminal
+  'lost':                       'lost',
+  'cancelled':                  'cancelled',
+  'shipment cancelled':         'cancelled',
 };
 
-// Status codes (numeric) from Shiprocket
+// Shiprocket numeric status codes (more reliable than strings)
 const STATUS_CODE_MAP = {
-  6:  'shipped',
-  7:  'delivered',
-  18: 'out_for_delivery',
+  4:  'awb_assigned',    // Pickup scheduled — save AWB, no status change
+  5:  'awb_assigned',    // Out for pickup
+  6:  'shipped',         // Shipped
+  7:  'delivered',       // Delivered
+  8:  'shipped',         // In transit
   9:  'cancelled',
-  13: 'undelivered',  // NDR
+  13: 'undelivered',     // NDR
+  14: 'lost',
+  15: 'out_for_delivery',
+  17: 'out_for_delivery',
+  18: 'out_for_delivery',
+  19: 'undelivered',
   22: 'rto',
 };
 
 function normalizeStatus(statusStr, statusCode) {
+  // Try string map first (more descriptive)
   if (statusStr) {
-    const mapped = STATUS_MAP[statusStr.toLowerCase().trim()];
+    const key = statusStr.toLowerCase().trim();
+    const mapped = STATUS_MAP[key];
     if (mapped) return mapped;
+
+    // Fuzzy: "in transit" variants
+    if (/\bin.transit\b|\bshipped\b|\bin.shipment\b/.test(key) &&
+        !/rto|return|cancel|fail|ndr/.test(key)) return 'shipped';
+
+    // Fuzzy: "out for delivery"
+    if (/out.for.delivery|ofd/.test(key)) return 'out_for_delivery';
+
+    // Fuzzy: "delivered"
+    if (/\bdelivered\b|\bpod\b/.test(key) &&
+        !/not|fail|attempt|ndr|undeliver|rto|out.for/.test(key)) return 'delivered';
   }
+
+  // Fall back to code
   if (statusCode !== undefined && statusCode !== null) {
     const mapped = STATUS_CODE_MAP[parseInt(statusCode)];
     if (mapped) return mapped;
   }
+
   return null;
 }
 
-// ── WhatsApp message builders ─────────────────────────────────────────────
+// ── Build Shiprocket tracking URL ─────────────────────────────────────────────
+function buildTrackingUrl(awb, courierName) {
+  if (!awb) return '';
+  const courier = (courierName || '').toLowerCase();
+  // Common courier tracking pages
+  if (courier.includes('delhivery'))     return `https://www.delhivery.com/track/package/${awb}`;
+  if (courier.includes('xpressbees'))    return `https://www.xpressbees.com/shipment/tracking?awb=${awb}`;
+  if (courier.includes('bluedart'))      return `https://www.bluedart.com/tracking?tracknos=${awb}`;
+  if (courier.includes('ecom'))          return `https://ecomexpress.in/tracking/?awb_field=${awb}`;
+  if (courier.includes('shadowfax'))     return `https://tracker.shadowfax.in/?awb=${awb}`;
+  if (courier.includes('dtdc'))          return `https://www.dtdc.in/tracking.asp?txType=consignmentnumber&strConsNo=${awb}`;
+  if (courier.includes('ekart'))         return `https://ekartlogistics.com/shipmenttrack/${awb}`;
+  // Fallback: Shiprocket's own tracking page
+  return `https://shiprocket.co/tracking/${awb}`;
+}
+
+// ── WhatsApp notifications ────────────────────────────────────────────────────
+async function sendShippedNotification(order) {
+  if (!order.customer_phone) return;
+  const firstName = (order.customer_name || 'there').split(' ')[0];
+  const trackUrl  = order.tracking_url ||
+    `https://inkandchai.in/track/?id=${encodeURIComponent(order.razorpay_order_id || order.id)}`;
+  const awb       = order.tracking_id || '';
+  const courier   = order.courier_name || '';
+  const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const bookTitle = items[0]?.title || 'your books';
+
+  // Template: order_shipped
+  // Body: "Hi {{1}}! 📦 Your Ink & Chai order has been shipped!\nBook: {{2}}\nCourier: {{3}} | AWB: {{4}}\nTrack here: {{5}}"
+  await sendWhatsApp({
+    to: order.customer_phone,
+    template: 'order_shipped',
+    params: [firstName, bookTitle, courier || 'courier', awb || '—', trackUrl],
+  }).catch(e => console.error('[ShiprocketWebhook] WhatsApp shipped error:', e.message));
+}
+
 async function sendOFDNotification(order) {
   if (!order.customer_phone) return;
   const firstName = (order.customer_name || 'there').split(' ')[0];
-  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
   const bookTitle = items[0]?.title || 'your book';
-  const isCOD = !order.razorpay_payment_id || order.status === 'cod_pending';
-  const total = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '';
+  const isCOD     = ['cod_pending', 'partial_cod_pending'].includes(order.status) ||
+                    !order.razorpay_payment_id;
+  const total     = order.amount_paise
+    ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}`
+    : '';
+  const trackUrl  = order.tracking_url ||
+    `https://inkandchai.in/track/?id=${encodeURIComponent(order.razorpay_order_id || order.id)}`;
 
-  // WhatsApp template: order_out_for_delivery
-  // Template body: "Hi {{1}}! 🚚 Your order is out for delivery today. {{2}} Keep {{3}} ready. Track: {{4}}"
-  const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(order.razorpay_order_id || order.id)}`;
-
+  // Template: order_out_for_delivery
   await sendWhatsApp({
     to: order.customer_phone,
     template: 'order_out_for_delivery',
     params: [
       firstName,
       bookTitle,
-      isCOD ? `₹${total} cash ready for delivery` : 'all set — enjoy your books!',
+      isCOD ? `${total} cash ready` : 'all set — enjoy your books!',
       trackUrl,
     ],
-  });
+  }).catch(e => console.error('[ShiprocketWebhook] WhatsApp OFD error:', e.message));
 }
 
 async function sendDeliveredNotification(order) {
@@ -97,56 +190,56 @@ async function sendDeliveredNotification(order) {
   const firstName = (order.customer_name || 'there').split(' ')[0];
   const reviewUrl = `https://inkandchai.in/review/?order=${encodeURIComponent(order.razorpay_order_id || order.id)}`;
 
-  // WhatsApp template: order_delivered
-  // Template body: "Hi {{1}}! 📚 Your Ink & Chai order has been delivered. Hope you love it! Leave a quick review: {{2}}"
+  // Template: order_delivered
   await sendWhatsApp({
     to: order.customer_phone,
     template: 'order_delivered',
     params: [firstName, reviewUrl],
-  });
+  }).catch(e => console.error('[ShiprocketWebhook] WhatsApp delivered error:', e.message));
 }
 
 async function notifyOwnerNDR(order, rawStatus) {
   const ownerPhone = process.env.STORE_OWNER_PHONE;
   if (!ownerPhone) return;
   const orderId = order.razorpay_order_id || order.id;
-  const msg = `⚠️ Delivery issue\nOrder: ${orderId}\nCustomer: ${order.customer_name} · ${order.customer_phone}\nAWB: ${order.tracking_id || '—'}\nStatus: ${rawStatus}`;
-  // Send plain WhatsApp text to owner (not template)
-  const phone = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
-  const token = process.env.WHATSAPP_TOKEN;
-  if (!token) return;
+  const msg = `⚠️ Delivery issue on inkandchai.in\n\nOrder: ${orderId}\nCustomer: ${order.customer_name || '—'} · ${order.customer_phone || '—'}\nAWB: ${order.tracking_id || '—'}\nCourier: ${order.courier_name || '—'}\nStatus: ${rawStatus}\n\nCheck admin panel to reattempt delivery.`;
+
+  const phone = process.env.WHATSAPP_PHONE_ID || '';
+  const token = process.env.WHATSAPP_TOKEN || '';
+  if (!token || !phone) return;
+
   await fetch(`https://graph.facebook.com/v20.0/${phone}/messages`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messaging_product: 'whatsapp',
-      to: ownerPhone.replace(/\D/g,'').replace(/^0/,'91').replace(/^(\d{10})$/,'91$1'),
+      to: ownerPhone.replace(/\D/g,'').replace(/^(\d{10})$/, '91$1'),
       type: 'text',
       text: { body: msg },
     }),
-  }).catch(e => console.error('notifyOwnerNDR error:', e.message));
+  }).catch(e => console.error('[ShiprocketWebhook] notifyOwnerNDR error:', e.message));
 }
 
-// ── Main handler ──────────────────────────────────────────────────────────
+// ── Main handler ──────────────────────────────────────────────────────────────
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
-  if (event.httpMethod !== 'POST') return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
+  if (event.httpMethod !== 'POST')    return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
 
   // Optional token verification
   const secret = process.env.SHIPROCKET_WEBHOOK_SECRET;
   if (secret) {
-    const receivedToken = event.headers['x-shiprocket-token'] || event.headers['authorization'] || '';
-    if (!receivedToken.includes(secret)) {
-      console.warn('Shiprocket webhook: invalid token');
+    const received = event.headers['x-shiprocket-token'] || event.headers['authorization'] || '';
+    if (!received.includes(secret)) {
+      console.warn('[ShiprocketWebhook] Invalid token — blocked');
       return { statusCode: 403, body: 'Forbidden' };
     }
   }
 
   let payload;
-  try { payload = JSON.parse(event.body); }
+  try { payload = JSON.parse(event.body || '{}'); }
   catch { return { statusCode: 400, body: 'Bad JSON' }; }
 
-  // Shiprocket sends either a single object or an array
+  // Shiprocket sends either a single object or an array of events
   const events = Array.isArray(payload) ? payload : [payload];
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
@@ -155,21 +248,22 @@ exports.handler = async (event) => {
 
   for (const evt of events) {
     try {
-      // Shiprocket field names (vary slightly by webhook version)
-      const awb            = evt.awb || evt.awb_code || evt.tracking_id || '';
-      const channelOrderId = evt.channel_order_id || evt.order_id || '';  // IC-YYYYMMDD-XXXXX
-      const rawStatus      = evt.current_status || evt.status || evt.shipment_status || '';
-      const statusCode     = evt.current_status_id || evt.status_code;
+      // Extract fields (Shiprocket field names vary by webhook version)
+      const awb             = (evt.awb || evt.awb_code || evt.tracking_id || '').trim();
+      const channelOrderId  = (evt.channel_order_id || evt.order_id || '').trim();
+      const srOrderId       = evt.shipment_id || evt.sr_order_id || '';
+      const rawStatus       = (evt.current_status || evt.status || evt.shipment_status || '').trim();
+      const statusCode      = evt.current_status_id || evt.status_code;
+      const courierName     = evt.courier_name || evt.courier || '';
+      const etd             = evt.etd || '';  // Estimated delivery date
 
       const ourStatus = normalizeStatus(rawStatus, statusCode);
 
-      console.log(`[Shiprocket] AWB:${awb} Order:${channelOrderId} Status:"${rawStatus}" → ${ourStatus || 'ignored'}`);
+      console.log(`[Shiprocket] AWB:${awb} Order:${channelOrderId} Status:"${rawStatus}"(${statusCode}) → ${ourStatus || 'ignored'}`);
 
-      // Only act on statuses we care about
-      if (!ourStatus || ourStatus === 'shipped') continue;
-
-      // Find the order — try channel_order_id first (IC-XXXXX), then AWB
+      // Find the order — try IC- order ID first, then AWB, then Shiprocket order ID
       let order = null;
+
       if (channelOrderId) {
         const { data } = await supabase
           .from('orders')
@@ -180,37 +274,74 @@ exports.handler = async (event) => {
       }
       if (!order && awb) {
         const { data } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('tracking_id', awb)
-          .maybeSingle();
+          .from('orders').select('*').eq('tracking_id', awb).maybeSingle();
+        order = data;
+      }
+      if (!order && srOrderId) {
+        const { data } = await supabase
+          .from('orders').select('*').eq('shiprocket_order_id', String(srOrderId)).maybeSingle();
         order = data;
       }
 
       if (!order) {
-        console.warn(`[Shiprocket] Order not found for AWB:${awb} / OrderId:${channelOrderId}`);
+        console.warn(`[Shiprocket] Order not found — AWB:${awb} / IC:${channelOrderId} / SR:${srOrderId}`);
         continue;
       }
 
-      // Don't go backwards (e.g. don't set shipped if already delivered)
-      const STATUS_RANK = { shipped:1, out_for_delivery:2, delivered:3, cancelled:0, undelivered:0, rto:0, lost:0 };
+      // ── Always save AWB + courier when we get it ──────────────────────────
+      const trackingUrl = awb ? buildTrackingUrl(awb, courierName) : (order.tracking_url || '');
+      const awbUpdate = {};
+      if (awb && awb !== order.tracking_id)          awbUpdate.tracking_id  = awb;
+      if (courierName && !order.courier_name)         awbUpdate.courier_name = courierName;
+      if (trackingUrl && !order.tracking_url)         awbUpdate.tracking_url = trackingUrl;
+      if (srOrderId && !order.shiprocket_order_id)    awbUpdate.shiprocket_order_id = String(srOrderId);
+
+      if (Object.keys(awbUpdate).length > 0) {
+        await supabase.from('orders').update(awbUpdate).eq('id', order.id);
+        // Merge for use in notifications below
+        Object.assign(order, awbUpdate);
+        console.log(`[Shiprocket] Saved tracking info for ${order.razorpay_order_id}:`, awbUpdate);
+      }
+
+      // ── Skip if no actionable status ─────────────────────────────────────
+      if (!ourStatus || ourStatus === 'awb_assigned') {
+        console.log(`[Shiprocket] AWB saved, status "${rawStatus}" is pre-ship — no status update needed`);
+        continue;
+      }
+
+      // ── Don't regress status (e.g. don't set shipped if already delivered) ─
+      const STATUS_RANK = {
+        shipped:1, out_for_delivery:2, delivered:3,
+        cancelled:0, undelivered:0, rto:0, lost:0,
+      };
       const currentRank = STATUS_RANK[order.status] || 0;
-      const newRank     = STATUS_RANK[ourStatus] || 0;
+      const newRank     = STATUS_RANK[ourStatus]    || 0;
       if (newRank > 0 && newRank <= currentRank && ourStatus !== 'undelivered') {
-        console.log(`[Shiprocket] Skipping ${ourStatus} — already at ${order.status}`);
+        console.log(`[Shiprocket] Skip — already at ${order.status}, new=${ourStatus}`);
         continue;
       }
 
-      // Update order status in Supabase
-      const updatePayload = { status: ourStatus };
-      if (ourStatus === 'delivered') {
-        updatePayload.delivered_at = new Date().toISOString();
-      }
-      await supabase.from('orders').update(updatePayload).eq('id', order.id);
-      console.log(`[Shiprocket] Updated order ${order.razorpay_order_id || order.id} → ${ourStatus}`);
+      // ── Update order status in Supabase ──────────────────────────────────
+      const statusUpdate = { status: ourStatus };
+      if (ourStatus === 'delivered') statusUpdate.delivered_at = new Date().toISOString();
+      if (ourStatus === 'shipped')   statusUpdate.shipped_at   = new Date().toISOString();
 
-      // Send customer notifications
-      if (ourStatus === 'out_for_delivery') {
+      const { error: updateErr } = await supabase
+        .from('orders').update(statusUpdate).eq('id', order.id);
+
+      if (updateErr) {
+        console.error(`[Shiprocket] DB update failed for ${order.razorpay_order_id}:`, updateErr.message);
+      } else {
+        console.log(`[Shiprocket] ✅ Updated ${order.razorpay_order_id} → ${ourStatus}`);
+      }
+
+      // Merge status update for notifications
+      order.status = ourStatus;
+
+      // ── Send customer notification ────────────────────────────────────────
+      if (ourStatus === 'shipped') {
+        await sendShippedNotification(order);
+      } else if (ourStatus === 'out_for_delivery') {
         await sendOFDNotification(order);
       } else if (ourStatus === 'delivered') {
         await sendDeliveredNotification(order);
@@ -219,7 +350,7 @@ exports.handler = async (event) => {
       }
 
     } catch (err) {
-      console.error('[Shiprocket] Event processing error:', err.message, JSON.stringify(evt).slice(0, 200));
+      console.error('[Shiprocket] Event error:', err.message, JSON.stringify(evt).slice(0, 300));
     }
   }
 

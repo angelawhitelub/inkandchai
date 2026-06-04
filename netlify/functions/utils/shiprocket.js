@@ -11,6 +11,8 @@
  *   SHIPROCKET_CHANNEL_ID      — channel ID from the Manual channel you created (leave blank to omit)
  */
 
+const { createClient } = require('@supabase/supabase-js');
+
 const BASE = 'https://apiv2.shiprocket.in/v1/external';
 
 // ── Authenticate and get Bearer token ────────────────────────────────────────
@@ -138,7 +140,24 @@ async function pushOrderToShiprocket({ inkOrderId, customerName, customerEmail, 
   const data = await res.json();
   if (!res.ok) throw new Error(`Shiprocket order creation failed: ${JSON.stringify(data)}`);
 
-  console.log(`[Shiprocket] ✅ Order ${inkOrderId} pushed → Shiprocket order_id: ${data.order_id}`);
+  console.log(`[Shiprocket] ✅ Order ${inkOrderId} pushed → Shiprocket order_id: ${data.order_id}, shipment_id: ${data.shipment_id}`);
+
+  // Save Shiprocket IDs back to our DB so the webhook can match orders reliably
+  if ((data.order_id || data.shipment_id) && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+    try {
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const update = {};
+      if (data.order_id)    update.shiprocket_order_id    = String(data.order_id);
+      if (data.shipment_id) update.shiprocket_shipment_id = String(data.shipment_id);
+      await supabase.from('orders').update(update).eq('razorpay_order_id', inkOrderId);
+      console.log(`[Shiprocket] Saved SR IDs for ${inkOrderId}:`, update);
+    } catch (e) {
+      console.error('[Shiprocket] Failed to save SR IDs (non-fatal):', e.message);
+    }
+  }
+
   return data;
 }
 
