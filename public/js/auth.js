@@ -40,12 +40,26 @@
     });
   }
 
+  const PROFILE_CACHE_KEY = 'iac_profile_cache';
+
   async function fetchProfile() {
     const sb = getSB();
     if (!sb || !currentUser) return;
+
+    // Show cached profile instantly — fills checkout fields immediately
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(PROFILE_CACHE_KEY) || 'null');
+      if (cached && cached.id === currentUser.id) {
+        currentProfile = cached;
+        window.IACAuth?.prefillCheckout?.();  // fill checkout immediately
+      }
+    } catch(e) {}
+
+    // Fetch fresh from Supabase in background
     const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
     if (data) {
       currentProfile = data;
+      try { sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data)); } catch(e) {}
       return;
     }
 
@@ -63,6 +77,7 @@
         .select('*')
         .maybeSingle();
       currentProfile = created || fallbackProfile;
+      try { sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(currentProfile)); } catch(e) {}
     } else {
       currentProfile = null;
     }
@@ -105,26 +120,38 @@
     // Handles both old field IDs (co-*, cod-*) and new unified form (ch-*)
     prefillCheckout() {
       if (!currentUser && !currentProfile) return;
+      const p = currentProfile || {};
       const vals = {
-        // Unified checkout form
-        'ch-name':  currentProfile?.name,
+        // Unified checkout form — ALL fields including pincode/city/state
+        'ch-name':  p.name,
         'ch-email': currentUser?.email,
-        'ch-phone': currentProfile?.phone,
-        'ch-addr':  currentProfile?.address,
+        'ch-phone': p.phone,
+        'ch-addr':  p.address,
+        'ch-pin':   p.pincode,
+        'ch-city':  p.city,
+        'ch-state': p.state,
         // Legacy field IDs (kept for safety)
-        'co-name':    currentProfile?.name,
-        'co-email':   currentUser?.email,
-        'co-phone':   currentProfile?.phone,
-        'co-address': currentProfile?.address,
-        'cod-name':   currentProfile?.name,
-        'cod-email':  currentUser?.email,
-        'cod-phone':  currentProfile?.phone,
-        'cod-address':currentProfile?.address,
+        'co-name':    p.name,  'co-email':   currentUser?.email,
+        'co-phone':   p.phone, 'co-address': p.address,
+        'cod-name':   p.name,  'cod-email':  currentUser?.email,
+        'cod-phone':  p.phone, 'cod-address':p.address,
       };
       Object.entries(vals).forEach(([id, val]) => {
         const el = document.getElementById(id);
         if (el && val && !el.value) el.value = val;
       });
+      // Update pincode display label if city/state filled
+      if (p.pincode && p.city && p.state) {
+        const pinMsg = document.getElementById('pinMsg');
+        if (pinMsg && !pinMsg.textContent) {
+          pinMsg.textContent = '✓ ' + p.city + ', ' + p.state;
+          pinMsg.style.color = '#8fa87a';
+        }
+      }
+      // Show saved address banner in checkout if user has full address
+      if (p.name && p.phone && p.address && p.pincode) {
+        showSavedAddressBanner(currentUser?.email, p);
+      }
     },
 
     openAuthModal,
@@ -891,6 +918,7 @@
   window.iacSignOut = async function () {
     const sb = getSB();
     if (sb) await sb.auth.signOut();
+    try { sessionStorage.removeItem(PROFILE_CACHE_KEY); sessionStorage.removeItem(ORDERS_CACHE_KEY); } catch(e) {}
     currentUser = null;
     currentProfile = null;
     removeModal('iacAccountModal');
@@ -899,6 +927,9 @@
   };
 
   // ── My Orders (loads orders via Netlify function to bypass RLS) ──────────
+  const ORDERS_CACHE_KEY = 'iac_orders_cache';
+  const ORDERS_CACHE_TTL = 60_000; // 60 seconds
+
   async function loadMyOrders() {
     const container = document.getElementById('acct-orders-content');
     if (!container) return;
@@ -908,17 +939,29 @@
       return;
     }
 
-    container.innerHTML = `
-      <div style="text-align:center;padding:2rem;">
-        <div style="font-size:1.5rem;margin-bottom:0.8rem;opacity:0.5;">⟳</div>
-        <p style="color:#a09080;font-size:0.75rem;letter-spacing:0.08em;">Loading orders…</p>
-      </div>`;
+    // Show cached orders instantly while fetching fresh data
+    let orders = [];
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(ORDERS_CACHE_KEY) || 'null');
+      if (cached && cached.uid === currentUser.id && Date.now() - cached.ts < ORDERS_CACHE_TTL) {
+        orders = cached.orders;
+        // Render immediately from cache — still fetches fresh in background
+        renderOrders(container, orders);
+      }
+    } catch(e) {}
+
+    if (!orders.length) {
+      container.innerHTML = `
+        <div style="text-align:center;padding:2rem;">
+          <div style="font-size:1.5rem;margin-bottom:0.8rem;opacity:0.5;">⟳</div>
+          <p style="color:#a09080;font-size:0.75rem;letter-spacing:0.08em;">Loading orders…</p>
+        </div>`;
+    }
 
     // Get current access token to pass to the function
     const { data: { session } } = await sb.auth.getSession();
     const token = session?.access_token || '';
 
-    let orders = [];
     try {
       const res = await fetch(
         `/.netlify/functions/get-my-orders`,
@@ -927,12 +970,19 @@
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to load orders');
       orders = json.orders || [];
+      // Cache for next open
+      try { sessionStorage.setItem(ORDERS_CACHE_KEY, JSON.stringify({ uid: currentUser.id, ts: Date.now(), orders })); } catch(e) {}
     } catch (err) {
-      container.innerHTML = `<p style="color:#e06060;font-size:0.78rem;">Could not load orders: ${err.message}</p>`;
+      if (!orders.length) {
+        container.innerHTML = `<p style="color:#e06060;font-size:0.78rem;">Could not load orders: ${err.message}</p>`;
+      }
       return;
     }
 
-    const data = orders;
+    renderOrders(container, orders);
+  }
+
+  function renderOrders(container, data) {
     if (!data?.length) {
       container.innerHTML = `
         <div style="text-align:center;padding:3rem 1rem;">
@@ -1043,6 +1093,62 @@
           ${invoiceDownloadBlock(o)}
         </div>`;
     }).join('');
+  }
+
+  // ── Saved address banner in checkout ──────────────────────────────────────
+  // Shows a one-tap "Use saved address" card above the checkout form
+  function showSavedAddressBanner(email, profile) {
+    // Only show on checkout page
+    const form = document.getElementById('checkoutForm') || document.getElementById('ch-name');
+    if (!form) return;
+    if (document.getElementById('iac-saved-addr-banner')) return; // already shown
+
+    const banner = document.createElement('div');
+    banner.id = 'iac-saved-addr-banner';
+    banner.style.cssText = `
+      background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);
+      padding:0.9rem 1.1rem;margin-bottom:1.2rem;display:flex;align-items:center;
+      justify-content:space-between;gap:0.8rem;flex-wrap:wrap;
+    `;
+    const addrShort = [profile.address, profile.city, profile.pincode].filter(Boolean).join(', ');
+    banner.innerHTML = `
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.2rem;">📍 Saved Address</div>
+        <div style="font-size:0.78rem;color:#f0e8d8;font-weight:500;">${escHtml(profile.name || '')} · ${escHtml(profile.phone || '')}</div>
+        <div style="font-size:0.7rem;color:#a09080;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(addrShort)}</div>
+      </div>
+      <button onclick="iacUseSavedAddress()" style="
+        background:#c9a84c;color:#0d0b08;border:none;padding:0.5rem 1.1rem;
+        font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;
+        text-transform:uppercase;cursor:pointer;flex-shrink:0;font-weight:600;">
+        Use This →
+      </button>
+    `;
+
+    // Insert before first form field
+    const firstField = document.querySelector('#ch-name, [id^="ch-"]');
+    if (firstField) {
+      const parent = firstField.closest('.form-group, .field-row, div') || firstField.parentNode;
+      parent?.parentNode?.insertBefore(banner, parent);
+    }
+
+    window.iacUseSavedAddress = function() {
+      const fill = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+      fill('ch-name',  profile.name);
+      fill('ch-email', email);
+      fill('ch-phone', profile.phone);
+      fill('ch-addr',  profile.address);
+      fill('ch-pin',   profile.pincode);
+      fill('ch-city',  profile.city);
+      fill('ch-state', profile.state);
+      // Update pincode display
+      if (profile.pincode && profile.city && profile.state) {
+        const pinMsg = document.getElementById('pinMsg');
+        if (pinMsg) { pinMsg.textContent = '✓ ' + profile.city + ', ' + profile.state; pinMsg.style.color = '#8fa87a'; }
+      }
+      banner.innerHTML = `<div style="color:#6dbf6d;font-size:0.72rem;padding:0.2rem 0;">✓ Address filled in</div>`;
+      setTimeout(() => banner.remove(), 2000);
+    };
   }
 
   // ── Tracking / shipping progress block ────────────────────────────────────

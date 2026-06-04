@@ -619,6 +619,9 @@ HTML = r"""<!DOCTYPE html>
 <meta name="geo.placename" content="New Delhi" />
 <meta name="language" content="English, Hindi" />
 <link rel="canonical" href="https://inkandchai.in/" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="dns-prefetch" href="https://inkandchai.in" />
 <link rel="alternate" type="application/rss+xml" title="Ink & Chai Product Feed" href="/feed.xml" />
 <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png" />

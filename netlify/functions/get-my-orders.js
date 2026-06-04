@@ -63,26 +63,26 @@ exports.handler = async (event) => {
 
     const orders = data || [];
 
-    // Fetch return requests for this customer and mark orders that already have one
+    // Fetch return requests IN PARALLEL (was sequential — added ~300ms latency)
     if (orders.length) {
       const orderIds = orders.map(o => o.id);
-      const { data: returns } = await supabase
-        .from('return_requests')
-        .select('order_id, status')
-        .in('order_id', orderIds);
-
+      const [{ data: returns }] = await Promise.all([
+        supabase.from('return_requests').select('order_id, status').in('order_id', orderIds),
+      ]);
       const returnMap = {};
       (returns || []).forEach(r => { returnMap[r.order_id] = r.status; });
-      orders.forEach(o => {
-        if (returnMap[o.id]) {
-          o.return_request_status = returnMap[o.id];
-        }
-      });
+      orders.forEach(o => { if (returnMap[o.id]) o.return_request_status = returnMap[o.id]; });
     }
+
+    // Cache: allow CDN/browser to cache for 30s — orders don't change every second
+    const headers = {
+      ...CORS,
+      'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
+    };
 
     return {
       statusCode: 200,
-      headers: CORS,
+      headers,
       body: JSON.stringify({ orders }),
     };
   } catch (err) {
