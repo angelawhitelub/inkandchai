@@ -7,7 +7,7 @@
  * shipped before the webhook was connected.
  *
  * Body options:
- *   { all_shipped: true }       — check ALL orders with status='shipped' (last 90 days)
+ *   { all_shipped: true }       — check ALL orders with status='shipped' OR 'out_for_delivery' (last 90 days)
  *   { awbs: ["AWB1","AWB2"] }  — check specific AWBs
  *   { order_ids: ["IC-..."] }  — check specific order IDs
  *
@@ -177,7 +177,7 @@ exports.handler = async (event) => {
       const { data } = await supabase
         .from('orders')
         .select('*')
-        .in('status', ['shipped'])  // only re-check orders stuck at shipped
+        .in('status', ['shipped', 'out_for_delivery'])  // re-check stuck shipped + OFD orders
         .not('tracking_id', 'is', null)
         .gte('created_at', since)
         .limit(500);

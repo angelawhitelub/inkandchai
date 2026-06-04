@@ -448,8 +448,8 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="btn-outline" onclick="bulkReconcilePhonePe(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(95,37,159,0.5);color:#a275d6;" title="Re-check every order stuck on 'pending_phonepe' from the last 30 days">
       🔄 Re-check All Pending PhonePe
     </button>
-    <button class="btn-outline" onclick="reconcileShippedOrders(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Check NimbusPost for real delivery status of all orders stuck on 'shipped' — fixes orders that were shipped before the webhook was connected">
-      📦 Sync Shipped → Delivered
+    <button class="btn-outline" onclick="reconcileShippedOrders(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Check NimbusPost for real delivery status of all Shipped + Out for Delivery orders — fixes stuck statuses">
+      📦 Sync Shipped &amp; OFD → Delivered
     </button>
     <button class="btn-outline" onclick="pushAllToShiprocket(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Push all pending/paid/COD unshipped orders to Shiprocket panel">
       🚀 Push All to Shiprocket
@@ -2336,9 +2336,9 @@ async function processPhonePeRefund(orderId, btn) {
 
 // ── NimbusPost: sync all "shipped" orders to real delivery status ──────────
 async function reconcileShippedOrders(btn) {
-  const shippedCount = allOrders.filter(o => o.status === 'shipped' && o.tracking_id).length;
-  if (!shippedCount) { alert('No shipped orders with tracking IDs found in the current view.'); return; }
-  if (!confirm(`Check NimbusPost for the real delivery status of ${shippedCount} orders currently stuck on "shipped"?\n\nThis fixes orders that were shipped before the webhook was connected.\nCustomers will receive WhatsApp delivery notifications for any newly-confirmed deliveries.`)) return;
+  const stuckCount = allOrders.filter(o => ['shipped','out_for_delivery'].includes(o.status) && o.tracking_id).length;
+  if (!stuckCount) { alert('No shipped/OFD orders with tracking IDs found in the current view.'); return; }
+  if (!confirm(`Check NimbusPost for the real delivery status of ${stuckCount} orders currently "Shipped" or "Out for Delivery"?\n\nThis will mark delivered orders as Delivered and send customers a WhatsApp notification.`)) return;
 
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking NimbusPost…'; }
