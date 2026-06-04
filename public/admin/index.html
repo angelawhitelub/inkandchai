@@ -451,6 +451,9 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="btn-outline" onclick="reconcileShippedOrders(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Check NimbusPost for real delivery status of all orders stuck on 'shipped' — fixes orders that were shipped before the webhook was connected">
       📦 Sync Shipped → Delivered
     </button>
+    <button class="btn-outline" onclick="pushAllToShiprocket(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Push all pending/paid/COD unshipped orders to Shiprocket panel">
+      🚀 Push All to Shiprocket
+    </button>
     <span id="autoRecheckBadge" style="font-size:0.52rem;color:#a275d6;margin-left:0.6rem;opacity:0.75;cursor:default;"></span>
   </div>
 
@@ -2362,6 +2365,33 @@ async function reconcileShippedOrders(btn) {
     fetchOrders(true);
   } catch (err) {
     alert('Sync failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// ── Shiprocket: push all unshipped orders ────────────────────────────────────
+async function pushAllToShiprocket(btn) {
+  const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending','pending_phonepe','pending_partial_phonepe'];
+  const unshipped = allOrders.filter(o => UNSHIPPED.includes(o.status));
+  if (!unshipped.length) { alert('No unshipped orders found in the current view.'); return; }
+  if (!confirm(`Push ${unshipped.length} unshipped order${unshipped.length>1?'s':''} to Shiprocket?\n\nThey will appear in your Shiprocket panel where you can assign couriers, generate AWBs and request pickup.`)) return;
+
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Pushing…'; }
+
+  try {
+    const res  = await fetch('/.netlify/functions/shiprocket-bulk-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ order_ids: unshipped.map(o => o.razorpay_order_id || o.id) }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+    const s = data.summary || {};
+    alert(`Shiprocket push complete:\n\n✅ Pushed: ${s.pushed || 0}\n⏭ Already existed: ${s.skipped || 0}\n❌ Failed: ${s.failed || 0}\n\nCheck your Shiprocket panel now!`);
+  } catch(err) {
+    alert('Push failed: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
