@@ -27,6 +27,7 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
+const { sendEmail }     = require('./utils/email');
 
 // ── NimbusPost status string → internal status ────────────────────────────
 // Comprehensive map — NimbusPost / Delhivery use many different strings.
@@ -56,19 +57,23 @@ const STATUS_MAP = {
   'delivered - signed':         'delivered',
   'pod available':              'delivered',   // proof of delivery
 
-  // In-transit / hub events — ignore (no action needed)
+  // Shipped / dispatched — notify customer with tracking link
+  'shipped':                    'shipped',
+  'dispatched':                 'shipped',
+  'picked up':                  'shipped',
+  'pickup done':                'shipped',
+  'shipment booked':            'shipped',
+
+  // In-transit / hub scan events — ignore (no customer action needed)
   'in transit':                 null,
   'intransit':                  null,
   'in-transit':                 null,
   'reached at hub':             null,
   'reached nearest hub':        null,
   'reached destination hub':    null,
-  'dispatched':                 null,
   'manifested':                 null,
   'pickup scheduled':           null,
   'pickup pending':             null,
-  'picked up':                  null,
-  'shipped':                    null,
   'booked':                     null,
   'in sorting centre':          null,
   'sorting':                    null,
@@ -102,6 +107,80 @@ function normalizeStatus(statusStr) {
     }
   }
   return null;
+}
+
+// ── NimbusPost tracking URL ───────────────────────────────────────────────
+function npTrackUrl(awb) {
+  return `https://ship.nimbuspost.com/shipping/tracking/${awb}`;
+}
+
+function emailBase(content) {
+  return `
+    <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
+      <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
+      <p style="color:#a09080;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;">inkandchai.in</p>
+      ${content}
+      <hr style="border:none;border-top:1px solid #2a2a2a;margin:32px 0;"/>
+      <p style="color:#7a6330;font-size:11px;">Ink &amp; Chai · inkandchai.in · For support, reply to this email.</p>
+    </div>`;
+}
+
+// ── Shipped: email + WhatsApp ─────────────────────────────────────────────
+async function sendShippedNotifications(order, awb) {
+  const firstName  = (order.customer_name || 'there').split(' ')[0];
+  const orderId    = order.razorpay_order_id || order.id;
+  const trackUrl   = npTrackUrl(awb);
+  const items      = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const bookList   = items.map(i => i.title || i.name || '').filter(Boolean).join(', ') || 'your books';
+  const courier    = order.courier_name || 'DTDC Surface';
+  const total      = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '';
+  const isCOD      = ['cod_pending','partial_cod_pending'].includes(order.status) || !order.razorpay_payment_id;
+
+  // ── Email ────────────────────────────────────────────────────────────────
+  if (order.customer_email) {
+    await sendEmail({
+      to: order.customer_email,
+      subject: `📦 Your Ink & Chai order has been shipped! (${orderId})`,
+      html: emailBase(`
+        <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Your order is on its way! 📦</h2>
+        <p style="color:#a09080;line-height:1.8;margin-bottom:16px;">
+          Hi ${firstName}, your books have been dispatched and are heading your way.
+        </p>
+        <table style="font-size:14px;line-height:1.9;color:#f0e8d8;margin-bottom:20px;">
+          <tr><td style="color:#a09080;padding-right:16px;">Order ID</td>  <td style="color:#c9a84c;font-weight:500;">${orderId}</td></tr>
+          <tr><td style="color:#a09080;padding-right:16px;">AWB / Tracking</td><td style="color:#c9a84c;font-weight:500;">${awb}</td></tr>
+          <tr><td style="color:#a09080;padding-right:16px;">Courier</td>   <td>${courier}</td></tr>
+          <tr><td style="color:#a09080;padding-right:16px;">Books</td>     <td>${bookList}</td></tr>
+          ${isCOD && total ? `<tr><td style="color:#a09080;padding-right:16px;">Amount due</td><td style="color:#c9a84c;">Please keep ${total} cash ready</td></tr>` : ''}
+        </table>
+        <div style="margin:20px 0;padding:16px;background:#1c1916;border-left:3px solid #c9a84c;">
+          <p style="color:#f0e8d8;font-size:13px;margin:0 0 12px;">📍 Track your shipment in real time</p>
+          <a href="${trackUrl}"
+             style="display:inline-block;background:#c9a84c;color:#0d0b08;padding:10px 24px;
+                    text-decoration:none;font-size:11px;letter-spacing:2px;text-transform:uppercase;
+                    font-weight:600;">
+            Track Order →
+          </a>
+          <p style="color:#a09080;font-size:11px;margin:12px 0 0;">
+            Or copy this link: <span style="color:#c9a84c;">${trackUrl}</span>
+          </p>
+        </div>
+        <p style="color:#a09080;font-size:13px;line-height:1.8;margin-top:16px;">
+          Delivery usually takes <strong style="color:#f0e8d8;">3–7 business days</strong> depending on your location.
+          We'll notify you again when the courier is out for delivery.
+        </p>
+      `),
+    }).catch(e => console.error('[NimbusPost] Shipped email error:', e.message));
+  }
+
+  // ── WhatsApp ─────────────────────────────────────────────────────────────
+  if (order.customer_phone) {
+    await sendWhatsApp({
+      to: order.customer_phone,
+      template: 'order_shipped',
+      params: [firstName, bookList, courier, awb, trackUrl],
+    }).catch(e => console.error('[NimbusPost] Shipped WhatsApp error:', e.message));
+  }
 }
 
 // ── WhatsApp notifications ────────────────────────────────────────────────
@@ -228,14 +307,25 @@ exports.handler = async (event) => {
         continue;
       }
 
-      // Update Supabase
+      // Update Supabase — save tracking URL when shipped
+      const trackingUrl = npTrackUrl(awb);
       const updateData = { status: ourStatus };
+      if (ourStatus === 'shipped') {
+        updateData.tracking_url = trackingUrl;
+        updateData.shipped_at   = new Date().toISOString();
+        if (!order.courier_name) updateData.courier_name = 'DTDC Surface';
+      }
       if (ourStatus === 'delivered') updateData.delivered_at = new Date().toISOString();
+
       await supabase.from('orders').update(updateData).eq('id', order.id);
-      console.log(`[NimbusPost] Order ${order.razorpay_order_id || order.id} → ${ourStatus}`);
+      // Merge for notification use
+      Object.assign(order, updateData);
+      console.log(`[NimbusPost] ✅ Order ${order.razorpay_order_id || order.id} → ${ourStatus}`);
 
       // Notify
-      if (ourStatus === 'out_for_delivery') {
+      if (ourStatus === 'shipped') {
+        await sendShippedNotifications(order, awb);
+      } else if (ourStatus === 'out_for_delivery') {
         await sendOFDNotification(order);
       } else if (ourStatus === 'delivered') {
         await sendDeliveredNotification(order);
