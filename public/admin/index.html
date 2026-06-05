@@ -677,6 +677,13 @@ tr:hover td{background:rgba(122,88,21,0.075);}
               <input id="prodOriginalPrice" inputmode="decimal" placeholder="499"/>
             </div>
           </div>
+          <div class="form-row" style="margin-top:0.6rem;">
+            <label>Cover Image URL <span style="font-weight:400;color:var(--cream-dim);font-size:0.58rem;">(paste Amazon/CDN link or /images/filename.webp)</span></label>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+              <input id="prodImageUrl" type="url" placeholder="https://m.media-amazon.com/images/I/..." style="flex:1;"/>
+              <img id="prodImagePreview" src="" alt="" style="width:40px;height:60px;object-fit:cover;border:1px solid var(--border);display:none;flex-shrink:0;"/>
+            </div>
+          </div>
           <div style="display:flex;gap:1.2rem;margin-top:0.4rem;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:var(--cream-dim);">
               <input type="checkbox" id="prodActive" checked style="accent-color:var(--green);"/> Override active
@@ -2140,6 +2147,18 @@ function selectProduct(slug) {
   document.getElementById('prodOriginalPrice').value = p.original_price_inr;
   document.getElementById('prodActive').checked = p.is_active !== false;
   document.getElementById('prodScarcity').checked = !!(row.sc || (row.override && row.override.scarcity));
+  // Image URL — use override if set, else current image
+  const imgUrl = p.image_url || row.image_url || '';
+  const imgEl = document.getElementById('prodImageUrl');
+  const imgPrev = document.getElementById('prodImagePreview');
+  if (imgEl) imgEl.value = imgUrl;
+  if (imgPrev && imgUrl) { imgPrev.src = imgUrl; imgPrev.style.display = 'block'; }
+  else if (imgPrev) imgPrev.style.display = 'none';
+  // Live preview on URL change
+  if (imgEl) imgEl.oninput = () => {
+    const v = imgEl.value.trim();
+    if (imgPrev) { imgPrev.src = v; imgPrev.style.display = v ? 'block' : 'none'; }
+  };
   document.getElementById('productSaveMsg').textContent = row.override ? 'This product has a live override.' : 'No override saved yet.';
   renderProductList();
 }
@@ -2156,6 +2175,7 @@ async function saveProductOverride(activeOverride = true) {
     original_price_inr: document.getElementById('prodOriginalPrice').value,
     is_active: activeOverride && document.getElementById('prodActive').checked,
     scarcity: document.getElementById('prodScarcity').checked,
+    image_url: document.getElementById('prodImageUrl')?.value.trim() || '',
   };
   msg.textContent = 'Saving…';
   try {

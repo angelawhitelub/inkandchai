@@ -48,6 +48,7 @@ exports.handler = async (event) => {
     // scarcity: shows "Only 4 left" urgency badge — always pinned, never runs out
     scarcity: body.scarcity === true || body.scarcity === 'true',
     is_active: body.is_active !== false,
+    image_url: (body.image_url || '').trim().slice(0, 500) || null,
     updated_at: new Date().toISOString(),
   };
 
