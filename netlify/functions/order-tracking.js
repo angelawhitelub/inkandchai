@@ -127,16 +127,19 @@ function normalizeStatus(statusStr, statusCode) {
 function buildTrackingUrl(awb, courierName) {
   if (!awb) return '';
   const courier = (courierName || '').toLowerCase();
-  // Common courier tracking pages
+  const np = `https://ship.nimbuspost.com/shipping/tracking/${awb}`;
+  // Couriers that track via NimbusPost portal
+  if (courier.includes('bluedart'))      return np;
+  if (courier.includes('amazon'))        return np;
+  // Other couriers — direct tracking pages
   if (courier.includes('delhivery'))     return `https://www.delhivery.com/track/package/${awb}`;
   if (courier.includes('xpressbees'))    return `https://www.xpressbees.com/shipment/tracking?awb=${awb}`;
-  if (courier.includes('bluedart'))      return `https://www.bluedart.com/tracking?tracknos=${awb}`;
   if (courier.includes('ecom'))          return `https://ecomexpress.in/tracking/?awb_field=${awb}`;
   if (courier.includes('shadowfax'))     return `https://tracker.shadowfax.in/?awb=${awb}`;
-  if (courier.includes('dtdc'))          return `https://www.dtdc.in/tracking.asp?txType=consignmentnumber&strConsNo=${awb}`;
+  if (courier.includes('dtdc'))          return np;
   if (courier.includes('ekart'))         return `https://ekartlogistics.com/shipmenttrack/${awb}`;
-  // Fallback: Shiprocket's own tracking page
-  return `https://shiprocket.co/tracking/${awb}`;
+  // Fallback: NimbusPost (works for most couriers booked via NimbusPost)
+  return np;
 }
 
 // ── WhatsApp notifications ────────────────────────────────────────────────────
