@@ -59,7 +59,8 @@
     const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
     if (data) {
       currentProfile = data;
-      try { sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data)); } catch(e) {}
+      // Always include email (stored in auth.users, not profiles table)
+      try { sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ ...data, email: currentUser.email })); } catch(e) {}
       window.IAC?.prefillCheckout?.();  // fill checkout with fresh data
       return;
     }
@@ -976,8 +977,8 @@
         sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(currentProfile));
         // Write to localStorage as checkout's fallback (works across tabs)
         localStorage.setItem('iac_saved_address', JSON.stringify({
-          name, phone, email: currentUser?.email || '',
-          addr: address, address, pincode, city, state,
+          name, phone, addr: address, address, pincode, city, state,
+          email: currentUser?.email || '',
         }));
       } catch(e) {}
       // Update checkout autofill immediately after save
