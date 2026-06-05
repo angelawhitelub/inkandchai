@@ -971,6 +971,15 @@
       msg.textContent = 'Could not save: ' + error.message;
     } else {
       currentProfile = { ...currentProfile, name, phone, address, pincode, city, state };
+      // Update session + localStorage so checkout page can read it
+      try {
+        sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(currentProfile));
+        // Write to localStorage as checkout's fallback (works across tabs)
+        localStorage.setItem('iac_saved_address', JSON.stringify({
+          name, phone, email: currentUser?.email || '',
+          addr: address, address, pincode, city, state,
+        }));
+      } catch(e) {}
       // Update checkout autofill immediately after save
       window.IAC?.prefillCheckout?.();
       msg.style.color = '#6dbf6d';

@@ -5629,6 +5629,10 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
   <a class="logo" href="/">Ink &amp;<span> Chai</span></a>
   <div style="display:flex;align-items:center;gap:1rem;">
     <a class="nav-back" href="javascript:history.back()">← Back</a>
+    <button id="chkAuthBtn" onclick="chkOpenAuth()"
+      style="font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;
+             padding:0.45rem 1rem;border:1px solid var(--border);color:var(--gold);background:transparent;
+             cursor:pointer;transition:all 0.2s;">👤 Sign In</button>
     <button class="theme-toggle" onclick="(function(){var d=document.documentElement;var t=d.getAttribute('data-theme');if(t==='light'){d.removeAttribute('data-theme');try{localStorage.setItem('iac_theme','dark')}catch(e){}}else{d.setAttribute('data-theme','light');try{localStorage.setItem('iac_theme','light')}catch(e){}}})()" title="Toggle theme">☀</button>
   </div>
 </nav>
@@ -5641,6 +5645,15 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
   <div id="checkoutScreen">
     <div class="page-label">Secure Checkout</div>
     <h1>Delivery Details</h1>
+
+    <!-- Autofill banner — shown when logged in with saved address -->
+    <div id="autofillBanner" style="display:none;margin-bottom:1.4rem;padding:0.9rem 1.2rem;
+         background:rgba(201,168,76,0.07);border:1px solid rgba(201,168,76,0.28);
+         display:none;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+      <span style="font-size:0.72rem;color:var(--cream);">📍 <span id="autofillName"></span> — address filled from your saved profile</span>
+      <button onclick="clearAutofill()" style="font-size:0.58rem;letter-spacing:0.12em;text-transform:uppercase;
+              background:none;border:none;color:var(--cream-dim);cursor:pointer;text-decoration:underline;">Edit manually</button>
+    </div>
 
     <div class="checkout-grid">
 
@@ -6501,60 +6514,197 @@ renderSummary();
   el.addEventListener('blur', () => saveAbandonedCheckout('open'));
 });
 
-// Pre-fill address: Supabase profile (logged-in users) → localStorage fallback
+// Pre-fill address: sessionStorage cache → Supabase profile → localStorage fallback
+function showAutofillBanner(name) {
+  const banner = document.getElementById('autofillBanner');
+  const nameEl = document.getElementById('autofillName');
+  if (banner) { banner.style.display = 'flex'; }
+  if (nameEl && name) nameEl.textContent = name;
+}
+function clearAutofill() {
+  const banner = document.getElementById('autofillBanner');
+  if (banner) banner.style.display = 'none';
+  ['ch-name','ch-phone','ch-email','ch-addr','ch-pin','ch-city','ch-state'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const pinMsg = document.getElementById('pinMsg');
+  if (pinMsg) pinMsg.textContent = '';
+}
+
 (async () => {
   const fill = (id, val) => { const el = document.getElementById(id); if (el && val && !el.value) el.value = val; };
 
-  // 1. Try Supabase profile first
+  function applyProfile(name, email, phone, address, pincode, city, state) {
+    fill('ch-name',  name);
+    fill('ch-email', email);
+    fill('ch-phone', phone);
+    fill('ch-addr',  address);
+    fill('ch-pin',   pincode);
+    fill('ch-city',  city);
+    fill('ch-state', state);
+    if (pincode && city && state) {
+      const pinMsg = document.getElementById('pinMsg');
+      if (pinMsg && !pinMsg.textContent) {
+        pinMsg.textContent = '✓ ' + city + ', ' + state;
+        pinMsg.style.color = '#8fa87a';
+      }
+    }
+    if (name || address) showAutofillBanner(name);
+  }
+
+  // 1. sessionStorage cache (instant — set by auth.js on main site)
+  try {
+    const cached = JSON.parse(sessionStorage.getItem('iac_profile_cache') || 'null');
+    if (cached && (cached.name || cached.address)) {
+      applyProfile(cached.name, cached.email || '', cached.phone, cached.address, cached.pincode, cached.city, cached.state);
+      // Update auth button to show name
+      const btn = document.getElementById('chkAuthBtn');
+      if (btn && cached.name) btn.textContent = '👤 ' + cached.name.split(' ')[0];
+      return;
+    }
+  } catch(e) {}
+
+  // 2. Supabase profile (logged-in users on fresh sessions)
   if (window.supabase && window.SUPABASE_URL && window.SUPABASE_URL !== 'SUPABASE_URL_PLACEHOLDER') {
     try {
       const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
       const { data: { session } } = await sb.auth.getSession();
       if (session) {
+        // Update auth button
+        const btn = document.getElementById('chkAuthBtn');
+        if (btn) btn.textContent = '👤 ' + (session.user.email?.split('@')[0] || 'Account');
+
         const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
-        if (profile) {
-          fill('ch-name',    profile.name);
-          fill('ch-email',   session.user?.email);
-          fill('ch-phone',   profile.phone);
-          fill('ch-addr',    profile.address);
-          fill('ch-pin',     profile.pincode);
-          fill('ch-city',    profile.city);
-          fill('ch-state',   profile.state);
-          // Trigger pincode display update if pincode was filled
-          if (profile.pincode && document.getElementById('ch-pin')?.value) {
-            const pinMsg = document.getElementById('pinMsg');
-            if (pinMsg && profile.city && profile.state) {
-              pinMsg.textContent = '✓ ' + profile.city + ', ' + profile.state;
-              pinMsg.style.color = '#8fa87a';
-            }
-          }
-          return; // Profile filled — skip localStorage
+        if (profile && (profile.name || profile.address)) {
+          applyProfile(profile.name, session.user?.email, profile.phone, profile.address, profile.pincode, profile.city, profile.state);
+          // Cache for next visit
+          try { sessionStorage.setItem('iac_profile_cache', JSON.stringify({...profile, email: session.user.email})); } catch(e2) {}
+          return;
         }
       }
     } catch(e) {}
   }
 
-  // 2. Fallback: localStorage (works for all users including guests)
+  // 3. Fallback: localStorage saved address (guests + previous orders)
   try {
     const saved = JSON.parse(localStorage.getItem(SAVED_ADDR_KEY) || 'null');
-    if (saved) {
-      fill('ch-name',  saved.name);
-      fill('ch-email', saved.email);
-      fill('ch-phone', saved.phone);
-      fill('ch-addr',  saved.addr);
-      fill('ch-pin',   saved.pincode);
-      fill('ch-city',  saved.city);
-      fill('ch-state', saved.state);
-      if (saved.pincode && saved.city && saved.state) {
-        const pinMsg = document.getElementById('pinMsg');
-        if (pinMsg) {
-          pinMsg.textContent = '✓ ' + saved.city + ', ' + saved.state + ' (saved)';
-          pinMsg.style.color = '#8fa87a';
-        }
-      }
+    if (saved && (saved.name || saved.addr)) {
+      applyProfile(saved.name, saved.email, saved.phone, saved.addr, saved.pincode, saved.city, saved.state);
     }
   } catch(e) {}
 })();
+
+// ── Checkout auth modal (minimal — just Google + OTP) ─────────────────────
+function chkOpenAuth() {
+  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === 'SUPABASE_URL_PLACEHOLDER') return;
+  const existing = document.getElementById('chkAuthModal');
+  if (existing) { existing.remove(); return; }
+  const modal = document.createElement('div');
+  modal.id = 'chkAuthModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;z-index:10010;padding:1rem;';
+  modal.innerHTML = `
+    <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);width:min(400px,96vw);padding:2.2rem;position:relative;">
+      <button onclick="document.getElementById('chkAuthModal').remove()"
+        style="position:absolute;top:1rem;right:1.2rem;background:none;border:none;color:#a09080;font-size:1.3rem;cursor:pointer;">✕</button>
+      <div style="font-size:.55rem;letter-spacing:.35em;text-transform:uppercase;color:#c9a84c;margin-bottom:.4rem;">Ink &amp; Chai</div>
+      <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:#faf7f2;margin-bottom:.4rem;">Sign in to autofill</h3>
+      <p style="font-size:.68rem;color:#a09080;margin-bottom:1.4rem;line-height:1.6;">Your saved name, address and phone will fill in automatically.</p>
+
+      <button onclick="chkGoogleSignIn()"
+        style="width:100%;padding:.85rem;background:#fff;color:#3c3c3c;font-family:'Montserrat',sans-serif;
+               font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;border:none;cursor:pointer;
+               font-weight:600;display:flex;align-items:center;justify-content:center;gap:.7rem;margin-bottom:.8rem;">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Continue with Google
+      </button>
+
+      <div style="display:flex;align-items:center;gap:.8rem;margin:.4rem 0 .8rem;">
+        <div style="flex:1;height:1px;background:rgba(201,168,76,0.15);"></div>
+        <span style="font-size:.58rem;color:#a09080;">OR</span>
+        <div style="flex:1;height:1px;background:rgba(201,168,76,0.15);"></div>
+      </div>
+
+      <input id="chkOtpEmail" type="email" placeholder="your@email.com" autocomplete="email"
+        style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);color:#f0e8d8;
+               padding:.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:16px;outline:none;margin-bottom:.6rem;"
+        onkeydown="if(event.key==='Enter')chkSendOtp()"
+        onfocus="this.style.borderColor='rgba(201,168,76,0.5)'" onblur="this.style.borderColor='rgba(201,168,76,0.18)'"/>
+      <button onclick="chkSendOtp()" id="chkOtpBtn"
+        style="width:100%;padding:.85rem;background:#c9a84c;color:#0d0b08;font-family:'Montserrat',sans-serif;
+               font-size:.65rem;letter-spacing:.25em;text-transform:uppercase;border:none;cursor:pointer;font-weight:600;">
+        Send OTP →
+      </button>
+      <p id="chkOtpMsg" style="font-size:.7rem;margin-top:.6rem;min-height:1em;text-align:center;color:#a09080;"></p>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  setTimeout(() => document.getElementById('chkOtpEmail')?.focus(), 80);
+}
+
+async function chkGoogleSignIn() {
+  const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.href, queryParams: { prompt: 'select_account' } },
+  });
+  if (error) alert('Google sign-in error: ' + error.message);
+}
+
+let _chkOtpEmail = '';
+async function chkSendOtp() {
+  const email = document.getElementById('chkOtpEmail')?.value.trim() || '';
+  const msg   = document.getElementById('chkOtpMsg');
+  const btn   = document.getElementById('chkOtpBtn');
+  if (!email || !/\\S+@\\S+\\.\\S+/.test(email)) { if(msg){msg.style.color='#e06060';msg.textContent='Enter a valid email.';} return; }
+  const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  if (btn) { btn.disabled=true; btn.textContent='Sending…'; }
+  try {
+    await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+    _chkOtpEmail = email;
+    // Show OTP boxes
+    const box = document.getElementById('chkAuthModal')?.querySelector('div');
+    if (box) box.innerHTML += `
+      <p style="font-size:.7rem;color:#a09080;margin-top:.8rem;">Enter the 8-digit code sent to <strong style="color:#c9a84c">${email}</strong></p>
+      <div style="display:flex;gap:.4rem;margin:.6rem 0;">
+        ${[0,1,2,3,4,5,6,7].map(i=>`<input id="cOtp${i}" type="text" inputmode="numeric" maxlength="1"
+          style="flex:1;height:44px;text-align:center;font-size:1.2rem;font-weight:600;background:#141210;
+                 border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;font-family:'Montserrat',sans-serif;outline:none;"
+          oninput="(function(el,i){el.value=el.value.replace(/\\\\D/g,'').slice(-1);if(el.value&&i<7)document.getElementById('cOtp'+(i+1))?.focus();const c=[0,1,2,3,4,5,6,7].map(j=>document.getElementById('cOtp'+j)?.value||'').join('');if(c.length===8)chkVerifyOtp();})(this,${i})"
+          onkeydown="if(event.key==='Backspace'&&!this.value&&${i}>0)document.getElementById('cOtp'+(${i}-1))?.focus()"/>`).join('')}
+      </div>
+      <p id="chkVerifyMsg" style="font-size:.7rem;color:#e06060;min-height:1em;"></p>`;
+    setTimeout(() => document.getElementById('cOtp0')?.focus(), 50);
+  } catch(e) {
+    if(msg){msg.style.color='#e06060';msg.textContent=e.message||'Error sending code.';}
+    if(btn){btn.disabled=false;btn.textContent='Send OTP →';}
+  }
+}
+
+async function chkVerifyOtp() {
+  const code = [0,1,2,3,4,5,6,7].map(i=>document.getElementById('cOtp'+i)?.value||'').join('');
+  const msg  = document.getElementById('chkVerifyMsg');
+  if (code.length < 8) { if(msg){msg.textContent='Enter all 8 digits.';} return; }
+  const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  try {
+    const { data, error } = await sb.auth.verifyOtp({ email: _chkOtpEmail, token: code, type: 'email' });
+    if (error) throw error;
+    document.getElementById('chkAuthModal')?.remove();
+    // Reload profile and prefill
+    const { data: profile } = await sb.from('profiles').select('*').eq('id', data.user.id).single();
+    if (profile && (profile.name || profile.phone)) {
+      const fill = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+      fill('ch-name', profile.name); fill('ch-email', data.user.email);
+      fill('ch-phone', profile.phone); fill('ch-addr', profile.address);
+      fill('ch-pin', profile.pincode); fill('ch-city', profile.city); fill('ch-state', profile.state);
+      showAutofillBanner(profile.name);
+    }
+    const btn = document.getElementById('chkAuthBtn');
+    if (btn) btn.textContent = '👤 ' + ((profile?.name||data.user.email||'').split(' ')[0]);
+  } catch(e) {
+    if(msg){msg.textContent=e.message||'Invalid code.';}
+  }
+}
 </script>
 </body>
 </html>"""
