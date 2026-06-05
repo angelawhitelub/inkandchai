@@ -363,7 +363,20 @@
       </button>
       <p id="iacOtpMsg" style="font-size:.7rem;color:#e06060;margin-top:.75rem;min-height:1.1em;text-align:center;line-height:1.5;"></p>
 
-      <p style="text-align:center;margin-top:.6rem;font-size:.66rem;color:#a09080;">
+      <div style="display:flex;align-items:center;gap:.8rem;margin:.4rem 0;">
+        <div style="flex:1;height:1px;background:rgba(201,168,76,0.15);"></div>
+        <span style="font-size:.58rem;color:#a09080;letter-spacing:.1em;">OR</span>
+        <div style="flex:1;height:1px;background:rgba(201,168,76,0.15);"></div>
+      </div>
+      <button onclick="iacSignInWithGoogle()"
+        style="width:100%;padding:.85rem;background:#fff;color:#3c3c3c;font-family:'Montserrat',sans-serif;
+               font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;border:none;cursor:pointer;
+               font-weight:600;display:flex;align-items:center;justify-content:center;gap:.7rem;">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Continue with Google
+      </button>
+
+      <p style="text-align:center;margin-top:.8rem;font-size:.66rem;color:#a09080;">
         Have a password?
         <button onclick="renderPasswordStep()" style="background:none;border:none;color:#c9a84c;cursor:pointer;
           font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;margin-left:.3rem;">
@@ -407,7 +420,21 @@
       </button>
       <p id="iacPwMsg" style="font-size:.7rem;color:#e06060;margin-top:.75rem;min-height:1.1em;text-align:center;line-height:1.5;"></p>
 
-      <p style="text-align:center;margin-top:.6rem;font-size:.66rem;color:#a09080;">
+      <div style="display:flex;align-items:center;gap:.8rem;margin:.6rem 0;">
+        <div style="flex:1;height:1px;background:rgba(201,168,76,0.15);"></div>
+        <span style="font-size:.58rem;color:#a09080;letter-spacing:.1em;">OR</span>
+        <div style="flex:1;height:1px;background:rgba(201,168,76,0.15);"></div>
+      </div>
+
+      <button onclick="iacSignInWithGoogle()"
+        style="width:100%;padding:.85rem;background:#fff;color:#3c3c3c;font-family:'Montserrat',sans-serif;
+               font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;border:none;cursor:pointer;
+               font-weight:600;display:flex;align-items:center;justify-content:center;gap:.7rem;">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Continue with Google
+      </button>
+
+      <p style="text-align:center;margin-top:.8rem;font-size:.66rem;color:#a09080;">
         <button onclick="iacForgotPassword()" style="background:none;border:none;color:#c9a84c;cursor:pointer;
           font-family:'Montserrat',sans-serif;font-size:.66rem;text-decoration:underline;">
           Forgot password?
@@ -497,6 +524,25 @@
       if (msg) { msg.style.color='#6dbf6d'; msg.textContent='✓ Password reset link sent! Check your inbox (and spam folder).'; }
     } catch(e) {
       if (msg) { msg.style.color='#e06060'; msg.textContent = e.message || 'Could not send reset email. Try OTP login instead.'; }
+    }
+  };
+
+  // ── Google OAuth ──────────────────────────────────────────────────────────
+  window.iacSignInWithGoogle = async function () {
+    const sb = getSB();
+    if (!sb) return;
+    try {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.href,   // return to same page after Google login
+          queryParams: { prompt: 'select_account' },
+        },
+      });
+      if (error) throw error;
+      // Browser will redirect to Google — no further action needed here
+    } catch (e) {
+      alert('Google sign-in failed: ' + (e.message || 'Please try again.'));
     }
   };
 
