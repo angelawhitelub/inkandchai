@@ -2195,6 +2195,7 @@ function applyProductOverride(book, override) {
   if (override.price_inr !== null && override.price_inr !== undefined) book.p = priceToText(override.price_inr);
   if (override.original_price_inr !== null && override.original_price_inr !== undefined) book.op = priceToText(override.original_price_inr);
   if (override.scarcity != null) book.sc = override.scarcity ? 1 : 0;
+  if (override.image_url) book.img = override.image_url;  // cover image override
 }
 
 function customProductToBook(product) {
@@ -3776,6 +3777,7 @@ function applyProductOverride(book, override) {
   if (override.price_inr !== null && override.price_inr !== undefined) next.p = priceToText(override.price_inr);
   if (override.original_price_inr !== null && override.original_price_inr !== undefined) next.op = priceToText(override.original_price_inr);
   if (override.scarcity != null) next.sc = override.scarcity ? 1 : 0;
+  if (override.image_url) next.img = override.image_url;  // cover image override
   return next;
 }
 
