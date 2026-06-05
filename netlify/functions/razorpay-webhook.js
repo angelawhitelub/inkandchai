@@ -64,9 +64,10 @@ exports.handler = async (event) => {
   const razorpay_order_id  = payment.order_id;   // order_XXXXXX
   const razorpay_payment_id = payment.id;        // pay_XXXXXX
   const amount_paise       = payment.amount;
-  const customerEmail      = payment.email || '';
-  const customerPhone      = payment.contact || '';
-  const customerName       = payment.notes?.name || '';
+  const customerEmail      = payment.email || payment.notes?.customer_email || '';
+  const customerPhone      = payment.contact || payment.notes?.customer_phone || '';
+  // notes.customer_name is set by create-order.js; also try notes.name as fallback
+  const customerName       = payment.notes?.customer_name || payment.notes?.name || '';
 
   if (!razorpay_order_id || !razorpay_payment_id) {
     return { statusCode: 200, body: 'OK — no order/payment id' };
@@ -96,12 +97,16 @@ exports.handler = async (event) => {
     .eq('razorpay_order_id', razorpay_order_id)
     .maybeSingle();
 
-  const cart     = abandoned?.cart_items   || [];
-  const customer = abandoned?.customer     || {};
-  const name     = customer.name  || customerName  || '';
-  const email    = customer.email || customerEmail  || '';
-  const phone    = customer.phone || customerPhone  || '';
+  const cart     = abandoned?.cart_items || [];
+  const customer = abandoned?.customer   || {};
+  const name     = customer.name    || customerName   || '';
+  const email    = customer.email   || customerEmail  || '';
+  const phone    = customer.phone   || customerPhone  || '';
   const address  = customer.address || payment.notes?.shipping_address || '';
+  // If cart is empty (no abandoned checkout), build a placeholder from notes.books
+  const cartItems = cart.length > 0 ? cart : (payment.notes?.books
+    ? [{ title: payment.notes.books, qty: 1, price: Math.round(amount_paise / 100) }]
+    : []);
 
   // Generate IC- order ID
   const now = new Date();
@@ -119,7 +124,7 @@ exports.handler = async (event) => {
     customer_email:      email,
     customer_phone:      phone,
     customer_address:    address,
-    cart_items:          cart,
+    cart_items:          cartItems,
   });
 
   if (saveErr) {
@@ -168,7 +173,7 @@ exports.handler = async (event) => {
         inkOrderId,
         amtDisplay,
         (address || '').slice(0, 80),
-        cart.map(i => i.title || '').filter(Boolean).join(', ').slice(0, 200) || 'your books',
+        cartItems.map(i => i.title || '').filter(Boolean).join(', ').slice(0, 200) || 'your books',
       ],
     }).catch(e => console.warn('WA notify error:', e.message));
   }

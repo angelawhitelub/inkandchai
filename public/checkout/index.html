@@ -839,7 +839,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
       body: JSON.stringify({
         amount: amtPaise, currency: 'INR',
         receipt: 'ic_' + Date.now(),
-        notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, coupon: isPartial ? '' : (totals.couponCode || ''), payment_mode: isPartial ? 'partial_cod' : 'online' },
+        notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, shipping_address: addr.address || '', books: cart.map(i=>i.title||'').filter(Boolean).join(', ').slice(0,200), coupon: isPartial ? '' : (totals.couponCode || ''), payment_mode: isPartial ? 'partial_cod' : 'online' },
       }),
     });
     if (!res.ok) throw new Error('Order creation failed');
