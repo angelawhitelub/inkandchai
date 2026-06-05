@@ -15,6 +15,9 @@
 :root{--bg:#f7f3eb;--bg2:#fffdf8;--bg3:#ffffff;--gold:#8a6a1f;--gold-light:#a98224;--gold-dim:#9b8858;--cream:#241b13;--cream-dim:#6f6255;--white:#100d09;--border:rgba(138,106,31,0.24);--green:#237a3b;--orange:#b56b12;--red:#c93636;--shadow:0 14px 36px rgba(70,52,24,0.08)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
+/* Loading bar */
+#loadingBar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--gold),var(--gold-light));width:0%;transition:width 0.3s ease;z-index:9999;pointer-events:none;}
+#loadingBar.done{opacity:0;transition:width 0.3s ease,opacity 0.5s ease 0.3s;}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;background:rgba(255,253,248,0.97);border-bottom:1px solid var(--border);box-shadow:var(--shadow);flex-wrap:wrap;gap:0.8rem;}
 .logo{display:inline-flex;align-items:center;gap:0.6rem;font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:600;color:var(--gold);}
 .logo img{height:34px;width:auto;display:block}
@@ -284,6 +287,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
 </style>
 </head>
 <body>
+<div id="loadingBar"></div>
 
 <nav>
   <div class="logo"><img src="/images/logo.png" alt="Ink &amp; Chai" width="100" height="34"/><span style="font-size:0.7rem;color:var(--gold-dim);font-family:'Montserrat',sans-serif;letter-spacing:0.15em;"> — Admin</span></div>
@@ -973,17 +977,32 @@ async function fetchOrders(reset = false) {
     initTabFromHash();
 
     updateStats();
-    applyFilters();
     fetchProducts();
+
+    // ── Loading bar progress ──────────────────────────────────────────────────
+    if (serverTotal && serverTotal > 0) {
+      const pct = Math.min(95, Math.round((allOrders.length / serverTotal) * 100));
+      const bar = document.getElementById('loadingBar');
+      if (bar) { bar.classList.remove('done'); bar.style.width = pct + '%'; }
+    }
 
     // Trigger first auto-recheck 10s after initial load (gives time for all pages to load)
     if (reset && page === 2) setTimeout(() => { autoRecheckPhonePe(); updateAutoRecheckBadge(); }, 10000);
 
     // Auto-paginate: keep loading until all orders are in memory
+    // Do NOT call applyFilters() here — rewriting innerHTML on every page causes scroll jumps.
+    // The table will render once after ALL pages are loaded (below).
     if (hasMore) {
       fetchOrders(false);
       return; // skip finally btn-reset; it will fire when last page completes
     }
+
+    // All pages loaded — render table once (no more scroll jumps)
+    applyFilters();
+
+    // Complete + hide loading bar
+    const bar = document.getElementById('loadingBar');
+    if (bar) { bar.style.width = '100%'; bar.classList.add('done'); setTimeout(() => { bar.style.width = '0%'; bar.classList.remove('done'); }, 900); }
 
   } catch (err) {
     showLoginErr('Error: ' + err.message);
@@ -1267,9 +1286,12 @@ function updateStats() {
   if (delEl) delEl.textContent = stillLoading ? '…' : delivered;
   document.getElementById('statRev').textContent       = stillLoading ? '…' : '₹' + Math.round(rev / 100).toLocaleString('en-IN');
   if (!stillLoading) updateAnalytics();
-  document.getElementById('dashSubtitle').textContent  = stillLoading
-    ? `${displayTotal} orders · loading ${allOrders.length} of ${displayTotal}…`
-    : `${displayTotal} orders · refreshed ${new Date().toLocaleTimeString('en-IN')}`;
+  if (stillLoading) {
+    const pct = Math.round((allOrders.length / displayTotal) * 100);
+    document.getElementById('dashSubtitle').textContent = `Loading orders… ${allOrders.length} / ${displayTotal} (${pct}%)`;
+  } else {
+    document.getElementById('dashSubtitle').textContent = `${displayTotal} orders · refreshed ${new Date().toLocaleTimeString('en-IN')}`;
+  }
 
   // Full breakdown — every status so the maths adds up to Total
   if (!stillLoading) {
