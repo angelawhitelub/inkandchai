@@ -382,6 +382,58 @@ tr:hover td{background:rgba(122,88,21,0.075);}
   <div id="statusBreakdown" style="font-size:0.58rem;color:#7a6330;letter-spacing:0.06em;
        padding:0.5rem 0.2rem;margin:-0.5rem 0 0.8rem;flex-wrap:wrap;display:flex;gap:0.9rem;"></div>
 
+  <!-- ── Analytics Panel ─────────────────────────────────────── -->
+  <div id="analyticsPanel" style="margin-bottom:1.5rem;">
+    <!-- Revenue KPI row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1rem;">
+      <div class="stat-card" style="border-color:rgba(201,168,76,0.4);">
+        <div class="stat-label">Today's Revenue</div>
+        <div class="stat-val" id="kpiToday" style="font-size:1.5rem;color:var(--gold);">—</div>
+        <div id="kpiTodayOrders" style="font-size:0.6rem;color:var(--cream-dim);margin-top:0.3rem;"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">This Week</div>
+        <div class="stat-val" id="kpiWeek" style="font-size:1.5rem;color:var(--green);">—</div>
+        <div id="kpiWeekOrders" style="font-size:0.6rem;color:var(--cream-dim);margin-top:0.3rem;"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">This Month</div>
+        <div class="stat-val" id="kpiMonth" style="font-size:1.5rem;color:#4db8ff;">—</div>
+        <div id="kpiMonthOrders" style="font-size:0.6rem;color:var(--cream-dim);margin-top:0.3rem;"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Order Value</div>
+        <div class="stat-val" id="kpiAOV" style="font-size:1.5rem;color:#a275d6;">—</div>
+        <div id="kpiAOVsub" style="font-size:0.6rem;color:var(--cream-dim);margin-top:0.3rem;"></div>
+      </div>
+    </div>
+
+    <!-- Bar charts row -->
+    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:1rem;">
+      <!-- Daily revenue bar chart (last 30 days) -->
+      <div class="stat-card" style="padding:1.2rem 1.4rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+          <div class="stat-label" style="margin:0;">Daily Revenue — Last 30 Days</div>
+          <div id="chartPeak" style="font-size:0.58rem;color:var(--cream-dim);"></div>
+        </div>
+        <div id="revenueChart" style="display:flex;align-items:flex-end;gap:2px;height:80px;overflow:hidden;"></div>
+        <div id="revenueChartLabels" style="display:flex;justify-content:space-between;margin-top:4px;font-size:0.5rem;color:var(--cream-dim);"></div>
+      </div>
+
+      <!-- Orders by status donut / bar -->
+      <div class="stat-card" style="padding:1.2rem 1.4rem;">
+        <div class="stat-label" style="margin-bottom:1rem;">Orders by Payment Type</div>
+        <div id="payTypeChart" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
+      </div>
+    </div>
+
+    <!-- Top books this month -->
+    <div class="stat-card" style="padding:1.2rem 1.4rem;margin-top:1rem;">
+      <div class="stat-label" style="margin-bottom:0.8rem;">🏆 Top Books This Month</div>
+      <div id="topBooksChart" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.5rem;"></div>
+    </div>
+  </div>
+
   <section class="focus-panel">
     <div>
       <strong>Unshipped orders</strong>
@@ -1039,6 +1091,146 @@ function syncSelectionUi() {
   allBox.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
 }
 
+// ── Analytics ─────────────────────────────────────────────────────────────
+function updateAnalytics() {
+  if (!allOrders.length) return;
+
+  const PAID_STATUSES = new Set(['paid','delivered','shipped','out_for_delivery','confirmed','cod_pending','partial_cod_pending','partial_cod','pending_phonepe','pending_partial_phonepe']);
+  const paidOrders = allOrders.filter(o => PAID_STATUSES.has(o.status));
+
+  const now   = new Date();
+  const todayStr  = now.toISOString().slice(0,10);
+  const weekAgo   = new Date(now - 7*86400*1000);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  function orderRev(o) { return Math.round((o.amount_paise || 0) / 100); }
+  function orderDate(o) { return new Date(o.created_at); }
+
+  const todayOrders = paidOrders.filter(o => o.created_at?.slice(0,10) === todayStr);
+  const weekOrders  = paidOrders.filter(o => orderDate(o) >= weekAgo);
+  const monthOrders = paidOrders.filter(o => orderDate(o) >= monthStart);
+
+  const todayRev = todayOrders.reduce((s,o)=>s+orderRev(o),0);
+  const weekRev  = weekOrders.reduce((s,o)=>s+orderRev(o),0);
+  const monthRev = monthOrders.reduce((s,o)=>s+orderRev(o),0);
+  const aov      = paidOrders.length ? Math.round(paidOrders.reduce((s,o)=>s+orderRev(o),0)/paidOrders.length) : 0;
+
+  const fmt = n => '₹' + n.toLocaleString('en-IN');
+
+  document.getElementById('kpiToday').textContent = fmt(todayRev);
+  document.getElementById('kpiTodayOrders').textContent = todayOrders.length + ' orders today';
+  document.getElementById('kpiWeek').textContent  = fmt(weekRev);
+  document.getElementById('kpiWeekOrders').textContent = weekOrders.length + ' orders this week';
+  document.getElementById('kpiMonth').textContent = fmt(monthRev);
+  document.getElementById('kpiMonthOrders').textContent = monthOrders.length + ' orders this month';
+  document.getElementById('kpiAOV').textContent   = fmt(aov);
+  document.getElementById('kpiAOVsub').textContent = 'across ' + paidOrders.length + ' paid orders';
+
+  // ── Daily revenue bar chart (last 30 days) ────────────────────────────────
+  const days = 30;
+  const dailyRev = {};
+  for (let i = 0; i < days; i++) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    dailyRev[d.toISOString().slice(0,10)] = 0;
+  }
+  paidOrders.forEach(o => {
+    const d = o.created_at?.slice(0,10);
+    if (d && dailyRev[d] !== undefined) dailyRev[d] += orderRev(o);
+  });
+
+  const dayKeys = Object.keys(dailyRev).sort();
+  const vals    = dayKeys.map(k => dailyRev[k]);
+  const peak    = Math.max(...vals, 1);
+
+  const chartEl = document.getElementById('revenueChart');
+  const labelsEl = document.getElementById('revenueChartLabels');
+  if (chartEl) {
+    chartEl.innerHTML = dayKeys.map((k, i) => {
+      const v   = vals[i];
+      const pct = Math.round((v / peak) * 100);
+      const isToday = k === todayStr;
+      const barColor = isToday ? 'var(--gold)' : (v > 0 ? 'rgba(201,168,76,0.45)' : 'rgba(201,168,76,0.1)');
+      const label = new Date(k + 'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+      return `<div title="${label}: ${v > 0 ? fmt(v) : 'No orders'}" style="flex:1;background:${barColor};height:${Math.max(pct,2)}%;
+        border-radius:2px 2px 0 0;cursor:default;min-width:4px;transition:opacity 0.2s;"
+        onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'"></div>`;
+    }).join('');
+
+    // Labels: show only start, mid, today
+    if (labelsEl) {
+      const first = new Date(dayKeys[0]+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+      const mid   = new Date(dayKeys[14]+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+      labelsEl.innerHTML = `<span>${first}</span><span>${mid}</span><span style="color:var(--gold)">Today</span>`;
+    }
+  }
+  const peakEl = document.getElementById('chartPeak');
+  if (peakEl && peak > 1) peakEl.textContent = 'Peak: ' + fmt(peak);
+
+  // ── Payment type breakdown ─────────────────────────────────────────────────
+  const byType = {
+    'Online (Paid)':   paidOrders.filter(o => o.status === 'paid' || o.razorpay_payment_id?.startsWith('pay_')),
+    'COD':             paidOrders.filter(o => ['cod_pending'].includes(o.status)),
+    'Partial COD':     paidOrders.filter(o => ['partial_cod_pending'].includes(o.status)),
+    'PhonePe':         paidOrders.filter(o => o.status?.includes('phonepe')),
+    'Shipped/Delivered': paidOrders.filter(o => ['shipped','out_for_delivery','delivered'].includes(o.status)),
+  };
+  const payEl = document.getElementById('payTypeChart');
+  if (payEl) {
+    const total = paidOrders.length || 1;
+    payEl.innerHTML = Object.entries(byType)
+      .filter(([,v]) => v.length > 0)
+      .sort((a,b) => b[1].length - a[1].length)
+      .map(([label, orders]) => {
+        const pct = Math.round(orders.length / total * 100);
+        const rev = orders.reduce((s,o)=>s+orderRev(o),0);
+        const colors = {'Online (Paid)':'#6dbf6d','COD':'#e8a030','Partial COD':'#c9a84c','PhonePe':'#a275d6','Shipped/Delivered':'#4db8ff'};
+        const col = colors[label] || 'var(--gold)';
+        return `<div>
+          <div style="display:flex;justify-content:space-between;font-size:0.62rem;margin-bottom:3px;">
+            <span style="color:var(--cream);">${label}</span>
+            <span style="color:${col};">${orders.length} · ${fmt(rev)}</span>
+          </div>
+          <div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${col};border-radius:3px;"></div>
+          </div>
+        </div>`;
+      }).join('');
+  }
+
+  // ── Top books this month ───────────────────────────────────────────────────
+  const bookCounts = {};
+  monthOrders.forEach(o => {
+    (Array.isArray(o.cart_items) ? o.cart_items : []).forEach(item => {
+      const t = item.title || item.name || '';
+      if (!t) return;
+      if (!bookCounts[t]) bookCounts[t] = { qty: 0, rev: 0 };
+      bookCounts[t].qty += item.qty || 1;
+      bookCounts[t].rev += (item.price || 0) * (item.qty || 1);
+    });
+  });
+  const topBooks = Object.entries(bookCounts).sort((a,b) => b[1].qty - a[1].qty).slice(0, 8);
+  const maxQty   = topBooks[0]?.[1].qty || 1;
+  const topEl    = document.getElementById('topBooksChart');
+  if (topEl) {
+    if (topBooks.length === 0) {
+      topEl.innerHTML = '<p style="color:var(--cream-dim);font-size:0.7rem;">No data for this month yet.</p>';
+    } else {
+      topEl.innerHTML = topBooks.map(([title, data], i) => {
+        const pct = Math.round(data.qty / maxQty * 100);
+        return `<div style="background:var(--bg2);padding:0.6rem 0.8rem;border:1px solid var(--border);">
+          <div style="display:flex;justify-content:space-between;font-size:0.62rem;margin-bottom:4px;">
+            <span style="color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;" title="${title}">${i+1}. ${title}</span>
+            <span style="color:var(--gold);flex-shrink:0;margin-left:4px;">${data.qty} sold</span>
+          </div>
+          <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:2px;opacity:0.8;"></div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+}
+
 // ── Stats ──────────────────────────────────────────────────────────────────
 function updateStats() {
   const cod          = allOrders.filter(o => o.status === 'cod_pending').length;
@@ -1067,6 +1259,7 @@ function updateStats() {
   const delEl = document.getElementById('statDelivered');
   if (delEl) delEl.textContent = stillLoading ? '…' : delivered;
   document.getElementById('statRev').textContent       = stillLoading ? '…' : '₹' + Math.round(rev / 100).toLocaleString('en-IN');
+  if (!stillLoading) updateAnalytics();
   document.getElementById('dashSubtitle').textContent  = stillLoading
     ? `${displayTotal} orders · loading ${allOrders.length} of ${displayTotal}…`
     : `${displayTotal} orders · refreshed ${new Date().toLocaleTimeString('en-IN')}`;
