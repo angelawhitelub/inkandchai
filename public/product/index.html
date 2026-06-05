@@ -162,6 +162,10 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .prod-courier-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:#a09080;flex-shrink:0}
 .prod-courier-logos{display:flex;gap:0.4rem;flex-wrap:wrap}
 .prod-courier-tag{font-size:0.6rem;letter-spacing:0.1em;padding:0.25rem 0.6rem;border:1px solid rgba(201,168,76,0.2);color:#c9a84c;background:rgba(201,168,76,0.05);border-radius:2px;white-space:nowrap}
+/* Scarcity / urgency badge */
+.prod-scarcity{display:inline-flex;align-items:center;gap:0.5rem;margin:0.6rem 0 0.2rem;padding:0.45rem 0.85rem;background:rgba(220,60,40,0.1);border:1px solid rgba(220,60,40,0.3);border-radius:2px;font-size:0.73rem;color:#f07060;letter-spacing:0.04em}
+.scarcity-dot{width:7px;height:7px;border-radius:50%;background:#e05040;box-shadow:0 0 0 3px rgba(220,60,40,0.25);animation:scarcity-pulse 1.5s ease-in-out infinite}
+@keyframes scarcity-pulse{0%,100%{box-shadow:0 0 0 3px rgba(220,60,40,0.25)}50%{box-shadow:0 0 0 6px rgba(220,60,40,0.08)}}
 /* Delivery guarantee */
 .prod-refund-guarantee{font-size:0.72rem;line-height:1.6;color:#f0e8d8;padding:0.65rem 0.9rem;background:rgba(109,191,109,0.06);border-left:3px solid #6dbf6d}
 .prod-desc-title{font-size:0.6rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem}
@@ -422,6 +426,18 @@ gtag('config', 'AW-18119332653');
       position: 'BOTTOM_RIGHT',
       region: 'IN',
     });
+    // Raise the badge above mobile bottom bar after it renders
+    setTimeout(function raiseBadge(){
+      var found = false;
+      document.querySelectorAll('body > div').forEach(function(el){
+        var s = el.style;
+        if(s.position==='fixed' && (s.right==='20px'||s.right==='16px'||s.right==='0px')){
+          s.bottom = '80px';
+          found = true;
+        }
+      });
+      if(!found) setTimeout(raiseBadge, 500);
+    }, 800);
   }
   var s = document.getElementById('merchantWidgetScript');
   if(s) s.addEventListener('load', initMerchantBadge);
@@ -624,7 +640,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-full-af94e6d5.js"></script>
+<script src="/js/books-full-b39156df.js"></script>
 <script>
 const BOOKS = window.BOOKS_PRELOAD||[];
 const SOCIAL_PROOF = [{"type": "video", "src": "/videos/unboxing-people-magnet.mp4", "poster": "/images/social/unboxing-people-magnet.jpg", "caption": "All India delivery · COD available"}, {"type": "video", "src": "/videos/affordable-novels.mp4", "poster": "/images/social/affordable-novels.jpg", "caption": "Affordable novels from just ₹99"}, {"type": "video", "src": "/videos/rich-dad-collection.mp4", "poster": "/images/social/rich-dad-collection.jpg", "caption": "Different genres · Large collection to choose from"}, {"type": "video", "src": "/videos/customer-thanks.mp4", "poster": "/images/social/customer-thanks.jpg", "caption": "❤️ A note from one of our readers"}];
@@ -689,6 +705,7 @@ function applyProductOverride(book, override) {
   }
   if (override.price_inr !== null && override.price_inr !== undefined) next.p = priceToText(override.price_inr);
   if (override.original_price_inr !== null && override.original_price_inr !== undefined) next.op = priceToText(override.original_price_inr);
+  if (override.scarcity != null) next.sc = override.scarcity ? 1 : 0;
   return next;
 }
 
@@ -896,6 +913,11 @@ function renderProduct(b) {
             <span class="prod-cd-label">Ends in</span>
             <div class="prod-cd" id="prodCountdown"></div>
           </div>
+        </div>` : ''}
+
+        ${b.sc ? `<div class="prod-scarcity">
+          <span class="scarcity-dot"></span>
+          <span>🔥 Hurry! Only <strong>4 left</strong> in stock</span>
         </div>` : ''}
 
         ${getShipByHTML(b.slug)}

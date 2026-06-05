@@ -136,6 +136,18 @@ gtag('config', 'AW-18119332653');
       position: 'BOTTOM_RIGHT',
       region: 'IN',
     });
+    // Raise the badge above mobile bottom bar after it renders
+    setTimeout(function raiseBadge(){
+      var found = false;
+      document.querySelectorAll('body > div').forEach(function(el){
+        var s = el.style;
+        if(s.position==='fixed' && (s.right==='20px'||s.right==='16px'||s.right==='0px')){
+          s.bottom = '80px';
+          found = true;
+        }
+      });
+      if(!found) setTimeout(raiseBadge, 500);
+    }, 800);
   }
   var s = document.getElementById('merchantWidgetScript');
   if(s) s.addEventListener('load', initMerchantBadge);

@@ -38,6 +38,18 @@ gtag('config', 'AW-18119332653');
       position: 'BOTTOM_RIGHT',
       region: 'IN',
     });
+    // Raise the badge above mobile bottom bar after it renders
+    setTimeout(function raiseBadge(){
+      var found = false;
+      document.querySelectorAll('body > div').forEach(function(el){
+        var s = el.style;
+        if(s.position==='fixed' && (s.right==='20px'||s.right==='16px'||s.right==='0px')){
+          s.bottom = '80px';
+          found = true;
+        }
+      });
+      if(!found) setTimeout(raiseBadge, 500);
+    }, 800);
   }
   var s = document.getElementById('merchantWidgetScript');
   if(s) s.addEventListener('load', initMerchantBadge);
@@ -120,7 +132,7 @@ gtag('config', 'AW-18119332653');
         <span class="cover"><img src="https://inkandchai.in/images/off-campus-5-book-collection-elle-kennedy-covers.webp" alt="The Off-Campus Series Complete Collection — 5 Books by Elle Kennedy | The Deal + cover" loading="lazy"/></span>
         <strong>The Off-Campus Series Complete Collection — 5 Books by Elle Kennedy | The Deal +</strong>
         <small>Elle Kennedy</small>
-        <span class="price">₹ 1,499</span>
+        <span class="price">₹ 1,199</span>
       </a>
 
       <a class="card" href="/product/kings-of-sin-series-complete-set-6-books-ana-huang/">

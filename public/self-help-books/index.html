@@ -38,6 +38,18 @@ gtag('config', 'AW-18119332653');
       position: 'BOTTOM_RIGHT',
       region: 'IN',
     });
+    // Raise the badge above mobile bottom bar after it renders
+    setTimeout(function raiseBadge(){
+      var found = false;
+      document.querySelectorAll('body > div').forEach(function(el){
+        var s = el.style;
+        if(s.position==='fixed' && (s.right==='20px'||s.right==='16px'||s.right==='0px')){
+          s.bottom = '80px';
+          found = true;
+        }
+      });
+      if(!found) setTimeout(raiseBadge, 500);
+    }, 800);
   }
   var s = document.getElementById('merchantWidgetScript');
   if(s) s.addEventListener('load', initMerchantBadge);
@@ -127,7 +139,7 @@ gtag('config', 'AW-18119332653');
         <span class="cover"><img src="https://inkandchai.in/images/rich-dad-poor-dad-psychology-money-almanack-naval-combo.webp" alt="Rich Dad Poor Dad + The Psychology of Money + The Almanack of Naval Ravikant Com cover" loading="lazy"/></span>
         <strong>Rich Dad Poor Dad + The Psychology of Money + The Almanack of Naval Ravikant Com</strong>
         <small>Robert Kiyosaki, Morgan Housel, Eric Jorgenson</small>
-        <span class="price">₹ 699</span>
+        <span class="price">₹ 499</span>
       </a>
 
       <a class="card" href="/product/psychology-of-money-hindi-thinking-fast-slow-hindi-combo-2-books/">

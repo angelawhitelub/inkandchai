@@ -17,6 +17,9 @@
 <meta name="geo.placename" content="New Delhi" />
 <meta name="language" content="English, Hindi" />
 <link rel="canonical" href="https://inkandchai.in/" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="dns-prefetch" href="https://inkandchai.in" />
 <link rel="alternate" type="application/rss+xml" title="Ink & Chai Product Feed" href="/feed.xml" />
 <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png" />
@@ -975,6 +978,18 @@ gtag('config', 'AW-18119332653');
       position: 'BOTTOM_RIGHT',
       region: 'IN',
     });
+    // Raise the badge above mobile bottom bar after it renders
+    setTimeout(function raiseBadge(){
+      var found = false;
+      document.querySelectorAll('body > div').forEach(function(el){
+        var s = el.style;
+        if(s.position==='fixed' && (s.right==='20px'||s.right==='16px'||s.right==='0px')){
+          s.bottom = '80px';
+          found = true;
+        }
+      });
+      if(!found) setTimeout(raiseBadge, 500);
+    }, 800);
   }
   var s = document.getElementById('merchantWidgetScript');
   if(s) s.addEventListener('load', initMerchantBadge);
@@ -1650,7 +1665,7 @@ gtag('config', 'AW-18119332653');
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-lite-58e22e41.js"></script>
+<script src="/js/books-lite-5bda0e58.js"></script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -1681,6 +1696,7 @@ function applyProductOverride(book, override) {
   }
   if (override.price_inr !== null && override.price_inr !== undefined) book.p = priceToText(override.price_inr);
   if (override.original_price_inr !== null && override.original_price_inr !== undefined) book.op = priceToText(override.original_price_inr);
+  if (override.scarcity != null) book.sc = override.scarcity ? 1 : 0;
 }
 
 function customProductToBook(product) {
