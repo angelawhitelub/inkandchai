@@ -7104,7 +7104,15 @@ sitemap_out.write_text(sitemap_xml, encoding="utf-8")
 print(f"Generated: {sitemap_out}  ({len(sitemap_xml.encode())//1024} KB, {len(url_entries)} URLs)")
 
 # robots.txt
-robots_txt = f"""User-agent: *
+robots_txt = f"""User-agent: Googlebot
+Allow: /
+Disallow: /admin/
+Disallow: /.netlify/
+
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: *
 Allow: /
 Disallow: /admin/
 Disallow: /.netlify/
