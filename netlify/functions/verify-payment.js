@@ -9,6 +9,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
+const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -173,6 +174,23 @@ exports.handler = async (event) => {
       createdAt:        new Date().toISOString(),
     }).catch(e => console.error('[Shiprocket] push failed (non-fatal):', e.message));
     // Non-fatal: fire & forget — don't block the response if Shiprocket is slow
+
+    // ── Scratch card reward — only for full prepaid orders (not partial COD) ─
+    if (!isPartial) {
+      generateCardForOrder(supabase, {
+        razorpay_order_id: inkOrderId,
+        status: 'paid',
+        customer_phone: customer?.phone || '',
+        customer_email: customer?.email || '',
+        customer_name:  customer?.name  || '',
+      }).catch(e => console.error('[ScratchCard] generate failed (non-fatal):', e.message));
+    }
+
+    // Mark any scratch-card coupon used on this order as redeemed
+    if (coupon) {
+      redeemScratchCardForOrder(supabase, coupon, inkOrderId)
+        .catch(e => console.error('[ScratchCard] redeem failed (non-fatal):', e.message));
+    }
 
   } catch (err) {
     console.error('Supabase save error:', err);

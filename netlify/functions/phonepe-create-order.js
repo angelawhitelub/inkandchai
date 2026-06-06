@@ -52,6 +52,31 @@ function couponDiscount(subtotal, code) {
   return { code: normalized, discount: Math.max(0, discount) };
 }
 
+// Check static COUPONS first, then fall back to user-earned scratch cards
+async function resolveCouponDiscount(supabase, subtotal, rawCode) {
+  // Static check
+  const staticResult = couponDiscount(subtotal, rawCode);
+  if (staticResult.discount > 0) return { ...staticResult, source: 'static' };
+
+  // Scratch card check — normalize: keep dashes for scratch codes
+  const scratchCode = String(rawCode || '').toUpperCase().trim();
+  if (!scratchCode.startsWith('SCRATCH-')) return { code: '', discount: 0 };
+
+  const { data: card } = await supabase
+    .from('scratch_cards').select('*').eq('code', scratchCode).maybeSingle();
+  if (!card) return { code: '', discount: 0 };
+  if (card.status !== 'scratched')                            return { code: '', discount: 0, error: 'not_scratched' };
+  if (new Date(card.expires_at) < new Date())                 return { code: '', discount: 0, error: 'expired' };
+  if (subtotal * 100 < (card.min_subtotal_paise || 0))        return { code: '', discount: 0, error: 'min_subtotal' };
+
+  return {
+    code: scratchCode,
+    discount: Math.round(card.value_paise / 100),
+    source: 'scratch',
+    scratch_card_id: card.id,
+  };
+}
+
 function paymentMeta(cart) {
   const first = Array.isArray(cart) ? cart[0] : null;
   return first && typeof first._payment === 'object' ? first._payment : {};
@@ -115,7 +140,8 @@ exports.handler = async (event) => {
   // Re-derive total server-side
   const subtotal    = cart.reduce((s, i) => s + (i.price * i.qty), 0);
   const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-  const couponInfo  = couponDiscount(subtotal, coupon);
+  const _supabaseForCoupon = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  const couponInfo  = await resolveCouponDiscount(_supabaseForCoupon, subtotal, coupon);
   const meta        = paymentMeta(cart);
   const isPartial   = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
   const fullTotal   = Math.max(1, subtotal + shipping - (isPartial ? 0 : couponInfo.discount));
@@ -127,6 +153,15 @@ exports.handler = async (event) => {
       deposit,
       balance: Math.max(0, fullTotal - deposit),
       rate: 0.10,
+    };
+  }
+  // Stash the resolved coupon (incl. scratch-card source) on cart so payment-success
+  // handlers can mark the card redeemed without re-validating.
+  if (couponInfo.code && cart[0]) {
+    cart[0]._coupon = {
+      code: couponInfo.code,
+      discount: couponInfo.discount,
+      source: couponInfo.source || 'static',
     };
   }
   const amountPaise = Math.round(deposit * 100);

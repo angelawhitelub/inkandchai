@@ -16,6 +16,7 @@ const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
+const { generateCardForOrder } = require('./utils/scratch-cards');
 
 const CORS = { 'Content-Type': 'application/json' };
 
@@ -133,6 +134,13 @@ exports.handler = async (event) => {
   }
 
   console.log(`[razorpay-webhook] ✅ Saved missed order: ${inkOrderId} (${razorpay_payment_id})`);
+
+  // ── Scratch card reward (non-fatal) ──────────────────────────────────────
+  generateCardForOrder(supabase, {
+    razorpay_order_id: inkOrderId,
+    status: 'paid',
+    customer_phone: phone, customer_email: email, customer_name: name,
+  }).catch(e => console.error('[ScratchCard] generate failed (non-fatal):', e.message));
 
   // ── Notify store owner ───────────────────────────────────────────────────
   const ownerEmail = process.env.STORE_OWNER_EMAIL;

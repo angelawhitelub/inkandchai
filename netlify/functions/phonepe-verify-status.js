@@ -21,6 +21,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail }     = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
+const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 
 let _tokenCache = { token: null, expiresAt: 0 };
 
@@ -183,6 +184,22 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
       status:          update.status,
       createdAt:       order.created_at,
     }).catch(e => console.error('[Shiprocket] push failed (non-fatal):', e.message));
+
+    // ── Scratch card reward — only for full prepaid orders (not partial COD) ─
+    if (update.status === 'paid') {
+      generateCardForOrder(supabase, order).catch(
+        e => console.error('[ScratchCard] generate failed (non-fatal):', e.message)
+      );
+    }
+    // Redeem any scratch-card coupon used on this order
+    {
+      const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+      const usedCoupon = items[0]?._coupon?.code;
+      if (usedCoupon) {
+        redeemScratchCardForOrder(supabase, usedCoupon, order.razorpay_order_id)
+          .catch(e => console.error('[ScratchCard] redeem failed (non-fatal):', e.message));
+      }
+    }
 
     // Send customer + owner confirmations (only because we just transitioned
     // — webhook will skip when it eventually arrives, dedupe works both ways)

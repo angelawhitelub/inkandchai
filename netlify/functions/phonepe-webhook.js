@@ -26,6 +26,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 
 const { sendEmail } = require('./utils/email');
+const { generateCardForOrder } = require('./utils/scratch-cards');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -210,6 +211,13 @@ exports.handler = async (event) => {
     const items   = Array.isArray(order.cart_items) ? order.cart_items : [];
     const metaNotif = items[0]?._payment || {};
     const balanceNotif = isPartialNotif ? Math.max(0, Number(metaNotif.balance) || 0) : 0;
+
+    // ── Scratch card reward — only for full prepaid (not partial COD) ────
+    if (dbStatus === 'paid') {
+      generateCardForOrder(supabase, { ...order, status: 'paid' }).catch(
+        e => console.error('[ScratchCard] generate failed (non-fatal):', e.message)
+      );
+    }
 
     if (isNotified) {
       // Customer email

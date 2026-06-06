@@ -5603,6 +5603,23 @@ html[data-theme="light"] .btn-partial:hover{background:#f1e3c9;}
 .success-id{font-size:0.62rem;color:var(--gold-dim);letter-spacing:0.12em;margin-bottom:1.5rem;}
 .success-email-box{background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--gold);padding:1rem 1.4rem;text-align:left;margin-bottom:2rem;}
 .btn-home{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.9rem 2.4rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;text-decoration:none;display:inline-block;}
+/* Scratch card */
+.scratch-wrap{margin:2rem auto;max-width:340px;text-align:center;}
+.scratch-title{font-family:'Cormorant Garamond',serif;font-size:1.4rem;color:var(--gold);margin-bottom:0.4rem;font-style:italic;}
+.scratch-hint{font-size:0.66rem;color:var(--cream-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:1rem;}
+.scratch-card{position:relative;width:280px;height:280px;margin:0 auto;border-radius:14px;overflow:hidden;box-shadow:0 16px 40px rgba(138,106,31,0.28);user-select:none;}
+.scratch-prize{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1208 0%,#241b13 100%);color:var(--gold);text-align:center;padding:1.4rem;}
+.scratch-prize-amt{font-family:'Cormorant Garamond',serif;font-size:3.4rem;font-weight:600;color:var(--gold);line-height:1;margin-bottom:0.5rem;text-shadow:0 0 30px rgba(201,168,76,0.5);}
+.scratch-prize-label{font-size:0.7rem;color:#f0e8d8;letter-spacing:0.18em;text-transform:uppercase;margin-bottom:1rem;}
+.scratch-prize-code{font-family:Menlo,Consolas,monospace;font-size:0.78rem;color:var(--gold);background:rgba(201,168,76,0.1);border:1px dashed rgba(201,168,76,0.5);padding:0.5rem 0.9rem;letter-spacing:0.12em;margin-bottom:0.6rem;}
+.scratch-prize-exp{font-size:0.55rem;color:var(--gold-dim);letter-spacing:0.12em;text-transform:uppercase;}
+.scratch-canvas{position:absolute;inset:0;cursor:grab;touch-action:none;display:block;}
+.scratch-canvas:active{cursor:grabbing;}
+.scratch-card.revealed .scratch-canvas{display:none;}
+.scratch-copy-btn{margin-top:0.7rem;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.5rem 1.2rem;background:transparent;color:var(--gold);border:1px solid var(--gold);cursor:pointer;}
+.scratch-copy-btn:hover{background:var(--gold);color:var(--bg);}
+@keyframes confetti{0%{transform:translateY(0) rotate(0);opacity:1}100%{transform:translateY(420px) rotate(720deg);opacity:0}}
+.confetti{position:absolute;width:8px;height:14px;pointer-events:none;animation:confetti 1.6s ease-out forwards;}
 footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-size:0.65rem;color:var(--gold-dim);letter-spacing:0.08em;margin-top:auto;}
 @media(max-width:700px){
   nav{position:static;padding:1rem 1.2rem;}
@@ -5800,7 +5817,12 @@ function activeCartKey() {
   return CART_KEY;
 }
 function getCart()  { try { return JSON.parse(localStorage.getItem(activeCartKey()) || '[]'); } catch { return []; } }
-function clearCart(){ localStorage.removeItem(activeCartKey()); }
+function clearCart(){
+  localStorage.removeItem(activeCartKey());
+  // Also clear any applied coupon / scratch card so it doesn't auto-apply on the next order
+  localStorage.removeItem('iac_checkout_coupon');
+  localStorage.removeItem('iac_scratch_card');
+}
 const ABANDONED_SESSION_KEY = 'iac_abandoned_checkout_session';
 function checkoutSessionId() {
   let id = localStorage.getItem(ABANDONED_SESSION_KEY);
@@ -5826,14 +5848,40 @@ const COUPONS = {
 const PARTIAL_PAYMENT_THRESHOLD = 599;
 const PARTIAL_PAYMENT_RATE = 0.10;
 let appliedCouponCode = (localStorage.getItem(COUPON_KEY) || '').toUpperCase();
+const SCRATCH_KEY = 'iac_scratch_card';
+function loadScratchState() {
+  try { return JSON.parse(localStorage.getItem(SCRATCH_KEY) || 'null'); } catch { return null; }
+}
+let appliedScratchCard = loadScratchState(); // {code, value_paise, min_subtotal_paise, expires_at} or null
 function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE; }
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
 function cartSubtotal(cart) { return cart.reduce((s, i) => s + itemPrice(i) * itemQty(i), 0); }
 function saveCart(cart) { localStorage.setItem(activeCartKey(), JSON.stringify(cart)); }
-function normalizeCouponCode(value) { return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function normalizeCouponCode(value) {
+  const s = String(value || '').toUpperCase().trim();
+  // Preserve hyphen ONLY for SCRATCH-XXX codes (otherwise strip non-alphanumeric like before)
+  if (s.startsWith('SCRATCH-')) return s.replace(/[^A-Z0-9-]/g, '');
+  return s.replace(/[^A-Z0-9]/g, '');
+}
 function couponDiscount(subtotal, method = 'online') {
   const code = normalizeCouponCode(appliedCouponCode);
+
+  // ── Scratch card path ───────────────────────────────────────────────────
+  if (code.startsWith('SCRATCH-') && appliedScratchCard && appliedScratchCard.code === code) {
+    const card = appliedScratchCard;
+    if (card.expires_at && Date.now() > new Date(card.expires_at).getTime()) {
+      return { code, discount: 0, message: `${code} has expired.` };
+    }
+    const minSub = (card.min_subtotal_paise || 0) / 100;
+    if (subtotal < minSub) {
+      return { code, discount: 0, message: `Add ₹${(minSub - subtotal).toLocaleString('en-IN')} more to use this scratch card.` };
+    }
+    const discount = Math.round((card.value_paise || 0) / 100);
+    return { code, discount, message: `🎁 Scratch card ₹${discount} cashback applied.` };
+  }
+
+  // ── Static coupon path ─────────────────────────────────────────────────
   const coupon = COUPONS[code];
   if (!coupon) return { code: '', discount: 0, message: '' };
   if (coupon.expiresAt && Date.now() > new Date(coupon.expiresAt).getTime()) {
@@ -5894,14 +5942,16 @@ function handleCouponSelect(value) {
   applyCoupon();
 }
 
-function applyCoupon() {
+async function applyCoupon() {
   const input = document.getElementById('couponCode');
   const select = document.getElementById('couponSelect');
   const msg = document.getElementById('couponMsg');
   const code = normalizeCouponCode(input?.value);
   if (!code) {
     appliedCouponCode = '';
+    appliedScratchCard = null;
     localStorage.removeItem(COUPON_KEY);
+    localStorage.removeItem(SCRATCH_KEY);
     if (select) select.value = '';
     if (msg) {
       msg.textContent = 'Coupon removed.';
@@ -5910,6 +5960,45 @@ function applyCoupon() {
     renderSummary();
     return;
   }
+  // ── Scratch card flow — validate server-side ────────────────────────────
+  if (code.startsWith('SCRATCH-')) {
+    if (msg) { msg.textContent = 'Checking scratch card…'; msg.style.color = 'var(--cream-dim)'; }
+    try {
+      const cart = getCart();
+      const subPaise = Math.round(cartSubtotal(cart) * 100);
+      const r = await fetch('/.netlify/functions/scratch-card', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'validate', code, subtotal_paise: subPaise }),
+      });
+      const j = await r.json();
+      if (!j.valid) {
+        const reasonText = {
+          not_found: 'This scratch card code does not exist.',
+          already_used: 'This scratch card has already been used.',
+          not_scratched: 'Please scratch the card first.',
+          expired: 'This scratch card has expired.',
+          min_subtotal: `Add ₹${Math.max(0, ((j.min_subtotal_paise||0)/100 - cartSubtotal(cart))).toLocaleString('en-IN')} more to use this card.`,
+        }[j.reason] || 'Scratch card not valid.';
+        if (msg) { msg.textContent = reasonText; msg.style.color = '#c97a7a'; }
+        return;
+      }
+      appliedCouponCode = code;
+      appliedScratchCard = {
+        code: j.code,
+        value_paise: j.discount_paise,
+        min_subtotal_paise: j.min_subtotal_paise,
+        expires_at: j.expires_at || null,
+      };
+      localStorage.setItem(COUPON_KEY, code);
+      localStorage.setItem(SCRATCH_KEY, JSON.stringify(appliedScratchCard));
+      renderSummary();
+    } catch (e) {
+      if (msg) { msg.textContent = 'Could not validate code right now.'; msg.style.color = '#c97a7a'; }
+    }
+    return;
+  }
+  // ── Static coupon flow ─────────────────────────────────────────────────
   if (!COUPONS[code]) {
     if (msg) {
       msg.textContent = 'This coupon code is not valid.';
@@ -5918,7 +6007,9 @@ function applyCoupon() {
     return;
   }
   appliedCouponCode = code;
+  appliedScratchCard = null;
   localStorage.setItem(COUPON_KEY, code);
+  localStorage.removeItem(SCRATCH_KEY);
   if (select) {
     const hasVisibleOption = Array.from(select.options).some(option => option.value === code);
     select.value = hasVisibleOption ? code : '';
@@ -6404,8 +6495,157 @@ function showSuccess(type, orderId, addr) {
         <a href="/" style="color:var(--gold);">inkandchai.in</a> to track your order anytime.
       </p>
     </div>` : ''}
+    <div id="scratchCardSlot"></div>
     <a href="/" class="btn-home">← Continue Shopping</a>
   `;
+
+  // ── Scratch card reward (prepaid only) ─────────────────────────────────
+  if (isPaid) loadScratchCard(orderId);
+}
+
+// ── Scratch card UI ──────────────────────────────────────────────────────
+async function loadScratchCard(orderId, attempts = 0) {
+  const slot = document.getElementById('scratchCardSlot');
+  if (!slot) return;
+  try {
+    const r = await fetch('/.netlify/functions/scratch-card?order_id=' + encodeURIComponent(orderId));
+    const j = await r.json();
+    if (!j.card) {
+      // Webhook may not have written the card yet — retry up to ~10s
+      if (attempts < 5) { setTimeout(() => loadScratchCard(orderId, attempts + 1), 2000); }
+      return;
+    }
+    renderScratchCard(slot, j.card);
+  } catch (e) { console.warn('[scratch] load failed:', e); }
+}
+
+function renderScratchCard(slot, card) {
+  const isScratched = card.status !== 'unscratched';
+  const exp = card.expires_at ? new Date(card.expires_at) : null;
+  const expStr = exp ? exp.toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : '';
+  const minOrder = card.min_subtotal_paise ? '₹' + (card.min_subtotal_paise/100).toLocaleString('en-IN') : '₹399';
+
+  slot.innerHTML = `
+    <div class="scratch-wrap">
+      <div class="scratch-title">You won a reward! 🎁</div>
+      <div class="scratch-hint">${isScratched ? 'Your coupon below' : 'Scratch the card to reveal'}</div>
+      <div class="scratch-card" id="sCard">
+        <div class="scratch-prize">
+          <div class="scratch-prize-amt" id="sAmt">${isScratched ? '₹' + (card.value_paise/100) : '✦'}</div>
+          <div class="scratch-prize-label">cashback coupon</div>
+          <div class="scratch-prize-code">${card.code}</div>
+          <div class="scratch-prize-exp">Min order ${minOrder} · Expires ${expStr}</div>
+        </div>
+        <canvas class="scratch-canvas" id="sCanvas" width="280" height="280"></canvas>
+      </div>
+      <button class="scratch-copy-btn" id="sCopy" style="display:${isScratched ? 'inline-block' : 'none'};"
+        onclick="navigator.clipboard.writeText('${card.code}').then(()=>{this.textContent='Copied ✓';setTimeout(()=>this.textContent='Copy code',1500)})">
+        Copy code
+      </button>
+    </div>
+  `;
+
+  if (isScratched) return;
+  initScratchCanvas(card);
+}
+
+function initScratchCanvas(card) {
+  const canvas = document.getElementById('sCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // Paint gold gradient overlay
+  const grad = ctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0,    '#c9a84c');
+  grad.addColorStop(0.5,  '#a98224');
+  grad.addColorStop(1,    '#8a6a1f');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // "SCRATCH HERE" text + sparkle
+  ctx.fillStyle = 'rgba(36, 27, 19, 0.65)';
+  ctx.font = '600 14px Montserrat, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.letterSpacing = '4px';
+  ctx.fillText('✦  SCRATCH HERE  ✦', W/2, H/2 - 8);
+  ctx.font = '300 10px Montserrat, sans-serif';
+  ctx.fillText('Drag your finger to reveal', W/2, H/2 + 16);
+
+  ctx.globalCompositeOperation = 'destination-out';
+
+  let drawing = false;
+  let lastX = 0, lastY = 0;
+
+  function pos(e) {
+    const r = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: (t.clientX - r.left) * (W/r.width), y: (t.clientY - r.top) * (H/r.height) };
+  }
+  function start(e) { e.preventDefault(); drawing = true; const p = pos(e); lastX = p.x; lastY = p.y; }
+  function move(e)  {
+    if (!drawing) return;
+    e.preventDefault();
+    const p = pos(e);
+    ctx.lineWidth = 36; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+    lastX = p.x; lastY = p.y;
+    checkReveal();
+  }
+  function end() { drawing = false; }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  canvas.addEventListener('mouseup',   end);
+  canvas.addEventListener('mouseleave',end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove',  move,  { passive: false });
+  canvas.addEventListener('touchend',   end);
+
+  let revealed = false;
+  async function checkReveal() {
+    if (revealed) return;
+    // Sample pixels — if >55% transparent, reveal
+    const img = ctx.getImageData(0, 0, W, H).data;
+    let transparent = 0;
+    for (let i = 3; i < img.length; i += 40) { if (img[i] < 60) transparent++; }
+    const pct = transparent / (img.length / 40);
+    if (pct > 0.55) {
+      revealed = true;
+      try {
+        const r = await fetch('/.netlify/functions/scratch-card', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'scratch', code: card.code }),
+        });
+        const j = await r.json();
+        if (j.success) {
+          document.getElementById('sAmt').textContent = '₹' + (j.value_paise/100);
+          document.getElementById('sCard').classList.add('revealed');
+          document.getElementById('sCopy').style.display = 'inline-block';
+          fireConfetti(j.value_paise);
+        }
+      } catch (e) { console.warn('[scratch] reveal failed:', e); }
+    }
+  }
+}
+
+function fireConfetti(valuePaise) {
+  const card = document.getElementById('sCard');
+  if (!card) return;
+  const colors = ['#c9a84c','#f0e8d8','#a98224','#8a6a1f','#e8a030'];
+  const count = valuePaise >= 10000 ? 60 : 28;  // BIG WIN → more confetti
+  for (let i = 0; i < count; i++) {
+    const d = document.createElement('div');
+    d.className = 'confetti';
+    d.style.background = colors[i % colors.length];
+    d.style.left = (Math.random() * 100) + '%';
+    d.style.top  = '-20px';
+    d.style.animationDelay = (Math.random() * 0.5) + 's';
+    d.style.transform = `rotate(${Math.random() * 360}deg)`;
+    card.appendChild(d);
+    setTimeout(() => d.remove(), 2200);
+  }
 }
 
 // ── PhonePe redirect-back handler ──────────────────────────────────────────
