@@ -1,3 +1,11 @@
+User-agent: Googlebot
+Allow: /
+Disallow: /admin/
+Disallow: /.netlify/
+
+User-agent: Googlebot-Image
+Allow: /
+
 User-agent: *
 Allow: /
 Disallow: /admin/
