@@ -507,6 +507,9 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="btn-outline" onclick="reconcileShippedOrders(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Check NimbusPost for real delivery status of all Shipped + Out for Delivery orders — fixes stuck statuses">
       📦 Sync Shipped &amp; OFD → Delivered
     </button>
+    <button class="btn-outline" onclick="autoMarkDelivered(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Mark OFD ≥3 days / Shipped ≥8 days as Delivered (time-based fallback for NimbusPost not sending delivered events). Sends WhatsApp + email.">
+      ✅ Auto-Mark Stale OFD as Delivered
+    </button>
     <button class="btn-outline" onclick="pushAllToShiprocket(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Push all pending/paid/COD unshipped orders to Shiprocket panel">
       🚀 Push All to Shiprocket
     </button>
@@ -2600,6 +2603,51 @@ async function reconcileShippedOrders(btn) {
     fetchOrders(true);
   } catch (err) {
     alert('Sync failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// ── Auto-mark stale OFD/Shipped as Delivered (time-based fallback) ──────────
+async function autoMarkDelivered(btn) {
+  if (!confirm(
+    'Mark orders Delivered based on shipping age?\n\n' +
+    '• "Out for delivery" for ≥ 3 days → Delivered\n' +
+    '• "Shipped" for ≥ 8 days (no OFD) → Delivered\n\n' +
+    'This sends WhatsApp + email to each customer with return-window info.\n' +
+    'Run this when NimbusPost has stopped firing delivered events.\n\n' +
+    'Continue?'
+  )) return;
+
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Marking…'; }
+  try {
+    const res = await fetch('/.netlify/functions/auto-mark-delivered', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const s = data.summary || {};
+    const examples = (s.examples || []).slice(0,5)
+      .map(e => `  • ${e.order_id} (${e.status}, ${e.age_days}d)`).join('\n');
+    alert([
+      `Auto-deliver sweep complete:`,
+      ``,
+      `Candidates checked: ${s.candidates}`,
+      `✅ Marked delivered: ${s.marked_delivered}`,
+      `⏳ Too recent (kept as-is): ${s.skipped_too_recent}`,
+      `⏭ Already delivered: ${s.skipped_already_delivered}`,
+      s.notify_skipped_quota ? `📵 Notifications throttled: ${s.notify_skipped_quota}` : '',
+      s.errors ? `⚠ Errors: ${s.errors}` : '',
+      examples ? `\nExamples:\n${examples}` : '',
+      ``,
+      `Reloading orders…`,
+    ].filter(Boolean).join('\n'));
+    fetchOrders(true);
+  } catch (err) {
+    alert('Auto-mark failed: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }

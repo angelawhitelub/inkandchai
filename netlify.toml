@@ -17,6 +17,11 @@
 [functions."daily-unshipped-report"]
   schedule = "30 15 * * *"
 
+# Auto-mark stale shipped/OFD orders as delivered — runs daily at 4 AM UTC (9:30 AM IST)
+# Solves the "stuck in OFD" problem caused by NimbusPost not firing delivered events.
+[functions."auto-mark-delivered"]
+  schedule = "0 4 * * *"
+
 # favicon.ico — redirect to the actual PNG; browsers cache the 301 permanently
 # (previously /favicon.ico had no file → fell through to index.html → 55 KB per hit → ~534 MB/week)
 [[redirects]]
