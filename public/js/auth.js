@@ -1738,7 +1738,7 @@
     modal.id = 'iacReturnModal';
     modal.style.cssText = `
       position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
-      display:flex;align-items:center;justify-content:center;z-index:9100;padding:1rem;
+      display:flex;align-items:center;justify-content:center;z-index:10100;padding:1rem;
     `;
     modal.innerHTML = `
       <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);width:min(460px,96vw);padding:2rem;position:relative;">
