@@ -1005,12 +1005,63 @@
   const ORDERS_CACHE_KEY = 'iac_orders_cache';
   const ORDERS_CACHE_TTL = 60_000; // 60 seconds
 
+  // ── Demo mode (for recording the return-flow video) ──────────────────────
+  // Activate by visiting any page with ?demo_returns=1 — persisted in sessionStorage
+  // so it survives sign-in redirects. Deactivate with ?demo_returns=0.
+  function isDemoMode() {
+    try {
+      const p = new URLSearchParams(location.search);
+      if (p.get('demo_returns') === '1') { sessionStorage.setItem('iac_demo_returns', '1'); }
+      if (p.get('demo_returns') === '0') { sessionStorage.removeItem('iac_demo_returns'); }
+      return sessionStorage.getItem('iac_demo_returns') === '1';
+    } catch { return false; }
+  }
+  function makeDemoOrder() {
+    const now = Date.now();
+    const deliveredAt = new Date(now - 24 * 60 * 60 * 1000).toISOString(); // delivered 1 day ago
+    const createdAt   = new Date(now - 6 * 24 * 60 * 60 * 1000).toISOString();
+    return {
+      id: 'demo-order-1',
+      razorpay_order_id: 'IC-DEMO-RETURN',
+      created_at: createdAt,
+      delivered_at: deliveredAt,
+      status: 'delivered',
+      amount_paise: 32900,
+      customer_name:    currentUser?.user_metadata?.full_name || 'Demo Customer',
+      customer_phone:   currentUser?.phone || currentUser?.user_metadata?.phone || '',
+      customer_email:   currentUser?.email || '',
+      customer_address: 'Your delivery address',
+      tracking_id:      'DEMO123456789',
+      courier_name:     'Delhivery',
+      tracking_url:     'https://www.delhivery.com',
+      cart_items: [
+        { title: 'The Divorce by Freida McFadden', qty: 1, price: 329, img: '/images/the-divorce-freida-mcfadden.webp' },
+      ],
+    };
+  }
+
   async function loadMyOrders() {
     const container = document.getElementById('acct-orders-content');
     if (!container) return;
     const sb = getSB();
     if (!sb || !currentUser) {
       container.innerHTML = '<p style="color:#a09080;font-size:0.78rem;">Please sign in to view your orders.</p>';
+      return;
+    }
+
+    // ── DEMO MODE — inject fake delivered order for video recording ────────
+    if (isDemoMode()) {
+      const banner = `
+        <div style="background:linear-gradient(135deg,#1a1208,#241b13);border:1px solid #c9a84c;
+                    padding:0.7rem 1rem;margin-bottom:1rem;font-size:0.68rem;color:#c9a84c;
+                    letter-spacing:0.08em;border-radius:4px;display:flex;align-items:center;justify-content:space-between;gap:0.8rem;">
+          <span>🎬 Demo mode active — fake delivered order shown for video recording</span>
+          <a href="?demo_returns=0" style="color:#e06060;text-decoration:none;font-size:0.6rem;
+                                           border:1px solid rgba(224,96,96,0.4);padding:0.25rem 0.6rem;">Exit demo</a>
+        </div>`;
+      container.innerHTML = banner + '<div id="demo-orders-list"></div>';
+      const listEl = document.getElementById('demo-orders-list');
+      renderOrders(listEl, [makeDemoOrder()]);
       return;
     }
 
@@ -1721,6 +1772,17 @@
     btn.disabled = true;
     btn.textContent = 'Submitting...';
     if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending request...'; }
+
+    // ── Demo mode: fake a success without calling the API ───────────────────
+    if (isDemoMode() && orderId === 'demo-order-1') {
+      setTimeout(() => {
+        if (msg) { msg.style.color = '#6dbf6d'; msg.textContent = '✓ Return request submitted. Our team will be in touch within 24 hours.'; }
+        btn.textContent = 'Submitted ✓';
+        setTimeout(() => { removeModal('iacReturnModal'); loadMyOrders(); }, 1500);
+      }, 700);
+      return;
+    }
+
     try {
       const { data: { session } } = await sb.auth.getSession();
       const res = await fetch('/.netlify/functions/request-return', {
