@@ -4043,7 +4043,7 @@ function renderProduct(b) {
           ${b.pub  ? `<div class="prod-meta-item"><div class="prod-meta-label">Publisher</div><div class="prod-meta-val">${esc(b.pub)}</div></div>` : ''}
           ${b.isbn ? `<div class="prod-meta-item"><div class="prod-meta-label">ISBN</div><div class="prod-meta-val">${esc(b.isbn)}</div></div>` : ''}
           <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India · 2–5 days</div></div>
-          <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day easy returns · <a href="/return-policy/" style="color:var(--gold);text-decoration:underline;">See how →</a></div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day easy returns · <a href="#" onclick="event.preventDefault();openReturnVideo();" style="color:var(--gold);text-decoration:underline;cursor:pointer;">▶ Watch how (30 sec)</a></div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">COD · UPI · Cards</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Sold by</div><div class="prod-meta-val">Ink &amp; Chai</div></div>
         </div>
@@ -5119,7 +5119,7 @@ html[data-theme="light"] .actions{{background:rgba(250,247,242,.98)}}
     <div><span class="price" data-product-price style="opacity:0;transition:opacity 0.15s">{price}</span>{f'<span class="orig" data-product-original-price style="opacity:0;transition:opacity 0.15s">{orig}</span>' if orig else ''}</div>
     {scarcity_badge_html if scarcity_badge_html else '<span class="stock">In Stock</span>'}
     <div id="staticShipBy"></div>
-    <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
+    <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 <a href="#" onclick="event.preventDefault();openReturnVideo();" style="color:inherit;text-decoration:underline;cursor:pointer;">7-day replacement support ▶</a></span></div>
     <a href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener" class="insta-trust">
       <span class="insta-trust-icon">📸</span>
       <span class="insta-trust-text">
@@ -5270,6 +5270,33 @@ function openLB(src, alt) {{
 function closeLB() {{
   document.getElementById('lb').style.display = 'none';
   document.body.style.overflow = '';
+}}
+// ── Returns explainer video lightbox (iframe lazy-mounted on first open) ────
+function openReturnVideo() {{
+  if (document.getElementById('returnVideoLB')) return;
+  const lb = document.createElement('div');
+  lb.id = 'returnVideoLB';
+  lb.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;z-index:10700;padding:1.2rem;';
+  lb.innerHTML =
+    '<div style="position:relative;width:min(820px,96vw);background:#0d0b08;border:1px solid rgba(201,168,76,0.3);border-radius:12px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.6);">'
+    +   '<button onclick="closeReturnVideo()" aria-label="Close video" style="position:absolute;top:0.6rem;right:0.6rem;z-index:2;background:rgba(13,11,8,0.7);border:1px solid rgba(201,168,76,0.3);color:#c9a84c;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:1rem;line-height:1;">✕</button>'
+    +   '<div style="padding:1rem 1.4rem 0.4rem;font-family:Cormorant Garamond,serif;font-size:1.25rem;color:#c9a84c;font-style:italic;">How returns work — 30 seconds</div>'
+    +   '<div style="position:relative;padding-bottom:56.25%;height:0;">'
+    +     '<iframe src="https://embed.app.guidde.com/playbooks/1UdjQpZngy38d35GLotezC?mode=videoOnly" title="Returning a book on Ink &amp; Chai takes 30 seconds." frameborder="0" referrerpolicy="unsafe-url" allowfullscreen="true" allow="clipboard-write" sandbox="allow-popups allow-popups-to-escape-sandbox allow-scripts allow-forms allow-same-origin allow-presentation" style="position:absolute;top:0;left:0;width:100%;height:100%;"></iframe>'
+    +   '</div>'
+    +   '<div style="padding:0.85rem 1.4rem;font-size:0.72rem;color:#a09080;text-align:center;">Prefer reading? <a href="/return-policy/" style="color:#c9a84c;text-decoration:underline;">Full return policy →</a></div>'
+    + '</div>';
+  lb.addEventListener('click', e => {{ if (e.target === lb) closeReturnVideo(); }});
+  document.body.appendChild(lb);
+  document.body.style.overflow = 'hidden';
+  document.addEventListener('keydown', returnVideoEsc);
+}}
+function returnVideoEsc(e) {{ if (e.key === 'Escape') closeReturnVideo(); }}
+function closeReturnVideo() {{
+  const lb = document.getElementById('returnVideoLB');
+  if (lb) lb.remove();
+  document.body.style.overflow = '';
+  document.removeEventListener('keydown', returnVideoEsc);
 }}
 async function openPdf(url, title) {{
   document.getElementById('pdfDl').href = url;
