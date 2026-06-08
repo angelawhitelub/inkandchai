@@ -250,6 +250,77 @@ slim.sort(key=lambda x: x["n"], reverse=True)           # step 2: new-arrivals (
 
 books_js = json.dumps(slim, ensure_ascii=False)
 
+# ── Internal-link helpers: which authors and categories have hub pages? ─────
+# Pre-computed early so the product page template (further down) can decide
+# whether to render "View all books by [Author] →" and "Browse all [Genre] →"
+# links. These cross-links flow PageRank to the new hub pages and lift average
+# pages-per-session (a ranking signal Google cares about).
+
+from collections import Counter as _Counter
+
+_INTERNAL_PUBLISHER_BLACKLIST = {
+    "prakash books", "new kids", "99bookstore", "99bookstores", "99 bookstore",
+    "ink and chai", "ink & chai", "inkandchai", "various", "anonymous", "unknown",
+    "various authors", "multiple authors", "n/a", "—", "-",
+}
+
+_AUTHOR_BOOK_COUNTS = _Counter()
+for _b in slim:
+    _au = (_b.get("a") or "").strip().lower()
+    if not _au: continue
+    if _au in _INTERNAL_PUBLISHER_BLACKLIST: continue
+    if "," in _au or "&" in _au: continue
+    _AUTHOR_BOOK_COUNTS[_au] += 1
+
+def author_hub_url_for(book):
+    """Return /author/[slug]/ URL if this book's author has 2+ books on the site."""
+    au = (book.get("a") or "").strip()
+    if not au: return None
+    if au.lower() in _INTERNAL_PUBLISHER_BLACKLIST: return None
+    if "," in au or "&" in au: return None
+    if _AUTHOR_BOOK_COUNTS.get(au.lower(), 0) < 2: return None
+    return f"/author/{slugify(au)[:80]}/"
+
+# Map each book to the most relevant genre landing page (or None).
+# Ordering matters: first match wins. More specific buckets before broad ones.
+def landing_page_url_for(book):
+    cat   = (book.get("cat") or "").lower()
+    title = (book.get("t") or "").lower()
+    desc  = (book.get("desc") or "").lower()
+    a     = (book.get("a") or "").lower()
+    is_new = book.get("n") == 1
+    hay = cat + " " + title + " " + desc + " " + a
+
+    if "hindi" in cat or "हिंदी" in title:                      return "/best-hindi-books/"
+    if "manga" in cat or "manga" in title:                      return "/best-manga-india/"
+    if "combo" in cat or any(k in hay for k in ("combo", "box set", "boxset", "complete set", "set of ")):
+        return "/book-combos-bundles/"
+    if "dark romance" in hay or "ana huang" in a or "twisted" in title or "kings of sin" in title:
+        return "/dark-romance-books/"
+    if "off-campus" in hay or "off campus" in hay or "elle kennedy" in a or "college romance" in hay:
+        return "/college-romance-books/"
+    if "thriller" in hay or "mystery" in hay or "freida mcfadden" in a or "psychological" in hay:
+        return "/thriller-books-india/"
+    if "romance" in cat or "romance" in hay:                    return "/best-romance-books-india/"
+    if "self-help" in cat or "self help" in cat or "self help" in hay or "self-help" in hay:
+        return "/best-self-help-books-india/"
+    if is_new:                                                  return "/new-arrivals-2026/"
+    return None
+
+# Pretty label for the landing page link (shown next to category in product page)
+_LANDING_LABEL = {
+    "/best-romance-books-india/":     "Romance books",
+    "/best-self-help-books-india/":   "Self-help books",
+    "/best-hindi-books/":             "Hindi books",
+    "/dark-romance-books/":           "Dark romance",
+    "/best-manga-india/":             "Manga collection",
+    "/college-romance-books/":        "College romance",
+    "/thriller-books-india/":         "Thriller books",
+    "/book-combos-bundles/":          "Book combos",
+    "/new-arrivals-2026/":            "New arrivals",
+}
+
+
 # ── Lightweight version for homepage/category/collection pages ───────────────
 # The homepage grid never shows descriptions, ISBNs, reviews, PDFs, etc.
 # Stripping those fields cuts the embedded JSON from ~2.3MB to ~600KB,
@@ -5102,6 +5173,27 @@ def static_product_html(book):
             f'</section>'
         )
 
+    # ── Internal links for SEO juice flow (Round 4) ──────────────────────────
+    _author_hub = author_hub_url_for(book)
+    _author_link_html = ''
+    if _author_hub:
+        _auth_name = html_escape(book.get('a') or '')
+        _auth_count = _AUTHOR_BOOK_COUNTS.get((book.get('a') or '').lower(), 0)
+        _author_link_html = (
+            f'<dt>Author</dt><dd>{_auth_name} · '
+            f'<a href="{_author_hub}" style="color:var(--gold);text-decoration:underline">'
+            f'View all {_auth_count} books by this author →</a></dd>'
+        )
+
+    _landing_url = landing_page_url_for(book)
+    _landing_link_html = ''
+    if _landing_url:
+        _landing_label = _LANDING_LABEL.get(_landing_url, 'in this genre')
+        _landing_link_html = (
+            f' · <a href="{_landing_url}" style="color:var(--gold);text-decoration:underline">'
+            f'Browse all {_landing_label} →</a>'
+        )
+
     return f"""<!DOCTYPE html>
 <html lang="{'hi' if is_hindi_book(book) else 'en'}">
 <head>
@@ -5211,7 +5303,7 @@ html[data-theme="light"] .actions{{background:rgba(250,247,242,.98)}}
     <div class="desc"><div class="label">About this book</div>{desc}</div>
 {desc_banners_html}
 {review_html}
-    <div class="details"><div class="label">Details</div><dl><dt>Category</dt><dd>{cat}</dd><dt>Publisher</dt><dd>{html_escape(book.get('pub') or 'Ink & Chai')}</dd><dt>ISBN</dt><dd>{html_escape(book.get('isbn') or 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
+    <div class="details"><div class="label">Details</div><dl><dt>Category</dt><dd>{cat}{_landing_link_html}</dd>{_author_link_html}<dt>Publisher</dt><dd>{html_escape(book.get('pub') or 'Ink & Chai')}</dd><dt>ISBN</dt><dd>{html_escape(book.get('isbn') or 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
 {reviews_html}
