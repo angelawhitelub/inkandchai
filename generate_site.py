@@ -4782,6 +4782,78 @@ def product_json_ld(book):
         }
     return json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
 
+def product_faq_json_ld(book):
+    """FAQPage schema — Google shows expandable FAQs in search results (huge CTR boost).
+
+    The same 5 questions appear on every product page but Google still rewards the
+    rich snippet. Questions are calibrated to match high-volume search intent like
+    'is X genuine', 'cash on delivery', 'return policy', 'delivery time'."""
+    price  = int(price_number(book))
+    title  = book.get("t", "this book")
+    author = book.get("a", "")
+    ld = {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": f"Is {title} a genuine original book?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": f"Yes — {title}{(' by ' + author) if author else ''} sold on inkandchai.in is a 100% genuine paperback sourced directly from the publisher or authorised distributors. Every copy is brand new, not pirated or photocopied."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": f"How long does delivery take for {title}?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Standard pan-India delivery takes 2–5 business days. Orders are dispatched within 24 hours from our Delhi warehouse. Free shipping applies on orders above ₹499."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Is cash on delivery available?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": f"Yes, COD is available across India for this book. You can also pay online via UPI, debit/credit cards, or net banking — prepaid orders include a guaranteed cashback scratch card worth up to ₹200 off your next purchase."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What is the return policy?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "We offer a 7-day return window from the date of delivery. If the book arrives damaged, is the wrong title, or doesn't match the description, request a return from your My Orders page on inkandchai.in. Refunds are processed automatically once we receive the book back."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": f"What's the price of {title}?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": f"{title} is available on inkandchai.in for ₹{price}. Prices include all taxes. Free shipping on orders above ₹499."
+                }
+            },
+        ],
+    }
+    return json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
+
+
+def breadcrumb_json_ld(book):
+    """BreadcrumbList schema — Google replaces the URL in search results with the
+    breadcrumb trail (Home › Category › Book), which boosts CTR ~10-15%."""
+    cat   = book.get("cat") or "Books"
+    title = book.get("t", "")
+    items = [
+        {"@type": "ListItem", "position": 1, "name": "Home",     "item": SITE},
+        {"@type": "ListItem", "position": 2, "name": cat,        "item": f"{SITE}/category/?name={quote(cat)}"},
+        {"@type": "ListItem", "position": 3, "name": title,      "item": product_abs_url(book["slug"])},
+    ]
+    ld = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": items}
+    return json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
+
+
 def related_books_for(book, count=10):
     """Return up to `count` related books scored by author › category › tab."""
     current_url  = book.get("url", "")
@@ -5035,16 +5107,18 @@ def static_product_html(book):
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>{title} | Buy Online in India | Ink &amp; Chai</title>
+<title>{title} | Buy Online @ ₹{int(price_number(book))} | Free Shipping | Ink &amp; Chai</title>
 <meta name="description" content="{html_escape(book_description(book, 155))}"/>
-<meta name="robots" content="index,follow"/>
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1"/>
 <link rel="canonical" href="{canonical}"/>
 <meta property="og:type" content="product"/>
-<meta property="og:title" content="{title} | Ink &amp; Chai"/>
+<meta property="og:title" content="{title} | ₹{int(price_number(book))} | Ink &amp; Chai"/>
 <meta property="og:description" content="{desc}"/>
 <meta property="og:image" content="{img}"/>
 <meta property="og:url" content="{canonical}"/>
 <script type="application/ld+json">{product_json_ld(book)}</script>
+<script type="application/ld+json">{product_faq_json_ld(book)}</script>
+<script type="application/ld+json">{breadcrumb_json_ld(book)}</script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet"/>
 <script>(function(){{try{{var t=localStorage.getItem('iac_theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}}catch(e){{}}}})();</script>
 <style>
