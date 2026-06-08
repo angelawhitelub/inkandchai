@@ -2663,23 +2663,37 @@ function openBroadcastModal() {
   m.id = 'broadcastModal';
   m.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;z-index:10800;padding:1.2rem;';
   m.innerHTML = `
-    <div style="background:var(--bg3);border:1px solid var(--border);width:min(560px,96vw);padding:2rem;max-height:90vh;overflow-y:auto;position:relative;">
+    <div style="background:var(--bg3);border:1px solid var(--border);width:min(620px,96vw);padding:2rem;max-height:90vh;overflow-y:auto;position:relative;">
       <button onclick="document.getElementById('broadcastModal').remove()" style="position:absolute;top:0.6rem;right:0.6rem;background:transparent;border:1px solid var(--border);width:32px;height:32px;border-radius:50%;cursor:pointer;color:var(--cream-dim);font-size:0.9rem;">✕</button>
       <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;color:var(--white);margin-bottom:0.4rem;">📣 WhatsApp Broadcast</h2>
-      <p style="font-size:0.74rem;color:var(--cream-dim);line-height:1.7;margin-bottom:1.4rem;">Sends an approved Meta WhatsApp template to all paying customers in the last N days. Run a dry-run first to see the count before sending real messages.</p>
+      <p style="font-size:0.74rem;color:var(--cream-dim);line-height:1.7;margin-bottom:1.4rem;">Sends an approved Meta WhatsApp template to all paying customers in the last N days. Personalized mode picks books matched to each customer's reading taste.</p>
+
+      <div class="form-row">
+        <label>Personalization mode</label>
+        <select id="bcMode" onchange="bcOnModeChange()" style="width:100%;padding:0.6rem;background:var(--bg);color:var(--cream);border:1px solid var(--border);">
+          <option value="simple">Simple — one generic message to everyone (template: 1 var)</option>
+          <option value="personal_auto" selected>Personalized — auto pick best signal (author > category > language)</option>
+          <option value="personal_author">Personalized — by favorite author</option>
+          <option value="personal_category">Personalized — by favorite category</option>
+          <option value="personal_language">Personalized — by language preference</option>
+        </select>
+      </div>
 
       <div class="form-row">
         <label>Template name (must be approved in Meta Business)</label>
-        <input id="bcTemplate" type="text" value="broadcast_reengage_v1" placeholder="e.g. broadcast_reengage_v1"/>
+        <input id="bcTemplate" type="text" value="broadcast_personal_v1" placeholder="broadcast_personal_v1 or broadcast_reengage_v1"/>
+        <small id="bcTemplateHint" style="display:block;color:var(--cream-dim);font-size:0.65rem;margin-top:0.3rem;line-height:1.6;">
+          Personalized template needs 3 variables: {{1}}=name, {{2}}=bucket label, {{3}}=book list. See README for copy.
+        </small>
       </div>
 
       <div class="form-row">
         <label>Recipients: customers from the last N days</label>
-        <input id="bcDays" type="number" value="60" min="1" max="365"/>
+        <input id="bcDays" type="number" value="90" min="1" max="365"/>
       </div>
 
       <div class="form-row">
-        <label>Language code</label>
+        <label>Language code (Meta template language)</label>
         <input id="bcLang" type="text" value="en" placeholder="e.g. en, en_US, hi"/>
       </div>
 
@@ -2695,7 +2709,7 @@ function openBroadcastModal() {
 
       <div style="background:rgba(201,168,76,0.07);border-left:3px solid var(--gold);padding:0.9rem 1.1rem;margin-bottom:1.2rem;">
         <p style="font-size:0.72rem;color:var(--cream-dim);line-height:1.7;margin:0;">
-          ⚠ <strong style="color:var(--gold);">Template must be pre-approved in Meta.</strong> Body should accept {{1}} as the customer's first name. If template is in "Marketing" category, recipients will be charged ~₹0.91 per message. ~5,000 customers ≈ ₹4,550.
+          ⚠ <strong style="color:var(--gold);">Template must be pre-approved in Meta.</strong> Marketing templates cost ~₹0.91/msg. Always Dry Run first to preview which segment each customer falls into.
         </p>
       </div>
 
@@ -2710,12 +2724,26 @@ function openBroadcastModal() {
   document.body.appendChild(m);
 }
 
+function bcOnModeChange() {
+  const mode = document.getElementById('bcMode').value;
+  const tpl  = document.getElementById('bcTemplate');
+  const hint = document.getElementById('bcTemplateHint');
+  if (mode === 'simple') {
+    tpl.value = 'broadcast_reengage_v1';
+    hint.textContent = 'Simple template needs 1 variable: {{1}} = customer first name.';
+  } else {
+    tpl.value = 'broadcast_personal_v1';
+    hint.textContent = 'Personalized template needs 3 variables: {{1}}=name, {{2}}=bucket label, {{3}}=book list (multiline).';
+  }
+}
+
 async function runBroadcast(dryRun, btn) {
   if (!dryRun) {
     if (!confirm('⚠ This will send REAL WhatsApp messages and incur Meta charges (~₹0.91 each for marketing templates).\n\nAre you sure you want to send?')) return;
     if (!confirm('Last chance — send WhatsApp broadcast to all selected customers now?')) return;
   }
 
+  const mode      = document.getElementById('bcMode').value;
   const template  = document.getElementById('bcTemplate').value.trim();
   const daysBack  = parseInt(document.getElementById('bcDays').value) || 60;
   const lang      = document.getElementById('bcLang').value.trim() || 'en';
@@ -2723,6 +2751,12 @@ async function runBroadcast(dryRun, btn) {
   const limit     = parseInt(document.getElementById('bcLimit').value) || null;
 
   if (!template) { alert('Template name is required'); return; }
+
+  const personalized = mode !== 'simple';
+  const segmentBy    = mode === 'personal_author'   ? 'author'
+                     : mode === 'personal_category' ? 'category'
+                     : mode === 'personal_language' ? 'language'
+                     : 'auto';
 
   const result = document.getElementById('bcResult');
   const orig = btn.innerHTML;
@@ -2736,6 +2770,7 @@ async function runBroadcast(dryRun, btn) {
       headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
       body: JSON.stringify({
         template, days_back: daysBack, dry_run: dryRun, lang,
+        personalized, segment_by: segmentBy,
         ...(testPhone && { test_phone: testPhone }),
         ...(limit && { limit }),
       }),
@@ -2744,18 +2779,35 @@ async function runBroadcast(dryRun, btn) {
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
 
     if (dryRun) {
-      const sample = (data.sample || []).map(s => `• ${s.name} (${s.phone})`).join('<br/>');
+      const segmentBlock = data.segment_counts ? `
+        <div style="margin-top:0.7rem;font-size:0.72rem;">
+          <strong style="color:#4db8ff;">Segment breakdown:</strong><br/>
+          <div style="font-family:Menlo,monospace;font-size:0.68rem;line-height:1.7;margin-top:0.3rem;">
+            ${Object.entries(data.segment_counts)
+              .sort((a,b) => b[1]-a[1])
+              .map(([k,v]) => `&nbsp;&nbsp;${v.toString().padStart(4)} × ${k}`)
+              .join('<br/>')}
+          </div>
+        </div>` : '';
+      const sample = (data.sample || []).map(s => {
+        const bucket = s.bucket ? ` <span style="color:#c9a84c">[${s.bucket}]</span>` : '';
+        const recs = (s.recs_preview || []).map(r => `&nbsp;&nbsp;${r}`).join('<br/>');
+        return `<div style="margin-bottom:0.5rem;">• <strong>${s.name}</strong> (${s.phone})${bucket}${recs ? '<br/>'+recs : ''}</div>`;
+      }).join('');
       result.innerHTML = `
         <div style="background:rgba(77,184,255,0.08);border-left:3px solid #4db8ff;padding:1rem 1.2rem;">
-          <strong style="color:#4db8ff;">Dry run complete</strong><br/>
-          Would send <strong>${data.total}</strong> messages.<br/><br/>
-          <span style="color:var(--cream-dim);font-size:0.72rem;">Sample recipients (10 shown):</span><br/>
-          <div style="font-family:Menlo,monospace;font-size:0.7rem;margin-top:0.4rem;line-height:1.7;">${sample}</div>
+          <strong style="color:#4db8ff;">Dry run complete</strong> · ${data.personalized ? 'Personalized' : 'Simple'} mode<br/>
+          Would send <strong>${data.total}</strong> messages.
+          ${segmentBlock}
+          <div style="margin-top:0.9rem;">
+            <span style="color:var(--cream-dim);font-size:0.72rem;">Sample (10 shown, with their assigned bucket + book recs):</span><br/>
+            <div style="font-family:Menlo,monospace;font-size:0.68rem;margin-top:0.4rem;line-height:1.5;">${sample}</div>
+          </div>
         </div>`;
     } else {
       result.innerHTML = `
         <div style="background:rgba(99,202,110,0.08);border-left:3px solid #63ca6e;padding:1rem 1.2rem;">
-          <strong style="color:#63ca6e;">Broadcast complete!</strong><br/>
+          <strong style="color:#63ca6e;">Broadcast complete!</strong> · ${data.personalized ? 'Personalized' : 'Simple'} mode<br/>
           Sent: <strong>${data.sent}</strong> / ${data.total}<br/>
           Failed: ${data.failed}<br/>
           ${data.sample_failures?.length ? `<details style="margin-top:0.6rem;"><summary style="cursor:pointer;color:var(--cream-dim);">Show failures</summary><pre style="font-size:0.65rem;color:var(--red);margin-top:0.4rem;white-space:pre-wrap;">${JSON.stringify(data.sample_failures, null, 2)}</pre></details>` : ''}
