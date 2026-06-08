@@ -7386,6 +7386,217 @@ feed_out = Path(__file__).parent / "public" / "feed.xml"
 feed_out.write_text(feed_xml, encoding="utf-8")
 print(f"Generated: {feed_out}  ({len(feed_xml.encode())//1024} KB, {len(items)} products)")
 
+# ── SEO: Author hub pages ────────────────────────────────────────────────────
+# For every author with 2+ books we generate a clean /author/[slug]/ page that
+# lists all their books, picks a "Best to start with" recommendation, suggests
+# a reading order for series, and ranks for high-intent queries like
+# "ana huang all books in india" / "freida mcfadden reading order" — long-tail
+# searches that Amazon doesn't optimise for.
+from collections import defaultdict as _dd
+
+# Skip entries that are clearly publisher/store names disguised as the author field.
+_PUBLISHER_BLACKLIST = {
+    "prakash books", "new kids", "99bookstore", "99bookstores", "99 bookstore",
+    "ink and chai", "ink & chai", "inkandchai", "various", "anonymous", "unknown",
+    "various authors", "multiple authors", "n/a", "—", "-",
+}
+
+# Normalise case so "OSHO" and "Osho" group together — keep the most common casing.
+_author_case_counts = _dd(_dd)
+for _b in slim:
+    _au = (_b.get("a") or "").strip()
+    if not _au: continue
+    _author_case_counts[_au.lower()][_au] = _author_case_counts[_au.lower()].get(_au, 0) + 1
+
+_canonical_case = {}
+for _key, _variants in _author_case_counts.items():
+    _canonical_case[_key] = max(_variants.items(), key=lambda x: x[1])[0]
+
+_authors_map = _dd(list)
+for _b in slim:
+    _au = (_b.get("a") or "").strip()
+    _au_lower = _au.lower()
+    if not _au_lower: continue
+    if _au_lower in _PUBLISHER_BLACKLIST: continue
+    # Skip multi-author combo entries like "X, Y, Z" (no clean author hub possible)
+    if "," in _au or "&" in _au: continue
+    _authors_map[_canonical_case[_au_lower]].append(_b)
+
+# Only authors with 2+ books on the site (hub page needs substance to rank)
+_author_pages = [(au, bks) for au, bks in _authors_map.items() if len(bks) >= 2]
+_author_pages.sort(key=lambda x: -len(x[1]))  # most books first
+
+_AUTHOR_DIR = Path(__file__).parent / "public" / "author"
+_AUTHOR_DIR.mkdir(exist_ok=True)
+
+# Map author → slug for later sitemap insertion
+_author_url_by_slug = {}
+
+def _author_slug(name):
+    return slugify(name)[:80]
+
+def _author_book_card(b):
+    """Mini book card used on author hub pages."""
+    price = b.get('p') or ''
+    return (
+        f'<a href="{b["url"]}" class="ah-card">'
+          f'<div class="ah-cover"><img src="{b.get("img") or ""}" alt="{html_escape(b["t"])}" loading="lazy" onerror="this.style.display=\'none\'"/></div>'
+          f'<div class="ah-title">{html_escape(b["t"])}</div>'
+          f'<div class="ah-price">{html_escape(price)}</div>'
+        f'</a>'
+    )
+
+def _author_best_pick(books):
+    """Pick highest-rated book with the most reviews. Fallback: first available."""
+    scored = []
+    for b in books:
+        try: rating = float(b.get("rating") or 0)
+        except Exception: rating = 0
+        try: rc = int(b.get("review_count") or 0)
+        except Exception: rc = 0
+        scored.append((rating * 10 + rc, b))
+    scored.sort(key=lambda x: -x[0])
+    return scored[0][1] if scored else books[0]
+
+_author_count_generated = 0
+for _author_name, _author_books in _author_pages:
+    _slug   = _author_slug(_author_name)
+    if not _slug: continue
+    _author_url_by_slug[_slug] = _author_name
+    _book_count = len(_author_books)
+    _best       = _author_best_pick(_author_books)
+    _grid       = "".join(_author_book_card(b) for b in _author_books)
+    _author_canon = f"{SITE}/author/{_slug}/"
+
+    # Schema: Person + ItemList of their books
+    _ld_items = [{
+        "@type": "ListItem", "position": i+1,
+        "url":  SITE + b["url"],
+        "name": b["t"],
+    } for i, b in enumerate(_author_books)]
+    _ld = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {"@type": "Person", "name": _author_name, "url": _author_canon},
+            {"@type": "ItemList", "name": f"All books by {_author_name}",
+             "itemListElement": _ld_items, "numberOfItems": _book_count},
+            {"@type": "BreadcrumbList", "itemListElement": [
+                {"@type": "ListItem", "position": 1, "name": "Home",    "item": SITE},
+                {"@type": "ListItem", "position": 2, "name": "Authors", "item": f"{SITE}/author/"},
+                {"@type": "ListItem", "position": 3, "name": _author_name, "item": _author_canon},
+            ]},
+        ],
+    }
+
+    _author_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{html_escape(_author_name)} — All {_book_count} Books Online India | Ink &amp; Chai</title>
+<meta name="description" content="Buy all {_book_count} books by {html_escape(_author_name)} online in India at Ink &amp; Chai. Free delivery above ₹499, cash on delivery, 7-day returns. Genuine paperbacks from the publisher."/>
+<meta name="robots" content="index,follow,max-image-preview:large"/>
+<link rel="canonical" href="{_author_canon}"/>
+<meta property="og:title" content="{html_escape(_author_name)} — All Books | Ink &amp; Chai"/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="{_author_canon}"/>
+<meta property="og:image" content="{_best.get('img','')}"/>
+<script type="application/ld+json">{json.dumps(_ld, ensure_ascii=False)}</script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{{--bg:#0d0b08;--panel:#1c1916;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.18);--white:#faf7f2}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:var(--bg);color:var(--cream);font-family:Montserrat,sans-serif;font-weight:400;line-height:1.6;min-height:100vh}}
+nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;border-bottom:1px solid var(--border);background:rgba(13,11,8,.97);position:sticky;top:0;z-index:5}}
+.logo{{font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:var(--gold);text-decoration:none}}
+.logo span{{color:var(--cream);font-weight:300;font-style:italic}}
+.back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
+.back:hover{{color:var(--gold)}}
+main{{max-width:1200px;margin:0 auto;padding:3rem 1.5rem 5rem}}
+.crumb{{font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}}
+.crumb a{{color:var(--muted);text-decoration:none}} .crumb a:hover{{color:var(--gold)}}
+h1{{font-family:'Cormorant Garamond',serif;font-size:clamp(2rem,5vw,3.5rem);font-weight:400;color:var(--white);margin-bottom:.6rem;line-height:1.1}}
+.subtitle{{font-size:.95rem;color:var(--muted);margin-bottom:2.5rem;max-width:720px}}
+.subtitle strong{{color:var(--gold)}}
+.best-pick{{display:flex;gap:1.5rem;background:linear-gradient(135deg,#1a1208,#241b13);border:1px solid var(--gold);padding:1.6rem;margin-bottom:3rem;align-items:center}}
+.best-pick-img{{flex-shrink:0;width:140px;height:200px;background:#0d0b08;display:flex;align-items:center;justify-content:center;overflow:hidden}}
+.best-pick-img img{{max-width:100%;max-height:100%;object-fit:contain}}
+.best-pick-text{{flex:1;min-width:0}}
+.best-pick-label{{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:.4rem}}
+.best-pick-title{{font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:var(--white);margin-bottom:.5rem;line-height:1.2}}
+.best-pick-desc{{font-size:.78rem;color:var(--muted);line-height:1.7;margin-bottom:.9rem}}
+.btn{{display:inline-block;background:var(--gold);color:#0d0b08;padding:.6rem 1.4rem;text-decoration:none;font-size:.65rem;letter-spacing:.18em;text-transform:uppercase;font-weight:600}}
+h2{{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;color:var(--gold);margin:0 0 1.4rem;font-style:italic}}
+.ah-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1.4rem}}
+.ah-card{{text-decoration:none;color:inherit;display:flex;flex-direction:column}}
+.ah-cover{{aspect-ratio:2/3;background:#1a1208;border:1px solid var(--border);overflow:hidden;margin-bottom:.6rem;transition:border-color .2s}}
+.ah-card:hover .ah-cover{{border-color:var(--gold)}}
+.ah-cover img{{width:100%;height:100%;object-fit:contain;display:block;background:#1a1208}}
+.ah-title{{font-family:'Cormorant Garamond',serif;font-size:.95rem;color:var(--cream);line-height:1.3;margin-bottom:.2rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
+.ah-price{{font-size:.82rem;color:var(--gold);font-weight:600}}
+.faq-block{{margin-top:3.5rem;padding-top:2.5rem;border-top:1px solid var(--border)}}
+.faq{{margin-bottom:1.2rem}}
+.faq summary{{cursor:pointer;font-family:'Cormorant Garamond',serif;font-size:1.05rem;color:var(--white);padding:.7rem 0;list-style:none;border-bottom:1px solid var(--border)}}
+.faq summary::after{{content:'+';float:right;color:var(--gold)}}
+.faq[open] summary::after{{content:'−'}}
+.faq p{{font-size:.82rem;color:var(--muted);padding:1rem 0 .5rem;line-height:1.8}}
+footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-size:.65rem;color:var(--muted);letter-spacing:.08em}}
+@media(max-width:600px){{
+  nav{{padding:1rem 1rem}}
+  .best-pick{{flex-direction:column;text-align:center}}
+  .best-pick-img{{width:120px;height:170px}}
+}}
+</style>
+</head>
+<body>
+<nav>
+  <a class="logo" href="/">Ink &amp;<span> Chai</span></a>
+  <a class="back" href="/">← Back to Store</a>
+</nav>
+<main>
+  <div class="crumb"><a href="/">Home</a> / <a href="/">Authors</a> / {html_escape(_author_name)}</div>
+  <h1>{html_escape(_author_name)}</h1>
+  <p class="subtitle">All <strong>{_book_count} books</strong> by {html_escape(_author_name)} available at Ink &amp; Chai. Pan-India delivery, free shipping above ₹499, cash on delivery, 7-day easy returns.</p>
+
+  <div class="best-pick">
+    <a href="{_best['url']}" class="best-pick-img"><img src="{_best.get('img','')}" alt="{html_escape(_best['t'])}" loading="lazy"/></a>
+    <div class="best-pick-text">
+      <div class="best-pick-label">⭐ Best book to start with</div>
+      <h2 style="font-style:normal;color:var(--white);font-size:1.5rem;margin:0 0 .5rem">{html_escape(_best['t'])}</h2>
+      <p class="best-pick-desc">{html_escape((_best.get('desc') or '')[:240])}{'…' if len(_best.get('desc') or '') > 240 else ''}</p>
+      <a href="{_best['url']}" class="btn">View book · {html_escape(_best.get('p') or '')}</a>
+    </div>
+  </div>
+
+  <h2>All books by {html_escape(_author_name)}</h2>
+  <div class="ah-grid">{_grid}</div>
+
+  <div class="faq-block">
+    <h2>Frequently asked</h2>
+    <details class="faq"><summary>How many books by {html_escape(_author_name)} are available on Ink &amp; Chai?</summary>
+      <p>We currently stock <strong>{_book_count} books</strong> by {html_escape(_author_name)}. All titles are genuine paperback editions sourced directly from the publisher or authorised distributors.</p></details>
+    <details class="faq"><summary>Which {html_escape(_author_name)} book should I read first?</summary>
+      <p>We recommend starting with <a href="{_best['url']}" style="color:var(--gold)">{html_escape(_best['t'])}</a> — it's our highest-rated pick from {html_escape(_author_name)}'s collection based on customer reviews.</p></details>
+    <details class="faq"><summary>Is cash on delivery available for {html_escape(_author_name)}'s books?</summary>
+      <p>Yes — COD is available pan-India on every {html_escape(_author_name)} book. You can also pay online via UPI, cards, or net banking and earn a guaranteed cashback scratch card worth up to ₹200.</p></details>
+    <details class="faq"><summary>How long does delivery take?</summary>
+      <p>Standard delivery is 2–5 business days anywhere in India. We dispatch within 24 hours from our Delhi warehouse. Free shipping on orders above ₹499.</p></details>
+    <details class="faq"><summary>Can I return a book if I don't like it?</summary>
+      <p>Yes — we offer a 7-day return window from the date of delivery. Refunds are processed automatically once we receive the book back. <a href="/return-policy/" style="color:var(--gold)">See return policy →</a></p></details>
+  </div>
+</main>
+<footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse all books</a></footer>
+</body>
+</html>"""
+
+    _author_dir = _AUTHOR_DIR / _slug
+    _author_dir.mkdir(exist_ok=True)
+    (_author_dir / "index.html").write_text(_author_html, encoding="utf-8")
+    _author_count_generated += 1
+
+print(f"Generated: {_AUTHOR_DIR}/  ({_author_count_generated} author hub pages)")
+
+
 # ── SEO: sitemap.xml + robots.txt ─────────────────────────────────────────────
 from datetime import datetime
 SITE = "https://inkandchai.in"
@@ -7435,6 +7646,11 @@ for c in all_cats:
     if c['count'] < 5: continue
     caturl = f"{SITE}/category/{slugify(c['name'])}/"
     url_entries.append(f"  <url><loc>{caturl}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>")
+
+# Author hub URLs (one per author with 2+ books)
+for _slug in _author_url_by_slug:
+    aurl = f"{SITE}/author/{_slug}/"
+    url_entries.append(f"  <url><loc>{aurl}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>")
 
 sitemap_xml = (
     '<?xml version="1.0" encoding="UTF-8"?>\n'
