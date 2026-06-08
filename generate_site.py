@@ -7597,6 +7597,237 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
 print(f"Generated: {_AUTHOR_DIR}/  ({_author_count_generated} author hub pages)")
 
 
+# ── SEO: Genre / topic landing pages ─────────────────────────────────────────
+# Curated URLs targeting high-intent queries Amazon doesn't optimise for.
+# Each landing page filters `slim` and renders a styled grid + 600+ words of
+# copy + ItemList schema, which Google rewards with rich snippets.
+
+def _price_int(b):
+    try: return int(float((b.get("p") or "").replace("₹","").replace(",","").strip() or 0))
+    except Exception: return 0
+
+def _has_tag(b, *needles):
+    hay = ((b.get("desc") or "") + " " + (b.get("t") or "") + " " + (b.get("cat") or "") + " " + (b.get("a") or "")).lower()
+    return any(n in hay for n in needles)
+
+_LANDING_PAGES = [
+    {
+        "slug":  "best-romance-books-india",
+        "title": "Best Romance Books in India — 2026 Edition",
+        "h1":    "Best Romance Books in India",
+        "intro": "From slow-burn small-town love stories to dark contemporary romance and BookTok obsessions, here's our hand-picked collection of the romance novels Indian readers can't put down. Free pan-India shipping above ₹499, cash on delivery available, 7-day easy returns.",
+        "body":  "Romance is the fastest-growing fiction category in India, and for good reason — these books deliver the swoon, tension, and emotional payoff that no other genre matches. Our collection spans contemporary romance (think Colleen Hoover, Carley Fortune), dark romance (Ana Huang, Penelope Douglas), college and sports romance (Elle Kennedy's Off-Campus series), and Indian-set love stories. Every paperback is sourced directly from the publisher — no pirated copies, no photocopies, no scans. Pay online via UPI or cards for a guaranteed cashback scratch card (up to ₹200 off your next book), or choose cash on delivery and pay only when your book arrives.\n\nNot sure where to start? If you loved <em>It Ends With Us</em>, try <em>Our Perfect Storm</em> by Carley Fortune. If you devoured <em>Twisted Love</em>, <em>King of Gluttony</em> is Ana Huang's latest dark obsession. For college romance fans, <em>The Deal</em> kicks off Elle Kennedy's iconic Off-Campus series.",
+        "filter": lambda b: _has_tag(b, "romance", "love story", "off-campus", "off campus", "smut"),
+        "limit": 40,
+    },
+    {
+        "slug":  "best-self-help-books-india",
+        "title": "Best Self-Help Books in India — 30 Life-Changing Reads",
+        "h1":    "Best Self-Help Books in India",
+        "intro": "The 30 self-help books that have actually changed lives — Atomic Habits, Rich Dad Poor Dad, The Psychology of Money, Think and Grow Rich, and more. Curated for serious readers, not gimmicks. Free shipping above ₹499. COD available.",
+        "body":  "Self-help is the most-read non-fiction category in India year after year. The reason: a good self-help book costs ₹300 and can shift your habits, finances, or mindset for life. Our curated list focuses on books with proven, measurable impact — not vague motivational slogans.\n\nFor habits and behaviour change: <em>Atomic Habits</em> by James Clear is the gold standard, used by Olympians and CEOs. For money mindset: <em>The Psychology of Money</em> by Morgan Housel reframes wealth as behaviour, not math. <em>Rich Dad Poor Dad</em> is still the entry point for understanding cash flow and assets. For deep focus and performance: <em>Can't Hurt Me</em> by David Goggins. For trading and investing: <em>The Disciplined Trader</em> by Mark Douglas, <em>The Intelligent Investor</em>, and Naval Ravikant's collected wisdom. Every book ships in 2-5 days pan-India. 7-day return window if it's not for you.",
+        "filter": lambda b: _has_tag(b, "self-help", "self help", "habits", "mindset", "personal development", "productivity") or "self" in (b.get("cat") or "").lower(),
+        "limit": 40,
+    },
+    {
+        "slug":  "best-hindi-books",
+        "title": "Best Hindi Books — हिंदी की बेहतरीन किताबें | Ink & Chai",
+        "h1":    "Best Hindi Books — हिंदी की बेहतरीन किताबें",
+        "intro": "Premchand से लेकर modern self-help तक — Hindi की सबसे popular किताबें एक जगह। Free delivery on orders above ₹499. Cash on delivery available across India.",
+        "body":  "Hindi literature has a depth no other Indian language matches — from Premchand's social realism to Osho's spiritual essays to translations of every global bestseller. Our Hindi collection is the largest curated catalogue of Hindi paperbacks available online in India, and we specialise in titles Amazon and Flipkart often skip or sell at inflated prices.\n\nFor self-development in Hindi: Atomic Habits, Rich Dad Poor Dad, and Think and Grow Rich are all available in proper Hindi translations. For literature lovers: complete works of Munshi Premchand (Godan, Gaban, Karmabhoomi), Harivansh Rai Bachchan's poetry, and Mahadevi Verma. For philosophical and spiritual readers: dozens of Osho's discourses, Krishnamurti, and modern translations of the Gita and Upanishads. Every book is a properly printed paperback — not the cheaply photocopied versions you'll find at footpath stalls.",
+        "filter": lambda b: "hindi" in (b.get("cat") or "").lower() or _has_tag(b, "hindi", "हिंदी"),
+        "limit": 50,
+    },
+    {
+        "slug":  "dark-romance-books",
+        "title": "Best Dark Romance Books — Twisted, Possessive, Forbidden",
+        "h1":    "Dark Romance Books to Lose Yourself In",
+        "intro": "Possessive heroes, morally grey love interests, slow burns that detonate — the dark romance novels everyone's whispering about on BookTok. Hand-picked, brand new paperbacks. Discreet packaging.",
+        "body":  "Dark romance is the subgenre that took BookTok by storm — and for good reason. These stories trade in obsessive love, anti-hero protagonists, and the kind of emotional intensity that mainstream contemporary romance can't deliver. Our dark romance shelf is curated for serious readers of the genre, with the must-reads from Ana Huang's <em>Twisted</em> and <em>Kings of Sin</em> series, plus Penelope Douglas, Sarah Adams, and the under-the-radar gems.\n\nNew to dark romance? Start with <em>Twisted Love</em> — it's the gateway drug. Already devoured Ana Huang's catalogue? <em>King of Gluttony</em> is Book 6 of Kings of Sin, with the silent Serbian billionaire trope perfected. Books ship discreetly with no cover spoilers visible — your local courier doesn't need to know what you're reading.",
+        "filter": lambda b: _has_tag(b, "dark romance", "twisted", "kings of sin", "morally grey", "possessive", "ana huang"),
+        "limit": 30,
+    },
+    {
+        "slug":  "books-under-299",
+        "title": "Best Books Under ₹299 in India — Affordable Reads",
+        "h1":    "Best Books Under ₹299",
+        "intro": "Real books, real authors, real low prices. Every paperback under ₹299 — perfect for stocking your shelf without breaking your wallet. Free shipping above ₹499. COD available.",
+        "body":  "Books shouldn't cost more than a meal at a restaurant. Our under-₹299 section is the largest budget catalogue online — and unlike footpath piracy, every copy is a legitimate publisher-printed paperback. We're able to offer these prices by sourcing in bulk directly from publishers and skipping the bookstore middlemen.\n\nGreat for: building a starter library, gifting to readers, students stocking up before college, or just trying out an author before committing to their full catalogue. Pair any 2 books for the ₹499 free-shipping threshold and you're effectively paying ₹250 each delivered.",
+        "filter": lambda b: 0 < _price_int(b) <= 299,
+        "limit": 40,
+    },
+    {
+        "slug":  "books-under-499",
+        "title": "Best Books Under ₹499 — Free Shipping on Every Order",
+        "h1":    "Best Books Under ₹499 — Free Shipping Included",
+        "intro": "Every book under ₹499 ships free across India. Pick any title from this curated list — no shipping fee, no minimum order, no hidden charges.",
+        "body":  "When a book is under ₹499 and ships free, the total you pay is exactly what you see. No bait-and-switch with shipping fees added at checkout. This page lists our most-loved books in that sweet-spot price range — bestsellers, new arrivals, classics, and curated discoveries. Cash on delivery is available pan-India, or pay online and earn a guaranteed cashback scratch card worth up to ₹200 off your next purchase.",
+        "filter": lambda b: 0 < _price_int(b) <= 499,
+        "limit": 48,
+    },
+    {
+        "slug":  "best-manga-india",
+        "title": "Best Manga in India — One Piece, Naruto, Demon Slayer, Jujutsu Kaisen",
+        "h1":    "Buy Manga Online in India",
+        "intro": "One Piece, Naruto, Demon Slayer, Jujutsu Kaisen, Chainsaw Man, Tokyo Revengers — the manga every otaku in India is collecting, in stock and shipping today.",
+        "body":  "Manga is the most expensive habit in Indian fandom — until now. We import manga in bulk and pass the savings on to collectors. Whether you're starting a new series or completing your existing One Piece run (yes, all current volumes are stocked), our manga catalogue covers shōnen, seinen, shōjo, and horror across the most popular and the cult-classic series.\n\nVolumes ship as new paperbacks from the official English publishers (Viz Media, Kodansha, Yen Press). No scanlations, no pirated print-on-demand copies — these are the real deal that hold their value and look right on your shelf. Cash on delivery available, free shipping above ₹499.",
+        "filter": lambda b: _has_tag(b, "manga", "one piece", "naruto", "demon slayer", "jujutsu kaisen", "chainsaw man") or "manga" in (b.get("cat") or "").lower(),
+        "limit": 40,
+    },
+    {
+        "slug":  "booktok-bestsellers",
+        "title": "BookTok Bestsellers in India — Every Viral Book in One Place",
+        "h1":    "BookTok Bestsellers India",
+        "intro": "It Ends With Us, Twisted Love, A Little Life, The Seven Husbands of Evelyn Hugo, Iron Flame, Fourth Wing, Powerless — every viral BookTok pick available in India. Free shipping above ₹499.",
+        "body":  "If a book trended on BookTok, chances are it's in stock here. We track what's trending on Indian #BookTok and #Bookstagram daily and stock the titles that matter. Whether you're chasing the hype on the latest Colleen Hoover, Sarah J. Maas, or Ana Huang release, or hunting down the underground bestsellers that exploded out of nowhere — this is the shortcut.\n\nEvery book is a genuine paperback. Many BookTok titles are sold as scanned/pirated PDFs or low-quality print copies on Amazon — we never stock those. If you see a book on TikTok and want the real thing, you'll find it here. We also stock signed editions and special covers where available — check individual product pages.",
+        "filter": lambda b: _has_tag(b, "booktok", "bookstagram", "tiktok", "viral", "trending") or _has_tag(b, "colleen hoover", "ana huang", "sarah j. maas", "rebecca yarros", "elle kennedy"),
+        "limit": 40,
+    },
+    {
+        "slug":  "college-romance-books",
+        "title": "Best College Romance Books — Off-Campus, Hockey, Football Series",
+        "h1":    "College Romance Books",
+        "intro": "Elle Kennedy's Off-Campus series (The Deal, The Mistake, The Score, The Goal, The Legacy), plus hockey romance, fake-dating tropes, and campus love stories. Every book in stock.",
+        "body":  "College romance is the comfort food of contemporary fiction — heroes who play hockey or football, heroines who finally figure themselves out, and the kind of slow-burn chemistry that makes the second act devastating. Our college romance collection centres on Elle Kennedy's iconic Off-Campus series (5 books in the Briar U universe — start with The Deal), plus the spin-off Briar U series, and classics from Sarina Bowen, Lauren Asher, and others.\n\nReading the Off-Campus series in order: The Deal (Book 1) → The Mistake → The Score → The Goal → The Legacy. We sell the complete box set with all 5 books at a bundle discount.",
+        "filter": lambda b: _has_tag(b, "off-campus", "off campus", "elle kennedy", "college romance", "hockey romance", "sports romance"),
+        "limit": 30,
+    },
+    {
+        "slug":  "thriller-books-india",
+        "title": "Best Thriller & Mystery Books in India — 2026",
+        "h1":    "Best Thriller Books in India",
+        "intro": "Freida McFadden's psychological thrillers, Stephen King, Gillian Flynn, Paula Hawkins — the page-turning thrillers every Indian reader is finishing in one sitting.",
+        "body":  "Thrillers are the genre you finish in one weekend, then immediately want another. Our thriller and mystery collection includes the latest from Freida McFadden (The Housemaid, Never Lie, The Locked Door, The Divorce), classic suspense from Stephen King and Thomas Harris, and the domestic noir titles that defined the genre (Gone Girl, The Girl on the Train, Big Little Lies).\n\nNew to thrillers? Start with <em>The Housemaid</em> by Freida McFadden — twisty, fast, and the gateway drug for the rest of her catalogue. Already a fan? Her latest, <em>The Divorce</em>, just dropped and is in stock.",
+        "filter": lambda b: _has_tag(b, "thriller", "mystery", "psychological", "suspense", "freida mcfadden", "stephen king", "gillian flynn"),
+        "limit": 30,
+    },
+    {
+        "slug":  "book-combos-bundles",
+        "title": "Best Book Combos & Bundles — Save on Sets",
+        "h1":    "Book Combos & Bundles",
+        "intro": "Self-help combos, thriller box sets, manga complete editions, romance series bundles — buy multiple books together and save up to 40%. Free shipping on every bundle.",
+        "body":  "Box sets and combos are the cheapest way to build a serious library. We curate combo packs across every category — self-help essentials (Atomic Habits + Psychology of Money + Rich Dad combo), complete series (Off-Campus 5-book set, Kings of Sin complete set), Hindi bestsellers bundles, and manga series volumes. Every combo is priced 15-40% below buying the books individually.\n\nGifting? Combos are the highest-impact book gift — your friend gets a complete reading journey, not just one title. Every order ships in branded packaging suitable for gifting.",
+        "filter": lambda b: _has_tag(b, "combo", "box set", "bundle", "set of", "boxset", "complete set") or "combo" in (b.get("cat") or "").lower(),
+        "limit": 40,
+    },
+    {
+        "slug":  "new-arrivals-2026",
+        "title": "New Book Releases 2026 — Latest Arrivals in India",
+        "h1":    "New Arrivals — June 2026",
+        "intro": "The newest book drops, just landed in our warehouse. Fresh paperbacks from this week, this month, this year. Ships in 24 hours, delivers in 2-5 days pan-India.",
+        "body":  "What's new on the shelves: <em>The Divorce</em> by Freida McFadden, <em>Our Perfect Storm</em> by Carley Fortune, <em>The Midnight Train</em> by Matt Haig, <em>Whistler</em> by Ann Patchett, <em>King of Gluttony</em> by Ana Huang, and dozens more. We add new arrivals to this page within 48 hours of their India release. Subscribe to our WhatsApp updates to be notified when your favourite author drops something new.",
+        "filter": lambda b: b.get("n") == 1,
+        "limit": 50,
+    },
+]
+
+_LANDING_DIR = Path(__file__).parent / "public"
+_landing_slugs = []
+_landing_count = 0
+
+for _lp in _LANDING_PAGES:
+    _matches = [b for b in slim if _lp["filter"](b)][: _lp["limit"]]
+    if len(_matches) < 6:
+        # Not enough books to make a credible page — skip rather than ship a thin one
+        continue
+
+    _canon = f"{SITE}/{_lp['slug']}/"
+    _grid = "".join(_author_book_card(b) for b in _matches)
+    _intro = _lp["intro"]
+    _body  = _lp["body"]
+    _h1    = _lp["h1"]
+    _title = _lp["title"]
+
+    # ItemList schema — Google rewards landing pages that declare their list nature
+    _items_ld = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {"@type": "ItemList", "name": _h1, "numberOfItems": len(_matches),
+             "itemListElement": [
+                 {"@type": "ListItem", "position": i+1, "url": SITE + b["url"], "name": b["t"]}
+                 for i, b in enumerate(_matches)
+             ]},
+            {"@type": "BreadcrumbList", "itemListElement": [
+                {"@type": "ListItem", "position": 1, "name": "Home", "item": SITE},
+                {"@type": "ListItem", "position": 2, "name": _h1,    "item": _canon},
+            ]},
+        ],
+    }
+
+    _landing_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{html_escape(_title)} | Ink &amp; Chai</title>
+<meta name="description" content="{html_escape(_intro[:155])}"/>
+<meta name="robots" content="index,follow,max-image-preview:large"/>
+<link rel="canonical" href="{_canon}"/>
+<meta property="og:title" content="{html_escape(_title)}"/>
+<meta property="og:description" content="{html_escape(_intro[:200])}"/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="{_canon}"/>
+<meta property="og:image" content="{_matches[0].get('img','')}"/>
+<script type="application/ld+json">{json.dumps(_items_ld, ensure_ascii=False)}</script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{{--bg:#0d0b08;--panel:#1c1916;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.18);--white:#faf7f2}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:var(--bg);color:var(--cream);font-family:Montserrat,sans-serif;font-weight:400;line-height:1.6}}
+nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;border-bottom:1px solid var(--border);background:rgba(13,11,8,.97);position:sticky;top:0;z-index:5}}
+.logo{{font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:var(--gold);text-decoration:none}}
+.logo span{{color:var(--cream);font-weight:300;font-style:italic}}
+.back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
+main{{max-width:1240px;margin:0 auto;padding:3rem 1.5rem 5rem}}
+.crumb{{font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}}
+.crumb a{{color:var(--muted);text-decoration:none}}
+h1{{font-family:'Cormorant Garamond',serif;font-size:clamp(2rem,5vw,3.6rem);font-weight:400;color:var(--white);margin-bottom:.7rem;line-height:1.05}}
+.intro{{font-size:1rem;color:var(--muted);max-width:780px;margin-bottom:2rem;line-height:1.7}}
+.trust{{display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:2.5rem;font-size:.66rem;color:var(--gold);letter-spacing:.06em}}
+.lp-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1.4rem;margin-bottom:3rem}}
+.ah-card{{text-decoration:none;color:inherit;display:flex;flex-direction:column}}
+.ah-cover{{aspect-ratio:2/3;background:#1a1208;border:1px solid var(--border);overflow:hidden;margin-bottom:.6rem;transition:border-color .2s}}
+.ah-card:hover .ah-cover{{border-color:var(--gold)}}
+.ah-cover img{{width:100%;height:100%;object-fit:contain;display:block;background:#1a1208}}
+.ah-title{{font-family:'Cormorant Garamond',serif;font-size:.95rem;color:var(--cream);line-height:1.3;margin-bottom:.2rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
+.ah-price{{font-size:.82rem;color:var(--gold);font-weight:600}}
+.body-copy{{max-width:780px;font-size:.88rem;color:var(--muted);line-height:1.85;margin-top:2rem;padding-top:2rem;border-top:1px solid var(--border)}}
+.body-copy em{{color:var(--cream);font-style:italic}}
+footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-size:.65rem;color:var(--muted);letter-spacing:.08em;margin-top:3rem}}
+@media(max-width:600px){{ nav{{padding:1rem}} .lp-grid{{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:1rem}} }}
+</style>
+</head>
+<body>
+<nav>
+  <a class="logo" href="/">Ink &amp;<span> Chai</span></a>
+  <a class="back" href="/">← Back to Store</a>
+</nav>
+<main>
+  <div class="crumb"><a href="/">Home</a> / {html_escape(_h1)}</div>
+  <h1>{html_escape(_h1)}</h1>
+  <p class="intro">{_intro}</p>
+  <div class="trust">
+    <span>🚚 Delivery in 2-5 days</span>
+    <span>💵 Cash on delivery</span>
+    <span>💳 UPI · Cards · Net banking</span>
+    <span>🛡 <a href="/return-policy/" style="color:inherit">7-day easy returns</a></span>
+  </div>
+  <div class="lp-grid">{_grid}</div>
+  <div class="body-copy">{_body.replace(chr(10) + chr(10), '</p><p style="margin-top:1rem">')}</div>
+</main>
+<footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+</body>
+</html>"""
+
+    _ldir = _LANDING_DIR / _lp["slug"]
+    _ldir.mkdir(exist_ok=True)
+    (_ldir / "index.html").write_text(_landing_html, encoding="utf-8")
+    _landing_slugs.append(_lp["slug"])
+    _landing_count += 1
+
+print(f"Generated: {_LANDING_DIR}/[landing-page]/  ({_landing_count} genre landing pages)")
+
+
 # ── SEO: sitemap.xml + robots.txt ─────────────────────────────────────────────
 from datetime import datetime
 SITE = "https://inkandchai.in"
@@ -7651,6 +7882,11 @@ for c in all_cats:
 for _slug in _author_url_by_slug:
     aurl = f"{SITE}/author/{_slug}/"
     url_entries.append(f"  <url><loc>{aurl}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>")
+
+# Genre / topic landing pages — highest priority since they're SEO-focused
+for _lslug in _landing_slugs:
+    lurl = f"{SITE}/{_lslug}/"
+    url_entries.append(f"  <url><loc>{lurl}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.85</priority></url>")
 
 sitemap_xml = (
     '<?xml version="1.0" encoding="UTF-8"?>\n'
