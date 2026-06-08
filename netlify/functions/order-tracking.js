@@ -137,7 +137,7 @@ function buildTrackingUrl(awb, courierName) {
   if (courier.includes('ecom'))          return `https://ecomexpress.in/tracking/?awb_field=${awb}`;
   if (courier.includes('shadowfax'))     return `https://tracker.shadowfax.in/?awb=${awb}`;
   if (courier.includes('dtdc'))          return np;
-  if (courier.includes('ekart'))         return `https://ekartlogistics.com/shipmenttrack/${awb}`;
+  if (courier.includes('ekart'))         return np;  // ekartlogistics page only works for Flipkart-booked AWBs; B2B routes via NimbusPost
   // Fallback: NimbusPost (works for most couriers booked via NimbusPost)
   return np;
 }

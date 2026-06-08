@@ -513,6 +513,9 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="btn-outline" onclick="pushAllToShiprocket(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Push all pending/paid/COD unshipped orders to Shiprocket panel">
       🚀 Push All to Shiprocket
     </button>
+    <button class="btn-outline" onclick="openBroadcastModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(37,211,102,0.55);color:#25D366;" title="Send a WhatsApp template to all past customers. Use when paid ads are down to re-engage existing buyers.">
+      📣 WhatsApp Broadcast
+    </button>
     <span id="autoRecheckBadge" style="font-size:0.52rem;color:#a275d6;margin-left:0.6rem;opacity:0.75;cursor:default;"></span>
   </div>
 
@@ -2650,6 +2653,119 @@ async function autoMarkDelivered(btn) {
     alert('Auto-mark failed: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// ── WhatsApp broadcast (re-engage past customers) ────────────────────────────
+function openBroadcastModal() {
+  document.getElementById('broadcastModal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'broadcastModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;z-index:10800;padding:1.2rem;';
+  m.innerHTML = `
+    <div style="background:var(--bg3);border:1px solid var(--border);width:min(560px,96vw);padding:2rem;max-height:90vh;overflow-y:auto;position:relative;">
+      <button onclick="document.getElementById('broadcastModal').remove()" style="position:absolute;top:0.6rem;right:0.6rem;background:transparent;border:1px solid var(--border);width:32px;height:32px;border-radius:50%;cursor:pointer;color:var(--cream-dim);font-size:0.9rem;">✕</button>
+      <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;color:var(--white);margin-bottom:0.4rem;">📣 WhatsApp Broadcast</h2>
+      <p style="font-size:0.74rem;color:var(--cream-dim);line-height:1.7;margin-bottom:1.4rem;">Sends an approved Meta WhatsApp template to all paying customers in the last N days. Run a dry-run first to see the count before sending real messages.</p>
+
+      <div class="form-row">
+        <label>Template name (must be approved in Meta Business)</label>
+        <input id="bcTemplate" type="text" value="broadcast_reengage_v1" placeholder="e.g. broadcast_reengage_v1"/>
+      </div>
+
+      <div class="form-row">
+        <label>Recipients: customers from the last N days</label>
+        <input id="bcDays" type="number" value="60" min="1" max="365"/>
+      </div>
+
+      <div class="form-row">
+        <label>Language code</label>
+        <input id="bcLang" type="text" value="en" placeholder="e.g. en, en_US, hi"/>
+      </div>
+
+      <div class="form-row">
+        <label>Test phone (optional — sends ONLY to this number if set)</label>
+        <input id="bcTestPhone" type="text" placeholder="919999999999"/>
+      </div>
+
+      <div class="form-row">
+        <label>Limit (optional — cap total recipients for safety)</label>
+        <input id="bcLimit" type="number" placeholder="leave blank for all"/>
+      </div>
+
+      <div style="background:rgba(201,168,76,0.07);border-left:3px solid var(--gold);padding:0.9rem 1.1rem;margin-bottom:1.2rem;">
+        <p style="font-size:0.72rem;color:var(--cream-dim);line-height:1.7;margin:0;">
+          ⚠ <strong style="color:var(--gold);">Template must be pre-approved in Meta.</strong> Body should accept {{1}} as the customer's first name. If template is in "Marketing" category, recipients will be charged ~₹0.91 per message. ~5,000 customers ≈ ₹4,550.
+        </p>
+      </div>
+
+      <div style="display:flex;gap:0.7rem;flex-wrap:wrap;">
+        <button class="btn-outline" onclick="runBroadcast(true, this)" style="border-color:rgba(77,184,255,0.5);color:#4db8ff;">🧪 Dry Run (count only)</button>
+        <button class="btn-gold" onclick="runBroadcast(false, this)" style="background:#25D366;">🚀 Send for Real</button>
+      </div>
+
+      <div id="bcResult" style="margin-top:1.3rem;font-size:0.78rem;color:var(--cream);"></div>
+    </div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+}
+
+async function runBroadcast(dryRun, btn) {
+  if (!dryRun) {
+    if (!confirm('⚠ This will send REAL WhatsApp messages and incur Meta charges (~₹0.91 each for marketing templates).\n\nAre you sure you want to send?')) return;
+    if (!confirm('Last chance — send WhatsApp broadcast to all selected customers now?')) return;
+  }
+
+  const template  = document.getElementById('bcTemplate').value.trim();
+  const daysBack  = parseInt(document.getElementById('bcDays').value) || 60;
+  const lang      = document.getElementById('bcLang').value.trim() || 'en';
+  const testPhone = document.getElementById('bcTestPhone').value.trim();
+  const limit     = parseInt(document.getElementById('bcLimit').value) || null;
+
+  if (!template) { alert('Template name is required'); return; }
+
+  const result = document.getElementById('bcResult');
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>' + (dryRun ? 'Counting…' : 'Sending…');
+  result.innerHTML = '';
+
+  try {
+    const res = await fetch('/.netlify/functions/whatsapp-broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({
+        template, days_back: daysBack, dry_run: dryRun, lang,
+        ...(testPhone && { test_phone: testPhone }),
+        ...(limit && { limit }),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+    if (dryRun) {
+      const sample = (data.sample || []).map(s => `• ${s.name} (${s.phone})`).join('<br/>');
+      result.innerHTML = `
+        <div style="background:rgba(77,184,255,0.08);border-left:3px solid #4db8ff;padding:1rem 1.2rem;">
+          <strong style="color:#4db8ff;">Dry run complete</strong><br/>
+          Would send <strong>${data.total}</strong> messages.<br/><br/>
+          <span style="color:var(--cream-dim);font-size:0.72rem;">Sample recipients (10 shown):</span><br/>
+          <div style="font-family:Menlo,monospace;font-size:0.7rem;margin-top:0.4rem;line-height:1.7;">${sample}</div>
+        </div>`;
+    } else {
+      result.innerHTML = `
+        <div style="background:rgba(99,202,110,0.08);border-left:3px solid #63ca6e;padding:1rem 1.2rem;">
+          <strong style="color:#63ca6e;">Broadcast complete!</strong><br/>
+          Sent: <strong>${data.sent}</strong> / ${data.total}<br/>
+          Failed: ${data.failed}<br/>
+          ${data.sample_failures?.length ? `<details style="margin-top:0.6rem;"><summary style="cursor:pointer;color:var(--cream-dim);">Show failures</summary><pre style="font-size:0.65rem;color:var(--red);margin-top:0.4rem;white-space:pre-wrap;">${JSON.stringify(data.sample_failures, null, 2)}</pre></details>` : ''}
+        </div>`;
+    }
+  } catch (err) {
+    result.innerHTML = `<div style="background:rgba(224,80,80,0.1);border-left:3px solid var(--red);padding:1rem 1.2rem;color:var(--red);">Error: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
   }
 }
 
