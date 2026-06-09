@@ -888,7 +888,9 @@ let sortAsc       = false;
 let page          = 1;
 let hasMore       = false;
 let serverTotal   = null; // total count from server (shown immediately, before all pages load)
-const PAGE        = 100;  // rows per request (auto-paginates until all loaded)
+const PAGE        = 500;  // rows per request (auto-paginates in parallel until all loaded)
+const ORDERS_CACHE_KEY = 'iac_admin_orders_cache_v2';
+const ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;  // 5 min
 const selectedOrderIds = new Set();
 let abandonedLeads = [];
 let productRows = [];
@@ -910,6 +912,7 @@ function logout() {
   allOrders = [];
   serverTotal = null;
   selectedOrderIds.clear();
+  try { localStorage.removeItem(ORDERS_CACHE_KEY); } catch {}
   ['loginPanel','loginErr'].forEach(id => document.getElementById(id).style.display = id === 'loginPanel' ? '' : 'none');
   document.getElementById('dashboard').style.display = 'none';
   ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
@@ -917,18 +920,79 @@ function logout() {
   document.getElementById('adminPass').value = '';
 }
 
-// ── Fetch ──────────────────────────────────────────────────────────────────
+// ── Fetch — parallel pagination + localStorage cache ───────────────────────
+// Speed wins:
+//   1. PAGE=500 instead of 100 — 5x fewer round-trips
+//   2. After page 1 reveals total, ALL remaining pages fire in parallel
+//      (Promise.all), cutting wall time from N×latency down to ~1×latency
+//   3. localStorage cache (5-min TTL) — refresh appears instant; fresh data
+//      arrives in background and seamlessly updates the table
+function loadOrdersFromCache() {
+  try {
+    const raw = localStorage.getItem(ORDERS_CACHE_KEY);
+    if (!raw) return null;
+    const j = JSON.parse(raw);
+    if (!j?.orders || (Date.now() - (j.ts || 0)) > ORDERS_CACHE_TTL_MS) return null;
+    return j;
+  } catch { return null; }
+}
+function saveOrdersToCache(orders, total) {
+  try {
+    localStorage.setItem(ORDERS_CACHE_KEY, JSON.stringify({
+      orders, total, ts: Date.now(),
+    }));
+  } catch {}
+}
+
+async function fetchOrdersPage(pageNum, limit) {
+  const params = new URLSearchParams({ page: pageNum, limit });
+  if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending') {
+    params.set('status', currentFilter);
+  }
+  const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
+    headers: { 'X-Admin-Key': adminKey },
+  });
+  if (res.status === 401) throw new Error('UNAUTHORIZED');
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const e = await res.json(); msg = e.error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 async function fetchOrders(reset = false) {
   if (reset) { page = 1; allOrders = []; }
   const btn     = document.getElementById('refreshBtn');
   const tblWrap = document.querySelector('.tbl-wrap');
   if (btn) btn.innerHTML = '<span class="spinner"></span>Refreshing…';
 
-  if (reset) {
-    // Show skeleton rows instead of blanking the table — no scroll jump
+  // ── Show cached data INSTANTLY on first load (perceived speed = near-zero) ─
+  let usedCache = false;
+  if (reset && !currentFilter) {
+    const cached = loadOrdersFromCache();
+    if (cached?.orders?.length) {
+      allOrders   = cached.orders;
+      serverTotal = cached.total ?? cached.orders.length;
+      // Show dashboard + cached table immediately while fresh data fetches in background
+      document.getElementById('loginPanel').style.display = 'none';
+      document.getElementById('dashboard').style.display  = '';
+      ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
+      document.getElementById('adminTabBar').style.display = 'flex';
+      initTabFromHash();
+      updateStats();
+      fetchProducts();
+      applyFilters();
+      if (tblWrap) tblWrap.classList.add('tbl-loading');
+      usedCache = true;
+    }
+  }
+
+  // Show skeleton only if we have nothing to display yet
+  if (reset && !usedCache) {
     const body = document.getElementById('ordersBody');
     if (body) {
-      const COLS = 7;
       const WIDTHS = ['60%','45%','70%','30%','40%','55%','80%'];
       body.innerHTML = Array(8).fill(0).map(() =>
         `<tr class="skeleton-row">${WIDTHS.map(w =>
@@ -937,84 +1001,73 @@ async function fetchOrders(reset = false) {
       ).join('');
     }
     document.getElementById('emptyState').style.display = 'none';
-  } else {
-    // Subsequent pages: dim existing table without removing it
+  } else if (!reset) {
     if (tblWrap) tblWrap.classList.add('tbl-loading');
   }
 
   try {
-    const params = new URLSearchParams({ page, limit: PAGE });
-    // partial_cod_pending is detected client-side via isPartialOrder() across
-    // multiple status values — don't pass it as a server filter or we miss
-    // confirmed/shipped partial orders that still need balance collection.
-    if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending') {
-      params.set('status', currentFilter);
-    }
+    // ── Step 1: Fetch page 1 to discover total count ─────────────────────────
+    const firstData = await fetchOrdersPage(1, PAGE);
+    serverTotal = firstData.total ?? serverTotal;
+    let combined = firstData.orders || [];
 
-    const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
-      headers: { 'X-Admin-Key': adminKey },
-    });
-
-    if (res.status === 401) { showLoginErr('Invalid password.'); return; }
-    if (!res.ok) {
-      let msg = `HTTP ${res.status}`;
-      try { const e = await res.json(); msg = e.error || msg; } catch {}
-      throw new Error(msg);
-    }
-
-    const data = await res.json();
-    if (reset) allOrders = data.orders || [];
-    else        allOrders = [...allOrders, ...(data.orders || [])];
-
-    serverTotal = data.total ?? serverTotal;
-    hasMore = allOrders.length < (serverTotal || 0);
-    page++;
-
-    // Show dashboard on first load
+    // Reveal dashboard if not yet shown (cache miss path)
     document.getElementById('loginPanel').style.display = 'none';
     document.getElementById('dashboard').style.display  = '';
     ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
       .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
-
     document.getElementById('loginErr').style.display = 'none';
-
-    // Init tab navigation
     document.getElementById('adminTabBar').style.display = 'flex';
     initTabFromHash();
 
-    updateStats();
+    // Render the first 500 immediately so the user sees results in <1s
+    if (!usedCache) {
+      allOrders = combined;
+      updateStats();
+      applyFilters();
+    }
+
+    // Progress bar
+    const bar = document.getElementById('loadingBar');
+    if (bar) {
+      bar.classList.remove('done');
+      const pct = Math.min(60, Math.round((combined.length / Math.max(1, serverTotal)) * 100));
+      bar.style.width = pct + '%';
+    }
+
+    // ── Step 2: Fire all remaining pages IN PARALLEL ────────────────────────
+    const totalPages = Math.ceil((serverTotal || 0) / PAGE);
+    if (totalPages > 1) {
+      const remaining = [];
+      for (let p = 2; p <= totalPages; p++) remaining.push(fetchOrdersPage(p, PAGE));
+      const results = await Promise.all(remaining);
+      for (const r of results) combined = combined.concat(r.orders || []);
+    }
+
+    allOrders = combined;
+    hasMore = false;
+    page = totalPages + 1;
+
     fetchProducts();
-
-    // ── Loading bar progress ──────────────────────────────────────────────────
-    if (serverTotal && serverTotal > 0) {
-      const pct = Math.min(95, Math.round((allOrders.length / serverTotal) * 100));
-      const bar = document.getElementById('loadingBar');
-      if (bar) { bar.classList.remove('done'); bar.style.width = pct + '%'; }
-    }
-
-    // Trigger first auto-recheck 10s after initial load (gives time for all pages to load)
-    if (reset && page === 2) setTimeout(() => { autoRecheckPhonePe(); updateAutoRecheckBadge(); }, 10000);
-
-    // Auto-paginate: keep loading until all orders are in memory
-    // Do NOT call applyFilters() here — rewriting innerHTML on every page causes scroll jumps.
-    // The table will render once after ALL pages are loaded (below).
-    if (hasMore) {
-      fetchOrders(false);
-      return; // skip finally btn-reset; it will fire when last page completes
-    }
-
-    // All pages loaded — render table once (no more scroll jumps)
+    updateStats();
     applyFilters();
+    saveOrdersToCache(combined, serverTotal);
+
+    // Trigger PhonePe auto-recheck once
+    if (reset) setTimeout(() => { autoRecheckPhonePe(); updateAutoRecheckBadge(); }, 8000);
 
     // Complete + hide loading bar
-    const bar = document.getElementById('loadingBar');
     if (bar) { bar.style.width = '100%'; bar.classList.add('done'); setTimeout(() => { bar.style.width = '0%'; bar.classList.remove('done'); }, 900); }
 
   } catch (err) {
-    showLoginErr('Error: ' + err.message);
-    // Clear skeleton on error so user doesn't see endless shimmer
-    const body = document.getElementById('ordersBody');
-    if (body) body.innerHTML = '';
+    if (err.message === 'UNAUTHORIZED') { showLoginErr('Invalid password.'); return; }
+    if (!usedCache) {
+      showLoginErr('Error: ' + err.message);
+      const body = document.getElementById('ordersBody');
+      if (body) body.innerHTML = '';
+    } else {
+      console.warn('Background refresh failed (cached data still shown):', err.message);
+    }
   } finally {
     if (btn) btn.innerHTML = '↻ Refresh';
     if (tblWrap) tblWrap.classList.remove('tbl-loading');
