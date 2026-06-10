@@ -1888,34 +1888,34 @@ HTML = r"""<!DOCTYPE html>
   <button class="promo-arrow next" aria-label="Next slide">&#8594;</button>
 </div>
 
-<!-- KING OF GLUTTONY FEATURED BANNER -->
-<a class="kog-banner-wrap" href="/product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-ny-ah/" aria-label="Shop King of Gluttony by Ana Huang — ₹299">
+<!-- NEW ARRIVAL FEATURED BANNER — The Divorce by Freida McFadden -->
+<a class="kog-banner-wrap" href="/product/the-divorce-by-freida-mcfadden-adden/" aria-label="Shop The Divorce by Freida McFadden — ₹329, new arrival">
   <div class="kog-banner">
     <!-- Spark particles -->
     <div class="kog-spark kog-spark-1"></div>
     <div class="kog-spark kog-spark-2"></div>
     <div class="kog-spark kog-spark-3"></div>
-    <div class="kog-crown">♛</div>
+    <div class="kog-crown">✦</div>
     <!-- Book image (clickable via parent link) -->
     <div class="kog-book-wrap">
-      <picture><source srcset="/images/king-of-gluttony.webp" type="image/webp"><img src="/images/king-of-gluttony.jpg" alt="King of Gluttony by Ana Huang" width="200" height="300"
+      <picture><source srcset="/images/the-divorce-freida-mcfadden.webp" type="image/webp"><img src="/images/the-divorce-freida-mcfadden.webp" alt="The Divorce by Freida McFadden" width="200" height="300"
            onerror="this.parentElement.style.display='none'" loading="eager" /></picture>
     </div>
     <!-- Price tag -->
-    <div class="kog-price">299</div>
+    <div class="kog-price">329</div>
     <!-- Left content -->
     <div class="kog-content">
       <div class="kog-store-label">Ink &amp; Chai — inkandchai.in</div>
       <div class="kog-series">
         <span class="kog-series-line"></span>
-        <span class="kog-series-text">Kings of Sin · Book 6</span>
+        <span class="kog-series-text">New Arrival · Just Landed</span>
         <span class="kog-series-line"></span>
       </div>
-      <div class="kog-title">King of<br/>Gluttony</div>
-      <div class="kog-subtitle">A Dark Romance</div>
+      <div class="kog-title">The<br/>Divorce</div>
+      <div class="kog-subtitle">A Psychological Thriller</div>
       <div class="kog-divider"></div>
-      <div class="kog-author">by <strong>Ana Huang</strong></div>
-      <div class="kog-bestseller">#1 New York Times Bestselling Author</div>
+      <div class="kog-author">by <strong>Freida McFadden</strong></div>
+      <div class="kog-bestseller">From the #1 Bestselling Author of The Housemaid</div>
       <span class="kog-cta">Order Now <span class="kog-cta-arrow">→</span></span>
     </div>
   </div>
