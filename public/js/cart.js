@@ -62,12 +62,19 @@ function updateCartUI() {
   const shipping = window.calcShipping(sum);
   const grand    = sum + shipping;
 
-  // Nav badge (desktop top + mobile bottom)
+  // Nav badge (desktop top + mobile bottom) — bump animation when count changes
   ['cartBadge', 'cartBadgeMobile'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
+    const prev = el._iacPrevCount;
     el.textContent = total > 0 ? total : '';
     el.style.display = total > 0 ? 'inline-flex' : 'none';
+    if (total > 0 && prev !== undefined && total !== prev) {
+      el.classList.remove('bump');
+      void el.offsetWidth;            // restart animation
+      el.classList.add('bump');
+    }
+    el._iacPrevCount = total;
   });
 
   // Sidebar items

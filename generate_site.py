@@ -1611,6 +1611,60 @@ HTML = r"""<!DOCTYPE html>
   @media(max-width:980px){.trust-strip{grid-template-columns:repeat(3,1fr)}}
   @media(max-width:780px){.trust-strip{grid-template-columns:repeat(2,1fr);gap:1.2rem;padding:1.8rem 1rem}.trust-title{font-size:0.85rem}.trust-text{font-size:0.62rem}}
 
+  /* ════════ Polish layer (Fable 5) — micro-interactions & accessibility ════════ */
+  /* Keyboard focus rings — gold, only on keyboard nav (not mouse clicks) */
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 1px;
+  }
+  /* Primary buttons: lift + soft glow on hover, satisfying press */
+  .btn-primary { position: relative; overflow: hidden; will-change: transform; }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(201,168,76,0.28); }
+  .btn-primary:active { transform: translateY(0); box-shadow: 0 4px 12px rgba(201,168,76,0.22); }
+  /* Shine sweep across primary CTA on hover */
+  .btn-primary::after {
+    content:''; position:absolute; top:0; left:-120%; width:60%; height:100%;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,0.35), transparent);
+    transform: skewX(-20deg); transition: left 0.6s ease; pointer-events:none;
+  }
+  .btn-primary:hover::after { left: 140%; }
+  /* Outline / nav buttons: gentle fill lift */
+  .btn-nav:hover, .btn-ghost:hover { transform: translateY(-1px); }
+  .btn-add-card:active { transform: scale(0.97); }
+  /* Add-to-cart "added" success flash */
+  .btn-add-card.added, .shelf-card-btn.added {
+    background: var(--gold) !important; color: var(--bg) !important; border-color: var(--gold) !important;
+  }
+  @keyframes iacPop { 0%{transform:scale(1)} 40%{transform:scale(1.12)} 100%{transform:scale(1)} }
+  .iac-pop { animation: iacPop 0.32s cubic-bezier(0.34,1.56,0.64,1); }
+  /* Cart badge pop when count changes */
+  @keyframes badgePop { 0%{transform:scale(0.4);opacity:0} 60%{transform:scale(1.25)} 100%{transform:scale(1);opacity:1} }
+  .cart-badge.bump, .mn-badge.bump { animation: badgePop 0.4s cubic-bezier(0.34,1.56,0.64,1); }
+  /* Book cards: graceful entrance as they scroll into view */
+  @keyframes cardRise { from{opacity:0;transform:translateY(22px)} to{opacity:1;transform:translateY(0)} }
+  .book-card.reveal { animation: cardRise 0.55s cubic-bezier(0.22,0.61,0.36,1) both; }
+  /* Price tag subtle weight emphasis on card hover */
+  .book-card:hover .book-price, .book-card:hover .price { color: var(--gold-light); }
+  /* Image lazy-load fade-in */
+  .book-cover img { opacity: 0; transition: opacity 0.5s ease, transform 0.5s ease; }
+  .book-cover img.loaded, .book-cover img[data-loaded] { opacity: 1; }
+  /* Nav links: animated underline */
+  .nav-links a { position: relative; }
+  .nav-links a::after {
+    content:''; position:absolute; left:0; bottom:-3px; width:100%; height:1px;
+    background: var(--gold); transform: scaleX(0); transform-origin: right;
+    transition: transform 0.28s ease;
+  }
+  .nav-links a:hover::after { transform: scaleX(1); transform-origin: left; }
+  /* Smoother sidebar / overlay easing already exists; add cart item hover */
+  .cart-item { transition: background 0.2s ease; }
+  .cart-item:hover { background: rgba(201,168,76,0.04); }
+  /* Respect reduced-motion preference globally */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+    .btn-primary::after { display: none; }
+  }
+  /* ════════ end polish layer ════════ */
+
 </style>
 </head>
 <body>
@@ -2608,6 +2662,49 @@ function renderBooks() {
   btn.onclick = loadMore;
 }
 
+// ── Card polish: fade-in covers + staggered scroll reveal (Fable 5) ────────
+// A single IntersectionObserver shared across all grid render paths. A
+// MutationObserver re-runs the enhancer whenever any grid's contents change,
+// so renderBooks / search / category renders are all covered automatically.
+let _iacCardObserver = null;
+function iacEnhanceCards() {
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Fade book covers in as they decode
+  document.querySelectorAll('.book-cover img:not([data-iac-img])').forEach(img => {
+    img.setAttribute('data-iac-img', '1');
+    if (img.complete && img.naturalWidth > 0) { img.classList.add('loaded'); }
+    else { img.addEventListener('load', () => img.classList.add('loaded'), { once: true }); }
+  });
+
+  if (reduce) { document.querySelectorAll('.book-card:not([data-iac-seen])').forEach(c => c.setAttribute('data-iac-seen','1')); return; }
+
+  if (!_iacCardObserver) {
+    _iacCardObserver = new IntersectionObserver((entries) => {
+      entries.forEach((e, idx) => {
+        if (!e.isIntersecting) return;
+        const card = e.target;
+        // Stagger within the same observation batch for a gentle cascade
+        card.style.animationDelay = Math.min(idx * 45, 320) + 'ms';
+        card.classList.add('reveal');
+        _iacCardObserver.unobserve(card);
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 });
+  }
+  document.querySelectorAll('.book-card:not([data-iac-seen])').forEach(card => {
+    card.setAttribute('data-iac-seen', '1');
+    _iacCardObserver.observe(card);
+  });
+}
+// Watch every books grid for content changes and enhance automatically
+document.addEventListener('DOMContentLoaded', () => {
+  const grids = ['booksGrid'].map(id => document.getElementById(id)).filter(Boolean);
+  grids.forEach(grid => {
+    new MutationObserver(() => iacEnhanceCards()).observe(grid, { childList: true });
+  });
+  iacEnhanceCards();
+});
+
 function renderCollections() {
   const bgClasses = ['coll-bg-1','coll-bg-2','coll-bg-3','coll-bg-4','coll-bg-5'];
   const descs = [
@@ -2690,6 +2787,18 @@ function addToCartById(btn) {
     url:    btn.dataset.url,
     sku:    btn.dataset.sku || '',
   });
+  // Quick visual confirmation on the button itself
+  if (btn && !btn._iacBusy) {
+    btn._iacBusy = true;
+    const original = btn.textContent;
+    btn.classList.add('added', 'iac-pop');
+    btn.textContent = '✓ Added';
+    setTimeout(() => {
+      btn.classList.remove('added', 'iac-pop');
+      btn.textContent = original;
+      btn._iacBusy = false;
+    }, 1100);
+  }
 }
 
 function escHtml(s) {
