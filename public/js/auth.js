@@ -857,9 +857,10 @@
         </h3>
 
         <!-- Tabs -->
-        <div style="display:flex;gap:0;border-bottom:1px solid rgba(201,168,76,0.18);margin-bottom:2rem;">
-          ${acctTab('acct-profile-tab', 'Profile',   true)}
-          ${acctTab('acct-orders-tab',  'My Orders', false)}
+        <div style="display:flex;gap:0;border-bottom:1px solid rgba(201,168,76,0.18);margin-bottom:2rem;flex-wrap:wrap;">
+          ${acctTab('acct-profile-tab',  'Profile',      true)}
+          ${acctTab('acct-orders-tab',   'My Orders',    false)}
+          ${acctTab('acct-addrs-tab',    'My Addresses', false)}
         </div>
 
         <!-- Profile panel -->
@@ -906,6 +907,19 @@
             <p style="color:#a09080;font-size:0.78rem;">Loading your orders…</p>
           </div>
         </div>
+
+        <!-- Addresses panel -->
+        <div id="acct-addrs-panel" style="display:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap;gap:0.6rem;">
+            <p style="font-size:0.72rem;color:#a09080;line-height:1.6;margin:0;max-width:380px;">
+              Saved delivery addresses. They auto-populate at checkout so you never re-type.
+            </p>
+            <button onclick="iacOpenAddrForm()" style="font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.55rem 1.1rem;background:#c9a84c;color:#0d0b08;border:none;cursor:pointer;font-weight:500;">+ Add address</button>
+          </div>
+          <div id="acct-addrs-list">
+            <p style="color:#a09080;font-size:0.78rem;">Loading your addresses…</p>
+          </div>
+        </div>
       </div>
     `;
     document.body.appendChild(modal);
@@ -946,8 +960,149 @@
 
     document.getElementById('acct-profile-panel').style.display = tabId === 'acct-profile-tab' ? '' : 'none';
     document.getElementById('acct-orders-panel').style.display  = tabId === 'acct-orders-tab'  ? '' : 'none';
+    const addrsPanel = document.getElementById('acct-addrs-panel');
+    if (addrsPanel) addrsPanel.style.display = tabId === 'acct-addrs-tab' ? '' : 'none';
 
     if (tabId === 'acct-orders-tab') loadMyOrders();
+    if (tabId === 'acct-addrs-tab')  loadMyAddresses();
+  };
+
+  // ── Address book (multi-address per user) ─────────────────────────────────
+  async function loadMyAddresses() {
+    const sb = getSB();
+    const list = document.getElementById('acct-addrs-list');
+    if (!sb || !currentUser || !list) return;
+    try {
+      const { data, error } = await sb
+        .from('customer_addresses')
+        .select('*')
+        .order('last_used_at', { ascending: false });
+      if (error) {
+        list.innerHTML = `<p style="color:#c97a7a;font-size:0.74rem;line-height:1.6;">Couldn't load addresses: ${escAcct(error.message)}<br/><br/><small style="color:#a09080;">Run the customer_addresses.sql migration in Supabase if you haven't yet.</small></p>`;
+        return;
+      }
+      renderMyAddresses(data || []);
+    } catch(e) {
+      list.innerHTML = `<p style="color:#c97a7a;font-size:0.74rem;">Error: ${escAcct(e.message)}</p>`;
+    }
+  }
+
+  function escAcct(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function renderMyAddresses(addrs) {
+    const list = document.getElementById('acct-addrs-list');
+    if (!list) return;
+    if (!addrs.length) {
+      list.innerHTML = `
+        <div style="text-align:center;padding:2rem 1rem;border:1px dashed rgba(201,168,76,0.22);">
+          <p style="color:#a09080;font-size:0.85rem;margin-bottom:0.6rem;">No saved addresses yet.</p>
+          <p style="color:#7a6330;font-size:0.7rem;line-height:1.6;">Place an order and your delivery address will be saved automatically — or click <strong style="color:#c9a84c;">+ Add address</strong> above to add one now.</p>
+        </div>`;
+      return;
+    }
+    list.innerHTML = addrs.map((a, i) => {
+      const label = a.label || (a.is_default ? 'Default' : `Address ${i + 1}`);
+      const cityLine = [a.city, a.state].filter(Boolean).join(', ');
+      return `
+        <div style="border:1px solid rgba(201,168,76,0.22);background:#241b13;padding:1rem 1.2rem;margin-bottom:0.8rem;position:relative;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;margin-bottom:0.4rem;">
+            <strong style="font-size:0.74rem;color:#c9a84c;font-weight:500;letter-spacing:0.06em;">${escAcct(label)}${a.is_default ? ' · default' : ''}</strong>
+            <div style="display:flex;gap:0.4rem;">
+              ${!a.is_default ? `<button onclick="iacSetDefaultAddress('${escAcct(a.id)}')" title="Set as default" style="background:transparent;border:1px solid rgba(201,168,76,0.3);color:#c9a84c;cursor:pointer;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.3rem 0.6rem;">Set default</button>` : ''}
+              <button onclick="iacDeleteAddress('${escAcct(a.id)}')" title="Delete" style="background:transparent;border:1px solid rgba(224,80,80,0.3);color:#e06060;cursor:pointer;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.3rem 0.6rem;">Delete</button>
+            </div>
+          </div>
+          <div style="font-size:0.82rem;color:#faf7f2;font-weight:500;">${escAcct(a.name)}</div>
+          <div style="font-size:0.72rem;color:#a09080;line-height:1.7;margin-top:0.2rem;">
+            ${escAcct(a.address)}<br/>
+            ${escAcct(cityLine)} ${escAcct(a.pincode||'')}<br/>
+            ${a.phone ? `📞 ${escAcct(a.phone)}` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  window.iacDeleteAddress = async function(id) {
+    if (!confirm('Delete this saved address?')) return;
+    const sb = getSB();
+    if (!sb) return;
+    const { error } = await sb.from('customer_addresses').delete().eq('id', id);
+    if (error) { alert('Delete failed: ' + error.message); return; }
+    loadMyAddresses();
+  };
+
+  window.iacSetDefaultAddress = async function(id) {
+    const sb = getSB();
+    if (!sb || !currentUser) return;
+    // Clear any existing default for this user, then set the new one
+    await sb.from('customer_addresses').update({ is_default: false }).eq('user_id', currentUser.id);
+    await sb.from('customer_addresses').update({ is_default: true }).eq('id', id);
+    loadMyAddresses();
+  };
+
+  window.iacOpenAddrForm = function() {
+    const list = document.getElementById('acct-addrs-list');
+    if (!list) return;
+    // Insert a simple inline form at the top
+    if (document.getElementById('iacAddrAddForm')) {
+      document.getElementById('iacAddrAddForm').scrollIntoView({ behavior:'smooth' });
+      return;
+    }
+    const form = document.createElement('div');
+    form.id = 'iacAddrAddForm';
+    form.style.cssText = 'border:1px solid #c9a84c;background:#1c1916;padding:1.2rem;margin-bottom:1rem;';
+    form.innerHTML = `
+      <strong style="display:block;font-size:0.7rem;color:#c9a84c;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.9rem;">Add a new address</strong>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.7rem;">
+        <input id="newaddr-label" placeholder="Label (Home / Office / Mom's)" style="grid-column:span 2;background:#241b13;border:1px solid rgba(201,168,76,0.2);color:#faf7f2;padding:0.65rem 0.85rem;font-size:0.78rem;"/>
+        <input id="newaddr-name" placeholder="Full name *" required style="background:#241b13;border:1px solid rgba(201,168,76,0.2);color:#faf7f2;padding:0.65rem 0.85rem;font-size:0.78rem;"/>
+        <input id="newaddr-phone" placeholder="Phone (10 digits)" style="background:#241b13;border:1px solid rgba(201,168,76,0.2);color:#faf7f2;padding:0.65rem 0.85rem;font-size:0.78rem;"/>
+        <input id="newaddr-address" placeholder="House / Street / Locality *" required style="grid-column:span 2;background:#241b13;border:1px solid rgba(201,168,76,0.2);color:#faf7f2;padding:0.65rem 0.85rem;font-size:0.78rem;"/>
+        <input id="newaddr-pin" placeholder="Pincode" style="background:#241b13;border:1px solid rgba(201,168,76,0.2);color:#faf7f2;padding:0.65rem 0.85rem;font-size:0.78rem;"/>
+        <input id="newaddr-city" placeholder="City" style="background:#241b13;border:1px solid rgba(201,168,76,0.2);color:#faf7f2;padding:0.65rem 0.85rem;font-size:0.78rem;"/>
+        <input id="newaddr-state" placeholder="State" style="grid-column:span 2;background:#241b13;border:1px solid rgba(201,168,76,0.2);color:#faf7f2;padding:0.65rem 0.85rem;font-size:0.78rem;"/>
+      </div>
+      <div style="display:flex;gap:0.6rem;margin-top:1rem;">
+        <button onclick="iacSubmitNewAddr()" style="background:#c9a84c;color:#0d0b08;border:none;padding:0.65rem 1.4rem;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-weight:500;">Save address</button>
+        <button onclick="document.getElementById('iacAddrAddForm').remove()" style="background:transparent;border:1px solid rgba(160,144,128,0.3);color:#a09080;padding:0.65rem 1.4rem;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;">Cancel</button>
+      </div>
+      <p id="iacAddrAddMsg" style="font-size:0.7rem;margin-top:0.6rem;min-height:1.2em;"></p>
+    `;
+    list.insertBefore(form, list.firstChild);
+    document.getElementById('newaddr-name').focus();
+  };
+
+  window.iacSubmitNewAddr = async function() {
+    const sb = getSB();
+    if (!sb || !currentUser) return;
+    const get = id => document.getElementById(id)?.value.trim() || '';
+    const name    = get('newaddr-name');
+    const address = get('newaddr-address');
+    const msg     = document.getElementById('iacAddrAddMsg');
+    if (!name || !address) {
+      if (msg) { msg.textContent = 'Name and address are required.'; msg.style.color = '#c97a7a'; }
+      return;
+    }
+    const payload = {
+      user_id: currentUser.id,
+      label:   get('newaddr-label') || null,
+      name,
+      phone:   get('newaddr-phone') || null,
+      address,
+      pincode: get('newaddr-pin')   || null,
+      city:    get('newaddr-city')  || null,
+      state:   get('newaddr-state') || null,
+    };
+    const { error } = await sb.from('customer_addresses').insert(payload);
+    if (error) {
+      if (msg) { msg.textContent = 'Save failed: ' + error.message; msg.style.color = '#c97a7a'; }
+      return;
+    }
+    if (msg) { msg.textContent = 'Saved ✓'; msg.style.color = '#5d9b55'; }
+    setTimeout(() => {
+      document.getElementById('iacAddrAddForm')?.remove();
+      loadMyAddresses();
+    }, 700);
   };
 
   window.iacSaveProfile = async function () {
