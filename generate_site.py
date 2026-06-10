@@ -5869,6 +5869,15 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
               background:none;border:none;color:var(--cream-dim);cursor:pointer;text-decoration:underline;">Edit manually</button>
     </div>
 
+    <!-- Address book picker — populated dynamically when user is signed in -->
+    <div id="addrBook" style="display:none;margin-bottom:1.4rem;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.7rem;">
+        <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--gold);font-weight:400;font-style:italic;">Choose a saved address</h3>
+        <button type="button" onclick="addrShowNewForm()" style="font-size:0.6rem;letter-spacing:0.14em;text-transform:uppercase;background:transparent;border:1px solid var(--border);color:var(--cream-dim);padding:0.45rem 0.85rem;cursor:pointer;">+ Add new address</button>
+      </div>
+      <div id="addrBookList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.7rem;"></div>
+    </div>
+
     <div class="checkout-grid">
 
       <!-- LEFT: Form -->
@@ -6955,7 +6964,162 @@ async function saveAddressToProfile(addr) {
 function saveAddressAfterOrder(addr) {
   saveAddressLocally(addr);
   saveAddressToProfile(addr);
+  saveAddressToBook(addr).catch(e => console.warn('[addr-book] save failed:', e));
 }
+
+// ── Multi-address book (Supabase customer_addresses table) ─────────────────
+async function getCheckoutSupabase() {
+  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === 'SUPABASE_URL_PLACEHOLDER') return null;
+  return window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+}
+
+// Normalised key used to dedupe addresses (same house+pincode = same address)
+function addrFingerprint(a) {
+  return [(a.address||'').toLowerCase().replace(/\s+/g,' ').trim(),
+          (a.pincode||'').trim()].join('|');
+}
+
+async function loadAddressBook() {
+  const sb = await getCheckoutSupabase();
+  if (!sb) return [];
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return [];
+    const { data, error } = await sb
+      .from('customer_addresses')
+      .select('*')
+      .order('last_used_at', { ascending: false })
+      .limit(20);
+    if (error) { console.warn('[addr-book] load error:', error.message); return []; }
+    return data || [];
+  } catch(e) { console.warn('[addr-book] load exception:', e.message); return []; }
+}
+
+async function saveAddressToBook(addr) {
+  const sb = await getCheckoutSupabase();
+  if (!sb) return;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return;
+
+  const street = addr.address?.split(',')[0]?.trim() || addr.address || '';
+  if (!street || !addr.name) return;
+
+  // Dedupe: if same fingerprint exists, just bump last_used_at instead of inserting
+  const fp = addrFingerprint({ address: street, pincode: addr.pincode });
+  const { data: existing } = await sb
+    .from('customer_addresses').select('*')
+    .eq('user_id', session.user.id);
+  const match = (existing || []).find(a => addrFingerprint(a) === fp);
+  if (match) {
+    await sb.from('customer_addresses')
+      .update({ last_used_at: new Date().toISOString(), name: addr.name, phone: addr.phone, city: addr.city, state: addr.state })
+      .eq('id', match.id);
+    return;
+  }
+
+  // Insert as new entry; first-ever address becomes default
+  const isFirst = !(existing && existing.length);
+  await sb.from('customer_addresses').insert({
+    user_id:    session.user.id,
+    name:       addr.name,
+    phone:      addr.phone || null,
+    address:    street,
+    pincode:    addr.pincode || null,
+    city:       addr.city || null,
+    state:      addr.state || null,
+    is_default: isFirst,
+  });
+}
+
+async function deleteAddressFromBook(id) {
+  const sb = await getCheckoutSupabase();
+  if (!sb) return;
+  await sb.from('customer_addresses').delete().eq('id', id);
+}
+
+function fillCheckoutFormFromAddress(a) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('ch-name',  a.name);
+  set('ch-phone', a.phone);
+  set('ch-addr',  a.address);
+  set('ch-pin',   a.pincode);
+  set('ch-city',  a.city);
+  set('ch-state', a.state);
+  // Trigger any listeners (renderSummary etc.)
+  ['ch-name','ch-phone','ch-addr','ch-pin','ch-city','ch-state'].forEach(id => {
+    document.getElementById(id)?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+function escAttr(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+function renderAddressBook(addresses) {
+  const wrap = document.getElementById('addrBook');
+  const list = document.getElementById('addrBookList');
+  const formSection = document.querySelector('.form-section');
+  if (!wrap || !list) return;
+
+  if (!addresses.length) {
+    wrap.style.display = 'none';
+    if (formSection) formSection.style.display = '';
+    return;
+  }
+
+  // Hide manual form by default — picker is now the primary path
+  if (formSection) formSection.style.display = 'none';
+  wrap.style.display = 'block';
+
+  list.innerHTML = addresses.map((a, i) => {
+    const label = a.label ? a.label
+                : i === 0 && a.is_default ? 'Default'
+                : `Address ${i + 1}`;
+    return `
+      <div class="addr-card" data-id="${escAttr(a.id)}" onclick="pickSavedAddress('${escAttr(a.id)}')"
+        style="cursor:pointer;border:1px solid var(--border);background:var(--bg2);padding:0.9rem 1rem;position:relative;transition:border-color 0.15s;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;margin-bottom:0.4rem;">
+          <strong style="font-size:0.78rem;color:var(--gold);font-weight:500;">${escAttr(label)}</strong>
+          <button type="button" onclick="event.stopPropagation();removeSavedAddress('${escAttr(a.id)}')" title="Delete address"
+            style="background:transparent;border:none;color:var(--cream-dim);cursor:pointer;font-size:0.65rem;line-height:1;padding:0;opacity:0.6;">✕</button>
+        </div>
+        <div style="font-size:0.78rem;color:var(--cream);font-weight:500;">${escAttr(a.name)}</div>
+        <div style="font-size:0.7rem;color:var(--cream-dim);line-height:1.55;margin-top:0.2rem;">
+          ${escAttr(a.address)}<br/>
+          ${escAttr(a.city||'')}${a.city && a.state ? ', ' : ''}${escAttr(a.state||'')} ${escAttr(a.pincode||'')}<br/>
+          ${a.phone ? `📞 ${escAttr(a.phone)}` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// In-memory cache so picker doesn't refetch on every click
+let _addressBookCache = [];
+
+async function refreshAddressBook() {
+  _addressBookCache = await loadAddressBook();
+  renderAddressBook(_addressBookCache);
+}
+
+window.pickSavedAddress = function(id) {
+  const a = _addressBookCache.find(x => x.id === id);
+  if (!a) return;
+  fillCheckoutFormFromAddress(a);
+  addrShowNewForm();  // reveal the form pre-filled, so the user can confirm/edit
+};
+
+window.removeSavedAddress = async function(id) {
+  if (!confirm('Remove this address from your account?')) return;
+  await deleteAddressFromBook(id);
+  await refreshAddressBook();
+};
+
+window.addrShowNewForm = function() {
+  const wrap = document.getElementById('addrBook');
+  const formSection = document.querySelector('.form-section');
+  if (wrap) wrap.style.display = 'none';
+  if (formSection) formSection.style.display = '';
+  // Scroll to form
+  formSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 
 // ── Init ───────────────────────────────────────────────────────────────────
 renderSummary();
@@ -6966,6 +7130,14 @@ renderSummary();
   el.addEventListener('input', scheduleAbandonedCapture);
   el.addEventListener('blur', () => saveAbandonedCheckout('open'));
 });
+
+// Load saved address book on page open + whenever auth state changes
+refreshAddressBook();
+(async () => {
+  const sb = await getCheckoutSupabase();
+  if (!sb) return;
+  sb.auth.onAuthStateChange(() => { refreshAddressBook(); });
+})();
 
 // Pre-fill address: sessionStorage cache → Supabase profile → localStorage fallback
 function showAutofillBanner(name) {
