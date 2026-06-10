@@ -5947,9 +5947,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         <button class="btn-cod" id="btnCOD" onclick="submitOrder('cod')">
           🚚 Cash on Delivery
         </button>
-        <div class="cod-note" id="codNote" style="font-size:0.66rem;color:var(--cream-dim);line-height:1.6;margin-top:0.5rem;text-align:center;padding:0 0.2rem;">
-          Includes <strong style="color:var(--gold);">₹20 COD handling fee</strong>. Choose <strong>Pay Now</strong> to skip this fee and earn a guaranteed cashback scratch card (up to ₹200).
-        </div>
+        <div class="cod-note" id="codNote" style="font-size:0.66rem;color:var(--cream-dim);line-height:1.6;margin-top:0.5rem;text-align:center;padding:0 0.2rem;"></div>
 
         <div class="trust-row">
           <span>🔒 Secure checkout</span>
@@ -6035,6 +6033,7 @@ function checkoutSessionId() {
 const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
 const COD_HANDLING_FEE = 20;  // extra ₹20 charged on COD orders to cover RTO risk + courier surcharge
+const COD_FEE_WAIVER_THRESHOLD = 999;  // fee is WAIVED on COD orders at or above this subtotal — pushes AOV up
 const COUPON_KEY = 'iac_checkout_coupon';
 const COUPONS = {
   SUMMER10:  { type: 'percent', value: 10, minSubtotal: 299, onlineOnly: false, label: '☀️ Summer Sale 10% off', expiresAt: '2026-05-19T18:30:00Z' },
@@ -6099,7 +6098,8 @@ function orderTotals(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
   const coupon = couponDiscount(subtotal, method);
-  const codFee  = method === 'cod' ? COD_HANDLING_FEE : 0;
+  // COD fee waived on subtotal >= ₹999 (pushes customers to add more to cart)
+  const codFee  = (method === 'cod' && subtotal < COD_FEE_WAIVER_THRESHOLD) ? COD_HANDLING_FEE : 0;
   const grand   = Math.max(1, subtotal + shipping + codFee - coupon.discount);
   return { subtotal, shipping, codFee, discount: coupon.discount, couponCode: coupon.code, couponMessage: coupon.message, total: grand };
 }
@@ -6312,9 +6312,20 @@ function renderSummary() {
     }
   }
   if (btnCOD) {
-    const codTotal = orderTotals(cart, 'cod').total;
-    btnCOD.textContent = `🚚 Cash on Delivery — ₹${codTotal.toLocaleString('en-IN')}`;
+    const codTotals = orderTotals(cart, 'cod');
+    btnCOD.textContent = `🚚 Cash on Delivery — ₹${codTotals.total.toLocaleString('en-IN')}`;
     btnCOD.disabled = false;
+    // Dynamic note: explain fee OR celebrate that it's been waived
+    const codNote = document.getElementById('codNote');
+    if (codNote) {
+      const sub = cartSubtotal(cart);
+      if (codTotals.codFee > 0) {
+        const needed = COD_FEE_WAIVER_THRESHOLD - sub;
+        codNote.innerHTML = `Includes <strong style="color:var(--gold);">₹${codTotals.codFee} COD handling fee</strong>. Add <strong>₹${needed.toLocaleString('en-IN')}</strong> more to waive it — or choose <strong>Pay Now</strong> to skip the fee AND earn a guaranteed cashback scratch card (up to ₹200).`;
+      } else {
+        codNote.innerHTML = `🎉 <strong style="color:#5d9b55;">₹${COD_HANDLING_FEE} COD fee waived</strong> on orders above ₹${COD_FEE_WAIVER_THRESHOLD.toLocaleString('en-IN')}. Choose <strong>Pay Now</strong> to also earn a cashback scratch card (up to ₹200).`;
+      }
+    }
   }
 }
 
