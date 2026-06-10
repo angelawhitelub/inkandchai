@@ -87,9 +87,10 @@ exports.handler = async (event) => {
   // defensively rather than trusting client input.
   const FREE_SHIPPING_THRESHOLD = 499;
   const SHIPPING_FEE = 40;
+  const COD_HANDLING_FEE = 20;  // matches generate_site.py CHECKOUT_HTML
   const subtotal = cart.reduce((s,i)=>s+i.price*i.qty, 0);
   const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-  const total    = subtotal + shipping;
+  const total    = subtotal + shipping + COD_HANDLING_FEE;
 
   // ── 1. Save to Supabase (non-fatal — emails still send even if DB is down) ──
   try {

@@ -5947,6 +5947,9 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         <button class="btn-cod" id="btnCOD" onclick="submitOrder('cod')">
           🚚 Cash on Delivery
         </button>
+        <div class="cod-note" id="codNote" style="font-size:0.66rem;color:var(--cream-dim);line-height:1.6;margin-top:0.5rem;text-align:center;padding:0 0.2rem;">
+          Includes <strong style="color:var(--gold);">₹20 COD handling fee</strong>. Choose <strong>Pay Now</strong> to skip this fee and earn a guaranteed cashback scratch card (up to ₹200).
+        </div>
 
         <div class="trust-row">
           <span>🔒 Secure checkout</span>
@@ -6031,6 +6034,7 @@ function checkoutSessionId() {
 // Shipping rules — must match cart.js + server functions
 const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
+const COD_HANDLING_FEE = 20;  // extra ₹20 charged on COD orders to cover RTO risk + courier surcharge
 const COUPON_KEY = 'iac_checkout_coupon';
 const COUPONS = {
   SUMMER10:  { type: 'percent', value: 10, minSubtotal: 299, onlineOnly: false, label: '☀️ Summer Sale 10% off', expiresAt: '2026-05-19T18:30:00Z' },
@@ -6095,8 +6099,9 @@ function orderTotals(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
   const coupon = couponDiscount(subtotal, method);
-  const grand = Math.max(1, subtotal + shipping - coupon.discount);
-  return { subtotal, shipping, discount: coupon.discount, couponCode: coupon.code, couponMessage: coupon.message, total: grand };
+  const codFee  = method === 'cod' ? COD_HANDLING_FEE : 0;
+  const grand   = Math.max(1, subtotal + shipping + codFee - coupon.discount);
+  return { subtotal, shipping, codFee, discount: coupon.discount, couponCode: coupon.code, couponMessage: coupon.message, total: grand };
 }
 function partialPaymentTotals(cart) {
   const base = orderTotals(cart, 'cod');
