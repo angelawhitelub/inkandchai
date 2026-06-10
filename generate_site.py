@@ -1066,6 +1066,11 @@ HTML = r"""<!DOCTYPE html>
     animation:kogFloat 4s ease-in-out infinite; z-index:2;
   }
   .kog-book-wrap img { width:100%; display:block; border-radius:2px; }
+  /* Rotating-feature crossfade */
+  .kog-content, .kog-book-wrap, .kog-price { transition: opacity 0.5s ease; }
+  .kog-banner.kog-fading .kog-content,
+  .kog-banner.kog-fading .kog-book-wrap,
+  .kog-banner.kog-fading .kog-price { opacity: 0; }
   @keyframes kogFloat {
     0%,100%{ transform:translateY(-50%) rotate(-4deg); }
     50%{ transform:translateY(calc(-50% - 7px)) rotate(-3deg); }
@@ -1888,9 +1893,9 @@ HTML = r"""<!DOCTYPE html>
   <button class="promo-arrow next" aria-label="Next slide">&#8594;</button>
 </div>
 
-<!-- NEW ARRIVAL FEATURED BANNER — The Divorce by Freida McFadden -->
-<a class="kog-banner-wrap" href="/product/the-divorce-by-freida-mcfadden-adden/" aria-label="Shop The Divorce by Freida McFadden — ₹329, new arrival">
-  <div class="kog-banner">
+<!-- NEW ARRIVALS ROTATING FEATURE BANNER -->
+<a class="kog-banner-wrap" id="featBannerLink" href="/product/the-divorce-by-freida-mcfadden-adden/" aria-label="Shop new arrivals at Ink &amp; Chai">
+  <div class="kog-banner" id="featBanner">
     <!-- Spark particles -->
     <div class="kog-spark kog-spark-1"></div>
     <div class="kog-spark kog-spark-2"></div>
@@ -1898,28 +1903,81 @@ HTML = r"""<!DOCTYPE html>
     <div class="kog-crown">✦</div>
     <!-- Book image (clickable via parent link) -->
     <div class="kog-book-wrap">
-      <picture><source srcset="/images/the-divorce-freida-mcfadden.webp" type="image/webp"><img src="/images/the-divorce-freida-mcfadden.webp" alt="The Divorce by Freida McFadden" width="200" height="300"
+      <picture><img id="featImg" src="/images/the-divorce-freida-mcfadden.webp" alt="The Divorce by Freida McFadden" width="200" height="300"
            onerror="this.parentElement.style.display='none'" loading="eager" /></picture>
     </div>
     <!-- Price tag -->
-    <div class="kog-price">329</div>
+    <div class="kog-price" id="featPrice">329</div>
     <!-- Left content -->
     <div class="kog-content">
       <div class="kog-store-label">Ink &amp; Chai — inkandchai.in</div>
       <div class="kog-series">
         <span class="kog-series-line"></span>
-        <span class="kog-series-text">New Arrival · Just Landed</span>
+        <span class="kog-series-text" id="featSeries">New Arrival · Just Landed</span>
         <span class="kog-series-line"></span>
       </div>
-      <div class="kog-title">The<br/>Divorce</div>
-      <div class="kog-subtitle">A Psychological Thriller</div>
+      <div class="kog-title" id="featTitle">The<br/>Divorce</div>
+      <div class="kog-subtitle" id="featSubtitle">A Psychological Thriller</div>
       <div class="kog-divider"></div>
-      <div class="kog-author">by <strong>Freida McFadden</strong></div>
-      <div class="kog-bestseller">From the #1 Bestselling Author of The Housemaid</div>
+      <div class="kog-author" id="featAuthor">by <strong>Freida McFadden</strong></div>
+      <div class="kog-bestseller" id="featHook">From the #1 Bestselling Author of The Housemaid</div>
       <span class="kog-cta">Order Now <span class="kog-cta-arrow">→</span></span>
     </div>
   </div>
 </a>
+<script>
+(function(){
+  var FEATURED = [
+    { title:'The<br>Divorce', subtitle:'A Psychological Thriller', author:'Freida McFadden',
+      hook:'From the #1 Bestselling Author of The Housemaid', price:'329',
+      img:'/images/the-divorce-freida-mcfadden.webp',
+      href:'/product/the-divorce-by-freida-mcfadden-adden/' },
+    { title:'Our Perfect<br>Storm', subtitle:'A Summer Romance', author:'Carley Fortune',
+      hook:'Instant #1 New York Times Bestseller', price:'499',
+      img:'/images/our-perfect-storm-carley-fortune.webp',
+      href:'/product/our-perfect-storm-by-carley-fortune-rtune/' },
+    { title:'The Midnight<br>Train', subtitle:'A Life-Changing Journey', author:'Matt Haig',
+      hook:'From the Multi-Million Copy Bestselling Author', price:'369',
+      img:'/images/the-midnight-train-matt-haig.jpg',
+      href:'/product/the-midnight-train-by-matt-haig--haig/' },
+    { title:'Whistler', subtitle:'A Novel', author:'Ann Patchett',
+      hook:'From the Bestselling Author of The Dutch House', price:'369',
+      img:'/images/whistler-ann-patchett.jpg',
+      href:'/product/whistler-by-ann-patchett-chett/' }
+  ];
+  var banner = document.getElementById('featBanner');
+  if (!banner || FEATURED.length < 2) return;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Preload images so swaps are instant
+  FEATURED.forEach(function(f){ var im = new Image(); im.src = f.img; });
+
+  var idx = 0, paused = false;
+  var link = document.getElementById('featBannerLink');
+  function apply(f){
+    document.getElementById('featTitle').innerHTML    = f.title;
+    document.getElementById('featSubtitle').textContent = f.subtitle;
+    document.getElementById('featAuthor').innerHTML   = 'by <strong>' + f.author + '</strong>';
+    document.getElementById('featHook').textContent   = f.hook;
+    document.getElementById('featPrice').textContent  = f.price;
+    var img = document.getElementById('featImg');
+    img.src = f.img; img.alt = f.title.replace(/<br>/g,' ') + ' by ' + f.author;
+    link.setAttribute('href', f.href);
+    link.setAttribute('aria-label', 'Shop ' + f.title.replace(/<br>/g,' ') + ' by ' + f.author + ' — ₹' + f.price);
+  }
+  function rotate(){
+    if (paused) return;
+    idx = (idx + 1) % FEATURED.length;
+    if (reduce) { apply(FEATURED[idx]); return; }
+    banner.classList.add('kog-fading');
+    setTimeout(function(){ apply(FEATURED[idx]); banner.classList.remove('kog-fading'); }, 500);
+  }
+  // Pause rotation while hovering so users can read/click
+  banner.addEventListener('mouseenter', function(){ paused = true; });
+  banner.addEventListener('mouseleave', function(){ paused = false; });
+  setInterval(rotate, 5000);
+})();
+</script>
 
 <!-- MARQUEE -->
 <div class="marquee-bar">
