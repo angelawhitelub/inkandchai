@@ -680,6 +680,85 @@ def with_reader_activity(html: str) -> str:
         html = html.replace("</style>", READER_ACTIVITY_CSS + "\n</style>", 1)
     if "readerActivityToast" not in html:
         html = html.replace("</body>", READER_ACTIVITY_JS.replace("RECENT_ORDER_ACTIVITY_PLACEHOLDER", recent_order_activity_js) + "\n</body>", 1)
+    html = with_page_loader(html)
+    return html
+
+
+# ── Book-themed page-transition loader ────────────────────────────────────────
+# An open book with flipping pages, shown the moment a user clicks an internal
+# link (i.e. during the real network wait) and hidden again via pageshow so the
+# back/forward cache never leaves a stale overlay. Pure CSS animation, ~2KB.
+PAGE_LOADER_CSS = """
+/* Book page-transition loader */
+#iacPageLoader{position:fixed;inset:0;z-index:100000;background:rgba(13,11,8,0.93);backdrop-filter:blur(6px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.3rem;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .28s ease,visibility .28s ease}
+html[data-theme="light"] #iacPageLoader{background:rgba(250,247,242,0.93)}
+#iacPageLoader.show{opacity:1;visibility:visible;pointer-events:all}
+.iac-bookload{width:88px;height:60px;position:relative;perspective:340px}
+.iac-bookload-base{position:absolute;inset:0;border:2px solid #c9a84c;border-radius:4px 8px 8px 4px;box-shadow:0 14px 38px rgba(0,0,0,.45)}
+html[data-theme="light"] .iac-bookload-base{border-color:#8a6a1f;box-shadow:0 14px 38px rgba(70,52,24,.18)}
+.iac-bookload-base::before{content:'';position:absolute;left:50%;top:4px;bottom:4px;width:2px;margin-left:-1px;background:rgba(201,168,76,.45)}
+.iac-bookload-page{position:absolute;top:7px;bottom:7px;left:50%;width:calc(50% - 9px);background:linear-gradient(105deg,#f0e8d8 0%,#dccdaa 85%);border-radius:0 3px 3px 0;transform-origin:left center;animation:iacBookFlip 1.5s cubic-bezier(.45,.05,.55,.95) infinite;backface-visibility:visible}
+.iac-bookload-page:nth-child(2){animation-delay:.18s;opacity:.85}
+.iac-bookload-page:nth-child(3){animation-delay:.36s;opacity:.7}
+@keyframes iacBookFlip{0%{transform:rotateY(0)}80%,100%{transform:rotateY(-180deg)}}
+.iac-bookload-text{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:1.05rem;color:#c9a84c;letter-spacing:.06em;animation:iacBookPulse 1.5s ease-in-out infinite}
+html[data-theme="light"] .iac-bookload-text{color:#8a6a1f}
+@keyframes iacBookPulse{0%,100%{opacity:.55}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.iac-bookload-page{animation:none;transform:rotateY(-30deg)}.iac-bookload-text{animation:none}}
+"""
+
+PAGE_LOADER_JS = """
+<div id="iacPageLoader" aria-hidden="true">
+  <div class="iac-bookload">
+    <div class="iac-bookload-base"></div>
+    <div class="iac-bookload-page"></div>
+    <div class="iac-bookload-page"></div>
+    <div class="iac-bookload-page"></div>
+  </div>
+  <div class="iac-bookload-text" id="iacPageLoaderText">Turning the page&hellip;</div>
+</div>
+<script>
+(function(){
+  var loader = document.getElementById('iacPageLoader');
+  if (!loader) return;
+  var MESSAGES = ['Turning the page\\u2026','Fetching your next read\\u2026','Dusting off the shelf\\u2026','Opening chapter one\\u2026'];
+  function show(msg){
+    var t = document.getElementById('iacPageLoaderText');
+    if (t) t.textContent = msg || MESSAGES[Math.floor(Math.random()*MESSAGES.length)];
+    loader.classList.add('show');
+  }
+  function hide(){ loader.classList.remove('show'); }
+  // Hide when arriving on a page — covers normal loads AND bfcache back/forward
+  window.addEventListener('pageshow', hide);
+  // Safety: never let the overlay stick longer than 8s (e.g. download links)
+  var failsafe;
+  // Show on internal link navigation — the actual wait the user feels
+  document.addEventListener('click', function(e){
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    var href = a.getAttribute('href') || '';
+    if (!href || href.charAt(0) === '#') return;
+    if (/^(javascript:|mailto:|tel:|whatsapp:)/i.test(href)) return;
+    if (a.target && a.target !== '_self') return;
+    if (a.hasAttribute('download')) return;
+    var url;
+    try { url = new URL(href, location.href); } catch(err){ return; }
+    if (url.origin !== location.origin) return;
+    if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
+    show(url.pathname.indexOf('/checkout') === 0 ? 'Preparing your checkout\\u2026' : null);
+    clearTimeout(failsafe);
+    failsafe = setTimeout(hide, 8000);
+  }, true);
+})();
+</script>
+"""
+
+def with_page_loader(html: str) -> str:
+    if "iacPageLoader" in html:
+        return html
+    html = html.replace("</style>", PAGE_LOADER_CSS + "\n</style>", 1)
+    html = html.replace("</body>", PAGE_LOADER_JS + "\n</body>", 1)
     return html
 
 # ── HTML template ────────────────────────────────────────────────────────────
@@ -7569,7 +7648,7 @@ CHECKOUT_HTML = CHECKOUT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER",os.environ
 
 checkout_out = Path(__file__).parent / "public" / "checkout" / "index.html"
 checkout_out.parent.mkdir(parents=True, exist_ok=True)
-checkout_out.write_text(with_meta_pixel(CHECKOUT_HTML), encoding="utf-8")
+checkout_out.write_text(with_meta_pixel(with_page_loader(CHECKOUT_HTML)), encoding="utf-8")
 print(f"Generated: {checkout_out}")
 
 # ── Collection / Category landing page ──────────────────────────────────────
@@ -8100,7 +8179,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
 
     _author_dir = _AUTHOR_DIR / _slug
     _author_dir.mkdir(exist_ok=True)
-    (_author_dir / "index.html").write_text(_author_html, encoding="utf-8")
+    (_author_dir / "index.html").write_text(with_page_loader(_author_html), encoding="utf-8")
     _author_count_generated += 1
 
 print(f"Generated: {_AUTHOR_DIR}/  ({_author_count_generated} author hub pages)")
@@ -8330,7 +8409,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
 
     _ldir = _LANDING_DIR / _lp["slug"]
     _ldir.mkdir(exist_ok=True)
-    (_ldir / "index.html").write_text(_landing_html, encoding="utf-8")
+    (_ldir / "index.html").write_text(with_page_loader(_landing_html), encoding="utf-8")
     _landing_slugs.append(_lp["slug"])
     _landing_count += 1
 
