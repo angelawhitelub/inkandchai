@@ -868,7 +868,7 @@ HTML = r"""<!DOCTYPE html>
     try { localStorage.setItem('iac_theme', next); } catch(e){}
   }
 </script>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&family=Cinzel:wght@400;700;900&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600;700&family=Cinzel:wght@400;700;900&display=swap" rel="stylesheet" />
 <style>
   :root {
     --bg: #0d0b08; --bg2: #141210; --bg3: #1c1916;
@@ -909,7 +909,7 @@ HTML = r"""<!DOCTYPE html>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; background: #0d0b08; max-width:100%; overflow-x:hidden; }
   html[data-theme="light"] { background: #faf7f2; }
-  body { background: var(--bg); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 400; overflow-x: hidden; min-height: 100vh; }
+  body { background: var(--bg); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 400; overflow-x: hidden; min-height: 100vh; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
   /* Hard fallback: if anything goes wrong with vars, content still readable */
   html:not([data-theme="light"]) body { background: #0d0b08; color: #f0e8d8; }
   html[data-theme="light"] body { background: #faf7f2; color: #2a2018; }
@@ -948,6 +948,8 @@ HTML = r"""<!DOCTYPE html>
   .nav-icon:hover { color: var(--gold); }
   .nav-search-btn { color: var(--cream-dim); cursor: pointer; transition: color 0.3s, border-color 0.3s, background 0.3s; font: inherit; background: transparent; border: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
   .nav-search-btn:hover { color: var(--gold); }
+  .nav-kbd-hint { margin-left: 0.45rem; opacity: 0.65; }
+  @media (hover: none), (max-width: 780px) { .nav-kbd-hint { display: none; } }
   .nav-search-label { display: none; }
   .btn-nav { font-family: 'Montserrat', sans-serif; font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; padding: 0.55rem 1.4rem; border: 1px solid var(--gold-dim); color: var(--gold); background: transparent; cursor: pointer; transition: all 0.3s; text-decoration: none; }
   .btn-nav:hover { background: var(--gold); color: var(--bg); border-color: var(--gold); }
@@ -1237,7 +1239,7 @@ HTML = r"""<!DOCTYPE html>
   section { padding: 7rem 6rem; }
   .section-label { font-size: 0.6rem; letter-spacing: 0.35em; text-transform: uppercase; color: var(--gold); margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; }
   .section-label::before { content: ''; display: inline-block; width: 30px; height: 1px; background: var(--gold); }
-  .section-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 400; color: var(--white); line-height: 1.12; margin-bottom: 1rem; letter-spacing: -0.01em; }
+  .section-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 500; color: var(--white); line-height: 1.12; margin-bottom: 1rem; letter-spacing: -0.01em; }
   .section-title em { font-style: italic; color: var(--gold-light); }
 
   /* ── SUMMER SALE BANNER ──────────────────────────────────────────── */
@@ -1326,10 +1328,10 @@ HTML = r"""<!DOCTYPE html>
   /* "NEW" arrival ribbon */
   .new-badge { position: absolute; top: 8px; left: 8px; z-index: 5; background: linear-gradient(135deg, #d4584c, #b94236); color: #fff; font-size: 0.55rem; letter-spacing: 0.2em; font-weight: 600; padding: 0.3rem 0.6rem; font-family: 'Montserrat', sans-serif; box-shadow: 0 4px 10px rgba(185,66,54,0.45); animation: newPulse 2.4s ease-in-out infinite; }
   @keyframes newPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-  .book-name { font-family: 'Cormorant Garamond', serif; font-size: 0.92rem; font-weight: 400; color: var(--cream); margin-bottom: 0.2rem; line-height: 1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:2.3em; }
-  .book-author { font-size: 0.58rem; color: var(--cream-dim); letter-spacing: 0.08em; margin-bottom: 0.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .book-name { font-family: 'Cormorant Garamond', serif; font-size: 1.04rem; font-weight: 600; color: var(--white); margin-bottom: 0.25rem; line-height: 1.22; letter-spacing: 0.005em; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:2.3em; }
+  .book-author { font-size: 0.64rem; font-weight: 500; color: var(--gold-dim); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 0.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .book-meta { display: flex; justify-content: space-between; align-items: baseline; gap:0.4rem; }
-  .book-price { font-family: 'Cormorant Garamond', serif; font-size: 1rem; color: var(--gold); font-weight: 600; white-space:nowrap; }
+  .book-price { font-family: 'Cormorant Garamond', serif; font-size: 1.18rem; color: var(--gold); font-weight: 700; white-space:nowrap; }
   .book-orig-price { font-size: 0.65rem; color: var(--cream-dim); text-decoration: line-through; margin-left: 0.3rem; }
   .book-category { font-size: 0.5rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%; }
 
@@ -1383,6 +1385,21 @@ HTML = r"""<!DOCTYPE html>
   .srch-cls{background:none;border:none;color:var(--cream-dim);cursor:pointer;font-size:1.4rem;padding:0.9rem 1rem;line-height:1;transition:color 0.2s;}
   .srch-cls:hover{color:var(--gold);}
   .srch-chips{display:flex;flex-wrap:wrap;gap:0.45rem;margin-top:0.85rem;}
+  .srch-results{margin-top:0.9rem;max-height:min(56vh,460px);overflow-y:auto;border:1px solid var(--border);background:var(--bg3);display:none;}
+  .srch-results.has{display:block;}
+  .srch-hit{display:flex;align-items:center;gap:0.9rem;padding:0.65rem 0.9rem;cursor:pointer;text-decoration:none;color:inherit;border-bottom:1px solid var(--border);transition:background 0.15s;}
+  .srch-hit:last-child{border-bottom:none;}
+  .srch-hit:hover,.srch-hit.sel{background:rgba(201,168,76,0.09);}
+  .srch-hit-img{width:38px;height:56px;flex-shrink:0;background:var(--bg2);overflow:hidden;border:1px solid var(--border);}
+  .srch-hit-img img{width:100%;height:100%;object-fit:cover;display:block;}
+  .srch-hit-info{flex:1;min-width:0;}
+  .srch-hit-title{font-family:'Cormorant Garamond',serif;font-size:0.98rem;font-weight:600;color:var(--white);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .srch-hit-title mark{background:transparent;color:var(--gold);font-weight:700;}
+  .srch-hit-author{font-size:0.62rem;color:var(--cream-dim);letter-spacing:0.06em;margin-top:0.1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .srch-hit-price{font-family:'Cormorant Garamond',serif;font-size:1.02rem;font-weight:700;color:var(--gold);white-space:nowrap;}
+  .srch-all{display:block;text-align:center;padding:0.75rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);cursor:pointer;background:rgba(201,168,76,0.05);border:none;width:100%;border-top:1px solid var(--border);}
+  .srch-all:hover{background:rgba(201,168,76,0.12);}
+  .srch-kbd{display:inline-block;border:1px solid var(--border);border-radius:3px;padding:0 0.35rem;font-size:0.62rem;color:var(--cream-dim);font-family:'Montserrat',sans-serif;line-height:1.5;}
 
   /* COLLECTIONS */
   .collections { background: var(--bg); }
@@ -1818,7 +1835,7 @@ HTML = r"""<!DOCTYPE html>
   </ul>
   <div class="nav-actions">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
-    <button class="nav-search-btn" type="button" title="Search books" aria-label="Search books" onclick="focusSiteSearch()"><span aria-hidden="true">⌕</span><span class="nav-search-label">Search</span></button>
+    <button class="nav-search-btn" type="button" title="Search books (press /)" aria-label="Search books" onclick="focusSiteSearch()"><span aria-hidden="true">⌕</span><span class="nav-search-label">Search</span><span class="srch-kbd nav-kbd-hint" aria-hidden="true">/</span></button>
     <span class="nav-icon" title="Wishlist" onclick="openWishlistModal()">&#9825;<span id="wishBadge" style="display:none;font-size:0.55rem;background:var(--gold);color:var(--bg);border-radius:50%;width:14px;height:14px;display:none;align-items:center;justify-content:center;position:absolute;top:-4px;right:-6px;"></span></span>
     <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
     <button class="btn-nav auth-nav-btn" id="authNavBtnMain" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
@@ -1840,6 +1857,7 @@ HTML = r"""<!DOCTYPE html>
                autocomplete="off" oninput="srchType()" onkeydown="srchKey(event)" />
         <button class="srch-cls" onclick="closeSiteSearch()" title="Close search" aria-label="Close">✕</button>
       </div>
+      <div class="srch-results" id="srchResults" role="listbox" aria-label="Search suggestions"></div>
       <div class="srch-chips">
         <button class="search-chip" onclick="srchQuick('Ana Huang')">Ana Huang</button>
         <button class="search-chip" onclick="srchQuick('Onyx Storm')">Onyx Storm</button>
@@ -2662,6 +2680,28 @@ function normalizeSearchText(value) {
     .trim();
 }
 
+// Common misspellings & Hinglish variants → canonical search tokens
+const SEARCH_SYNONYMS = {
+  'habbit':'habit','habbits':'habits','atomik':'atomic','atmoic':'atomic',
+  'ikigayi':'ikigai','ikigia':'ikigai','ikiga':'ikigai',
+  'physcology':'psychology','phychology':'psychology','pyschology':'psychology','psycology':'psychology',
+  'freida':'freida','frieda':'freida','mcfadden':'mcfadden','mcfaden':'mcfadden','macfadden':'mcfadden',
+  'colen':'colleen','collen':'colleen','coleen':'colleen','hover':'hoover',
+  'huang':'huang','hwang':'huang',
+  'goggins':'goggins','gogins':'goggins',
+  'kiyosaki':'kiyosaki','kiyosak':'kiyosaki','kiosaki':'kiyosaki',
+  'milionaire':'millionaire','millionare':'millionaire',
+  'sapiens':'sapiens','sapians':'sapiens',
+  'manga':'manga','mangaa':'manga',
+  'novel':'novel','novle':'novel',
+  'hindhi':'hindi','hindii':'hindi',
+  'combo':'combo','kombo':'combo',
+  'boxset':'box set','boxsets':'box set',
+};
+function applySynonyms(text) {
+  return text.split(' ').map(w => SEARCH_SYNONYMS[w] || w).join(' ');
+}
+
 function searchAliases(text) {
   const aliases = [text];
   const compact = text.replace(/\s+/g, '');
@@ -2705,7 +2745,7 @@ function fuzzyWordHit(word, field) {
 }
 
 function searchScore(book, rawQuery) {
-  const q = normalizeSearchText(rawQuery);
+  const q = applySynonyms(normalizeSearchText(rawQuery));
   if (!q) return 0;
   const doc = bookSearchDoc(book);
   const tokens = q.split(' ').filter(Boolean);
@@ -2721,9 +2761,14 @@ function searchScore(book, rawQuery) {
   if (aliases.some(a => doc.full.includes(a))) score += 60;
 
   let matched = 0;
+  const titleWords  = doc.title.split(' ');
+  const authorWords = doc.author.split(' ');
   for (const token of tokens) {
-    if (doc.title.split(' ').some(w => w === token)) { score += 95; matched++; continue; }
+    if (titleWords.some(w => w === token)) { score += 95; matched++; continue; }
+    // Prefix hit: typing "atom hab" finds "atomic habits"
+    if (token.length >= 3 && titleWords.some(w => w.startsWith(token))) { score += 80; matched++; continue; }
     if (doc.title.includes(token)) { score += 70; matched++; continue; }
+    if (token.length >= 3 && authorWords.some(w => w.startsWith(token))) { score += 55; matched++; continue; }
     if (doc.author.includes(token)) { score += 50; matched++; continue; }
     if (doc.isbn.includes(token)) { score += 45; matched++; continue; }
     if (doc.category.includes(token)) { score += 35; matched++; continue; }
@@ -2985,6 +3030,7 @@ function focusSiteSearch() {
   if (srchIn) srchIn.value = mainVal;
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
+  renderSrchResults(srchIn?.value || '');
   setTimeout(() => srchIn?.focus(), 60);
 }
 
@@ -2992,7 +3038,16 @@ function closeSiteSearch() {
   document.getElementById('srchOverlay')?.classList.remove('open');
   document.body.style.overflow = '';
 }
+// Press "/" anywhere to open search (like GitHub/YouTube)
+document.addEventListener('keydown', (e) => {
+  if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  e.preventDefault();
+  focusSiteSearch();
+});
 
+let _srchSel = -1;
 function srchType() {
   const val = document.getElementById('srchInput')?.value || '';
   const mainInput = document.getElementById('searchInput');
@@ -3000,10 +3055,71 @@ function srchType() {
   currentQuery = val;
   visibleCount = PAGE_SIZE;
   renderBooks();
+  renderSrchResults(val);
+}
+
+function highlightMatch(text, query) {
+  const t = escHtml(text);
+  const tokens = normalizeSearchText(query).split(' ').filter(w => w.length >= 2);
+  if (!tokens.length) return t;
+  try {
+    const re = new RegExp('(' + tokens.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'gi');
+    return t.replace(re, '<mark>$1</mark>');
+  } catch(e) { return t; }
+}
+
+function renderSrchResults(query) {
+  const box = document.getElementById('srchResults');
+  if (!box) return;
+  _srchSel = -1;
+  const q = (query || '').trim();
+  if (q.length < 2) { box.classList.remove('has'); box.innerHTML = ''; return; }
+  const matches = BOOKS.map(b => ({ b, score: searchScore(b, q) }))
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map(x => x.b);
+  if (!matches.length) {
+    box.innerHTML = '<div style="padding:1.1rem;text-align:center;font-size:0.74rem;color:var(--cream-dim);">No matches — try fewer words or a different spelling.</div>';
+    box.classList.add('has');
+    return;
+  }
+  const total = BOOKS.filter(b => searchScore(b, q) > 0).length;
+  box.innerHTML = matches.map(b => `
+    <a class="srch-hit" href="/product/${b.slug}/" role="option">
+      <div class="srch-hit-img">${b.img ? `<img src="${b.img}" alt="" loading="lazy" onerror="this.style.display='none'"/>` : ''}</div>
+      <div class="srch-hit-info">
+        <div class="srch-hit-title">${highlightMatch(b.t, q)}</div>
+        <div class="srch-hit-author">${escHtml(b.a || '')}${b.cat ? ' · ' + escHtml(b.cat) : ''}</div>
+      </div>
+      <div class="srch-hit-price">${escHtml(b.p || '')}</div>
+    </a>`).join('')
+    + (total > matches.length ? `<button class="srch-all" onclick="srchShowAll()">View all ${total} results ↓</button>` : '');
+  box.classList.add('has');
+}
+
+function srchShowAll() {
+  closeSiteSearch();
+  document.getElementById('featured')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function srchMove(delta) {
+  const hits = Array.from(document.querySelectorAll('#srchResults .srch-hit'));
+  if (!hits.length) return false;
+  _srchSel = Math.max(0, Math.min(hits.length - 1, _srchSel + delta));
+  hits.forEach((h, i) => h.classList.toggle('sel', i === _srchSel));
+  hits[_srchSel].scrollIntoView({ block: 'nearest' });
+  return true;
 }
 
 function srchKey(e) {
   if (e.key === 'Escape') { closeSiteSearch(); return; }
+  if (e.key === 'ArrowDown') { e.preventDefault(); srchMove(1); return; }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); srchMove(-1); return; }
+  if (e.key === 'Enter' && _srchSel >= 0) {
+    const sel = document.querySelectorAll('#srchResults .srch-hit')[_srchSel];
+    if (sel) { location.href = sel.getAttribute('href'); return; }
+  }
   if (e.key === 'Enter') {
     // Track search query for recommendation personalisation
     const q = (document.getElementById('srchInput')?.value || '').trim();
