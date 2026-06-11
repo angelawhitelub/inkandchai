@@ -22,6 +22,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 
 const { sendEmail } = require('./utils/email');
+const { classifyLead, isValidIndianMobile, isValidEmail } = require('./utils/spam-filter');
 
 const RECOVERY_COUPON = 'CHAI10BACK';
 const MIN_ABANDON_HOURS = 1;   // don't message sooner than 1 hour
@@ -95,9 +96,27 @@ exports.handler = async () => {
 
   console.log(`auto-recover-carts: processing ${leads.length} leads`);
 
-  let wasSent = 0, emailSent = 0;
+  let wasSent = 0, emailSent = 0, skippedSpam = 0;
 
   for (const lead of leads) {
+    // ── Spam guard: never message bots / junk leads ────────────────────────
+    // Mark them messaged so they're excluded from future runs without ever
+    // costing a WhatsApp credit or an email.
+    const verdict = classifyLead({
+      name:  lead.customer_name,
+      email: lead.customer_email,
+      phone: lead.customer_phone,
+    });
+    if (verdict.spam) {
+      skippedSpam++;
+      await supabase
+        .from('abandoned_checkouts')
+        .update({ followup_whatsapp_clicked_at: new Date().toISOString(),
+                  followup_email_sent_at: new Date().toISOString() })
+        .eq('id', lead.id);
+      continue;
+    }
+
     const firstName  = String(lead.customer_name || 'there').split(' ')[0];
     const items      = Array.isArray(lead.cart_items) ? lead.cart_items : [];
     const itemCount  = items.length > 0 ? `${items.length} book${items.length > 1 ? 's' : ''}` : 'books';
@@ -105,8 +124,8 @@ exports.handler = async () => {
     const now        = new Date().toISOString();
     const update     = {};
 
-    // ── WhatsApp (primary channel) ──────────────────────────────────────────
-    if (lead.customer_phone) {
+    // ── WhatsApp (primary channel) — only to a real Indian mobile ──────────
+    if (lead.customer_phone && isValidIndianMobile(lead.customer_phone)) {
       try {
         await sendWhatsApp({
           to: lead.customer_phone,
@@ -121,8 +140,8 @@ exports.handler = async () => {
       }
     }
 
-    // ── Email (secondary channel — if address available) ───────────────────
-    if (lead.customer_email) {
+    // ── Email (secondary channel — only to a valid, non-bot address) ───────
+    if (lead.customer_email && isValidEmail(lead.customer_email)) {
       try {
         const r = await sendEmail({
           to: lead.customer_email,
@@ -151,6 +170,6 @@ exports.handler = async () => {
     await new Promise(r => setTimeout(r, 300));
   }
 
-  console.log(`auto-recover-carts done: WA=${wasSent}, email=${emailSent}/${leads.length}`);
+  console.log(`auto-recover-carts done: WA=${wasSent}, email=${emailSent}, spamSkipped=${skippedSpam}/${leads.length}`);
   return { statusCode: 200 };
 };

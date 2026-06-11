@@ -6,6 +6,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { classifyLead } = require('./utils/spam-filter');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -50,10 +51,19 @@ exports.handler = async (event) => {
     const { data, error, count } = await query;
     if (error) throw error;
 
+    // Hide spam/bot leads from the admin view (existing junk already in the DB
+    // is filtered out here so the list is clean without a migration).
+    const includeSpam = event.queryStringParameters?.include_spam === '1';
+    const rows = data || [];
+    const clean = includeSpam ? rows : rows.filter(r => !classifyLead({
+      name: r.customer_name, email: r.customer_email, phone: r.customer_phone,
+    }).spam);
+    const hiddenSpam = rows.length - clean.length;
+
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ checkouts: data || [], total: count || 0, page, limit, min_age_minutes: minAgeMinutes }),
+      body: JSON.stringify({ checkouts: clean, total: count || 0, hidden_spam: hiddenSpam, page, limit, min_age_minutes: minAgeMinutes }),
     };
   } catch (err) {
     console.error('get-abandoned-checkouts error:', err.message);

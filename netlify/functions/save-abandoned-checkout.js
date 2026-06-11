@@ -7,6 +7,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { classifyLead } = require('./utils/spam-filter');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -41,6 +42,17 @@ exports.handler = async (event) => {
 
   if (!sessionId || !cart.length || (!email && !phone && !name)) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false, skipped: 'Not enough checkout detail yet' }) };
+  }
+
+  // ── Spam guard: don't save bot / keyboard-mash leads at all ────────────────
+  // Only enforce once the lead has a contact field worth validating; while the
+  // customer is still mid-typing (name only, no phone/email) we let it through
+  // so a real cart isn't dropped before they finish.
+  if (email || phone) {
+    const verdict = classifyLead({ name, email, phone });
+    if (verdict.spam) {
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: false, skipped: 'spam', reason: verdict.reason }) };
+    }
   }
 
   const subtotal = cart.reduce((sum, item) => {
