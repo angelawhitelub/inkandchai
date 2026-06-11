@@ -2385,23 +2385,23 @@ HTML = r"""<!DOCTYPE html>
       </ul>
     </div>
     <div>
-      <div class="footer-col-title">Help</div>
+      <div class="footer-col-title">Company</div>
       <ul class="footer-links">
-        <li><a href="/shipping-policy/">Shipping Info</a></li>
-        <li><a href="/return-policy/">Returns</a></li>
-        <li><a href="/refund-policy/">Refund Policy</a></li>
-        <li><a href="mailto:support@inkandchai.in">Contact Us</a></li>
+        <li><a href="/about/">About Us</a></li>
+        <li><a href="/contact/">Contact Us</a></li>
+        <li><a href="/track/">Track Order</a></li>
         <li><a href="https://wa.me/919217175546" target="_blank">WhatsApp Support</a></li>
+        <li><a href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener">Instagram</a></li>
       </ul>
     </div>
     <div>
-      <div class="footer-col-title">Policies</div>
+      <div class="footer-col-title">Help &amp; Policies</div>
       <ul class="footer-links">
+        <li><a href="/shipping-policy/">Shipping Policy</a></li>
+        <li><a href="/return-policy/">Return Policy</a></li>
+        <li><a href="/refund-policy/">Refund Policy</a></li>
         <li><a href="/terms/">Terms &amp; Conditions</a></li>
         <li><a href="/privacy-policy/">Privacy Policy</a></li>
-        <li><a href="/refund-policy/">Refund Policy</a></li>
-        <li><a href="/return-policy/">Return Policy</a></li>
-        <li><a href="/shipping-policy/">Shipping Policy</a></li>
       </ul>
     </div>
   </div>
@@ -8554,6 +8554,8 @@ static_urls = [
     (SITE + "/privacy-policy/", "0.4",  "yearly"),
     (SITE + "/refund-policy/",  "0.4",  "yearly"),
     (SITE + "/return-policy/",  "0.4",  "yearly"),
+    (SITE + "/about/",          "0.6",  "monthly"),
+    (SITE + "/contact/",        "0.6",  "monthly"),
     (SITE + "/shipping-policy/","0.4",  "yearly"),
 ]
 url_entries = []
