@@ -62,10 +62,14 @@ exports.handler = async (event) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    // order_id is NOT NULL in the table; manually-added reviews have no real
+    // order, so use a unique synthetic id that's clearly identifiable.
+    const syntheticOrderId = `MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
     const { data, error } = await supabase
       .from('product_reviews')
       .insert({
-        order_id:       null,
+        order_id:       syntheticOrderId,
         product_slug:   productSlug,
         rating,
         comment,
