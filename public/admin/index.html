@@ -767,6 +767,10 @@ tr:hover td{background:rgba(122,88,21,0.075);}
         <input id="arSlug" type="text" placeholder="https://inkandchai.in/product/the-divorce-by-... or the-divorce-by-..." oninput="arNormalizeSlug()"/>
         <small id="arSlugHint" style="display:block;color:var(--cream-dim);font-size:0.62rem;margin-top:0.25rem;"></small>
       </div>
+      <div class="form-row" style="grid-column:span 2;margin:0;">
+        <label>Order ID (optional — links the review to a real website order &amp; auto-marks Verified Buyer)</label>
+        <input id="arOrderId" type="text" placeholder="e.g. IC-20260605-H7447 — leave blank for off-platform feedback"/>
+      </div>
       <div class="form-row" style="margin:0;">
         <label>Customer name</label>
         <input id="arName" type="text" placeholder="e.g. Anjali S."/>
@@ -3263,6 +3267,7 @@ async function submitAddReview(btn) {
   const rating  = parseInt(document.getElementById('arRating').value);
   const comment = document.getElementById('arComment').value.trim();
   const date    = document.getElementById('arDate').value;
+  const orderId = document.getElementById('arOrderId').value.trim();
   const verified= document.getElementById('arVerified').checked;
   const msg     = document.getElementById('arMsg');
 
@@ -3279,6 +3284,7 @@ async function submitAddReview(btn) {
       body: JSON.stringify({
         product_slug: slug, customer_name: name, rating, comment,
         verified_buyer: verified,
+        ...(orderId && { order_id: orderId }),
         ...(date && { created_at: date }),
       }),
     });
@@ -3290,6 +3296,7 @@ async function submitAddReview(btn) {
     document.getElementById('arName').value = '';
     document.getElementById('arComment').value = '';
     document.getElementById('arDate').value = '';
+    document.getElementById('arOrderId').value = '';
     document.getElementById('arVerified').checked = false;
     fetchPendingReviews();
   } catch (err) {

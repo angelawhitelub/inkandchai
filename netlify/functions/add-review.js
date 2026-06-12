@@ -43,8 +43,9 @@ exports.handler = async (event) => {
   const name        = String(body.customer_name || '').trim().slice(0, 80);
   const comment     = String(body.comment || '').trim().slice(0, 1000);
   const rating      = parseInt(body.rating, 10);
-  const verified    = !!body.verified_buyer;
+  let   verified    = !!body.verified_buyer;
   let   createdAt   = String(body.created_at || '').trim();
+  const orderIdIn   = String(body.order_id || '').trim();
 
   if (!productSlug) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'product_slug is required' }) };
   if (!name)        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'customer_name is required' }) };
@@ -62,21 +63,49 @@ exports.handler = async (event) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // order_id is NOT NULL in the table; manually-added reviews have no real
-    // order, so use a unique synthetic id that's clearly identifiable.
-    const syntheticOrderId = `MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    // If a real order ID is supplied, look it up: confirm it exists, pull the
+    // customer email, and treat it as a genuine verified-buyer review.
+    let orderId = '';
+    let customerEmail = '';
+    if (orderIdIn) {
+      const { data: ord } = await supabase
+        .from('orders')
+        .select('razorpay_order_id,id,customer_email')
+        .or(`razorpay_order_id.eq.${orderIdIn},id.eq.${orderIdIn}`)
+        .maybeSingle();
+      if (!ord) {
+        return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: `Order "${orderIdIn}" not found. Leave Order ID blank to add without linking, or check the ID.` }) };
+      }
+      orderId = ord.razorpay_order_id || ord.id;
+      customerEmail = ord.customer_email || '';
+      verified = true;  // a real, found order ⇒ genuine verified buyer
+
+      // One review per order per product (matches submit-review's rule)
+      const { data: dup } = await supabase
+        .from('product_reviews')
+        .select('id')
+        .eq('order_id', orderId)
+        .eq('product_slug', productSlug)
+        .maybeSingle();
+      if (dup) {
+        return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'This order already has a review for this product.' }) };
+      }
+    } else {
+      // No real order — synthetic id (order_id is NOT NULL in the table)
+      orderId = `MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    }
 
     const { data, error } = await supabase
       .from('product_reviews')
       .insert({
-        order_id:       syntheticOrderId,
+        order_id:       orderId,
         product_slug:   productSlug,
         rating,
         comment,
         customer_name:  name,
-        customer_email: '',
+        customer_email: customerEmail,
         approved:       true,           // show immediately
-        verified_buyer: verified,       // off by default (no linked order)
+        verified_buyer: verified,
         created_at:     createdIso,
       })
       .select('id')
