@@ -516,6 +516,9 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="btn-outline" onclick="openBroadcastModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(37,211,102,0.55);color:#25D366;" title="Send a WhatsApp template to all past customers. Use when paid ads are down to re-engage existing buyers.">
       📣 WhatsApp Broadcast
     </button>
+    <button class="btn-outline" onclick="openReviewRequestModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(201,168,76,0.55);color:#c9a84c;" title="Ask delivered customers to leave a review (reputation building). Sends a personal review link + ₹50 scratch-card incentive.">
+      ⭐ Request Reviews
+    </button>
     <span id="autoRecheckBadge" style="font-size:0.52rem;color:#a275d6;margin-left:0.6rem;opacity:0.75;cursor:default;"></span>
   </div>
 
@@ -2871,6 +2874,95 @@ async function runBroadcast(dryRun, btn) {
   } finally {
     btn.disabled = false;
     btn.innerHTML = orig;
+  }
+}
+
+// ── Request Reviews (bulk, reputation building) ─────────────────────────────
+function openReviewRequestModal() {
+  document.getElementById('reviewReqModal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'reviewReqModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;z-index:10800;padding:1.2rem;';
+  m.innerHTML = `
+    <div style="background:var(--bg3);border:1px solid var(--border);width:min(580px,96vw);padding:2rem;max-height:90vh;overflow-y:auto;position:relative;">
+      <button onclick="document.getElementById('reviewReqModal').remove()" style="position:absolute;top:0.6rem;right:0.6rem;background:transparent;border:1px solid var(--border);width:32px;height:32px;border-radius:50%;cursor:pointer;color:var(--cream-dim);font-size:0.9rem;">✕</button>
+      <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;color:var(--white);margin-bottom:0.4rem;">⭐ Request Reviews</h2>
+      <p style="font-size:0.74rem;color:var(--cream-dim);line-height:1.7;margin-bottom:1.4rem;">Asks <strong>delivered</strong> customers to leave a review. Each gets a personal review link for their order plus a ₹50 cashback scratch-card incentive (built into the template). Builds reputation and helps the Google Merchant review.</p>
+
+      <div class="form-row">
+        <label>Template name (must be approved in Meta — 3 variables)</label>
+        <input id="rvTemplate" type="text" value="review_request_v1"/>
+        <small style="display:block;color:var(--cream-dim);font-size:0.65rem;margin-top:0.3rem;line-height:1.6;">Variables: {{1}}=first name, {{2}}=book title, {{3}}=review link.</small>
+      </div>
+      <div class="form-row">
+        <label>Customers who received their order in the last N days</label>
+        <input id="rvDays" type="number" value="90" min="1" max="365"/>
+      </div>
+      <div class="form-row">
+        <label>Language code</label>
+        <input id="rvLang" type="text" value="en"/>
+      </div>
+      <div class="form-row">
+        <label>Test phone (optional — sends ONLY to this number)</label>
+        <input id="rvTestPhone" type="text" placeholder="919999999999"/>
+      </div>
+      <div class="form-row">
+        <label>Limit (optional)</label>
+        <input id="rvLimit" type="number" placeholder="leave blank for all"/>
+      </div>
+
+      <div style="background:rgba(201,168,76,0.07);border-left:3px solid var(--gold);padding:0.9rem 1.1rem;margin-bottom:1.2rem;">
+        <p style="font-size:0.72rem;color:var(--cream-dim);line-height:1.7;margin:0;">
+          ⚠ Only customers with status <strong>Delivered</strong> and a valid mobile are asked. Each customer is asked once (tracked via review_requested_at). Marketing/utility template cost ~₹0.91/msg.
+        </p>
+      </div>
+
+      <div style="display:flex;gap:0.7rem;flex-wrap:wrap;">
+        <button class="btn-outline" onclick="runReviewRequest(true, this)" style="border-color:rgba(77,184,255,0.5);color:#4db8ff;">🧪 Dry Run (count only)</button>
+        <button class="btn-gold" onclick="runReviewRequest(false, this)" style="background:var(--gold);">⭐ Send Review Requests</button>
+      </div>
+      <div id="rvResult" style="margin-top:1.3rem;font-size:0.78rem;color:var(--cream);"></div>
+    </div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+}
+
+async function runReviewRequest(dryRun, btn) {
+  if (!dryRun) {
+    if (!confirm('Send REAL review-request WhatsApp messages to delivered customers? (~₹0.91 each)')) return;
+    if (!confirm('Confirm: send review requests now?')) return;
+  }
+  const template  = document.getElementById('rvTemplate').value.trim();
+  const daysBack  = parseInt(document.getElementById('rvDays').value) || 90;
+  const lang      = document.getElementById('rvLang').value.trim() || 'en';
+  const testPhone = document.getElementById('rvTestPhone').value.trim();
+  const limit     = parseInt(document.getElementById('rvLimit').value) || null;
+  if (!template) { alert('Template name is required'); return; }
+
+  const result = document.getElementById('rvResult');
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>' + (dryRun ? 'Counting…' : 'Sending…');
+  result.innerHTML = '';
+  try {
+    const res = await fetch('/.netlify/functions/request-reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ template, days_back: daysBack, dry_run: dryRun, lang,
+        ...(testPhone && { test_phone: testPhone }), ...(limit && { limit }) }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (dryRun) {
+      const sample = (data.sample || []).map(s => `<div style="margin-bottom:0.45rem;">• <strong>${s.name}</strong> (${s.phone}) — <span style="color:var(--gold)">${s.book}</span><br/><span style="font-size:0.64rem;color:var(--cream-dim);">${s.link}</span></div>`).join('');
+      result.innerHTML = `<div style="background:rgba(77,184,255,0.08);border-left:3px solid #4db8ff;padding:1rem 1.2rem;"><strong style="color:#4db8ff;">Dry run complete</strong><br/>Would ask <strong>${data.total}</strong> delivered customers.<br/><div style="margin-top:0.7rem;font-family:Menlo,monospace;font-size:0.68rem;">${sample}</div></div>`;
+    } else {
+      result.innerHTML = `<div style="background:rgba(99,202,110,0.08);border-left:3px solid #63ca6e;padding:1rem 1.2rem;"><strong style="color:#63ca6e;">Done!</strong><br/>Sent: <strong>${data.sent}</strong> / ${data.total}<br/>Failed: ${data.failed}${data.sample_failures?.length ? `<details style="margin-top:0.6rem;"><summary style="cursor:pointer;color:var(--cream-dim);">Failures</summary><pre style="font-size:0.65rem;color:var(--red);white-space:pre-wrap;">${JSON.stringify(data.sample_failures,null,2)}</pre></details>` : ''}</div>`;
+    }
+  } catch (err) {
+    result.innerHTML = `<div style="background:rgba(224,80,80,0.1);border-left:3px solid var(--red);padding:1rem 1.2rem;color:var(--red);">Error: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.innerHTML = orig;
   }
 }
 
