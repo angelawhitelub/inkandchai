@@ -755,6 +755,52 @@ tr:hover td{background:rgba(122,88,21,0.075);}
 
   <div class="admin-section" id="tab-reviews">
 
+  <!-- Add Review manually -->
+  <section class="product-panel" id="addReviewSection" style="margin-bottom:1.4rem;">
+    <div style="margin-bottom:1rem;">
+      <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;margin-bottom:.2rem">＋ Add a Review</h2>
+      <p style="font-size:.65rem;color:var(--cream-dim);line-height:1.6">Add a genuine customer review you collected off-platform (Instagram DM, WhatsApp, etc.) — useful while order delivery isn't auto-tracked. Only add real feedback from real customers.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;max-width:760px;">
+      <div class="form-row" style="grid-column:span 2;margin:0;">
+        <label>Product (paste the product page URL or its slug)</label>
+        <input id="arSlug" type="text" placeholder="https://inkandchai.in/product/the-divorce-by-... or the-divorce-by-..." oninput="arNormalizeSlug()"/>
+        <small id="arSlugHint" style="display:block;color:var(--cream-dim);font-size:0.62rem;margin-top:0.25rem;"></small>
+      </div>
+      <div class="form-row" style="margin:0;">
+        <label>Customer name</label>
+        <input id="arName" type="text" placeholder="e.g. Anjali S."/>
+      </div>
+      <div class="form-row" style="margin:0;">
+        <label>Rating</label>
+        <select id="arRating" style="width:100%;padding:0.6rem;background:var(--bg);color:var(--cream);border:1px solid var(--border);">
+          <option value="5">★★★★★ (5)</option>
+          <option value="4">★★★★☆ (4)</option>
+          <option value="3">★★★☆☆ (3)</option>
+          <option value="2">★★☆☆☆ (2)</option>
+          <option value="1">★☆☆☆☆ (1)</option>
+        </select>
+      </div>
+      <div class="form-row" style="grid-column:span 2;margin:0;">
+        <label>Review text</label>
+        <textarea id="arComment" rows="3" placeholder="What the customer said about the book…" style="width:100%;background:var(--bg);color:var(--cream);border:1px solid var(--border);padding:0.6rem;font-family:inherit;font-size:0.82rem;"></textarea>
+      </div>
+      <div class="form-row" style="margin:0;">
+        <label>Review date (optional)</label>
+        <input id="arDate" type="date"/>
+      </div>
+      <div class="form-row" style="margin:0;display:flex;align-items:flex-end;gap:0.5rem;">
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.7rem;color:var(--cream-dim);text-transform:none;letter-spacing:0;">
+          <input id="arVerified" type="checkbox" style="width:auto;"/> Mark as "Verified Buyer" (only if they really ordered)
+        </label>
+      </div>
+    </div>
+    <div style="margin-top:1.1rem;display:flex;gap:0.7rem;align-items:center;flex-wrap:wrap;">
+      <button class="btn-gold" onclick="submitAddReview(this)" style="background:var(--gold);">＋ Add Review</button>
+      <span id="arMsg" style="font-size:0.74rem;"></span>
+    </div>
+  </section>
+
   <!-- Reviews Moderation -->
   <section class="product-panel" id="reviewsModerationSection">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem;flex-wrap:wrap">
@@ -3194,6 +3240,64 @@ async function fetchPendingReviews() {
 async function fetchAllReviews() {
   reviewsShowAll = true;
   await loadReviews('/.netlify/functions/get-reviews?all=1');
+}
+
+// ── Add a review manually ───────────────────────────────────────────────────
+function arExtractSlug(value) {
+  let v = String(value || '').trim();
+  if (!v) return '';
+  // Accept a full URL or a bare slug
+  const m = v.match(/\/product\/([^/?#]+)/i);
+  if (m) v = m[1];
+  return v.replace(/^\/+|\/+$/g, '').toLowerCase();
+}
+function arNormalizeSlug() {
+  const raw = document.getElementById('arSlug').value;
+  const slug = arExtractSlug(raw);
+  const hint = document.getElementById('arSlugHint');
+  if (hint) hint.textContent = slug ? `Slug: ${slug}` : '';
+}
+async function submitAddReview(btn) {
+  const slug    = arExtractSlug(document.getElementById('arSlug').value);
+  const name    = document.getElementById('arName').value.trim();
+  const rating  = parseInt(document.getElementById('arRating').value);
+  const comment = document.getElementById('arComment').value.trim();
+  const date    = document.getElementById('arDate').value;
+  const verified= document.getElementById('arVerified').checked;
+  const msg     = document.getElementById('arMsg');
+
+  if (!slug)  { msg.style.color = '#e06060'; msg.textContent = 'Enter a product URL or slug.'; return; }
+  if (!name)  { msg.style.color = '#e06060'; msg.textContent = 'Enter the customer name.'; return; }
+
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Adding…';
+  msg.textContent = '';
+  try {
+    const res = await fetch('/.netlify/functions/add-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({
+        product_slug: slug, customer_name: name, rating, comment,
+        verified_buyer: verified,
+        ...(date && { created_at: date }),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    msg.style.color = '#63ca6e';
+    msg.textContent = `✓ Review added and live on /product/${slug}/`;
+    // Clear the form for the next entry (keep slug for multiple reviews on same book)
+    document.getElementById('arName').value = '';
+    document.getElementById('arComment').value = '';
+    document.getElementById('arDate').value = '';
+    document.getElementById('arVerified').checked = false;
+    fetchPendingReviews();
+  } catch (err) {
+    msg.style.color = '#e06060';
+    msg.textContent = 'Error: ' + err.message;
+  } finally {
+    btn.disabled = false; btn.innerHTML = orig;
+  }
 }
 
 async function loadReviews(url) {
