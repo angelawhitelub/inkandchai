@@ -484,6 +484,7 @@ window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'AW-18119332653');
+gtag('config', 'AW-18139908537');
 </script>
 <!-- End Google tag -->
 <!-- Google Merchant Reviews Badge -->
@@ -7119,8 +7120,14 @@ function trackGoogleAdsPurchase(orderId) {
   if (!orderId || typeof gtag !== 'function') return;
   const key = 'iac_google_ads_purchase_' + orderId;
   if (localStorage.getItem(key)) return;
+  // Fire purchase conversion to BOTH Google Ads accounts (old + new).
+  // transaction_id de-dupes each conversion so it's counted once per account.
   gtag('event', 'conversion', {
     send_to: 'AW-18119332653/dQPCCJ7L8KQcEK2m_L9D',
+    transaction_id: String(orderId),
+  });
+  gtag('event', 'conversion', {
+    send_to: 'AW-18139908537/M2fkCNvV57ocELmT5MlD',
     transaction_id: String(orderId),
   });
   localStorage.setItem(key, '1');
