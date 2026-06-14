@@ -78,6 +78,7 @@ exports.handler = async () => {
     .from('abandoned_checkouts')
     .select('*')
     .eq('status', 'open')
+    .or('source.is.null,source.neq.paperbound')  // don't recover paperbound carts
     .lt('last_seen_at', minAgo)          // abandoned at least 1 hour ago
     .gt('last_seen_at', maxAgo)          // not older than 48 hours
     .is('followup_whatsapp_clicked_at', null) // not already messaged via WA

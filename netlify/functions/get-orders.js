@@ -37,6 +37,7 @@ exports.handler = async (event) => {
     let query = supabase
       .from('orders')
       .select('*', { count: 'exact' })
+      .or('source.is.null,source.neq.paperbound')  // exclude the paperbound store's orders
       .order('created_at', { ascending: false })
       .range(from, from + limit - 1);
 

@@ -39,6 +39,7 @@ exports.handler = async (event) => {
       .from('abandoned_checkouts')
       .select('*', { count: 'exact' })
       .eq('status', 'open')
+      .or('source.is.null,source.neq.paperbound')  // exclude paperbound leads
       .lte('updated_at', cutoff)
       .order('updated_at', { ascending: false })
       .range(from, from + limit - 1);
