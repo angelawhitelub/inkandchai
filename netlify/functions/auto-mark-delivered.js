@@ -101,6 +101,7 @@ async function runSweep(supabase, { dryRun = false } = {}) {
   const { data: orders, error } = await supabase
     .from('orders')
     .select('id,razorpay_order_id,status,shipped_at,delivered_at,created_at,customer_name,customer_email,customer_phone,tracking_id,courier_name,amount_paise,cart_items')
+    .or('source.is.null,source.neq.paperbound')  // exclude paperbound store's orders (shared DB)
     .in('status', ['shipped', 'out_for_delivery'])
     .order('created_at', { ascending: true })
     .limit(2000);

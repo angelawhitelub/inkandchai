@@ -124,6 +124,7 @@ exports.handler = async () => {
     const { data: orders, error } = await supabase
       .from('orders')
       .select('*')
+      .or('source.is.null,source.neq.paperbound')  // exclude paperbound store's orders (shared DB)
       .is('tracking_id', null)           // no tracking assigned yet
       .not('status', 'in', `(${EXCLUDE_STATUSES.map(s => `"${s}"`).join(',')})`)
       .order('created_at', { ascending: true })
