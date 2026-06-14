@@ -163,6 +163,12 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ ignored: 'no-order-id' }) };
   }
 
+  // Source guard: PhonePe account is shared between stores. PB- order IDs belong
+  // to paperbound — skip them so only inkandchai's own orders are handled here.
+  if (String(orderId).startsWith('PB-')) {
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ ignored: 'other-store', orderId }) };
+  }
+
   let dbStatus = null;
   if (eventType.includes('completed') || state === 'COMPLETED' || state === 'PAID' || state === 'SUCCESS') {
     dbStatus = 'paid';

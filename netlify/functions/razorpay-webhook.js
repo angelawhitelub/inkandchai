@@ -98,6 +98,16 @@ exports.handler = async (event) => {
     .eq('razorpay_order_id', razorpay_order_id)
     .maybeSingle();
 
+  // ── Source guard (shared Razorpay account) ────────────────────────────────
+  // paperbound tags its Razorpay orders with notes.source = 'paperbound' (and
+  // mirrors it on the abandoned_checkout row). Skip those — they're recovered by
+  // the paperbound webhook. Everything else (legacy/unset) is inkandchai's.
+  const evSource = payment.notes?.source || abandoned?.source || '';
+  if (evSource === 'paperbound') {
+    console.log('[razorpay-webhook] paperbound order — skip (handled by paperbound webhook)');
+    return { statusCode: 200, body: 'OK — other store' };
+  }
+
   const cart     = abandoned?.cart_items || [];
   const customer = abandoned?.customer   || {};
   const name     = customer.name    || customerName   || '';
