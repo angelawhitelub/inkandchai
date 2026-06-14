@@ -781,7 +781,7 @@ HTML = r"""<!DOCTYPE html>
 <meta name="theme-color" content="#0d0b08" media="(prefers-color-scheme: dark)" />
 <meta name="theme-color" content="#faf7f2" media="(prefers-color-scheme: light)" />
 <meta name="geo.region" content="IN" />
-<meta name="geo.placename" content="New Delhi" />
+<meta name="geo.placename" content="Delhi" />
 <meta name="language" content="English, Hindi" />
 <link rel="canonical" href="https://inkandchai.in/" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -824,8 +824,9 @@ HTML = r"""<!DOCTYPE html>
   "description": "Online bookstore in India offering 2,300+ titles in Hindi and English. Free shipping above ₹499, cash on delivery available, 7-day returns.",
   "address": {
     "@type": "PostalAddress",
-    "streetAddress": "2969, Kucha Mai Dass, Sitaram Bazar",
-    "addressLocality": "New Delhi",
+    "streetAddress": "2379 Kucha Mir Hashim, Turkman Gate",
+    "addressLocality": "Delhi",
+    "addressRegion": "Delhi",
     "postalCode": "110006",
     "addressCountry": "IN"
   },
@@ -2375,7 +2376,7 @@ HTML = r"""<!DOCTYPE html>
         <p style="font-size:0.72rem;color:var(--cream-dim);line-height:2;letter-spacing:0.03em;">
           📧 <a href="mailto:support@inkandchai.in" style="color:var(--gold);text-decoration:none;">support@inkandchai.in</a><br/>
           💬 <a href="https://wa.me/919217175546" target="_blank" style="color:var(--gold);text-decoration:none;">+91 92171 75546 (WhatsApp)</a><br/>
-          📍 New Delhi – 110006
+          📍 2379 Kucha Mir Hashim, Turkman Gate, Delhi – 110006
         </p>
       </div>
     </div>
@@ -2413,13 +2414,13 @@ HTML = r"""<!DOCTYPE html>
   <!-- Business identity block — transparency for customers & Google Merchant -->
   <div class="footer-business">
     <span><strong>Ink &amp; Chai</strong> — Online Bookstore</span>
-    <span>2969, Kucha Mai Dass, Turkman Gate, Sitaram Bazar, New Delhi – 110006, India</span>
+    <span>2379 Kucha Mir Hashim, Turkman Gate, Delhi – 110006, India</span>
     <span>📧 <a href="mailto:support@inkandchai.in">support@inkandchai.in</a></span>
     <span>📞 <a href="https://wa.me/919217175546">+91 92171 75546</a> · Mon–Fri 9 AM–6 PM IST</span>
     <span>🔒 Secure payments via UPI · Cards · Net Banking · Cash on Delivery</span>
   </div>
   <div class="footer-bottom">
-    <span class="footer-copy">© 2026 Ink &amp; Chai · New Delhi – 110006 · All rights reserved.</span>
+    <span class="footer-copy">© 2026 Ink &amp; Chai · 2379 Kucha Mir Hashim, Turkman Gate, Delhi – 110006 · All rights reserved.</span>
     <div class="footer-bottom-links">
       <a href="/about/">About</a>
       <a href="/contact/">Contact</a>
