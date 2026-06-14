@@ -881,6 +881,9 @@ document.addEventListener('change', e => {
 async function submitOrder(method) {
   const addr = collectAddr();
   if (!addr) return;
+  // Persist the address NOW (not only after a successful order) so a failed or
+  // cancelled payment still restores the form when the customer returns.
+  saveAddressLocally(addr);
   setLoading(true, method);
   await saveAbandonedCheckout('open');
 
@@ -1530,6 +1533,11 @@ window.addrShowNewForm = function() {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 renderSummary();
+
+// When returning to checkout — including bfcache back/forward from a payment
+// page (PhonePe redirect, Razorpay) — clear any stuck loading state and repaint
+// so Pay Now / COD / Partial COD are clickable again.
+window.addEventListener('pageshow', () => { setLoading(false); renderSummary(); });
 
 ['ch-name','ch-phone','ch-email','ch-addr','ch-pin','ch-city','ch-state'].forEach(id => {
   const el = document.getElementById(id);
