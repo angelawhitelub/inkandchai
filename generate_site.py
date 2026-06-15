@@ -3387,7 +3387,7 @@ function subscribeNewsletter(e) {
   const msg   = document.getElementById('nlMsg');
   if (!email || !email.includes('@')) { msg.textContent = 'Please enter a valid email.'; msg.style.color = '#e06060'; return; }
   // Store in Supabase if available
-  const sb = window.supabase && window.SUPABASE_URL !== 'SUPABASE_URL_PLACEHOLDER'
+  const sb = window.supabase && window.SUPABASE_URL !== ('SUPABASE_URL'+'_PLACEHOLDER')
     ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY) : null;
   if (sb) sb.from('newsletter').insert({ email }).then(() => {});
   msg.style.color = '#6dbf6d';
@@ -7392,7 +7392,7 @@ function saveAddressLocally(addr) {
 }
 
 async function saveAddressToProfile(addr) {
-  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === 'SUPABASE_URL_PLACEHOLDER') return;
+  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === ('SUPABASE_URL'+'_PLACEHOLDER')) return;
   try {
     const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
     const { data: { session } } = await sb.auth.getSession();
@@ -7418,7 +7418,7 @@ function saveAddressAfterOrder(addr) {
 
 // ── Multi-address book (Supabase customer_addresses table) ─────────────────
 async function getCheckoutSupabase() {
-  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === 'SUPABASE_URL_PLACEHOLDER') return null;
+  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === ('SUPABASE_URL'+'_PLACEHOLDER')) return null;
   return window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 }
 
@@ -7645,7 +7645,7 @@ function clearAutofill() {
   } catch(e) {}
 
   // 2. Supabase profile (logged-in users on fresh sessions)
-  if (window.supabase && window.SUPABASE_URL && window.SUPABASE_URL !== 'SUPABASE_URL_PLACEHOLDER') {
+  if (window.supabase && window.SUPABASE_URL && window.SUPABASE_URL !== ('SUPABASE_URL'+'_PLACEHOLDER')) {
     try {
       const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
       const { data: { session } } = await sb.auth.getSession();
@@ -7676,7 +7676,7 @@ function clearAutofill() {
 
 // ── Checkout auth modal (minimal — just Google + OTP) ─────────────────────
 function chkOpenAuth() {
-  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === 'SUPABASE_URL_PLACEHOLDER') return;
+  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === ('SUPABASE_URL'+'_PLACEHOLDER')) return;
   const existing = document.getElementById('chkAuthModal');
   if (existing) { existing.remove(); return; }
   const modal = document.createElement('div');

@@ -1353,7 +1353,7 @@ function saveAddressLocally(addr) {
 }
 
 async function saveAddressToProfile(addr) {
-  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === '') return;
+  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === ('SUPABASE_URL'+'_PLACEHOLDER')) return;
   try {
     const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
     const { data: { session } } = await sb.auth.getSession();
@@ -1379,7 +1379,7 @@ function saveAddressAfterOrder(addr) {
 
 // ── Multi-address book (Supabase customer_addresses table) ─────────────────
 async function getCheckoutSupabase() {
-  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === '') return null;
+  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === ('SUPABASE_URL'+'_PLACEHOLDER')) return null;
   return window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 }
 
@@ -1606,7 +1606,7 @@ function clearAutofill() {
   } catch(e) {}
 
   // 2. Supabase profile (logged-in users on fresh sessions)
-  if (window.supabase && window.SUPABASE_URL && window.SUPABASE_URL !== '') {
+  if (window.supabase && window.SUPABASE_URL && window.SUPABASE_URL !== ('SUPABASE_URL'+'_PLACEHOLDER')) {
     try {
       const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
       const { data: { session } } = await sb.auth.getSession();
@@ -1637,7 +1637,7 @@ function clearAutofill() {
 
 // ── Checkout auth modal (minimal — just Google + OTP) ─────────────────────
 function chkOpenAuth() {
-  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === '') return;
+  if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === ('SUPABASE_URL'+'_PLACEHOLDER')) return;
   const existing = document.getElementById('chkAuthModal');
   if (existing) { existing.remove(); return; }
   const modal = document.createElement('div');

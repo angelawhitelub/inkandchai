@@ -2757,7 +2757,7 @@ function subscribeNewsletter(e) {
   const msg   = document.getElementById('nlMsg');
   if (!email || !email.includes('@')) { msg.textContent = 'Please enter a valid email.'; msg.style.color = '#e06060'; return; }
   // Store in Supabase if available
-  const sb = window.supabase && window.SUPABASE_URL !== ''
+  const sb = window.supabase && window.SUPABASE_URL !== ('SUPABASE_URL'+'_PLACEHOLDER')
     ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY) : null;
   if (sb) sb.from('newsletter').insert({ email }).then(() => {});
   msg.style.color = '#6dbf6d';
