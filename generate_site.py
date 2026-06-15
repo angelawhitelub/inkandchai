@@ -2115,11 +2115,6 @@ HTML = r"""<!DOCTYPE html>
     <div class="trust-title">100% Secure Payments</div>
     <div class="trust-text">UPI · Cards · Net Banking · Cash on Delivery — your choice.</div>
   </div>
-  <div class="trust-item">
-    <div class="trust-icon">📚</div>
-    <div class="trust-title">Genuine Books Only</div>
-    <div class="trust-text">Every book sourced directly from publishers. 100% original.</div>
-  </div>
   <a class="trust-item trust-link" href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener">
     <div class="trust-icon">◎</div>
     <div class="trust-title">12.4K Instagram Readers</div>
