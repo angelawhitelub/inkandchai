@@ -6673,6 +6673,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         </div>
         <div id="pinMsg" class="pin-msg"></div>
 
+        <div id="paymentBlock">
         <div class="divider-label"><span>Choose Payment</span></div>
 
         <!-- Payment method selector — PhonePe default, Razorpay alt, COD always available -->
@@ -6710,6 +6711,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
           🚚 Cash on Delivery
         </button>
         <div class="cod-note" id="codNote" style="font-size:0.66rem;color:var(--cream-dim);line-height:1.6;margin-top:0.5rem;text-align:center;padding:0 0.2rem;"></div>
+        </div><!-- /paymentBlock -->
 
         <div class="trust-row">
           <span>🔒 Secure checkout</span>
@@ -7000,6 +7002,9 @@ function renderSummary() {
       : '<div class="empty-cart">Your cart is empty.<br/><a href="/" style="color:var(--gold);">Browse books →</a></div>';
     totalRow.style.display = 'none';
     if (couponBox) couponBox.style.display = 'none';
+    // Hide the whole payment block so an empty cart never shows a payable amount.
+    const _pb = document.getElementById('paymentBlock');
+    if (_pb) _pb.style.display = 'none';
     if (btnPay) btnPay.disabled = true;
     if (btnPartial) btnPartial.disabled = true;
     if (partialNote) partialNote.textContent = 'Available on orders above ₹599.';
@@ -7007,6 +7012,8 @@ function renderSummary() {
     return;
   }
 
+  const _pb = document.getElementById('paymentBlock');
+  if (_pb) _pb.style.display = '';
   const { subtotal, shipping, discount, couponCode, couponMessage, total: grand } = orderTotals(cart, 'online');
   if (couponBox) couponBox.style.display = 'block';
   if (couponInput && couponInput.value !== appliedCouponCode) couponInput.value = appliedCouponCode;
