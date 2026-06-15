@@ -1,15 +1,7 @@
 [build]
   publish   = "public"
   functions = "netlify/functions"
-  command   = "npm install && python3 generate_site.py && node build-kawaii-feed.js"
-
-# Crawlable image-proxy path for product feeds. /.netlify/ is blocked by robots.txt
-# so feeds can't use the proxy directly — this clean path rewrites to the function
-# and IS allowed (Allow: /), so Google Merchant can fetch the images.
-[[redirects]]
-  from   = "/cdn-img/:token"
-  to     = "/.netlify/functions/image-proxy?i=:token"
-  status = 200
+  command   = "npm install && python3 generate_site.py"
 
 [build.environment]
   NODE_VERSION = "20"
