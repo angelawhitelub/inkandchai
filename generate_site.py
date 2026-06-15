@@ -179,6 +179,19 @@ SCARCITY_SLUGS = {
     "robert-greene-power-trilogy-48-laws-of-power-laws-of-human-n-ogy-3",
 }
 
+# Supplier / placeholder publisher names that must NEVER be shown to customers.
+# (Kept in sync with _INTERNAL_PUBLISHER_BLACKLIST below, which is used for authors.)
+_HIDDEN_PUBLISHERS = {
+    "prakash books", "new kids", "99bookstore", "99bookstores", "99 bookstore",
+    "ink and chai", "ink & chai", "inkandchai", "various", "anonymous", "unknown",
+    "various authors", "multiple authors", "n/a", "—", "-",
+}
+def clean_publisher(value):
+    """Blank out supplier/placeholder publisher names so the template falls back to
+    the store brand instead of exposing where stock is sourced (e.g. 99Bookstore)."""
+    p = clean_text(value)
+    return "" if p.lower().strip() in _HIDDEN_PUBLISHERS else p
+
 # ── Slim book objects for JS ─────────────────────────────────────────────────
 slim = []
 feed_image_by_slug = {}
@@ -211,7 +224,7 @@ for b in books:
     feed_image_by_slug[slug] = crawlable_image_url(b.get("image_url", ""))
     slim.append({
         "t":    clean_text(b["title"])[:220] if sid in {"CUSTOM-KINGS-OF-SIN-COMPLETE-SET-6-AH", "CUSTOM-HINDI-BESTSELLERS-COMBO-5", "CUSTOM-100M-HINDI-COMBO-2"} else clean_text(b["title"])[:80],
-        "a":    clean_text(b.get("author", ""))[:50],
+        "a":    clean_publisher(b.get("author", ""))[:50],  # blanks supplier names (e.g. 99Bookstore)
         "p":    price_str,
         "op":   orig_str,
         "img":  public_image_url(b.get("image_url", "")),
@@ -222,7 +235,7 @@ for b in books:
         "tab":  tab_for(b.get("category", ""), b),
         "desc": (b.get("description") or "")[:1400],
         "isbn": clean_text(b.get("isbn", "")),
-        "pub":  clean_text(b.get("publisher", "")),
+        "pub":  clean_publisher(b.get("publisher", "")),
         "n":    is_new,            # 1 = New Arrival
         "ts":   effective_ts,      # ISO timestamp used for newest-first sort
         "pdf":  b.get("sample_pdf") or "",  # path to sample PDF (read-first-pages preview)
