@@ -6979,6 +6979,8 @@ async function doPhonePe(addr, paymentMode = 'online') {
     if (!res.ok || !data.success || !data.redirect_url) {
       throw new Error(data.error || 'Could not start PhonePe checkout');
     }
+    // Stash the order value so the conversion on return (post-redirect) has revenue.
+    try { localStorage.setItem('iac_last_order_value', String(totals.total)); } catch(e) {}
     // PhonePe takes over from here. The webhook + /phonepe-verify-status route
     // handle confirmation and the redirect back to /checkout/?paid=1&id=…
     window.location.href = data.redirect_url;
@@ -7052,7 +7054,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
           saveAddressAfterOrder(addr);
           clearCart();
           await autoLogin(addr.email, addr.name, addr.phone);
-          showSuccess('paid', response.razorpay_payment_id, addr);
+          showSuccess('paid', response.razorpay_payment_id, addr, totals.total);
         } catch(e) {
           alert('Payment received but verification failed. Please contact support@inkandchai.in');
           setLoading(false);
@@ -7099,7 +7101,7 @@ async function doCOD(addr) {
     saveAddressAfterOrder(addr);
     clearCart();
     await autoLogin(addr.email, addr.name, addr.phone);
-    showSuccess('cod', data.order_id, addr);
+    showSuccess('cod', data.order_id, addr, totals.total);
 
   } catch(e) {
     alert('Could not place order: ' + e.message);
@@ -7115,25 +7117,23 @@ async function autoLogin(email, name, phone) {
 }
 
 // ── Success screen ─────────────────────────────────────────────────────────
-function trackGoogleAdsPurchase(orderId) {
+function trackGoogleAdsPurchase(orderId, value) {
   if (!orderId || typeof gtag !== 'function') return;
   const key = 'iac_google_ads_purchase_' + orderId;
   if (localStorage.getItem(key)) return;
   // Fire purchase conversion to BOTH Google Ads accounts (old + new).
   // transaction_id de-dupes each conversion so it's counted once per account.
-  gtag('event', 'conversion', {
-    send_to: 'AW-18119332653/dQPCCJ7L8KQcEK2m_L9D',
-    transaction_id: String(orderId),
-  });
-  gtag('event', 'conversion', {
-    send_to: 'AW-18139908537/M2fkCNvV57ocELmT5MlD',
-    transaction_id: String(orderId),
-  });
+  // Include order value + currency so Ads gets revenue for ROAS / value bidding.
+  const v = Number(value) || 0;
+  const base = { transaction_id: String(orderId) };
+  if (v > 0) { base.value = v; base.currency = 'INR'; }
+  gtag('event', 'conversion', Object.assign({ send_to: 'AW-18119332653/dQPCCJ7L8KQcEK2m_L9D' }, base));
+  gtag('event', 'conversion', Object.assign({ send_to: 'AW-18139908537/M2fkCNvV57ocELmT5MlD' }, base));
   localStorage.setItem(key, '1');
 }
 
-function showSuccess(type, orderId, addr) {
-  trackGoogleAdsPurchase(orderId);
+function showSuccess(type, orderId, addr, value) {
+  trackGoogleAdsPurchase(orderId, value);
   document.getElementById('checkoutScreen').style.display = 'none';
   const s = document.getElementById('successScreen');
   s.style.display = 'block';
@@ -7333,7 +7333,9 @@ function fireConfetti(valuePaise) {
       const sess = JSON.parse(localStorage.getItem('iac_checkout_lead') || '{}');
       savedEmail = sess.email || sess.customer_email || '';
     } catch {}
-    showSuccess('paid', p.get('id'), { email: savedEmail });
+    let savedValue = 0;
+    try { savedValue = Number(localStorage.getItem('iac_last_order_value')) || 0; localStorage.removeItem('iac_last_order_value'); } catch {}
+    showSuccess('paid', p.get('id'), { email: savedEmail }, savedValue);
     // Clean URL so refresh doesn't re-trigger success
     history.replaceState({}, '', '/checkout/');
     return;
