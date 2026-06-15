@@ -5634,6 +5634,76 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 @media(max-width:1100px){{.also-grid{{grid-template-columns:repeat(4,1fr)!important}}}}
 @media(max-width:640px){{.also-grid{{grid-template-columns:repeat(2,1fr)!important;gap:.7rem!important}}}}
 html[data-theme="light"] .actions{{background:rgba(250,247,242,.98)}}
+/* Liquid glass product-page refresh */
+body{{
+  background:
+    linear-gradient(115deg,rgba(201,168,76,.08) 0%,transparent 32%,transparent 72%,rgba(201,168,76,.06) 100%),
+    repeating-linear-gradient(90deg,rgba(201,168,76,.035) 0 1px,transparent 1px 86px),
+    var(--bg);
+}}
+.promo{{
+  width:min(920px,calc(100% - 24px));
+  margin:.7rem auto .2rem;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:rgba(250,247,242,.08);
+  box-shadow:inset 0 1px rgba(255,255,255,.08);
+  backdrop-filter:blur(18px) saturate(1.2);
+}}
+html[data-theme="light"] .promo{{background:rgba(250,247,242,.78);box-shadow:0 10px 28px rgba(70,52,24,.08),inset 0 1px rgba(255,255,255,.62)}}
+nav{{
+  width:min(1180px,calc(100% - 28px));
+  margin:.75rem auto 0;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:rgba(13,11,8,.7)!important;
+  box-shadow:0 18px 55px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.08);
+  backdrop-filter:blur(24px) saturate(1.25);
+}}
+html[data-theme="light"] nav{{background:rgba(250,247,242,.74)!important;box-shadow:0 18px 55px rgba(70,52,24,.12),inset 0 1px rgba(255,255,255,.62)}}
+.cover,.trust span,.reviews,.insta-trust,.desc,.details,.ship-by-box{{
+  border-radius:24px;
+  box-shadow:inset 0 1px rgba(255,255,255,.05);
+}}
+.cover{{background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));box-shadow:0 24px 70px rgba(0,0,0,.18),inset 0 1px rgba(255,255,255,.06)}}
+html[data-theme="light"] .cover{{background:rgba(255,255,255,.58);box-shadow:0 24px 70px rgba(70,52,24,.1),inset 0 1px rgba(255,255,255,.74)}}
+.stock,.order-badge,.theme-btn,.pdp-cart-btn,button,.btn,.btn-checkout,.qty-btn{{border-radius:999px}}
+.actions button{{min-height:52px;box-shadow:inset 0 1px rgba(255,255,255,.12);transition:transform .2s ease,filter .2s ease,box-shadow .2s ease}}
+.actions button:hover{{transform:translateY(-1px);filter:brightness(1.05)}}
+.primary{{box-shadow:0 14px 30px rgba(201,168,76,.18),inset 0 1px rgba(255,255,255,.18)}}
+.secondary{{background:rgba(201,168,76,.06)}}
+.cart-overlay{{background:rgba(13,11,8,.38);backdrop-filter:blur(8px)}}
+.cart-sidebar{{
+  top:14px;right:14px;bottom:14px;
+  border:1px solid var(--border);
+  border-radius:34px;
+  background:rgba(20,18,16,.76);
+  box-shadow:0 24px 70px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);
+  backdrop-filter:blur(24px) saturate(1.25);
+  overflow:hidden;
+}}
+html[data-theme="light"] .cart-sidebar{{background:rgba(250,247,242,.76);box-shadow:0 24px 70px rgba(70,52,24,.14),inset 0 1px rgba(255,255,255,.62)}}
+.cart-header,.cart-footer{{background:rgba(255,255,255,.06);backdrop-filter:blur(14px)}}
+html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{background:rgba(255,255,255,.42)}}
+@media(max-width:760px){{
+  .promo{{width:calc(100% - 20px);margin:.45rem auto .1rem;border-radius:999px;white-space:normal;line-height:1.45}}
+  nav{{width:calc(100% - 18px);margin:.45rem auto 0;border-radius:28px;padding:.7rem .85rem}}
+  .wrap{{padding-top:1.05rem;padding-bottom:7.6rem}}
+  .cover,.reviews,.desc,.details{{border-radius:24px}}
+  .actions{{
+    left:12px;right:12px;bottom:10px;
+    display:grid;grid-template-columns:1fr 1fr;gap:.6rem;
+    border:1px solid var(--border);
+    border-radius:30px;
+    background:rgba(13,11,8,.72);
+    padding:.6rem .6rem calc(.6rem + env(safe-area-inset-bottom));
+    box-shadow:0 -12px 38px rgba(0,0,0,.38),inset 0 1px rgba(255,255,255,.08);
+    backdrop-filter:blur(24px) saturate(1.35);
+  }}
+  html[data-theme="light"] .actions{{background:rgba(250,247,242,.76);box-shadow:0 -12px 38px rgba(70,52,24,.16),inset 0 1px rgba(255,255,255,.64)}}
+  .actions button{{min-height:52px;padding:.9rem .45rem;font-size:.6rem;letter-spacing:.14em}}
+  .cart-sidebar{{inset:10px 10px calc(86px + env(safe-area-inset-bottom));width:auto;border-radius:28px}}
+}}
 .insta-trust{{display:flex;align-items:center;gap:.75rem;padding:.7rem .9rem;margin:.2rem 0 .6rem;background:linear-gradient(135deg,rgba(131,58,180,.08),rgba(253,29,29,.06),rgba(252,176,69,.08));border:1px solid rgba(195,80,170,.25);border-radius:3px;text-decoration:none;color:inherit;transition:border-color .2s,background .2s}}
 .insta-trust:hover{{border-color:rgba(195,80,170,.55);background:linear-gradient(135deg,rgba(131,58,180,.14),rgba(253,29,29,.1),rgba(252,176,69,.12))}}
 .insta-trust-icon{{font-size:1.3rem;flex-shrink:0}}
