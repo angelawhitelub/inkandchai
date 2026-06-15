@@ -7412,9 +7412,15 @@ function saveAddressAfterOrder(addr) {
 }
 
 // ── Multi-address book (Supabase customer_addresses table) ─────────────────
+let _checkoutSB = null;
 async function getCheckoutSupabase() {
+  if (_checkoutSB) return _checkoutSB;
   if (!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL === ('SUPABASE_URL'+'_PLACEHOLDER')) return null;
-  return window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  // Singleton: creating a new client per call spawns duplicate auth listeners that
+  // re-fire onAuthStateChange -> refreshAddressBook -> new client -> infinite loop
+  // of customer_addresses queries. Reuse one client.
+  _checkoutSB = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  return _checkoutSB;
 }
 
 // Normalised key used to dedupe addresses (same house+pincode = same address)
