@@ -12,9 +12,31 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const SITE = 'https://inkandchai.in';
 const BRAND = 'Kawaii Corner';
+
+// ── Image proxy ─────────────────────────────────────────────────────────────
+// Serve feed images through inkandchai.in (/cdn-img/<token> → image-proxy fn)
+// instead of the supplier CDN, so Google Merchant fetches from our own domain.
+// We merge our tokens into the same image-map.json generate_site.py produced
+// (build order guarantees it already exists), then write it back.
+const PROXY_HOSTS = new Set(['inkarto.com', 'cdn.shopify.com']);  // must match image-proxy ALLOWED_HOSTS
+const IMAGE_MAP_PATH = path.join(__dirname, 'netlify/functions/image-map.json');
+let imageMap = {};
+try { imageMap = JSON.parse(fs.readFileSync(IMAGE_MAP_PATH, 'utf8')); } catch (e) { imageMap = {}; }
+
+function proxied(url) {
+  url = String(url || '').trim();
+  if (!/^https?:\/\//i.test(url)) return url;
+  let host;
+  try { host = new URL(url).hostname; } catch (e) { return url; }
+  if (!PROXY_HOSTS.has(host)) return url;  // leave unproxyable hosts as-is
+  const token = crypto.createHash('sha256').update(url).digest('hex').slice(0, 24);
+  imageMap[token] = url;
+  return `${SITE}/cdn-img/${token}`;
+}
 
 // Map internal category → Google product taxonomy
 const GOOGLE_CATEGORY = {
@@ -61,7 +83,7 @@ const items = PRODUCTS.map((p) => {
   const extra = (Array.isArray(p.imgs) ? p.imgs : [])
     .filter((u) => u && u !== p.img)
     .slice(0, 10)
-    .map((u) => `\n      <g:additional_image_link>${xmlEscape(u)}</g:additional_image_link>`)
+    .map((u) => `\n      <g:additional_image_link>${xmlEscape(proxied(u))}</g:additional_image_link>`)
     .join('');
 
   return `    <item>
@@ -69,7 +91,7 @@ const items = PRODUCTS.map((p) => {
       <g:title>${xmlEscape(p.name)}</g:title>
       <g:description>${xmlEscape(desc)}</g:description>
       <g:link>${xmlEscape(link)}</g:link>
-      <g:image_link>${xmlEscape(p.img)}</g:image_link>${extra}
+      <g:image_link>${xmlEscape(proxied(p.img))}</g:image_link>${extra}
       <g:availability>in stock</g:availability>
       <g:condition>new</g:condition>
       ${priceLine}${saleLine}
@@ -93,4 +115,8 @@ ${items}
 
 const out = path.join(__dirname, 'public/kawaii/feed.xml');
 fs.writeFileSync(out, feed, 'utf8');
-console.log(`Generated: public/kawaii/feed.xml (${PRODUCTS.length} products)`);
+
+// Persist the merged image map so the image-proxy function can resolve our tokens
+fs.writeFileSync(IMAGE_MAP_PATH, JSON.stringify(imageMap, null, 0), 'utf8');
+
+console.log(`Generated: public/kawaii/feed.xml (${PRODUCTS.length} products); image-map.json now ${Object.keys(imageMap).length} entries`);

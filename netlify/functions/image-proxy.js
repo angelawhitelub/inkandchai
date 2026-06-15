@@ -1,4 +1,4 @@
-const ALLOWED_HOSTS = new Set(["cdn.shopify.com"]);
+const ALLOWED_HOSTS = new Set(["cdn.shopify.com", "inkarto.com"]);
 const IMAGE_MAP = require("./image-map.json");
 
 exports.handler = async (event) => {
