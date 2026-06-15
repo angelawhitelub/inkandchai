@@ -1475,9 +1475,16 @@ function renderAddressBook(addresses) {
     return;
   }
 
-  // Hide manual form by default — picker is now the primary path
-  if (formSection) formSection.style.display = 'none';
+  // Show the saved-address picker, but KEEP the payment form + buttons visible
+  // below it (the buttons live inside .form-section). Pre-fill with the default
+  // address so the user can pay in one tap, or tap another saved card to switch.
   wrap.style.display = 'block';
+  if (formSection) formSection.style.display = '';
+  const nameEl = document.getElementById('ch-name');
+  if (nameEl && !nameEl.value.trim()) {
+    const def = addresses.find(a => a.is_default) || addresses[0];
+    if (def) fillCheckoutFormFromAddress(def);
+  }
 
   list.innerHTML = addresses.map((a, i) => {
     const label = a.label ? a.label
@@ -1513,7 +1520,11 @@ window.pickSavedAddress = function(id) {
   const a = _addressBookCache.find(x => x.id === id);
   if (!a) return;
   fillCheckoutFormFromAddress(a);
-  addrShowNewForm();  // reveal the form pre-filled, so the user can confirm/edit
+  // Form + buttons are already visible; just highlight the choice and jump to pay.
+  document.querySelectorAll('#addrBookList .addr-card').forEach(c => {
+    c.style.borderColor = c.dataset.id === id ? 'var(--gold)' : 'var(--border)';
+  });
+  document.getElementById('btnPayNow')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
 window.removeSavedAddress = async function(id) {
