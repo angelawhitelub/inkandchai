@@ -508,6 +508,103 @@
       .usp-strip{grid-template-columns:1fr}
     }
 
+    /* ── Search Mode + Stronger Section Styling ─────────────────────────── */
+    body::before{
+      content:'';
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      z-index:-1;
+      background:
+        linear-gradient(135deg,rgba(255,79,146,.08) 25%,transparent 25%) 0 0/84px 84px,
+        linear-gradient(315deg,rgba(140,111,247,.07) 25%,transparent 25%) 42px 42px/84px 84px;
+      opacity:.55;
+    }
+    .kw-section{
+      position:relative;
+    }
+    .kw-section::before{
+      content:'';
+      position:absolute;
+      inset:18px 8px auto auto;
+      width:148px;
+      height:42px;
+      border:2px dashed rgba(255,79,146,.18);
+      border-radius:999px;
+      transform:rotate(-4deg);
+      pointer-events:none;
+    }
+    #bestSellersSection,
+    #categorySection,
+    #allProducts{
+      border-radius:46px;
+      background:
+        linear-gradient(90deg,rgba(255,255,255,.84),rgba(255,250,244,.72)),
+        repeating-linear-gradient(0deg,rgba(38,24,39,.035) 0 1px,transparent 1px 34px),
+        repeating-linear-gradient(90deg,rgba(38,24,39,.028) 0 1px,transparent 1px 34px);
+      box-shadow:0 24px 70px rgba(38,24,39,.06);
+      margin-top:38px;
+    }
+    #bestSellersSection{
+      background:
+        linear-gradient(135deg,rgba(255,230,240,.86),rgba(240,237,255,.78)),
+        repeating-linear-gradient(90deg,rgba(38,24,39,.035) 0 1px,transparent 1px 30px);
+    }
+    #categorySection{
+      background:
+        linear-gradient(135deg,rgba(222,250,245,.84),rgba(255,242,199,.82)),
+        repeating-linear-gradient(0deg,rgba(38,24,39,.035) 0 1px,transparent 1px 30px);
+    }
+    #allProducts{
+      background:
+        linear-gradient(135deg,rgba(255,255,255,.94),rgba(255,230,240,.62)),
+        repeating-linear-gradient(0deg,rgba(255,79,146,.04) 0 1px,transparent 1px 32px),
+        repeating-linear-gradient(90deg,rgba(140,111,247,.04) 0 1px,transparent 1px 32px);
+    }
+    body.search-active .hero,
+    body.search-active .usp-strip,
+    body.search-active .deco-strip,
+    body.search-active #combosSection,
+    body.search-active #bestSellersSection,
+    body.search-active #categorySection,
+    body.search-active #featuredBanner{
+      display:none;
+    }
+    body.search-active #allProducts{
+      margin-top:28px;
+      min-height:calc(100vh - 180px);
+    }
+    body.search-active #allProducts .section-title::before{
+      content:'🔎';
+      display:inline-grid;
+      place-items:center;
+      width:48px;
+      height:48px;
+      border-radius:999px;
+      background:#261827;
+      color:#fff;
+      box-shadow:0 16px 34px rgba(38,24,39,.16);
+    }
+    body.search-active .filter-bar{
+      border-color:rgba(255,79,146,.28);
+      box-shadow:0 18px 44px rgba(255,79,146,.12);
+    }
+    .search-reset{
+      display:none;
+      border:0;
+      background:var(--pk3);
+      color:var(--txt);
+      border-radius:999px;
+      min-height:40px;
+      padding:0 16px;
+      font-weight:900;
+    }
+    body.search-active .search-reset{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+
     /* ── Fresh Kawaii Studio Theme ──────────────────────────────────────── */
     :root{
       --pk:#ff4f92;
@@ -1362,7 +1459,7 @@
 </section>
 
 <!-- Best Sellers Shelf -->
-<section class="kw-section" style="padding-bottom:0">
+<section class="kw-section" id="bestSellersSection" style="padding-bottom:0">
   <div class="section-header">
     <div class="section-title"><span class="s-icon">⭐</span> Best Sellers <span class="s-pill">Trending</span></div>
     <a href="#allProducts" class="see-all">See All →</a>
@@ -1371,7 +1468,7 @@
 </section>
 
 <!-- Categories Grid -->
-<section class="kw-section">
+<section class="kw-section" id="categorySection">
   <div class="section-header">
     <div class="section-title"><span class="s-icon">🗂️</span> Shop by Category</div>
   </div>
@@ -1410,7 +1507,7 @@
 </section>
 
 <!-- Featured Banner -->
-<div class="feat-banner">
+<div class="feat-banner" id="featuredBanner">
   <div class="feat-text">
     <h2>🎁 Van Gogh Journaling Kits — Up to 50% Off</h2>
     <p>The iconic Van Gogh Premium &amp; Starry Night journaling kits — everything you need to start bullet journaling beautifully. Limited stock!</p>
@@ -1432,6 +1529,7 @@
       <option value="new">Newest First</option>
       <option value="discount">Biggest Discount</option>
     </select>
+    <button class="search-reset" id="searchReset" type="button" onclick="clearSearch()">Clear search</button>
     <div class="filter-sep"></div>
     <span class="result-count" id="resultCount"></span>
   </div>
@@ -1659,9 +1757,11 @@ function stars(r) { const f = Math.round(r); return '★'.repeat(f) + '☆'.repe
 
 function renderProducts() {
   const sort = document.getElementById('sortSelect').value;
+  const terms = searchQ.split(/\s+/).filter(Boolean);
   let list = PRODUCTS.filter(p => {
     const matchCat = activeCat === 'all' || p.cat === activeCat;
-    const matchQ = !searchQ || p.name.toLowerCase().includes(searchQ);
+    const haystack = `${p.name} ${p.cat} ${p.badge || ''} Inkarto kawaii stationery journaling`.toLowerCase();
+    const matchQ = !terms.length || terms.every(term => haystack.includes(term));
     return matchCat && matchQ;
   });
   if (sort === 'low') list.sort((a,b) => a.price - b.price);
@@ -1669,7 +1769,9 @@ function renderProducts() {
   else if (sort === 'new') list.sort((a,b) => (b.badge === 'new' ? 1 : 0) - (a.badge === 'new' ? 1 : 0));
   else if (sort === 'discount') list.sort((a,b) => disc(b) - disc(a));
 
-  document.getElementById('resultCount').textContent = `${list.length} product${list.length !== 1 ? 's' : ''}`;
+  document.getElementById('resultCount').textContent = searchQ
+    ? `${list.length} result${list.length !== 1 ? 's' : ''} for "${searchQ}"`
+    : `${list.length} product${list.length !== 1 ? 's' : ''}`;
   const grid = document.getElementById('prodGrid');
   const empty = document.getElementById('emptyState');
   if (!list.length) { grid.innerHTML = ''; empty.style.display = ''; return; }
@@ -1743,6 +1845,7 @@ function addToCart(id, btn) {
 
 // ── Filter ────────────────────────────────────────────────────────────────
 function filterCat(btn, cat) {
+  if (searchQ) clearSearch(false);
   activeCat = cat;
   document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
   if (btn) btn.classList.add('active');
@@ -1759,8 +1862,27 @@ function filterCat(btn, cat) {
 // ── Search ────────────────────────────────────────────────────────────────
 document.getElementById('searchInput').addEventListener('input', function() {
   searchQ = this.value.trim().toLowerCase();
+  document.body.classList.toggle('search-active', !!searchQ);
+  if (searchQ) {
+    activeCat = 'all';
+    document.querySelectorAll('.cat-pill').forEach(p => p.classList.toggle('active', p.dataset.cat === 'all'));
+    document.getElementById('activeCatLabel').textContent = `Search: ${this.value.trim()}`;
+    document.getElementById('allProducts').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    document.getElementById('activeCatLabel').textContent = `All Products (${PRODUCTS.length})`;
+  }
   renderProducts();
 });
+
+function clearSearch(shouldScroll = true) {
+  const input = document.getElementById('searchInput');
+  input.value = '';
+  searchQ = '';
+  document.body.classList.remove('search-active');
+  document.getElementById('activeCatLabel').textContent = activeCat === 'all' ? `All Products (${PRODUCTS.length})` : activeCat;
+  renderProducts();
+  if (shouldScroll) input.focus();
+}
 
 // ── Cart Drawer ───────────────────────────────────────────────────────────
 function openCart() {
