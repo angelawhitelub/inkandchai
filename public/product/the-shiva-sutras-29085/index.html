@@ -459,7 +459,7 @@ function buyNowBook(btn) {
   setBtnLoading(btn, true);
   const item = { ...currentItem };
   localStorage.setItem('iac_buy_now_cart', JSON.stringify([item]));
-  setTimeout(() => { location.href='/checkout/'; }, 220);
+  setTimeout(() => { location.href='/checkout/?buynow=1'; }, 220);
 }
 function openLB(src, alt) {
   document.getElementById('lbI').src = src;

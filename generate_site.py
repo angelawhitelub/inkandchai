@@ -5317,7 +5317,7 @@ function buyNowBook(bookSlug, trigger) {
   if (!b) return;
   buttonLoading(trigger, true);
   localStorage.setItem('iac_buy_now_cart', JSON.stringify([cartItemForBook(b, bookSlug, getQty())]));
-  setTimeout(() => { window.location.href = '/checkout/'; }, 260);
+  setTimeout(() => { window.location.href = '/checkout/?buynow=1'; }, 260);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
@@ -6180,7 +6180,7 @@ function buyNowBook(btn) {{
   setBtnLoading(btn, true);
   const item = {{ ...currentItem }};
   localStorage.setItem('iac_buy_now_cart', JSON.stringify([item]));
-  setTimeout(() => {{ location.href='/checkout/'; }}, 220);
+  setTimeout(() => {{ location.href='/checkout/?buynow=1'; }}, 220);
 }}
 function openLB(src, alt) {{
   document.getElementById('lbI').src = src;
@@ -6825,8 +6825,13 @@ const CART_KEY = 'akshar_cart';
 const KW_CART_KEY = 'kw_cart';
 const BUY_NOW_KEY = 'iac_buy_now_cart';
 const IS_KAWAII = new URLSearchParams(location.search).get('kawaii') === '1';
+const IS_BUY_NOW = new URLSearchParams(location.search).get('buynow') === '1';
+// Buy Now is a one-shot: only honour the buy-now cart when the URL explicitly says
+// so (?buynow=1). Otherwise a leftover iac_buy_now_cart from an earlier abandoned
+// "Buy Now" must NOT hijack a normal cart checkout (it can even be empty) — clear it.
 function activeCartKey() {
-  if (localStorage.getItem(BUY_NOW_KEY)) return BUY_NOW_KEY;
+  if (IS_BUY_NOW && localStorage.getItem(BUY_NOW_KEY)) return BUY_NOW_KEY;
+  if (!IS_BUY_NOW) localStorage.removeItem(BUY_NOW_KEY);
   if (IS_KAWAII) return KW_CART_KEY;
   return CART_KEY;
 }
