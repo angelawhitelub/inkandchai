@@ -7101,7 +7101,6 @@ function renderSummary() {
           <button type="button" class="checkout-qty-btn" onclick="updateCheckoutQty(${idx}, -1)" aria-label="Decrease quantity">-</button>
           <span class="checkout-qty-num">Qty ${itemQty(i)}</span>
           <button type="button" class="checkout-qty-btn" onclick="updateCheckoutQty(${idx}, 1)" aria-label="Increase quantity">+</button>
-          <button type="button" class="checkout-remove" onclick="removeCheckoutItem(${idx})">Remove</button>
         </div>
       </div>
     </div>`).join('') + `
