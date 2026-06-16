@@ -6830,8 +6830,17 @@ const IS_BUY_NOW = new URLSearchParams(location.search).get('buynow') === '1';
 // so (?buynow=1). Otherwise a leftover iac_buy_now_cart from an earlier abandoned
 // "Buy Now" must NOT hijack a normal cart checkout (it can even be empty) — clear it.
 function activeCartKey() {
-  if (IS_BUY_NOW && localStorage.getItem(BUY_NOW_KEY)) return BUY_NOW_KEY;
-  if (!IS_BUY_NOW) localStorage.removeItem(BUY_NOW_KEY);
+  if (IS_BUY_NOW) {
+    const buyNowRaw = localStorage.getItem(BUY_NOW_KEY);
+    try {
+      const buyNowCart = JSON.parse(buyNowRaw || '[]');
+      if (Array.isArray(buyNowCart) && buyNowCart.length) return BUY_NOW_KEY;
+    } catch {
+    }
+    localStorage.removeItem(BUY_NOW_KEY);
+  } else {
+    localStorage.removeItem(BUY_NOW_KEY);
+  }
   if (IS_KAWAII) return KW_CART_KEY;
   return CART_KEY;
 }
