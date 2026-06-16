@@ -97,10 +97,33 @@ exports.handler = async (event) => {
   // ── 1. Save to Supabase (non-fatal — emails still send even if DB is down) ──
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+    // ── Idempotency guard ──────────────────────────────────────────────────────
+    // COD has no payment id, so a double-submit / retry would create a duplicate
+    // order. Skip if an identical COD order (same phone + amount) was just placed.
+    const amountPaiseVal = Math.round(total * 100);
+    const dupeWindow = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: recentDupe } = await supabase
+      .from('orders')
+      .select('razorpay_order_id')
+      .eq('customer_phone', customer.phone)
+      .eq('amount_paise', amountPaiseVal)
+      .eq('status', 'cod_pending')
+      .gte('created_at', dupeWindow)
+      .limit(1)
+      .maybeSingle();
+    if (recentDupe) {
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({ success: true, order_id: recentDupe.razorpay_order_id, deduped: true }),
+      };
+    }
+
     const { error } = await supabase.from('orders').insert({
       razorpay_order_id:   orderId,
       razorpay_payment_id: null,
-      amount_paise:        Math.round(total * 100),
+      amount_paise:        amountPaiseVal,
       status:              'cod_pending',
       customer_name:       customer.name    || '',
       customer_email:      customer.email   || '',

@@ -147,6 +147,33 @@ exports.handler = async (event) => {
       process.env.SUPABASE_SERVICE_KEY
     );
 
+    // ── Idempotency guard ──────────────────────────────────────────────────────
+    // The Razorpay webhook fires independently and may have already created this
+    // order (e.g. if the browser callback was slow). Never insert a SECOND order
+    // for the same payment — update the existing one with the real browser-side
+    // customer details (the webhook only has placeholder data like void@razorpay.com)
+    // and return. This is what was causing duplicate orders.
+    const { data: existingOrder } = await supabase
+      .from('orders')
+      .select('id, razorpay_order_id')
+      .eq('razorpay_payment_id', razorpay_payment_id)
+      .maybeSingle();
+    if (existingOrder) {
+      await supabase.from('orders').update({
+        status:           isPartial ? 'partial_cod_pending' : 'paid',
+        customer_name:    customer?.name    || '',
+        customer_email:   customer?.email   || '',
+        customer_phone:   customer?.phone   || '',
+        customer_address: customer?.address || '',
+        cart_items:       cart,
+      }).eq('id', existingOrder.id);
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({ success: true, order_id: existingOrder.razorpay_order_id, payment_id: razorpay_payment_id, deduped: true }),
+      };
+    }
+
     const { error } = await supabase.from('orders').insert({
       razorpay_order_id:   inkOrderId,          // IC- format — consistent across all payment methods
       razorpay_payment_id: razorpay_payment_id, // pay_XXXXX — actual Razorpay payment ID (for refunds)
