@@ -6543,6 +6543,51 @@ html[data-theme="light"] .btn-partial:hover{background:#f1e3c9;}
 .btn-partial.is-loading::after{color:var(--gold)}
 @keyframes spinBtn{to{transform:rotate(360deg)}}
 .trust-row{display:flex;gap:1.5rem;justify-content:center;margin-top:1.2rem;font-size:0.6rem;color:var(--gold-dim);letter-spacing:0.06em;flex-wrap:wrap;}
+/* Liquid pill checkout refresh */
+:root{--pill:999px;--glass-bg:rgba(20,18,15,0.74);--glass-border:rgba(214,184,94,0.3);--glass-shadow:0 22px 70px rgba(0,0,0,0.42);--glass-highlight:inset 0 1px rgba(255,255,255,0.09);--warm-glow:rgba(201,168,76,0.16);--cool-glow:rgba(62,90,105,0.22)}
+html[data-theme="light"]{--glass-bg:rgba(255,252,246,0.78);--glass-border:rgba(138,106,31,0.22);--glass-shadow:0 22px 70px rgba(77,56,25,0.12);--glass-highlight:inset 0 1px rgba(255,255,255,0.75);--warm-glow:rgba(201,168,76,0.12);--cool-glow:rgba(72,104,114,0.1)}
+body{background:
+  radial-gradient(circle at 12% 14%, var(--cool-glow), transparent 30rem),
+  radial-gradient(circle at 82% 8%, rgba(124,54,64,0.18), transparent 28rem),
+  radial-gradient(circle at 50% 86%, var(--warm-glow), transparent 34rem),
+  linear-gradient(135deg, rgba(255,255,255,0.025), transparent 36%, rgba(201,168,76,0.04)),
+  var(--bg);}
+nav{width:min(980px,calc(100% - 24px));margin:0.75rem auto 0;padding:0.75rem 1.05rem;border:1px solid var(--glass-border);border-radius:var(--pill);background:var(--glass-bg);box-shadow:var(--glass-shadow),var(--glass-highlight);backdrop-filter:blur(18px) saturate(130%);-webkit-backdrop-filter:blur(18px) saturate(130%)}
+.logo{display:inline-flex;align-items:center;gap:0.1rem;padding:0.35rem 0.7rem;border-radius:var(--pill);background:rgba(201,168,76,0.07)}
+.nav-back,#chkAuthBtn,.theme-toggle{border-radius:var(--pill)!important}
+main{max-width:980px}
+.page-label{display:inline-flex;align-items:center;border-radius:var(--pill);padding:0.35rem 0.85rem;background:rgba(201,168,76,0.08);border:1px solid var(--glass-border)}
+.form-section,.order-summary,#addrBook,#autofillBanner{border:1px solid var(--glass-border)!important;border-radius:30px!important;background:linear-gradient(145deg,rgba(255,255,255,0.055),rgba(255,255,255,0.015)),var(--glass-bg)!important;box-shadow:var(--glass-shadow),var(--glass-highlight);backdrop-filter:blur(16px) saturate(128%);-webkit-backdrop-filter:blur(16px) saturate(128%)}
+.form-section{padding:1.15rem}
+#autofillBanner{border-radius:var(--pill)!important}
+.divider-label span,.summary-title{border-radius:var(--pill);background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.18);padding:0.42rem 0.9rem}
+input,textarea,select,.coupon-select{border-radius:var(--pill)!important;background:rgba(255,255,255,0.045)!important;border-color:var(--glass-border)!important;box-shadow:inset 0 1px rgba(255,255,255,0.04)}
+textarea{border-radius:24px!important}
+.coupon-row{gap:0.65rem}
+.coupon-btn,.btn-pay,.btn-cod,.btn-partial,.btn-home,.scratch-copy-btn,.checkout-remove,#addrBook button,#autofillBanner button{border-radius:var(--pill)!important}
+.pay-method{border-radius:var(--pill)!important;background:rgba(255,255,255,0.045)!important;border-color:var(--glass-border)!important;box-shadow:inset 0 1px rgba(255,255,255,0.06)}
+.pay-method.active{background:linear-gradient(135deg,rgba(201,168,76,0.18),rgba(201,168,76,0.045))!important;border-color:rgba(201,168,76,0.62)!important;box-shadow:0 14px 40px rgba(201,168,76,0.1),inset 0 1px rgba(255,255,255,0.08)}
+.pay-method-icon{border-radius:16px!important}
+.pay-method-badge{border-radius:var(--pill);padding:0.18rem 0.55rem}
+.btn-pay{background:linear-gradient(135deg,#d7bc62,#9a7724)!important;box-shadow:0 16px 42px rgba(201,168,76,0.2);color:#090806!important}
+.btn-pay:hover,.btn-partial:hover,.btn-cod:hover{transform:translateY(-1px)}
+.btn-cod,.btn-partial{background:rgba(255,255,255,0.045)!important;border-color:var(--glass-border)!important}
+.checkout-qty-btn{border-radius:50%!important}
+.checkout-item{border-radius:22px;padding:0.55rem;background:rgba(255,255,255,0.025)}
+.success-email-box{border-radius:24px}
+.checkout-processing{position:fixed;inset:0;z-index:20000;display:none;align-items:center;justify-content:center;padding:1rem;background:rgba(4,3,2,0.68);backdrop-filter:blur(18px) saturate(130%);-webkit-backdrop-filter:blur(18px) saturate(130%)}
+.checkout-processing.show{display:flex}
+.checkout-processing-card{width:min(460px,calc(100vw - 28px));border:1px solid var(--glass-border);border-radius:34px;background:linear-gradient(145deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025)),var(--glass-bg);box-shadow:0 28px 90px rgba(0,0,0,0.48),var(--glass-highlight);padding:2rem;text-align:center}
+.checkout-loader{position:relative;width:84px;height:58px;margin:0 auto 1.1rem;perspective:260px}
+.checkout-loader:before{content:'';position:absolute;inset:7px 8px 5px;border:1px solid rgba(201,168,76,0.45);border-radius:14px;background:linear-gradient(90deg,rgba(201,168,76,0.14),rgba(255,255,255,0.045));box-shadow:0 16px 38px rgba(0,0,0,0.22)}
+.checkout-loader span{position:absolute;top:9px;left:42px;width:30px;height:42px;border-radius:5px 12px 12px 5px;background:linear-gradient(135deg,#f7efd8,#c9a84c);transform-origin:left center;animation:pageTurn 1.45s ease-in-out infinite;box-shadow:0 10px 26px rgba(201,168,76,0.2)}
+.checkout-loader span:nth-child(2){animation-delay:0.18s;background:linear-gradient(135deg,#fff8e8,#d9c273)}
+.checkout-loader span:nth-child(3){animation-delay:0.36s;background:linear-gradient(135deg,#fff,#b99436)}
+@keyframes pageTurn{0%,100%{transform:rotateY(0deg)}45%,70%{transform:rotateY(-132deg)}}
+.processing-kicker{font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--gold);margin-bottom:0.45rem}
+.processing-title{font-family:'Cormorant Garamond',serif;font-size:2rem;color:var(--white);line-height:1.1;margin-bottom:0.8rem}
+.processing-fact{font-size:0.76rem;color:var(--cream-dim);line-height:1.75;min-height:4.2rem;transition:opacity 0.22s ease}
+.processing-pill{display:inline-flex;margin-top:0.9rem;padding:0.5rem 0.9rem;border-radius:var(--pill);border:1px solid rgba(201,168,76,0.22);color:var(--gold-dim);font-size:0.58rem;letter-spacing:0.12em;text-transform:uppercase}
 /* Success screen */
 #successScreen{display:none;text-align:center;padding:4rem 2rem;max-width:560px;margin:0 auto;}
 .success-icon{font-size:3.5rem;margin-bottom:1.5rem;}
@@ -6607,6 +6652,15 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
 <main>
   <!-- Success Screen (hidden until order placed) -->
   <div id="successScreen"></div>
+  <div class="checkout-processing" id="checkoutProcessing" aria-live="polite" aria-hidden="true">
+    <div class="checkout-processing-card" role="status">
+      <div class="checkout-loader" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div class="processing-kicker" id="processingKicker">Preparing checkout</div>
+      <div class="processing-title" id="processingTitle">Hold tight...</div>
+      <div class="processing-fact" id="processingFact">A fresh book fact is loading while your order is being prepared.</div>
+      <div class="processing-pill">Secure checkout in progress</div>
+    </div>
+  </div>
 
   <!-- Checkout Screen -->
   <div id="checkoutScreen">
@@ -7204,8 +7258,61 @@ function collectAddr() {
 
 // ── Disable / enable buttons ───────────────────────────────────────────────
 let _loadingMethod = '';
+const CHECKOUT_FACTS = [
+  'The word book is linked to old words for beech, because early writing tablets were sometimes made from wood.',
+  'Paper was first developed in China nearly 2,000 years ago and helped stories travel farther.',
+  'A bookmark is better for a book spine than folding page corners, especially for paperbacks.',
+  'Reading a few pages before sleep can make a story feel more memorable because the mind keeps sorting it overnight.',
+  'Movable type printing made books easier to produce and helped ideas spread across continents.',
+  'Many bestselling books started as small print runs before readers turned them into long-term favourites.'
+];
+let _processingFactTimer = null;
+let _processingFactIndex = 0;
+
+function rotateProcessingFact() {
+  const fact = document.getElementById('processingFact');
+  if (!fact) return;
+  fact.style.opacity = '0';
+  setTimeout(() => {
+    fact.textContent = CHECKOUT_FACTS[_processingFactIndex % CHECKOUT_FACTS.length];
+    _processingFactIndex += 1;
+    fact.style.opacity = '1';
+  }, 180);
+}
+
+function showProcessing(method = 'online') {
+  const overlay = document.getElementById('checkoutProcessing');
+  if (!overlay) return;
+  const kicker = document.getElementById('processingKicker');
+  const title = document.getElementById('processingTitle');
+  const copy = {
+    online: ['Opening secure payment', 'Connecting to payment gateway...'],
+    partial: ['Preparing partial payment', 'Setting up 10% prepaid checkout...'],
+    cod: ['Saving your COD order', 'Placing your order...'],
+  };
+  const selected = copy[method] || ['Preparing checkout', 'Hold tight...'];
+  if (kicker) kicker.textContent = selected[0];
+  if (title) title.textContent = selected[1];
+  rotateProcessingFact();
+  clearInterval(_processingFactTimer);
+  _processingFactTimer = setInterval(rotateProcessingFact, 2800);
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function hideProcessing() {
+  const overlay = document.getElementById('checkoutProcessing');
+  clearInterval(_processingFactTimer);
+  _processingFactTimer = null;
+  if (!overlay) return;
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+}
+
 function setLoading(on, method = '') {
   _loadingMethod = on ? method : '';
+  if (on) showProcessing(method);
+  else hideProcessing();
   const pay = document.getElementById('btnPayNow');
   const cod = document.getElementById('btnCOD');
   if (pay) {
@@ -7390,6 +7497,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
 
     const rzp = new Razorpay(options);
     rzp.on('payment.failed', r => { alert('Payment failed: ' + r.error.description); setLoading(false); });
+    hideProcessing();
     rzp.open();
 
   } catch(e) {
@@ -7458,6 +7566,7 @@ function trackGoogleAdsPurchase(orderId, value) {
 }
 
 function showSuccess(type, orderId, addr, value) {
+  hideProcessing();
   trackGoogleAdsPurchase(orderId, value);
   document.getElementById('checkoutScreen').style.display = 'none';
   const s = document.getElementById('successScreen');
