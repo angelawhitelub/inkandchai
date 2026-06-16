@@ -186,7 +186,21 @@ exports.handler = async (event) => {
       cart_items:       cart,
     });
 
-    if (error) throw error;
+    if (error) {
+      // Unique-violation on razorpay_payment_id (DB index) means the webhook just
+      // created this order in a sub-second race. NOT a real failure and NOT a
+      // duplicate — return the existing order so the customer still sees success.
+      if (error.code === '23505') {
+        const { data: row } = await supabase
+          .from('orders').select('razorpay_order_id')
+          .eq('razorpay_payment_id', razorpay_payment_id).maybeSingle();
+        return {
+          statusCode: 200, headers: CORS,
+          body: JSON.stringify({ success: true, order_id: row?.razorpay_order_id || inkOrderId, payment_id: razorpay_payment_id, deduped: true }),
+        };
+      }
+      throw error;
+    }
 
     // ── Auto-push to Shiprocket panel ─────────────────────────────────────
     pushOrderToShiprocket({

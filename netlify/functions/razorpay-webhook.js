@@ -139,6 +139,13 @@ exports.handler = async (event) => {
   });
 
   if (saveErr) {
+    // Unique-violation on razorpay_payment_id means the browser callback already
+    // created this order. Stop here — do NOT continue to scratch card / WhatsApp,
+    // or the customer would be notified twice for one order.
+    if (saveErr.code === '23505') {
+      console.log('[razorpay-webhook] order already exists (browser created it) — skip');
+      return { statusCode: 200, body: 'OK — already exists' };
+    }
     console.error('[razorpay-webhook] DB save error:', saveErr.message);
     return { statusCode: 500, body: JSON.stringify({ error: saveErr.message }) };
   }
