@@ -280,6 +280,40 @@ gtag('config', 'AW-18139908537');
 })();
 </script>
 <!-- End Google Merchant Reviews Badge -->
+<style id="premium-refinement-layer">
+/* Crisper, more premium type rendering */
+body{ -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; text-rendering:optimizeLegibility; }
+h1,h2,h3,.section-title,.hero-title,.coll-name{ letter-spacing:.005em; }
+.hero-title,.section-title{ font-weight:600; }
+
+/* Solid gold buttons — metallic gradient, depth, springy hover lift */
+.btn-add,.btn-pay,.primary,.btn-checkout{
+  background-image:linear-gradient(135deg,#eccd80 0%,#cda94f 46%,#b9832f 100%) !important;
+  color:#1a1209 !important; border:none !important;
+  box-shadow:0 6px 18px rgba(138,106,31,.28), inset 0 1px 0 rgba(255,255,255,.38) !important;
+  transition:transform .28s cubic-bezier(.34,1.56,.64,1), box-shadow .28s ease, filter .28s ease !important;
+}
+.btn-add:hover,.btn-pay:hover,.primary:hover,.btn-checkout:hover{
+  transform:translateY(-2px) !important; filter:brightness(1.04) !important;
+  box-shadow:0 12px 28px rgba(201,168,76,.42), inset 0 1px 0 rgba(255,255,255,.5) !important;
+}
+.btn-add:active,.btn-pay:active,.primary:active,.btn-checkout:active{
+  transform:translateY(0) scale(.99) !important; box-shadow:0 4px 12px rgba(138,106,31,.3) !important;
+}
+
+/* Outline buttons (card "Add to Cart", COD, CTA) — refined hover fill */
+.btn-add-card,.btn-cod,.cta,.shelf-card-btn,.btn-partial{
+  transition:background .25s ease,color .25s ease,border-color .25s ease,box-shadow .25s ease,transform .15s ease !important;
+}
+.btn-add-card:hover,.btn-cod:hover,.cta:hover,.shelf-card-btn:hover{
+  background-image:linear-gradient(135deg,#eccd80,#c9a84c) !important; color:#1a1209 !important;
+  border-color:transparent !important; box-shadow:0 6px 16px rgba(138,106,31,.24) !important;
+}
+.btn-add-card:active,.btn-cod:active,.cta:active,.shelf-card-btn:active{ transform:scale(.98) !important; }
+
+/* Inputs: softer premium focus ring in brand gold */
+input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0 0 2px rgba(201,168,76,.45) !important; }
+</style>
 </head>
 <body>
 <div class="promo"><strong>Free delivery on ₹499+</strong> · Prepaid offers up to <strong>15% off</strong> · COD available</div>
