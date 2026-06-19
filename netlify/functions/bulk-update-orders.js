@@ -39,9 +39,10 @@ const COURIER_URLS = {
 
 function buildTrackingUrl(courier, trackingId) {
   if (!trackingId) return '';
-  const key = (courier || '').toLowerCase().replace(/\s+/g, '');
-  const tpl = COURIER_URLS[key];
-  return tpl ? tpl.replace('{id}', encodeURIComponent(trackingId)) : '';
+  // All orders ship via NimbusPost — its universal tracking page works for any
+  // underlying courier (BlueDart, Delhivery, etc.) using just the AWB. Use this
+  // single format for the link sent to customers instead of per-courier URLs.
+  return `https://ship.nimbuspost.com/shipping/tracking/${encodeURIComponent(trackingId)}`;
 }
 
 function text(v) {
