@@ -20,6 +20,7 @@ const EXCLUDE_STATUSES = [
   'shipped', 'out_for_delivery', 'delivered',
   'cancelled', 'refunded',
   'pending', 'pending_phonepe', 'pending_partial_phonepe',
+  'cod_awaiting_confirmation',   // high-value COD not yet confirmed by customer — not shippable yet
 ];
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────

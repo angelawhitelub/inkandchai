@@ -102,13 +102,18 @@ exports.handler = async (event) => {
     // COD has no payment id, so a double-submit / retry would create a duplicate
     // order. Skip if an identical COD order (same phone + amount) was just placed.
     const amountPaiseVal = Math.round(total * 100);
+    // High-value COD (> ₹999) must be confirmed by the customer over WhatsApp
+    // before we ship it — cuts RTO losses. It stays "awaiting confirmation" until
+    // they tap Confirm/Cancel on the WhatsApp template.
+    const needsConfirm = total > 999;
+    const initialStatus = needsConfirm ? 'cod_awaiting_confirmation' : 'cod_pending';
     const dupeWindow = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const { data: recentDupe } = await supabase
       .from('orders')
       .select('razorpay_order_id')
       .eq('customer_phone', customer.phone)
       .eq('amount_paise', amountPaiseVal)
-      .eq('status', 'cod_pending')
+      .in('status', ['cod_pending', 'cod_awaiting_confirmation'])
       .gte('created_at', dupeWindow)
       .limit(1)
       .maybeSingle();
@@ -124,7 +129,7 @@ exports.handler = async (event) => {
       razorpay_order_id:   orderId,
       razorpay_payment_id: null,
       amount_paise:        amountPaiseVal,
-      status:              'cod_pending',
+      status:              initialStatus,
       customer_name:       customer.name    || '',
       customer_email:      customer.email   || '',
       customer_phone:      customer.phone,
@@ -135,7 +140,8 @@ exports.handler = async (event) => {
     if (error) console.error('Supabase error (non-fatal):', error.message);
 
     // ── Auto-push to Shiprocket panel ─────────────────────────────────────
-    pushOrderToShiprocket({
+    // Skip for orders awaiting WhatsApp confirmation — don't ship until confirmed.
+    if (!needsConfirm) pushOrderToShiprocket({
       inkOrderId:      orderId,
       customerName:    customer.name    || '',
       customerEmail:   customer.email   || '',
@@ -199,18 +205,29 @@ exports.handler = async (event) => {
     });
   }
 
-  // ── 4. WhatsApp confirmation to CUSTOMER ─────────────────────────────────
+  // ── 4. WhatsApp to CUSTOMER ──────────────────────────────────────────────
   if (customer.phone) {
     const firstName = (customer.name || 'there').split(' ')[0];
-    const addrShort = (customer.address || '').slice(0, 80);
-    const bookList = Array.isArray(cart) && cart.length
-      ? cart.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200)
-      : 'your books';
-    await sendWhatsApp({
-      to: customer.phone,
-      template: 'order_confirmed',
-      params: [firstName, orderId, `₹${total.toLocaleString('en-IN')} (COD)`, addrShort, bookList],
-    });
+    if (total > 999) {
+      // High-value COD — send the Confirm/Cancel button template. The order is
+      // held as 'cod_awaiting_confirmation' until they tap a button (handled in
+      // whatsapp-bot.js). Template params: name, amount, order id.
+      await sendWhatsApp({
+        to: customer.phone,
+        template: 'cod_confirm',
+        params: [firstName, `₹${total.toLocaleString('en-IN')}`, orderId],
+      });
+    } else {
+      const addrShort = (customer.address || '').slice(0, 80);
+      const bookList = Array.isArray(cart) && cart.length
+        ? cart.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200)
+        : 'your books';
+      await sendWhatsApp({
+        to: customer.phone,
+        template: 'order_confirmed',
+        params: [firstName, orderId, `₹${total.toLocaleString('en-IN')} (COD)`, addrShort, bookList],
+      });
+    }
   }
 
   return {

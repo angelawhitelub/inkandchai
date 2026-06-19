@@ -218,6 +218,40 @@ async function sendReply(to, text) {
   }).catch(e => console.error('sendReply error:', e.message));
 }
 
+// ── High-value COD confirmation handler ───────────────────────────────────────
+// Finds the customer's most recent COD order awaiting confirmation and either
+// confirms it (-> cod_pending, ready to ship) or cancels it. Matched by the last
+// 10 digits of the phone number. Returns true if an order was acted on.
+async function handleCodConfirm(from, decision) {
+  try {
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const last10 = String(from).replace(/\D/g, '').slice(-10);
+    const { data: orders } = await db
+      .from('orders')
+      .select('id, razorpay_order_id, customer_phone, created_at')
+      .eq('status', 'cod_awaiting_confirmation')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    const order = (orders || []).find(
+      o => String(o.customer_phone || '').replace(/\D/g, '').slice(-10) === last10
+    );
+    if (!order) return false;
+
+    if (decision === 'cancel') {
+      await db.from('orders').update({ status: 'cancelled' }).eq('id', order.id);
+      await sendReply(from, `Your order ${order.razorpay_order_id} has been cancelled. If that was a mistake, just reply here and we'll help. 💛`);
+    } else {
+      await db.from('orders').update({ status: 'cod_pending' }).eq('id', order.id);
+      await sendReply(from, `✅ Thank you! Your order ${order.razorpay_order_id} is confirmed and will be shipped soon. You'll get tracking on WhatsApp once it's dispatched.`);
+    }
+    console.log(`[COD-CONFIRM] ${from} -> ${decision} -> ${order.razorpay_order_id}`);
+    return true;
+  } catch (e) {
+    console.error('handleCodConfirm error:', e.message);
+    return false;
+  }
+}
+
 // ── Ask OpenAI ────────────────────────────────────────────────────────────────
 async function askOpenAI(phone, userMessage, extraContext = '') {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -305,6 +339,21 @@ exports.handler = async (event) => {
       // Trim set to avoid memory leak on long-lived instances
       const arr = [...processedMsgIds];
       arr.splice(0, 250).forEach(id => processedMsgIds.delete(id));
+    }
+
+    // ── High-value COD confirmation buttons (Confirm / Cancel) ───────────────
+    // Template quick-reply buttons arrive as type 'button'; interactive buttons as
+    // 'interactive'. If this is a Confirm/Cancel tap and the customer has a COD
+    // order awaiting confirmation, act on it and stop (don't run the AI bot).
+    if (msg.type === 'button' || msg.type === 'interactive') {
+      const btnText = (
+        msg.button?.text || msg.button?.payload ||
+        msg.interactive?.button_reply?.title || msg.interactive?.button_reply?.id || ''
+      ).toLowerCase();
+      if (btnText.includes('confirm') || btnText.includes('cancel')) {
+        const handled = await handleCodConfirm(from, btnText.includes('cancel') ? 'cancel' : 'confirm');
+        if (handled) return { statusCode: 200, body: 'ok' };
+      }
     }
 
     // Only handle text messages for now
