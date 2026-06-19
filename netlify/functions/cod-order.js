@@ -208,20 +208,20 @@ exports.handler = async (event) => {
   // ── 4. WhatsApp to CUSTOMER ──────────────────────────────────────────────
   if (customer.phone) {
     const firstName = (customer.name || 'there').split(' ')[0];
+    const bookList = Array.isArray(cart) && cart.length
+      ? cart.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200)
+      : 'your books';
     if (total > 999) {
       // High-value COD — send the Confirm/Cancel button template. The order is
       // held as 'cod_awaiting_confirmation' until they tap a button (handled in
-      // whatsapp-bot.js). Template params: name, amount, order id.
+      // whatsapp-bot.js). Template params: name, amount, order id, book(s).
       await sendWhatsApp({
         to: customer.phone,
         template: 'cod_confirm',
-        params: [firstName, `₹${total.toLocaleString('en-IN')}`, orderId],
+        params: [firstName, `₹${total.toLocaleString('en-IN')}`, orderId, bookList],
       });
     } else {
       const addrShort = (customer.address || '').slice(0, 80);
-      const bookList = Array.isArray(cart) && cart.length
-        ? cart.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200)
-        : 'your books';
       await sendWhatsApp({
         to: customer.phone,
         template: 'order_confirmed',
