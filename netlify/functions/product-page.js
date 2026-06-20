@@ -148,10 +148,15 @@ function addProductToCart(buyNow) {
 }
 
 exports.handler = async (event) => {
-  const slug = String(event.queryStringParameters?.slug || '')
-    .split('/')
-    .filter(Boolean)[0]
-    .toLowerCase();
+  // Slug comes from the /product/* rewrite (?slug=:splat). Fall back to the
+  // request path if the splat wasn't passed, and guard against an empty result
+  // (filter(Boolean)[0] was undefined -> crashed on .toLowerCase()).
+  let raw = event.queryStringParameters?.slug || '';
+  if (!raw) {
+    const path = event.path || (event.rawUrl || '').split('?')[0] || '';
+    raw = path.replace(/.*\/product\//, '');
+  }
+  const slug = (String(raw).split('/').filter(Boolean).pop() || '').toLowerCase();
 
   if (!slug) {
     return { statusCode: 404, headers: { 'Content-Type': 'text/html' }, body: 'Product not found' };
