@@ -30,6 +30,13 @@
   status = 301
   force  = true
 
+# Live Merchant feed for admin-created products (custom_products table). Add this
+# URL as a scheduled-fetch feed in Merchant Center so they appear without a deploy.
+[[redirects]]
+  from   = "/custom-feed.xml"
+  to     = "/.netlify/functions/custom-products-feed"
+  status = 200
+
 
 # Source map requests from browser devtools — return 404 cleanly instead of
 # falling through to index.html (which wastes bandwidth)
