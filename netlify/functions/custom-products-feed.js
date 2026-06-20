@@ -78,7 +78,7 @@ exports.handler = async () => {
     const feed = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
   <channel>
-    <title>${BRAND} — Custom Products</title>
+    <title>${xmlEscape(BRAND)} — Custom Products</title>
     <link>${SITE}</link>
     <description>Admin-created product listings.</description>
 ${items}
@@ -94,6 +94,6 @@ ${items}
 function emptyFeed() {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
-  <channel><title>${BRAND} — Custom Products</title><link>${SITE}</link><description>No products.</description></channel>
+  <channel><title>${xmlEscape(BRAND)} — Custom Products</title><link>${SITE}</link><description>No products.</description></channel>
 </rss>`;
 }
