@@ -43,8 +43,12 @@ const COURIER_URLS = {
 function buildTrackingUrl(courier, trackingId) {
   if (!trackingId) return '';
   const key = (courier || '').toLowerCase().replace(/\s+/g, '');
+  const nimbusUrl = `https://ship.nimbuspost.com/shipping/tracking/${encodeURIComponent(trackingId)}`;
+  // Ekart AWBs booked through NimbusPost must be tracked on NimbusPost. The
+  // public Ekart page is primarily for Flipkart-originated consignments.
+  if (key.includes('ekart') || key.includes('nimbus')) return nimbusUrl;
   const tpl = COURIER_URLS[key];
-  return tpl ? tpl.split('{id}').join(encodeURIComponent(trackingId)) : '';
+  return tpl ? tpl.split('{id}').join(encodeURIComponent(trackingId)) : nimbusUrl;
 }
 
 // ── Send email via Resend (auto-fallback to onboarding@resend.dev) ────────
@@ -56,6 +60,7 @@ function shipmentEmailHtml(order) {
   const total = order.amount_paise ? (order.amount_paise / 100) : items.reduce((s, i) => s + i.price * i.qty, 0);
   const balance = isPartial ? Math.max(0, Number(meta.balance) || 0) : 0;
   const isCOD = isPartial || order.status === 'cod_pending' || !order.razorpay_payment_id;
+  const trackingUrl = buildTrackingUrl(order.courier_name, order.tracking_id) || order.tracking_url || '';
   const rows = items.map(i => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
@@ -66,7 +71,8 @@ function shipmentEmailHtml(order) {
       <p style="color:#a09080;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin:0 0 6px;">Courier &amp; Tracking</p>
       <p style="color:#f0e8d8;font-size:16px;margin:0 0 4px;"><strong>${order.courier_name || 'Courier'}</strong></p>
       <p style="color:#c9a84c;font-size:14px;font-family:Menlo,Consolas,monospace;margin:0 0 12px;">AWB: ${order.tracking_id}</p>
-      ${order.tracking_url ? `<a href="${order.tracking_url}" style="display:inline-block;background:#c9a84c;color:#0d0b08;padding:10px 24px;text-decoration:none;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Track on courier site →</a>` : ''}
+      ${trackingUrl ? `<a href="${trackingUrl}" style="display:inline-block;background:#c9a84c;color:#0d0b08;padding:10px 24px;text-decoration:none;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Track shipment →</a>
+      <p style="margin:12px 0 0;color:#a09080;font-size:11px;line-height:1.6;word-break:break-all;">${trackingUrl}</p>` : ''}
     </div>` : '';
 
   return `

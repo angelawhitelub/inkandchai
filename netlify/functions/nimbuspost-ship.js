@@ -42,8 +42,10 @@ const COURIER_TRACK_URLS = {
 
 function courierTrackUrl(name, awb) {
   const key = (name || '').toLowerCase().replace(/[^a-z]/g, '');
+  const nimbusUrl = `https://ship.nimbuspost.com/shipping/tracking/${encodeURIComponent(awb)}`;
+  if (key.includes('ekart') || key.includes('nimbus')) return nimbusUrl;
   const tpl = Object.entries(COURIER_TRACK_URLS).find(([k]) => key.includes(k))?.[1];
-  return tpl ? tpl.replace('{awb}', encodeURIComponent(awb)) : '';
+  return tpl ? tpl.replace('{awb}', encodeURIComponent(awb)) : nimbusUrl;
 }
 
 // ── Address parser (single string → fields) ────────────────────────────────
