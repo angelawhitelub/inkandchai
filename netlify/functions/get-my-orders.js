@@ -69,22 +69,36 @@ exports.handler = async (event) => {
   }
 
   try {
-    // Match by email OR phone. customer_phone format varies, so wildcard the last
-    // 10 digits ('%9876543210') to catch +919876543210 / 919876543210 / 9876543210.
-    const filters = [];
-    if (lookupEmail)   filters.push(`customer_email.ilike.${lookupEmail}`);
-    if (lookupPhone10) filters.push(`customer_phone.ilike.%${lookupPhone10}`);
-
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .or(filters.join(','))
-      .order('created_at', { ascending: false })
-      .limit(30);
-
-    if (error) throw error;
-
-    const orders = data || [];
+    // Match by email OR phone. customer_phone is stored in many formats — raw
+    // 10-digit, +91…, '87994 81113' (with a space), etc. — so we widen the SQL
+    // search and then normalise to digits in JS for the phone match.
+    let orders = [];
+    if (lookupEmail) {
+      const { data, error } = await supabase
+        .from('orders').select('*')
+        .ilike('customer_email', lookupEmail)
+        .order('created_at', { ascending: false }).limit(60);
+      if (error) throw error;
+      orders = data || [];
+    }
+    if (lookupPhone10) {
+      // Two passes for safety: contiguous (cheap, indexable) + last-4-digit prefilter
+      // (catches phones with a space/dash). Then we filter to exact last-10 in JS.
+      const last4 = lookupPhone10.slice(-4);
+      const { data, error } = await supabase
+        .from('orders').select('*')
+        .or(`customer_phone.ilike.%${lookupPhone10},customer_phone.ilike.%${last4}`)
+        .order('created_at', { ascending: false }).limit(200);
+      if (error) throw error;
+      const matched = (data || []).filter(o =>
+        String(o.customer_phone || '').replace(/\D/g, '').slice(-10) === lookupPhone10
+      );
+      // Merge, dedupe by id, sort newest-first.
+      const seen = new Set(orders.map(o => o.id));
+      for (const o of matched) if (!seen.has(o.id)) { orders.push(o); seen.add(o.id); }
+      orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      orders = orders.slice(0, 30);
+    }
 
     // Fetch return requests IN PARALLEL (was sequential — added ~300ms latency)
     if (orders.length) {
