@@ -186,21 +186,52 @@ exports.handler = async (event) => {
     });
   }
 
-  // ── WhatsApp + email to customer ─────────────────────────────────────────
+  // ── Notify customer (WhatsApp first, email as a safety net when available) ─
+  const firstName = (name || 'there').split(' ')[0];
+  const amtDisplay = `₹${(amount_paise / 100).toLocaleString('en-IN')}`;
   if (phone) {
-    const firstName = (name || 'there').split(' ')[0];
-    const amtDisplay = `₹${(amount_paise / 100).toLocaleString('en-IN')}`;
-    await sendWhatsApp({
-      to: phone,
-      template: 'order_confirmed',
-      params: [
-        firstName,
-        inkOrderId,
-        amtDisplay,
-        (address || '').slice(0, 80),
-        cartItems.map(i => i.title || '').filter(Boolean).join(', ').slice(0, 200) || 'your books',
-      ],
-    }).catch(e => console.warn('WA notify error:', e.message));
+    try {
+      const r = await sendWhatsApp({
+        to: phone,
+        template: 'order_confirmed',
+        params: [
+          firstName, inkOrderId, amtDisplay,
+          (address || '').slice(0, 80),
+          cartItems.map(i => i.title || '').filter(Boolean).join(', ').slice(0, 200) || 'your books',
+        ],
+      });
+      console.log(`[razorpay-webhook] customer WA notify [${inkOrderId}] → ${phone}: ok`, r?.messages?.[0]?.id || '');
+    } catch (e) {
+      console.error(`[razorpay-webhook] customer WA notify FAILED [${inkOrderId}] → ${phone}:`, e.message);
+    }
+  } else {
+    console.warn(`[razorpay-webhook] no customer phone on ${inkOrderId} — WhatsApp skipped`);
+  }
+  // Customer email — the browser path sends this normally; in webhook-recovery it
+  // was missing, so customers without an email-aware browser callback got nothing
+  // textual to point them at.
+  if (email) {
+    try {
+      await sendEmail({
+        to: email,
+        subject: `Your Ink & Chai order is confirmed! (${inkOrderId})`,
+        html: emailBase(`
+          <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Order Confirmed 📚</h2>
+          <p style="color:#a09080;line-height:1.8;margin-bottom:16px;">
+            Hi ${firstName}, your books are on their way!<br/>
+            Your payment of <strong style="color:#c9a84c;">${amtDisplay}</strong> was received successfully.
+          </p>
+          <p style="color:#a09080;font-size:13px;"><strong style="color:#f0e8d8;">Delivery address:</strong><br/>${address || '—'}</p>
+          <p style="margin-top:16px;color:#7a6330;font-size:12px;">Order ID: <strong style="color:#c9a84c;">${inkOrderId}</strong></p>
+          <div style="margin-top:20px;padding:14px 16px;background:#1c1916;border-left:3px solid #c9a84c;">
+            <p style="color:#f0e8d8;font-size:13px;margin:0 0 10px;">📦 Track your order any time</p>
+            <a href="https://inkandchai.in/track/?id=${encodeURIComponent(inkOrderId)}&q=${encodeURIComponent(email || phone || '')}" style="display:inline-block;background:#c9a84c;color:#0d0b08;padding:10px 22px;text-decoration:none;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Track Order →</a>
+          </div>
+        `),
+      });
+    } catch (e) {
+      console.error(`[razorpay-webhook] customer email FAILED [${inkOrderId}] → ${email}:`, e.message);
+    }
   }
 
   return { statusCode: 200, body: JSON.stringify({ ok: true, order: inkOrderId }) };
