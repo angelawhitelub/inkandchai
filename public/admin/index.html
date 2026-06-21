@@ -3085,14 +3085,22 @@ async function runReviewRequest(dryRun, btn) {
 }
 
 // ── Shiprocket: push all unshipped orders ────────────────────────────────────
+let nimbusPanelPushActive = false;
 async function pushAllToNimbusPanel(btn) {
+  if (nimbusPanelPushActive) {
+    alert('A NimbusPost panel import is already running. Please wait for it to finish.');
+    return;
+  }
   const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending'];
   const unshipped = allOrders.filter(o => UNSHIPPED.includes(o.status));
   if (!unshipped.length) { alert('No unshipped orders found in the current view.'); return; }
   if (!confirm(`Push ${unshipped.length} unshipped order${unshipped.length > 1 ? 's' : ''} to the NimbusPost Orders panel?\n\nNo courier will be selected and no AWB will be generated. You can ship these orders later from NimbusPost.`)) return;
 
   const orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Pushing…'; }
+  const allNimbusPushButtons = [...document.querySelectorAll('[onclick="pushAllToNimbusPanel(this)"]')];
+  nimbusPanelPushActive = true;
+  allNimbusPushButtons.forEach(button => { button.disabled = true; });
+  if (btn) btn.innerHTML = '<span class="spinner"></span>Checking existing orders…';
 
   try {
     const res = await fetch('/.netlify/functions/nimbuspost-order-push', {
@@ -3103,14 +3111,16 @@ async function pushAllToNimbusPanel(btn) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     const s = data.summary || {};
-    let message = `NimbusPost panel import complete:\n\n✅ Pushed: ${s.pushed || 0}\n⏭ Already existed: ${s.skipped || 0}\n❌ Failed: ${s.failed || 0}`;
+    let message = `NimbusPost panel import complete:\n\n✅ Newly pushed: ${s.pushed || 0}\n⏭ Already in NimbusPost: ${s.skipped || 0}\n❌ Failed: ${s.failed || 0}`;
     if (data.errors?.length) message += `\n\nFirst errors:\n${data.errors.slice(0, 5).join('\n')}`;
     message += '\n\nOpen NimbusPost → Orders to assign couriers and generate AWBs.';
     alert(message);
   } catch (err) {
-    alert('NimbusPost panel push failed: ' + err.message);
+    alert('NimbusPost panel push stopped before creating orders:\n\n' + err.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    nimbusPanelPushActive = false;
+    allNimbusPushButtons.forEach(button => { button.disabled = false; });
+    if (btn) btn.innerHTML = orig;
   }
 }
 

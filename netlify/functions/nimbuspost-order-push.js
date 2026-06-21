@@ -10,6 +10,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const NP_ORDER_URL = 'https://ship.nimbuspost.com/api/orders/create';
+const NP_ORDERS_URL = 'https://ship.nimbuspost.com/api/orders';
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
@@ -130,6 +131,80 @@ function toFormData(payload) {
   return form;
 }
 
+function orderRowsFromResponse(payload) {
+  const candidates = [
+    payload?.data?.data,
+    payload?.data?.orders,
+    payload?.data,
+    payload?.orders,
+    payload?.results,
+    payload,
+  ];
+  return candidates.find(Array.isArray) || [];
+}
+
+function paginationFromResponse(payload) {
+  const sources = [payload?.data, payload?.meta, payload?.pagination, payload];
+  for (const source of sources) {
+    if (!source || Array.isArray(source) || typeof source !== 'object') continue;
+    const current = Number(source.current_page || source.page || 0);
+    const last = Number(source.last_page || source.total_pages || source.pages || 0);
+    if (current || last) return { current, last };
+  }
+  return { current: 0, last: 0 };
+}
+
+function normalizeOrderNumber(value) {
+  return String(value ?? '').trim().toUpperCase();
+}
+
+// NimbusPost does not enforce unique order_number values. Always read the
+// panel first and deduplicate ourselves. If this lookup fails, abort the whole
+// import rather than risk creating another batch of duplicate orders.
+async function getExistingOrderNumbers(apiKey) {
+  const existing = new Set();
+  const perPage = 100;
+  const maxPages = 100;
+
+  for (let page = 1; page <= maxPages; page++) {
+    const url = new URL(NP_ORDERS_URL);
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('per_page', String(perPage));
+    url.searchParams.set('sort', 'DESC');
+    url.searchParams.set('sort_by', 'id');
+
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json', 'NP-API-KEY': apiKey },
+    });
+    const text = await response.text();
+    let payload;
+    try { payload = text ? JSON.parse(text) : {}; } catch (_) { payload = { message: text }; }
+
+    if (!response.ok || payload.status === false || payload.success === false || payload.error) {
+      throw new Error(`NimbusPost duplicate preflight failed (${response.status}): ${JSON.stringify(payload).slice(0, 500)}`);
+    }
+
+    const rows = orderRowsFromResponse(payload);
+    for (const row of rows) {
+      const number = normalizeOrderNumber(
+        row?.order_number || row?.order_no || row?.channel_order_id ||
+        row?.channel_order_number || row?.order_reference ||
+        row?.order?.order_number || row?.order_id
+      );
+      if (number) existing.add(number);
+    }
+
+    const pagination = paginationFromResponse(payload);
+    if (!rows.length) break;
+    if (pagination.last ? page >= pagination.last : rows.length < perPage) break;
+    if (page === maxPages) {
+      throw new Error(`NimbusPost duplicate preflight exceeded ${maxPages * perPage} orders; import stopped for safety.`);
+    }
+  }
+
+  return existing;
+}
+
 async function pushOrder(order, apiKey) {
   const payload = buildPayload(order);
   const response = await fetch(NP_ORDER_URL, {
@@ -189,11 +264,20 @@ exports.handler = async (event) => {
     const { data: orders, error } = await query;
     if (error) throw error;
 
+    const existingOrderNumbers = await getExistingOrderNumbers(apiKey);
     const summary = { pushed: 0, skipped: 0, failed: 0, errors: [] };
     for (const order of orders || []) {
+      const orderNumber = normalizeOrderNumber(order.razorpay_order_id || order.id);
+      if (existingOrderNumbers.has(orderNumber)) {
+        summary.skipped++;
+        continue;
+      }
+
       try {
         await pushOrder(order, apiKey);
         summary.pushed++;
+        // Also protects against repeated rows in this same request.
+        existingOrderNumbers.add(orderNumber);
       } catch (err) {
         const message = String(err.message || err);
         if (/already|duplicate|exists/i.test(message)) {
