@@ -8,10 +8,8 @@
  * Destination: 2969, Kucha Mai Dass, Sitaram Bazar, Delhi - 110006
  *
  * Required env vars:
- *   NIMBUSPOST_API_KEY       from ship.nimbuspost.com → Settings → API
  *   NIMBUSPOST_EMAIL
  *   NIMBUSPOST_PASSWORD
- *   NIMBUSPOST_WAREHOUSE_ID  (leave blank to auto-fetch)
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  *   ADMIN_SECRET
@@ -65,10 +63,8 @@ function parseAddress(addr) {
 
 // ── NimbusPost helpers ─────────────────────────────────────────────────────
 async function npFetch(path, { method = 'GET', token, body } = {}) {
-  const apiKey = process.env.NIMBUSPOST_API_KEY;
   const headers = { 'Content-Type': 'application/json' };
-  if (apiKey) headers['x-api-key'] = apiKey;
-  if (token)  headers['NP-API-SECRET'] = token;
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${NP_BASE}${path}`, {
     method,
@@ -81,18 +77,17 @@ async function npFetch(path, { method = 'GET', token, body } = {}) {
 }
 
 async function npAuthenticate() {
-  const { ok, data } = await npFetch('/authenticate', {
-    method: 'POST',
-    body: { email: process.env.NIMBUSPOST_EMAIL, password: process.env.NIMBUSPOST_PASSWORD },
-  });
-  if (!ok || !data.token) throw new Error(`NimbusPost auth failed: ${JSON.stringify(data)}`);
-  return data.token;
-}
+  const email = process.env.NIMBUSPOST_EMAIL;
+  const password = process.env.NIMBUSPOST_PASSWORD;
+  if (!email || !password) throw new Error('NIMBUSPOST_EMAIL / NIMBUSPOST_PASSWORD env vars not set');
 
-async function npGetWarehouses(token) {
-  const { ok, data } = await npFetch('/client/warehouses', { token });
-  if (!ok) throw new Error(`Warehouses failed: ${JSON.stringify(data)}`);
-  return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+  const { ok, data } = await npFetch('/users/login', {
+    method: 'POST',
+    body: { email, password },
+  });
+  const token = data.data || data.token;
+  if (!ok || !token) throw new Error(`NimbusPost auth failed: ${JSON.stringify(data)}`);
+  return token;
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────
@@ -136,6 +131,9 @@ exports.handler = async (event) => {
     }
 
     // Default action: create NimbusPost reverse pickup
+    if (ret.status !== 'approved') {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Approve this return before pushing it to NimbusPost.' }) };
+    }
     if (ret.awb) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Pickup already created. AWB: ${ret.awb}` }) };
     }
@@ -146,50 +144,49 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Cannot parse pincode from customer address: "${ret.customer_address}"` }) };
     }
 
-    // Auth + warehouse
+    // Authenticate with NimbusPost Partners API.
     const token = await npAuthenticate();
-    let warehouseId = process.env.NIMBUSPOST_WAREHOUSE_ID
-      ? parseInt(process.env.NIMBUSPOST_WAREHOUSE_ID, 10)
-      : null;
-
-    if (!warehouseId) {
-      const warehouses = await npGetWarehouses(token);
-      if (!warehouses.length) throw new Error('No warehouses in NimbusPost. Add one at ship.nimbuspost.com → Settings → Warehouses.');
-      warehouseId = warehouses[0].id || warehouses[0].warehouse_id;
-    }
 
     // Build items list
     const cartItems = Array.isArray(ret.items) ? ret.items : [];
     const products  = cartItems.length
-      ? cartItems.map(i => ({ product_name: i.title || 'Book', sku: i.sku || '', qty: i.qty || 1, unit_price: i.price || 0 }))
-      : [{ product_name: 'Book', sku: '', qty: 1, unit_price: ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0 }];
+      ? cartItems.map(i => ({ name: i.title || 'Book', sku: i.sku || '', qty: i.qty || 1, price: i.price || 0 }))
+      : [{ name: 'Book', sku: '', qty: 1, price: ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0 }];
 
     const phone = (ret.customer_phone || '9999999999').replace(/\D/g, '').slice(-10);
 
-    // NimbusPost reverse pickup payload
-    // Pickup = customer, Destination = our office
+    // NimbusPost Partners API reverse shipment. For payment_type=reverse,
+    // consignee is the customer pickup address and pickup is our return hub.
     const payload = {
-      order_number:      `RET-${ret.order_display_id || ret.order_id}`,
-      payment_type:      'prepaid',   // returns are always prepaid (we bear cost)
-      order_amount:      ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0,
-      collectable_amount: 0,
-      weight:            300,
-      length:            20,
-      height:            3,
-      breadth:           15,
-      // Pickup = customer address
-      consignee_name:    ret.customer_name || 'Customer',
-      consignee_address: addr1,
-      consignee_address_2: '',
-      consignee_city:    city,
-      consignee_state:   state,
-      consignee_pincode: pincode,
-      consignee_phone:   phone,
-      // Our return destination becomes the "shipper" / warehouse
-      warehouse_id:      warehouseId,
-      products,
-      return_reason:     ret.reason || 'Customer return',
-      shipment_type:     2,  // 2 = reverse pickup in NimbusPost API
+      order_number: `RET-${String(ret.order_display_id || ret.order_id).replace(/^IC-/, '')}`.slice(0, 20),
+      payment_type: 'reverse',
+      order_amount: ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0,
+      package_weight: 300,
+      package_length: 20,
+      package_height: 3,
+      package_breadth: 15,
+      request_auto_pickup: 'yes',
+      consignee: {
+        name: ret.customer_name || 'Customer',
+        address: addr1,
+        address_2: '',
+        city,
+        state,
+        pincode,
+        phone,
+      },
+      pickup: {
+        warehouse_name: process.env.NIMBUSPOST_WAREHOUSE_NAME || 'Office',
+        name: RETURN_ADDRESS.name,
+        address: RETURN_ADDRESS.address,
+        address_2: '',
+        city: RETURN_ADDRESS.city,
+        state: RETURN_ADDRESS.state,
+        pincode: RETURN_ADDRESS.pincode,
+        phone: process.env.RETURN_PHONE || process.env.BUSINESS_PHONE || RETURN_ADDRESS.phone,
+      },
+      order_items: products,
+      tags: `return, ${String(ret.reason || 'customer return').slice(0, 150)}`,
     };
 
     const { ok, data: npData } = await npFetch('/shipments', {
@@ -198,12 +195,13 @@ exports.handler = async (event) => {
       body: payload,
     });
 
-    if (!ok || !npData.awb_number) {
+    const shipment = npData.data && typeof npData.data === 'object' ? npData.data : npData;
+    const awb = shipment.awb_number || shipment.awb || shipment.tracking_number;
+    if (!ok || !awb) {
       throw new Error(`NimbusPost reverse pickup failed: ${JSON.stringify(npData)}`);
     }
 
-    const awb = npData.awb_number;
-    const courierName = npData.courier_name || 'NimbusPost';
+    const courierName = shipment.courier_name || 'NimbusPost';
 
     // Update return_request in Supabase
     await supabase.from('return_requests').update({

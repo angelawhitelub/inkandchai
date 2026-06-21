@@ -838,6 +838,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       </div>
       <div class="mini-actions">
         <button class="btn-outline" onclick="fetchReturnRequests()">↻ Refresh</button>
+        <button class="btn-gold" onclick="pushApprovedReturnsToNimbus(this)" title="Create NimbusPost reverse shipments and AWBs for every approved return that has not already been pushed.">Push Approved Returns to NimbusPost</button>
       </div>
     </div>
     <div class="hint" id="returnsMeta" style="margin-bottom:0.8rem;">Loading return requests…</div>
@@ -3532,7 +3533,7 @@ function renderReturns() {
       ? `<span style="font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--gold);">${r.awb}</span><br><span style="font-size:0.62rem;color:var(--cream-dim);">${r.courier_name||''}</span>`
       : '—';
 
-    const canPickup = !r.awb && r.status !== 'rejected';
+    const canPickup = !r.awb && r.status === 'approved';
     const canApprove = r.status === 'pending';
     const canReject  = r.status === 'pending';
 
@@ -3550,7 +3551,7 @@ function renderReturns() {
       <td>${awbHtml}</td>
       <td>
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
-          ${canPickup ? `<button class="btn-gold" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturn('${r.id}',this)">🚚 Create Pickup</button>` : ''}
+          ${canPickup ? `<button class="btn-gold" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturn('${r.id}',this)">Push to NimbusPost</button>` : ''}
           ${canApprove ? `<button class="btn-green" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="approveReturn('${r.id}',this)">✓ Approve</button>` : ''}
           ${canReject  ? `<button class="btn-danger" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="rejectReturn('${r.id}',this)">✗ Reject</button>` : ''}
         </div>
@@ -3576,15 +3577,45 @@ async function _returnCall(body, btn) {
 }
 
 async function processReturn(returnId, btn) {
-  if (!confirm('Create NimbusPost reverse pickup for this return?\n\nPickup from customer address → Delhi office.')) return;
+  if (!confirm('Push this approved return to NimbusPost?\n\nThis creates a reverse shipment, AWB, and pickup request from the customer address to the Delhi return office.')) return;
   try {
     const data = await _returnCall({ return_request_id: returnId }, btn);
     alert(`✅ Reverse pickup created!\nAWB: ${data.awb}\nCourier: ${data.courier_name}\nFrom: ${data.pickup_from}`);
     await fetchReturnRequests();
   } catch (e) {
     alert('Error: ' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = '🚚 Create Pickup'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Push to NimbusPost'; }
   }
+}
+
+async function pushApprovedReturnsToNimbus(btn) {
+  const pending = allReturnRequests.filter(r => r.status === 'approved' && !r.awb);
+  if (!pending.length) {
+    alert('No approved returns are waiting to be pushed. Approve a return first.');
+    return;
+  }
+  if (!confirm(`Push ${pending.length} approved return${pending.length > 1 ? 's' : ''} to NimbusPost?\n\nThis creates reverse AWBs and pickup requests for each return.`)) return;
+
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = `Pushing 0/${pending.length}…`; }
+  let pushed = 0;
+  const failures = [];
+
+  for (const ret of pending) {
+    try {
+      await _returnCall({ return_request_id: ret.id }, null);
+      pushed++;
+    } catch (error) {
+      failures.push(`${ret.order_display_id || ret.order_id || ret.id}: ${error.message}`);
+    }
+    if (btn) btn.textContent = `Pushing ${pushed + failures.length}/${pending.length}…`;
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = original; }
+  await fetchReturnRequests();
+  let message = `NimbusPost return push complete:\n\nCreated: ${pushed}\nFailed: ${failures.length}`;
+  if (failures.length) message += `\n\nFirst errors:\n${failures.slice(0, 5).join('\n')}`;
+  alert(message);
 }
 
 async function approveReturn(returnId, btn) {
