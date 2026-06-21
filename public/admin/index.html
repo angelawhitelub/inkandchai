@@ -446,7 +446,8 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <div class="focus-actions">
       <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
-      <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create all unshipped orders in NimbusPost, then manage labels and pickup from the NimbusPost panel">🚀 Push All Unshipped to NimbusPost</button>
+      <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
+      <span style="font-size:0.62rem;color:var(--cream-dim);line-height:1.5;max-width:290px;">Draft order sync requires a NimbusPost Channel Integration. This API button creates shipments and AWBs.</span>
     </div>
   </section>
 
@@ -477,7 +478,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     </button>
     <button onclick="npBulkShip(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.45);color:var(--gold);cursor:pointer;font-family:'Montserrat',sans-serif;letter-spacing:0.08em;text-transform:uppercase;transition:background 0.2s;"
       onmouseover="this.style.background='rgba(201,168,76,0.22)';" onmouseout="this.style.background='rgba(201,168,76,0.12)';">
-      🚀 Push All to NimbusPost
+      🚀 Create NimbusPost AWBs
     </button>
     <button class="btn-outline" onclick="selectVisibleOrders()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       Select Visible
@@ -1758,8 +1759,8 @@ async function npShipOrder(orderId, btn) {
   }
 }
 
-// Push every unshipped order into NimbusPost. Creating the shipment is the
-// NimbusPost API's import mechanism; labels, pickup and dispatch stay in its panel.
+// Create NimbusPost shipments for every unshipped order. This endpoint assigns
+// couriers and AWBs; draft order sync is available only through Channel Integration.
 async function npBulkShip(btn) {
   const oldText = btn?.innerHTML;
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Loading all orders…'; }
@@ -1780,9 +1781,9 @@ async function npBulkShip(btn) {
   }
 
   const proceed = confirm(
-    `🚀 Push All Unshipped Orders to NimbusPost\n\n` +
-    `${unshipped.length} order(s) will be created in your NimbusPost panel.\n` +
-    `NimbusPost will assign AWBs using the cheapest serviceable courier.\n` +
+    `🚀 Create All NimbusPost Shipments\n\n` +
+    `${unshipped.length} shipment(s) will be created in NimbusPost.\n` +
+    `NimbusPost will immediately assign AWBs using the cheapest serviceable courier.\n` +
     `You can then manage labels, pickup and dispatch from NimbusPost.\n\n` +
     `Continue?`
   );
@@ -1796,7 +1797,7 @@ async function npBulkShip(btn) {
   // Show progress
   const progressMsg = document.createElement('div');
   progressMsg.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#1c1916;border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:1rem 1.5rem;font-size:0.75rem;z-index:9999;font-family:Montserrat,sans-serif;letter-spacing:0.08em;';
-  progressMsg.textContent = `⏳ Pushing 0 of ${ids.length} orders to NimbusPost…`;
+  progressMsg.textContent = `⏳ Creating 0 of ${ids.length} NimbusPost shipments…`;
   document.body.appendChild(progressMsg);
 
   try {
@@ -1810,7 +1811,7 @@ async function npBulkShip(btn) {
       shipped.push(...(data.shipped || []));
       skipped.push(...(data.skipped || []));
       failures.push(...(data.failures || []));
-      progressMsg.textContent = `⏳ Pushed ${Math.min(i + batch.length, ids.length)} of ${ids.length} orders to NimbusPost…`;
+      progressMsg.textContent = `⏳ Created ${Math.min(i + batch.length, ids.length)} of ${ids.length} NimbusPost shipments…`;
     }
     document.body.removeChild(progressMsg);
 
@@ -1827,7 +1828,7 @@ async function npBulkShip(btn) {
     updateStats();
     applyFilters();
 
-    let msg = `✅ NimbusPost push complete!\n\n`;
+    let msg = `✅ NimbusPost shipment creation complete!\n\n`;
     if (shipped.length)  msg += `Created in NimbusPost: ${shipped.length}\n`;
     if (skipped.length)  msg += `Skipped (already had AWB): ${skipped.length}\n`;
     if (failures.length) {
@@ -1839,7 +1840,7 @@ async function npBulkShip(btn) {
     alert(msg);
   } catch (err) {
     if (progressMsg.isConnected) document.body.removeChild(progressMsg);
-    alert('NimbusPost push failed: ' + err.message);
+    alert('NimbusPost shipment creation failed: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = oldText; }
   }
