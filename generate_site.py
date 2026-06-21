@@ -1857,6 +1857,7 @@ body{
     linear-gradient(180deg,rgba(214,184,94,.08),transparent 34%,rgba(36,54,47,.14)),
     repeating-linear-gradient(90deg,rgba(214,184,94,.034) 0 1px,transparent 1px 84px),
     var(--bg);
+  overflow-x:clip;
 }
 .promo-banner{
   width:min(980px,calc(100% - 24px));
@@ -2008,6 +2009,8 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 .footer,.marquee-bar{
   background:linear-gradient(135deg,#090807,var(--ink-blue) 52%,#120d09);
 }
+.footer-bottom-links{flex-wrap:wrap;justify-content:flex-end;min-width:0}
+.shelf-row,.author-row,.tabs,.search-hints,.nav-links{max-width:100%;overscroll-behavior-x:contain}
 @media(max-width:780px){
   .promo-banner{
     width:calc(100% - 20px);
@@ -2023,6 +2026,9 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
     padding:.6rem .72rem;
   }
   .hero{padding-top:7.8rem}
+  .hero-title{font-size:clamp(2.65rem,13vw,4rem);line-height:.96;letter-spacing:0}
+  .hero-desc{font-size:.94rem;line-height:1.72}
+  .section-title{font-size:clamp(2rem,10vw,2.7rem);letter-spacing:0}
   .featured,.collections,.shelves-section,.author-spotlight,.all-categories,.newsletter,.pincode-section{
     max-width:calc(100% - 18px);
     border-radius:28px;
@@ -2043,6 +2049,13 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
     box-shadow:0 -16px 42px rgba(0,0,0,.45),var(--glass-highlight)!important;
   }
   body{padding-bottom:90px!important}
+  .book-name{font-size:1.08rem;line-height:1.25}
+  .book-author{font-size:.68rem;line-height:1.4}
+  .shelf-card{flex-basis:144px}
+  .shelf-card-name{font-size:.98rem;line-height:1.3}
+  .footer-bottom{align-items:flex-start;gap:1.2rem;flex-direction:column}
+  .footer-bottom-links{width:100%;justify-content:flex-start;gap:.7rem 1.1rem}
+  .footer-bottom-links a{font-size:.68rem;line-height:1.5}
   .mob-nav a,.mob-nav button{
     min-height:54px;
     border-radius:22px;
@@ -6504,8 +6517,8 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:400;color
 .summary-title{font-size:0.58rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold);margin-bottom:1.4rem;}
 .order-item{display:flex;gap:1rem;padding:0.9rem 0;border-bottom:1px solid rgba(201,168,76,0.1);min-width:0;}
 .order-item:last-child{border-bottom:none;}
-.item-img{width:52px;flex-shrink:0;aspect-ratio:2/3;background:var(--bg2);overflow:hidden;border:1px solid var(--border);}
-.item-img img{width:100%;height:100%;object-fit:cover;}
+.item-img{width:76px;flex-shrink:0;aspect-ratio:2/3;background:linear-gradient(145deg,rgba(255,255,255,.08),rgba(201,168,76,.07));overflow:hidden;border:1px solid var(--border);border-radius:14px;padding:5px;box-shadow:0 10px 26px rgba(0,0,0,.2);}
+.item-img img{width:100%;height:100%;object-fit:contain;border-radius:9px;}
 .item-info{flex:1;min-width:0;}
 .item-title{font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--white);line-height:1.3;margin-bottom:0.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .item-author{font-size:0.6rem;color:var(--cream-dim);letter-spacing:0.06em;margin-bottom:0.3rem;}
@@ -6614,7 +6627,7 @@ textarea{border-radius:24px!important}
 .btn-pay:hover,.btn-partial:hover,.btn-cod:hover{transform:translateY(-1px)}
 .btn-cod,.btn-partial{background:rgba(255,255,255,0.045)!important;border-color:var(--glass-border)!important}
 .checkout-qty-btn{border-radius:50%!important}
-.checkout-item{border-radius:22px;padding:0.55rem;background:rgba(255,255,255,0.025)}
+.order-item{border-radius:22px;padding:0.75rem;background:rgba(255,255,255,0.025)}
 .success-email-box{border-radius:24px}
 .checkout-processing{position:fixed;inset:0;z-index:20000;display:none;align-items:center;justify-content:center;padding:1rem;background:rgba(4,3,2,0.68);backdrop-filter:blur(18px) saturate(130%);-webkit-backdrop-filter:blur(18px) saturate(130%)}
 .checkout-processing.show{display:flex}
@@ -6661,6 +6674,11 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
   h1{font-size:1.7rem;margin-bottom:1.4rem;}
   .checkout-grid{grid-template-columns:1fr;gap:1.5rem;}
   .order-summary{order:-1;position:static!important;top:auto!important;padding:1.2rem;max-width:100%;overflow:hidden;}
+  .order-item{gap:.85rem;padding:.8rem .65rem;align-items:flex-start}
+  .item-img{width:88px;padding:6px;border-radius:16px}
+  .item-title{font-size:1.08rem;line-height:1.25;margin-top:.05rem}
+  .item-author{font-size:.66rem;line-height:1.4}
+  .item-qty-price{font-size:.74rem;line-height:1.45}
   .item-title{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
   .form-row{grid-template-columns:1fr;gap:0;}
   .pincode-row{grid-template-columns:110px 1fr;gap:0.7rem;}
