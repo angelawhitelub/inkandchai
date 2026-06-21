@@ -446,8 +446,9 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <div class="focus-actions">
       <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
+      <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Import all unshipped orders into the NimbusPost Orders panel without choosing couriers or generating AWBs.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
-      <span style="font-size:0.62rem;color:var(--cream-dim);line-height:1.5;max-width:290px;">Draft order sync requires a NimbusPost Channel Integration. This API button creates shipments and AWBs.</span>
+      <span style="font-size:0.62rem;color:var(--cream-dim);line-height:1.5;max-width:290px;">Panel import creates draft orders only. Shipment creation assigns couriers and AWBs.</span>
     </div>
   </section>
 
@@ -513,6 +514,9 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     </button>
     <button class="btn-outline" onclick="pushAllToShiprocket(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Push all pending/paid/COD unshipped orders to Shiprocket panel">
       🚀 Push All to Shiprocket
+    </button>
+    <button class="btn-outline" onclick="pushAllToNimbusPanel(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Import all unshipped orders into NimbusPost without assigning couriers or AWBs">
+      Push to NimbusPost Panel (No AWB)
     </button>
     <button class="btn-outline" onclick="openBroadcastModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(37,211,102,0.55);color:#25D366;" title="Send a WhatsApp template to all past customers. Use when paid ads are down to re-engage existing buyers.">
       📣 WhatsApp Broadcast
@@ -3080,6 +3084,35 @@ async function runReviewRequest(dryRun, btn) {
 }
 
 // ── Shiprocket: push all unshipped orders ────────────────────────────────────
+async function pushAllToNimbusPanel(btn) {
+  const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending'];
+  const unshipped = allOrders.filter(o => UNSHIPPED.includes(o.status));
+  if (!unshipped.length) { alert('No unshipped orders found in the current view.'); return; }
+  if (!confirm(`Push ${unshipped.length} unshipped order${unshipped.length > 1 ? 's' : ''} to the NimbusPost Orders panel?\n\nNo courier will be selected and no AWB will be generated. You can ship these orders later from NimbusPost.`)) return;
+
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Pushing…'; }
+
+  try {
+    const res = await fetch('/.netlify/functions/nimbuspost-order-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ all_unshipped: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const s = data.summary || {};
+    let message = `NimbusPost panel import complete:\n\n✅ Pushed: ${s.pushed || 0}\n⏭ Already existed: ${s.skipped || 0}\n❌ Failed: ${s.failed || 0}`;
+    if (data.errors?.length) message += `\n\nFirst errors:\n${data.errors.slice(0, 5).join('\n')}`;
+    message += '\n\nOpen NimbusPost → Orders to assign couriers and generate AWBs.';
+    alert(message);
+  } catch (err) {
+    alert('NimbusPost panel push failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
 async function pushAllToShiprocket(btn) {
   const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending','pending_phonepe','pending_partial_phonepe'];
   const unshipped = allOrders.filter(o => UNSHIPPED.includes(o.status));
