@@ -159,14 +159,14 @@ exports.handler = async (event) => {
       .eq('razorpay_payment_id', razorpay_payment_id)
       .maybeSingle();
     if (existingOrder) {
-      await supabase.from('orders').update({
-        status:           isPartial ? 'partial_cod_pending' : 'paid',
-        customer_name:    customer?.name    || '',
-        customer_email:   customer?.email   || '',
-        customer_phone:   customer?.phone   || '',
-        customer_address: customer?.address || '',
-        cart_items:       cart,
-      }).eq('id', existingOrder.id);
+      // Update with the real browser-side details, but NEVER blank a field that the
+      // webhook may have already filled — only overwrite when we have a value.
+      const upd = { status: isPartial ? 'partial_cod_pending' : 'paid', cart_items: cart };
+      if (customer?.name)    upd.customer_name    = customer.name;
+      if (customer?.email)   upd.customer_email   = customer.email;
+      if (customer?.phone)   upd.customer_phone   = customer.phone;
+      if (customer?.address) upd.customer_address = customer.address;
+      await supabase.from('orders').update(upd).eq('id', existingOrder.id);
       return {
         statusCode: 200,
         headers: CORS,
