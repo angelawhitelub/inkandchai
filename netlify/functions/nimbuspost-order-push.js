@@ -109,16 +109,38 @@ function buildPayload(order) {
   };
 }
 
+// Flatten a payload object into FormData using bracket notation for nested
+// values: { products: [{ name: 'x' }] } -> products[0][name] = 'x'.
+// NimbusPost's panel API (/api/orders/create) ONLY accepts multipart/form-data;
+// it 404s with "Invalid Content-Type" on application/json.
+function appendFormField(form, key, value) {
+  if (value === null || value === undefined) return;
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => appendFormField(form, `${key}[${i}]`, v));
+  } else if (typeof value === 'object') {
+    for (const k of Object.keys(value)) appendFormField(form, `${key}[${k}]`, value[k]);
+  } else {
+    form.append(key, String(value));
+  }
+}
+
+function toFormData(payload) {
+  const form = new FormData();
+  for (const k of Object.keys(payload)) appendFormField(form, k, payload[k]);
+  return form;
+}
+
 async function pushOrder(order, apiKey) {
   const payload = buildPayload(order);
   const response = await fetch(NP_ORDER_URL, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      // Do NOT set Content-Type — fetch will add multipart/form-data with the
+      // correct boundary automatically when body is a FormData instance.
       'Accept': 'application/json',
       'NP-API-KEY': apiKey,
     },
-    body: JSON.stringify(payload),
+    body: toFormData(payload),
   });
 
   const text = await response.text();
