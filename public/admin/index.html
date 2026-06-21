@@ -1588,6 +1588,12 @@ function _drawTable() {
           onmouseout="this.style.background='rgba(201,168,76,0.08)';">
           🚀 Ship via NimbusPost
         </button>` : ''}
+        <button onclick="resendConfirmation('${esc(o.razorpay_order_id||o.id)}', this)" title="Re-send order confirmation via WhatsApp + email"
+          style="display:block;margin-top:0.4rem;background:rgba(109,191,109,0.08);border:1px solid rgba(109,191,109,0.45);color:#6dbf6d;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;"
+          onmouseover="this.style.background='rgba(109,191,109,0.18)';"
+          onmouseout="this.style.background='rgba(109,191,109,0.08)';">
+          ✉ Resend confirmation
+        </button>
         <button onclick="deleteOrder('${esc(o.id)}','${esc(o.razorpay_order_id||o.id)}')" title="Permanently delete this order"
           style="display:block;margin-top:0.4rem;background:transparent;border:1px solid rgba(224,80,80,0.35);color:#e05050;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;"
           onmouseover="this.style.background='rgba(224,80,80,0.12)';this.style.borderColor='rgba(224,80,80,0.6)';"
@@ -2583,6 +2589,32 @@ function setDayRange(btn, days) {
 }
 
 // ── Delete a single order ──────────────────────────────────────────────────
+async function resendConfirmation(orderId, btn) {
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '⏳ Sending…';
+  try {
+    const res = await fetch('/.netlify/functions/resend-confirmation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || data.result?.wa?.error || 'Send failed');
+    const wa = data.result?.wa, em = data.result?.email;
+    const parts = [];
+    if (wa?.ok)    parts.push('WhatsApp ✓');
+    else if (wa)   parts.push(`WhatsApp ✗ (${wa.error})`);
+    if (em?.ok)    parts.push('email ✓');
+    else if (em && em.error !== 'no email on order') parts.push(`email ✗ (${em.error})`);
+    alert(`${orderId}: ${parts.join(' · ') || 'sent'}`);
+    btn.innerHTML = '✓ Sent';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2500);
+  } catch (e) {
+    alert(`Failed to resend ${orderId}: ${e.message}`);
+    btn.innerHTML = orig; btn.disabled = false;
+  }
+}
+
 async function deleteOrder(id, displayId) {
   if (!confirm(`Permanently delete order ${displayId}?\n\nThis cannot be undone. The customer will NOT be notified.`)) return;
   try {
