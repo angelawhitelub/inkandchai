@@ -1290,7 +1290,17 @@ function showSuccess(type, orderId, addr, value) {
         <strong style="color:var(--white);">My Orders</strong> on
         <a href="/" style="color:var(--gold);">inkandchai.in</a> to track your order anytime.
       </p>
-    </div>` : ''}
+    </div>` : (addr.phone ? `
+    <div class="success-email-box">
+      <p style="font-size:0.68rem;color:var(--gold);margin-bottom:0.35rem;letter-spacing:0.07em;">
+        💬 Confirmation sent on WhatsApp to +91 ${esc(String(addr.phone).slice(-10))}
+      </p>
+      <p style="font-size:0.64rem;color:var(--cream-dim);line-height:1.75;margin:0;">
+        Your order details are on WhatsApp. You can also sign in and open
+        <strong style="color:var(--white);">My Orders</strong> on
+        <a href="/" style="color:var(--gold);">inkandchai.in</a> to track this order anytime.
+      </p>
+    </div>` : '')}
     <div id="scratchCardSlot"></div>
     <a href="/" class="btn-home">← Continue Shopping</a>
   `;
