@@ -7303,8 +7303,11 @@ function collectAddr() {
   if (!addr)             { alert('Please enter your delivery address.'); return null; }
   if (pin.length !== 6)  { alert('Please enter a valid 6-digit pincode.'); return null; }
 
+  // Normalise phone to digits only so DB lookups (My Orders / track) always match
+  // — customers often type spaces or dashes ('87994 81113').
+  const phoneDigits = phone.replace(/\\D/g, '');
   return {
-    name, phone, email,
+    name, phone: phoneDigits, email,
     address: [addr, city, state, pin].filter(Boolean).join(', '),
     pincode: pin, city, state,
   };
