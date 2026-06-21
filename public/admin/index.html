@@ -446,7 +446,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <div class="focus-actions">
       <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
-      <button class="btn-green" onclick="npBulkShip()" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);">🚀 Bulk Ship via NimbusPost</button>
+      <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create all unshipped orders in NimbusPost, then manage labels and pickup from the NimbusPost panel">🚀 Push All Unshipped to NimbusPost</button>
     </div>
   </section>
 
@@ -475,9 +475,9 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="btn-green" onclick="exportUnshippedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       ⬇ Unshipped CSV
     </button>
-    <button onclick="npBulkShip()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.45);color:var(--gold);cursor:pointer;font-family:'Montserrat',sans-serif;letter-spacing:0.08em;text-transform:uppercase;transition:background 0.2s;"
+    <button onclick="npBulkShip(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.45);color:var(--gold);cursor:pointer;font-family:'Montserrat',sans-serif;letter-spacing:0.08em;text-transform:uppercase;transition:background 0.2s;"
       onmouseover="this.style.background='rgba(201,168,76,0.22)';" onmouseout="this.style.background='rgba(201,168,76,0.12)';">
-      🚀 NimbusPost All
+      🚀 Push All to NimbusPost
     </button>
     <button class="btn-outline" onclick="selectVisibleOrders()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       Select Visible
@@ -1752,34 +1752,61 @@ async function npShipOrder(orderId, btn) {
   }
 }
 
-// Bulk ship all currently-visible unshipped orders via NimbusPost
-async function npBulkShip() {
-  const unshipped = (currentFilter === '__unshipped' ? filteredOrders : allOrders).filter(orderIsUnshipped);
-  if (!unshipped.length) { alert('No unshipped orders to process.'); return; }
+// Push every unshipped order into NimbusPost. Creating the shipment is the
+// NimbusPost API's import mechanism; labels, pickup and dispatch stay in its panel.
+async function npBulkShip(btn) {
+  const oldText = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Loading all orders…'; }
+
+  let unshipped;
+  try {
+    const completeOrders = await fetchAllOrdersForExport();
+    unshipped = completeOrders.filter(orderIsUnshipped);
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = oldText; }
+    alert('Could not load all unshipped orders: ' + err.message);
+    return;
+  }
+  if (!unshipped.length) {
+    if (btn) { btn.disabled = false; btn.innerHTML = oldText; }
+    alert('No unshipped orders to push.');
+    return;
+  }
 
   const proceed = confirm(
-    `🚀 Bulk NimbusPost Ship\n\n` +
-    `This will create shipments for ${unshipped.length} unshipped order(s).\n` +
-    `AWBs will be auto-assigned to the cheapest available courier for each pincode.\n\n` +
-    `Proceed?`
+    `🚀 Push All Unshipped Orders to NimbusPost\n\n` +
+    `${unshipped.length} order(s) will be created in your NimbusPost panel.\n` +
+    `NimbusPost will assign AWBs using the cheapest serviceable courier.\n` +
+    `You can then manage labels, pickup and dispatch from NimbusPost.\n\n` +
+    `Continue?`
   );
-  if (!proceed) return;
+  if (!proceed) {
+    if (btn) { btn.disabled = false; btn.innerHTML = oldText; }
+    return;
+  }
 
   const ids = unshipped.map(o => o.razorpay_order_id || o.id);
 
   // Show progress
   const progressMsg = document.createElement('div');
   progressMsg.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#1c1916;border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:1rem 1.5rem;font-size:0.75rem;z-index:9999;font-family:Montserrat,sans-serif;letter-spacing:0.08em;';
-  progressMsg.textContent = `⏳ Creating ${ids.length} shipments on NimbusPost…`;
+  progressMsg.textContent = `⏳ Pushing 0 of ${ids.length} orders to NimbusPost…`;
   document.body.appendChild(progressMsg);
 
   try {
-    const data = await _npCall({ order_ids: ids });
+    const shipped = [];
+    const skipped = [];
+    const failures = [];
+    const batchSize = 20;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      const data = await _npCall({ order_ids: batch });
+      shipped.push(...(data.shipped || []));
+      skipped.push(...(data.skipped || []));
+      failures.push(...(data.failures || []));
+      progressMsg.textContent = `⏳ Pushed ${Math.min(i + batch.length, ids.length)} of ${ids.length} orders to NimbusPost…`;
+    }
     document.body.removeChild(progressMsg);
-
-    const shipped  = data.shipped  || [];
-    const skipped  = data.skipped  || [];
-    const failures = data.failures || [];
 
     // Update local cache
     for (const s of shipped) {
@@ -1794,18 +1821,21 @@ async function npBulkShip() {
     updateStats();
     applyFilters();
 
-    let msg = `✅ Bulk NimbusPost complete!\n\n`;
-    if (shipped.length)  msg += `Shipped: ${shipped.length}\n`;
+    let msg = `✅ NimbusPost push complete!\n\n`;
+    if (shipped.length)  msg += `Created in NimbusPost: ${shipped.length}\n`;
     if (skipped.length)  msg += `Skipped (already had AWB): ${skipped.length}\n`;
     if (failures.length) {
       msg += `\n❌ Failed (${failures.length}):\n`;
       failures.slice(0, 5).forEach(f => { msg += `• ${f.order_id}: ${f.error}\n`; });
       if (failures.length > 5) msg += `… and ${failures.length - 5} more\n`;
     }
+    msg += `\nOpen the NimbusPost panel to manage labels, pickup and dispatch.`;
     alert(msg);
   } catch (err) {
-    document.body.removeChild(progressMsg);
-    alert('Bulk ship failed: ' + err.message);
+    if (progressMsg.isConnected) document.body.removeChild(progressMsg);
+    alert('NimbusPost push failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = oldText; }
   }
 }
 
