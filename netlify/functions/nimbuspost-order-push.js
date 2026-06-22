@@ -159,18 +159,20 @@ function normalizeOrderNumber(value) {
 }
 
 // NimbusPost does not enforce unique order_number values, so we read the panel
-// first and deduplicate ourselves. NimbusPost's /api/orders endpoint hard-caps
-// `page` at 50 (it 404s on page 51), so we page NEWEST-FIRST and stop at the
-// cap: any order recent enough to collide with what we're pushing will be on
-// these pages. Failures unrelated to that cap still abort the import, to avoid
-// creating a second batch of duplicates.
-const NP_MAX_PAGE = 50; // NimbusPost rejects page > 50
+// first and deduplicate ourselves. We only scan the MOST RECENT few pages
+// (newest-first): the orders we push are unshipped (recent), so a duplicate can
+// only be a recently-pushed order — it will be on these pages. Scanning the
+// whole panel (1700+ orders, up to 50 sequential calls) just times the function
+// out and returns an HTML error. NimbusPost also hard-caps `page` at 50.
+const NP_MAX_PAGE = 50;    // NimbusPost rejects page > 50
+const NP_SCAN_PAGES = 5;   // recent pages are enough to catch re-pushes; keeps us well under the function timeout
 
 async function getExistingOrderNumbers(apiKey) {
   const existing = new Set();
   const perPage = 100;
+  const lastPage = Math.min(NP_SCAN_PAGES, NP_MAX_PAGE);
 
-  for (let page = 1; page <= NP_MAX_PAGE; page++) {
+  for (let page = 1; page <= lastPage; page++) {
     const url = new URL(NP_ORDERS_URL);
     url.searchParams.set('page', String(page));
     url.searchParams.set('per_page', String(perPage));
@@ -273,7 +275,16 @@ exports.handler = async (event) => {
     const { data: orders, error } = await query;
     if (error) throw error;
 
-    const existingOrderNumbers = await getExistingOrderNumbers(apiKey);
+    // Dedup is best-effort: if the panel lookup fails, proceed with the push
+    // and flag it, rather than blocking the whole import.
+    let existingOrderNumbers = new Set();
+    let dedupWarning = null;
+    try {
+      existingOrderNumbers = await getExistingOrderNumbers(apiKey);
+    } catch (err) {
+      dedupWarning = `Duplicate pre-check skipped (${String(err.message || err).slice(0, 160)}). Orders were still pushed.`;
+      console.warn('[nimbuspost-order-push] preflight skipped:', err.message);
+    }
     const summary = { pushed: 0, skipped: 0, failed: 0, errors: [] };
     for (const order of orders || []) {
       const orderNumber = normalizeOrderNumber(order.razorpay_order_id || order.id);
@@ -302,7 +313,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ summary, errors: summary.errors }),
+      body: JSON.stringify({ summary, errors: summary.errors, warning: dedupWarning }),
     };
   } catch (err) {
     console.error('[nimbuspost-order-push]', err);
