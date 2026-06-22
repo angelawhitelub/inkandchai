@@ -8,6 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
+const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -152,6 +153,18 @@ exports.handler = async (event) => {
       status:          'cod_pending',
       createdAt:       new Date().toISOString(),
     }).catch(e => console.error('[Shiprocket] push failed (non-fatal):', e.message));
+
+    // ── Auto-push to NimbusPost panel (no AWB) ─────────────────────────────
+    // Fire-and-forget; admin still has a manual bulk "Push to NimbusPost Panel".
+    if (!needsConfirm) pushOrderToNimbusPost({
+      razorpay_order_id: orderId,
+      status: 'cod_pending',
+      customer_name: customer.name || '',
+      customer_phone: customer.phone || '',
+      customer_address: customer.address || '',
+      amount_paise: Math.round(total * 100),
+      cart_items: cart,
+    }).catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
 
   } catch (err) {
     console.error('Supabase error (non-fatal):', err.message);

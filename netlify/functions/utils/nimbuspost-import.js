@@ -1,0 +1,124 @@
+/**
+ * Shared helper: push an order to the NimbusPost panel without assigning an AWB.
+ *
+ * Used by:
+ *  - nimbuspost-order-push.js  (admin bulk import)
+ *  - cod-order.js, verify-payment.js  (auto-push on order creation)
+ *
+ * NimbusPost panel API quirks:
+ *  - Endpoint: POST https://ship.nimbuspost.com/api/orders/create
+ *  - Auth: NP-API-KEY header (env NIMBUSPOST_API_KEY) — NOT the Partners token
+ *  - Body: ONLY multipart/form-data — application/json returns 404
+ *  - Nested fields: bracket notation, e.g. products[0][name]
+ */
+
+const NP_ORDER_URL = 'https://ship.nimbuspost.com/api/orders/create';
+
+function parseAddress(value) {
+  const parts = String(value || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!parts.length) return { address: '', city: '', state: '', pincode: '' };
+  // Find a 6-digit pincode in any segment; what comes before it is city/state.
+  let pinIdx = parts.findIndex(p => /^\d{6}$/.test(p));
+  let pincode = '';
+  if (pinIdx >= 0) { pincode = parts[pinIdx]; parts.splice(pinIdx, 1); }
+  else {
+    const last = parts[parts.length - 1] || '';
+    const m = last.match(/\b(\d{6})\b/);
+    if (m) { pincode = m[1]; parts[parts.length - 1] = last.replace(m[1], '').replace(/[,\s-]+$/, '').trim() || ''; }
+  }
+  const state = (parts.pop() || '').slice(0, 64);
+  const city  = (parts.pop() || '').slice(0, 64);
+  const address = parts.join(', ').slice(0, 200);
+  return { address, city, state, pincode };
+}
+
+function splitName(value) {
+  const tokens = String(value || '').trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return { first: 'Customer', last: '' };
+  return { first: tokens[0].slice(0, 60), last: tokens.slice(1).join(' ').slice(0, 60) };
+}
+
+function parseItems(value) {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  try { const v = JSON.parse(value); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+
+function buildPayload(order) {
+  const orderId = String(order.razorpay_order_id || order.id);
+  const items = parseItems(order.cart_items);
+  const amountRs = Math.max(0, Number(order.amount_paise || 0) / 100);
+  const itemSubtotal = items.reduce((s, i) => s + (Number(i.price || 0) * Math.max(1, Number(i.qty || i.quantity || 1))), 0);
+  const paymentMeta = items[0]?._payment || {};
+  const isPartialCod = order.status === 'partial_cod_pending';
+  const amount = Math.round(isPartialCod
+    ? Math.max(0, Number(paymentMeta.balance || 0))
+    : (amountRs || itemSubtotal));
+  const totalQty = items.reduce((s, i) => s + Math.max(1, Number(i.qty || i.quantity || 1)), 0) || 1;
+  const name = splitName(order.customer_name);
+  const addr = parseAddress(order.customer_address);
+  const phone = String(order.customer_phone || '').replace(/\D/g, '').slice(-10);
+  const isCod = ['cod_pending', 'partial_cod_pending'].includes(order.status);
+
+  if (!phone || phone.length !== 10) throw new Error('Customer phone must contain 10 digits');
+  if (!addr.pincode) throw new Error('Customer address has no 6-digit pincode');
+  if (!addr.city || !addr.state) throw new Error('Customer address must include city and state');
+
+  return {
+    order_number: orderId,
+    payment_method: isCod ? 'COD' : 'prepaid',
+    amount,
+    fname: name.first,
+    lname: name.last,
+    address: addr.address,
+    address_2: '',
+    phone: Number(phone),
+    city: addr.city,
+    state: addr.state,
+    country: 'India',
+    pincode: Number(addr.pincode),
+    weight: Math.max(300, totalQty * 300),
+    length: 22,
+    breadth: 15,
+    height: Math.max(4, totalQty * 3),
+    products: items.length ? items.map(i => ({
+      name: String(i.title || i.name || 'Book').slice(0, 150),
+      qty: Math.max(1, Number(i.qty || i.quantity || 1)),
+      price: Math.round(Number(i.price || 0)),
+    })) : [{ name: 'Books', qty: 1, price: amount }],
+  };
+}
+
+function appendFormField(form, key, value) {
+  if (value === null || value === undefined) return;
+  if (Array.isArray(value)) value.forEach((v, i) => appendFormField(form, `${key}[${i}]`, v));
+  else if (typeof value === 'object') for (const k of Object.keys(value)) appendFormField(form, `${key}[${k}]`, value[k]);
+  else form.append(key, String(value));
+}
+
+function toFormData(payload) {
+  const form = new FormData();
+  for (const k of Object.keys(payload)) appendFormField(form, k, payload[k]);
+  return form;
+}
+
+async function pushOrderToNimbusPost(order, { apiKey } = {}) {
+  const key = apiKey || process.env.NIMBUSPOST_API_KEY;
+  if (!key) throw new Error('NIMBUSPOST_API_KEY is not configured');
+
+  const payload = buildPayload(order);
+  const res = await fetch(NP_ORDER_URL, {
+    method: 'POST',
+    // Don't set Content-Type — fetch adds multipart/form-data with the boundary.
+    headers: { 'Accept': 'application/json', 'NP-API-KEY': key },
+    body: toFormData(payload),
+  });
+  const text = await res.text();
+  let data; try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
+  if (!res.ok || data.status === false || data.success === false || data.error) {
+    throw new Error(`NimbusPost order import failed (${res.status}): ${JSON.stringify(data)}`);
+  }
+  return data;
+}
+
+module.exports = { pushOrderToNimbusPost, buildPayload, toFormData };

@@ -388,8 +388,8 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
         </div>
 
         <div class="form-group">
-          <label for="ch-email">Email Address</label>
-          <input id="ch-email" type="email" placeholder="you@example.com" autocomplete="email"/>
+          <label for="ch-email">Email Address <span style="color:var(--cream-dim);font-weight:400;font-size:0.78em;letter-spacing:0.08em;">— for receipt (optional)</span></label>
+          <input id="ch-email" type="email" placeholder="you@example.com" autocomplete="email" inputmode="email"/>
         </div>
 
         <div class="form-group">
@@ -400,14 +400,14 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
         <div class="pincode-row">
           <div>
             <label for="ch-pin">Pincode *</label>
-            <input id="ch-pin" type="text" inputmode="numeric" maxlength="6" placeholder="6 digits"
+            <input id="ch-pin" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="6 digits"
               oninput="handlePin(this.value)"/>
           </div>
-          <div>
+          <div class="ch-city-col">
             <label for="ch-city">City</label>
             <input id="ch-city" type="text" placeholder="Auto-filled"/>
           </div>
-          <div>
+          <div class="ch-state-col">
             <label for="ch-state">State</label>
             <input id="ch-state" type="text" placeholder="Auto-filled"/>
           </div>
@@ -906,9 +906,17 @@ async function saveAbandonedCheckout(status = 'open', orderId = '') {
 let _pinTimer = null;
 function handlePin(val) {
   const msg = document.getElementById('pinMsg');
+  const cityCol  = document.querySelector('.ch-city-col');
+  const stateCol = document.querySelector('.ch-state-col');
   clearTimeout(_pinTimer);
   val = val.replace(/\D/g,'');
-  if (val.length < 6) { msg.textContent = ''; msg.style.color = ''; return; }
+  if (val.length < 6) {
+    msg.textContent = ''; msg.style.color = '';
+    // Show city/state inputs again so manual edit works while typing.
+    if (cityCol)  cityCol.style.display  = '';
+    if (stateCol) stateCol.style.display = '';
+    return;
+  }
   msg.textContent = 'Looking up pincode…';
   msg.style.color = '#a09080';
   _pinTimer = setTimeout(async () => {
@@ -919,17 +927,33 @@ function handlePin(val) {
         if (data.city) document.getElementById('ch-city').value  = data.city;
         document.getElementById('ch-state').value = data.state;
         if (data.city) {
-          msg.textContent = '✓ ' + data.city + ', ' + data.state;
+          msg.textContent = '✓ ' + data.city + ', ' + data.state + '  (edit)';
           msg.style.color = '#8fa87a';
+          msg.style.cursor = 'pointer';
+          msg.onclick = () => {
+            if (cityCol)  cityCol.style.display  = '';
+            if (stateCol) stateCol.style.display = '';
+            msg.onclick = null; msg.style.cursor = '';
+          };
+          // Collapse the manual inputs — less mobile clutter; user can tap "edit".
+          if (cityCol)  cityCol.style.display  = 'none';
+          if (stateCol) stateCol.style.display = 'none';
+          // Dismiss the mobile keyboard now that the address is complete.
+          const pinEl = document.getElementById('ch-pin');
+          if (pinEl) pinEl.blur();
         } else {
           msg.textContent = '✓ ' + data.state + ' — please enter your city.';
           msg.style.color = '#c9a84c';
+          if (cityCol)  cityCol.style.display  = '';
+          if (stateCol) stateCol.style.display = '';
         }
         return;
       }
     } catch(e){}
     msg.textContent = 'Pincode not found — enter city and state manually.';
     msg.style.color = '#c97a7a';
+    if (cityCol)  cityCol.style.display  = '';
+    if (stateCol) stateCol.style.display = '';
   }, 500);
 }
 

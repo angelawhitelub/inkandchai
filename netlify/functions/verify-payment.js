@@ -9,6 +9,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
+const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 
 const CORS = {
@@ -215,6 +216,17 @@ exports.handler = async (event) => {
       createdAt:        new Date().toISOString(),
     }).catch(e => console.error('[Shiprocket] push failed (non-fatal):', e.message));
     // Non-fatal: fire & forget — don't block the response if Shiprocket is slow
+
+    // ── Auto-push to NimbusPost panel (no AWB) ─────────────────────────────
+    pushOrderToNimbusPost({
+      razorpay_order_id: inkOrderId,
+      status: isPartial ? 'partial_cod_pending' : 'paid',
+      customer_name: customer?.name || '',
+      customer_phone: customer?.phone || '',
+      customer_address: customer?.address || '',
+      amount_paise: amount,
+      cart_items: cart,
+    }).catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
 
     // ── Scratch card reward — only for full prepaid orders (not partial COD) ─
     if (!isPartial) {

@@ -17,6 +17,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { generateCardForOrder } = require('./utils/scratch-cards');
+const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 
 const CORS = { 'Content-Type': 'application/json' };
 
@@ -151,6 +152,17 @@ exports.handler = async (event) => {
   }
 
   console.log(`[razorpay-webhook] ✅ Saved missed order: ${inkOrderId} (${razorpay_payment_id})`);
+
+  // ── Auto-push recovered order to NimbusPost panel (no AWB) ───────────────
+  pushOrderToNimbusPost({
+    razorpay_order_id: inkOrderId,
+    status: 'paid',
+    customer_name: name || '',
+    customer_phone: phone || '',
+    customer_address: address || '',
+    amount_paise: amount_paise,
+    cart_items: cartItems,
+  }).catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
 
   // ── Scratch card reward (non-fatal) ──────────────────────────────────────
   generateCardForOrder(supabase, {

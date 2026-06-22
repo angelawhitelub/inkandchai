@@ -21,6 +21,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail }     = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
+const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 
 let _tokenCache = { token: null, expiresAt: 0 };
@@ -184,6 +185,10 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
       status:          update.status,
       createdAt:       order.created_at,
     }).catch(e => console.error('[Shiprocket] push failed (non-fatal):', e.message));
+
+    // ── Auto-push to NimbusPost panel (no AWB) ─────────────────────────────
+    pushOrderToNimbusPost({ ...order, status: update.status })
+      .catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
 
     // ── Scratch card reward — only for full prepaid orders (not partial COD) ─
     if (update.status === 'paid') {
