@@ -170,8 +170,6 @@ async function getExistingOrderNumbers(apiKey) {
     const url = new URL(NP_ORDERS_URL);
     url.searchParams.set('page', String(page));
     url.searchParams.set('per_page', String(perPage));
-    url.searchParams.set('sort', 'DESC');
-    url.searchParams.set('sort_by', 'id');
 
     const response = await fetch(url, {
       headers: { 'Accept': 'application/json', 'NP-API-KEY': apiKey },
