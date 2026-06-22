@@ -834,7 +834,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <div class="abandoned-head">
       <div>
         <h2>Return Requests</h2>
-        <p>Customer return requests. Approve, reject, or create a NimbusPost reverse pickup (customer → Delhi office).</p>
+        <p>Customer return requests. Approve/reject, auto-book a NimbusPost reverse pickup, or enter your own tracking ID + courier — the customer is notified to hand over the books at each step.</p>
       </div>
       <div class="mini-actions">
         <button class="btn-outline" onclick="fetchReturnRequests()">↻ Refresh</button>
@@ -3546,6 +3546,7 @@ function renderReturns() {
     const canPickup = !r.awb && r.status === 'approved';
     const canApprove = r.status === 'pending';
     const canReject  = r.status === 'pending';
+    const canTrack   = !r.awb && r.status !== 'rejected';
 
     return `<tr>
       <td style="white-space:nowrap;font-size:0.72rem;">${date}</td>
@@ -3561,10 +3562,15 @@ function renderReturns() {
       <td>${awbHtml}</td>
       <td>
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
-          ${canPickup ? `<button class="btn-gold" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturn('${r.id}',this)">Push to NimbusPost</button>` : ''}
           ${canApprove ? `<button class="btn-green" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="approveReturn('${r.id}',this)">✓ Approve</button>` : ''}
           ${canReject  ? `<button class="btn-danger" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="rejectReturn('${r.id}',this)">✗ Reject</button>` : ''}
+          ${canPickup ? `<button class="btn-outline" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturn('${r.id}',this)" title="Auto-book a reverse pickup via NimbusPost">🚚 Auto Pickup (NimbusPost)</button>` : ''}
         </div>
+        ${canTrack ? `<div style="display:flex;gap:0.3rem;flex-wrap:wrap;align-items:center;margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);">
+          <input id="trk_${r.id}" placeholder="Tracking ID" style="width:100px;font-size:0.62rem;padding:0.3rem 0.4rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);border-radius:4px;">
+          <input id="cour_${r.id}" placeholder="Courier name" style="width:95px;font-size:0.62rem;padding:0.3rem 0.4rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);border-radius:4px;">
+          <button class="btn-gold" style="font-size:0.6rem;padding:0.35rem 0.7rem;" onclick="addReturnTracking('${r.id}',this)" title="Save tracking ID and notify the customer to hand over the books">＋ Schedule &amp; Notify</button>
+        </div>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -3587,14 +3593,32 @@ async function _returnCall(body, btn) {
 }
 
 async function processReturn(returnId, btn) {
-  if (!confirm('Push this approved return to NimbusPost?\n\nThis creates a reverse shipment, AWB, and pickup request from the customer address to the Delhi return office.')) return;
+  if (!confirm('Auto-book a NimbusPost reverse pickup for this approved return?\n\nThis creates a reverse shipment, AWB, and pickup request from the customer address to the Delhi return office. The customer will be notified to hand over the books.')) return;
   try {
     const data = await _returnCall({ return_request_id: returnId }, btn);
-    alert(`✅ Reverse pickup created!\nAWB: ${data.awb}\nCourier: ${data.courier_name}\nFrom: ${data.pickup_from}`);
+    alert(`✅ Reverse pickup created & customer notified!\nAWB: ${data.awb}\nCourier: ${data.courier_name}\nFrom: ${data.pickup_from}`);
     await fetchReturnRequests();
   } catch (e) {
     alert('Error: ' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = 'Push to NimbusPost'; }
+    if (btn) { btn.disabled = false; btn.textContent = '🚚 Auto Pickup (NimbusPost)'; }
+  }
+}
+
+async function addReturnTracking(returnId, btn) {
+  const awb     = (document.getElementById('trk_'  + returnId)?.value || '').trim();
+  const courier = (document.getElementById('cour_' + returnId)?.value || '').trim();
+  if (!awb) { alert('Enter a tracking ID first.'); return; }
+  if (!confirm(`Schedule pickup with tracking ${awb}${courier ? ' via ' + courier : ''} and notify the customer to hand over the books?`)) return;
+  try {
+    const data = await _returnCall(
+      { return_request_id: returnId, action: 'add_tracking', awb, courier_name: courier },
+      btn,
+    );
+    alert(`✅ Tracking saved & customer notified.\nTracking: ${data.awb}${data.courier_name ? '\nCourier: ' + data.courier_name : ''}`);
+    await fetchReturnRequests();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '＋ Schedule & Notify'; }
   }
 }
 

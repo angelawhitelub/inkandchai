@@ -19,8 +19,11 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { sendWhatsApp } = require('./utils/whatsapp');
+const { sendEmail } = require('./utils/email');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
+const STORE_NAME = 'Ink and Chai';
 
 // ── Our warehouse / return destination ────────────────────────────────────
 const RETURN_ADDRESS = {
@@ -90,6 +93,82 @@ async function npAuthenticate() {
   return token;
 }
 
+// ── Customer notifications ───────────────────────────────────────────────────
+function firstName(name) {
+  return (name || 'there').trim().split(/\s+/)[0] || 'there';
+}
+
+function approvedEmailHtml(ret) {
+  const oid = ret.order_display_id || ret.order_id || '';
+  return `<div style="font-family:Georgia,serif;color:#3a2f25;max-width:520px;margin:0 auto;">
+    <h2 style="color:#8a6a1f;">Your return has been approved ✓</h2>
+    <p>Hi ${firstName(ret.customer_name)},</p>
+    <p>Good news — your return request for order <strong>${oid}</strong> has been approved.</p>
+    <p>We're arranging a courier pickup from your address. You'll receive another message with the
+       courier name and tracking ID once the pickup is scheduled. Please keep the books packed and ready.</p>
+    <p style="color:#6f6255;font-size:13px;">Thank you,<br>${STORE_NAME}</p>
+  </div>`;
+}
+
+function pickupEmailHtml(ret, awb, courier) {
+  const oid = ret.order_display_id || ret.order_id || '';
+  const courierLine = courier ? ` by <strong>${courier}</strong>` : '';
+  return `<div style="font-family:Georgia,serif;color:#3a2f25;max-width:520px;margin:0 auto;">
+    <h2 style="color:#8a6a1f;">Return pickup scheduled 🚚</h2>
+    <p>Hi ${firstName(ret.customer_name)},</p>
+    <p>Your return for order <strong>${oid}</strong> has been scheduled for pickup${courierLine}.</p>
+    ${awb ? `<p><strong>Tracking ID:</strong> ${awb}</p>` : ''}
+    <p>Please <strong>keep the books packed</strong> and hand them over to the courier partner when they
+       arrive to collect the parcel.</p>
+    <p style="color:#6f6255;font-size:13px;">Thank you,<br>${STORE_NAME}</p>
+  </div>`;
+}
+
+// Best-effort: email + WhatsApp. Never throws (notifications must not block the flow).
+async function notifyApproved(ret) {
+  try {
+    if (ret.customer_email) {
+      await sendEmail({
+        to: ret.customer_email,
+        subject: `Your return has been approved (${ret.order_display_id || ret.order_id})`,
+        html: approvedEmailHtml(ret),
+      });
+    }
+    if (ret.customer_phone) {
+      await sendWhatsApp({
+        to: ret.customer_phone,
+        template: 'return_approved',
+        params: [firstName(ret.customer_name), String(ret.order_display_id || ret.order_id || '')],
+      });
+    }
+  } catch (e) { console.error('notifyApproved failed:', e.message); }
+}
+
+async function notifyPickupScheduled(ret, awb, courier) {
+  const oid = ret.order_display_id || ret.order_id || '';
+  try {
+    if (ret.customer_email) {
+      await sendEmail({
+        to: ret.customer_email,
+        subject: `Return pickup scheduled (${oid})`,
+        html: pickupEmailHtml(ret, awb, courier),
+      });
+    }
+    if (ret.customer_phone) {
+      await sendWhatsApp({
+        to: ret.customer_phone,
+        template: 'return_pickup_scheduled',
+        params: [
+          firstName(ret.customer_name),
+          String(oid),
+          courier || 'our courier partner',
+          String(awb || ''),
+        ],
+      });
+    }
+  } catch (e) { console.error('notifyPickupScheduled failed:', e.message); }
+}
+
 // ── Handler ────────────────────────────────────────────────────────────────
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
@@ -127,7 +206,28 @@ exports.handler = async (event) => {
 
     if (action === 'approve') {
       await supabase.from('return_requests').update({ status: 'approved' }).eq('id', return_request_id);
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, status: 'approved' }) };
+      await notifyApproved(ret);
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, status: 'approved', notified: true }) };
+    }
+
+    // Manually attach a tracking ID + courier (when you ship the return yourself,
+    // outside NimbusPost) and notify the customer to hand over the books.
+    if (action === 'add_tracking') {
+      const awb = String(body.awb || body.tracking_id || '').trim();
+      const courierName = String(body.courier_name || '').trim();
+      if (!awb) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Tracking ID (awb) required' }) };
+      }
+      await supabase.from('return_requests').update({
+        status:       'pickup_scheduled',
+        awb,
+        courier_name: courierName || null,
+        processed_at: new Date().toISOString(),
+      }).eq('id', return_request_id);
+      await notifyPickupScheduled(ret, awb, courierName);
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({
+        success: true, status: 'pickup_scheduled', awb, courier_name: courierName, notified: true,
+      }) };
     }
 
     // Default action: create NimbusPost reverse pickup
@@ -211,10 +311,14 @@ exports.handler = async (event) => {
       processed_at: new Date().toISOString(),
     }).eq('id', return_request_id);
 
+    // Notify customer: pickup scheduled, please hand over the books
+    await notifyPickupScheduled(ret, awb, courierName);
+
     return { statusCode: 200, headers: CORS, body: JSON.stringify({
       success: true,
       awb,
       courier_name: courierName,
+      notified: true,
       pickup_from:  `${ret.customer_name} — ${ret.customer_address}`,
       pickup_to:    '2969, Kucha Mai Dass, Sitaram Bazar, Delhi - 110006',
     }) };
