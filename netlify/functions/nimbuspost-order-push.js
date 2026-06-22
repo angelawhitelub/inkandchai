@@ -158,18 +158,24 @@ function normalizeOrderNumber(value) {
   return String(value ?? '').trim().toUpperCase();
 }
 
-// NimbusPost does not enforce unique order_number values. Always read the
-// panel first and deduplicate ourselves. If this lookup fails, abort the whole
-// import rather than risk creating another batch of duplicate orders.
+// NimbusPost does not enforce unique order_number values, so we read the panel
+// first and deduplicate ourselves. NimbusPost's /api/orders endpoint hard-caps
+// `page` at 50 (it 404s on page 51), so we page NEWEST-FIRST and stop at the
+// cap: any order recent enough to collide with what we're pushing will be on
+// these pages. Failures unrelated to that cap still abort the import, to avoid
+// creating a second batch of duplicates.
+const NP_MAX_PAGE = 50; // NimbusPost rejects page > 50
+
 async function getExistingOrderNumbers(apiKey) {
   const existing = new Set();
   const perPage = 100;
-  const maxPages = 100;
 
-  for (let page = 1; page <= maxPages; page++) {
+  for (let page = 1; page <= NP_MAX_PAGE; page++) {
     const url = new URL(NP_ORDERS_URL);
     url.searchParams.set('page', String(page));
     url.searchParams.set('per_page', String(perPage));
+    url.searchParams.set('sort', 'DESC');   // newest orders first
+    url.searchParams.set('sort_by', 'id');
 
     const response = await fetch(url, {
       headers: { 'Accept': 'application/json', 'NP-API-KEY': apiKey },
@@ -179,6 +185,10 @@ async function getExistingOrderNumbers(apiKey) {
     try { payload = text ? JSON.parse(text) : {}; } catch (_) { payload = { message: text }; }
 
     if (!response.ok || payload.status === false || payload.success === false || payload.error) {
+      // NimbusPost caps pagination at 50 pages. If we somehow hit that limit,
+      // treat the orders gathered so far as the dedup set instead of aborting.
+      const msg = JSON.stringify(payload).toLowerCase();
+      if (/page field must contain a number less than or equal/.test(msg)) break;
       throw new Error(`NimbusPost duplicate preflight failed (${response.status}): ${JSON.stringify(payload).slice(0, 500)}`);
     }
 
@@ -195,9 +205,7 @@ async function getExistingOrderNumbers(apiKey) {
     const pagination = paginationFromResponse(payload);
     if (!rows.length) break;
     if (pagination.last ? page >= pagination.last : rows.length < perPage) break;
-    if (page === maxPages) {
-      throw new Error(`NimbusPost duplicate preflight exceeded ${maxPages * perPage} orders; import stopped for safety.`);
-    }
+    // Otherwise keep going until we hit NP_MAX_PAGE, then stop gracefully.
   }
 
   return existing;
