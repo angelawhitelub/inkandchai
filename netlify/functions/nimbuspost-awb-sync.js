@@ -91,50 +91,73 @@ function orderNumberFromRow(row) {
   );
 }
 
+// Candidate listing endpoints — NimbusPost exposes orders/shipments under a few
+// paths depending on the account. We try each until one returns rows.
+const NP_LIST_ENDPOINTS = [
+  { url: 'https://ship.nimbuspost.com/api/orders',       params: {} },
+  { url: 'https://ship.nimbuspost.com/api/shipping/all', params: { ship_status: 'booked' } },
+  { url: 'https://ship.nimbuspost.com/api/shipments',    params: {} },
+];
+
 // Build a map: order_number → { awb, courier } from NimbusPost's recent panel orders.
+// Returns { map, diag } — diag captures the raw first response so we can see the
+// shape when nothing matches.
 async function fetchNimbusAwbMap(apiKey) {
   const map = new Map();
-  const lastPage = Math.min(NP_SCAN_PAGES, NP_MAX_PAGE);
+  const diag = [];
 
-  for (let page = 1; page <= lastPage; page++) {
-    const url = new URL(NP_ORDERS_URL);
-    url.searchParams.set('page', String(page));
-    url.searchParams.set('per_page', '100');
-    url.searchParams.set('sort', 'desc');     // newest first (lowercase — NimbusPost requirement)
-    url.searchParams.set('sort_by', 'id');
+  for (const endpoint of NP_LIST_ENDPOINTS) {
+    let endpointRows = 0;
+    const lastPage = Math.min(NP_SCAN_PAGES, NP_MAX_PAGE);
 
-    let response, payload;
-    try {
-      response = await fetch(url, { headers: { 'Accept': 'application/json', 'NP-API-KEY': apiKey } });
-      const text = await response.text();
-      try { payload = text ? JSON.parse(text) : {}; } catch (_) { payload = { message: text }; }
-    } catch (err) {
-      // Network/timeout — stop with whatever we have rather than failing the run.
-      console.warn('[awb-sync] fetch error, stopping scan:', err.message);
-      break;
+    for (let page = 1; page <= lastPage; page++) {
+      const url = new URL(endpoint.url);
+      url.searchParams.set('page', String(page));
+      url.searchParams.set('limit', '50');
+      url.searchParams.set('per_page', '50');
+      url.searchParams.set('sort', 'desc');
+      url.searchParams.set('sort_by', 'id');
+      for (const [k, v] of Object.entries(endpoint.params)) url.searchParams.set(k, v);
+
+      let response, payload, rawSnippet = '';
+      try {
+        response = await fetch(url, { headers: { 'Accept': 'application/json', 'NP-API-KEY': apiKey } });
+        const text = await response.text();
+        rawSnippet = text.slice(0, 300);
+        try { payload = text ? JSON.parse(text) : {}; } catch (_) { payload = { message: text }; }
+      } catch (err) {
+        if (page === 1) diag.push(`${endpoint.url} → fetch error: ${err.message}`);
+        break;
+      }
+
+      const rows = orderRowsFromResponse(payload);
+      if (page === 1) {
+        const firstKeys = rows[0] && typeof rows[0] === 'object' ? Object.keys(rows[0]).slice(0, 12).join(',') : '';
+        diag.push(`${endpoint.url} → HTTP ${response.status}, rows:${rows.length}${firstKeys ? `, keys:[${firstKeys}]` : `, body:${rawSnippet}`}`);
+      }
+
+      if (!response.ok || payload.status === false || payload.success === false || payload.error) {
+        const msg = JSON.stringify(payload).toLowerCase();
+        if (response.status === 404 && /(page|sort).*(must|one of|less than)/.test(msg)) break;
+        break;
+      }
+
+      for (const row of rows) {
+        const num = orderNumberFromRow(row);
+        const awb = awbFromRow(row);
+        if (num && awb && !map.has(num)) map.set(num, { awb, courier: courierFromRow(row) });
+        if (num && awb) endpointRows++;
+      }
+
+      const pagination = paginationFromResponse(payload);
+      if (!rows.length) break;
+      if (pagination.last ? page >= pagination.last : rows.length < 50) break;
     }
 
-    if (!response.ok || payload.status === false || payload.success === false || payload.error) {
-      const msg = JSON.stringify(payload).toLowerCase();
-      if (response.status === 404 && /(page|sort).*(must|one of|less than)/.test(msg)) break;
-      // Unknown error — stop gracefully with what we've gathered.
-      console.warn(`[awb-sync] orders API ${response.status}:`, msg.slice(0, 200));
-      break;
-    }
-
-    const rows = orderRowsFromResponse(payload);
-    for (const row of rows) {
-      const num = orderNumberFromRow(row);
-      const awb = awbFromRow(row);
-      if (num && awb && !map.has(num)) map.set(num, { awb, courier: courierFromRow(row) });
-    }
-
-    const pagination = paginationFromResponse(payload);
-    if (!rows.length) break;
-    if (pagination.last ? page >= pagination.last : rows.length < 100) break;
+    if (endpointRows > 0) break; // this endpoint works — stop probing others
   }
 
-  return map;
+  return { map, diag };
 }
 
 // ── Shipped notification (mirrors nimbuspost-webhook.js) ─────────────────────
@@ -188,8 +211,8 @@ async function runSync() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const awbMap = await fetchNimbusAwbMap(apiKey);
-  const summary = { scanned: awbMap.size, matched: 0, synced: 0, notified: 0, errors: [] };
+  const { map: awbMap, diag } = await fetchNimbusAwbMap(apiKey);
+  const summary = { scanned: awbMap.size, matched: 0, synced: 0, notified: 0, errors: [], diag };
   if (!awbMap.size) return summary;
 
   // Our orders that are still unshipped and have no AWB yet (last 120 days).

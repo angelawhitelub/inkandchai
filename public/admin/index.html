@@ -3140,6 +3140,7 @@ async function syncNimbusAwbs(btn) {
     let message = `AWB sync complete:\n\n📦 NimbusPost orders scanned: ${s.scanned || 0}\n🔗 Matched to your orders: ${s.matched || 0}\n✅ Marked shipped & saved AWB: ${s.synced || 0}\n📨 Customers notified: ${s.notified || 0}`;
     if (s.errors?.length) message += `\n\nFirst errors:\n${s.errors.slice(0, 5).join('\n')}`;
     if (!s.synced) message += '\n\n(Nothing to sync — either no new AWBs in NimbusPost yet, or they\'re already synced.)';
+    if (s.scanned === 0 && s.diag?.length) message += `\n\nDiagnostics:\n${s.diag.join('\n')}`;
     alert(message);
     if (s.synced) await fetchOrders(true);
   } catch (err) {
