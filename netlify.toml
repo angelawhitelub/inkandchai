@@ -22,6 +22,11 @@
 [functions."auto-mark-delivered"]
   schedule = "0 4 * * *"
 
+# Backfill AWBs assigned inside the NimbusPost panel back onto our orders.
+# Flips matched orders to "shipped" and notifies the customer. Runs every 15 min.
+[functions."nimbuspost-awb-sync"]
+  schedule = "*/15 * * * *"
+
 # favicon.ico — redirect to the actual PNG; browsers cache the 301 permanently
 # (previously /favicon.ico had no file → fell through to index.html → 55 KB per hit → ~534 MB/week)
 [[redirects]]
