@@ -38,7 +38,7 @@ const CORS = {
 const UNSHIPPED_STATUSES = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending'];
 
 const NP_MAX_PAGE   = 50;   // NimbusPost rejects page > 50
-const NP_SCAN_PAGES = 10;   // newest pages only — recent shipments are what we sync
+const NP_SCAN_PAGES = 5;    // newest pages only — keeps total calls well under the function timeout
 const NOTIFY_LIMIT  = 60;   // cap notifications per run (safety)
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -92,69 +92,91 @@ function orderNumberFromRow(row) {
 }
 
 // Candidate listing endpoints — NimbusPost exposes orders/shipments under a few
-// paths depending on the account. We try each until one returns rows.
+// paths depending on the account. We probe page 1 of each to find the one that
+// returns rows, then scan only that endpoint (keeps us well under the timeout).
 const NP_LIST_ENDPOINTS = [
   { url: 'https://ship.nimbuspost.com/api/orders',       params: {} },
   { url: 'https://ship.nimbuspost.com/api/shipping/all', params: { ship_status: 'booked' } },
   { url: 'https://ship.nimbuspost.com/api/shipments',    params: {} },
 ];
 
-// Build a map: order_number → { awb, courier } from NimbusPost's recent panel orders.
-// Returns { map, diag } — diag captures the raw first response so we can see the
-// shape when nothing matches.
+// fetch with a hard per-call timeout so one slow call can't kill the function.
+async function npGet(url, apiKey, ms = 6000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json', 'NP-API-KEY': apiKey },
+      signal: ctrl.signal,
+    });
+    const text = await response.text();
+    let payload;
+    try { payload = text ? JSON.parse(text) : {}; } catch (_) { payload = { message: text }; }
+    return { response, payload, snippet: text.slice(0, 300) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function buildListUrl(endpoint, page) {
+  const url = new URL(endpoint.url);
+  url.searchParams.set('page', String(page));
+  url.searchParams.set('limit', '50');
+  url.searchParams.set('per_page', '50');
+  url.searchParams.set('sort', 'desc');
+  url.searchParams.set('sort_by', 'id');
+  for (const [k, v] of Object.entries(endpoint.params)) url.searchParams.set(k, v);
+  return url;
+}
+
+function collectRows(payload, map) {
+  let added = 0;
+  for (const row of orderRowsFromResponse(payload)) {
+    const num = orderNumberFromRow(row);
+    const awb = awbFromRow(row);
+    if (num && awb) {
+      if (!map.has(num)) map.set(num, { awb, courier: courierFromRow(row) });
+      added++;
+    }
+  }
+  return added;
+}
+
+// Returns { map, diag }. Phase 1: probe page 1 of each endpoint. Phase 2: scan a
+// few more pages of whichever endpoint returned usable rows.
 async function fetchNimbusAwbMap(apiKey) {
   const map = new Map();
   const diag = [];
+  let working = null;
 
+  // ── Phase 1: discovery (≤3 calls) ──
   for (const endpoint of NP_LIST_ENDPOINTS) {
-    let endpointRows = 0;
-    const lastPage = Math.min(NP_SCAN_PAGES, NP_MAX_PAGE);
-
-    for (let page = 1; page <= lastPage; page++) {
-      const url = new URL(endpoint.url);
-      url.searchParams.set('page', String(page));
-      url.searchParams.set('limit', '50');
-      url.searchParams.set('per_page', '50');
-      url.searchParams.set('sort', 'desc');
-      url.searchParams.set('sort_by', 'id');
-      for (const [k, v] of Object.entries(endpoint.params)) url.searchParams.set(k, v);
-
-      let response, payload, rawSnippet = '';
-      try {
-        response = await fetch(url, { headers: { 'Accept': 'application/json', 'NP-API-KEY': apiKey } });
-        const text = await response.text();
-        rawSnippet = text.slice(0, 300);
-        try { payload = text ? JSON.parse(text) : {}; } catch (_) { payload = { message: text }; }
-      } catch (err) {
-        if (page === 1) diag.push(`${endpoint.url} → fetch error: ${err.message}`);
-        break;
-      }
-
+    try {
+      const { response, payload, snippet } = await npGet(buildListUrl(endpoint, 1), apiKey);
       const rows = orderRowsFromResponse(payload);
-      if (page === 1) {
-        const firstKeys = rows[0] && typeof rows[0] === 'object' ? Object.keys(rows[0]).slice(0, 12).join(',') : '';
-        diag.push(`${endpoint.url} → HTTP ${response.status}, rows:${rows.length}${firstKeys ? `, keys:[${firstKeys}]` : `, body:${rawSnippet}`}`);
+      const firstKeys = rows[0] && typeof rows[0] === 'object' ? Object.keys(rows[0]).slice(0, 12).join(',') : '';
+      diag.push(`${endpoint.url} → HTTP ${response.status}, rows:${rows.length}${firstKeys ? `, keys:[${firstKeys}]` : `, body:${snippet}`}`);
+      if (response.ok && rows.length) {
+        const added = collectRows(payload, map);
+        if (added > 0) { working = endpoint; break; }
       }
-
-      if (!response.ok || payload.status === false || payload.success === false || payload.error) {
-        const msg = JSON.stringify(payload).toLowerCase();
-        if (response.status === 404 && /(page|sort).*(must|one of|less than)/.test(msg)) break;
-        break;
-      }
-
-      for (const row of rows) {
-        const num = orderNumberFromRow(row);
-        const awb = awbFromRow(row);
-        if (num && awb && !map.has(num)) map.set(num, { awb, courier: courierFromRow(row) });
-        if (num && awb) endpointRows++;
-      }
-
-      const pagination = paginationFromResponse(payload);
-      if (!rows.length) break;
-      if (pagination.last ? page >= pagination.last : rows.length < 50) break;
+    } catch (err) {
+      diag.push(`${endpoint.url} → ${err.name === 'AbortError' ? 'timeout' : 'error: ' + err.message}`);
     }
+  }
 
-    if (endpointRows > 0) break; // this endpoint works — stop probing others
+  // ── Phase 2: scan a few more pages of the working endpoint ──
+  if (working) {
+    const lastPage = Math.min(NP_SCAN_PAGES, NP_MAX_PAGE);
+    for (let page = 2; page <= lastPage; page++) {
+      try {
+        const { response, payload } = await npGet(buildListUrl(working, page), apiKey);
+        if (!response.ok) break;
+        const rows = orderRowsFromResponse(payload);
+        collectRows(payload, map);
+        if (rows.length < 50) break;
+      } catch (_) { break; }
+    }
   }
 
   return { map, diag };
