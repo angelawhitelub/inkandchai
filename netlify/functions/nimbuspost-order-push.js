@@ -174,7 +174,7 @@ async function getExistingOrderNumbers(apiKey) {
     const url = new URL(NP_ORDERS_URL);
     url.searchParams.set('page', String(page));
     url.searchParams.set('per_page', String(perPage));
-    url.searchParams.set('sort', 'DESC');   // newest orders first
+    url.searchParams.set('sort', 'desc');   // newest orders first (NimbusPost wants lowercase)
     url.searchParams.set('sort_by', 'id');
 
     const response = await fetch(url, {
@@ -185,10 +185,13 @@ async function getExistingOrderNumbers(apiKey) {
     try { payload = text ? JSON.parse(text) : {}; } catch (_) { payload = { message: text }; }
 
     if (!response.ok || payload.status === false || payload.success === false || payload.error) {
-      // NimbusPost caps pagination at 50 pages. If we somehow hit that limit,
-      // treat the orders gathered so far as the dedup set instead of aborting.
+      // NimbusPost is fussy about pagination/sort params and caps `page` at 50.
+      // On a param-validation 404 (e.g. page over the cap, or an unsupported
+      // sort value) stop with the orders gathered so far rather than aborting
+      // the whole import — partial newest-first coverage still dedupes recent
+      // orders, which is where collisions happen.
       const msg = JSON.stringify(payload).toLowerCase();
-      if (/page field must contain a number less than or equal/.test(msg)) break;
+      if (response.status === 404 && /(page|sort).*(must|one of|less than)/.test(msg)) break;
       throw new Error(`NimbusPost duplicate preflight failed (${response.status}): ${JSON.stringify(payload).slice(0, 500)}`);
     }
 
