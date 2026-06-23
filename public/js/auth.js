@@ -247,7 +247,7 @@
     const sb = getSB();
     if (!sb) { if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Auth not configured.'; } return; }
 
-    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending 6-digit code…'; }
+    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending 8-digit code…'; }
     try {
       const { error } = await sb.auth.signInWithOtp({
         email,
@@ -263,16 +263,16 @@
       const container = document.getElementById('guestOrderEmail')?.closest('div') || null;
       if (container) {
         container.innerHTML = `
-          <p style="font-size:.7rem;color:#a09080;margin-bottom:.8rem;">Enter the 6-digit code sent to <strong style="color:#c9a84c">${email}</strong></p>
+          <p style="font-size:.7rem;color:#a09080;margin-bottom:.8rem;">Enter the 8-digit code sent to <strong style="color:#c9a84c">${email}</strong></p>
           <div style="display:flex;gap:.5rem;margin-bottom:.8rem;">
-            ${[0,1,2,3,4,5].map(i => `
-              <input id="guestOtp${i}" type="text" inputmode="numeric" maxlength="1" autocomplete="one-time-code"
-                style="width:44px;height:52px;text-align:center;font-size:1.4rem;font-weight:600;
+            ${[0,1,2,3,4,5,6,7].map(i => `
+              <input id="guestOtp${i}" type="text" inputmode="numeric" maxlength="1"
+                style="width:40px;height:48px;text-align:center;font-size:1.3rem;font-weight:600;
                        background:var(--bg3,#1c1916);border:1px solid rgba(201,168,76,0.25);
                        color:var(--cream,#f0e8d8);font-family:'Montserrat',sans-serif;outline:none;"
                 onfocus="this.style.borderColor='rgba(201,168,76,0.7)'"
                 onblur="this.style.borderColor='rgba(201,168,76,0.25)'"
-                oninput="(function(el,i){el.value=el.value.replace(/\\D/g,'').slice(-1);if(el.value&&i<5)document.getElementById('guestOtp'+(i+1))?.focus();const c=[0,1,2,3,4,5].map(j=>document.getElementById('guestOtp'+j)?.value||'').join('');if(c.length===6)verifyGuestOtp();})(this,${i})"
+                oninput="(function(el,i){el.value=el.value.replace(/\\D/g,'').slice(-1);if(el.value&&i<7)document.getElementById('guestOtp'+(i+1))?.focus();const c=[0,1,2,3,4,5,6,7].map(j=>document.getElementById('guestOtp'+j)?.value||'').join('');if(c.length===8)verifyGuestOtp();})(this,${i})"
                 onkeydown="if(event.key==='Backspace'&&!this.value&&${i}>0)document.getElementById('guestOtp'+(${i}-1))?.focus()"/>
             `).join('')}
           </div>
@@ -286,9 +286,9 @@
         document.getElementById('guestOtp0')?.focus();
 
         window.verifyGuestOtp = async function() {
-          const code = [0,1,2,3,4,5].map(i => document.getElementById('guestOtp'+i)?.value||'').join('');
+          const code = [0,1,2,3,4,5,6,7].map(i => document.getElementById('guestOtp'+i)?.value||'').join('');
           const gmsg = document.getElementById('guestOtpMsg');
-          if (code.length < 6) { if(gmsg){gmsg.textContent='Enter all 6 digits.';} return; }
+          if (code.length < 8) { if(gmsg){gmsg.textContent='Enter all 8 digits.';} return; }
           const { data, error: vErr } = await sb.auth.verifyOtp({ email: _otpEmail, token: code, type: 'email' });
           if (vErr) { if(gmsg){gmsg.textContent=vErr.message||'Invalid code. Try again.';} return; }
           currentUser = data.user;
@@ -310,7 +310,7 @@
 
   // ─────────────────────────────────────────────────────────────────────────
   // AUTH MODAL — OTP-based (passwordless)
-  // Step 1: enter email → send 6-digit code
+  // Step 1: enter email → send 8-digit code
   // Step 2: enter code → verified & signed in
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -346,7 +346,7 @@
     inner.innerHTML = `
       <div style="font-size:.55rem;letter-spacing:.35em;text-transform:uppercase;color:#c9a84c;margin-bottom:.5rem;">Ink &amp; Chai</div>
       <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.9rem;font-weight:300;color:#faf7f2;margin-bottom:.4rem;">Sign in</h3>
-      <p style="font-size:.68rem;color:#a09080;margin-bottom:1.8rem;line-height:1.6;">We'll send a 6-digit code to your email. No password needed.</p>
+      <p style="font-size:.68rem;color:#a09080;margin-bottom:1.8rem;line-height:1.6;">We'll send an 8-digit code to your email. No password needed.</p>
 
       <label for="iacOtpEmail" style="display:block;font-size:.55rem;letter-spacing:.18em;text-transform:uppercase;color:#a09080;margin-bottom:.4rem;">Email address</label>
       <input id="iacOtpEmail" type="email" placeholder="you@example.com" autocomplete="email"
@@ -553,13 +553,13 @@
     inner.innerHTML = `
       <div style="font-size:.55rem;letter-spacing:.35em;text-transform:uppercase;color:#c9a84c;margin-bottom:.5rem;">Ink &amp; Chai</div>
       <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.9rem;font-weight:300;color:#faf7f2;margin-bottom:.4rem;">Enter code</h3>
-      <p style="font-size:.68rem;color:#a09080;margin-bottom:.3rem;line-height:1.6;">We sent a 6-digit code to</p>
+      <p style="font-size:.68rem;color:#a09080;margin-bottom:.3rem;line-height:1.6;">We sent an 8-digit code to</p>
       <p style="font-size:.75rem;color:#c9a84c;margin-bottom:1.8rem;font-weight:500;">${email}</p>
 
       <div id="iacOtpBoxes" style="display:flex;gap:.6rem;justify-content:center;margin-bottom:1.4rem;">
-        ${[0,1,2,3,4,5].map(i => `
-          <input id="iacOtp${i}" type="text" inputmode="numeric" maxlength="1" autocomplete="one-time-code"
-            style="width:52px;height:60px;text-align:center;font-size:1.5rem;font-weight:600;
+        ${[0,1,2,3,4,5,6,7].map(i => `
+          <input id="iacOtp${i}" type="text" inputmode="numeric" maxlength="1"
+            style="width:48px;height:56px;text-align:center;font-size:1.4rem;font-weight:600;
                    background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;
                    font-family:'Montserrat',sans-serif;outline:none;border-radius:0;"
             onfocus="this.style.borderColor='rgba(201,168,76,0.7)'"
@@ -595,28 +595,30 @@
     }, 50);
   }
 
-  // OTP box keyboard handling — auto-advance, backspace, paste (6-digit code).
+  // OTP box keyboard handling — auto-advance, backspace, paste
   window.iacOtpInput = function(el, idx) {
     el.value = el.value.replace(/\D/g, '').slice(-1);
-    if (el.value && idx < 5) document.getElementById('iacOtp' + (idx + 1))?.focus();
-    const code = [0,1,2,3,4,5].map(i => document.getElementById('iacOtp'+i)?.value||'').join('');
-    if (code.length === 6) iacVerifyOtp();
+    if (el.value && idx < 7) document.getElementById('iacOtp' + (idx + 1))?.focus();
+    // Auto-verify when all 6 filled
+    const code = [0,1,2,3,4,5,6,7].map(i => document.getElementById('iacOtp'+i)?.value||'').join('');
+    if (code.length === 8) iacVerifyOtp();
   };
 
   window.iacOtpKey = function(e, idx) {
     if (e.key === 'Backspace' && !e.target.value && idx > 0) {
       document.getElementById('iacOtp' + (idx - 1))?.focus();
     }
+    // Handle paste on any box
     if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       navigator.clipboard?.readText().then(text => {
-        const digits = text.replace(/\D/g,'').slice(0,6);
+        const digits = text.replace(/\D/g,'').slice(0,8);
         digits.split('').forEach((d,i) => {
           const box = document.getElementById('iacOtp'+i);
           if (box) box.value = d;
         });
-        document.getElementById('iacOtp5')?.focus();
-        if (digits.length === 6) iacVerifyOtp();
+        document.getElementById('iacOtp7')?.focus();
+        if (digits.length === 8) iacVerifyOtp();
       });
     }
   };
@@ -682,7 +684,7 @@
         renderOtpStep2(email); // step 2 render starts its own cooldown on Resend
       } else {
         // Clear boxes and start cooldown on resend button
-        [0,1,2,3,4,5].forEach(i => { const b = document.getElementById('iacOtp'+i); if(b) b.value=''; });
+        [0,1,2,3,4,5,6,7].forEach(i => { const b = document.getElementById('iacOtp'+i); if(b) b.value=''; });
         document.getElementById('iacOtp0')?.focus();
         startOtpCooldown('iacOtpResendBtn', 'iacOtpMsg');
       }
@@ -699,12 +701,12 @@
   };
 
   window.iacVerifyOtp = async function() {
-    const code = [0,1,2,3,4,5].map(i => document.getElementById('iacOtp'+i)?.value||'').join('');
+    const code = [0,1,2,3,4,5,6,7].map(i => document.getElementById('iacOtp'+i)?.value||'').join('');
     const msg  = document.getElementById('iacOtpMsg');
     const btn  = document.getElementById('iacOtpVerifyBtn');
 
-    if (code.length < 6) {
-      if (msg) { msg.style.color='#e06060'; msg.textContent='Please enter all 6 digits.'; }
+    if (code.length < 8) {
+      if (msg) { msg.style.color='#e06060'; msg.textContent='Please enter all 8 digits.'; }
       return;
     }
 
@@ -748,7 +750,7 @@
       }
       if (btn) { btn.disabled=false; btn.textContent='Verify →'; }
       // Shake the boxes
-      [0,1,2,3,4,5].forEach(i => {
+      [0,1,2,3,4,5,6,7].forEach(i => {
         const b = document.getElementById('iacOtp'+i);
         if(b) { b.style.borderColor='rgba(220,80,80,0.7)'; b.value=''; }
       });
