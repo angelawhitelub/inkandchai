@@ -300,6 +300,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       ⬇ Export Filtered (.xlsx)
     </button>
     <button class="btn-outline" id="refreshBtn" style="display:none;" onclick="fetchOrders(true)">↻ Refresh</button>
+    <button class="btn-outline" id="passkeyRegBtn" style="display:none;" onclick="passkeyRegister()" title="Register Face ID / Touch ID for this device">🔐 Set up Passkey</button>
     <button class="btn-outline" id="logoutBtn" style="display:none;" onclick="logout()">Sign Out</button>
     <a href="/" class="btn-outline" style="text-decoration:none;">← Store</a>
   </div>
@@ -308,6 +309,8 @@ tr:hover td{background:rgba(122,88,21,0.075);}
 <!-- LOGIN -->
 <div id="loginPanel">
   <h2>Admin Access</h2>
+  <button class="btn-gold" id="passkeyLoginBtn" onclick="passkeyLogin()" style="display:none;width:100%;margin-bottom:0.8rem;background:#1c1916;color:var(--gold);border:1px solid rgba(201,168,76,0.5);">🔐 Sign in with Passkey</button>
+  <div id="passkeyDivider" style="display:none;text-align:center;font-size:0.55rem;letter-spacing:0.3em;color:var(--cream-dim);margin:0.6rem 0;">— OR —</div>
   <div class="form-row">
     <label>Admin Password</label>
     <input type="password" id="adminPass" placeholder="Enter admin password"
@@ -316,6 +319,9 @@ tr:hover td{background:rgba(122,88,21,0.075);}
   <button class="btn-gold" onclick="doLogin()" style="width:100%;margin-top:0.4rem;">Access Dashboard →</button>
   <p class="err" id="loginErr" style="display:none;"></p>
 </div>
+
+<!-- SimpleWebAuthn browser SDK (~12KB, used only for passkey flows) -->
+<script src="https://unpkg.com/@simplewebauthn/browser@13/dist/bundle/index.umd.min.js"></script>
 
 <!-- DASHBOARD -->
 <main id="dashboard" style="display:none;">
@@ -975,10 +981,101 @@ function logout() {
   try { localStorage.removeItem(ORDERS_CACHE_KEY); } catch {}
   ['loginPanel','loginErr'].forEach(id => document.getElementById(id).style.display = id === 'loginPanel' ? '' : 'none');
   document.getElementById('dashboard').style.display = 'none';
-  ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
+  ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar','passkeyRegBtn']
     .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   document.getElementById('adminPass').value = '';
+  // Re-check if passkeys are available so the login UI is consistent.
+  initPasskeyUi();
 }
+
+// ── Passkey login (WebAuthn) ───────────────────────────────────────────────
+async function initPasskeyUi() {
+  // Hide passkey login button on browsers that don't support WebAuthn at all,
+  // or when no passkeys are registered yet.
+  if (!window.PublicKeyCredential || !window.SimpleWebAuthnBrowser) return;
+  try {
+    const res = await fetch('/.netlify/functions/passkey-login-options', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    const show = !!data?.hasPasskeys;
+    const btn = document.getElementById('passkeyLoginBtn');
+    const div = document.getElementById('passkeyDivider');
+    if (btn) btn.style.display = show ? '' : 'none';
+    if (div) div.style.display = show ? '' : 'none';
+  } catch (_) { /* leave hidden */ }
+}
+
+async function passkeyLogin() {
+  const err = document.getElementById('loginErr');
+  const btn = document.getElementById('passkeyLoginBtn');
+  if (err) err.style.display = 'none';
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = '🔐 Waiting for biometric…'; }
+    const optRes = await fetch('/.netlify/functions/passkey-login-options', { method: 'POST' });
+    const optData = await optRes.json();
+    if (!optRes.ok || !optData.hasPasskeys) throw new Error(optData.error || 'No passkeys registered yet');
+
+    const authResp = await SimpleWebAuthnBrowser.startAuthentication({ optionsJSON: optData.options });
+
+    const vRes = await fetch('/.netlify/functions/passkey-login-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ authResp }),
+    });
+    const vData = await vRes.json();
+    if (!vRes.ok || !vData.ok || !vData.adminKey) throw new Error(vData.error || 'Verification failed');
+
+    // Drop the server-issued admin secret into the same `adminKey` global the
+    // password flow uses — everything else (orders fetch etc.) just works.
+    adminKey = vData.adminKey;
+    fetchOrders(true);
+  } catch (e) {
+    if (err) { err.textContent = 'Passkey sign-in failed: ' + (e.message || e); err.style.display = ''; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔐 Sign in with Passkey'; }
+  }
+}
+
+async function passkeyRegister() {
+  const btn = document.getElementById('passkeyRegBtn');
+  if (!window.PublicKeyCredential || !window.SimpleWebAuthnBrowser) { alert('This browser does not support passkeys.'); return; }
+  if (!adminKey) { alert('Sign in with your password first, then register a passkey.'); return; }
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = '🔐 Setting up…'; }
+    const optRes = await fetch('/.netlify/functions/passkey-register-options', {
+      method: 'POST', headers: { 'X-Admin-Key': adminKey },
+    });
+    const optData = await optRes.json();
+    if (!optRes.ok) throw new Error(optData.error || 'Could not start registration');
+
+    const attResp = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON: optData });
+    // Give the credential a friendly label so it's identifiable in the DB later.
+    const ua = navigator.userAgent;
+    const deviceLabel = (/iPhone|iPad/.test(ua) ? 'iPhone/iPad'
+                       : /Mac/.test(ua) ? 'Mac (Touch ID)'
+                       : /Android/.test(ua) ? 'Android'
+                       : /Windows/.test(ua) ? 'Windows (Hello)'
+                       : 'Device') + ' — ' + new Date().toLocaleDateString();
+
+    const vRes = await fetch('/.netlify/functions/passkey-register-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ attResp, deviceLabel }),
+    });
+    const vData = await vRes.json();
+    if (!vRes.ok || !vData.ok) throw new Error(vData.error || 'Registration failed');
+
+    alert(vData.already
+      ? 'Passkey already exists for this device.'
+      : '✓ Passkey set up! Next time, just tap "Sign in with Passkey" — no password needed.');
+  } catch (e) {
+    alert('Passkey setup failed: ' + (e.message || e));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔐 Set up Passkey'; }
+  }
+}
+
+// Check on first page load so the login screen shows the passkey button if any exist.
+window.addEventListener('DOMContentLoaded', initPasskeyUi);
 
 // ── Fetch — parallel pagination + localStorage cache ───────────────────────
 // Speed wins:
@@ -1037,7 +1134,7 @@ async function fetchOrders(reset = false) {
       // Show dashboard + cached table immediately while fresh data fetches in background
       document.getElementById('loginPanel').style.display = 'none';
       document.getElementById('dashboard').style.display  = '';
-      ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
+      ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar','passkeyRegBtn']
         .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
       document.getElementById('adminTabBar').style.display = 'flex';
       initTabFromHash();
