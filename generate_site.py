@@ -4559,19 +4559,77 @@ function customProductToBook(product) {
   };
 }
 
-async function loadSingleProductOverride(slug) {
+// Cache product-overrides for 5 min in sessionStorage so navigating between
+// product pages doesn't re-hit the Lambda each time (the response is ~100 KB
+// and the function does a Supabase round-trip on cold start — was responsible
+// for 5-10s blank product pages).
+const OVERRIDES_CACHE_KEY = 'iac_overrides_cache_v1';
+const OVERRIDES_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function getCachedOverrides() {
   try {
-    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
-    if (!res.ok) return { override: null, customProduct: null };
-    const data = await res.json();
-    const key = String(slug || '').toLowerCase();
-    const override = (data.overrides || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
-    const customProduct = (data.custom_products || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
-    return { override, customProduct };
-  } catch (err) {
-    console.warn('Product override unavailable:', err.message);
-    return { override: null, customProduct: null };
+    const raw = sessionStorage.getItem(OVERRIDES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || (Date.now() - (parsed.ts || 0) > OVERRIDES_CACHE_TTL_MS)) return null;
+    return parsed.data;
+  } catch { return null; }
+}
+function setCachedOverrides(data) {
+  try { sessionStorage.setItem(OVERRIDES_CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
+function pickOverrideFor(data, slug) {
+  const key = String(slug || '').toLowerCase();
+  const override = (data?.overrides || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
+  const customProduct = (data?.custom_products || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
+  return { override, customProduct };
+}
+
+let _overridesInflight = null;
+async function fetchOverridesFresh() {
+  if (_overridesInflight) return _overridesInflight;
+  _overridesInflight = (async () => {
+    try {
+      // Default cache so the browser + any CDN in front can short-circuit
+      // repeat hits. The endpoint sets its own Cache-Control too.
+      const res = await fetch('/.netlify/functions/get-product-overrides');
+      if (!res.ok) return null;
+      const data = await res.json();
+      setCachedOverrides(data);
+      return data;
+    } catch (err) {
+      console.warn('Product override unavailable:', err.message);
+      return null;
+    } finally {
+      _overridesInflight = null;
+    }
+  })();
+  return _overridesInflight;
+}
+
+// Non-blocking variant returns whatever is cached now (possibly null).
+// Render path calls this first, then schedules a background refresh that
+// patches the page if a newer override lands.
+function loadOverridesNow(slug) {
+  const cached = getCachedOverrides();
+  return cached ? pickOverrideFor(cached, slug) : { override: null, customProduct: null };
+}
+async function loadOverridesFresh(slug) {
+  const data = await fetchOverridesFresh();
+  return data ? pickOverrideFor(data, slug) : { override: null, customProduct: null };
+}
+
+// Back-compat: the old name used to await the network. Now it only awaits
+// the network if nothing is cached — first paint never blocks on it.
+async function loadSingleProductOverride(slug) {
+  const cached = getCachedOverrides();
+  if (cached) {
+    // Fire-and-forget revalidation so the next page view is fresh too.
+    fetchOverridesFresh().catch(() => {});
+    return pickOverrideFor(cached, slug);
   }
+  return loadOverridesFresh(slug);
 }
 
 // ── Track recently viewed products (for future "Based on what you viewed") ──
@@ -5382,21 +5440,46 @@ const slug    = params.get('id') || pathSlug;
 
 (async () => {
   const foundBook = slug ? BOOK_MAP[slug] : null;
-  const liveData = slug ? await loadSingleProductOverride(slug) : { override: null, customProduct: null };
-  const book = foundBook || customProductToBook(liveData.customProduct);
-  if (book) {
-    const liveBook = applyProductOverride(book, liveData.override);
+  // Stale-while-revalidate: render whatever we have NOW (static catalogue +
+  // cached overrides if any), then patch the page when fresh overrides arrive.
+  // Previously every product page awaited the network before rendering, which
+  // was 5-10s on cold Lambda.
+  const cachedLive = slug ? loadOverridesNow(slug) : { override: null, customProduct: null };
+
+  function renderEverything(liveData) {
+    const baseBook = foundBook || customProductToBook(liveData.customProduct);
+    if (!baseBook) {
+      document.getElementById('productContent').innerHTML = `
+        <div class="not-found">
+          <h2>Book not found</h2>
+          <p>This page may have moved. <a href="/" style="color:var(--gold)">Browse all books →</a></p>
+        </div>`;
+      return false;
+    }
+    const liveBook = applyProductOverride(baseBook, liveData.override);
     renderProduct(liveBook);
     trackProductView(liveBook);
     renderFBT(liveBook);
     renderBookstagram();
     renderRelated(liveBook);
+    return true;
+  }
+
+  // If we have a static book OR a cached override, paint immediately.
+  if (foundBook || cachedLive.customProduct) {
+    renderEverything(cachedLive);
+    // Background revalidation — repaint silently if the live data differs.
+    fetchOverridesFresh().then(data => {
+      if (!data) return;
+      const fresh = pickOverrideFor(data, slug);
+      const changed = JSON.stringify(fresh) !== JSON.stringify(cachedLive);
+      if (changed) renderEverything(fresh);
+    }).catch(() => {});
   } else {
-    document.getElementById('productContent').innerHTML = `
-      <div class="not-found">
-        <h2>Book not found</h2>
-        <p>This page may have moved. <a href="/" style="color:var(--gold)">Browse all books →</a></p>
-      </div>`;
+    // No static match, no cache — we must wait on the network to know whether
+    // it's a custom_products row or genuinely missing.
+    const fresh = slug ? await loadOverridesFresh(slug) : { override: null, customProduct: null };
+    renderEverything(fresh);
   }
 })();
 </script>
