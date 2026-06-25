@@ -12,23 +12,96 @@
 const path = require('path');
 const fs   = require('fs');
 
+// Hardcoded slug overrides — MUST stay in sync with `make_slug` in generate_site.py.
+// (Combo packs ship under hand-picked slugs that don't follow the auto-slug rule.)
+const SLUG_OVERRIDES = {
+  'CUSTOM-KINGS-OF-SIN-COMPLETE-SET-6-AH':         'kings-of-sin-series-complete-set-6-books-ana-huang',
+  'CUSTOM-HINDI-BESTSELLERS-COMBO-5':              '5-hindi-bestsellers-combo-set-of-5-books-MBO-5',
+  'CUSTOM-100M-HINDI-COMBO-2':                     '100m-leads-hindi-100m-offers-hindi-combo-2-books',
+  'CUSTOM-GOGGINS-COMBO-HI':                       'david-goggins-combo-hindi-cant-hurt-me-never-finished',
+  'CUSTOM-MOTHER-MARY-COMES-TO-ME-HI-ARUNDHATI-ROY':'mother-mary-comes-to-me-hindi-edition-arundhati-roy',
+  'CUSTOM-SHAKTI-GOGGINS-COMBO-3-HI':              'shakti-ke-48-niyam-cant-hurt-me-never-finished-hindi-combo-3-books',
+  'CUSTOM-HIDDEN-HINDU-TRILOGY-3':                 'hidden-hindu-complete-trilogy-3-books-akshat-gupta',
+  'CUSTOM-COLLEEN-HOOVER-STARTER-3':               'colleen-hoover-3-book-starter-set-it-ends-verity-reminders',
+  'CUSTOM-ANA-HUANG-TWISTED-SPECIAL-3':            'ana-huang-twisted-special-editions-3-pack',
+  'CUSTOM-ROBERT-GREENE-POWER-TRILOGY-3':          'robert-greene-power-trilogy-48-laws-human-nature-seduction',
+  'CUSTOM-MARK-DOUGLAS-TRADING-DUO-2':             'mark-douglas-trading-duo-zone-disciplined-trader',
+  'CUSTOM-HINDI-MOTIVATION-BIG-4':                 'hindi-motivation-big-4-atomic-habits-rich-dad-shakti-think',
+  'CUSTOM-FELUDA-4-PACK':                          'feluda-complete-mysteries-4-book-set-satyajit-ray',
+  'CUSTOM-STOIC-ESSENTIALS-TRIO-3':                'stoic-essentials-trio-ego-daily-stoic-meditations',
+  'CUSTOM-ENID-BLYTON-FAMOUS-FIVE-1-3':            'enid-blyton-famous-five-books-1-2-3-starter-set',
+  'CUSTOM-WEALTH-PACK-299':                        'wealth-starter-pack-psychology-of-money-rich-dad-think-grow',
+  'CUSTOM-KIDS-ACTIVITY-4-PACK':                   'kids-activity-4-pack-pete-cat-wipe-clean-learning',
+  'CUSTOM-CLASSIC-POCKET-TRIO-3':                  'classic-pocket-trio-diary-young-girl-alice-meditations',
+  'CUSTOM-OSHO-DUO-2':                             'osho-duo-dhyan-darshan-nari-aur-kranti',
+  'CUSTOM-ANA-HUANG-KINGS-SIN-1-3':                'ana-huang-kings-of-sin-series-books-1-2-3',
+  'CUSTOM-OFF-CAMPUS-5-ELLE-KENNEDY':              'off-campus-complete-5-book-collection-elle-kennedy',
+  'CUSTOM-PSYCH-MONEY-THINKING-FAST-HINDI-2':      'psychology-of-money-hindi-thinking-fast-slow-hindi-combo-2-books',
+  'CUSTOM-OFF-CAMPUS-COMBO-3-EK':                  'the-deal-the-mistake-the-score-elle-kennedy-off-campus-combo',
+  'CUSTOM-TAIWAN-TRAVELOGUE':                      'taiwan-travelogue-yang-shuang-zi-international-booker-prize',
+};
+
+// Mirrors `make_slug` in generate_site.py — slug from title (alphanumeric -> '-',
+// trimmed to 55 chars) plus last 5 chars of shopify_id (lowercased).
+function makeSlug(title, shopifyId) {
+  const sid = String(shopifyId || '');
+  if (SLUG_OVERRIDES[sid]) return SLUG_OVERRIDES[sid];
+  const base = String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 55);
+  const suffix = sid.slice(-5).toLowerCase();
+  return suffix ? `${base}-${suffix}` : base;
+}
+
 let _catalogIndex = null;
+let _catalogLoadError = null;
 function getCatalogIndex() {
   if (_catalogIndex) return _catalogIndex;
-  const filePath = path.join(__dirname, '..', '..', '..', 'data', 'ALL_BOOKS.json');
-  const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  // Netlify's function bundler can flatten directory structure, so the
+  // relative path that works in development doesn't always work in
+  // production. Try the known candidates in order and use the first one
+  // that loads. get-book.js uses `../../data/ALL_BOOKS.json` from
+  // netlify/functions/ — replicate that, plus a few fallbacks.
+  const candidates = [
+    path.join(__dirname, '..', '..', '..', 'data', 'ALL_BOOKS.json'), // dev: from utils/
+    path.join(__dirname, '..', '..', 'data', 'ALL_BOOKS.json'),       // bundled flat
+    path.join(process.cwd(), 'data', 'ALL_BOOKS.json'),               // function cwd
+    path.join('/var/task', 'data', 'ALL_BOOKS.json'),                 // AWS Lambda layout
+    'data/ALL_BOOKS.json',                                            // last resort
+  ];
+  let raw = null;
+  const tried = [];
+  for (const p of candidates) {
+    try {
+      raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+      console.log('[pricing] catalogue loaded from', p);
+      break;
+    } catch (e) {
+      tried.push(`${p}: ${e.code || e.message}`);
+    }
+  }
+  if (!raw) {
+    _catalogLoadError = `ALL_BOOKS.json not found. Tried:\n  ${tried.join('\n  ')}`;
+    console.error('[pricing]', _catalogLoadError);
+    return null;
+  }
   _catalogIndex = {};
   for (const b of raw) {
-    const slug = slugFromUrl(b.url || '');
-    if (!slug) continue;
     const price = Number.parseFloat(b.price_inr || 0) || 0;
     if (price <= 0) continue;
-    _catalogIndex[slug.toLowerCase()] = {
-      slug,
-      title: String(b.title || '').slice(0, 240),
-      price,
-    };
+    const title = String(b.title || '').slice(0, 240);
+    const entry = { slug: '', title, price };
+    // Index under BOTH the computed make_slug (matches /product/ pages generated
+    // by generate_site.py) AND the slug embedded in the raw `url` field if it
+    // points at our domain (matches manually-curated CUSTOM listings).
+    const computed = makeSlug(b.title || '', b.shopify_id || '').toLowerCase();
+    if (computed) {
+      _catalogIndex[computed] = { ...entry, slug: computed };
+    }
+    const urlSlug = slugFromUrl(b.url || '');
+    if (urlSlug && urlSlug !== computed && !_catalogIndex[urlSlug]) {
+      _catalogIndex[urlSlug] = { ...entry, slug: urlSlug };
+    }
   }
+  console.log(`[pricing] indexed ${Object.keys(_catalogIndex).length} books`);
   return _catalogIndex;
 }
 
@@ -57,7 +130,7 @@ async function resolveCartPrices(cart, supabase) {
     return { cart: [], subtotal: 0, dropped: [] };
   }
 
-  const index = getCatalogIndex();
+  const index = getCatalogIndex() || {};
 
   // First pass: catalogue lookups (synchronous)
   const resolved = [];
