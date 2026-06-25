@@ -20,6 +20,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { resolveCartPrices } = require('./utils/pricing');
+const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -147,9 +148,23 @@ exports.handler = async (event) => {
   const cart        = priced.cart;
   const subtotal    = priced.subtotal;
   const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-  const couponInfo  = await resolveCouponDiscount(_supabaseForCoupon, subtotal, coupon);
+  let couponInfo    = await resolveCouponDiscount(_supabaseForCoupon, subtotal, coupon);
   const meta        = paymentMeta(cart);
   const isPartial   = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
+
+  // Generate order id early so we can atomically claim a scratch card to it.
+  const _now      = new Date();
+  const _datePart = _now.toISOString().slice(0,10).replace(/-/g,'');
+  const _randPart = Math.random().toString(36).slice(2,7).toUpperCase();
+  const orderId   = `IC-${_datePart}-${_randPart}`;
+
+  // Atomic scratch-card claim. If the same card is racing across multiple
+  // concurrent checkouts, only one wins; the others drop the discount.
+  if (couponInfo.source === 'scratch') {
+    const claim = await claimScratchCardForOrder(_supabaseForCoupon, couponInfo.code, orderId);
+    if (!claim.claimed) couponInfo = { code: '', discount: 0 };
+  }
+
   const fullTotal   = Math.max(1, subtotal + shipping - (isPartial ? 0 : couponInfo.discount));
   const deposit     = isPartial ? Math.max(1, Math.ceil(fullTotal * 0.10)) : fullTotal;
   if (isPartial && cart[0]) {
@@ -175,11 +190,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Amount too low' }) };
   }
 
-  // Order id (same scheme as COD so admin/tracking/webhook treat them identically)
-  const now      = new Date();
-  const datePart = now.toISOString().slice(0,10).replace(/-/g,'');
-  const randPart = Math.random().toString(36).slice(2,7).toUpperCase();
-  const orderId  = `IC-${datePart}-${randPart}`;
+  // (orderId was generated above so the scratch-card claim could use it.)
 
   // ── 1. Save pending order to Supabase (non-fatal) ─────────────────────────
   try {

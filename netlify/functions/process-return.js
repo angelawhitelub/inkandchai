@@ -174,8 +174,13 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'POST only' }) };
 
+  // FAIL CLOSED. The previous form (`if (adminKey && sent !== adminKey)`) skipped
+  // the auth check entirely whenever ADMIN_SECRET was empty — anyone could then
+  // approve/reject returns, fire reverse-pickup courier calls, send forged
+  // notifications. Now the function refuses to run unless the secret is set.
   const adminKey = process.env.ADMIN_SECRET;
-  if (adminKey && event.headers['x-admin-key'] !== adminKey) {
+  const sentKey  = event.headers['x-admin-key'] || event.headers['X-Admin-Key'] || '';
+  if (!adminKey || !sentKey || sentKey !== adminKey) {
     return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
   }
 

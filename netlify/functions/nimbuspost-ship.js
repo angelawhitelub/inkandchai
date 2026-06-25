@@ -257,8 +257,11 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS_HEADERS, body: '' };
   if (event.httpMethod !== 'POST')    return json(405, { error: 'Method not allowed' });
 
+  // Fail closed — refuse if ADMIN_SECRET is unset or sent key doesn't match.
+  // Anyone hitting this can push real shipments and burn courier credits.
   const adminKey = process.env.ADMIN_SECRET;
-  if (adminKey && event.headers['x-admin-key'] !== adminKey) {
+  const sentKey  = event.headers['x-admin-key'] || event.headers['X-Admin-Key'] || '';
+  if (!adminKey || !sentKey || sentKey !== adminKey) {
     return json(401, { error: 'Unauthorized' });
   }
 

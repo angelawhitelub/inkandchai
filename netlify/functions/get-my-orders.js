@@ -59,11 +59,9 @@ exports.handler = async (event) => {
     } catch (e) { /* fall through */ }
   }
 
-  // ── Strategy 2: email or phone query param (guest-tracking fallback) ──────
-  const qs = event.queryStringParameters || {};
-  if (!lookupEmail   && qs.email) lookupEmail   = String(qs.email).trim().toLowerCase();
-  if (!lookupPhone10 && qs.phone) lookupPhone10 = last10(qs.phone);
-
+  // Guests must use /track-order (id + email/phone proof). Allowing ?email= or
+  // ?phone= here let anyone scrape another customer's full order history by
+  // enumerating 10-digit phone numbers — a customer-database leak.
   if (!lookupEmail && !lookupPhone10) {
     return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Not authenticated' }) };
   }

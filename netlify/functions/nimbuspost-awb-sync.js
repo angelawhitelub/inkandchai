@@ -287,9 +287,10 @@ exports.handler = async (event) => {
 
   // Manual trigger from the admin panel
   if (event.httpMethod === 'POST') {
+    // Fail closed — refuse if ADMIN_SECRET is unset or sent key doesn't match.
     const adminKey = process.env.ADMIN_SECRET;
-    const sentKey  = event.headers['x-admin-key'] || event.headers['X-Admin-Key'];
-    if (adminKey && sentKey !== adminKey) {
+    const sentKey  = event.headers['x-admin-key'] || event.headers['X-Admin-Key'] || '';
+    if (!adminKey || !sentKey || sentKey !== adminKey) {
       return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
     }
     try {

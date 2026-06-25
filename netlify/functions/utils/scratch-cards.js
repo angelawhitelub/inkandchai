@@ -139,4 +139,59 @@ async function redeemScratchCardForOrder(supabase, code, orderId) {
   return { redeemed: true, value_paise: card.value_paise };
 }
 
-module.exports = { generateCardForOrder, redeemScratchCardForOrder, MIN_SUBTOTAL_PAISE, VALIDITY_DAYS };
+/**
+ * Atomically claim a scratch card at order-creation time.
+ *
+ * The previous flow validated `status='scratched'` at create-order and only
+ * transitioned to `redeemed` after payment success. The window between those
+ * two events let the same card be applied to N parallel carts — every order
+ * paid out the discount, only one `redeem` call won.
+ *
+ * Now we transition `scratched -> redeemed` inside the same SQL UPDATE that
+ * checks the status, using a `WHERE status='scratched'` predicate that
+ * Postgres serialises via row-level lock. If two concurrent claims race, one
+ * sees `affected_rows=1`, the other sees `0` and gets its discount dropped.
+ *
+ * `identifier` is whatever order id we have at this stage — typically the
+ * Razorpay order id (we don't have the IC- display id until verify-payment).
+ * Returns { claimed: bool, value_paise }.
+ */
+async function claimScratchCardForOrder(supabase, code, identifier) {
+  if (!code) return { claimed: false, reason: 'no_code' };
+  const normalized = String(code).toUpperCase().trim();
+  if (!normalized.startsWith('SCRATCH-')) return { claimed: false, reason: 'not_scratch_code' };
+
+  const { data: card } = await supabase
+    .from('scratch_cards').select('id, value_paise, status, redeemed_order_id, expires_at')
+    .eq('code', normalized).maybeSingle();
+  if (!card)                                      return { claimed: false, reason: 'not_found' };
+  if (card.expires_at && new Date(card.expires_at) < new Date()) return { claimed: false, reason: 'expired' };
+  // Already claimed for the SAME order — idempotent (e.g. a retried create-order)
+  if (card.status === 'redeemed' && card.redeemed_order_id === identifier) {
+    return { claimed: true, value_paise: card.value_paise, idempotent: true };
+  }
+  if (card.status !== 'scratched') return { claimed: false, reason: 'already_used' };
+
+  // The race-safe step: only transition the row if it's still scratched.
+  const { data: updated, error } = await supabase
+    .from('scratch_cards')
+    .update({
+      status: 'redeemed',
+      redeemed_at: new Date().toISOString(),
+      redeemed_order_id: identifier,
+    })
+    .eq('id', card.id)
+    .eq('status', 'scratched')
+    .select('id, value_paise');
+  if (error) {
+    console.error('[ScratchCard] claim failed:', error.message);
+    return { claimed: false, reason: 'db_error', error: error.message };
+  }
+  if (!updated || !updated.length) {
+    // Another concurrent order won the row.
+    return { claimed: false, reason: 'race_lost' };
+  }
+  return { claimed: true, value_paise: updated[0].value_paise };
+}
+
+module.exports = { generateCardForOrder, redeemScratchCardForOrder, claimScratchCardForOrder, MIN_SUBTOTAL_PAISE, VALIDITY_DAYS };

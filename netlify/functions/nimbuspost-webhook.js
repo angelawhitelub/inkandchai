@@ -246,18 +246,31 @@ exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
 
   // ── Verify HMAC-SHA256 signature ─────────────────────────────────────────
-  // Log mismatch for debugging but DO NOT block — NimbusPost sometimes sends
-  // events without a signature or with a trailing-newline body variation.
+  // FAIL CLOSED. Anyone can hit this URL; without the signature check an
+  // attacker could mark any AWB as delivered/RTO, fire customer notifications
+  // and start the return window. NimbusPost docs require the x-hmac-sha256
+  // header for all webhooks — if a real event is ever missing it, surface that
+  // in logs and add the source IP to an allowlist instead of failing open.
   const secret = process.env.NIMBUSPOST_WEBHOOK_SECRET;
   if (secret) {
-    const received = event.headers['x-hmac-sha256'] || '';
+    const received = event.headers['x-hmac-sha256'] || event.headers['X-Hmac-Sha256'] || '';
     const expected = crypto
       .createHmac('sha256', secret)
-      .update(event.body)
+      .update(event.body || '')
       .digest('base64');
-    if (received && received !== expected) {
-      console.warn(`NimbusPost webhook: HMAC mismatch (received=${received.slice(0,12)}… expected=${expected.slice(0,12)}…) — processing anyway`);
+    let ok = false;
+    if (received && received.length === expected.length) {
+      try {
+        ok = crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected));
+      } catch { ok = false; }
     }
+    if (!ok) {
+      console.warn(`NimbusPost webhook: signature invalid (received=${received.slice(0,12)}…) — rejecting`);
+      return { statusCode: 403, body: 'Invalid signature' };
+    }
+  } else {
+    console.error('NIMBUSPOST_WEBHOOK_SECRET not set — rejecting webhook to stay safe');
+    return { statusCode: 503, body: 'Webhook secret not configured' };
   }
 
   // Parse — NimbusPost may send single object or array

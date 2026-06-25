@@ -16,6 +16,7 @@
 const Razorpay = require('razorpay');
 const { createClient } = require('@supabase/supabase-js');
 const { resolveCartPrices } = require('./utils/pricing');
+const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -111,23 +112,52 @@ exports.handler = async (event) => {
     });
 
     const safeNotes = (clientNotes && typeof clientNotes === 'object') ? clientNotes : {};
+
+    // Create the Razorpay order first, then atomically claim the scratch card
+    // (if any). If the claim races and loses, recreate the order at full price
+    // — better than letting one card discount N parallel carts.
+    let finalAmountPaise   = amountPaise;
+    let finalCouponCode    = couponInfo.code || '';
+    let finalDiscountPaise = Math.round((isPartial ? 0 : couponInfo.discount) * 100);
+    if (couponInfo.source === 'scratch') {
+      // Two-step claim: provisional id now, rewrite to real razorpay order id
+      // once create() returns. Race-safe at the DB level (see scratch-cards.js).
+      const provisionalId = `provisional_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+      const claim = await claimScratchCardForOrder(supabase, couponInfo.code, provisionalId);
+      if (!claim.claimed) {
+        finalDiscountPaise = 0;
+        finalCouponCode    = '';
+        const reFull       = Math.max(1, subtotal + shipping);
+        const reCharged    = isPartial ? Math.max(1, Math.ceil(reFull * 0.10)) : reFull;
+        finalAmountPaise   = Math.round(reCharged * 100);
+      } else {
+        couponInfo._provisionalId = provisionalId;
+      }
+    }
+
     const order = await razorpay.orders.create({
-      amount:   amountPaise,
+      amount:   finalAmountPaise,
       currency: 'INR',
       receipt:  `ic_${Date.now()}`,
       notes: {
         ...safeNotes,
-        // Server-computed values stashed so verify-payment can sanity-check them
-        // without re-trusting whatever the browser POSTs.
-        server_subtotal_paise: Math.round(subtotal * 100),
-        server_shipping_paise: Math.round(shipping  * 100),
-        server_discount_paise: Math.round((isPartial ? 0 : couponInfo.discount) * 100),
-        server_amount_paise:   amountPaise,
+        server_subtotal_paise:   Math.round(subtotal * 100),
+        server_shipping_paise:   Math.round(shipping  * 100),
+        server_discount_paise:   finalDiscountPaise,
+        server_amount_paise:     finalAmountPaise,
         server_full_total_paise: Math.round(fullTotal * 100),
-        server_payment_mode:   isPartial ? 'partial_cod' : 'full',
-        server_coupon_code:    couponInfo.code || '',
+        server_payment_mode:     isPartial ? 'partial_cod' : 'full',
+        server_coupon_code:      finalCouponCode,
       },
     });
+
+    // Re-tag the scratch-card claim with the real razorpay order id.
+    if (couponInfo._provisionalId) {
+      await supabase
+        .from('scratch_cards')
+        .update({ redeemed_order_id: order.id })
+        .eq('redeemed_order_id', couponInfo._provisionalId);
+    }
 
     return {
       statusCode: 200,
