@@ -74,19 +74,9 @@ function parseAddress(addr) {
   return { addr1: addr1 || city, addr2: '', city, state, pincode };
 }
 
-// ── Weight / dims estimator (matches Delhivery mapper logic) ──────────────
-const WEIGHT_TABLE = {
-  1: { g: 300, l: 20, h: 3,  b: 15 },
-  2: { g: 550, l: 22, h: 5,  b: 16 },
-  3: { g: 800, l: 24, h: 6,  b: 16 },
-  4: { g: 1050, l: 26, h: 8, b: 17 },
-  5: { g: 1300, l: 28, h: 9, b: 17 },
-};
-function estimateDims(cartItems) {
-  const qty = (Array.isArray(cartItems) ? cartItems : []).reduce((s, i) => s + (i.qty || 1), 0);
-  const key = Math.min(qty, 5);
-  const { g, l, h, b } = WEIGHT_TABLE[key] || WEIGHT_TABLE[5];
-  return { weight: g, length: l, height: h, breadth: b };
+// Flat 400g / 15×10×5 for every shipment regardless of qty or product mix.
+function estimateDims(_cartItems) {
+  return { weight: 400, length: 15, breadth: 10, height: 5 };
 }
 
 // ── NimbusPost API helpers ─────────────────────────────────────────────────
