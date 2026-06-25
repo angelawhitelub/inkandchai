@@ -7556,16 +7556,26 @@ async function doRazorpay(addr, paymentMode = 'online') {
   const amtPaise = Math.round(payable * 100);
 
   try {
+    // create-order now recomputes amount server-side from cart slug + catalogue
+    // (prevents client-side amount tampering that let one customer pay ₹1 for a
+    // ₹799 order). We send cart + coupon + payment_mode; server returns the
+    // authoritative Razorpay order with the true amount.
     const res = await fetch('/.netlify/functions/create-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        amount: amtPaise, currency: 'INR',
-        receipt: 'ic_' + Date.now(),
-        notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, shipping_address: addr.address || '', books: cart.map(i=>i.title||'').filter(Boolean).join(', ').slice(0,200), coupon: isPartial ? '' : (totals.couponCode || ''), payment_mode: isPartial ? 'partial_cod' : 'online' },
+        cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+        coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
+        payment_mode: isPartial ? 'partial_cod' : 'full',
+        notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, shipping_address: addr.address || '', books: cart.map(i=>i.title||'').filter(Boolean).join(', ').slice(0,200) },
       }),
     });
-    if (!res.ok) throw new Error('Order creation failed');
+    if (!res.ok) {
+      let err = 'Order creation failed';
+      try { const j = await res.json(); err = j.error || err; } catch (e) {}
+      throw new Error(err);
+    }
     const order = await res.json();
 
     const options = {
