@@ -11,6 +11,20 @@ const { sendEmail }    = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
+const { resolveCartPrices } = require('./utils/pricing');
+
+// Authoritative amount comes from Razorpay, not the browser.
+async function fetchRazorpayOrderAmount(orderId) {
+  const keyId     = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+  const res = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(orderId)}`, {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+  if (!res.ok) throw new Error(`Razorpay order fetch failed (${res.status})`);
+  const data = await res.json();
+  return { amount: Number(data.amount) || 0, notes: data.notes || {} };
+}
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -92,14 +106,16 @@ exports.handler = async (event) => {
     razorpay_order_id,
     razorpay_payment_id,
     razorpay_signature,
-    cart,
     customer,
-    amount,
     shipping,
     coupon,
     discount,
     payment_mode,
   } = body;
+  // `cart` and `amount` are intentionally NOT destructured — both are
+  // re-derived from the server-side catalogue + Razorpay's authoritative order
+  // record below. Trusting either from the client allowed ₹1 paid for ₹799 orders.
+  let cart = Array.isArray(body.cart) ? body.cart : [];
   // Re-derive shipping defensively if not provided by client
   const subtotalRupees = cart ? cart.reduce((s,i)=>s+i.price*i.qty,0) : 0;
   const shipFee = (typeof shipping === 'number')
@@ -117,8 +133,41 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid signature' }) };
   }
 
+  // ── 1b. Trust Razorpay for the amount, NOT the browser ────────────────────
+  // Previously we accepted whatever `amount` the client POSTed and stored it
+  // verbatim. An attacker could pay ₹1 for a ₹799 order. Fetch the canonical
+  // amount from Razorpay's API; if anything is off, refuse the order.
+  let trustedAmountPaise = 0;
+  let rpNotes = {};
+  try {
+    const rp = await fetchRazorpayOrderAmount(razorpay_order_id);
+    trustedAmountPaise = rp.amount;
+    rpNotes = rp.notes || {};
+  } catch (err) {
+    console.error('Razorpay order fetch failed:', err.message);
+    return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: 'Could not verify amount with Razorpay' }) };
+  }
+  if (trustedAmountPaise < 100) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid order amount' }) };
+  }
+
+  // Resolve cart prices server-side too, so client-tampered titles/prices can't
+  // leak into our DB or emails.
+  try {
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const resolved = await resolveCartPrices(cart, sb);
+    if (resolved.cart.length) {
+      const firstMeta = (cart && cart[0]) || {};
+      if (firstMeta._payment) resolved.cart[0]._payment = firstMeta._payment;
+      if (firstMeta._coupon)  resolved.cart[0]._coupon  = firstMeta._coupon;
+      cart = resolved.cart;
+    }
+  } catch (err) {
+    console.error('Cart resolve failed (non-fatal):', err.message);
+  }
+
   // ── 2. Save to Supabase ───────────────────────────────────────────────────
-  const paidTotal = Math.round((Number(amount) || 0) / 100);
+  const paidTotal = Math.round(trustedAmountPaise / 100);
   const discountRupees = Math.max(0, Number(discount) || 0);
   const couponCode = String(coupon || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const meta = paymentMeta(cart);
@@ -178,7 +227,7 @@ exports.handler = async (event) => {
     const { error } = await supabase.from('orders').insert({
       razorpay_order_id:   inkOrderId,          // IC- format — consistent across all payment methods
       razorpay_payment_id: razorpay_payment_id, // pay_XXXXX — actual Razorpay payment ID (for refunds)
-      amount_paise:     amount,
+      amount_paise:     trustedAmountPaise,
       status:           isPartial ? 'partial_cod_pending' : 'paid',
       customer_name:    customer?.name    || '',
       customer_email:   customer?.email   || '',
@@ -211,7 +260,7 @@ exports.handler = async (event) => {
       customerPhone:    customer?.phone   || '',
       customerAddress:  customer?.address || '',
       cartItems:        cart,
-      amountPaise:      amount,
+      amountPaise:      trustedAmountPaise,
       status:           isPartial ? 'partial_cod_pending' : 'paid',
       createdAt:        new Date().toISOString(),
     }).catch(e => console.error('[Shiprocket] push failed (non-fatal):', e.message));
@@ -224,7 +273,7 @@ exports.handler = async (event) => {
       customer_name: customer?.name || '',
       customer_phone: customer?.phone || '',
       customer_address: customer?.address || '',
-      amount_paise: amount,
+      amount_paise: trustedAmountPaise,
       cart_items: cart,
     }).catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
 

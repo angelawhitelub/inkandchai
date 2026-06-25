@@ -9,6 +9,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
+const { resolveCartPrices } = require('./utils/pricing');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -74,8 +75,8 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body); }
   catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
-  const { cart, customer, amount, user_id } = body;
-  if (!cart?.length || !customer?.phone) {
+  const { cart: rawCart, customer, user_id } = body;
+  if (!Array.isArray(rawCart) || !rawCart.length || !customer?.phone) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
   }
 
@@ -85,12 +86,19 @@ exports.handler = async (event) => {
   const orderId = `IC-${datePart}-${randPart}`;  // e.g. IC-20260429-AB3CD
 
   // Shipping rules — must match cart.js + checkout. Calculate server-side
-  // defensively rather than trusting client input.
+  // defensively rather than trusting client input. Prices come from the
+  // catalogue, NEVER from cart items (the browser is hostile).
   const FREE_SHIPPING_THRESHOLD = 499;
   const SHIPPING_FEE = 40;
   const COD_HANDLING_FEE = 20;            // matches generate_site.py CHECKOUT_HTML
   const COD_FEE_WAIVER_THRESHOLD = 999;   // fee waived on subtotal >= ₹999
-  const subtotal = cart.reduce((s,i)=>s+i.price*i.qty, 0);
+  const _sbForPrice = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  const priced = await resolveCartPrices(rawCart, _sbForPrice);
+  if (!priced.cart.length) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'No catalogue items in cart' }) };
+  }
+  const cart = priced.cart;
+  const subtotal = priced.subtotal;
   const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   const codFee   = subtotal >= COD_FEE_WAIVER_THRESHOLD ? 0 : COD_HANDLING_FEE;
   const total    = subtotal + shipping + codFee;

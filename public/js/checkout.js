@@ -241,7 +241,6 @@ async function startCheckout(addr) {
   const cart = getCart();
   if (!cart.length) { showToast('Your cart is empty!'); return; }
 
-  const amountPaise = Math.round(cart.reduce((s, i) => s + i.price * i.qty, 0) * 100);
   showToast('Creating order…');
 
   try {
@@ -249,15 +248,18 @@ async function startCheckout(addr) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        amount:   amountPaise,
-        currency: 'INR',
-        receipt:  `ic_${Date.now()}`,
+        cart,
+        customer: addr,
+        coupon: (typeof appliedCouponCode === 'string' ? appliedCouponCode : ''),
+        payment_mode: 'full',
         notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name },
       }),
     });
 
     if (!res.ok) throw new Error(`Order creation failed (${res.status})`);
     const order = await res.json();
+    // Server is authoritative — use what it returned, not the local cart estimate.
+    const amountPaise = order.amount;
 
     const options = {
       key:         RAZORPAY_KEY,

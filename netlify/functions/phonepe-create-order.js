@@ -19,6 +19,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { resolveCartPrices } = require('./utils/pricing');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -132,15 +133,20 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body); }
   catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
-  const { cart, customer, coupon, payment_mode } = body;
-  if (!cart?.length || !customer?.phone) {
+  const { cart: rawCart, customer, coupon, payment_mode } = body;
+  if (!Array.isArray(rawCart) || !rawCart.length || !customer?.phone) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
   }
 
-  // Re-derive total server-side
-  const subtotal    = cart.reduce((s, i) => s + (i.price * i.qty), 0);
-  const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  // Re-derive prices + total server-side. NEVER trust client-supplied i.price.
   const _supabaseForCoupon = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  const priced = await resolveCartPrices(rawCart, _supabaseForCoupon);
+  if (!priced.cart.length) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'No catalogue items in cart' }) };
+  }
+  const cart        = priced.cart;
+  const subtotal    = priced.subtotal;
+  const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   const couponInfo  = await resolveCouponDiscount(_supabaseForCoupon, subtotal, coupon);
   const meta        = paymentMeta(cart);
   const isPartial   = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
