@@ -27,7 +27,7 @@
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <script type="application/ld+json" id="ldjson">{}</script>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Source+Sans+3:wght@300;400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <script>
   (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){ /* dark default */ } })();
   function toggleTheme() {
@@ -57,7 +57,7 @@ html[data-theme="light"] .theme-toggle .moon{display:none}
 html[data-theme="light"] .theme-toggle .sun{display:inline}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:400;min-height:100vh}
+body{background:var(--bg);color:var(--cream);font-family:'Source Sans 3',sans-serif;font-weight:400;min-height:100vh}
 
 /* NAV */
 nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1.2rem 4rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
@@ -70,7 +70,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;display:flex;align-items:center;gap:0.5rem;transition:color 0.3s}
 .nav-back:hover{color:var(--gold)}
 .nav-cart-wrap{position:relative}
-.btn-nav{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.55rem 1.4rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.3s;text-decoration:none}
+.btn-nav{font-family:'Source Sans 3',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.55rem 1.4rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.3s;text-decoration:none}
 .btn-nav:hover{background:var(--gold);color:var(--bg)}
 .cart-badge{background:var(--gold);color:var(--bg);border-radius:50%;width:18px;height:18px;font-size:0.55rem;font-weight:500;display:inline-flex;align-items:center;justify-content:center;position:absolute;top:-6px;right:-8px}
 
@@ -102,7 +102,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 
 /* Sample PDF "Read inside" button — sits below cover */
 .sample-pdf-row{margin-top:1rem;display:flex;justify-content:center}
-.btn-sample-pdf{display:inline-flex;align-items:center;gap:0.6rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.7rem 1.2rem;background:rgba(201,168,76,0.08);color:var(--gold);border:1px dashed rgba(201,168,76,0.45);cursor:pointer;font-weight:500;transition:all 0.2s;text-decoration:none}
+.btn-sample-pdf{display:inline-flex;align-items:center;gap:0.6rem;font-family:'Source Sans 3',sans-serif;font-size:0.62rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.7rem 1.2rem;background:rgba(201,168,76,0.08);color:var(--gold);border:1px dashed rgba(201,168,76,0.45);cursor:pointer;font-weight:500;transition:all 0.2s;text-decoration:none}
 .btn-sample-pdf:hover{background:var(--gold);color:var(--bg);border-style:solid}
 .btn-sample-pdf .ic{font-size:0.95rem}
 
@@ -122,7 +122,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .pdf-modal-head{display:flex;align-items:center;justify-content:space-between;padding:0.9rem 1.2rem;border-bottom:1px solid var(--border);background:var(--bg3);gap:0.8rem}
 .pdf-modal-title{font-family:'Cormorant Garamond',serif;font-size:1.05rem;color:var(--cream);font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pdf-modal-actions{display:flex;gap:0.5rem;align-items:center}
-.pdf-modal-actions a,.pdf-modal-actions button{font-family:'Montserrat',sans-serif;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.5rem 0.9rem;background:transparent;color:var(--cream-dim);border:1px solid var(--border);cursor:pointer;text-decoration:none;transition:all 0.2s}
+.pdf-modal-actions a,.pdf-modal-actions button{font-family:'Source Sans 3',sans-serif;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.5rem 0.9rem;background:transparent;color:var(--cream-dim);border:1px solid var(--border);cursor:pointer;text-decoration:none;transition:all 0.2s}
 .pdf-modal-actions a:hover,.pdf-modal-actions button:hover{border-color:var(--gold);color:var(--gold)}
 .pdf-modal-actions .pdf-close{background:rgba(201,168,76,0.1);color:var(--gold);border-color:var(--gold-dim)}
 .pdf-modal iframe{flex:1;width:100%;border:none;background:#1a1410}
@@ -186,21 +186,21 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 
 /* ACTIONS */
 .prod-actions{display:flex;flex-direction:column;gap:0.8rem;margin-top:0.5rem}
-.btn-cart{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.3s}
+.btn-cart{width:100%;font-family:'Source Sans 3',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.3s}
 .btn-cart:hover{background:var(--gold-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.25)}
-.btn-cod{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid var(--gold-dim);cursor:pointer;font-weight:500;transition:all 0.3s}
+.btn-cod{width:100%;font-family:'Source Sans 3',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1.1rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid var(--gold-dim);cursor:pointer;font-weight:500;transition:all 0.3s}
 .btn-cod:hover{background:var(--gold);color:var(--bg);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.2)}
 .btn-cart.is-loading,.btn-cod.is-loading,.pbb-cart.is-loading,.pbb-buy.is-loading{position:relative;pointer-events:none;opacity:0.78;color:transparent!important}
 .btn-cart.is-loading::after,.btn-cod.is-loading::after,.pbb-cart.is-loading::after,.pbb-buy.is-loading::after{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:var(--bg)}
 .btn-cod.is-loading::after,.pbb-cart.is-loading::after{color:var(--gold)}
 @keyframes spinBtn{to{transform:rotate(360deg)}}
-.btn-share{font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:0.4rem;transition:color 0.2s;font-family:'Montserrat',sans-serif}
+.btn-share{font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:0.4rem;transition:color 0.2s;font-family:'Source Sans 3',sans-serif}
 .btn-share:hover{color:var(--gold)}
 
 /* MOBILE BOTTOM BAR */
 .prod-bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:rgba(13,11,8,0.98);border-top:1px solid rgba(201,168,76,0.3);padding:0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom,0px));gap:0.6rem;align-items:center;backdrop-filter:blur(16px);box-shadow:0 -8px 24px rgba(0,0,0,0.5)}
-.pbb-cart{flex:1;font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid rgba(201,168,76,0.4);cursor:pointer;font-weight:500;transition:all 0.2s}
-.pbb-buy{flex:1.5;font-family:'Montserrat',sans-serif;font-size:0.63rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:700;transition:all 0.2s}
+.pbb-cart{flex:1;font-family:'Source Sans 3',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:rgba(201,168,76,0.12);color:var(--gold);border:1px solid rgba(201,168,76,0.4);cursor:pointer;font-weight:500;transition:all 0.2s}
+.pbb-buy{flex:1.5;font-family:'Source Sans 3',sans-serif;font-size:0.63rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem 0.5rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:700;transition:all 0.2s}
 .pbb-cart:active{background:var(--gold);color:var(--bg)}
 .pbb-buy:active{background:var(--gold-light)}
 
@@ -210,7 +210,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .qty-ctrl{display:flex;align-items:center}
 .qty-ctrl button{width:36px;height:36px;background:var(--bg2);border:1px solid var(--border);color:var(--cream);font-size:1.15rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color 0.2s,color 0.2s}
 .qty-ctrl button:hover{border-color:var(--gold);color:var(--gold)}
-.qty-num{width:46px;height:36px;display:flex;align-items:center;justify-content:center;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:0.95rem;color:var(--cream);font-family:'Montserrat',sans-serif;user-select:none}
+.qty-num{width:46px;height:36px;display:flex;align-items:center;justify-content:center;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:0.95rem;color:var(--cream);font-family:'Source Sans 3',sans-serif;user-select:none}
 
 /* STAR RATING */
 .prod-rating{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.2rem}
@@ -273,7 +273,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 .fbt-total-label{font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.2rem;display:block}
 .fbt-total-amt{font-size:1.6rem;color:var(--gold);font-weight:600}
 .fbt-total-orig{font-size:0.85rem;color:var(--cream-dim);text-decoration:line-through;margin-left:0.6rem;font-weight:400}
-.fbt-cta{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.95rem 1.6rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:600;transition:all 0.25s}
+.fbt-cta{font-family:'Source Sans 3',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.95rem 1.6rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:600;transition:all 0.25s}
 .fbt-cta:hover{background:var(--gold-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.25)}
 @media(max-width:780px){
   .fbt{padding:0 1rem}
@@ -355,7 +355,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 .cart-total-row{display:flex;justify-content:space-between;align-items:baseline}
 .cart-total-label{font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--cream-dim)}
 .cart-total-amount{font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:var(--gold);font-weight:600}
-.btn-checkout{width:100%;font-family:'Montserrat',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.3s}
+.btn-checkout{width:100%;font-family:'Source Sans 3',sans-serif;font-size:0.65rem;letter-spacing:0.25em;text-transform:uppercase;padding:1rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;transition:all 0.3s}
 .btn-checkout:hover{background:var(--gold-light)}
 
 /* NOT FOUND */
@@ -363,9 +363,9 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 .not-found h2{font-family:'Cormorant Garamond',serif;font-size:2rem;color:var(--white);margin-bottom:1rem}
 
 /* Promo banner */
-.promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Montserrat',sans-serif;position:relative;z-index:200}
+.promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Source Sans 3',sans-serif;position:relative;z-index:200}
 .promo-banner strong{color:#c9a84c;font-weight:600;letter-spacing:0.18em}
-.promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
+.promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Source Sans 3',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
 @media(max-width:780px){.promo-banner{display:none}}
 
 /* WhatsApp floating */
@@ -464,10 +464,39 @@ gtag('config', 'AW-18139908537');
 </script>
 <!-- End Google Merchant Reviews Badge -->
 <style id="premium-refinement-layer">
-/* Crisper, more premium type rendering */
-body{ -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; text-rendering:optimizeLegibility; }
+/* Typography system — readable UI + literary headings + Hindi fallback */
+:root{
+  --font-serif:'Cormorant Garamond','Noto Serif Devanagari',Georgia,'Times New Roman',serif;
+  --font-sans:'Source Sans 3','Noto Sans Devanagari',system-ui,-apple-system,sans-serif;
+}
+body{
+  font-family:var(--font-sans);
+  font-size:15px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+}
+h1,h2,h3,.section-title,.hero-title,.coll-name,.book-name,.prod-title,.ah-title,.editorial-quote{
+  font-family:var(--font-serif);
+  font-optical-sizing:auto;
+}
 h1,h2,h3,.section-title,.hero-title,.coll-name{ letter-spacing:.005em; }
 .hero-title,.section-title{ font-weight:600; }
+/* UI labels: less stretched tracking, slightly larger for legibility */
+.nav-links a,.btn-nav,.btn-primary,.btn-ghost,.tab,.btn-add,.btn-add-card,.btn-checkout,
+.btn-load-more,.btn-subscribe,.promo-banner,.mob-nav a,.mob-nav button,.nav-dropdown a,
+.btn-cart,.btn-cod,.pbb-cart,.pbb-buy,.fbt-cta,.back,.nav-back,.crumb{
+  letter-spacing:.1em !important;
+}
+.nav-links a{ font-size:.72rem !important; }
+.btn-nav,.btn-primary,.tab,.btn-cart,.btn-cod{ font-size:.68rem !important; }
+.btn-add-card,.shelf-card-btn{ font-size:.6rem !important; min-height:2.2rem; }
+.hero-sub,.subtitle,.intro,.body-copy{ font-size:.875rem !important; line-height:1.75 !important; letter-spacing:.015em !important; }
+.book-name{ font-size:1.08rem !important; line-height:1.28 !important; }
+.book-author,.book-meta{ font-size:.78rem !important; letter-spacing:.04em !important; }
+/* Brighter muted text for contrast on dark backgrounds */
+html:not([data-theme="light"]) body{ --cream-dim:#b5a595; }
 
 /* Solid gold buttons — metallic gradient, depth, springy hover lift */
 .btn-add,.btn-pay,.primary,.btn-checkout{
@@ -693,7 +722,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-full-bb4525b8.js"></script>
+<script src="/js/books-full-d92cf730.js"></script>
 <script>
 const BOOKS = window.BOOKS_PRELOAD||[];
 const SOCIAL_PROOF = [{"type": "video", "src": "/videos/unboxing-people-magnet.mp4", "poster": "/images/social/unboxing-people-magnet.jpg", "caption": "All India delivery · COD available"}, {"type": "video", "src": "/videos/affordable-novels.mp4", "poster": "/images/social/affordable-novels.jpg", "caption": "Affordable novels from just ₹99"}, {"type": "video", "src": "/videos/rich-dad-collection.mp4", "poster": "/images/social/rich-dad-collection.jpg", "caption": "Different genres · Large collection to choose from"}, {"type": "video", "src": "/videos/customer-thanks.mp4", "poster": "/images/social/customer-thanks.jpg", "caption": "❤️ A note from one of our readers"}];
@@ -793,19 +822,77 @@ function customProductToBook(product) {
   };
 }
 
-async function loadSingleProductOverride(slug) {
+// Cache product-overrides for 5 min in sessionStorage so navigating between
+// product pages doesn't re-hit the Lambda each time (the response is ~100 KB
+// and the function does a Supabase round-trip on cold start — was responsible
+// for 5-10s blank product pages).
+const OVERRIDES_CACHE_KEY = 'iac_overrides_cache_v1';
+const OVERRIDES_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function getCachedOverrides() {
   try {
-    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
-    if (!res.ok) return { override: null, customProduct: null };
-    const data = await res.json();
-    const key = String(slug || '').toLowerCase();
-    const override = (data.overrides || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
-    const customProduct = (data.custom_products || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
-    return { override, customProduct };
-  } catch (err) {
-    console.warn('Product override unavailable:', err.message);
-    return { override: null, customProduct: null };
+    const raw = sessionStorage.getItem(OVERRIDES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || (Date.now() - (parsed.ts || 0) > OVERRIDES_CACHE_TTL_MS)) return null;
+    return parsed.data;
+  } catch { return null; }
+}
+function setCachedOverrides(data) {
+  try { sessionStorage.setItem(OVERRIDES_CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
+function pickOverrideFor(data, slug) {
+  const key = String(slug || '').toLowerCase();
+  const override = (data?.overrides || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
+  const customProduct = (data?.custom_products || []).find(o => String(o.slug || '').toLowerCase() === key) || null;
+  return { override, customProduct };
+}
+
+let _overridesInflight = null;
+async function fetchOverridesFresh() {
+  if (_overridesInflight) return _overridesInflight;
+  _overridesInflight = (async () => {
+    try {
+      // Default cache so the browser + any CDN in front can short-circuit
+      // repeat hits. The endpoint sets its own Cache-Control too.
+      const res = await fetch('/.netlify/functions/get-product-overrides');
+      if (!res.ok) return null;
+      const data = await res.json();
+      setCachedOverrides(data);
+      return data;
+    } catch (err) {
+      console.warn('Product override unavailable:', err.message);
+      return null;
+    } finally {
+      _overridesInflight = null;
+    }
+  })();
+  return _overridesInflight;
+}
+
+// Non-blocking variant returns whatever is cached now (possibly null).
+// Render path calls this first, then schedules a background refresh that
+// patches the page if a newer override lands.
+function loadOverridesNow(slug) {
+  const cached = getCachedOverrides();
+  return cached ? pickOverrideFor(cached, slug) : { override: null, customProduct: null };
+}
+async function loadOverridesFresh(slug) {
+  const data = await fetchOverridesFresh();
+  return data ? pickOverrideFor(data, slug) : { override: null, customProduct: null };
+}
+
+// Back-compat: the old name used to await the network. Now it only awaits
+// the network if nothing is cached — first paint never blocks on it.
+async function loadSingleProductOverride(slug) {
+  const cached = getCachedOverrides();
+  if (cached) {
+    // Fire-and-forget revalidation so the next page view is fresh too.
+    fetchOverridesFresh().catch(() => {});
+    return pickOverrideFor(cached, slug);
   }
+  return loadOverridesFresh(slug);
 }
 
 // ── Track recently viewed products (for future "Based on what you viewed") ──
@@ -1531,7 +1618,7 @@ function renderRelated(b) {
     <a class="rel-card" href="/product/${r.slug}/" style="text-decoration:none;display:block">
       <div class="rel-cover">
         ${r.img ? `<img src="${esc(r.img)}" alt="${esc(r.t)}" loading="lazy"/>` : ''}
-        ${r.n ? '<span style="position:absolute;top:6px;left:6px;background:var(--gold);color:var(--bg);font-size:0.42rem;letter-spacing:0.2em;padding:2px 6px;font-family:Montserrat,sans-serif;font-weight:700;text-transform:uppercase;">NEW</span>' : ''}
+        ${r.n ? '<span style="position:absolute;top:6px;left:6px;background:var(--gold);color:var(--bg);font-size:0.42rem;letter-spacing:0.2em;padding:2px 6px;font-family:\'Source Sans 3\',sans-serif;font-weight:700;text-transform:uppercase;">NEW</span>' : ''}
       </div>
       <div class="rel-title">${esc(r.t)}</div>
       <div class="rel-author">${esc(r.a||'')}</div>
@@ -1616,21 +1703,46 @@ const slug    = params.get('id') || pathSlug;
 
 (async () => {
   const foundBook = slug ? BOOK_MAP[slug] : null;
-  const liveData = slug ? await loadSingleProductOverride(slug) : { override: null, customProduct: null };
-  const book = foundBook || customProductToBook(liveData.customProduct);
-  if (book) {
-    const liveBook = applyProductOverride(book, liveData.override);
+  // Stale-while-revalidate: render whatever we have NOW (static catalogue +
+  // cached overrides if any), then patch the page when fresh overrides arrive.
+  // Previously every product page awaited the network before rendering, which
+  // was 5-10s on cold Lambda.
+  const cachedLive = slug ? loadOverridesNow(slug) : { override: null, customProduct: null };
+
+  function renderEverything(liveData) {
+    const baseBook = foundBook || customProductToBook(liveData.customProduct);
+    if (!baseBook) {
+      document.getElementById('productContent').innerHTML = `
+        <div class="not-found">
+          <h2>Book not found</h2>
+          <p>This page may have moved. <a href="/" style="color:var(--gold)">Browse all books →</a></p>
+        </div>`;
+      return false;
+    }
+    const liveBook = applyProductOverride(baseBook, liveData.override);
     renderProduct(liveBook);
     trackProductView(liveBook);
     renderFBT(liveBook);
     renderBookstagram();
     renderRelated(liveBook);
+    return true;
+  }
+
+  // If we have a static book OR a cached override, paint immediately.
+  if (foundBook || cachedLive.customProduct) {
+    renderEverything(cachedLive);
+    // Background revalidation — repaint silently if the live data differs.
+    fetchOverridesFresh().then(data => {
+      if (!data) return;
+      const fresh = pickOverrideFor(data, slug);
+      const changed = JSON.stringify(fresh) !== JSON.stringify(cachedLive);
+      if (changed) renderEverything(fresh);
+    }).catch(() => {});
   } else {
-    document.getElementById('productContent').innerHTML = `
-      <div class="not-found">
-        <h2>Book not found</h2>
-        <p>This page may have moved. <a href="/" style="color:var(--gold)">Browse all books →</a></p>
-      </div>`;
+    // No static match, no cache — we must wait on the network to know whether
+    // it's a custom_products row or genuinely missing.
+    const fresh = slug ? await loadOverridesFresh(slug) : { override: null, customProduct: null };
+    renderEverything(fresh);
   }
 })();
 </script>

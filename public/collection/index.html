@@ -11,7 +11,7 @@
 <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
 <link rel="manifest" href="/manifest.json"/>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Source+Sans+3:wght@300;400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <script>
   (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){ /* dark default */ } })();
   function toggleTheme(){ var c = document.documentElement.getAttribute('data-theme'); var n = c === 'light' ? 'dark' : 'light'; if(n) document.documentElement.setAttribute('data-theme', n); else document.documentElement.removeAttribute('data-theme'); try { localStorage.setItem('iac_theme', n); } catch(e){} }
@@ -20,7 +20,7 @@
 :root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
 html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#8a6a1f;--gold-light:#b8902c;--gold-dim:#6a4f10;--cream:#2a2018;--cream-dim:#5a4a38;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
+body{background:var(--bg);color:var(--cream);font-family:'Source Sans 3',sans-serif;font-weight:300;min-height:100vh}
 nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1.2rem 4rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
 html[data-theme="light"] nav{background:rgba(250,247,242,0.97)}
 .nav-logo{display:inline-flex;align-items:center;gap:0.5rem;font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;letter-spacing:0.08em;color:var(--gold);text-decoration:none}
@@ -31,7 +31,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 @media(max-width:780px){.nav-logo .logo-img{height:32px}}
 .nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;transition:color 0.3s}
 .nav-back:hover{color:var(--gold)}
-.btn-nav{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.55rem 1.4rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.3s;text-decoration:none}
+.btn-nav{font-family:'Source Sans 3',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.55rem 1.4rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.3s;text-decoration:none}
 .btn-nav:hover{background:var(--gold);color:var(--bg)}
 .theme-toggle{background:transparent;border:1px solid var(--gold-dim);color:var(--gold);width:34px;height:34px;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:0.85rem;transition:all 0.3s}
 .theme-toggle:hover{background:var(--gold);color:var(--bg);transform:rotate(20deg)}
@@ -48,7 +48,7 @@ html[data-theme="light"] .theme-toggle .sun{display:inline}
 .crumb a{color:var(--gold);text-decoration:none}
 .crumb a:hover{color:var(--gold-light)}
 .toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;max-width:1200px;margin:0 auto;padding:1rem 2rem;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-.toolbar input,.toolbar select{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.5rem 0.9rem;font-family:'Montserrat',sans-serif;font-size:0.7rem;outline:none}
+.toolbar input,.toolbar select{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.5rem 0.9rem;font-family:'Source Sans 3',sans-serif;font-size:0.7rem;outline:none}
 .toolbar input{flex:1;max-width:280px}
 .toolbar input:focus,.toolbar select:focus{border-color:var(--gold)}
 .tools-right{display:flex;gap:0.6rem;align-items:center}
@@ -70,9 +70,9 @@ html[data-theme="light"] .book-cover{background:#f0e8d4}
 .empty{text-align:center;padding:6rem 2rem;color:var(--cream-dim)}
 .empty h2{font-family:'Cormorant Garamond',serif;font-size:1.8rem;color:var(--white);margin-bottom:1rem}
 .empty a{color:var(--gold);text-decoration:none}
-.promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Montserrat',sans-serif;position:relative;z-index:200}
+.promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Source Sans 3',sans-serif;position:relative;z-index:200}
 .promo-banner strong{color:#c9a84c;font-weight:600;letter-spacing:0.18em}
-.promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
+.promo-banner code{background:rgba(201,168,76,0.18);color:#c9a84c;padding:0.15rem 0.55rem;border:1px dashed rgba(201,168,76,0.5);font-family:'Source Sans 3',sans-serif;font-size:0.62rem;letter-spacing:0.15em;margin-left:0.5rem}
 html[data-theme="light"] .promo-banner{background:linear-gradient(90deg,#fff8e6,#fbeec8,#fff8e6);color:#5a4a18}
 html[data-theme="light"] .promo-banner code{background:rgba(138,106,31,0.12);color:#6a4f10;border-color:rgba(138,106,31,0.4)}
 @media(max-width:780px){.promo-banner{display:none}}
@@ -85,7 +85,7 @@ html[data-theme="light"] .promo-banner code{background:rgba(138,106,31,0.12);col
   body{padding-bottom:64px}
 }
 html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-color:rgba(138,106,31,0.3)}
-.mob-nav a,.mob-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0.45rem 0;background:transparent;border:none;color:var(--cream-dim);font-family:'Montserrat',sans-serif;font-size:0.55rem;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:color 0.2s}
+.mob-nav a,.mob-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0.45rem 0;background:transparent;border:none;color:var(--cream-dim);font-family:'Source Sans 3',sans-serif;font-size:0.55rem;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:color 0.2s}
 .mob-nav a:active,.mob-nav button:active{color:var(--gold)}
 .mob-nav .mn-icon{font-size:1.25rem;line-height:1}
 
@@ -180,10 +180,39 @@ gtag('config', 'AW-18139908537');
 </script>
 <!-- End Google Merchant Reviews Badge -->
 <style id="premium-refinement-layer">
-/* Crisper, more premium type rendering */
-body{ -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; text-rendering:optimizeLegibility; }
+/* Typography system — readable UI + literary headings + Hindi fallback */
+:root{
+  --font-serif:'Cormorant Garamond','Noto Serif Devanagari',Georgia,'Times New Roman',serif;
+  --font-sans:'Source Sans 3','Noto Sans Devanagari',system-ui,-apple-system,sans-serif;
+}
+body{
+  font-family:var(--font-sans);
+  font-size:15px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+}
+h1,h2,h3,.section-title,.hero-title,.coll-name,.book-name,.prod-title,.ah-title,.editorial-quote{
+  font-family:var(--font-serif);
+  font-optical-sizing:auto;
+}
 h1,h2,h3,.section-title,.hero-title,.coll-name{ letter-spacing:.005em; }
 .hero-title,.section-title{ font-weight:600; }
+/* UI labels: less stretched tracking, slightly larger for legibility */
+.nav-links a,.btn-nav,.btn-primary,.btn-ghost,.tab,.btn-add,.btn-add-card,.btn-checkout,
+.btn-load-more,.btn-subscribe,.promo-banner,.mob-nav a,.mob-nav button,.nav-dropdown a,
+.btn-cart,.btn-cod,.pbb-cart,.pbb-buy,.fbt-cta,.back,.nav-back,.crumb{
+  letter-spacing:.1em !important;
+}
+.nav-links a{ font-size:.72rem !important; }
+.btn-nav,.btn-primary,.tab,.btn-cart,.btn-cod{ font-size:.68rem !important; }
+.btn-add-card,.shelf-card-btn{ font-size:.6rem !important; min-height:2.2rem; }
+.hero-sub,.subtitle,.intro,.body-copy{ font-size:.875rem !important; line-height:1.75 !important; letter-spacing:.015em !important; }
+.book-name{ font-size:1.08rem !important; line-height:1.28 !important; }
+.book-author,.book-meta{ font-size:.78rem !important; letter-spacing:.04em !important; }
+/* Brighter muted text for contrast on dark backgrounds */
+html:not([data-theme="light"]) body{ --cream-dim:#b5a595; }
 
 /* Solid gold buttons — metallic gradient, depth, springy hover lift */
 .btn-add,.btn-pay,.primary,.btn-checkout{
