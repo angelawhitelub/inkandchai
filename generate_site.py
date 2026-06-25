@@ -7474,6 +7474,24 @@ async function doPartialPayment(addr) {
     setLoading(false);
     return;
   }
+  // Partial is COD-with-deposit — strip any prepaid-only coupon silently
+  // (same UX as doCOD).
+  if (appliedCouponCode) {
+    const codCheck = couponDiscount(cartSubtotal(cart), 'cod');
+    if (codCheck.discount <= 0 && codCheck.message) {
+      const removed = appliedCouponCode;
+      appliedCouponCode = '';
+      try { localStorage.removeItem(COUPON_KEY); } catch (e) {}
+      if (typeof appliedScratchCard !== 'undefined' && removed.startsWith('SCRATCH-')) {
+        appliedScratchCard = null;
+        try { localStorage.removeItem(SCRATCH_KEY); } catch (e) {}
+      }
+      if (typeof showToast === 'function') {
+        showToast(removed + ' is prepaid-only — removed for partial COD.');
+      }
+      if (typeof renderSummary === 'function') renderSummary();
+    }
+  }
   const pm = selectedPayMethod();
   if (pm === 'razorpay') {
     await doRazorpay(addr, 'partial');
@@ -7608,12 +7626,27 @@ async function doRazorpay(addr, paymentMode = 'online') {
 // ── Cash on Delivery ───────────────────────────────────────────────────────
 async function doCOD(addr) {
   const cart     = getCart();
-  const totals = orderTotals(cart, 'cod');
-  if (appliedCouponCode && couponDiscount(cartSubtotal(cart), 'cod').message) {
-    alert(appliedCouponCode + ' is valid only for Pay Now orders. Please use Pay Now to get the discount, or clear the coupon for COD.');
-    setLoading(false);
-    return;
+  // COD: silently drop any prepaid-only coupon instead of nagging the customer.
+  // Static COUPONS marked onlineOnly (INKLOVE10, SAVE12, SAVE15, etc.) and
+  // scratch cards are both prepaid-only. The previous behaviour blocked
+  // checkout with an alert until the user removed the code by hand.
+  if (appliedCouponCode) {
+    const codCheck = couponDiscount(cartSubtotal(cart), 'cod');
+    if (codCheck.discount <= 0 && codCheck.message) {
+      const removed = appliedCouponCode;
+      appliedCouponCode = '';
+      try { localStorage.removeItem(COUPON_KEY); } catch (e) {}
+      if (typeof appliedScratchCard !== 'undefined' && removed.startsWith('SCRATCH-')) {
+        appliedScratchCard = null;
+        try { localStorage.removeItem(SCRATCH_KEY); } catch (e) {}
+      }
+      if (typeof showToast === 'function') {
+        showToast(removed + ' is prepaid-only — removed for Cash on Delivery.');
+      }
+      if (typeof renderSummary === 'function') renderSummary();
+    }
   }
+  const totals = orderTotals(cart, 'cod');
 
   try {
     const res = await fetch('/.netlify/functions/cod-order', {
