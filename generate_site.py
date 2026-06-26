@@ -6929,7 +6929,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
 
         <div class="form-group">
           <label for="ch-addr">House / Street / Locality *</label>
-          <input id="ch-addr" type="text" placeholder="e.g. 12B, MG Road, Lajpat Nagar" autocomplete="street-address"/>
+          <textarea id="ch-addr" rows="2" placeholder="e.g. 12B, MG Road, Lajpat Nagar" autocomplete="street-address" style="resize:vertical;min-height:54px;font-family:inherit"></textarea>
         </div>
 
         <div class="pincode-row">
@@ -7395,7 +7395,9 @@ function esc(s) {
 let _abandonedTimer = null;
 function collectPartialAddr() {
   const get = id => document.getElementById(id)?.value.trim() || '';
-  const addr = get('ch-addr');
+  // Match collectAddr — textarea -> single-line normalisation so abandoned-cart
+  // recovery emails see the same address shape as the eventual order.
+  const addr = get('ch-addr').replace(/\\s*\\n+\\s*/g, ', ').replace(/\\s{2,}/g, ' ').replace(/(,\\s*){2,}/g, ', ').replace(/^,\\s*|,\\s*$/g, '').trim();
   const city = get('ch-city');
   const state = get('ch-state');
   const pin = get('ch-pin').replace(/\\D/g,'');
@@ -7498,7 +7500,11 @@ function collectAddr() {
   const name  = get('ch-name');
   const phone = get('ch-phone');
   const email = get('ch-email');
-  const addr  = get('ch-addr');
+  // ch-addr is a textarea so customers can paste multi-line addresses from
+  // Notes / Maps without losing lines below the first. Collapse line breaks
+  // and runs of whitespace into single ", " separators for downstream consumers
+  // (Shiprocket / NimbusPost / order emails expect a single-line string).
+  const addr  = get('ch-addr').replace(/\\s*\\n+\\s*/g, ', ').replace(/\\s{2,}/g, ' ').replace(/(,\\s*){2,}/g, ', ').replace(/^,\\s*|,\\s*$/g, '').trim();
   const pin   = get('ch-pin').replace(/\\D/g,'');
   const city  = get('ch-city');
   const state = get('ch-state');
