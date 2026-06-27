@@ -77,10 +77,11 @@ function buildPayload(order) {
     state: addr.state,
     country: 'India',
     pincode: Number(addr.pincode),
-    weight: Math.max(300, totalQty * 300),
-    length: 22,
-    breadth: 15,
-    height: Math.max(4, totalQty * 3),
+    // Flat 400g / 15×10×5 for every shipment regardless of qty or product mix.
+    weight: 400,
+    length: 15,
+    breadth: 10,
+    height: 5,
     products: items.length ? items.map(i => ({
       name: String(i.title || i.name || 'Book').slice(0, 150),
       qty: Math.max(1, Number(i.qty || i.quantity || 1)),
