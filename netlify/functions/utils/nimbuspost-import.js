@@ -14,6 +14,26 @@
 
 const NP_ORDER_URL = 'https://ship.nimbuspost.com/api/orders/create';
 
+// NimbusPost's invoice/label PDF renderer can't print non-Latin glyphs — anything
+// outside ASCII shows up as "?" (Devanagari titles for Hindi editions, etc.). And
+// "double-struck" Unicode used in some catalogue titles (𝔸𝕥𝕠𝕞𝕚𝕔 ℍ𝕒𝕓𝕚𝕥𝕤) doesn't
+// render in many panel fonts either. Sanitise to plain ASCII before sending.
+function sanitizeForCourier(rawTitle) {
+  const original = String(rawTitle || '').trim();
+  if (!original) return 'Book';
+  // NFKD turns 𝔸 -> A, fi -> fi, etc. Then drop combining marks and non-ASCII.
+  const ascii = original
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')        // strip diacritics left by NFKD
+    .replace(/[^\x20-\x7E]/g, ' ')          // drop any remaining non-ASCII
+    .replace(/\s+/g, ' ')
+    .trim();
+  // If sanitising removed too much (pure-Devanagari Hindi title, etc.), fall
+  // back to "Hindi Book" / generic so the courier still sees a usable line.
+  if (ascii.length < 3) return 'Hindi Book';
+  return ascii.slice(0, 150);
+}
+
 function parseAddress(value) {
   const parts = String(value || '').split(',').map(s => s.trim()).filter(Boolean);
   if (!parts.length) return { address: '', city: '', state: '', pincode: '' };
@@ -83,7 +103,7 @@ function buildPayload(order) {
     breadth: 10,
     height: 5,
     products: items.length ? items.map(i => ({
-      name: String(i.title || i.name || 'Book').slice(0, 150),
+      name: sanitizeForCourier(i.title || i.name || 'Book'),
       qty: Math.max(1, Number(i.qty || i.quantity || 1)),
       price: Math.round(Number(i.price || 0)),
     })) : [{ name: 'Books', qty: 1, price: amount }],
@@ -122,4 +142,4 @@ async function pushOrderToNimbusPost(order, { apiKey } = {}) {
   return data;
 }
 
-module.exports = { pushOrderToNimbusPost, buildPayload, toFormData };
+module.exports = { pushOrderToNimbusPost, buildPayload, toFormData, sanitizeForCourier };

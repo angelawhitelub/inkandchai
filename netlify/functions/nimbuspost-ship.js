@@ -27,6 +27,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { sanitizeForCourier } = require('./utils/nimbuspost-import');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 
@@ -195,7 +196,7 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   const cartItems = Array.isArray(order.cart_items) ? order.cart_items : [];
   const products  = cartItems.length
     ? cartItems.map(i => ({
-        product_name: i.title || i.name || 'Book',
+        product_name: sanitizeForCourier(i.title || i.name || 'Book'),
         sku:          i.sku   || '',
         qty:          i.qty   || 1,
         unit_price:   i.price || 0,

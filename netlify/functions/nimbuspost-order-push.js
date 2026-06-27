@@ -8,6 +8,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { sanitizeForCourier } = require('./utils/nimbuspost-import');
 
 const NP_ORDER_URL = 'https://ship.nimbuspost.com/api/orders/create';
 const NP_ORDERS_URL = 'https://ship.nimbuspost.com/api/orders';
@@ -104,7 +105,7 @@ function buildPayload(order) {
     breadth: 10,
     height: 5,
     products: items.length ? items.map(item => ({
-      name: String(item.title || item.name || 'Book').slice(0, 150),
+      name: sanitizeForCourier(item.title || item.name || 'Book'),
       qty: Math.max(1, Number(item.qty || item.quantity || 1)),
       price: Math.round(Number(item.price || 0)),
     })) : [{ name: 'Books', qty: 1, price: amount }],
