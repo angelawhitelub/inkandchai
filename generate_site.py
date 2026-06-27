@@ -418,6 +418,12 @@ for _old in _js_dir.glob("books-lite-*.js"):
 
 BOOKS_FULL_TAG = f'<script src="/js/{_books_full_file}"></script>'
 BOOKS_LITE_TAG = f'<script src="/js/{_books_lite_file}"></script>'
+# Preload link goes into <head> so the browser starts fetching the books JS
+# in parallel with HTML download instead of waiting until the parser hits
+# the <script> tag near </body>. Saves 1-3s of "Add to cart does nothing"
+# on first paint over slow connections (books-full is ~2.7 MB).
+BOOKS_FULL_PRELOAD = f'<link rel="preload" as="script" href="/js/{_books_full_file}"/>'
+BOOKS_LITE_PRELOAD = f'<link rel="preload" as="script" href="/js/{_books_lite_file}"/>'
 
 recent_order_activity_path = Path(__file__).parent / "data" / "recent_order_activity.json"
 try:
@@ -3945,6 +3951,9 @@ document.querySelectorAll('.stat-num').forEach(el => {
 
 # ── Inject real data ─────────────────────────────────────────────────────────
 import os
+# Start fetching the books preload early so Add-to-Cart works the moment the
+# user sees the page (instead of waiting for the late <script> tag).
+HTML = HTML.replace("</title>", f"</title>\n{BOOKS_LITE_PRELOAD}", 1)
 HTML = HTML.replace("BOOKS_DATA_PLACEHOLDER",         "window.BOOKS_PRELOAD||[]")
 HTML = HTML.replace('<script src="/js/auth.js"></script>\n\n<script>\n// ── DATA',
                     f'<script src="/js/auth.js"></script>\n{BOOKS_LITE_TAG}\n\n<script>\n// ── DATA')  # inject external data script, keep auth.js
@@ -5484,32 +5493,40 @@ function cartItemForBook(b, bookSlug, qty) {
 }
 
 function addBookToCart(bookSlug, trigger) {
-  const b = BOOK_MAP[bookSlug];
-  if (!b) return;
-  buttonLoading(trigger, true);
+  // Fall back to a stub built from the button's data-* / page state if BOOK_MAP
+  // hasn't loaded yet (cold first paint with slow preload). Better than
+  // silently doing nothing and making the user click again.
+  let b = BOOK_MAP[bookSlug];
+  if (!b && typeof currentItem !== 'undefined' && currentItem && (currentItem.slug === bookSlug || currentItem.url?.includes(bookSlug))) {
+    b = currentItem;
+  }
+  if (!b) { if (window.showToast) showToast('Still loading book data — please try again in a second.'); return; }
+
+  const qty = getQty();
+  const item = cartItemForBook(b, bookSlug, qty);
   localStorage.removeItem('iac_buy_now_cart');
-  const item  = cartItemForBook(b, bookSlug, getQty());
-  const qty   = getQty();
-  // Directly write to localStorage to support qty > 1
   const CART_KEY = 'akshar_cart';
   const cart = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
   const existing = cart.find(i => i.id === item.id);
   if (existing) { existing.qty += qty; } else { cart.push({ ...item, qty }); }
   localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  if (window.refreshCart) refreshCart();
-  setTimeout(() => {
-    buttonLoading(trigger, false);
-    if (window.openCart)    openCart();
-    if (window.showToast)   showToast(`${qty > 1 ? qty + '× ' : ''}"${item.title.slice(0,28)}…" added to cart`);
-  }, 220);
+  // Open cart synchronously — no artificial setTimeout. Was 220ms of fake
+  // loading state on every add.
+  if (window.openCart)  openCart();
+  if (window.showToast) showToast(`${qty > 1 ? qty + '× ' : ''}"${item.title.slice(0,28)}…" added to cart`);
 }
 
 function buyNowBook(bookSlug, trigger) {
-  const b = BOOK_MAP[bookSlug];
-  if (!b) return;
+  let b = BOOK_MAP[bookSlug];
+  if (!b && typeof currentItem !== 'undefined' && currentItem && (currentItem.slug === bookSlug || currentItem.url?.includes(bookSlug))) {
+    b = currentItem;
+  }
+  if (!b) { if (window.showToast) showToast('Still loading — please try again in a second.'); return; }
   buttonLoading(trigger, true);
   localStorage.setItem('iac_buy_now_cart', JSON.stringify([cartItemForBook(b, bookSlug, getQty())]));
-  setTimeout(() => { window.location.href = '/checkout/?buynow=1'; }, 260);
+  // Navigate immediately — the prior 260ms delay was just for a UI spinner
+  // the customer barely sees before the next page replaces it.
+  window.location.href = '/checkout/?buynow=1';
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
@@ -5575,6 +5592,8 @@ except Exception:
     social_items = []
 print(f"Social-proof items: {len(social_items)}")
 
+# Start fetching the books preload early (see note in HTML setup above).
+PRODUCT_HTML = PRODUCT_HTML.replace("</title>", f"</title>\n{BOOKS_FULL_PRELOAD}", 1)
 PRODUCT_HTML = PRODUCT_HTML.replace("BOOKS_DATA_PLACEHOLDER",        "window.BOOKS_PRELOAD||[]")
 PRODUCT_HTML = PRODUCT_HTML.replace('<script src="/js/auth.js"></script>\n<script>\nconst BOOKS = window.BOOKS_PRELOAD||[];',
                                     f'<script src="/js/auth.js"></script>\n{BOOKS_FULL_TAG}\n<script>\nconst BOOKS = window.BOOKS_PRELOAD||[];')
