@@ -129,8 +129,15 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
       </div>
     </div>` : ''}
     <div class="actions">
-      <button class="secondary" onclick="addProductToCart(false)">Add to Cart</button>
+      <button class="secondary" id="addToCartBtn" onclick="addProductToCart(false)">Add to Cart</button>
       <button class="primary" onclick="addProductToCart(true)">Buy Now</button>
+    </div>
+    <!-- Confirmation banner shown after Add to Cart — fills the gap left by the
+         absent cart sidebar on this minimalist Lambda-rendered page so the
+         customer actually sees that the click worked. -->
+    <div id="addedBanner" style="display:none;margin-top:0.9rem;padding:0.85rem 1rem;border:1px solid rgba(109,191,109,0.5);background:rgba(109,191,109,0.08);border-radius:14px;color:#6dbf6d;font-size:0.78rem;line-height:1.55;text-align:center;">
+      ✓ Added to cart.
+      <a href="/checkout/" style="display:inline-block;margin-left:0.6rem;padding:0.45rem 1rem;background:#6dbf6d;color:#0d0b08;text-decoration:none;font-weight:600;font-size:0.7rem;letter-spacing:0.16em;text-transform:uppercase;">Checkout →</a>
     </div>
     <div class="desc"><div class="label">About this book</div>${desc}</div>
     <div class="details"><div class="label">Details</div><dl><dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
@@ -147,14 +154,44 @@ const currentItem = ${JSON.stringify({
     img: product.image_url || '',
     qty: 1,
   }).replace(/</g, '\\u003c')};
+// Write directly to localStorage so the cart is saved EVEN IF cart.js's
+// UI helpers throw on missing sidebar DOM elements (this Lambda page is
+// intentionally minimalist and has no cart sidebar). Previously cart.js
+// would save the row, then openCart() / updateCartUI() crashed silently,
+// the customer saw no feedback, clicked again, eventually gave up — they
+// thought add-to-cart was broken.
 function addProductToCart(buyNow) {
-  localStorage.removeItem('iac_buy_now_cart');
+  try { localStorage.removeItem('iac_buy_now_cart'); } catch(e) {}
   if (buyNow) {
-    localStorage.setItem('iac_buy_now_cart', JSON.stringify([{ ...currentItem, qty: 1 }]));
-    location.href = '/checkout/';
+    try { localStorage.setItem('iac_buy_now_cart', JSON.stringify([{ ...currentItem, qty: 1 }])); } catch(e) {}
+    location.href = '/checkout/?buynow=1';
     return;
   }
-  if (window.addToCart) window.addToCart(currentItem);
+  // Append to akshar_cart (the key checkout / cart.js both read).
+  const CART_KEY = 'akshar_cart';
+  let cart = [];
+  try { cart = JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch(e) { cart = []; }
+  if (!Array.isArray(cart)) cart = [];
+  const existing = cart.find(function(i){ return i && i.id === currentItem.id; });
+  if (existing) existing.qty = (Number(existing.qty) || 1) + 1;
+  else cart.push({ ...currentItem, qty: 1 });
+  try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); }
+  catch(e) {
+    alert('Could not add to cart — your browser may be blocking storage. Try the regular Chrome/Safari browser instead of the in-app one.');
+    return;
+  }
+  // Visual confirmation that ALWAYS shows (replaces the missing sidebar).
+  const banner = document.getElementById('addedBanner');
+  if (banner) banner.style.display = '';
+  const btn = document.getElementById('addToCartBtn');
+  if (btn) {
+    btn.textContent = '✓ In cart — Add another?';
+    btn.style.color = '#6dbf6d';
+    btn.style.borderColor = '#6dbf6d';
+  }
+  // Fire-and-forget call to cart.js too, so if the customer is on a full-site
+  // page (rare for Lambda but possible after navigation) the sidebar updates.
+  if (window.addToCart) { try { window.addToCart(currentItem); } catch(e) {} }
 }
 </script>
 </body>
