@@ -52,13 +52,14 @@ async function getAccessToken(host) {
   return _tokenCache.token;
 }
 
-function refundConfirmHtml(order, refundId) {
-  const amt = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '—';
+function refundConfirmHtml(order, refundId, refundAmtPaise, isFull) {
+  const refundAmt = `₹${(refundAmtPaise / 100).toLocaleString('en-IN')}`;
+  const orderAmt  = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '—';
   return `
     <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#2a2018;background:#faf7f2;">
       <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;margin:0 0 12px;">Ink &amp; Chai</h2>
       <p>Hi ${(order.customer_name || 'there').split(' ')[0]},</p>
-      <p>Your refund of <strong>${amt}</strong> for order <strong>${order.razorpay_order_id || order.id}</strong> has been processed via PhonePe.</p>
+      <p>${isFull ? 'A full refund' : `A partial refund of <strong>${refundAmt}</strong>`} for order <strong>${order.razorpay_order_id || order.id}</strong> has been processed via PhonePe.${isFull ? ` Refund amount: <strong>${refundAmt}</strong>.` : ` (Original order: ${orderAmt}.)`}</p>
       <p>Refund ID: <strong>${refundId}</strong><br/>
       The amount will appear in your original payment method within <strong>5–7 business days</strong>.</p>
       <p style="font-size:12px;color:#8a7a62;margin-top:24px;">Ink &amp; Chai · inkandchai.in</p>
@@ -97,8 +98,14 @@ exports.handler = async (event) => {
     if (order.status === 'refunded') {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Order is already refunded.' }) };
     }
-    if (!['refund_pending', 'cancelled'].includes(order.status)) {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Order status is '${order.status}' — only refund_pending / cancelled orders can be refunded here.` }) };
+    // Allow refunds from any state where money is with us. (Previously only
+    // refund_pending/cancelled — meant admin had to flip status manually first
+    // before refunding, friction the user wanted gone.)
+    const REFUNDABLE = ['paid', 'confirmed', 'shipped', 'out_for_delivery',
+                        'delivered', 'refund_pending', 'partially_refunded',
+                        'cancelled', 'rto', 'undelivered', 'lost'];
+    if (!REFUNDABLE.includes(order.status)) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Order status is '${order.status}' — not eligible for refund.` }) };
     }
 
     const paymentId = order.razorpay_payment_id || '';
@@ -106,10 +113,26 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'This order has a Razorpay payment — use the Razorpay dashboard to refund, not this tool.' }) };
     }
 
-    const amountPaise = order.amount_paise;
-    if (!amountPaise || amountPaise <= 0) {
+    const orderAmount = order.amount_paise;
+    if (!orderAmount || orderAmount <= 0) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Order has no amount to refund.' }) };
     }
+
+    // Partial-refund support. Client may send `amount_paise` (or `amount_rupees`).
+    // If omitted, default to a FULL refund of the captured amount.
+    if (order.status === 'partially_refunded') {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'A partial refund was already issued on this order — issue a remaining-balance refund directly in the PhonePe dashboard.' }) };
+    }
+    let amountPaise = orderAmount;
+    if (body.amount_paise != null) amountPaise = Math.round(Number(body.amount_paise));
+    else if (body.amount_rupees != null) amountPaise = Math.round(Number(body.amount_rupees) * 100);
+    if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid refund amount.' }) };
+    }
+    if (amountPaise > orderAmount) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Refund ₹${amountPaise/100} exceeds order amount ₹${orderAmount/100}.` }) };
+    }
+    const isFullRefund = amountPaise >= orderAmount;
 
     // Generate a unique refund ID
     const merchantRefundId = `REFUND-${displayId}-${Date.now()}`;
@@ -149,18 +172,21 @@ exports.handler = async (event) => {
       throw new Error('PhonePe rejected the refund: ' + (refundData.message || JSON.stringify(refundData).slice(0, 200)));
     }
 
-    // Mark order as refunded in Supabase
-    await supabase
-      .from('orders')
-      .update({ status: 'refunded', razorpay_payment_id: paymentId })
-      .eq('id', order.id);
+    // Full -> refunded. Partial -> partially_refunded (one-shot — the upfront
+    // guard above blocks a second partial refund). PhonePe's refund webhook
+    // confirms final state asynchronously and re-asserts 'refunded' for full.
+    const update = {
+      razorpay_payment_id: paymentId,
+      status: isFullRefund ? 'refunded' : 'partially_refunded',
+    };
+    await supabase.from('orders').update(update).eq('id', order.id);
 
     // Email customer
     if (order.customer_email) {
       await sendEmail({
         to: order.customer_email,
         subject: `Refund processed — ${displayId}`,
-        html: refundConfirmHtml(order, merchantRefundId),
+        html: refundConfirmHtml(order, merchantRefundId, amountPaise, isFullRefund),
       });
     }
 
@@ -172,7 +198,8 @@ exports.handler = async (event) => {
         refund_id: merchantRefundId,
         state: refundState || 'INITIATED',
         amount: `₹${(amountPaise / 100).toLocaleString('en-IN')}`,
-        message: `Refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} initiated. Customer will receive it in 5–7 business days.`,
+        is_full: isFullRefund,
+        message: `${isFullRefund ? 'Full refund' : 'Partial refund'} of ₹${(amountPaise / 100).toLocaleString('en-IN')} initiated. Customer will receive it in 5-7 business days.`,
       }),
     };
 
