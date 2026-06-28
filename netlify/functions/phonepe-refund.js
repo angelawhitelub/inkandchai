@@ -8,10 +8,16 @@
  *
  * Body: { order_id: "IC-20260530-U67JU" }  (razorpay_order_id / display ID)
  *
- * PhonePe Refund API:
- *   POST {host}/pg/checkout/v2/order/{merchantOrderId}/refund
- *   Body: { merchantRefundId: "REFUND-{orderId}", amount: <paise> }
+ * PhonePe Refund API (v2):
+ *   POST {host}/pg/v1/refund        -- legacy v1 path, still registered
+ *   POST {host}/pg/payments/v2/refund -- current v2 path
+ *   Body: { merchantRefundId, originalMerchantOrderId, amount: <paise> }
  *   Auth: O-Bearer <oauth_token>
+ *
+ * The old path `/pg/checkout/v2/order/{id}/refund` returns
+ * "Api Mapping Not Found" — that endpoint was never registered, the docs
+ * were wrong / pre-release. Use /pg/payments/v2/refund with the order id
+ * in the body as `originalMerchantOrderId`.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -140,24 +146,37 @@ exports.handler = async (event) => {
     // Authenticate with PhonePe
     const token = await getAccessToken(host);
 
-    // Issue refund via PhonePe v2 API
-    // merchantOrderId is the IC-... ID we sent when creating the order
-    const refundRes = await fetch(
-      `${host}/pg/checkout/v2/order/${encodeURIComponent(displayId)}/refund`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': 'O-Bearer ' + token,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          merchantRefundId,
-          amount: amountPaise,   // in paise
-        }),
-      }
-    );
-    const refundData = await refundRes.json().catch(() => ({}));
+    // Issue refund via PhonePe v2 Payments API. The order id we sent at
+    // creation time (the IC-… display id) goes in `originalMerchantOrderId`,
+    // NOT in the URL path. The old path-style URL returns "Api Mapping Not
+    // Found" because that endpoint was never registered for production
+    // accounts. Try v2 first, then fall back to v1 path for older merchant
+    // accounts that haven't been migrated yet.
+    const refundBody = {
+      merchantRefundId,
+      originalMerchantOrderId: displayId,
+      amount: amountPaise,                          // paise
+    };
+    const refundHeaders = {
+      'Authorization': 'O-Bearer ' + token,
+      'Content-Type': 'application/json',
+    };
 
+    async function callRefund(path) {
+      const r = await fetch(`${host}${path}`, {
+        method: 'POST', headers: refundHeaders, body: JSON.stringify(refundBody),
+      });
+      const text = await r.text();
+      let data; try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
+      return { ok: r.ok, status: r.status, data };
+    }
+
+    let refundRes = await callRefund('/pg/payments/v2/refund');
+    if (!refundRes.ok && /api mapping not found/i.test(JSON.stringify(refundRes.data))) {
+      console.warn('PhonePe v2 refund returned ApiMappingNotFound, falling back to v1');
+      refundRes = await callRefund('/pg/v1/refund');
+    }
+    const refundData = refundRes.data;
     console.log('PhonePe refund response:', refundRes.status, JSON.stringify(refundData).slice(0, 400));
 
     if (!refundRes.ok) {
