@@ -6,6 +6,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -16,13 +17,7 @@ const CORS = {
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
 
-  // Fail closed — returns include PII (addresses, phones) so don't fall open.
-  const adminKey = process.env.ADMIN_SECRET;
-  const sentKey  = event.headers['x-admin-key'] || event.headers['X-Admin-Key'] || '';
-  if (!adminKey || !sentKey || sentKey !== adminKey) {
-    return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
-  }
-
+  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { data, error } = await supabase

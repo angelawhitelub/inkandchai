@@ -39,6 +39,7 @@ const path = require('path');
 const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp, normalizePhone } = require('./utils/whatsapp');
+const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -249,12 +250,7 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST')    return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
 
-  const adminKey = process.env.ADMIN_SECRET;
-  const sentKey  = event.headers['x-admin-key'] || event.headers['X-Admin-Key'];
-  if (!adminKey || sentKey !== adminKey) {
-    return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
-  }
-
+  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
   let body;
   try { body = JSON.parse(event.body || '{}'); }
   catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Bad JSON' }) }; }

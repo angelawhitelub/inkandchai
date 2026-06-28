@@ -23,6 +23,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const { sendEmail } = require('./utils/email');
+const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -176,11 +177,7 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST')    return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
 
-  const adminKey = process.env.ADMIN_SECRET;
-  const sent     = event.headers['x-admin-key'] || event.headers['X-Admin-Key'];
-  if (!adminKey || sent !== adminKey) {
-    return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
-  }
+  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
 
   let body;
   try { body = JSON.parse(event.body); }

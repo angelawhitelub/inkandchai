@@ -945,7 +945,87 @@ tr:hover td{background:rgba(122,88,21,0.075);}
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
-let adminKey      = '';
+let adminKey      = '';   // legacy (plaintext password) — kept only as transition fallback
+let adminToken    = '';   // signed, time-bounded admin session token (preferred)
+let adminTokenExp = 0;    // absolute ms epoch when the token expires
+let adminIdleTimer = null;
+const ADMIN_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;  // mirrors server-side default
+const ADMIN_TOKEN_KEY    = 'iac_admin_session_v1';
+
+// Restore a non-expired session from sessionStorage so navigating tabs /
+// reloading the panel doesn't force a fresh login every time.
+function restoreAdminSession() {
+  try {
+    const raw = sessionStorage.getItem(ADMIN_TOKEN_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (s && s.token && s.exp && Date.now() < s.exp) {
+      adminToken = s.token; adminTokenExp = s.exp;
+    } else {
+      sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    }
+  } catch {}
+}
+function saveAdminSession() {
+  try { sessionStorage.setItem(ADMIN_TOKEN_KEY, JSON.stringify({ token: adminToken, exp: adminTokenExp })); } catch {}
+}
+function clearAdminSession() {
+  adminKey = ''; adminToken = ''; adminTokenExp = 0;
+  try { sessionStorage.removeItem(ADMIN_TOKEN_KEY); } catch {}
+  if (adminIdleTimer) { clearTimeout(adminIdleTimer); adminIdleTimer = null; }
+}
+function scheduleAutoLogout() {
+  if (adminIdleTimer) clearTimeout(adminIdleTimer);
+  const ms = Math.max(0, adminTokenExp - Date.now());
+  if (!ms) return;
+  adminIdleTimer = setTimeout(() => {
+    alert('Admin session expired — please sign in again.');
+    logout();
+  }, ms);
+}
+
+// Centralised authed fetch — adds X-Admin-Token (preferred) + X-Admin-Key
+// (legacy fallback). Auto-logs-out on 401 so a stale token doesn't keep
+// silently failing every action.
+async function adminFetch(url, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {});
+  if (adminToken)        headers['X-Admin-Token'] = adminToken;
+  if (adminKey && !headers['X-Admin-Key']) headers['X-Admin-Key'] = adminKey;
+  const res = await fetch(url, { ...opts, headers });
+  if (res.status === 401 && (adminToken || adminKey)) {
+    clearAdminSession();
+    setTimeout(() => { alert('Your admin session has expired. Please sign in again.'); logout(); }, 0);
+  }
+  return res;
+}
+
+// Transparent upgrade: existing call sites pass X-Admin-Key directly. Wrap
+// window.fetch so every request to /.netlify/functions/ ALSO carries the
+// signed X-Admin-Token (preferred), and 401s drop the local session so the
+// SPA forces a fresh login.
+(function installAdminFetchInterceptor(){
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = async function(input, init) {
+    let url = '';
+    if (typeof input === 'string') url = input;
+    else if (input && input.url)   url = input.url;
+    const isAdminCall = url.indexOf('/.netlify/functions/') !== -1
+      && url.indexOf('/passkey-login-options') === -1
+      && url.indexOf('/admin-login') === -1
+      && url.indexOf('/passkey-login-verify') === -1;
+    if (!isAdminCall || !(adminToken || adminKey)) return _origFetch(input, init);
+    const opts = Object.assign({}, init || {});
+    opts.headers = Object.assign({}, (init && init.headers) || {});
+    if (adminToken && !opts.headers['X-Admin-Token']) opts.headers['X-Admin-Token'] = adminToken;
+    const res = await _origFetch(input, opts);
+    if (res.status === 401 && (adminToken || adminKey)) {
+      // Don't loop — clear once, then let the original caller handle the 401.
+      clearAdminSession();
+      setTimeout(() => { try { alert('Admin session expired — please sign in again.'); logout(); } catch {} }, 0);
+    }
+    return res;
+  };
+})();
 let allOrders     = [];   // all loaded orders
 let filtered      = [];   // after search/filter/date
 let currentFilter = '';
@@ -965,16 +1045,39 @@ let newProductImageDataUrl = '';
 let createdProductUrl = '';
 
 // ── Login ──────────────────────────────────────────────────────────────────
-function doLogin() {
+async function doLogin() {
   const pass = document.getElementById('adminPass').value.trim();
+  const err  = document.getElementById('loginErr');
+  if (err) err.style.display = 'none';
   if (!pass) return;
-  adminKey = btoa(pass);  // mild obfuscation in transit (proper auth is ADMIN_SECRET server-side)
-  adminKey = pass;        // actually just send plain — server checks against env var
-  fetchOrders(true);
+  // Hold the plaintext as legacy fallback for the current page lifetime —
+  // ALL new requests prefer the signed token.
+  adminKey = pass;
+  try {
+    const res = await fetch('/.netlify/functions/admin-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pass }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.adminToken) {
+      adminKey = '';
+      if (err) { err.textContent = data.error || 'Sign-in failed'; err.style.display = ''; }
+      return;
+    }
+    adminToken    = data.adminToken;
+    adminTokenExp = Date.now() + ADMIN_TOKEN_TTL_MS;
+    saveAdminSession();
+    scheduleAutoLogout();
+    fetchOrders(true);
+  } catch (e) {
+    adminKey = '';
+    if (err) { err.textContent = 'Network error — try again.'; err.style.display = ''; }
+  }
 }
 
 function logout() {
-  adminKey = '';
+  clearAdminSession();
   allOrders = [];
   serverTotal = null;
   selectedOrderIds.clear();
@@ -1022,11 +1125,16 @@ async function passkeyLogin() {
       body: JSON.stringify({ authResp }),
     });
     const vData = await vRes.json();
-    if (!vRes.ok || !vData.ok || !vData.adminKey) throw new Error(vData.error || 'Verification failed');
+    if (!vRes.ok || !vData.ok || (!vData.adminToken && !vData.adminKey)) throw new Error(vData.error || 'Verification failed');
 
-    // Drop the server-issued admin secret into the same `adminKey` global the
-    // password flow uses — everything else (orders fetch etc.) just works.
-    adminKey = vData.adminKey;
+    // Prefer the signed token — adminKey is kept only as transition fallback.
+    if (vData.adminToken) {
+      adminToken    = vData.adminToken;
+      adminTokenExp = Date.now() + ADMIN_TOKEN_TTL_MS;
+      saveAdminSession();
+      scheduleAutoLogout();
+    }
+    if (vData.adminKey) adminKey = vData.adminKey;
     fetchOrders(true);
   } catch (e) {
     if (err) { err.textContent = 'Passkey sign-in failed: ' + (e.message || e); err.style.display = ''; }
@@ -1075,7 +1183,17 @@ async function passkeyRegister() {
 }
 
 // Check on first page load so the login screen shows the passkey button if any exist.
-window.addEventListener('DOMContentLoaded', initPasskeyUi);
+window.addEventListener('DOMContentLoaded', () => {
+  initPasskeyUi();
+  // Restore a non-expired admin session from sessionStorage so reloads /
+  // tab-switches don't require re-authentication. If the token is still
+  // valid, skip the login panel and load the dashboard straight away.
+  restoreAdminSession();
+  if (adminToken && Date.now() < adminTokenExp) {
+    scheduleAutoLogout();
+    try { fetchOrders(true); } catch {}
+  }
+});
 
 // ── Fetch — parallel pagination + localStorage cache ───────────────────────
 // Speed wins:

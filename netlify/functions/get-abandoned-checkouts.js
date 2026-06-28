@@ -7,6 +7,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { classifyLead } = require('./utils/spam-filter');
+const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -17,12 +18,7 @@ const CORS = {
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
 
-  const adminKey = process.env.ADMIN_SECRET;
-  const sentKey = event.headers['x-admin-key'] || event.queryStringParameters?.key;
-  if (!adminKey || sentKey !== adminKey) {
-    return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
-  }
-
+  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables are not set in Netlify.' }) };
   }

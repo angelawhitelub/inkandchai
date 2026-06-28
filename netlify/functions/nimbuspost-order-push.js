@@ -9,6 +9,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier } = require('./utils/nimbuspost-import');
+const { requireAdmin } = require('./utils/admin-auth');
 
 const NP_ORDER_URL = 'https://ship.nimbuspost.com/api/orders/create';
 const NP_ORDERS_URL = 'https://ship.nimbuspost.com/api/orders';
@@ -245,10 +246,7 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
 
-  const sentKey = event.headers['x-admin-key'] || event.headers['X-Admin-Key'] || '';
-  if (sentKey !== process.env.ADMIN_SECRET && sentKey !== process.env.ADMIN_PASSWORD) {
-    return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
-  }
+  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
 
   const apiKey = process.env.NIMBUSPOST_API_KEY;
   if (!apiKey) {

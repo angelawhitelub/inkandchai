@@ -28,6 +28,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier } = require('./utils/nimbuspost-import');
+const { requireAdmin } = require('./utils/admin-auth');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 
@@ -258,13 +259,9 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS_HEADERS, body: '' };
   if (event.httpMethod !== 'POST')    return json(405, { error: 'Method not allowed' });
 
-  // Fail closed — refuse if ADMIN_SECRET is unset or sent key doesn't match.
+  // Fail closed via centralised gate (signed token preferred, legacy key OK).
   // Anyone hitting this can push real shipments and burn courier credits.
-  const adminKey = process.env.ADMIN_SECRET;
-  const sentKey  = event.headers['x-admin-key'] || event.headers['X-Admin-Key'] || '';
-  if (!adminKey || !sentKey || sentKey !== adminKey) {
-    return json(401, { error: 'Unauthorized' });
-  }
+  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
 
   let body;
   try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Invalid JSON' }); }

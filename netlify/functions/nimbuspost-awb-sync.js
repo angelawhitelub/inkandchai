@@ -25,6 +25,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
+const { requireAdmin } = require('./utils/admin-auth');
 
 const NP_ORDERS_URL = 'https://ship.nimbuspost.com/api/orders';
 
@@ -287,12 +288,7 @@ exports.handler = async (event) => {
 
   // Manual trigger from the admin panel
   if (event.httpMethod === 'POST') {
-    // Fail closed — refuse if ADMIN_SECRET is unset or sent key doesn't match.
-    const adminKey = process.env.ADMIN_SECRET;
-    const sentKey  = event.headers['x-admin-key'] || event.headers['X-Admin-Key'] || '';
-    if (!adminKey || !sentKey || sentKey !== adminKey) {
-      return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
-    }
+  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
     try {
       const summary = await runSync();
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, summary }) };

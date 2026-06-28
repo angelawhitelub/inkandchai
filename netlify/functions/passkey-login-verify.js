@@ -8,7 +8,7 @@
  */
 
 const { verifyAuthenticationResponse } = require('@simplewebauthn/server');
-const { RP_ID, RP_ORIGIN, USERNAME, supa, json, preflight, adminSecretValue, consumeChallenge } = require('./utils/passkey');
+const { RP_ID, RP_ORIGIN, USERNAME, supa, json, preflight, adminSessionResponse, consumeChallenge } = require('./utils/passkey');
 
 exports.handler = async (event) => {
   const pre = preflight(event); if (pre) return pre;
@@ -58,10 +58,16 @@ exports.handler = async (event) => {
       last_used_at: new Date().toISOString(),
     }).eq('id', cred.id);
 
-    const adminKey = adminSecretValue();
-    if (!adminKey) return json(500, { error: 'ADMIN_SECRET not configured on server' });
-
-    return json(200, { ok: true, adminKey });
+    // Issue a short-lived signed token (preferred) AND the legacy raw key
+    // (so admin SPAs already deployed in caches keep working until refresh).
+    // After one release, drop adminKey from this response.
+    let session;
+    try { session = adminSessionResponse(); }
+    catch (e) { return json(500, { error: 'Admin auth not configured: ' + e.message }); }
+    if (!session.adminKey && !session.adminToken) {
+      return json(500, { error: 'ADMIN_SECRET / ADMIN_TOKEN_SECRET not configured on server' });
+    }
+    return json(200, { ok: true, ...session });
   } catch (e) {
     console.error('[passkey-login-verify]', e);
     return json(500, { error: e.message });

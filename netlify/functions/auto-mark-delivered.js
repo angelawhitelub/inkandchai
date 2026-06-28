@@ -26,6 +26,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
+const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -171,12 +172,7 @@ exports.handler = async (event) => {
 
   // Manual trigger (admin button) — POST + X-Admin-Key
   if (event.httpMethod === 'POST') {
-    const adminKey = process.env.ADMIN_SECRET;
-    const sentKey  = event.headers['x-admin-key'] || event.headers['X-Admin-Key'];
-    if (!adminKey || sentKey !== adminKey) {
-      return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
-    }
-
+  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
     let body = {};
     try { body = JSON.parse(event.body || '{}'); } catch {}
 
