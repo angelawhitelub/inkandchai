@@ -540,21 +540,36 @@ window.SUPABASE_ANON_KEY = "";
 const CART_KEY = 'akshar_cart';
 const KW_CART_KEY = 'kw_cart';
 const BUY_NOW_KEY = 'iac_buy_now_cart';
+const CHECKOUT_CART_KEY = 'iac_checkout_cart_key';
 const IS_KAWAII = new URLSearchParams(location.search).get('kawaii') === '1';
 const IS_BUY_NOW = new URLSearchParams(location.search).get('buynow') === '1';
+const IS_PAYMENT_RETURN = new URLSearchParams(location.search).has('paid') || new URLSearchParams(location.search).has('failed');
 // Buy Now is a one-shot: only honour the buy-now cart when the URL explicitly says
 // so (?buynow=1). Otherwise a leftover iac_buy_now_cart from an earlier abandoned
 // "Buy Now" must NOT hijack a normal cart checkout (it can even be empty) — clear it.
+function cartHasItems(key) {
+  try {
+    const cart = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(cart) && cart.length > 0;
+  } catch {
+    return false;
+  }
+}
+function rememberedCartKey() {
+  const remembered = localStorage.getItem(CHECKOUT_CART_KEY);
+  const allowed = [BUY_NOW_KEY, KW_CART_KEY, CART_KEY];
+  return allowed.includes(remembered) && cartHasItems(remembered) ? remembered : '';
+}
 function activeCartKey() {
+  if (IS_PAYMENT_RETURN) {
+    const remembered = rememberedCartKey();
+    if (remembered) return remembered;
+    if (cartHasItems(BUY_NOW_KEY)) return BUY_NOW_KEY;
+  }
   if (IS_BUY_NOW) {
-    const buyNowRaw = localStorage.getItem(BUY_NOW_KEY);
-    try {
-      const buyNowCart = JSON.parse(buyNowRaw || '[]');
-      if (Array.isArray(buyNowCart) && buyNowCart.length) return BUY_NOW_KEY;
-    } catch {
-    }
+    if (cartHasItems(BUY_NOW_KEY)) return BUY_NOW_KEY;
     localStorage.removeItem(BUY_NOW_KEY);
-  } else {
+  } else if (!IS_PAYMENT_RETURN) {
     localStorage.removeItem(BUY_NOW_KEY);
   }
   if (IS_KAWAII) return KW_CART_KEY;
@@ -566,6 +581,7 @@ function clearCart(){
   // Also clear any applied coupon / scratch card so it doesn't auto-apply on the next order
   localStorage.removeItem('iac_checkout_coupon');
   localStorage.removeItem('iac_scratch_card');
+  localStorage.removeItem(CHECKOUT_CART_KEY);
 }
 const ABANDONED_SESSION_KEY = 'iac_abandoned_checkout_session';
 function checkoutSessionId() {
@@ -1186,7 +1202,10 @@ async function doPhonePe(addr, paymentMode = 'online') {
       throw new Error(data.error || 'Could not start PhonePe checkout');
     }
     // Stash the order value so the conversion on return (post-redirect) has revenue.
-    try { localStorage.setItem('iac_last_order_value', String(totals.total)); } catch(e) {}
+    try {
+      localStorage.setItem('iac_last_order_value', String(totals.total));
+      localStorage.setItem(CHECKOUT_CART_KEY, activeCartKey());
+    } catch(e) {}
     // PhonePe takes over from here. The webhook + /phonepe-verify-status route
     // handle confirmation and the redirect back to /checkout/?paid=1&id=…
     window.location.href = data.redirect_url;
