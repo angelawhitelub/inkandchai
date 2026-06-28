@@ -206,6 +206,13 @@ exports.handler = async (event) => {
         if (statusCheck.ok) {
           const state = String(statusCheck.data?.state || '').toUpperCase();
           if (state && state !== 'FAILED') {
+            const dbStatus = state === 'COMPLETED'
+              ? (isFullRefund ? 'refunded' : 'partially_refunded')
+              : 'refund_pending';
+            await supabase
+              .from('orders')
+              .update({ status: dbStatus, razorpay_payment_id: paymentId })
+              .eq('id', order.id);
             return {
               statusCode: 200,
               headers: CORS,
@@ -233,17 +240,21 @@ exports.handler = async (event) => {
 
     const refundState = String(refundData.state || refundData.status || '').toUpperCase();
     const phonePeRefundId = refundData.refundId || null;
+    // PhonePe typically returns PENDING first; webhook/status API will move it to COMPLETED later.
     if (refundState === 'FAILED') {
       throw new Error('PhonePe rejected the refund: ' + (refundData.message || JSON.stringify(refundData).slice(0, 200)));
     }
 
-    const update = {
-      razorpay_payment_id: paymentId,
-      status: isFullRefund ? 'refunded' : 'partially_refunded',
-    };
-    await supabase.from('orders').update(update).eq('id', order.id);
+    const nextStatus = refundState === 'COMPLETED'
+      ? (isFullRefund ? 'refunded' : 'partially_refunded')
+      : 'refund_pending';
+    await supabase
+      .from('orders')
+      .update({ status: nextStatus, razorpay_payment_id: paymentId })
+      .eq('id', order.id);
 
-    if (order.customer_email) {
+    // Only send the "processed" email once PhonePe has actually completed the refund.
+    if (order.customer_email && nextStatus !== 'refund_pending') {
       await sendEmail({
         to: order.customer_email,
         subject: `Refund processed — ${displayId}`,
@@ -258,10 +269,14 @@ exports.handler = async (event) => {
         success: true,
         refund_id: merchantRefundId,
         phonepe_refund_id: phonePeRefundId,
-        state: refundState || 'INITIATED',
+        state: refundState || 'PENDING',
         amount: `₹${(amountPaise / 100).toLocaleString('en-IN')}`,
         is_full: isFullRefund,
-        message: `${isFullRefund ? 'Full refund' : 'Partial refund'} of ₹${(amountPaise / 100).toLocaleString('en-IN')} initiated. Customer will receive it in 5-7 business days.`,
+        message: nextStatus === 'refunded'
+          ? `Full refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} completed.`
+          : nextStatus === 'partially_refunded'
+            ? `Partial refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} completed.`
+          : `Refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} accepted by PhonePe and is ${String(refundState || 'PENDING').toLowerCase()}.`,
       }),
     };
   } catch (err) {

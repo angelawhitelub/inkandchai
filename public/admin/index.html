@@ -3136,7 +3136,11 @@ async function iacSubmitRefund(orderId, fullAmtRupees) {
     show(`✅ ${data.message} Refund ID: ${data.refund_id}`, '#6dbf6d');
     // Update local state immediately so the row reflects without a full reload
     const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
-    if (ord) ord.status = data.is_full ? 'refunded' : 'partially_refunded';
+    if (ord) {
+      const state = String(data.state || '').toUpperCase();
+      if (state === 'COMPLETED') ord.status = data.is_full ? 'refunded' : 'partially_refunded';
+      else ord.status = 'refund_pending';
+    }
     if (window.updateStats) updateStats();
     if (window.applyFilters) applyFilters();
     setTimeout(() => { document.getElementById('iacRefundModal')?.remove(); }, 1600);
