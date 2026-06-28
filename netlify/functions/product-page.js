@@ -42,6 +42,11 @@ function productHtml(product) {
   const author = esc(product.author || 'Ink & Chai');
   const category = esc(product.category || 'Books');
   const desc = esc(product.description || '');
+  // Crossword-bestseller import tags products with `publisher-sourced-bestseller`
+  // so this Lambda-rendered page can light up the same trust banner the
+  // static-rendered catalogue pages already show. GST invoice line is part of
+  // the same banner — these orders are eligible for one on request.
+  const publisherSourced = /publisher-sourced-bestseller/i.test(String(product.tags || ''));
   const metaDesc = esc(shortDescription(product));
   const canonical = `https://inkandchai.in/product/${slug}/`;
   const image = absoluteImage(product.image_url);
@@ -114,6 +119,15 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     <div><span class="price">${esc(price)}</span>${mrp ? `<span class="orig">${esc(mrp)}</span>` : ''}</div>
     <span class="stock">In Stock</span>
     <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
+    ${publisherSourced ? `
+    <div style="border:1px solid rgba(110,170,110,0.4);background:linear-gradient(135deg,rgba(110,170,110,0.12),rgba(214,184,94,0.06));padding:0.95rem 1.1rem;border-radius:14px;margin:1rem 0;display:flex;gap:0.85rem;align-items:flex-start;">
+      <div style="font-size:1.5rem;line-height:1;">📚</div>
+      <div>
+        <div style="font-size:0.58rem;letter-spacing:0.26em;text-transform:uppercase;color:#6daa6d;margin-bottom:0.4rem;font-weight:700;">Genuine — Publisher Sourced</div>
+        <div style="font-size:0.78rem;color:var(--cream);line-height:1.65;">Original copy sourced <strong>directly from the publisher's authorised channel</strong>. MRP printed on the back, flat 22.5% off — no piracy, no third-party resellers.</div>
+        <div style="font-size:0.72rem;color:var(--muted);line-height:1.65;margin-top:0.45rem;"><strong style="color:var(--gold-light);">🧾 GST invoice available</strong> on request — reply to your order confirmation email with your GSTIN.</div>
+      </div>
+    </div>` : ''}
     <div class="actions">
       <button class="secondary" onclick="addProductToCart(false)">Add to Cart</button>
       <button class="primary" onclick="addProductToCart(true)">Buy Now</button>

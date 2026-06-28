@@ -5013,6 +5013,7 @@ function renderProduct(b) {
           <div>
             <div style="font-size:0.56rem;letter-spacing:0.28em;text-transform:uppercase;color:#6daa6d;margin-bottom:0.35rem;font-weight:600;">Genuine — Publisher Sourced</div>
             <div style="font-size:0.76rem;color:var(--cream);line-height:1.65;">This title is sourced <strong>directly from the publisher</strong> — no third-party resellers, no piracy. Original copy, MRP printed on the back, with a flat 22.5% discount.</div>
+            <div style="font-size:0.72rem;color:var(--cream-dim);line-height:1.65;margin-top:0.45rem;"><strong style="color:var(--gold);">🧾 GST invoice available</strong> on request — reply to your order confirmation email with your GSTIN.</div>
           </div>
         </div>` : ''}
 
