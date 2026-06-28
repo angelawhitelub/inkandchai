@@ -1812,7 +1812,10 @@ function _drawTable() {
           const REFUNDABLE = ['paid','confirmed','shipped','out_for_delivery','delivered','refund_pending','cancelled','rto','undelivered','lost'];
           if (!isPhonePe || !REFUNDABLE.includes(o.status) || !o.amount_paise) return '';
           const amtRupees = Math.round(o.amount_paise/100);
-          return `<button onclick="openRefundModal('${esc(o.razorpay_order_id||o.id)}',${amtRupees},'${esc((o.customer_name||'').replace(/'/g,'\\\\'+'\\''))}')" title="Refund — full or partial — via PhonePe"
+          // Customer name is looked up inside openRefundModal from allOrders
+          // so we don't have to escape it through the onclick attribute string
+          // (apostrophes in names like O'Brien would otherwise break the JS).
+          return `<button onclick="openRefundModal('${esc(o.razorpay_order_id||o.id)}',${amtRupees})" title="Refund — full or partial — via PhonePe"
             style="display:block;margin-top:0.5rem;background:rgba(224,80,80,0.1);border:1px solid rgba(224,80,80,0.5);color:#e06060;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">💸 Refund</button>`;
         })()}
       </td>
@@ -2962,6 +2965,10 @@ async function reconcilePhonePe(orderId, btn) {
 // to refund_pending manually -> click refund. Now: click button, pick amount,
 // confirm.
 function openRefundModal(orderId, fullAmtRupees, customerName) {
+  if (!customerName) {
+    const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+    customerName = ord?.customer_name || '';
+  }
   const existing = document.getElementById('iacRefundModal');
   if (existing) existing.remove();
   const modal = document.createElement('div');
