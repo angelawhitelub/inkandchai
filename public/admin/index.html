@@ -556,6 +556,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="filter-btn" data-status="shipped" onclick="setFilter(this,'shipped')">Shipped</button>
     <button class="filter-btn" data-status="delivered" onclick="setFilter(this,'delivered')">Delivered</button>
     <button class="filter-btn" data-status="paid" onclick="setFilter(this,'paid')">Paid Online</button>
+    <button class="filter-btn" data-status="replacement_pending" onclick="setFilter(this,'replacement_pending')" style="border-color:rgba(109,191,109,0.5);color:#6dbf6d;">🔄 Replacement</button>
     <button class="filter-btn" data-status="cancelled" onclick="setFilter(this,'cancelled')">Cancelled</button>
     <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
     <span class="date-sep">→</span>
@@ -1761,6 +1762,12 @@ function _drawTable() {
       <td>
         <div class="order-id">${esc(o.razorpay_order_id || o.id || '—')}</div>
         ${o.razorpay_payment_id ? `<div class="pay-id">${esc(o.razorpay_payment_id)}</div>` : ''}
+        ${o.source === 'replacement' ? (() => {
+          const meta = Array.isArray(o.cart_items) && o.cart_items[0]?._replacement;
+          const orig = meta?.original_order_id ? esc(meta.original_order_id) : '';
+          const reasonLabel = meta?.reason_label ? esc(meta.reason_label) : '';
+          return `<div title="Replacement of ${orig}${reasonLabel ? ' — ' + reasonLabel : ''}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;font-weight:600;">🔄 Replacement${orig ? ` · <a href="#" onclick="event.preventDefault(); document.getElementById('searchInput').value='${orig}'; if(window.applyFilters) applyFilters(); else if(window.renderOrders) renderOrders();" style="color:#6dbf6d;text-decoration:underline;">${orig}</a>` : ''}</div>`;
+        })() : ''}
       </td>
       <td style="font-size:0.65rem;color:var(--cream-dim);white-space:nowrap;">${date}</td>
       <td>
@@ -3307,7 +3314,7 @@ async function pushAllToNimbusPanel(btn) {
     alert('A NimbusPost panel import is already running. Please wait for it to finish.');
     return;
   }
-  const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending'];
+  const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending','replacement_pending'];
   const unshipped = allOrders.filter(o => UNSHIPPED.includes(o.status));
   if (!unshipped.length) { alert('No unshipped orders found in the current view.'); return; }
   if (!confirm(`Push ${unshipped.length} unshipped order${unshipped.length > 1 ? 's' : ''} to the NimbusPost Orders panel?\n\nNo courier will be selected and no AWB will be generated. You can ship these orders later from NimbusPost.`)) return;
@@ -3368,7 +3375,7 @@ async function syncNimbusAwbs(btn) {
 }
 
 async function pushAllToShiprocket(btn) {
-  const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending','pending_phonepe','pending_partial_phonepe'];
+  const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending','pending_phonepe','pending_partial_phonepe','replacement_pending'];
   const unshipped = allOrders.filter(o => UNSHIPPED.includes(o.status));
   if (!unshipped.length) { alert('No unshipped orders found in the current view.'); return; }
   if (!confirm(`Push ${unshipped.length} unshipped order${unshipped.length>1?'s':''} to Shiprocket?\n\nThey will appear in your Shiprocket panel where you can assign couriers, generate AWBs and request pickup.`)) return;

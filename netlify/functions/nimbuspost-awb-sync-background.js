@@ -36,7 +36,7 @@ const CORS = {
 };
 
 // Orders eligible to be flipped to "shipped" once an AWB appears.
-const UNSHIPPED_STATUSES = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending'];
+const UNSHIPPED_STATUSES = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending'];
 
 const NP_MAX_PAGE   = 50;   // NimbusPost rejects page > 50
 const NP_SCAN_PAGES = 5;    // newest pages only — keeps total calls well under the function timeout

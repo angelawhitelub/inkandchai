@@ -98,15 +98,34 @@ exports.handler = async (event) => {
       orders = orders.slice(0, 30);
     }
 
-    // Fetch return requests IN PARALLEL (was sequential — added ~300ms latency)
+    // Fetch return requests in parallel; replacements are already in `orders`
+    // (same user) so we just scan them.
     if (orders.length) {
       const orderIds = orders.map(o => o.id);
-      const [{ data: returns }] = await Promise.all([
-        supabase.from('return_requests').select('order_id, status').in('order_id', orderIds),
-      ]);
+      const { data: returns } = await supabase
+        .from('return_requests').select('order_id, status').in('order_id', orderIds);
       const returnMap = {};
       (returns || []).forEach(r => { returnMap[r.order_id] = r.status; });
-      orders.forEach(o => { if (returnMap[o.id]) o.return_request_status = returnMap[o.id]; });
+
+      // Build a map: original_order_id -> { replacement_order_id, status }
+      // from any source='replacement' rows already in this user's order list.
+      const replMap = {};
+      for (const o of orders) {
+        if (o.source !== 'replacement') continue;
+        const meta = Array.isArray(o.cart_items) && o.cart_items[0]?._replacement;
+        if (meta?.original_order_id) {
+          replMap[meta.original_order_id] = {
+            replacement_order_id: o.razorpay_order_id,
+            status: o.status,
+          };
+        }
+      }
+
+      orders.forEach(o => {
+        if (returnMap[o.id]) o.return_request_status = returnMap[o.id];
+        const rm = o.razorpay_order_id && replMap[o.razorpay_order_id];
+        if (rm) { o.replacement_order_id = rm.replacement_order_id; o.replacement_status = rm.status; }
+      });
     }
 
     // Cache: allow CDN/browser to cache for 30s — orders don't change every second

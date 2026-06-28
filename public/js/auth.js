@@ -1870,20 +1870,166 @@
         </div>`;
     }
 
+    // If a replacement already exists for this order, surface its status.
+    if (order.replacement_order_id) {
+      return `
+        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
+          <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
+                       padding:0.28rem 0.7rem;border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;">
+            🔄 Replacement created
+          </span>
+          <span style="font-size:0.62rem;color:#a09080;margin-left:0.5rem;">
+            Order <strong style="color:#c9a84c;">${escHtml(order.replacement_order_id)}</strong> is on the way.
+          </span>
+        </div>`;
+    }
+
     return `
       <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
                   display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">
         <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
           7-day return window · ${info.daysLeft} day${info.daysLeft === 1 ? '' : 's'} left
         </div>
-        <button onclick="iacOpenReturnModal('${escJs(order.id)}')"
-          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
-                 padding:0.65rem 1rem;background:transparent;border:1px solid rgba(201,168,76,0.35);
-                 color:#c9a84c;cursor:pointer;">
-          Initiate Return
-        </button>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button onclick="iacOpenReplacementModal('${escJs(order.id)}','${escJs(order.razorpay_order_id || order.id)}')"
+            style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                   padding:0.65rem 1rem;background:rgba(109,191,109,0.08);border:1px solid rgba(109,191,109,0.4);
+                   color:#6dbf6d;cursor:pointer;">
+            🔄 Request Replacement
+          </button>
+          <button onclick="iacOpenReturnModal('${escJs(order.id)}')"
+            style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                   padding:0.65rem 1rem;background:transparent;border:1px solid rgba(201,168,76,0.35);
+                   color:#c9a84c;cursor:pointer;">
+            ↩ Initiate Return
+          </button>
+        </div>
       </div>`;
   }
+
+  // ── Replacement modal ─────────────────────────────────────────────────────
+  window.iacOpenReplacementModal = function (orderRowId, displayOrderId) {
+    removeModal('iacReplacementModal');
+    const modal = document.createElement('div');
+    modal.id = 'iacReplacementModal';
+    modal.style.cssText = `
+      position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
+      display:flex;align-items:center;justify-content:center;z-index:10100;padding:1rem;`;
+    modal.innerHTML = `
+      <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);width:min(480px,96vw);padding:2rem;position:relative;max-height:90vh;overflow:auto;">
+        <button onclick="document.getElementById('iacReplacementModal')?.remove()"
+          style="position:absolute;top:1rem;right:1.1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
+        <h3 style="font-family:'Cormorant Garamond',serif;color:#c9a84c;font-weight:500;margin:0 0 0.5rem;font-size:1.4rem;">
+          🔄 Request Replacement
+        </h3>
+        <p style="color:#a09080;font-size:0.74rem;line-height:1.6;margin:0 0 1.3rem;">
+          For order <strong style="color:#c9a84c;">${escHtml(displayOrderId)}</strong>.
+          We'll ship a free replacement to the same address — no charge, no need to send the original back unless we ask.
+        </p>
+
+        <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">Reason *</label>
+        <select id="iacReplReason" style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.7rem;font-family:inherit;font-size:0.85rem;margin-bottom:1rem;">
+          <option value="">Choose a reason…</option>
+          <option value="damaged">Damaged in transit</option>
+          <option value="wrong_book">Wrong book delivered</option>
+          <option value="missing_pages">Missing pages / printing defect</option>
+          <option value="missing_item">Item missing from package</option>
+          <option value="incomplete_set">Incomplete combo set</option>
+          <option value="other">Other</option>
+        </select>
+
+        <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">Notes (optional)</label>
+        <textarea id="iacReplNote" rows="3" maxlength="500" placeholder="Anything that helps us pack the replacement right…"
+          style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.7rem;font-family:inherit;font-size:0.82rem;line-height:1.55;resize:vertical;margin-bottom:1rem;"></textarea>
+
+        <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">Photos (optional, up to 3)</label>
+        <input id="iacReplPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple
+          style="width:100%;color:#a09080;font-size:0.78rem;margin-bottom:0.4rem;"/>
+        <div id="iacReplPhotosPreview" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1.2rem;"></div>
+
+        <div id="iacReplMsg" style="font-size:0.75rem;color:#e8a030;margin-bottom:0.8rem;line-height:1.5;display:none;"></div>
+
+        <div style="display:flex;gap:0.6rem;justify-content:flex-end;">
+          <button onclick="document.getElementById('iacReplacementModal')?.remove()"
+            style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                   padding:0.7rem 1.1rem;background:transparent;border:1px solid rgba(160,144,128,0.3);color:#a09080;cursor:pointer;">
+            Cancel
+          </button>
+          <button id="iacReplSubmitBtn" onclick="iacSubmitReplacement('${escJs(orderRowId)}','${escJs(displayOrderId)}')"
+            style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                   padding:0.7rem 1.2rem;background:#6dbf6d;border:1px solid #6dbf6d;color:#0d0b08;cursor:pointer;font-weight:600;">
+            Submit Replacement Request
+          </button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    // Live photo previews
+    const fileInput = document.getElementById('iacReplPhotos');
+    const previewEl = document.getElementById('iacReplPhotosPreview');
+    fileInput.addEventListener('change', () => {
+      previewEl.innerHTML = '';
+      [...fileInput.files].slice(0,3).forEach(f => {
+        if (f.size > 2_000_000) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+          const img = document.createElement('img');
+          img.src = e.target.result;
+          img.style.cssText = 'width:62px;height:62px;object-fit:cover;border:1px solid rgba(201,168,76,0.2);';
+          previewEl.appendChild(img);
+        };
+        reader.readAsDataURL(f);
+      });
+    });
+  };
+
+  window.iacSubmitReplacement = async function (orderRowId, displayOrderId) {
+    const reason = document.getElementById('iacReplReason').value;
+    const note   = document.getElementById('iacReplNote').value.trim();
+    const fileInput = document.getElementById('iacReplPhotos');
+    const msg = document.getElementById('iacReplMsg');
+    const btn = document.getElementById('iacReplSubmitBtn');
+    const show = (text, color = '#e8a030') => { msg.textContent = text; msg.style.color = color; msg.style.display = ''; };
+    msg.style.display = 'none';
+
+    if (!reason) { show('Please choose a reason.'); return; }
+
+    // Read photos as data URLs (max 3, 2MB each)
+    const photos = [];
+    const files = [...(fileInput.files || [])].slice(0, 3);
+    for (const f of files) {
+      if (f.size > 2_000_000) { show(`"${f.name}" is over 2 MB — please resize and try again.`); return; }
+      photos.push(await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = e => res(e.target.result);
+        r.onerror = rej;
+        r.readAsDataURL(f);
+      }));
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token || '';
+      const res = await fetch('/.netlify/functions/request-replacement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          original_order_id: displayOrderId,
+          reason, note, photos,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Replacement request failed');
+      show('✓ Replacement order created: ' + data.replacement_order_id + '. You will receive an email shortly.', '#6dbf6d');
+      setTimeout(() => { removeModal('iacReplacementModal'); loadMyOrders(); }, 2200);
+    } catch (e) {
+      show(e.message || 'Could not submit replacement.');
+      btn.disabled = false;
+      btn.textContent = 'Submit Replacement Request';
+    }
+  };
 
   window.iacOpenReturnModal = function (orderId) {
     removeModal('iacReturnModal');

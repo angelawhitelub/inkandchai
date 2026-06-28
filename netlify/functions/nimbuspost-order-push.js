@@ -21,6 +21,7 @@ const CORS = {
 
 const UNSHIPPED_STATUSES = [
   'paid', 'confirmed', 'cod_pending', 'partial_cod_pending',
+  'replacement_pending',
 ];
 
 function parseAddress(value) {

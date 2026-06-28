@@ -23,6 +23,7 @@ const CORS = {
 const UNSHIPPED_STATUSES = [
   'paid', 'confirmed', 'cod_pending', 'partial_cod_pending',
   'pending_phonepe', 'pending_partial_phonepe',
+  'replacement_pending',
 ];
 
 exports.handler = async (event) => {
