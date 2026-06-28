@@ -24,7 +24,10 @@
 
 # Backfill AWBs assigned inside the NimbusPost panel back onto our orders.
 # Flips matched orders to "shipped" and notifies the customer. Runs every 15 min.
-[functions."nimbuspost-awb-sync"]
+# Suffix `-background` gives us a 15-minute timeout (vs 10s for sync functions)
+# — the loop over notifications regularly blew past the gateway timeout, leaving
+# the admin SPA with an HTML error page even though the work was completing.
+[functions."nimbuspost-awb-sync-background"]
   schedule = "*/15 * * * *"
 
 # favicon.ico — redirect to the actual PNG; browsers cache the 301 permanently
