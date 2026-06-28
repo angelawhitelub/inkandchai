@@ -30,12 +30,16 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-let _tokenCache = { token: null, expiresAt: 0 };
+let _tokenCache = { authorization: null, expiresAt: 0 };
 
-function phonePeHeaders(token) {
+function phonePeHeaders(authorization) {
   const headers = {
-    'Authorization': 'O-Bearer ' + token,
+    'Authorization': authorization,
     'Content-Type': 'application/json',
+    'x-source': 'API',
+    'x-source-version': 'V2',
+    'x-source-platform': 'BACKEND_NODE_SDK',
+    'x-source-platform-version': '2.0.6',
   };
   if (process.env.PHONEPE_MERCHANT_ID) {
     headers['X-MERCHANT-ID'] = process.env.PHONEPE_MERCHANT_ID;
@@ -44,8 +48,8 @@ function phonePeHeaders(token) {
 }
 
 async function getAccessToken(host) {
-  if (_tokenCache.token && Date.now() < _tokenCache.expiresAt - 60_000) {
-    return _tokenCache.token;
+  if (_tokenCache.authorization && Date.now() < _tokenCache.expiresAt - 60_000) {
+    return _tokenCache.authorization;
   }
   const body = new URLSearchParams({
     client_id: process.env.PHONEPE_CLIENT_ID,
@@ -62,19 +66,20 @@ async function getAccessToken(host) {
   if (!res.ok || !data.access_token) {
     throw new Error('PhonePe OAuth failed: ' + (data.message || data.error || ('HTTP ' + res.status)));
   }
+  const tokenType = data.token_type || data.tokenType || 'O-Bearer';
   _tokenCache = {
-    token: data.access_token,
+    authorization: `${tokenType} ${data.access_token}`,
     expiresAt: data.expires_at ? data.expires_at * 1000 : Date.now() + (data.expires_in || 3300) * 1000,
   };
-  return _tokenCache.token;
+  return _tokenCache.authorization;
 }
 
-async function getRefundStatus(host, token, merchantRefundId) {
+async function getRefundStatus(host, authorization, merchantRefundId) {
   const res = await fetch(
     `${host}/pg/payments/v2/refund/${encodeURIComponent(merchantRefundId)}/status`,
     {
       method: 'GET',
-      headers: phonePeHeaders(token),
+      headers: phonePeHeaders(authorization),
     }
   );
   const data = await res.json().catch(() => ({}));
@@ -162,14 +167,14 @@ exports.handler = async (event) => {
     const isFullRefund = amountPaise >= orderAmount;
 
     const merchantRefundId = `REFUND-${displayId}-${Date.now()}`;
-    const token = await getAccessToken(host);
+    const authorization = await getAccessToken(host);
 
     const refundBody = {
       merchantRefundId,
       originalMerchantOrderId: displayId,
       amount: amountPaise,
     };
-    const refundHeaders = phonePeHeaders(token);
+    const refundHeaders = phonePeHeaders(authorization);
 
     async function callRefund(path) {
       const r = await fetch(`${host}${path}`, {
@@ -197,7 +202,7 @@ exports.handler = async (event) => {
           `${refundData.message || ''} ${refundData.error || ''} ${refundData.errorCode || ''}`
         );
       if (looksRetryable) {
-        const statusCheck = await getRefundStatus(host, token, merchantRefundId);
+        const statusCheck = await getRefundStatus(host, authorization, merchantRefundId);
         if (statusCheck.ok) {
           const state = String(statusCheck.data?.state || '').toUpperCase();
           if (state && state !== 'FAILED') {
