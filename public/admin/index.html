@@ -3344,22 +3344,24 @@ async function syncNimbusAwbs(btn) {
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Syncing AWBs…'; }
   try {
-    const res = await fetch('/.netlify/functions/nimbuspost-awb-sync', {
+    // Background function — Netlify returns 202 immediately, the sync keeps
+    // running for up to 15 min (instead of timing the gateway out at 10s and
+    // showing a scary "Unexpected token '<'" JSON-parse alert).
+    const res = await fetch('/.netlify/functions/nimbuspost-awb-sync-background', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-    const s = data.summary || {};
-    let message = `AWB sync complete:\n\n📦 NimbusPost orders scanned: ${s.scanned || 0}\n🔗 Matched to your orders: ${s.matched || 0}\n✅ Marked shipped & saved AWB: ${s.synced || 0}\n📨 Customers notified: ${s.notified || 0}`;
-    if (s.errors?.length) message += `\n\nFirst errors:\n${s.errors.slice(0, 5).join('\n')}`;
-    if (!s.synced) message += '\n\n(Nothing to sync — either no new AWBs in NimbusPost yet, or they\'re already synced.)';
-    if (s.scanned === 0 && s.diag?.length) message += `\n\nDiagnostics:\n${s.diag.join('\n')}`;
-    alert(message);
-    if (s.synced) await fetchOrders(true);
+    if (res.status !== 202 && !res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { const d = await res.json(); if (d?.error) detail = d.error; } catch {}
+      throw new Error(detail);
+    }
+    alert('AWB sync started in the background.\n\nIt scans the NimbusPost panel and flips any matched orders to "shipped" while notifying the customer.\n\nThis runs for up to ~2 minutes. Click "↻ Refresh" in 1–2 minutes to see the updated orders.');
+    // Soft auto-refresh after 90s so the user doesn't have to remember.
+    setTimeout(() => { try { fetchOrders(true); } catch {} }, 90 * 1000);
   } catch (err) {
-    alert('AWB sync failed:\n\n' + err.message);
+    alert('Could not start AWB sync:\n\n' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
