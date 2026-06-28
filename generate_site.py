@@ -2934,6 +2934,11 @@ function customProductToBook(product) {
     review_video: '',
     reviews: [],
     custom: true,
+    // True when the custom_products row carries the tag emitted by the
+    // Crossword-bestseller importer — surfaces the "Genuine, sourced from the
+    // publisher" banner on the product page. Cheap string contains so any
+    // future tag-driven banners can follow the same pattern.
+    publisher_sourced: /publisher-sourced-bestseller/i.test(String(product.tags || '')),
   };
 }
 
@@ -4673,6 +4678,11 @@ function customProductToBook(product) {
     review_video: '',
     reviews: [],
     custom: true,
+    // True when the custom_products row carries the tag emitted by the
+    // Crossword-bestseller importer — surfaces the "Genuine, sourced from the
+    // publisher" banner on the product page. Cheap string contains so any
+    // future tag-driven banners can follow the same pattern.
+    publisher_sourced: /publisher-sourced-bestseller/i.test(String(product.tags || '')),
   };
 }
 
@@ -4996,6 +5006,15 @@ function renderProduct(b) {
               class="btn-share" title="Save to wishlist">♡ Wishlist</button>
           </div>
         </div>
+
+        ${b.publisher_sourced ? `
+        <div class="publisher-sourced-box" style="border:1px solid rgba(110,170,110,0.35);background:linear-gradient(135deg,rgba(110,170,110,0.10),rgba(201,168,76,0.05));padding:1rem 1.2rem;border-radius:2px;margin-bottom:0.9rem;display:flex;gap:0.85rem;align-items:flex-start;">
+          <div style="font-size:1.4rem;line-height:1;">📚</div>
+          <div>
+            <div style="font-size:0.56rem;letter-spacing:0.28em;text-transform:uppercase;color:#6daa6d;margin-bottom:0.35rem;font-weight:600;">Genuine — Publisher Sourced</div>
+            <div style="font-size:0.76rem;color:var(--cream);line-height:1.65;">This title is sourced <strong>directly from the publisher</strong> — no third-party resellers, no piracy. Original copy, MRP printed on the back, with a flat 22.5% discount.</div>
+          </div>
+        </div>` : ''}
 
         <div class="promise-box">
           <div class="promise-box-title">🛡 Ink &amp; Chai Promise</div>
