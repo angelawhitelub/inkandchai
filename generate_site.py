@@ -7049,7 +7049,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         <button class="btn-partial" id="btnPartial" onclick="submitOrder('partial')">
           Pay 10% Now · 90% on Delivery
         </button>
-        <div class="partial-note" id="partialNote">Available on orders above ₹599.</div>
+        <div class="partial-note" id="partialNote">Available on orders above ₹449. COD fee waived.</div>
         <button class="btn-cod" id="btnCOD" onclick="submitOrder('cod')">
           🚚 Cash on Delivery
         </button>
@@ -7180,7 +7180,7 @@ const COUPONS = {
   SAVE15:    { type: 'percent', value: 15, minSubtotal: 1499, onlineOnly: true, label: '15% prepaid discount' },
   CHAI10BACK:{ type: 'percent', value: 10, minSubtotal: 299, onlineOnly: true, label: 'Private 10% recovery discount' },
 };
-const PARTIAL_PAYMENT_THRESHOLD = 599;
+const PARTIAL_PAYMENT_THRESHOLD = 449;
 const PARTIAL_PAYMENT_RATE = 0.10;
 let appliedCouponCode = (localStorage.getItem(COUPON_KEY) || '').toUpperCase();
 const SCRATCH_KEY = 'iac_scratch_card';
@@ -7241,10 +7241,14 @@ function orderTotals(cart, method = 'online') {
   return { subtotal, shipping, codFee, discount: coupon.discount, couponCode: coupon.code, couponMessage: coupon.message, total: grand };
 }
 function partialPaymentTotals(cart) {
-  const base = orderTotals(cart, 'cod');
-  const eligible = base.total > PARTIAL_PAYMENT_THRESHOLD;
-  const deposit = eligible ? Math.max(1, Math.ceil(base.total * PARTIAL_PAYMENT_RATE)) : 0;
-  return { ...base, eligible, deposit, balance: Math.max(0, base.total - deposit), rate: PARTIAL_PAYMENT_RATE };
+  // Partial COD: COD handling fee is WAIVED as the incentive to pre-pay 10%.
+  // No coupon discount applied either — matches server (create-order.js + verify-payment.js).
+  const subtotal = cartSubtotal(cart);
+  const shipping = calcShipping(subtotal);
+  const total = Math.max(1, subtotal + shipping);
+  const eligible = total > PARTIAL_PAYMENT_THRESHOLD;
+  const deposit = eligible ? Math.max(1, Math.ceil(total * PARTIAL_PAYMENT_RATE)) : 0;
+  return { subtotal, shipping, codFee: 0, discount: 0, couponCode: '', couponMessage: '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
 }
 function cartWithPaymentMeta(cart, meta) {
   return cart.map((item, index) => index === 0 ? { ...item, _payment: meta } : item);
@@ -7380,7 +7384,7 @@ function renderSummary() {
     if (_pb) _pb.style.display = 'none';
     if (btnPay) btnPay.disabled = true;
     if (btnPartial) btnPartial.disabled = true;
-    if (partialNote) partialNote.textContent = 'Available on orders above ₹599.';
+    if (partialNote) partialNote.textContent = 'Available on orders above ₹449. COD fee waived.';
     if (btnCOD) btnCOD.disabled = true;
     return;
   }
@@ -7447,9 +7451,9 @@ function renderSummary() {
       ? `Pay 10% Now — ₹${partial.deposit.toLocaleString('en-IN')} · Collect ₹${partial.balance.toLocaleString('en-IN')}`
       : 'Pay 10% Now · 90% on Delivery';
     if (partialNote) {
-      partialNote.textContent = partial.eligible
-        ? `Partial COD: customer pays ₹${partial.deposit.toLocaleString('en-IN')} now and ₹${partial.balance.toLocaleString('en-IN')} on delivery.`
-        : `Available on orders above ₹599. Add ₹${(PARTIAL_PAYMENT_THRESHOLD + 1 - partial.total).toLocaleString('en-IN')} more to enable.`;
+      partialNote.innerHTML = partial.eligible
+        ? `Pay ₹${partial.deposit.toLocaleString('en-IN')} now, ₹${partial.balance.toLocaleString('en-IN')} on delivery. <strong style="color:#5d9b55;">₹${COD_HANDLING_FEE} COD fee waived</strong> when you pay partially.`
+        : `Available on orders above ₹449. COD fee waived. Add ₹${(PARTIAL_PAYMENT_THRESHOLD + 1 - partial.total).toLocaleString('en-IN')} more to enable.`;
     }
   }
   if (btnCOD) {
@@ -7462,7 +7466,7 @@ function renderSummary() {
       const sub = cartSubtotal(cart);
       if (codTotals.codFee > 0) {
         const needed = COD_FEE_WAIVER_THRESHOLD - sub;
-        codNote.innerHTML = `Includes <strong style="color:var(--gold);">₹${codTotals.codFee} COD handling fee</strong>. Add <strong>₹${needed.toLocaleString('en-IN')}</strong> more to waive it — or choose <strong>Pay Now</strong> to skip the fee AND earn a guaranteed cashback scratch card (up to ₹200).`;
+        codNote.innerHTML = `Includes <strong style="color:var(--gold);">₹${codTotals.codFee} COD handling fee</strong>. Add <strong>₹${needed.toLocaleString('en-IN')}</strong> more to waive it, or pick <strong>Pay 10% Now</strong> above — <strong style="color:#5d9b55;">COD fee waived on partial</strong>. Pay Now skips the fee AND earns a cashback scratch card (up to ₹200).`;
       } else {
         codNote.innerHTML = `🎉 <strong style="color:#5d9b55;">₹${COD_HANDLING_FEE} COD fee waived</strong> on orders above ₹${COD_FEE_WAIVER_THRESHOLD.toLocaleString('en-IN')}. Choose <strong>Pay Now</strong> to also earn a cashback scratch card (up to ₹200).`;
       }
