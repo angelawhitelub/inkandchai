@@ -190,9 +190,13 @@ exports.handler = async (event) => {
   const now = new Date();
   const datePart = now.toISOString().slice(0,10).replace(/-/g,'');
   const randPart = Math.random().toString(36).slice(2,7).toUpperCase();
-  // R prefix in the id segment is the at-a-glance "this is a replacement" cue
-  // in the admin panel and in customer emails.
-  const replId = `IC-R-${datePart}-${randPart}`;
+  // R prefix = "this is a replacement" cue. Carry the CW marker forward if the
+  // original was a Crossword-migrated genuine-tag order (IC-CW-…) so admin
+  // filtering keeps working on the replacement too.
+  const origIsCW = /^IC-CW-/i.test(String(orig.razorpay_order_id || ''));
+  const replId = origIsCW
+    ? `IC-R-CW-${datePart}-${randPart}`
+    : `IC-R-${datePart}-${randPart}`;
 
   // Carry the original cart so warehouse knows what to re-ship. First item gets
   // a `_replacement` meta blob so the admin panel (and any downstream tooling)

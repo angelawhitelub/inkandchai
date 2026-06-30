@@ -18,6 +18,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { generateCardForOrder } = require('./utils/scratch-cards');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
+const { makeOrderId } = require('./utils/pricing');
 
 const CORS = { 'Content-Type': 'application/json' };
 
@@ -120,11 +121,8 @@ exports.handler = async (event) => {
     ? [{ title: payment.notes.books, qty: 1, price: Math.round(amount_paise / 100) }]
     : []);
 
-  // Generate IC- order ID
-  const now = new Date();
-  const datePart = now.toISOString().slice(0,10).replace(/-/g,'');
-  const randPart = Math.random().toString(36).substring(2,7).toUpperCase();
-  const inkOrderId = `IC-${datePart}-${randPart}`;
+  // IC- (or IC-CW- for Crossword-migrated genuine-tag carts) order ID.
+  const inkOrderId = await makeOrderId('IC', cartItems, supabase);
 
   // ── Save the order ────────────────────────────────────────────────────────
   const { error: saveErr } = await supabase.from('orders').insert({

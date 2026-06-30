@@ -12,6 +12,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
+const { makeOrderId } = require('./utils/pricing');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -117,10 +118,8 @@ exports.handler = async (event) => {
     const cart     = abandoned?.cart_items || [];
     const customer = abandoned?.customer   || {};
 
-    const now = new Date();
-    const datePart = now.toISOString().slice(0,10).replace(/-/g,'');
-    const randPart = Math.random().toString(36).substring(2,7).toUpperCase();
-    const inkOrderId = `IC-${datePart}-${randPart}`;
+    // IC- (or IC-CW- for Crossword-migrated genuine-tag carts) order ID.
+    const inkOrderId = await makeOrderId('IC', cart, supabase);
 
     const { error: saveErr } = await supabase.from('orders').insert({
       razorpay_order_id:   inkOrderId,

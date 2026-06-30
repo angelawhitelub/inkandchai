@@ -557,6 +557,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="filter-btn" data-status="delivered" onclick="setFilter(this,'delivered')">Delivered</button>
     <button class="filter-btn" data-status="paid" onclick="setFilter(this,'paid')">Paid Online</button>
     <button class="filter-btn" data-status="replacement_pending" onclick="setFilter(this,'replacement_pending')" style="border-color:rgba(109,191,109,0.5);color:#6dbf6d;">🔄 Replacement</button>
+    <button class="filter-btn" data-status="cw_only" onclick="setFilter(this,'cw_only')" style="border-color:rgba(201,168,76,0.5);color:#c9a84c;" title="Orders containing Crossword-migrated genuine-tag books (IC-CW-…)">📚 Crossword</button>
     <button class="filter-btn" data-status="cancelled" onclick="setFilter(this,'cancelled')">Cancelled</button>
     <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
     <span class="date-sep">→</span>
@@ -1222,7 +1223,7 @@ function saveOrdersToCache(orders, total) {
 
 async function fetchOrdersPage(pageNum, limit) {
   const params = new URLSearchParams({ page: pageNum, limit });
-  if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending') {
+  if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending' && currentFilter !== 'cw_only') {
     params.set('status', currentFilter);
   }
   const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
@@ -1685,6 +1686,7 @@ function applyFilters() {
     if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
     if (currentFilter === 'partial_cod_pending' && !isPartialOrder(o)) return false;
     if (currentFilter === 'online_pending' && !isPendingOnlineOrder(o)) return false;
+    if (currentFilter === 'cw_only' && !/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || ''))) return false;
     // Search
     if (q) {
       const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
@@ -1762,6 +1764,7 @@ function _drawTable() {
       <td>
         <div class="order-id">${esc(o.razorpay_order_id || o.id || '—')}</div>
         ${o.razorpay_payment_id ? `<div class="pay-id">${esc(o.razorpay_payment_id)}</div>` : ''}
+        ${/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || '')) ? `<div title="Contains Crossword-migrated genuine-tag book(s)" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.4);color:#c9a84c;font-weight:600;">📚 Crossword</div>` : ''}
         ${o.source === 'replacement' ? (() => {
           const meta = Array.isArray(o.cart_items) && o.cart_items[0]?._replacement;
           const orig = meta?.original_order_id ? esc(meta.original_order_id) : '';

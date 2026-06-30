@@ -11,7 +11,7 @@ const { sendEmail }    = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
-const { resolveCartPrices } = require('./utils/pricing');
+const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
 
 // Authoritative amount comes from Razorpay, not the browser.
 async function fetchRazorpayOrderAmount(orderId) {
@@ -185,11 +185,10 @@ exports.handler = async (event) => {
   const balanceDue = isPartial ? Math.max(0, computedFullTotal - paidTotal) : 0;
   const fullTotal = isPartial ? computedFullTotal : paidTotal;
 
-  // Generate a consistent IC- order ID for Razorpay orders (same format as PhonePe/COD)
-  const now = new Date();
-  const datePart = now.toISOString().slice(0,10).replace(/-/g,'');
-  const randPart = Math.random().toString(36).substring(2,7).toUpperCase();
-  const inkOrderId = `IC-${datePart}-${randPart}`;
+  // IC- order ID (IC-CW- for Crossword-migrated genuine-tag carts). The
+  // resolved cart from above already carries _publisher_sourced flags.
+  const _sbForId = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  const inkOrderId = await makeOrderId('IC', cart, _sbForId);
 
   try {
     const supabase = createClient(

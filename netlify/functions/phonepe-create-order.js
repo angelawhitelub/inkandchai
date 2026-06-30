@@ -19,7 +19,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { resolveCartPrices } = require('./utils/pricing');
+const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 
 const CORS = {
@@ -153,10 +153,8 @@ exports.handler = async (event) => {
   const isPartial   = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
 
   // Generate order id early so we can atomically claim a scratch card to it.
-  const _now      = new Date();
-  const _datePart = _now.toISOString().slice(0,10).replace(/-/g,'');
-  const _randPart = Math.random().toString(36).slice(2,7).toUpperCase();
-  const orderId   = `IC-${_datePart}-${_randPart}`;
+  // IC-CW- prefix for Crossword-migrated genuine-tag carts (publisher-sourced).
+  const orderId = await makeOrderId('IC', cart);
 
   // Atomic scratch-card claim. If the same card is racing across multiple
   // concurrent checkouts, only one wins; the others drop the discount.

@@ -9,7 +9,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
-const { resolveCartPrices } = require('./utils/pricing');
+const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -80,11 +80,6 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
   }
 
-  const now = new Date();
-  const datePart = now.toISOString().slice(0,10).replace(/-/g,'');   // 20260429
-  const randPart = Math.random().toString(36).slice(2,7).toUpperCase(); // AB3CD
-  const orderId = `IC-${datePart}-${randPart}`;  // e.g. IC-20260429-AB3CD
-
   // Shipping rules — must match cart.js + checkout. Calculate server-side
   // defensively rather than trusting client input. Prices come from the
   // catalogue, NEVER from cart items (the browser is hostile).
@@ -98,6 +93,8 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'No catalogue items in cart' }) };
   }
   const cart = priced.cart;
+  // Order ID — IC-CW-... for Crossword-migrated genuine-tag carts, IC-... otherwise.
+  const orderId = await makeOrderId('IC', cart);
   const subtotal = priced.subtotal;
   const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   const codFee   = subtotal >= COD_FEE_WAIVER_THRESHOLD ? 0 : COD_HANDLING_FEE;

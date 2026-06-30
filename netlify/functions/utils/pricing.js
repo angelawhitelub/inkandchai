@@ -154,7 +154,7 @@ async function resolveCartPrices(cart, supabase) {
     const slugs = [...new Set(customLookups.map(c => c.slug))];
     const { data, error } = await supabase
       .from('custom_products')
-      .select('slug,title,price_inr,is_active')
+      .select('slug,title,price_inr,is_active,tags')
       .in('slug', slugs);
     if (error) console.error('[pricing] custom_products lookup:', error.message);
     const customMap = {};
@@ -162,12 +162,15 @@ async function resolveCartPrices(cart, supabase) {
       if (row.is_active === false) continue;
       const price = Number.parseFloat(row.price_inr || 0) || 0;
       if (price <= 0) continue;
-      customMap[String(row.slug).toLowerCase()] = { title: row.title || '', price };
+      const publisherSourced = /publisher-sourced-bestseller/i.test(String(row.tags || ''));
+      customMap[String(row.slug).toLowerCase()] = { title: row.title || '', price, publisherSourced };
     }
     for (const { slug, qty, raw } of customLookups) {
       const hit = customMap[slug];
       if (hit) {
-        resolved.push({ ...raw, slug, qty, title: hit.title, price: hit.price });
+        const item = { ...raw, slug, qty, title: hit.title, price: hit.price };
+        if (hit.publisherSourced) item._publisher_sourced = true;
+        resolved.push(item);
       } else {
         dropped.push({ reason: 'not_in_catalogue', slug, item: raw });
       }
@@ -182,4 +185,41 @@ async function resolveCartPrices(cart, supabase) {
   return { cart: resolved, subtotal, dropped };
 }
 
-module.exports = { resolveCartPrices, getCatalogIndex };
+/**
+ * Sync check on an already-resolved cart (from resolveCartPrices).
+ * Crossword-migrated genuine-tag products carry `_publisher_sourced: true`
+ * after price resolution — orders containing any such item get a distinct
+ * "IC-CW-" prefix so they're trivially filterable in the admin panel.
+ */
+function cartHasPublisherSourced(cart) {
+  if (!Array.isArray(cart)) return false;
+  return cart.some(i => i && i._publisher_sourced === true);
+}
+
+/**
+ * Generate an order ID. Pass `prefixBase` for the variant ('IC' for normal,
+ * 'IC-R' for replacements). Crossword-sourced carts get '-CW' appended after
+ * the base. If the cart hasn't been priced yet (no _publisher_sourced flag)
+ * and `supabase` is provided, we do a fast slug lookup to decide.
+ */
+async function makeOrderId(prefixBase, cart, supabase) {
+  let hasCW = cartHasPublisherSourced(cart);
+  if (!hasCW && supabase && Array.isArray(cart) && cart.length) {
+    const slugs = cart.map(extractSlug).filter(Boolean);
+    if (slugs.length) {
+      try {
+        const { data } = await supabase
+          .from('custom_products')
+          .select('slug,tags')
+          .in('slug', slugs);
+        hasCW = (data || []).some(r => /publisher-sourced-bestseller/i.test(String(r.tags || '')));
+      } catch (e) { /* non-fatal — fall back to standard prefix */ }
+    }
+  }
+  const datePart = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const randPart = Math.random().toString(36).slice(2,7).toUpperCase();
+  const prefix   = hasCW ? `${prefixBase}-CW` : prefixBase;
+  return `${prefix}-${datePart}-${randPart}`;
+}
+
+module.exports = { resolveCartPrices, getCatalogIndex, cartHasPublisherSourced, makeOrderId };
