@@ -7053,7 +7053,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         <button class="btn-partial" id="btnPartial" onclick="submitOrder('partial')">
           Pay 10% Now · 90% on Delivery
         </button>
-        <div class="partial-note" id="partialNote">Available on orders above ₹449. COD fee waived.</div>
+        <div class="partial-note" id="partialNote">Available on orders of ₹299 and above. COD fee waived.</div>
         <button class="btn-cod" id="btnCOD" onclick="submitOrder('cod')">
           🚚 Cash on Delivery
         </button>
@@ -7184,7 +7184,7 @@ const COUPONS = {
   SAVE15:    { type: 'percent', value: 15, minSubtotal: 1499, onlineOnly: true, label: '15% prepaid discount' },
   CHAI10BACK:{ type: 'percent', value: 10, minSubtotal: 299, onlineOnly: true, label: 'Private 10% recovery discount' },
 };
-const PARTIAL_PAYMENT_THRESHOLD = 449;
+const PARTIAL_PAYMENT_THRESHOLD = 299;
 const PARTIAL_PAYMENT_RATE = 0.10;
 let appliedCouponCode = (localStorage.getItem(COUPON_KEY) || '').toUpperCase();
 const SCRATCH_KEY = 'iac_scratch_card';
@@ -7250,7 +7250,7 @@ function partialPaymentTotals(cart) {
   const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
   const total = Math.max(1, subtotal + shipping);
-  const eligible = total > PARTIAL_PAYMENT_THRESHOLD;
+  const eligible = total >= PARTIAL_PAYMENT_THRESHOLD;
   const deposit = eligible ? Math.max(1, Math.ceil(total * PARTIAL_PAYMENT_RATE)) : 0;
   return { subtotal, shipping, codFee: 0, discount: 0, couponCode: '', couponMessage: '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
 }
@@ -7395,7 +7395,7 @@ function renderSummary() {
     if (_pb) _pb.style.display = 'none';
     if (btnPay) btnPay.disabled = true;
     if (btnPartial) btnPartial.disabled = true;
-    if (partialNote) partialNote.textContent = 'Available on orders above ₹449. COD fee waived.';
+    if (partialNote) partialNote.textContent = 'Available on orders of ₹299 and above. COD fee waived.';
     if (btnCOD) btnCOD.disabled = true;
     return;
   }
@@ -7464,7 +7464,7 @@ function renderSummary() {
     if (partialNote) {
       partialNote.innerHTML = partial.eligible
         ? `Pay ₹${partial.deposit.toLocaleString('en-IN')} now, ₹${partial.balance.toLocaleString('en-IN')} on delivery. <strong style="color:#5d9b55;">₹${COD_HANDLING_FEE} COD fee waived</strong> when you pay partially.`
-        : `Available on orders above ₹449. COD fee waived. Add ₹${(PARTIAL_PAYMENT_THRESHOLD + 1 - partial.total).toLocaleString('en-IN')} more to enable.`;
+        : `Available on orders of ₹299 and above. COD fee waived. Add ₹${(PARTIAL_PAYMENT_THRESHOLD - partial.total).toLocaleString('en-IN')} more to enable.`;
     }
   }
   const noCod = cartHasNoCod(cart);
