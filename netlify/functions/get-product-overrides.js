@@ -40,6 +40,11 @@ exports.handler = async (event) => {
       .from('custom_products')
       .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,publisher,isbn,tags,is_active,updated_at')
       .eq('is_active', true)
+      // EXCLUDE the full crossword.in catalogue (tagged 'crossword-catalog').
+      // Those 8k+ books are browsed via the paginated /books page + catalog-search
+      // endpoint, NOT loaded into the homepage BOOKS array. Pulling them here would
+      // balloon this per-pageview feed to ~7 MB and blow Supabase egress.
+      .not('tags', 'ilike', '%crossword-catalog%')
       .order('updated_at', { ascending: false });
     if (customError) console.warn('custom_products unavailable:', customError.message);
     else customProducts = (customData || []).map(p => ({

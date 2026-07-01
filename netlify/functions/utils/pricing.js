@@ -163,13 +163,15 @@ async function resolveCartPrices(cart, supabase) {
       const price = Number.parseFloat(row.price_inr || 0) || 0;
       if (price <= 0) continue;
       const publisherSourced = /publisher-sourced-bestseller/i.test(String(row.tags || ''));
-      customMap[String(row.slug).toLowerCase()] = { title: row.title || '', price, publisherSourced };
+      const noCod = /(?:^|,)\s*no-cod\s*(?:,|$)/i.test(String(row.tags || ''));
+      customMap[String(row.slug).toLowerCase()] = { title: row.title || '', price, publisherSourced, noCod };
     }
     for (const { slug, qty, raw } of customLookups) {
       const hit = customMap[slug];
       if (hit) {
         const item = { ...raw, slug, qty, title: hit.title, price: hit.price };
         if (hit.publisherSourced) item._publisher_sourced = true;
+        if (hit.noCod) item._no_cod = true;
         resolved.push(item);
       } else {
         dropped.push({ reason: 'not_in_catalogue', slug, item: raw });
@@ -194,6 +196,14 @@ async function resolveCartPrices(cart, supabase) {
 function cartHasPublisherSourced(cart) {
   if (!Array.isArray(cart)) return false;
   return cart.some(i => i && i._publisher_sourced === true);
+}
+
+// True when the (server-resolved) cart holds any COD-disabled item — the full
+// crossword.in catalogue import. Used by cod-order.js to hard-reject a COD
+// attempt even if the client UI was bypassed.
+function cartHasNoCod(cart) {
+  if (!Array.isArray(cart)) return false;
+  return cart.some(i => i && i._no_cod === true);
 }
 
 /**
@@ -222,4 +232,4 @@ async function makeOrderId(prefixBase, cart, supabase) {
   return `${prefix}-${datePart}-${randPart}`;
 }
 
-module.exports = { resolveCartPrices, getCatalogIndex, cartHasPublisherSourced, makeOrderId };
+module.exports = { resolveCartPrices, getCatalogIndex, cartHasPublisherSourced, cartHasNoCod, makeOrderId };

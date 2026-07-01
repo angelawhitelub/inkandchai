@@ -9,7 +9,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
-const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
+const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricing');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -93,6 +93,16 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'No catalogue items in cart' }) };
   }
   const cart = priced.cart;
+
+  // Server-side COD guard: the full crossword.in catalogue import disables COD.
+  // Reject even if the client UI was bypassed — steer to partial COD / prepaid.
+  if (cartHasNoCod(cart)) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({
+      error: 'Cash on Delivery is not available for one or more titles in your cart. Please choose Partial COD (pay 10% now) or prepaid checkout.',
+      code: 'cod_disabled',
+    }) };
+  }
+
   // Order ID — IC-CW-... for Crossword-migrated genuine-tag carts, IC-... otherwise.
   const orderId = await makeOrderId('IC', cart);
   const subtotal = priced.subtotal;

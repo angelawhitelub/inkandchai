@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>All Books — Genuine Publisher-Sourced Titles | Ink &amp; Chai</title>
+<meta name="description" content="Browse thousands of genuine, publisher-sourced books at Ink & Chai. Flat 22.5% off MRP, GST invoice available, partial COD (pay just 10% to confirm)." />
+<link rel="canonical" href="https://inkandchai.in/books/" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700&family=Lora:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#090807;--bg2:#11100f;--bg3:#1b1713;--gold:#d6b85e;--gold-light:#f0d889;--gold-dim:#806a36;
+  --cream:#f4ecdc;--cream-dim:#b9ab96;--border:rgba(214,184,94,.22);--pill:999px;
+  --font-display:'Fraunces',Georgia,serif;--font-serif:'Lora',Georgia,serif;--font-sans:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--cream);font-family:var(--font-sans);line-height:1.6;-webkit-font-smoothing:antialiased;}
+a{color:inherit;text-decoration:none}
+header{position:sticky;top:0;z-index:20;background:rgba(9,8,7,.9);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);}
+.nav{max-width:1200px;margin:0 auto;padding:0.9rem 1.2rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;}
+.logo{font-family:var(--font-display);font-size:1.4rem;font-weight:600;letter-spacing:.06em;color:var(--gold);}
+.nav-links{display:flex;gap:1.2rem;font-size:.8rem;letter-spacing:.04em;}
+.nav-links a:hover{color:var(--gold-light)}
+.hero{max-width:1200px;margin:0 auto;padding:2.2rem 1.2rem 1rem;}
+.hero h1{font-family:var(--font-display);font-weight:600;font-size:clamp(1.6rem,4vw,2.6rem);color:var(--cream);letter-spacing:-.01em;}
+.hero p{color:var(--cream-dim);font-size:.92rem;margin-top:.5rem;max-width:640px;}
+.hero .badges{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.9rem;}
+.badge{font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;padding:.35rem .7rem;border-radius:var(--pill);border:1px solid var(--border);color:var(--gold-light);background:rgba(214,184,94,.06);}
+.controls{max-width:1200px;margin:1.2rem auto 0;padding:0 1.2rem;display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;}
+.search{flex:1;min-width:220px;display:flex;gap:.5rem;}
+.search input{flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:.7rem 1rem;border-radius:var(--pill);font-family:inherit;font-size:.85rem;}
+.search input:focus{outline:none;border-color:var(--gold)}
+.search button,select{background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:.7rem 1rem;border-radius:var(--pill);font-family:inherit;font-size:.82rem;cursor:pointer;}
+.search button:hover{border-color:var(--gold)}
+.count{max-width:1200px;margin:.9rem auto 0;padding:0 1.2rem;color:var(--cream-dim);font-size:.78rem;}
+.grid{max-width:1200px;margin:1rem auto;padding:0 1.2rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1.4rem 1rem;}
+.card{display:flex;flex-direction:column;background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;transition:.2s;}
+.card:hover{border-color:rgba(214,184,94,.5);transform:translateY(-2px)}
+.cover{aspect-ratio:2/3;background:var(--bg3);overflow:hidden;display:block;}
+.cover img{width:100%;height:100%;object-fit:cover;transition:.3s}
+.card:hover .cover img{transform:scale(1.05)}
+.card-body{padding:.7rem .75rem .85rem;display:flex;flex-direction:column;gap:.45rem;flex:1;}
+.genuine{font-size:.54rem;letter-spacing:.14em;text-transform:uppercase;color:#7fc07f;font-weight:700;}
+.title{font-family:var(--font-serif);font-size:.86rem;line-height:1.3;color:var(--cream);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;min-height:2.4em;}
+.price{display:flex;align-items:baseline;gap:.4rem;margin-top:auto;}
+.price .now{color:var(--gold-light);font-weight:600;font-size:.95rem;}
+.price .was{color:var(--cream-dim);text-decoration:line-through;font-size:.72rem;}
+.price .off{color:#7fc07f;font-size:.62rem;font-weight:600;}
+.btns{display:flex;gap:.4rem;margin-top:.15rem;}
+.btns button{flex:1;font-family:inherit;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;padding:.55rem .3rem;border-radius:var(--pill);cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--cream);transition:.2s;}
+.btns .add:hover{border-color:var(--gold);color:var(--gold-light)}
+.btns .buy{background:var(--gold);color:#0d0b08;border-color:var(--gold);font-weight:700;}
+.btns .buy:hover{background:var(--gold-light)}
+.more{max-width:1200px;margin:1rem auto 3rem;padding:0 1.2rem;text-align:center;}
+.more button{background:var(--bg3);border:1px solid var(--gold-dim);color:var(--gold-light);padding:.85rem 2.2rem;border-radius:var(--pill);font-family:inherit;font-size:.8rem;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;}
+.more button:hover{border-color:var(--gold)}
+.more button:disabled{opacity:.5;cursor:default}
+.empty{max-width:1200px;margin:3rem auto;padding:0 1.2rem;text-align:center;color:var(--cream-dim);}
+#toast{position:fixed;bottom:1.3rem;left:50%;transform:translateX(-50%) translateY(2rem);background:var(--gold);color:#0d0b08;padding:.7rem 1.3rem;border-radius:var(--pill);font-size:.82rem;font-weight:600;opacity:0;transition:.25s;z-index:50;pointer-events:none;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.foot{border-top:1px solid var(--border);padding:2rem 1.2rem;text-align:center;color:var(--cream-dim);font-size:.75rem;}
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <a class="logo" href="/">Ink &amp; Chai</a>
+    <nav class="nav-links">
+      <a href="/">Home</a>
+      <a href="/books/">All Books</a>
+      <a href="/checkout/">Cart</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <h1>The Full Bookshelf</h1>
+  <p>Thousands of genuine, publisher-sourced titles — flat 22.5% off MRP. Every order eligible for a GST invoice. Cash on Delivery isn't offered on these; we recommend Partial COD — pay just 10% now to confirm.</p>
+  <div class="badges">
+    <span class="badge">📚 Publisher Sourced</span>
+    <span class="badge">🧾 GST Invoice Available</span>
+    <span class="badge">🤝 Partial COD — Pay 10%</span>
+    <span class="badge">🚚 Pan-India Delivery</span>
+  </div>
+</section>
+
+<div class="controls">
+  <form class="search" id="searchForm">
+    <input id="q" type="search" placeholder="Search by title…" autocomplete="off" />
+    <button type="submit">Search</button>
+  </form>
+  <select id="sort">
+    <option value="new">Newest</option>
+    <option value="price_asc">Price: Low to High</option>
+    <option value="price_desc">Price: High to Low</option>
+    <option value="title">Title A–Z</option>
+  </select>
+</div>
+
+<div class="count" id="count"></div>
+<div class="grid" id="grid"></div>
+<div class="more" id="more" style="display:none;"><button id="moreBtn">Load more</button></div>
+<div class="empty" id="empty" style="display:none;">No books found. Try a different search.</div>
+
+<div class="foot">Ink &amp; Chai · inkandchai.in · Genuine books, sourced from the publisher.</div>
+<div id="toast"></div>
+
+<script>
+const CART_KEY = 'akshar_cart';
+const PER_PAGE = 24;
+let state = { q: '', sort: 'new', page: 1, pages: 1, loading: false };
+
+function money(n){ return '₹' + Number(n||0).toLocaleString('en-IN'); }
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+function cardHtml(b){
+  const url = '/product/' + b.slug + '/';
+  const off = (b.original_price && b.original_price > b.price)
+    ? Math.round((1 - b.price / b.original_price) * 100) : 0;
+  const item = JSON.stringify({
+    id: url, url, title: b.title, price: Number(b.price), img: b.img || '', qty: 1,
+    _publisher_sourced: true, ...(b.no_cod ? { _no_cod: true } : {})
+  }).replace(/"/g,'&quot;');
+  return `<div class="card">
+    <a class="cover" href="${url}"><img loading="lazy" src="${esc(b.img)}" alt="${esc(b.title)}"/></a>
+    <div class="card-body">
+      <div class="genuine">📚 Genuine</div>
+      <a class="title" href="${url}">${esc(b.title)}</a>
+      <div class="price">
+        <span class="now">${money(b.price)}</span>
+        ${b.original_price ? `<span class="was">${money(b.original_price)}</span>` : ''}
+        ${off ? `<span class="off">${off}% off</span>` : ''}
+      </div>
+      <div class="btns">
+        <button class="add" data-item="${item}" onclick="addToCart(this,false)">Add</button>
+        <button class="buy" data-item="${item}" onclick="addToCart(this,true)">Buy</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function addToCart(btn, buyNow){
+  let item;
+  try { item = JSON.parse(btn.getAttribute('data-item')); } catch(e){ return; }
+  if (buyNow){
+    try { localStorage.setItem('iac_buy_now_cart', JSON.stringify([{ ...item, qty:1 }])); } catch(e){}
+    location.href = '/checkout/?buynow=1';
+    return;
+  }
+  let cart = [];
+  try { cart = JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch(e){ cart = []; }
+  if (!Array.isArray(cart)) cart = [];
+  const ex = cart.find(i => i && i.id === item.id);
+  if (ex) ex.qty = (Number(ex.qty)||1) + 1;
+  else cart.push({ ...item, qty:1 });
+  try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); }
+  catch(e){ alert('Could not add to cart — your browser may be blocking storage.'); return; }
+  toast('✓ Added to cart');
+}
+
+async function load(reset){
+  if (state.loading) return;
+  state.loading = true;
+  const btn = document.getElementById('moreBtn');
+  if (btn) btn.disabled = true;
+  const params = new URLSearchParams({ q: state.q, sort: state.sort, page: state.page, per_page: PER_PAGE });
+  let data;
+  try {
+    const res = await fetch('/.netlify/functions/catalog-search?' + params.toString());
+    data = await res.json();
+  } catch(e){ data = { books:[], total:0, pages:0 }; }
+  state.pages = data.pages || 0;
+  const grid = document.getElementById('grid');
+  if (reset) grid.innerHTML = '';
+  (data.books || []).forEach(b => grid.insertAdjacentHTML('beforeend', cardHtml(b)));
+  document.getElementById('count').textContent = data.total
+    ? `${data.total.toLocaleString('en-IN')} book${data.total===1?'':'s'}${state.q ? ' for "'+state.q+'"' : ''}` : '';
+  document.getElementById('empty').style.display = (data.total === 0) ? 'block' : 'none';
+  document.getElementById('more').style.display = (state.page < state.pages) ? 'block' : 'none';
+  if (btn) btn.disabled = false;
+  state.loading = false;
+}
+
+document.getElementById('searchForm').addEventListener('submit', e => {
+  e.preventDefault();
+  state.q = document.getElementById('q').value.trim();
+  state.page = 1; load(true);
+});
+document.getElementById('sort').addEventListener('change', e => {
+  state.sort = e.target.value; state.page = 1; load(true);
+});
+document.getElementById('moreBtn').addEventListener('click', () => {
+  state.page += 1; load(false);
+});
+
+// Deep-link ?q= support
+const initQ = new URLSearchParams(location.search).get('q');
+if (initQ){ state.q = initQ; document.getElementById('q').value = initQ; }
+load(true);
+</script>
+</body>
+</html>

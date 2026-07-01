@@ -47,6 +47,9 @@ function productHtml(product) {
   // static-rendered catalogue pages already show. GST invoice line is part of
   // the same banner — these orders are eligible for one on request.
   const publisherSourced = /publisher-sourced-bestseller/i.test(String(product.tags || ''));
+  // Full crossword.in catalogue import: COD disabled, partial COD (pay 10%)
+  // recommended. The flag rides along on the cart item so checkout enforces it.
+  const noCod = /(?:^|,)\s*no-cod\s*(?:,|$)/i.test(String(product.tags || ''));
   const metaDesc = esc(shortDescription(product));
   const canonical = `https://inkandchai.in/product/${slug}/`;
   const image = absoluteImage(product.image_url);
@@ -118,7 +121,12 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     <div class="author">by ${author}</div>
     <div><span class="price">${esc(price)}</span>${mrp ? `<span class="orig">${esc(mrp)}</span>` : ''}</div>
     <span class="stock">In Stock</span>
-    <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
+    <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>${noCod ? '🤝 Partial COD — pay 10% now' : '💵 Cash on delivery available'}</span><span>💳 UPI, cards, net banking</span><span>🛡 7-day replacement support</span></div>
+    ${noCod ? `
+    <div style="border:1px solid rgba(214,184,94,0.4);background:rgba(214,184,94,0.07);padding:0.85rem 1.05rem;border-radius:14px;margin:0.9rem 0;font-size:0.76rem;color:var(--cream);line-height:1.6;">
+      <strong style="color:var(--gold-light);">Cash on Delivery isn't available on this title.</strong>
+      We recommend <strong>Partial COD</strong> — pay just <strong>10% now</strong> to confirm your order and the balance on delivery. Full prepaid (UPI/cards) also works.
+    </div>` : ''}
     ${publisherSourced ? `
     <div style="border:1px solid rgba(110,170,110,0.4);background:linear-gradient(135deg,rgba(110,170,110,0.12),rgba(214,184,94,0.06));padding:0.95rem 1.1rem;border-radius:14px;margin:1rem 0;display:flex;gap:0.85rem;align-items:flex-start;">
       <div style="font-size:1.5rem;line-height:1;">📚</div>
@@ -153,6 +161,9 @@ const currentItem = ${JSON.stringify({
     price: Number(product.price_inr),
     img: product.image_url || '',
     qty: 1,
+    // Checkout reads these to disable COD + flag genuine sourcing.
+    ...(noCod ? { _no_cod: true } : {}),
+    ...(publisherSourced ? { _publisher_sourced: true } : {}),
   }).replace(/</g, '\\u003c')};
 // Write directly to localStorage so the cart is saved EVEN IF cart.js's
 // UI helpers throw on missing sidebar DOM elements (this Lambda page is

@@ -2235,6 +2235,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
   </a>
   <ul class="nav-links">
     <li><a href="/self-help-books/">Catalogue</a></li>
+    <li><a href="/books/">All Books</a></li>
     <li><a href="/book-combos/">Collections</a></li>
     <li class="nav-dropdown-menu nav-cat-menu">
       <a class="nav-dropdown-trigger" href="/#categories" aria-haspopup="true">Categories</a>
@@ -2794,6 +2795,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
     <div>
       <div class="footer-col-title">Shop</div>
       <ul class="footer-links">
+        <li><a href="/books/">All Books (Full Catalogue)</a></li>
         <li><a href="/self-help-books/">Self-Help Books</a></li>
         <li><a href="/hindi-books/">Hindi Books</a></li>
         <li><a href="/book-combos/">Book Combos</a></li>
@@ -7252,6 +7254,13 @@ function partialPaymentTotals(cart) {
   const deposit = eligible ? Math.max(1, Math.ceil(total * PARTIAL_PAYMENT_RATE)) : 0;
   return { subtotal, shipping, codFee: 0, discount: 0, couponCode: '', couponMessage: '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
 }
+// True when the cart contains any item flagged _no_cod — the full crossword.in
+// catalogue import (tag 'no-cod'). Those titles disable Cash on Delivery and
+// steer the customer to Partial COD (pay 10%) or full prepaid instead. The flag
+// is stamped onto the cart item at add-to-cart time (product-page.js / catalog).
+function cartHasNoCod(cart) {
+  return Array.isArray(cart) && cart.some(i => i && i._no_cod === true);
+}
 function cartWithPaymentMeta(cart, meta) {
   return cart.map((item, index) => index === 0 ? { ...item, _payment: meta } : item);
 }
@@ -7458,12 +7467,25 @@ function renderSummary() {
         : `Available on orders above ₹449. COD fee waived. Add ₹${(PARTIAL_PAYMENT_THRESHOLD + 1 - partial.total).toLocaleString('en-IN')} more to enable.`;
     }
   }
+  const noCod = cartHasNoCod(cart);
   if (btnCOD) {
     const codTotals = orderTotals(cart, 'cod');
+    const codNote = document.getElementById('codNote');
+    if (noCod) {
+      // Full crossword.in catalogue titles: COD disabled, partial COD pushed.
+      btnCOD.textContent = '🚫 Cash on Delivery unavailable';
+      btnCOD.disabled = true;
+      btnCOD.style.opacity = '0.5';
+      btnCOD.style.cursor = 'not-allowed';
+      if (codNote) {
+        codNote.innerHTML = `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
+      }
+    } else {
     btnCOD.textContent = `🚚 Cash on Delivery — ₹${codTotals.total.toLocaleString('en-IN')}`;
     btnCOD.disabled = false;
+    btnCOD.style.opacity = '';
+    btnCOD.style.cursor = '';
     // Dynamic note: explain fee OR celebrate that it's been waived
-    const codNote = document.getElementById('codNote');
     if (codNote) {
       const sub = cartSubtotal(cart);
       if (codTotals.codFee > 0) {
@@ -7472,6 +7494,7 @@ function renderSummary() {
       } else {
         codNote.innerHTML = `🎉 <strong style="color:#5d9b55;">₹${COD_HANDLING_FEE} COD fee waived</strong> on orders above ₹${COD_FEE_WAIVER_THRESHOLD.toLocaleString('en-IN')}. Choose <strong>Pay Now</strong> to also earn a cashback scratch card (up to ₹200).`;
       }
+    }
     }
   }
 }
