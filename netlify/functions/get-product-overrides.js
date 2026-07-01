@@ -27,13 +27,29 @@ exports.handler = async (event) => {
     }
 
     let customProducts = [];
+    // Egress-critical: this endpoint is fetched on EVERY catalog/home page load.
+    // The listing client (index.html customProductToBook) only needs card fields +
+    // a short description for search indexing + the publisher-sourced flag. It does
+    // NOT render full descriptions, seo_title, or meta_description — those live on
+    // the individual product page, which has its own query (product-page.js). So we
+    // drop seo_title/meta_description entirely, truncate description to a search
+    // snippet, and collapse `tags` to just the one marker the client parses. This
+    // takes the payload from ~2.1 MB to ~0.25 MB per page view (was our #1 egress
+    // sink — 74% of the old payload was description/meta bytes nobody displayed).
     const { data: customData, error: customError } = await supabase
       .from('custom_products')
-      .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,publisher,isbn,seo_title,meta_description,tags,is_active,updated_at')
+      .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,publisher,isbn,tags,is_active,updated_at')
       .eq('is_active', true)
       .order('updated_at', { ascending: false });
     if (customError) console.warn('custom_products unavailable:', customError.message);
-    else customProducts = customData || [];
+    else customProducts = (customData || []).map(p => ({
+      ...p,
+      // Search only needs a snippet; the >30-char ranking check still passes.
+      description: String(p.description || '').slice(0, 300),
+      // Client parses tags ONLY for /publisher-sourced-bestseller/. Keep that
+      // marker, drop the rest (per-book tag lists were bulking the payload).
+      tags: /publisher-sourced-bestseller/i.test(String(p.tags || '')) ? 'publisher-sourced-bestseller' : '',
+    }));
 
     // Cache at CDN edge for 5 min; stale-while-revalidate keeps it snappy after expiry.
     // Product overrides change rarely (admin action), so 5-min staleness is fine.

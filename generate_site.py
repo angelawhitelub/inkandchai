@@ -2944,7 +2944,9 @@ function customProductToBook(product) {
 
 async function loadProductOverrides() {
   try {
-    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
+    // Honor the endpoint's 5-min Cache-Control (was 'no-store', which forced a
+    // fresh ~250 KB fetch on every page view — a major egress drain).
+    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'default' });
     if (!res.ok) return;
     const data = await res.json();
     const bySlug = new Map((data.overrides || []).map(o => [String(o.slug || '').toLowerCase(), o]));
@@ -6384,7 +6386,7 @@ function revealPrice() {{
 async function applyRuntimeProductOverride() {{
   try {{
     const slug = location.pathname.split('/').filter(Boolean)[1] || '';
-    const res = await fetch('/.netlify/functions/get-product-overrides', {{ cache: 'no-store' }});
+    const res = await fetch('/.netlify/functions/get-product-overrides', {{ cache: 'default' }});
     if (!res.ok) {{ revealPrice(); return; }}
     const data = await res.json();
     const key = String(slug || '').toLowerCase();

@@ -465,7 +465,7 @@ function revealPrice() {
 async function applyRuntimeProductOverride() {
   try {
     const slug = location.pathname.split('/').filter(Boolean)[1] || '';
-    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'no-store' });
+    const res = await fetch('/.netlify/functions/get-product-overrides', { cache: 'default' });
     if (!res.ok) { revealPrice(); return; }
     const data = await res.json();
     const key = String(slug || '').toLowerCase();
