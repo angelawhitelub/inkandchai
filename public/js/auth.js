@@ -1662,7 +1662,7 @@
   <div class="footer">
     <div class="footer-note">
       Books are non-returnable after 7 days of delivery.<br/>
-      For support: support@inkandchai.in · +91 92171 75546<br/>
+      For support: support@inkandchai.in · +91 76784 00508<br/>
       This is a computer-generated invoice.
     </div>
     <div class="thanks">Thank you! 📚☕</div>
