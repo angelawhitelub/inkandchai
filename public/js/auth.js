@@ -1984,6 +1984,7 @@
   };
 
   window.iacSubmitReplacement = async function (orderRowId, displayOrderId) {
+    const sb = getSB();
     const reason = document.getElementById('iacReplReason').value;
     const note   = document.getElementById('iacReplNote').value.trim();
     const fileInput = document.getElementById('iacReplPhotos');
@@ -1992,6 +1993,7 @@
     const show = (text, color = '#e8a030') => { msg.textContent = text; msg.style.color = color; msg.style.display = ''; };
     msg.style.display = 'none';
 
+    if (!sb || !currentUser) { show('Please sign in again — session expired.', '#e06060'); return; }
     if (!reason) { show('Please choose a reason.'); return; }
 
     // Read photos as data URLs (max 3, 2MB each)
