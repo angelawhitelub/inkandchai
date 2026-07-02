@@ -227,12 +227,19 @@ async function lookupOrdersByPhone(phone) {
 }
 
 // ── Send a plain text WhatsApp message ───────────────────────────────────────
-async function sendReply(to, text) {
+// Reply through the SAME phone number that received the customer's message
+// (Meta puts it in the webhook payload as value.metadata.phone_number_id).
+// One bot, both numbers: each replies through itself. Falls back to the
+// env-configured PHONE_ID when the caller doesn't know the sender.
+async function sendReply(to, text, senderPhoneId) {
   const token = process.env.WHATSAPP_TOKEN;
   if (!token) { console.warn('WHATSAPP_TOKEN not set'); return; }
 
+  const phoneId = senderPhoneId || PHONE_ID;
+  const url = `https://graph.facebook.com/${API_VER}/${phoneId}/messages`;
+
   const phone = normalizePhone(to) || to;
-  await fetch(WA_URL, {
+  await fetch(url, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -248,7 +255,7 @@ async function sendReply(to, text) {
 // Finds the customer's most recent COD order awaiting confirmation and either
 // confirms it (-> cod_pending, ready to ship) or cancels it. Matched by the last
 // 10 digits of the phone number. Returns true if an order was acted on.
-async function handleCodConfirm(from, decision) {
+async function handleCodConfirm(from, decision, senderPhoneId) {
   try {
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const last10 = String(from).replace(/\D/g, '').slice(-10);
@@ -265,10 +272,10 @@ async function handleCodConfirm(from, decision) {
 
     if (decision === 'cancel') {
       await db.from('orders').update({ status: 'cancelled' }).eq('id', order.id);
-      await sendReply(from, `Your order ${order.razorpay_order_id} has been cancelled. If that was a mistake, just reply here and we'll help. 💛`);
+      await sendReply(from, `Your order ${order.razorpay_order_id} has been cancelled. If that was a mistake, just reply here and we'll help. 💛`, senderPhoneId);
     } else {
       await db.from('orders').update({ status: 'cod_pending' }).eq('id', order.id);
-      await sendReply(from, `✅ Thank you! Your order ${order.razorpay_order_id} is confirmed and will be shipped soon. You'll get tracking on WhatsApp once it's dispatched.`);
+      await sendReply(from, `✅ Thank you! Your order ${order.razorpay_order_id} is confirmed and will be shipped soon. You'll get tracking on WhatsApp once it's dispatched.`, senderPhoneId);
     }
     console.log(`[COD-CONFIRM] ${from} -> ${decision} -> ${order.razorpay_order_id}`);
     return true;
@@ -435,9 +442,13 @@ exports.handler = async (event) => {
     // Ignore status updates (delivery receipts etc.)
     if (!value?.messages?.length) return { statusCode: 200, body: 'ok' };
 
-    const msg     = value.messages[0];
-    const msgId   = msg.id;
-    const from    = msg.from;  // sender's WhatsApp phone number
+    const msg           = value.messages[0];
+    const msgId         = msg.id;
+    const from          = msg.from;  // sender's WhatsApp phone number
+    // The number that RECEIVED this message. We reply through the same one so
+    // that customers messaging 7678400508 hear back from 7678400508, and those
+    // messaging 9217175546 hear back from 9217175546. Both share this handler.
+    const recvPhoneId   = value?.metadata?.phone_number_id || PHONE_ID;
 
     // Dedupe
     if (processedMsgIds.has(msgId)) return { statusCode: 200, body: 'ok' };
@@ -458,7 +469,7 @@ exports.handler = async (event) => {
         msg.interactive?.button_reply?.title || msg.interactive?.button_reply?.id || ''
       ).toLowerCase();
       if (btnText.includes('confirm') || btnText.includes('cancel')) {
-        const handled = await handleCodConfirm(from, btnText.includes('cancel') ? 'cancel' : 'confirm');
+        const handled = await handleCodConfirm(from, btnText.includes('cancel') ? 'cancel' : 'confirm', recvPhoneId);
         if (handled) return { statusCode: 200, body: 'ok' };
       }
     }
@@ -472,7 +483,7 @@ exports.handler = async (event) => {
       userText = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
     } else {
       // Audio, image, etc — politely decline
-      await sendReply(from, "Hi! I can only read text messages right now 😊 Please type your question and I'll help you out!");
+      await sendReply(from, "Hi! I can only read text messages right now 😊 Please type your question and I'll help you out!", recvPhoneId);
       return { statusCode: 200, body: 'ok' };
     }
 
@@ -531,6 +542,7 @@ exports.handler = async (event) => {
       reply = reply.replace('[ESCALATE]', '').trim();
       const ownerPhone = process.env.STORE_OWNER_PHONE;
       if (ownerPhone) {
+        // Owner escalation always through the env-configured bot number.
         await sendReply(ownerPhone,
           `⚠️ Bot escalation needed\nFrom: wa.me/${from}\nMessage: "${userText.slice(0, 200)}"\n\nCustomer needs human help. Go to admin panel → Bot Inbox to take over.`
         );
@@ -547,7 +559,7 @@ exports.handler = async (event) => {
       } catch (e) { console.error('takeover upsert error:', e.message); }
     }
 
-    await sendReply(from, reply);
+    await sendReply(from, reply, recvPhoneId);
     // Persist bot reply (reset unread — bot replied so nothing new for admin)
     await persistMessage(from, 'bot', reply);
     console.log(`[OUT] ${from}: ${reply.slice(0, 120)}`);
