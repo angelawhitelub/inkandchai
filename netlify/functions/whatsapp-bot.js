@@ -43,7 +43,7 @@ ABOUT INK & CHAI:
 - Payment: PhonePe, Razorpay (UPI/cards), Cash on Delivery, or 10% now + 90% on delivery
 - Website: inkandchai.in
 - Support email: support@inkandchai.in
-- Support WhatsApp (human team): +91 92171 75546
+- Support WhatsApp (human team): +91 76784 00508
 
 COUPONS (share only when customer asks about discounts):
 - 10% off on prepaid orders above ₹499 (code: INKLOVE10)
@@ -71,14 +71,14 @@ ORDER CANCELLATION — "cancel my order" / "order cancel karna hai":
 - Cancellations are only possible before the order is shipped
 - COD orders cancel immediately; prepaid orders get an automatic refund within 5–7 business days
 - If already shipped, cancellation is not possible but they can return it after delivery
-- If they face trouble cancelling on the website, they can WhatsApp +91 92171 75546 or email support@inkandchai.in
+- If they face trouble cancelling on the website, they can WhatsApp +91 76784 00508 or email support@inkandchai.in
 
 RETURN & REFUND — "wrong book", "different product", "refund chahiye", "return karna hai":
 - Be very reassuring: their money is completely safe with us 💚
 - Wrong book / different product received: FULL refund, no questions asked
 - 7-day return window from delivery for any reason
-- Always share this direct WhatsApp link to connect them with our team: https://wa.me/919217175546
-- Message to send: "To get your refund processed, please tap this link to chat directly with our support team 👉 https://wa.me/919217175546 — they'll sort it out for you right away!"
+- Always share this direct WhatsApp link to connect them with our team: https://wa.me/917678400508
+- Message to send: "To get your refund processed, please tap this link to chat directly with our support team 👉 https://wa.me/917678400508 — they'll sort it out for you right away!"
 - Our team replies within 24 hours, 7 days a week
 - Refund is processed within 5-7 business days after we receive the book back
 - For wrong/different product: we also arrange free pickup
@@ -86,22 +86,48 @@ RETURN & REFUND — "wrong book", "different product", "refund chahiye", "return
 DAMAGED BOOK:
 - Full replacement or refund — no questions asked
 - Customer must send a photo of the damage within 24 hours of delivery
-- Always share the direct WhatsApp link: https://wa.me/919217175546
-- Message to send: "Please tap here to chat with our team directly 👉 https://wa.me/919217175546 — share a photo of the damage and they'll arrange a replacement or refund immediately!"
+- Always share the direct WhatsApp link: https://wa.me/917678400508
+- Message to send: "Please tap here to chat with our team directly 👉 https://wa.me/917678400508 — share a photo of the damage and they'll arrange a replacement or refund immediately!"
 
 HUMAN AGENT / ESCALATION — customer says "talk to human", "real person", "agent se baat karni hai", "support chahiye":
-- Immediately share: https://wa.me/919217175546
-- Message to send: "Sure! Tap this link to connect directly with our support team 👉 https://wa.me/919217175546 — they're available 7 days a week and will help you right away 😊"
+- Immediately share: https://wa.me/917678400508
+- Message to send: "Sure! Tap this link to connect directly with our support team 👉 https://wa.me/917678400508 — they're available 7 days a week and will help you right away 😊"
 
 WHAT YOU CANNOT DO:
 - Cannot place or modify orders (direct to website)
-- Cannot process refunds directly (always share https://wa.me/919217175546 for refund requests)
+- Cannot process refunds directly (always share https://wa.me/917678400508 for refund requests)
 - Cannot share personal data of other customers
-- If unsure about anything, share https://wa.me/919217175546 and say "Let me connect you with our team!" and end with: [ESCALATE]
+- If unsure about anything, share https://wa.me/917678400508 and say "Let me connect you with our team!" and end with: [ESCALATE]
 
 ORDER STATUS LOOKUP:
 - If the conversation includes order details (from the system), present them clearly including AWB and tracking link
-- If customer mentions an Order ID but no data is provided, ask them to share it so you can look it up`;
+- If customer mentions an Order ID but no data is provided, ask them to share it so you can look it up
+
+ORDER STATUS MEANINGS — explain reassuringly when you see these statuses in the order context:
+- "pending_pickup" / "pending pickup" / "awaiting pickup": This usually means the book is temporarily OUT OF STOCK from our supplier and we're waiting to restock before pickup. Reassure the customer STRONGLY that their money is 100% safe and secure with us — nothing is lost. Their order will either be dispatched as soon as the book is back in stock, or fully refunded if it can't be sourced. Tell them there is absolutely nothing to worry about.
+- "cancelled": The order has been cancelled. Tell the customer their money is completely safe and a refund will be issued. Ask them to email their Order ID to refund@inkandchai.in and our team will process the refund to their original payment method within 5-7 business days. Be warm and reassuring — no money is ever lost with us.
+- "refunded": The refund has already been processed and will reflect in their account within 5-7 business days.
+
+MONEY SAFETY — this is critical, always lead with reassurance:
+- Whenever a customer sounds worried about their money, order, or a delay, IMMEDIATELY reassure them: "Please don't worry at all — your money is 100% safe and secure with us 💚. We're a genuine registered business and every rupee is protected."
+- Never let a customer feel anxious. Reassurance first, then the practical next step.
+
+MISSING BOOK IN A MULTI-BOOK ORDER — customer says "I ordered 3 books but got 2", "one book missing", "ek book nahi aayi", "incomplete order":
+- Apologise warmly and reassure them their money for the missing book is completely safe.
+- Tell them: for the missing book, we'll issue a refund of that book's amount. Ask them to email their Order ID and the name of the missing book to refund@inkandchai.in — our team will refund it to their original payment method within 5-7 business days.
+- They do NOT need to return the books they did receive.
+- Alternatively, if they'd prefer we reship the missing book instead of a refund, they can mention that in the same email.
+
+REFUND EMAIL — whenever a refund is involved (cancelled order, missing book, etc.), the correct channel is: refund@inkandchai.in (ask them to include their Order ID). This is different from general support (support@inkandchai.in).
+
+PLACING A NEW ORDER — customer says "I want to order a book", "mujhe book chahiye", "how do I buy", "order karna hai", or names a book they want to buy:
+- Offer to take their order right here on WhatsApp. Collect these details ONE at a time, conversationally (don't dump all questions at once):
+  1. The book name(s) they want
+  2. Their full name
+  3. Their complete delivery address with pincode
+- Once you have ALL THREE (book name, name, full address), call the submit_order_request tool to send it to our team. Do NOT claim the order is placed until the tool has been called.
+- After the tool succeeds, confirm warmly: "Got it! I've sent your request to our team — they'll confirm your order and share payment/delivery details shortly on WhatsApp 📚"
+- Also let them know they can order instantly themselves at inkandchai.in if they prefer.`;
 
 // ── Per-user conversation memory (in-memory cache + Supabase persistence) ────
 const conversationHistory = new Map(); // phone → [{role, content}]
@@ -252,11 +278,47 @@ async function handleCodConfirm(from, decision) {
   }
 }
 
-// ── Ask OpenAI ────────────────────────────────────────────────────────────────
-async function askOpenAI(phone, userMessage, extraContext = '') {
+// ── OpenAI tool: take a book order over WhatsApp → admin panel ────────────────
+const OPENAI_TOOLS = [{
+  type: 'function',
+  function: {
+    name: 'submit_order_request',
+    description: 'Send a customer\'s book order request to the Ink & Chai team / admin panel. Call this ONLY after you have collected the book name(s), the customer\'s full name, and their complete delivery address including pincode.',
+    parameters: {
+      type: 'object',
+      properties: {
+        customer_name: { type: 'string', description: 'Customer full name' },
+        address:       { type: 'string', description: 'Complete delivery address including pincode' },
+        books:         { type: 'string', description: 'Book name(s) the customer wants to order, comma-separated' },
+        notes:         { type: 'string', description: 'Any extra notes (quantity, language, edition, etc.)' },
+      },
+      required: ['customer_name', 'address', 'books'],
+    },
+  },
+}];
+
+async function callOpenAIChat(messages, { tools = false } = {}) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not set');
+  const payload = {
+    model: 'gpt-4o-mini',    // Fast + cheap — ~$0.0003 per message
+    messages,
+    max_tokens: 320,
+    temperature: 0.7,
+  };
+  if (tools) { payload.tools = OPENAI_TOOLS; payload.tool_choice = 'auto'; }
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`OpenAI error ${res.status}: ${data.error?.message || JSON.stringify(data)}`);
+  return data.choices?.[0]?.message || {};
+}
 
+// ── Ask OpenAI (with order-intake tool support) ──────────────────────────────
+async function askOpenAI(phone, userMessage, extraContext = '') {
   appendHistory(phone, 'user', userMessage);
 
   const systemContent = extraContext
@@ -268,23 +330,68 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
     ...getHistory(phone),
   ];
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',    // Fast + cheap — ~$0.0003 per message
-      messages,
-      max_tokens: 300,
-      temperature: 0.7,
-    }),
-  });
+  // First pass — the model may decide to call submit_order_request.
+  const first = await callOpenAIChat(messages, { tools: true });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(`OpenAI error ${res.status}: ${data.error?.message || JSON.stringify(data)}`);
+  if (first.tool_calls && first.tool_calls.length) {
+    // Execute each tool call, then ask the model for a natural confirmation reply.
+    messages.push(first);
+    for (const call of first.tool_calls) {
+      let result = { ok: false, error: 'unknown tool' };
+      if (call.function?.name === 'submit_order_request') {
+        let args = {};
+        try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
+        result = await submitOrderRequest(phone, args);
+      }
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+    }
+    const second = await callOpenAIChat(messages, { tools: false });
+    const reply = (second.content || '').trim() || 'Got it! I\'ve sent your request to our team — they\'ll confirm shortly 📚';
+    appendHistory(phone, 'assistant', reply);
+    return reply;
+  }
 
-  const reply = data.choices?.[0]?.message?.content?.trim() || "Sorry, I couldn't process that. Please try again!";
+  const reply = (first.content || '').trim() || "Sorry, I couldn't process that. Please try again!";
   appendHistory(phone, 'assistant', reply);
   return reply;
+}
+
+// ── Persist a WhatsApp book-order request + notify the store owner ────────────
+async function submitOrderRequest(phone, args) {
+  const last10 = String(phone).replace(/\D/g, '').slice(-10);
+  const customerName = String(args.customer_name || '').slice(0, 160).trim();
+  const address      = String(args.address || '').slice(0, 600).trim();
+  const books        = String(args.books || '').slice(0, 600).trim();
+  const notes        = String(args.notes || '').slice(0, 400).trim();
+  if (!customerName || !address || !books) {
+    return { ok: false, error: 'Missing name, address, or book name.' };
+  }
+  try {
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data, error } = await db.from('bot_order_requests').insert({
+      customer_phone: last10,
+      customer_name:  customerName,
+      address,
+      books,
+      notes,
+      status:         'new',
+      created_at:     new Date().toISOString(),
+    }).select('id').maybeSingle();
+    if (error) { console.error('submitOrderRequest insert:', error.message); return { ok: false, error: error.message }; }
+
+    // Notify the store owner on WhatsApp so they can action it immediately.
+    const ownerPhone = process.env.STORE_OWNER_PHONE;
+    if (ownerPhone) {
+      await sendReply(ownerPhone,
+        `🆕 New book order request (WhatsApp bot)\n\n👤 ${customerName}\n📞 ${last10}\n📚 ${books}\n📍 ${address}${notes ? `\n📝 ${notes}` : ''}\n\nOpen admin panel → Book Requests to process.`
+      );
+    }
+    console.log(`[ORDER-REQUEST] ${last10} -> ${books.slice(0, 60)}`);
+    return { ok: true, message: 'Order request sent to the team.' };
+  } catch (e) {
+    console.error('submitOrderRequest exception:', e.message);
+    return { ok: false, error: e.message };
+  }
 }
 
 // ── Extract Order ID from message ─────────────────────────────────────────────
