@@ -27,6 +27,7 @@ const { sendWhatsApp }  = require('./utils/whatsapp');
 
 const { sendEmail } = require('./utils/email');
 const { generateCardForOrder } = require('./utils/scratch-cards');
+const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -184,7 +185,7 @@ exports.handler = async (event) => {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { data: existing } = await supabase
       .from('orders')
-      .select('status,cart_items')
+      .select('*')
       .eq('razorpay_order_id', orderId)
       .maybeSingle();
     const meta = Array.isArray(existing?.cart_items) ? existing.cart_items[0]?._payment : null;
@@ -209,6 +210,12 @@ exports.handler = async (event) => {
     }
 
     const order = rows[0];
+
+    if (dbStatus === 'cancelled' && existing?.status !== 'cancelled') {
+      await notifyOrderCancelled(order, {
+        reason: 'PhonePe reported that the payment failed. Your order has been cancelled.',
+      });
+    }
 
     // Send notifications for both full payment and partial COD booking payment
     const isNotified = dbStatus === 'paid' || dbStatus === 'partial_cod_pending';

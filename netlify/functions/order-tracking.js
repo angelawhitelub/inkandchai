@@ -25,6 +25,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
+const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -324,6 +325,8 @@ exports.handler = async (event) => {
         continue;
       }
 
+      const previousStatus = order.status;
+
       // ── Update order status in Supabase ──────────────────────────────────
       const statusUpdate = { status: ourStatus };
       if (ourStatus === 'delivered') statusUpdate.delivered_at = new Date().toISOString();
@@ -348,6 +351,10 @@ exports.handler = async (event) => {
         await sendOFDNotification(order);
       } else if (ourStatus === 'delivered') {
         await sendDeliveredNotification(order);
+      } else if (ourStatus === 'cancelled' && previousStatus !== 'cancelled') {
+        await notifyOrderCancelled(order, {
+          reason: rawStatus || 'The courier update marked this shipment as cancelled.',
+        });
       } else if (ourStatus === 'undelivered' || ourStatus === 'rto') {
         await notifyOwnerNDR(order, rawStatus);
       }

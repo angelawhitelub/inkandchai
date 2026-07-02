@@ -18,6 +18,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const { sendEmail } = require('./utils/email');
+const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -179,13 +180,9 @@ exports.handler = async (event) => {
   // ── Case 1: COD order ────────────────────────────────────────────────────
   if (COD_CANCELLABLE.includes(status)) {
     await supabase.from('orders').update({ status: 'cancelled' }).eq('id', order_id);
-    if (order.customer_email) {
-      await sendEmail({
-        to: order.customer_email,
-        subject: `Order cancelled — ${order.razorpay_order_id || order.id}`,
-        html: cancellationEmailHtml(order, null),
-      });
-    }
+    await notifyOrderCancelled({ ...order, status: 'cancelled' }, {
+      reason: 'Your order has been cancelled as requested.',
+    });
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, type: 'cod', message: 'Order cancelled successfully.' }) };
   }
 
@@ -233,6 +230,11 @@ exports.handler = async (event) => {
         html: cancellationEmailHtml(order, refundNote),
       });
     }
+
+    await notifyOrderCancelled({ ...order, status: newStatus }, {
+      reason: refundNote || 'Your order has been cancelled as requested.',
+      skipEmail: true,
+    });
 
     // Email admin for manual refunds
     if (newStatus === 'refund_pending') {

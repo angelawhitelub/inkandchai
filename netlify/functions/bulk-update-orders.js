@@ -17,6 +17,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendEmail }    = require('./utils/email');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { requireAdmin } = require('./utils/admin-auth');
+const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -152,6 +153,7 @@ exports.handler = async (event) => {
     const results    = [];
     let updated      = 0;
     let emailsSent   = 0;
+    let cancellationsNotified = 0;
     const shippedAt  = new Date().toISOString();
 
     for (const { orderId, status, trackingId, courierName } of rows) {
@@ -213,6 +215,13 @@ exports.handler = async (event) => {
         }
       }
 
+      if (status === 'cancelled' && order.status !== 'cancelled' && saved) {
+        await notifyOrderCancelled(saved, {
+          reason: 'Your order status was updated to cancelled.',
+        });
+        cancellationsNotified++;
+      }
+
       updated++;
       results.push({
         success: true,
@@ -231,6 +240,7 @@ exports.handler = async (event) => {
         updated,
         failed: results.filter(r => !r.success).length,
         emails_sent: emailsSent,
+        cancellations_notified: cancellationsNotified,
         results,
         truncated: updates.length < (Array.isArray(body.updates) ? body.updates.length : 0),
       }),

@@ -28,6 +28,7 @@ const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail }     = require('./utils/email');
+const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 // ── NimbusPost status string → internal status ────────────────────────────
 // Comprehensive map — NimbusPost / Delhivery use many different strings.
@@ -320,6 +321,8 @@ exports.handler = async (event) => {
         continue;
       }
 
+      const previousStatus = order.status;
+
       // Update Supabase — save tracking URL when shipped
       const trackingUrl = npTrackUrl(awb);
       const updateData = { status: ourStatus };
@@ -342,6 +345,10 @@ exports.handler = async (event) => {
         await sendOFDNotification(order);
       } else if (ourStatus === 'delivered') {
         await sendDeliveredNotification(order);
+      } else if (ourStatus === 'cancelled' && previousStatus !== 'cancelled') {
+        await notifyOrderCancelled(order, {
+          reason: message || 'The courier update marked this shipment as cancelled.',
+        });
       } else if (['undelivered', 'rto', 'lost'].includes(ourStatus)) {
         await notifyOwnerIssue(order, ourStatus, message, location);
       }

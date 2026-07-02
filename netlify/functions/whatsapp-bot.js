@@ -21,6 +21,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
+const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 const PHONE_ID   = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VER    = 'v20.0';
@@ -261,7 +262,7 @@ async function handleCodConfirm(from, decision, senderPhoneId) {
     const last10 = String(from).replace(/\D/g, '').slice(-10);
     const { data: orders } = await db
       .from('orders')
-      .select('id, razorpay_order_id, customer_phone, created_at')
+      .select('*')
       .eq('status', 'cod_awaiting_confirmation')
       .order('created_at', { ascending: false })
       .limit(30);
@@ -272,6 +273,10 @@ async function handleCodConfirm(from, decision, senderPhoneId) {
 
     if (decision === 'cancel') {
       await db.from('orders').update({ status: 'cancelled' }).eq('id', order.id);
+      await notifyOrderCancelled({ ...order, status: 'cancelled' }, {
+        reason: 'Your order has been cancelled as requested.',
+        skipWhatsApp: true,
+      });
       await sendReply(from, `Your order ${order.razorpay_order_id} has been cancelled. If that was a mistake, just reply here and we'll help. 💛`, senderPhoneId);
     } else {
       await db.from('orders').update({ status: 'cod_pending' }).eq('id', order.id);

@@ -24,6 +24,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -166,6 +167,9 @@ async function reconcileOne(supabase, host, token, orderId) {
     const CANCELABLE = new Set(['pending', 'pending_phonepe', 'pending_partial_phonepe']);
     if (CANCELABLE.has(existing.status)) {
       await supabase.from('orders').update({ status: 'cancelled' }).eq('razorpay_order_id', orderId);
+      await notifyOrderCancelled({ ...existing, status: 'cancelled' }, {
+        reason: `PhonePe reported the payment as ${state}. Your order has been cancelled.`,
+      });
       return { orderId, result: 'cancelled', state };
     }
     return { orderId, result: 'already_cancelled', state };

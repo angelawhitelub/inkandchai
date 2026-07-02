@@ -23,6 +23,7 @@ const { sendEmail }     = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
+const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 let _tokenCache = { token: null, expiresAt: 0 };
 
@@ -305,7 +306,7 @@ exports.handler = async (event) => {
         const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
         const { data: existing } = await supabase
           .from('orders')
-          .select('status')
+          .select('*')
           .eq('razorpay_order_id', id)
           .maybeSingle();
         // Only cancel if still in a pending-payment state — never touch paid/shipped/etc.
@@ -315,6 +316,9 @@ exports.handler = async (event) => {
             .from('orders')
             .update({ status: 'cancelled' })
             .eq('razorpay_order_id', id);
+          await notifyOrderCancelled({ ...existing, status: 'cancelled' }, {
+            reason: `PhonePe reported the payment as ${state}. Your order has been cancelled.`,
+          });
           console.log(`Auto-cancelled order ${id} — PhonePe state: ${state}`);
         }
       } catch (cancelErr) {

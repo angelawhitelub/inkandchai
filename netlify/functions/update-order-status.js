@@ -18,6 +18,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -118,6 +119,14 @@ exports.handler = async (event) => {
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data: previousOrder, error: fetchErr } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchErr) throw fetchErr;
+    if (!previousOrder) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found' }) };
 
     // First update just the status (always works regardless of migration state)
     {
@@ -174,6 +183,12 @@ exports.handler = async (event) => {
           });
         }
       }
+    }
+
+    if (status === 'cancelled' && previousOrder.status !== 'cancelled') {
+      await notifyOrderCancelled({ ...previousOrder, status: 'cancelled' }, {
+        reason: 'Your order status was updated to cancelled.',
+      });
     }
 
     const result = { success: true, tracking_url: trackingUrl || null };
