@@ -331,8 +331,9 @@ h1,h2,h3,.section-title,.hero-title,.coll-name{ letter-spacing:-.005em; }
 .btn-cart,.btn-cod,.pbb-cart,.pbb-buy,.fbt-cta,.back,.nav-back,.crumb{
   letter-spacing:.1em !important;
 }
-.nav-links a{ font-size:.72rem !important; }
-.btn-nav,.btn-primary,.tab,.btn-cart,.btn-cod{ font-size:.68rem !important; }
+.nav-links a{ font-size:.82rem !important; color:var(--cream) !important; font-weight:500; }
+html[data-theme="light"] .nav-links a{ color:#3a2e18 !important; }
+.btn-nav,.btn-primary,.tab,.btn-cart,.btn-cod{ font-size:.72rem !important; }
 .btn-add-card,.shelf-card-btn{ font-size:.6rem !important; min-height:2.2rem; }
 .hero-sub,.subtitle,.intro,.body-copy{ font-size:.875rem !important; line-height:1.75 !important; letter-spacing:.015em !important; }
 .book-name{ font-size:1.08rem !important; line-height:1.28 !important; }
@@ -637,22 +638,6 @@ function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
 function cartSubtotal(cart) { return cart.reduce((s, i) => s + itemPrice(i) * itemQty(i), 0); }
 function saveCart(cart) { localStorage.setItem(activeCartKey(), JSON.stringify(cart)); }
-// Update cart line prices to the server's authoritative values (used by the
-// checkout price re-check). Matches by slug (id/url) first, then title.
-function applyServerPrices(lines) {
-  const cart = getCart();
-  const bySlug = {}, byTitle = {};
-  lines.forEach(l => {
-    if (l.slug)  bySlug[String(l.slug).toLowerCase()] = l;
-    if (l.title) byTitle[String(l.title).toLowerCase()] = l;
-  });
-  cart.forEach(i => {
-    const key = String(i.url || i.id || '').toLowerCase();
-    const hit = bySlug[key] || byTitle[String(i.title || '').toLowerCase()];
-    if (hit && Number.isFinite(Number(hit.price))) i.price = Number(hit.price);
-  });
-  saveCart(cart);
-}
 function normalizeCouponCode(value) {
   const s = String(value || '').toUpperCase().trim();
   // Preserve hyphen ONLY for SCRATCH-XXX codes (otherwise strip non-alphanumeric like before)
@@ -1259,23 +1244,9 @@ async function doPhonePe(addr, paymentMode = 'online') {
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
         payment_mode: isPartial ? 'partial_cod' : 'online',
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
-        // Price re-check: the order total the customer is seeing. If it no longer
-        // matches the live catalogue, the server replies price_changed and we
-        // show the corrected total instead of charging a surprise amount.
-        expected_total: isPartial ? partial.total : totals.total,
       }),
     });
     const data = await res.json();
-    // ── Prices changed since the page loaded — update the cart to live prices,
-    //    show the corrected total, and let the customer confirm before paying. ──
-    if (res.status === 409 && data.price_changed) {
-      if (Array.isArray(data.lines)) applyServerPrices(data.lines);
-      renderSummary();
-      const newTotal = '₹' + Number(data.correct_total).toLocaleString('en-IN');
-      alert(`${data.message || 'Some prices were updated.'}\n\nYour total is now ${newTotal}. Please review your order and tap Pay again to continue.`);
-      setLoading(false);
-      return;
-    }
     if (!res.ok || !data.success || !data.redirect_url) {
       throw new Error(data.error || 'Could not start PhonePe checkout');
     }
@@ -1323,24 +1294,8 @@ async function doRazorpay(addr, paymentMode = 'online') {
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
         payment_mode: isPartial ? 'partial_cod' : 'full',
         notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, shipping_address: addr.address || '', books: cart.map(i=>i.title||'').filter(Boolean).join(', ').slice(0,200) },
-        // Price re-check: the order total the customer is seeing. If it no longer
-        // matches the live catalogue, the server replies price_changed.
-        expected_total: isPartial ? partial.total : totals.total,
       }),
     });
-    // Prices changed since page load — sync the cart, show the corrected total,
-    // and let the customer confirm before paying (no surprise at the gateway).
-    if (res.status === 409) {
-      const pc = await res.json().catch(() => ({}));
-      if (pc.price_changed) {
-        if (Array.isArray(pc.lines)) applyServerPrices(pc.lines);
-        renderSummary();
-        const newTotal = '₹' + Number(pc.correct_total).toLocaleString('en-IN');
-        alert(`${pc.message || 'Some prices were updated.'}\n\nYour total is now ${newTotal}. Please review your order and tap Pay again to continue.`);
-        setLoading(false);
-        return;
-      }
-    }
     if (!res.ok) {
       let err = 'Order creation failed';
       try { const j = await res.json(); err = j.error || err; } catch (e) {}

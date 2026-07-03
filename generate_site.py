@@ -640,8 +640,9 @@ h1,h2,h3,.section-title,.hero-title,.coll-name{ letter-spacing:-.005em; }
 .btn-cart,.btn-cod,.pbb-cart,.pbb-buy,.fbt-cta,.back,.nav-back,.crumb{
   letter-spacing:.1em !important;
 }
-.nav-links a{ font-size:.72rem !important; }
-.btn-nav,.btn-primary,.tab,.btn-cart,.btn-cod{ font-size:.68rem !important; }
+.nav-links a{ font-size:.82rem !important; color:var(--cream) !important; font-weight:500; }
+html[data-theme="light"] .nav-links a{ color:#3a2e18 !important; }
+.btn-nav,.btn-primary,.tab,.btn-cart,.btn-cod{ font-size:.72rem !important; }
 .btn-add-card,.shelf-card-btn{ font-size:.6rem !important; min-height:2.2rem; }
 .hero-sub,.subtitle,.intro,.body-copy{ font-size:.875rem !important; line-height:1.75 !important; letter-spacing:.015em !important; }
 .book-name{ font-size:1.08rem !important; line-height:1.28 !important; }
@@ -1116,11 +1117,11 @@ HTML = r"""<!DOCTYPE html>
   .nav-actions { display: flex; gap: 1.4rem; align-items: center; }
   .nav-icon { color: var(--cream-dim); cursor: pointer; transition: color 0.3s; font-size: 1rem; }
   .nav-icon:hover { color: var(--gold); }
-  .nav-search-btn { color: var(--cream-dim); cursor: pointer; transition: color 0.3s, border-color 0.3s, background 0.3s; font: inherit; background: transparent; border: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
-  .nav-search-btn:hover { color: var(--gold); }
-  .nav-kbd-hint { margin-left: 0.45rem; opacity: 0.65; }
+  .nav-search-btn { color: var(--cream); cursor: pointer; transition: color 0.3s, border-color 0.3s, background 0.3s; font: inherit; background: rgba(201,168,76,0.08); border: 1px solid var(--border); border-radius: var(--pill); padding: 0.5rem 0.95rem; gap: 0.4rem; display: inline-flex; align-items: center; justify-content: center; font-size: 1.05rem; line-height: 1; }
+  .nav-search-btn:hover { color: var(--gold); border-color: var(--gold); background: rgba(201,168,76,0.14); }
+  .nav-kbd-hint { margin-left: 0.2rem; opacity: 0.6; font-size: 0.7rem; }
   @media (hover: none), (max-width: 780px) { .nav-kbd-hint { display: none; } }
-  .nav-search-label { display: none; }
+  .nav-search-label { display: inline; font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase; font-family: 'Inter', sans-serif; }
   .btn-nav { font-family: 'Inter', sans-serif; font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; padding: 0.55rem 1.4rem; border: 1px solid var(--gold-dim); color: var(--gold); background: transparent; cursor: pointer; transition: all 0.3s; text-decoration: none; }
   .btn-nav:hover { background: var(--gold); color: var(--bg); border-color: var(--gold); }
 
@@ -1973,20 +1974,27 @@ body{
     var(--bg);
   overflow-x:clip;
 }
+/* Promo strip: full-width, pinned to the very top so it never overlaps the
+   floating nav pill below it (previously a centered pill at the same y as the
+   nav, which hid the nav buttons). */
 .promo-banner{
-  width:min(980px,calc(100% - 24px));
-  margin:.7rem auto .15rem;
-  border:1px solid rgba(201,168,76,.24);
-  border-radius:var(--pill);
+  position:fixed;
+  top:0;left:0;right:0;
+  width:100%;
+  margin:0;
+  border:none;
+  border-bottom:1px solid rgba(201,168,76,.24);
+  border-radius:0;
   background:var(--glass-bg);
-  box-shadow:0 10px 28px rgba(40,28,8,.08),var(--glass-highlight);
+  box-shadow:0 4px 16px rgba(40,28,8,.10),var(--glass-highlight);
   backdrop-filter:blur(18px) saturate(1.2);
+  z-index:96;
 }
 nav:not(.mob-nav){
   width:min(1540px,calc(100% - 28px));
   left:50%;
   right:auto;
-  top:12px;
+  top:2.7rem;            /* sit just below the fixed promo strip */
   transform:translateX(-50%);
   border:1px solid var(--glass-border);
   border-radius:var(--pill);
@@ -1995,6 +2003,7 @@ nav:not(.mob-nav){
   backdrop-filter:blur(24px) saturate(1.25);
   padding:.72rem 1rem .72rem 1.1rem;
 }
+body.no-promo nav:not(.mob-nav){top:12px}   /* if promo dismissed/absent */
 .nav-links a,.btn-nav,.theme-toggle,.nav-search-btn,.search-chip,.tab,.btn-primary,.btn-add-card,.shelf-card-btn,.btn-load-more,.pincode-btn,.btn-checkout,.qty-btn{
   border-radius:var(--pill);
 }
@@ -2127,14 +2136,20 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 .shelf-row,.author-row,.tabs,.search-hints,.nav-links{max-width:100%;overscroll-behavior-x:contain}
 @media(max-width:780px){
   .promo-banner{
-    width:calc(100% - 20px);
-    margin:.45rem auto 0;
+    /* Mobile: full-width fixed strip pinned to the very top; the nav card
+       sits below it (top:2.9rem) so they never overlap. */
+    position:fixed;
+    top:0;left:0;right:0;
+    width:100%;
+    margin:0;
+    border-radius:0;
     padding:.44rem .8rem;
     white-space:normal;
     line-height:1.45;
+    z-index:96;
   }
   nav:not(.mob-nav){
-    top:8px;
+    top:2.9rem;
     width:calc(100% - 18px);
     border-radius:28px;
     padding:.6rem .72rem;
