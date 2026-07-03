@@ -379,27 +379,36 @@ async function submitOrderRequest(phone, args) {
     return { ok: false, error: 'Missing name, address, or book name.' };
   }
   try {
-    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const { data, error } = await db.from('bot_order_requests').insert({
-      customer_phone: last10,
-      customer_name:  customerName,
-      address,
-      books,
-      notes,
-      status:         'new',
-      created_at:     new Date().toISOString(),
-    }).select('id').maybeSingle();
-    if (error) { console.error('submitOrderRequest insert:', error.message); return { ok: false, error: error.message }; }
+    // Try to persist the request. If the DB write fails (e.g. table missing), we
+    // still notify the owner below so the order is NEVER silently lost.
+    let saved = false;
+    try {
+      const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const { error } = await db.from('bot_order_requests').insert({
+        customer_phone: last10,
+        customer_name:  customerName,
+        address,
+        books,
+        notes,
+        status:         'new',
+        created_at:     new Date().toISOString(),
+      });
+      if (error) console.error('submitOrderRequest insert:', error.message);
+      else saved = true;
+    } catch (dbErr) {
+      console.error('submitOrderRequest db exception:', dbErr.message);
+    }
 
-    // Notify the store owner on WhatsApp so they can action it immediately.
+    // Always notify the store owner on WhatsApp so they can action it immediately,
+    // even if the DB insert failed.
     const ownerPhone = process.env.STORE_OWNER_PHONE;
     if (ownerPhone) {
       await sendReply(ownerPhone,
-        `🆕 New book order request (WhatsApp bot)\n\n👤 ${customerName}\n📞 ${last10}\n📚 ${books}\n📍 ${address}${notes ? `\n📝 ${notes}` : ''}\n\nOpen admin panel → Book Requests to process.`
+        `🆕 New book order request (WhatsApp bot)${saved ? '' : ' ⚠️ (not saved to panel — check bot_order_requests table)'}\n\n👤 ${customerName}\n📞 ${last10}\n📚 ${books}\n📍 ${address}${notes ? `\n📝 ${notes}` : ''}\n\nOpen admin panel → Book Requests to process.`
       );
     }
-    console.log(`[ORDER-REQUEST] ${last10} -> ${books.slice(0, 60)}`);
-    return { ok: true, message: 'Order request sent to the team.' };
+    console.log(`[ORDER-REQUEST] ${last10} -> ${books.slice(0, 60)} (saved=${saved})`);
+    return { ok: true, message: 'Order request sent to the team.', saved };
   } catch (e) {
     console.error('submitOrderRequest exception:', e.message);
     return { ok: false, error: e.message };
