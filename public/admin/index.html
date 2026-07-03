@@ -981,21 +981,24 @@ async function fetchBookRequests() {
       const stColor = st==='new' ? '#5d9b55' : st==='ordered' ? '#c9a84c' : '#8a7a62';
       const phone = (r.customer_phone || '').replace(/\D/g,'').slice(-10);
       const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const pushed = r.order_pushed_id || '';
       return `<div style="border:1px solid var(--border,rgba(201,168,76,0.25));border-radius:12px;padding:0.9rem 1.05rem;background:var(--bg2,#1a1613);">
         <div style="display:flex;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;align-items:baseline;">
           <strong style="color:var(--gold,#c9a84c);font-size:0.95rem;">${esc(r.customer_name)}</strong>
           <span style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.1em;color:${stColor};border:1px solid ${stColor};border-radius:999px;padding:1px 8px;">${esc(st)}</span>
         </div>
         <div style="font-size:0.8rem;margin-top:0.45rem;line-height:1.6;">
+          ${r.order_id ? `<div style="font-family:monospace;font-size:0.72rem;color:var(--gold,#c9a84c);">🆔 ${esc(r.order_id)}</div>` : ''}
           <div>📚 <strong>${esc(r.books)}</strong></div>
           <div>📍 ${esc(r.address)}</div>
           ${r.notes ? `<div>📝 ${esc(r.notes)}</div>` : ''}
           <div style="color:var(--cream-dim,#8a7a62);margin-top:0.25rem;">📞 <a href="https://wa.me/91${phone}" target="_blank" style="color:var(--gold,#c9a84c);">+91 ${phone}</a> · ${when}</div>
+          ${pushed ? `<div style="color:#5d9b55;margin-top:0.3rem;font-size:0.72rem;">✅ Pushed to Orders as <strong>${esc(pushed)}</strong> — track &amp; ship it from the Orders tab.</div>` : ''}
         </div>
         <div style="display:flex;gap:0.4rem;margin-top:0.6rem;flex-wrap:wrap;">
           <a href="https://wa.me/91${phone}?text=${encodeURIComponent('Hi ' + (r.customer_name||'') + ', thanks for your order request at Ink & Chai! ')}" target="_blank" class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;text-decoration:none;">💬 WhatsApp</a>
+          ${pushed ? '' : `<button class="btn-green" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="pushBookRequest('${r.id}')">📦 Push to Orders</button>`}
           <button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="setBookReqStatus('${r.id}','contacted')">✓ Contacted</button>
-          <button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="setBookReqStatus('${r.id}','ordered')">📦 Ordered</button>
           <button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="setBookReqStatus('${r.id}','closed')">✕ Close</button>
         </div>
       </div>`;
@@ -1013,6 +1016,25 @@ async function setBookReqStatus(id, status) {
     });
     fetchBookRequests();
   } catch (e) { alert('Update failed: ' + e.message); }
+}
+async function pushBookRequest(id) {
+  const amt = prompt('Order amount in ₹ (total the customer will pay):');
+  if (amt === null) return;
+  const amount_rupees = Math.round(Number(amt));
+  if (!amount_rupees || amount_rupees <= 0) { alert('Enter a valid amount.'); return; }
+  const cod = confirm('Payment mode:\n\n  OK = Cash on Delivery (ships on normal COD flow)\n  Cancel = Prepaid (you collect payment before shipping)');
+  const payment_mode = cod ? 'cod' : 'prepaid';
+  try {
+    const res = await fetch('/.netlify/functions/push-book-request', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' },
+      body: JSON.stringify({ id, amount_rupees, payment_mode }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) { alert('Push failed: ' + (data.error || res.status)); return; }
+    alert('✅ Pushed to Orders as ' + data.order_id + ' (' + data.status + ', ₹' + data.amount + ').\nIt now shows in the Orders tab — push to NimbusPost / assign AWB there; the customer is auto-notified when it ships.');
+    fetchBookRequests();
+  } catch (e) { alert('Push failed: ' + e.message); }
 }
 </script>
 <script>

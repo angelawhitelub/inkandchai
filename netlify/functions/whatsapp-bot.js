@@ -122,13 +122,12 @@ MISSING BOOK IN A MULTI-BOOK ORDER — customer says "I ordered 3 books but got 
 REFUND EMAIL — whenever a refund is involved (cancelled order, missing book, etc.), the correct channel is: refund@inkandchai.in (ask them to include their Order ID). This is different from general support (support@inkandchai.in).
 
 PLACING A NEW ORDER — customer says "I want to order a book", "mujhe book chahiye", "how do I buy", "order karna hai", or names a book they want to buy:
-- Offer to take their order right here on WhatsApp. Collect these details ONE at a time, conversationally (don't dump all questions at once):
-  1. The book name(s) they want
-  2. Their full name
-  3. Their complete delivery address with pincode
-- Once you have ALL THREE (book name, name, full address), call the submit_order_request tool to send it to our team. Do NOT claim the order is placed until the tool has been called.
-- After the tool succeeds, confirm warmly: "Got it! I've sent your request to our team — they'll confirm your order and share payment/delivery details shortly on WhatsApp 📚"
-- Also let them know they can order instantly themselves at inkandchai.in if they prefer.`;
+- Offer to take their order right here on WhatsApp. You need exactly THREE things: (1) book name(s), (2) full name, (3) complete delivery address with pincode.
+- Ask ONLY for the pieces you don't already have yet, ONE at a time. CRITICAL: NEVER re-ask for or re-confirm a detail the customer has ALREADY given earlier in this same conversation. Read back through the conversation — if the name, address, or book is already there, treat it as final and move on. Do NOT say things like "just to confirm your name" or "confirm your address" — that annoys customers.
+- The MOMENT you have all three (book + name + address), immediately call the submit_order_request tool. Do not ask any further questions. Do not re-verify.
+- Do NOT claim the order is placed until the tool has actually been called and returned success.
+- After the tool succeeds it returns an order_id (format IC-W-YYYYMMDD-XXXXX). Share it with the customer: "Got it! Your order request is placed ✅ Your order ID is <order_id>. Our team will confirm and share payment/delivery details shortly on WhatsApp 📚 You can also track it later at inkandchai.in."
+- Keep the confirmation short and warm.`;
 
 // ── Per-user conversation memory (in-memory cache + Supabase persistence) ────
 const conversationHistory = new Map(); // phone → [{role, content}]
@@ -378,6 +377,14 @@ async function submitOrderRequest(phone, args) {
   if (!customerName || !address || !books) {
     return { ok: false, error: 'Missing name, address, or book name.' };
   }
+
+  // Unique WhatsApp-order id — IC-W-YYYYMMDD-XXXXX. Distinct 'W' segment marks
+  // it as a bot/WhatsApp order (vs IC- online, IC-CW- crossword). Same 5-char
+  // random tail so it matches the extractOrderId regex + admin search.
+  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const randPart = Math.random().toString(36).slice(2, 7).toUpperCase();
+  const orderId  = `IC-W-${datePart}-${randPart}`;
+
   try {
     // Try to persist the request. If the DB write fails (e.g. table missing), we
     // still notify the owner below so the order is NEVER silently lost.
@@ -385,6 +392,7 @@ async function submitOrderRequest(phone, args) {
     try {
       const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
       const { error } = await db.from('bot_order_requests').insert({
+        order_id:       orderId,
         customer_phone: last10,
         customer_name:  customerName,
         address,
@@ -404,11 +412,11 @@ async function submitOrderRequest(phone, args) {
     const ownerPhone = process.env.STORE_OWNER_PHONE;
     if (ownerPhone) {
       await sendReply(ownerPhone,
-        `🆕 New book order request (WhatsApp bot)${saved ? '' : ' ⚠️ (not saved to panel — check bot_order_requests table)'}\n\n👤 ${customerName}\n📞 ${last10}\n📚 ${books}\n📍 ${address}${notes ? `\n📝 ${notes}` : ''}\n\nOpen admin panel → Book Requests to process.`
+        `🆕 New book order request (WhatsApp bot)${saved ? '' : ' ⚠️ (not saved to panel — check bot_order_requests table)'}\n\n🆔 ${orderId}\n👤 ${customerName}\n📞 ${last10}\n📚 ${books}\n📍 ${address}${notes ? `\n📝 ${notes}` : ''}\n\nOpen admin panel → Book Requests → Push to Orders.`
       );
     }
-    console.log(`[ORDER-REQUEST] ${last10} -> ${books.slice(0, 60)} (saved=${saved})`);
-    return { ok: true, message: 'Order request sent to the team.', saved };
+    console.log(`[ORDER-REQUEST] ${orderId} ${last10} -> ${books.slice(0, 60)} (saved=${saved})`);
+    return { ok: true, order_id: orderId, message: 'Order request sent to the team.', saved };
   } catch (e) {
     console.error('submitOrderRequest exception:', e.message);
     return { ok: false, error: e.message };
