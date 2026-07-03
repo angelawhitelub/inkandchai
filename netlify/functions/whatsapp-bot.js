@@ -121,10 +121,17 @@ MISSING BOOK IN A MULTI-BOOK ORDER — customer says "I ordered 3 books but got 
 
 REFUND EMAIL — whenever a refund is involved (cancelled order, missing book, etc.), the correct channel is: refund@inkandchai.in (ask them to include their Order ID). This is different from general support (support@inkandchai.in).
 
-PLACING A NEW ORDER — customer says "I want to order a book", "mujhe book chahiye", "how do I buy", "order karna hai", or names a book they want to buy:
-- Offer to take their order right here on WhatsApp. You need exactly THREE things: (1) book name(s), (2) full name, (3) complete delivery address with pincode.
-- Ask ONLY for the pieces you don't already have yet, ONE at a time. CRITICAL: NEVER re-ask for or re-confirm a detail the customer has ALREADY given earlier in this same conversation. Read back through the conversation — if the name, address, or book is already there, treat it as final and move on. Do NOT say things like "just to confirm your name" or "confirm your address" — that annoys customers.
-- The MOMENT you have all three (book + name + address), immediately call the submit_order_request tool. Do not ask any further questions. Do not re-verify.
+PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book right now: "I want to order <book>", "mujhe <book> chahiye", "how do I buy this", "order karna hai", or they name a specific book they want to purchase.
+- ⛔ DO NOT treat these as new orders — they are NOT purchases, and you must NEVER call submit_order_request for them:
+    • "check my order status", "where is my order", "order kahan hai", "track my order" → use the ORDER TRACKING flow.
+    • "I haven't received a call / update", "delivery follow-up", "not delivered yet" → reassure + use tracking; this is an EXISTING order, not a new one.
+    • refund / cancel / missing book / wrong book / damaged → use the refund/return flows.
+    • general questions, greetings, "hi", complaints.
+  If the customer is asking about an order they ALREADY placed, it is NOT a new order — never submit it as one.
+- For a genuine new purchase you need exactly THREE REAL things: (1) the actual book title(s) they want, (2) their real full name, (3) their real complete delivery address with pincode.
+- Ask ONLY for the pieces you don't already have yet, ONE at a time. CRITICAL: NEVER re-ask for or re-confirm a detail the customer has ALREADY given earlier in this same conversation. Read back through the conversation — if the name, address, or book is already there, treat it as final and move on. Do NOT say "just to confirm your name/address" — that annoys customers.
+- NEVER invent, guess, or use placeholder values like "N/A", "book", "Customer", "Delhi", or a date. If you don't have a REAL book title, a REAL name, and a REAL full address, DO NOT call the tool — ask the customer for the missing real detail instead.
+- The MOMENT you genuinely have all three real values, immediately call the submit_order_request tool. Do not ask further questions. Do not re-verify.
 - Do NOT claim the order is placed until the tool has actually been called and returned success.
 - After the tool succeeds it returns an order_id (format IC-W-YYYYMMDD-XXXXX). Share it with the customer: "Got it! Your order request is placed ✅ Your order ID is <order_id>. Our team will confirm and share payment/delivery details shortly on WhatsApp 📚 You can also track it later at inkandchai.in."
 - Keep the confirmation short and warm.`;
@@ -294,13 +301,13 @@ const OPENAI_TOOLS = [{
   type: 'function',
   function: {
     name: 'submit_order_request',
-    description: 'Send a customer\'s book order request to the Ink & Chai team / admin panel. Call this ONLY after you have collected the book name(s), the customer\'s full name, and their complete delivery address including pincode.',
+    description: 'Submit a NEW book PURCHASE the customer wants to place. Call this ONLY when the customer explicitly wants to BUY a new book AND you have all three REAL values from them. NEVER call this for order-status checks, delivery follow-ups, complaints about an existing order, refunds, cancellations, or general questions. NEVER use placeholder/guessed values like "N/A", "book", "Customer", or a date — if you do not have a real book title, real name, and real full address, do NOT call this tool; ask the customer instead.',
     parameters: {
       type: 'object',
       properties: {
-        customer_name: { type: 'string', description: 'Customer full name' },
-        address:       { type: 'string', description: 'Complete delivery address including pincode' },
-        books:         { type: 'string', description: 'Book name(s) the customer wants to order, comma-separated' },
+        customer_name: { type: 'string', description: 'Customer\'s REAL full name, as they typed it. Not a placeholder.' },
+        address:       { type: 'string', description: 'REAL complete delivery address including pincode, as the customer typed it. Not "N/A".' },
+        books:         { type: 'string', description: 'The actual book TITLE(s) the customer wants to buy, comma-separated. Not the generic word "book".' },
         notes:         { type: 'string', description: 'Any extra notes (quantity, language, edition, etc.)' },
       },
       required: ['customer_name', 'address', 'books'],
@@ -376,6 +383,24 @@ async function submitOrderRequest(phone, args) {
   const notes        = String(args.notes || '').slice(0, 400).trim();
   if (!customerName || !address || !books) {
     return { ok: false, error: 'Missing name, address, or book name.' };
+  }
+
+  // ── Junk / placeholder guard ────────────────────────────────────────────────
+  // The model sometimes forces a tool call for NON-orders (status checks,
+  // delivery complaints) by stuffing required fields with placeholders like
+  // "N/A", "book", "Customer", or a date. Reject those so they never pollute
+  // the Book Requests panel. Returning an error string makes the AI go back and
+  // ask the customer for real details (or realise it's not an order at all).
+  const isPlaceholder = (v) => /^(n\/?a|na|none|null|unknown|customer|book|books|test|\d{6,})$/i.test(String(v).trim());
+  const badFields = [];
+  if (isPlaceholder(customerName) || customerName.length < 2) badFields.push('a real full name');
+  if (isPlaceholder(books)) badFields.push('the actual book title');
+  // A real Indian address is more than a bare city/word — expect a pincode or
+  // reasonable length. "Delhi" / "N/A" alone is not a deliverable address.
+  const hasPin = /\b\d{6}\b/.test(address);
+  if (isPlaceholder(address) || (address.length < 12 && !hasPin)) badFields.push('the complete delivery address with pincode');
+  if (badFields.length) {
+    return { ok: false, error: `This does not look like a real new-book order. Do NOT submit it. If the customer actually wants to buy a book, ask them for ${badFields.join(', ')}. If they are asking about an existing order, delivery, or a refund, handle that instead — do not call this tool.` };
   }
 
   // Unique WhatsApp-order id — IC-W-YYYYMMDD-XXXXX. Distinct 'W' segment marks
