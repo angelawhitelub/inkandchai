@@ -1323,8 +1323,24 @@ async function doRazorpay(addr, paymentMode = 'online') {
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
         payment_mode: isPartial ? 'partial_cod' : 'full',
         notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, shipping_address: addr.address || '', books: cart.map(i=>i.title||'').filter(Boolean).join(', ').slice(0,200) },
+        // Price re-check: the order total the customer is seeing. If it no longer
+        // matches the live catalogue, the server replies price_changed.
+        expected_total: isPartial ? partial.total : totals.total,
       }),
     });
+    // Prices changed since page load — sync the cart, show the corrected total,
+    // and let the customer confirm before paying (no surprise at the gateway).
+    if (res.status === 409) {
+      const pc = await res.json().catch(() => ({}));
+      if (pc.price_changed) {
+        if (Array.isArray(pc.lines)) applyServerPrices(pc.lines);
+        renderSummary();
+        const newTotal = '₹' + Number(pc.correct_total).toLocaleString('en-IN');
+        alert(`${pc.message || 'Some prices were updated.'}\n\nYour total is now ${newTotal}. Please review your order and tap Pay again to continue.`);
+        setLoading(false);
+        return;
+      }
+    }
     if (!res.ok) {
       let err = 'Order creation failed';
       try { const j = await res.json(); err = j.error || err; } catch (e) {}
