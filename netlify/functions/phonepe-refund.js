@@ -66,9 +66,12 @@ async function getAccessToken(host) {
   if (!res.ok || !data.access_token) {
     throw new Error('PhonePe OAuth failed: ' + (data.message || data.error || ('HTTP ' + res.status)));
   }
-  const tokenType = data.token_type || data.tokenType || 'O-Bearer';
+  // PhonePe's PG-V2 refund/status APIs ONLY accept the literal "O-Bearer" prefix,
+  // even though identity-manager may return token_type=Bearer. Their official
+  // Node SDK hardcodes this — mirror it. Using "Bearer" here yields
+  // "Authorization failed [Please check the authorization token]".
   _tokenCache = {
-    authorization: `${tokenType} ${data.access_token}`,
+    authorization: `O-Bearer ${data.access_token}`,
     expiresAt: data.expires_at ? data.expires_at * 1000 : Date.now() + (data.expires_in || 3300) * 1000,
   };
   return _tokenCache.authorization;
@@ -189,6 +192,20 @@ exports.handler = async (event) => {
     }
 
     let refundRes = await callRefund('/pg/payments/v2/refund');
+    // If PhonePe rejected our auth (e.g. we handed out a cached bad-format token
+    // from a warm Lambda), drop the cache and retry once with a fresh token.
+    if (!refundRes.ok && /authorization|unauthori[sz]ed|invalid token/i.test(JSON.stringify(refundRes.data))) {
+      console.warn('PhonePe rejected authorization — clearing token cache and retrying once');
+      _tokenCache = { authorization: null, expiresAt: 0 };
+      const freshAuth = await getAccessToken(host);
+      const freshHeaders = phonePeHeaders(freshAuth);
+      const r = await fetch(`${host}/pg/payments/v2/refund`, {
+        method: 'POST', headers: freshHeaders, body: JSON.stringify(refundBody),
+      });
+      const text = await r.text();
+      let d; try { d = text ? JSON.parse(text) : {}; } catch { d = { message: text }; }
+      refundRes = { ok: r.ok, status: r.status, data: d };
+    }
     if (!refundRes.ok && /api mapping not found/i.test(JSON.stringify(refundRes.data))) {
       console.warn('PhonePe v2 refund returned ApiMappingNotFound, falling back to v1');
       refundRes = await callRefund('/pg/v1/refund');
