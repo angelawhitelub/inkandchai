@@ -1,5 +1,7 @@
 const { sendEmail } = require('./email');
 const { sendWhatsApp } = require('./whatsapp');
+const { createClient } = require('@supabase/supabase-js');
+const { issuePhonePeRefund } = require('./phonepe-refund-core');
 
 function moneyFromPaise(paise) {
   const amount = Number(paise || 0) / 100;
@@ -48,6 +50,51 @@ function orderCancelledEmailHtml(order, reason) {
     </div>`;
 }
 
+// ── Auto-refund a cancelled order if it was PREPAID via PhonePe ───────────────
+// Fires from the single cancellation chokepoint below, so it works no matter how
+// the order got cancelled (admin, courier webhook, etc.). Safe by construction:
+//   • only PhonePe payments (razorpay_payment_id present, not a Razorpay 'pay_' id)
+//   • only orders with a captured amount
+//   • never double-refunds (skips refunded / partially_refunded / refund_pending)
+//   • never throws — a refund problem must not break the cancellation flow
+// Payment-FAILURE cancellations (never paid) pass opts.skipRefund:true.
+async function maybeAutoRefund(order) {
+  // Always re-fetch the authoritative row — callers may pass a partial order
+  // object (missing payment fields), and the fresh row also guards double-refund.
+  const col = order.id ? 'id' : 'razorpay_order_id';
+  const key = order.id || order.razorpay_order_id;
+  if (!key) return { skipped: 'no-id' };
+
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  const { data: fresh } = await supabase.from('orders').select('*').eq(col, key).maybeSingle();
+  const row = fresh || order;
+
+  if (['refunded', 'partially_refunded', 'refund_pending'].includes(row.status)) {
+    return { skipped: 'already-refunded' };
+  }
+  // PhonePe payments only. Razorpay ids start with 'pay_' → use their dashboard.
+  const pid = row.razorpay_payment_id || '';
+  if (!pid || pid.startsWith('pay_')) return { skipped: 'not-phonepe' };
+  const amountPaise = Number(row.amount_paise || 0);
+  if (!amountPaise || amountPaise <= 0) return { skipped: 'no-amount' };
+
+  const displayId = row.razorpay_order_id || row.id;
+
+  // Mark refund_pending BEFORE calling PhonePe so a concurrent cancellation event
+  // can't fire a second refund for the same order.
+  await supabase.from('orders').update({ status: 'refund_pending' }).eq('id', row.id);
+
+  const res = await issuePhonePeRefund({ displayId, amountPaise });
+  if (res.ok) {
+    await supabase.from('orders').update({ status: res.nextStatus }).eq('id', row.id);
+    console.log(`[AUTO-REFUND] ${displayId} → ${res.state} (${res.nextStatus}) refundId=${res.merchantRefundId}`);
+  } else {
+    // Leave it at refund_pending so the admin sees it and can retry manually.
+    console.error(`[AUTO-REFUND] ${displayId} failed: ${res.error} — left as refund_pending for manual retry`);
+  }
+  return res;
+}
+
 async function notifyOrderCancelled(order, opts = {}) {
   if (!order) return { email: false, whatsapp: false };
 
@@ -55,6 +102,17 @@ async function notifyOrderCancelled(order, opts = {}) {
   const firstName = String(order.customer_name || 'there').split(' ')[0];
   const reason = opts.reason || 'The courier/order status update marked this order as cancelled.';
   const result = { email: false, whatsapp: false };
+
+  // Auto-refund prepaid PhonePe orders (unless the caller opted out, e.g. a
+  // payment-failure cancellation where nothing was ever captured).
+  if (!opts.skipRefund) {
+    try {
+      const r = await maybeAutoRefund(order);
+      result.refund = r;
+    } catch (e) {
+      console.error('[AUTO-REFUND] error:', e.message);
+    }
+  }
 
   if (!opts.skipEmail && order.customer_email) {
     const email = await sendEmail({

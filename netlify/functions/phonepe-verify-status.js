@@ -318,6 +318,7 @@ exports.handler = async (event) => {
             .eq('razorpay_order_id', id);
           await notifyOrderCancelled({ ...existing, status: 'cancelled' }, {
             reason: `PhonePe reported the payment as ${state}. Your order has been cancelled.`,
+            skipRefund: true,  // payment failed — nothing was captured, nothing to refund
           });
           console.log(`Auto-cancelled order ${id} — PhonePe state: ${state}`);
         }

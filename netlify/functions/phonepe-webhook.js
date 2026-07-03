@@ -214,6 +214,7 @@ exports.handler = async (event) => {
     if (dbStatus === 'cancelled' && existing?.status !== 'cancelled') {
       await notifyOrderCancelled(order, {
         reason: 'PhonePe reported that the payment failed. Your order has been cancelled.',
+        skipRefund: true,  // FAILED/DECLINED payment — nothing was captured
       });
     }
 
