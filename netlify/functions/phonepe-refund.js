@@ -210,6 +210,25 @@ exports.handler = async (event) => {
     const refundData = refundRes.data;
     console.log('PhonePe refund response:', refundRes.status, JSON.stringify(refundData).slice(0, 400));
 
+    // ── DIAGNOSTIC: if refund was rejected for auth, test the SAME token against
+    // a read-only order-status call. If that succeeds, the token is valid and the
+    // problem is refund-specific (PhonePe merchant refund API not enabled). If it
+    // also 401s, the OAuth credentials themselves are wrong/unscoped. ──────────
+    if (!refundRes.ok && /authorization|unauthori[sz]ed/i.test(JSON.stringify(refundData))) {
+      try {
+        const probe = await fetch(`${host}/pg/checkout/v2/order/${encodeURIComponent(displayId)}/status`, {
+          method: 'GET', headers: phonePeHeaders(await getAccessToken(host)),
+        });
+        const ptext = (await probe.text()).slice(0, 200);
+        console.log(`[PHONEPE-DIAG] Same token vs order-status → HTTP ${probe.status}: ${ptext}`);
+        console.log(`[PHONEPE-DIAG] Verdict: ${probe.ok
+          ? 'TOKEN VALID — refund is blocked at PhonePe (enable Refund API on the merchant / check MID scope).'
+          : 'TOKEN REJECTED EVERYWHERE — PHONEPE_CLIENT_ID/SECRET are wrong or not the production PG keys.'}`);
+      } catch (e) {
+        console.log('[PHONEPE-DIAG] probe error:', e.message);
+      }
+    }
+
     if (!refundRes.ok) {
       const looksRetryable = refundRes.status === 409 ||
         /duplicate|already|exists/i.test(
