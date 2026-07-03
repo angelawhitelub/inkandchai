@@ -637,6 +637,22 @@ function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
 function cartSubtotal(cart) { return cart.reduce((s, i) => s + itemPrice(i) * itemQty(i), 0); }
 function saveCart(cart) { localStorage.setItem(activeCartKey(), JSON.stringify(cart)); }
+// Update cart line prices to the server's authoritative values (used by the
+// checkout price re-check). Matches by slug (id/url) first, then title.
+function applyServerPrices(lines) {
+  const cart = getCart();
+  const bySlug = {}, byTitle = {};
+  lines.forEach(l => {
+    if (l.slug)  bySlug[String(l.slug).toLowerCase()] = l;
+    if (l.title) byTitle[String(l.title).toLowerCase()] = l;
+  });
+  cart.forEach(i => {
+    const key = String(i.url || i.id || '').toLowerCase();
+    const hit = bySlug[key] || byTitle[String(i.title || '').toLowerCase()];
+    if (hit && Number.isFinite(Number(hit.price))) i.price = Number(hit.price);
+  });
+  saveCart(cart);
+}
 function normalizeCouponCode(value) {
   const s = String(value || '').toUpperCase().trim();
   // Preserve hyphen ONLY for SCRATCH-XXX codes (otherwise strip non-alphanumeric like before)
@@ -1243,9 +1259,23 @@ async function doPhonePe(addr, paymentMode = 'online') {
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
         payment_mode: isPartial ? 'partial_cod' : 'online',
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
+        // Price re-check: the order total the customer is seeing. If it no longer
+        // matches the live catalogue, the server replies price_changed and we
+        // show the corrected total instead of charging a surprise amount.
+        expected_total: isPartial ? partial.total : totals.total,
       }),
     });
     const data = await res.json();
+    // ── Prices changed since the page loaded — update the cart to live prices,
+    //    show the corrected total, and let the customer confirm before paying. ──
+    if (res.status === 409 && data.price_changed) {
+      if (Array.isArray(data.lines)) applyServerPrices(data.lines);
+      renderSummary();
+      const newTotal = '₹' + Number(data.correct_total).toLocaleString('en-IN');
+      alert(`${data.message || 'Some prices were updated.'}\n\nYour total is now ${newTotal}. Please review your order and tap Pay again to continue.`);
+      setLoading(false);
+      return;
+    }
     if (!res.ok || !data.success || !data.redirect_url) {
       throw new Error(data.error || 'Could not start PhonePe checkout');
     }

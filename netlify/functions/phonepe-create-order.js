@@ -188,6 +188,35 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Amount too low' }) };
   }
 
+  // ── Price re-check ─────────────────────────────────────────────────────────
+  // If the ORDER TOTAL the customer was shown differs from the authoritative
+  // server total (e.g. a book's price changed after the static storefront page
+  // was built), DO NOT charge. Return the corrected total so the storefront can
+  // show it and let the customer confirm — prevents the "shown ₹700, charged
+  // ₹745" surprise at the gateway. Backward-compatible: only runs when the
+  // client sends expected_total.
+  const expectedTotal = Number(body.expected_total);
+  if (Number.isFinite(expectedTotal) && Math.round(expectedTotal) !== Math.round(fullTotal)) {
+    console.log(`[PRICE-RECHECK] ${orderId} shown ₹${Math.round(expectedTotal)} vs server ₹${Math.round(fullTotal)}`);
+    return {
+      statusCode: 409,
+      headers: CORS,
+      body: JSON.stringify({
+        price_changed: true,
+        correct_total: Math.round(fullTotal),
+        breakdown: {
+          subtotal: Math.round(subtotal),
+          shipping,
+          discount: isPartial ? 0 : couponInfo.discount,
+          coupon: couponInfo.code || '',
+          total: Math.round(fullTotal),
+        },
+        lines: cart.map(i => ({ slug: i.slug || '', title: i.title || '', price: i.price, qty: i.qty })),
+        message: `Some prices were updated. Your new total is ₹${Math.round(fullTotal).toLocaleString('en-IN')}.`,
+      }),
+    };
+  }
+
   // (orderId was generated above so the scratch-card claim could use it.)
 
   // ── 1. Save pending order to Supabase (non-fatal) ─────────────────────────
