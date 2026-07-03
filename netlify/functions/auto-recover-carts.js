@@ -29,6 +29,17 @@ const MIN_ABANDON_HOURS = 1;   // don't message sooner than 1 hour
 const MAX_ABANDON_HOURS = 48;  // ignore leads older than 48 hours
 const MAX_PER_RUN       = 30;  // safety cap — avoid blasting on first deploy
 
+// Build a WhatsApp-safe book label from cart items: the first title, plus a
+// "& N more book(s)" tail for multi-item carts. Strips newlines/tabs (Meta
+// rejects template params containing them) and caps length.
+function cartBooksLabel(items) {
+  if (!Array.isArray(items) || !items.length) return 'your books';
+  const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+  const first = clean(items[0]?.title).slice(0, 60) || 'your book';
+  const extra = items.length - 1;
+  return extra > 0 ? `${first} & ${extra} more book${extra > 1 ? 's' : ''}` : first;
+}
+
 // ── Email helper (mirrors send-abandoned-email.js) ───────────────────────────
 
 function recoveryEmailHtml(lead) {
@@ -121,7 +132,7 @@ exports.handler = async () => {
 
     const firstName  = String(lead.customer_name || 'there').split(' ')[0];
     const items      = Array.isArray(lead.cart_items) ? lead.cart_items : [];
-    const itemCount  = items.length > 0 ? `${items.length} book${items.length > 1 ? 's' : ''}` : 'books';
+    const bookLabel  = cartBooksLabel(items);   // actual title(s), e.g. "Atomic Habits & 1 more book"
     const amtRaw     = lead.amount_paise ? `₹${Math.round(lead.amount_paise / 100)}` : '';
     const now        = new Date().toISOString();
     const update     = {};
@@ -133,7 +144,7 @@ exports.handler = async () => {
         // reassurance line + buttons). Fall back to the original cart_reminder
         // if the new one isn't approved yet — same 3 params, so this is a
         // zero-downtime swap before/after Meta approval.
-        const p = [firstName, itemCount, amtRaw];
+        const p = [firstName, bookLabel, amtRaw];
         let r = await sendWhatsApp({ to: lead.customer_phone, template: 'cart_reminder_ig', params: p });
         if (!r || !r.ok) {
           r = await sendWhatsApp({ to: lead.customer_phone, template: 'cart_reminder', params: p });

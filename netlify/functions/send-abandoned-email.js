@@ -88,11 +88,16 @@ exports.handler = async (event) => {
 
     // WhatsApp cart reminder (in addition to email, if phone exists)
     if (lead.customer_phone) {
-      const itemCount = items.length > 0 ? `${items.length} book${items.length > 1 ? 's' : ''}` : 'books';
       const amtRaw = lead.amount_paise ? `₹${Math.round(lead.amount_paise / 100)}` : '';
+      // Actual book title(s) — WhatsApp-safe (no newlines/tabs, capped length).
+      const cleanTitle = s => String(s || '').replace(/\s+/g, ' ').trim();
+      const firstTitle = cleanTitle(items[0]?.title).slice(0, 60) || 'your book';
+      const extra = items.length - 1;
+      const bookLabel = items.length === 0 ? 'your books'
+        : (extra > 0 ? `${firstTitle} & ${extra} more book${extra > 1 ? 's' : ''}` : firstTitle);
       // Prefer cart_reminder_ig (Instagram reassurance + buttons); fall back to
       // cart_reminder if it isn't approved yet. Same 3 params either way.
-      const waParams = [String(lead.customer_name || 'there').split(' ')[0], itemCount, amtRaw];
+      const waParams = [String(lead.customer_name || 'there').split(' ')[0], bookLabel, amtRaw];
       let waRes = await sendWhatsApp({ to: lead.customer_phone, template: 'cart_reminder_ig', params: waParams });
       if (!waRes || !waRes.ok) {
         await sendWhatsApp({ to: lead.customer_phone, template: 'cart_reminder', params: waParams });

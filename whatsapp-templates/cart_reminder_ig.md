@@ -24,10 +24,10 @@ Your books are still waiting 📚
 ```
 
 ## Body
-(3 variables — same order the code already sends: name, item count, amount)
+(3 variables — same order the code sends: name, book name(s), amount)
 
 ```
-Hi {{1}}, you left {{2}} in your cart at Ink & Chai 🛒
+Hi {{1}}, your copy of {{2}} is still waiting in your cart at Ink & Chai 🛒
 
 Complete your order of {{3}} and enjoy fast delivery of 100% genuine, publisher-sourced books across India.
 
@@ -36,7 +36,7 @@ Still unsure? Take a look at our Instagram — real reader photos, genuine books
 
 **Sample values (Meta asks for these):**
 - `{{1}}` → `Ausaf`
-- `{{2}}` → `2 books`
+- `{{2}}` → `Atomic Habits & 1 more book`
 - `{{3}}` → `₹499`
 
 ## Footer
