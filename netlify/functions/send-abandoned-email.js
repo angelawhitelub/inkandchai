@@ -90,11 +90,13 @@ exports.handler = async (event) => {
     if (lead.customer_phone) {
       const itemCount = items.length > 0 ? `${items.length} book${items.length > 1 ? 's' : ''}` : 'books';
       const amtRaw = lead.amount_paise ? `₹${Math.round(lead.amount_paise / 100)}` : '';
-      await sendWhatsApp({
-        to: lead.customer_phone,
-        template: 'cart_reminder',
-        params: [String(lead.customer_name || 'there').split(' ')[0], itemCount, amtRaw],
-      });
+      // Prefer cart_reminder_ig (Instagram reassurance + buttons); fall back to
+      // cart_reminder if it isn't approved yet. Same 3 params either way.
+      const waParams = [String(lead.customer_name || 'there').split(' ')[0], itemCount, amtRaw];
+      let waRes = await sendWhatsApp({ to: lead.customer_phone, template: 'cart_reminder_ig', params: waParams });
+      if (!waRes || !waRes.ok) {
+        await sendWhatsApp({ to: lead.customer_phone, template: 'cart_reminder', params: waParams });
+      }
       await supabase.from('abandoned_checkouts').update({ followup_whatsapp_clicked_at: new Date().toISOString() }).eq('id', id);
     }
 

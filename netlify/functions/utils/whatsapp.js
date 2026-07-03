@@ -34,10 +34,10 @@ function normalizePhone(phone) {
  */
 async function sendWhatsApp({ to, template, params = [], lang = 'en' }) {
   const token = process.env.WHATSAPP_TOKEN;
-  if (!token) { console.warn('WHATSAPP_TOKEN not set — WA skipped'); return; }
+  if (!token) { console.warn('WHATSAPP_TOKEN not set — WA skipped'); return { ok: false, skipped: true }; }
 
   const phone = normalizePhone(to);
-  if (!phone) { console.warn('sendWhatsApp: invalid phone', to); return; }
+  if (!phone) { console.warn('sendWhatsApp: invalid phone', to); return { ok: false, skipped: true }; }
 
   const bodyParams = params.map(p => ({ type: 'text', text: String(p) }));
 
@@ -66,11 +66,13 @@ async function sendWhatsApp({ to, template, params = [], lang = 'en' }) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error(`WhatsApp API error ${res.status} [${template}] → ${phone}:`, JSON.stringify(data?.error || data));
-    } else {
-      console.log(`WhatsApp sent [${template}] → ${phone}`, data?.messages?.[0]?.id || '');
+      return { ok: false, status: res.status, data };
     }
+    console.log(`WhatsApp sent [${template}] → ${phone}`, data?.messages?.[0]?.id || '');
+    return { ok: true, status: res.status, data };
   } catch (err) {
     console.error('sendWhatsApp exception:', err.message);
+    return { ok: false, error: err.message };
   }
 }
 

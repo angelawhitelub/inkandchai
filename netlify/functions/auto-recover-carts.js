@@ -129,14 +129,20 @@ exports.handler = async () => {
     // ── WhatsApp (primary channel) — only to a real Indian mobile ──────────
     if (lead.customer_phone && isValidIndianMobile(lead.customer_phone)) {
       try {
-        await sendWhatsApp({
-          to: lead.customer_phone,
-          template: 'cart_reminder',
-          params: [firstName, itemCount, amtRaw],
-        });
-        update.followup_whatsapp_clicked_at = now;
-        wasSent++;
-        console.log(`WA sent → ${lead.customer_phone} (${lead.id})`);
+        // Prefer the newer cart_reminder_ig template (adds the Instagram
+        // reassurance line + buttons). Fall back to the original cart_reminder
+        // if the new one isn't approved yet — same 3 params, so this is a
+        // zero-downtime swap before/after Meta approval.
+        const p = [firstName, itemCount, amtRaw];
+        let r = await sendWhatsApp({ to: lead.customer_phone, template: 'cart_reminder_ig', params: p });
+        if (!r || !r.ok) {
+          r = await sendWhatsApp({ to: lead.customer_phone, template: 'cart_reminder', params: p });
+        }
+        if (r && r.ok) {
+          update.followup_whatsapp_clicked_at = now;
+          wasSent++;
+          console.log(`WA sent → ${lead.customer_phone} (${lead.id})`);
+        }
       } catch (e) {
         console.error(`WA failed for ${lead.id}:`, e.message);
       }
