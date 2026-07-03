@@ -3769,13 +3769,17 @@ function switchTab(tab, pushState = true) {
   // Update URL hash without page jump
   if (pushState) history.pushState(null, '', '/admin/#' + tab);
 
-  // Lazy-load data for the activated tab
-  if (tab === 'products' && adminKey) fetchProducts();
-  if (tab === 'abandoned' && adminKey) fetchAbandonedCheckouts();
+  // Lazy-load data for the activated tab.
+  // Gate on EITHER auth credential — passkey/restored sessions set adminToken
+  // but leave adminKey empty, so gating on adminKey alone left these tabs stuck
+  // on "Loading…" for token-authenticated admins.
+  const _authed = adminToken || adminKey;
+  if (tab === 'products' && _authed) fetchProducts();
+  if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
   if (tab === 'reviews') fetchPendingReviews();
-  if (tab === 'returns' && adminKey) fetchReturnRequests();
-  if (tab === 'botinbox' && adminKey) fetchInbox();
-  if (tab === 'bookreq' && adminKey) fetchBookRequests();
+  if (tab === 'returns' && _authed) fetchReturnRequests();
+  if (tab === 'botinbox' && _authed) fetchInbox();
+  if (tab === 'bookreq' && _authed) fetchBookRequests();
 
   // Scroll to top of content
   document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
