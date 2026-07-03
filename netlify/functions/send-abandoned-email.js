@@ -25,7 +25,7 @@ function emailBase(content) {
   <div style="max-width:620px;margin:0 auto;padding:28px 18px;">
     <div style="font-family:Georgia,serif;font-size:28px;color:#8a6a1f;margin-bottom:18px;">Ink &amp; Chai</div>
     <div style="background:#fff;border:1px solid #dccda8;padding:24px;">${content}</div>
-    <p style="color:#8a7a62;font-size:12px;line-height:1.6;">Ink &amp; Chai · inkandchai.in · Reply to this email or WhatsApp us at +91 9217175546.</p>
+    <p style="color:#8a7a62;font-size:12px;line-height:1.6;">Ink &amp; Chai · inkandchai.in · Reply to this email or WhatsApp us at +91 76784 00508.</p>
   </div></body></html>`;
 }
 
@@ -76,6 +76,7 @@ exports.handler = async (event) => {
         </div>
         <p style="line-height:1.7;">Apply the coupon at checkout before you pay. This code is not shown publicly on the website.</p>
         <p><a href="https://inkandchai.in/checkout/" style="display:inline-block;background:#8a6a1f;color:#fff;text-decoration:none;padding:12px 20px;font-size:12px;letter-spacing:2px;text-transform:uppercase;">Complete Checkout</a></p>
+        <p style="line-height:1.7;margin-top:20px;border-top:1px solid #e8ddc8;padding-top:16px;color:#5a4a38;">📸 Still doubtful? Please check our Instagram for reference — real reader photos, genuine books and happy customers: <a href="https://instagram.com/theinkandchai.in" style="color:#8a6a1f;font-weight:600;text-decoration:none;">@theinkandchai.in</a></p>
       `),
     });
 

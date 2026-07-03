@@ -51,7 +51,8 @@ function recoveryEmailHtml(lead) {
         <div style="font-size:13px;color:#a09080;margin-top:8px;">10% off on prepaid orders above ₹299. One use only.</div>
       </div>
       <a href="https://inkandchai.in/checkout/" style="display:inline-block;background:#c9a84c;color:#0d0b08;text-decoration:none;padding:12px 22px;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Complete Checkout →</a>
-      <p style="color:#7a6330;font-size:12px;margin-top:24px;">Questions? Reply to this email or WhatsApp us at +91 9217175546.</p>
+      <p style="color:#c9b98a;font-size:13px;line-height:1.7;margin-top:22px;border-top:1px solid rgba(201,168,76,0.18);padding-top:16px;">📸 Still doubtful? Please check our Instagram for reference — real reader photos, genuine books &amp; happy customers: <a href="https://instagram.com/theinkandchai.in" style="color:#c9a84c;font-weight:600;text-decoration:none;">@theinkandchai.in</a></p>
+      <p style="color:#7a6330;font-size:12px;margin-top:18px;">Questions? Reply to this email or WhatsApp us at +91 76784 00508.</p>
     </div>
   </div></body></html>`;
 }
