@@ -88,11 +88,63 @@ async function maybeAutoRefund(order) {
   if (res.ok) {
     await supabase.from('orders').update({ status: res.nextStatus }).eq('id', row.id);
     console.log(`[AUTO-REFUND] ${displayId} → ${res.state} (${res.nextStatus}) refundId=${res.merchantRefundId}`);
+    // Tell the customer their money is on its way.
+    await notifyRefundIssued(row, amountPaise, res.merchantRefundId);
   } else {
     // Leave it at refund_pending so the admin sees it and can retry manually.
     console.error(`[AUTO-REFUND] ${displayId} failed: ${res.error} — left as refund_pending for manual retry`);
   }
   return res;
+}
+
+function refundProcessedEmailHtml(order, amountPaise, refundId) {
+  const amount = moneyFromPaise(amountPaise);
+  const first = String(order.customer_name || 'there').split(' ')[0];
+  return `
+    <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
+      <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
+      <p style="color:#a09080;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;">inkandchai.in</p>
+      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Your refund is on its way 💛</h2>
+      <p style="color:#a09080;line-height:1.8;margin:14px 0;">
+        Hi ${first}, your order <strong style="color:#c9a84c;">${orderId(order)}</strong> was cancelled and
+        we've issued a refund${amount ? ` of <strong style="color:#f0e8d8;">${amount}</strong>` : ''} to your
+        original PhonePe payment method.
+      </p>
+      <div style="background:#1c1916;border-left:3px solid #c9a84c;padding:14px 18px;margin:16px 0;">
+        <p style="color:#f0e8d8;margin:0;font-size:14px;">Refund reference: <strong style="color:#c9a84c;">${refundId}</strong></p>
+        <p style="color:#a09080;margin:8px 0 0;font-size:13px;">The amount will reflect in your account within <strong style="color:#f0e8d8;">5–7 business days</strong>.</p>
+      </div>
+      <p style="color:#a09080;font-size:13px;line-height:1.8;">If you don't see it after 7 days, just reply to this email or message us on WhatsApp and we'll help right away.</p>
+      <hr style="border:none;border-top:1px solid #2a2a2a;margin:32px 0;"/>
+      <p style="color:#7a6330;font-size:11px;">Ink &amp; Chai &middot; support@inkandchai.in</p>
+    </div>`;
+}
+
+// Best-effort refund confirmation — email (always) + WhatsApp (if template set).
+// Never throws.
+async function notifyRefundIssued(order, amountPaise, refundId) {
+  try {
+    if (order.customer_email) {
+      await sendEmail({
+        to: order.customer_email,
+        subject: `Refund issued — ${orderId(order)}`,
+        html: refundProcessedEmailHtml(order, amountPaise, refundId),
+      });
+    }
+    if (order.customer_phone) {
+      await sendWhatsApp({
+        to: order.customer_phone,
+        template: process.env.WHATSAPP_REFUND_TEMPLATE || 'refund_processed',
+        params: [
+          String(order.customer_name || 'there').split(' ')[0],
+          orderId(order),
+          moneyFromPaise(amountPaise) || 'the order amount',
+        ],
+      });
+    }
+  } catch (e) {
+    console.error('[AUTO-REFUND] confirmation notify error:', e.message);
+  }
 }
 
 async function notifyOrderCancelled(order, opts = {}) {
