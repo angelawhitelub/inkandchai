@@ -33,18 +33,15 @@ const CORS = {
 let _tokenCache = { authorization: null, expiresAt: 0 };
 
 function phonePeHeaders(authorization) {
-  const headers = {
-    'Authorization': authorization,
+  // Match the WORKING phonepe-create-order / verify-status / reconcile functions
+  // EXACTLY: only Content-Type + Authorization. In PhonePe's OAuth v2 flow the
+  // merchant is identified by the OAuth token itself — sending extra headers like
+  // X-MERCHANT-ID (or the x-source-* SDK telemetry) causes the PG-V2 endpoints to
+  // return "Authorization failed [Please check the authorization token]".
+  return {
     'Content-Type': 'application/json',
-    'x-source': 'API',
-    'x-source-version': 'V2',
-    'x-source-platform': 'BACKEND_NODE_SDK',
-    'x-source-platform-version': '2.0.6',
+    'Authorization': authorization,
   };
-  if (process.env.PHONEPE_MERCHANT_ID) {
-    headers['X-MERCHANT-ID'] = process.env.PHONEPE_MERCHANT_ID;
-  }
-  return headers;
 }
 
 async function getAccessToken(host) {
