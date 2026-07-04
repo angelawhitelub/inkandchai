@@ -58,10 +58,18 @@ exports.handler = async () => {
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    // Curated listings only. The bulk crossword.in import (tag crossword-catalog,
+    // ~13.5k rows) is EXCLUDED so it doesn't (a) blow past Supabase's 1000-row
+    // default and silently drop newer listings like Heartstopper, and (b) bloat
+    // this feed to ~35 MB (it's pulled repeatedly by Merchant/Meta). Newest first
+    // so freshly-created products always appear.
     const { data: products, error } = await supabase
       .from('custom_products')
       .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,publisher,isbn,is_active')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .not('tags', 'ilike', '%crossword-catalog%')
+      .order('updated_at', { ascending: false })
+      .limit(1000);
     if (error) throw error;
 
     const items = (products || []).map((p) => {
