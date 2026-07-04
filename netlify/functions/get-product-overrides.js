@@ -56,9 +56,14 @@ exports.handler = async (event) => {
       tags: /publisher-sourced-bestseller/i.test(String(p.tags || '')) ? 'publisher-sourced-bestseller' : '',
     }));
 
-    // Cache at CDN edge for 5 min; stale-while-revalidate keeps it snappy after expiry.
-    // Product overrides change rarely (admin action), so 5-min staleness is fine.
-    const cacheHeaders = { ...CORS, 'Cache-Control': 'public, max-age=300, stale-while-revalidate=60' };
+    // Cache at CDN edge; product overrides change rarely (admin action).
+    // Durable shared cache → this 0.75 MB per-pageview feed is rebuilt from
+    // Supabase at most ~once/hour globally instead of once per edge per 5 min.
+    const cacheHeaders = {
+      ...CORS,
+      'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
+      'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+    };
     return { statusCode: 200, headers: cacheHeaders, body: JSON.stringify({ overrides: data || [], custom_products: customProducts }) };
   } catch (err) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: [], warning: err.message }) };

@@ -72,7 +72,14 @@ exports.handler = async (event) => {
     const total = count || 0;
     return {
       statusCode: 200,
-      headers: { ...CORS, 'Cache-Control': 'public, max-age=300, stale-while-revalidate=60' },
+      headers: {
+        ...CORS,
+        'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
+        // Durable shared edge cache — the /books browse+search results (unique
+        // per page/query) are fetched from Supabase at most ~once/hour each,
+        // rather than on every crawler request across 4.5k pages.
+        'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+      },
       body: JSON.stringify({ books, total, page, per_page: perPage, pages: Math.ceil(total / perPage) }),
     };
   } catch (err) {

@@ -44,7 +44,14 @@ function priceText(value) {
 }
 
 exports.handler = async () => {
-  const headers = { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=600' };
+  // Durable shared edge cache — this 2.4 MB feed is pulled by Google Merchant /
+  // Meta catalog on a schedule; serve it from the edge and rebuild from Supabase
+  // at most ~once/hour instead of on every fetch/retry.
+  const headers = {
+    'Content-Type': 'application/xml; charset=utf-8',
+    'Cache-Control': 'public, max-age=600',
+    'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+  };
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     return { statusCode: 200, headers, body: emptyFeed() };
   }
