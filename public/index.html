@@ -2768,6 +2768,27 @@ document.addEventListener('keydown', (e) => {
   focusSiteSearch();
 });
 
+// Deep-link: /?q=<query> opens the search overlay pre-filled with that query.
+// Used by the product-detail page nav search (product-page.js has no client
+// BOOKS array, so it hands off the query to the homepage's full-catalogue search).
+(function(){
+  const q = (new URLSearchParams(location.search).get('q') || '').trim();
+  if (!q) return;
+  function run(){
+    const mainIn = document.getElementById('searchInput');
+    if (mainIn) mainIn.value = q;
+    if (typeof focusSiteSearch === 'function') focusSiteSearch();
+    const srchIn = document.getElementById('srchInput');
+    if (srchIn) srchIn.value = q;
+    if (typeof renderSrchResults === 'function') renderSrchResults(q);
+  }
+  // Run once the DOM is ready, then again after the async catalogue (BOOKS)
+  // finishes loading so results are complete even on a cold load.
+  const kick = () => { run(); setTimeout(run, 700); setTimeout(run, 1600); };
+  if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', kick);
+  else kick();
+})();
+
 let _srchSel = -1;
 function srchType() {
   const val = document.getElementById('srchInput')?.value || '';

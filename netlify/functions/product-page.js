@@ -130,11 +130,18 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 .gallery-dot{width:9px;height:9px;min-height:9px;border-radius:50%;background:var(--border);border:none;padding:0;cursor:pointer;transition:background .2s,transform .2s}
 .gallery-dot.active{background:var(--gold);transform:scale(1.15)}
 @media(max-width:760px){.gal-arrow{display:none}}
+/* Nav search — hands the query to the homepage full-catalogue search (/?q=) */
+.nav-search{display:flex;align-items:center;gap:.4rem;flex:1;max-width:420px;margin:0 1rem;background:rgba(214,184,94,.07);border:1px solid var(--glass-border);border-radius:999px;padding:.28rem .28rem .28rem .9rem}
+.nav-search input{flex:1;background:transparent;border:0;color:var(--cream);font:inherit;font-size:.82rem;outline:none;min-width:0}
+.nav-search input::placeholder{color:var(--muted)}
+.nav-search button{min-height:0;padding:.45rem .72rem;font-size:1rem;line-height:1;border-radius:999px;border:1px solid var(--glass-border);background:var(--glass-bg);color:var(--gold-light);letter-spacing:0;cursor:pointer}
+.nav-search button:hover{filter:brightness(1.12)}
+@media(max-width:760px){.nav-search{margin:0 .5rem;max-width:none} .nav-search input{font-size:.92rem} .back{display:none}}
 </style>
 </head>
 <body>
 <div class="promo"><strong>Free delivery on ₹499+</strong> · Prepaid offers available · COD available</div>
-<nav><a class="logo" href="/">Ink &amp; Chai</a><a class="back" href="/product/">← Catalogue</a></nav>
+<nav><a class="logo" href="/">Ink &amp; Chai</a><form class="nav-search" action="/" method="get" role="search"><input type="search" name="q" placeholder="Search books&hellip;" aria-label="Search books" autocomplete="off"/><button type="submit" aria-label="Search">&#9906;</button></form><a class="back" href="/books/">All Books</a></nav>
 <main class="wrap">
   <section class="cover">${galleryImgs.length > 1 ? `<div class="gallery">
       <div class="gallery-track" id="galTrack">
