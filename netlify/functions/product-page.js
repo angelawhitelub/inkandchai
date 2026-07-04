@@ -53,6 +53,15 @@ function productHtml(product) {
   const metaDesc = esc(shortDescription(product));
   const canonical = `https://inkandchai.in/product/${slug}/`;
   const image = absoluteImage(product.image_url);
+  // Extra images (back cover, spreads, etc.) live in gallery_images (jsonb array
+  // of URLs). Main cover first, then the rest — de-duped, absolutised.
+  let galleryExtra = [];
+  try {
+    const g = Array.isArray(product.gallery_images) ? product.gallery_images
+            : (typeof product.gallery_images === 'string' ? JSON.parse(product.gallery_images) : []);
+    galleryExtra = (Array.isArray(g) ? g : []).map(u => absoluteImage(String(u || '').trim())).filter(Boolean);
+  } catch { galleryExtra = []; }
+  const galleryImgs = [image, ...galleryExtra].filter((v, i, a) => v && a.indexOf(v) === i);
   const price = moneyText(product.price_inr);
   const mrp = moneyText(product.original_price_inr);
   const plainDesc = String(product.description || metaDesc).replace(/\s+/g, ' ');
@@ -108,13 +117,33 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 .trust{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}.trust span{border:1px solid var(--border);border-radius:999px;background:rgba(214,184,94,.075);padding:.75rem;color:var(--cream);font-size:.78rem;box-shadow:var(--glass-highlight)}html[data-theme="light"] .trust span{background:rgba(138,106,31,.06);box-shadow:inset 0 1px rgba(255,255,255,.5)}.actions{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}button{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);border-radius:999px;cursor:pointer;min-height:52px;transition:transform .2s ease,filter .2s ease,box-shadow .2s ease}button:hover{transform:translateY(-1px);filter:brightness(1.05)}.primary{background:linear-gradient(135deg,var(--gold),var(--copper));color:#100c08;box-shadow:0 14px 30px rgba(214,184,94,.18),var(--glass-highlight)}.secondary{background:rgba(214,184,94,.075);color:var(--gold-light)}
 .desc,.details{border-top:1px solid var(--border);border-radius:24px;padding-top:1.2rem;margin-top:1.2rem;color:var(--muted);font-size:.9rem;line-height:1.8;white-space:pre-line}.label{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}.details dl{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}.details dt{color:var(--gold)}.details dd{margin:0;color:var(--cream)}
 @media(max-width:760px){.promo{width:calc(100% - 20px);margin:.45rem auto .1rem;border-radius:999px;white-space:normal;line-height:1.45}nav{width:calc(100% - 18px);margin:.45rem auto 0;border-radius:28px;padding:.7rem .85rem;top:8px}.wrap{display:block;padding:.9rem 1rem 7.6rem}.cover{margin-bottom:1.2rem;border-radius:24px}.trust{grid-template-columns:1fr}.actions{position:fixed;left:12px;right:12px;bottom:10px;z-index:9;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:.6rem;background:rgba(13,11,8,.72);padding:.6rem .6rem calc(.6rem + env(safe-area-inset-bottom));border:1px solid var(--glass-border);border-radius:30px;box-shadow:0 -16px 42px rgba(0,0,0,.45),var(--glass-highlight);backdrop-filter:blur(24px) saturate(1.35)}html[data-theme="light"] .actions{background:rgba(250,247,242,.76);box-shadow:0 -12px 38px rgba(70,52,24,.16),var(--glass-highlight)}.actions button{min-height:52px;padding:.9rem .45rem;font-size:.6rem;letter-spacing:.14em}}
+/* Swipeable image gallery (front + back cover etc.) */
+.gallery{position:relative;width:100%}
+.gallery-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;border-radius:16px}
+.gallery-track::-webkit-scrollbar{display:none}
+.gallery-slide{flex:0 0 100%;scroll-snap-align:center;display:flex;align-items:center;justify-content:center}
+.gallery-slide img{max-width:100%;max-height:600px;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,.35)}
+.gal-arrow{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;min-height:42px;border-radius:50%;border:1px solid var(--glass-border);background:var(--glass-bg);color:var(--gold-light);font-size:1.5rem;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2;backdrop-filter:blur(8px);transition:filter .2s}
+.gal-arrow:hover{filter:brightness(1.15)}
+.gal-prev{left:6px}.gal-next{right:6px}
+.gallery-dots{display:flex;gap:.45rem;justify-content:center;margin-top:.9rem}
+.gallery-dot{width:9px;height:9px;min-height:9px;border-radius:50%;background:var(--border);border:none;padding:0;cursor:pointer;transition:background .2s,transform .2s}
+.gallery-dot.active{background:var(--gold);transform:scale(1.15)}
+@media(max-width:760px){.gal-arrow{display:none}}
 </style>
 </head>
 <body>
 <div class="promo"><strong>Free delivery on ₹499+</strong> · Prepaid offers available · COD available</div>
 <nav><a class="logo" href="/">Ink &amp; Chai</a><a class="back" href="/product/">← Catalogue</a></nav>
 <main class="wrap">
-  <section class="cover"><img src="${esc(image)}" alt="${title} book cover" loading="eager" fetchpriority="high"/></section>
+  <section class="cover">${galleryImgs.length > 1 ? `<div class="gallery">
+      <div class="gallery-track" id="galTrack">
+        ${galleryImgs.map((src, i) => `<div class="gallery-slide"><img src="${esc(src)}" alt="${title} ${i === 0 ? 'front cover' : 'cover view ' + (i + 1)}" loading="${i === 0 ? 'eager' : 'lazy'}"${i === 0 ? ' fetchpriority="high"' : ''}/></div>`).join('')}
+      </div>
+      <button class="gal-arrow gal-prev" id="galPrev" type="button" aria-label="Previous image">&#8249;</button>
+      <button class="gal-arrow gal-next" id="galNext" type="button" aria-label="Next image">&#8250;</button>
+      <div class="gallery-dots">${galleryImgs.map((_, i) => `<button class="gallery-dot${i === 0 ? ' active' : ''}" type="button" aria-label="Show image ${i + 1}"></button>`).join('')}</div>
+    </div>` : `<img src="${esc(image)}" alt="${title} book cover" loading="eager" fetchpriority="high"/>`}</section>
   <section>
     <div class="crumb"><a href="/">Home</a> / <a href="/category/?name=${encodeURIComponent(product.category || 'Books')}">${category}</a></div>
     <h1>${title}</h1>
@@ -204,6 +233,22 @@ function addProductToCart(buyNow) {
   // page (rare for Lambda but possible after navigation) the sidebar updates.
   if (window.addToCart) { try { window.addToCart(currentItem); } catch(e) {} }
 }
+// ── Swipeable image gallery: native scroll-snap swipe + arrows + dots ──────────
+(function(){
+  var track = document.getElementById('galTrack');
+  if (!track) return;
+  var slides = track.children.length;
+  var dots = [].slice.call(document.querySelectorAll('.gallery-dot'));
+  function current(){ return track.clientWidth ? Math.round(track.scrollLeft / track.clientWidth) : 0; }
+  function update(){ var c = current(); dots.forEach(function(d,i){ d.classList.toggle('active', i === c); }); }
+  function go(i){ i = Math.max(0, Math.min(slides - 1, i)); track.scrollTo({ left: i * track.clientWidth, behavior: 'smooth' }); }
+  var raf;
+  track.addEventListener('scroll', function(){ if (raf) cancelAnimationFrame(raf); raf = requestAnimationFrame(update); });
+  var prev = document.getElementById('galPrev'), next = document.getElementById('galNext');
+  if (prev) prev.addEventListener('click', function(){ go(current() - 1); });
+  if (next) next.addEventListener('click', function(){ go(current() + 1); });
+  dots.forEach(function(d,i){ d.addEventListener('click', function(){ go(i); }); });
+})();
 </script>
 </body>
 </html>`;

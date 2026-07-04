@@ -93,6 +93,16 @@ exports.handler = async (event) => {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const imageUrl = await uploadImageIfPossible(supabase, baseSlug, body.image_data_url || body.image_url);
 
+    // Extra product images (back cover, spreads…) → gallery_images (array of URLs).
+    // Accept an array, upload any data URLs, keep plain URLs as-is. Cap at 8.
+    let galleryImages = [];
+    if (Array.isArray(body.gallery_images)) {
+      for (const g of body.gallery_images.slice(0, 8)) {
+        const u = await uploadImageIfPossible(supabase, `${baseSlug}-g`, g);
+        if (u) galleryImages.push(u);
+      }
+    }
+
     const payload = {
       slug: baseSlug,
       title,
@@ -102,6 +112,7 @@ exports.handler = async (event) => {
       price_inr: money(body.price_inr, true),
       original_price_inr: money(body.original_price_inr, false),
       image_url: imageUrl,
+      gallery_images: galleryImages,
       publisher: cleanText(body.publisher, 160),
       isbn: cleanText(body.isbn, 80),
       seo_title: cleanText(body.seo_title, 220) || `${title} | Buy Online in India | Ink & Chai`,
