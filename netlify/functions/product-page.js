@@ -141,7 +141,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 </head>
 <body>
 <div class="promo"><strong>Free delivery on ₹499+</strong> · Prepaid offers available · COD available</div>
-<nav><a class="logo" href="/">Ink &amp; Chai</a><form class="nav-search" action="/" method="get" role="search"><input type="search" name="q" placeholder="Search books&hellip;" aria-label="Search books" autocomplete="off"/><button type="submit" aria-label="Search">&#9906;</button></form><a class="back" href="/books/">All Books</a></nav>
+<nav><a class="logo" href="/">Ink &amp; Chai</a><form class="nav-search" action="/" method="get" role="search"><input type="search" name="q" placeholder="Search books&hellip;" aria-label="Search books" autocomplete="off"/><button type="submit" aria-label="Search">&#128269;</button></form><a class="back" href="/books/">All Books</a></nav>
 <main class="wrap">
   <section class="cover">${galleryImgs.length > 1 ? `<div class="gallery">
       <div class="gallery-track" id="galTrack">
