@@ -136,7 +136,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 .nav-search input::placeholder{color:var(--muted)}
 .nav-search button{min-height:0;padding:.45rem .72rem;font-size:1rem;line-height:1;border-radius:999px;border:1px solid var(--glass-border);background:var(--glass-bg);color:var(--gold-light);letter-spacing:0;cursor:pointer}
 .nav-search button:hover{filter:brightness(1.12)}
-@media(max-width:760px){.nav-search{margin:0 .5rem;max-width:none} .nav-search input{font-size:.92rem} .back{display:none}}
+@media(max-width:760px){nav{flex-wrap:wrap} .nav-search{order:3;flex:1 0 100%;max-width:none;margin:.55rem 0 0} .nav-search input{font-size:.95rem} .nav-search button{padding:.5rem .85rem}}
 </style>
 </head>
 <body>
