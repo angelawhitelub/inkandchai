@@ -848,7 +848,8 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       </div>
       <div class="mini-actions">
         <button class="btn-outline" onclick="fetchReturnRequests()">↻ Refresh</button>
-        <button class="btn-gold" onclick="pushApprovedReturnsToNimbus(this)" title="Create NimbusPost reverse shipments and AWBs for every approved return that has not already been pushed.">Push Approved Returns to NimbusPost</button>
+        <button class="btn-green" onclick="pushReturnsToNimbusNoAwb(this)" title="Push all approved returns into the NimbusPost panel WITHOUT choosing a courier or generating an AWB. Assign the reverse AWB later inside NimbusPost.">Push Returns to NimbusPost (No AWB)</button>
+        <button class="btn-gold" onclick="pushApprovedReturnsToNimbus(this)" title="Create NimbusPost reverse shipments and AWBs for every approved return that has not already been pushed.">Push Returns + Auto AWB</button>
       </div>
     </div>
     <div class="hint" id="returnsMeta" style="margin-bottom:0.8rem;">Loading return requests…</div>
@@ -4110,6 +4111,36 @@ async function pushApprovedReturnsToNimbus(btn) {
   if (btn) { btn.disabled = false; btn.textContent = original; }
   await fetchReturnRequests();
   let message = `NimbusPost return push complete:\n\nCreated: ${pushed}\nFailed: ${failures.length}`;
+  if (failures.length) message += `\n\nFirst errors:\n${failures.slice(0, 5).join('\n')}`;
+  alert(message);
+}
+
+// Push approved returns into the NimbusPost panel WITHOUT an AWB (mirrors the
+// orders "Push to NimbusPost Panel (No AWB)" flow). Courier/AWB assigned later.
+async function pushReturnsToNimbusNoAwb(btn) {
+  const pending = allReturnRequests.filter(r => r.status === 'approved' && !r.awb);
+  if (!pending.length) {
+    alert('No approved returns waiting to be pushed.');
+    return;
+  }
+  if (!confirm(`Push ${pending.length} approved return${pending.length > 1 ? 's' : ''} to the NimbusPost panel?\n\nNo courier is selected and no AWB is generated — assign the reverse AWB later inside NimbusPost.`)) return;
+
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = `Pushing 0/${pending.length}…`; }
+  let pushed = 0;
+  const failures = [];
+  for (const ret of pending) {
+    try {
+      await _returnCall({ return_request_id: ret.id, action: 'push_no_awb' }, null);
+      pushed++;
+    } catch (error) {
+      failures.push(`${ret.order_display_id || ret.order_id || ret.id}: ${error.message}`);
+    }
+    if (btn) btn.textContent = `Pushing ${pushed + failures.length}/${pending.length}…`;
+  }
+  if (btn) { btn.disabled = false; btn.textContent = original; }
+  await fetchReturnRequests();
+  let message = `NimbusPost panel push complete:\n\nPushed: ${pushed}\nFailed: ${failures.length}`;
   if (failures.length) message += `\n\nFirst errors:\n${failures.slice(0, 5).join('\n')}`;
   alert(message);
 }

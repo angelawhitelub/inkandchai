@@ -155,7 +155,10 @@ exports.handler = async (event) => {
       items:            order.cart_items       || [],
       amount_paise:     order.amount_paise     || 0,
       reason:           reason,
-      status:           'pending',
+      // Auto-approve: customer returns are accepted automatically (7-day window
+      // + delivered guard already enforced above). Admin just pushes to
+      // NimbusPost for pickup — no manual approval step.
+      status:           'approved',
     });
     if (insertErr) throw insertErr;
 
@@ -167,11 +170,11 @@ exports.handler = async (event) => {
     });
     await sendEmail({
       to: order.customer_email,
-      subject: `Return request received (${order.razorpay_order_id || order.id})`,
+      subject: `Return approved (${order.razorpay_order_id || order.id})`,
       html: customerEmailHtml(order),
     });
 
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, message: 'Return request submitted. We have emailed you the confirmation.' }) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, message: 'Your return has been approved. Please keep the package ready — our courier will pick it up shortly.' }) };
   } catch (err) {
     console.error('request-return error:', err);
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message || 'Could not submit return request.' }) };

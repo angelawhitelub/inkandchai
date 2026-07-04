@@ -227,12 +227,16 @@ exports.handler = async (event) => {
       }) };
     }
 
-    // Default action: create NimbusPost reverse pickup
+    // Push to NimbusPost. Default = create reverse pickup WITH auto AWB.
+    // action 'push_no_awb' = create the reverse shipment in the NimbusPost panel
+    // WITHOUT auto-pickup/AWB (mirrors the orders "Push to NimbusPost Panel (No
+    // AWB)" flow) — the admin assigns the courier/AWB later inside NimbusPost.
+    const noAwb = action === 'push_no_awb';
     if (ret.status !== 'approved') {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Approve this return before pushing it to NimbusPost.' }) };
     }
-    if (ret.awb) {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Pickup already created. AWB: ${ret.awb}` }) };
+    if (ret.awb || ret.status === 'pushed_to_nimbus' || ret.status === 'pickup_scheduled') {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: ret.awb ? `Already pushed. AWB: ${ret.awb}` : 'This return has already been pushed to NimbusPost.' }) };
     }
 
     // Parse customer address (pickup location)
@@ -262,7 +266,7 @@ exports.handler = async (event) => {
       package_length: 20,
       package_height: 3,
       package_breadth: 15,
-      request_auto_pickup: 'yes',
+      request_auto_pickup: noAwb ? 'no' : 'yes',
       consignee: {
         name: ret.customer_name || 'Customer',
         address: addr1,
@@ -294,11 +298,28 @@ exports.handler = async (event) => {
 
     const shipment = npData.data && typeof npData.data === 'object' ? npData.data : npData;
     const awb = shipment.awb_number || shipment.awb || shipment.tracking_number;
-    if (!ok || !awb) {
-      throw new Error(`NimbusPost reverse pickup failed: ${JSON.stringify(npData)}`);
+    // No-AWB mode: only the panel push must succeed; an AWB is NOT expected
+    // (courier is chosen later in NimbusPost). Full mode requires an AWB.
+    if (!ok || (!noAwb && !awb)) {
+      throw new Error(`NimbusPost reverse ${noAwb ? 'panel push' : 'pickup'} failed: ${JSON.stringify(npData)}`);
     }
 
     const courierName = shipment.courier_name || 'NimbusPost';
+
+    if (noAwb) {
+      // Pushed into the panel; AWB assigned later inside NimbusPost. Keep any AWB
+      // NimbusPost happened to return, but don't schedule pickup / notify yet.
+      await supabase.from('return_requests').update({
+        status:       'pushed_to_nimbus',
+        awb:          awb || null,
+        courier_name: awb ? courierName : null,
+        processed_at: new Date().toISOString(),
+      }).eq('id', return_request_id);
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({
+        success: true, status: 'pushed_to_nimbus', awb: awb || null,
+        message: 'Return pushed to the NimbusPost panel. Assign a courier/AWB there to schedule pickup.',
+      }) };
+    }
 
     // Update return_request in Supabase
     await supabase.from('return_requests').update({
