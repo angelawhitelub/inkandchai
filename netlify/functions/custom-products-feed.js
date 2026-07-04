@@ -34,7 +34,13 @@ function xmlEscape(s) {
 // Strip markdown (**bold**, headings) and collapse whitespace for the feed description.
 function plainText(s, max = 4000) {
   return String(s || '')
-    .replace(/\*\*/g, '').replace(/[#_`>]/g, '')
+    .replace(/<[^>]+>/g, ' ')                                   // strip HTML tags
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&#8217;|&rsquo;|&#39;|&apos;/g, "'")
+    .replace(/&#8220;|&#8221;|&ldquo;|&rdquo;|&quot;/g, '"')
+    .replace(/&#\d+;|&[a-z]+;/gi, ' ')                          // any remaining entities
+    .replace(/\*\*/g, '').replace(/[#`]/g, '')                  // stray markdown, just in case
     .replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
