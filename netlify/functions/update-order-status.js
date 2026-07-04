@@ -19,6 +19,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const { issueRazorpayRefund } = require('./utils/razorpay-refund');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -185,13 +186,55 @@ exports.handler = async (event) => {
       }
     }
 
+    let refundInfo = null;
     if (status === 'cancelled' && previousOrder.status !== 'cancelled') {
-      await notifyOrderCancelled({ ...previousOrder, status: 'cancelled' }, {
-        reason: 'Your order status was updated to cancelled.',
-      });
+      const paymentId = previousOrder.razorpay_payment_id || '';
+      const alreadyRefunded = ['refunded', 'refund_pending'].includes(String(previousOrder.status || '').toLowerCase());
+      const amountPaise = Number(previousOrder.amount_paise) || 0;
+
+      // Auto-refund Razorpay-paid orders on cancellation. COD orders (no
+      // payment id) have no money to return; PhonePe (id starts with OM/T) uses
+      // the dedicated PhonePe refund tool, so skip those here.
+      if (paymentId.startsWith('pay_') && amountPaise > 0 && !alreadyRefunded) {
+        try {
+          const refund = await issueRazorpayRefund(paymentId, amountPaise, {
+            notes: { reason: 'Order cancelled by admin', order_id: previousOrder.razorpay_order_id || previousOrder.id },
+          });
+          await supabase.from('orders').update({ status: 'refunded' }).eq('id', id);
+          refundInfo = { provider: 'razorpay', status: 'refunded', refund_id: refund.id, amount: amountPaise / 100 };
+          const note = `💳 Refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} has been initiated to your original payment method (5–7 business days). Refund ID: ${refund.id}.`;
+          await notifyOrderCancelled({ ...previousOrder, status: 'refunded' }, { reason: note });
+          if (previousOrder.customer_email) {
+            await sendEmail({
+              to: previousOrder.customer_email,
+              subject: `Order cancelled & refund initiated — ${previousOrder.razorpay_order_id || previousOrder.id}`,
+              html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#2a2018;background:#faf7f2;"><h2 style="color:#8a6a1f;font-weight:400;">Ink &amp; Chai</h2><p>Hi ${(previousOrder.customer_name || 'there').split(' ')[0]},</p><p>Your order <strong>${previousOrder.razorpay_order_id || previousOrder.id}</strong> has been cancelled and a refund initiated.</p><p>${note}</p><p style="font-size:12px;color:#8a7a62;margin-top:24px;">Ink &amp; Chai · inkandchai.in</p></div>`,
+            });
+          }
+        } catch (err) {
+          console.error('[update-order-status] Razorpay auto-refund failed:', err.message);
+          // Fall back to manual: mark refund_pending + alert admin.
+          await supabase.from('orders').update({ status: 'refund_pending' }).eq('id', id);
+          refundInfo = { provider: 'razorpay', status: 'refund_pending', error: err.message };
+          const adminEmail = process.env.ADMIN_EMAIL || 'support@inkandchai.in';
+          await sendEmail({
+            to: adminEmail,
+            subject: `⚠ Razorpay auto-refund failed — manual refund needed (${previousOrder.razorpay_order_id || previousOrder.id})`,
+            html: `<p>Auto-refund on cancel failed for <strong>${previousOrder.razorpay_order_id || previousOrder.id}</strong> (payment ${paymentId}, ₹${(amountPaise/100).toLocaleString('en-IN')}).</p><p>Error: ${err.message}</p><p>Refund manually from the Razorpay dashboard.</p>`,
+          }).catch(() => {});
+          await notifyOrderCancelled({ ...previousOrder, status: 'refund_pending' }, {
+            reason: `⏳ Your refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} is being processed and will reach you within 3–5 business days.`,
+          });
+        }
+      } else {
+        await notifyOrderCancelled({ ...previousOrder, status: 'cancelled' }, {
+          reason: 'Your order status was updated to cancelled.',
+        });
+      }
     }
 
     const result = { success: true, tracking_url: trackingUrl || null };
+    if (refundInfo) result.refund = refundInfo;
     if (trackingWarning) result.warning = trackingWarning;
     return { statusCode: 200, headers: CORS, body: JSON.stringify(result) };
   } catch (err) {

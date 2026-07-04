@@ -19,6 +19,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const { sendEmail } = require('./utils/email');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const { issueRazorpayRefund } = require('./utils/razorpay-refund');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -84,27 +85,6 @@ function adminRefundEmailHtml(order) {
         <tr><td style="padding:6px 0;color:#a09080;">Amount</td><td style="color:#f0e8d8;">₹${total.toLocaleString('en-IN')}</td></tr>
       </table>
     </div>`;
-}
-
-// ── Razorpay refund ──────────────────────────────────────────────────────────
-async function issueRazorpayRefund(paymentId, amountPaise) {
-  const keyId     = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  if (!keyId || !keySecret) throw new Error('Razorpay credentials not configured');
-
-  const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
-  const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refund`, {
-    method: 'POST',
-    headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      amount: amountPaise, // full refund
-      speed: 'normal',     // 5-7 business days; use 'optimum' for instant (extra fee)
-      notes: { reason: 'Customer cancelled within 30 minutes of order' },
-    }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error?.description || `Razorpay error ${res.status}`);
-  return data; // { id, amount, status, ... }
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -205,7 +185,9 @@ exports.handler = async (event) => {
     // Razorpay payments start with "pay_"
     if (paymentId.startsWith('pay_')) {
       try {
-        const refund = await issueRazorpayRefund(paymentId, order.amount_paise);
+        const refund = await issueRazorpayRefund(paymentId, order.amount_paise, {
+          notes: { reason: 'Customer cancelled within 30 minutes of order', order_id: order.razorpay_order_id || order.id },
+        });
         refundId  = refund.id;
         newStatus = 'refunded';
         refundNote = `💳 Refund of ₹${(order.amount_paise / 100).toLocaleString('en-IN')} has been initiated. It will appear in your account within 5–7 business days (Refund ID: ${refundId}).`;
