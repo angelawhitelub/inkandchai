@@ -188,6 +188,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
   </section>
 </main>
 <script src="/js/cart.js"></script>
+<script src="/js/search-suggest.js" defer></script>
 <script>
 const currentItem = ${JSON.stringify({
     id: `/product/${product.slug}/`,
