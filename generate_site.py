@@ -1119,6 +1119,11 @@ HTML = r"""<!DOCTYPE html>
   .nav-icon:hover { color: var(--gold); }
   .nav-search-btn { color: var(--cream); cursor: pointer; transition: color 0.3s, border-color 0.3s, background 0.3s; font: inherit; background: rgba(201,168,76,0.08); border: 1px solid var(--border); border-radius: var(--pill); padding: 0.5rem 0.95rem; gap: 0.4rem; display: inline-flex; align-items: center; justify-content: center; font-size: 1.05rem; line-height: 1; }
   .nav-search-btn:hover { color: var(--gold); border-color: var(--gold); background: rgba(201,168,76,0.14); }
+  .nav-search { display: flex; align-items: center; gap: 0.3rem; background: rgba(201,168,76,0.08); border: 1px solid var(--border); border-radius: var(--pill); padding: 0.24rem 0.24rem 0.24rem 0.75rem; flex: 0 1 220px; min-width: 140px; position: relative; }
+  .nav-search input { flex: 1; background: transparent; border: 0; color: var(--cream); font: inherit; font-size: 0.78rem; outline: none; min-width: 0; }
+  .nav-search input::placeholder { color: var(--cream-dim); }
+  .nav-search button { padding: 0.35rem 0.55rem; border-radius: var(--pill); border: 1px solid var(--border); background: transparent; color: var(--gold); cursor: pointer; font-size: 0.9rem; line-height: 1; min-height: 0; }
+  .nav-search button:hover { border-color: var(--gold); }
   .nav-kbd-hint { margin-left: 0.2rem; opacity: 0.6; font-size: 0.7rem; }
   @media (hover: none), (max-width: 780px) { .nav-kbd-hint { display: none; } }
   .nav-search-label { display: inline; font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase; font-family: 'Inter', sans-serif; }
@@ -2273,7 +2278,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
   </ul>
   <div class="nav-actions">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
-    <button class="nav-search-btn" type="button" title="Search books (press /)" aria-label="Search books" onclick="focusSiteSearch()"><span aria-hidden="true">⌕</span><span class="nav-search-label">Search</span><span class="srch-kbd nav-kbd-hint" aria-hidden="true">/</span></button>
+    <form class="nav-search" action="/" method="get" role="search"><input type="search" name="q" placeholder="Search books&hellip;" aria-label="Search books" autocomplete="off"/><button type="submit" aria-label="Search">&#128269;</button></form>
     <span class="nav-icon" title="Wishlist" onclick="openWishlistModal()">&#9825;<span id="wishBadge" style="display:none;font-size:0.55rem;background:var(--gold);color:var(--bg);border-radius:50%;width:14px;height:14px;display:none;align-items:center;justify-content:center;position:absolute;top:-4px;right:-6px;"></span></span>
     <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
     <button class="btn-nav auth-nav-btn" id="authNavBtnMain" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
