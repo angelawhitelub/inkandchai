@@ -30,6 +30,13 @@
 [functions."nimbuspost-awb-sync-background"]
   schedule = "*/15 * * * *"
 
+# Re-check + retry failed PhonePe refunds — runs every 4 hours. PhonePe fails a
+# refund when the day's refund total exceeds that day's received payments; as new
+# payments settle through the day, a re-attempt succeeds. Money-safe: never
+# re-issues without first confirming no refund is already completed/pending.
+[functions."phonepe-retry-refunds-background"]
+  schedule = "0 */4 * * *"
+
 # favicon.ico — redirect to the actual PNG; browsers cache the 301 permanently
 # (previously /favicon.ico had no file → fell through to index.html → 55 KB per hit → ~534 MB/week)
 [[redirects]]

@@ -2890,6 +2890,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
+<script src="/js/search-suggest.js" defer></script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────

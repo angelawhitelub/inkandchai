@@ -1,0 +1,184 @@
+/**
+ * Netlify Background Function: phonepe-retry-refunds
+ * POST /.netlify/functions/phonepe-retry-refunds-background
+ *
+ * Fetches the real refund status from PhonePe for every order that is owed a
+ * refund but not yet confirmed refunded, and:
+ *   - COMPLETED  → marks the order 'refunded' (+ emails the customer)
+ *   - PENDING    → leaves it (PhonePe still processing)
+ *   - FAILED/none→ RE-ISSUES the refund with a fresh merchantRefundId
+ *
+ * Why: PhonePe fails a refund if, on a given settlement date, the refund amount
+ * exceeds the payments the merchant received that day (balance policy). The
+ * nightly batch of auto-cancelled (10-day-no-pickup) orders trips this. Once new
+ * payments settle, a re-attempt succeeds — so this runs on a schedule and can be
+ * triggered from the admin panel.
+ *
+ * MONEY-SAFE: it NEVER re-issues without first confirming (via the stored
+ * refund_id status, or the order-status API) that no refund is already
+ * completed or pending — so a customer is never double-refunded.
+ *
+ * Runs as a background function (many orders × PhonePe round-trips). Also
+ * scheduled in netlify.toml. Admin can POST to trigger on demand.
+ */
+
+const { createClient } = require('@supabase/supabase-js');
+const { sendEmail } = require('./utils/email');
+const { requireAdmin } = require('./utils/admin-auth');
+const {
+  getRefundStatus, getOrderStatus, refundStateFromOrder, issueRefund,
+} = require('./utils/phonepe-core');
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token, X-Admin-Key',
+  'Content-Type': 'application/json',
+};
+
+// Order states that mean "PhonePe money is still with us and a refund is owed".
+const OWED_STATUSES = ['refund_pending', 'refund_failed', 'cancelled', 'rto', 'undelivered', 'lost'];
+const MAX_ATTEMPTS = 10;   // stop hammering a genuinely un-refundable order
+
+function isPhonePePayment(pid) {
+  const p = String(pid || '');
+  return p && !p.startsWith('pay_');   // OM…/T… = PhonePe; pay_… = Razorpay
+}
+
+function refundEmailHtml(order, amtPaise) {
+  const amt = `₹${(amtPaise / 100).toLocaleString('en-IN')}`;
+  return `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#2a2018;background:#faf7f2;">
+    <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;margin:0 0 12px;">Ink &amp; Chai</h2>
+    <p>Hi ${(order.customer_name || 'there').split(' ')[0]},</p>
+    <p>Your refund of <strong>${amt}</strong> for order <strong>${order.razorpay_order_id || order.id}</strong> has been processed via PhonePe and will appear in your original payment method within <strong>5–7 business days</strong>.</p>
+    <p style="font-size:12px;color:#8a7a62;margin-top:24px;">Ink &amp; Chai · inkandchai.in</p>
+  </div>`;
+}
+
+async function processOrder(supabase, order) {
+  const displayId = order.razorpay_order_id || order.id;
+  const amountPaise = Number(order.amount_paise) || 0;
+  if (amountPaise <= 0) return { order: displayId, result: 'skip_no_amount' };
+
+  // ── 1. Establish the TRUE current refund state (money-safe guard) ──────────
+  let trueState = null;                       // COMPLETED | PENDING | FAILED | null
+  if (order.refund_id) {
+    try {
+      const s = await getRefundStatus(order.refund_id);
+      if (s.ok || s.state) trueState = s.state || null;
+    } catch (e) { /* fall through to order-status */ }
+  }
+  if (!trueState) {
+    // No stored refund id (legacy) or status lookup failed — ask the order API.
+    try {
+      const os = await getOrderStatus(displayId);
+      if (os.ok) trueState = refundStateFromOrder(os.data);
+    } catch (e) { /* trueState stays null */ }
+  }
+
+  // ── 2. Act on the confirmed state ─────────────────────────────────────────
+  if (trueState === 'COMPLETED') {
+    await supabase.from('orders').update({
+      status: 'refunded', refund_state: 'COMPLETED', refund_updated_at: new Date().toISOString(),
+    }).eq('id', order.id);
+    if (order.customer_email && order.refund_state !== 'COMPLETED') {
+      await sendEmail({ to: order.customer_email, subject: `Refund processed — ${displayId}`, html: refundEmailHtml(order, amountPaise) }).catch(() => {});
+    }
+    return { order: displayId, result: 'reconciled_completed' };
+  }
+  if (trueState === 'PENDING') {
+    await supabase.from('orders').update({ refund_state: 'PENDING', refund_updated_at: new Date().toISOString() }).eq('id', order.id);
+    return { order: displayId, result: 'still_pending' };
+  }
+
+  // trueState is FAILED or null (no refund exists / all failed) → safe to re-issue.
+  const attempts = Number(order.refund_attempts) || 0;
+  if (attempts >= MAX_ATTEMPTS) return { order: displayId, result: 'max_attempts' };
+
+  const merchantRefundId = `REFUND-${displayId}-${Date.now()}`;
+  let res;
+  try {
+    res = await issueRefund({ merchantRefundId, originalMerchantOrderId: displayId, amountPaise });
+  } catch (e) {
+    await supabase.from('orders').update({
+      status: 'refund_failed', refund_state: 'FAILED', refund_id: merchantRefundId,
+      refund_attempts: attempts + 1, refund_last_error: String(e.message).slice(0, 300),
+      refund_updated_at: new Date().toISOString(),
+    }).eq('id', order.id);
+    return { order: displayId, result: 'retry_error', error: e.message };
+  }
+
+  const st = res.state;
+  if (res.ok && st && st !== 'FAILED') {
+    // Accepted (PENDING/COMPLETED). Persist the new refund id so the next run
+    // can check it precisely, and reflect status.
+    const newStatus = st === 'COMPLETED' ? 'refunded' : 'refund_pending';
+    await supabase.from('orders').update({
+      status: newStatus, refund_id: merchantRefundId, refund_state: st,
+      refund_attempts: attempts + 1, refund_last_error: null,
+      refund_updated_at: new Date().toISOString(),
+    }).eq('id', order.id);
+    if (newStatus === 'refunded' && order.customer_email) {
+      await sendEmail({ to: order.customer_email, subject: `Refund processed — ${displayId}`, html: refundEmailHtml(order, amountPaise) }).catch(() => {});
+    }
+    return { order: displayId, result: st === 'COMPLETED' ? 'retried_completed' : 'retried_pending' };
+  }
+
+  // Still failing (balance likely still short) — record and leave for next run.
+  const errMsg = res.data?.message || res.data?.error || res.data?.code || `HTTP ${res.status}`;
+  await supabase.from('orders').update({
+    status: 'refund_failed', refund_state: 'FAILED', refund_id: merchantRefundId,
+    refund_attempts: attempts + 1, refund_last_error: String(errMsg).slice(0, 300),
+    refund_updated_at: new Date().toISOString(),
+  }).eq('id', order.id);
+  return { order: displayId, result: 'retry_failed', error: errMsg };
+}
+
+exports.handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
+
+  // Manual trigger from the admin panel is a POST and must be an authed admin.
+  // The scheduled invocation is NOT a POST, so it skips this check (same pattern
+  // as nimbuspost-awb-sync-background / auto-recover-carts).
+  if (event.httpMethod === 'POST') {
+    const block = requireAdmin(event, CORS); if (block) return block;
+  }
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Supabase env vars missing' }) };
+  }
+
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  try {
+    const sinceIso = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(); // last 45 days
+    const { data: rows, error } = await supabase
+      .from('orders')
+      .select('*')
+      .in('status', OWED_STATUSES)
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (error) throw error;
+
+    // Only PhonePe-paid orders (Razorpay refunds go through the Razorpay path).
+    const candidates = (rows || []).filter(o => isPhonePePayment(o.razorpay_payment_id));
+
+    const summary = { scanned: candidates.length, reconciled_completed: 0, retried_completed: 0, retried_pending: 0, retry_failed: 0, retry_error: 0, still_pending: 0, max_attempts: 0, skip_no_amount: 0 };
+    const details = [];
+    for (const order of candidates) {
+      let r;
+      try { r = await processOrder(supabase, order); }
+      catch (e) { r = { order: order.razorpay_order_id || order.id, result: 'error', error: e.message }; }
+      if (summary[r.result] != null) summary[r.result]++;
+      details.push(r);
+      await new Promise(res => setTimeout(res, 120)); // gentle pacing vs PhonePe
+    }
+
+    console.log('[phonepe-retry-refunds] summary', JSON.stringify(summary));
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, summary, details }) };
+  } catch (err) {
+    console.error('[phonepe-retry-refunds] fatal:', err.message);
+    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
+  }
+};

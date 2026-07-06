@@ -135,7 +135,7 @@ exports.handler = async (event) => {
     }
 
     const REFUNDABLE = ['paid', 'confirmed', 'shipped', 'out_for_delivery',
-      'delivered', 'refund_pending', 'partially_refunded',
+      'delivered', 'refund_pending', 'refund_failed', 'partially_refunded',
       'cancelled', 'rto', 'undelivered', 'lost'];
     if (!REFUNDABLE.includes(order.status)) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Order status is '${order.status}' — not eligible for refund.` }) };
@@ -263,18 +263,31 @@ exports.handler = async (event) => {
         }
       }
 
-      throw new Error(
-        refundData.message ||
-        refundData.error ||
-        refundData.errorCode ||
-        `PhonePe refund API returned HTTP ${refundRes.status}: ${JSON.stringify(refundData).slice(0, 200)}`
-      );
+      const failMsg = refundData.message || refundData.error || refundData.errorCode ||
+        `PhonePe refund API returned HTTP ${refundRes.status}: ${JSON.stringify(refundData).slice(0, 200)}`;
+      // Record the failure so the scheduled retry job re-attempts it later.
+      await supabase.from('orders').update({
+        status: 'refund_failed', refund_id: merchantRefundId, refund_state: 'FAILED',
+        refund_attempts: (Number(order.refund_attempts) || 0) + 1,
+        refund_last_error: String(failMsg).slice(0, 300),
+        refund_updated_at: new Date().toISOString(),
+      }).eq('id', order.id).then(() => {}, () => {});
+      throw new Error(failMsg);
     }
 
     const refundState = String(refundData.state || refundData.status || '').toUpperCase();
     const phonePeRefundId = refundData.refundId || null;
     // PhonePe typically returns PENDING first; webhook/status API will move it to COMPLETED later.
     if (refundState === 'FAILED') {
+      // Mark it refund_failed + record the id/error so the scheduled retry job
+      // re-attempts it once the merchant balance replenishes (PhonePe fails a
+      // refund when the day's refunds exceed the day's received payments).
+      await supabase.from('orders').update({
+        status: 'refund_failed', refund_id: merchantRefundId, refund_state: 'FAILED',
+        refund_attempts: (Number(order.refund_attempts) || 0) + 1,
+        refund_last_error: String(refundData.message || 'PhonePe rejected the refund').slice(0, 300),
+        refund_updated_at: new Date().toISOString(),
+      }).eq('id', order.id).then(() => {}, () => {});
       throw new Error('PhonePe rejected the refund: ' + (refundData.message || JSON.stringify(refundData).slice(0, 200)));
     }
 
@@ -283,7 +296,13 @@ exports.handler = async (event) => {
       : 'refund_pending';
     await supabase
       .from('orders')
-      .update({ status: nextStatus, razorpay_payment_id: paymentId })
+      .update({
+        status: nextStatus, razorpay_payment_id: paymentId,
+        // Persist the refund id + state so the scheduled retry job can re-check
+        // this refund precisely (a PENDING refund can fail asynchronously later).
+        refund_id: merchantRefundId, refund_state: refundState || 'PENDING',
+        refund_updated_at: new Date().toISOString(),
+      })
       .eq('id', order.id);
 
     // Only send the "processed" email once PhonePe has actually completed the refund.

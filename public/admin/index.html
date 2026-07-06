@@ -514,6 +514,9 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="btn-outline" onclick="bulkReconcilePhonePe(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(95,37,159,0.5);color:#a275d6;" title="Re-check every order stuck on 'pending_phonepe' from the last 30 days">
       🔄 Re-check All Pending PhonePe
     </button>
+    <button class="btn-outline" onclick="retryFailedRefunds(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(214,120,60,0.6);color:#e0904a;" title="Re-check PhonePe refund status for every order owed a refund and re-attempt any that failed (money-safe: never double-refunds). Also runs automatically every 4 hours.">
+      🔁 Retry Failed Refunds
+    </button>
     <button class="btn-outline" onclick="reconcileShippedOrders(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Check NimbusPost for real delivery status of all Shipped + Out for Delivery orders — fixes stuck statuses">
       📦 Sync Shipped &amp; OFD → Delivered
     </button>
@@ -3627,6 +3630,35 @@ async function bulkReconcilePhonePe(btn) {
     fetchOrders(true);
   } catch (err) {
     alert('Bulk re-check failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// ── Retry failed PhonePe refunds ───────────────────────────────────────────
+async function retryFailedRefunds(btn) {
+  if (!confirm('Re-check PhonePe refund status for every order owed a refund and re-attempt any that FAILED?\n\nMoney-safe: an order is never re-refunded if PhonePe already shows the refund completed or pending.\n\n(This also runs automatically every 4 hours.)')) return;
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Retrying…'; }
+  try {
+    const res = await fetch('/.netlify/functions/phonepe-retry-refunds-background', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    });
+    // Background functions return 202 with an empty body — that's success.
+    let data = {}; try { data = await res.json(); } catch (e) {}
+    if (res.status === 202 || (data && data.success === undefined && res.ok)) {
+      alert('✅ Refund retry started in the background.\n\nPhonePe refunds are being re-checked and failed ones re-attempted. Reload orders in a minute to see updated statuses.');
+    } else if (data.summary) {
+      const s = data.summary;
+      alert(`Refund retry complete:\n\n  scanned: ${s.scanned}\n  completed now: ${(s.reconciled_completed||0)+(s.retried_completed||0)}\n  re-attempted (pending): ${s.retried_pending||0}\n  still failing: ${(s.retry_failed||0)+(s.retry_error||0)}\n  still pending at PhonePe: ${s.still_pending||0}`);
+    } else if (data.error) {
+      throw new Error(data.error);
+    } else {
+      alert('✅ Refund retry triggered. Reload orders in a minute to see updated statuses.');
+    }
+    setTimeout(() => fetchOrders(true), 20000);
+  } catch (err) {
+    alert('Retry failed to start: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }

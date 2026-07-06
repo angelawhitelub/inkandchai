@@ -171,12 +171,17 @@ exports.handler = async (event) => {
   }
 
   let dbStatus = null;
-  if (eventType.includes('completed') || state === 'COMPLETED' || state === 'PAID' || state === 'SUCCESS') {
+  // Refund events FIRST — otherwise a refund.completed (state COMPLETED) would
+  // wrongly hit the payment branch and mark the order 'paid', and a
+  // refund.failed would wrongly mark it 'cancelled'.
+  if (eventType.includes('refund')) {
+    if (state === 'COMPLETED' || state === 'SUCCESS' || state === 'CONFIRMED') dbStatus = 'refunded';
+    else if (state === 'FAILED' || state === 'DECLINED') dbStatus = 'refund_failed';
+    else dbStatus = 'refund_pending';
+  } else if (eventType.includes('completed') || state === 'COMPLETED' || state === 'PAID' || state === 'SUCCESS') {
     dbStatus = 'paid';
   } else if (eventType.includes('failed') || state === 'FAILED' || state === 'DECLINED') {
     dbStatus = 'cancelled';
-  } else if (eventType.includes('refund')) {
-    dbStatus = 'refunded';
   } else {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ ignored: 'event-not-handled', eventType, state }) };
   }
