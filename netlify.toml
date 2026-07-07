@@ -43,6 +43,15 @@
 [functions."bot-order-followup-background"]
   schedule = "*/2 * * * *"
 
+# Route Supabase Storage image requests through our Netlify-cached proxy so
+# each image is fetched from Supabase at most once per 30 days per edge. Cuts
+# the "cached egress" quota drain caused by admin-created product covers.
+[[redirects]]
+  from   = "/spimg/*"
+  to     = "/.netlify/functions/img-proxy"
+  status = 200
+  force  = true
+
 # favicon.ico — redirect to the actual PNG; browsers cache the 301 permanently
 # (previously /favicon.ico had no file → fell through to index.html → 55 KB per hit → ~534 MB/week)
 [[redirects]]

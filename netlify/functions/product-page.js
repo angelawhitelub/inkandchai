@@ -18,9 +18,26 @@ function shortDescription(product) {
   return String(product.meta_description || product.description || fallback).replace(/\s+/g, ' ').slice(0, 160);
 }
 
+// Route Supabase Storage image URLs through our Netlify image proxy so
+// Supabase egress isn't hit every time a crawler / Google Merchant / visitor
+// loads a product page. Anything else (local /images, external CDNs) is left
+// untouched. See netlify/functions/img-proxy.js for the cache policy.
+function proxifySupabaseImage(url) {
+  try {
+    const supaHost = process.env.SUPABASE_URL ? new URL(process.env.SUPABASE_URL).host : null;
+    if (!supaHost) return url;
+    const u = new URL(url);
+    if (u.host !== supaHost) return url;
+    if (!u.pathname.startsWith('/storage/v1/object/public/')) return url;
+    const key = u.pathname.replace('/storage/v1/object/public/', '');
+    return `https://inkandchai.in/spimg/${key}`;
+  } catch { return url; }
+}
+
 function absoluteImage(url) {
   const image = String(url || '/images/og-default.jpg');
-  if (image.startsWith('http') || image.startsWith('data:')) return image;
+  if (image.startsWith('data:')) return image;
+  if (image.startsWith('http')) return proxifySupabaseImage(image);
   return `https://inkandchai.in${image.startsWith('/') ? image : `/${image}`}`;
 }
 
