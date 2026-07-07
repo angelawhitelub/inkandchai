@@ -1692,18 +1692,26 @@
   function cancelOrderBlock(order) {
     const status = String(order.status || '').toLowerCase();
 
-    // Hard block: once shipped/dispatched, no cancellation under any circumstance
-    const SHIPPED_STATUSES = ['shipped', 'out_for_delivery', 'delivered', 'cancelled',
+    // Hard block: once shipped/dispatched, no cancellation under any circumstance.
+    // For COD orders this is the ONLY gate — the customer can cancel right up
+    // until NimbusPost reports the shipment as picked up / in-transit (which
+    // our webhook maps to status='shipped').
+    const SHIPPED_STATUSES = ['shipped', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled',
                                'refunded', 'refund_pending', 'rto', 'undelivered', 'lost'];
     if (SHIPPED_STATUSES.includes(status)) return '';
-
-    // Also block if a tracking ID is already assigned — courier has collected the parcel
-    if (order.tracking_id) return '';
 
     const isCOD      = ['cod_pending', 'partial_cod_pending', 'confirmed'].includes(status);
     const isPrepaid  = status === 'paid';
 
     if (!isCOD && !isPrepaid) return '';
+
+    // Prepaid only: an assigned tracking_id means the courier has the parcel —
+    // even if the webhook hasn't fired "shipped" yet, refunding a prepaid order
+    // after handover is a support problem. Keep this gate for prepaid.
+    // For COD we deliberately DON'T check tracking_id — an AWB alone doesn't
+    // mean the parcel has moved, and the customer should keep the ability to
+    // cancel until NP confirms in-transit.
+    if (isPrepaid && order.tracking_id) return '';
 
     if (isPrepaid) {
       const createdAt = order.created_at ? new Date(order.created_at).getTime() : 0;

@@ -148,9 +148,13 @@ exports.handler = async (event) => {
     return { statusCode: 422, headers: CORS, body: JSON.stringify({ error: msg }) };
   }
 
-  // Extra guard: if a tracking ID is already assigned, courier has picked it up —
-  // block cancellation regardless of what the status field says.
-  if (order.tracking_id) {
+  // Extra guard: for PREPAID orders, an assigned tracking_id means the courier
+  // has the parcel — block cancellation regardless of status. COD orders are
+  // exempt: the customer can cancel right up until NimbusPost reports the
+  // shipment as picked up (status → 'shipped'), even if an AWB was pre-assigned
+  // via the panel push. FINAL_STATUSES above already stops post-pickup cancels.
+  const isPrepaidHere = status === 'paid';
+  if (isPrepaidHere && order.tracking_id) {
     return {
       statusCode: 422, headers: CORS,
       body: JSON.stringify({ error: 'This order has already been dispatched (AWB: ' + order.tracking_id + '). Cancellation is not possible once a courier has picked it up.' }),
