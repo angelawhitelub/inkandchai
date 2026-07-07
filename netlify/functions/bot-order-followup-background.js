@@ -22,6 +22,21 @@ const PHONE_ID = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VER  = 'v20.0';
 const BATCH    = 25;
 
+// ── Razorpay payment-link status polling ────────────────────────────────────
+// GET /v1/payment_links/:id returns { status: 'created'|'partially_paid'|'paid'|'cancelled'|'expired', ... }
+async function fetchRazorpayLinkStatus(plinkId) {
+  const keyId     = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) throw new Error('Razorpay credentials not configured');
+  const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+  const res = await fetch(`https://api.razorpay.com/v1/payment_links/${plinkId}`, {
+    headers: { 'Authorization': `Basic ${auth}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error?.description || `Razorpay ${res.status}`);
+  return data;
+}
+
 async function sendReply(to, text) {
   const token = process.env.WHATSAPP_TOKEN;
   if (!token) throw new Error('WHATSAPP_TOKEN not set');
@@ -59,9 +74,66 @@ function buildMessage(row) {
   );
 }
 
+// ── Poll unpaid prepaid orders, mark paid and notify ─────────────────────────
+async function pollPaymentStatuses(db) {
+  // Look back at the last 24 hours — enough to catch any pending pay-later.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: rows, error } = await db.from('bot_order_requests')
+    .select('id, order_id, customer_phone, customer_name, amount_paise, razorpay_payment_link_id, payment_status')
+    .eq('payment_mode', 'prepaid')
+    .not('razorpay_payment_link_id', 'is', null)
+    .in('payment_status', ['created', 'partially_paid'])
+    .gt('created_at', since)
+    .limit(BATCH);
+  if (error) { console.error('[payment-poll] query:', error.message); return { paid: 0, checked: 0 }; }
+  if (!rows?.length) return { paid: 0, checked: 0 };
+
+  let paid = 0;
+  for (const row of rows) {
+    try {
+      const link = await fetchRazorpayLinkStatus(row.razorpay_payment_link_id);
+      const status = link.status;
+      if (status === 'paid') {
+        await db.from('bot_order_requests').update({
+          payment_status: 'paid',
+          paid_at:        new Date().toISOString(),
+        }).eq('id', row.id);
+        paid++;
+        // Congratulate the customer (best-effort, don't fail the batch)
+        try {
+          await sendReply(row.customer_phone,
+            `✅ Payment received for order ${row.order_id}! Thank you 💚 We're dispatching your books shortly — you'll get a tracking link on WhatsApp once the courier picks it up. 📚`);
+        } catch (e) { console.error('[payment-poll] notify customer:', e.message); }
+        // Ping the owner
+        const ownerPhone = process.env.STORE_OWNER_PHONE;
+        if (ownerPhone) {
+          try {
+            await sendReply(ownerPhone,
+              `💰 Payment received (WhatsApp bot order)\n🆔 ${row.order_id}\n👤 ${row.customer_name}\n📞 ${row.customer_phone}\n💳 ₹${Math.round((row.amount_paise || 0) / 100)}`);
+          } catch (e) { console.error('[payment-poll] notify owner:', e.message); }
+        }
+      } else if (status === 'expired' || status === 'cancelled') {
+        await db.from('bot_order_requests').update({ payment_status: status }).eq('id', row.id);
+      }
+    } catch (e) {
+      console.error(`[payment-poll] ${row.order_id}:`, e.message);
+    }
+  }
+  return { paid, checked: rows.length };
+}
+
 exports.handler = async () => {
   const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const nowIso = new Date().toISOString();
+
+  // Payment polling runs on every tick — separate from the confirmation ping
+  // so a payment gets marked as soon as we notice it.
+  let paymentResult = { paid: 0, checked: 0 };
+  try { paymentResult = await pollPaymentStatuses(db); }
+  catch (e) { console.error('[payment-poll] batch:', e.message); }
+  if (paymentResult.checked) {
+    console.log(`[payment-poll] checked=${paymentResult.checked} paid=${paymentResult.paid}`);
+  }
 
   const { data: rows, error } = await db
     .from('bot_order_requests')
@@ -80,7 +152,7 @@ exports.handler = async () => {
   }
   if (!rows?.length) {
     console.log('[followup] no due rows');
-    return { statusCode: 200, body: 'no-op' };
+    return { statusCode: 200, body: JSON.stringify({ followup: 'no-op', ...paymentResult }) };
   }
 
   console.log(`[followup] sending ${rows.length} confirmation pings`);
@@ -105,5 +177,5 @@ exports.handler = async () => {
       failed++;
     }
   }
-  return { statusCode: 200, body: JSON.stringify({ sent, failed }) };
+  return { statusCode: 200, body: JSON.stringify({ sent, failed, ...paymentResult }) };
 };

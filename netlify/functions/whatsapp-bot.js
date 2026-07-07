@@ -23,6 +23,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
+const { priceBooksList } = require('./utils/book-lookup');
 
 const PHONE_ID   = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VER    = 'v20.0';
@@ -135,10 +136,11 @@ PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book r
 - NEVER invent, guess, or use placeholder values like "N/A", "book", "Customer", "Delhi", or a date. If you don't have a REAL book title, a REAL name, a REAL full address, AND a real payment mode choice, DO NOT call the tool — ask the customer for the missing real detail instead.
 - The MOMENT you genuinely have all four real values, immediately call the submit_order_request tool. Do not ask further questions. Do not re-verify.
 - Do NOT claim the order is placed until the tool has actually been called and returned success.
-- After the tool succeeds it returns an order_id (format IC-W-YYYYMMDD-XXXXX), a payment_mode, and (if prepaid) a payment_link. Share this with the customer:
-    • For COD: "Got it! Your COD order is placed ✅ Your order ID is <order_id>. Our team will confirm shortly on WhatsApp and dispatch it soon 📚"
-    • For prepaid: "Got it! Your order is placed ✅ Your order ID is <order_id>.\\n\\nTap here to pay securely: <payment_link>\\n\\nAs soon as we receive your payment we'll dispatch it — usually same-day 📚"
-- Keep the confirmation short and warm. Do NOT invent a payment link if the tool did not return one.`;
+- After the tool succeeds it returns an order_id (format IC-W-YYYYMMDD-XXXXX), a payment_mode, a total_rs (₹ total including shipping), a subtotal_rs (books only), a shipping_rs, and (if prepaid) a payment_link. Always tell the customer the TOTAL AMOUNT they need to pay. Share this with the customer:
+    • For COD: "Got it! Your COD order is placed ✅\\nOrder ID: <order_id>\\nTotal: ₹<total_rs> (books ₹<subtotal_rs> + shipping ₹<shipping_rs>)\\nPay ₹<total_rs> in cash when the courier delivers. We'll dispatch it soon 📚"
+    • For prepaid: "Got it! Your order is placed ✅\\nOrder ID: <order_id>\\nAmount to pay: ₹<total_rs> (books ₹<subtotal_rs> + shipping ₹<shipping_rs>)\\n\\nTap here to pay securely: <payment_link>\\n\\nAs soon as we receive your payment we'll dispatch it — usually same-day 📚"
+- If shipping_rs is 0 (free shipping over ₹499), skip the "+ shipping" line and just say "Total: ₹<total_rs>".
+- Keep the confirmation short and warm. Do NOT invent a payment link, total, or amount if the tool did not return one.`;
 
 // ── Per-user conversation memory (in-memory cache + Supabase persistence) ────
 const conversationHistory = new Map(); // phone → [{role, content}]
@@ -235,6 +237,44 @@ async function lookupOrdersByPhone(phone) {
     if (error) console.error('lookupOrdersByPhone error:', error.message);
     return data || [];
   } catch (e) { console.error('lookupOrdersByPhone exception:', e.message); return []; }
+}
+
+// ── Customer memory — repeat WhatsApp shoppers don't re-share name/address ────
+// Cache per invocation so the model's tool-call and the outer handler share
+// the same read. Written by upsertBotCustomer after a successful order.
+async function getBotCustomer(phone) {
+  try {
+    const last10 = String(phone).replace(/\D/g, '').slice(-10);
+    if (!last10) return null;
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data } = await db.from('bot_customers')
+      .select('customer_name, address, order_count, last_order_id')
+      .eq('customer_phone', last10)
+      .maybeSingle();
+    return data || null;
+  } catch (e) { console.error('getBotCustomer:', e.message); return null; }
+}
+
+async function upsertBotCustomer(phone, { customer_name, address, order_id }) {
+  try {
+    const last10 = String(phone).replace(/\D/g, '').slice(-10);
+    if (!last10) return;
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    // Increment order_count atomically via read-modify-write. Race here is
+    // harmless — worst case the count is off by one and self-corrects on the
+    // next order. Not worth an RPC for a display-only counter.
+    const { data: existing } = await db.from('bot_customers')
+      .select('order_count').eq('customer_phone', last10).maybeSingle();
+    const next = ((existing?.order_count) || 0) + 1;
+    await db.from('bot_customers').upsert({
+      customer_phone: last10,
+      customer_name,
+      address,
+      last_order_id: order_id,
+      order_count:   next,
+      updated_at:    new Date().toISOString(),
+    }, { onConflict: 'customer_phone' });
+  } catch (e) { console.error('upsertBotCustomer:', e.message); }
 }
 
 // ── Send a plain text WhatsApp message ───────────────────────────────────────
@@ -412,6 +452,16 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
   if (extraInstructions) {
     systemContent += '\n\nSTORE-SPECIFIC INSTRUCTIONS & FAQ (set by the Ink & Chai team — follow these):\n' + extraInstructions;
   }
+  // If we already know this customer from a prior order, tell the model — so
+  // it doesn't ask for name/address again on their next purchase.
+  const known = await getBotCustomer(phone);
+  if (known && (known.customer_name || known.address)) {
+    systemContent += '\n\nRETURNING CUSTOMER (do NOT re-ask for these — they are already on file):\n'
+      + `- Name: ${known.customer_name || '(missing)'}\n`
+      + `- Delivery address: ${known.address || '(missing)'}\n`
+      + `- Previous orders: ${known.order_count || 0}\n`
+      + 'When they want to place a new order, ONLY ask for the book title(s) and payment mode (COD or prepaid). Confirm the delivery address once ("Shipping to <address> — same address?"), then place the order. Do NOT re-collect name or address unless the customer explicitly says the address has changed.';
+  }
   if (extraContext) {
     systemContent += '\n\nORDER CONTEXT FOR THIS CONVERSATION:\n' + extraContext;
   }
@@ -447,12 +497,11 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
   return reply;
 }
 
-// Rough amount used when we generate a Razorpay Payment Link for a WhatsApp
-// bot order. We don't know the real per-book price until the admin pushes it
-// through the panel, so we charge a nominal placeholder — admin can void +
-// regenerate the link with the correct amount if needed. Keep this in sync with
-// the panel's default when it converts the request to a real order.
-const BOT_ORDER_PLACEHOLDER_AMOUNT_PAISE = 39900; // ₹399 — typical single-book prepaid
+// Per-book fallback price used when a title can't be matched against the
+// catalogue. Kept close to the typical single-book price so a payment link
+// still lands the right amount; the owner is notified about unmatched titles
+// so they can correct it manually.
+const UNMATCHED_BOOK_FALLBACK_RS = 349;
 
 // ── Persist a WhatsApp book-order request + notify the store owner ────────────
 async function submitOrderRequest(phone, args) {
@@ -496,16 +545,29 @@ async function submitOrderRequest(phone, args) {
   const randPart = Math.random().toString(36).slice(2, 7).toUpperCase();
   const orderId  = `IC-W-${datePart}-${randPart}`;
 
+  // Price the customer's book list against the live catalogue. Sum + shipping
+  // (₹40 flat under ₹499, free above) — matches the website's rule so the
+  // customer never sees a different total on WhatsApp vs. the site.
+  let pricing;
+  try {
+    pricing = await priceBooksList(books, UNMATCHED_BOOK_FALLBACK_RS);
+  } catch (e) {
+    console.error('submitOrderRequest priceBooksList:', e.message);
+    // Fall back so a lookup failure doesn't block the order.
+    pricing = { items: [], subtotalRs: UNMATCHED_BOOK_FALLBACK_RS, shippingRs: 40,
+                totalRs: UNMATCHED_BOOK_FALLBACK_RS + 40,
+                totalPaise: (UNMATCHED_BOOK_FALLBACK_RS + 40) * 100,
+                unmatched: [books] };
+  }
+
   // Prepaid: generate a Razorpay Payment Link the customer can pay from WhatsApp.
-  // Amount is a placeholder — admin can regenerate with the real total when
-  // converting the request to a real order in the panel.
   let paymentLink = '';
   let paymentLinkId = '';
   let paymentLinkError = '';
   if (paymentMode === 'prepaid') {
     try {
       const link = await createRazorpayPaymentLink({
-        amountPaise:   BOT_ORDER_PLACEHOLDER_AMOUNT_PAISE,
+        amountPaise:   pricing.totalPaise,
         description:   `Ink & Chai — ${books.slice(0, 100)}`,
         customerName,
         customerPhone: last10,
@@ -538,7 +600,7 @@ async function submitOrderRequest(phone, args) {
         books,
         notes,
         payment_mode:            paymentMode,
-        amount_paise:            paymentMode === 'prepaid' ? BOT_ORDER_PLACEHOLDER_AMOUNT_PAISE : null,
+        amount_paise:            pricing.totalPaise,
         payment_link:            paymentLink || null,
         razorpay_payment_link_id: paymentLinkId || null,
         payment_status:          paymentMode === 'prepaid' ? (paymentLink ? 'created' : 'link_failed') : null,
@@ -552,6 +614,9 @@ async function submitOrderRequest(phone, args) {
       console.error('submitOrderRequest db exception:', dbErr.message);
     }
 
+    // Save customer for next time so we don't re-ask their name/address.
+    await upsertBotCustomer(phone, { customer_name: customerName, address, order_id: orderId });
+
     // Always notify the store owner on WhatsApp so they can action it immediately,
     // even if the DB insert failed.
     const ownerPhone = process.env.STORE_OWNER_PHONE;
@@ -559,22 +624,29 @@ async function submitOrderRequest(phone, args) {
       const modeLabel = paymentMode === 'prepaid'
         ? (paymentLink ? `💳 Prepaid — ${paymentLink}` : `💳 Prepaid — ⚠️ link failed: ${paymentLinkError || 'unknown'}`)
         : '💵 COD';
+      const priceLine = `💰 Total ₹${pricing.totalRs} (books ₹${pricing.subtotalRs} + ship ₹${pricing.shippingRs})`;
+      const unmatchedLine = pricing.unmatched.length
+        ? `\n⚠️ Titles not in catalogue (verify price): ${pricing.unmatched.join('; ')}`
+        : '';
       await sendReply(ownerPhone,
-        `🆕 New book order request (WhatsApp bot)${saved ? '' : ' ⚠️ (not saved to panel — check bot_order_requests table)'}\n\n🆔 ${orderId}\n👤 ${customerName}\n📞 ${last10}\n📚 ${books}\n📍 ${address}\n${modeLabel}${notes ? `\n📝 ${notes}` : ''}\n\nOpen admin panel → Book Requests → Push to Orders.`
+        `🆕 New book order request (WhatsApp bot)${saved ? '' : ' ⚠️ (not saved to panel — check bot_order_requests table)'}\n\n🆔 ${orderId}\n👤 ${customerName}\n📞 ${last10}\n📚 ${books}\n📍 ${address}\n${priceLine}${unmatchedLine}\n${modeLabel}${notes ? `\n📝 ${notes}` : ''}\n\nOpen admin panel → Book Requests → Push to Orders.`
       );
     }
-    console.log(`[ORDER-REQUEST] ${orderId} ${last10} -> ${books.slice(0, 60)} mode=${paymentMode} (saved=${saved})`);
+    console.log(`[ORDER-REQUEST] ${orderId} ${last10} -> ${books.slice(0, 60)} mode=${paymentMode} total=₹${pricing.totalRs} (saved=${saved})`);
     return {
       ok: true,
       order_id: orderId,
       payment_mode: paymentMode,
       payment_link: paymentLink || null,
       payment_link_error: paymentLinkError || null,
+      subtotal_rs: pricing.subtotalRs,
+      shipping_rs: pricing.shippingRs,
+      total_rs:    pricing.totalRs,
       message: paymentMode === 'prepaid'
         ? (paymentLink
-            ? 'Prepaid order request saved. Share the payment_link with the customer verbatim.'
-            : 'Prepaid order saved but payment link could not be generated — tell the customer the team will send the payment link shortly.')
-        : 'COD order request saved.',
+            ? `Prepaid order request saved. Total: ₹${pricing.totalRs}. Share the payment_link and total_rs with the customer verbatim.`
+            : `Prepaid order saved (₹${pricing.totalRs}) but payment link could not be generated — tell the customer the team will send the payment link shortly.`)
+        : `COD order request saved. Total: ₹${pricing.totalRs} to pay on delivery.`,
       saved,
     };
   } catch (e) {
