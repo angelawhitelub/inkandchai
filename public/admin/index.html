@@ -994,9 +994,7 @@ async function loadBotSettings() {
   const msg = document.getElementById('botSettingsMsg');
   if (msg) msg.textContent = 'Loading…';
   try {
-    const res = await fetch('/.netlify/functions/bot-settings', {
-      headers: { 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' },
-    });
+    const res = await adminFetch('/.netlify/functions/bot-settings');
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     if (ta) ta.value = data.extra_instructions || '';
@@ -1016,9 +1014,9 @@ async function saveBotSettings(btn) {
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   if (msg) { msg.style.color = 'var(--cream-dim,#8a7a62)'; msg.textContent = 'Saving…'; }
   try {
-    const res = await fetch('/.netlify/functions/bot-settings', {
+    const res = await adminFetch('/.netlify/functions/bot-settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ extra_instructions: ta.value }),
     });
     const data = await res.json();
