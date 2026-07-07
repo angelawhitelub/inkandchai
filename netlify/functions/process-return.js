@@ -22,7 +22,6 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
-const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 const STORE_NAME = 'Ink and Chai';
@@ -228,11 +227,18 @@ exports.handler = async (event) => {
       }) };
     }
 
-    // Push to NimbusPost. Default = create reverse pickup WITH auto AWB.
-    // action 'push_no_awb' = create the reverse shipment in the NimbusPost panel
-    // WITHOUT auto-pickup/AWB (mirrors the orders "Push to NimbusPost Panel (No
-    // AWB)" flow) — the admin assigns the courier/AWB later inside NimbusPost.
-    const noAwb = action === 'push_no_awb';
+    // Push to NimbusPost. Both actions ('push_no_awb' and default) create a
+    // REVERSE SHIPMENT on the Partners /v1/shipments endpoint with
+    // request_auto_pickup=yes. Reasoning:
+    //  - The Orders API (ship.nimbuspost.com/api/orders/create) has no working
+    //    "reverse" flag — orders_type/type get ignored and the order shows up as
+    //    forward in the panel.
+    //  - The Shipments API's payment_type='reverse' DOES mark it as reverse in
+    //    the panel — but a courier-less reverse shipment gets auto-cancelled on
+    //    creation. Auto-pickup avoids that; NP assigns the best available courier
+    //    up-front. Admin can still reassign the courier from the NP panel if
+    //    they want a different one before the pickup happens.
+    // So we treat push_no_awb the same as the default push now.
     if (ret.status !== 'approved') {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Approve this return before pushing it to NimbusPost.' }) };
     }
@@ -249,35 +255,7 @@ exports.handler = async (event) => {
     // Reverse order number shown in the NimbusPost panel.
     const orderNumber = `R-RET-${String(ret.order_display_id || ret.order_id).replace(/^IC-/, '')}`.slice(0, 20);
 
-    // ── No-AWB panel push ─────────────────────────────────────────────────────
-    // Create a REVERSE ORDER via the Orders API (ship.nimbuspost.com/api/orders
-    // /create) so it sits in the panel awaiting manual courier/AWB — exactly like
-    // the forward "Push to NimbusPost (No AWB)" flow. The /shipments Partners API
-    // used before auto-cancelled a courier-less reverse SHIPMENT, which is why
-    // every pushed return immediately showed "Cancelled" in NimbusPost.
-    if (noAwb) {
-      await pushOrderToNimbusPost({
-        razorpay_order_id: ret.order_display_id || ret.order_id,
-        customer_name:     ret.customer_name,
-        customer_address:  ret.customer_address,
-        customer_phone:    ret.customer_phone,
-        amount_paise:      ret.amount_paise,
-        cart_items:        ret.items,
-        status:            'confirmed',   // prepaid (not COD) for a reverse order
-      }, { reverse: true, orderNumber });
-
-      await supabase.from('return_requests').update({
-        status:       'pushed_to_nimbus',
-        processed_at: new Date().toISOString(),
-      }).eq('id', return_request_id);
-
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({
-        success: true, status: 'pushed_to_nimbus',
-        message: 'Return pushed to the NimbusPost panel as a reverse order. Assign a courier/AWB there to schedule pickup.',
-      }) };
-    }
-
-    // ── Full mode: reverse SHIPMENT with auto-pickup (assigns an AWB now) ──────
+    // ── Reverse SHIPMENT with auto-pickup (assigns an AWB now) ────────────────
     const token = await npAuthenticate();
     const cartItems = Array.isArray(ret.items) ? ret.items : [];
     const products  = cartItems.length
