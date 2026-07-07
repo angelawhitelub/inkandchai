@@ -335,13 +335,35 @@ async function callOpenAIChat(messages, { tools = false } = {}) {
   return data.choices?.[0]?.message || {};
 }
 
+// ── Admin-editable extra instructions / FAQ (from the admin panel) ───────────
+// Cached for 60s so we don't hit Supabase on every message.
+let _botExtraCache = { text: '', at: 0 };
+async function getBotExtraInstructions() {
+  if (Date.now() - _botExtraCache.at < 60_000) return _botExtraCache.text;
+  try {
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data } = await db.from('bot_settings')
+      .select('extra_instructions').eq('id', 1).maybeSingle();
+    _botExtraCache = { text: (data?.extra_instructions || '').trim(), at: Date.now() };
+  } catch (e) {
+    console.warn('getBotExtraInstructions:', e.message);
+    _botExtraCache = { text: _botExtraCache.text, at: Date.now() };
+  }
+  return _botExtraCache.text;
+}
+
 // ── Ask OpenAI (with order-intake tool support) ──────────────────────────────
 async function askOpenAI(phone, userMessage, extraContext = '') {
   appendHistory(phone, 'user', userMessage);
 
-  const systemContent = extraContext
-    ? SYSTEM_PROMPT + '\n\nORDER CONTEXT FOR THIS CONVERSATION:\n' + extraContext
-    : SYSTEM_PROMPT;
+  const extraInstructions = await getBotExtraInstructions();
+  let systemContent = SYSTEM_PROMPT;
+  if (extraInstructions) {
+    systemContent += '\n\nSTORE-SPECIFIC INSTRUCTIONS & FAQ (set by the Ink & Chai team — follow these):\n' + extraInstructions;
+  }
+  if (extraContext) {
+    systemContent += '\n\nORDER CONTEXT FOR THIS CONVERSATION:\n' + extraContext;
+  }
 
   const messages = [
     { role: 'system', content: systemContent },

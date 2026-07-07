@@ -343,6 +343,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="botinbox"  onclick="switchTab('botinbox')">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="bookreq"   onclick="switchTab('bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab" data-tab="bot"       onclick="switchTab('bot')">🤖 Bot Instructions</button>
     <button class="admin-tab" data-tab="recover"   onclick="switchTab('recover')">⚡ Recover Payment</button>
   </nav>
 
@@ -963,7 +964,73 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     </div>
   </div><!-- /tab-bookreq -->
 
+  <div class="admin-section" id="tab-bot">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
+      <div>
+        <h2 style="margin:0;font-size:1.1rem;">🤖 WhatsApp Bot Instructions</h2>
+        <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;max-width:640px;">
+          Extra rules, facts and FAQ answers the bot should follow — added on top of its built-in personality.
+          Write in plain English (or Hindi). Saves instantly; the bot uses it within a minute. No deploy needed.
+        </div>
+      </div>
+      <button class="btn-outline" onclick="loadBotSettings()">↻ Reload</button>
+    </div>
+    <textarea id="botExtraInstructions" rows="16" placeholder="e.g.&#10;- If a customer asks about bulk / wholesale orders, tell them to email wholesale@inkandchai.in&#10;- We are closed on national holidays; dispatch resumes the next working day&#10;- The book 'Atomic Habits' is temporarily out of stock&#10;- Always mention the INKLOVE10 coupon when a customer is buying 2+ books"
+      style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.9rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;line-height:1.6;outline:none;resize:vertical;border-radius:6px;"></textarea>
+    <div style="display:flex;align-items:center;gap:1rem;margin-top:0.8rem;flex-wrap:wrap;">
+      <button class="btn-gold" onclick="saveBotSettings(this)" style="padding:0.7rem 1.6rem;">💾 Save Instructions</button>
+      <span id="botSettingsMsg" style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);"></span>
+    </div>
+    <div style="font-size:0.62rem;color:var(--cream-dim,#8a7a62);margin-top:1rem;line-height:1.6;">
+      💡 Tip: give the bot <em>facts and rules</em>, not conversations. It already knows how to be friendly, track orders,
+      take book requests and share coupons — this box is for anything store-specific it should also know.
+    </div>
+  </div><!-- /tab-bot -->
+
 <script>
+// ── Bot Instructions (edit the WhatsApp bot's extra rules / FAQ) ─────────────
+async function loadBotSettings() {
+  const ta = document.getElementById('botExtraInstructions');
+  const msg = document.getElementById('botSettingsMsg');
+  if (msg) msg.textContent = 'Loading…';
+  try {
+    const res = await fetch('/.netlify/functions/bot-settings', {
+      headers: { 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (ta) ta.value = data.extra_instructions || '';
+    if (msg) msg.textContent = data.updated_at
+      ? 'Last saved ' + new Date(data.updated_at).toLocaleString('en-IN')
+      : 'No custom instructions yet.';
+  } catch (e) {
+    if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Error: ' + e.message; }
+  }
+}
+
+async function saveBotSettings(btn) {
+  const ta = document.getElementById('botExtraInstructions');
+  const msg = document.getElementById('botSettingsMsg');
+  if (!ta) return;
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (msg) { msg.style.color = 'var(--cream-dim,#8a7a62)'; msg.textContent = 'Saving…'; }
+  try {
+    const res = await fetch('/.netlify/functions/bot-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' },
+      body: JSON.stringify({ extra_instructions: ta.value }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+    if (msg) { msg.style.color = '#6dbf6d'; msg.textContent = '✓ Saved. The bot will use it within a minute.'; }
+  } catch (e) {
+    if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Save failed: ' + e.message; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig || '💾 Save Instructions'; }
+  }
+}
+
 // ── Book Requests (WhatsApp bot order intake) ───────────────────────────────
 async function fetchBookRequests() {
   const list = document.getElementById('bookReqList');
@@ -3783,7 +3850,7 @@ setInterval(updateAutoRecheckBadge, 30_000);
 document.getElementById('adminPass').focus();
 
 // ── Tab navigation ──────────────────────────────────────────────────────────
-const TABS = ['orders','create','products','abandoned','reviews','returns','botinbox','bookreq','recover'];
+const TABS = ['orders','create','products','abandoned','reviews','returns','botinbox','bookreq','bot','recover'];
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
@@ -3813,6 +3880,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'returns' && _authed) fetchReturnRequests();
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();
+  if (tab === 'bot' && _authed) loadBotSettings();
 
   // Scroll to top of content
   document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
