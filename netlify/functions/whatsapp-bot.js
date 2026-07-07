@@ -22,6 +22,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 
 const PHONE_ID   = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VER    = 'v20.0';
@@ -128,13 +129,16 @@ PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book r
     • refund / cancel / missing book / wrong book / damaged → use the refund/return flows.
     • general questions, greetings, "hi", complaints.
   If the customer is asking about an order they ALREADY placed, it is NOT a new order — never submit it as one.
-- For a genuine new purchase you need exactly THREE REAL things: (1) the actual book title(s) they want, (2) their real full name, (3) their real complete delivery address with pincode.
-- Ask ONLY for the pieces you don't already have yet, ONE at a time. CRITICAL: NEVER re-ask for or re-confirm a detail the customer has ALREADY given earlier in this same conversation. Read back through the conversation — if the name, address, or book is already there, treat it as final and move on. Do NOT say "just to confirm your name/address" — that annoys customers.
-- NEVER invent, guess, or use placeholder values like "N/A", "book", "Customer", "Delhi", or a date. If you don't have a REAL book title, a REAL name, and a REAL full address, DO NOT call the tool — ask the customer for the missing real detail instead.
-- The MOMENT you genuinely have all three real values, immediately call the submit_order_request tool. Do not ask further questions. Do not re-verify.
+- For a genuine new purchase you need exactly FOUR REAL things: (1) the actual book title(s) they want, (2) their real full name, (3) their real complete delivery address with pincode, (4) their preferred payment mode — **COD (Cash on Delivery)** or **Prepaid (Pay Now online)**.
+- Ask ONLY for the pieces you don't already have yet, ONE at a time. CRITICAL: NEVER re-ask for or re-confirm a detail the customer has ALREADY given earlier in this same conversation. Read back through the conversation — if the name, address, book, or payment mode is already there, treat it as final and move on. Do NOT say "just to confirm your name/address" — that annoys customers.
+- PAYMENT MODE — always ask this LAST (after you have book, name, address). Ask exactly like: "Would you like to pay Cash on Delivery, or pay online now (prepaid)? Prepaid orders get 10-15% off with our coupons 💚". Accept: "cod"/"cash"/"delivery" → cod. "prepaid"/"online"/"upi"/"now"/"pay now" → prepaid.
+- NEVER invent, guess, or use placeholder values like "N/A", "book", "Customer", "Delhi", or a date. If you don't have a REAL book title, a REAL name, a REAL full address, AND a real payment mode choice, DO NOT call the tool — ask the customer for the missing real detail instead.
+- The MOMENT you genuinely have all four real values, immediately call the submit_order_request tool. Do not ask further questions. Do not re-verify.
 - Do NOT claim the order is placed until the tool has actually been called and returned success.
-- After the tool succeeds it returns an order_id (format IC-W-YYYYMMDD-XXXXX). Share it with the customer: "Got it! Your order request is placed ✅ Your order ID is <order_id>. Our team will confirm and share payment/delivery details shortly on WhatsApp 📚 You can also track it later at inkandchai.in."
-- Keep the confirmation short and warm.`;
+- After the tool succeeds it returns an order_id (format IC-W-YYYYMMDD-XXXXX), a payment_mode, and (if prepaid) a payment_link. Share this with the customer:
+    • For COD: "Got it! Your COD order is placed ✅ Your order ID is <order_id>. Our team will confirm shortly on WhatsApp and dispatch it soon 📚"
+    • For prepaid: "Got it! Your order is placed ✅ Your order ID is <order_id>.\\n\\nTap here to pay securely: <payment_link>\\n\\nAs soon as we receive your payment we'll dispatch it — usually same-day 📚"
+- Keep the confirmation short and warm. Do NOT invent a payment link if the tool did not return one.`;
 
 // ── Per-user conversation memory (in-memory cache + Supabase persistence) ────
 const conversationHistory = new Map(); // phone → [{role, content}]
@@ -296,6 +300,52 @@ async function handleCodConfirm(from, decision, senderPhoneId) {
   }
 }
 
+// ── 5-min follow-up: customer replies YES/NO to the confirmation ping ────────
+// Marks the most recent bot_order_requests row awaiting confirmation as
+// customer-confirmed or customer-cancelled. Matched by last 10 digits of phone
+// AND that a follow-up was actually sent (so a stray "yes" doesn't accidentally
+// mutate an old order). Returns true if a row was acted on.
+async function handleBotOrderConfirm(from, decision, senderPhoneId) {
+  try {
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const last10 = String(from).replace(/\D/g, '').slice(-10);
+    // Only rows where we already pinged the customer and they haven't answered yet.
+    const { data: rows } = await db
+      .from('bot_order_requests')
+      .select('id, order_id, payment_mode, payment_link, customer_confirmed_at, customer_cancelled_at')
+      .eq('customer_phone', last10)
+      .not('follow_up_sent_at', 'is', null)
+      .is('customer_confirmed_at', null)
+      .is('customer_cancelled_at', null)
+      .in('status', ['new', 'contacted'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const row = rows?.[0];
+    if (!row) return false;
+
+    if (decision === 'cancel') {
+      await db.from('bot_order_requests').update({
+        status: 'cancelled_by_customer',
+        customer_cancelled_at: new Date().toISOString(),
+      }).eq('id', row.id);
+      await sendReply(from, `No problem — your order ${row.order_id} has been cancelled. If that was a mistake, just reply here and we'll help. 💛`, senderPhoneId);
+    } else {
+      await db.from('bot_order_requests').update({
+        customer_confirmed_at: new Date().toISOString(),
+      }).eq('id', row.id);
+      const linkLine = row.payment_mode === 'prepaid' && row.payment_link
+        ? `\n\nPlease complete your payment here to help us dispatch it right away:\n${row.payment_link}`
+        : '';
+      await sendReply(from, `Thanks for confirming! ✅ Your order ${row.order_id} is locked in. Our team will process it shortly 📚${linkLine}`, senderPhoneId);
+    }
+    console.log(`[BOT-ORDER-CONFIRM] ${from} -> ${decision} -> ${row.order_id}`);
+    return true;
+  } catch (e) {
+    console.error('handleBotOrderConfirm error:', e.message);
+    return false;
+  }
+}
+
 // ── OpenAI tool: take a book order over WhatsApp → admin panel ────────────────
 const OPENAI_TOOLS = [{
   type: 'function',
@@ -308,9 +358,10 @@ const OPENAI_TOOLS = [{
         customer_name: { type: 'string', description: 'Customer\'s REAL full name, as they typed it. Not a placeholder.' },
         address:       { type: 'string', description: 'REAL complete delivery address including pincode, as the customer typed it. Not "N/A".' },
         books:         { type: 'string', description: 'The actual book TITLE(s) the customer wants to buy, comma-separated. Not the generic word "book".' },
+        payment_mode:  { type: 'string', enum: ['cod', 'prepaid'], description: 'Customer\'s chosen payment mode. "cod" = Cash on Delivery. "prepaid" = pay online now. Must be a real explicit choice from the customer — do NOT guess or default.' },
         notes:         { type: 'string', description: 'Any extra notes (quantity, language, edition, etc.)' },
       },
-      required: ['customer_name', 'address', 'books'],
+      required: ['customer_name', 'address', 'books', 'payment_mode'],
     },
   },
 }];
@@ -396,6 +447,13 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
   return reply;
 }
 
+// Rough amount used when we generate a Razorpay Payment Link for a WhatsApp
+// bot order. We don't know the real per-book price until the admin pushes it
+// through the panel, so we charge a nominal placeholder — admin can void +
+// regenerate the link with the correct amount if needed. Keep this in sync with
+// the panel's default when it converts the request to a real order.
+const BOT_ORDER_PLACEHOLDER_AMOUNT_PAISE = 39900; // ₹399 — typical single-book prepaid
+
 // ── Persist a WhatsApp book-order request + notify the store owner ────────────
 async function submitOrderRequest(phone, args) {
   const last10 = String(phone).replace(/\D/g, '').slice(-10);
@@ -403,8 +461,14 @@ async function submitOrderRequest(phone, args) {
   const address      = String(args.address || '').slice(0, 600).trim();
   const books        = String(args.books || '').slice(0, 600).trim();
   const notes        = String(args.notes || '').slice(0, 400).trim();
+  const paymentMode  = String(args.payment_mode || '').toLowerCase().trim() === 'prepaid' ? 'prepaid'
+                     : String(args.payment_mode || '').toLowerCase().trim() === 'cod'     ? 'cod'
+                     : '';
   if (!customerName || !address || !books) {
     return { ok: false, error: 'Missing name, address, or book name.' };
+  }
+  if (!paymentMode) {
+    return { ok: false, error: 'Missing payment_mode. Ask the customer whether they want COD (Cash on Delivery) or Prepaid (pay online now), then call this tool again with payment_mode set.' };
   }
 
   // ── Junk / placeholder guard ────────────────────────────────────────────────
@@ -432,6 +496,34 @@ async function submitOrderRequest(phone, args) {
   const randPart = Math.random().toString(36).slice(2, 7).toUpperCase();
   const orderId  = `IC-W-${datePart}-${randPart}`;
 
+  // Prepaid: generate a Razorpay Payment Link the customer can pay from WhatsApp.
+  // Amount is a placeholder — admin can regenerate with the real total when
+  // converting the request to a real order in the panel.
+  let paymentLink = '';
+  let paymentLinkId = '';
+  let paymentLinkError = '';
+  if (paymentMode === 'prepaid') {
+    try {
+      const link = await createRazorpayPaymentLink({
+        amountPaise:   BOT_ORDER_PLACEHOLDER_AMOUNT_PAISE,
+        description:   `Ink & Chai — ${books.slice(0, 100)}`,
+        customerName,
+        customerPhone: last10,
+        referenceId:   orderId,
+        callbackUrl:   `https://inkandchai.in/track/?id=${encodeURIComponent(orderId)}`,
+      });
+      paymentLink = link.short_url || '';
+      paymentLinkId = link.id || '';
+    } catch (e) {
+      paymentLinkError = e.message;
+      console.error('submitOrderRequest payment link:', e.message);
+    }
+  }
+
+  // Follow-up ping in 5 minutes — the scheduled function reads this row and
+  // asks the customer to confirm the order.
+  const followUpAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
   try {
     // Try to persist the request. If the DB write fails (e.g. table missing), we
     // still notify the owner below so the order is NEVER silently lost.
@@ -445,8 +537,14 @@ async function submitOrderRequest(phone, args) {
         address,
         books,
         notes,
-        status:         'new',
-        created_at:     new Date().toISOString(),
+        payment_mode:            paymentMode,
+        amount_paise:            paymentMode === 'prepaid' ? BOT_ORDER_PLACEHOLDER_AMOUNT_PAISE : null,
+        payment_link:            paymentLink || null,
+        razorpay_payment_link_id: paymentLinkId || null,
+        payment_status:          paymentMode === 'prepaid' ? (paymentLink ? 'created' : 'link_failed') : null,
+        follow_up_at:            followUpAt,
+        status:                  'new',
+        created_at:              new Date().toISOString(),
       });
       if (error) console.error('submitOrderRequest insert:', error.message);
       else saved = true;
@@ -458,12 +556,27 @@ async function submitOrderRequest(phone, args) {
     // even if the DB insert failed.
     const ownerPhone = process.env.STORE_OWNER_PHONE;
     if (ownerPhone) {
+      const modeLabel = paymentMode === 'prepaid'
+        ? (paymentLink ? `💳 Prepaid — ${paymentLink}` : `💳 Prepaid — ⚠️ link failed: ${paymentLinkError || 'unknown'}`)
+        : '💵 COD';
       await sendReply(ownerPhone,
-        `🆕 New book order request (WhatsApp bot)${saved ? '' : ' ⚠️ (not saved to panel — check bot_order_requests table)'}\n\n🆔 ${orderId}\n👤 ${customerName}\n📞 ${last10}\n📚 ${books}\n📍 ${address}${notes ? `\n📝 ${notes}` : ''}\n\nOpen admin panel → Book Requests → Push to Orders.`
+        `🆕 New book order request (WhatsApp bot)${saved ? '' : ' ⚠️ (not saved to panel — check bot_order_requests table)'}\n\n🆔 ${orderId}\n👤 ${customerName}\n📞 ${last10}\n📚 ${books}\n📍 ${address}\n${modeLabel}${notes ? `\n📝 ${notes}` : ''}\n\nOpen admin panel → Book Requests → Push to Orders.`
       );
     }
-    console.log(`[ORDER-REQUEST] ${orderId} ${last10} -> ${books.slice(0, 60)} (saved=${saved})`);
-    return { ok: true, order_id: orderId, message: 'Order request sent to the team.', saved };
+    console.log(`[ORDER-REQUEST] ${orderId} ${last10} -> ${books.slice(0, 60)} mode=${paymentMode} (saved=${saved})`);
+    return {
+      ok: true,
+      order_id: orderId,
+      payment_mode: paymentMode,
+      payment_link: paymentLink || null,
+      payment_link_error: paymentLinkError || null,
+      message: paymentMode === 'prepaid'
+        ? (paymentLink
+            ? 'Prepaid order request saved. Share the payment_link with the customer verbatim.'
+            : 'Prepaid order saved but payment link could not be generated — tell the customer the team will send the payment link shortly.')
+        : 'COD order request saved.',
+      saved,
+    };
   } catch (e) {
     console.error('submitOrderRequest exception:', e.message);
     return { ok: false, error: e.message };
@@ -567,6 +680,20 @@ exports.handler = async (event) => {
     if (await isHumanTakeover(from)) {
       console.log(`[TAKEOVER] ${from} — bot suppressed, human handling`);
       return { statusCode: 200, body: 'ok' };
+    }
+
+    // ── Short YES/NO reply to the 5-min bot-order confirmation ping ──────────
+    // Only act on it if a follow-up was actually sent for this customer, so a
+    // stray "yes" outside that flow falls through to the AI.
+    const t = userText.trim().toLowerCase();
+    const isYes = /^(yes|y|yeah|yup|ok|okay|confirm|confirmed|haan|haanji|ha|ji|✅|👍)\b/i.test(t) || t === 'yes' || t === 'haan';
+    const isNo  = /^(no|n|nope|cancel|cancelled|nahi|nahin|nhi|mat|❌|👎)\b/i.test(t);
+    if (isYes || isNo) {
+      const handled = await handleBotOrderConfirm(from, isNo ? 'cancel' : 'confirm', recvPhoneId);
+      if (handled) {
+        await persistMessage(from, 'bot', isNo ? 'Order cancelled by customer' : 'Order confirmed by customer');
+        return { statusCode: 200, body: 'ok' };
+      }
     }
 
     // ── Check if message contains an Order ID — look it up ───────────────────

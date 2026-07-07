@@ -37,6 +37,12 @@
 [functions."phonepe-retry-refunds-background"]
   schedule = "0 */4 * * *"
 
+# 5-min follow-up confirmation ping for WhatsApp book-order requests placed via
+# the bot. Runs every 2 minutes; each row is pinged exactly once thanks to the
+# follow_up_sent_at guard column.
+[functions."bot-order-followup-background"]
+  schedule = "*/2 * * * *"
+
 # favicon.ico — redirect to the actual PNG; browsers cache the 301 permanently
 # (previously /favicon.ico had no file → fell through to index.html → 55 KB per hit → ~534 MB/week)
 [[redirects]]
