@@ -64,8 +64,8 @@ function parseItems(value) {
   try { const v = JSON.parse(value); return Array.isArray(v) ? v : []; } catch { return []; }
 }
 
-function buildPayload(order) {
-  const orderId = String(order.razorpay_order_id || order.id);
+function buildPayload(order, opts = {}) {
+  const orderId = String(opts.orderNumber || order.razorpay_order_id || order.id);
   const items = parseItems(order.cart_items);
   const amountRs = Math.max(0, Number(order.amount_paise || 0) / 100);
   const itemSubtotal = items.reduce((s, i) => s + (Number(i.price || 0) * Math.max(1, Number(i.qty || i.quantity || 1))), 0);
@@ -86,6 +86,11 @@ function buildPayload(order) {
 
   return {
     order_number: orderId,
+    // Reverse (customer-return) orders sit in the panel as a reverse order
+    // awaiting manual courier/AWB assignment — same as forward orders, and
+    // unlike the /shipments Partners API which auto-cancels a courier-less
+    // reverse shipment. order_type=reverse marks the direction.
+    ...(opts.reverse ? { order_type: 'reverse' } : {}),
     payment_method: isCod ? 'COD' : 'prepaid',
     amount,
     fname: name.first,
@@ -123,11 +128,11 @@ function toFormData(payload) {
   return form;
 }
 
-async function pushOrderToNimbusPost(order, { apiKey } = {}) {
+async function pushOrderToNimbusPost(order, { apiKey, reverse, orderNumber } = {}) {
   const key = apiKey || process.env.NIMBUSPOST_API_KEY;
   if (!key) throw new Error('NIMBUSPOST_API_KEY is not configured');
 
-  const payload = buildPayload(order);
+  const payload = buildPayload(order, { reverse, orderNumber });
   const res = await fetch(NP_ORDER_URL, {
     method: 'POST',
     // Don't set Content-Type — fetch adds multipart/form-data with the boundary.

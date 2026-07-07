@@ -22,6 +22,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 const STORE_NAME = 'Ink and Chai';
@@ -245,81 +246,69 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Cannot parse pincode from customer address: "${ret.customer_address}"` }) };
     }
 
-    // Authenticate with NimbusPost Partners API.
-    const token = await npAuthenticate();
+    // Reverse order number shown in the NimbusPost panel.
+    const orderNumber = `R-RET-${String(ret.order_display_id || ret.order_id).replace(/^IC-/, '')}`.slice(0, 20);
 
-    // Build items list
+    // ── No-AWB panel push ─────────────────────────────────────────────────────
+    // Create a REVERSE ORDER via the Orders API (ship.nimbuspost.com/api/orders
+    // /create) so it sits in the panel awaiting manual courier/AWB — exactly like
+    // the forward "Push to NimbusPost (No AWB)" flow. The /shipments Partners API
+    // used before auto-cancelled a courier-less reverse SHIPMENT, which is why
+    // every pushed return immediately showed "Cancelled" in NimbusPost.
+    if (noAwb) {
+      await pushOrderToNimbusPost({
+        razorpay_order_id: ret.order_display_id || ret.order_id,
+        customer_name:     ret.customer_name,
+        customer_address:  ret.customer_address,
+        customer_phone:    ret.customer_phone,
+        amount_paise:      ret.amount_paise,
+        cart_items:        ret.items,
+        status:            'confirmed',   // prepaid (not COD) for a reverse order
+      }, { reverse: true, orderNumber });
+
+      await supabase.from('return_requests').update({
+        status:       'pushed_to_nimbus',
+        processed_at: new Date().toISOString(),
+      }).eq('id', return_request_id);
+
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({
+        success: true, status: 'pushed_to_nimbus',
+        message: 'Return pushed to the NimbusPost panel as a reverse order. Assign a courier/AWB there to schedule pickup.',
+      }) };
+    }
+
+    // ── Full mode: reverse SHIPMENT with auto-pickup (assigns an AWB now) ──────
+    const token = await npAuthenticate();
     const cartItems = Array.isArray(ret.items) ? ret.items : [];
     const products  = cartItems.length
       ? cartItems.map(i => ({ name: i.title || 'Book', sku: i.sku || '', qty: i.qty || 1, price: i.price || 0 }))
       : [{ name: 'Book', sku: '', qty: 1, price: ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0 }];
-
     const phone = (ret.customer_phone || '9999999999').replace(/\D/g, '').slice(-10);
 
-    // NimbusPost Partners API reverse shipment. For payment_type=reverse,
-    // consignee is the customer pickup address and pickup is our return hub.
     const payload = {
-      order_number: `RET-${String(ret.order_display_id || ret.order_id).replace(/^IC-/, '')}`.slice(0, 20),
+      order_number: orderNumber,
       payment_type: 'reverse',
       order_amount: ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0,
-      package_weight: 300,
-      package_length: 20,
-      package_height: 3,
-      package_breadth: 15,
-      request_auto_pickup: noAwb ? 'no' : 'yes',
-      consignee: {
-        name: ret.customer_name || 'Customer',
-        address: addr1,
-        address_2: '',
-        city,
-        state,
-        pincode,
-        phone,
-      },
+      package_weight: 300, package_length: 20, package_height: 3, package_breadth: 15,
+      request_auto_pickup: 'yes',
+      consignee: { name: ret.customer_name || 'Customer', address: addr1, address_2: '', city, state, pincode, phone },
       pickup: {
         warehouse_name: process.env.NIMBUSPOST_WAREHOUSE_NAME || 'Office',
-        name: RETURN_ADDRESS.name,
-        address: RETURN_ADDRESS.address,
-        address_2: '',
-        city: RETURN_ADDRESS.city,
-        state: RETURN_ADDRESS.state,
-        pincode: RETURN_ADDRESS.pincode,
+        name: RETURN_ADDRESS.name, address: RETURN_ADDRESS.address, address_2: '',
+        city: RETURN_ADDRESS.city, state: RETURN_ADDRESS.state, pincode: RETURN_ADDRESS.pincode,
         phone: process.env.RETURN_PHONE || process.env.BUSINESS_PHONE || RETURN_ADDRESS.phone,
       },
       order_items: products,
       tags: `return, ${String(ret.reason || 'customer return').slice(0, 150)}`,
     };
 
-    const { ok, data: npData } = await npFetch('/shipments', {
-      method: 'POST',
-      token,
-      body: payload,
-    });
-
+    const { ok, data: npData } = await npFetch('/shipments', { method: 'POST', token, body: payload });
     const shipment = npData.data && typeof npData.data === 'object' ? npData.data : npData;
     const awb = shipment.awb_number || shipment.awb || shipment.tracking_number;
-    // No-AWB mode: only the panel push must succeed; an AWB is NOT expected
-    // (courier is chosen later in NimbusPost). Full mode requires an AWB.
-    if (!ok || (!noAwb && !awb)) {
-      throw new Error(`NimbusPost reverse ${noAwb ? 'panel push' : 'pickup'} failed: ${JSON.stringify(npData)}`);
+    if (!ok || !awb) {
+      throw new Error(`NimbusPost reverse pickup failed: ${JSON.stringify(npData)}`);
     }
-
     const courierName = shipment.courier_name || 'NimbusPost';
-
-    if (noAwb) {
-      // Pushed into the panel; AWB assigned later inside NimbusPost. Keep any AWB
-      // NimbusPost happened to return, but don't schedule pickup / notify yet.
-      await supabase.from('return_requests').update({
-        status:       'pushed_to_nimbus',
-        awb:          awb || null,
-        courier_name: awb ? courierName : null,
-        processed_at: new Date().toISOString(),
-      }).eq('id', return_request_id);
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({
-        success: true, status: 'pushed_to_nimbus', awb: awb || null,
-        message: 'Return pushed to the NimbusPost panel. Assign a courier/AWB there to schedule pickup.',
-      }) };
-    }
 
     // Update return_request in Supabase
     await supabase.from('return_requests').update({
