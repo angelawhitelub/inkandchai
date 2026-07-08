@@ -8,12 +8,15 @@
  *   • amount refunded
  *   • usually reflects in 2-3 business days in their original payment method
  *
- * The Meta template `refund_initiated` must be created + approved in the
- * WhatsApp Business Manager with these variables:
+ * Matches the existing WhatsApp Business template `refund_processed` (already
+ * approved in the Meta panel):
+ *   Body: "Hi {{1}}, your refund for order {{2}} of Rs {{3}} has been issued
+ *          to your PhonePe payment method. It will reflect in your account
+ *          within 5–7 business days. Thank you, Ink & Chai."
+ * Params:
  *   {{1}} customer first name
  *   {{2}} order id (IC-YYYYMMDD-XXXXX)
- *   {{3}} amount (₹499)
- * If not approved yet, WhatsApp send silently no-ops — email still sends.
+ *   {{3}} amount as a plain number (the template supplies "Rs " itself)
  */
 
 const { sendEmail } = require('./email');
@@ -54,7 +57,8 @@ async function sendRefundInitiated(order, amountPaise, { supabase } = {}) {
   if (order.refund_notified_at) return { sent: false, skipped: 'already_notified' };
 
   const oid = order.razorpay_order_id || order.id || '';
-  const amt = `₹${(amountPaise / 100).toLocaleString('en-IN')}`;
+  // Template body prepends "Rs " itself — pass a plain, comma-formatted number.
+  const amtPlain = (amountPaise / 100).toLocaleString('en-IN');
 
   const emailPromise = order.customer_email
     ? sendEmail({
@@ -67,8 +71,8 @@ async function sendRefundInitiated(order, amountPaise, { supabase } = {}) {
   const waPromise = order.customer_phone
     ? sendWhatsApp({
         to: order.customer_phone,
-        template: 'refund_initiated',
-        params: [firstName(order.customer_name), String(oid), amt],
+        template: 'refund_processed',
+        params: [firstName(order.customer_name), String(oid), amtPlain],
       }).catch(e => console.error('refund whatsapp:', e.message))
     : Promise.resolve();
 
