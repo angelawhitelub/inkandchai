@@ -263,18 +263,54 @@ exports.handler = async (event) => {
       : [{ name: 'Book', sku: '', qty: 1, price: ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0 }];
     const phone = (ret.customer_phone || '9999999999').replace(/\D/g, '').slice(-10);
 
+    // ── Serviceability lookup: which courier services reverse from this pincode? ─
+    // NP's default auto-assignment tries Delhivery/Xpressbees/Amazon — all of
+    // which skip reverse pickup for most Tier-2/3 pincodes. So we explicitly
+    // query serviceability first and pass a reverse-capable courier_id.
+    const orderAmountRs = ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0;
+    const svcBody = {
+      origin: pincode,                       // customer's pincode (pickup)
+      destination: RETURN_ADDRESS.pincode,   // our warehouse
+      payment_type: 'prepaid',
+      order_type: 'reverse',
+      weight: 0.4,                           // 400g default
+      order_amount: orderAmountRs,
+    };
+    const { ok: svcOk, data: svcData } = await npFetch('/courier/serviceability', {
+      method: 'POST', token, body: svcBody,
+    });
+    // NP shapes: sometimes {data: [{courier_id, courier_name, is_serviceable, reverse: true, ...}]}
+    // sometimes {data: [{id, name, reverse_serviceable: true, ...}]} — accept both.
+    const svcList = Array.isArray(svcData?.data) ? svcData.data
+                  : Array.isArray(svcData) ? svcData : [];
+    const reverseCouriers = svcList.filter(c => {
+      const rev = c.reverse === true || c.reverse_serviceable === true
+               || c.reverse === 1 || c.reverse_serviceable === 1
+               || String(c.type || '').toLowerCase() === 'reverse';
+      const svc = c.is_serviceable !== false; // default true unless explicitly false
+      return rev && svc;
+    });
+    // If NP didn't return the `reverse` flag at all but did return couriers,
+    // trust the list — the serviceability query already had order_type=reverse.
+    const chosen = reverseCouriers[0] || (svcList[0] && !reverseCouriers.length ? svcList[0] : null);
+    const courierId = chosen?.courier_id ?? chosen?.id ?? null;
+
+    if (!svcOk || !svcList.length || !courierId) {
+      throw new Error(
+        `No courier services reverse pickup from pincode ${pincode}. `
+        + `Please create this return manually in the NimbusPost seller panel. `
+        + `(NP response: ${JSON.stringify(svcData).slice(0, 300)})`
+      );
+    }
+    console.log(`[process-return] pincode=${pincode} → courier ${chosen?.courier_name || chosen?.name} (id=${courierId})`);
+
     const payload = {
       order_number: orderNumber,
       payment_type: 'reverse',
-      order_amount: ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0,
+      order_amount: orderAmountRs,
       package_weight: 300, package_length: 20, package_height: 3, package_breadth: 15,
-      // request_auto_pickup=no because the auto-eligible couriers (Delhivery,
-      // Xpressbees, Amazon Shipping) don't service reverse pickup from many
-      // Tier-2/3 pincodes — we were seeing "Pickup pincode X not available" on
-      // every push. With auto=no, NP creates the reverse shipment in the panel
-      // awaiting manual courier assignment (Ecom Express, DTDC etc. handle those
-      // pincodes and get picked in the seller panel).
-      request_auto_pickup: 'no',
+      request_auto_pickup: 'yes',
+      courier_id: courierId,          // ← explicit courier that services this pincode for reverse
       consignee: { name: ret.customer_name || 'Customer', address: addr1, address_2: '', city, state, pincode, phone },
       pickup: {
         warehouse_name: process.env.NIMBUSPOST_WAREHOUSE_NAME || 'Office',
@@ -290,13 +326,10 @@ exports.handler = async (event) => {
     if (!ok || npData.status === false) {
       throw new Error(`NimbusPost reverse pickup failed: ${JSON.stringify(npData)}`);
     }
-    // With auto_pickup=no, NimbusPost returns shipment_id/order_id but no AWB yet
-    // (courier isn't assigned). That's expected — admin picks a courier in NP.
     const shipment = npData.data && typeof npData.data === 'object' ? npData.data : npData;
     const awb = shipment.awb_number || shipment.awb || shipment.tracking_number || null;
-    const courierName = shipment.courier_name || null;
+    const courierName = shipment.courier_name || chosen?.courier_name || chosen?.name || 'NimbusPost';
 
-    // Update return_request in Supabase — reflect whichever state we got back.
     await supabase.from('return_requests').update({
       status:       awb ? 'pickup_scheduled' : 'pushed_to_nimbus',
       awb,
@@ -304,19 +337,17 @@ exports.handler = async (event) => {
       processed_at: new Date().toISOString(),
     }).eq('id', return_request_id);
 
-    // Only ping the customer once a courier + AWB is actually assigned. Without
-    // an AWB there's nothing for the customer to track, and admin still needs
-    // to pick a courier in the NP panel.
     if (awb) await notifyPickupScheduled(ret, awb, courierName);
 
     return { statusCode: 200, headers: CORS, body: JSON.stringify({
       success: true,
       awb,
       courier_name: courierName,
+      courier_id: courierId,
       status: awb ? 'pickup_scheduled' : 'pushed_to_nimbus',
       message: awb
-        ? 'Reverse pickup scheduled — courier assigned automatically.'
-        : 'Reverse shipment created in the NimbusPost panel. Assign a courier there that services this pincode (Ecom Express / DTDC often work when Delhivery does not).',
+        ? `Reverse pickup scheduled with ${courierName} (services pincode ${pincode}).`
+        : `Reverse shipment created with ${courierName}. AWB will be assigned shortly.`,
       notified: !!awb,
       pickup_from:  `${ret.customer_name} — ${ret.customer_address}`,
       pickup_to:    '2969, Kucha Mai Dass, Sitaram Bazar, Delhi - 110006',
