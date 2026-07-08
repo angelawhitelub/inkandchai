@@ -59,9 +59,18 @@ exports.handler = async (event) => {
 
   if (error) return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: error.message }) };
 
+  // This fires on EVERY product-page load (real visitors + Google crawling
+  // thousands of pages), and reviews change rarely. Cache the response at
+  // Netlify's edge for 1h (durable) with a 24h stale-while-revalidate window
+  // so Supabase gets hit at most ~once/hour/edge/slug instead of every view.
+  // A newly-approved review shows up within the hour (or admin can purge).
   return {
     statusCode: 200,
-    headers: CORS,
+    headers: {
+      ...CORS,
+      'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+      'Cache-Control': 'public, max-age=300',
+    },
     body: JSON.stringify({ reviews: data || [] }),
   };
 };

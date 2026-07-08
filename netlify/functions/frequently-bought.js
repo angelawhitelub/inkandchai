@@ -6,7 +6,11 @@ const HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
   'Content-Type': 'application/json',
-  'Cache-Control': 'public, max-age=300, s-maxage=900',
+  // Fires on every product page. Recommendations are derived from the static
+  // catalogue + rarely-changing custom_products, so cache at Netlify's edge
+  // (durable) for 1h with a 24h SWR window — keeps Supabase out of the hot path.
+  'Cache-Control': 'public, max-age=300',
+  'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
 };
 
 function findCataloguePath() {

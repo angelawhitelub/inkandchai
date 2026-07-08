@@ -15,6 +15,16 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
+// For successful book lookups only — feeds checkout ?buy= deep-links (incl.
+// Google Merchant traffic). Book data + price change rarely, and product-page.js
+// already caches the same data for 1h, so mirror that at Netlify's edge to keep
+// Supabase out of the hot path. Never applied to null/error responses.
+const CACHED = {
+  ...CORS,
+  'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+  'Cache-Control': 'public, max-age=300',
+};
+
 // Load and index books once per cold start
 let _index = null;
 function getIndex() {
@@ -69,7 +79,7 @@ exports.handler = async (event) => {
     const index = getIndex();
     const book = index[rawId] || index[slug];
     if (book) {
-      return { statusCode: 200, headers: CORS, body: JSON.stringify(book) };
+      return { statusCode: 200, headers: CACHED, body: JSON.stringify(book) };
     }
 
     // Not in the static catalogue — try custom_products (crossword / bookstohome
@@ -86,7 +96,7 @@ exports.handler = async (event) => {
       if (data) {
         const price = parseFloat(data.price_inr || 0) || 0;
         const orig  = parseFloat(data.original_price_inr || 0) || 0;
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({
+        return { statusCode: 200, headers: CACHED, body: JSON.stringify({
           id: data.slug, slug: data.slug, title: data.title || '',
           author: data.author || '', price,
           orig_price: orig > price ? orig : 0,
