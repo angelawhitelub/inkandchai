@@ -22,7 +22,6 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
-const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 const STORE_NAME = 'Ink and Chai';
@@ -228,15 +227,14 @@ exports.handler = async (event) => {
       }) };
     }
 
-    // Two push modes:
-    //  • push_no_awb (default from admin panel) — post to the SELLER PANEL Orders
-    //    API (ship.nimbuspost.com/api/orders/create). NP creates the reverse
-    //    order awaiting manual courier assignment in the panel — no serviceability
-    //    check, no auto-cancel, works for any pincode.
-    //  • full push (action === 'push_with_awb') — post to the Partners
-    //    /v1/shipments API which auto-assigns a courier + AWB. Requires the
-    //    pincode to be serviceable by a reverse-capable courier.
-    const noAwb = action !== 'push_with_awb';  // default = no-awb
+    // Reverse pickups MUST go through the Partners /v1/shipments API. The seller-
+    // panel Orders API (ship.nimbuspost.com/api/orders/create) silently ignores
+    // every reverse-marker field and always creates a FORWARD order (confirmed
+    // in the NP panel — the pushed order showed a "Ship" button, not reverse).
+    // /v1/shipments with payment_type='reverse' is the only endpoint that
+    // produces a true reverse order. We first query serviceability to pick a
+    // reverse-capable courier for the customer's pincode, then create the
+    // shipment with that courier so it doesn't auto-cancel.
     if (ret.status !== 'approved') {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Approve this return before pushing it to NimbusPost.' }) };
     }
@@ -252,41 +250,6 @@ exports.handler = async (event) => {
 
     // Reverse order number shown in the NimbusPost panel.
     const orderNumber = `R-RET-${String(ret.order_display_id || ret.order_id).replace(/^IC-/, '')}`.slice(0, 20);
-
-    // ── No-AWB path: create the reverse ORDER in the seller panel ────────────
-    // Uses the Orders API which doesn't validate courier serviceability up-front,
-    // so it works for any pincode. Admin picks a courier manually in the NP panel.
-    // We stamp multiple reverse-marker fields because NP's field name isn't
-    // publicly documented — unknown fields get ignored by the multipart parser,
-    // so this covers whatever their current wire format is (type / order_type /
-    // is_reverse / reverse).
-    if (noAwb) {
-      try {
-        await pushOrderToNimbusPost({
-          razorpay_order_id: orderNumber,
-          customer_name:     ret.customer_name,
-          customer_address:  ret.customer_address,
-          customer_phone:    ret.customer_phone,
-          amount_paise:      ret.amount_paise,
-          cart_items:        ret.items,
-          status:            'confirmed',
-        }, { reverse: true, orderNumber });
-      } catch (e) {
-        console.error('[process-return] no-awb push failed:', e.message);
-        return { statusCode: 500, headers: CORS, body: JSON.stringify({
-          error: `NimbusPost push failed: ${e.message}`,
-        }) };
-      }
-      await supabase.from('return_requests').update({
-        status:       'pushed_to_nimbus',
-        processed_at: new Date().toISOString(),
-      }).eq('id', return_request_id);
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({
-        success: true,
-        status:  'pushed_to_nimbus',
-        message: 'Return pushed to the NimbusPost seller panel. Assign a courier there to schedule the pickup.',
-      }) };
-    }
 
     // ── Reverse SHIPMENT with auto-pickup (assigns an AWB now) ────────────────
     const token = await npAuthenticate();
