@@ -147,13 +147,62 @@ async function notifyRefundIssued(order, amountPaise, refundId) {
   }
 }
 
+function ownerCancelledEmailHtml(order, reason, refundResult) {
+  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const rows = items.map(i => `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title || i.name || ''}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:center;">${i.qty || 1}</td>
+    </tr>`).join('');
+  const total = moneyFromPaise(order.amount_paise);
+  const paidVia = order.razorpay_payment_id
+    ? (String(order.razorpay_payment_id).startsWith('pay_') ? 'Razorpay' : 'PhonePe')
+    : 'Cash on Delivery';
+  const refundLine = refundResult && refundResult.ok
+    ? `<p style="color:#6dbf6d;font-size:13px;">💛 Auto-refund initiated — ref: <strong style="color:#c9a84c;">${refundResult.merchantRefundId || '—'}</strong> · state: ${refundResult.state || '—'}</p>`
+    : refundResult && refundResult.skipped
+      ? `<p style="color:#a09080;font-size:12px;">Refund step: skipped (${refundResult.skipped}).</p>`
+      : refundResult && refundResult.error
+        ? `<p style="color:#e87070;font-size:13px;">⚠️ Auto-refund attempt failed: ${refundResult.error}. Order left as refund_pending — retry from admin panel.</p>`
+        : '';
+
+  return `
+    <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
+      <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
+      <p style="color:#a09080;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:24px;">Admin notification</p>
+      <h2 style="color:#e87070;font-size:20px;font-weight:400;">Order Cancelled</h2>
+      <p style="color:#a09080;font-size:13px;">Order ID: <strong style="color:#c9a84c;">${orderId(order)}</strong></p>
+      <div style="background:#1c1916;border-left:3px solid #e87070;padding:14px 18px;margin:16px 0;">
+        <p style="color:#f0e8d8;margin:0;font-size:14px;">${reason || 'No reason provided'}</p>
+      </div>
+      <table style="font-size:14px;line-height:1.8;color:#f0e8d8;">
+        <tr><td style="color:#a09080;padding-right:16px;">Name</td><td>${order.customer_name || '—'}</td></tr>
+        <tr><td style="color:#a09080;padding-right:16px;">Phone</td><td>${order.customer_phone || '—'}</td></tr>
+        <tr><td style="color:#a09080;padding-right:16px;">Email</td><td>${order.customer_email || '—'}</td></tr>
+        <tr><td style="color:#a09080;padding-right:16px;">Address</td><td>${order.customer_address || '—'}</td></tr>
+        <tr><td style="color:#a09080;padding-right:16px;">Paid via</td><td>${paidVia}</td></tr>
+        ${total ? `<tr><td style="color:#a09080;padding-right:16px;">Total</td><td><strong style="color:#c9a84c;">${total}</strong></td></tr>` : ''}
+      </table>
+      ${rows ? `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+        <thead><tr style="background:#1c1916;">
+          <th style="padding:8px 12px;text-align:left;color:#c9a84c;font-weight:500;">Book</th>
+          <th style="padding:8px 12px;text-align:center;color:#c9a84c;font-weight:500;">Qty</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>` : ''}
+      ${refundLine}
+      <hr style="border:none;border-top:1px solid #2a2a2a;margin:32px 0;"/>
+      <p style="color:#7a6330;font-size:11px;">Sent to the store owner &middot; inkandchai.in</p>
+    </div>`;
+}
+
 async function notifyOrderCancelled(order, opts = {}) {
   if (!order) return { email: false, whatsapp: false };
 
   const id = orderId(order);
   const firstName = String(order.customer_name || 'there').split(' ')[0];
   const reason = opts.reason || 'The courier/order status update marked this order as cancelled.';
-  const result = { email: false, whatsapp: false };
+  const result = { email: false, whatsapp: false, ownerEmail: false };
 
   // Auto-refund prepaid PhonePe orders (unless the caller opted out, e.g. a
   // payment-failure cancellation where nothing was ever captured).
@@ -182,6 +231,23 @@ async function notifyOrderCancelled(order, opts = {}) {
       params: [firstName, id],
     });
     result.whatsapp = true;
+  }
+
+  // Owner notification — same pattern as the "new order" email so the store
+  // owner sees every cancellation in their inbox alongside new orders.
+  const ownerEmail = process.env.STORE_OWNER_EMAIL;
+  if (ownerEmail && !opts.skipOwnerEmail) {
+    try {
+      const total = moneyFromPaise(order.amount_paise);
+      const sent = await sendEmail({
+        to: ownerEmail,
+        subject: `❌ Order Cancelled ${id}${total ? ` — ${total}` : ''}`,
+        html: ownerCancelledEmailHtml(order, reason, result.refund),
+      });
+      result.ownerEmail = !!sent?.ok;
+    } catch (e) {
+      console.error('[notifyOrderCancelled] owner email:', e.message);
+    }
   }
 
   return result;
