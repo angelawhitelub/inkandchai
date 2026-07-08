@@ -2,6 +2,7 @@ const { sendEmail } = require('./email');
 const { sendWhatsApp } = require('./whatsapp');
 const { createClient } = require('@supabase/supabase-js');
 const { issuePhonePeRefund } = require('./phonepe-refund-core');
+const { issueRazorpayRefund } = require('./razorpay-refund');
 
 function moneyFromPaise(paise) {
   const amount = Number(paise || 0) / 100;
@@ -50,10 +51,10 @@ function orderCancelledEmailHtml(order, reason) {
     </div>`;
 }
 
-// ── Auto-refund a cancelled order if it was PREPAID via PhonePe ───────────────
+// ── Auto-refund a cancelled order if it was PREPAID (PhonePe OR Razorpay) ─────
 // Fires from the single cancellation chokepoint below, so it works no matter how
 // the order got cancelled (admin, courier webhook, etc.). Safe by construction:
-//   • only PhonePe payments (razorpay_payment_id present, not a Razorpay 'pay_' id)
+//   • both gateways: Razorpay ('pay_...' ids) and PhonePe (all other txn ids)
 //   • only orders with a captured amount
 //   • never double-refunds (skips refunded / partially_refunded / refund_pending)
 //   • never throws — a refund problem must not break the cancellation flow
@@ -72,18 +73,37 @@ async function maybeAutoRefund(order) {
   if (['refunded', 'partially_refunded', 'refund_pending'].includes(row.status)) {
     return { skipped: 'already-refunded' };
   }
-  // PhonePe payments only. Razorpay ids start with 'pay_' → use their dashboard.
   const pid = row.razorpay_payment_id || '';
-  if (!pid || pid.startsWith('pay_')) return { skipped: 'not-phonepe' };
+  if (!pid) return { skipped: 'no-payment-id' };
   const amountPaise = Number(row.amount_paise || 0);
   if (!amountPaise || amountPaise <= 0) return { skipped: 'no-amount' };
 
   const displayId = row.razorpay_order_id || row.id;
+  // Razorpay payment ids start with 'pay_'; everything else is a PhonePe txn.
+  const isRazorpay = pid.startsWith('pay_');
 
-  // Mark refund_pending BEFORE calling PhonePe so a concurrent cancellation event
-  // can't fire a second refund for the same order.
+  // Mark refund_pending BEFORE calling the gateway so a concurrent cancellation
+  // event can't fire a second refund for the same order.
   await supabase.from('orders').update({ status: 'refund_pending' }).eq('id', row.id);
 
+  // ── Razorpay ──────────────────────────────────────────────────────────────
+  if (isRazorpay) {
+    try {
+      const refund = await issueRazorpayRefund(pid, amountPaise, {
+        notes: { reason: 'Order cancelled', order_id: displayId },
+      });
+      await supabase.from('orders').update({ status: 'refunded' }).eq('id', row.id);
+      console.log(`[AUTO-REFUND] ${displayId} → Razorpay refunded refundId=${refund.id}`);
+      await notifyRefundIssued(row, amountPaise, refund.id);
+      return { ok: true, provider: 'razorpay', state: 'refunded', nextStatus: 'refunded', merchantRefundId: refund.id };
+    } catch (err) {
+      // Leave it at refund_pending so the admin sees it and can retry manually.
+      console.error(`[AUTO-REFUND] ${displayId} Razorpay failed: ${err.message} — left as refund_pending`);
+      return { ok: false, provider: 'razorpay', error: err.message };
+    }
+  }
+
+  // ── PhonePe ───────────────────────────────────────────────────────────────
   const res = await issuePhonePeRefund({ displayId, amountPaise });
   if (res.ok) {
     await supabase.from('orders').update({ status: res.nextStatus }).eq('id', row.id);
@@ -108,7 +128,7 @@ function refundProcessedEmailHtml(order, amountPaise, refundId) {
       <p style="color:#a09080;line-height:1.8;margin:14px 0;">
         Hi ${first}, your order <strong style="color:#c9a84c;">${orderId(order)}</strong> was cancelled and
         we've issued a refund${amount ? ` of <strong style="color:#f0e8d8;">${amount}</strong>` : ''} to your
-        original PhonePe payment method.
+        original payment method.
       </p>
       <div style="background:#1c1916;border-left:3px solid #c9a84c;padding:14px 18px;margin:16px 0;">
         <p style="color:#f0e8d8;margin:0;font-size:14px;">Refund reference: <strong style="color:#c9a84c;">${refundId}</strong></p>
