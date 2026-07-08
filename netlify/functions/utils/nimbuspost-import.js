@@ -86,11 +86,18 @@ function buildPayload(order, opts = {}) {
 
   return {
     order_number: orderId,
-    // Reverse (customer-return) orders sit in the panel as a reverse order
-    // awaiting manual courier/AWB assignment — same as forward orders, and
-    // unlike the /shipments Partners API which auto-cancels a courier-less
-    // reverse shipment. order_type=reverse marks the direction.
-    ...(opts.reverse ? { order_type: 'reverse' } : {}),
+    // Reverse orders sit in the panel awaiting manual courier assignment —
+    // the Orders API skips the /v1/shipments serviceability check that fails
+    // for Tier-2/3 pincodes. NP's exact reverse-marker field isn't publicly
+    // documented, so we send all common candidates and let their multipart
+    // parser use whichever it recognises (unknown keys are silently dropped).
+    ...(opts.reverse ? {
+      order_type:    'reverse',
+      type:          'reverse',
+      is_reverse:    1,
+      reverse:       1,
+      shipment_type: 'reverse',
+    } : {}),
     payment_method: isCod ? 'COD' : 'prepaid',
     amount,
     fname: name.first,
