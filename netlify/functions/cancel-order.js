@@ -20,6 +20,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
+const { cancelNimbusShipment } = require('./utils/nimbuspost-cancel');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -164,10 +165,30 @@ exports.handler = async (event) => {
   // ── Case 1: COD order ────────────────────────────────────────────────────
   if (COD_CANCELLABLE.includes(status)) {
     await supabase.from('orders').update({ status: 'cancelled' }).eq('id', order_id);
+
+    // If the order was already pushed to NimbusPost (AWB assigned but not yet
+    // picked up), cancel it there too so the courier doesn't attempt pickup.
+    // Best-effort — never blocks the customer-facing cancellation.
+    let npResult = null;
+    if (order.tracking_id) {
+      npResult = await cancelNimbusShipment(order.tracking_id);
+      if (npResult.ok) {
+        console.log(`[cancel-order] NP AWB ${order.tracking_id} cancelled (idempotent=${!!npResult.alreadyCancelled})`);
+      } else {
+        console.error(`[cancel-order] NP cancel failed for AWB ${order.tracking_id}:`, npResult.error);
+      }
+    }
+
     await notifyOrderCancelled({ ...order, status: 'cancelled' }, {
-      reason: 'Your order has been cancelled as requested.',
+      reason: 'Your order has been cancelled as requested.'
+        + (npResult && !npResult.ok ? ` (NimbusPost cancel: ${npResult.error} — please cancel AWB ${order.tracking_id} in the NP panel manually.)` : ''),
     });
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, type: 'cod', message: 'Order cancelled successfully.' }) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({
+      success: true,
+      type: 'cod',
+      message: 'Order cancelled successfully.',
+      nimbuspost: npResult ? (npResult.ok ? 'cancelled' : `failed: ${npResult.error}`) : 'no-awb',
+    }) };
   }
 
   // ── Case 2: Prepaid order (status "paid") — 30-minute window ────────────
