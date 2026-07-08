@@ -25,6 +25,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { sendRefundInitiated } = require('./utils/refund-notifications');
 const {
   getRefundStatus, getOrderStatus, refundStateFromOrder, issueRefund,
 } = require('./utils/phonepe-core');
@@ -117,6 +118,10 @@ async function processOrder(supabase, order) {
       refund_attempts: attempts + 1, refund_last_error: null,
       refund_updated_at: new Date().toISOString(),
     }).eq('id', order.id);
+    // Fire refund-initiated notifications now that PhonePe has accepted the
+    // refund (either PENDING or COMPLETED both count as "initiated" from the
+    // customer's POV). sendRefundInitiated is dedup-guarded by refund_notified_at.
+    await sendRefundInitiated(order, amountPaise, { supabase }).catch(e => console.error('retry refund-initiated notify:', e.message));
     if (newStatus === 'refunded' && order.customer_email) {
       await sendEmail({ to: order.customer_email, subject: `Refund processed — ${displayId}`, html: refundEmailHtml(order, amountPaise) }).catch(() => {});
     }

@@ -22,6 +22,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
+const { sendRefundInitiated } = require('./utils/refund-notifications');
 const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
@@ -304,6 +305,12 @@ exports.handler = async (event) => {
         refund_updated_at: new Date().toISOString(),
       })
       .eq('id', order.id);
+
+    // Send the "refund initiated — 2-3 business days" WhatsApp + email as soon
+    // as PhonePe accepts the refund (PENDING or COMPLETED). Guarded internally
+    // by refund_notified_at so a follow-up state change (PENDING → COMPLETED)
+    // doesn't renotify the customer.
+    await sendRefundInitiated(order, amountPaise, { supabase }).catch(e => console.error('refund-initiated notify:', e.message));
 
     // Only send the "processed" email once PhonePe has actually completed the refund.
     if (order.customer_email && nextStatus !== 'refund_pending') {

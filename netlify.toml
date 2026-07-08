@@ -35,7 +35,7 @@
 # payments settle through the day, a re-attempt succeeds. Money-safe: never
 # re-issues without first confirming no refund is already completed/pending.
 [functions."phonepe-retry-refunds-background"]
-  schedule = "0 */4 * * *"
+  schedule = "0 * * * *"
 
 # 5-min follow-up confirmation ping for WhatsApp book-order requests placed via
 # the bot. Runs every 2 minutes; each row is pinged exactly once thanks to the

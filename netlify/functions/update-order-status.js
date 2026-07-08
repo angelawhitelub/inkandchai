@@ -20,6 +20,7 @@ const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
+const { sendRefundInitiated } = require('./utils/refund-notifications');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -202,15 +203,12 @@ exports.handler = async (event) => {
           });
           await supabase.from('orders').update({ status: 'refunded' }).eq('id', id);
           refundInfo = { provider: 'razorpay', status: 'refunded', refund_id: refund.id, amount: amountPaise / 100 };
-          const note = `💳 Refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} has been initiated to your original payment method (5–7 business days). Refund ID: ${refund.id}.`;
+          const note = `💳 Refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} has been initiated to your original payment method — usually reflects within 2–3 business days. Refund ID: ${refund.id}.`;
           await notifyOrderCancelled({ ...previousOrder, status: 'refunded' }, { reason: note });
-          if (previousOrder.customer_email) {
-            await sendEmail({
-              to: previousOrder.customer_email,
-              subject: `Order cancelled & refund initiated — ${previousOrder.razorpay_order_id || previousOrder.id}`,
-              html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#2a2018;background:#faf7f2;"><h2 style="color:#8a6a1f;font-weight:400;">Ink &amp; Chai</h2><p>Hi ${(previousOrder.customer_name || 'there').split(' ')[0]},</p><p>Your order <strong>${previousOrder.razorpay_order_id || previousOrder.id}</strong> has been cancelled and a refund initiated.</p><p>${note}</p><p style="font-size:12px;color:#8a7a62;margin-top:24px;">Ink &amp; Chai · inkandchai.in</p></div>`,
-            });
-          }
+          // Refund-initiated WhatsApp + email — shared with the PhonePe flow so
+          // wording/timeline is consistent. Dedup-guarded by refund_notified_at.
+          await sendRefundInitiated(previousOrder, amountPaise, { supabase })
+            .catch(e => console.error('razorpay refund-initiated notify:', e.message));
         } catch (err) {
           console.error('[update-order-status] Razorpay auto-refund failed:', err.message);
           // Fall back to manual: mark refund_pending + alert admin.
