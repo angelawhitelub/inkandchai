@@ -54,8 +54,15 @@ function parseAddress(value) {
 
 function splitName(value) {
   const tokens = String(value || '').trim().split(/\s+/).filter(Boolean);
-  if (!tokens.length) return { first: 'Customer', last: '' };
-  return { first: tokens[0].slice(0, 60), last: tokens.slice(1).join(' ').slice(0, 60) };
+  if (!tokens.length) return { first: 'Customer', last: 'Customer' };
+  const first = tokens[0].slice(0, 60);
+  // NimbusPost's Orders API rejects blank lname with "lname is required". When
+  // the customer only gave one name, duplicate the first as the last — matches
+  // what the user does manually in the panel anyway.
+  const last = tokens.length > 1
+    ? tokens.slice(1).join(' ').slice(0, 60)
+    : first;
+  return { first, last };
 }
 
 function parseItems(value) {
