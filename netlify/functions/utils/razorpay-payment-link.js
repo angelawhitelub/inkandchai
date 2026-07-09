@@ -12,6 +12,8 @@
  * @param {string} opts.description   What the payment is for (shown on link page)
  * @param {string} opts.customerName
  * @param {string} opts.customerPhone 10-digit or +91… — will be normalised
+ * @param {string} [opts.shippingAddress] Full delivery address — stored in notes so the webhook can save it
+ * @param {string} [opts.books] Book title(s) — stored in notes for the webhook's placeholder cart
  * @param {string} [opts.referenceId] Our own id (bot order id) — echoed back in webhook
  * @param {string} [opts.callbackUrl] Where to redirect after payment
  * @returns {Promise<{id:string, short_url:string, status:string}>}
@@ -38,7 +40,18 @@ async function createRazorpayPaymentLink(opts) {
     },
     notify: { sms: !!contact, email: false },
     reminder_enable: true,
-    notes: opts.referenceId ? { bot_order_id: opts.referenceId } : {},
+    // Stash the customer details in notes using the SAME keys the Razorpay
+    // webhook reads (customer_name / shipping_address / customer_phone / books).
+    // Without this, a paid link creates an order with an empty name+address and
+    // Razorpay's void@razorpay.com placeholder email, because a payment link has
+    // no browser checkout to run verify-payment.
+    notes: {
+      ...(opts.referenceId ? { bot_order_id: opts.referenceId } : {}),
+      ...(opts.customerName ? { customer_name: String(opts.customerName).slice(0, 100) } : {}),
+      ...(contact ? { customer_phone: contact } : {}),
+      ...(opts.shippingAddress ? { shipping_address: String(opts.shippingAddress).slice(0, 300) } : {}),
+      ...(opts.books ? { books: String(opts.books).slice(0, 300) } : {}),
+    },
     ...(opts.referenceId ? { reference_id: opts.referenceId } : {}),
     ...(opts.callbackUrl ? { callback_url: opts.callbackUrl, callback_method: 'get' } : {}),
   };

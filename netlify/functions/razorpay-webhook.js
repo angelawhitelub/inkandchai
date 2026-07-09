@@ -112,13 +112,39 @@ exports.handler = async (event) => {
 
   const cart     = abandoned?.cart_items || [];
   const customer = abandoned?.customer   || {};
-  const name     = customer.name    || customerName   || '';
-  const email    = customer.email   || customerEmail  || '';
-  const phone    = customer.phone   || customerPhone  || '';
-  const address  = customer.address || payment.notes?.shipping_address || '';
+  let   name     = customer.name    || customerName   || '';
+  let   email    = customer.email   || customerEmail  || '';
+  let   phone    = customer.phone   || customerPhone  || '';
+  let   address  = customer.address || payment.notes?.shipping_address || '';
+  let   notesBooks = payment.notes?.books || '';
+
+  // WhatsApp-bot payment links: the customer's name/address live in
+  // bot_order_requests, not on the payment. If this payment came from a bot
+  // link (notes.bot_order_id) and we're still missing name/address, pull them
+  // from that row so the order isn't saved blank with a void@razorpay.com email.
+  const botOrderId = payment.notes?.bot_order_id;
+  if (botOrderId && (!name || !address)) {
+    try {
+      const { data: botReq } = await supabase
+        .from('bot_order_requests')
+        .select('customer_name, address, books, customer_phone')
+        .eq('order_id', botOrderId)
+        .maybeSingle();
+      if (botReq) {
+        name       = name    || botReq.customer_name || '';
+        address    = address || botReq.address       || '';
+        phone      = phone   || botReq.customer_phone || '';
+        notesBooks = notesBooks || botReq.books       || '';
+      }
+    } catch (e) { console.warn('[razorpay-webhook] bot_order_requests lookup:', e.message); }
+  }
+  // Razorpay uses void@razorpay.com when no real email was collected — don't
+  // store that placeholder; leave the field blank instead.
+  if (/^void@razorpay\.com$/i.test(email)) email = '';
+
   // If cart is empty (no abandoned checkout), build a placeholder from notes.books
-  const cartItems = cart.length > 0 ? cart : (payment.notes?.books
-    ? [{ title: payment.notes.books, qty: 1, price: Math.round(amount_paise / 100) }]
+  const cartItems = cart.length > 0 ? cart : (notesBooks
+    ? [{ title: notesBooks, qty: 1, price: Math.round(amount_paise / 100) }]
     : []);
 
   // IC- (or IC-CW- for Crossword-migrated genuine-tag carts) order ID.

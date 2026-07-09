@@ -567,12 +567,14 @@ async function submitOrderRequest(phone, args) {
   if (paymentMode === 'prepaid') {
     try {
       const link = await createRazorpayPaymentLink({
-        amountPaise:   pricing.totalPaise,
-        description:   `Ink & Chai — ${books.slice(0, 100)}`,
+        amountPaise:     pricing.totalPaise,
+        description:     `Ink & Chai — ${books.slice(0, 100)}`,
         customerName,
-        customerPhone: last10,
-        referenceId:   orderId,
-        callbackUrl:   `https://inkandchai.in/track/?id=${encodeURIComponent(orderId)}`,
+        customerPhone:   last10,
+        shippingAddress: address,   // so the paid-link webhook saves name + address
+        books,
+        referenceId:     orderId,
+        callbackUrl:     `https://inkandchai.in/track/?id=${encodeURIComponent(orderId)}`,
       });
       paymentLink = link.short_url || '';
       paymentLinkId = link.id || '';
