@@ -1092,14 +1092,15 @@ HTML = r"""<!DOCTYPE html>
   }
 
   /* NAV */
-  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 4rem; background: linear-gradient(to bottom, rgba(13,11,8,0.97) 0%, transparent 100%); border-bottom: 1px solid var(--border); backdrop-filter: blur(12px); }
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; flex-wrap: wrap; row-gap: 0.7rem; align-items: center; justify-content: space-between; padding: 1.4rem 4rem; background: linear-gradient(to bottom, rgba(13,11,8,0.97) 0%, transparent 100%); border-bottom: 1px solid var(--border); backdrop-filter: blur(12px); }
   .nav-logo { display: inline-flex; align-items: center; gap: 0.5rem; font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; font-weight: 600; letter-spacing: 0.08em; color: var(--gold); text-decoration: none; }
   .nav-logo .logo-img { height: 38px; width: auto; display: block; }
   .nav-logo .logo-light { display: none; }
   html[data-theme="light"] .nav-logo .logo-dark  { display: none; }
   html[data-theme="light"] .nav-logo .logo-light { display: block; }
   @media(max-width:780px) { .nav-logo .logo-img { height: 32px; } }
-  .nav-links { display: flex; gap: 2.8rem; list-style: none; }
+  .nav-links { display: flex; gap: 2rem; list-style: none; flex: 1 1 0; min-width: 0; justify-content: center; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+  .nav-links::-webkit-scrollbar { display: none; }
   .nav-links a { font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cream-dim); text-decoration: none; transition: color 0.3s; }
   .nav-links a:hover { color: var(--gold); }
   .nav-links li { position: relative; }
@@ -1119,7 +1120,15 @@ HTML = r"""<!DOCTYPE html>
   .nav-icon:hover { color: var(--gold); }
   .nav-search-btn { color: var(--cream); cursor: pointer; transition: color 0.3s, border-color 0.3s, background 0.3s; font: inherit; background: rgba(201,168,76,0.08); border: 1px solid var(--border); border-radius: var(--pill); padding: 0.5rem 0.95rem; gap: 0.4rem; display: inline-flex; align-items: center; justify-content: center; font-size: 1.05rem; line-height: 1; }
   .nav-search-btn:hover { color: var(--gold); border-color: var(--gold); background: rgba(201,168,76,0.14); }
-  .nav-search { display: flex; align-items: center; gap: 0.3rem; background: rgba(201,168,76,0.08); border: 1px solid var(--border); border-radius: var(--pill); padding: 0.24rem 0.24rem 0.24rem 0.75rem; flex: 0 1 220px; min-width: 140px; position: relative; }
+  /* Search sits on its own full-width SECOND row (desktop) instead of being
+     squeezed into the first row between the links and the icons. flex-basis
+     100% forces it to wrap below; max-width + margin auto keep it a tidy,
+     centred pill rather than spanning the whole nav width. order:5 pushes it
+     after logo/links/actions so those stay on row 1. */
+  /* Zero-height full-width flex item: forces a line break so the search lands
+     on its own visible second row while logo+links+icons stay on row 1. */
+  .nav-break { order: 4; flex: 0 0 100%; height: 0; margin: 0; padding: 0; }
+  .nav-search { order: 5; display: flex; align-items: center; gap: 0.3rem; background: rgba(201,168,76,0.08); border: 1px solid var(--border); border-radius: var(--pill); padding: 0.3rem 0.3rem 0.3rem 0.9rem; flex: 0 1 auto; width: 560px; max-width: 100%; min-width: 0; margin: 0.1rem auto 0; position: relative; }
   .nav-search input { flex: 1; background: transparent; border: 0; color: var(--cream); font: inherit; font-size: 0.78rem; outline: none; min-width: 0; }
   .nav-search input::placeholder { color: var(--cream-dim); }
   .nav-search button { padding: 0.35rem 0.55rem; border-radius: var(--pill); border: 1px solid var(--border); background: transparent; color: var(--gold); cursor: pointer; font-size: 0.9rem; line-height: 1; min-height: 0; }
@@ -1804,6 +1813,7 @@ HTML = r"""<!DOCTYPE html>
     .nav-links li { flex: 0 0 auto; }
     /* Amazon-style: search drops to its own full-width row (below logo/icons,
        above the scrolling category links). */
+    .nav-break { display: none; }
     .nav-search { order: 3; flex: 0 0 100%; width: 100%; max-width: none; min-width: 0; margin: 0.5rem 0 0.1rem; padding: 0.45rem 0.5rem 0.45rem 1rem; }
     .nav-search input { font-size: 0.9rem; }
     .nav-search button { padding: 0.5rem 0.8rem; font-size: 1.05rem; }
@@ -2281,6 +2291,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
     </li>
     <li><a href="mailto:support@inkandchai.in">Contact Us</a></li>
   </ul>
+  <span class="nav-break" aria-hidden="true"></span>
   <form class="nav-search" action="/" method="get" role="search"><input type="search" name="q" placeholder="Search books&hellip;" aria-label="Search books" autocomplete="off"/><button type="submit" aria-label="Search">&#128269;</button></form>
   <div class="nav-actions">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
