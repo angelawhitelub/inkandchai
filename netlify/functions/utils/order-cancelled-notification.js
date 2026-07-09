@@ -255,8 +255,12 @@ async function notifyOrderCancelled(order, opts = {}) {
 
   // Owner notification — same pattern as the "new order" email so the store
   // owner sees every cancellation in their inbox alongside new orders.
+  // Suppressed for payment-failure cancellations (opts.paymentFailed): those
+  // are just abandoned/failed checkouts where nothing was ever captured, and
+  // emailing the owner about every failed payment is noise. The customer-facing
+  // notification still goes out as normal.
   const ownerEmail = process.env.STORE_OWNER_EMAIL;
-  if (ownerEmail && !opts.skipOwnerEmail) {
+  if (ownerEmail && !opts.skipOwnerEmail && !opts.paymentFailed) {
     try {
       const total = moneyFromPaise(order.amount_paise);
       const sent = await sendEmail({

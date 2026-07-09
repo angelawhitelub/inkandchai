@@ -169,6 +169,8 @@ async function reconcileOne(supabase, host, token, orderId) {
       await supabase.from('orders').update({ status: 'cancelled' }).eq('razorpay_order_id', orderId);
       await notifyOrderCancelled({ ...existing, status: 'cancelled' }, {
         reason: `PhonePe reported the payment as ${state}. Your order has been cancelled.`,
+        skipRefund: true,     // unpaid/pending order — nothing was captured
+        paymentFailed: true,  // don't email the owner about a failed checkout
       });
       return { orderId, result: 'cancelled', state };
     }
