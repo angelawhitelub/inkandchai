@@ -589,8 +589,13 @@ async function submitOrderRequest(phone, args) {
   const followUpAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
   try {
-    // Try to persist the request. If the DB write fails (e.g. table missing), we
-    // still notify the owner below so the order is NEVER silently lost.
+    // Persist the request in two steps so it ALWAYS registers even if the
+    // payment-flow SQL migration (bot_order_requests_payment_flow.sql) hasn't
+    // been run yet:
+    //   1. Insert the core columns that have always existed → row appears in
+    //      the Book Requests panel no matter what.
+    //   2. Best-effort UPDATE the newer payment/follow-up columns; if they don't
+    //      exist yet, this quietly fails and the core row is untouched.
     let saved = false;
     try {
       const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -601,17 +606,23 @@ async function submitOrderRequest(phone, args) {
         address,
         books,
         notes,
-        payment_mode:            paymentMode,
-        amount_paise:            pricing.totalPaise,
-        payment_link:            paymentLink || null,
-        razorpay_payment_link_id: paymentLinkId || null,
-        payment_status:          paymentMode === 'prepaid' ? (paymentLink ? 'created' : 'link_failed') : null,
-        follow_up_at:            followUpAt,
-        status:                  'new',
-        created_at:              new Date().toISOString(),
+        status:         'new',
+        created_at:     new Date().toISOString(),
       });
       if (error) console.error('submitOrderRequest insert:', error.message);
-      else saved = true;
+      else {
+        saved = true;
+        // Step 2 — extras (present only after the migration). Never blocks.
+        const { error: upErr } = await db.from('bot_order_requests').update({
+          payment_mode:             paymentMode,
+          amount_paise:             pricing.totalPaise,
+          payment_link:             paymentLink || null,
+          razorpay_payment_link_id: paymentLinkId || null,
+          payment_status:           paymentMode === 'prepaid' ? (paymentLink ? 'created' : 'link_failed') : null,
+          follow_up_at:             followUpAt,
+        }).eq('order_id', orderId);
+        if (upErr) console.warn('submitOrderRequest extras update (run bot_order_requests_payment_flow.sql):', upErr.message);
+      }
     } catch (dbErr) {
       console.error('submitOrderRequest db exception:', dbErr.message);
     }
