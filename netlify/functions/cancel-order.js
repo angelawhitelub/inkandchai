@@ -20,7 +20,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
-const { cancelNimbusShipment } = require('./utils/nimbuspost-cancel');
+const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -166,28 +166,40 @@ exports.handler = async (event) => {
   if (COD_CANCELLABLE.includes(status)) {
     await supabase.from('orders').update({ status: 'cancelled' }).eq('id', order_id);
 
-    // If the order was already pushed to NimbusPost (AWB assigned but not yet
-    // picked up), cancel it there too so the courier doesn't attempt pickup.
-    // Best-effort — never blocks the customer-facing cancellation.
-    let npResult = null;
+    // Cancel the order inside NimbusPost too so the courier doesn't ship it.
+    // COD orders are auto-pushed to the NP panel at creation, so there's almost
+    // always something to cancel there:
+    //   • AWB already assigned  → cancel the SHIPMENT by AWB.
+    //   • no AWB yet (unshipped panel order) → cancel the ORDER by order_number.
+    // Best-effort — never blocks the customer-facing cancellation. Whatever the
+    // outcome, the owner email below reports it so a failed auto-cancel gets a
+    // manual follow-up instead of silently shipping a cancelled order.
+    const displayId = order.razorpay_order_id || order.id;
+    let npResult, npWhat;
     if (order.tracking_id) {
+      npWhat = `AWB ${order.tracking_id}`;
       npResult = await cancelNimbusShipment(order.tracking_id);
-      if (npResult.ok) {
-        console.log(`[cancel-order] NP AWB ${order.tracking_id} cancelled (idempotent=${!!npResult.alreadyCancelled})`);
-      } else {
-        console.error(`[cancel-order] NP cancel failed for AWB ${order.tracking_id}:`, npResult.error);
-      }
+    } else {
+      npWhat = `order ${displayId}`;
+      npResult = await cancelNimbusOrder(displayId);
+    }
+    if (npResult.ok) {
+      console.log(`[cancel-order] NP ${npWhat} cancelled (idempotent=${!!npResult.alreadyCancelled})`);
+    } else {
+      console.error(`[cancel-order] NP cancel failed for ${npWhat}:`, npResult.error);
     }
 
     await notifyOrderCancelled({ ...order, status: 'cancelled' }, {
       reason: 'Your order has been cancelled as requested.'
-        + (npResult && !npResult.ok ? ` (NimbusPost cancel: ${npResult.error} — please cancel AWB ${order.tracking_id} in the NP panel manually.)` : ''),
+        + (npResult && !npResult.ok
+            ? ` (⚠️ NimbusPost auto-cancel failed: ${npResult.error} — please cancel ${npWhat} in the NimbusPost panel manually so it isn't shipped.)`
+            : ''),
     });
     return { statusCode: 200, headers: CORS, body: JSON.stringify({
       success: true,
       type: 'cod',
       message: 'Order cancelled successfully.',
-      nimbuspost: npResult ? (npResult.ok ? 'cancelled' : `failed: ${npResult.error}`) : 'no-awb',
+      nimbuspost: npResult.ok ? 'cancelled' : `failed: ${npResult.error}`,
     }) };
   }
 
