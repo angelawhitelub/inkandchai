@@ -2247,6 +2247,7 @@ async function loadProductOverrides() {
     if (!res.ok) return;
     const data = await res.json();
     const bySlug = new Map((data.overrides || []).map(o => [String(o.slug || '').toLowerCase(), o]));
+    window._overrideBySlug = bySlug;  // reused when the full catalogue lazy-loads
     BOOKS.forEach(book => applyProductOverride(book, bySlug.get(String(book.slug || '').toLowerCase())));
     (data.custom_products || []).forEach(product => {
       const book = customProductToBook(product);
@@ -2404,7 +2405,11 @@ function normalizeSearchText(value) {
     .toLowerCase()
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[`’‘´]/g, "'")
+    // Strip apostrophes so contractions collapse: "Can't" -> "cant", matching a
+    // user typing "cant". (Previously these became "can t", so "cant hurt me"
+    // matched only 2 of 3 tokens and the 70% threshold rejected every
+    // "Can't Hurt Me" listing.) Applied to both query and book titles.
+    .replace(/[`’‘´'ʼ]/g, "")
     .replace(/&/g, ' and ')
     .replace(/[^a-z0-9\u0900-\u097f]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -2731,7 +2736,63 @@ function setTab(el) {
   renderBooks();
 }
 
+// ── Lazy full-catalogue upgrade ──────────────────────────────────────────────
+// The homepage ships only the LITE book subset for a fast first paint, so search
+// would otherwise miss most of the ~5k-book catalogue (e.g. "cant hurt me" only
+// found the 2 titles in the subset). The moment the user starts searching we
+// pull in the full catalogue (books-full-*.js, ~1yr-cached) and merge the extra
+// titles into the live BOOKS array, then re-render so results are complete.
+let _fullCatState = 'lite';           // 'lite' | 'loading' | 'full'
+let _fullCatWaiters = [];
+function ensureFullCatalogue(onReady) {
+  if (_fullCatState === 'full') { if (onReady) onReady(false); return; }
+  if (_fullCatState === 'loading') { if (onReady) _fullCatWaiters.push(onReady); return; }
+  const url = window.BOOKS_FULL_URL;
+  if (!url) { if (onReady) onReady(false); return; }   // nothing to upgrade to
+  _fullCatState = 'loading';
+  _fullCatWaiters = onReady ? [onReady] : [];
+  const liteRef = window.BOOKS_PRELOAD;                // BOOKS === this array
+  const s = document.createElement('script');
+  s.src = url;
+  s.onload = () => {
+    let added = 0;
+    try {
+      const full = window.BOOKS_PRELOAD;               // full script overwrote the global
+      if (Array.isArray(full) && full !== liteRef) {
+        const seen = new Set(BOOKS.map(b => String(b.slug || '').toLowerCase()));
+        for (const b of full) {
+          const slug = String(b.slug || '').toLowerCase();
+          if (slug && !seen.has(slug)) {
+            BOOKS.push(b); BOOK_MAP[b.slug] = b; seen.add(slug); added++;
+            if (window._overrideBySlug) applyProductOverride(b, window._overrideBySlug.get(slug));
+          }
+        }
+      }
+      window.BOOKS_PRELOAD = liteRef;                  // keep BOOKS === window.BOOKS_PRELOAD
+    } catch (e) { console.warn('[search] full-catalogue merge failed:', e); }
+    _fullCatState = 'full';
+    console.log('[search] full catalogue ready (+' + added + ' books)');
+    const waiters = _fullCatWaiters; _fullCatWaiters = [];
+    waiters.forEach(fn => { try { fn(true); } catch (e) {} });
+  };
+  s.onerror = () => {
+    _fullCatState = 'lite';                            // allow a later retry
+    const waiters = _fullCatWaiters; _fullCatWaiters = [];
+    waiters.forEach(fn => { try { fn(false); } catch (e) {} });
+  };
+  document.head.appendChild(s);
+}
+// Re-render whichever search UI is currently showing (called after the full
+// catalogue finishes loading so newly-available titles appear without a retype).
+function _reRenderSearchAfterLoad() {
+  const overlay = document.getElementById('srchOverlay');
+  const srchIn  = document.getElementById('srchInput');
+  if (overlay && overlay.classList.contains('open') && srchIn) renderSrchResults(srchIn.value || '');
+  if (currentQuery) renderBooks();
+}
+
 function onSearch() {
+  ensureFullCatalogue(_reRenderSearchAfterLoad);
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     currentQuery = document.getElementById('searchInput').value;
@@ -2755,6 +2816,7 @@ function clearSearch() {
 function focusSiteSearch() {
   const overlay = document.getElementById('srchOverlay');
   if (!overlay) return;
+  ensureFullCatalogue(_reRenderSearchAfterLoad);  // upgrade to full catalogue on open
   // Sync current search value into overlay input
   const mainVal = document.getElementById('searchInput')?.value || '';
   const srchIn  = document.getElementById('srchInput');
@@ -2787,6 +2849,7 @@ document.addEventListener('keydown', (e) => {
   function run(){
     const mainIn = document.getElementById('searchInput');
     if (mainIn) mainIn.value = q;
+    if (typeof ensureFullCatalogue === 'function') ensureFullCatalogue(_reRenderSearchAfterLoad);
     if (typeof focusSiteSearch === 'function') focusSiteSearch();
     const srchIn = document.getElementById('srchInput');
     if (srchIn) srchIn.value = q;
@@ -2801,6 +2864,7 @@ document.addEventListener('keydown', (e) => {
 
 let _srchSel = -1;
 function srchType() {
+  ensureFullCatalogue(_reRenderSearchAfterLoad);  // upgrade to full catalogue as they type
   const val = document.getElementById('srchInput')?.value || '';
   const mainInput = document.getElementById('searchInput');
   if (mainInput) mainInput.value = val;
