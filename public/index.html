@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>Ink & Chai — Buy Books Online India · Hindi & English · Free Shipping above ₹499</title>
-<link rel="preload" as="script" href="/js/books-lite-a348724b.js"/>
+<link rel="preload" as="script" href="/js/books-lite-97634e85.js"/>
 <meta name="description" content="Buy books online in India at Ink & Chai. 2,300+ titles in Hindi and English — fiction, romance, self-help, mythology, manga & more. Free pan-India shipping above ₹499. Cash on delivery available. Genuine books, 7-day easy returns." />
 <meta name="keywords" content="buy books online india, hindi books online, online bookstore india, self help books hindi, romance books, fiction books, manga books, ana huang books, david goggins hindi, robin sharma, robert kiyosaki, mythology books, books at 99, cash on delivery books, free shipping books india, ink and chai" />
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
@@ -169,8 +169,11 @@
   html[data-theme="light"] .nav-logo .logo-dark  { display: none; }
   html[data-theme="light"] .nav-logo .logo-light { display: block; }
   @media(max-width:780px) { .nav-logo .logo-img { height: 32px; } }
-  .nav-links { display: flex; gap: 2rem; list-style: none; flex: 1 1 0; min-width: 0; justify-content: center; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
-  .nav-links::-webkit-scrollbar { display: none; }
+  /* overflow MUST stay visible here — the hover dropdown menus (.nav-dropdown)
+     are absolutely positioned inside these <li>s and get clipped if the row
+     scrolls/clips. flex:1 1 0 keeps the links to their leftover row-1 space so
+     the account icons stay on row 1 without needing overflow. */
+  .nav-links { display: flex; gap: 2rem; list-style: none; flex: 1 1 0; min-width: 0; justify-content: center; overflow: visible; flex-wrap: wrap; row-gap: 0.4rem; }
   .nav-links a { font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cream-dim); text-decoration: none; transition: color 0.3s; }
   .nav-links a:hover { color: var(--gold); }
   .nav-links li { position: relative; }
@@ -182,6 +185,10 @@
   .nav-policy-dropdown { width: min(310px, 82vw); grid-template-columns: 1fr; }
   html[data-theme="light"] .nav-dropdown { background: rgba(250,247,242,0.98); box-shadow: 0 18px 48px rgba(80,55,20,0.14); }
   .nav-dropdown-menu:hover .nav-dropdown, .nav-dropdown-menu:focus-within .nav-dropdown { opacity: 1; visibility: visible; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  /* Touch/mobile: hover doesn't exist, so a tap toggles .open on the menu (JS).
+     display:grid overrides the mobile `.nav-dropdown{display:none}` (this
+     3-class selector outranks it) so the tapped menu actually renders. */
+  .nav-dropdown-menu.open .nav-dropdown { display: grid; opacity: 1; visibility: visible; pointer-events: auto; transform: translateX(-50%) translateY(0); }
   .nav-dropdown a { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; padding: 0.55rem 0.65rem; border: 1px solid transparent; font-size: 0.58rem; letter-spacing: 0.12em; line-height: 1.35; white-space: normal; }
   .nav-dropdown a:hover { border-color: var(--border); background: rgba(201,168,76,0.08); }
   .nav-cat-count { flex: 0 0 auto; color: var(--gold-dim); font-size: 0.72em; letter-spacing: 0.04em; text-transform: none; }
@@ -2871,6 +2878,51 @@ document.addEventListener('keydown', (e) => {
   const kick = () => { run(); setTimeout(run, 700); setTimeout(run, 1600); };
   if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', kick);
   else kick();
+})();
+
+// ── Touch/mobile nav dropdowns ───────────────────────────────────────────────
+// The Categories/Policies menus open on :hover on desktop, but touch devices
+// have no hover — the trigger is a plain <a> that would just navigate. On touch
+// (or narrow widths), the first tap opens the menu instead; tapping outside or
+// another trigger closes it. The dropdown is positioned fixed while open so the
+// mobile nav's horizontal-scroll (overflow) can't clip it.
+(function(){
+  const menus = [...document.querySelectorAll('.nav-dropdown-menu')];
+  if (!menus.length) return;
+  const isTouch = () => window.matchMedia('(hover: none), (pointer: coarse), (max-width: 780px)').matches;
+
+  function place(menu){
+    const dd = menu.querySelector('.nav-dropdown'); if (!dd) return;
+    const r = menu.getBoundingClientRect();
+    dd.style.position = 'fixed';
+    dd.style.top = Math.round(r.bottom + 6) + 'px';
+    dd.style.left = '50%';
+    dd.style.right = 'auto';
+    dd.style.maxWidth = 'min(360px, 92vw)';
+  }
+  function clear(menu){
+    const dd = menu.querySelector('.nav-dropdown'); if (!dd) return;
+    ['position','top','left','right','maxWidth'].forEach(p => dd.style[p] = '');
+  }
+  function closeAll(except){
+    menus.forEach(m => { if (m !== except && m.classList.contains('open')) { m.classList.remove('open'); clear(m); } });
+  }
+  menus.forEach(menu => {
+    const trig = menu.querySelector('.nav-dropdown-trigger');
+    if (!trig) return;
+    trig.addEventListener('click', (e) => {
+      if (!isTouch()) return;                 // desktop keeps pure hover behaviour
+      if (!menu.classList.contains('open')) {
+        e.preventDefault();                   // first tap opens instead of navigating
+        closeAll(menu);
+        menu.classList.add('open');
+        place(menu);
+      }
+      // a second tap on the trigger falls through and follows the link
+    });
+  });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.nav-dropdown-menu')) closeAll(null); });
+  window.addEventListener('resize', () => closeAll(null));
 })();
 
 let _srchSel = -1;
