@@ -274,7 +274,11 @@ exports.handler = async (event) => {
       customer_address: customer?.address || '',
       amount_paise: trustedAmountPaise,
       cart_items: cart,
-    }).catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
+    })
+      // Stamp the row so a later manual bulk push never re-pushes this order
+      // (best-effort; needs orders_nimbus_pushed_at.sql).
+      .then(() => supabase.from('orders').update({ nimbus_pushed_at: new Date().toISOString() }).eq('razorpay_order_id', inkOrderId))
+      .catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
 
     // ── Scratch card reward — only for full prepaid orders (not partial COD) ─
     if (!isPartial) {

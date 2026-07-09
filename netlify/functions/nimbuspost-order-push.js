@@ -289,7 +289,15 @@ exports.handler = async (event) => {
     const summary = { pushed: 0, skipped: 0, failed: 0, errors: [] };
     for (const order of orders || []) {
       const orderNumber = normalizeOrderNumber(order.razorpay_order_id || order.id);
-      if (existingOrderNumbers.has(orderNumber)) {
+
+      // Primary, deterministic dedup: once we've pushed an order we stamp
+      // nimbus_pushed_at on our own row, so a re-push is skipped regardless of
+      // how old the order is. (The NP panel scan below only covers the ~500
+      // most-recent orders, so it MISSES an original pushed weeks ago — that's
+      // exactly how the duplicates got created.) If the column doesn't exist
+      // yet (migration not run), this is simply undefined and we fall back to
+      // the panel scan.
+      if (order.nimbus_pushed_at || existingOrderNumbers.has(orderNumber)) {
         summary.skipped++;
         continue;
       }
@@ -299,6 +307,13 @@ exports.handler = async (event) => {
         summary.pushed++;
         // Also protects against repeated rows in this same request.
         existingOrderNumbers.add(orderNumber);
+        // Stamp our own row so this order is never pushed again. Best-effort:
+        // a missing column (pre-migration) must not fail the import.
+        try {
+          await supabase.from('orders')
+            .update({ nimbus_pushed_at: new Date().toISOString() })
+            .eq('id', order.id);
+        } catch (e) { console.warn('[nimbuspost-order-push] stamp nimbus_pushed_at (run orders_nimbus_pushed_at.sql):', e.message); }
       } catch (err) {
         const message = String(err.message || err);
         if (/already|duplicate|exists/i.test(message)) {

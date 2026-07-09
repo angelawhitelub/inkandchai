@@ -179,7 +179,11 @@ exports.handler = async (event) => {
       customer_address: customer.address || '',
       amount_paise: Math.round(total * 100),
       cart_items: cart,
-    }).catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
+    })
+      // Stamp the row so a later manual bulk push never re-pushes this order
+      // (best-effort; needs orders_nimbus_pushed_at.sql).
+      .then(() => supabase.from('orders').update({ nimbus_pushed_at: new Date().toISOString() }).eq('razorpay_order_id', orderId))
+      .catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
 
   } catch (err) {
     console.error('Supabase error (non-fatal):', err.message);
