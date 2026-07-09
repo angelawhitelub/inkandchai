@@ -138,7 +138,8 @@ function normalizeCustomProduct(product) {
     priceText: moneyText(price),
     originalPrice: priceNumber(product.original_price_inr),
     originalPriceText: moneyText(product.original_price_inr),
-    img: product.image_url || '',
+    // Supabase-hosted covers → Netlify /spimg proxy (Cached Egress guard).
+    img: require('./utils/supabase-img').proxifySupabaseImage(product.image_url || ''),
   };
 }
 

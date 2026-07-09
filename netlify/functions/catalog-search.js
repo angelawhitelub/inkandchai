@@ -12,6 +12,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { proxifySupabaseImage } = require('./utils/supabase-img');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -65,7 +66,10 @@ exports.handler = async (event) => {
       title: r.title,
       price: r.price_inr,
       original_price: r.original_price_inr || null,
-      img: r.image_url || '',
+      // Route supabase-hosted covers through the Netlify /spimg proxy — the
+      // /books grid renders these to every visitor, and raw supabase.co URLs
+      // burn Cached Egress per pageview. External (crossword.in) URLs pass through.
+      img: proxifySupabaseImage(r.image_url || ''),
       no_cod: /(?:^|,)\s*no-cod\s*(?:,|$)/i.test(String(r.tags || '')),
     }));
 

@@ -22,10 +22,15 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
+const { proxifySupabaseImage } = require('./utils/supabase-img');
+
 function absImg(u) {
   const s = String(u || '');
   if (!s) return '';
-  if (s.startsWith('http') || s.startsWith('data:')) return s;
+  if (s.startsWith('data:')) return s;
+  // Supabase-hosted covers go through the Netlify /spimg proxy so suggestion
+  // thumbnails don't burn Supabase Cached Egress per keystroke/pageview.
+  if (s.startsWith('http')) return proxifySupabaseImage(s);
   return 'https://inkandchai.in' + (s.startsWith('/') ? s : '/' + s);
 }
 function norm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim(); }

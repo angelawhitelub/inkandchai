@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { proxifySupabaseImage } = require('./utils/supabase-img');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -49,6 +50,10 @@ exports.handler = async (event) => {
     if (customError) console.warn('custom_products unavailable:', customError.message);
     else customProducts = (customData || []).map(p => ({
       ...p,
+      // CRITICAL: every visitor's browser loads these covers from whatever URL
+      // we return here. Raw supabase.co URLs were burning Cached Egress on
+      // every homepage view — route through the Netlify /spimg proxy instead.
+      image_url: proxifySupabaseImage(p.image_url),
       // Search only needs a snippet; the >30-char ranking check still passes.
       description: String(p.description || '').slice(0, 300),
       // Client parses tags ONLY for /publisher-sourced-bestseller/. Keep that
@@ -64,7 +69,8 @@ exports.handler = async (event) => {
       'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
       'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
     };
-    return { statusCode: 200, headers: cacheHeaders, body: JSON.stringify({ overrides: data || [], custom_products: customProducts }) };
+    const overrides = (data || []).map(o => ({ ...o, image_url: proxifySupabaseImage(o.image_url) }));
+    return { statusCode: 200, headers: cacheHeaders, body: JSON.stringify({ overrides, custom_products: customProducts }) };
   } catch (err) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: [], warning: err.message }) };
   }

@@ -60,7 +60,8 @@ function slugFromUrl(url) {
 
 function localOrAbsolute(img) {
   if (!img) return '';
-  if (img.startsWith('http')) return img;
+  // Supabase-hosted covers → Netlify /spimg proxy (Cached Egress guard).
+  if (img.startsWith('http')) return require('./utils/supabase-img').proxifySupabaseImage(img);
   return 'https://inkandchai.in' + img;
 }
 
