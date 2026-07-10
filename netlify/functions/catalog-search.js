@@ -45,7 +45,9 @@ exports.handler = async (event) => {
       .from('custom_products')
       .select('slug,title,price_inr,original_price_inr,image_url,tags', { count: 'exact' })
       .eq('is_active', true)
-      .ilike('tags', '%crossword-catalog%');
+      // The /books browse grid serves the big browse-only catalogues that are
+      // kept off the homepage feed: crossword.in + 99bookstores.
+      .or('tags.ilike.%crossword-catalog%,tags.ilike.%99bookstores-catalog%');
 
     if (q) {
       // Escape PostgREST filter special chars in the user term.

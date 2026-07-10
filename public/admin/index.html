@@ -597,6 +597,19 @@ tr:hover td{background:rgba(122,88,21,0.075);}
   <!-- ═══ CREATE LISTING TAB ═══ -->
   <div class="admin-section" id="tab-create">
 
+  <section class="product-panel" style="margin-bottom:1.2rem;">
+    <div class="product-head">
+      <div>
+        <h2>Import from 99bookstores</h2>
+        <p>Scrapes 99bookstores.com, skips anything already in your catalogue, and adds the new titles. Newest 150 show on the homepage; the rest are browse-only under /books (keeps egress safe). Runs in the background — a summary appears below after ~1–3 min.</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-primary" id="import99Btn" onclick="run99Import(this)">⬇ Import new books</button>
+      </div>
+    </div>
+    <div id="import99Status" style="font-size:0.72rem;color:var(--cream-dim);line-height:1.6;margin-top:0.4rem;"></div>
+  </section>
+
   <section class="product-panel" id="productCreatorSection">
     <div class="product-head">
       <div>
@@ -2571,6 +2584,35 @@ function previewCreateProductImage(file) {
     if (preview) preview.style.display = 'flex';
   };
   reader.readAsDataURL(file);
+}
+
+// ── Trigger the 99bookstores background import ───────────────────────────────
+async function run99Import(btn) {
+  const status = document.getElementById('import99Status');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Starting…';
+  status.style.color = 'var(--cream-dim)';
+  status.textContent = 'Starting import…';
+  try {
+    const res = await adminFetch('/.netlify/functions/import-99bookstores-background', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+    });
+    // Netlify background functions accept the job and return 202 with no body —
+    // the summary lives in the function logs, not the HTTP response.
+    if (res.status === 202) {
+      status.innerHTML = '✅ Import started in the background. New books appear under <strong>Products &amp; Prices</strong> and on the site in ~1–3 minutes — you can leave this page.';
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
+    const dupes = data.skipped ? ((data.skipped.dupe_catalog || 0) + (data.skipped.dupe_custom || 0)) : 0;
+    status.innerHTML = `✅ Imported <strong>${data.inserted || 0}</strong> new books — ${data.on_homepage_feed || 0} on homepage, ${data.browse_only || 0} browse-only. Skipped ${dupes} duplicates.`;
+  } catch (e) {
+    status.style.color = '#e06060';
+    status.textContent = 'Import failed: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
 }
 
 function clearCreateProductForm() {
