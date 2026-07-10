@@ -70,8 +70,9 @@ async function cancelNimbusShipment(awb) {
  * These are created via the seller-panel Orders API
  * (ship.nimbuspost.com/api/orders/create, NP-API-KEY, multipart) when we
  * auto-push a new COD order. A courier-less panel order can't be cancelled via
- * /v1/shipments/cancel (that needs an AWB), so we hit the Orders API cancel by
- * our own order_number (the IC-… id we sent as order_number on create).
+ * /v1/shipments/cancel (that needs an AWB), so we find the panel row by our own
+ * order_number (the IC-… id we sent on create), then cancel by NimbusPost's
+ * internal panel order id.
  *
  * The seller-panel Orders cancel endpoint isn't in NimbusPost's public docs, so
  * this is best-effort: on any non-success the caller falls back to alerting the
@@ -81,6 +82,81 @@ async function cancelNimbusShipment(awb) {
  * @returns {Promise<{ok:boolean, alreadyCancelled?:boolean, error?:string, data?:any}>}
  */
 const NP_PANEL_BASE = 'https://ship.nimbuspost.com/api';
+const NP_PANEL_ORDERS_URL = `${NP_PANEL_BASE}/orders`;
+const NP_MAX_PAGE = 50;
+const NP_SCAN_PAGES = 5;
+
+function normalizeOrderNumber(value) {
+  return String(value ?? '').trim().toUpperCase();
+}
+
+function orderRowsFromResponse(payload) {
+  const candidates = [
+    payload?.data?.data,
+    payload?.data?.orders,
+    payload?.data,
+    payload?.orders,
+    payload?.results,
+    payload,
+  ];
+  return candidates.find(Array.isArray) || [];
+}
+
+function orderNumberFromRow(row) {
+  return normalizeOrderNumber(
+    row?.order_number || row?.order_no || row?.channel_order_id ||
+    row?.channel_order_number || row?.order_reference ||
+    row?.order?.order_number || row?.order_id
+  );
+}
+
+function orderIdFromRow(row) {
+  const id =
+    row?.id || row?.order_id || row?.np_order_id || row?.nimbuspost_order_id ||
+    row?.order?.id || row?.order?.order_id;
+  return id === null || id === undefined ? '' : String(id).trim();
+}
+
+function awbFromRow(row) {
+  return String(
+    row?.awb_number || row?.awb || row?.tracking_number ||
+    row?.shipment?.awb_number || row?.shipment?.awb || ''
+  ).trim();
+}
+
+async function findNimbusOrder(orderNumber, apiKey) {
+  const target = normalizeOrderNumber(orderNumber);
+  const perPage = 100;
+  const lastPage = Math.min(NP_SCAN_PAGES, NP_MAX_PAGE);
+
+  for (let page = 1; page <= lastPage; page++) {
+    const url = new URL(NP_PANEL_ORDERS_URL);
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('per_page', String(perPage));
+    url.searchParams.set('sort', 'desc');
+    url.searchParams.set('sort_by', 'id');
+
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json', 'NP-API-KEY': apiKey },
+    });
+    const text = await response.text();
+    let payload;
+    try { payload = text ? JSON.parse(text) : {}; } catch (_) { payload = { message: text }; }
+
+    if (!response.ok || payload.status === false || payload.success === false || payload.error) {
+      const msg = JSON.stringify(payload).toLowerCase();
+      if (response.status === 404 && /(page|sort).*(must|one of|less than)/.test(msg)) break;
+      throw new Error(`NimbusPost order lookup failed (${response.status}): ${JSON.stringify(payload).slice(0, 500)}`);
+    }
+
+    const rows = orderRowsFromResponse(payload);
+    const hit = rows.find(row => orderNumberFromRow(row) === target);
+    if (hit) return hit;
+    if (rows.length < perPage) break;
+  }
+
+  return null;
+}
 
 async function cancelNimbusOrder(orderNumber) {
   const num = String(orderNumber || '').trim();
@@ -89,15 +165,45 @@ async function cancelNimbusOrder(orderNumber) {
   if (!key) return { ok: false, error: 'NIMBUSPOST_API_KEY not configured' };
 
   try {
-    // Mirror the create call's conventions: NP-API-KEY header + multipart body.
-    const form = new FormData();
-    form.append('order_number', num);
-    const res = await fetch(`${NP_PANEL_BASE}/orders/cancel`, {
+    const panelOrder = await findNimbusOrder(num, key);
+    if (!panelOrder) {
+      return { ok: false, error: `NimbusPost panel order not found for order_number ${num}` };
+    }
+
+    const awb = awbFromRow(panelOrder);
+    if (awb) {
+      return await cancelNimbusShipment(awb);
+    }
+
+    const panelId = orderIdFromRow(panelOrder);
+    if (!panelId) {
+      return { ok: false, error: `NimbusPost panel order id missing for order_number ${num}`, data: panelOrder };
+    }
+
+    // POST /api/orders/cancel wants { id: <integer> }. Unlike /orders/create
+    // (multipart-only), the cancel endpoint reads JSON — sending it as multipart
+    // form-data is why NimbusPost kept replying "id is required". Send JSON with
+    // a real integer; fall back to form-urlencoded if a given account rejects JSON.
+    const idNum = Number(panelId);
+    const idValue = Number.isFinite(idNum) ? idNum : panelId;
+
+    let res = await fetch(`${NP_PANEL_BASE}/orders/cancel`, {
       method: 'POST',
-      headers: { 'Accept': 'application/json', 'NP-API-KEY': key },
-      body: form,
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'NP-API-KEY': key },
+      body: JSON.stringify({ id: idValue }),
     });
     let data; try { data = await res.json(); } catch { data = {}; }
+
+    const looksIdMissing = /id\b.*(required|missing)/i.test(String(data.message || ''));
+    if (!res.ok || data.status === false || data.success === false || looksIdMissing) {
+      // Fallback: application/x-www-form-urlencoded
+      res = await fetch(`${NP_PANEL_BASE}/orders/cancel`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'NP-API-KEY': key },
+        body: new URLSearchParams({ id: String(panelId) }).toString(),
+      });
+      try { data = await res.json(); } catch { data = {}; }
+    }
 
     const msg = String(data.message || '').toLowerCase();
     if (msg.includes('already') && msg.includes('cancel')) {
