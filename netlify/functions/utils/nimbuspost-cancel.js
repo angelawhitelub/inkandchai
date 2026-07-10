@@ -180,30 +180,25 @@ async function cancelNimbusOrder(orderNumber) {
       return { ok: false, error: `NimbusPost panel order id missing for order_number ${num}`, data: panelOrder };
     }
 
-    // POST /api/orders/cancel wants { id: <integer> }. Unlike /orders/create
-    // (multipart-only), the cancel endpoint reads JSON — sending it as multipart
-    // form-data is why NimbusPost kept replying "id is required". Send JSON with
-    // a real integer; fall back to form-urlencoded if a given account rejects JSON.
+    // POST /api/orders/cancel accepts ONLY multipart/form-data — NimbusPost
+    // rejects JSON and x-www-form-urlencoded with
+    // "Invalid Content-Type. Only multipart/form-data; boundary= is allowed."
+    // Build a real FormData and let fetch set Content-Type WITH the boundary;
+    // setting the header manually strips the boundary and triggers that error.
+    // (The earlier "id is required" came from a hand-rolled body without a
+    // proper multipart boundary, not from the endpoint disliking multipart.)
     const idNum = Number(panelId);
-    const idValue = Number.isFinite(idNum) ? idNum : panelId;
+    const idValue = Number.isFinite(idNum) ? String(idNum) : String(panelId);
 
-    let res = await fetch(`${NP_PANEL_BASE}/orders/cancel`, {
+    const form = new FormData();
+    form.append('id', idValue);
+
+    const res = await fetch(`${NP_PANEL_BASE}/orders/cancel`, {
       method: 'POST',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'NP-API-KEY': key },
-      body: JSON.stringify({ id: idValue }),
+      headers: { 'Accept': 'application/json', 'NP-API-KEY': key }, // no Content-Type — fetch adds boundary
+      body: form,
     });
     let data; try { data = await res.json(); } catch { data = {}; }
-
-    const looksIdMissing = /id\b.*(required|missing)/i.test(String(data.message || ''));
-    if (!res.ok || data.status === false || data.success === false || looksIdMissing) {
-      // Fallback: application/x-www-form-urlencoded
-      res = await fetch(`${NP_PANEL_BASE}/orders/cancel`, {
-        method: 'POST',
-        headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'NP-API-KEY': key },
-        body: new URLSearchParams({ id: String(panelId) }).toString(),
-      });
-      try { data = await res.json(); } catch { data = {}; }
-    }
 
     const msg = String(data.message || '').toLowerCase();
     if (msg.includes('already') && msg.includes('cancel')) {
