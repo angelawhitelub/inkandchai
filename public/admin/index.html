@@ -4299,7 +4299,7 @@ async function processReturn(returnId, btn) {
   if (!confirm('Auto-book a NimbusPost reverse pickup for this approved return?\n\nThis creates a reverse shipment, AWB, and pickup request from the customer address to the Delhi return office. The customer will be notified to hand over the books.')) return;
   try {
     const data = await _returnCall({ return_request_id: returnId }, btn);
-    alert(`✅ Reverse pickup created & customer notified!\nAWB: ${data.awb}\nCourier: ${data.courier_name}\nFrom: ${data.pickup_from}`);
+    alert(`✅ Reverse pickup created!\nAWB: ${data.awb}\nCourier: ${data.courier_name}\nFrom: ${data.pickup_from}${_notifySummary(data.notify_detail)}`);
     await fetchReturnRequests();
   } catch (e) {
     alert('Error: ' + e.message);
@@ -4307,11 +4307,24 @@ async function processReturn(returnId, btn) {
   }
 }
 
+// Render the customer-notification outcome (email + WhatsApp) so a silent
+// Meta/template failure is visible instead of buried in Netlify logs.
+function _notifySummary(nd) {
+  if (!nd) return '';
+  const line = (label, r) => {
+    if (!r) return `\n${label}: —`;
+    if (r.ok) return `\n${label}: ✅ sent${r.to ? ' → ' + r.to : ''}`;
+    if (r.skipped) return `\n${label}: ⏭ ${r.skipped}`;
+    return `\n${label}: ❌ ${r.error || 'failed'}`;
+  };
+  return `\n\nCustomer notified:${line('Email', nd.email)}${line('WhatsApp', nd.whatsapp)}`;
+}
+
 async function pushSingleReturnNoAwb(returnId, btn) {
   if (!confirm('Push ONLY this return into the NimbusPost panel as a New reverse order?\n\nNo courier is selected and no AWB is generated — the order lands as "New". Open it in NimbusPost and hit Ship to assign the reverse courier & AWB.')) return;
   try {
     const data = await _returnCall({ return_request_id: returnId, action: 'push_no_awb' }, btn);
-    alert(`✅ Reverse order pushed to NimbusPost as "New".\n${data.message || 'Open it in the panel and hit Ship to assign the reverse courier & AWB.'}`);
+    alert(`✅ Reverse order pushed to NimbusPost.\n${data.message || ''}${_notifySummary(data.notify_detail)}`);
     await fetchReturnRequests();
   } catch (e) {
     alert('Error: ' + e.message);

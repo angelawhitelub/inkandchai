@@ -410,8 +410,12 @@ books_js_homepage = json.dumps(slim_homepage, ensure_ascii=False)
 _js_dir = Path(__file__).parent / "public" / "js"
 _js_dir.mkdir(parents=True, exist_ok=True)
 
-_books_full_hash = hashlib.md5(books_js.encode()).hexdigest()[:8]
-_books_lite_hash = hashlib.md5(books_js_homepage.encode()).hexdigest()[:8]
+# Bump this when browsers may have cached a previous versioned book-data file
+# under the same name. The value is included only in the asset hash, not in the
+# payload, so it forces a fresh filename without bloating the catalogue JSON.
+_BOOK_DATA_CACHE_BUSTER = "2026-07-09-cant-hurt-search"
+_books_full_hash = hashlib.md5((books_js + _BOOK_DATA_CACHE_BUSTER).encode()).hexdigest()[:8]
+_books_lite_hash = hashlib.md5((books_js_homepage + _BOOK_DATA_CACHE_BUSTER).encode()).hexdigest()[:8]
 _books_full_file = f"books-full-{_books_full_hash}.js"
 _books_lite_file = f"books-lite-{_books_lite_hash}.js"
 
@@ -4169,8 +4173,9 @@ HTML = HTML.replace("BOOKS_DATA_PLACEHOLDER",         "window.BOOKS_PRELOAD||[]"
 # The homepage ships the LITE book subset for a fast first paint. Expose the
 # FULL catalogue URL so search can lazily upgrade to the complete ~5k-book set
 # the moment the user starts searching (see ensureFullCatalogue() in the JS).
-HTML = HTML.replace('<script src="/js/auth.js"></script>\n\n<script>\n// ── DATA',
-                    f'<script src="/js/auth.js"></script>\n{BOOKS_LITE_TAG}\n<script>window.BOOKS_FULL_URL="/js/{_books_full_file}";</script>\n\n<script>\n// ── DATA')  # inject external data script, keep auth.js
+HTML = HTML.replace('<script>\n// ── DATA',
+                    f'{BOOKS_LITE_TAG}\n<script>window.BOOKS_FULL_URL="/js/{_books_full_file}";</script>\n\n<script>\n// ── DATA',
+                    1)  # inject external data script immediately before main data code
 HTML = HTML.replace("COLLECTIONS_DATA_PLACEHOLDER",   json.dumps(coll_data, ensure_ascii=False))
 HTML = HTML.replace("ALL_CATS_DATA_PLACEHOLDER",      all_cats_js)
 HTML = HTML.replace("NAV_CATEGORIES_PLACEHOLDER",     nav_categories_html)

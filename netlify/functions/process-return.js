@@ -147,27 +147,46 @@ async function notifyApproved(ret) {
 
 async function notifyPickupScheduled(ret, awb, courier) {
   const oid = ret.order_display_id || ret.order_id || '';
-  try {
-    if (ret.customer_email) {
+  const result = { email: null, whatsapp: null };
+  // Email and WhatsApp are attempted independently — a failure in one must not
+  // suppress the other, and the outcome of each is returned so the caller can
+  // surface it (instead of the previous silent try/catch that hid Meta errors).
+  if (ret.customer_email) {
+    try {
       await sendEmail({
         to: ret.customer_email,
         subject: `Return pickup scheduled (${oid})`,
         html: pickupEmailHtml(ret, awb, courier),
       });
+      result.email = { ok: true, to: ret.customer_email };
+    } catch (e) {
+      console.error('notifyPickupScheduled email failed:', e.message);
+      result.email = { ok: false, error: e.message };
     }
-    if (ret.customer_phone) {
-      await sendWhatsApp({
-        to: ret.customer_phone,
-        template: 'return_pickup_scheduled',
-        params: [
-          firstName(ret.customer_name),
-          String(oid),
-          courier || 'our courier partner',
-          String(awb || ''),
-        ],
-      });
-    }
-  } catch (e) { console.error('notifyPickupScheduled failed:', e.message); }
+  } else {
+    result.email = { ok: false, skipped: 'no email on record' };
+  }
+
+  if (ret.customer_phone) {
+    const wa = await sendWhatsApp({
+      to: ret.customer_phone,
+      template: 'return_pickup_scheduled',
+      params: [
+        firstName(ret.customer_name),
+        String(oid),
+        courier || 'our courier partner',
+        String(awb || ''),
+      ],
+    });
+    result.whatsapp = wa?.ok
+      ? { ok: true, to: ret.customer_phone }
+      : { ok: false, to: ret.customer_phone, error: wa?.data?.error?.message || wa?.error || `status ${wa?.status || '?'}` };
+  } else {
+    result.whatsapp = { ok: false, skipped: 'no phone on record' };
+  }
+
+  console.log(`[process-return] notify ${oid}: email=${JSON.stringify(result.email)} whatsapp=${JSON.stringify(result.whatsapp)}`);
+  return result;
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────
@@ -344,7 +363,7 @@ exports.handler = async (event) => {
       processed_at: new Date().toISOString(),
     }).eq('id', return_request_id);
 
-    if (awb) await notifyPickupScheduled(ret, awb, courierName);
+    const notify = awb ? await notifyPickupScheduled(ret, awb, courierName) : null;
 
     return { statusCode: 200, headers: CORS, body: JSON.stringify({
       success: true,
@@ -355,7 +374,8 @@ exports.handler = async (event) => {
       message: awb
         ? `Reverse pickup scheduled with ${courierName} (services pincode ${pincode}).`
         : `Reverse order created in NimbusPost as "New" (order ${orderNumber}). Open it in the panel and hit Ship to assign the reverse courier & AWB.`,
-      notified: !!awb,
+      notified: !!(notify && (notify.email?.ok || notify.whatsapp?.ok)),
+      notify_detail: notify,
       pickup_from:  `${ret.customer_name} — ${ret.customer_address}`,
       pickup_to:    '2969, Kucha Mai Dass, Sitaram Bazar, Delhi - 110006',
     }) };
