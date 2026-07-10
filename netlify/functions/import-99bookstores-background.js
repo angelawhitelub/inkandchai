@@ -169,8 +169,12 @@ function descriptionFor(title, body) {
 }
 
 async function runImport(supabase, opts) {
-  const maxPages  = Math.max(1, Math.min(60, Number(opts.max_pages)  || 30));
-  const feedCount = Math.max(0, Math.min(1000, Number(opts.feed_count) ?? 150));
+  const maxPages  = Math.max(1, Math.min(60, Number(opts.max_pages) || 30));
+  // NB: `Number(undefined) ?? 150` is NaN (?? doesn't catch NaN), which made the
+  // whole batch go browse-only. Guard with Number.isFinite so the default (150)
+  // actually applies when feed_count is omitted.
+  const rawFeed   = Number(opts.feed_count);
+  const feedCount = Math.max(0, Math.min(1000, Number.isFinite(rawFeed) ? rawFeed : 150));
 
   const catalogNorm = new Set(loadCatalogTitles().map(normalizeTitle).filter(Boolean));
 
