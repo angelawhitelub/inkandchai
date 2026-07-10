@@ -259,64 +259,26 @@ exports.handler = async (event) => {
       : [{ name: 'Book', sku: '', qty: 1, price: ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0 }];
     const phone = (ret.customer_phone || '9999999999').replace(/\D/g, '').slice(-10);
 
-    // ── Serviceability lookup: which courier services reverse from this pincode? ─
-    // NP's default auto-assignment tries Delhivery/Xpressbees/Amazon — all of
-    // which skip reverse pickup for most Tier-2/3 pincodes. So we explicitly
-    // query serviceability first and pass a reverse-capable courier_id.
+    // ── Create the reverse order WITHOUT auto-pickup ──────────────────────────
+    // Critical: do NOT set request_auto_pickup:'yes' and do NOT force a
+    // courier_id. When we asked NimbusPost to auto-assign a courier + schedule
+    // the pickup at create time, the immediate pickup attempt failed and NP
+    // AUTO-CANCELLED the order — and our per-courier retry loop created one
+    // cancelled duplicate per courier (the wall of "Cancelled" R-R-RET rows).
+    //
+    // The manual flow that works: clone → order lands as "New" → hit Ship → NP
+    // offers "Delhivery Reverse QC" etc. and the courier is chosen THEN. We
+    // replicate that: create the reverse order as "New" (no courier, no
+    // auto-pickup) so it sits in the panel ready to ship. Courier selection /
+    // AWB happen at ship time, exactly like the clone.
     const orderAmountRs = ret.amount_paise ? Math.round(ret.amount_paise / 100) : 0;
-    const svcBody = {
-      origin: pincode,                       // customer's pincode (pickup)
-      destination: RETURN_ADDRESS.pincode,   // our warehouse
-      payment_type: 'prepaid',
-      order_type: 'reverse',
-      // NP expects grams as an integer here — sending 0.4 kg triggers
-      // "The Package Weight field must contain an integer".
-      weight: 400,
-      order_amount: orderAmountRs,
-    };
-    const { ok: svcOk, data: svcData } = await npFetch('/courier/serviceability', {
-      method: 'POST', token, body: svcBody,
-    });
-    // NP shapes: sometimes {data: [{courier_id, courier_name, is_serviceable, reverse: true, ...}]}
-    // sometimes {data: [{id, name, reverse_serviceable: true, ...}]} — accept both.
-    const svcList = Array.isArray(svcData?.data) ? svcData.data
-                  : Array.isArray(svcData) ? svcData : [];
-    const reverseCouriers = svcList.filter(c => {
-      const rev = c.reverse === true || c.reverse_serviceable === true
-               || c.reverse === 1 || c.reverse_serviceable === 1
-               || String(c.type || '').toLowerCase() === 'reverse';
-      const svc = c.is_serviceable !== false; // default true unless explicitly false
-      return rev && svc;
-    });
-    // Build an ordered candidate list: reverse-flagged couriers first, then any
-    // remaining serviceable couriers (deduped). We try them one-by-one at create
-    // time — a courier can pass serviceability yet still reject the actual pickup
-    // ("Delhivery(218): Pickup pincode not available"), so we fall through to the
-    // next candidate instead of failing on the first bounce.
-    const seenCourierIds = new Set();
-    const candidates = [];
-    for (const c of [...reverseCouriers, ...svcList]) {
-      const id = c?.courier_id ?? c?.id ?? null;
-      if (id == null || seenCourierIds.has(String(id))) continue;
-      seenCourierIds.add(String(id));
-      candidates.push({ id, name: c.courier_name || c.name || `courier ${id}` });
-    }
 
-    if (!svcOk || !candidates.length) {
-      throw new Error(
-        `No courier services reverse pickup from pincode ${pincode}. `
-        + `Please create this return manually in the NimbusPost seller panel. `
-        + `(NP response: ${JSON.stringify(svcData).slice(0, 300)})`
-      );
-    }
-    console.log(`[process-return] pincode=${pincode} → ${candidates.length} candidate courier(s): ${candidates.map(c => `${c.name}(${c.id})`).join(', ')}`);
-
-    const basePayload = {
+    const payload = {
       order_number: orderNumber,
       payment_type: 'reverse',
       order_amount: orderAmountRs,
       package_weight: 300, package_length: 20, package_height: 3, package_breadth: 15,
-      request_auto_pickup: 'yes',
+      request_auto_pickup: 'no',      // ← land as "New"; ship (assign courier/AWB) later
       consignee: { name: ret.customer_name || 'Customer', address: addr1, address_2: '', city, state, pincode, phone },
       pickup: {
         warehouse_name: process.env.NIMBUSPOST_WAREHOUSE_NAME || 'Office',
@@ -328,42 +290,15 @@ exports.handler = async (event) => {
       tags: `return, ${String(ret.reason || 'customer return').slice(0, 150)}`,
     };
 
-    // A "pickup not available / not serviceable" error is courier-specific — retry
-    // the next candidate. Any other error (bad address, weight, auth) is fatal and
-    // won't be fixed by swapping couriers, so we surface it immediately.
-    const isPickupUnavailable = (msg) =>
-      /pickup\s*pincode.*(not\s*available|not\s*serviceable)|not\s*available|not\s*serviceable|no\s*courier|reverse.*not/i.test(String(msg || ''));
-
-    let npData = null, courierId = null, courierName = null;
-    const attemptErrors = [];
-    for (const cand of candidates) {
-      const payload = { ...basePayload, courier_id: cand.id };
-      const { ok, data } = await npFetch('/shipments', { method: 'POST', token, body: payload });
-      const failed = !ok || data.status === false;
-      if (!failed) { npData = data; courierId = cand.id; courierName = cand.name; break; }
-
-      const errMsg = data?.message || JSON.stringify(data);
-      attemptErrors.push(`${cand.name}(${cand.id}): ${String(errMsg).slice(0, 120)}`);
-      console.warn(`[process-return] courier ${cand.name}(${cand.id}) rejected reverse pickup: ${String(errMsg).slice(0, 200)}`);
-
-      if (!isPickupUnavailable(errMsg)) {
-        // Non-courier error (address/weight/auth) — swapping couriers won't help.
-        throw new Error(`NimbusPost reverse pickup failed: ${JSON.stringify(data)}`);
-      }
-      // else: try the next candidate
-    }
-
-    if (!npData) {
-      throw new Error(
-        `No courier accepted the reverse pickup from pincode ${pincode} after trying ${candidates.length} option(s). `
-        + `Please create this return manually in the NimbusPost seller panel. `
-        + `Attempts — ${attemptErrors.join(' | ')}`
-      );
+    const { ok, data: npData } = await npFetch('/shipments', { method: 'POST', token, body: payload });
+    if (!ok || npData.status === false) {
+      throw new Error(`NimbusPost reverse order create failed: ${JSON.stringify(npData)}`);
     }
 
     const shipment = npData.data && typeof npData.data === 'object' ? npData.data : npData;
     const awb = shipment.awb_number || shipment.awb || shipment.tracking_number || null;
-    courierName = shipment.courier_name || courierName || 'NimbusPost';
+    const courierId = shipment.courier_id || null;
+    let courierName = shipment.courier_name || 'NimbusPost';
 
     await supabase.from('return_requests').update({
       status:       awb ? 'pickup_scheduled' : 'pushed_to_nimbus',
@@ -382,7 +317,7 @@ exports.handler = async (event) => {
       status: awb ? 'pickup_scheduled' : 'pushed_to_nimbus',
       message: awb
         ? `Reverse pickup scheduled with ${courierName} (services pincode ${pincode}).`
-        : `Reverse shipment created with ${courierName}. AWB will be assigned shortly.`,
+        : `Reverse order created in NimbusPost as "New" (order ${orderNumber}). Open it in the panel and hit Ship to assign the reverse courier & AWB.`,
       notified: !!awb,
       pickup_from:  `${ret.customer_name} — ${ret.customer_address}`,
       pickup_to:    '2969, Kucha Mai Dass, Sitaram Bazar, Delhi - 110006',
