@@ -4266,6 +4266,7 @@ function renderReturns() {
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
           ${canApprove ? `<button class="btn-green" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="approveReturn('${r.id}',this)">✓ Approve</button>` : ''}
           ${canReject  ? `<button class="btn-danger" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="rejectReturn('${r.id}',this)">✗ Reject</button>` : ''}
+          ${canPickup ? `<button class="btn-green" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="pushSingleReturnNoAwb('${r.id}',this)" title="Push ONLY this return into the NimbusPost panel as a New reverse order — no courier, no AWB. Assign the reverse AWB later inside NimbusPost by hitting Ship.">⬆ Push to NP (No AWB)</button>` : ''}
           ${canPickup ? `<button class="btn-outline" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturn('${r.id}',this)" title="Auto-book a reverse pickup via NimbusPost">🚚 Auto Pickup (NimbusPost)</button>` : ''}
         </div>
         ${canTrack ? `<div style="display:flex;gap:0.3rem;flex-wrap:wrap;align-items:center;margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);">
@@ -4303,6 +4304,18 @@ async function processReturn(returnId, btn) {
   } catch (e) {
     alert('Error: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = '🚚 Auto Pickup (NimbusPost)'; }
+  }
+}
+
+async function pushSingleReturnNoAwb(returnId, btn) {
+  if (!confirm('Push ONLY this return into the NimbusPost panel as a New reverse order?\n\nNo courier is selected and no AWB is generated — the order lands as "New". Open it in NimbusPost and hit Ship to assign the reverse courier & AWB.')) return;
+  try {
+    const data = await _returnCall({ return_request_id: returnId, action: 'push_no_awb' }, btn);
+    alert(`✅ Reverse order pushed to NimbusPost as "New".\n${data.message || 'Open it in the panel and hit Ship to assign the reverse courier & AWB.'}`);
+    await fetchReturnRequests();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '⬆ Push to NP (No AWB)'; }
   }
 }
 
