@@ -345,6 +345,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="admin-tab" data-tab="bookreq"   onclick="switchTab('bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="bot"       onclick="switchTab('bot')">🤖 Bot Instructions</button>
     <button class="admin-tab" data-tab="recover"   onclick="switchTab('recover')">⚡ Recover Payment</button>
+    <button class="admin-tab" data-tab="reports"   onclick="switchTab('reports')">📊 Reports</button>
   </nav>
 
   <!-- ═══ ORDERS TAB ═══ -->
@@ -917,6 +918,76 @@ tr:hover td{background:rgba(122,88,21,0.075);}
   </section>
   </div><!-- /tab-recover -->
 
+  <!-- ═══ REPORTS TAB ═══ -->
+  <div class="admin-section" id="tab-reports">
+  <section class="abandoned-panel">
+    <div class="abandoned-head">
+      <div>
+        <h2>📊 Business Reports</h2>
+        <p>Sales by product and date — spot which product's sales dropped and when. Computed from already-loaded orders (no extra database reads).</p>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:1.1rem;">
+      <span class="section-title">Quick range:</span>
+      <button class="filter-btn rpt-range" data-days="7"  onclick="rptQuickRange(this,7)">7D</button>
+      <button class="filter-btn rpt-range" data-days="14" onclick="rptQuickRange(this,14)">14D</button>
+      <button class="filter-btn rpt-range active" data-days="30" onclick="rptQuickRange(this,30)">30D</button>
+      <button class="filter-btn rpt-range" data-days="90" onclick="rptQuickRange(this,90)">90D</button>
+      <button class="filter-btn rpt-range" data-days="month"  onclick="rptQuickRange(this,'month')">This month</button>
+      <button class="filter-btn rpt-range" data-days="lmonth" onclick="rptQuickRange(this,'lmonth')">Last month</button>
+      <input type="date" id="rptFrom" onchange="rptCustomRange()" style="padding:.4rem;"/>
+      <span style="color:var(--cream-dim);font-size:.7rem;">to</span>
+      <input type="date" id="rptTo" onchange="rptCustomRange()" style="padding:.4rem;"/>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:1.4rem;">
+      <input id="rptProduct" list="rptProductList" placeholder="All products — type to filter one" oninput="renderReports()"
+             style="padding:.5rem .7rem;min-width:280px;flex:0 1 340px;"/>
+      <datalist id="rptProductList"></datalist>
+      <button class="filter-btn" onclick="document.getElementById('rptProduct').value='';renderReports()">✕ Clear</button>
+      <span class="section-title" style="margin-left:.6rem;">Group:</span>
+      <select id="rptGranularity" onchange="renderReports()" style="padding:.45rem;">
+        <option value="day" selected>Day</option>
+        <option value="week">Week</option>
+        <option value="month">Month</option>
+      </select>
+      <span class="section-title" style="margin-left:.6rem;">Metric:</span>
+      <button class="filter-btn rpt-metric active" data-metric="revenue" onclick="rptSetMetric(this)">Revenue ₹</button>
+      <button class="filter-btn rpt-metric" data-metric="orders" onclick="rptSetMetric(this)">Orders</button>
+      <button class="filter-btn rpt-metric" data-metric="units" onclick="rptSetMetric(this)">Units</button>
+      <label style="font-size:.68rem;color:var(--cream-dim);display:flex;align-items:center;gap:.3rem;margin-left:.6rem;cursor:pointer;">
+        <input type="checkbox" id="rptIncludeCancelled" onchange="renderReports()"/> include cancelled/refunded
+      </label>
+    </div>
+
+    <!-- Summary cards (current range vs previous equal-length range) -->
+    <div class="stats-row" style="grid-template-columns:repeat(4,1fr);" id="rptCards"></div>
+
+    <!-- Bar chart -->
+    <div style="background:var(--bg3);border:1px solid var(--border);padding:1.1rem;margin-bottom:1.6rem;overflow-x:auto;">
+      <div id="rptChartTitle" class="stat-label" style="margin-bottom:.7rem;"></div>
+      <div id="rptChart"></div>
+    </div>
+
+    <!-- Product breakdown vs previous period -->
+    <div class="stat-label" style="margin-bottom:.5rem;">Product breakdown — current range vs previous equal-length range (click a row to chart that product)</div>
+    <div class="tbl-wrap" style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th style="cursor:pointer" onclick="rptSortTable('title')">Product ↕</th>
+          <th style="cursor:pointer" onclick="rptSortTable('units')">Units ↕</th>
+          <th style="cursor:pointer" onclick="rptSortTable('orders')">Orders ↕</th>
+          <th style="cursor:pointer" onclick="rptSortTable('revenue')">Revenue ↕</th>
+          <th>Prev revenue</th>
+          <th style="cursor:pointer" onclick="rptSortTable('delta')">Δ vs prev ↕</th>
+        </tr></thead>
+        <tbody id="rptTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+  </div><!-- /tab-reports -->
+
   <!-- ═══ BOT INBOX TAB ═══ -->
   <div class="admin-section" id="tab-botinbox">
   <section class="abandoned-panel">
@@ -1050,6 +1121,7 @@ async function fetchBookRequests() {
     const res = await fetch('/.netlify/functions/get-book-requests', { headers: { 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' } });
     const data = await res.json();
     const reqs = data.requests || [];
+    window._bookReqById = Object.fromEntries(reqs.map(r => [String(r.id), r]));
     const newCount = reqs.filter(r => r.status === 'new').length;
     const badge = document.getElementById('bookReqBadge');
     if (badge) { badge.textContent = newCount; badge.style.display = newCount ? '' : 'none'; }
@@ -1064,6 +1136,8 @@ async function fetchBookRequests() {
       const phone = (r.customer_phone || '').replace(/\D/g,'').slice(-10);
       const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       const pushed = r.order_pushed_id || '';
+      const amountRs = r.amount_paise ? Math.round(Number(r.amount_paise) / 100) : 0;
+      const payMode = r.payment_mode ? String(r.payment_mode).toUpperCase() : '';
       return `<div style="border:1px solid var(--border,rgba(201,168,76,0.25));border-radius:12px;padding:0.9rem 1.05rem;background:var(--bg2,#1a1613);">
         <div style="display:flex;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;align-items:baseline;">
           <strong style="color:var(--gold,#c9a84c);font-size:0.95rem;">${esc(r.customer_name)}</strong>
@@ -1073,6 +1147,8 @@ async function fetchBookRequests() {
           ${r.order_id ? `<div style="font-family:monospace;font-size:0.72rem;color:var(--gold,#c9a84c);">🆔 ${esc(r.order_id)}</div>` : ''}
           <div>📚 <strong>${esc(r.books)}</strong></div>
           <div>📍 ${esc(r.address)}</div>
+          ${(amountRs || payMode || r.payment_status) ? `<div>💰 ${amountRs ? '₹' + amountRs : 'Amount not set'}${payMode ? ` · ${esc(payMode)}` : ''}${r.payment_status ? ` · ${esc(r.payment_status)}` : ''}</div>` : ''}
+          ${r.payment_link ? `<div>🔗 <a href="${esc(r.payment_link)}" target="_blank" style="color:var(--gold,#c9a84c);">Payment link</a></div>` : ''}
           ${r.notes ? `<div>📝 ${esc(r.notes)}</div>` : ''}
           <div style="color:var(--cream-dim,#8a7a62);margin-top:0.25rem;">📞 <a href="https://wa.me/91${phone}" target="_blank" style="color:var(--gold,#c9a84c);">+91 ${phone}</a> · ${when}</div>
           ${pushed ? `<div style="color:#5d9b55;margin-top:0.3rem;font-size:0.72rem;">✅ Pushed to Orders as <strong>${esc(pushed)}</strong> — track &amp; ship it from the Orders tab.</div>` : ''}
@@ -1100,12 +1176,17 @@ async function setBookReqStatus(id, status) {
   } catch (e) { alert('Update failed: ' + e.message); }
 }
 async function pushBookRequest(id) {
-  const amt = prompt('Order amount in ₹ (total the customer will pay):');
+  const req = window._bookReqById?.[String(id)] || {};
+  const savedAmount = req.amount_paise ? Math.round(Number(req.amount_paise) / 100) : 0;
+  const amt = savedAmount || prompt('Order amount in ₹ (total the customer will pay):');
   if (amt === null) return;
   const amount_rupees = Math.round(Number(amt));
   if (!amount_rupees || amount_rupees <= 0) { alert('Enter a valid amount.'); return; }
-  const cod = confirm('Payment mode:\n\n  OK = Cash on Delivery (ships on normal COD flow)\n  Cancel = Prepaid (you collect payment before shipping)');
-  const payment_mode = cod ? 'cod' : 'prepaid';
+  let payment_mode = req.payment_mode === 'prepaid' || req.payment_mode === 'cod' ? req.payment_mode : '';
+  if (!payment_mode) {
+    const cod = confirm('Payment mode:\n\n  OK = Cash on Delivery (ships on normal COD flow)\n  Cancel = Prepaid (you collect payment before shipping)');
+    payment_mode = cod ? 'cod' : 'prepaid';
+  }
   try {
     const res = await fetch('/.netlify/functions/push-book-request', {
       method: 'POST',
@@ -3989,7 +4070,253 @@ setInterval(updateAutoRecheckBadge, 30_000);
 document.getElementById('adminPass').focus();
 
 // ── Tab navigation ──────────────────────────────────────────────────────────
-const TABS = ['orders','create','products','abandoned','reviews','returns','botinbox','bookreq','bot','recover'];
+/* ═══════════════ BUSINESS REPORTS (client-side, zero extra egress) ═══════════════ */
+// Works entirely off allOrders (already loaded for the dashboard) — no new
+// Supabase/Netlify reads. Statuses that never became a sale are excluded;
+// cancelled/refunded are excluded too unless the checkbox is ticked.
+const RPT_NEVER_SALE = new Set(['pending','pending_phonepe','pending_partial_phonepe','payment_failed','failed']);
+const RPT_CANCELLED  = new Set(['cancelled','refunded']);
+let rptSort = { field: 'revenue', dir: -1 };
+let _rptRows = [];
+
+function rptDateKey(d, gran) {
+  const dt = new Date(d);
+  if (gran === 'month') return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+  if (gran === 'week') { // key = Monday of that week
+    const m = new Date(dt); m.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+    return m.toISOString().slice(0,10);
+  }
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+
+function rptSaleOrders(from, to) {
+  const incCancelled = document.getElementById('rptIncludeCancelled')?.checked;
+  return allOrders.filter(o => {
+    const s = String(o.status || '').toLowerCase();
+    if (RPT_NEVER_SALE.has(s)) return false;
+    if (!incCancelled && RPT_CANCELLED.has(s)) return false;
+    const t = new Date(o.created_at).getTime();
+    return t >= from.getTime() && t <= to.getTime();
+  });
+}
+
+function rptItemsOf(o) { return Array.isArray(o.cart_items) ? o.cart_items : []; }
+function rptOrderRs(o) {
+  if (o.amount_paise) return o.amount_paise / 100;
+  return rptItemsOf(o).reduce((s,i) => s + (Number(i.price)||0) * (Number(i.qty)||1), 0);
+}
+function rptMatch(item, q) { return String(item.title||'').toLowerCase().includes(q); }
+
+// Aggregate one period → { revenue, orders, units, byBucket:Map, byProduct:Map }
+function rptAggregate(from, to, productQ, gran) {
+  const q = String(productQ || '').trim().toLowerCase();
+  const byBucket = new Map(), byProduct = new Map();
+  let revenue = 0, orders = 0, units = 0;
+  for (const o of rptSaleOrders(from, to)) {
+    const items = rptItemsOf(o);
+    const hits = q ? items.filter(i => rptMatch(i, q)) : items;
+    if (q && !hits.length) continue;
+    const rev = q ? hits.reduce((s,i)=>s+(Number(i.price)||0)*(Number(i.qty)||1),0) : rptOrderRs(o);
+    const u   = hits.reduce((s,i)=>s+(Number(i.qty)||1),0) || (q ? 0 : 1);
+    revenue += rev; orders += 1; units += u;
+    const k = rptDateKey(o.created_at, gran);
+    const b = byBucket.get(k) || { revenue:0, orders:0, units:0 };
+    b.revenue += rev; b.orders += 1; b.units += u;
+    byBucket.set(k, b);
+    for (const i of hits) {
+      const title = String(i.title || 'Unknown').trim();
+      const p = byProduct.get(title.toLowerCase()) || { title, revenue:0, orders:0, units:0 };
+      p.revenue += (Number(i.price)||0)*(Number(i.qty)||1);
+      p.units   += Number(i.qty)||1;
+      p.orders  += 1;
+      byProduct.set(title.toLowerCase(), p);
+    }
+  }
+  return { revenue, orders, units, byBucket, byProduct };
+}
+
+function rptRange() {
+  const fromEl = document.getElementById('rptFrom'), toEl = document.getElementById('rptTo');
+  let from = fromEl.value ? new Date(fromEl.value + 'T00:00:00') : null;
+  let to   = toEl.value   ? new Date(toEl.value   + 'T23:59:59.999') : null;
+  if (!from || !to || from > to) { // default 30 days
+    to = new Date(); from = new Date(); from.setDate(from.getDate() - 29); from.setHours(0,0,0,0);
+  }
+  return { from, to };
+}
+
+function rptQuickRange(btn, days) {
+  document.querySelectorAll('.rpt-range').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const to = new Date(); let from = new Date();
+  if (days === 'month')  { from = new Date(to.getFullYear(), to.getMonth(), 1); }
+  else if (days === 'lmonth') {
+    from = new Date(to.getFullYear(), to.getMonth()-1, 1);
+    const end = new Date(to.getFullYear(), to.getMonth(), 0, 23,59,59,999);
+    document.getElementById('rptFrom').value = from.toISOString().slice(0,10);
+    document.getElementById('rptTo').value   = end.toISOString().slice(0,10);
+    renderReports(); return;
+  }
+  else { from.setDate(to.getDate() - (days - 1)); }
+  from.setHours(0,0,0,0);
+  document.getElementById('rptFrom').value = `${from.getFullYear()}-${String(from.getMonth()+1).padStart(2,'0')}-${String(from.getDate()).padStart(2,'0')}`;
+  document.getElementById('rptTo').value   = `${to.getFullYear()}-${String(to.getMonth()+1).padStart(2,'0')}-${String(to.getDate()).padStart(2,'0')}`;
+  renderReports();
+}
+function rptCustomRange() {
+  document.querySelectorAll('.rpt-range').forEach(b => b.classList.remove('active'));
+  renderReports();
+}
+function rptSetMetric(btn) {
+  document.querySelectorAll('.rpt-metric').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderReports();
+}
+function rptMetric() { return document.querySelector('.rpt-metric.active')?.dataset.metric || 'revenue'; }
+
+function rptRs(n) { return '₹' + Math.round(n).toLocaleString('en-IN'); }
+function rptDelta(cur, prev) {
+  if (!prev) return cur ? '<span style="color:var(--cream-dim)">new</span>' : '—';
+  const pct = ((cur - prev) / prev) * 100;
+  const col = pct < 0 ? 'var(--red)' : '#5d9b55';
+  const arrow = pct < 0 ? '▼' : '▲';
+  return `<span style="color:${col}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`;
+}
+
+function initReports() {
+  if (!document.getElementById('rptFrom').value) {
+    rptQuickRange(document.querySelector('.rpt-range[data-days="30"]'), 30);
+    return; // rptQuickRange calls renderReports
+  }
+  renderReports();
+}
+
+function renderReports() {
+  if (!allOrders.length) {
+    document.getElementById('rptChart').innerHTML = '<div style="color:var(--cream-dim);font-size:.75rem;">Orders still loading — open this tab again in a moment.</div>';
+    return;
+  }
+  const { from, to } = rptRange();
+  const gran = document.getElementById('rptGranularity').value;
+  const productQ = document.getElementById('rptProduct').value;
+
+  // Populate product datalist once per render (cheap — titles from loaded orders)
+  const titles = new Set();
+  allOrders.forEach(o => rptItemsOf(o).forEach(i => i.title && titles.add(String(i.title).trim())));
+  document.getElementById('rptProductList').innerHTML =
+    [...titles].sort().map(t => `<option value="${t.replace(/"/g,'&quot;')}"></option>`).join('');
+
+  // Previous equal-length period, ending right before `from`
+  const spanMs = to.getTime() - from.getTime();
+  const prevTo = new Date(from.getTime() - 1);
+  const prevFrom = new Date(prevTo.getTime() - spanMs);
+
+  const cur  = rptAggregate(from, to, productQ, gran);
+  const prev = rptAggregate(prevFrom, prevTo, productQ, gran);
+
+  // ── Summary cards ─────────────────────────────────────────────
+  const aovCur = cur.orders ? cur.revenue / cur.orders : 0;
+  const aovPrev = prev.orders ? prev.revenue / prev.orders : 0;
+  document.getElementById('rptCards').innerHTML = [
+    ['Revenue', rptRs(cur.revenue), rptDelta(cur.revenue, prev.revenue)],
+    ['Orders', cur.orders.toLocaleString('en-IN'), rptDelta(cur.orders, prev.orders)],
+    ['Units sold', cur.units.toLocaleString('en-IN'), rptDelta(cur.units, prev.units)],
+    ['Avg order value', rptRs(aovCur), rptDelta(aovCur, aovPrev)],
+  ].map(([label,val,delta]) => `
+    <div class="stat-card" style="cursor:default;">
+      <div class="stat-label">${label}</div>
+      <div class="stat-val">${val}</div>
+      <div style="font-size:.68rem;margin-top:.3rem;">${delta} vs prev period</div>
+    </div>`).join('');
+
+  // ── Bar chart (inline SVG) ────────────────────────────────────
+  const metric = rptMetric();
+  // Build the full bucket axis so zero-sale days still show (that's the point!)
+  const keys = [];
+  const cursor = new Date(from);
+  while (cursor <= to) {
+    const k = rptDateKey(cursor, gran);
+    if (!keys.length || keys[keys.length-1] !== k) keys.push(k);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  const vals = keys.map(k => (cur.byBucket.get(k)?.[metric]) || 0);
+  const maxV = Math.max(1, ...vals);
+  const barW = Math.max(14, Math.min(46, Math.floor(900 / keys.length) - 4));
+  const gap = 4, chartH = 220, labelH = 46;
+  const w = keys.length * (barW + gap) + 50;
+  const isRs = metric === 'revenue';
+  const bars = keys.map((k, i) => {
+    const v = vals[i];
+    const h = Math.round((v / maxV) * (chartH - 24));
+    const x = 40 + i * (barW + gap);
+    const y = chartH - h;
+    const lbl = gran === 'month' ? k : k.slice(5); // MM-DD
+    const valLbl = v ? (isRs ? '₹' + (v >= 1000 ? (v/1000).toFixed(1) + 'k' : Math.round(v)) : v) : '';
+    return `
+      <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="var(--gold, #c9a84c)" opacity="0.85">
+        <title>${k} — ${isRs ? rptRs(v) : v + ' ' + metric}</title>
+      </rect>
+      ${valLbl ? `<text x="${x + barW/2}" y="${y - 4}" text-anchor="middle" font-size="9" fill="var(--cream-dim,#a09080)">${valLbl}</text>` : ''}
+      <text x="${x + barW/2}" y="${chartH + 12}" text-anchor="middle" font-size="8.5" fill="var(--cream-dim,#a09080)" transform="rotate(45 ${x + barW/2} ${chartH + 12})">${lbl}</text>`;
+  }).join('');
+  document.getElementById('rptChartTitle').textContent =
+    `${metric === 'revenue' ? 'Revenue ₹' : metric === 'orders' ? 'No. of orders' : 'Units sold'} per ${gran}` +
+    (productQ ? ` — "${productQ}"` : ' — all products');
+  document.getElementById('rptChart').innerHTML =
+    `<svg width="${w}" height="${chartH + labelH}" style="min-width:${w}px;">${bars}
+      <line x1="36" y1="${chartH}" x2="${w}" y2="${chartH}" stroke="var(--border,#3a332a)" stroke-width="1"/>
+      <text x="2" y="12" font-size="9" fill="var(--cream-dim,#a09080)">${isRs ? rptRs(maxV) : maxV}</text>
+    </svg>`;
+
+  // ── Product breakdown table ───────────────────────────────────
+  _rptRows = [...cur.byProduct.values()].map(p => {
+    const pv = prev.byProduct.get(p.title.toLowerCase());
+    return { ...p, prevRevenue: pv?.revenue || 0,
+             delta: pv?.revenue ? (p.revenue - pv.revenue) / pv.revenue : (p.revenue ? Infinity : 0) };
+  });
+  // Products that sold before but ZERO now — the "which product dropped" answer
+  for (const [k, pv] of prev.byProduct) {
+    if (!cur.byProduct.has(k)) _rptRows.push({ title: pv.title, revenue:0, orders:0, units:0, prevRevenue: pv.revenue, delta: -1 });
+  }
+  rptRenderTable();
+}
+
+function rptSortTable(field) {
+  rptSort.dir = rptSort.field === field ? -rptSort.dir : -1;
+  rptSort.field = field;
+  rptRenderTable();
+}
+
+function rptRenderTable() {
+  const f = rptSort.field, d = rptSort.dir;
+  // dir -1 (default) = numeric descending / title A→Z; toggling flips it
+  _rptRows.sort((a,b) => {
+    const cmp = f === 'title'
+      ? String(a.title).localeCompare(String(b.title))
+      : Number(b[f]||0) - Number(a[f]||0);
+    return cmp * (d === -1 ? 1 : -1);
+  });
+  document.getElementById('rptTableBody').innerHTML = _rptRows.length ? _rptRows.map((p, idx) => `
+    <tr style="cursor:pointer;${p.delta < 0 && p.prevRevenue ? 'background:rgba(201,54,54,0.05);' : ''}" onclick="rptPickProduct(${idx})">
+      <td>${esc(p.title)}</td>
+      <td>${p.units}</td>
+      <td>${p.orders}</td>
+      <td>${rptRs(p.revenue)}</td>
+      <td style="color:var(--cream-dim)">${rptRs(p.prevRevenue)}</td>
+      <td>${p.delta === Infinity ? '<span style="color:#5d9b55">new</span>' : rptDelta(p.revenue, p.prevRevenue)}</td>
+    </tr>`).join('')
+    : '<tr><td colspan="6" style="color:var(--cream-dim);">No sales in this range.</td></tr>';
+}
+
+function rptPickProduct(idx) {
+  const p = _rptRows[idx];
+  if (!p) return;
+  document.getElementById('rptProduct').value = p.title;
+  renderReports();
+  document.getElementById('rptChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+const TABS = ['orders','create','products','abandoned','reviews','returns','botinbox','bookreq','bot','recover','reports'];
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
@@ -4020,6 +4347,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();
   if (tab === 'bot' && _authed) loadBotSettings();
+  if (tab === 'reports') initReports();
 
   // Scroll to top of content
   document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
