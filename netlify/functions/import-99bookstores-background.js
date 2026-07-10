@@ -103,23 +103,31 @@ function loadCatalogTitles() {
 
 async function fetchAll(maxPages) {
   const products = [];
+  const diag = { first_status: null, fetch_error: null };
   for (let page = 1; page <= maxPages; page++) {
     const url = `https://99bookstores.com/products.json?limit=250&page=${page}`;
     let batch;
     try {
       const res = await fetch(url, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } });
-      if (!res.ok) { console.warn(`[import-99bookstores] page ${page} HTTP ${res.status}`); break; }
+      if (page === 1) diag.first_status = res.status;
+      if (!res.ok) {
+        const snippet = (await res.text().catch(() => '')).slice(0, 200);
+        console.warn(`[import-99bookstores] page ${page} HTTP ${res.status}`);
+        if (page === 1) diag.fetch_error = `HTTP ${res.status} on page 1 — ${snippet}`;
+        break;
+      }
       const data = await res.json();
       batch = data.products || [];
     } catch (e) {
       console.warn(`[import-99bookstores] page ${page} error: ${e.message}`);
+      if (page === 1) diag.fetch_error = e.message;
       break;
     }
     if (!batch.length) break;
     products.push(...batch);
     if (batch.length < 250) break;
   }
-  return products;
+  return { products, diag };
 }
 
 function priceOf(p) {
@@ -172,8 +180,8 @@ async function runImport(supabase, opts) {
   const existingNorm  = new Set((existing || []).map(r => normalizeTitle(r.title)).filter(Boolean));
   const existingSlugs = new Set((existing || []).map(r => r.slug).filter(Boolean));
 
-  const products = await fetchAll(maxPages);
-  console.log(`[import-99bookstores] fetched ${products.length}; catalog=${catalogNorm.size} custom=${existingNorm.size}`);
+  const { products, diag } = await fetchAll(maxPages);
+  console.log(`[import-99bookstores] fetched ${products.length}; catalog=${catalogNorm.size} custom=${existingNorm.size} first_status=${diag.first_status} fetch_error=${diag.fetch_error || '-'}`);
 
   // Sort newest-first by created_at so the "feed" slice is genuinely the newest.
   products.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
@@ -248,10 +256,28 @@ async function runImport(supabase, opts) {
     source: SOURCE, fetched: products.length, inserted,
     on_homepage_feed: Math.min(feedCount, rows.length),
     browse_only: Math.max(0, rows.length - feedCount),
+    first_status: diag.first_status, fetch_error: diag.fetch_error,
     skipped, errors, finished_at: new Date().toISOString(),
   };
   console.log('[import-99bookstores] SUMMARY', JSON.stringify(summary));
+  // Persist so the outcome is queryable — Netlify hides background-function
+  // logs, so this is the only way to see what happened. Best-effort.
+  await recordRun(supabase, summary);
   return summary;
+}
+
+// Write the run summary to import_runs so it can be inspected with SQL
+// (Netlify does not surface background-function logs). Never throws.
+async function recordRun(supabase, summary) {
+  try {
+    await supabase.from('import_runs').insert({
+      source: SOURCE,
+      summary,
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn('[import-99bookstores] recordRun (run sql/import_runs.sql):', e.message);
+  }
 }
 
 exports.handler = async (event) => {
@@ -276,6 +302,7 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, ...summary }) };
   } catch (err) {
     console.error('[import-99bookstores] fatal:', err.message);
+    await recordRun(supabase, { source: SOURCE, fatal_error: err.message, finished_at: new Date().toISOString() });
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
 };
