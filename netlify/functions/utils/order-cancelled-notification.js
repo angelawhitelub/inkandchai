@@ -73,6 +73,14 @@ async function maybeAutoRefund(order) {
   if (['refunded', 'partially_refunded', 'refund_pending'].includes(row.status)) {
     return { skipped: 'already-refunded' };
   }
+  // Never AUTO-refund an RTO order. When a shipment returns to origin the
+  // customer often still wants it (we can re-ship), so refunds on RTO must be a
+  // deliberate manual decision, not automatic. Applies to both Razorpay and
+  // PhonePe (this is the shared auto-refund path). Genuine cancellations have
+  // status 'cancelled'/'paid', never 'rto', so this doesn't block those.
+  if (String(row.status || '').toLowerCase() === 'rto') {
+    return { skipped: 'rto-no-auto-refund' };
+  }
   const pid = row.razorpay_payment_id || '';
   if (!pid) return { skipped: 'no-payment-id' };
   const amountPaise = Number(row.amount_paise || 0);

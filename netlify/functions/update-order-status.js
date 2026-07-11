@@ -193,10 +193,15 @@ exports.handler = async (event) => {
       const alreadyRefunded = ['refunded', 'refund_pending'].includes(String(previousOrder.status || '').toLowerCase());
       const amountPaise = Number(previousOrder.amount_paise) || 0;
 
+      // Never auto-refund an order that was RTO (returned to origin) — the
+      // customer often still wants it, so refunding is a manual decision, not
+      // automatic on cancel. Admin can still refund it from the refund tool.
+      const wasRto = String(previousOrder.status || '').toLowerCase() === 'rto';
+
       // Auto-refund Razorpay-paid orders on cancellation. COD orders (no
       // payment id) have no money to return; PhonePe (id starts with OM/T) uses
       // the dedicated PhonePe refund tool, so skip those here.
-      if (paymentId.startsWith('pay_') && amountPaise > 0 && !alreadyRefunded) {
+      if (paymentId.startsWith('pay_') && amountPaise > 0 && !alreadyRefunded && !wasRto) {
         try {
           const refund = await issueRazorpayRefund(paymentId, amountPaise, {
             notes: { reason: 'Order cancelled by admin', order_id: previousOrder.razorpay_order_id || previousOrder.id },
