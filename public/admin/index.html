@@ -1662,10 +1662,28 @@ function orderPaymentBreakdown(o) {
     // CSV shows "Cash on Delivery" — the balance is what the delivery agent collects
     return { full, paid, balance, method: 'Cash on Delivery' };
   }
-  const status = String(o?.status || '').toLowerCase();
-  const isCOD = status === 'cod_pending' || status === 'partial_cod_pending' || !o?.razorpay_payment_id;
+  const kind = orderPayKind(o);
   const full = paid || itemTotal;
-  return { full, paid: isCOD ? 0 : paid, balance: isCOD ? full : 0, method: isCOD ? 'Cash on Delivery' : 'Online' };
+  if (kind === 'online_paid') return { full, paid: paid || full, balance: 0, method: 'Online' };
+  if (kind === 'prepaid_pending') return { full, paid: 0, balance: full, method: 'Prepaid (awaiting)' };
+  return { full, paid: 0, balance: full, method: 'Cash on Delivery' };
+}
+
+// Single source of truth for an order's payment kind, used by every place that
+// renders COD vs Online. Historically this was `!razorpay_payment_id`, which
+// mislabelled prepaid WhatsApp orders (no gateway id) as COD. Now it also
+// honours the payment_status marker set when a prepaid order is created/paid.
+//   'partial'         → 10% paid, balance COD
+//   'online_paid'     → fully paid online (gateway id or payment_status 'paid')
+//   'prepaid_pending' → marked prepaid, payment not yet collected
+//   'cod'             → cash on delivery
+function orderPayKind(o) {
+  if (isPartialOrder(o)) return 'partial';
+  const status = String(o?.status || '').toLowerCase();
+  const ps     = String(o?.payment_status || '').toLowerCase();
+  if (ps === 'paid' || status === 'paid' || (o?.razorpay_payment_id && status !== 'cod_pending')) return 'online_paid';
+  if (ps === 'prepaid_pending' || status === 'confirmed') return 'prepaid_pending';
+  return 'cod';
 }
 
 function getSelectedOrders() {
@@ -2004,7 +2022,8 @@ function _drawTable() {
     const payInfo = orderPaymentBreakdown(o);
     const amount  = payInfo.full ? '₹' + payInfo.full.toLocaleString('en-IN') : '—';
     const partial = isPartialOrder(o);
-    const isCOD   = partial || o.status === 'cod_pending' || !o.razorpay_payment_id;
+    const payKind = orderPayKind(o);
+    const isCOD   = payKind === 'cod';
     const date    = o.created_at
       ? new Date(o.created_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
       : '—';
@@ -2042,9 +2061,13 @@ function _drawTable() {
         ${partial ? `<div class="amount-sub"><strong>Paid:</strong> ₹${payInfo.paid.toLocaleString('en-IN')}<br/><strong>Collect:</strong> ₹${payInfo.balance.toLocaleString('en-IN')}</div>` : ''}
       </td>
       <td>
-        <div class="method-badge" style="color:${isCOD ? 'var(--orange)' : 'var(--green)'};">
-          ${partial ? '💰 10% + COD' : (isCOD ? '🚚 COD' : '💳 Online')}
+        <div class="method-badge" style="color:${payKind === 'cod' ? 'var(--orange)' : payKind === 'prepaid_pending' ? 'var(--gold)' : 'var(--green)'};">
+          ${partial ? '💰 10% + COD' : payKind === 'online_paid' ? '💳 Online' : payKind === 'prepaid_pending' ? '💳 Prepaid · awaiting' : '🚚 COD'}
         </div>
+        ${!partial ? `<button onclick="togglePaymentType('${esc(o.id)}','${payKind === 'cod' ? 'prepaid' : 'cod'}', this)" title="Switch this order's payment type"
+          style="margin-top:0.4rem;background:none;border:1px solid var(--border);color:var(--cream-dim);padding:0.2rem 0.5rem;font-size:0.52rem;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">
+          ${payKind === 'cod' ? '→ 💳 Mark Prepaid' : '→ 🚚 Mark COD'}
+        </button>` : ''}
       </td>
       <td>
         <span class="badge ${bc}">${esc((o.status||'pending').replace(/_/g,' '))}</span>
@@ -2165,6 +2188,40 @@ function closeShipModal(confirmed) {
     _shipResolve(null);
   }
   _shipResolve = null;
+}
+
+// Manually switch an order between COD and Prepaid. Prepaid → asks whether the
+// customer has actually paid yet (paid = counts as revenue now; awaiting = will
+// pay before shipping). COD → clears any prepaid markers.
+async function togglePaymentType(id, target, btn) {
+  let collected = false;
+  if (target === 'prepaid') {
+    collected = confirm('Mark this order PREPAID.\n\n  OK  = Payment already collected (mark as PAID)\n  Cancel = Customer will pay before shipping (awaiting)');
+  } else {
+    if (!confirm('Switch this order back to Cash on Delivery?')) return;
+  }
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/set-order-payment-type', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, payment_type: target, collected }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
+    const ord = allOrders.find(o => String(o.id) === String(id));
+    if (ord) {
+      ord.status = data.status ?? ord.status;
+      ord.payment_status = data.payment_status ?? ord.payment_status;
+      ord.razorpay_payment_id = ('razorpay_payment_id' in data) ? data.razorpay_payment_id : ord.razorpay_payment_id;
+    }
+    updateStats();
+    applyFilters();
+  } catch (e) {
+    alert('Could not change payment type: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
 }
 
 async function updateStatus(id, status) {

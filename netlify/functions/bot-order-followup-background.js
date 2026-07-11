@@ -17,6 +17,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
+const { pushBotOrder } = require('./utils/push-bot-order');
 
 const PHONE_ID = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VER  = 'v20.0';
@@ -79,7 +80,7 @@ async function pollPaymentStatuses(db) {
   // Look back at the last 24 hours — enough to catch any pending pay-later.
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data: rows, error } = await db.from('bot_order_requests')
-    .select('id, order_id, customer_phone, customer_name, amount_paise, razorpay_payment_link_id, payment_status')
+    .select('id, order_id, customer_phone, customer_name, address, books, amount_paise, payment_mode, razorpay_payment_link_id, payment_status, order_pushed_id')
     .eq('payment_mode', 'prepaid')
     .not('razorpay_payment_link_id', 'is', null)
     .in('payment_status', ['created', 'partially_paid'])
@@ -99,6 +100,16 @@ async function pollPaymentStatuses(db) {
           paid_at:        new Date().toISOString(),
         }).eq('id', row.id);
         paid++;
+        // Auto-push a paid prepaid request straight into Orders so the team
+        // doesn't have to click "Push to Orders" manually. Best-effort — if it
+        // was already pushed, pushBotOrder is a no-op; failures don't break the batch.
+        if (!row.order_pushed_id) {
+          try {
+            const pushed = await pushBotOrder(db, { ...row, payment_status: 'paid' }, { paymentMode: 'prepaid' });
+            if (pushed.ok) console.log(`[payment-poll] auto-pushed ${row.order_id} → ${pushed.order_id} (${pushed.status})`);
+            else console.warn(`[payment-poll] auto-push skipped for ${row.order_id}: ${pushed.error}`);
+          } catch (e) { console.error(`[payment-poll] auto-push ${row.order_id}:`, e.message); }
+        }
         // Congratulate the customer (best-effort, don't fail the batch)
         try {
           await sendReply(row.customer_phone,

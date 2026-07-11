@@ -69,4 +69,34 @@ async function createRazorpayPaymentLink(opts) {
   return data; // { id: 'plink_...', short_url, status: 'created', ... }
 }
 
-module.exports = { createRazorpayPaymentLink };
+/**
+ * Fetch a payment link and, if it's been paid, return the captured Razorpay
+ * payment id (pay_...). Used when converting a paid WhatsApp book request into
+ * a real order so the order carries a real payment id (and thus reads as an
+ * online/prepaid order, not COD).
+ *
+ * @returns {Promise<{status:string, paymentId:string|null, amountPaise:number|null}>}
+ */
+async function fetchPaymentLinkStatus(plinkId) {
+  const keyId     = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) throw new Error('Razorpay keys not configured');
+  if (!plinkId) return { status: 'unknown', paymentId: null, amountPaise: null };
+
+  const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+  const res = await fetch(`https://api.razorpay.com/v1/payment_links/${encodeURIComponent(plinkId)}`, {
+    headers: { 'Authorization': `Basic ${auth}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error?.description || `Razorpay payment_links GET ${res.status}`);
+
+  const payments = Array.isArray(data.payments) ? data.payments : [];
+  const captured = payments.find(p => p.status === 'captured') || payments.find(p => p.status === 'authorized') || payments[0];
+  return {
+    status: data.status || 'unknown',                 // created | paid | expired | cancelled
+    paymentId: captured?.payment_id || null,          // pay_...
+    amountPaise: typeof data.amount_paid === 'number' ? data.amount_paid : (typeof data.amount === 'number' ? data.amount : null),
+  };
+}
+
+module.exports = { createRazorpayPaymentLink, fetchPaymentLinkStatus };

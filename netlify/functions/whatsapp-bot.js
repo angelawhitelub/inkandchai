@@ -391,7 +391,7 @@ const OPENAI_TOOLS = [{
   type: 'function',
   function: {
     name: 'submit_order_request',
-    description: 'Submit a NEW book PURCHASE the customer wants to place. Call this ONLY when the customer explicitly wants to BUY a new book AND you have all three REAL values from them. NEVER call this for order-status checks, delivery follow-ups, complaints about an existing order, refunds, cancellations, or general questions. NEVER use placeholder/guessed values like "N/A", "book", "Customer", or a date — if you do not have a real book title, real name, and real full address, do NOT call this tool; ask the customer instead.',
+    description: 'Submit a NEW book PURCHASE the customer wants to place. Call this ONLY when the customer explicitly wants to BUY a new book AND you have all four REAL values from them: book title(s), full name, complete delivery address, and payment mode. NEVER call this for order-status checks, delivery follow-ups, complaints about an existing order, refunds, cancellations, or general questions. NEVER use placeholder/guessed values like "N/A", "Not provided", "book", "Customer", or a date — if you do not have a real book title, real name, real full address, and payment mode, do NOT call this tool; ask the customer instead.',
     parameters: {
       type: 'object',
       properties: {
@@ -526,7 +526,7 @@ async function submitOrderRequest(phone, args) {
   // "N/A", "book", "Customer", or a date. Reject those so they never pollute
   // the Book Requests panel. Returning an error string makes the AI go back and
   // ask the customer for real details (or realise it's not an order at all).
-  const isPlaceholder = (v) => /^(n\/?a|na|none|null|unknown|customer|book|books|test|\d{6,})$/i.test(String(v).trim());
+  const isPlaceholder = (v) => /^(n\/?a|na|none|null|nil|unknown|not\s+(provided|given|specified|available)|not\s+shared|no\s+(name|address|book|books)|customer|book|books|test|\d{6,})$/i.test(String(v).trim());
   const badFields = [];
   if (isPlaceholder(customerName) || customerName.length < 2) badFields.push('a real full name');
   if (isPlaceholder(books)) badFields.push('the actual book title');

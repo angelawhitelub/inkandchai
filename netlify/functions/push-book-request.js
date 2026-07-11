@@ -16,7 +16,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
+const { pushBotOrder } = require('./utils/push-bot-order');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -41,9 +41,6 @@ exports.handler = async (event) => {
   const amountRupees = Math.round(Number(body.amount_rupees) || 0);
   const paymentMode = body.payment_mode === 'prepaid' ? 'prepaid' : 'cod';
   if (!id) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide request id' }) };
-  if (!amountRupees || amountRupees <= 0) {
-    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide a valid amount (rupees).' }) };
-  }
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -52,62 +49,16 @@ exports.handler = async (event) => {
       .from('bot_order_requests').select('*').eq('id', id).maybeSingle();
     if (reqErr) throw reqErr;
     if (!req) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Request not found' }) };
-    if (req.order_pushed_id) {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Already pushed as ${req.order_pushed_id}.` }) };
+
+    const result = await pushBotOrder(supabase, req, { amountRupees, paymentMode });
+    if (!result.ok) {
+      return { statusCode: result.code || 400, headers: CORS, body: JSON.stringify({ error: result.error }) };
     }
-
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const randPart = Math.random().toString(36).slice(2, 7).toUpperCase();
-    const orderId = req.order_id || `IC-W-${datePart}-${randPart}`;
-
-    const phone10 = String(req.customer_phone || '').replace(/\D/g, '').slice(-10);
-    const amountPaise = amountRupees * 100;
-    // Single line item — the book name(s) the customer gave. Admin can refine
-    // later; price carries the amount so labels/invoices render sensibly.
-    const cart = [{ title: req.books || 'Book', qty: 1, price: amountRupees }];
-    // COD → cod_pending (ships on normal flow). Prepaid → confirmed (team will
-    // collect payment via link/UPI out of band before shipping).
-    const status = paymentMode === 'cod' ? 'cod_pending' : 'confirmed';
-
-    const { error: insErr } = await supabase.from('orders').insert({
-      razorpay_order_id:   orderId,
-      razorpay_payment_id: null,
-      amount_paise:        amountPaise,
-      status,
-      customer_name:       req.customer_name || '',
-      customer_email:      '',
-      customer_phone:      phone10,
-      customer_address:    req.address || '',
-      cart_items:          cart,
-    });
-    if (insErr) {
-      // Unique violation → order id already exists; surface it.
-      if (insErr.code === '23505') {
-        return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: `Order ${orderId} already exists.` }) };
-      }
-      throw insErr;
-    }
-
-    // Mark the request as converted so it can't be double-pushed.
-    await supabase.from('bot_order_requests')
-      .update({ status: 'ordered', order_pushed_id: orderId })
-      .eq('id', id);
-
-    // Push to NimbusPost so it can be shipped (AWB sync then notifies customer).
-    pushOrderToNimbusPost({
-      razorpay_order_id: orderId,
-      status,
-      customer_name: req.customer_name || '',
-      customer_phone: phone10,
-      customer_address: req.address || '',
-      amount_paise: amountPaise,
-      cart_items: cart,
-    }).catch(e => console.error('[NimbusPost] push-book-request failed (non-fatal):', e.message));
 
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ success: true, order_id: orderId, status, amount: amountRupees }),
+      body: JSON.stringify({ success: true, order_id: result.order_id, status: result.status, amount: result.amount, payment_kind: result.payment_kind }),
     };
   } catch (err) {
     console.error('push-book-request error:', err.message);

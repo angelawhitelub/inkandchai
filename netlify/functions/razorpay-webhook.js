@@ -9,7 +9,7 @@
  * Setup in Razorpay Dashboard → Settings → Webhooks → Add:
  *   URL: https://inkandchai.in/.netlify/functions/razorpay-webhook
  *   Secret: any string → also set as RAZORPAY_WEBHOOK_SECRET in Netlify env
- *   Events: payment.captured, payment.failed
+ *   Events: payment.captured, payment_link.paid, payment.failed
  */
 
 const crypto = require('crypto');
@@ -54,23 +54,32 @@ exports.handler = async (event) => {
   try { payload = JSON.parse(event.body); }
   catch { return { statusCode: 400, body: 'Bad JSON' }; }
 
-  const event_type = payload.event;
-  const payment    = payload.payload?.payment?.entity;
+  const event_type  = payload.event;
+  const payment     = payload.payload?.payment?.entity;
+  const orderEntity = payload.payload?.order?.entity || null;
+  const paymentLink = payload.payload?.payment_link?.entity || null;
 
   console.log(`[razorpay-webhook] event=${event_type} payment_id=${payment?.id} order_id=${payment?.order_id} status=${payment?.status}`);
 
-  // Only process captured payments
-  if (event_type !== 'payment.captured' || !payment) {
+  // Only process captured payments. Payment Links usually arrive as
+  // payment_link.paid with payment + order + payment_link entities.
+  if (!['payment.captured', 'payment_link.paid'].includes(event_type) || !payment) {
     return { statusCode: 200, body: 'OK' };
   }
 
-  const razorpay_order_id  = payment.order_id;   // order_XXXXXX
+  const razorpay_order_id  = payment.order_id || paymentLink?.order_id || orderEntity?.id; // order_XXXXXX
   const razorpay_payment_id = payment.id;        // pay_XXXXXX
   const amount_paise       = payment.amount;
-  const customerEmail      = payment.email || payment.notes?.customer_email || '';
-  const customerPhone      = payment.contact || payment.notes?.customer_phone || '';
+  const notes = {
+    ...(orderEntity?.notes || {}),
+    ...(paymentLink?.notes || {}),
+    ...(payment.notes || {}),
+  };
+  const linkCustomer      = paymentLink?.customer || {};
+  const customerEmail     = payment.email || linkCustomer.email || notes.customer_email || '';
+  const customerPhone     = payment.contact || linkCustomer.contact || notes.customer_phone || '';
   // notes.customer_name is set by create-order.js; also try notes.name as fallback
-  const customerName       = payment.notes?.customer_name || payment.notes?.name || '';
+  const customerName      = notes.customer_name || notes.name || linkCustomer.name || '';
 
   if (!razorpay_order_id || !razorpay_payment_id) {
     return { statusCode: 200, body: 'OK — no order/payment id' };
@@ -83,11 +92,42 @@ exports.handler = async (event) => {
   // ── Check if order already exists (handler() may have already saved it) ──
   const { data: existing } = await supabase
     .from('orders')
-    .select('id, razorpay_order_id, status')
+    .select('id, razorpay_order_id, status, customer_name, customer_phone, customer_address, cart_items, amount_paise')
     .eq('razorpay_payment_id', razorpay_payment_id)
     .maybeSingle();
 
   if (existing) {
+    const botOrderIdForRepair = notes.bot_order_id || paymentLink?.reference_id || orderEntity?.receipt || '';
+    if (botOrderIdForRepair) {
+      try {
+        const { data: botReq } = await supabase
+          .from('bot_order_requests')
+          .select('order_id, customer_name, address, books, customer_phone')
+          .eq('order_id', botOrderIdForRepair)
+          .maybeSingle();
+        if (botReq) {
+          const patch = {};
+          if (!existing.customer_name && botReq.customer_name) patch.customer_name = botReq.customer_name;
+          if (!existing.customer_address && botReq.address) patch.customer_address = botReq.address;
+          if (!existing.customer_phone && botReq.customer_phone) patch.customer_phone = botReq.customer_phone;
+          if ((!Array.isArray(existing.cart_items) || !existing.cart_items.length) && botReq.books) {
+            patch.cart_items = [{ title: botReq.books, qty: 1, price: Math.round((existing.amount_paise || amount_paise || 0) / 100) }];
+          }
+          if (!/^IC-W-/i.test(existing.razorpay_order_id || '') && /^IC-W-\d{8}-[A-Z0-9]{5}$/i.test(botReq.order_id || '')) {
+            patch.razorpay_order_id = botReq.order_id.toUpperCase();
+          }
+          if (Object.keys(patch).length) await supabase.from('orders').update(patch).eq('id', existing.id);
+          await supabase.from('bot_order_requests').update({
+            status: 'ordered',
+            order_pushed_id: patch.razorpay_order_id || existing.razorpay_order_id,
+            payment_status: 'paid',
+            paid_at: new Date().toISOString(),
+          }).eq('order_id', botReq.order_id);
+        }
+      } catch (e) {
+        console.warn('[razorpay-webhook] existing bot-order repair skipped:', e.message);
+      }
+    }
     console.log(`[razorpay-webhook] Already saved as ${existing.razorpay_order_id} — skip`);
     return { statusCode: 200, body: 'OK — already exists' };
   }
@@ -104,7 +144,7 @@ exports.handler = async (event) => {
   // paperbound tags its Razorpay orders with notes.source = 'paperbound' (and
   // mirrors it on the abandoned_checkout row). Skip those — they're recovered by
   // the paperbound webhook. Everything else (legacy/unset) is inkandchai's.
-  const evSource = payment.notes?.source || abandoned?.source || '';
+  const evSource = notes.source || abandoned?.source || '';
   if (evSource === 'paperbound') {
     console.log('[razorpay-webhook] paperbound order — skip (handled by paperbound webhook)');
     return { statusCode: 200, body: 'OK — other store' };
@@ -115,21 +155,23 @@ exports.handler = async (event) => {
   let   name     = customer.name    || customerName   || '';
   let   email    = customer.email   || customerEmail  || '';
   let   phone    = customer.phone   || customerPhone  || '';
-  let   address  = customer.address || payment.notes?.shipping_address || '';
-  let   notesBooks = payment.notes?.books || '';
+  let   address  = customer.address || notes.shipping_address || '';
+  let   notesBooks = notes.books || '';
 
   // WhatsApp-bot payment links: the customer's name/address live in
   // bot_order_requests, not on the payment. If this payment came from a bot
   // link (notes.bot_order_id) and we're still missing name/address, pull them
   // from that row so the order isn't saved blank with a void@razorpay.com email.
-  const botOrderId = payment.notes?.bot_order_id;
-  if (botOrderId && (!name || !address)) {
+  const botOrderId = notes.bot_order_id || paymentLink?.reference_id || orderEntity?.receipt || '';
+  let botReq = null;
+  if (botOrderId) {
     try {
-      const { data: botReq } = await supabase
+      const { data } = await supabase
         .from('bot_order_requests')
-        .select('customer_name, address, books, customer_phone')
+        .select('customer_name, address, books, customer_phone, amount_paise, order_pushed_id')
         .eq('order_id', botOrderId)
         .maybeSingle();
+      botReq = data || null;
       if (botReq) {
         name       = name    || botReq.customer_name || '';
         address    = address || botReq.address       || '';
@@ -148,7 +190,9 @@ exports.handler = async (event) => {
     : []);
 
   // IC- (or IC-CW- for Crossword-migrated genuine-tag carts) order ID.
-  const inkOrderId = await makeOrderId('IC', cartItems, supabase);
+  const inkOrderId = /^IC-W-\d{8}-[A-Z0-9]{5}$/i.test(botOrderId || '')
+    ? botOrderId.toUpperCase()
+    : await makeOrderId('IC', cartItems, supabase);
 
   // ── Save the order ────────────────────────────────────────────────────────
   const { error: saveErr } = await supabase.from('orders').insert({
@@ -173,6 +217,15 @@ exports.handler = async (event) => {
     }
     console.error('[razorpay-webhook] DB save error:', saveErr.message);
     return { statusCode: 500, body: JSON.stringify({ error: saveErr.message }) };
+  }
+
+  if (botReq && /^IC-W-/i.test(inkOrderId)) {
+    await supabase.from('bot_order_requests').update({
+      status: 'ordered',
+      order_pushed_id: inkOrderId,
+      payment_status: 'paid',
+      paid_at: new Date().toISOString(),
+    }).eq('order_id', inkOrderId);
   }
 
   console.log(`[razorpay-webhook] ✅ Saved missed order: ${inkOrderId} (${razorpay_payment_id})`);
