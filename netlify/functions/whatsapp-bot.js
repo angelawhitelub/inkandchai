@@ -526,10 +526,25 @@ async function submitOrderRequest(phone, args) {
   // "N/A", "book", "Customer", or a date. Reject those so they never pollute
   // the Book Requests panel. Returning an error string makes the AI go back and
   // ask the customer for real details (or realise it's not an order at all).
-  const isPlaceholder = (v) => /^(n\/?a|na|none|null|nil|unknown|not\s+(provided|given|specified|available)|not\s+shared|no\s+(name|address|book|books)|customer|book|books|test|\d{6,})$/i.test(String(v).trim());
+  const isPlaceholder = (v) => /^(n\/?a|na|none|null|nil|unknown|not\s+(provided|given|specified|available)|not\s+shared|no\s+(name|address|book|books)|customer|book|books|your\s+book\s+title|book\s+title|title|test|\d{6,})$/i.test(String(v).trim());
+
+  // The model keeps mis-firing submit_order_request for order-STATUS / support
+  // queries (it already has the customer's remembered name+address, so it only
+  // needs a "book" and stuffs the query text into it: "where is my order",
+  // "order status", "check order status"). These are NOT purchases. Detect a
+  // support/tracking/complaint intent in the book title and reject so it never
+  // becomes a bogus book request + payment link.
+  const looksLikeQuery = (v) => {
+    const s = String(v || '').trim().toLowerCase();
+    if (!s) return false;
+    if (/\?$/.test(s)) return true;                       // it's a question
+    return /(where\s*(is|are)?\s*(my|the)?\s*(order|parcel|package|book|delivery|shipment)|my\s+order|order\s*(status|update|kahan|kaha|kab)|status\s+of|track(ing)?\s+(my\s+)?(order|parcel|package|shipment)|check\s+(my\s+)?order|kahan\s*hai|kaha\s*hai|not\s+(delivered|received|arrived)|haven'?t\s+(received|got)|delivery\s+(update|status)|when\s+will|kab\s+(aayega|milega)|cancel|refund|return|complaint|damaged|wrong\s+(book|item))/i.test(s)
+        || /^(order|status|tracking|track|help|update|delivery|refund|cancel|return)$/i.test(s);
+  };
+
   const badFields = [];
   if (isPlaceholder(customerName) || customerName.length < 2) badFields.push('a real full name');
-  if (isPlaceholder(books)) badFields.push('the actual book title');
+  if (isPlaceholder(books) || looksLikeQuery(books)) badFields.push('the actual book title');
   // A real Indian address is more than a bare city/word — expect a pincode or
   // reasonable length. "Delhi" / "N/A" alone is not a deliverable address.
   const hasPin = /\b\d{6}\b/.test(address);
