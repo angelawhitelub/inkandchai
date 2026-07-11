@@ -7,23 +7,19 @@
  *
  * Body: { razorpay_payment_id: "pay_XXXXX" }
  *    OR { razorpay_order_id: "order_XXXXX" }
- * Headers: Authorization: Bearer <admin_password>
+ * Headers: X-Admin-Token (HMAC) or legacy X-Admin-Key — see utils/admin-auth
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { makeOrderId } = require('./utils/pricing');
+const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token, X-Admin-Key',
   'Content-Type': 'application/json',
 };
-
-function verifyAdmin(event) {
-  const auth = (event.headers['authorization'] || event.headers['Authorization'] || '').replace(/^Bearer\s+/i, '').trim();
-  return auth === process.env.ADMIN_PASSWORD;
-}
 
 async function razorpayFetch(path) {
   const key    = process.env.RAZORPAY_KEY_ID;
@@ -41,7 +37,10 @@ async function razorpayFetch(path) {
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
-  if (!verifyAdmin(event)) return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
+  // Shared gate — same auth as every other admin function: X-Admin-Token (HMAC,
+  // what adminFetch sends) OR legacy X-Admin-Key. The old local Bearer/ADMIN_PASSWORD
+  // check 401'd passkey/token-restored sessions (adminKey empty).
+  const _b = requireAdmin(event, CORS); if (_b) return _b;
 
   const body = JSON.parse(event.body || '{}');
   const { razorpay_payment_id, razorpay_order_id } = body;

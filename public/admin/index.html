@@ -4772,9 +4772,9 @@ async function recoverPayment() {
   result.innerHTML = '<span style="color:#a09080;">Checking Razorpay… please wait.</span>';
 
   try {
-    const res  = await fetch('/.netlify/functions/razorpay-reconcile', {
+    const res  = await adminFetch('/.netlify/functions/razorpay-reconcile', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         razorpay_payment_id: payId || undefined,
         razorpay_order_id:   ordId || undefined,
