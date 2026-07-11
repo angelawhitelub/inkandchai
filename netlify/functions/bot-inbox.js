@@ -15,6 +15,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
+const { requireAdmin } = require('./utils/admin-auth');
 
 const PHONE_ID = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VER  = 'v20.0';
@@ -22,7 +23,7 @@ const WA_URL   = `https://graph.facebook.com/${API_VER}/${PHONE_ID}/messages`;
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token, X-Admin-Key',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
@@ -31,12 +32,6 @@ function supabaseAdmin() {
 }
 
 // ── Verify admin password ─────────────────────────────────────────────────────
-function verifyAdmin(event) {
-  const auth = event.headers['authorization'] || event.headers['Authorization'] || '';
-  const key  = auth.replace(/^Bearer\s+/i, '').trim();
-  return key === process.env.ADMIN_PASSWORD;
-}
-
 // ── Send a WhatsApp text message ──────────────────────────────────────────────
 async function sendWhatsAppText(to, text) {
   const token = process.env.WHATSAPP_TOKEN;
@@ -59,9 +54,11 @@ async function sendWhatsAppText(to, text) {
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
 
-  if (!verifyAdmin(event)) {
-    return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
-  }
+  // Use the shared gate so this endpoint accepts the same auth as every other
+  // admin function: X-Admin-Token (HMAC, what adminFetch sends) OR the legacy
+  // X-Admin-Key / Bearer key. The old local check only accepted a raw Bearer
+  // password, so passkey/token-restored sessions (adminKey empty) 401'd here.
+  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
 
   const db = supabaseAdmin();
 

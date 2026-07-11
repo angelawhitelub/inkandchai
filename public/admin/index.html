@@ -4822,9 +4822,7 @@ function setInboxFilter(filter, btn) {
 
 async function fetchInbox() {
   try {
-    const res  = await fetch('/.netlify/functions/bot-inbox?action=list', {
-      headers: { 'Authorization': 'Bearer ' + adminKey }
-    });
+    const res  = await adminFetch('/.netlify/functions/bot-inbox?action=list');
     const data = await res.json();
     inboxConversations = data.conversations || [];
     renderInboxList();
@@ -4905,9 +4903,7 @@ async function loadThread(phone, scroll = true) {
 
   // Load messages
   try {
-    const res  = await fetch(`/.netlify/functions/bot-inbox?action=thread&phone=${encodeURIComponent(phone)}`, {
-      headers: { 'Authorization': 'Bearer ' + adminKey }
-    });
+    const res  = await adminFetch(`/.netlify/functions/bot-inbox?action=thread&phone=${encodeURIComponent(phone)}`);
     const data = await res.json();
     renderMessages(data.messages || []);
   } catch (e) {
@@ -4916,9 +4912,9 @@ async function loadThread(phone, scroll = true) {
   }
 
   // Mark as read
-  await fetch('/.netlify/functions/bot-inbox', {
+  await adminFetch('/.netlify/functions/bot-inbox', {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'mark_read', phone }),
   });
   // Update local count
@@ -4962,9 +4958,9 @@ function renderThreadActions(phone, conv) {
 
 async function inboxAction(action, phone) {
   try {
-    await fetch('/.netlify/functions/bot-inbox', {
+    await adminFetch('/.netlify/functions/bot-inbox', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, phone }),
     });
     await fetchInbox();
@@ -4984,9 +4980,9 @@ async function sendAdminReply() {
   input.disabled = true;
 
   try {
-    const res  = await fetch('/.netlify/functions/bot-inbox', {
+    const res  = await adminFetch('/.netlify/functions/bot-inbox', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'send', phone: activeInboxPhone, text }),
     });
     const data = await res.json();
