@@ -137,7 +137,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers: CORS,
-        body: JSON.stringify({ success: true, order_id: recentDupe.razorpay_order_id, deduped: true }),
+        body: JSON.stringify({ success: true, order_id: recentDupe.razorpay_order_id, deduped: true, amount: total }),
       };
     }
 
@@ -265,6 +265,6 @@ exports.handler = async (event) => {
   return {
     statusCode: 200,
     headers: CORS,
-    body: JSON.stringify({ success: true, order_id: orderId }),
+    body: JSON.stringify({ success: true, order_id: orderId, amount: total }),
   };
 };

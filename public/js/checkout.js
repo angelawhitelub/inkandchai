@@ -294,7 +294,7 @@ async function startCheckout(addr) {
           document.getElementById('unifiedCheckoutModal')?.remove();
           // Auto-create account & send magic link so customer can track order
           if (window.autoLoginAfterOrder) autoLoginAfterOrder(addr.email, addr.name, addr.phone);
-          showOrderSuccess(response.razorpay_payment_id, addr.email);
+          showOrderSuccess(response.razorpay_payment_id, addr.email, cart, Math.round(amountPaise / 100), addr);
         } catch (err) {
           console.error(err);
           showToast('Payment received but verification failed. Please contact support.');
@@ -340,7 +340,7 @@ async function submitCOD(addr) {
     closeCart();
     // Auto-create account & send magic link so customer can track order
     if (window.autoLoginAfterOrder) autoLoginAfterOrder(addr.email, addr.name, addr.phone);
-    showCODSuccess(data.order_id, addr.name, addr.email);
+    showCODSuccess(data.order_id, addr.name, addr.email, cart, (data.amount || amount), addr);
 
   } catch (err) {
     console.error(err);
@@ -349,7 +349,37 @@ async function submitCOD(addr) {
 }
 
 // ── Success screens ───────────────────────────────────────────────────────
-function showOrderSuccess(paymentId, email) {
+// Shared order-summary block for the success screens: books ordered, the
+// amount, and where it's shipping. Rendered from the cart captured BEFORE
+// clearCart() runs, so it survives the cart being emptied.
+function orderSummaryHtml(cart, amountRs, addr, amountLabel) {
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const items = Array.isArray(cart) ? cart : [];
+  const lines = items.map(i => {
+    const qty = Number(i.qty) || 1;
+    const line = (Number(i.price) || 0) * qty;
+    return `<div style="display:flex;justify-content:space-between;gap:0.8rem;font-size:0.66rem;color:#c8bfae;line-height:1.7;">
+        <span style="text-align:left;">${esc(i.title || 'Book')}${qty > 1 ? ` <span style="color:#7a6330;">× ${qty}</span>` : ''}</span>
+        <span style="white-space:nowrap;color:#a09080;">₹${line.toLocaleString('en-IN')}</span>
+      </div>`;
+  }).join('');
+  const addrStr = addr ? [addr.address, addr.city, addr.state, addr.pincode].filter(Boolean).join(', ') : '';
+  return `
+    <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.2);
+                padding:1.1rem 1.3rem;margin-bottom:1.4rem;text-align:left;">
+      <p style="font-size:0.58rem;color:#7a6330;letter-spacing:0.18em;text-transform:uppercase;margin:0 0 0.7rem;">Your Order</p>
+      ${lines || '<div style="font-size:0.66rem;color:#a09080;">Your books</div>'}
+      ${amountRs ? `<div style="display:flex;justify-content:space-between;border-top:1px solid rgba(201,168,76,0.18);margin-top:0.7rem;padding-top:0.6rem;">
+        <span style="font-size:0.66rem;color:#f0e8d8;letter-spacing:0.06em;">${esc(amountLabel || 'Amount')}</span>
+        <span style="font-size:0.8rem;color:#c9a84c;font-weight:600;">₹${Number(amountRs).toLocaleString('en-IN')}</span>
+      </div>` : ''}
+      ${addrStr ? `<p style="font-size:0.6rem;color:#8a7d68;line-height:1.6;margin:0.75rem 0 0;">
+        📍 <span style="color:#a09080;">${esc(addr.name || '')}${addr.name ? ' — ' : ''}${esc(addrStr)}</span>
+      </p>` : ''}
+    </div>`;
+}
+
+function showOrderSuccess(paymentId, email, cart, amountRs, addr) {
   const modal = document.createElement('div');
   modal.style.cssText = `
     position:fixed; inset:0; background:rgba(13,11,8,0.97);
@@ -366,6 +396,7 @@ function showOrderSuccess(paymentId, email) {
       <p style="font-size:0.65rem; color:#7a6330; letter-spacing:0.12em; margin-bottom:1rem;">
         Payment ID: ${paymentId}
       </p>
+      ${orderSummaryHtml(cart, amountRs, addr, 'Amount paid')}
       ${email ? `
       <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.2);
                   padding:1rem 1.4rem;margin-bottom:1.8rem;text-align:left;">
@@ -388,7 +419,7 @@ function showOrderSuccess(paymentId, email) {
   document.body.appendChild(modal);
 }
 
-function showCODSuccess(orderId, name, email) {
+function showCODSuccess(orderId, name, email, cart, amountRs, addr) {
   const modal = document.createElement('div');
   modal.style.cssText = `
     position:fixed; inset:0; background:rgba(13,11,8,0.97);
@@ -406,6 +437,7 @@ function showCODSuccess(orderId, name, email) {
       <p style="font-size:0.65rem; color:#7a6330; letter-spacing:0.12em; margin-bottom:1rem;">
         Order ID: ${orderId}
       </p>
+      ${orderSummaryHtml(cart, amountRs, addr, 'Pay on delivery')}
       ${email ? `
       <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.2);
                   padding:1rem 1.4rem;margin-bottom:1.8rem;text-align:left;">
