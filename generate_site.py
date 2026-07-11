@@ -1819,7 +1819,7 @@ HTML = r"""<!DOCTYPE html>
   @media (max-width: 600px) {
     nav { padding: 0.65rem 0.85rem 0.55rem; overflow: visible; flex-wrap: wrap; gap: 0.35rem 0.65rem; background: rgba(250,247,242,0.97); }
     html:not([data-theme="light"]) nav { background: rgba(13,11,8,0.97); }
-    .nav-links { order: 4; display: flex; width: 100%; gap: 0.55rem; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0.35rem 0 0.15rem; scrollbar-width: none; }
+    .nav-links { order: 4; display: flex; flex-wrap: nowrap; width: 100%; gap: 0.55rem; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0.35rem 0 0.15rem; scrollbar-width: none; }
     .nav-links::-webkit-scrollbar { display: none; }
     .nav-links li { flex: 0 0 auto; }
     /* Amazon-style: search drops to its own full-width row (below logo/icons,
@@ -1828,7 +1828,9 @@ HTML = r"""<!DOCTYPE html>
     .nav-search { order: 3; flex: 0 0 100%; width: 100%; max-width: none; min-width: 0; margin: 0.5rem 0 0.1rem; padding: 0.45rem 0.5rem 0.45rem 1rem; }
     .nav-search input { font-size: 0.9rem; }
     .nav-search button { padding: 0.5rem 0.8rem; font-size: 1.05rem; }
-    .nav-links a { display: inline-flex; min-height: 32px; align-items: center; padding: 0 0.58rem; border: 1px solid var(--border); background: rgba(201,168,76,0.05); font-size: 0.52rem; letter-spacing: 0.13em; white-space: nowrap; }
+    /* !important beats the global `.nav-links a{font-size:.82rem!important}` rule
+       (line ~647) that would otherwise inflate these into big wrapping pills. */
+    .nav-links a { display: inline-flex; min-height: 34px; align-items: center; padding: 0 0.7rem !important; border: 1px solid var(--border); background: rgba(201,168,76,0.05); font-size: 0.6rem !important; letter-spacing: 0.13em; white-space: nowrap; }
     .nav-dropdown-trigger::after, .nav-dropdown { display: none; }
     .nav-actions { gap: 0.7rem; min-width: 0; }
     .nav-actions .btn-nav, .nav-actions .nav-cart-wrap { display: none; }

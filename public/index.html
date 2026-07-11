@@ -885,7 +885,7 @@
   @media (max-width: 600px) {
     nav { padding: 0.65rem 0.85rem 0.55rem; overflow: visible; flex-wrap: wrap; gap: 0.35rem 0.65rem; background: rgba(250,247,242,0.97); }
     html:not([data-theme="light"]) nav { background: rgba(13,11,8,0.97); }
-    .nav-links { order: 4; display: flex; width: 100%; gap: 0.55rem; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0.35rem 0 0.15rem; scrollbar-width: none; }
+    .nav-links { order: 4; display: flex; flex-wrap: nowrap; width: 100%; gap: 0.55rem; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0.35rem 0 0.15rem; scrollbar-width: none; }
     .nav-links::-webkit-scrollbar { display: none; }
     .nav-links li { flex: 0 0 auto; }
     /* Amazon-style: search drops to its own full-width row (below logo/icons,
@@ -894,7 +894,9 @@
     .nav-search { order: 3; flex: 0 0 100%; width: 100%; max-width: none; min-width: 0; margin: 0.5rem 0 0.1rem; padding: 0.45rem 0.5rem 0.45rem 1rem; }
     .nav-search input { font-size: 0.9rem; }
     .nav-search button { padding: 0.5rem 0.8rem; font-size: 1.05rem; }
-    .nav-links a { display: inline-flex; min-height: 32px; align-items: center; padding: 0 0.58rem; border: 1px solid var(--border); background: rgba(201,168,76,0.05); font-size: 0.52rem; letter-spacing: 0.13em; white-space: nowrap; }
+    /* !important beats the global `.nav-links a{font-size:.82rem!important}` rule
+       (line ~647) that would otherwise inflate these into big wrapping pills. */
+    .nav-links a { display: inline-flex; min-height: 34px; align-items: center; padding: 0 0.7rem !important; border: 1px solid var(--border); background: rgba(201,168,76,0.05); font-size: 0.6rem !important; letter-spacing: 0.13em; white-space: nowrap; }
     .nav-dropdown-trigger::after, .nav-dropdown { display: none; }
     .nav-actions { gap: 0.7rem; min-width: 0; }
     .nav-actions .btn-nav, .nav-actions .nav-cart-wrap { display: none; }
@@ -2174,15 +2176,15 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 <!-- Supabase JS (for user accounts) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-  window.SUPABASE_URL      = "https://lajjjjkidxyfvmnyjboy.supabase.co";
-  window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhampqamtpZHh5ZnZtbnlqYm95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIwMzgsImV4cCI6MjA5MjQyODAzOH0.rAVgue6qljChwHMWouemM74Ud73sSHX9Sh1ZaRm2Ax0";
+  window.SUPABASE_URL      = "";
+  window.SUPABASE_ANON_KEY = "";
 </script>
 <!-- Razorpay SDK -->
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <!-- Razorpay Affordability Widget -->
 <script src="https://cdn.razorpay.com/widgets/affordability/affordability.js"></script>
 <!-- Razorpay public key (set via env at build time) -->
-<script>window.RAZORPAY_KEY_ID = "rzp_live_SjIBMzPKhttiUh";</script>
+<script>window.RAZORPAY_KEY_ID = "rzp_test_CHANGE_ME";</script>
 <!-- Cart, Checkout & Auth -->
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
@@ -2190,7 +2192,7 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 <script src="/js/search-suggest.js" defer></script>
 
 <script src="/js/books-lite-53d15812.js"></script>
-<script>window.BOOKS_FULL_URL="/js/books-full-af7c44c8.js";</script>
+<script>window.BOOKS_FULL_URL="/js/books-full-714c0ba7.js";</script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
