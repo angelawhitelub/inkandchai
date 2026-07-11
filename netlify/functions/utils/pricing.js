@@ -132,32 +132,39 @@ async function resolveCartPrices(cart, supabase) {
 
   const index = getCatalogIndex() || {};
 
-  // First pass: catalogue lookups (synchronous)
-  const resolved = [];
+  // Normalise every cart line to {slug, qty, raw} up front.
+  const items = [];
   const dropped = [];
-  const customLookups = []; // slugs to query in custom_products
-
   for (const raw of cart) {
     const slug = extractSlug(raw);
     const qty = Math.max(1, Math.floor(Number(raw?.qty) || 1));
     if (!slug) { dropped.push({ reason: 'no_slug', item: raw }); continue; }
-    const hit = index[slug];
-    if (hit) {
-      resolved.push({ ...raw, slug, qty, title: hit.title, price: hit.price });
-    } else {
-      customLookups.push({ slug, qty, raw });
-    }
+    items.push({ slug, qty, raw });
   }
 
-  // Second pass: custom_products in one batched query
-  if (customLookups.length && supabase) {
-    const slugs = [...new Set(customLookups.map(c => c.slug))];
+  // The custom_products table is the LIVE, admin-editable source of truth (it's
+  // what get-product-overrides serves to the storefront). The static catalogue
+  // `index` is baked at build time, so a price the admin changed after the last
+  // deploy is stale there. Previously we only consulted custom_products for
+  // slugs MISSING from the index — which meant an admin-edited price on a
+  // product that WAS in the baked index (e.g. a ₹999→₹799 combo) showed ₹799 on
+  // the page but charged the stale ₹999. So: query custom_products for ALL cart
+  // slugs and let a live override win over the baked price.
+  const customMap = {};
+  if (items.length && supabase) {
+    const slugs = [...new Set(items.map(c => c.slug))];
+    // Match case-INSENSITIVELY: cart slugs come from the (lower-cased) product
+    // URL, but custom_products slugs often carry an upper-case suffix code
+    // (e.g. "...-books-MBO-5"), so a case-sensitive `.in()` silently misses
+    // them — which is exactly how the ₹799 override was skipped. `ilike` with
+    // no % wildcards is an equality match that ignores case. Slugs are
+    // [a-z0-9-] only, so they carry no PostgREST OR-filter metacharacters.
+    const orFilter = slugs.map(s => `slug.ilike.${s}`).join(',');
     const { data, error } = await supabase
       .from('custom_products')
       .select('slug,title,price_inr,is_active,tags')
-      .in('slug', slugs);
+      .or(orFilter);
     if (error) console.error('[pricing] custom_products lookup:', error.message);
-    const customMap = {};
     for (const row of (data || [])) {
       if (row.is_active === false) continue;
       const price = Number.parseFloat(row.price_inr || 0) || 0;
@@ -166,19 +173,20 @@ async function resolveCartPrices(cart, supabase) {
       const noCod = /(?:^|,)\s*no-cod\s*(?:,|$)/i.test(String(row.tags || ''));
       customMap[String(row.slug).toLowerCase()] = { title: row.title || '', price, publisherSourced, noCod };
     }
-    for (const { slug, qty, raw } of customLookups) {
-      const hit = customMap[slug];
-      if (hit) {
-        const item = { ...raw, slug, qty, title: hit.title, price: hit.price };
-        if (hit.publisherSourced) item._publisher_sourced = true;
-        if (hit.noCod) item._no_cod = true;
-        resolved.push(item);
-      } else {
-        dropped.push({ reason: 'not_in_catalogue', slug, item: raw });
-      }
-    }
-  } else if (customLookups.length) {
-    for (const { raw, slug } of customLookups) {
+  }
+
+  const resolved = [];
+  for (const { slug, qty, raw } of items) {
+    const custom = customMap[slug];          // live override (authoritative)
+    const staticHit = index[slug];           // baked catalogue price (fallback)
+    if (custom) {
+      const item = { ...raw, slug, qty, title: custom.title || staticHit?.title || raw?.title, price: custom.price };
+      if (custom.publisherSourced) item._publisher_sourced = true;
+      if (custom.noCod) item._no_cod = true;
+      resolved.push(item);
+    } else if (staticHit) {
+      resolved.push({ ...raw, slug, qty, title: staticHit.title, price: staticHit.price });
+    } else {
       dropped.push({ reason: 'not_in_catalogue', slug, item: raw });
     }
   }
