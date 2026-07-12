@@ -103,6 +103,22 @@ async function pushBotOrder(supabase, req, opts = {}) {
     }
   }
 
+  // Do NOT create an Orders row for an UNPAID prepaid request. Only a payment
+  // LINK was generated — the customer hasn't paid. Pushing it anyway lands a
+  // 'confirmed' order in the Orders tab that counts toward paid revenue and gets
+  // sent to the courier, i.e. it looks/acts "paid" when no money was received.
+  // Prepaid orders move to Orders automatically once the link is paid (the
+  // follow-up poller re-invokes this with the payment confirmed). To ship now,
+  // the admin can switch the request/order to COD.
+  if (paymentMode === 'prepaid' && !paidConfirmed) {
+    return {
+      ok: false,
+      code: 409,
+      error: 'Customer has not paid the prepaid link yet — it can\'t go to Orders. It will move there automatically once the payment is received (or switch it to COD to ship now).',
+      payment_kind: 'unpaid_prepaid',
+    };
+  }
+
   const orderId    = mintOrderId(req.order_id);
   const phone10    = String(req.customer_phone || '').replace(/\D/g, '').slice(-10);
   const amountPaise = amountRupees * 100;

@@ -1731,7 +1731,9 @@ function updateAnalytics() {
   if (!allOrders.length) return;
 
   const PAID_STATUSES = new Set(['paid','delivered','shipped','out_for_delivery','confirmed','cod_pending','partial_cod_pending','partial_cod','pending_phonepe','pending_partial_phonepe']);
-  const paidOrders = allOrders.filter(o => PAID_STATUSES.has(o.status));
+  // Unpaid prepaid orders (payment link created but not paid) carry status
+  // 'confirmed' — exclude them so they aren't counted as paid/revenue.
+  const paidOrders = allOrders.filter(o => PAID_STATUSES.has(o.status) && o.payment_status !== 'prepaid_pending');
 
   const now   = new Date();
   const todayStr  = now.toISOString().slice(0,10);
@@ -1876,7 +1878,7 @@ function updateStats() {
   const delivered    = allOrders.filter(o => o.status === 'delivered').length;
   const unshipped    = allOrders.filter(orderIsUnshipped).length;
   const rev          = allOrders
-    .filter(o => ['paid','delivered','shipped','out_for_delivery','confirmed','cod_pending','partial_cod_pending'].includes(o.status))
+    .filter(o => ['paid','delivered','shipped','out_for_delivery','confirmed','cod_pending','partial_cod_pending'].includes(o.status) && o.payment_status !== 'prepaid_pending')
     .reduce((s,o) => s + Math.round(orderPaymentBreakdown(o).full * 100), 0);
 
   const displayTotal = serverTotal != null ? serverTotal : allOrders.length;
@@ -5043,7 +5045,9 @@ async function sendAdminReply() {
       body: JSON.stringify({ action: 'send', phone: activeInboxPhone, text }),
     });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Send failed');
+    if (!res.ok || !data.ok) {
+      throw new Error(data.detail ? `${data.error || 'Send failed'}: ${data.detail}` : (data.error || 'Send failed'));
+    }
     await loadThread(activeInboxPhone, false);
   } catch (e) {
     alert('Failed to send: ' + e.message);
