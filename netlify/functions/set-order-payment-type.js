@@ -48,23 +48,26 @@ exports.handler = async (event) => {
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const SEL = 'id, status, payment_status, razorpay_payment_id';
-    const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    const SEL = 'id, razorpay_order_id, status, payment_status, razorpay_payment_id';
 
-    // Locate the order. Try the uuid `id` (only when it actually looks like a
-    // uuid — querying the uuid column with an IC- string throws a cast error),
-    // then fall back to razorpay_order_id from either `id` or `order_ref`.
+    // Locate the order by ANY identifier we were given, robust to:
+    //  - the PK type (uuid or bigint) — we just query `id` directly; if `id` is
+    //    an IC- string and the column is uuid, PostgREST returns a cast error
+    //    which we ignore (order stays null) rather than letting it 404,
+    //  - the client version — older cached admin JS sends only `id` (no
+    //    order_ref), so we also try `id` against razorpay_order_id.
     let order = null;
-    if (isUuid(id)) {
-      const r = await supabase.from('orders').select(SEL).eq('id', id).maybeSingle();
-      order = r.data;
+    const tryEq = async (col, val) => {
+      if (order || !val) return;
+      const r = await supabase.from('orders').select(SEL).eq(col, val).maybeSingle();
+      if (!r.error && r.data) order = r.data;
+    };
+    await tryEq('id', id);                     // uuid or bigint PK
+    await tryEq('razorpay_order_id', orderRef); // IC- display id (new client)
+    await tryEq('razorpay_order_id', id);       // in case `id` IS the IC- display id
+    if (!order) {
+      return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: `Order not found (id="${id}", ref="${orderRef}")` }) };
     }
-    for (const ref of [orderRef, id]) {
-      if (order || !ref) continue;
-      const r = await supabase.from('orders').select(SEL).eq('razorpay_order_id', ref).maybeSingle();
-      order = r.data;
-    }
-    if (!order) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found' }) };
 
     // Don't clobber a REAL gateway payment (pay_… / PhonePe id). Only manual
     // markers (plink:… / prepaid:… / null) are safe to rewrite.
