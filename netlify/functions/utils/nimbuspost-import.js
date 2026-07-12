@@ -12,6 +12,8 @@
  *  - Nested fields: bracket notation, e.g. products[0][name]
  */
 
+const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./np-normalize');
+
 const NP_ORDER_URL = 'https://ship.nimbuspost.com/api/orders/create';
 
 // NimbusPost's invoice/label PDF renderer can't print non-Latin glyphs — anything
@@ -34,24 +36,6 @@ function sanitizeForCourier(rawTitle) {
   return ascii.slice(0, 150);
 }
 
-function parseAddress(value) {
-  const parts = String(value || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (!parts.length) return { address: '', city: '', state: '', pincode: '' };
-  // Find a 6-digit pincode in any segment; what comes before it is city/state.
-  let pinIdx = parts.findIndex(p => /^\d{6}$/.test(p));
-  let pincode = '';
-  if (pinIdx >= 0) { pincode = parts[pinIdx]; parts.splice(pinIdx, 1); }
-  else {
-    const last = parts[parts.length - 1] || '';
-    const m = last.match(/\b(\d{6})\b/);
-    if (m) { pincode = m[1]; parts[parts.length - 1] = last.replace(m[1], '').replace(/[,\s-]+$/, '').trim() || ''; }
-  }
-  const state = (parts.pop() || '').slice(0, 64);
-  const city  = (parts.pop() || '').slice(0, 64);
-  const address = parts.join(', ').slice(0, 200);
-  return { address, city, state, pincode };
-}
-
 function splitName(value) {
   const tokens = String(value || '').trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return { first: 'Customer', last: 'Customer' };
@@ -71,7 +55,7 @@ function parseItems(value) {
   try { const v = JSON.parse(value); return Array.isArray(v) ? v : []; } catch { return []; }
 }
 
-function buildPayload(order, opts = {}) {
+async function buildPayload(order, opts = {}) {
   const orderId = String(opts.orderNumber || order.razorpay_order_id || order.id);
   const items = parseItems(order.cart_items);
   const amountRs = Math.max(0, Number(order.amount_paise || 0) / 100);
@@ -83,11 +67,11 @@ function buildPayload(order, opts = {}) {
     : (amountRs || itemSubtotal));
   const totalQty = items.reduce((s, i) => s + Math.max(1, Number(i.qty || i.quantity || 1)), 0) || 1;
   const name = splitName(order.customer_name);
-  const addr = parseAddress(order.customer_address);
-  const phone = String(order.customer_phone || '').replace(/\D/g, '').slice(-10);
+  const addr = await enrichAddress(parseAddress(order.customer_address));  // fills city/state from pincode
+  const phone = normalizeIndianPhone(order.customer_phone);
   const isCod = ['cod_pending', 'partial_cod_pending'].includes(order.status);
 
-  if (!phone || phone.length !== 10) throw new Error('Customer phone must contain 10 digits');
+  if (!phone) throw new Error('Customer phone must contain a valid 10-digit mobile number');
   if (!addr.pincode) throw new Error('Customer address has no 6-digit pincode');
   if (!addr.city || !addr.state) throw new Error('Customer address must include city and state');
 
@@ -111,7 +95,7 @@ function buildPayload(order, opts = {}) {
     lname: name.last,
     address: addr.address,
     address_2: '',
-    phone: Number(phone),
+    phone,
     city: addr.city,
     state: addr.state,
     country: 'India',
@@ -146,7 +130,7 @@ async function pushOrderToNimbusPost(order, { apiKey, reverse, orderNumber } = {
   const key = apiKey || process.env.NIMBUSPOST_API_KEY;
   if (!key) throw new Error('NIMBUSPOST_API_KEY is not configured');
 
-  const payload = buildPayload(order, { reverse, orderNumber });
+  const payload = await buildPayload(order, { reverse, orderNumber });
   const res = await fetch(NP_ORDER_URL, {
     method: 'POST',
     // Don't set Content-Type — fetch adds multipart/form-data with the boundary.

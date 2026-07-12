@@ -9,6 +9,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier } = require('./utils/nimbuspost-import');
+const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { requireAdmin } = require('./utils/admin-auth');
 
 const NP_ORDER_URL = 'https://ship.nimbuspost.com/api/orders/create';
@@ -24,27 +25,9 @@ const UNSHIPPED_STATUSES = [
   'replacement_pending',
 ];
 
-function parseAddress(value) {
-  const raw = String(value || '').trim();
-  const pinMatch = raw.match(/\b(\d{6})\b/);
-  const pincode = pinMatch ? pinMatch[1] : '';
-  const parts = raw
-    .replace(pincode, '')
-    .replace(/,\s*,/g, ',')
-    .replace(/,\s*$/, '')
-    .split(',')
-    .map(part => part.trim())
-    .filter(Boolean);
-
-  const state = parts.pop() || '';
-  const city = parts.pop() || '';
-  return {
-    address: parts.join(', ') || raw,
-    city,
-    state,
-    pincode,
-  };
-}
+// parseAddress / normalizeIndianPhone / enrichAddress now come from
+// ./utils/np-normalize so the bulk pusher and the per-order auto-push share one
+// robust implementation (whole-string pincode, string phone, pincode→city/state).
 
 function parseItems(value) {
   if (Array.isArray(value)) return value;
@@ -63,7 +46,7 @@ function splitName(value) {
   return { first, last: parts.join(' ') || '.' };
 }
 
-function buildPayload(order) {
+async function buildPayload(order) {
   const orderId = String(order.razorpay_order_id || order.id);
   const items = parseItems(order.cart_items);
   const amountRs = Math.max(0, Number(order.amount_paise || 0) / 100);
@@ -80,11 +63,11 @@ function buildPayload(order) {
     : (amountRs || itemSubtotal));
   const totalQty = items.reduce((sum, item) => sum + Math.max(1, Number(item.qty || item.quantity || 1)), 0) || 1;
   const name = splitName(order.customer_name);
-  const address = parseAddress(order.customer_address);
-  const phone = String(order.customer_phone || '').replace(/\D/g, '').slice(-10);
+  const address = await enrichAddress(parseAddress(order.customer_address));  // fills city/state from pincode
+  const phone = normalizeIndianPhone(order.customer_phone);
   const isCod = ['cod_pending', 'partial_cod_pending'].includes(order.status);
 
-  if (!phone || phone.length !== 10) throw new Error('Customer phone must contain 10 digits');
+  if (!phone) throw new Error('Customer phone must contain a valid 10-digit mobile number');
   if (!address.pincode) throw new Error('Customer address has no 6-digit pincode');
   if (!address.city || !address.state) throw new Error('Customer address must include city and state');
 
@@ -96,7 +79,7 @@ function buildPayload(order) {
     lname: name.last,
     address: address.address,
     address_2: '',
-    phone: Number(phone),
+    phone,
     city: address.city,
     state: address.state,
     country: 'India',
@@ -221,7 +204,7 @@ async function getExistingOrderNumbers(apiKey) {
 }
 
 async function pushOrder(order, apiKey) {
-  const payload = buildPayload(order);
+  const payload = await buildPayload(order);
   const response = await fetch(NP_ORDER_URL, {
     method: 'POST',
     headers: {
