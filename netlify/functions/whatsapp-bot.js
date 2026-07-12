@@ -427,10 +427,14 @@ async function callOpenAIChat(messages, { tools = false } = {}) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not set');
   const payload = {
-    model: 'gpt-4o-mini',    // Fast + cheap — ~$0.0003 per message
+    // gpt-4o-mini was too weak at tool discipline — it fired cancel_order off a
+    // bare order id (no cancellation request), cancelling + refunding an order.
+    // gpt-4o follows the "confirm first / only cancel on request" rules far more
+    // reliably. Override via OPENAI_MODEL env var without a redeploy if needed.
+    model: process.env.OPENAI_MODEL || 'gpt-4o',
     messages,
     max_tokens: 320,
-    temperature: 0.7,
+    temperature: 0.4,        // steadier, less erratic tool selection
   };
   if (tools) { payload.tools = OPENAI_TOOLS; payload.tool_choice = 'auto'; }
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
