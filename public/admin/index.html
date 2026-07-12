@@ -1004,6 +1004,10 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <div class="inbox-layout" id="inboxLayout">
       <!-- Sidebar: conversation list -->
       <div class="inbox-sidebar" id="inboxSidebar">
+        <div style="padding:0.5rem 0.6rem 0;">
+          <input id="inboxSearch" type="search" placeholder="🔍 Search by phone or name…" oninput="setInboxSearch(this.value)"
+            style="width:100%;padding:0.45rem 0.7rem;font-size:0.78rem;border:1px solid var(--border);background:var(--card);color:var(--cream);border-radius:6px;box-sizing:border-box;"/>
+        </div>
         <div class="inbox-filter-row">
           <button class="inbox-filter-btn active" data-filter="all"      onclick="setInboxFilter('all',this)">All</button>
           <button class="inbox-filter-btn"         data-filter="active"   onclick="setInboxFilter('active',this)">Active</button>
@@ -4870,6 +4874,8 @@ async function recoverPayment() {
 let inboxConversations = [];
 let activeInboxPhone   = null;
 let inboxFilter        = 'all';
+let inboxSearch        = '';
+function setInboxSearch(v) { inboxSearch = String(v || '').toLowerCase().trim(); renderInboxList(); }
 let inboxPollTimer     = null;
 
 function setInboxFilter(filter, btn) {
@@ -4908,6 +4914,15 @@ function renderInboxList() {
   if (inboxFilter === 'active')   convs = convs.filter(c => c.status !== 'resolved');
   if (inboxFilter === 'takeover') convs = convs.filter(c => c.human_takeover);
   if (inboxFilter === 'resolved') convs = convs.filter(c => c.status === 'resolved');
+  if (inboxSearch) {
+    const digits = inboxSearch.replace(/\D/g, '');
+    convs = convs.filter(c => {
+      const phone = String(c.customer_phone || '');
+      const name  = String(c.customer_name || '').toLowerCase();
+      return name.includes(inboxSearch) || phone.toLowerCase().includes(inboxSearch)
+          || (digits && phone.replace(/\D/g, '').includes(digits));
+    });
+  }
 
   if (!convs.length) {
     list.innerHTML = '<div style="padding:1.5rem;color:var(--cream-dim);font-size:0.8rem;">No conversations yet.</div>';

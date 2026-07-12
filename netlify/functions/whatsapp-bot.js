@@ -69,12 +69,11 @@ DELIVERY TIME — "when will I get my order?" / "kitne din mein aayega?":
 - Always say "after dispatch" — remind them to check tracking for live updates
 
 ORDER CANCELLATION — "cancel my order" / "order cancel karna hai":
-- Customers can cancel their own order instantly from the website — no need to contact support
-- Steps: Go to inkandchai.in → tap the 👤 icon (top right) → sign in → open "My Orders" → tap "Cancel Order" next to the order
-- Cancellations are only possible before the order is shipped
-- COD orders cancel immediately; prepaid orders get an automatic refund within 5–7 business days
-- If already shipped, cancellation is not possible but they can return it after delivery
-- If they face trouble cancelling on the website, they can WhatsApp +91 76784 00508 or email support@inkandchai.in
+- You can cancel the order for them RIGHT HERE. When the customer EXPLICITLY asks to cancel their order, call the cancel_order tool (pass their Order ID if they gave one; otherwise it cancels their most recent still-cancellable order). Then relay the tool's result message to the customer.
+- Before calling the tool, if it's at all ambiguous which order or whether they're sure, confirm once ("Just to confirm — cancel order IC-… ? Reply yes to cancel."). If they clearly said "cancel my order", you may proceed directly.
+- After cancelling: for PREPAID/online orders a refund is issued AUTOMATICALLY to their original payment method (reflects in 2–3 business days) — they do NOT need to email anyone. For COD orders there's nothing to pay, so nothing to refund.
+- Cancellation is only possible before dispatch. If already shipped/delivered, the tool will say so — then tell them they can return it after delivery.
+- Never claim an order is cancelled unless the cancel_order tool returned success.
 
 RETURN & REFUND — "wrong book", "different product", "refund chahiye", "return karna hai":
 - Be very reassuring: their money is completely safe with us 💚
@@ -108,7 +107,7 @@ ORDER STATUS LOOKUP:
 
 ORDER STATUS MEANINGS — explain reassuringly when you see these statuses in the order context:
 - "pending_pickup" / "pending pickup" / "awaiting pickup": This usually means the book is temporarily OUT OF STOCK from our supplier and we're waiting to restock before pickup. Reassure the customer STRONGLY that their money is 100% safe and secure with us — nothing is lost. Their order will either be dispatched as soon as the book is back in stock, or fully refunded if it can't be sourced. Tell them there is absolutely nothing to worry about.
-- "cancelled": The order has been cancelled. Tell the customer their money is completely safe and a refund will be issued. Ask them to email their Order ID to refund@inkandchai.in and our team will process the refund to their original payment method within 5-7 business days. Be warm and reassuring — no money is ever lost with us.
+- "cancelled": The order has been cancelled. Reassure the customer their money is completely safe. If it was a PREPAID/online order, a refund has been issued AUTOMATICALLY to their original payment method and will reflect within 2–3 business days — they do NOT need to email anyone or take any action. If it was COD, nothing was paid, so there's nothing to refund. Be warm and reassuring — no money is ever lost with us.
 - "refunded": The refund has already been processed and will reflect in their account within 5-7 business days.
 
 MONEY SAFETY — this is critical, always lead with reassurance:
@@ -158,7 +157,7 @@ function appendHistory(phone, role, content) {
 }
 
 // ── Persist a message to Supabase + update conversation row ──────────────────
-async function persistMessage(phone, role, message, customerName = null) {
+async function persistMessage(phone, role, message, customerName = null, whatsappPhoneId = null) {
   try {
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const now = new Date().toISOString();
@@ -175,6 +174,10 @@ async function persistMessage(phone, role, message, customerName = null) {
       status:          'active',
     };
     if (customerName) convUpdate.customer_name = customerName;
+    // Remember which Ink & Chai WhatsApp number received this conversation.
+    // The account has multiple Cloud API numbers; manual inbox replies must be
+    // sent from the same number or they appear in a different WhatsApp chat.
+    if (whatsappPhoneId) convUpdate.whatsapp_phone_id = String(whatsappPhoneId);
     // Only increment unread for inbound customer messages
     if (role === 'user') {
       // Use raw SQL increment via rpc — fallback: just set a flag
@@ -404,6 +407,19 @@ const OPENAI_TOOLS = [{
       required: ['customer_name', 'address', 'books', 'payment_mode'],
     },
   },
+}, {
+  type: 'function',
+  function: {
+    name: 'cancel_order',
+    description: 'Cancel the customer\'s existing order when they EXPLICITLY ask to cancel it (e.g. "cancel my order", "I want to cancel", "order cancel karna hai", "please cancel order IC-..."). Call this ONLY on a clear, explicit cancellation request for an order they already placed — never for a new order, a status check, a complaint, or a vague message. Do NOT guess. On success the order status is set to cancelled and, if it was a prepaid/online order, a refund is issued automatically to their original payment method.',
+    parameters: {
+      type: 'object',
+      properties: {
+        order_id: { type: 'string', description: 'The specific Order ID (IC-…) to cancel, IF the customer gave one. Omit to cancel their most recent still-cancellable order.' },
+      },
+      required: [],
+    },
+  },
 }];
 
 async function callOpenAIChat(messages, { tools = false } = {}) {
@@ -483,6 +499,10 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
         let args = {};
         try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
         result = await submitOrderRequest(phone, args);
+      } else if (call.function?.name === 'cancel_order') {
+        let args = {};
+        try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
+        result = await cancelOrderViaBot(phone, args);
       }
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
@@ -502,6 +522,68 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
 // still lands the right amount; the owner is notified about unmatched titles
 // so they can correct it manually.
 const UNMATCHED_BOOK_FALLBACK_RS = 349;
+
+// ── Cancel the customer's order from the bot ─────────────────────────────────
+// Matched by the last 10 digits of their WhatsApp number. Cancels the most
+// recent still-cancellable order (or a specific IC- id if they named one), then
+// notifyOrderCancelled auto-refunds prepaid/online orders. COD has nothing to
+// refund. Already-shipped/delivered orders can't be cancelled.
+async function cancelOrderViaBot(phone, args = {}) {
+  const FINAL = ['shipped', 'out_for_delivery', 'delivered', 'cancelled', 'refunded', 'refund_pending', 'rto'];
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const ten = String(phone).replace(/\D/g, '').slice(-10);
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('id, razorpay_order_id, status, amount_paise, razorpay_payment_id, customer_name, customer_email, customer_phone, customer_address, cart_items, created_at')
+      .or(`customer_phone.eq.${ten},customer_phone.eq.91${ten},customer_phone.eq.+91${ten}`)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    if (error) throw error;
+    if (!orders || !orders.length) {
+      return { ok: false, error: 'no-orders', message: 'I could not find any order under this WhatsApp number. If you ordered with a different phone or email, please share your Order ID (IC-…).' };
+    }
+
+    const wantId = String(args.order_id || '').toUpperCase().trim();
+    let target = wantId ? orders.find(o => String(o.razorpay_order_id || '').toUpperCase() === wantId) : null;
+    if (!target) target = orders.find(o => !FINAL.includes(String(o.status || '').toLowerCase()));
+
+    if (!target) {
+      const recent = orders[0];
+      const st = String(recent.status || '').toLowerCase();
+      if (['shipped', 'out_for_delivery'].includes(st)) {
+        return { ok: false, error: 'shipped', message: `Your order ${recent.razorpay_order_id} has already been dispatched, so it can't be cancelled now. Once it arrives you can return it — just reply here and we'll help.` };
+      }
+      if (st === 'delivered') {
+        return { ok: false, error: 'delivered', message: `Your order ${recent.razorpay_order_id} is already delivered, so it can't be cancelled. If there's a problem with it, tell me and I'll help with a return or refund.` };
+      }
+      if (['cancelled', 'refunded', 'refund_pending'].includes(st)) {
+        return { ok: true, alreadyCancelled: true, order_id: recent.razorpay_order_id, message: `Your order ${recent.razorpay_order_id} is already cancelled. Any refund due is on its way to your original payment method. 💛` };
+      }
+      return { ok: false, error: 'not-cancellable', message: 'I could not find a cancellable order under this number. Please share your Order ID (IC-…) and I\'ll take a look.' };
+    }
+
+    // Cancel + auto-refund (notifyOrderCancelled → maybeAutoRefund for prepaid).
+    await supabase.from('orders').update({ status: 'cancelled' }).eq('id', target.id);
+    await notifyOrderCancelled({ ...target, status: 'cancelled' }, {
+      reason: 'Your order has been cancelled as requested on WhatsApp.',
+    });
+
+    const isPrepaid = !!target.razorpay_payment_id;   // online/prepaid orders carry a payment id
+    const refundLine = isPrepaid
+      ? ' Since this was a prepaid order, a refund to your original payment method has been issued automatically and usually reflects within 2–3 business days.'
+      : ' As this was a Cash-on-Delivery order, there\'s nothing to refund.';
+    return {
+      ok: true,
+      order_id: target.razorpay_order_id,
+      was_prepaid: isPrepaid,
+      message: `Done — your order ${target.razorpay_order_id} has been cancelled.${refundLine} If this was a mistake, just reply here and we'll help. 💛`,
+    };
+  } catch (e) {
+    console.error('cancelOrderViaBot:', e.message);
+    return { ok: false, error: e.message, message: 'Sorry, I hit a snag cancelling your order. Please email support@inkandchai.in with your Order ID and we\'ll cancel it right away.' };
+  }
+}
 
 // ── Persist a WhatsApp book-order request + notify the store owner ────────────
 async function submitOrderRequest(phone, args) {
@@ -774,7 +856,7 @@ exports.handler = async (event) => {
     console.log(`[IN]  ${from}: ${userText.slice(0, 120)}`);
 
     // ── Persist inbound message ───────────────────────────────────────────────
-    await persistMessage(from, 'user', userText);
+    await persistMessage(from, 'user', userText, null, recvPhoneId);
 
     // ── If human has taken over this conversation, just persist + stop ────────
     if (await isHumanTakeover(from)) {
@@ -857,7 +939,7 @@ exports.handler = async (event) => {
 
     await sendReply(from, reply, recvPhoneId);
     // Persist bot reply (reset unread — bot replied so nothing new for admin)
-    await persistMessage(from, 'bot', reply);
+    await persistMessage(from, 'bot', reply, null, recvPhoneId);
     console.log(`[OUT] ${from}: ${reply.slice(0, 120)}`);
 
   } catch (err) {
