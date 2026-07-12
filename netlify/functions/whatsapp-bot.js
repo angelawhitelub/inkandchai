@@ -529,10 +529,46 @@ const UNMATCHED_BOOK_FALLBACK_RS = 349;
 // recent still-cancellable order (or a specific IC- id if they named one), then
 // notifyOrderCancelled auto-refunds prepaid/online orders. COD has nothing to
 // refund. Already-shipped/delivered orders can't be cancelled.
+// Deterministic check: did the customer ACTUALLY ask to cancel? Cancelling
+// auto-refunds money, so we must not let the model do it off a misread (it once
+// cancelled an order when the customer only gave their Order ID to ask about
+// delivery). We scan the customer's own recent messages for an explicit cancel
+// request — the LLM's judgement alone is never sufficient to fire this.
+const CANCEL_INTENT_RE = /\bcancel(?:l|ed|led|ling|lation)?\b|\bcancle\b|\bcancal\b|\bcancel\b|cancel\s*(?:kar|karo|karna|kar\s*do|kardo|krna|kr\s*do)|order\s*cancel|\braddh?\b/i;
+
+async function customerAskedToCancel(supabase, phone) {
+  try {
+    const { data: msgs } = await supabase.from('bot_messages')
+      .select('role, message, created_at')
+      .eq('customer_phone', phone)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    const userText = (msgs || [])
+      .filter(m => String(m.role || '').toLowerCase() === 'user')
+      .map(m => String(m.message || ''))
+      .join('  |  ');
+    return CANCEL_INTENT_RE.test(userText);
+  } catch (e) {
+    console.error('customerAskedToCancel check failed:', e.message);
+    return false;   // fail SAFE — if we can't verify intent, don't cancel
+  }
+}
+
 async function cancelOrderViaBot(phone, args = {}) {
   const FINAL = ['shipped', 'out_for_delivery', 'delivered', 'cancelled', 'refunded', 'refund_pending', 'rto'];
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+    // HARD GUARD: never cancel unless the customer explicitly asked to. This
+    // does not trust the model — it checks the actual conversation.
+    if (!(await customerAskedToCancel(supabase, phone))) {
+      return {
+        ok: false,
+        error: 'no-cancel-intent',
+        message: 'I don\'t want to cancel anything by mistake — I don\'t see a cancellation request from you. If you\'d like to cancel your order, please reply clearly with "cancel my order" and I\'ll confirm it with you first. Otherwise, tell me what you need (delivery time, tracking, etc.) and I\'m happy to help! 🙂',
+      };
+    }
+
     const ten = String(phone).replace(/\D/g, '').slice(-10);
     const { data: orders, error } = await supabase
       .from('orders')
