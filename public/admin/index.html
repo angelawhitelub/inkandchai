@@ -1965,7 +1965,11 @@ function applyFilters() {
     if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
     if (currentFilter === 'partial_cod_pending' && !isPartialOrder(o)) return false;
     if (currentFilter === 'online_pending' && !isPendingOnlineOrder(o)) return false;
-    if (currentFilter === 'cw_only' && !/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || ''))) return false;
+    if (currentFilter === 'cw_only') {
+      if (!/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || ''))) return false;
+      // Keep the Crossword tab to actionable orders — hide cancelled/refunded.
+      if (['cancelled', 'refunded', 'refund_pending'].includes(String(o.status || '').toLowerCase())) return false;
+    }
     // Search
     if (q) {
       const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
