@@ -40,22 +40,28 @@ exports.handler = async (event) => {
   catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
   const id = String(body.id || '').trim();
+  const orderRef = String(body.order_ref || '').trim();   // IC- display id (razorpay_order_id)
   const paymentType = body.payment_type === 'prepaid' ? 'prepaid' : body.payment_type === 'cod' ? 'cod' : '';
   const collected = body.collected === true;
-  if (!id) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide order id' }) };
+  if (!id && !orderRef) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide order id' }) };
   if (!paymentType) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'payment_type must be cod or prepaid' }) };
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const SEL = 'id, status, payment_status, razorpay_payment_id';
+    const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
-    // Locate the order by primary id, else by razorpay_order_id.
-    let { data: order } = await supabase.from('orders')
-      .select('id, status, payment_status, razorpay_payment_id')
-      .eq('id', id).maybeSingle();
-    if (!order) {
-      const r = await supabase.from('orders')
-        .select('id, status, payment_status, razorpay_payment_id')
-        .eq('razorpay_order_id', id).maybeSingle();
+    // Locate the order. Try the uuid `id` (only when it actually looks like a
+    // uuid — querying the uuid column with an IC- string throws a cast error),
+    // then fall back to razorpay_order_id from either `id` or `order_ref`.
+    let order = null;
+    if (isUuid(id)) {
+      const r = await supabase.from('orders').select(SEL).eq('id', id).maybeSingle();
+      order = r.data;
+    }
+    for (const ref of [orderRef, id]) {
+      if (order || !ref) continue;
+      const r = await supabase.from('orders').select(SEL).eq('razorpay_order_id', ref).maybeSingle();
       order = r.data;
     }
     if (!order) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found' }) };

@@ -2209,10 +2209,13 @@ async function togglePaymentType(id, target, btn) {
   const orig = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
+    const ordRow = allOrders.find(o => String(o.id) === String(id));
     const res = await adminFetch('/.netlify/functions/set-order-payment-type', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, payment_type: target, collected }),
+      // Send BOTH the uuid and the IC- display id so the server can locate the
+      // row even if one of them doesn't match (was throwing "Order not found").
+      body: JSON.stringify({ id, order_ref: ordRow?.razorpay_order_id || '', payment_type: target, collected }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));

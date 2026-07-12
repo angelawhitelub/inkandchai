@@ -69,10 +69,11 @@ DELIVERY TIME — "when will I get my order?" / "kitne din mein aayega?":
 - Always say "after dispatch" — remind them to check tracking for live updates
 
 ORDER CANCELLATION — "cancel my order" / "order cancel karna hai":
-- You can cancel the order for them RIGHT HERE. When the customer EXPLICITLY asks to cancel their order, call the cancel_order tool (pass their Order ID if they gave one; otherwise it cancels their most recent still-cancellable order). Then relay the tool's result message to the customer.
-- Before calling the tool, if it's at all ambiguous which order or whether they're sure, confirm once ("Just to confirm — cancel order IC-… ? Reply yes to cancel."). If they clearly said "cancel my order", you may proceed directly.
-- After cancelling: for PREPAID/online orders a refund is issued AUTOMATICALLY to their original payment method (reflects in 2–3 business days) — they do NOT need to email anyone. For COD orders there's nothing to pay, so nothing to refund.
-- Cancellation is only possible before dispatch. If already shipped/delivered, the tool will say so — then tell them they can return it after delivery.
+- You can cancel the order for them RIGHT HERE, but ALWAYS ASK FOR CONFIRMATION FIRST. Cancelling is irreversible, so you must NOT call the cancel_order tool until the customer clearly confirms.
+- Flow: (1) When they ask to cancel, reply asking them to confirm — name the order if you know it, e.g. "Just to confirm, you'd like to cancel order IC-… for <book>? Reply YES to confirm and I'll cancel it right away." (2) ONLY after they reply yes/haan/confirm/cancel it, call the cancel_order tool (pass their Order ID if they gave one; otherwise it cancels their most recent still-cancellable order). (3) Relay the tool's result message to the customer.
+- If they say no / changed their mind, do NOT cancel — reassure them the order stays as-is.
+- After a successful cancel: for PREPAID/online orders a refund is issued AUTOMATICALLY to their original payment method (reflects in 2–3 business days) — they do NOT need to email anyone. For COD orders nothing was paid, so nothing to refund.
+- Cancellation is only possible before dispatch. If the order is already shipped or delivered, the tool will say so — then tell them they can return it after delivery instead.
 - Never claim an order is cancelled unless the cancel_order tool returned success.
 
 RETURN & REFUND — "wrong book", "different product", "refund chahiye", "return karna hai":
@@ -411,7 +412,7 @@ const OPENAI_TOOLS = [{
   type: 'function',
   function: {
     name: 'cancel_order',
-    description: 'Cancel the customer\'s existing order when they EXPLICITLY ask to cancel it (e.g. "cancel my order", "I want to cancel", "order cancel karna hai", "please cancel order IC-..."). Call this ONLY on a clear, explicit cancellation request for an order they already placed — never for a new order, a status check, a complaint, or a vague message. Do NOT guess. On success the order status is set to cancelled and, if it was a prepaid/online order, a refund is issued automatically to their original payment method.',
+    description: 'Cancel the customer\'s existing order. Call this ONLY AFTER the customer has CONFIRMED they want to cancel (i.e. you asked "reply YES to confirm" and they replied yes/haan/confirm). Do NOT call it on the first cancel request — ask for confirmation first. Never call it for a new order, a status check, a complaint, or a vague message. On success the order status is set to cancelled and, if it was a prepaid/online order, a refund is issued automatically to their original payment method. If the order is already shipped/delivered the tool refuses and returns a message to relay.',
     parameters: {
       type: 'object',
       properties: {
@@ -544,23 +545,31 @@ async function cancelOrderViaBot(phone, args = {}) {
       return { ok: false, error: 'no-orders', message: 'I could not find any order under this WhatsApp number. If you ordered with a different phone or email, please share your Order ID (IC-…).' };
     }
 
+    // Pick the SPECIFIC order to act on: the one they named, else their most
+    // recent order. Then ALWAYS check that order's shipping status before
+    // cancelling — never silently cancel a different/older order.
     const wantId = String(args.order_id || '').toUpperCase().trim();
-    let target = wantId ? orders.find(o => String(o.razorpay_order_id || '').toUpperCase() === wantId) : null;
-    if (!target) target = orders.find(o => !FINAL.includes(String(o.status || '').toLowerCase()));
+    const target = wantId
+      ? orders.find(o => String(o.razorpay_order_id || '').toUpperCase() === wantId)
+      : orders[0];
 
     if (!target) {
-      const recent = orders[0];
-      const st = String(recent.status || '').toLowerCase();
-      if (['shipped', 'out_for_delivery'].includes(st)) {
-        return { ok: false, error: 'shipped', message: `Your order ${recent.razorpay_order_id} has already been dispatched, so it can't be cancelled now. Once it arrives you can return it — just reply here and we'll help.` };
-      }
-      if (st === 'delivered') {
-        return { ok: false, error: 'delivered', message: `Your order ${recent.razorpay_order_id} is already delivered, so it can't be cancelled. If there's a problem with it, tell me and I'll help with a return or refund.` };
-      }
-      if (['cancelled', 'refunded', 'refund_pending'].includes(st)) {
-        return { ok: true, alreadyCancelled: true, order_id: recent.razorpay_order_id, message: `Your order ${recent.razorpay_order_id} is already cancelled. Any refund due is on its way to your original payment method. 💛` };
-      }
-      return { ok: false, error: 'not-cancellable', message: 'I could not find a cancellable order under this number. Please share your Order ID (IC-…) and I\'ll take a look.' };
+      return { ok: false, error: 'not-found', message: `I couldn't find order ${wantId || ''} under this WhatsApp number. Please double-check the Order ID (IC-…), or share the number/email you ordered with.` };
+    }
+
+    const st = String(target.status || '').toLowerCase();
+    // Guard: already shipped or delivered → cannot cancel.
+    if (['shipped', 'out_for_delivery'].includes(st)) {
+      return { ok: false, error: 'shipped', message: `Your order ${target.razorpay_order_id} has already been dispatched, so it can't be cancelled now. Once it arrives you can return it — just reply here and we'll help.` };
+    }
+    if (st === 'delivered') {
+      return { ok: false, error: 'delivered', message: `Your order ${target.razorpay_order_id} is already delivered, so it can't be cancelled. If there's a problem with it, tell me and I'll help with a return or refund.` };
+    }
+    if (['cancelled', 'refunded', 'refund_pending'].includes(st)) {
+      return { ok: true, alreadyCancelled: true, order_id: target.razorpay_order_id, message: `Your order ${target.razorpay_order_id} is already cancelled. Any refund due is on its way to your original payment method. 💛` };
+    }
+    if (st === 'rto') {
+      return { ok: false, error: 'rto', message: `Your order ${target.razorpay_order_id} is on its way back to us (return in transit). Reply here and our team will sort out a re-delivery or refund for you.` };
     }
 
     // Cancel + auto-refund (notifyOrderCancelled → maybeAutoRefund for prepaid).
