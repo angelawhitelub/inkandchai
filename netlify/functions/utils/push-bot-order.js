@@ -18,6 +18,39 @@
 
 const { pushOrderToNimbusPost } = require('./nimbuspost-import');
 const { fetchPaymentLinkStatus } = require('./razorpay-payment-link');
+const { sendWhatsApp, sendText } = require('./whatsapp');
+
+// Order-confirmation WhatsApp to the customer AND the store owner, fired the
+// moment a book request is confirmed into a real order (both COD and prepaid).
+// Best-effort — never blocks or fails the push.
+async function notifyOrderConfirmed({ orderId, phone10, customerName, address, books, amountRupees, paymentKind }) {
+  const firstName = String(customerName || 'there').split(' ')[0];
+  const bookList  = String(books || 'your books').slice(0, 200);
+  const modeLabel = paymentKind === 'online_paid' ? 'Paid'
+                  : paymentKind === 'prepaid_pending' ? 'Prepaid'
+                  : 'COD';
+  const amtLabel  = `₹${Number(amountRupees).toLocaleString('en-IN')} (${modeLabel})`;
+
+  // Customer — reuse the same approved template the website order flow uses.
+  if (phone10) {
+    try {
+      await sendWhatsApp({
+        to: phone10,
+        template: 'order_confirmed',
+        params: [firstName, orderId, amtLabel, String(address || '').slice(0, 80), bookList],
+      });
+    } catch (e) { console.error('[push-bot-order] customer confirm WA:', e.message); }
+  }
+
+  // Owner — free-form text (owner chats with the bot, so within the 24h window).
+  const ownerPhone = process.env.STORE_OWNER_PHONE;
+  if (ownerPhone) {
+    try {
+      await sendText(ownerPhone,
+        `✅ Order confirmed (WhatsApp book request)\n🆔 ${orderId}\n👤 ${customerName || '—'}\n📞 ${phone10 || '—'}\n📚 ${bookList}\n📍 ${String(address || '—').slice(0, 120)}\n💰 ${amtLabel}\n\nPushed to Orders — ship it from the Orders tab.`);
+    } catch (e) { console.error('[push-bot-order] owner confirm WA:', e.message); }
+  }
+}
 
 function mintOrderId(existing) {
   if (existing) return existing;
@@ -128,6 +161,13 @@ async function pushBotOrder(supabase, req, opts = {}) {
     amount_paise: amountPaise,
     cart_items: cart,
   }).catch(e => console.error('[push-bot-order] NimbusPost push failed (non-fatal):', e.message));
+
+  // Confirm to customer + owner on WhatsApp (COD and prepaid alike). Awaited so
+  // it runs before the function returns, but its own errors never throw.
+  await notifyOrderConfirmed({
+    orderId, phone10, customerName: req.customer_name, address: req.address,
+    books: req.books, amountRupees, paymentKind,
+  });
 
   return { ok: true, order_id: orderId, status, amount: amountRupees, payment_kind: paymentKind };
 }

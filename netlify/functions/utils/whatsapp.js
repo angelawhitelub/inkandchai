@@ -76,4 +76,37 @@ async function sendWhatsApp({ to, template, params = [], lang = 'en' }) {
   }
 }
 
-module.exports = { sendWhatsApp, normalizePhone };
+/**
+ * Send a free-form WhatsApp TEXT message (not a template). Only deliverable
+ * inside the 24-hour customer-service window — fine for the store owner (who
+ * chats with the bot) and for customers who just messaged. Never throws.
+ */
+async function sendText(to, text) {
+  const token = process.env.WHATSAPP_TOKEN;
+  if (!token) { console.warn('WHATSAPP_TOKEN not set — WA text skipped'); return { ok: false, skipped: true }; }
+  const phone = normalizePhone(to);
+  if (!phone) { console.warn('sendText: invalid phone', to); return { ok: false, skipped: true }; }
+  try {
+    const res = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: phone,
+        type: 'text',
+        text: { body: String(text).slice(0, 4096), preview_url: false },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error(`WhatsApp text error ${res.status} → ${phone}:`, JSON.stringify(data?.error || data));
+      return { ok: false, status: res.status, data };
+    }
+    return { ok: true, status: res.status, data };
+  } catch (err) {
+    console.error('sendText exception:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+module.exports = { sendWhatsApp, sendText, normalizePhone };
