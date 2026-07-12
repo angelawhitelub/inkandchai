@@ -82,6 +82,18 @@ function productHtml(product) {
   const price = moneyText(product.price_inr);
   const mrp = moneyText(product.original_price_inr);
   const plainDesc = String(product.description || metaDesc).replace(/\s+/g, ' ');
+
+  // Hide browse-only catalogue imports from Google Shopping / free listings.
+  // These bulk imports carry a `*-catalog` tag and their cover images are tiny
+  // (~50px Goodreads/Amazon thumbnails), which Google Merchant disapproves as
+  // "image too small". They exist for on-site search depth, not advertising —
+  // so we drop the shopping signals (the Offer + product og:type) while keeping
+  // the page fully indexable and buyable on-site. Also catch the obvious tiny
+  // image filenames (…_SX50) regardless of tag.
+  const browseOnlyCatalog = /(?:^|,)\s*(?:crossword-catalog|99bookstores-catalog|bookstohome-catalog|imported-bookstohome|catalog)\s*(?:,|$)/i.test(String(product.tags || ''));
+  const tinyImage = /\._S[XY](?:\d{1,2}|1\d\d)[_.]/.test(String(product.image_url || ''));
+  const hideFromGoogleShopping = browseOnlyCatalog || tinyImage;
+
   const schema = {
     '@context': 'https://schema.org',
     '@type': 'Book',
@@ -93,16 +105,21 @@ function productHtml(product) {
     publisher: product.publisher || 'Ink & Chai',
     bookFormat: 'https://schema.org/Paperback',
     url: canonical,
-    offers: {
-      '@type': 'Offer',
-      url: canonical,
-      priceCurrency: 'INR',
-      price: Number(product.price_inr),
-      availability: 'https://schema.org/InStock',
-      itemCondition: 'https://schema.org/NewCondition',
-      seller: { '@type': 'Organization', name: 'Ink & Chai' },
-    },
+    // Only expose an Offer (the shopping signal Google Merchant ingests) for
+    // real, advertise-able products — never for browse-only catalogue imports.
+    ...(hideFromGoogleShopping ? {} : {
+      offers: {
+        '@type': 'Offer',
+        url: canonical,
+        priceCurrency: 'INR',
+        price: Number(product.price_inr),
+        availability: 'https://schema.org/InStock',
+        itemCondition: 'https://schema.org/NewCondition',
+        seller: { '@type': 'Organization', name: 'Ink & Chai' },
+      },
+    }),
   };
+  const ogType = hideFromGoogleShopping ? 'book' : 'product';
 
   return `<!doctype html>
 <html lang="en">
@@ -113,7 +130,7 @@ function productHtml(product) {
 <meta name="description" content="${metaDesc}"/>
 <meta name="robots" content="index,follow"/>
 <link rel="canonical" href="${canonical}"/>
-<meta property="og:type" content="product"/>
+<meta property="og:type" content="${ogType}"/>
 <meta property="og:title" content="${title} | Ink & Chai"/>
 <meta property="og:description" content="${metaDesc}"/>
 <meta property="og:image" content="${esc(image)}"/>

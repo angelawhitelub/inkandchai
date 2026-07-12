@@ -76,9 +76,11 @@ exports.handler = async () => {
       const to = Math.min(from + pageSize, feedLimit) - 1;
       const { data, error } = await supabase
         .from('custom_products')
-        .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,publisher,isbn,is_active')
+        .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,publisher,isbn,is_active,tags')
         .eq('is_active', true)
         .not('tags', 'ilike', '%crossword-catalog%')
+        .not('tags', 'ilike', '%99bookstores-catalog%')
+        .not('tags', 'ilike', '%imported-bookstohome%')
         .order('updated_at', { ascending: false })
         .range(from, to);
       if (error) throw error;
@@ -89,6 +91,9 @@ exports.handler = async () => {
     const items = (products || []).map((p) => {
       const price = priceText(p.price_inr);
       if (!p.slug || !p.title || !p.image_url || !price) return '';  // skip incomplete rows
+      // Skip tiny thumbnail covers (…_SX50) — Google Merchant disapproves them
+      // as "image too small", and they can't be upscaled from source.
+      if (/\._S[XY](?:\d{1,2}|1\d\d)[_.]/.test(String(p.image_url))) return '';
       const link = `${SITE}/product/${encodeURIComponent(p.slug)}/`;
       const desc = plainText(p.description) || `Buy ${p.title} online at ${BRAND}. Fast pan-India delivery, COD and prepaid available.`;
       const salePrice = priceText(p.original_price_inr);
