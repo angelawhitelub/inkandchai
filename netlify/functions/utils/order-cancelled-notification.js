@@ -2,7 +2,8 @@ const { sendEmail } = require('./email');
 const { sendWhatsApp } = require('./whatsapp');
 const { createClient } = require('@supabase/supabase-js');
 const { issuePhonePeRefund } = require('./phonepe-refund-core');
-const { issueRazorpayRefund } = require('./razorpay-refund');
+const { issueRazorpayRefund, fetchRazorpayRefundStatus } = require('./razorpay-refund');
+const { notifyOwnerRefund } = require('./refund-notifications');
 
 function moneyFromPaise(paise) {
   const amount = Number(paise || 0) / 100;
@@ -102,7 +103,10 @@ async function maybeAutoRefund(order) {
       });
       await supabase.from('orders').update({ status: 'refunded' }).eq('id', row.id);
       console.log(`[AUTO-REFUND] ${displayId} → Razorpay refunded refundId=${refund.id}`);
-      await notifyRefundIssued(row, amountPaise, refund.id);
+      // Confirm the true status straight from Razorpay for the owner email
+      // (a fresh normal-speed refund reads 'pending' until the bank settles).
+      const rzpStatus = (await fetchRazorpayRefundStatus(pid).catch(() => null))?.status || refund.status;
+      await notifyRefundIssued(row, amountPaise, refund.id, { provider: 'Razorpay', state: rzpStatus });
       return { ok: true, provider: 'razorpay', state: 'refunded', nextStatus: 'refunded', merchantRefundId: refund.id };
     } catch (err) {
       // Leave it at refund_pending so the admin sees it and can retry manually.
@@ -116,8 +120,8 @@ async function maybeAutoRefund(order) {
   if (res.ok) {
     await supabase.from('orders').update({ status: res.nextStatus }).eq('id', row.id);
     console.log(`[AUTO-REFUND] ${displayId} → ${res.state} (${res.nextStatus}) refundId=${res.merchantRefundId}`);
-    // Tell the customer their money is on its way.
-    await notifyRefundIssued(row, amountPaise, res.merchantRefundId);
+    // Tell the customer their money is on its way + email the owner.
+    await notifyRefundIssued(row, amountPaise, res.merchantRefundId, { provider: 'PhonePe', state: res.state });
   } else {
     // Leave it at refund_pending so the admin sees it and can retry manually.
     console.error(`[AUTO-REFUND] ${displayId} failed: ${res.error} — left as refund_pending for manual retry`);
@@ -148,9 +152,12 @@ function refundProcessedEmailHtml(order, amountPaise, refundId) {
     </div>`;
 }
 
-// Best-effort refund confirmation — email (always) + WhatsApp (if template set).
-// Never throws.
-async function notifyRefundIssued(order, amountPaise, refundId) {
+// Best-effort refund confirmation — customer email + WhatsApp, AND an owner
+// email. Only ever called on the success branches of maybeAutoRefund (i.e. the
+// gateway accepted/processed the refund), so the owner is notified only when a
+// refund has actually been issued. `meta` carries { provider, state } for the
+// owner email. Never throws.
+async function notifyRefundIssued(order, amountPaise, refundId, meta = {}) {
   try {
     if (order.customer_email) {
       await sendEmail({
@@ -170,6 +177,8 @@ async function notifyRefundIssued(order, amountPaise, refundId) {
         ],
       });
     }
+    // Owner notification — the store owner asked to be emailed on every issued refund.
+    await notifyOwnerRefund(order, amountPaise, { ...meta, refundId });
   } catch (e) {
     console.error('[AUTO-REFUND] confirmation notify error:', e.message);
   }

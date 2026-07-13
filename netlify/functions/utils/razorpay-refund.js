@@ -38,4 +38,45 @@ async function issueRazorpayRefund(paymentId, amountPaise, opts = {}) {
   return data; // { id: 'rfnd_...', amount, status, ... }
 }
 
-module.exports = { issueRazorpayRefund };
+/**
+ * Fetch the CURRENT refund status for a payment directly from Razorpay.
+ * Razorpay refunds are async: a freshly-created refund is `pending` and moves to
+ * `processed` (or `failed`) once the bank confirms. This lets us report the real
+ * state instead of assuming success.
+ *
+ *   GET https://api.razorpay.com/v1/payments/:paymentId/refunds
+ *
+ * @param {string} paymentId  Razorpay payment id ("pay_...")
+ * @returns {Promise<{status:string|null, refundId:string|null, amountPaise:number, count:number}>}
+ *          status is 'processed' | 'pending' | 'failed' | null (no refund found).
+ *          Never throws — returns { status:null } on any error.
+ */
+async function fetchRazorpayRefundStatus(paymentId) {
+  const keyId     = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  const empty = { status: null, refundId: null, amountPaise: 0, count: 0 };
+  if (!keyId || !keySecret || !paymentId || !String(paymentId).startsWith('pay_')) return empty;
+  try {
+    const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+    const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refunds`, {
+      headers: { 'Authorization': `Basic ${auth}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return empty;
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (!items.length) return empty;
+    // Most-recent refund (items are newest-first from Razorpay).
+    const latest = items[0];
+    return {
+      status: latest.status || null,
+      refundId: latest.id || null,
+      amountPaise: Number(latest.amount || 0),
+      count: items.length,
+    };
+  } catch (e) {
+    console.error('[razorpay] fetchRefundStatus:', e.message);
+    return empty;
+  }
+}
+
+module.exports = { issueRazorpayRefund, fetchRazorpayRefundStatus };
