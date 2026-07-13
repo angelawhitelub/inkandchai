@@ -107,7 +107,7 @@ function updateCartUI() {
     <div class="cart-item" data-id="${item.id}">
       <div class="cart-item-img">
         ${item.img
-          ? `<img src="${item.img}" alt="${esc(item.title)}" loading="lazy" onerror="this.style.display='none'" />`
+          ? `<img src="${iacImg(item.img,140)}" alt="${esc(item.title)}" loading="lazy" onerror="this.style.display='none'" />`
           : `<div class="cart-item-img-placeholder"></div>`}
       </div>
       <div class="cart-item-info">
@@ -142,6 +142,16 @@ function closeCart() {
   if (sidebar) sidebar.classList.remove('open');
   if (overlay) overlay.classList.remove('show');
   document.body.style.overflow = '';
+}
+
+// Route same-site covers through Netlify Image CDN (resize + webp) to cut image
+// bandwidth. Leaves data:, external, and legacy image-proxy URLs untouched.
+function iacImg(src, w) {
+  var s = String(src || '');
+  if (!s || s.startsWith('data:')) return s;
+  var p = s.replace(/^https?:\/\/inkandchai\.in/i, '');
+  if (!(p.startsWith('/images/') || p.startsWith('/spimg/'))) return s;
+  return '/.netlify/images?url=' + encodeURIComponent(p) + '&w=' + w + '&fm=webp&q=72';
 }
 
 function esc(s) {
@@ -343,7 +353,7 @@ function renderInjectedFbt(data) {
       <div class="iac-fbt-row" data-iac-fbt-row data-price="${Number(item.price) || 0}" data-item="${encoded}">
         <input class="iac-fbt-check" type="checkbox" checked onchange="updateInjectedFbtTotal()" aria-label="Select ${esc(item.title)}">
         <a class="iac-fbt-img" href="${esc(href)}" ${index === 0 ? 'onclick="event.preventDefault()"' : ''}>
-          ${item.img ? `<img src="${esc(item.img)}" alt="${esc(item.title)} cover" loading="lazy">` : ''}
+          ${item.img ? `<img src="${esc(iacImg(item.img,140))}" alt="${esc(item.title)} cover" loading="lazy">` : ''}
         </a>
         <div>
           <div class="iac-fbt-name">${esc(item.title)}${index === 0 ? '<span class="iac-fbt-pill">This item</span>' : ''}</div>

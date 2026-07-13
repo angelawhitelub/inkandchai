@@ -114,6 +114,9 @@ let state = { q: '', sort: 'new', page: 1, pages: 1, loading: false };
 
 function money(n){ return '₹' + Number(n||0).toLocaleString('en-IN'); }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// Route same-site covers through Netlify Image CDN (resize + webp) to cut image
+// bandwidth. Leaves data:, external, and legacy image-proxy URLs untouched.
+function iacImg(src,w){var s=String(src||'');if(!s||s.startsWith('data:'))return s;var p=s.replace(/^https?:\/\/inkandchai\.in/i,'');if(!(p.startsWith('/images/')||p.startsWith('/spimg/')))return s;return '/.netlify/images?url='+encodeURIComponent(p)+'&w='+w+'&fm=webp&q=72';}
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -130,7 +133,7 @@ function cardHtml(b){
     _publisher_sourced: true, ...(b.no_cod ? { _no_cod: true } : {})
   }).replace(/"/g,'&quot;');
   return `<div class="card">
-    <a class="cover" href="${url}"><img loading="lazy" src="${esc(b.img)}" alt="${esc(b.title)}"/></a>
+    <a class="cover" href="${url}"><img loading="lazy" src="${esc(iacImg(b.img,320))}" alt="${esc(b.title)}"/></a>
     <div class="card-body">
       <div class="genuine">📚 Genuine</div>
       <a class="title" href="${url}">${esc(b.title)}</a>

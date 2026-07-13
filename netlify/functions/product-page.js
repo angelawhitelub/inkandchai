@@ -41,6 +41,20 @@ function absoluteImage(url) {
   return `https://inkandchai.in${image.startsWith('/') ? image : `/${image}`}`;
 }
 
+// Route same-site images through Netlify Image CDN so covers are resized and
+// served as webp instead of the full-resolution original. Cuts image bandwidth
+// ~70-85% for on-page covers and social preview cards. Only transforms assets
+// we serve ourselves (/images, /spimg); data:, external CDNs, and the legacy
+// image-proxy are left untouched. `absolute` returns a full URL (for og:image).
+function cdnImage(url, width, absolute = false) {
+  const raw = String(url || '');
+  if (!raw || raw.startsWith('data:')) return raw;
+  let path = raw.replace(/^https?:\/\/inkandchai\.in/i, '');
+  if (!(path.startsWith('/images/') || path.startsWith('/spimg/'))) return raw;
+  const t = `/.netlify/images?url=${encodeURIComponent(path)}&w=${width}&fm=webp&q=72`;
+  return absolute ? `https://inkandchai.in${t}` : t;
+}
+
 function applyOverride(product, override) {
   if (!product || !override || override.is_active === false) return product;
   return {
@@ -79,6 +93,11 @@ function productHtml(product) {
     galleryExtra = (Array.isArray(g) ? g : []).map(u => absoluteImage(String(u || '').trim())).filter(Boolean);
   } catch { galleryExtra = []; }
   const galleryImgs = [image, ...galleryExtra].filter((v, i, a) => v && a.indexOf(v) === i);
+  // Resized/webp versions for on-page display + social preview. `image` (full
+  // res) stays as-is for the schema.org/Merchant feed; only the visible <img>
+  // and og:image use the CDN-transformed variants.
+  const ogImage = cdnImage(image, 800, true);
+  const displayImgs = galleryImgs.map(src => cdnImage(src, 600));
   const price = moneyText(product.price_inr);
   const mrp = moneyText(product.original_price_inr);
   const plainDesc = String(product.description || metaDesc).replace(/\s+/g, ' ');
@@ -133,7 +152,7 @@ function productHtml(product) {
 <meta property="og:type" content="${ogType}"/>
 <meta property="og:title" content="${title} | Ink & Chai"/>
 <meta property="og:description" content="${metaDesc}"/>
-<meta property="og:image" content="${esc(image)}"/>
+<meta property="og:image" content="${esc(ogImage)}"/>
 <meta property="og:url" content="${canonical}"/>
 <script type="application/ld+json">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet"/>
@@ -179,12 +198,12 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 <main class="wrap">
   <section class="cover">${galleryImgs.length > 1 ? `<div class="gallery">
       <div class="gallery-track" id="galTrack">
-        ${galleryImgs.map((src, i) => `<div class="gallery-slide"><img src="${esc(src)}" alt="${title} ${i === 0 ? 'front cover' : 'cover view ' + (i + 1)}" loading="${i === 0 ? 'eager' : 'lazy'}"${i === 0 ? ' fetchpriority="high"' : ''}/></div>`).join('')}
+        ${displayImgs.map((src, i) => `<div class="gallery-slide"><img src="${esc(src)}" alt="${title} ${i === 0 ? 'front cover' : 'cover view ' + (i + 1)}" loading="${i === 0 ? 'eager' : 'lazy'}"${i === 0 ? ' fetchpriority="high"' : ''} onerror="this.onerror=null;this.src='${esc(galleryImgs[i] || image)}'"/></div>`).join('')}
       </div>
       <button class="gal-arrow gal-prev" id="galPrev" type="button" aria-label="Previous image">&#8249;</button>
       <button class="gal-arrow gal-next" id="galNext" type="button" aria-label="Next image">&#8250;</button>
       <div class="gallery-dots">${galleryImgs.map((_, i) => `<button class="gallery-dot${i === 0 ? ' active' : ''}" type="button" aria-label="Show image ${i + 1}"></button>`).join('')}</div>
-    </div>` : `<img src="${esc(image)}" alt="${title} book cover" loading="eager" fetchpriority="high"/>`}</section>
+    </div>` : `<img src="${esc(displayImgs[0] || image)}" alt="${title} book cover" loading="eager" fetchpriority="high" onerror="this.onerror=null;this.src='${esc(image)}'"/>`}</section>
   <section>
     <div class="crumb"><a href="/">Home</a> / <a href="/category/?name=${encodeURIComponent(product.category || 'Books')}">${category}</a></div>
     <h1>${title}</h1>

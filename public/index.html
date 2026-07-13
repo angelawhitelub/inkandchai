@@ -2176,15 +2176,15 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 <!-- Supabase JS (for user accounts) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-  window.SUPABASE_URL      = "";
-  window.SUPABASE_ANON_KEY = "";
+  window.SUPABASE_URL      = "https://lajjjjkidxyfvmnyjboy.supabase.co";
+  window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhampqamtpZHh5ZnZtbnlqYm95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIwMzgsImV4cCI6MjA5MjQyODAzOH0.rAVgue6qljChwHMWouemM74Ud73sSHX9Sh1ZaRm2Ax0";
 </script>
 <!-- Razorpay SDK -->
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <!-- Razorpay Affordability Widget -->
 <script src="https://cdn.razorpay.com/widgets/affordability/affordability.js"></script>
 <!-- Razorpay public key (set via env at build time) -->
-<script>window.RAZORPAY_KEY_ID = "rzp_test_CHANGE_ME";</script>
+<script>window.RAZORPAY_KEY_ID = "rzp_live_SjIBMzPKhttiUh";</script>
 <!-- Cart, Checkout & Auth -->
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
@@ -2192,7 +2192,7 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 <script src="/js/search-suggest.js" defer></script>
 
 <script src="/js/books-lite-53d15812.js"></script>
-<script>window.BOOKS_FULL_URL="/js/books-full-714c0ba7.js";</script>
+<script>window.BOOKS_FULL_URL="/js/books-full-a88b4680.js";</script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -2569,7 +2569,7 @@ function renderBooks() {
     <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
       <div class="book-cover" style="position:relative;">
         ${b.n ? '<span class="new-badge">NEW</span>' : ''}
-        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
+        <img src="${iacImg(b.img,320)}" alt="${escHtml(b.t)}" loading="lazy"
              onerror="this.style.display='none'" />
         <button class="wish-btn ${wishlisted ? 'wishlisted' : ''}"
           data-url="${escHtml(b.url)}"
@@ -2694,7 +2694,7 @@ function openCollection(catsEncoded, name) {
   grid.innerHTML = matches.slice(0, visibleCount).map(b => `
     <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
       <div class="book-cover">
-        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
+        <img src="${iacImg(b.img,320)}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
       </div>
       <div class="book-name">${escHtml(b.t)}</div>
       <div class="book-author">${escHtml(b.a || '')}</div>
@@ -2744,6 +2744,16 @@ function addToCartById(btn) {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Route same-site covers through Netlify Image CDN (resize + webp) to cut image
+// bandwidth. Leaves data:, external, and legacy image-proxy URLs untouched.
+function iacImg(src, w) {
+  var s = String(src || '');
+  if (!s || s.startsWith('data:')) return s;
+  var p = s.replace(/^https?:\/\/inkandchai\.in/i, '');
+  if (!(p.startsWith('/images/') || p.startsWith('/spimg/'))) return s;
+  return '/.netlify/images?url=' + encodeURIComponent(p) + '&w=' + w + '&fm=webp&q=72';
 }
 
 function slugifyName(s) {
@@ -2971,7 +2981,7 @@ function renderSrchResults(query) {
   const total = BOOKS.filter(b => searchScore(b, q) > 0).length;
   box.innerHTML = matches.map(b => `
     <a class="srch-hit" href="/product/${b.slug}/" role="option">
-      <div class="srch-hit-img">${b.img ? `<img src="${b.img}" alt="" loading="lazy" onerror="this.style.display='none'"/>` : ''}</div>
+      <div class="srch-hit-img">${b.img ? `<img src="${iacImg(b.img,120)}" alt="" loading="lazy" onerror="this.style.display='none'"/>` : ''}</div>
       <div class="srch-hit-info">
         <div class="srch-hit-title">${highlightMatch(b.t, q)}</div>
         <div class="srch-hit-author">${escHtml(b.a || '')}${b.cat ? ' · ' + escHtml(b.cat) : ''}</div>
@@ -3108,7 +3118,7 @@ function renderShelf(rowId, filterFn, limit) {
     const price = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
     return `<a class="shelf-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
       <div class="shelf-card-cover">
-        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
+        <img src="${iacImg(b.img,320)}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
       </div>
       <div class="shelf-card-name">${escHtml(b.t)}</div>
       <div class="shelf-card-price">${escHtml(b.p)}</div>

@@ -1342,7 +1342,7 @@
             <div style="display:flex;gap:0.9rem;align-items:center;padding:0.6rem 0;
                         border-top:1px solid rgba(201,168,76,0.08);">
               ${i.img
-                ? `<img src="${escHtmlAttr(i.img)}" style="width:40px;height:58px;object-fit:cover;
+                ? `<img src="${escHtmlAttr(iacImg(i.img,120))}" style="width:40px;height:58px;object-fit:cover;
                          border:1px solid rgba(201,168,76,0.12);flex-shrink:0;" alt="" />`
                 : `<div style="width:40px;height:58px;background:#141210;flex-shrink:0;
                                border:1px solid rgba(201,168,76,0.1);"></div>`}
@@ -2327,6 +2327,16 @@
 
   function escHtmlAttr(s) {
     return escHtml(s).replace(/"/g, '&quot;');
+  }
+
+  // Route same-site covers through Netlify Image CDN (resize + webp) to cut
+  // image bandwidth. Leaves data:, external, and legacy image-proxy untouched.
+  function iacImg(src, w) {
+    var s = String(src || '');
+    if (!s || s.startsWith('data:')) return s;
+    var p = s.replace(/^https?:\/\/inkandchai\.in/i, '');
+    if (!(p.startsWith('/images/') || p.startsWith('/spimg/'))) return s;
+    return '/.netlify/images?url=' + encodeURIComponent(p) + '&w=' + w + '&fm=webp&q=72';
   }
 
   function escJs(s) {
