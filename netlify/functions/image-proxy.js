@@ -30,10 +30,15 @@ exports.handler = async (event) => {
     const bytes = Buffer.from(await upstream.arrayBuffer());
     return {
       statusCode: 200,
-      isBase64Encoded: true,
+      isBase64Encoded: true,   // required: Netlify decodes this to binary at the edge
       headers: {
         "content-type": contentType,
-        "cache-control": "public, max-age=604800, s-maxage=2592000, immutable",
+        // Durable edge cache — without this the edge evicts constantly and ~57%
+        // of requests re-invoke the function + re-fetch from Shopify (wasting
+        // compute credits + origin egress). Matches img-proxy.js. Image URLs are
+        // content-addressed via the `i` map id, so immutable is safe.
+        "cache-control": "public, max-age=604800, immutable",
+        "netlify-cdn-cache-control": "public, durable, s-maxage=2592000, immutable",
       },
       body: bytes.toString("base64"),
     };

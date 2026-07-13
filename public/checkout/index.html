@@ -945,7 +945,7 @@ function esc(s) {
 }
 // Route same-site covers through Netlify Image CDN (resize + webp) to cut image
 // bandwidth. Leaves data:, external, and legacy image-proxy URLs untouched.
-function iacImg(src,w){var s=String(src||'');if(!s||s.startsWith('data:'))return s;var p=s.replace(/^https?:\/\/inkandchai\.in/i,'');if(!(p.startsWith('/images/')||p.startsWith('/spimg/')))return s;return '/.netlify/images?url='+encodeURIComponent(p)+'&w='+w+'&fm=webp&q=72';}
+function iacImg(src,w){var s=String(src||'');if(!s||s.startsWith('data:'))return s;var p=s.replace(/^https?:\/\/inkandchai\.in/i,'');if(!(p.startsWith('/images/')||p.startsWith('/spimg/')||p.startsWith('/.netlify/functions/image-proxy')))return s;return '/.netlify/images?url='+encodeURIComponent(p)+'&w='+w+'&fm=webp&q=72';}
 
 // ── Abandoned checkout capture ─────────────────────────────────────────────
 let _abandonedTimer = null;

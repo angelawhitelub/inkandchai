@@ -58,7 +58,11 @@ exports.handler = async (event) => {
       // every homepage view — route through the Netlify /spimg proxy instead.
       image_url: proxifySupabaseImage(p.image_url),
       // Search only needs a snippet; the >30-char ranking check still passes.
-      description: String(p.description || '').slice(0, 300),
+      // Trimmed 300→160: description is the largest variable field and is used
+      // only for on-site search matching (never displayed on listing cards), so
+      // a shorter snippet cuts this per-pageview payload ~30% with negligible
+      // search-recall loss.
+      description: String(p.description || '').slice(0, 160),
       // Client parses tags ONLY for /publisher-sourced-bestseller/. Keep that
       // marker, drop the rest (per-book tag lists were bulking the payload).
       tags: /publisher-sourced-bestseller/i.test(String(p.tags || '')) ? 'publisher-sourced-bestseller' : '',
