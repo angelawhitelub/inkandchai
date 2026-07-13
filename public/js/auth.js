@@ -1369,6 +1369,7 @@
           ${orderTrackingBlock(o)}
           ${cancelOrderBlock(o)}
           ${returnRequestBlock(o)}
+          ${missingBookBlock(o)}
           ${invoiceDownloadBlock(o)}
         </div>`;
     }).join('');
@@ -1914,6 +1915,106 @@
         </div>
       </div>`;
   }
+
+  // ── Report a missing book (incomplete parcel) ─────────────────────────────
+  // Shown on shipped/delivered orders. The customer taps the book(s) that were
+  // missing from their parcel; report-missing-books verifies ownership (order
+  // id + checkout email/phone) and notifies the customer + owner.
+  const MISSING_REPORTABLE = ['shipped', 'out_for_delivery', 'delivered', 'rto', 'undelivered'];
+  function missingBookBlock(order) {
+    const status = String(order.status || '').toLowerCase();
+    if (!MISSING_REPORTABLE.includes(status)) return '';
+    const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+    const titles = items.map(i => String(i.title || i.name || '').trim()).filter(Boolean);
+    if (!titles.length) return '';
+
+    // Already reported — show a confirmation note instead of the form.
+    if (items.some(i => i && i._missing)) {
+      const flagged = items.filter(i => i && i._missing).map(i => i.title || i.name).filter(Boolean);
+      return `
+        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
+          <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
+                       padding:0.28rem 0.7rem;border:1px solid rgba(232,160,48,0.4);color:#e8a030;">
+            📦 Missing book reported
+          </span>
+          <span style="font-size:0.62rem;color:#a09080;margin-left:0.5rem;line-height:1.5;">
+            ${escHtml(flagged.join(', '))} — our team will be in touch. Check your email &amp; WhatsApp.
+          </span>
+        </div>`;
+    }
+
+    const oid = order.razorpay_order_id || order.id;
+    const q   = order.customer_email || order.customer_phone || '';
+    return `
+      <div id="miss-wrap-${escJs(order.id)}" style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
+        <div style="font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.5rem;">Missing a book?</div>
+        <div style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-bottom:0.7rem;">
+          If your parcel arrived without one of these, tap the missing one(s) and let us know — we'll send it or refund you.
+        </div>
+        <div class="miss-books" style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.7rem;">
+          ${titles.map(t => `
+            <button type="button" data-title="${escHtmlAttr(t)}" data-on="0" onclick="iacToggleMissBook(this)"
+              style="text-align:left;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
+                     padding:0.55rem 0.8rem;font-size:0.74rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
+              <span style="display:inline-block;width:1.1rem;">☐</span> ${escHtml(t)}
+            </button>`).join('')}
+        </div>
+        <button data-oid="${escHtmlAttr(oid)}" data-q="${escHtmlAttr(q)}" onclick="iacReportMissing(this)"
+          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                 padding:0.6rem 1rem;background:rgba(232,160,48,0.1);border:1px solid rgba(232,160,48,0.45);
+                 color:#e8a030;cursor:pointer;">
+          Report missing book(s)
+        </button>
+        <div class="miss-msg" style="margin-top:0.6rem;font-size:0.66rem;display:none;"></div>
+      </div>`;
+  }
+
+  window.iacToggleMissBook = function (btn) {
+    const on = btn.dataset.on === '1';
+    btn.dataset.on = on ? '0' : '1';
+    btn.querySelector('span').textContent = on ? '☐' : '☑';
+    btn.style.background = on ? '#0d0b08' : 'rgba(201,168,76,0.16)';
+    btn.style.borderColor = on ? 'rgba(201,168,76,0.22)' : '#c9a84c';
+    btn.style.color = on ? '#f0e8d8' : '#c9a84c';
+  };
+
+  window.iacReportMissing = async function (btn) {
+    const wrap = btn.closest('[id^="miss-wrap-"]');
+    const msg  = wrap.querySelector('.miss-msg');
+    const missing = [...wrap.querySelectorAll('.miss-books button[data-on="1"]')].map(b => b.dataset.title);
+    if (!missing.length) {
+      msg.style.display = ''; msg.style.color = '#e06060';
+      msg.textContent = 'Please tap the book(s) that were missing.';
+      return;
+    }
+    if (!confirm(`Report that ${missing.length > 1 ? 'these books were' : 'this book was'} missing from your parcel?\n\n• ${missing.join('\n• ')}`)) return;
+
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Sending…';
+    msg.style.display = 'none';
+    try {
+      const res = await fetch('/.netlify/functions/report-missing-books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: btn.dataset.oid, q: btn.dataset.q, missing }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) throw new Error(json.error || 'Could not submit your report.');
+      wrap.innerHTML = `
+        <div style="padding-top:0.2rem;">
+          <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
+                       padding:0.28rem 0.7rem;border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;">✓ Reported</span>
+          <span style="font-size:0.62rem;color:#a09080;margin-left:0.5rem;line-height:1.5;">
+            Thanks — we've noted <strong style="color:#c9a84c;">${escHtml((json.missing || missing).join(', '))}</strong> as missing.
+            You'll get a confirmation by email &amp; WhatsApp and our team will reach out.
+          </span>
+        </div>`;
+    } catch (err) {
+      msg.style.display = ''; msg.style.color = '#e06060';
+      msg.textContent = err.message;
+      btn.disabled = false; btn.textContent = orig;
+    }
+  };
 
   // ── Replacement modal ─────────────────────────────────────────────────────
   window.iacOpenReplacementModal = function (orderRowId, displayOrderId) {
