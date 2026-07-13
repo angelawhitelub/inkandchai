@@ -19,6 +19,30 @@
 const { pushOrderToNimbusPost } = require('./nimbuspost-import');
 const { fetchPaymentLinkStatus } = require('./razorpay-payment-link');
 const { sendWhatsApp, sendText } = require('./whatsapp');
+const { priceBooksList } = require('./book-lookup');
+
+// The bot stores multiple books as a single comma-separated string in
+// `req.books` (see whatsapp-bot.js — the `books` tool field is documented as
+// "comma-separated"). Storing that as ONE cart item makes NimbusPost print all
+// titles jammed into a single product row. Split it into one cart item per book
+// — same delimiter the pricing lookup uses — so each title ships on its own row.
+async function buildCartFromBooks(booksStr, amountRupees) {
+  const raw = String(booksStr || '').trim();
+  if (!raw) return [{ title: 'Book', qty: 1, price: amountRupees }];
+  const titles = raw.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+  if (titles.length <= 1) return [{ title: raw, qty: 1, price: amountRupees }];
+
+  // Per-book prices: priceBooksList splits with the SAME regex, so its items are
+  // index-aligned with `titles`. Best-effort — fall back to an even split.
+  let priced = null;
+  try { priced = await priceBooksList(raw); } catch (e) { console.error('buildCartFromBooks price:', e.message); }
+  const evenPrice = Math.max(1, Math.round(amountRupees / titles.length));
+  const items = Array.isArray(priced?.items) && priced.items.length === titles.length ? priced.items : null;
+  return titles.map((t, i) => {
+    const p = items && Number(items[i]?.price) > 0 ? Math.round(Number(items[i].price)) : evenPrice;
+    return { title: t, qty: 1, price: p };
+  });
+}
 
 // Order-confirmation WhatsApp to the customer AND the store owner, fired the
 // moment a book request is confirmed into a real order (both COD and prepaid).
@@ -122,7 +146,7 @@ async function pushBotOrder(supabase, req, opts = {}) {
   const orderId    = mintOrderId(req.order_id);
   const phone10    = String(req.customer_phone || '').replace(/\D/g, '').slice(-10);
   const amountPaise = amountRupees * 100;
-  const cart = [{ title: req.books || 'Book', qty: 1, price: amountRupees }];
+  const cart = await buildCartFromBooks(req.books, amountRupees);
 
   // Status + payment markers by kind:
   //   cod              → cod_pending, no payment_status
