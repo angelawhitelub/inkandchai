@@ -2130,12 +2130,6 @@ function _drawTable() {
           onmouseout="this.style.background='rgba(109,191,109,0.08)';">
           ✉ Resend confirmation
         </button>
-        ${items.length ? `<button onclick="openMissingBooksModal('${esc(o.id)}')" title="Report that a book was missing from the delivered parcel — notifies the customer by email + WhatsApp"
-          style="display:block;margin-top:0.4rem;background:rgba(224,169,74,0.08);border:1px solid rgba(224,169,74,0.45);color:#e0a94a;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;"
-          onmouseover="this.style.background='rgba(224,169,74,0.18)';"
-          onmouseout="this.style.background='rgba(224,169,74,0.08)';">
-          📦 Missing book(s)
-        </button>` : ''}
         <button onclick="deleteOrder('${esc(o.id)}','${esc(o.razorpay_order_id||o.id)}')" title="Permanently delete this order"
           style="display:block;margin-top:0.4rem;background:transparent;border:1px solid rgba(224,80,80,0.35);color:#e05050;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;"
           onmouseover="this.style.background='rgba(224,80,80,0.12)';this.style.borderColor='rgba(224,80,80,0.6)';"
@@ -3223,89 +3217,6 @@ async function resendConfirmation(orderId, btn) {
   } catch (e) {
     alert(`Failed to resend ${orderId}: ${e.message}`);
     btn.innerHTML = orig; btn.disabled = false;
-  }
-}
-
-// ── Missing / incomplete order ─────────────────────────────────────────────
-// A delivered parcel was missing one or more books. Admin selects which title(s)
-// were missing; the customer is notified by email + WhatsApp, the owner gets a
-// copy, and the items are flagged on the order (cart_items[i]._missing).
-function openMissingBooksModal(id) {
-  const ord = allOrders.find(o => String(o.id) === String(id));
-  if (!ord) { alert('Order not found in the current list.'); return; }
-  const items = Array.isArray(ord.cart_items) ? ord.cart_items : [];
-  const titles = items.map(i => String(i.title || i.name || '').trim()).filter(Boolean);
-  if (!titles.length) { alert('This order has no book titles to report.'); return; }
-  const displayId = ord.razorpay_order_id || ord.id;
-
-  document.getElementById('iacMissingModal')?.remove();
-  const modal = document.createElement('div');
-  modal.id = 'iacMissingModal';
-  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;';
-  modal.innerHTML = `
-    <div style="background:#1c1916;border:1px solid rgba(224,169,74,0.35);padding:1.8rem 2rem;width:min(460px,92vw);box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-      <h3 style="margin:0 0 0.4rem;font-family:serif;font-weight:400;font-size:1.25rem;color:#f0e8d8;">📦 Missing book(s)</h3>
-      <p style="margin:0 0 1rem;font-size:0.72rem;color:#a09080;line-height:1.6;">Order <strong style="color:#c9a84c;">${esc(displayId)}</strong> — tap the book(s) that were missing from the parcel. The customer will be told by email + WhatsApp.</p>
-      <div id="iacMissingBooks" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1.2rem;">
-        ${titles.map((t, idx) => `
-          <button type="button" data-title="${esc(t)}" data-on="0" onclick="toggleMissingBook(this)"
-            style="text-align:left;background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.6rem 0.9rem;font-size:0.82rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
-            <span style="display:inline-block;width:1.1rem;">☐</span> ${esc(t)}
-          </button>`).join('')}
-      </div>
-      <div style="display:flex;gap:0.8rem;justify-content:flex-end;">
-        <button onclick="document.getElementById('iacMissingModal').remove()" style="background:transparent;border:1px solid rgba(201,168,76,0.3);color:#a09080;padding:0.6rem 1.2rem;cursor:pointer;font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;">Cancel</button>
-        <button id="iacMissingSend" onclick="submitMissingBooks('${esc(id)}','${esc(displayId)}',this)" style="background:rgba(224,169,74,0.15);border:1px solid rgba(224,169,74,0.55);color:#e0a94a;padding:0.6rem 1.2rem;cursor:pointer;font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;font-family:'Montserrat',sans-serif;">Notify customer</button>
-      </div>
-    </div>`;
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  document.body.appendChild(modal);
-}
-
-function toggleMissingBook(btn) {
-  const on = btn.dataset.on === '1';
-  btn.dataset.on = on ? '0' : '1';
-  btn.querySelector('span').textContent = on ? '☐' : '☑';
-  btn.style.background = on ? '#141210' : 'rgba(224,169,74,0.16)';
-  btn.style.borderColor = on ? 'rgba(201,168,76,0.25)' : 'rgba(224,169,74,0.6)';
-  btn.style.color = on ? '#f0e8d8' : '#e0a94a';
-}
-
-async function submitMissingBooks(id, displayId, btn) {
-  const modal = document.getElementById('iacMissingModal');
-  const missing = [...modal.querySelectorAll('#iacMissingBooks button[data-on="1"]')].map(b => b.dataset.title);
-  if (!missing.length) { alert('Select at least one missing book.'); return; }
-  if (!confirm(`Notify the customer that ${missing.length > 1 ? 'these books were' : 'this book was'} missing from order ${displayId}?\n\n• ${missing.join('\n• ')}`)) return;
-
-  const orig = btn.innerHTML;
-  btn.disabled = true; btn.innerHTML = '⏳ Sending…';
-  try {
-    const ord = allOrders.find(o => String(o.id) === String(id));
-    const res = await adminFetch('/.netlify/functions/notify-missing-books', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, order_ref: ord?.razorpay_order_id || '', missing }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
-    // Reflect the flag locally so the row remembers.
-    if (ord && Array.isArray(ord.cart_items)) {
-      const ml = new Set(missing.map(t => t.toLowerCase()));
-      ord.cart_items = ord.cart_items.map(it => {
-        const title = String(it.title || it.name || '').trim().toLowerCase();
-        return title && ml.has(title) ? { ...it, _missing: true } : it;
-      });
-    }
-    const r = data.result || {};
-    const parts = [];
-    parts.push(r.email ? 'email ✓' : 'email ✗');
-    parts.push(r.whatsapp ? (r.whatsapp_fallback ? 'WhatsApp ✓ (text)' : 'WhatsApp ✓') : 'WhatsApp ✗');
-    modal?.remove();
-    alert(`Customer notified for ${displayId}:\n${parts.join(' · ')}`);
-    applyFilters();
-  } catch (e) {
-    alert('Could not notify: ' + e.message);
-    btn.disabled = false; btn.innerHTML = orig;
   }
 }
 

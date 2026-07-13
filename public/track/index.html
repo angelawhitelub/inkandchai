@@ -183,6 +183,12 @@ function statusToStepIdx(s) {
 
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+// Remembers the last successfully-tracked order so "report a missing book"
+// can re-send the same id + email/phone the backend verifies ownership with.
+let lastTracked = null;
+// Orders can only be reported incomplete once they're on the way / delivered.
+const REPORTABLE_STATUS = new Set(['shipped','out_for_delivery','delivered','rto','undelivered']);
+
 async function doTrack() {
   // Strip all internal whitespace — handles "IC- 20260521-85YX6" → "IC-20260521-85YX6"
   // Do NOT uppercase — Razorpay order_ IDs are case-sensitive
@@ -205,6 +211,7 @@ async function doTrack() {
       errBox.style.display = '';
       return;
     }
+    lastTracked = { id: oid, q: oq, order: data.order };
     renderOrder(data.order);
   } catch (e) {
     errBox.textContent = 'Network error. Please try again.';
@@ -265,11 +272,83 @@ function renderOrder(o) {
       <div class="r-section-h">Order Items</div>
       <div class="r-items">${items}</div>
       ${o.total ? `<div class="r-total"><span class="r-total-label">${o.payment_method === 'cod' ? 'Cash on Delivery' : 'Total Paid'}</span><span class="r-total-amt">₹${o.total.toLocaleString('en-IN')}</span></div>` : ''}
-    </div>`;
+    </div>
+    ${reportBlockHtml(o)}`;
 
   const result = document.getElementById('result');
   result.innerHTML = html;
   result.classList.add('show');
+}
+
+// ── Report a missing book (customer-facing, on delivered/shipped orders) ─────
+function reportBlockHtml(o) {
+  if (!REPORTABLE_STATUS.has(o.status)) return '';
+  const titles = (o.items || []).map(i => String(i.title || '').trim()).filter(Boolean);
+  if (!titles.length) return '';
+  const already = (o.items || []).some(i => i && i._missing);
+  if (already) {
+    return `<div class="r-section" style="border-top:1px dashed var(--border);padding-top:1.2rem;">
+      <div class="r-section-h">Missing a book?</div>
+      <div class="r-row" style="color:#6dbf6d;font-size:0.82rem;">✓ You've reported a missing book for this order. Our team will be in touch — check your email &amp; WhatsApp.</div>
+    </div>`;
+  }
+  return `<div class="r-section" id="reportSection" style="border-top:1px dashed var(--border);padding-top:1.2rem;">
+    <div class="r-section-h">Missing a book?</div>
+    <div class="r-row" style="color:var(--cream-dim);font-size:0.8rem;margin-bottom:0.9rem;">If your parcel arrived without one of these books, tap the missing one(s) and let us know. We'll send it or refund you.</div>
+    <div id="missBooks" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;">
+      ${titles.map(t => `
+        <button type="button" data-title="${esc(t)}" data-on="0" onclick="toggleMissBook(this)"
+          style="text-align:left;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.65rem 0.9rem;font-size:0.82rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
+          <span style="display:inline-block;width:1.2rem;">☐</span> ${esc(t)}
+        </button>`).join('')}
+    </div>
+    <button id="reportBtn" onclick="submitMissingReport(this)"
+      style="background:var(--gold);border:1px solid var(--gold);color:#0d0b08;padding:0.65rem 1.4rem;font-size:0.65rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:600;">
+      Report missing book(s)
+    </button>
+    <div id="reportMsg" style="margin-top:0.9rem;font-size:0.82rem;display:none;"></div>
+  </div>`;
+}
+
+function toggleMissBook(btn) {
+  const on = btn.dataset.on === '1';
+  btn.dataset.on = on ? '0' : '1';
+  btn.querySelector('span').textContent = on ? '☐' : '☑';
+  btn.style.background = on ? 'var(--bg3)' : 'rgba(201,168,76,0.16)';
+  btn.style.borderColor = on ? 'var(--border)' : 'var(--gold)';
+  btn.style.color = on ? 'var(--cream)' : 'var(--gold)';
+}
+
+async function submitMissingReport(btn) {
+  if (!lastTracked) return;
+  const missing = [...document.querySelectorAll('#missBooks button[data-on="1"]')].map(b => b.dataset.title);
+  const msg = document.getElementById('reportMsg');
+  if (!missing.length) {
+    msg.style.display = ''; msg.style.color = '#e05050';
+    msg.textContent = 'Please tap the book(s) that were missing.';
+    return;
+  }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  msg.style.display = 'none';
+  try {
+    const res = await fetch('/.netlify/functions/report-missing-books', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: lastTracked.id, q: lastTracked.q, missing }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || 'Could not submit your report.');
+    const section = document.getElementById('reportSection');
+    if (section) {
+      section.innerHTML = `<div class="r-section-h">Missing a book?</div>
+        <div class="r-row" style="color:#6dbf6d;font-size:0.82rem;line-height:1.6;">✓ Thanks — we've noted that ${missing.length > 1 ? 'these books were' : 'this book was'} missing:<br/><b>${missing.map(esc).join(', ')}</b><br/>You'll get a confirmation by email &amp; WhatsApp, and our team will reach out to send the missing ${missing.length > 1 ? 'books' : 'book'} or refund you.</div>`;
+    }
+  } catch (e) {
+    msg.style.display = ''; msg.style.color = '#e05050';
+    msg.textContent = e.message;
+    btn.disabled = false; btn.textContent = orig;
+  }
 }
 
 // Auto-fill from URL params (e.g. tracking link in email)

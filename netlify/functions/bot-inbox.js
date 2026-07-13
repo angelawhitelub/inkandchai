@@ -19,7 +19,6 @@ const { requireAdmin } = require('./utils/admin-auth');
 
 const PHONE_ID = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VER  = 'v20.0';
-const WA_URL   = `https://graph.facebook.com/${API_VER}/${PHONE_ID}/messages`;
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -33,11 +32,13 @@ function supabaseAdmin() {
 
 // ── Verify admin password ─────────────────────────────────────────────────────
 // ── Send a WhatsApp text message ──────────────────────────────────────────────
-async function sendWhatsAppText(to, text) {
+async function sendWhatsAppText(to, text, senderPhoneId) {
   const token = process.env.WHATSAPP_TOKEN;
   if (!token) return { ok: false, error: 'WHATSAPP_TOKEN not set' };
   const phone = normalizePhone(to) || to;
-  const res = await fetch(WA_URL, {
+  const phoneId = senderPhoneId || PHONE_ID;
+  const url = `https://graph.facebook.com/${API_VER}/${phoneId}/messages`;
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -48,7 +49,7 @@ async function sendWhatsAppText(to, text) {
     }),
   });
   const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, data };
+  return { ok: res.ok, data, phoneId };
 }
 
 exports.handler = async (event) => {
@@ -134,10 +135,31 @@ exports.handler = async (event) => {
       if (action === 'send') {
         if (!text) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'text required' }) };
 
+        // A single webhook serves multiple Ink & Chai WhatsApp numbers. Send
+        // from the same business number that received this conversation.
+        const { data: conversation, error: conversationError } = await db
+          .from('bot_conversations')
+          .select('whatsapp_phone_id')
+          .eq('customer_phone', phone)
+          .maybeSingle();
+        if (conversationError) throw conversationError;
+        if (!conversation?.whatsapp_phone_id) {
+          return {
+            statusCode: 409,
+            headers: CORS,
+            body: JSON.stringify({
+              error: 'Reply number unknown',
+              detail: 'Ask the customer to send one new message, then retry. The inbox will remember which WhatsApp number they contacted.',
+            }),
+          };
+        }
+
         // Send the message via WhatsApp
-        const result = await sendWhatsAppText(phone, text);
+        const result = await sendWhatsAppText(phone, text, conversation.whatsapp_phone_id);
         if (!result.ok) {
-          return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: 'WhatsApp send failed', detail: result.data }) };
+          const detail = result.data?.error?.message || result.error || 'Meta rejected the message';
+          console.error(`Manual WhatsApp send failed via ${result.phoneId} -> ${phone}:`, JSON.stringify(result.data || result.error));
+          return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: 'WhatsApp send failed', detail }) };
         }
 
         // Save to bot_messages
@@ -158,7 +180,11 @@ exports.handler = async (event) => {
           status: 'active',
         }, { onConflict: 'customer_phone' });
 
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true }) };
+        return {
+          statusCode: 200,
+          headers: CORS,
+          body: JSON.stringify({ ok: true, message_id: result.data?.messages?.[0]?.id || '' }),
+        };
       }
 
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Unknown action' }) };
