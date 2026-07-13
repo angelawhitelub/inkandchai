@@ -385,6 +385,14 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       <div class="stat-label">Delivered</div>
       <div class="stat-val" id="statDelivered" style="color:var(--green);">—</div>
     </div>
+    <div class="stat-card" data-status="cancelled" onclick="setFilter(this,'cancelled')">
+      <div class="stat-label">Cancelled</div>
+      <div class="stat-val" id="statCancelled" style="color:var(--red);">—</div>
+    </div>
+    <div class="stat-card" data-status="refunded" onclick="setFilter(this,'refunded')">
+      <div class="stat-label">Refunded</div>
+      <div class="stat-val" id="statRefunded" style="color:#a09080;">—</div>
+    </div>
     <div class="stat-card">
       <div class="stat-label">Revenue</div>
       <div class="stat-val" id="statRev" style="font-size:1.4rem;">—</div>
@@ -1880,6 +1888,8 @@ function updateStats() {
   const paid         = allOrders.filter(o => o.status === 'paid').length;
   const shipped      = allOrders.filter(o => o.status === 'shipped').length;
   const delivered    = allOrders.filter(o => o.status === 'delivered').length;
+  const cancelled    = allOrders.filter(o => o.status === 'cancelled').length;
+  const refunded     = allOrders.filter(o => o.status === 'refunded').length;
   const unshipped    = allOrders.filter(orderIsUnshipped).length;
   const rev          = allOrders
     .filter(o => ['paid','delivered','shipped','out_for_delivery','confirmed','cod_pending','partial_cod_pending'].includes(o.status) && o.payment_status !== 'prepaid_pending')
@@ -1899,6 +1909,10 @@ function updateStats() {
   document.getElementById('statShipped').textContent   = stillLoading ? '…' : shipped;
   const delEl = document.getElementById('statDelivered');
   if (delEl) delEl.textContent = stillLoading ? '…' : delivered;
+  const cancelEl = document.getElementById('statCancelled');
+  if (cancelEl) cancelEl.textContent = stillLoading ? '…' : cancelled;
+  const refundEl = document.getElementById('statRefunded');
+  if (refundEl) refundEl.textContent = stillLoading ? '…' : refunded;
   document.getElementById('statRev').textContent       = stillLoading ? '…' : '₹' + Math.round(rev / 100).toLocaleString('en-IN');
   if (!stillLoading) updateAnalytics();
   if (stillLoading) {
