@@ -4,11 +4,11 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Admin — Ink &amp; Chai</title>
-<meta name="admin-build" content="admin-readable-type-v1"/>
+<meta name="admin-build" content="admin-readable-type-v2"/>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>
 <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,500&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <!-- SheetJS for Excel export -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
@@ -181,19 +181,27 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 
 /* Readability upgrade: larger text, stronger contrast, easier scanning */
 :root{
-  --cream:#1b130d;
-  --cream-dim:#514538;
-  --white:#0d0905;
-  --gold:#7a5815;
-  --gold-dim:#806a3a;
-  --border:rgba(122,88,21,0.32);
+  --bg:#f1f3f5;
+  --bg2:#f8f9fa;
+  --bg3:#ffffff;
+  --cream:#20252b;
+  --cream-dim:#4f5964;
+  --white:#111418;
+  --gold:#6d4c10;
+  --gold-light:#8a6419;
+  --gold-dim:#715d34;
+  --green:#176b35;
+  --orange:#9b5207;
+  --red:#b4232c;
+  --border:#cbd1d7;
+  --shadow:0 8px 24px rgba(28,35,43,0.08);
 }
-body{font-size:16px;font-weight:400;line-height:1.55;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
-nav{padding:1.1rem 2rem;}
+body{font-size:16px;font-weight:500;line-height:1.55;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+nav{padding:1.1rem 2rem;background:#fff;border-bottom-color:#c6ccd2;}
 .logo{font-size:1.65rem;}
-.logo span{font-size:0.82rem!important;color:var(--cream-dim)!important;font-weight:500;}
+.logo span{font-size:0.82rem!important;color:var(--cream-dim)!important;font-weight:600;}
 .chip,.section-title,.export-label,.stat-label,.form-row label,th{
-  font-weight:600;
+  font-weight:700;
   color:var(--gold);
 }
 .chip{font-size:0.68rem;padding:0.36rem 0.9rem;}
@@ -218,16 +226,18 @@ nav{padding:1.1rem 2rem;}
 .search-box{font-size:0.92rem;padding:0.62rem 0.95rem;min-width:280px;}
 input[type="date"]{font-size:0.88rem;padding:0.58rem 0.75rem;}
 h1{font-size:2.45rem;font-weight:400;color:var(--white);}
-.subtitle{font-size:0.86rem;color:var(--cream-dim);font-weight:500;}
-.stat-card{padding:1.45rem;background:#fffefa;}
-.stat-label{font-size:0.68rem;letter-spacing:0.15em;}
-.stat-val{font-size:2.35rem;color:#73530f;}
+.subtitle{font-size:0.9rem;color:var(--cream-dim);font-weight:600;}
+.stat-card{padding:1.45rem;background:#fff;border-color:#cbd1d7;box-shadow:0 5px 16px rgba(28,35,43,0.07);}
+.stat-card:hover{border-color:#987329;background:#fffdf6;}
+.stat-card.active{border:2px solid #8a6419;background:#fff8e7;padding:calc(1.45rem - 1px);}
+.stat-label{font-size:0.72rem;letter-spacing:0.13em;color:#5f4819;}
+.stat-val{font-size:2.5rem;color:#654708;font-weight:700;}
 .focus-panel strong,.product-head h2,.abandoned-head h2{font-size:1.65rem;color:var(--white);}
-.focus-panel p,.product-head p,.abandoned-head p,.hint,.lead-empty{font-size:0.86rem;color:var(--cream-dim);font-weight:500;}
+.focus-panel p,.product-head p,.abandoned-head p,.hint,.lead-empty{font-size:0.86rem;color:var(--cream-dim);font-weight:600;}
 .admin-jumps,.export-bar,.product-panel,.abandoned-panel,.tbl-wrap{border-color:rgba(122,88,21,0.34);}
 .mini-table,table{font-size:0.92rem;}
-th{font-size:0.68rem;letter-spacing:0.13em;padding:0.9rem 0.95rem;background:#fff9ed;}
-td{font-size:0.9rem;padding:0.95rem;border-bottom-color:rgba(122,88,21,0.16);}
+th{font-size:0.7rem;letter-spacing:0.12em;padding:0.9rem 0.95rem;background:#eef1f4;}
+td{font-size:0.9rem;font-weight:500;padding:0.95rem;border-bottom-color:#d9dde1;}
 tr:hover td{background:rgba(122,88,21,0.075);}
 .order-id{font-size:0.78rem;color:#6f571f;font-weight:600;}
 .pay-id{font-size:0.72rem;color:#514538;font-weight:500;}
@@ -244,6 +254,15 @@ tr:hover td{background:rgba(122,88,21,0.075);}
 .product-row-price{font-size:1.25rem;color:#73530f;font-weight:600;}
 .image-preview span{font-size:0.84rem;color:var(--cream-dim);}
 #exportLimit{font-size:0.88rem!important;font-weight:600!important;color:var(--cream)!important;}
+.admin-tabs{background:#fff;border:1px solid #cbd1d7;padding:0 .4rem;box-shadow:0 4px 14px rgba(28,35,43,.05);}
+.admin-tab{font-size:.72rem;font-weight:700;color:#46505a;letter-spacing:.1em;}
+.admin-tab.active{color:#644607;background:#fff8e7;border-bottom-color:#8a6419;}
+#statusBreakdown{font-size:.68rem!important;color:#46505a!important;font-weight:600;line-height:1.7;}
+#kpiTodayOrders,#kpiWeekOrders,#kpiMonthOrders,#kpiAOVsub,
+#chartPeak,#revenueChartLabels{font-size:.7rem!important;color:#4f5964!important;font-weight:600;}
+#payTypeChart,#topBooksChart{font-weight:600;}
+.focus-panel{background:#fff8e7;border-color:#c9a85c;}
+.export-bar{background:#fff;}
 @media(max-width:720px){
   body{font-size:15px;}
   nav{padding:0.95rem 1rem;}
