@@ -195,6 +195,12 @@ async function persistMessage(phone, role, message, customerName = null, whatsap
 }
 
 // ── Check if this conversation has human takeover active ──────────────────────
+// Sending even one reply from the admin Bot Inbox flips human_takeover=true so
+// the bot doesn't talk over a human. Problem: it never turned itself back off,
+// so one manual reply silenced the bot for that customer FOREVER (until an admin
+// remembered to hit "Release"). Auto-release after a quiet period: if no admin
+// message has gone out for BOT_TAKEOVER_TTL_HOURS (default 3h), resume the bot.
+const TAKEOVER_TTL_HOURS = Number(process.env.BOT_TAKEOVER_TTL_HOURS || 3);
 async function isHumanTakeover(phone) {
   try {
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -202,7 +208,31 @@ async function isHumanTakeover(phone) {
       .select('human_takeover')
       .eq('customer_phone', phone)
       .maybeSingle();
-    return data?.human_takeover === true;
+    if (data?.human_takeover !== true) return false;
+
+    // Takeover is on — but is a human still actually handling it? Check the last
+    // admin message (Bot Inbox sends persist role='admin'). If it's stale, the
+    // admin has moved on: auto-release so the bot answers the customer again.
+    const { data: lastAdmin } = await db.from('bot_messages')
+      .select('created_at')
+      .eq('customer_phone', phone)
+      .eq('role', 'admin')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const lastAt = lastAdmin?.created_at ? new Date(lastAdmin.created_at).getTime() : 0;
+    // Only auto-release when a human actually replied and then went quiet. If
+    // there's NO admin message (e.g. an escalation auto-takeover where the owner
+    // was alerted but hasn't answered yet), leave takeover ON so the bot doesn't
+    // barge into a case a human still owns.
+    if (lastAt && Date.now() - lastAt > TAKEOVER_TTL_HOURS * 3600_000) {
+      await db.from('bot_conversations')
+        .update({ human_takeover: false })
+        .eq('customer_phone', phone);
+      console.log(`[TAKEOVER] ${phone} auto-released (no admin reply in ${TAKEOVER_TTL_HOURS}h) — bot resumes`);
+      return false;
+    }
+    return true;
   } catch { return false; }
 }
 
