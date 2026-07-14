@@ -31,8 +31,12 @@ function normalizePhone(phone) {
  * @param {string} opts.template     - template name e.g. "order_confirmed"
  * @param {string[]} opts.params     - body variable values [{{1}}, {{2}}, ...]
  * @param {string} [opts.lang]       - language code, default "en"
+ * @param {string} [opts.urlButtonParam] - dynamic-URL button suffix. Set this
+ *        when the template has a URL button defined as "<base>/{{1}}"; the value
+ *        is substituted for {{1}} (index 0 button). e.g. order id for a
+ *        "https://inkandchai.in/track/?id={{1}}" tracking button.
  */
-async function sendWhatsApp({ to, template, params = [], lang = 'en' }) {
+async function sendWhatsApp({ to, template, params = [], lang = 'en', urlButtonParam = null }) {
   const token = process.env.WHATSAPP_TOKEN;
   if (!token) { console.warn('WHATSAPP_TOKEN not set — WA skipped'); return { ok: false, skipped: true }; }
 
@@ -41,6 +45,17 @@ async function sendWhatsApp({ to, template, params = [], lang = 'en' }) {
 
   const bodyParams = params.map(p => ({ type: 'text', text: String(p) }));
 
+  const components = [];
+  if (bodyParams.length > 0) components.push({ type: 'body', parameters: bodyParams });
+  if (urlButtonParam != null && String(urlButtonParam) !== '') {
+    components.push({
+      type: 'button',
+      sub_type: 'url',
+      index: '0',
+      parameters: [{ type: 'text', text: String(urlButtonParam) }],
+    });
+  }
+
   const payload = {
     messaging_product: 'whatsapp',
     to: phone,
@@ -48,9 +63,7 @@ async function sendWhatsApp({ to, template, params = [], lang = 'en' }) {
     template: {
       name: template,
       language: { code: lang },
-      ...(bodyParams.length > 0 && {
-        components: [{ type: 'body', parameters: bodyParams }],
-      }),
+      ...(components.length > 0 && { components }),
     },
   };
 

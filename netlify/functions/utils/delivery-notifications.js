@@ -77,7 +77,8 @@ async function sendInTransitNotifications(order, awb) {
     await sendWhatsApp({
       to: order.customer_phone,
       template: 'order_in_transit',
-      params: [firstName, bookList, courier, trackUrl],
+      params: [firstName, bookList, courier],          // {{1}} {{2}} {{3}}
+      urlButtonParam: String(order.razorpay_order_id || order.id), // Track button → /track/?id={{1}}
     }).catch(e => console.error('[delivery-notify] in-transit WhatsApp error:', e.message));
   }
 }
