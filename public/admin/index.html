@@ -770,6 +770,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
             <button class="btn-green" onclick="saveProductOverride()">Save Product Override</button>
             <button class="btn-outline" onclick="openSelectedProduct()">Open Product Page</button>
             <button class="btn-outline" onclick="clearProductOverride()" style="border-color:rgba(224,80,80,0.35);color:#c93636;">Disable Override</button>
+            <button id="prodDeleteBtn" onclick="deleteProductPage()" style="display:none;background:transparent;border:1px solid rgba(224,80,80,0.55);color:#e05050;padding:0.65rem 1.4rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;letter-spacing:0.16em;text-transform:uppercase;cursor:pointer;">🗑 Delete Product Page</button>
           </div>
           <p class="hint" id="productSaveMsg" style="margin-top:0.7rem;"></p>
         </div>
@@ -2994,7 +2995,45 @@ function selectProduct(slug) {
     if (imgPrev) { imgPrev.src = v; imgPrev.style.display = v ? 'block' : 'none'; }
   };
   document.getElementById('productSaveMsg').textContent = row.override ? 'This product has a live override.' : 'No override saved yet.';
+  // Delete is only possible for custom products (DB-backed dynamic pages).
+  // Catalogue books are baked static files — deleting them needs a redirect.
+  const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
+  const delBtn = document.getElementById('prodDeleteBtn');
+  if (delBtn) delBtn.style.display = isCustom ? '' : 'none';
   renderProductList();
+}
+
+async function deleteProductPage() {
+  if (!selectedProduct) return;
+  const row = selectedProduct;
+  const p = mergedProduct(row);
+  if (!String(row.shopify_id || '').startsWith('CUSTOM:')) {
+    alert('This is a catalogue book (a baked static page) — it can\'t be deleted here. Tell me the slug and I\'ll add a 404 redirect for it.');
+    return;
+  }
+  if (!confirm(`Delete the product page for "${p.title}" entirely?\n\nThis removes it from the store, search and feeds, and the page will 404. This cannot be undone.`)) return;
+  const btn = document.getElementById('prodDeleteBtn');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Deleting…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/delete-product', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: row.slug }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+    // Remove from the local list + reset the editor.
+    productRows = productRows.filter(r => r.slug !== row.slug);
+    selectedProduct = null;
+    document.getElementById('productEditorForm').style.display = 'none';
+    document.getElementById('productEditorEmpty').style.display = '';
+    renderProductList();
+    alert(`Deleted "${data.title || p.title}". The product page will now 404 (search/feeds clear within ~1 hour of cache).`);
+  } catch (e) {
+    alert('Could not delete: ' + e.message);
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
 }
 
 async function saveProductOverride(activeOverride = true) {
