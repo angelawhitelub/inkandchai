@@ -29,6 +29,13 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail }     = require('./utils/email');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const {
+  npTrackUrl,
+  emailBase,
+  sendInTransitNotifications,
+  sendOFDNotification,
+  sendDeliveredNotification,
+} = require('./utils/delivery-notifications');
 
 // ── NimbusPost status string → internal status ────────────────────────────
 // Comprehensive map — NimbusPost / Delhivery use many different strings.
@@ -65,19 +72,23 @@ const STATUS_MAP = {
   'pickup done':                'shipped',
   'shipment booked':            'shipped',
 
-  // In-transit / hub scan events — ignore (no customer action needed)
-  'in transit':                 null,
-  'intransit':                  null,
-  'in-transit':                 null,
-  'reached at hub':             null,
-  'reached nearest hub':        null,
-  'reached destination hub':    null,
+  // In-transit / hub scan events — notify the customer ONCE (see in_transit
+  // handling in the loop; deduped via orders.in_transit_notified_at so the many
+  // repeated hub scans don't spam them). These never change order.status.
+  'in transit':                 'in_transit',
+  'intransit':                  'in_transit',
+  'in-transit':                 'in_transit',
+  'reached at hub':             'in_transit',
+  'reached nearest hub':        'in_transit',
+  'reached destination hub':    'in_transit',
+  'in sorting centre':          'in_transit',
+  'sorting':                    'in_transit',
+
+  // Pre-transit scans — still ignore (no customer-facing meaning yet)
   'manifested':                 null,
   'pickup scheduled':           null,
   'pickup pending':             null,
   'booked':                     null,
-  'in sorting centre':          null,
-  'sorting':                    null,
 
   // Problem states
   'rto':                        'rto',
@@ -110,21 +121,7 @@ function normalizeStatus(statusStr) {
   return null;
 }
 
-// ── NimbusPost tracking URL ───────────────────────────────────────────────
-function npTrackUrl(awb) {
-  return `https://ship.nimbuspost.com/shipping/tracking/${awb}`;
-}
-
-function emailBase(content) {
-  return `
-    <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
-      <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
-      <p style="color:#a09080;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;">inkandchai.in</p>
-      ${content}
-      <hr style="border:none;border-top:1px solid #2a2a2a;margin:32px 0;"/>
-      <p style="color:#7a6330;font-size:11px;">Ink &amp; Chai · inkandchai.in · For support, reply to this email.</p>
-    </div>`;
-}
+// npTrackUrl + emailBase are imported from ./utils/delivery-notifications
 
 // ── Shipped: email + WhatsApp ─────────────────────────────────────────────
 async function sendShippedNotifications(order, awb) {
@@ -182,41 +179,6 @@ async function sendShippedNotifications(order, awb) {
       params: [firstName, bookList, courier, awb, trackUrl],
     }).catch(e => console.error('[NimbusPost] Shipped WhatsApp error:', e.message));
   }
-}
-
-// ── WhatsApp notifications ────────────────────────────────────────────────
-async function sendOFDNotification(order) {
-  if (!order.customer_phone) return;
-  const firstName = (order.customer_name || 'there').split(' ')[0];
-  const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
-  const bookTitle = items[0]?.title || 'your book';
-  const isCOD     = !order.razorpay_payment_id || ['cod_pending','partial_cod_pending'].includes(order.status);
-  const total     = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '';
-  const trackUrl  = order.tracking_url
-    || `https://inkandchai.in/track/?id=${encodeURIComponent(order.razorpay_order_id || order.id)}`;
-
-  await sendWhatsApp({
-    to: order.customer_phone,
-    template: 'order_out_for_delivery',
-    params: [
-      firstName,
-      bookTitle,
-      isCOD ? `Please keep ${total} cash ready for delivery` : 'All set — no payment needed at door!',
-      trackUrl,
-    ],
-  });
-}
-
-async function sendDeliveredNotification(order) {
-  if (!order.customer_phone) return;
-  const firstName = (order.customer_name || 'there').split(' ')[0];
-  const reviewUrl = `https://inkandchai.in/review/?order=${encodeURIComponent(order.razorpay_order_id || order.id)}`;
-
-  await sendWhatsApp({
-    to: order.customer_phone,
-    template: 'order_delivered',
-    params: [firstName, reviewUrl],
-  });
 }
 
 async function notifyOwnerIssue(order, status, message, location) {
@@ -309,6 +271,33 @@ exports.handler = async (event) => {
 
       if (!order) {
         console.warn(`[NimbusPost] No order found for AWB: ${awb}`);
+        continue;
+      }
+
+      // ── In transit ─────────────────────────────────────────────────────────
+      // Hub scans repeat many times; notify the customer exactly once and never
+      // touch order.status (so admin filters/revenue are unaffected). Dedup is
+      // durable via orders.in_transit_notified_at. If that column doesn't exist
+      // yet (migration not run), we SKIP rather than risk spamming on every scan.
+      if (ourStatus === 'in_transit') {
+        if (['out_for_delivery', 'delivered', 'cancelled', 'rto', 'lost', 'undelivered'].includes(order.status)) continue;
+        if (order.in_transit_notified_at) { console.log(`[NimbusPost] In-transit already notified for ${awb}`); continue; }
+        const stamp = await supabase
+          .from('orders')
+          .update({ in_transit_notified_at: new Date().toISOString() })
+          .eq('id', order.id)
+          .is('in_transit_notified_at', null)   // only claim if not already claimed
+          .select('id');
+        if (stamp.error) {
+          console.error(`[NimbusPost] Could not stamp in_transit_notified_at (run sql/orders_in_transit_notified.sql?) — skipping to avoid spam: ${stamp.error.message}`);
+          continue;
+        }
+        if (!stamp.data || stamp.data.length === 0) {
+          console.log(`[NimbusPost] In-transit already claimed by a concurrent scan for ${awb}`);
+          continue;
+        }
+        console.log(`[NimbusPost] 🚚 In-transit notify → ${order.razorpay_order_id || order.id}`);
+        await sendInTransitNotifications(order, awb);
         continue;
       }
 

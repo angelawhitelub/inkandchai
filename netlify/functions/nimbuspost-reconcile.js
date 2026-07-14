@@ -20,8 +20,12 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { sendWhatsApp }  = require('./utils/whatsapp');
 const { requireAdmin } = require('./utils/admin-auth');
+const {
+  sendInTransitNotifications,
+  sendOFDNotification,
+  sendDeliveredNotification,
+} = require('./utils/delivery-notifications');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 
@@ -38,6 +42,11 @@ const STATUS_MAP = {
   'delivery done':      'delivered',
   'out for delivery':   'out_for_delivery',
   'out_for_delivery':   'out_for_delivery',
+  'in transit':         'in_transit',
+  'intransit':          'in_transit',
+  'in-transit':         'in_transit',
+  'reached at hub':     'in_transit',
+  'in sorting centre':  'in_transit',
   'rto':                'rto',
   'rto initiated':      'rto',
   'rto in transit':     'rto',
@@ -121,36 +130,8 @@ async function npTrackBatch(token, awbs) {
   );
 }
 
-// ── Notification helpers ───────────────────────────────────────────────────────
-async function notifyDelivered(order) {
-  if (!order.customer_phone) return;
-  const firstName = (order.customer_name || 'there').split(' ')[0];
-  const reviewUrl = `https://inkandchai.in/review/?order=${encodeURIComponent(order.razorpay_order_id || order.id)}`;
-  try {
-    await sendWhatsApp({
-      to: order.customer_phone,
-      template: 'order_delivered',
-      params: [firstName, reviewUrl],
-    });
-  } catch (e) { console.warn('WhatsApp delivered notify failed:', e.message); }
-}
-
-async function notifyOFD(order) {
-  if (!order.customer_phone) return;
-  const firstName = (order.customer_name || 'there').split(' ')[0];
-  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
-  const bookTitle = items[0]?.title || 'your book';
-  const isCOD = !order.razorpay_payment_id || ['cod_pending','partial_cod_pending'].includes(order.status);
-  const total = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '';
-  const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(order.razorpay_order_id || order.id)}`;
-  try {
-    await sendWhatsApp({
-      to: order.customer_phone,
-      template: 'order_out_for_delivery',
-      params: [firstName, bookTitle, isCOD ? `Please keep ${total} cash ready` : 'No payment needed at door!', trackUrl],
-    });
-  } catch (e) { console.warn('WhatsApp OFD notify failed:', e.message); }
-}
+// Notification helpers live in ./utils/delivery-notifications (shared with the
+// webhook so customers get the same email + WhatsApp on every stage).
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
@@ -230,6 +211,25 @@ exports.handler = async (event) => {
       const ourStatus = normalizeStatus(rawStatus);
 
       if (!ourStatus) { summary.no_change++; continue; }
+
+      // ── In transit ─────────────────────────────────────────────────────────
+      // Never changes status; notify once, deduped via in_transit_notified_at
+      // (atomic claim). Skips silently if the column/migration isn't there yet.
+      if (ourStatus === 'in_transit') {
+        if (['out_for_delivery', 'delivered', 'cancelled', 'rto', 'lost', 'undelivered'].includes(order.status)) { summary.no_change++; continue; }
+        if (order.in_transit_notified_at) { summary.no_change++; continue; }
+        const claim = await supabase
+          .from('orders')
+          .update({ in_transit_notified_at: new Date().toISOString() })
+          .eq('id', order.id)
+          .is('in_transit_notified_at', null)
+          .select('id');
+        if (claim.error || !claim.data || claim.data.length === 0) { summary.no_change++; continue; }
+        await sendInTransitNotifications(order, awb);
+        summary.updated++;
+        continue;
+      }
+
       if (ourStatus === order.status) { summary.no_change++; continue; }
 
       // Don't downgrade (e.g. delivered → out_for_delivery)
@@ -246,9 +246,9 @@ exports.handler = async (event) => {
       summary.updated++;
       summary[ourStatus] = (summary[ourStatus] || 0) + 1;
 
-      // Send WhatsApp notification (customer hasn't received one for these old orders)
-      if (ourStatus === 'delivered') await notifyDelivered(order);
-      else if (ourStatus === 'out_for_delivery') await notifyOFD(order);
+      // Send email + WhatsApp (customer hasn't received one for these old orders)
+      if (ourStatus === 'delivered') await sendDeliveredNotification(order);
+      else if (ourStatus === 'out_for_delivery') await sendOFDNotification(order);
     }
 
     return {
