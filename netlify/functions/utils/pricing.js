@@ -150,19 +150,20 @@ async function resolveCartPrices(cart, supabase) {
   // product that WAS in the baked index (e.g. a ₹999→₹799 combo) showed ₹799 on
   // the page but charged the stale ₹999. So: query custom_products for ALL cart
   // slugs and let a live override win over the baked price.
+  // Match case-INSENSITIVELY: cart slugs come from the (lower-cased) product
+  // URL, but stored slugs often carry an upper-case suffix code (e.g.
+  // "...-books-MBO-5"), so a case-sensitive `.in()` silently misses them. `ilike`
+  // with no % wildcards is an equality match that ignores case. Slugs are
+  // [a-z0-9-] only, so they carry no PostgREST OR-filter metacharacters.
+  const slugs = [...new Set(items.map(c => c.slug))];
+  const orFilter = slugs.map(s => `slug.ilike.${s}`).join(',');
+  const ts = (v) => { const t = v ? Date.parse(v) : 0; return Number.isFinite(t) ? t : 0; };
+
   const customMap = {};
   if (items.length && supabase) {
-    const slugs = [...new Set(items.map(c => c.slug))];
-    // Match case-INSENSITIVELY: cart slugs come from the (lower-cased) product
-    // URL, but custom_products slugs often carry an upper-case suffix code
-    // (e.g. "...-books-MBO-5"), so a case-sensitive `.in()` silently misses
-    // them — which is exactly how the ₹799 override was skipped. `ilike` with
-    // no % wildcards is an equality match that ignores case. Slugs are
-    // [a-z0-9-] only, so they carry no PostgREST OR-filter metacharacters.
-    const orFilter = slugs.map(s => `slug.ilike.${s}`).join(',');
     const { data, error } = await supabase
       .from('custom_products')
-      .select('slug,title,price_inr,is_active,tags')
+      .select('slug,title,price_inr,is_active,tags,updated_at')
       .or(orFilter);
     if (error) console.error('[pricing] custom_products lookup:', error.message);
     for (const row of (data || [])) {
@@ -171,18 +172,46 @@ async function resolveCartPrices(cart, supabase) {
       if (price <= 0) continue;
       const publisherSourced = /publisher-sourced-bestseller/i.test(String(row.tags || ''));
       const noCod = /(?:^|,)\s*no-cod\s*(?:,|$)/i.test(String(row.tags || ''));
-      customMap[String(row.slug).toLowerCase()] = { title: row.title || '', price, publisherSourced, noCod };
+      customMap[String(row.slug).toLowerCase()] = { title: row.title || '', price, publisherSourced, noCod, updatedAt: ts(row.updated_at) };
+    }
+  }
+
+  // product_overrides is the table the admin "Products & Prices" price editor
+  // writes to (update-product-override.js), for ANY slug — catalogue or custom.
+  // The product PAGE applies it, but resolveCartPrices previously did NOT, so an
+  // admin price change showed on the page (e.g. ₹299) while the ORDER still
+  // charged the stale baked price (₹349 → ₹409 COD). Consult it here too.
+  const overrideMap = {};
+  if (items.length && supabase) {
+    const { data, error } = await supabase
+      .from('product_overrides')
+      .select('slug,title,price_inr,is_active,updated_at')
+      .or(orFilter);
+    if (error) console.error('[pricing] product_overrides lookup:', error.message);
+    for (const row of (data || [])) {
+      if (row.is_active === false) continue;
+      const price = Number.parseFloat(row.price_inr || 0) || 0;
+      if (price <= 0) continue;
+      overrideMap[String(row.slug).toLowerCase()] = { title: row.title || '', price, updatedAt: ts(row.updated_at) };
     }
   }
 
   const resolved = [];
   for (const { slug, qty, raw } of items) {
-    const custom = customMap[slug];          // live override (authoritative)
+    const override = overrideMap[slug];      // admin price edit (product_overrides)
+    const custom = customMap[slug];          // custom_products live listing
     const staticHit = index[slug];           // baked catalogue price (fallback)
-    if (custom) {
-      const item = { ...raw, slug, qty, title: custom.title || staticHit?.title || raw?.title, price: custom.price };
-      if (custom.publisherSourced) item._publisher_sourced = true;
-      if (custom.noCod) item._no_cod = true;
+    // Any LIVE source beats the baked static price. When both live sources exist
+    // for a slug, the most recently edited one wins — correct whether the price
+    // was changed via the override editor or the custom-product editor.
+    let live = null;
+    if (override && custom) live = override.updatedAt >= custom.updatedAt ? override : custom;
+    else live = override || custom;
+    if (live) {
+      const item = { ...raw, slug, qty, title: live.title || custom?.title || staticHit?.title || raw?.title, price: live.price };
+      // COD / publisher-sourced flags only live on custom_products rows.
+      if (custom?.publisherSourced) item._publisher_sourced = true;
+      if (custom?.noCod) item._no_cod = true;
       resolved.push(item);
     } else if (staticHit) {
       resolved.push({ ...raw, slug, qty, title: staticHit.title, price: staticHit.price });
