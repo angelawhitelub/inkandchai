@@ -627,6 +627,34 @@ const COUPONS = {
 };
 const PARTIAL_PAYMENT_THRESHOLD = 299;
 const PARTIAL_PAYMENT_RATE = 0.10;
+// High-value COD orders carry the most RTO risk. When someone picks plain Cash
+// on Delivery on an order above this, we nudge them once to confirm with a 10%
+// deposit instead (partial COD → ships sooner, less likely to be returned).
+const COD_PARTIAL_NUDGE_THRESHOLD = 999;
+let codPartialNudgeShown = false; // once per checkout visit — never nag twice
+
+// Styled "confirm with 10%?" interstitial. Resolves 'partial' or 'cod'.
+function partialNudgeModal(deposit, balance) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.setAttribute('role', 'dialog');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:1.2rem;background:rgba(8,6,4,0.72);backdrop-filter:blur(4px);';
+    ov.innerHTML =
+      '<div style="max-width:380px;width:100%;background:var(--bg2,#141210);border:1px solid rgba(201,168,76,0.35);border-radius:20px;padding:1.6rem 1.5rem;box-shadow:0 30px 80px rgba(0,0,0,0.5);font-family:Inter,sans-serif;text-align:center;">'
+      + '<div style="font-size:1.7rem;margin-bottom:0.5rem;">🚀</div>'
+      + '<div style="font-family:Fraunces,serif;font-size:1.15rem;color:var(--gold,#c9a84c);margin-bottom:0.6rem;">Confirm your order & ship it sooner</div>'
+      + '<p style="font-size:0.82rem;line-height:1.65;color:var(--cream-dim,#a09080);margin:0 0 1rem;">Pay just <strong style="color:var(--cream,#f0e8d8);">₹' + deposit.toLocaleString('en-IN') + '</strong> now (10%) to confirm this order. Pay the remaining <strong style="color:var(--cream,#f0e8d8);">₹' + balance.toLocaleString('en-IN') + '</strong> in cash on delivery.</p>'
+      + '<p style="font-size:0.72rem;line-height:1.6;color:#5d9b55;margin:0 0 1.2rem;">✓ Confirmed orders are <strong>dispatched much sooner</strong> &nbsp;·&nbsp; ✓ COD handling fee waived</p>'
+      + '<button data-act="partial" style="width:100%;font-family:Inter,sans-serif;font-size:0.66rem;letter-spacing:0.16em;text-transform:uppercase;font-weight:600;padding:0.95rem;border:none;border-radius:999px;cursor:pointer;background:linear-gradient(135deg,#d7bc62,#9a7724);color:#090806;margin-bottom:0.6rem;">Pay ₹' + deposit.toLocaleString('en-IN') + ' Now & Confirm</button>'
+      + '<button data-act="cod" style="width:100%;font-family:Inter,sans-serif;font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.8rem;border:1px solid rgba(201,168,76,0.28);border-radius:999px;cursor:pointer;background:transparent;color:var(--cream-dim,#a09080);">No thanks, full cash on delivery</button>'
+      + '</div>';
+    function cleanup(){ try { ov.remove(); } catch(e){} }
+    ov.querySelector('[data-act="partial"]').onclick = () => { cleanup(); resolve('partial'); };
+    ov.querySelector('[data-act="cod"]').onclick     = () => { cleanup(); resolve('cod'); };
+    ov.addEventListener('click', (e) => { if (e.target === ov) { cleanup(); resolve('cod'); } });
+    document.body.appendChild(ov);
+  });
+}
 let appliedCouponCode = (localStorage.getItem(COUPON_KEY) || '').toUpperCase();
 const SCRATCH_KEY = 'iac_scratch_card';
 function loadScratchState() {
@@ -904,7 +932,7 @@ function renderSummary() {
       : 'Pay 10% Now · 90% on Delivery';
     if (partialNote) {
       partialNote.innerHTML = partial.eligible
-        ? `Pay ₹${partial.deposit.toLocaleString('en-IN')} now, ₹${partial.balance.toLocaleString('en-IN')} on delivery. <strong style="color:#5d9b55;">₹${COD_HANDLING_FEE} COD fee waived</strong> when you pay partially.`
+        ? `Pay ₹${partial.deposit.toLocaleString('en-IN')} now, ₹${partial.balance.toLocaleString('en-IN')} on delivery. <strong style="color:#5d9b55;">Dispatched much sooner</strong> · <strong style="color:#5d9b55;">₹${COD_HANDLING_FEE} COD fee waived</strong>.`
         : `Available on orders of ₹299 and above. COD fee waived. Add ₹${(PARTIAL_PAYMENT_THRESHOLD - partial.total).toLocaleString('en-IN')} more to enable.`;
     }
   }
@@ -1187,6 +1215,19 @@ async function submitOrder(method) {
   } else if (method === 'partial') {
     await doPartialPayment(addr);
   } else {
+    // Nudge high-value COD orders (> ₹999) toward a 10% deposit — once per visit.
+    const p = partialPaymentTotals(getCart());
+    if (p.eligible && p.total > COD_PARTIAL_NUDGE_THRESHOLD && !codPartialNudgeShown && !cartHasNoCod(getCart())) {
+      codPartialNudgeShown = true;
+      setLoading(false);
+      const choice = await partialNudgeModal(p.deposit, p.balance);
+      if (choice === 'partial') {
+        setLoading(true, 'partial');
+        await doPartialPayment(addr);
+        return;
+      }
+      setLoading(true, 'cod');
+    }
     await doCOD(addr);
   }
 }
