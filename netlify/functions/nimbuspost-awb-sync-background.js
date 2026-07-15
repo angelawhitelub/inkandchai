@@ -78,10 +78,26 @@ function awbFromRow(row) {
 }
 
 function courierFromRow(row) {
-  return String(
-    row?.courier_name || row?.courier?.name || row?.courier ||
-    row?.shipment?.courier_name || ''
-  ).trim();
+  if (!row || typeof row !== 'object') return '';
+  // NimbusPost / aggregator panel rows label the courier under many different
+  // keys depending on the endpoint (Shadowfax, Delhivery, DTDC, Xpressbees…).
+  // Check them all so the "Courier" line in the shipped email/WhatsApp shows the
+  // REAL courier instead of falling back to a generic label.
+  const candidates = [
+    row.courier_name, row.courier?.name, row.courier,
+    row.shipment?.courier_name, row.shipment?.courier?.name, row.shipment?.courier,
+    row.carrier_name, row.carrier?.name, row.carrier,
+    row.courier_partner, row.courier_partner_name, row.courier_company,
+    row.courier_provider, row.shipping_partner, row.logistic_name, row.provider,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    const s = String(c).trim();
+    // Skip empties and bare numeric ids (a courier_id is not a display name).
+    if (!s || /^\d+$/.test(s)) continue;
+    return s;
+  }
+  return '';
 }
 
 function orderNumberFromRow(row) {
