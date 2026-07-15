@@ -169,7 +169,27 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   const amountRs = order.amount_paise ? Math.round(order.amount_paise / 100) : 0;
 
   const isCOD = ['cod_pending', 'partial_cod_pending'].includes(order.status);
-  const collectableAmount = isCOD ? amountRs : 0;
+  const isPartialCod = order.status === 'partial_cod_pending';
+
+  // For partial COD, order.amount_paise is only the 10% deposit already paid
+  // online — the courier must collect the OUTSTANDING BALANCE at the door, not
+  // that deposit. The balance (and full order value) live in cart_items[0]._payment,
+  // written by verify-payment. Mirror nimbuspost-order-push.js so the panel push
+  // and the direct-AWB push always agree. Once an AWB is assigned the courier
+  // won't let us change the collectable amount, so it MUST be right here.
+  const _pm = (Array.isArray(order.cart_items) && order.cart_items[0] && order.cart_items[0]._payment) || {};
+  const partialBalanceRs = Math.round(Math.max(0, Number(_pm.balance || 0)));
+  const partialFullRs    = Math.round(Math.max(0, Number(_pm.full_total || 0))) || (partialBalanceRs + amountRs);
+
+  if (isPartialCod && partialBalanceRs <= 0) {
+    // Fail closed rather than ship a partial-COD order collecting the wrong
+    // amount (₹0 or the deposit). Re-push from the order or check _payment meta.
+    throw new Error(`Partial-COD order ${orderId} is missing its balance metadata (cart_items[0]._payment.balance); refusing to assign an AWB with a wrong collectable amount.`);
+  }
+
+  // order_amount = declared value of goods (full order); collectable_amount = cash to collect.
+  const orderValueRs      = isPartialCod ? partialFullRs : amountRs;
+  const collectableAmount = isPartialCod ? partialBalanceRs : (isCOD ? amountRs : 0);
 
   // ── Serviceability → pick courier ────────────────────────────────────────
   let courierId   = forceCourierId;
@@ -208,7 +228,7 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   const payload = {
     order_number:          orderId,
     payment_type:          isCOD ? 'cod' : 'prepaid',
-    order_amount:          amountRs,
+    order_amount:          orderValueRs,
     collectable_amount:    collectableAmount,
     weight,
     length,
