@@ -2150,33 +2150,86 @@
       position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
       display:flex;align-items:center;justify-content:center;z-index:10100;padding:1rem;
     `;
+    const methodBtn = (m, title, sub) => `
+      <button type="button" data-method="${m}" onclick="iacPickRefundMethod('${m}')"
+        style="flex:1;min-width:150px;text-align:left;background:#141210;border:1px solid rgba(201,168,76,0.22);
+               color:#f0e8d8;padding:0.8rem 0.9rem;cursor:pointer;transition:all .18s;">
+        <div style="font-size:0.68rem;font-weight:600;color:#faf7f2;margin-bottom:0.2rem;">${title}</div>
+        <div style="font-size:0.58rem;color:#a09080;line-height:1.4;">${sub}</div>
+      </button>`;
     modal.innerHTML = `
-      <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);width:min(460px,96vw);padding:2rem;position:relative;">
+      <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);width:min(480px,96vw);padding:2rem;position:relative;max-height:92vh;overflow:auto;">
         <button onclick="document.getElementById('iacReturnModal')?.remove()"
           style="position:absolute;top:1rem;right:1.1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
         <div style="font-size:0.58rem;letter-spacing:0.3em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.6rem;">Return Request</div>
         <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:#faf7f2;margin-bottom:0.8rem;">Tell us what went wrong</h3>
-        <p style="font-size:0.72rem;color:#a09080;line-height:1.7;margin-bottom:1rem;">Return requests are available within 7 days. We will review and email you the next steps.</p>
-        <textarea id="iacReturnReason" rows="4" placeholder="Reason for return"
+        <p style="font-size:0.72rem;color:#a09080;line-height:1.7;margin-bottom:0.9rem;">Return requests are available within 7 days. We'll arrange pickup and process your refund.</p>
+        <textarea id="iacReturnReason" rows="3" placeholder="Reason for return"
           style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);color:#f0e8d8;padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.78rem;outline:none;resize:vertical;"></textarea>
+
+        <div style="font-size:0.58rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin:1.1rem 0 0.6rem;">How would you like your refund?</div>
+        <div id="iacRefundMethods" style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+          ${methodBtn('original', '↩ Original payment method', 'Back to your card / UPI / bank.')}
+          ${methodBtn('wallet', '👛 Ink &amp; Chai Wallet', 'Store credit + <b style="color:#6dbf6d;">₹50 extra</b>. Instant.')}
+        </div>
+
+        <div id="iacUpiWrap" style="display:none;margin-top:0.9rem;">
+          <label style="font-size:0.6rem;color:#a09080;display:block;margin-bottom:0.35rem;">Your UPI ID (for the COD refund)</label>
+          <input id="iacUpiInput" type="text" inputmode="email" placeholder="name@bank"
+            style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.28);color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;"/>
+        </div>
+
         <button id="iacReturnSubmit" onclick="iacSubmitReturn('${escJs(orderId)}')"
-          style="width:100%;margin-top:1rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.95rem;background:#c9a84c;color:#0d0b08;border:none;cursor:pointer;font-weight:500;">
+          style="width:100%;margin-top:1.1rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.95rem;background:#c9a84c;color:#0d0b08;border:none;cursor:pointer;font-weight:500;">
           Submit Return Request
         </button>
         <p id="iacReturnMsg" style="font-size:0.7rem;margin-top:0.85rem;min-height:1.2em;text-align:center;"></p>
       </div>`;
     document.body.appendChild(modal);
+    modal.dataset.method = '';
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
     setTimeout(() => document.getElementById('iacReturnReason')?.focus(), 80);
+  };
+
+  // Highlight the chosen refund method; reveal UPI only for COD-original (the
+  // server confirms COD, but if it already told us via need_upi we keep it open).
+  window.iacPickRefundMethod = function (m) {
+    const modal = document.getElementById('iacReturnModal');
+    if (!modal) return;
+    modal.dataset.method = m;
+    modal.querySelectorAll('#iacRefundMethods button').forEach(b => {
+      const on = b.dataset.method === m;
+      b.style.borderColor = on ? '#c9a84c' : 'rgba(201,168,76,0.22)';
+      b.style.background = on ? 'rgba(201,168,76,0.12)' : '#141210';
+    });
+    // Wallet never needs UPI; hide it. For 'original' we wait for the server to
+    // tell us it's COD (need_upi) before showing the field.
+    if (m === 'wallet') {
+      const w = document.getElementById('iacUpiWrap'); if (w) w.style.display = 'none';
+    }
   };
 
   window.iacSubmitReturn = async function (orderId) {
     const sb = getSB();
     const btn = document.getElementById('iacReturnSubmit');
     const msg = document.getElementById('iacReturnMsg');
+    const modal = document.getElementById('iacReturnModal');
     const reason = document.getElementById('iacReturnReason')?.value.trim() || '';
+    const method = modal?.dataset.method || '';
+    const upiWrap = document.getElementById('iacUpiWrap');
+    const upiId = document.getElementById('iacUpiInput')?.value.trim() || '';
     if (!sb || !currentUser) {
       if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please sign in again.'; }
+      return;
+    }
+    if (!method) {
+      if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please choose how you\'d like your refund.'; }
+      return;
+    }
+    // If the UPI field is showing (COD return) it must be filled.
+    if (upiWrap && upiWrap.style.display !== 'none' && !upiId) {
+      if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please enter your UPI ID to receive the refund.'; }
+      document.getElementById('iacUpiInput')?.focus();
       return;
     }
     btn.disabled = true;
@@ -2201,10 +2254,20 @@
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token || ''}`,
         },
-        body: JSON.stringify({ order_id: orderId, reason }),
+        body: JSON.stringify({ order_id: orderId, reason, refund_method: method, upi_id: upiId }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
+        // COD + original method → server asks for a UPI id. Reveal the field and
+        // let the customer submit again.
+        if (json.need_upi) {
+          if (upiWrap) upiWrap.style.display = 'block';
+          if (msg) { msg.style.color = '#c9a84c'; msg.textContent = 'This was a Cash-on-Delivery order — enter your UPI ID to receive the refund, then submit again.'; }
+          btn.disabled = false;
+          btn.textContent = 'Submit Return Request';
+          setTimeout(() => document.getElementById('iacUpiInput')?.focus(), 60);
+          return;
+        }
         if (json.already_submitted) {
           // Show inline message and close modal — no re-submit possible
           if (msg) { msg.style.color = '#c9a84c'; msg.textContent = json.error; }
