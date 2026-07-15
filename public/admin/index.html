@@ -486,6 +486,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Import all unshipped orders into the NimbusPost Orders panel without choosing couriers or generating AWBs.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
       <button class="btn-outline" onclick="syncNimbusAwbs(this)" title="Pull AWBs assigned inside the NimbusPost panel back onto your orders, flip them to shipped, and notify customers. Also runs automatically every 15 minutes.">🔄 Sync AWBs from NimbusPost</button>
+      <button class="btn-outline" onclick="sendTestEmail(this)" title="Send one test email to the store owner and report which provider (Mailjet/Resend/Brevo) delivered it. Use this to verify email is working after changing providers.">✉️ Send test email</button>
       <span style="font-size:0.62rem;color:var(--cream-dim);line-height:1.5;max-width:290px;">Panel import creates draft orders only. Shipment creation assigns couriers and AWBs. “Sync AWBs” pulls panel-assigned AWBs back here (auto every 15 min).</span>
     </div>
   </section>
@@ -4038,6 +4039,30 @@ async function syncNimbusAwbs(btn) {
     setTimeout(() => { try { fetchOrders(true); } catch {} }, 90 * 1000);
   } catch (err) {
     alert('Could not start AWB sync:\n\n' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+async function sendTestEmail(btn) {
+  const to = prompt('Send a test email to:\n\n(Leave blank to send to the store owner address / STORE_OWNER_EMAIL)', '') || '';
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Sending…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/send-test-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(to.trim() ? { to: to.trim() } : {}),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      alert(`✅ Test email sent to ${data.sent_to}\n\nDelivered via: ${data.delivered_via}\nProvider order: ${data.provider_order}\n\nCheck the inbox (and spam) to confirm it arrived.`);
+    } else {
+      const cfg = data.configured ? Object.entries(data.configured).map(([k,v]) => `${k}:${v?'set':'—'}`).join('  ') : '';
+      throw new Error(`${data.error || 'HTTP ' + res.status}\n\nProviders configured: ${cfg}`);
+    }
+  } catch (err) {
+    alert('❌ Test email failed:\n\n' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }

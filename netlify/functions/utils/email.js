@@ -111,21 +111,23 @@ async function sendEmail({ to, subject, html }) {
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
   let attempted = false;
+  const errors = [];
   for (const name of order) {
     const send = providers[name];
     if (!send) continue;                 // not configured — skip
     attempted = true;
     try {
       await send();
-      return { ok: true };
+      return { ok: true, provider: name };
     } catch (err) {
       console.error(`Email via ${name} failed, trying next provider:`, err.message);
+      errors.push(`${name}: ${err.message}`);
     }
   }
 
   if (!attempted) console.warn('No email provider configured (set RESEND_API_KEY, BREVO_API_KEY, or MAILJET_API_KEY + MAILJET_SECRET_KEY)');
   else console.error('All configured email providers failed for →', to);
-  return { ok: false };
+  return { ok: false, error: attempted ? errors.join(' | ') : 'no provider configured' };
 }
 
 module.exports = { sendEmail };
