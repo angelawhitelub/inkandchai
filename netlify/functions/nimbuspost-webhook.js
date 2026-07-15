@@ -36,6 +36,7 @@ const {
   sendOFDNotification,
   sendDeliveredNotification,
 } = require('./utils/delivery-notifications');
+const { handleReturnAwbDelivered } = require('./utils/return-auto-refund');
 
 // ── NimbusPost status string → internal status ────────────────────────────
 // Comprehensive map — NimbusPost / Delhivery use many different strings.
@@ -270,6 +271,15 @@ exports.handler = async (event) => {
         .maybeSingle();
 
       if (!order) {
+        // Not a forward order — this AWB may be a REVERSE (return) shipment.
+        // When a return is scanned delivered back to us, auto-refund the prepaid
+        // customer (deterministic trigger; guarded + idempotent inside).
+        if (ourStatus === 'delivered') {
+          try {
+            const r = await handleReturnAwbDelivered(supabase, awb);
+            if (r.matched) { console.log(`[NimbusPost] Return AWB ${awb} delivered → ${JSON.stringify(r)}`); continue; }
+          } catch (e) { console.error('[NimbusPost] return auto-refund error:', e.message); }
+        }
         console.warn(`[NimbusPost] No order found for AWB: ${awb}`);
         continue;
       }
