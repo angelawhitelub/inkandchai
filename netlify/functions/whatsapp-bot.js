@@ -123,6 +123,16 @@ MISSING BOOK IN A MULTI-BOOK ORDER — customer says "I ordered 3 books but got 
 
 REFUND EMAIL — whenever a refund is involved (cancelled order, missing book, etc.), the correct channel is: refund@inkandchai.in (ask them to include their Order ID). This is different from general support (support@inkandchai.in).
 
+RETURNS & REFUNDS (customer wants to RETURN a delivered book — "return", "wapas karna hai", "want a refund", "book return"):
+- Returns are available for 7 days after delivery. The customer starts a return themselves from "My Orders" on inkandchai.in (sign in → the delivered order → "Initiate Return"), or from the tracking page. Guide them there — you do NOT create the return yourself.
+- When they initiate, they choose HOW they want the refund. Explain the two options warmly:
+  1) 👛 Ink & Chai Wallet — they get store credit worth their refund PLUS ₹50 extra, instantly, as a code they can use on their next order. Fastest option. Works for both COD and prepaid.
+  2) ↩️ Original payment method:
+     • If they PAID ONLINE (prepaid): the refund goes back automatically to their original payment method once the returned book reaches us — no action needed from them.
+     • If it was COD (they paid cash on delivery): there's no card/UPI transaction to reverse, so we ask for their UPI ID and transfer the refund there once the returned book reaches us.
+- The refund/credit is processed AFTER we receive the returned book (a courier pickup is arranged). Always reassure them their money is 100% safe.
+- Only DELIVERED orders within 7 days can be returned. If not yet delivered, it's a cancellation, not a return.
+
 PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book right now: "I want to order <book>", "mujhe <book> chahiye", "how do I buy this", "order karna hai", or they name a specific book they want to purchase.
 - ⛔ DO NOT treat these as new orders — they are NOT purchases, and you must NEVER call submit_order_request for them:
     • "check my order status", "where is my order", "order kahan hai", "track my order" → use the ORDER TRACKING flow.
@@ -481,7 +491,7 @@ async function callOpenAIChat(messages, { tools = false } = {}) {
 // Cached for 60s so we don't hit Supabase on every message.
 let _botExtraCache = { text: '', at: 0 };
 async function getBotExtraInstructions() {
-  if (Date.now() - _botExtraCache.at < 60_000) return _botExtraCache.text;
+  if (Date.now() - _botExtraCache.at < 30_000) return _botExtraCache.text;
   try {
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { data } = await db.from('bot_settings')
@@ -499,9 +509,16 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
   appendHistory(phone, 'user', userMessage);
 
   const extraInstructions = await getBotExtraInstructions();
+  // Put the admin's custom instructions at the TOP and mark them authoritative,
+  // so the model actually follows them over the generic defaults below (appending
+  // them at the very end let the long default prompt drown them out).
   let systemContent = SYSTEM_PROMPT;
   if (extraInstructions) {
-    systemContent += '\n\nSTORE-SPECIFIC INSTRUCTIONS & FAQ (set by the Ink & Chai team — follow these):\n' + extraInstructions;
+    systemContent =
+      '⚠️ STORE-SPECIFIC INSTRUCTIONS & FAQ set by the Ink & Chai team. These are AUTHORITATIVE — follow them exactly, and when anything below conflicts with them, THESE WIN:\n'
+      + extraInstructions
+      + '\n\n— — — (general default guidance follows) — — —\n\n'
+      + SYSTEM_PROMPT;
   }
   // If we already know this customer from a prior order, tell the model — so
   // it doesn't ask for name/address again on their next purchase.

@@ -29,10 +29,17 @@ async function handleReturnAwbDelivered(supabase, awb) {
   const { data: ret, error } = await supabase
     .from('return_requests')
     .select('*')
-    .eq('awb', tracking)
-    .eq('refund_status', 'awaiting_return_delivery')
+    .eq('awb', tracking)                              // ONLY the reverse AWB assigned to this return
+    .eq('refund_method', 'original')                 // wallet returns never auto-refund
+    .eq('payment_type', 'prepaid')                   // COD is a manual UPI payout, never auto
+    .eq('refund_status', 'awaiting_return_delivery') // not already refunded / claimed
     .maybeSingle();
   if (error || !ret) return { matched: false };
+
+  // Defensive guards — the refund must be tied to THIS return's own assigned
+  // reverse AWB, and the return must not have been rejected/cancelled.
+  if (!ret.awb || String(ret.awb).trim() !== tracking) return { matched: false };
+  if (['rejected', 'cancelled'].includes(String(ret.status || '').toLowerCase())) return { matched: false };
 
   // Atomic claim — only one webhook delivery wins.
   const claim = await supabase
