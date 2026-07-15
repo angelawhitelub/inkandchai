@@ -1,12 +1,17 @@
 /**
- * Shared sendEmail utility
+ * Shared sendEmail utility — multi-provider with automatic failover.
  *
- * Provider priority (first key found in env wins):
- *   1. Brevo  — BREVO_API_KEY   (free: 300/day, 9k/month)
- *   2. Resend — RESEND_API_KEY  (free: 100/day, 3k/month — kept as fallback)
+ * Providers (each tried in order until one succeeds):
+ *   • Resend  — RESEND_API_KEY                       (free: 100/day, 3k/month)
+ *   • Brevo   — BREVO_API_KEY                         (free: 300/day, 9k/month)
+ *   • Mailjet — MAILJET_API_KEY + MAILJET_SECRET_KEY  (free: 200/day, 6k/month)
  *
- * To switch providers: set/unset the env vars in Netlify dashboard.
- * No code changes needed.
+ * Default order: resend → brevo → mailjet. Override WITHOUT a redeploy by
+ * setting EMAIL_PROVIDER_ORDER in Netlify, e.g. "mailjet,resend,brevo" — handy
+ * when one provider's monthly quota is exhausted and you want a fresh one first
+ * (avoids wasting a failed API call on the dead provider before every send).
+ *
+ * Set/unset the relevant env vars in the Netlify dashboard. No code changes needed.
  */
 
 const FROM_NAME  = 'Ink & Chai';
@@ -53,6 +58,28 @@ async function sendViaResend(key, { to, subject, html }) {
   throw new Error(`Resend error ${r.status}: ${JSON.stringify(r.data)}`);
 }
 
+async function sendViaMailjet(pub, priv, { to, subject, html }) {
+  const auth = Buffer.from(`${pub}:${priv}`).toString('base64');
+  const res = await fetch('https://api.mailjet.com/v3.1/send', {
+    method: 'POST',
+    headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      Messages: [{
+        From:     { Email: FROM_EMAIL, Name: FROM_NAME },
+        To:       [{ Email: to }],
+        Subject:  subject,
+        HTMLPart: html,
+      }],
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  const msg = Array.isArray(data?.Messages) ? data.Messages[0] : null;
+  if (!res.ok || (msg && msg.Status && msg.Status !== 'success')) {
+    throw new Error(`Mailjet ${res.status}: ${msg?.Errors ? JSON.stringify(msg.Errors) : (data?.ErrorMessage || JSON.stringify(data))}`);
+  }
+  console.log('Email sent via Mailjet →', to);
+}
+
 /**
  * Send a transactional email. Non-fatal — logs errors but never throws.
  * Always returns { ok: boolean } so callers can check success.
@@ -66,32 +93,38 @@ async function sendEmail({ to, subject, html }) {
   if (!EMAIL_RE.test(to)) { console.warn(`sendEmail: invalid address "${to}" — skipped`); return { ok: false }; }
   if (!subject)         { console.warn('sendEmail: empty subject — skipped'); return { ok: false }; }
 
-  const resendKey = process.env.RESEND_API_KEY;
-  const brevoKey  = process.env.BREVO_API_KEY;
+  // Each provider is only attempted if its env keys are present.
+  const providers = {
+    resend:  process.env.RESEND_API_KEY
+      ? () => sendViaResend(process.env.RESEND_API_KEY, { to, subject, html })
+      : null,
+    brevo:   process.env.BREVO_API_KEY
+      ? () => sendViaBrevo(process.env.BREVO_API_KEY, { to, subject, html })
+      : null,
+    mailjet: (process.env.MAILJET_API_KEY && process.env.MAILJET_SECRET_KEY)
+      ? () => sendViaMailjet(process.env.MAILJET_API_KEY, process.env.MAILJET_SECRET_KEY, { to, subject, html })
+      : null,
+  };
 
-  // Try Resend first
-  if (resendKey) {
+  // Order: EMAIL_PROVIDER_ORDER env override, else resend → brevo → mailjet.
+  const order = (process.env.EMAIL_PROVIDER_ORDER || 'resend,brevo,mailjet')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+  let attempted = false;
+  for (const name of order) {
+    const send = providers[name];
+    if (!send) continue;                 // not configured — skip
+    attempted = true;
     try {
-      await sendViaResend(resendKey, { to, subject, html });
+      await send();
       return { ok: true };
     } catch (err) {
-      console.error('Resend failed, trying Brevo fallback:', err.message);
-      // Fall through to Brevo
+      console.error(`Email via ${name} failed, trying next provider:`, err.message);
     }
   }
 
-  // Brevo fallback (also used when RESEND_API_KEY not set)
-  if (brevoKey) {
-    try {
-      await sendViaBrevo(brevoKey, { to, subject, html });
-      return { ok: true };
-    } catch (err) {
-      console.error('Brevo also failed:', err.message);
-    }
-    return { ok: false };
-  }
-
-  console.warn('No email provider configured (set RESEND_API_KEY or BREVO_API_KEY)');
+  if (!attempted) console.warn('No email provider configured (set RESEND_API_KEY, BREVO_API_KEY, or MAILJET_API_KEY + MAILJET_SECRET_KEY)');
+  else console.error('All configured email providers failed for →', to);
   return { ok: false };
 }
 

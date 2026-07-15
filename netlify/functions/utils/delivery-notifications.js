@@ -37,41 +37,13 @@ function emailBase(content) {
 
 // ── In transit ──────────────────────────────────────────────────────────────
 async function sendInTransitNotifications(order, awb) {
+  // WhatsApp-only: the in-transit EMAIL was dropped to conserve email-provider
+  // quota (WhatsApp covers this stage). See sendDeliveredNotification for a stage
+  // that still emails. `awb` is kept in the signature for call-site compatibility.
   const firstName = (order.customer_name || 'there').split(' ')[0];
-  const orderId   = order.razorpay_order_id || order.id;
   const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
   const bookList  = items.map(i => i.title || i.name || '').filter(Boolean).join(', ') || 'your books';
   const courier   = order.courier_name || 'DTDC Surface';
-  const trackUrl  = order.tracking_url || (awb ? npTrackUrl(awb) : siteTrackUrl(order));
-
-  if (order.customer_email) {
-    await sendEmail({
-      to: order.customer_email,
-      subject: `🚚 Your Ink & Chai order is on the move (${orderId})`,
-      html: emailBase(`
-        <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Your books are in transit 🚚</h2>
-        <p style="color:#a09080;line-height:1.8;margin-bottom:16px;">
-          Hi ${firstName}, your parcel has left our hub and is making its way to you.
-        </p>
-        <table style="font-size:14px;line-height:1.9;color:#f0e8d8;margin-bottom:20px;">
-          <tr><td style="color:#a09080;padding-right:16px;">Order ID</td>  <td style="color:#c9a84c;font-weight:500;">${orderId}</td></tr>
-          <tr><td style="color:#a09080;padding-right:16px;">AWB / Tracking</td><td style="color:#c9a84c;font-weight:500;">${awb || '—'}</td></tr>
-          <tr><td style="color:#a09080;padding-right:16px;">Courier</td>   <td>${courier}</td></tr>
-          <tr><td style="color:#a09080;padding-right:16px;">Books</td>     <td>${bookList}</td></tr>
-        </table>
-        <div style="margin:20px 0;padding:16px;background:#1c1916;border-left:3px solid #c9a84c;">
-          <a href="${trackUrl}"
-             style="display:inline-block;background:#c9a84c;color:#0d0b08;padding:10px 24px;
-                    text-decoration:none;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">
-            Track Order →
-          </a>
-        </div>
-        <p style="color:#a09080;font-size:13px;line-height:1.8;margin-top:16px;">
-          We'll message you again when it's out for delivery.
-        </p>
-      `),
-    }).catch(e => console.error('[delivery-notify] in-transit email error:', e.message));
-  }
 
   if (order.customer_phone) {
     await sendWhatsApp({
@@ -85,41 +57,14 @@ async function sendInTransitNotifications(order, awb) {
 
 // ── Out for delivery ─────────────────────────────────────────────────────────
 async function sendOFDNotification(order) {
+  // WhatsApp-only: the out-for-delivery EMAIL was dropped to conserve email
+  // quota (WhatsApp covers this stage).
   const firstName = (order.customer_name || 'there').split(' ')[0];
-  const orderId   = order.razorpay_order_id || order.id;
   const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
   const bookTitle = items[0]?.title || 'your book';
-  const bookList  = items.map(i => i.title || i.name || '').filter(Boolean).join(', ') || 'your books';
   const isCOD     = !order.razorpay_payment_id || ['cod_pending','partial_cod_pending'].includes(order.status);
   const total     = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '';
   const trackUrl  = order.tracking_url || siteTrackUrl(order);
-
-  if (order.customer_email) {
-    await sendEmail({
-      to: order.customer_email,
-      subject: `🛵 Out for delivery today! (${orderId})`,
-      html: emailBase(`
-        <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Out for delivery today 🛵</h2>
-        <p style="color:#a09080;line-height:1.8;margin-bottom:16px;">
-          Hi ${firstName}, ${bookList} ${items.length > 1 ? 'are' : 'is'} out for delivery and should reach you today.
-        </p>
-        ${isCOD && total ? `
-        <div style="margin:16px 0;padding:16px;background:#1c1916;border-left:3px solid #c9a84c;">
-          <p style="color:#f0e8d8;font-size:14px;margin:0;">💵 Please keep <strong style="color:#c9a84c;">${total}</strong> cash ready for the delivery agent.</p>
-        </div>` : `
-        <div style="margin:16px 0;padding:16px;background:#1c1916;border-left:3px solid #6dbf6d;">
-          <p style="color:#f0e8d8;font-size:14px;margin:0;">✅ All paid — nothing to pay at the door.</p>
-        </div>`}
-        <div style="margin:20px 0;">
-          <a href="${trackUrl}"
-             style="display:inline-block;background:#c9a84c;color:#0d0b08;padding:10px 24px;
-                    text-decoration:none;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">
-            Track Order →
-          </a>
-        </div>
-      `),
-    }).catch(e => console.error('[delivery-notify] OFD email error:', e.message));
-  }
 
   if (order.customer_phone) {
     await sendWhatsApp({
