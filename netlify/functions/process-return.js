@@ -226,6 +226,20 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, status: 'approved', notified: true }) };
     }
 
+    // Owner marks a MANUAL refund (COD-UPI payout, or a PhonePe/other refund done
+    // by hand) as paid — closes out the return. Only valid for a manual state.
+    if (action === 'mark_refunded') {
+      const manualStates = ['manual_payout_pending', 'manual_refund_pending'];
+      if (!manualStates.includes(ret.refund_status)) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Refund is "${ret.refund_status || 'not set'}", not a manual payout — nothing to mark.` }) };
+      }
+      await supabase.from('return_requests').update({
+        refund_status: 'refunded',
+        refunded_at:   new Date().toISOString(),
+      }).eq('id', return_request_id);
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, refund_status: 'refunded' }) };
+    }
+
     // Manually attach a tracking ID + courier (when you ship the return yourself,
     // outside NimbusPost) and notify the customer to hand over the books.
     if (action === 'add_tracking') {

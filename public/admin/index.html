@@ -4876,9 +4876,40 @@ function renderReturns() {
           <input id="cour_${r.id}" placeholder="Courier name" style="width:95px;font-size:0.62rem;padding:0.3rem 0.4rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);border-radius:4px;">
           <button class="btn-gold" style="font-size:0.6rem;padding:0.35rem 0.7rem;" onclick="addReturnTracking('${r.id}',this)" title="Save tracking ID and notify the customer to hand over the books">＋ Schedule &amp; Notify</button>
         </div>` : ''}
+        ${returnRefundInfo(r)}
       </td>
     </tr>`;
   }).join('');
+}
+
+// Refund method / amount / status + a "mark paid" control for the manual cases.
+function returnRefundInfo(r) {
+  if (!r.refund_method) return '';
+  const rupees = r.refund_amount_paise ? '₹' + Math.round(r.refund_amount_paise / 100).toLocaleString('en-IN') : '';
+  const method = r.refund_method === 'wallet'
+    ? `👛 Wallet${r.wallet_code ? ' · <b style="color:var(--gold)">' + r.wallet_code + '</b>' : ''}`
+    : (r.payment_type === 'cod'
+        ? `↩ COD → UPI <b style="color:#e0a84c">${r.upi_id || '—'}</b>`
+        : `↩ Prepaid (auto)`);
+  const st = String(r.refund_status || '').replace(/_/g, ' ');
+  const stColor = r.refund_status === 'refunded' ? '#6dbf6d'
+    : (['manual_payout_pending','manual_refund_pending'].includes(r.refund_status) ? '#e0a84c'
+    : (r.refund_status === 'wallet_issued' ? '#6dbf6d' : 'var(--cream-dim)'));
+  const needsManual = ['manual_payout_pending', 'manual_refund_pending'].includes(r.refund_status);
+  return `<div style="margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);font-size:0.63rem;color:var(--cream-dim);line-height:1.7;">
+    Refund: ${method} ${rupees ? '· ' + rupees : ''} · <span style="color:${stColor};">${st}</span>
+    ${needsManual ? `<button onclick="markReturnRefunded('${r.id}',this)" title="Mark this refund as paid (after you've sent the UPI/manual refund)" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.5);color:#6dbf6d;cursor:pointer;border-radius:4px;">✓ Mark refund paid</button>` : ''}
+  </div>`;
+}
+
+async function markReturnRefunded(id, btn) {
+  if (!confirm('Mark this refund as PAID?\n\nDo this only after you have actually sent the refund (UPI/manual). This closes the return.')) return;
+  try {
+    await _returnCall({ return_request_id: id, action: 'mark_refunded' }, btn);
+    if (typeof fetchReturnRequests === 'function') fetchReturnRequests(); else location.reload();
+  } catch (e) {
+    alert('Could not update: ' + e.message);
+  }
 }
 
 async function _returnCall(body, btn) {
