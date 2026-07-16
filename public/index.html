@@ -3410,23 +3410,29 @@ if (Date.now() < SALE_END_DATE.getTime()) {
 (function () {
   const topNav = document.querySelector('nav:not(.mob-nav)');
   if (!topNav) return;
-  let lastY = window.scrollY, ticking = false;
+  const getY = () => window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  let lastY = getY();
+  // No requestAnimationFrame here on purpose: rAF can freeze (background tab /
+  // throttled webview), which would wedge a ticking-flag debounce permanently.
+  // The work is a single conditional class toggle — cheap enough to run inline.
   function onScroll() {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(() => {
-      const y = window.scrollY;
-      if (window.innerWidth <= 780) {
-        if (y > lastY + 4 && y > 140) topNav.classList.add('nav-condensed');       // scrolling down
-        else if (y < lastY - 4 || y < 60) topNav.classList.remove('nav-condensed'); // scrolling up / near top
-      } else {
-        topNav.classList.remove('nav-condensed');
-      }
-      lastY = y;
-      ticking = false;
-    });
+    const y = getY();
+    if (Math.abs(y - lastY) < 4) return;
+    if (window.innerWidth <= 780) {
+      if (y > lastY && y > 140) topNav.classList.add('nav-condensed');        // scrolling down
+      else if (y < lastY || y < 60) topNav.classList.remove('nav-condensed'); // scrolling up / near top
+    } else {
+      topNav.classList.remove('nav-condensed');
+    }
+    lastY = y;
   }
+  // Listen on window AND document (capture) — with html{overflow-x:hidden} some
+  // engines scroll the root element instead of the viewport, and window alone
+  // misses those events. The poller is a last-resort net for browsers where
+  // neither fires reliably; it's idle-cheap (one number compare).
   window.addEventListener('scroll', onScroll, { passive: true });
+  document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+  setInterval(onScroll, 250);
 })();
 
 // ── INIT ──────────────────────────────────────────────────────────────────
