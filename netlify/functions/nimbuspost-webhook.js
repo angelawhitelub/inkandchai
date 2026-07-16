@@ -71,7 +71,7 @@ const STATUS_MAP = {
   'dispatched':                 'shipped',
   'picked up':                  'shipped',
   'pickup done':                'shipped',
-  'shipment booked':            'shipped',
+  'shipment booked':            null,
 
   // In-transit / hub scan events — notify the customer ONCE (see in_transit
   // handling in the loop; deduped via orders.in_transit_notified_at so the many
@@ -120,6 +120,15 @@ function normalizeStatus(statusStr) {
     }
   }
   return null;
+}
+
+function eventTimestamp(evt) {
+  const raw = evt?.event_time || evt?.timestamp || evt?.updated_at;
+  if (raw) {
+    const parsed = new Date(raw);
+    if (Number.isFinite(parsed.getTime())) return parsed.toISOString();
+  }
+  return new Date().toISOString();
 }
 
 // npTrackUrl + emailBase are imported from ./utils/delivery-notifications
@@ -291,10 +300,24 @@ exports.handler = async (event) => {
       // yet (migration not run), we SKIP rather than risk spamming on every scan.
       if (ourStatus === 'in_transit') {
         if (['out_for_delivery', 'delivered', 'cancelled', 'rto', 'lost', 'undelivered'].includes(order.status)) continue;
-        if (order.in_transit_notified_at) { console.log(`[NimbusPost] In-transit already notified for ${awb}`); continue; }
+        const movedAt = order.shipment_moved_at || eventTimestamp(evt);
+        if (order.in_transit_notified_at) {
+          await supabase.from('orders').update({
+            shipment_moved_at: movedAt,
+            last_nimbuspost_status: String(rawStatus).slice(0, 200),
+            last_nimbuspost_event_at: eventTimestamp(evt),
+          }).eq('id', order.id);
+          console.log(`[NimbusPost] In-transit already notified for ${awb}`);
+          continue;
+        }
         const stamp = await supabase
           .from('orders')
-          .update({ in_transit_notified_at: new Date().toISOString() })
+          .update({
+            in_transit_notified_at: new Date().toISOString(),
+            shipment_moved_at: movedAt,
+            last_nimbuspost_status: String(rawStatus).slice(0, 200),
+            last_nimbuspost_event_at: eventTimestamp(evt),
+          })
           .eq('id', order.id)
           .is('in_transit_notified_at', null)   // only claim if not already claimed
           .select('id');
@@ -315,6 +338,11 @@ exports.handler = async (event) => {
       const RANK = { shipped:1, out_for_delivery:2, delivered:3, cancelled:0, undelivered:0, rto:0, lost:0 };
       const currentRank = RANK[order.status] || 0;
       const newRank     = RANK[ourStatus]    || 0;
+      if (['cancelled', 'refunded', 'delivered'].includes(order.status) &&
+          ['shipped', 'out_for_delivery'].includes(ourStatus)) {
+        console.log(`[NimbusPost] Skip ${ourStatus} — order is terminal (${order.status})`);
+        continue;
+      }
       if (newRank > 0 && newRank <= currentRank) {
         console.log(`[NimbusPost] Skip — already at ${order.status}`);
         continue;
@@ -328,8 +356,14 @@ exports.handler = async (event) => {
       if (ourStatus === 'shipped') {
         updateData.tracking_url = trackingUrl;
         updateData.shipped_at   = new Date().toISOString();
+        updateData.shipment_moved_at = order.shipment_moved_at || eventTimestamp(evt);
         if (!order.courier_name) updateData.courier_name = 'DTDC Surface';
       }
+      if (['shipped', 'out_for_delivery', 'delivered'].includes(ourStatus)) {
+        updateData.shipment_moved_at = order.shipment_moved_at || eventTimestamp(evt);
+      }
+      updateData.last_nimbuspost_status = String(rawStatus).slice(0, 200);
+      updateData.last_nimbuspost_event_at = eventTimestamp(evt);
       if (ourStatus === 'delivered') updateData.delivered_at = new Date().toISOString();
 
       await supabase.from('orders').update(updateData).eq('id', order.id);

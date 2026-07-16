@@ -18,8 +18,9 @@
  * refund_id status, or the order-status API) that no refund is already
  * completed or pending — so a customer is never double-refunded.
  *
- * Runs as a background function (many orders × PhonePe round-trips). Also
- * scheduled in netlify.toml. Admin can POST to trigger on demand.
+ * Invoked by phonepe-retry-refunds-scheduled every four hours. Admin can POST
+ * to trigger on demand. Scheduling stays separate because Netlify scheduled
+ * and background functions use different invocation modes.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -141,12 +142,10 @@ async function processOrder(supabase, order) {
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
 
-  // Manual trigger from the admin panel is a POST and must be an authed admin.
-  // The scheduled invocation is NOT a POST, so it skips this check (same pattern
-  // as nimbuspost-awb-sync-background / auto-recover-carts).
-  if (event.httpMethod === 'POST') {
-    const block = requireAdmin(event, CORS); if (block) return block;
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
+  const block = requireAdmin(event, CORS); if (block) return block;
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Supabase env vars missing' }) };
   }
@@ -156,12 +155,10 @@ exports.handler = async (event) => {
   });
 
   try {
-    const sinceIso = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(); // last 45 days
     const { data: rows, error } = await supabase
       .from('orders')
       .select('*')
       .in('status', OWED_STATUSES)
-      .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
       .limit(500);
     if (error) throw error;

@@ -250,12 +250,16 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   const trackingUrl = courierTrackUrl(courier_name || courierName, awb);
 
   // ── Update Supabase order ────────────────────────────────────────────────
+  const assignedAt = new Date().toISOString();
+  const shipmentPaymentType = isPartialCod ? 'partial_cod' : (isCOD ? 'cod' : 'prepaid');
   const { error: updErr } = await supabase.from('orders').update({
     status:       'shipped',
     tracking_id:  awb,
     courier_name: courier_name || courierName || 'NimbusPost',
     tracking_url: trackingUrl,
-    shipped_at:   new Date().toISOString(),
+    shipped_at:   assignedAt,
+    awb_assigned_at: assignedAt,
+    shipment_payment_type: shipmentPaymentType,
   }).eq('id', order.id);
 
   if (updErr) console.warn('Supabase update warning:', updErr.message);

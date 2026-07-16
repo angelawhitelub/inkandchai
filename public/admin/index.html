@@ -174,6 +174,12 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .empty{text-align:center;padding:4rem;color:var(--cream-dim);font-size:0.9rem;}
 .load-more-btn{display:block;width:100%;margin-top:1.2rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
 .load-more-btn:hover{background:var(--gold);color:var(--bg);}
+.orders-pagination{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;background:var(--bg3);border:1px solid var(--border);border-top:0;padding:0.75rem 1rem;box-shadow:var(--shadow);}
+.orders-pagination-info{font-size:0.68rem;color:var(--cream-dim);letter-spacing:0.05em;}
+.orders-pagination-actions{display:flex;align-items:center;gap:0.55rem;flex-wrap:wrap;}
+.orders-pagination-actions button,.orders-pagination-actions select{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.45rem 0.75rem;border:1px solid var(--border);background:var(--bg2);color:var(--cream);cursor:pointer;}
+.orders-pagination-actions button:disabled{opacity:0.35;cursor:not-allowed;}
+.orders-pagination-actions select{padding-right:1.5rem;}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(201,168,76,0.3);border-top-color:var(--gold);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px;}
 .section-title{font-size:0.72rem;color:var(--cream-dim);letter-spacing:0.16em;text-transform:uppercase;align-self:center;margin-right:0.4rem;}
 .hint{font-size:0.74rem;color:var(--cream-dim);}
@@ -350,6 +356,8 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       <h1>Orders Dashboard</h1>
       <p class="subtitle" id="dashSubtitle">Loading…</p>
     </div>
+    <button class="btn-outline" onclick="switchTab('orders');setTimeout(()=>document.getElementById('ordersTableSection')?.scrollIntoView({behavior:'smooth',block:'start'}),0)">↓ Go to orders table
+    </button>
   </div>
 
   <!-- Tab bar (hidden until login) -->
@@ -487,6 +495,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
       <button class="btn-outline" onclick="syncNimbusAwbs(this)" title="Pull AWBs assigned inside the NimbusPost panel back onto your orders, flip them to shipped, and notify customers. Also runs automatically every 15 minutes.">🔄 Sync AWBs from NimbusPost</button>
       <button class="btn-outline" onclick="sendTestEmail(this)" title="Send one test email to the store owner and report which provider (Mailjet/Resend/Brevo) delivered it. Use this to verify email is working after changing providers.">✉️ Send test email</button>
+      <button class="btn-outline" onclick="emailMissedOrders(this)" title="Email yourself ONE digest of every order placed in the last N hours. Use this to recover order alerts that never arrived because email was failing.">📋 Email me missed orders</button>
       <span style="font-size:0.62rem;color:var(--cream-dim);line-height:1.5;max-width:290px;">Panel import creates draft orders only. Shipment creation assigns couriers and AWBs. “Sync AWBs” pulls panel-assigned AWBs back here (auto every 15 min).</span>
     </div>
   </section>
@@ -620,7 +629,20 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     </table>
   </div>
   <div class="empty" id="emptyState" style="display:none;">No orders found.</div>
-  <button class="load-more-btn" id="loadMoreBtn" style="display:none;" onclick="loadMore()">Load More Orders</button>
+  <div class="orders-pagination" id="ordersPagination" style="display:none;">
+    <div class="orders-pagination-info" id="ordersPaginationInfo"></div>
+    <div class="orders-pagination-actions">
+      <label for="ordersPageSize" style="font-size:0.62rem;color:var(--cream-dim);">Rows</label>
+      <select id="ordersPageSize" onchange="setOrdersPageSize(this.value)">
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+      </select>
+      <button id="ordersPrevPage" onclick="changeOrdersPage(-1)">← Previous</button>
+      <span id="ordersPageLabel" style="font-size:0.65rem;color:var(--gold);min-width:92px;text-align:center;"></span>
+      <button id="ordersNextPage" onclick="changeOrdersPage(1)">Next →</button>
+    </div>
+  </div>
 
   </div><!-- /tab-orders -->
 
@@ -1354,6 +1376,8 @@ let page          = 1;
 let hasMore       = false;
 let serverTotal   = null; // total count from server (shown immediately, before all pages load)
 const PAGE        = 500;  // rows per request (auto-paginates in parallel until all loaded)
+let tablePage     = 1;    // UI page; only this slice is rendered into the DOM
+let tablePageSize = 50;
 const ORDERS_CACHE_KEY = 'iac_admin_orders_cache_v2';
 const ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;  // 5 min
 const selectedOrderIds = new Set();
@@ -1556,7 +1580,7 @@ async function fetchOrdersPage(pageNum, limit) {
 }
 
 async function fetchOrders(reset = false) {
-  if (reset) { page = 1; allOrders = []; }
+  if (reset) { page = 1; tablePage = 1; allOrders = []; }
   const btn     = document.getElementById('refreshBtn');
   const tblWrap = document.querySelector('.tbl-wrap');
   if (btn) btn.innerHTML = '<span class="spinner"></span>Refreshing…';
@@ -1614,7 +1638,7 @@ async function fetchOrders(reset = false) {
     document.getElementById('adminTabBar').style.display = 'flex';
     initTabFromHash();
 
-    // Render the first 500 immediately so the user sees results in <1s
+    // Render immediately; DOM pagination limits this to 50 rows by default.
     if (!usedCache) {
       allOrders = combined;
       updateStats();
@@ -1675,6 +1699,25 @@ function showLoginErr(msg) {
 }
 
 function loadMore() { fetchOrders(false); }
+
+function visiblePageOrders() {
+  const start = (tablePage - 1) * tablePageSize;
+  return filtered.slice(start, start + tablePageSize);
+}
+
+function setOrdersPageSize(value) {
+  const size = Number(value);
+  tablePageSize = [50, 100, 200].includes(size) ? size : 50;
+  tablePage = 1;
+  renderTable();
+}
+
+function changeOrdersPage(delta) {
+  const totalPages = Math.max(1, Math.ceil(filtered.length / tablePageSize));
+  tablePage = Math.min(totalPages, Math.max(1, tablePage + Number(delta || 0)));
+  renderTable();
+  document.getElementById('ordersTableSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 function orderIsUnshipped(o) {
   const status = String(o?.status || '').toLowerCase();
@@ -1759,7 +1802,7 @@ function toggleOrderSelection(id, checked) {
 }
 
 function toggleAllVisible(checked) {
-  filtered.forEach(o => {
+  visiblePageOrders().forEach(o => {
     const id = orderKey(o);
     if (!id) return;
     if (checked) selectedOrderIds.add(id);
@@ -1782,7 +1825,7 @@ function syncSelectionUi() {
   if (selectedCount) selectedCount.textContent = selectedOrderIds.size;
   const allBox = document.getElementById('selectAllVisible');
   if (!allBox) return;
-  const visibleIds = filtered.map(orderKey).filter(Boolean);
+  const visibleIds = visiblePageOrders().map(orderKey).filter(Boolean);
   const selectedVisible = visibleIds.filter(id => selectedOrderIds.has(id)).length;
   allBox.checked = !!visibleIds.length && selectedVisible === visibleIds.length;
   allBox.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
@@ -2021,6 +2064,7 @@ function sortBy(field) {
 }
 
 function applyFilters() {
+  tablePage = 1;
   const q       = (document.getElementById('searchBox')?.value || '').toLowerCase().trim();
   const dateFrom = document.getElementById('dateFrom')?.value;
   const dateTo   = document.getElementById('dateTo')?.value;
@@ -2084,14 +2128,29 @@ function _drawTable() {
   if (!filtered.length) {
     body.innerHTML = '';
     document.getElementById('emptyState').style.display = '';
-    document.getElementById('loadMoreBtn').style.display = 'none';
+    const pagination = document.getElementById('ordersPagination');
+    if (pagination) pagination.style.display = 'none';
     syncSelectionUi();
     return;
   }
   document.getElementById('emptyState').style.display = 'none';
-  document.getElementById('loadMoreBtn').style.display = hasMore ? '' : 'none';
+  const totalPages = Math.max(1, Math.ceil(filtered.length / tablePageSize));
+  if (tablePage > totalPages) tablePage = totalPages;
+  const pageOrders = visiblePageOrders();
+  const firstRow = (tablePage - 1) * tablePageSize + 1;
+  const lastRow = firstRow + pageOrders.length - 1;
+  const pagination = document.getElementById('ordersPagination');
+  if (pagination) pagination.style.display = 'flex';
+  const paginationInfo = document.getElementById('ordersPaginationInfo');
+  if (paginationInfo) paginationInfo.textContent = `Showing ${firstRow.toLocaleString('en-IN')}–${lastRow.toLocaleString('en-IN')} of ${filtered.length.toLocaleString('en-IN')} matching orders`;
+  const pageLabel = document.getElementById('ordersPageLabel');
+  if (pageLabel) pageLabel.textContent = `Page ${tablePage} of ${totalPages}`;
+  const prevBtn = document.getElementById('ordersPrevPage');
+  const nextBtn = document.getElementById('ordersNextPage');
+  if (prevBtn) prevBtn.disabled = tablePage <= 1;
+  if (nextBtn) nextBtn.disabled = tablePage >= totalPages;
 
-  body.innerHTML = filtered.map(o => {
+  body.innerHTML = pageOrders.map(o => {
     const items   = Array.isArray(o.cart_items) ? o.cart_items : [];
     const payInfo = orderPaymentBreakdown(o);
     const amount  = payInfo.full ? '₹' + payInfo.full.toLocaleString('en-IN') : '—';
@@ -2145,6 +2204,7 @@ function _drawTable() {
       </td>
       <td>
         <span class="badge ${bc}">${esc((o.status||'pending').replace(/_/g,' '))}</span>
+        ${o.cancellation_source === 'stale_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no courier movement for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · stale COD 7d</div>` : ''}
         <br/>
         <select class="status-sel" onchange="updateStatus('${esc(o.id)}',this.value)">
           <option value="">Update status…</option>
@@ -4068,6 +4128,29 @@ async function sendTestEmail(btn) {
   }
 }
 
+async function emailMissedOrders(btn) {
+  const hours = prompt('Email me a digest of every order from the last how many hours?\n\n(e.g. 12 — covers everything since ~1:29 PM if it\'s now ~7 PM)', '12');
+  if (hours === null) return;
+  const h = Math.max(1, Math.min(168, parseInt(hours, 10) || 12));
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Sending…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/missed-orders-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hours: h }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+    if (!data.count) { alert(data.message || 'No orders found in that window.'); return; }
+    alert(`✅ Digest sent — ${data.count} order${data.count > 1 ? 's' : ''} · ₹${(data.total_rupees || 0).toLocaleString('en-IN')}\n\nDelivered via: ${data.delivered_via}\n\nCheck your inbox (and spam).`);
+  } catch (e) {
+    alert('❌ Could not send digest:\n\n' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
 async function pushAllToShiprocket(btn) {
   const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending','pending_phonepe','pending_partial_phonepe','replacement_pending'];
   const unshipped = allOrders.filter(o => UNSHIPPED.includes(o.status));
@@ -4124,7 +4207,7 @@ async function retryFailedRefunds(btn) {
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Retrying…'; }
   try {
-    const res = await fetch('/.netlify/functions/phonepe-retry-refunds-background', {
+    const res = await adminFetch('/.netlify/functions/phonepe-retry-refunds-background', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
     });
     // Background functions return 202 with an empty body — that's success.

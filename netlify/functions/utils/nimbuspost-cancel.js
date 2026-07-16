@@ -213,4 +213,34 @@ async function cancelNimbusOrder(orderNumber) {
   }
 }
 
-module.exports = { cancelNimbusShipment, cancelNimbusOrder };
+function shipmentStatusFromRow(row) {
+  const candidates = [
+    row?.current_status, row?.shipment_status, row?.status_name, row?.order_status,
+    row?.shipment?.current_status, row?.shipment?.shipment_status, row?.shipment?.status,
+    typeof row?.status === 'string' ? row.status : '',
+  ];
+  return String(candidates.find(value => value !== null && value !== undefined && String(value).trim()) || '').trim();
+}
+
+/**
+ * Fail-closed live check used before automatic cancellation. A stale order is
+ * cancellable only when the NimbusPost panel itself still reports a pre-pickup
+ * state. Unknown/not-found rows are never treated as safe to cancel.
+ */
+async function inspectNimbusOrder(orderNumber) {
+  const key = process.env.NIMBUSPOST_API_KEY;
+  if (!key) return { ok: false, found: false, error: 'NIMBUSPOST_API_KEY not configured' };
+  try {
+    const row = await findNimbusOrder(orderNumber, key);
+    if (!row) return { ok: true, found: false, error: 'Order not found in the first 500 NimbusPost panel rows' };
+    const status = shipmentStatusFromRow(row);
+    const normalized = status.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const moved = /\b(shipped|dispatch|picked|pickup done|in transit|out for delivery|delivered|rto|return to origin|ndr|undelivered|lost)\b/.test(normalized);
+    const prePickup = /\b(booked|manifest|pickup scheduled|pickup pending|ready to ship|new|pending|awb assigned)\b/.test(normalized);
+    return { ok: true, found: true, status, moved, prePickup, row };
+  } catch (error) {
+    return { ok: false, found: false, error: error.message };
+  }
+}
+
+module.exports = { cancelNimbusShipment, cancelNimbusOrder, inspectNimbusOrder };

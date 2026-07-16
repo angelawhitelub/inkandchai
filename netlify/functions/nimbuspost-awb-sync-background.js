@@ -273,11 +273,17 @@ async function runSync() {
     summary.matched++;
 
     try {
+      const assignedAt = new Date().toISOString();
+      const shipmentPaymentType = order.status === 'cod_pending'
+        ? 'cod'
+        : order.status === 'partial_cod_pending' ? 'partial_cod' : 'prepaid';
       const update = {
         status:       'shipped',
         tracking_id:  hit.awb,
         tracking_url: npTrackUrl(hit.awb),
-        shipped_at:   new Date().toISOString(),
+        shipped_at:   assignedAt,
+        awb_assigned_at: assignedAt,
+        shipment_payment_type: shipmentPaymentType,
       };
       if (hit.courier) update.courier_name = hit.courier;
 

@@ -35,6 +35,58 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
+function valueAt(payload, names) {
+  for (const name of names) {
+    const value = payload?.[name];
+    if (value !== null && value !== undefined && String(value).trim()) return String(value).trim();
+  }
+  return '';
+}
+
+function refundMerchantIdFromPayload(payload) {
+  return valueAt(payload, [
+    'merchantRefundId', 'merchant_refund_id', 'merchantOrderId',
+    'merchant_order_id', 'refundMerchantId', 'refund_merchant_id',
+  ]);
+}
+
+function orderIdFromRefundMerchantId(refundId) {
+  // IDs created by phonepe-refund / the retry worker are:
+  // REFUND-<original Ink & Chai order id>-<13 digit Date.now()>
+  const match = String(refundId || '').match(/^REFUND-(.+)-(\d{13})$/);
+  return match ? match[1] : '';
+}
+
+function originalOrderIdFromRefundPayload(payload) {
+  const explicit = valueAt(payload, [
+    'originalMerchantOrderId', 'original_merchant_order_id',
+    'originalOrderId', 'original_order_id', 'merchantOriginalOrderId',
+  ]);
+  return explicit || orderIdFromRefundMerchantId(refundMerchantIdFromPayload(payload));
+}
+
+function refundDecision(existing, state, amount) {
+  const normalized = String(state || '').toUpperCase();
+  const completed = ['COMPLETED', 'SUCCESS', 'CONFIRMED'].includes(normalized);
+  const failed = ['FAILED', 'DECLINED'].includes(normalized);
+  if (failed && (existing?.refund_state === 'COMPLETED' ||
+      ['refunded', 'partially_refunded'].includes(existing?.status))) {
+    return { ignore: 'stale-refund-failure' };
+  }
+  if (completed) {
+    const refundAmount = Number(amount) || 0;
+    const orderAmount = Number(existing?.amount_paise) || 0;
+    return {
+      status: refundAmount > 0 && orderAmount > 0 && refundAmount < orderAmount
+        ? 'partially_refunded'
+        : 'refunded',
+      refundState: 'COMPLETED',
+    };
+  }
+  if (failed) return { status: 'refund_failed', refundState: 'FAILED' };
+  return { status: 'refund_pending', refundState: 'PENDING' };
+}
+
 // ── Email via Resend (same fallback pattern as other functions) ────────────
 
 // ── Verify Basic auth header matches our secrets (constant-time) ───────────
@@ -153,13 +205,16 @@ exports.handler = async (event) => {
 
   const eventType = body.event || body.type || '';
   const payload   = body.payload || body.data || body;
-
-  const orderId = payload.merchantOrderId || payload.merchant_order_id || payload.orderId || payload.order_id;
+  const isRefundEvent = String(eventType).toLowerCase().includes('refund');
+  const refundMerchantId = isRefundEvent ? refundMerchantIdFromPayload(payload) : '';
+  const orderId = isRefundEvent
+    ? originalOrderIdFromRefundPayload(payload)
+    : (payload.merchantOrderId || payload.merchant_order_id || payload.orderId || payload.order_id);
   const txnId   = payload.transactionId   || payload.transaction_id   || payload.paymentId  || null;
   const state   = (payload.state || payload.status || '').toUpperCase();
   const amount  = payload.amount || payload.amount_paise || null;
 
-  if (!orderId) {
+  if (!orderId && !refundMerchantId) {
     console.warn('PhonePe webhook had no orderId:', JSON.stringify(body).slice(0, 400));
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ ignored: 'no-order-id' }) };
   }
@@ -174,7 +229,7 @@ exports.handler = async (event) => {
   // Refund events FIRST — otherwise a refund.completed (state COMPLETED) would
   // wrongly hit the payment branch and mark the order 'paid', and a
   // refund.failed would wrongly mark it 'cancelled'.
-  if (eventType.includes('refund')) {
+  if (isRefundEvent) {
     if (state === 'COMPLETED' || state === 'SUCCESS' || state === 'CONFIRMED') dbStatus = 'refunded';
     else if (state === 'FAILED' || state === 'DECLINED') dbStatus = 'refund_failed';
     else dbStatus = 'refund_pending';
@@ -188,31 +243,61 @@ exports.handler = async (event) => {
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const { data: existing } = await supabase
+    let { data: existing, error: lookupError } = await supabase
       .from('orders')
       .select('*')
       .eq('razorpay_order_id', orderId)
       .maybeSingle();
+    if (lookupError) throw lookupError;
+    // Some PhonePe refund callbacks omit originalMerchantOrderId. If parsing
+    // the REFUND-... id ever fails, the stored refund id is a second safe key.
+    if (!existing && refundMerchantId) {
+      const fallback = await supabase.from('orders').select('*').eq('refund_id', refundMerchantId).maybeSingle();
+      if (fallback.error) throw fallback.error;
+      existing = fallback.data;
+    }
+    if (!existing) {
+      console.warn(`PhonePe: order not found in DB: ${orderId || refundMerchantId}`);
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ ignored: 'order-not-found', orderId, refundMerchantId }) };
+    }
+
+    // Refund completion is monotonic. A delayed FAILED callback from an older
+    // attempt must never downgrade an order whose money has already gone back.
+    let refundResult = null;
+    if (isRefundEvent) {
+      refundResult = refundDecision(existing, state, amount);
+      if (refundResult.ignore) {
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ ignored: refundResult.ignore, orderId }) };
+      }
+      dbStatus = refundResult.status;
+    }
+
     const meta = Array.isArray(existing?.cart_items) ? existing.cart_items[0]?._payment : null;
     if (dbStatus === 'paid' && (existing?.status === 'pending_partial_phonepe' || meta?.mode === 'partial_cod')) {
       dbStatus = 'partial_cod_pending';
     }
 
     const update = { status: dbStatus };
-    if (txnId)  update.razorpay_payment_id = txnId;
-    if (amount) update.amount_paise = amount;
+    if (isRefundEvent) {
+      update.refund_state = refundResult.refundState;
+      update.refund_updated_at = new Date().toISOString();
+      if (refundMerchantId) update.refund_id = refundMerchantId;
+      if (update.refund_state === 'COMPLETED') update.refund_last_error = null;
+    } else {
+      // A refund transaction id is not the original payment id, and a partial
+      // refund amount is not the order total. Preserve both on refund events.
+      if (txnId)  update.razorpay_payment_id = txnId;
+      if (amount) update.amount_paise = amount;
+    }
 
     const { data: rows, error } = await supabase
       .from('orders')
       .update(update)
-      .eq('razorpay_order_id', orderId)
+      .eq('id', existing.id)
       .select('*');
 
     if (error) throw error;
-    if (!rows?.length) {
-      console.warn(`PhonePe: order not found in DB: ${orderId}`);
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({ ignored: 'order-not-found', orderId }) };
-    }
+    if (!rows?.length) throw new Error(`PhonePe order update matched no row: ${orderId}`);
 
     const order = rows[0];
 
@@ -292,4 +377,11 @@ exports.handler = async (event) => {
     console.error('phonepe-webhook error:', err);
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ ignored: 'internal-error', message: err.message }) };
   }
+};
+
+exports._test = {
+  refundMerchantIdFromPayload,
+  orderIdFromRefundMerchantId,
+  originalOrderIdFromRefundPayload,
+  refundDecision,
 };

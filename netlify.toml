@@ -22,6 +22,12 @@
 [functions."auto-mark-delivered"]
   schedule = "0 4 * * *"
 
+# Cancel pure-COD AWBs that remain booked/pre-pickup for seven full days.
+# Runs hourly; performs a live NimbusPost state check and excludes every prepaid
+# or partial-COD order before cancelling in NimbusPost + admin and notifying both.
+[functions."auto-cancel-stale-cod"]
+  schedule = "15 * * * *"
+
 # Backfill AWBs assigned inside the NimbusPost panel back onto our orders.
 # Flips matched orders to "shipped" and notifies the customer. Runs every 15 min.
 # Suffix `-background` gives us a 15-minute timeout (vs 10s for sync functions)
@@ -30,12 +36,10 @@
 [functions."nimbuspost-awb-sync-background"]
   schedule = "*/15 * * * *"
 
-# Re-check + retry failed PhonePe refunds — runs every 4 hours. PhonePe fails a
-# refund when the day's refund total exceeds that day's received payments; as new
-# payments settle through the day, a re-attempt succeeds. Money-safe: never
-# re-issues without first confirming no refund is already completed/pending.
-[functions."phonepe-retry-refunds-background"]
-  schedule = "0 * * * *"
+# Re-check + retry failed PhonePe refunds every four hours. This short scheduled
+# function securely enqueues the separate long-running background worker.
+[functions."phonepe-retry-refunds-scheduled"]
+  schedule = "0 */4 * * *"
 
 # 5-min follow-up confirmation ping for WhatsApp book-order requests placed via
 # the bot. Runs every 2 minutes; each row is pinged exactly once thanks to the

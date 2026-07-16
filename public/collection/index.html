@@ -286,9 +286,6 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 const BOOKS = window.BOOKS_PRELOAD||[];
 const COLLECTIONS = [{"name": "Fiction & Romance", "slug": "fiction--romance", "count": 668, "cats": ["fiction", "all romance books", "romance (on sale)"], "thumb": "/images/our-perfect-storm-carley-fortune.webp"}, {"name": "Self-Help", "slug": "self-help", "count": 430, "cats": ["all self help", "self-help (on sale)", "best self help books from publishers"], "thumb": "/images/psychology-of-money-hindi-thinking-fast-slow-hindi-combo-2.webp"}, {"name": "Kids & Young Adult", "slug": "kids--young-adult", "count": 255, "cats": ["kids book", "kids book age: 3-5", "kids book age: 2-6", "kids book age: 5-8", "kids book age: 8-11"], "thumb": "/.netlify/functions/image-proxy?i=c7de220e0fc2b70d19f74362"}, {"name": "Manga & Comics", "slug": "manga--comics", "count": 125, "cats": ["manga", "comics", "dc comics", "marvel comics"], "thumb": "/.netlify/functions/image-proxy?i=f4386050f1607b6dec01dd76"}, {"name": "Mythology & Spirituality", "slug": "mythology--spirituality", "count": 14, "cats": ["mythology", "best of spirituality and mythology", "spirituality", "amish tripathi books"], "thumb": "/.netlify/functions/image-proxy?i=5b49e020dff2350769597e29"}];
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-// Route same-site covers through Netlify Image CDN (resize + webp) to cut image
-// bandwidth. Leaves data:, external, and legacy image-proxy URLs untouched.
-function iacImg(src,w){var s=String(src||'');if(!s||s.startsWith('data:'))return s;var p=s.replace(/^https?:\/\/inkandchai\.in/i,'');if(!(p.startsWith('/images/')||p.startsWith('/spimg/')||p.startsWith('/.netlify/functions/image-proxy')))return s;return '/.netlify/images?url='+encodeURIComponent(p)+'&w='+w+'&fm=webp&q=72';}
 function slugifyName(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').replace(/-+/g,'-')}
 
 const params = new URLSearchParams(location.search);
@@ -364,7 +361,7 @@ function renderGrid() {
   document.getElementById('visCount').textContent = list.length;
   document.getElementById('grid').innerHTML = list.map(b => `
     <div class="book-card" onclick="location.href='/product/${b.slug}/'">
-      <div class="book-cover">${b.img ? `<img src="${esc(iacImg(b.img,320))}" alt="${esc(b.t)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}</div>
+      <div class="book-cover">${b.img ? `<img src="${esc(b.img)}" alt="${esc(b.t)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}</div>
       <div class="book-name">${esc(b.t)}</div>
       <div class="book-author">${esc(b.a||'')}</div>
       <div><span class="book-price">${esc(b.p)}</span>${b.op ? `<span class="book-orig">${esc(b.op)}</span>` : ''}</div>
@@ -465,7 +462,7 @@ function renderGrid() {
     const item = activityItem(pool);
     const el = ensureToast();
     el.innerHTML = `
-      <img class="reader-activity-img" src="${esc(iacImg(item.img,120))}" alt="" loading="lazy"/>
+      <img class="reader-activity-img" src="${esc(item.img)}" alt="" loading="lazy"/>
       <div>
         <div class="reader-activity-kicker">${esc(item.name)} from ${esc(item.city)} ${esc(item.action)}</div>
         <div class="reader-activity-title">${esc(item.title)}</div>

@@ -2,6 +2,13 @@
 
 Run these once in your Supabase SQL editor (https://supabase.com → your project → SQL Editor → New Query).
 
+## 2026-07-16 — Seven-day stale COD auto-cancellation
+
+Run [`sql/orders_cod_auto_cancel.sql`](sql/orders_cod_auto_cancel.sql) before
+deploying the matching scheduled function. It separates AWB assignment from a
+real pickup/in-transit scan and records cancellation claims/results. Only pure
+COD shipments are eligible; prepaid and partial-COD orders fail closed.
+
 ## 2026-04-30 — Add tracking columns to `orders`
 
 Lets the admin attach courier name + AWB number when shipping, and powers

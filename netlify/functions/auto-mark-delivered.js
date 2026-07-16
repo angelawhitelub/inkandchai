@@ -93,6 +93,7 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     marked_delivered: 0,
     skipped_already_delivered: 0,
     skipped_too_recent: 0,
+    skipped_no_movement: 0,
     notify_skipped_quota: 0,
     errors: 0,
     examples: [],
@@ -101,7 +102,7 @@ async function runSweep(supabase, { dryRun = false } = {}) {
   // Pull both shipped + OFD orders
   const { data: orders, error } = await supabase
     .from('orders')
-    .select('id,razorpay_order_id,status,shipped_at,delivered_at,created_at,customer_name,customer_email,customer_phone,tracking_id,courier_name,amount_paise,cart_items')
+    .select('id,razorpay_order_id,status,shipped_at,awb_assigned_at,shipment_moved_at,delivered_at,created_at,customer_name,customer_email,customer_phone,tracking_id,courier_name,amount_paise,cart_items')
     .or('source.is.null,source.neq.paperbound')  // exclude paperbound store's orders (shared DB)
     .in('status', ['shipped', 'out_for_delivery'])
     .order('created_at', { ascending: true })
@@ -117,6 +118,14 @@ async function runSweep(supabase, { dryRun = false } = {}) {
   for (const order of orders) {
     try {
       if (order.delivered_at) { summary.skipped_already_delivered++; continue; }
+
+      // An AWB is not proof of dispatch. Newly tracked orders must show a real
+      // pickup/in-transit scan before this delivery fallback can act; otherwise
+      // the seven-day COD cancellation job owns them.
+      if (order.awb_assigned_at && !order.shipment_moved_at) {
+        summary.skipped_no_movement++;
+        continue;
+      }
 
       // Decide threshold based on current status
       const isOFD = order.status === 'out_for_delivery';
