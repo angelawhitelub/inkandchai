@@ -1548,14 +1548,9 @@ function scheduleAutoLogout() {
 // silently failing every action.
 async function adminFetch(url, opts = {}) {
   const headers = Object.assign({}, opts.headers || {});
-  if (adminToken)        headers['X-Admin-Token'] = adminToken;
+  if (adminToken) headers['X-Admin-Token'] = adminToken;
   if (adminKey && !headers['X-Admin-Key']) headers['X-Admin-Key'] = adminKey;
-  const res = await fetch(url, { ...opts, headers, credentials: 'same-origin' });
-  if (res.status === 401 && (adminToken || adminKey || adminCookieSession)) {
-    clearAdminSession();
-    setTimeout(() => { alert('Your admin session has expired. Please sign in again.'); logout(); }, 0);
-  }
-  return res;
+  return fetch(url, { ...opts, headers, credentials: 'same-origin' });
 }
 
 // Transparent upgrade: existing call sites pass X-Admin-Key directly. Wrap
@@ -1564,10 +1559,36 @@ async function adminFetch(url, opts = {}) {
 // SPA forces a fresh login.
 (function installAdminFetchInterceptor(){
   const _origFetch = window.fetch.bind(window);
+  let verifyingSession = false;
+
+  async function verifySessionAfter401(sourceUrl) {
+    if (verifyingSession || !(adminToken || adminKey || adminCookieSession)) return;
+    verifyingSession = true;
+    try {
+      const headers = adminToken ? { 'X-Admin-Token': adminToken } : {};
+      const check = await _origFetch('/.netlify/functions/admin-session', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers,
+      });
+      if (check.status === 401) {
+        logout();
+        showLoginErr('Your admin session expired. Please sign in again.');
+      } else if (check.ok) {
+        console.warn('Admin request returned 401 while the session is still valid:', sourceUrl);
+      }
+    } catch (error) {
+      // A temporary network error must never destroy a valid login session.
+      console.warn('Could not verify admin session after 401:', error);
+    } finally {
+      verifyingSession = false;
+    }
+  }
+
   window.fetch = async function(input, init) {
     let url = '';
     if (typeof input === 'string') url = input;
-    else if (input && input.url)   url = input.url;
+    else if (input && input.url) url = input.url;
     const isAdminCall = url.indexOf('/.netlify/functions/') !== -1
       && url.indexOf('/passkey-login-options') === -1
       && url.indexOf('/admin-login') === -1
@@ -1579,11 +1600,7 @@ async function adminFetch(url, opts = {}) {
     opts.headers = Object.assign({}, (init && init.headers) || {});
     if (adminToken && !opts.headers['X-Admin-Token']) opts.headers['X-Admin-Token'] = adminToken;
     const res = await _origFetch(input, opts);
-    if (res.status === 401 && (adminToken || adminKey || adminCookieSession)) {
-      // Don't loop — clear once, then let the original caller handle the 401.
-      clearAdminSession();
-      setTimeout(() => { try { alert('Admin session expired — please sign in again.'); logout(); } catch {} }, 0);
-    }
+    if (res.status === 401) verifySessionAfter401(url);
     return res;
   };
 })();
