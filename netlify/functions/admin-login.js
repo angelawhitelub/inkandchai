@@ -1,6 +1,6 @@
 /**
  * POST /.netlify/functions/admin-login
- * Body: { password }
+ * Body: { email, password, remember }
  *
  * Validates the admin password (ADMIN_SECRET / ADMIN_PASSWORD env var)
  * with a constant-time compare. On success returns a signed admin token
@@ -13,7 +13,9 @@
  */
 
 const crypto = require('crypto');
-const { signAdminToken } = require('./utils/admin-auth');
+const { TOKEN_TTL_MS, ADMIN_COOKIE_NAME, signAdminToken } = require('./utils/admin-auth');
+
+const REMEMBER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -36,34 +38,52 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body || '{}'); }
   catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
+  const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
-  if (!password) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Password required' }) };
+  const remember = body.remember !== false;
+  if (!email || !password) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Email and password required' }) };
+  }
 
+  const configuredEmail = String(process.env.ADMIN_EMAIL || process.env.STORE_OWNER_EMAIL || '').trim().toLowerCase();
   const a = process.env.ADMIN_SECRET   || '';
   const b = process.env.ADMIN_PASSWORD || '';
-  if (!a && !b) {
-    return { statusCode: 503, headers: CORS, body: JSON.stringify({ error: 'Admin auth not configured' }) };
+  if (!configuredEmail || (!a && !b)) {
+    return { statusCode: 503, headers: CORS, body: JSON.stringify({ error: 'Admin email login is not configured' }) };
   }
-  const ok = timingEq(password, a) || timingEq(password, b);
+  const emailOk = timingEq(email, configuredEmail);
+  const passwordOk = timingEq(password, a) || timingEq(password, b);
+  const ok = emailOk && passwordOk;
 
   // Small constant delay to blunt online password-guessing (rate-limiting is
   // separately handled at the CDN; this is just a polite floor).
   await new Promise(r => setTimeout(r, 250));
 
   if (!ok) {
-    return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Invalid password' }) };
+    return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Invalid email or password' }) };
   }
 
+  const ttlMs = remember ? REMEMBER_TTL_MS : TOKEN_TTL_MS;
+  const expiresAt = Date.now() + ttlMs;
   let adminToken;
-  try { adminToken = signAdminToken({ sub: 'password' }); }
+  try { adminToken = signAdminToken({ sub: `email:${email}`, ttlMs }); }
   catch (e) { return { statusCode: 503, headers: CORS, body: JSON.stringify({ error: e.message }) }; }
+
+  const cookie = [
+    `${ADMIN_COOKIE_NAME}=${adminToken}`,
+    'Path=/',
+    'HttpOnly',
+    'Secure',
+    'SameSite=Strict',
+    `Max-Age=${Math.floor(ttlMs / 1000)}`,
+  ].join('; ');
 
   return {
     statusCode: 200,
-    headers: CORS,
+    headers: { ...CORS, 'Set-Cookie': cookie, 'Cache-Control': 'no-store' },
     // adminKey is the same value the caller sent — we don't echo it back; the
     // SPA already has the password in memory if it needs the legacy fallback.
     // (Returning it adds zero security on top, and one more place it can leak.)
-    body: JSON.stringify({ ok: true, adminToken }),
+    body: JSON.stringify({ ok: true, adminToken, expiresAt, email }),
   };
 };
