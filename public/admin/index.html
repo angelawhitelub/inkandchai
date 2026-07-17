@@ -2692,13 +2692,20 @@ async function _npCall(body) {
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+  if (!res.ok) {
+    // 502/504 = the function ran out of time (NimbusPost slow). Progress is
+    // saved per order — orders that already got an AWB are skipped on retry.
+    if (res.status === 502 || res.status === 504) {
+      throw new Error('NimbusPost took too long and the request timed out. Any shipments already created are saved — just run it again to continue (shipped orders are skipped automatically).');
+    }
+    throw new Error(data.error || 'HTTP ' + res.status);
+  }
   return data;
 }
 
 // Ship a single order via NimbusPost
 async function npShipOrder(orderId, btn) {
-  if (!confirm(`Create NimbusPost shipment for ${orderId}?\n\nThis will auto-select the cheapest available courier and generate an AWB.`)) return;
+  if (!confirm(`Create NimbusPost shipment for ${orderId}?\n\nCourier is chosen by your priority ladder (Delhivery Surface DT → Xpressbees Surface → DTDC → Amazon → Shadowfax) and an AWB is generated. If none of these serve the pincode, the order is left unshipped.`)) return;
 
   const origText = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Creating…'; }
@@ -2756,7 +2763,7 @@ async function npBulkShip(btn) {
   const proceed = confirm(
     `🚀 Create All NimbusPost Shipments\n\n` +
     `${unshipped.length} shipment(s) will be created in NimbusPost.\n` +
-    `NimbusPost will immediately assign AWBs using the cheapest serviceable courier.\n` +
+    `Couriers are assigned by your priority ladder (Delhivery Surface DT → Xpressbees Surface → DTDC → Amazon → Shadowfax); orders none of them serve are left unshipped.\n` +
     `You can then manage labels, pickup and dispatch from NimbusPost.\n\n` +
     `Continue?`
   );
@@ -2777,14 +2784,21 @@ async function npBulkShip(btn) {
     const shipped = [];
     const skipped = [];
     const failures = [];
-    const batchSize = 20;
+    // Small batches: each order needs ~2 NimbusPost API calls and the function
+    // has a hard 10s limit — 20 per call was guaranteed to 502. A failed batch
+    // no longer aborts the run; its orders are reported and the loop continues.
+    const batchSize = 3;
     for (let i = 0; i < ids.length; i += batchSize) {
       const batch = ids.slice(i, i + batchSize);
-      const data = await _npCall({ order_ids: batch });
-      shipped.push(...(data.shipped || []));
-      skipped.push(...(data.skipped || []));
-      failures.push(...(data.failures || []));
-      progressMsg.textContent = `⏳ Created ${Math.min(i + batch.length, ids.length)} of ${ids.length} NimbusPost shipments…`;
+      try {
+        const data = await _npCall({ order_ids: batch });
+        shipped.push(...(data.shipped || []));
+        skipped.push(...(data.skipped || []));
+        failures.push(...(data.failures || []));
+      } catch (err) {
+        batch.forEach(id => failures.push({ order_id: id, error: err.message }));
+      }
+      progressMsg.textContent = `⏳ Processed ${Math.min(i + batch.length, ids.length)} of ${ids.length} — ✅ ${shipped.length} shipped · ❌ ${failures.length} failed…`;
     }
     document.body.removeChild(progressMsg);
 

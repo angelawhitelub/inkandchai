@@ -97,7 +97,15 @@ async function npFetch(path, { method = 'GET', token, body } = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// Auth token cached across warm invocations — login costs ~1-2s of the 10s
+// function budget, and the bulk-ship flow calls this function once per batch.
+let _npTokenCache = { token: null, at: 0 };
+const NP_TOKEN_TTL_MS = 10 * 60 * 1000;
+
 async function npAuthenticate() {
+  if (_npTokenCache.token && Date.now() - _npTokenCache.at < NP_TOKEN_TTL_MS) {
+    return _npTokenCache.token;
+  }
   const email    = process.env.NIMBUSPOST_EMAIL;
   const password = process.env.NIMBUSPOST_PASSWORD;
   if (!email || !password) throw new Error('NIMBUSPOST_EMAIL / NIMBUSPOST_PASSWORD env vars not set');
@@ -109,6 +117,7 @@ async function npAuthenticate() {
   // Response: { status: true, data: "JWT_TOKEN_STRING" }
   const token = data.data || data.token;
   if (!ok || !token) throw new Error(`NimbusPost login failed: ${JSON.stringify(data)}`);
+  _npTokenCache = { token, at: Date.now() };
   return token;
 }
 
