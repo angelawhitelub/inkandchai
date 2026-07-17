@@ -98,36 +98,23 @@ async function npAuthenticate() {
 // Confirmed endpoints from docs: /users/login, /shipments, /shipments/cancel,
 // /shipments/manifest, /courier, /courier/serviceability, /ndr
 async function npTrackBatch(token, awbs) {
-  const attempts = [
-    // Partners API most likely pattern
-    { path: '/shipments/track', body: { awb_numbers: awbs } },
-    // GET with AWB as query (for single AWB) — try first AWB to probe
-    { path: `/shipments/${awbs[0]}`, body: null, method: 'GET' },
-    // Alternative POST formats
-    { path: '/courier/track', body: { awb_numbers: awbs } },
-    { path: '/courier/track', body: { awbs } },
-  ];
-
-  for (const attempt of attempts) {
-    const r = await npFetch(attempt.path, {
-      method: attempt.method || 'POST', token,
-      body: attempt.body,
-    });
-    console.log(`[NimbusPost Reconcile] ${attempt.method||'POST'} ${attempt.path} → ${r.status}`,
-      JSON.stringify(r.data).slice(0, 200));
-    if (r.ok && r.data && (r.data.data || r.data.status || r.data.awb_number || Array.isArray(r.data))) {
-      return r.data?.data || r.data;
+  // Documented Partners API bulk-tracking endpoint — up to 100 AWBs per call:
+  //   POST /v1/shipments/track/bulk  { awb: [...] }
+  //   → { status: true, data: [ { awb_number, status, history: [...] }, ... ] }
+  // (documenter.getpostman.com/view/9692837/TW6wHnoz → "Bulk Shipment Tracking")
+  const r = await npFetch('/shipments/track/bulk', { method: 'POST', token, body: { awb: awbs } });
+  console.log(`[NimbusPost Reconcile] POST /shipments/track/bulk (${awbs.length} AWBs) → ${r.status}`,
+    JSON.stringify(r.data).slice(0, 200));
+  if (r.ok && Array.isArray(r.data?.data)) {
+    // Key by AWB — the caller merges these maps and looks orders up by tracking_id.
+    const map = {};
+    for (const row of r.data.data) {
+      const awb = String(row?.awb_number || row?.awb || '').trim();
+      if (awb) map[awb] = row;
     }
+    return map;
   }
-
-  // All attempts failed — return debug info so admin can see responses
-  const last = await npFetch('/courier/serviceability', { method: 'GET', token });
-  throw new Error(
-    `NimbusPost tracking API not available. Auth is working (login succeeded). ` +
-    `The Partners API (documenter.getpostman.com/view/9692837/TW6wHnoz) does not expose a tracking endpoint. ` +
-    `Your orders will update automatically via the NimbusPost webhook as deliveries happen. ` +
-    `Serviceability check: ${last.status} ${JSON.stringify(last.data).slice(0,100)}`
-  );
+  throw new Error(`NimbusPost bulk tracking failed (HTTP ${r.status}): ${JSON.stringify(r.data).slice(0, 200)}`);
 }
 
 // Notification helpers live in ./utils/delivery-notifications (shared with the
