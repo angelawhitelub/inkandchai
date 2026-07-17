@@ -24,6 +24,7 @@ const crypto = require('crypto');
 
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 const TOKEN_VERSION = 'v1';
+const ADMIN_COOKIE_NAME = 'iac_admin_session';
 
 function getSigningSecret() {
   // Prefer a dedicated env var so rotating signing keys doesn't lock people
@@ -77,6 +78,31 @@ function verifyAdminToken(token) {
   return payload;
 }
 
+function parseCookies(header = '') {
+  return String(header || '').split(';').reduce((out, part) => {
+    const i = part.indexOf('=');
+    if (i < 0) return out;
+    const key = part.slice(0, i).trim();
+    const value = part.slice(i + 1).trim();
+    if (key) out[key] = value;
+    return out;
+  }, {});
+}
+
+function getAdminToken(event) {
+  const headers = event.headers || {};
+  const headerToken =
+    headers['x-admin-token'] || headers['X-Admin-Token'] ||
+    headers['x-admin-Token'] || '';
+  if (headerToken) return headerToken;
+  const cookies = parseCookies(headers.cookie || headers.Cookie || '');
+  return cookies[ADMIN_COOKIE_NAME] || '';
+}
+
+function getAdminPayload(event) {
+  return verifyAdminToken(getAdminToken(event));
+}
+
 function legacyKeyOk(sent) {
   const expected = process.env.ADMIN_SECRET || '';
   if (!expected || !sent) return false;
@@ -92,10 +118,7 @@ function legacyKeyOk(sent) {
  */
 function isAdminAuthed(event) {
   const headers = event.headers || {};
-  const token =
-    headers['x-admin-token'] || headers['X-Admin-Token'] ||
-    headers['x-admin-Token'] || '';
-  if (token && verifyAdminToken(token)) return true;
+  if (getAdminPayload(event)) return true;
   const key =
     headers['x-admin-key'] || headers['X-Admin-Key'] || '';
   return legacyKeyOk(key);
@@ -122,8 +145,11 @@ function requireAdmin(event, cors = {}) {
 
 module.exports = {
   TOKEN_TTL_MS,
+  ADMIN_COOKIE_NAME,
   signAdminToken,
   verifyAdminToken,
+  getAdminToken,
+  getAdminPayload,
   isAdminAuthed,
   requireAdmin,
   legacyKeyOk,
