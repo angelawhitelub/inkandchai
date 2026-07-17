@@ -2205,6 +2205,7 @@ function _drawTable() {
       <td>
         <span class="badge ${bc}">${esc((o.status||'pending').replace(/_/g,' '))}</span>
         ${o.cancellation_source === 'stale_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no courier movement for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · stale COD 7d</div>` : ''}
+        ${o.cancellation_source === 'no_awb_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no AWB assigned for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · no AWB 7d</div>` : ''}
         <br/>
         <select class="status-sel" onchange="updateStatus('${esc(o.id)}',this.value)">
           <option value="">Update status…</option>
@@ -4084,7 +4085,7 @@ async function syncNimbusAwbs(btn) {
     // Background function — Netlify returns 202 immediately, the sync keeps
     // running for up to 15 min (instead of timing the gateway out at 10s and
     // showing a scary "Unexpected token '<'" JSON-parse alert).
-    const res = await fetch('/.netlify/functions/nimbuspost-awb-sync-background', {
+    const res = await adminFetch('/.netlify/functions/nimbuspost-awb-sync-background', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),

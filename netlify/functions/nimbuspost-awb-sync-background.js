@@ -1,7 +1,7 @@
 /**
  * Netlify Function: nimbuspost-awb-sync
- * Scheduled: every 15 minutes (see netlify.toml)
- * Manual:    POST with X-Admin-Key header
+ * Invoked every 15 minutes by nimbuspost-awb-sync-scheduled.
+ * Manual: POST with authenticated admin headers.
  *
  * The Problem We're Solving:
  * Orders pushed to the NimbusPost panel WITHOUT an AWB (the "Push to NimbusPost
@@ -40,7 +40,7 @@ const UNSHIPPED_STATUSES = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pen
 
 const NP_MAX_PAGE   = 50;   // NimbusPost rejects page > 50
 const NP_SCAN_PAGES = 5;    // newest pages only — keeps total calls well under the function timeout
-const NOTIFY_LIMIT  = 60;   // cap notifications per run (safety)
+const NOTIFY_LIMIT  = 60;   // cap synced orders + notifications per run (safety)
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function normalizeOrderNumber(value) {
@@ -236,7 +236,8 @@ async function notifyShipped(order, awb, courier) {
     await sendWhatsApp({
       to: order.customer_phone,
       template: 'order_shipped',
-      params: [firstName, bookList, courier || 'Courier', awb, trackUrl],
+      // The approved Meta template currently has four body variables.
+      params: [firstName, courier || 'Courier', awb, trackUrl],
     }).catch(e => console.error('[awb-sync] shipped WhatsApp error:', e.message));
   }
 }
@@ -251,7 +252,7 @@ async function runSync() {
   });
 
   const { map: awbMap, diag } = await fetchNimbusAwbMap(apiKey);
-  const summary = { scanned: awbMap.size, matched: 0, synced: 0, notified: 0, errors: [], diag };
+  const summary = { scanned: awbMap.size, matched: 0, synced: 0, notified: 0, deferred: 0, errors: [], diag };
   if (!awbMap.size) return summary;
 
   // Our orders that are still unshipped and have no AWB yet (last 120 days).
@@ -272,6 +273,13 @@ async function runSync() {
     if (!hit || !hit.awb) continue;
     summary.matched++;
 
+    // Never sync an order without also sending its shipping notification. Any
+    // overflow remains AWB-less and is picked up by the next scheduled run.
+    if (summary.synced >= NOTIFY_LIMIT) {
+      summary.deferred++;
+      continue;
+    }
+
     try {
       const assignedAt = new Date().toISOString();
       const shipmentPaymentType = order.status === 'cod_pending'
@@ -287,14 +295,14 @@ async function runSync() {
       };
       if (hit.courier) update.courier_name = hit.courier;
 
-      await supabase.from('orders').update(update).eq('id', order.id);
+      const saved = await supabase.from('orders').update(update).eq('id', order.id).select('id');
+      if (saved.error) throw saved.error;
+      if (!saved.data?.length) throw new Error('Supabase update matched no order row');
       summary.synced++;
       Object.assign(order, update);
 
-      if (summary.notified < NOTIFY_LIMIT) {
-        await notifyShipped(order, hit.awb, hit.courier);
-        summary.notified++;
-      }
+      await notifyShipped(order, hit.awb, hit.courier);
+      summary.notified++;
     } catch (err) {
       summary.errors.push(`${order.razorpay_order_id || order.id}: ${String(err.message || err).slice(0, 180)}`);
     }
@@ -304,26 +312,21 @@ async function runSync() {
   return summary;
 }
 
-// ── Handler (scheduled + manual) ─────────────────────────────────────────────
+// ── Background worker handler ────────────────────────────────────────────────
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
-
-  // Manual trigger from the admin panel
-  if (event.httpMethod === 'POST') {
-  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
-    try {
-      const summary = await runSync();
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, summary }) };
-    } catch (err) {
-      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
-    }
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
+  const adminBlock = requireAdmin(event, CORS); if (adminBlock) return adminBlock;
 
-  // Scheduled invocation (no HTTP auth)
   try {
-    await runSync();
+    const summary = await runSync();
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, summary }) };
   } catch (err) {
-    console.error('[awb-sync] scheduled run failed:', err.message);
+    console.error('[awb-sync] worker failed:', err.message);
+    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
-  return { statusCode: 200, headers: CORS, body: 'OK' };
 };
+
+exports._test = { normalizeOrderNumber, orderRowsFromResponse, awbFromRow, orderNumberFromRow, collectRows };

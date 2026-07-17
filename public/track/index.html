@@ -341,8 +341,11 @@ async function submitMissingReport(btn) {
     if (!res.ok || !data.success) throw new Error(data.error || 'Could not submit your report.');
     const section = document.getElementById('reportSection');
     if (section) {
+      const replNote = data.replacement_order_id
+        ? `📦 A <b>free replacement order ${esc(data.replacement_order_id)}</b> has been created for you — it ships at no charge and you'll get tracking once dispatched.`
+        : `You'll get a confirmation by email &amp; WhatsApp, and our team will reach out to send the missing ${missing.length > 1 ? 'books' : 'book'} or refund you.`;
       section.innerHTML = `<div class="r-section-h">Missing a book?</div>
-        <div class="r-row" style="color:#6dbf6d;font-size:0.82rem;line-height:1.6;">✓ Thanks — we've noted that ${missing.length > 1 ? 'these books were' : 'this book was'} missing:<br/><b>${missing.map(esc).join(', ')}</b><br/>You'll get a confirmation by email &amp; WhatsApp, and our team will reach out to send the missing ${missing.length > 1 ? 'books' : 'book'} or refund you.</div>`;
+        <div class="r-row" style="color:#6dbf6d;font-size:0.82rem;line-height:1.6;">✓ Thanks — we've noted that ${missing.length > 1 ? 'these books were' : 'this book was'} missing:<br/><b>${missing.map(esc).join(', ')}</b><br/>${replNote}</div>`;
     }
   } catch (e) {
     msg.style.display = ''; msg.style.color = '#e05050';

@@ -1,12 +1,11 @@
 /**
- * Netlify scheduled function: cancel pure-COD shipments whose AWB has shown no
- * physical movement for seven full days. Prepaid and partial-COD orders are
- * fail-closed and never eligible.
+ * Pure-COD seven-day cancellation sweep for orders that never received an AWB.
+ * Once an AWB exists, lack of courier movement must never auto-cancel an order.
+ * Prepaid and partial-COD orders are fail-closed and never eligible.
  */
 
-const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { cancelNimbusShipment, inspectNimbusOrder } = require('./utils/nimbuspost-cancel');
+const { cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
 const { sendEmail } = require('./utils/email');
@@ -36,7 +35,7 @@ async function notifyCancellationFailure(order, error) {
     subject: `URGENT: NimbusPost cancellation failed - ${displayId(order)}`,
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;">
       <h2 style="color:#b42318;">NimbusPost cancellation needs attention</h2>
-      <p>The stale COD order <strong>${displayId(order)}</strong> is eligible for automatic cancellation, but NimbusPost did not accept the cancellation.</p>
+      <p>The COD order <strong>${displayId(order)}</strong> is eligible for automatic cancellation, but NimbusPost did not accept the cancellation.</p>
       <p><strong>AWB:</strong> ${order.tracking_id || '-'}<br><strong>Error:</strong> ${String(error || 'Unknown error')}</p>
       <p>The admin order was left unchanged so it can be retried automatically. Please cancel the AWB manually if it is still visible in NimbusPost.</p>
     </div>`,
@@ -46,65 +45,47 @@ async function notifyCancellationFailure(order, error) {
 async function runSweep(supabase, { dryRun = false } = {}) {
   const cutoff = new Date(Date.now() - THRESHOLD_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const summary = {
-    candidates: 0,
-    eligible_cod: 0,
-    cancelled: 0,
-    skipped_not_cod: 0,
-    skipped_moved: 0,
-    skipped_unverified: 0,
-    skipped_race: 0,
-    nimbuspost_failed: 0,
-    db_failed: 0,
+    no_awb_candidates: 0,
+    no_awb_eligible_cod: 0,
+    no_awb_cancelled: 0,
+    no_awb_skipped_not_cod: 0,
+    no_awb_skipped_recent_push: 0,
+    no_awb_skipped_race: 0,
+    no_awb_nimbuspost_failed: 0,
+    no_awb_db_failed: 0,
     examples: [],
   };
 
-  const { data: orders, error } = await supabase
+  // Path 1: pure-COD orders that still have no AWB after seven full days.
+  // `created_at` is the fallback clock; if the order was pushed to NimbusPost
+  // later, give it a fresh seven-day window from `nimbus_pushed_at`.
+  const { data: noAwbOrders, error: noAwbError } = await supabase
     .from('orders')
     .select('*')
     .or('source.is.null,source.neq.paperbound')
-    .eq('status', 'shipped')
-    .not('tracking_id', 'is', null)
-    .not('awb_assigned_at', 'is', null)
-    .lte('awb_assigned_at', cutoff)
-    .is('shipment_moved_at', null)
+    .in('status', ['cod_pending', 'cod_awaiting_confirmation'])
+    .is('tracking_id', null)
+    .lte('created_at', cutoff)
     .is('auto_cancelled_at', null)
     .is('auto_cancel_claimed_at', null)
-    .order('awb_assigned_at', { ascending: true })
+    .order('created_at', { ascending: true })
     .limit(MAX_PER_RUN);
-  if (error) throw new Error(`Candidate query failed (run sql/orders_cod_auto_cancel.sql first): ${error.message}`);
+  if (noAwbError) throw new Error(`No-AWB candidate query failed (run sql/orders_cod_auto_cancel.sql first): ${noAwbError.message}`);
 
-  summary.candidates = orders?.length || 0;
-  for (const order of orders || []) {
+  summary.no_awb_candidates = noAwbOrders?.length || 0;
+  for (const order of noAwbOrders || []) {
     if (!isDefinitelyCod(order)) {
-      summary.skipped_not_cod++;
+      summary.no_awb_skipped_not_cod++;
       continue;
     }
-    summary.eligible_cod++;
+    const waitStartedAt = new Date(order.nimbus_pushed_at || order.created_at).getTime();
+    if (!Number.isFinite(waitStartedAt) || waitStartedAt > new Date(cutoff).getTime()) {
+      summary.no_awb_skipped_recent_push++;
+      continue;
+    }
+    summary.no_awb_eligible_cod++;
     if (dryRun) {
-      if (summary.examples.length < 10) summary.examples.push({ order_id: displayId(order), awb: order.tracking_id });
-      continue;
-    }
-
-    // Webhooks can occasionally be delayed. Confirm the current panel state
-    // before cancelling so a genuinely picked-up parcel is never cancelled.
-    const inspection = await inspectNimbusOrder(displayId(order));
-    if (inspection.moved) {
-      summary.skipped_moved++;
-      await supabase.from('orders').update({
-        shipment_moved_at: new Date().toISOString(),
-        last_nimbuspost_status: inspection.status || 'movement confirmed by panel',
-        last_nimbuspost_event_at: new Date().toISOString(),
-      }).eq('id', order.id);
-      continue;
-    }
-    if (!inspection.ok || !inspection.found || !inspection.prePickup) {
-      summary.skipped_unverified++;
-      const verifyError = `Live NimbusPost state could not be verified as pre-pickup: ${inspection.status || inspection.error || 'unknown status'}`;
-      await notifyCancellationFailure(order, verifyError);
-      await supabase.from('orders').update({
-        auto_cancel_last_error_at: new Date().toISOString(),
-        auto_cancel_last_error: verifyError.slice(0, 1000),
-      }).eq('id', order.id);
+      if (summary.examples.length < 10) summary.examples.push({ order_id: displayId(order), awb: null, type: 'no_awb' });
       continue;
     }
 
@@ -113,44 +94,43 @@ async function runSweep(supabase, { dryRun = false } = {}) {
       .from('orders')
       .update({ auto_cancel_claimed_at: claimedAt })
       .eq('id', order.id)
-      .eq('status', 'shipped')
-      .is('shipment_moved_at', null)
+      .in('status', ['cod_pending', 'cod_awaiting_confirmation'])
+      .is('tracking_id', null)
       .is('auto_cancel_claimed_at', null)
       .select('id');
     if (claim.error || !claim.data?.length) {
-      summary.skipped_race++;
+      summary.no_awb_skipped_race++;
       continue;
     }
 
-    const np = await cancelNimbusShipment(order.tracking_id);
+    // Confirmed panel pushes are cancelled upstream by NimbusPost's internal
+    // order id. Orders never pushed (including unconfirmed high-value COD) have
+    // nothing upstream to cancel.
+    let np = { ok: true, notRequired: true };
+    if (order.nimbus_pushed_at) np = await cancelNimbusOrder(displayId(order));
     if (!np.ok) {
-      summary.nimbuspost_failed++;
+      summary.no_awb_nimbuspost_failed++;
       await notifyCancellationFailure(order, np.error);
-      await supabase.from('orders').update({
-        auto_cancel_claimed_at: null,
-        auto_cancel_last_error_at: new Date().toISOString(),
-        auto_cancel_last_error: String(np.error || 'NimbusPost cancellation failed').slice(0, 1000),
-      }).eq('id', order.id);
-      continue;
     }
 
     const cancelledAt = new Date().toISOString();
+    const npError = np.ok ? null : `NimbusPost panel cancellation failed: ${np.error || 'unknown error'}`.slice(0, 1000);
     const update = await supabase.from('orders').update({
       status: 'cancelled',
       auto_cancel_claimed_at: null,
       auto_cancelled_at: cancelledAt,
-      cancellation_source: 'stale_cod_7_day',
+      cancellation_source: 'no_awb_cod_7_day',
       cancellation_reason: CUSTOMER_REASON,
-      auto_cancel_last_error: null,
-    }).eq('id', order.id);
-    if (update.error) {
-      summary.db_failed++;
-      await notifyCancellationFailure(order, `NimbusPost was cancelled, but admin update failed: ${update.error.message}`);
-      await supabase.from('orders').update({
-        auto_cancel_claimed_at: null,
-        auto_cancel_last_error_at: new Date().toISOString(),
-        auto_cancel_last_error: `Admin update failed after NimbusPost cancellation: ${update.error.message}`.slice(0, 1000),
-      }).eq('id', order.id);
+      auto_cancel_last_error_at: np.ok ? null : cancelledAt,
+      auto_cancel_last_error: npError,
+    })
+      .eq('id', order.id)
+      .in('status', ['cod_pending', 'cod_awaiting_confirmation'])
+      .is('tracking_id', null)
+      .select('id');
+    if (update.error || !update.data?.length) {
+      summary.no_awb_db_failed++;
+      await supabase.from('orders').update({ auto_cancel_claimed_at: null }).eq('id', order.id);
       continue;
     }
 
@@ -159,8 +139,8 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     if (order.customer_phone) {
       await sendText(order.customer_phone, `Your Ink & Chai order ${displayId(order)} was cancelled because the book was out of stock with us. We are sorry for the inconvenience.`);
     }
-    summary.cancelled++;
-    if (summary.examples.length < 10) summary.examples.push({ order_id: displayId(order), awb: order.tracking_id });
+    summary.no_awb_cancelled++;
+    if (summary.examples.length < 10) summary.examples.push({ order_id: displayId(order), awb: null, type: 'no_awb' });
   }
 
   return summary;
@@ -168,26 +148,34 @@ async function runSweep(supabase, { dryRun = false } = {}) {
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
-  let dryRun = false;
   if (event.httpMethod === 'POST') {
     const adminBlock = requireAdmin(event, CORS);
     if (adminBlock) return adminBlock;
-    try { dryRun = !!JSON.parse(event.body || '{}').dry_run; } catch {}
   } else if (event.httpMethod) {
     // Netlify's scheduler invokes without an HTTP method. Reject ordinary URL
     // requests so a public GET can never start a cancellation sweep.
     return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
+  const secret = process.env.ADMIN_SECRET;
+  const site = String(process.env.SITE_URL || process.env.URL || 'https://inkandchai.in').replace(/\/$/, '');
+  if (!secret) return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Scheduler auth not configured' }) };
+
+  let body = '{}';
+  if (event.httpMethod === 'POST') {
+    try { body = JSON.stringify({ dry_run: !!JSON.parse(event.body || '{}').dry_run }); } catch {}
+  }
   try {
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false },
+    const response = await fetch(`${site}/.netlify/functions/auto-cancel-stale-cod-background`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': secret },
+      body,
     });
-    const summary = await runSweep(supabase, { dryRun });
-    console.log('[stale-cod]', JSON.stringify(summary));
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, dry_run: dryRun, summary }) };
+    if (!response.ok && response.status !== 202) throw new Error(`worker enqueue returned ${response.status}`);
+    console.log(`[stale-cod-scheduler] worker enqueued (${response.status})`);
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ enqueued: true }) };
   } catch (error) {
-    console.error('[stale-cod] sweep failed:', error.message);
+    console.error('[stale-cod-scheduler] failed:', error.message);
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: error.message }) };
   }
 };

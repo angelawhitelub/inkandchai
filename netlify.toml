@@ -22,18 +22,15 @@
 [functions."auto-mark-delivered"]
   schedule = "0 4 * * *"
 
-# Cancel pure-COD AWBs that remain booked/pre-pickup for seven full days.
-# Runs hourly; performs a live NimbusPost state check and excludes every prepaid
-# or partial-COD order before cancelling in NimbusPost + admin and notifying both.
+# Cancel pure-COD orders only when no AWB has been assigned for seven days.
+# Orders that already have an AWB are never cancelled for lack of movement.
+# Prepaid and partial-COD orders are always excluded.
 [functions."auto-cancel-stale-cod"]
   schedule = "15 * * * *"
 
-# Backfill AWBs assigned inside the NimbusPost panel back onto our orders.
-# Flips matched orders to "shipped" and notifies the customer. Runs every 15 min.
-# Suffix `-background` gives us a 15-minute timeout (vs 10s for sync functions)
-# — the loop over notifications regularly blew past the gateway timeout, leaving
-# the admin SPA with an HTML error page even though the work was completing.
-[functions."nimbuspost-awb-sync-background"]
+# Backfill AWBs assigned inside NimbusPost every 15 minutes. This short
+# scheduled function securely enqueues the separate background worker.
+[functions."nimbuspost-awb-sync-scheduled"]
   schedule = "*/15 * * * *"
 
 # Re-check + retry failed PhonePe refunds every four hours. This short scheduled

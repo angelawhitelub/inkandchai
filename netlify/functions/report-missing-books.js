@@ -35,10 +35,86 @@ const REPORTABLE = new Set(['shipped', 'out_for_delivery', 'delivered', 'rto', '
 const orderId = (o) => o.razorpay_order_id || o.id;
 const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
 
-function missingEmailHtml(order, missing) {
+/**
+ * Auto-create a FREE replacement order for just the missing book(s) — same
+ * conventions as request-replacement.js (status replacement_pending, source
+ * 'replacement', ₹0, `_replacement` meta on the first item) so it flows into
+ * the existing unshipped list / NimbusPost push / admin replacement tooling.
+ * Guard: at most ONE replacement per original order. Returns the new order id
+ * or null (never throws — the report itself must still succeed).
+ */
+async function createMissingReplacement(supabase, order, missingItems) {
+  try {
+    // One replacement per original — matches request-replacement's abuse guard.
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('razorpay_order_id')
+      .eq('source', 'replacement')
+      .eq('cart_items->0->_replacement->>original_order_id', String(order.razorpay_order_id || order.id))
+      .limit(1)
+      .maybeSingle();
+    if (existing) return { id: existing.razorpay_order_id, existed: true };
+
+    const now = new Date();
+    const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const randPart = Array.from({ length: 5 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+    const origIsCW = /^IC-CW-/i.test(String(order.razorpay_order_id || ''));
+    const replId = origIsCW ? `IC-R-CW-${datePart}-${randPart}` : `IC-R-${datePart}-${randPart}`;
+
+    // Cart = ONLY the missing books (fresh copies, without the _missing flags).
+    const cart = missingItems.map(({ _missing, _missing_at, ...it }) => ({ ...it }));
+    cart[0]._replacement = {
+      original_order_id: order.razorpay_order_id || order.id,
+      reason: 'missing_item',
+      reason_label: 'Item missing from package',
+      note: 'Auto-created from the customer\'s missing-book report.',
+      requested_at: now.toISOString(),
+    };
+
+    const { error } = await supabase.from('orders').insert({
+      razorpay_order_id:   replId,
+      razorpay_payment_id: null,
+      amount_paise:        0,                       // free reshipment
+      status:              'replacement_pending',
+      customer_name:       order.customer_name || '',
+      customer_email:      order.customer_email || '',
+      customer_phone:      order.customer_phone || '',
+      customer_address:    order.customer_address || '',
+      cart_items:          cart,
+      ...(order.user_id ? { user_id: order.user_id } : {}),
+      source:              'replacement',
+    });
+    if (error) throw error;
+    return { id: replId, existed: false };
+  } catch (e) {
+    console.error('[report-missing-books] replacement create failed:', e.message);
+    return null;
+  }
+}
+
+function missingEmailHtml(order, missing, replId) {
   const first = String(order.customer_name || 'there').split(' ')[0];
   const rows = missing.map(t => `
     <tr><td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;color:#f0e8d8;">📕 ${t}</td></tr>`).join('');
+  const nextStep = replId
+    ? `
+      <div style="margin:18px 0;padding:16px;background:#152315;border-left:3px solid #6dbf6d;">
+        <p style="color:#f0e8d8;margin:0 0 6px;font-size:15px;">✅ <strong>Replacement created — nothing to pay.</strong></p>
+        <p style="color:#a09080;margin:0;line-height:1.8;">
+          We've automatically created a <strong style="color:#c9a84c;">free replacement order ${replId}</strong>
+          for the missing ${missing.length > 1 ? 'books' : 'book'}. It ships at no charge and we'll send you
+          tracking details as soon as it's dispatched.
+        </p>
+      </div>
+      <p style="color:#a09080;line-height:1.8;margin:14px 0;">
+        Prefer a refund instead? Just reply to this email or message us on WhatsApp and we'll switch it.
+      </p>`
+    : `
+      <p style="color:#a09080;line-height:1.8;margin:14px 0;">
+        Our team has been alerted and will reach out shortly. You won't be charged for anything you
+        didn't receive — we'll send the missing ${missing.length > 1 ? 'books' : 'book'} or issue a
+        refund, whichever you prefer. Just reply to this email or message us on WhatsApp.
+      </p>`;
   return `
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
       <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
@@ -52,19 +128,18 @@ function missingEmailHtml(order, missing) {
       <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:15px;background:#1c1916;">
         <tbody>${rows}</tbody>
       </table>
-      <p style="color:#a09080;line-height:1.8;margin:14px 0;">
-        Our team has been alerted and will reach out shortly. You won't be charged for anything you
-        didn't receive — we'll send the missing ${missing.length > 1 ? 'books' : 'book'} or issue a
-        refund, whichever you prefer. Just reply to this email or message us on WhatsApp.
-      </p>
+      ${nextStep}
       <p style="color:#a09080;font-size:13px;line-height:1.8;">Thank you for your patience — we'll make this right. 💛</p>
       <hr style="border:none;border-top:1px solid #2a2a2a;margin:32px 0;"/>
       <p style="color:#7a6330;font-size:11px;">Ink &amp; Chai &middot; support@inkandchai.in</p>
     </div>`;
 }
 
-function ownerMissingEmailHtml(order, missing) {
+function ownerMissingEmailHtml(order, missing, replId) {
   const rows = missing.map(t => `<li style="margin:4px 0;color:#f0e8d8;">${t}</li>`).join('');
+  const nextLine = replId
+    ? `<p style="color:#6dbf6d;font-size:14px;">✅ Replacement order <strong style="color:#c9a84c;">${replId}</strong> was created automatically (₹0, only the missing book${missing.length > 1 ? 's' : ''}). It's in the unshipped list — ship it from the Orders tab. The customer has been notified.</p>`
+    : `<p style="color:#a09080;font-size:13px;">Next: send a replacement (Replacement flow) or issue a refund from the admin panel. The customer has been emailed a confirmation.</p>`;
   return `
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
       <h1 style="color:#c9a84c;font-size:22px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
@@ -78,7 +153,7 @@ function ownerMissingEmailHtml(order, missing) {
       </table>
       <p style="color:#a09080;margin:14px 0 6px;">Missing book(s) the customer flagged:</p>
       <ul style="margin:0 0 16px;padding-left:20px;">${rows}</ul>
-      <p style="color:#a09080;font-size:13px;">Next: send a replacement (Replacement flow) or issue a refund from the admin panel. The customer has been emailed a confirmation.</p>
+      ${nextLine}
       <hr style="border:none;border-top:1px solid #2a2a2a;margin:32px 0;"/>
       <p style="color:#7a6330;font-size:11px;">Sent to the store owner &middot; inkandchai.in</p>
     </div>`;
@@ -154,7 +229,12 @@ exports.handler = async (event) => {
       console.error('[report-missing-books] flag update failed:', e.message);
     }
 
-    const result = { email: false, whatsapp: false, ownerEmail: false };
+    // ── Auto-create the FREE replacement order for the missing book(s) ───────
+    const missingItems = stampedItems.filter(it => it && it._missing);
+    const repl = await createMissingReplacement(supabase, order, missingItems);
+    const replId = repl?.id || null;
+
+    const result = { email: false, whatsapp: false, ownerEmail: false, replacement_order_id: replId, replacement_existed: !!repl?.existed };
     const first = String(order.customer_name || 'there').split(' ')[0];
     const missingList = valid.join(', ');
 
@@ -162,8 +242,10 @@ exports.handler = async (event) => {
     if (order.customer_email) {
       const em = await sendEmail({
         to: order.customer_email,
-        subject: `We've noted your incomplete order ${orderId(order)}`,
-        html: missingEmailHtml(order, valid),
+        subject: replId
+          ? `Replacement on the way — order ${replId}`
+          : `We've noted your incomplete order ${orderId(order)}`,
+        html: missingEmailHtml(order, valid, replId),
       });
       result.email = !!em?.ok;
     }
@@ -177,11 +259,21 @@ exports.handler = async (event) => {
       });
       if (wa?.ok) {
         result.whatsapp = true;
+        // Follow-up text with the replacement id (in-window after the template).
+        if (replId && !repl.existed) {
+          await sendText(
+            order.customer_phone,
+            `📦 Good news ${first} — we've created a free replacement order ${replId} for: ${missingList}. It ships at no charge and you'll get tracking as soon as it's dispatched.`
+          ).catch(() => {});
+        }
       } else {
         const txt = await sendText(
           order.customer_phone,
           `Hi ${first}, thanks for reporting that your Ink & Chai order ${orderId(order)} arrived incomplete. ` +
-          `Missing: ${missingList}. Our team will reach out — we'll send the missing book(s) or refund you. 💛`
+          `Missing: ${missingList}. ` +
+          (replId
+            ? `We've created a free replacement order ${replId} — it ships at no charge and you'll get tracking once dispatched. 💛`
+            : `Our team will reach out — we'll send the missing book(s) or refund you. 💛`)
         );
         result.whatsapp = !!txt?.ok;
         result.whatsapp_fallback = !!txt?.ok;
@@ -194,8 +286,10 @@ exports.handler = async (event) => {
       try {
         const sent = await sendEmail({
           to: ownerEmail,
-          subject: `📦 Customer reported incomplete order ${orderId(order)} — ${missingList}`,
-          html: ownerMissingEmailHtml(order, valid),
+          subject: replId
+            ? `📦 Incomplete order ${orderId(order)} → replacement ${replId} created — ${missingList}`
+            : `📦 Customer reported incomplete order ${orderId(order)} — ${missingList}`,
+          html: ownerMissingEmailHtml(order, valid, replId),
         });
         result.ownerEmail = !!sent?.ok;
       } catch (e) {
@@ -206,7 +300,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ success: true, missing: valid, result }),
+      body: JSON.stringify({ success: true, missing: valid, replacement_order_id: replId, result }),
     };
   } catch (err) {
     console.error('report-missing-books error:', err.message);

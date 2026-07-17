@@ -2006,7 +2006,9 @@
                        padding:0.28rem 0.7rem;border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;">✓ Reported</span>
           <span style="font-size:0.62rem;color:#a09080;margin-left:0.5rem;line-height:1.5;">
             Thanks — we've noted <strong style="color:#c9a84c;">${escHtml((json.missing || missing).join(', '))}</strong> as missing.
-            You'll get a confirmation by email &amp; WhatsApp and our team will reach out.
+            ${json.replacement_order_id
+              ? `📦 A free replacement order <strong style="color:#c9a84c;">${escHtml(json.replacement_order_id)}</strong> has been created — it ships at no charge.`
+              : `You'll get a confirmation by email &amp; WhatsApp and our team will reach out.`}
           </span>
         </div>`;
     } catch (err) {
