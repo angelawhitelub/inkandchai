@@ -1509,6 +1509,7 @@ let adminTokenExp = 0;    // absolute ms epoch when the token expires
 let adminCookieSession = false; // HttpOnly remembered-browser session
 let adminIdleTimer = null;
 const ADMIN_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;  // mirrors server-side default
+const MAX_TIMER_MS       = 2_147_483_647;          // browser setTimeout maximum (~24.8 days)
 const ADMIN_TOKEN_KEY    = 'iac_admin_session_v1';
 
 // Restore a non-expired session from sessionStorage so navigating tabs /
@@ -1538,9 +1539,15 @@ function scheduleAutoLogout() {
   const ms = Math.max(0, adminTokenExp - Date.now());
   if (!ms) return;
   adminIdleTimer = setTimeout(() => {
-    alert('Admin session expired — please sign in again.');
-    logout();
-  }, ms);
+    // Remembered sessions can last 30 days, longer than the browser timer limit.
+    // Recheck the real expiry before logging out, then schedule the remainder.
+    if (Date.now() >= adminTokenExp) {
+      alert('Admin session expired — please sign in again.');
+      logout();
+      return;
+    }
+    scheduleAutoLogout();
+  }, Math.min(ms, MAX_TIMER_MS));
 }
 
 // Centralised authed fetch — adds X-Admin-Token (preferred) + X-Admin-Key
