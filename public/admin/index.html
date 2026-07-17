@@ -2774,60 +2774,32 @@ async function npBulkShip(btn) {
 
   const ids = unshipped.map(o => o.razorpay_order_id || o.id);
 
-  // Show progress
-  const progressMsg = document.createElement('div');
-  progressMsg.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#1c1916;border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:1rem 1.5rem;font-size:0.75rem;z-index:9999;font-family:Manrope,sans-serif;letter-spacing:0.08em;';
-  progressMsg.textContent = `⏳ Creating 0 of ${ids.length} NimbusPost shipments…`;
-  document.body.appendChild(progressMsg);
-
+  // Background function (15-min limit) — the sync endpoint hits Netlify's 10s
+  // gateway ceiling whenever NimbusPost's API is slow, no matter the batch size.
+  // Netlify replies 202 immediately; each AWB is written to the DB as it's
+  // created, and a WhatsApp summary is sent to the owner when the run finishes.
   try {
-    const shipped = [];
-    const skipped = [];
-    const failures = [];
-    // Small batches: each order needs ~2 NimbusPost API calls and the function
-    // has a hard 10s limit — 20 per call was guaranteed to 502. A failed batch
-    // no longer aborts the run; its orders are reported and the loop continues.
-    const batchSize = 3;
-    for (let i = 0; i < ids.length; i += batchSize) {
-      const batch = ids.slice(i, i + batchSize);
-      try {
-        const data = await _npCall({ order_ids: batch });
-        shipped.push(...(data.shipped || []));
-        skipped.push(...(data.skipped || []));
-        failures.push(...(data.failures || []));
-      } catch (err) {
-        batch.forEach(id => failures.push({ order_id: id, error: err.message }));
-      }
-      progressMsg.textContent = `⏳ Processed ${Math.min(i + batch.length, ids.length)} of ${ids.length} — ✅ ${shipped.length} shipped · ❌ ${failures.length} failed…`;
+    const res = await fetch('/.netlify/functions/nimbuspost-ship-bulk-background', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ order_ids: ids }),
+    });
+    if (res.status !== 202 && !res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { const d = await res.json(); if (d?.error) detail = d.error; } catch {}
+      throw new Error(detail);
     }
-    document.body.removeChild(progressMsg);
-
-    // Update local cache
-    for (const s of shipped) {
-      const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === s.order_id);
-      if (ord) {
-        ord.status       = 'shipped';
-        ord.tracking_id  = s.awb;
-        ord.courier_name = s.courier_name;
-        ord.tracking_url = s.tracking_url;
-      }
-    }
-    updateStats();
-    applyFilters();
-
-    let msg = `✅ NimbusPost shipment creation complete!\n\n`;
-    if (shipped.length)  msg += `Created in NimbusPost: ${shipped.length}\n`;
-    if (skipped.length)  msg += `Skipped (already had AWB): ${skipped.length}\n`;
-    if (failures.length) {
-      msg += `\n❌ Failed (${failures.length}):\n`;
-      failures.slice(0, 5).forEach(f => { msg += `• ${f.order_id}: ${f.error}\n`; });
-      if (failures.length > 5) msg += `… and ${failures.length - 5} more\n`;
-    }
-    msg += `\nOpen the NimbusPost panel to manage labels, pickup and dispatch.`;
-    alert(msg);
+    alert(
+      `🚀 AWB creation started in the background for ${ids.length} order(s).\n\n` +
+      `It keeps running even if you close this tab (up to ~15 min). Couriers are assigned by your priority ladder; ` +
+      `orders no preferred courier serves are left unshipped.\n\n` +
+      `You'll get a WhatsApp summary when it finishes — or click "↻ Refresh" in a few minutes to see the AWBs.`
+    );
+    // Soft auto-refresh so shipped orders start appearing without manual reloads.
+    setTimeout(() => { try { fetchOrders(true); } catch {} }, 90 * 1000);
+    setTimeout(() => { try { fetchOrders(true); } catch {} }, 4 * 60 * 1000);
   } catch (err) {
-    if (progressMsg.isConnected) document.body.removeChild(progressMsg);
-    alert('NimbusPost shipment creation failed: ' + err.message);
+    alert('Could not start bulk AWB creation:\n\n' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = oldText; }
   }

@@ -119,6 +119,20 @@ let _npTokenCache = { token: null, at: 0 };
 const NP_TOKEN_TTL_MS = 10 * 60 * 1000;
 let _npWarehouseCache = null;   // warehouse id survives warm invocations
 
+async function resolveWarehouseId(token) {
+  let warehouseId = process.env.NIMBUSPOST_WAREHOUSE_ID
+    ? parseInt(process.env.NIMBUSPOST_WAREHOUSE_ID, 10)
+    : _npWarehouseCache;
+  if (!warehouseId) {
+    const warehouses = await npGetWarehouses(token);
+    if (!warehouses.length) throw new Error('No warehouses found in NimbusPost. Please add one at ship.nimbuspost.com → Settings → Warehouses.');
+    warehouseId = warehouses[0].id || warehouses[0].warehouse_id;
+    _npWarehouseCache = warehouseId;
+    console.log(`Auto-selected warehouse: ${warehouseId} (${warehouses[0].name || ''})`);
+  }
+  return warehouseId;
+}
+
 async function npAuthenticate() {
   if (_npTokenCache.token && Date.now() - _npTokenCache.at < NP_TOKEN_TTL_MS) {
     return _npTokenCache.token;
@@ -363,17 +377,7 @@ exports.handler = async (event) => {
 
     // ── Resolve warehouse (cached across warm invocations — the lookup is
     //    another NP round-trip out of the 10s budget) ───────────────────────
-    let warehouseId = process.env.NIMBUSPOST_WAREHOUSE_ID
-      ? parseInt(process.env.NIMBUSPOST_WAREHOUSE_ID, 10)
-      : _npWarehouseCache;
-
-    if (!warehouseId) {
-      const warehouses = await npGetWarehouses(token);
-      if (!warehouses.length) throw new Error('No warehouses found in NimbusPost. Please add one at ship.nimbuspost.com → Settings → Warehouses.');
-      warehouseId = warehouses[0].id || warehouses[0].warehouse_id;
-      _npWarehouseCache = warehouseId;
-      console.log(`Auto-selected warehouse: ${warehouseId} (${warehouses[0].name || ''})`);
-    }
+    const warehouseId = await resolveWarehouseId(token);
 
     // ── Serviceability preview (no shipment creation) ───────────────────
     if (action === 'serviceability') {
@@ -426,3 +430,9 @@ exports.handler = async (event) => {
     return json(500, { error: err.message });
   }
 };
+
+// Internals shared with nimbuspost-ship-bulk-background (which runs the same
+// per-order pipeline without the 10s synchronous-function limit).
+module.exports.shipOrder          = shipOrder;
+module.exports.npAuthenticate     = npAuthenticate;
+module.exports.resolveWarehouseId = resolveWarehouseId;
