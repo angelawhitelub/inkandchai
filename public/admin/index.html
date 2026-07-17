@@ -4,41 +4,41 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Admin — Ink &amp; Chai</title>
-<meta name="admin-build" content="admin-readable-type-v2"/>
+<meta name="admin-build" content="admin-pill-ui-v2"/>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>
 <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,500&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <!-- SheetJS for Excel export -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 :root{--bg:#f7f3eb;--bg2:#fffdf8;--bg3:#ffffff;--gold:#8a6a1f;--gold-light:#a98224;--gold-dim:#9b8858;--cream:#241b13;--cream-dim:#6f6255;--white:#100d09;--border:rgba(138,106,31,0.24);--green:#237a3b;--orange:#b56b12;--red:#c93636;--shadow:0 14px 36px rgba(70,52,24,0.08)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh}
+body{background:var(--bg);color:var(--cream);font-family:'Manrope',sans-serif;font-weight:300;min-height:100vh}
 /* Loading bar */
 #loadingBar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--gold),var(--gold-light));width:0%;transition:width 0.3s ease;z-index:9999;pointer-events:none;}
 #loadingBar.done{opacity:0;transition:width 0.3s ease,opacity 0.5s ease 0.3s;}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;background:rgba(255,253,248,0.97);border-bottom:1px solid var(--border);box-shadow:var(--shadow);flex-wrap:wrap;gap:0.8rem;}
-.logo{display:inline-flex;align-items:center;gap:0.6rem;font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:600;color:var(--gold);}
+.logo{display:inline-flex;align-items:center;gap:0.6rem;font-family:'DM Serif Display',serif;font-size:1.4rem;font-weight:600;color:var(--gold);}
 .logo img{height:34px;width:auto;display:block}
 .logo span{color:var(--cream);font-weight:300;font-style:italic}
 .nav-right{display:flex;gap:0.7rem;align-items:center;flex-wrap:wrap;}
 .chip{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.28rem 0.75rem;border:1px solid var(--border);color:var(--cream-dim);}
-.btn-gold{font-family:'Montserrat',sans-serif;font-size:0.72rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.65rem 1.5rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;}
+.btn-gold{font-family:'Manrope',sans-serif;font-size:0.72rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.65rem 1.5rem;background:var(--gold);color:var(--bg);border:none;cursor:pointer;font-weight:500;}
 .btn-gold:hover{background:var(--gold-light);}
 .btn-gold:disabled{opacity:0.5;cursor:not-allowed;}
-.btn-outline{font-family:'Montserrat',sans-serif;font-size:0.68rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.55rem 1.2rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;}
+.btn-outline{font-family:'Manrope',sans-serif;font-size:0.68rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.55rem 1.2rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;}
 .btn-outline:hover{background:var(--gold);color:var(--bg);}
-.btn-green{font-family:'Montserrat',sans-serif;font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.62rem 1.4rem;background:#eaf7ee;color:var(--green);border:1px solid rgba(35,122,59,0.35);cursor:pointer;font-weight:500;transition:all 0.2s;}
+.btn-green{font-family:'Manrope',sans-serif;font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.62rem 1.4rem;background:#eaf7ee;color:var(--green);border:1px solid rgba(35,122,59,0.35);cursor:pointer;font-weight:500;transition:all 0.2s;}
 .btn-green:hover{background:var(--green);color:#fff;}
 .btn-green:disabled{opacity:0.4;cursor:not-allowed;}
 
 /* Login */
 #loginPanel{max-width:420px;margin:8rem auto;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:2.4rem;}
-#loginPanel h2{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:var(--white);margin-bottom:1.5rem;}
+#loginPanel h2{font-family:'DM Serif Display',serif;font-size:1.7rem;font-weight:300;color:var(--white);margin-bottom:1.5rem;}
 .form-row{margin-bottom:1rem;}
 .form-row label{display:block;font-size:0.66rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.45rem;}
-.form-row input,.form-row textarea,.form-row select{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.88rem;outline:none;}
+.form-row input,.form-row textarea,.form-row select{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.75rem 1rem;font-family:'Manrope',sans-serif;font-size:0.88rem;outline:none;}
 .form-row textarea{min-height:130px;resize:vertical;line-height:1.6;}
 .form-row input:focus,.form-row textarea:focus,.form-row select:focus{border-color:rgba(201,168,76,0.5);}
 .err{font-size:0.7rem;color:var(--red);margin-top:0.6rem;}
@@ -46,7 +46,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2
 /* Dashboard — full width, larger text */
 main{width:100%;max-width:100%;margin:0;padding:1.6rem 2.4rem;box-sizing:border-box;}
 .dash-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:1.6rem;flex-wrap:wrap;gap:1rem;}
-h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color:var(--white);}
+h1{font-family:'DM Serif Display',serif;font-size:2.4rem;font-weight:300;color:var(--white);}
 .subtitle{font-size:0.82rem;color:var(--cream-dim);letter-spacing:0.06em;margin-top:0.25rem;}
 
 /* Stats */
@@ -58,49 +58,49 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:300;color
 .stat-card:hover{border-color:var(--gold-dim);}
 .stat-card.active{border-color:var(--gold);background:rgba(201,168,76,0.06);}
 .stat-label{font-size:0.66rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.5rem;}
-.stat-val{font-family:'Cormorant Garamond',serif;font-size:2.2rem;color:var(--gold);font-weight:400;line-height:1;}
+.stat-val{font-family:'DM Serif Display',serif;font-size:2.2rem;color:var(--gold);font-weight:400;line-height:1;}
 
 /* Toolbar */
 .toolbar{display:flex;gap:0.7rem;margin-bottom:1.2rem;flex-wrap:wrap;align-items:center;}
-.filter-btn{font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.45rem 1rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;white-space:nowrap;}
+.filter-btn{font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.45rem 1rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;white-space:nowrap;}
 .filter-btn.active,.filter-btn:hover{border-color:var(--gold-dim);color:var(--gold);background:rgba(201,168,76,0.07);}
-.search-box{background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.5rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.82rem;outline:none;min-width:260px;}
+.search-box{background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.5rem 1rem;font-family:'Manrope',sans-serif;font-size:0.82rem;outline:none;min-width:260px;}
 .search-box:focus{border-color:rgba(201,168,76,0.4);}
-input[type="date"]{background:var(--bg3);border:1px solid var(--border);color:var(--cream-dim);padding:0.45rem 0.8rem;font-family:'Montserrat',sans-serif;font-size:0.78rem;outline:none;color-scheme:light;}
+input[type="date"]{background:var(--bg3);border:1px solid var(--border);color:var(--cream-dim);padding:0.45rem 0.8rem;font-family:'Manrope',sans-serif;font-size:0.78rem;outline:none;color-scheme:light;}
 input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .date-sep{font-size:0.72rem;color:var(--gold-dim);padding:0 0.2rem;}
 
 /* Export bar */
 .export-bar{display:flex;gap:0.7rem;align-items:center;padding:0.9rem 1.2rem;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:1.2rem;flex-wrap:wrap;}
 .export-label{font-size:0.68rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold-dim);margin-right:0.4rem;}
-#exportCount{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--gold);}
+#exportCount{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--gold);}
 .focus-panel{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:#fff8e8;border:1px solid rgba(181,107,18,0.28);box-shadow:var(--shadow);padding:1rem 1.4rem;margin:-0.4rem 0 1.4rem;flex-wrap:wrap;}
-.focus-panel strong{font-family:'Cormorant Garamond',serif;font-size:1.35rem;color:var(--gold);}
+.focus-panel strong{font-family:'DM Serif Display',serif;font-size:1.35rem;color:var(--gold);}
 .focus-panel p{font-size:0.78rem;color:var(--cream-dim);line-height:1.55;margin-top:0.15rem;}
 .focus-actions{display:flex;gap:0.6rem;flex-wrap:wrap;}
 .admin-jumps{display:none;}
 /* Tab navigation */
 .admin-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin:-0.2rem 0 1.8rem;overflow-x:auto;scrollbar-width:none;}
 .admin-tabs::-webkit-scrollbar{display:none}
-.admin-tab{flex-shrink:0;padding:.75rem 1.6rem;font-family:'Montserrat',sans-serif;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;}
+.admin-tab{flex-shrink:0;padding:.75rem 1.6rem;font-family:'Manrope',sans-serif;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;}
 .admin-tab:hover{color:var(--cream);}
 .admin-tab.active{color:var(--gold);border-bottom-color:var(--gold);}
 .admin-section{display:none;}
 .admin-section.active{display:block;}
 .abandoned-panel{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1.2rem 1.5rem;margin:0 0 1.4rem;}
 .abandoned-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;}
-.abandoned-head h2{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:400;color:var(--white);}
+.abandoned-head h2{font-family:'DM Serif Display',serif;font-size:1.5rem;font-weight:400;color:var(--white);}
 .abandoned-head p{font-size:0.78rem;color:var(--cream-dim);line-height:1.6;margin-top:0.2rem;}
 .mini-table{width:100%;border-collapse:collapse;font-size:0.8rem;}
 .mini-table th,.mini-table td{padding:0.65rem 0.8rem;}
 .mini-table th{font-size:0.62rem;}
-.btn-danger{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.4rem 0.85rem;border:1px solid rgba(224,80,80,0.45);color:#c93636;background:#fff7f4;cursor:pointer;}
+.btn-danger{font-family:'Manrope',sans-serif;font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.4rem 0.85rem;border:1px solid rgba(224,80,80,0.45);color:#c93636;background:#fff7f4;cursor:pointer;}
 .btn-danger:hover{background:#c93636;color:#fff;border-color:#c93636;}
 .mini-actions{display:flex;gap:0.5rem;flex-wrap:wrap;}
 .lead-empty{font-size:0.82rem;color:var(--cream-dim);padding:1rem 0;}
 .product-panel{background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);padding:1.2rem 1.5rem;margin:0 0 1.4rem;}
 .product-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.9rem;}
-.product-head h2{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:400;color:var(--white);}
+.product-head h2{font-family:'DM Serif Display',serif;font-size:1.5rem;font-weight:400;color:var(--white);}
 .product-head p{font-size:0.78rem;color:var(--cream-dim);line-height:1.6;margin-top:0.2rem;}
 .product-grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(380px,1.6fr);gap:1.2rem;align-items:start;}
 .product-list{border:1px solid var(--border);background:var(--bg2);max-height:420px;overflow:auto;}
@@ -109,7 +109,7 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .product-row img{width:42px;height:58px;object-fit:cover;background:#eee;border:1px solid var(--border);}
 .product-row-title{font-size:0.82rem;color:var(--cream);line-height:1.35;}
 .product-row-meta{font-size:0.68rem;color:var(--cream-dim);margin-top:0.2rem;}
-.product-row-price{font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--gold);white-space:nowrap;}
+.product-row-price{font-family:'DM Serif Display',serif;font-size:1.1rem;color:var(--gold);white-space:nowrap;}
 .product-editor{border:1px solid var(--border);background:var(--bg2);padding:1.2rem;}
 .product-editor .form-row input{background:var(--bg3);}
 .product-editor-actions{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.8rem;}
@@ -160,26 +160,20 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .b-cancelled,.b-refunded{border-color:rgba(224,96,96,0.5);color:var(--red);}
 .b-confirmed{border-color:rgba(160,144,128,0.4);color:var(--cream-dim);}
 .b-out_for_delivery{border-color:rgba(70,120,210,0.5);color:#315fba;}
-.status-sel{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.32rem 0.6rem;font-family:'Montserrat',sans-serif;font-size:0.7rem;cursor:pointer;margin-top:0.4rem;}
+.status-sel{background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.32rem 0.6rem;font-family:'Manrope',sans-serif;font-size:0.7rem;cursor:pointer;margin-top:0.4rem;}
 .order-id{font-size:0.72rem;color:var(--gold-dim);}
 .pay-id{font-size:0.65rem;color:#4a3a1a;margin-top:0.15rem;}
 .cust-name{font-size:0.9rem;color:var(--cream);}
 .cust-sub{font-size:0.72rem;color:var(--cream-dim);margin-top:0.1rem;}
 .items-cell{font-size:0.75rem;color:var(--cream-dim);max-width:220px;}
 .items-cell div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:0.1rem;}
-.amount{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--gold);}
+.amount{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--gold);}
 .amount-sub{font-size:0.65rem;color:var(--cream-dim);line-height:1.5;margin-top:0.15rem;}
 .amount-sub strong{color:var(--gold-dim);font-weight:500;}
 .method-badge{font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--cream-dim);}
 .empty{text-align:center;padding:4rem;color:var(--cream-dim);font-size:0.9rem;}
-.load-more-btn{display:block;width:100%;margin-top:1.2rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
+.load-more-btn{display:block;width:100%;margin-top:1.2rem;font-family:'Manrope',sans-serif;font-size:0.72rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
 .load-more-btn:hover{background:var(--gold);color:var(--bg);}
-.orders-pagination{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;background:var(--bg3);border:1px solid var(--border);border-top:0;padding:0.75rem 1rem;box-shadow:var(--shadow);}
-.orders-pagination-info{font-size:0.68rem;color:var(--cream-dim);letter-spacing:0.05em;}
-.orders-pagination-actions{display:flex;align-items:center;gap:0.55rem;flex-wrap:wrap;}
-.orders-pagination-actions button,.orders-pagination-actions select{font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.45rem 0.75rem;border:1px solid var(--border);background:var(--bg2);color:var(--cream);cursor:pointer;}
-.orders-pagination-actions button:disabled{opacity:0.35;cursor:not-allowed;}
-.orders-pagination-actions select{padding-right:1.5rem;}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(201,168,76,0.3);border-top-color:var(--gold);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px;}
 .section-title{font-size:0.72rem;color:var(--cream-dim);letter-spacing:0.16em;text-transform:uppercase;align-self:center;margin-right:0.4rem;}
 .hint{font-size:0.74rem;color:var(--cream-dim);}
@@ -187,27 +181,19 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 
 /* Readability upgrade: larger text, stronger contrast, easier scanning */
 :root{
-  --bg:#f1f3f5;
-  --bg2:#f8f9fa;
-  --bg3:#ffffff;
-  --cream:#20252b;
-  --cream-dim:#4f5964;
-  --white:#111418;
-  --gold:#6d4c10;
-  --gold-light:#8a6419;
-  --gold-dim:#715d34;
-  --green:#176b35;
-  --orange:#9b5207;
-  --red:#b4232c;
-  --border:#cbd1d7;
-  --shadow:0 8px 24px rgba(28,35,43,0.08);
+  --cream:#1b130d;
+  --cream-dim:#514538;
+  --white:#0d0905;
+  --gold:#7a5815;
+  --gold-dim:#806a3a;
+  --border:rgba(122,88,21,0.32);
 }
-body{font-size:16px;font-weight:500;line-height:1.55;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
-nav{padding:1.1rem 2rem;background:#fff;border-bottom-color:#c6ccd2;}
+body{font-size:16px;font-weight:400;line-height:1.55;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+nav{padding:1.1rem 2rem;}
 .logo{font-size:1.65rem;}
-.logo span{font-size:0.82rem!important;color:var(--cream-dim)!important;font-weight:600;}
+.logo span{font-size:0.82rem!important;color:var(--cream-dim)!important;font-weight:500;}
 .chip,.section-title,.export-label,.stat-label,.form-row label,th{
-  font-weight:700;
+  font-weight:600;
   color:var(--gold);
 }
 .chip{font-size:0.68rem;padding:0.36rem 0.9rem;}
@@ -232,18 +218,16 @@ nav{padding:1.1rem 2rem;background:#fff;border-bottom-color:#c6ccd2;}
 .search-box{font-size:0.92rem;padding:0.62rem 0.95rem;min-width:280px;}
 input[type="date"]{font-size:0.88rem;padding:0.58rem 0.75rem;}
 h1{font-size:2.45rem;font-weight:400;color:var(--white);}
-.subtitle{font-size:0.9rem;color:var(--cream-dim);font-weight:600;}
-.stat-card{padding:1.45rem;background:#fff;border-color:#cbd1d7;box-shadow:0 5px 16px rgba(28,35,43,0.07);}
-.stat-card:hover{border-color:#987329;background:#fffdf6;}
-.stat-card.active{border:2px solid #8a6419;background:#fff8e7;padding:calc(1.45rem - 1px);}
-.stat-label{font-size:0.72rem;letter-spacing:0.13em;color:#5f4819;}
-.stat-val{font-size:2.5rem;color:#654708;font-weight:700;}
+.subtitle{font-size:0.86rem;color:var(--cream-dim);font-weight:500;}
+.stat-card{padding:1.45rem;background:#fffefa;}
+.stat-label{font-size:0.68rem;letter-spacing:0.15em;}
+.stat-val{font-size:2.35rem;color:#73530f;}
 .focus-panel strong,.product-head h2,.abandoned-head h2{font-size:1.65rem;color:var(--white);}
-.focus-panel p,.product-head p,.abandoned-head p,.hint,.lead-empty{font-size:0.86rem;color:var(--cream-dim);font-weight:600;}
+.focus-panel p,.product-head p,.abandoned-head p,.hint,.lead-empty{font-size:0.86rem;color:var(--cream-dim);font-weight:500;}
 .admin-jumps,.export-bar,.product-panel,.abandoned-panel,.tbl-wrap{border-color:rgba(122,88,21,0.34);}
 .mini-table,table{font-size:0.92rem;}
-th{font-size:0.7rem;letter-spacing:0.12em;padding:0.9rem 0.95rem;background:#eef1f4;}
-td{font-size:0.9rem;font-weight:500;padding:0.95rem;border-bottom-color:#d9dde1;}
+th{font-size:0.68rem;letter-spacing:0.13em;padding:0.9rem 0.95rem;background:#fff9ed;}
+td{font-size:0.9rem;padding:0.95rem;border-bottom-color:rgba(122,88,21,0.16);}
 tr:hover td{background:rgba(122,88,21,0.075);}
 .order-id{font-size:0.78rem;color:#6f571f;font-weight:600;}
 .pay-id{font-size:0.72rem;color:#514538;font-weight:500;}
@@ -260,15 +244,6 @@ tr:hover td{background:rgba(122,88,21,0.075);}
 .product-row-price{font-size:1.25rem;color:#73530f;font-weight:600;}
 .image-preview span{font-size:0.84rem;color:var(--cream-dim);}
 #exportLimit{font-size:0.88rem!important;font-weight:600!important;color:var(--cream)!important;}
-.admin-tabs{background:#fff;border:1px solid #cbd1d7;padding:0 .4rem;box-shadow:0 4px 14px rgba(28,35,43,.05);}
-.admin-tab{font-size:.72rem;font-weight:700;color:#46505a;letter-spacing:.1em;}
-.admin-tab.active{color:#644607;background:#fff8e7;border-bottom-color:#8a6419;}
-#statusBreakdown{font-size:.68rem!important;color:#46505a!important;font-weight:600;line-height:1.7;}
-#kpiTodayOrders,#kpiWeekOrders,#kpiMonthOrders,#kpiAOVsub,
-#chartPeak,#revenueChartLabels{font-size:.7rem!important;color:#4f5964!important;font-weight:600;}
-#payTypeChart,#topBooksChart{font-weight:600;}
-.focus-panel{background:#fff8e7;border-color:#c9a85c;}
-.export-bar{background:#fff;}
 @media(max-width:720px){
   body{font-size:15px;}
   nav{padding:0.95rem 1rem;}
@@ -307,15 +282,215 @@ tr:hover td{background:rgba(122,88,21,0.075);}
 .thread-input:focus{outline:none;border-color:var(--gold-dim);}
 .inbox-empty{display:flex;align-items:center;justify-content:center;flex:1;color:var(--cream-dim);font-size:0.83rem;}
 .inbox-filter-row{display:flex;gap:0.4rem;padding:0.6rem 0.8rem;border-bottom:1px solid var(--border);}
-.inbox-filter-btn{font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.3rem 0.7rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;border-radius:3px;font-family:'Montserrat',sans-serif;}
+.inbox-filter-btn{font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.3rem 0.7rem;border:1px solid var(--border);color:var(--cream-dim);background:transparent;cursor:pointer;border-radius:3px;font-family:'Manrope',sans-serif;}
 .inbox-filter-btn.active{border-color:var(--gold-dim);color:var(--gold);background:rgba(201,168,76,0.07);}
+
+/* Pill-based admin design system */
+:root{
+  --bg:#f5f1e8;
+  --bg2:#fbf8f1;
+  --bg3:#ffffff;
+  --card:#ffffff;
+  --gold:#765414;
+  --gold-light:#987324;
+  --gold-dim:#806b3e;
+  --cream:#20170f;
+  --cream-dim:#665b4e;
+  --white:#120d08;
+  --border:rgba(118,84,20,.2);
+  --shadow:0 18px 50px rgba(69,49,18,.09);
+  --shadow-soft:0 8px 24px rgba(69,49,18,.07);
+  --pill:999px;
+  --panel-radius:22px;
+  --control-radius:14px;
+}
+body{
+  font-family:'Manrope',sans-serif;
+  font-size:17px;
+  font-weight:500;
+  line-height:1.6;
+  background:
+    radial-gradient(circle at 8% -8%,rgba(168,130,48,.12),transparent 30rem),
+    var(--bg);
+}
+button,input,textarea,select{font-family:'Manrope',sans-serif;}
+nav{
+  position:sticky;
+  top:0;
+  z-index:100;
+  padding:1rem 2.4rem;
+  background:rgba(255,253,248,.9);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+}
+.logo,h1,#loginPanel h2,.stat-val,.amount,.product-row-price,
+.focus-panel strong,.product-head h2,.abandoned-head h2,#exportCount{
+  font-family:'DM Serif Display',serif;
+  letter-spacing:-.02em;
+}
+.logo{font-size:1.8rem;}
+.logo span{font-family:'Manrope',sans-serif!important;font-size:.84rem!important;}
+main{padding:2rem 2.5rem 3rem;}
+h1{font-size:clamp(2.4rem,3vw,3.35rem);line-height:1.08;}
+.subtitle{font-size:.96rem;line-height:1.55;}
+
+/* Navigation pills */
+.admin-tabs{
+  width:max-content;
+  max-width:100%;
+  gap:.45rem;
+  margin:0 0 1.8rem;
+  padding:.45rem;
+  border:1px solid var(--border);
+  border-radius:var(--pill);
+  background:rgba(255,255,255,.7);
+  box-shadow:var(--shadow-soft);
+}
+.admin-tab{
+  min-height:46px;
+  margin:0;
+  padding:.72rem 1.15rem;
+  border:1px solid transparent;
+  border-radius:var(--pill);
+  font-family:'Manrope',sans-serif;
+  font-size:.79rem;
+  font-weight:700;
+  letter-spacing:.055em;
+  text-transform:none;
+  transition:background .18s,color .18s,box-shadow .18s,transform .18s;
+}
+.admin-tab:hover{background:#f4ecda;color:var(--cream);transform:translateY(-1px);}
+.admin-tab.active{
+  color:#fff;
+  border-color:var(--gold);
+  background:var(--gold);
+  box-shadow:0 7px 18px rgba(118,84,20,.24);
+}
+
+/* Pill controls */
+.btn-gold,.btn-outline,.btn-green,.btn-danger,.filter-btn,.load-more-btn,
+.inbox-filter-btn,.status-sel,.chip,.badge,.method-badge,.override-pill{
+  border-radius:var(--pill);
+}
+.btn-gold,.btn-outline,.btn-green,.btn-danger,.filter-btn,.load-more-btn{
+  min-height:44px;
+  padding:.72rem 1.2rem!important;
+  font-family:'Manrope',sans-serif;
+  font-size:.78rem!important;
+  font-weight:700;
+  letter-spacing:.055em;
+  text-transform:none;
+  box-shadow:none;
+  transition:transform .18s,box-shadow .18s,background .18s,border-color .18s;
+}
+.btn-gold:hover,.btn-outline:hover,.btn-green:hover,.btn-danger:hover,.filter-btn:hover{
+  transform:translateY(-1px);
+  box-shadow:0 7px 16px rgba(69,49,18,.12);
+}
+.btn-gold{color:#fff;}
+.btn-outline{background:#fff;}
+.filter-btn{background:rgba(255,255,255,.75);}
+.filter-btn.active{color:#fff;border-color:var(--gold);background:var(--gold);}
+.chip{font-size:.73rem;padding:.42rem .9rem;font-weight:700;}
+.badge{padding:.4rem .75rem;font-size:.72rem;}
+.method-badge{font-size:.73rem;font-weight:700;}
+.inbox-filter-btn{
+  padding:.46rem .82rem;
+  font-family:'Manrope',sans-serif;
+  font-size:.72rem;
+  font-weight:700;
+}
+.inbox-filter-btn.active{color:#fff;border-color:var(--gold);background:var(--gold);}
+
+/* Rounded fields and panels */
+.form-row label,.section-title,.export-label,.stat-label,th{
+  font-size:.73rem;
+  font-weight:800;
+  letter-spacing:.085em;
+}
+.form-row input,.form-row textarea,.form-row select,.search-box,input[type="date"],
+.status-sel,.thread-input,#exportLimit{
+  min-height:48px;
+  border-radius:var(--control-radius);
+  font-size:.98rem;
+  font-weight:600;
+  box-shadow:0 1px 0 rgba(255,255,255,.8) inset;
+}
+.form-row textarea,.thread-input{border-radius:18px;}
+.form-row input:focus,.form-row textarea:focus,.form-row select:focus,.search-box:focus,
+input[type="date"]:focus,.status-sel:focus,.thread-input:focus{
+  border-color:var(--gold);
+  box-shadow:0 0 0 4px rgba(118,84,20,.1);
+}
+#loginPanel,.stat-card,.export-bar,.focus-panel,.product-panel,.abandoned-panel,
+.tbl-wrap,.product-list,.product-editor,.inbox-sidebar,.inbox-thread{
+  border-radius:var(--panel-radius);
+}
+#loginPanel,.product-panel,.abandoned-panel,.export-bar,.tbl-wrap{box-shadow:var(--shadow);}
+#loginPanel{max-width:480px;padding:2.75rem;}
+#loginPanel h2{font-size:2.35rem;line-height:1.1;}
+.stats-row{gap:1.1rem;}
+.stat-card{
+  min-height:132px;
+  padding:1.45rem;
+  border-color:rgba(118,84,20,.16);
+  box-shadow:var(--shadow-soft);
+}
+.stat-card:hover{transform:translateY(-2px);box-shadow:var(--shadow);}
+.stat-card.active{box-shadow:0 0 0 3px rgba(118,84,20,.11),var(--shadow-soft);}
+.stat-val{font-size:2.55rem;line-height:1;}
+.focus-panel{padding:1.25rem 1.5rem;}
+.focus-panel strong,.product-head h2,.abandoned-head h2{font-size:1.85rem;}
+.focus-panel p,.product-head p,.abandoned-head p,.hint,.lead-empty{font-size:.92rem;}
+.product-panel,.abandoned-panel{padding:1.45rem 1.6rem;}
+.product-list,.product-editor{border-radius:18px;}
+.product-row{padding:.9rem;}
+.product-row:first-child{border-radius:18px 18px 0 0;}
+.product-row:last-child{border-radius:0 0 18px 18px;border-bottom:0;}
+.product-row-title{font-size:1rem;}
+.product-row-meta{font-size:.82rem;}
+.image-preview{border-radius:18px;}
+
+/* Data tables */
+.tbl-wrap{border-color:rgba(118,84,20,.18);}
+table{font-size:.96rem;}
+th{padding:1rem;background:#faf5e9;}
+td{padding:1rem;font-size:.94rem;}
+.cust-name{font-size:1.05rem;}
+.cust-sub,.items-cell{font-size:.86rem;}
+.order-id{font-size:.82rem;}
+.pay-id,.amount-sub{font-size:.78rem;}
+.amount{font-size:1.55rem;}
+.mini-table th:first-child,table th:first-child{border-radius:22px 0 0 0;}
+.mini-table th:last-child,table th:last-child{border-radius:0 22px 0 0;}
+.msg-bubble{font-size:.92rem;padding:.7rem 1rem;border-radius:18px;}
+.inbox-conv{padding:.9rem 1rem;}
+.inbox-conv-name,.thread-name{font-size:.94rem;}
+.inbox-conv-preview,.thread-phone{font-size:.8rem;}
+
+@media(max-width:900px){
+  nav{position:relative;padding:1rem 1.15rem;}
+  main{padding:1.35rem 1rem 2.5rem;}
+  .admin-tabs{width:100%;border-radius:18px;}
+  .admin-tab{min-height:44px;}
+  .stats-row{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:520px){
+  body{font-size:16px;}
+  h1{font-size:2.35rem;}
+  .stats-row{grid-template-columns:1fr 1fr;gap:.75rem;}
+  .stat-card{min-height:116px;padding:1.15rem;}
+  .stat-val{font-size:2.2rem;}
+  .product-panel,.abandoned-panel{padding:1.1rem;}
+  .btn-gold,.btn-outline,.btn-green,.btn-danger,.filter-btn{min-height:46px;}
+}
 </style>
 </head>
 <body>
 <div id="loadingBar"></div>
 
 <nav>
-  <div class="logo"><img src="/images/logo.png" alt="Ink &amp; Chai" width="100" height="34"/><span style="font-size:0.7rem;color:var(--gold-dim);font-family:'Montserrat',sans-serif;letter-spacing:0.15em;"> — Admin</span></div>
+  <div class="logo"><img src="/images/logo.png" alt="Ink &amp; Chai" width="100" height="34"/><span style="font-size:0.7rem;color:var(--gold-dim);font-family:'Manrope',sans-serif;letter-spacing:0.15em;"> — Admin</span></div>
   <div class="nav-right">
     <span class="chip" id="adminChip" style="display:none;border-color:rgba(109,191,109,0.3);color:var(--green);">● Admin</span>
     <button class="btn-green" id="exportAllBtn" style="display:none;" onclick="exportExcel('all')" title="Download all orders as Excel">
@@ -356,14 +531,11 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       <h1>Orders Dashboard</h1>
       <p class="subtitle" id="dashSubtitle">Loading…</p>
     </div>
-    <button class="btn-outline" onclick="switchTab('orders');setTimeout(()=>document.getElementById('ordersTableSection')?.scrollIntoView({behavior:'smooth',block:'start'}),0)">↓ Go to orders table
-    </button>
   </div>
 
   <!-- Tab bar (hidden until login) -->
   <nav class="admin-tabs" id="adminTabBar" style="display:none">
     <button class="admin-tab" data-tab="orders"    onclick="switchTab('orders')">📦 Orders</button>
-    <button class="admin-tab" data-tab="reports"   onclick="switchTab('reports')">📊 Reports</button>
     <button class="admin-tab" data-tab="create"    onclick="switchTab('create')">➕ Create Listing</button>
     <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
     <button class="admin-tab" data-tab="abandoned" onclick="switchTab('abandoned')">🛒 Abandoned Carts</button>
@@ -371,8 +543,6 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="botinbox"  onclick="switchTab('botinbox')">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="bookreq"   onclick="switchTab('bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab" data-tab="insights"  onclick="switchTab('insights')">💡 Insights</button>
-    <button class="admin-tab" data-tab="bot"       onclick="switchTab('bot')">🤖 Bot Instructions</button>
     <button class="admin-tab" data-tab="recover"   onclick="switchTab('recover')">⚡ Recover Payment</button>
   </nav>
 
@@ -412,14 +582,6 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <div class="stat-card" data-status="delivered" onclick="setFilter(this,'delivered')">
       <div class="stat-label">Delivered</div>
       <div class="stat-val" id="statDelivered" style="color:var(--green);">—</div>
-    </div>
-    <div class="stat-card" data-status="cancelled" onclick="setFilter(this,'cancelled')">
-      <div class="stat-label">Cancelled</div>
-      <div class="stat-val" id="statCancelled" style="color:var(--red);">—</div>
-    </div>
-    <div class="stat-card" data-status="refunded" onclick="setFilter(this,'refunded')">
-      <div class="stat-label">Refunded</div>
-      <div class="stat-val" id="statRefunded" style="color:#a09080;">—</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Revenue</div>
@@ -494,24 +656,33 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Import all unshipped orders into the NimbusPost Orders panel without choosing couriers or generating AWBs.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
       <button class="btn-outline" onclick="syncNimbusAwbs(this)" title="Pull AWBs assigned inside the NimbusPost panel back onto your orders, flip them to shipped, and notify customers. Also runs automatically every 15 minutes.">🔄 Sync AWBs from NimbusPost</button>
-      <button class="btn-outline" onclick="sendTestEmail(this)" title="Send one test email to the store owner and report which provider (Mailjet/Resend/Brevo) delivered it. Use this to verify email is working after changing providers.">✉️ Send test email</button>
-      <button class="btn-outline" onclick="emailMissedOrders(this)" title="Email yourself ONE digest of every order placed in the last N hours. Use this to recover order alerts that never arrived because email was failing.">📋 Email me missed orders</button>
       <span style="font-size:0.62rem;color:var(--cream-dim);line-height:1.5;max-width:290px;">Panel import creates draft orders only. Shipment creation assigns couriers and AWBs. “Sync AWBs” pulls panel-assigned AWBs back here (auto every 15 min).</span>
     </div>
   </section>
 
   <!-- ── Export bar ─────────────────────────────────────────── -->
+  <section class="focus-panel" id="nimbusCancelledPanel">
+    <div>
+      <strong>NimbusPost 10-day cancellations</strong>
+      <p>Orders cancelled by NimbusPost after an AWB was assigned but the parcel was not dispatched within 10 days.</p>
+    </div>
+    <div class="focus-actions">
+      <span><strong id="statNimbusAutoCancelled" style="font-size:1.4rem;color:var(--red);">—</strong> orders</span>
+      <button class="btn-outline" data-status="__nimbuspost_auto_cancelled" onclick="setFilter(this,'__nimbuspost_auto_cancelled')">View NimbusPost Cancellations</button>
+    </div>
+  </section>
+
   <div class="export-bar" id="exportBar" style="display:none;">
     <span class="export-label">Export</span>
     <span id="exportCount">0</span>
     <span class="hint">orders ready</span>
     <span class="export-label" style="margin-left:1rem;">Selected</span>
-    <span id="selectedCount" style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--green);">0</span>
+    <span id="selectedCount" style="font-family:'DM Serif Display',serif;font-size:1.1rem;color:var(--green);">0</span>
 
     <!-- Limit input — how many rows to export from the filtered list -->
     <span style="font-size:0.6rem;color:var(--cream-dim);margin-left:1rem;">Limit:</span>
     <input type="number" id="exportLimit" value="" min="1" placeholder="all" title="Leave blank to export all filtered orders, or set a max row count (e.g. 50, 100, 500)"
-      style="width:78px;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.4rem 0.5rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;text-align:center;outline:none;"/>
+      style="width:78px;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.4rem 0.5rem;font-family:'Manrope',sans-serif;font-size:0.62rem;text-align:center;outline:none;"/>
 
     <button class="btn-green" onclick="exportExcel('filtered')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.4rem;">
       ⬇ Download Excel (.xlsx)
@@ -525,7 +696,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="btn-green" onclick="exportUnshippedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       ⬇ Unshipped CSV
     </button>
-    <button onclick="npBulkShip(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.45);color:var(--gold);cursor:pointer;font-family:'Montserrat',sans-serif;letter-spacing:0.08em;text-transform:uppercase;transition:background 0.2s;"
+    <button onclick="npBulkShip(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.45);color:var(--gold);cursor:pointer;font-family:'Manrope',sans-serif;letter-spacing:0.08em;text-transform:uppercase;transition:background 0.2s;"
       onmouseover="this.style.background='rgba(201,168,76,0.22)';" onmouseout="this.style.background='rgba(201,168,76,0.12)';">
       🚀 Create NimbusPost AWBs
     </button>
@@ -554,11 +725,8 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="btn-outline" onclick="bulkReconcilePhonePe(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(95,37,159,0.5);color:#a275d6;" title="Re-check every order stuck on 'pending_phonepe' from the last 30 days">
       🔄 Re-check All Pending PhonePe
     </button>
-    <button class="btn-outline" onclick="retryFailedRefunds(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(214,120,60,0.6);color:#e0904a;" title="Re-check PhonePe refund status for every order owed a refund and re-attempt any that failed (money-safe: never double-refunds). Also runs automatically every 4 hours.">
-      🔁 Retry Failed Refunds
-    </button>
-    <button class="btn-outline" onclick="reconcileShippedOrders(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Check NimbusPost for real delivery status of all Shipped + Out for Delivery orders — fixes stuck statuses">
-      📦 Sync Shipped &amp; OFD → Delivered
+    <button class="btn-outline" onclick="reconcileShippedOrders(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Check NimbusPost for live statuses and classify older cancelled AWBs">
+      📦 Sync NimbusPost Statuses
     </button>
     <button class="btn-outline" onclick="autoMarkDelivered(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Mark OFD ≥3 days / Shipped ≥8 days as Delivered (time-based fallback for NimbusPost not sending delivered events). Sends WhatsApp + email.">
       ✅ Auto-Mark Stale OFD as Delivered
@@ -603,6 +771,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <button class="filter-btn" data-status="replacement_pending" onclick="setFilter(this,'replacement_pending')" style="border-color:rgba(109,191,109,0.5);color:#6dbf6d;">🔄 Replacement</button>
     <button class="filter-btn" data-status="cw_only" onclick="setFilter(this,'cw_only')" style="border-color:rgba(201,168,76,0.5);color:#c9a84c;" title="Orders containing Crossword-migrated genuine-tag books (IC-CW-…)">📚 Crossword</button>
     <button class="filter-btn" data-status="cancelled" onclick="setFilter(this,'cancelled')">Cancelled</button>
+    <button class="filter-btn" data-status="__nimbuspost_auto_cancelled" onclick="setFilter(this,'__nimbuspost_auto_cancelled')" style="border-color:rgba(224,96,96,0.5);color:var(--red);">NimbusPost 10-Day</button>
     <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
     <span class="date-sep">→</span>
     <input type="date" id="dateTo" onchange="applyFilters()" title="To date"/>
@@ -629,38 +798,12 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     </table>
   </div>
   <div class="empty" id="emptyState" style="display:none;">No orders found.</div>
-  <div class="orders-pagination" id="ordersPagination" style="display:none;">
-    <div class="orders-pagination-info" id="ordersPaginationInfo"></div>
-    <div class="orders-pagination-actions">
-      <label for="ordersPageSize" style="font-size:0.62rem;color:var(--cream-dim);">Rows</label>
-      <select id="ordersPageSize" onchange="setOrdersPageSize(this.value)">
-        <option value="50" selected>50</option>
-        <option value="100">100</option>
-        <option value="200">200</option>
-      </select>
-      <button id="ordersPrevPage" onclick="changeOrdersPage(-1)">← Previous</button>
-      <span id="ordersPageLabel" style="font-size:0.65rem;color:var(--gold);min-width:92px;text-align:center;"></span>
-      <button id="ordersNextPage" onclick="changeOrdersPage(1)">Next →</button>
-    </div>
-  </div>
+  <button class="load-more-btn" id="loadMoreBtn" style="display:none;" onclick="loadMore()">Load More Orders</button>
 
   </div><!-- /tab-orders -->
 
   <!-- ═══ CREATE LISTING TAB ═══ -->
   <div class="admin-section" id="tab-create">
-
-  <section class="product-panel" style="margin-bottom:1.2rem;">
-    <div class="product-head">
-      <div>
-        <h2>Import from 99bookstores</h2>
-        <p>Scrapes 99bookstores.com, skips anything already in your catalogue, and adds the new titles. Newest 150 show on the homepage; the rest are browse-only under /books (keeps egress safe). Runs in the background — a summary appears below after ~1–3 min.</p>
-      </div>
-      <div class="mini-actions">
-        <button class="btn-primary" id="import99Btn" onclick="run99Import(this)">⬇ Import new books</button>
-      </div>
-    </div>
-    <div id="import99Status" style="font-size:0.72rem;color:var(--cream-dim);line-height:1.6;margin-top:0.4rem;"></div>
-  </section>
 
   <section class="product-panel" id="productCreatorSection">
     <div class="product-head">
@@ -793,7 +936,6 @@ tr:hover td{background:rgba(122,88,21,0.075);}
             <button class="btn-green" onclick="saveProductOverride()">Save Product Override</button>
             <button class="btn-outline" onclick="openSelectedProduct()">Open Product Page</button>
             <button class="btn-outline" onclick="clearProductOverride()" style="border-color:rgba(224,80,80,0.35);color:#c93636;">Disable Override</button>
-            <button id="prodDeleteBtn" onclick="deleteProductPage()" style="display:none;background:transparent;border:1px solid rgba(224,80,80,0.55);color:#e05050;padding:0.65rem 1.4rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;letter-spacing:0.16em;text-transform:uppercase;cursor:pointer;">🗑 Delete Product Page</button>
           </div>
           <p class="hint" id="productSaveMsg" style="margin-top:0.7rem;"></p>
         </div>
@@ -843,7 +985,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
   <!-- Add Review manually -->
   <section class="product-panel" id="addReviewSection" style="margin-bottom:1.4rem;">
     <div style="margin-bottom:1rem;">
-      <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;margin-bottom:.2rem">＋ Add a Review</h2>
+      <h2 style="font-family:'DM Serif Display',serif;font-size:1.4rem;font-weight:400;margin-bottom:.2rem">＋ Add a Review</h2>
       <p style="font-size:.65rem;color:var(--cream-dim);line-height:1.6">Add a genuine customer review you collected off-platform (Instagram DM, WhatsApp, etc.) — useful while order delivery isn't auto-tracked. Only add real feedback from real customers.</p>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;max-width:760px;">
@@ -894,7 +1036,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
   <section class="product-panel" id="reviewsModerationSection">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem;flex-wrap:wrap">
       <div>
-        <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;margin-bottom:.2rem">Product Reviews</h2>
+        <h2 style="font-family:'DM Serif Display',serif;font-size:1.4rem;font-weight:400;margin-bottom:.2rem">Product Reviews</h2>
         <p style="font-size:.65rem;color:var(--cream-dim)">Approve or reject customer reviews before they appear on product pages.</p>
       </div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap">
@@ -918,8 +1060,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
       </div>
       <div class="mini-actions">
         <button class="btn-outline" onclick="fetchReturnRequests()">↻ Refresh</button>
-        <button class="btn-green" onclick="pushReturnsToNimbusNoAwb(this)" title="Push all approved returns into the NimbusPost panel WITHOUT choosing a courier or generating an AWB. Assign the reverse AWB later inside NimbusPost.">Push Returns to NimbusPost (No AWB)</button>
-        <button class="btn-gold" onclick="pushApprovedReturnsToNimbus(this)" title="Create NimbusPost reverse shipments and AWBs for every approved return that has not already been pushed.">Push Returns + Auto AWB</button>
+        <button class="btn-gold" onclick="pushApprovedReturnsToNimbus(this)" title="Create NimbusPost reverse shipments and AWBs for every approved return that has not already been pushed.">Push Approved Returns to NimbusPost</button>
       </div>
     </div>
     <div class="hint" id="returnsMeta" style="margin-bottom:0.8rem;">Loading return requests…</div>
@@ -970,76 +1111,6 @@ tr:hover td{background:rgba(122,88,21,0.075);}
   </section>
   </div><!-- /tab-recover -->
 
-  <!-- ═══ REPORTS TAB ═══ -->
-  <div class="admin-section" id="tab-reports">
-  <section class="abandoned-panel">
-    <div class="abandoned-head">
-      <div>
-        <h2>📊 Business Reports</h2>
-        <p>Sales by product and date — spot which product's sales dropped and when. Computed from already-loaded orders (no extra database reads).</p>
-      </div>
-    </div>
-
-    <!-- Controls -->
-    <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:1.1rem;">
-      <span class="section-title">Quick range:</span>
-      <button class="filter-btn rpt-range" data-days="7"  onclick="rptQuickRange(this,7)">7D</button>
-      <button class="filter-btn rpt-range" data-days="14" onclick="rptQuickRange(this,14)">14D</button>
-      <button class="filter-btn rpt-range active" data-days="30" onclick="rptQuickRange(this,30)">30D</button>
-      <button class="filter-btn rpt-range" data-days="90" onclick="rptQuickRange(this,90)">90D</button>
-      <button class="filter-btn rpt-range" data-days="month"  onclick="rptQuickRange(this,'month')">This month</button>
-      <button class="filter-btn rpt-range" data-days="lmonth" onclick="rptQuickRange(this,'lmonth')">Last month</button>
-      <input type="date" id="rptFrom" onchange="rptCustomRange()" style="padding:.4rem;"/>
-      <span style="color:var(--cream-dim);font-size:.7rem;">to</span>
-      <input type="date" id="rptTo" onchange="rptCustomRange()" style="padding:.4rem;"/>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:1.4rem;">
-      <input id="rptProduct" list="rptProductList" placeholder="All products — type to filter one" oninput="renderReports()"
-             style="padding:.5rem .7rem;min-width:280px;flex:0 1 340px;"/>
-      <datalist id="rptProductList"></datalist>
-      <button class="filter-btn" onclick="document.getElementById('rptProduct').value='';renderReports()">✕ Clear</button>
-      <span class="section-title" style="margin-left:.6rem;">Group:</span>
-      <select id="rptGranularity" onchange="renderReports()" style="padding:.45rem;">
-        <option value="day" selected>Day</option>
-        <option value="week">Week</option>
-        <option value="month">Month</option>
-      </select>
-      <span class="section-title" style="margin-left:.6rem;">Metric:</span>
-      <button class="filter-btn rpt-metric active" data-metric="revenue" onclick="rptSetMetric(this)">Revenue ₹</button>
-      <button class="filter-btn rpt-metric" data-metric="orders" onclick="rptSetMetric(this)">Orders</button>
-      <button class="filter-btn rpt-metric" data-metric="units" onclick="rptSetMetric(this)">Units</button>
-      <label style="font-size:.68rem;color:var(--cream-dim);display:flex;align-items:center;gap:.3rem;margin-left:.6rem;cursor:pointer;">
-        <input type="checkbox" id="rptIncludeCancelled" onchange="renderReports()"/> include cancelled/refunded
-      </label>
-    </div>
-
-    <!-- Summary cards (current range vs previous equal-length range) -->
-    <div class="stats-row" style="grid-template-columns:repeat(4,1fr);" id="rptCards"></div>
-
-    <!-- Bar chart -->
-    <div style="background:var(--bg3);border:1px solid var(--border);padding:1.1rem;margin-bottom:1.6rem;overflow-x:auto;">
-      <div id="rptChartTitle" class="stat-label" style="margin-bottom:.7rem;"></div>
-      <div id="rptChart"></div>
-    </div>
-
-    <!-- Product breakdown vs previous period -->
-    <div class="stat-label" style="margin-bottom:.5rem;">Product breakdown — current range vs previous equal-length range (click a row to chart that product)</div>
-    <div class="tbl-wrap" style="overflow-x:auto;">
-      <table>
-        <thead><tr>
-          <th style="cursor:pointer" onclick="rptSortTable('title')">Product ↕</th>
-          <th style="cursor:pointer" onclick="rptSortTable('units')">Units ↕</th>
-          <th style="cursor:pointer" onclick="rptSortTable('orders')">Orders ↕</th>
-          <th style="cursor:pointer" onclick="rptSortTable('revenue')">Revenue ↕</th>
-          <th>Prev revenue</th>
-          <th style="cursor:pointer" onclick="rptSortTable('delta')">Δ vs prev ↕</th>
-        </tr></thead>
-        <tbody id="rptTableBody"></tbody>
-      </table>
-    </div>
-  </section>
-  </div><!-- /tab-reports -->
-
   <!-- ═══ BOT INBOX TAB ═══ -->
   <div class="admin-section" id="tab-botinbox">
   <section class="abandoned-panel">
@@ -1056,10 +1127,6 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     <div class="inbox-layout" id="inboxLayout">
       <!-- Sidebar: conversation list -->
       <div class="inbox-sidebar" id="inboxSidebar">
-        <div style="padding:0.5rem 0.6rem 0;">
-          <input id="inboxSearch" type="search" placeholder="🔍 Search by phone or name…" oninput="setInboxSearch(this.value)"
-            style="width:100%;padding:0.45rem 0.7rem;font-size:0.78rem;border:1px solid var(--border);background:var(--card);color:var(--cream);border-radius:6px;box-sizing:border-box;"/>
-        </div>
         <div class="inbox-filter-row">
           <button class="inbox-filter-btn active" data-filter="all"      onclick="setInboxFilter('all',this)">All</button>
           <button class="inbox-filter-btn"         data-filter="active"   onclick="setInboxFilter('active',this)">Active</button>
@@ -1104,99 +1171,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
     </div>
   </div><!-- /tab-bookreq -->
 
-  <!-- ═══ INSIGHTS TAB ═══ -->
-  <div class="admin-section" id="tab-insights">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
-      <div>
-        <h2 style="margin:0;font-size:1.1rem;">💡 Customer Insights</h2>
-        <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;max-width:680px;">
-          Scans every customer conversation on your WhatsApp bot and reports the major issues customers face —
-          plus concrete steps to improve your website and service. Powered by AI over your real chats.
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
-        <select id="insightsDays" style="background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.55rem 0.8rem;font-family:'Montserrat',sans-serif;font-size:0.72rem;border-radius:6px;outline:none;">
-          <option value="7">Last 7 days</option>
-          <option value="30" selected>Last 30 days</option>
-          <option value="90">Last 90 days</option>
-          <option value="365">Last 12 months</option>
-        </select>
-        <button class="btn-gold" id="insightsRunBtn" onclick="runBotInsights(this)" style="padding:0.6rem 1.4rem;">🔍 Analyze conversations</button>
-      </div>
-    </div>
-    <div id="insightsResult" style="margin-top:0.5rem;">
-      <div style="text-align:center;padding:3rem 1rem;color:var(--cream-dim,#8a7a62);font-size:0.82rem;line-height:1.7;">
-        Pick a time window and hit <strong style="color:#c9a84c;">Analyze conversations</strong>.<br/>
-        The AI reads your customers' actual WhatsApp messages and surfaces the top problems + fixes.
-      </div>
-    </div>
-  </div>
-
-  <div class="admin-section" id="tab-bot">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
-      <div>
-        <h2 style="margin:0;font-size:1.1rem;">🤖 WhatsApp Bot Instructions</h2>
-        <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;max-width:640px;">
-          Extra rules, facts and FAQ answers the bot should follow — added on top of its built-in personality.
-          Write in plain English (or Hindi). Saves instantly; the bot uses it within a minute. No deploy needed.
-        </div>
-      </div>
-      <button class="btn-outline" onclick="loadBotSettings()">↻ Reload</button>
-    </div>
-    <textarea id="botExtraInstructions" rows="16" placeholder="e.g.&#10;- If a customer asks about bulk / wholesale orders, tell them to email wholesale@inkandchai.in&#10;- We are closed on national holidays; dispatch resumes the next working day&#10;- The book 'Atomic Habits' is temporarily out of stock&#10;- Always mention the INKLOVE10 coupon when a customer is buying 2+ books"
-      style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.9rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;line-height:1.6;outline:none;resize:vertical;border-radius:6px;"></textarea>
-    <div style="display:flex;align-items:center;gap:1rem;margin-top:0.8rem;flex-wrap:wrap;">
-      <button class="btn-gold" onclick="saveBotSettings(this)" style="padding:0.7rem 1.6rem;">💾 Save Instructions</button>
-      <span id="botSettingsMsg" style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);"></span>
-    </div>
-    <div style="font-size:0.62rem;color:var(--cream-dim,#8a7a62);margin-top:1rem;line-height:1.6;">
-      💡 Tip: give the bot <em>facts and rules</em>, not conversations. It already knows how to be friendly, track orders,
-      take book requests and share coupons — this box is for anything store-specific it should also know.
-    </div>
-  </div><!-- /tab-bot -->
-
 <script>
-// ── Bot Instructions (edit the WhatsApp bot's extra rules / FAQ) ─────────────
-async function loadBotSettings() {
-  const ta = document.getElementById('botExtraInstructions');
-  const msg = document.getElementById('botSettingsMsg');
-  if (msg) msg.textContent = 'Loading…';
-  try {
-    const res = await adminFetch('/.netlify/functions/bot-settings');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-    if (ta) ta.value = data.extra_instructions || '';
-    if (msg) msg.textContent = data.updated_at
-      ? 'Last saved ' + new Date(data.updated_at).toLocaleString('en-IN')
-      : 'No custom instructions yet.';
-  } catch (e) {
-    if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Error: ' + e.message; }
-  }
-}
-
-async function saveBotSettings(btn) {
-  const ta = document.getElementById('botExtraInstructions');
-  const msg = document.getElementById('botSettingsMsg');
-  if (!ta) return;
-  const orig = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  if (msg) { msg.style.color = 'var(--cream-dim,#8a7a62)'; msg.textContent = 'Saving…'; }
-  try {
-    const res = await adminFetch('/.netlify/functions/bot-settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ extra_instructions: ta.value }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
-    if (msg) { msg.style.color = '#6dbf6d'; msg.textContent = '✓ Saved. The bot will use it within a minute.'; }
-  } catch (e) {
-    if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Save failed: ' + e.message; }
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = orig || '💾 Save Instructions'; }
-  }
-}
-
 // ── Book Requests (WhatsApp bot order intake) ───────────────────────────────
 async function fetchBookRequests() {
   const list = document.getElementById('bookReqList');
@@ -1205,7 +1180,6 @@ async function fetchBookRequests() {
     const res = await fetch('/.netlify/functions/get-book-requests', { headers: { 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' } });
     const data = await res.json();
     const reqs = data.requests || [];
-    window._bookReqById = Object.fromEntries(reqs.map(r => [String(r.id), r]));
     const newCount = reqs.filter(r => r.status === 'new').length;
     const badge = document.getElementById('bookReqBadge');
     if (badge) { badge.textContent = newCount; badge.style.display = newCount ? '' : 'none'; }
@@ -1219,28 +1193,21 @@ async function fetchBookRequests() {
       const stColor = st==='new' ? '#5d9b55' : st==='ordered' ? '#c9a84c' : '#8a7a62';
       const phone = (r.customer_phone || '').replace(/\D/g,'').slice(-10);
       const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      const pushed = r.order_pushed_id || '';
-      const amountRs = r.amount_paise ? Math.round(Number(r.amount_paise) / 100) : 0;
-      const payMode = r.payment_mode ? String(r.payment_mode).toUpperCase() : '';
       return `<div style="border:1px solid var(--border,rgba(201,168,76,0.25));border-radius:12px;padding:0.9rem 1.05rem;background:var(--bg2,#1a1613);">
         <div style="display:flex;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;align-items:baseline;">
           <strong style="color:var(--gold,#c9a84c);font-size:0.95rem;">${esc(r.customer_name)}</strong>
           <span style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.1em;color:${stColor};border:1px solid ${stColor};border-radius:999px;padding:1px 8px;">${esc(st)}</span>
         </div>
         <div style="font-size:0.8rem;margin-top:0.45rem;line-height:1.6;">
-          ${r.order_id ? `<div style="font-family:monospace;font-size:0.72rem;color:var(--gold,#c9a84c);">🆔 ${esc(r.order_id)}</div>` : ''}
           <div>📚 <strong>${esc(r.books)}</strong></div>
           <div>📍 ${esc(r.address)}</div>
-          ${(amountRs || payMode || r.payment_status) ? `<div>💰 ${amountRs ? '₹' + amountRs : 'Amount not set'}${payMode ? ` · ${esc(payMode)}` : ''}${r.payment_status ? ` · ${esc(r.payment_status)}` : ''}</div>` : ''}
-          ${r.payment_link ? `<div>🔗 <a href="${esc(r.payment_link)}" target="_blank" style="color:var(--gold,#c9a84c);">Payment link</a></div>` : ''}
           ${r.notes ? `<div>📝 ${esc(r.notes)}</div>` : ''}
           <div style="color:var(--cream-dim,#8a7a62);margin-top:0.25rem;">📞 <a href="https://wa.me/91${phone}" target="_blank" style="color:var(--gold,#c9a84c);">+91 ${phone}</a> · ${when}</div>
-          ${pushed ? `<div style="color:#5d9b55;margin-top:0.3rem;font-size:0.72rem;">✅ Pushed to Orders as <strong>${esc(pushed)}</strong> — track &amp; ship it from the Orders tab.</div>` : ''}
         </div>
         <div style="display:flex;gap:0.4rem;margin-top:0.6rem;flex-wrap:wrap;">
           <a href="https://wa.me/91${phone}?text=${encodeURIComponent('Hi ' + (r.customer_name||'') + ', thanks for your order request at Ink & Chai! ')}" target="_blank" class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;text-decoration:none;">💬 WhatsApp</a>
-          ${pushed ? '' : `<button class="btn-green" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="pushBookRequest('${r.id}')">📦 Push to Orders</button>`}
           <button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="setBookReqStatus('${r.id}','contacted')">✓ Contacted</button>
+          <button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="setBookReqStatus('${r.id}','ordered')">📦 Ordered</button>
           <button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="setBookReqStatus('${r.id}','closed')">✕ Close</button>
         </div>
       </div>`;
@@ -1258,30 +1225,6 @@ async function setBookReqStatus(id, status) {
     });
     fetchBookRequests();
   } catch (e) { alert('Update failed: ' + e.message); }
-}
-async function pushBookRequest(id) {
-  const req = window._bookReqById?.[String(id)] || {};
-  const savedAmount = req.amount_paise ? Math.round(Number(req.amount_paise) / 100) : 0;
-  const amt = savedAmount || prompt('Order amount in ₹ (total the customer will pay):');
-  if (amt === null) return;
-  const amount_rupees = Math.round(Number(amt));
-  if (!amount_rupees || amount_rupees <= 0) { alert('Enter a valid amount.'); return; }
-  let payment_mode = req.payment_mode === 'prepaid' || req.payment_mode === 'cod' ? req.payment_mode : '';
-  if (!payment_mode) {
-    const cod = confirm('Payment mode:\n\n  OK = Cash on Delivery (ships on normal COD flow)\n  Cancel = Prepaid (you collect payment before shipping)');
-    payment_mode = cod ? 'cod' : 'prepaid';
-  }
-  try {
-    const res = await fetch('/.netlify/functions/push-book-request', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json', 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' },
-      body: JSON.stringify({ id, amount_rupees, payment_mode }),
-    });
-    const data = await res.json();
-    if (!res.ok || data.error) { alert('Push failed: ' + (data.error || res.status)); return; }
-    alert('✅ Pushed to Orders as ' + data.order_id + ' (' + data.status + ', ₹' + data.amount + ').\nIt now shows in the Orders tab — push to NimbusPost / assign AWB there; the customer is auto-notified when it ships.');
-    fetchBookRequests();
-  } catch (e) { alert('Push failed: ' + e.message); }
 }
 </script>
 <script>
@@ -1376,8 +1319,6 @@ let page          = 1;
 let hasMore       = false;
 let serverTotal   = null; // total count from server (shown immediately, before all pages load)
 const PAGE        = 500;  // rows per request (auto-paginates in parallel until all loaded)
-let tablePage     = 1;    // UI page; only this slice is rendered into the DOM
-let tablePageSize = 50;
 const ORDERS_CACHE_KEY = 'iac_admin_orders_cache_v2';
 const ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;  // 5 min
 const selectedOrderIds = new Set();
@@ -1564,7 +1505,7 @@ function saveOrdersToCache(orders, total) {
 
 async function fetchOrdersPage(pageNum, limit) {
   const params = new URLSearchParams({ page: pageNum, limit });
-  if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending' && currentFilter !== 'cw_only') {
+  if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== '__nimbuspost_auto_cancelled' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending' && currentFilter !== 'cw_only') {
     params.set('status', currentFilter);
   }
   const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
@@ -1580,7 +1521,7 @@ async function fetchOrdersPage(pageNum, limit) {
 }
 
 async function fetchOrders(reset = false) {
-  if (reset) { page = 1; tablePage = 1; allOrders = []; }
+  if (reset) { page = 1; allOrders = []; }
   const btn     = document.getElementById('refreshBtn');
   const tblWrap = document.querySelector('.tbl-wrap');
   if (btn) btn.innerHTML = '<span class="spinner"></span>Refreshing…';
@@ -1638,7 +1579,7 @@ async function fetchOrders(reset = false) {
     document.getElementById('adminTabBar').style.display = 'flex';
     initTabFromHash();
 
-    // Render immediately; DOM pagination limits this to 50 rows by default.
+    // Render the first 500 immediately so the user sees results in <1s
     if (!usedCache) {
       allOrders = combined;
       updateStats();
@@ -1700,29 +1641,20 @@ function showLoginErr(msg) {
 
 function loadMore() { fetchOrders(false); }
 
-function visiblePageOrders() {
-  const start = (tablePage - 1) * tablePageSize;
-  return filtered.slice(start, start + tablePageSize);
-}
-
-function setOrdersPageSize(value) {
-  const size = Number(value);
-  tablePageSize = [50, 100, 200].includes(size) ? size : 50;
-  tablePage = 1;
-  renderTable();
-}
-
-function changeOrdersPage(delta) {
-  const totalPages = Math.max(1, Math.ceil(filtered.length / tablePageSize));
-  tablePage = Math.min(totalPages, Math.max(1, tablePage + Number(delta || 0)));
-  renderTable();
-  document.getElementById('ordersTableSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
 function orderIsUnshipped(o) {
   const status = String(o?.status || '').toLowerCase();
   const shippedStatuses = new Set(['shipped','out_for_delivery','delivered','cancelled','refunded']);
   return !shippedStatuses.has(status) && !o?.tracking_id;
+}
+
+function isNimbusPostAutoCancelled(o) {
+  if (String(o?.status || '').toLowerCase() !== 'cancelled') return false;
+  if (String(o?.cancellation_source || '').toLowerCase() !== 'nimbuspost') return false;
+  if (o?.nimbuspost_auto_cancelled === true) return true;
+  const assigned = o?.awb_assigned_at || o?.shipped_at;
+  const cancelled = o?.cancelled_at;
+  if (!assigned || !cancelled) return false;
+  return new Date(cancelled).getTime() - new Date(assigned).getTime() >= 10 * 24 * 60 * 60 * 1000;
 }
 
 function orderKey(o) {
@@ -1767,28 +1699,10 @@ function orderPaymentBreakdown(o) {
     // CSV shows "Cash on Delivery" — the balance is what the delivery agent collects
     return { full, paid, balance, method: 'Cash on Delivery' };
   }
-  const kind = orderPayKind(o);
-  const full = paid || itemTotal;
-  if (kind === 'online_paid') return { full, paid: paid || full, balance: 0, method: 'Online' };
-  if (kind === 'prepaid_pending') return { full, paid: 0, balance: full, method: 'Prepaid (awaiting)' };
-  return { full, paid: 0, balance: full, method: 'Cash on Delivery' };
-}
-
-// Single source of truth for an order's payment kind, used by every place that
-// renders COD vs Online. Historically this was `!razorpay_payment_id`, which
-// mislabelled prepaid WhatsApp orders (no gateway id) as COD. Now it also
-// honours the payment_status marker set when a prepaid order is created/paid.
-//   'partial'         → 10% paid, balance COD
-//   'online_paid'     → fully paid online (gateway id or payment_status 'paid')
-//   'prepaid_pending' → marked prepaid, payment not yet collected
-//   'cod'             → cash on delivery
-function orderPayKind(o) {
-  if (isPartialOrder(o)) return 'partial';
   const status = String(o?.status || '').toLowerCase();
-  const ps     = String(o?.payment_status || '').toLowerCase();
-  if (ps === 'paid' || status === 'paid' || (o?.razorpay_payment_id && status !== 'cod_pending')) return 'online_paid';
-  if (ps === 'prepaid_pending' || status === 'confirmed') return 'prepaid_pending';
-  return 'cod';
+  const isCOD = status === 'cod_pending' || status === 'partial_cod_pending' || !o?.razorpay_payment_id;
+  const full = paid || itemTotal;
+  return { full, paid: isCOD ? 0 : paid, balance: isCOD ? full : 0, method: isCOD ? 'Cash on Delivery' : 'Online' };
 }
 
 function getSelectedOrders() {
@@ -1802,7 +1716,7 @@ function toggleOrderSelection(id, checked) {
 }
 
 function toggleAllVisible(checked) {
-  visiblePageOrders().forEach(o => {
+  filtered.forEach(o => {
     const id = orderKey(o);
     if (!id) return;
     if (checked) selectedOrderIds.add(id);
@@ -1825,7 +1739,7 @@ function syncSelectionUi() {
   if (selectedCount) selectedCount.textContent = selectedOrderIds.size;
   const allBox = document.getElementById('selectAllVisible');
   if (!allBox) return;
-  const visibleIds = visiblePageOrders().map(orderKey).filter(Boolean);
+  const visibleIds = filtered.map(orderKey).filter(Boolean);
   const selectedVisible = visibleIds.filter(id => selectedOrderIds.has(id)).length;
   allBox.checked = !!visibleIds.length && selectedVisible === visibleIds.length;
   allBox.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
@@ -1836,9 +1750,7 @@ function updateAnalytics() {
   if (!allOrders.length) return;
 
   const PAID_STATUSES = new Set(['paid','delivered','shipped','out_for_delivery','confirmed','cod_pending','partial_cod_pending','partial_cod','pending_phonepe','pending_partial_phonepe']);
-  // Unpaid prepaid orders (payment link created but not paid) carry status
-  // 'confirmed' — exclude them so they aren't counted as paid/revenue.
-  const paidOrders = allOrders.filter(o => PAID_STATUSES.has(o.status) && o.payment_status !== 'prepaid_pending');
+  const paidOrders = allOrders.filter(o => PAID_STATUSES.has(o.status));
 
   const now   = new Date();
   const todayStr  = now.toISOString().slice(0,10);
@@ -1981,11 +1893,10 @@ function updateStats() {
   const paid         = allOrders.filter(o => o.status === 'paid').length;
   const shipped      = allOrders.filter(o => o.status === 'shipped').length;
   const delivered    = allOrders.filter(o => o.status === 'delivered').length;
-  const cancelled    = allOrders.filter(o => o.status === 'cancelled').length;
-  const refunded     = allOrders.filter(o => o.status === 'refunded').length;
   const unshipped    = allOrders.filter(orderIsUnshipped).length;
+  const nimbusAutoCancelled = allOrders.filter(isNimbusPostAutoCancelled).length;
   const rev          = allOrders
-    .filter(o => ['paid','delivered','shipped','out_for_delivery','confirmed','cod_pending','partial_cod_pending'].includes(o.status) && o.payment_status !== 'prepaid_pending')
+    .filter(o => ['paid','delivered','shipped','out_for_delivery','confirmed','cod_pending','partial_cod_pending'].includes(o.status))
     .reduce((s,o) => s + Math.round(orderPaymentBreakdown(o).full * 100), 0);
 
   const displayTotal = serverTotal != null ? serverTotal : allOrders.length;
@@ -1993,6 +1904,8 @@ function updateStats() {
 
   document.getElementById('statTotal').textContent     = displayTotal;
   document.getElementById('statUnshipped').textContent = stillLoading ? '…' : unshipped;
+  const npCancelledEl = document.getElementById('statNimbusAutoCancelled');
+  if (npCancelledEl) npCancelledEl.textContent = stillLoading ? '…' : nimbusAutoCancelled;
   document.getElementById('statCod').textContent       = stillLoading ? '…' : cod;
   const partialEl = document.getElementById('statPartial');
   if (partialEl) partialEl.textContent = stillLoading ? '…' : partial;
@@ -2002,10 +1915,6 @@ function updateStats() {
   document.getElementById('statShipped').textContent   = stillLoading ? '…' : shipped;
   const delEl = document.getElementById('statDelivered');
   if (delEl) delEl.textContent = stillLoading ? '…' : delivered;
-  const cancelEl = document.getElementById('statCancelled');
-  if (cancelEl) cancelEl.textContent = stillLoading ? '…' : cancelled;
-  const refundEl = document.getElementById('statRefunded');
-  if (refundEl) refundEl.textContent = stillLoading ? '…' : refunded;
   document.getElementById('statRev').textContent       = stillLoading ? '…' : '₹' + Math.round(rev / 100).toLocaleString('en-IN');
   if (!stillLoading) updateAnalytics();
   if (stillLoading) {
@@ -2064,20 +1973,16 @@ function sortBy(field) {
 }
 
 function applyFilters() {
-  tablePage = 1;
   const q       = (document.getElementById('searchBox')?.value || '').toLowerCase().trim();
   const dateFrom = document.getElementById('dateFrom')?.value;
   const dateTo   = document.getElementById('dateTo')?.value;
 
   filtered = allOrders.filter(o => {
     if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
+    if (currentFilter === '__nimbuspost_auto_cancelled' && !isNimbusPostAutoCancelled(o)) return false;
     if (currentFilter === 'partial_cod_pending' && !isPartialOrder(o)) return false;
     if (currentFilter === 'online_pending' && !isPendingOnlineOrder(o)) return false;
-    if (currentFilter === 'cw_only') {
-      if (!/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || ''))) return false;
-      // Keep the Crossword tab to actionable orders — hide cancelled/refunded.
-      if (['cancelled', 'refunded', 'refund_pending'].includes(String(o.status || '').toLowerCase())) return false;
-    }
+    if (currentFilter === 'cw_only' && !/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || ''))) return false;
     // Search
     if (q) {
       const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
@@ -2128,35 +2033,19 @@ function _drawTable() {
   if (!filtered.length) {
     body.innerHTML = '';
     document.getElementById('emptyState').style.display = '';
-    const pagination = document.getElementById('ordersPagination');
-    if (pagination) pagination.style.display = 'none';
+    document.getElementById('loadMoreBtn').style.display = 'none';
     syncSelectionUi();
     return;
   }
   document.getElementById('emptyState').style.display = 'none';
-  const totalPages = Math.max(1, Math.ceil(filtered.length / tablePageSize));
-  if (tablePage > totalPages) tablePage = totalPages;
-  const pageOrders = visiblePageOrders();
-  const firstRow = (tablePage - 1) * tablePageSize + 1;
-  const lastRow = firstRow + pageOrders.length - 1;
-  const pagination = document.getElementById('ordersPagination');
-  if (pagination) pagination.style.display = 'flex';
-  const paginationInfo = document.getElementById('ordersPaginationInfo');
-  if (paginationInfo) paginationInfo.textContent = `Showing ${firstRow.toLocaleString('en-IN')}–${lastRow.toLocaleString('en-IN')} of ${filtered.length.toLocaleString('en-IN')} matching orders`;
-  const pageLabel = document.getElementById('ordersPageLabel');
-  if (pageLabel) pageLabel.textContent = `Page ${tablePage} of ${totalPages}`;
-  const prevBtn = document.getElementById('ordersPrevPage');
-  const nextBtn = document.getElementById('ordersNextPage');
-  if (prevBtn) prevBtn.disabled = tablePage <= 1;
-  if (nextBtn) nextBtn.disabled = tablePage >= totalPages;
+  document.getElementById('loadMoreBtn').style.display = hasMore ? '' : 'none';
 
-  body.innerHTML = pageOrders.map(o => {
+  body.innerHTML = filtered.map(o => {
     const items   = Array.isArray(o.cart_items) ? o.cart_items : [];
     const payInfo = orderPaymentBreakdown(o);
     const amount  = payInfo.full ? '₹' + payInfo.full.toLocaleString('en-IN') : '—';
     const partial = isPartialOrder(o);
-    const payKind = orderPayKind(o);
-    const isCOD   = payKind === 'cod';
+    const isCOD   = partial || o.status === 'cod_pending' || !o.razorpay_payment_id;
     const date    = o.created_at
       ? new Date(o.created_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
       : '—';
@@ -2194,18 +2083,13 @@ function _drawTable() {
         ${partial ? `<div class="amount-sub"><strong>Paid:</strong> ₹${payInfo.paid.toLocaleString('en-IN')}<br/><strong>Collect:</strong> ₹${payInfo.balance.toLocaleString('en-IN')}</div>` : ''}
       </td>
       <td>
-        <div class="method-badge" style="color:${payKind === 'cod' ? 'var(--orange)' : payKind === 'prepaid_pending' ? 'var(--gold)' : 'var(--green)'};">
-          ${partial ? '💰 10% + COD' : payKind === 'online_paid' ? '💳 Online' : payKind === 'prepaid_pending' ? '💳 Prepaid · awaiting' : '🚚 COD'}
+        <div class="method-badge" style="color:${isCOD ? 'var(--orange)' : 'var(--green)'};">
+          ${partial ? '💰 10% + COD' : (isCOD ? '🚚 COD' : '💳 Online')}
         </div>
-        ${!partial ? `<button onclick="togglePaymentType('${esc(o.id)}','${payKind === 'cod' ? 'prepaid' : 'cod'}', this)" title="Switch this order's payment type"
-          style="margin-top:0.4rem;background:none;border:1px solid var(--border);color:var(--cream-dim);padding:0.2rem 0.5rem;font-size:0.52rem;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">
-          ${payKind === 'cod' ? '→ 💳 Mark Prepaid' : '→ 🚚 Mark COD'}
-        </button>` : ''}
       </td>
       <td>
         <span class="badge ${bc}">${esc((o.status||'pending').replace(/_/g,' '))}</span>
-        ${o.cancellation_source === 'stale_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no courier movement for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · stale COD 7d</div>` : ''}
-        ${o.cancellation_source === 'no_awb_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no AWB assigned for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · no AWB 7d</div>` : ''}
+        ${isNimbusPostAutoCancelled(o) ? `<div title="${esc(o.cancellation_reason || 'NimbusPost 10-day dispatch threshold')}" style="display:inline-block;margin-top:0.35rem;padding:2px 7px;font-size:0.52rem;letter-spacing:0.1em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">NimbusPost · 10-day auto-cancel</div>${o.cancelled_at ? `<div style="margin-top:0.2rem;font-size:0.55rem;color:var(--cream-dim);">${new Date(o.cancelled_at).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>` : ''}` : ''}
         <br/>
         <select class="status-sel" onchange="updateStatus('${esc(o.id)}',this.value)">
           <option value="">Update status…</option>
@@ -2221,7 +2105,7 @@ function _drawTable() {
         </select>
         ${o.tracking_id ? `<div style="margin-top:0.4rem;font-size:0.6rem;color:var(--cream-dim);">${esc(o.courier_name||'')} · <a href="${esc(o.tracking_url||'#')}" target="_blank" style="color:var(--gold);font-family:Menlo,Consolas,monospace;">${esc(o.tracking_id)}</a></div>` : ''}
         ${['pending_phonepe','pending_partial_phonepe'].includes(o.status) ? `<button onclick="reconcilePhonePe('${esc(o.razorpay_order_id||o.id)}', this)" title="Re-check PhonePe and mark paid if completed"
-          style="display:block;margin-top:0.5rem;background:rgba(95,37,159,0.12);border:1px solid rgba(95,37,159,0.5);color:#a275d6;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">🔄 Re-check PhonePe</button>` : ''}
+          style="display:block;margin-top:0.5rem;background:rgba(95,37,159,0.12);border:1px solid rgba(95,37,159,0.5);color:#a275d6;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">🔄 Re-check PhonePe</button>` : ''}
         ${(() => {
           const pid = String(o.razorpay_payment_id || '');
           const isPhonePe = pid && !pid.startsWith('pay_');  // PhonePe ids start with OM/T; Razorpay starts with pay_
@@ -2232,31 +2116,25 @@ function _drawTable() {
           // so we don't have to escape it through the onclick attribute string
           // (apostrophes in names like O'Brien would otherwise break the JS).
           return `<button onclick="openRefundModal('${esc(o.razorpay_order_id||o.id)}',${amtRupees})" title="Refund — full or partial — via PhonePe"
-            style="display:block;margin-top:0.5rem;background:rgba(224,80,80,0.1);border:1px solid rgba(224,80,80,0.5);color:#e06060;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">💸 Refund</button>`;
+            style="display:block;margin-top:0.5rem;background:rgba(224,80,80,0.1);border:1px solid rgba(224,80,80,0.5);color:#e06060;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">💸 Refund</button>`;
         })()}
       </td>
       <td style="font-size:0.65rem;color:var(--cream-dim);max-width:200px;line-height:1.5;">
         ${esc(o.customer_address || '—')}
         ${orderIsUnshipped(o) ? `<button onclick="npShipOrder('${esc(o.razorpay_order_id||o.id)}', this)" title="Create shipment on NimbusPost and get AWB automatically"
-          style="display:block;margin-top:0.5rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;width:100%;"
+          style="display:block;margin-top:0.5rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;width:100%;"
           onmouseover="this.style.background='rgba(201,168,76,0.18)';"
           onmouseout="this.style.background='rgba(201,168,76,0.08)';">
           🚀 Ship via NimbusPost
         </button>` : ''}
-        <button onclick="openEditOrderModal('${esc(o.id)}')" title="Edit customer name, phone, email, address or books"
-          style="display:block;margin-top:0.4rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;"
-          onmouseover="this.style.background='rgba(201,168,76,0.18)';"
-          onmouseout="this.style.background='rgba(201,168,76,0.08)';">
-          ✏️ Edit details
-        </button>
         <button onclick="resendConfirmation('${esc(o.razorpay_order_id||o.id)}', this)" title="Re-send order confirmation via WhatsApp + email"
-          style="display:block;margin-top:0.4rem;background:rgba(109,191,109,0.08);border:1px solid rgba(109,191,109,0.45);color:#6dbf6d;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;"
+          style="display:block;margin-top:0.4rem;background:rgba(109,191,109,0.08);border:1px solid rgba(109,191,109,0.45);color:#6dbf6d;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
           onmouseover="this.style.background='rgba(109,191,109,0.18)';"
           onmouseout="this.style.background='rgba(109,191,109,0.08)';">
           ✉ Resend confirmation
         </button>
         <button onclick="deleteOrder('${esc(o.id)}','${esc(o.razorpay_order_id||o.id)}')" title="Permanently delete this order"
-          style="display:block;margin-top:0.4rem;background:transparent;border:1px solid rgba(224,80,80,0.35);color:#e05050;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:all 0.2s;"
+          style="display:block;margin-top:0.4rem;background:transparent;border:1px solid rgba(224,80,80,0.35);color:#e05050;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
           onmouseover="this.style.background='rgba(224,80,80,0.12)';this.style.borderColor='rgba(224,80,80,0.6)';"
           onmouseout="this.style.background='transparent';this.style.borderColor='rgba(224,80,80,0.35)';">
           🗑 Delete
@@ -2323,43 +2201,6 @@ function closeShipModal(confirmed) {
     _shipResolve(null);
   }
   _shipResolve = null;
-}
-
-// Manually switch an order between COD and Prepaid. Prepaid → asks whether the
-// customer has actually paid yet (paid = counts as revenue now; awaiting = will
-// pay before shipping). COD → clears any prepaid markers.
-async function togglePaymentType(id, target, btn) {
-  let collected = false;
-  if (target === 'prepaid') {
-    collected = confirm('Mark this order PREPAID.\n\n  OK  = Payment already collected (mark as PAID)\n  Cancel = Customer will pay before shipping (awaiting)');
-  } else {
-    if (!confirm('Switch this order back to Cash on Delivery?')) return;
-  }
-  const orig = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  try {
-    const ordRow = allOrders.find(o => String(o.id) === String(id));
-    const res = await adminFetch('/.netlify/functions/set-order-payment-type', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      // Send BOTH the uuid and the IC- display id so the server can locate the
-      // row even if one of them doesn't match (was throwing "Order not found").
-      body: JSON.stringify({ id, order_ref: ordRow?.razorpay_order_id || '', payment_type: target, collected }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
-    const ord = allOrders.find(o => String(o.id) === String(id));
-    if (ord) {
-      ord.status = data.status ?? ord.status;
-      ord.payment_status = data.payment_status ?? ord.payment_status;
-      ord.razorpay_payment_id = ('razorpay_payment_id' in data) ? data.razorpay_payment_id : ord.razorpay_payment_id;
-    }
-    updateStats();
-    applyFilters();
-  } catch (e) {
-    alert('Could not change payment type: ' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = orig; }
-  }
 }
 
 async function updateStatus(id, status) {
@@ -2493,7 +2334,7 @@ async function npBulkShip(btn) {
 
   // Show progress
   const progressMsg = document.createElement('div');
-  progressMsg.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#1c1916;border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:1rem 1.5rem;font-size:0.75rem;z-index:9999;font-family:Montserrat,sans-serif;letter-spacing:0.08em;';
+  progressMsg.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#1c1916;border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:1rem 1.5rem;font-size:0.75rem;z-index:9999;font-family:Manrope,sans-serif;letter-spacing:0.08em;';
   progressMsg.textContent = `⏳ Creating 0 of ${ids.length} NimbusPost shipments…`;
   document.body.appendChild(progressMsg);
 
@@ -2862,35 +2703,6 @@ function previewCreateProductImage(file) {
   reader.readAsDataURL(file);
 }
 
-// ── Trigger the 99bookstores background import ───────────────────────────────
-async function run99Import(btn) {
-  const status = document.getElementById('import99Status');
-  const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Starting…';
-  status.style.color = 'var(--cream-dim)';
-  status.textContent = 'Starting import…';
-  try {
-    const res = await adminFetch('/.netlify/functions/import-99bookstores-background', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
-    });
-    // Netlify background functions accept the job and return 202 with no body —
-    // the summary lives in the function logs, not the HTTP response.
-    if (res.status === 202) {
-      status.innerHTML = '✅ Import started in the background. New books appear under <strong>Products &amp; Prices</strong> and on the site in ~1–3 minutes — you can leave this page.';
-      return;
-    }
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
-    const dupes = data.skipped ? ((data.skipped.dupe_catalog || 0) + (data.skipped.dupe_custom || 0)) : 0;
-    status.innerHTML = `✅ Imported <strong>${data.inserted || 0}</strong> new books — ${data.on_homepage_feed || 0} on homepage, ${data.browse_only || 0} browse-only. Skipped ${dupes} duplicates.`;
-  } catch (e) {
-    status.style.color = '#e06060';
-    status.textContent = 'Import failed: ' + e.message;
-  } finally {
-    btn.disabled = false; btn.textContent = orig;
-  }
-}
-
 function clearCreateProductForm() {
   ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdDescription','newProdTags']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -3057,45 +2869,7 @@ function selectProduct(slug) {
     if (imgPrev) { imgPrev.src = v; imgPrev.style.display = v ? 'block' : 'none'; }
   };
   document.getElementById('productSaveMsg').textContent = row.override ? 'This product has a live override.' : 'No override saved yet.';
-  // Delete is only possible for custom products (DB-backed dynamic pages).
-  // Catalogue books are baked static files — deleting them needs a redirect.
-  const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
-  const delBtn = document.getElementById('prodDeleteBtn');
-  if (delBtn) delBtn.style.display = isCustom ? '' : 'none';
   renderProductList();
-}
-
-async function deleteProductPage() {
-  if (!selectedProduct) return;
-  const row = selectedProduct;
-  const p = mergedProduct(row);
-  if (!String(row.shopify_id || '').startsWith('CUSTOM:')) {
-    alert('This is a catalogue book (a baked static page) — it can\'t be deleted here. Tell me the slug and I\'ll add a 404 redirect for it.');
-    return;
-  }
-  if (!confirm(`Delete the product page for "${p.title}" entirely?\n\nThis removes it from the store, search and feeds, and the page will 404. This cannot be undone.`)) return;
-  const btn = document.getElementById('prodDeleteBtn');
-  const orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Deleting…'; }
-  try {
-    const res = await adminFetch('/.netlify/functions/delete-product', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug: row.slug }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
-    // Remove from the local list + reset the editor.
-    productRows = productRows.filter(r => r.slug !== row.slug);
-    selectedProduct = null;
-    document.getElementById('productEditorForm').style.display = 'none';
-    document.getElementById('productEditorEmpty').style.display = '';
-    renderProductList();
-    alert(`Deleted "${data.title || p.title}". The product page will now 404 (search/feeds clear within ~1 hour of cache).`);
-  } catch (e) {
-    alert('Could not delete: ' + e.message);
-    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-  }
 }
 
 async function saveProductOverride(activeOverride = true) {
@@ -3504,7 +3278,7 @@ function openRefundModal(orderId, fullAmtRupees, customerName) {
     <div style="background:#1c1916;border:1px solid rgba(224,80,80,0.35);width:min(440px,96vw);padding:1.6rem 1.6rem 1.3rem;position:relative;">
       <button onclick="document.getElementById('iacRefundModal')?.remove()"
         style="position:absolute;top:0.9rem;right:1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
-      <h3 style="font-family:'Cormorant Garamond',serif;color:#e06060;font-weight:500;margin:0 0 0.4rem;font-size:1.3rem;">
+      <h3 style="font-family:'DM Serif Display',serif;color:#e06060;font-weight:500;margin:0 0 0.4rem;font-size:1.3rem;">
         💸 Refund — PhonePe
       </h3>
       <p style="color:#a09080;font-size:0.72rem;line-height:1.55;margin:0 0 1rem;">
@@ -3534,111 +3308,18 @@ function openRefundModal(orderId, fullAmtRupees, customerName) {
 
       <div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:0.4rem;">
         <button onclick="document.getElementById('iacRefundModal')?.remove()"
-          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+          style="font-family:'Manrope',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
                  padding:0.65rem 1rem;background:transparent;border:1px solid rgba(160,144,128,0.3);color:#a09080;cursor:pointer;">
           Cancel
         </button>
         <button id="iacRefundSubmit" onclick="iacSubmitRefund('${orderId.replace(/'/g,"\\'")}',${fullAmtRupees})"
-          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+          style="font-family:'Manrope',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
                  padding:0.65rem 1.2rem;background:#e06060;border:1px solid #e06060;color:#1a0a0a;cursor:pointer;font-weight:700;">
           Issue Refund
         </button>
       </div>
     </div>`;
   document.body.appendChild(modal);
-}
-
-// ── Edit order customer details / books ──────────────────────────────────────
-function openEditOrderModal(orderUuid) {
-  const o = allOrders.find(x => String(x.id) === String(orderUuid));
-  if (!o) { alert('Order not found in the current list — refresh and try again.'); return; }
-  const displayId = o.razorpay_order_id || o.id;
-  const books = (Array.isArray(o.cart_items) ? o.cart_items : [])
-    .map(i => i.title || '').filter(Boolean).join(', ');
-
-  document.getElementById('iacEditModal')?.remove();
-  const modal = document.createElement('div');
-  modal.id = 'iacEditModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.9);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:10100;padding:1rem;';
-  const field = (label, id, ph) => `
-    <label style="display:block;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin:0.7rem 0 0.3rem;">${label}</label>
-    <input id="${id}" type="text" placeholder="${ph}" style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.3);color:#f0e8d8;padding:0.6rem;font-family:inherit;font-size:0.85rem;box-sizing:border-box;"/>`;
-  modal.innerHTML = `
-    <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.35);width:min(480px,96vw);max-height:92vh;overflow:auto;padding:1.6rem;position:relative;">
-      <button onclick="document.getElementById('iacEditModal')?.remove()"
-        style="position:absolute;top:0.9rem;right:1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
-      <h3 style="font-family:'Cormorant Garamond',serif;color:#c9a84c;font-weight:500;margin:0 0 0.3rem;font-size:1.3rem;">✏️ Edit order details</h3>
-      <p style="color:#a09080;font-size:0.72rem;margin:0 0 0.5rem;">Order <strong style="color:#c9a84c;">${String(displayId).replace(/[<>]/g,'')}</strong></p>
-      ${field('Customer name', 'iacEditName', 'Full name')}
-      ${field('Phone', 'iacEditPhone', '10-digit mobile')}
-      ${field('Email', 'iacEditEmail', 'email (optional)')}
-      <label style="display:block;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin:0.7rem 0 0.3rem;">Delivery address</label>
-      <textarea id="iacEditAddress" rows="3" placeholder="Full address with pincode" style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.3);color:#f0e8d8;padding:0.6rem;font-family:inherit;font-size:0.85rem;box-sizing:border-box;resize:vertical;"></textarea>
-      ${field('Books (comma-separated)', 'iacEditBooks', 'Title 1, Title 2')}
-      <p style="color:#7a6f5f;font-size:0.62rem;line-height:1.5;margin:0.4rem 0 0;">Editing books rebuilds the item list; line prices are split evenly across titles to match the paid total.</p>
-      <div id="iacEditMsg" style="display:none;font-size:0.72rem;line-height:1.5;margin:0.7rem 0 0;"></div>
-      <div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1rem;">
-        <button onclick="document.getElementById('iacEditModal')?.remove()"
-          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.65rem 1rem;background:transparent;border:1px solid rgba(160,144,128,0.3);color:#a09080;cursor:pointer;">Cancel</button>
-        <button id="iacEditSubmit" onclick="submitEditOrder('${String(o.id).replace(/'/g,"\\'")}')"
-          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;padding:0.65rem 1.2rem;background:#c9a84c;border:1px solid #c9a84c;color:#1a1408;cursor:pointer;font-weight:700;">Save changes</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  // Prefill via .value (avoids breaking on quotes/apostrophes in the data).
-  document.getElementById('iacEditName').value    = o.customer_name    || '';
-  document.getElementById('iacEditPhone').value   = o.customer_phone   || '';
-  document.getElementById('iacEditEmail').value   = o.customer_email   || '';
-  document.getElementById('iacEditAddress').value = o.customer_address || '';
-  document.getElementById('iacEditBooks').value   = books;
-  document.getElementById('iacEditName').focus();
-}
-
-async function submitEditOrder(orderUuid) {
-  const msg = document.getElementById('iacEditMsg');
-  const show = (t, c = '#e8a030') => { msg.textContent = t; msg.style.color = c; msg.style.display = ''; };
-  const btn = document.getElementById('iacEditSubmit');
-  const payload = {
-    id:               orderUuid,
-    customer_name:    document.getElementById('iacEditName').value,
-    customer_phone:   document.getElementById('iacEditPhone').value,
-    customer_email:   document.getElementById('iacEditEmail').value,
-    customer_address: document.getElementById('iacEditAddress').value,
-    books:            document.getElementById('iacEditBooks').value,
-  };
-  btn.disabled = true; btn.textContent = 'Saving…';
-  try {
-    const res = await adminFetch('/.netlify/functions/update-order-details', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
-    // Reflect the change locally so the row updates without a full refetch.
-    const o = allOrders.find(x => String(x.id) === String(orderUuid));
-    if (o) {
-      o.customer_name = payload.customer_name.trim();
-      o.customer_phone = payload.customer_phone.trim();
-      o.customer_email = payload.customer_email.trim();
-      o.customer_address = payload.customer_address.trim();
-      if (payload.books.trim()) {
-        const titles = payload.books.split(',').map(t => t.trim()).filter(Boolean);
-        const totalRs = Math.round((o.amount_paise || 0) / 100);
-        const per = titles.length ? Math.round(totalRs / titles.length) : totalRs;
-        const prev = Array.isArray(o.cart_items) ? o.cart_items : [];
-        o.cart_items = titles.map(title => {
-          const m = prev.find(i => String(i.title||'').trim().toLowerCase() === title.toLowerCase());
-          return { title, qty: m?.qty || 1, price: m?.price || per };
-        });
-      }
-    }
-    document.getElementById('iacEditModal')?.remove();
-    if (typeof renderTable === 'function') renderTable();
-  } catch (e) {
-    show('Could not save: ' + e.message, '#e06060');
-    btn.disabled = false; btn.textContent = 'Save changes';
-  }
 }
 
 function iacRefundToggleAmount() {
@@ -3706,8 +3387,10 @@ async function processPhonePeRefund(orderId, btn) {
 // ── NimbusPost: sync all "shipped" orders to real delivery status ──────────
 async function reconcileShippedOrders(btn) {
   const stuckCount = allOrders.filter(o => ['shipped','out_for_delivery'].includes(o.status) && o.tracking_id).length;
-  if (!stuckCount) { alert('No shipped/OFD orders with tracking IDs found in the current view.'); return; }
-  if (!confirm(`Check NimbusPost for the real delivery status of ${stuckCount} orders currently "Shipped" or "Out for Delivery"?\n\nThis will mark delivered orders as Delivered and send customers a WhatsApp notification.`)) return;
+  const unclassifiedCancelled = allOrders.filter(o => o.status === 'cancelled' && o.tracking_id && o.cancellation_source !== 'nimbuspost').length;
+  const checkCount = stuckCount + unclassifiedCancelled;
+  if (!checkCount) { alert('No shipped/OFD orders or unclassified cancelled AWBs found in the current view.'); return; }
+  if (!confirm(`Check NimbusPost for ${checkCount} AWBs (${stuckCount} shipped/OFD and ${unclassifiedCancelled} unclassified cancellations)?\n\nThis will update delivery statuses and identify NimbusPost 10-day auto-cancellations.`)) return;
 
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking NimbusPost…'; }
@@ -3724,6 +3407,7 @@ async function reconcileShippedOrders(btn) {
       `Total checked: ${s.total}`,
       s.delivered        ? `✅ Marked delivered: ${s.delivered}` : '',
       s.out_for_delivery ? `🚚 Marked out for delivery: ${s.out_for_delivery}` : '',
+      s.cancelled        ? `🚫 NimbusPost cancellations classified: ${s.cancelled}` : '',
       s.rto              ? `↩ Marked RTO: ${s.rto}` : '',
       s.undelivered      ? `⚠️ Marked undelivered: ${s.undelivered}` : '',
       s.no_change        ? `No change (already correct): ${s.no_change}` : '',
@@ -3793,7 +3477,7 @@ function openBroadcastModal() {
   m.innerHTML = `
     <div style="background:var(--bg3);border:1px solid var(--border);width:min(620px,96vw);padding:2rem;max-height:90vh;overflow-y:auto;position:relative;">
       <button onclick="document.getElementById('broadcastModal').remove()" style="position:absolute;top:0.6rem;right:0.6rem;background:transparent;border:1px solid var(--border);width:32px;height:32px;border-radius:50%;cursor:pointer;color:var(--cream-dim);font-size:0.9rem;">✕</button>
-      <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;color:var(--white);margin-bottom:0.4rem;">📣 WhatsApp Broadcast</h2>
+      <h2 style="font-family:'DM Serif Display',serif;font-size:1.7rem;font-weight:400;color:var(--white);margin-bottom:0.4rem;">📣 WhatsApp Broadcast</h2>
       <p style="font-size:0.74rem;color:var(--cream-dim);line-height:1.7;margin-bottom:1.4rem;">Sends an approved Meta WhatsApp template to all paying customers in the last N days. Personalized mode picks books matched to each customer's reading taste.</p>
 
       <div class="form-row">
@@ -3958,7 +3642,7 @@ function openReviewRequestModal() {
   m.innerHTML = `
     <div style="background:var(--bg3);border:1px solid var(--border);width:min(580px,96vw);padding:2rem;max-height:90vh;overflow-y:auto;position:relative;">
       <button onclick="document.getElementById('reviewReqModal').remove()" style="position:absolute;top:0.6rem;right:0.6rem;background:transparent;border:1px solid var(--border);width:32px;height:32px;border-radius:50%;cursor:pointer;color:var(--cream-dim);font-size:0.9rem;">✕</button>
-      <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;color:var(--white);margin-bottom:0.4rem;">⭐ Request Reviews</h2>
+      <h2 style="font-family:'DM Serif Display',serif;font-size:1.7rem;font-weight:400;color:var(--white);margin-bottom:0.4rem;">⭐ Request Reviews</h2>
       <p style="font-size:0.74rem;color:var(--cream-dim);line-height:1.7;margin-bottom:1.4rem;">Asks <strong>delivered</strong> customers to leave a review. Each gets a personal review link for their order plus a ₹50 cashback scratch-card incentive (built into the template). Builds reputation and helps the Google Merchant review.</p>
 
       <div class="form-row">
@@ -4085,7 +3769,7 @@ async function syncNimbusAwbs(btn) {
     // Background function — Netlify returns 202 immediately, the sync keeps
     // running for up to 15 min (instead of timing the gateway out at 10s and
     // showing a scary "Unexpected token '<'" JSON-parse alert).
-    const res = await adminFetch('/.netlify/functions/nimbuspost-awb-sync-background', {
+    const res = await fetch('/.netlify/functions/nimbuspost-awb-sync-background', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -4100,53 +3784,6 @@ async function syncNimbusAwbs(btn) {
     setTimeout(() => { try { fetchOrders(true); } catch {} }, 90 * 1000);
   } catch (err) {
     alert('Could not start AWB sync:\n\n' + err.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-  }
-}
-
-async function sendTestEmail(btn) {
-  const to = prompt('Send a test email to:\n\n(Leave blank to send to the store owner address / STORE_OWNER_EMAIL)', '') || '';
-  const orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Sending…'; }
-  try {
-    const res = await adminFetch('/.netlify/functions/send-test-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(to.trim() ? { to: to.trim() } : {}),
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      alert(`✅ Test email sent to ${data.sent_to}\n\nDelivered via: ${data.delivered_via}\nProvider order: ${data.provider_order}\n\nCheck the inbox (and spam) to confirm it arrived.`);
-    } else {
-      const cfg = data.configured ? Object.entries(data.configured).map(([k,v]) => `${k}:${v?'set':'—'}`).join('  ') : '';
-      throw new Error(`${data.error || 'HTTP ' + res.status}\n\nProviders configured: ${cfg}`);
-    }
-  } catch (err) {
-    alert('❌ Test email failed:\n\n' + err.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-  }
-}
-
-async function emailMissedOrders(btn) {
-  const hours = prompt('Email me a digest of every order from the last how many hours?\n\n(e.g. 12 — covers everything since ~1:29 PM if it\'s now ~7 PM)', '12');
-  if (hours === null) return;
-  const h = Math.max(1, Math.min(168, parseInt(hours, 10) || 12));
-  const orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Sending…'; }
-  try {
-    const res = await adminFetch('/.netlify/functions/missed-orders-digest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hours: h }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
-    if (!data.count) { alert(data.message || 'No orders found in that window.'); return; }
-    alert(`✅ Digest sent — ${data.count} order${data.count > 1 ? 's' : ''} · ₹${(data.total_rupees || 0).toLocaleString('en-IN')}\n\nDelivered via: ${data.delivered_via}\n\nCheck your inbox (and spam).`);
-  } catch (e) {
-    alert('❌ Could not send digest:\n\n' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
@@ -4197,35 +3834,6 @@ async function bulkReconcilePhonePe(btn) {
     fetchOrders(true);
   } catch (err) {
     alert('Bulk re-check failed: ' + err.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-  }
-}
-
-// ── Retry failed PhonePe refunds ───────────────────────────────────────────
-async function retryFailedRefunds(btn) {
-  if (!confirm('Re-check PhonePe refund status for every order owed a refund and re-attempt any that FAILED?\n\nMoney-safe: an order is never re-refunded if PhonePe already shows the refund completed or pending.\n\n(This also runs automatically every 4 hours.)')) return;
-  const orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Retrying…'; }
-  try {
-    const res = await adminFetch('/.netlify/functions/phonepe-retry-refunds-background', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-    });
-    // Background functions return 202 with an empty body — that's success.
-    let data = {}; try { data = await res.json(); } catch (e) {}
-    if (res.status === 202 || (data && data.success === undefined && res.ok)) {
-      alert('✅ Refund retry started in the background.\n\nPhonePe refunds are being re-checked and failed ones re-attempted. Reload orders in a minute to see updated statuses.');
-    } else if (data.summary) {
-      const s = data.summary;
-      alert(`Refund retry complete:\n\n  scanned: ${s.scanned}\n  completed now: ${(s.reconciled_completed||0)+(s.retried_completed||0)}\n  re-attempted (pending): ${s.retried_pending||0}\n  still failing: ${(s.retry_failed||0)+(s.retry_error||0)}\n  still pending at PhonePe: ${s.still_pending||0}`);
-    } else if (data.error) {
-      throw new Error(data.error);
-    } else {
-      alert('✅ Refund retry triggered. Reload orders in a minute to see updated statuses.');
-    }
-    setTimeout(() => fetchOrders(true), 20000);
-  } catch (err) {
-    alert('Retry failed to start: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
@@ -4350,331 +3958,7 @@ setInterval(updateAutoRecheckBadge, 30_000);
 document.getElementById('adminPass').focus();
 
 // ── Tab navigation ──────────────────────────────────────────────────────────
-/* ═══════════════ BUSINESS REPORTS (client-side, zero extra egress) ═══════════════ */
-// Works entirely off allOrders (already loaded for the dashboard) — no new
-// Supabase/Netlify reads. Statuses that never became a sale are excluded;
-// cancelled/refunded are excluded too unless the checkbox is ticked.
-const RPT_NEVER_SALE = new Set(['pending','pending_phonepe','pending_partial_phonepe','payment_failed','failed']);
-const RPT_CANCELLED  = new Set(['cancelled','refunded']);
-let rptSort = { field: 'revenue', dir: -1 };
-let _rptRows = [];
-
-function rptDateKey(d, gran) {
-  const dt = new Date(d);
-  if (gran === 'month') return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
-  if (gran === 'week') { // key = Monday of that week
-    const m = new Date(dt); m.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
-    return m.toISOString().slice(0,10);
-  }
-  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
-}
-
-function rptSaleOrders(from, to) {
-  const incCancelled = document.getElementById('rptIncludeCancelled')?.checked;
-  return allOrders.filter(o => {
-    const s = String(o.status || '').toLowerCase();
-    if (RPT_NEVER_SALE.has(s)) return false;
-    if (!incCancelled && RPT_CANCELLED.has(s)) return false;
-    const t = new Date(o.created_at).getTime();
-    return t >= from.getTime() && t <= to.getTime();
-  });
-}
-
-function rptItemsOf(o) { return Array.isArray(o.cart_items) ? o.cart_items : []; }
-function rptOrderRs(o) {
-  if (o.amount_paise) return o.amount_paise / 100;
-  return rptItemsOf(o).reduce((s,i) => s + (Number(i.price)||0) * (Number(i.qty)||1), 0);
-}
-function rptMatch(item, q) { return String(item.title||'').toLowerCase().includes(q); }
-
-// Aggregate one period → { revenue, orders, units, byBucket:Map, byProduct:Map }
-function rptAggregate(from, to, productQ, gran) {
-  const q = String(productQ || '').trim().toLowerCase();
-  const byBucket = new Map(), byProduct = new Map();
-  let revenue = 0, orders = 0, units = 0;
-  for (const o of rptSaleOrders(from, to)) {
-    const items = rptItemsOf(o);
-    const hits = q ? items.filter(i => rptMatch(i, q)) : items;
-    if (q && !hits.length) continue;
-    const rev = q ? hits.reduce((s,i)=>s+(Number(i.price)||0)*(Number(i.qty)||1),0) : rptOrderRs(o);
-    const u   = hits.reduce((s,i)=>s+(Number(i.qty)||1),0) || (q ? 0 : 1);
-    revenue += rev; orders += 1; units += u;
-    const k = rptDateKey(o.created_at, gran);
-    const b = byBucket.get(k) || { revenue:0, orders:0, units:0 };
-    b.revenue += rev; b.orders += 1; b.units += u;
-    byBucket.set(k, b);
-    for (const i of hits) {
-      const title = String(i.title || 'Unknown').trim();
-      const p = byProduct.get(title.toLowerCase()) || { title, revenue:0, orders:0, units:0 };
-      p.revenue += (Number(i.price)||0)*(Number(i.qty)||1);
-      p.units   += Number(i.qty)||1;
-      p.orders  += 1;
-      byProduct.set(title.toLowerCase(), p);
-    }
-  }
-  return { revenue, orders, units, byBucket, byProduct };
-}
-
-function rptRange() {
-  const fromEl = document.getElementById('rptFrom'), toEl = document.getElementById('rptTo');
-  let from = fromEl.value ? new Date(fromEl.value + 'T00:00:00') : null;
-  let to   = toEl.value   ? new Date(toEl.value   + 'T23:59:59.999') : null;
-  if (!from || !to || from > to) { // default 30 days
-    to = new Date(); from = new Date(); from.setDate(from.getDate() - 29); from.setHours(0,0,0,0);
-  }
-  return { from, to };
-}
-
-function rptQuickRange(btn, days) {
-  document.querySelectorAll('.rpt-range').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  const to = new Date(); let from = new Date();
-  if (days === 'month')  { from = new Date(to.getFullYear(), to.getMonth(), 1); }
-  else if (days === 'lmonth') {
-    from = new Date(to.getFullYear(), to.getMonth()-1, 1);
-    const end = new Date(to.getFullYear(), to.getMonth(), 0, 23,59,59,999);
-    document.getElementById('rptFrom').value = from.toISOString().slice(0,10);
-    document.getElementById('rptTo').value   = end.toISOString().slice(0,10);
-    renderReports(); return;
-  }
-  else { from.setDate(to.getDate() - (days - 1)); }
-  from.setHours(0,0,0,0);
-  document.getElementById('rptFrom').value = `${from.getFullYear()}-${String(from.getMonth()+1).padStart(2,'0')}-${String(from.getDate()).padStart(2,'0')}`;
-  document.getElementById('rptTo').value   = `${to.getFullYear()}-${String(to.getMonth()+1).padStart(2,'0')}-${String(to.getDate()).padStart(2,'0')}`;
-  renderReports();
-}
-function rptCustomRange() {
-  document.querySelectorAll('.rpt-range').forEach(b => b.classList.remove('active'));
-  renderReports();
-}
-function rptSetMetric(btn) {
-  document.querySelectorAll('.rpt-metric').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderReports();
-}
-function rptMetric() { return document.querySelector('.rpt-metric.active')?.dataset.metric || 'revenue'; }
-
-function rptRs(n) { return '₹' + Math.round(n).toLocaleString('en-IN'); }
-function rptDelta(cur, prev) {
-  if (!prev) return cur ? '<span style="color:var(--cream-dim)">new</span>' : '—';
-  const pct = ((cur - prev) / prev) * 100;
-  const col = pct < 0 ? 'var(--red)' : '#5d9b55';
-  const arrow = pct < 0 ? '▼' : '▲';
-  return `<span style="color:${col}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`;
-}
-
-function initReports() {
-  if (!document.getElementById('rptFrom').value) {
-    rptQuickRange(document.querySelector('.rpt-range[data-days="30"]'), 30);
-    return; // rptQuickRange calls renderReports
-  }
-  renderReports();
-}
-
-function renderReports() {
-  if (!allOrders.length) {
-    document.getElementById('rptChart').innerHTML = '<div style="color:var(--cream-dim);font-size:.75rem;">Orders still loading — open this tab again in a moment.</div>';
-    return;
-  }
-  const { from, to } = rptRange();
-  const gran = document.getElementById('rptGranularity').value;
-  const productQ = document.getElementById('rptProduct').value;
-
-  // Populate product datalist once per render (cheap — titles from loaded orders)
-  const titles = new Set();
-  allOrders.forEach(o => rptItemsOf(o).forEach(i => i.title && titles.add(String(i.title).trim())));
-  document.getElementById('rptProductList').innerHTML =
-    [...titles].sort().map(t => `<option value="${t.replace(/"/g,'&quot;')}"></option>`).join('');
-
-  // Previous equal-length period, ending right before `from`
-  const spanMs = to.getTime() - from.getTime();
-  const prevTo = new Date(from.getTime() - 1);
-  const prevFrom = new Date(prevTo.getTime() - spanMs);
-
-  const cur  = rptAggregate(from, to, productQ, gran);
-  const prev = rptAggregate(prevFrom, prevTo, productQ, gran);
-
-  // ── Summary cards ─────────────────────────────────────────────
-  const aovCur = cur.orders ? cur.revenue / cur.orders : 0;
-  const aovPrev = prev.orders ? prev.revenue / prev.orders : 0;
-  document.getElementById('rptCards').innerHTML = [
-    ['Revenue', rptRs(cur.revenue), rptDelta(cur.revenue, prev.revenue)],
-    ['Orders', cur.orders.toLocaleString('en-IN'), rptDelta(cur.orders, prev.orders)],
-    ['Units sold', cur.units.toLocaleString('en-IN'), rptDelta(cur.units, prev.units)],
-    ['Avg order value', rptRs(aovCur), rptDelta(aovCur, aovPrev)],
-  ].map(([label,val,delta]) => `
-    <div class="stat-card" style="cursor:default;">
-      <div class="stat-label">${label}</div>
-      <div class="stat-val">${val}</div>
-      <div style="font-size:.68rem;margin-top:.3rem;">${delta} vs prev period</div>
-    </div>`).join('');
-
-  // ── Bar chart (inline SVG) ────────────────────────────────────
-  const metric = rptMetric();
-  // Build the full bucket axis so zero-sale days still show (that's the point!)
-  const keys = [];
-  const cursor = new Date(from);
-  while (cursor <= to) {
-    const k = rptDateKey(cursor, gran);
-    if (!keys.length || keys[keys.length-1] !== k) keys.push(k);
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  const vals = keys.map(k => (cur.byBucket.get(k)?.[metric]) || 0);
-  const maxV = Math.max(1, ...vals);
-  const barW = Math.max(14, Math.min(46, Math.floor(900 / keys.length) - 4));
-  const gap = 4, chartH = 220, labelH = 46;
-  const w = keys.length * (barW + gap) + 50;
-  const isRs = metric === 'revenue';
-  const bars = keys.map((k, i) => {
-    const v = vals[i];
-    const h = Math.round((v / maxV) * (chartH - 24));
-    const x = 40 + i * (barW + gap);
-    const y = chartH - h;
-    const lbl = gran === 'month' ? k : k.slice(5); // MM-DD
-    const valLbl = v ? (isRs ? '₹' + (v >= 1000 ? (v/1000).toFixed(1) + 'k' : Math.round(v)) : v) : '';
-    return `
-      <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="var(--gold, #c9a84c)" opacity="0.85">
-        <title>${k} — ${isRs ? rptRs(v) : v + ' ' + metric}</title>
-      </rect>
-      ${valLbl ? `<text x="${x + barW/2}" y="${y - 4}" text-anchor="middle" font-size="9" fill="var(--cream-dim,#a09080)">${valLbl}</text>` : ''}
-      <text x="${x + barW/2}" y="${chartH + 12}" text-anchor="middle" font-size="8.5" fill="var(--cream-dim,#a09080)" transform="rotate(45 ${x + barW/2} ${chartH + 12})">${lbl}</text>`;
-  }).join('');
-  document.getElementById('rptChartTitle').textContent =
-    `${metric === 'revenue' ? 'Revenue ₹' : metric === 'orders' ? 'No. of orders' : 'Units sold'} per ${gran}` +
-    (productQ ? ` — "${productQ}"` : ' — all products');
-  document.getElementById('rptChart').innerHTML =
-    `<svg width="${w}" height="${chartH + labelH}" style="min-width:${w}px;">${bars}
-      <line x1="36" y1="${chartH}" x2="${w}" y2="${chartH}" stroke="var(--border,#3a332a)" stroke-width="1"/>
-      <text x="2" y="12" font-size="9" fill="var(--cream-dim,#a09080)">${isRs ? rptRs(maxV) : maxV}</text>
-    </svg>`;
-
-  // ── Product breakdown table ───────────────────────────────────
-  _rptRows = [...cur.byProduct.values()].map(p => {
-    const pv = prev.byProduct.get(p.title.toLowerCase());
-    return { ...p, prevRevenue: pv?.revenue || 0,
-             delta: pv?.revenue ? (p.revenue - pv.revenue) / pv.revenue : (p.revenue ? Infinity : 0) };
-  });
-  // Products that sold before but ZERO now — the "which product dropped" answer
-  for (const [k, pv] of prev.byProduct) {
-    if (!cur.byProduct.has(k)) _rptRows.push({ title: pv.title, revenue:0, orders:0, units:0, prevRevenue: pv.revenue, delta: -1 });
-  }
-  rptRenderTable();
-}
-
-function rptSortTable(field) {
-  rptSort.dir = rptSort.field === field ? -rptSort.dir : -1;
-  rptSort.field = field;
-  rptRenderTable();
-}
-
-function rptRenderTable() {
-  const f = rptSort.field, d = rptSort.dir;
-  // dir -1 (default) = numeric descending / title A→Z; toggling flips it
-  _rptRows.sort((a,b) => {
-    const cmp = f === 'title'
-      ? String(a.title).localeCompare(String(b.title))
-      : Number(b[f]||0) - Number(a[f]||0);
-    return cmp * (d === -1 ? 1 : -1);
-  });
-  document.getElementById('rptTableBody').innerHTML = _rptRows.length ? _rptRows.map((p, idx) => `
-    <tr style="cursor:pointer;${p.delta < 0 && p.prevRevenue ? 'background:rgba(201,54,54,0.05);' : ''}" onclick="rptPickProduct(${idx})">
-      <td>${esc(p.title)}</td>
-      <td>${p.units}</td>
-      <td>${p.orders}</td>
-      <td>${rptRs(p.revenue)}</td>
-      <td style="color:var(--cream-dim)">${rptRs(p.prevRevenue)}</td>
-      <td>${p.delta === Infinity ? '<span style="color:#5d9b55">new</span>' : rptDelta(p.revenue, p.prevRevenue)}</td>
-    </tr>`).join('')
-    : '<tr><td colspan="6" style="color:var(--cream-dim);">No sales in this range.</td></tr>';
-}
-
-function rptPickProduct(idx) {
-  const p = _rptRows[idx];
-  if (!p) return;
-  document.getElementById('rptProduct').value = p.title;
-  renderReports();
-  document.getElementById('rptChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-const TABS = ['orders','create','products','abandoned','reviews','returns','botinbox','bookreq','insights','bot','recover','reports'];
-
-// ── Customer Insights (AI over bot conversations) ──────────────────────────
-async function runBotInsights(btn) {
-  const days = document.getElementById('insightsDays')?.value || '30';
-  const out  = document.getElementById('insightsResult');
-  const orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Analyzing…'; }
-  out.innerHTML = `<div style="text-align:center;padding:3rem 1rem;color:var(--cream-dim,#8a7a62);font-size:0.82rem;">
-    Reading your customers' conversations and finding patterns…<br/><span style="font-size:0.7rem;">This can take 10–30 seconds.</span></div>`;
-  try {
-    const res = await adminFetch('/.netlify/functions/bot-insights', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ days: Number(days) }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
-    renderInsights(data);
-  } catch (e) {
-    out.innerHTML = `<div style="padding:2rem 1rem;color:#e06060;font-size:0.82rem;">Could not analyze: ${esc(e.message)}</div>`;
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-  }
-}
-
-function renderInsights(data) {
-  const out = document.getElementById('insightsResult');
-  const r = data.report || {};
-  const m = data.meta || {};
-  const issues = Array.isArray(r.issues) ? r.issues : [];
-
-  const freqColor = { high: '#e06060', medium: '#e0a94a', low: '#6dbf6d' };
-  const catColor  = '#c9a84c';
-
-  const list = (arr) => (Array.isArray(arr) && arr.length)
-    ? `<ul style="margin:0.4rem 0 0;padding-left:1.1rem;line-height:1.75;">${arr.map(x => `<li style="margin:0.25rem 0;color:#e8dcc4;font-size:0.8rem;">${esc(x)}</li>`).join('')}</ul>`
-    : `<div style="color:#7a6330;font-size:0.75rem;">—</div>`;
-
-  const issuesHtml = issues.map((it, i) => `
-    <div style="border:1px solid rgba(201,168,76,0.18);border-radius:8px;padding:1rem 1.1rem;margin-bottom:0.8rem;background:#141210;">
-      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.5rem;">
-        <span style="font-family:'Cormorant Garamond',serif;font-size:1.05rem;color:#f0e8d8;">${i + 1}. ${esc(it.title || 'Issue')}</span>
-        ${it.category ? `<span style="font-size:0.55rem;letter-spacing:0.12em;text-transform:uppercase;padding:0.2rem 0.55rem;border:1px solid ${catColor}55;color:${catColor};border-radius:20px;">${esc(it.category)}</span>` : ''}
-        ${it.frequency ? `<span style="font-size:0.55rem;letter-spacing:0.12em;text-transform:uppercase;padding:0.2rem 0.55rem;border:1px solid ${(freqColor[String(it.frequency).toLowerCase()]||'#a09080')}66;color:${freqColor[String(it.frequency).toLowerCase()]||'#a09080'};border-radius:20px;">${esc(it.frequency)}${it.approx_share ? ' · ' + esc(it.approx_share) : ''}</span>` : ''}
-      </div>
-      ${Array.isArray(it.examples) && it.examples.length ? `<div style="margin:0.4rem 0 0.6rem;padding-left:0.8rem;border-left:2px solid rgba(201,168,76,0.3);">
-        ${it.examples.slice(0,3).map(q => `<div style="color:#a09080;font-size:0.74rem;font-style:italic;line-height:1.5;margin:0.15rem 0;">"${esc(q)}"</div>`).join('')}
-      </div>` : ''}
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.5rem 1.2rem;margin-top:0.5rem;">
-        ${it.root_cause ? `<div><div style="font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;color:#7a6330;">Root cause</div><div style="font-size:0.78rem;color:#e8dcc4;line-height:1.5;">${esc(it.root_cause)}</div></div>` : ''}
-        ${it.business_impact ? `<div><div style="font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;color:#7a6330;">Impact</div><div style="font-size:0.78rem;color:#e8dcc4;line-height:1.5;">${esc(it.business_impact)}</div></div>` : ''}
-      </div>
-      ${it.fix ? `<div style="margin-top:0.6rem;padding:0.5rem 0.75rem;background:rgba(109,191,109,0.08);border:1px solid rgba(109,191,109,0.28);border-radius:6px;"><span style="font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;color:#6dbf6d;">✔ Fix</span><div style="font-size:0.8rem;color:#f0e8d8;line-height:1.55;margin-top:0.2rem;">${esc(it.fix)}</div></div>` : ''}
-    </div>`).join('');
-
-  const block = (title, emoji, content, accent) => `
-    <div style="margin-top:1.2rem;">
-      <div style="font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:${accent};margin-bottom:0.4rem;">${emoji} ${title}</div>
-      ${content}
-    </div>`;
-
-  out.innerHTML = `
-    <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;font-size:0.7rem;color:var(--cream-dim,#8a7a62);">
-      <span>📊 <strong style="color:#c9a84c;">${m.total_messages ?? 0}</strong> messages</span>
-      <span>👤 <strong style="color:#c9a84c;">${m.total_customers ?? 0}</strong> customers</span>
-      <span>🗓 last ${data.days} days</span>
-      ${m.capped ? '<span style="color:#e0a94a;">(capped to most recent messages)</span>' : ''}
-    </div>
-    ${r.summary ? `<div style="background:#1c1916;border-left:3px solid #c9a84c;padding:0.9rem 1.1rem;border-radius:0 6px 6px 0;margin-bottom:1rem;">
-      <div style="font-size:0.86rem;color:#f0e8d8;line-height:1.6;">${esc(r.summary)}</div>
-      ${r.sentiment ? `<div style="font-size:0.7rem;color:#a09080;margin-top:0.4rem;">Overall sentiment: <strong style="color:#e0a94a;">${esc(r.sentiment)}</strong></div>` : ''}
-    </div>` : ''}
-    ${issues.length ? `<div style="font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.5rem;">🚩 Top issues customers face</div>${issuesHtml}` : ''}
-    ${block('Quick wins (do this week)', '⚡', list(r.quick_wins), '#e0a94a')}
-    ${block('Website improvements', '🖥', list(r.website_improvements), '#6db8ff')}
-    ${block('Service &amp; operations', '📦', list(r.service_improvements), '#6dbf6d')}
-    <div style="margin-top:1.2rem;font-size:0.62rem;color:#7a6330;">Generated ${m.generated_at ? new Date(m.generated_at).toLocaleString('en-IN') : ''} · AI-assisted from real conversations — review before acting.</div>`;
-}
+const TABS = ['orders','create','products','abandoned','reviews','returns','botinbox','bookreq','recover'];
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
@@ -4693,19 +3977,13 @@ function switchTab(tab, pushState = true) {
   // Update URL hash without page jump
   if (pushState) history.pushState(null, '', '/admin/#' + tab);
 
-  // Lazy-load data for the activated tab.
-  // Gate on EITHER auth credential — passkey/restored sessions set adminToken
-  // but leave adminKey empty, so gating on adminKey alone left these tabs stuck
-  // on "Loading…" for token-authenticated admins.
-  const _authed = adminToken || adminKey;
-  if (tab === 'products' && _authed) fetchProducts();
-  if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
+  // Lazy-load data for the activated tab
+  if (tab === 'products' && adminKey) fetchProducts();
+  if (tab === 'abandoned' && adminKey) fetchAbandonedCheckouts();
   if (tab === 'reviews') fetchPendingReviews();
-  if (tab === 'returns' && _authed) fetchReturnRequests();
-  if (tab === 'botinbox' && _authed) fetchInbox();
-  if (tab === 'bookreq' && _authed) fetchBookRequests();
-  if (tab === 'bot' && _authed) loadBotSettings();
-  if (tab === 'reports') initReports();
+  if (tab === 'returns' && adminKey) fetchReturnRequests();
+  if (tab === 'botinbox' && adminKey) fetchInbox();
+  if (tab === 'bookreq' && adminKey) fetchBookRequests();
 
   // Scroll to top of content
   document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -4928,7 +4206,7 @@ function renderReturns() {
     const statusStyle = RETURN_STATUS_COLORS[r.status] || 'border-color:rgba(160,144,128,0.4);color:#6f6255;';
     const statusLabel = (r.status || 'pending').replace(/_/g, ' ');
     const awbHtml = r.awb
-      ? `<span style="font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--gold);">${r.awb}</span><br><span style="font-size:0.62rem;color:var(--cream-dim);">${r.courier_name||''}</span>`
+      ? `<span style="font-family:'DM Serif Display',serif;font-size:1rem;color:var(--gold);">${r.awb}</span><br><span style="font-size:0.62rem;color:var(--cream-dim);">${r.courier_name||''}</span>`
       : '—';
 
     const canPickup = !r.awb && r.status === 'approved';
@@ -4952,7 +4230,6 @@ function renderReturns() {
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
           ${canApprove ? `<button class="btn-green" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="approveReturn('${r.id}',this)">✓ Approve</button>` : ''}
           ${canReject  ? `<button class="btn-danger" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="rejectReturn('${r.id}',this)">✗ Reject</button>` : ''}
-          ${canPickup ? `<button class="btn-green" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="pushSingleReturnNoAwb('${r.id}',this)" title="Push ONLY this return into the NimbusPost panel as a New reverse order — no courier, no AWB. Assign the reverse AWB later inside NimbusPost by hitting Ship.">⬆ Push to NP (No AWB)</button>` : ''}
           ${canPickup ? `<button class="btn-outline" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturn('${r.id}',this)" title="Auto-book a reverse pickup via NimbusPost">🚚 Auto Pickup (NimbusPost)</button>` : ''}
         </div>
         ${canTrack ? `<div style="display:flex;gap:0.3rem;flex-wrap:wrap;align-items:center;margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);">
@@ -4960,40 +4237,9 @@ function renderReturns() {
           <input id="cour_${r.id}" placeholder="Courier name" style="width:95px;font-size:0.62rem;padding:0.3rem 0.4rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);border-radius:4px;">
           <button class="btn-gold" style="font-size:0.6rem;padding:0.35rem 0.7rem;" onclick="addReturnTracking('${r.id}',this)" title="Save tracking ID and notify the customer to hand over the books">＋ Schedule &amp; Notify</button>
         </div>` : ''}
-        ${returnRefundInfo(r)}
       </td>
     </tr>`;
   }).join('');
-}
-
-// Refund method / amount / status + a "mark paid" control for the manual cases.
-function returnRefundInfo(r) {
-  if (!r.refund_method) return '';
-  const rupees = r.refund_amount_paise ? '₹' + Math.round(r.refund_amount_paise / 100).toLocaleString('en-IN') : '';
-  const method = r.refund_method === 'wallet'
-    ? `👛 Wallet${r.wallet_code ? ' · <b style="color:var(--gold)">' + r.wallet_code + '</b>' : ''}`
-    : (r.payment_type === 'cod'
-        ? `↩ COD → UPI <b style="color:#e0a84c">${r.upi_id || '—'}</b>`
-        : `↩ Prepaid (auto)`);
-  const st = String(r.refund_status || '').replace(/_/g, ' ');
-  const stColor = r.refund_status === 'refunded' ? '#6dbf6d'
-    : (['manual_payout_pending','manual_refund_pending'].includes(r.refund_status) ? '#e0a84c'
-    : (r.refund_status === 'wallet_issued' ? '#6dbf6d' : 'var(--cream-dim)'));
-  const needsManual = ['manual_payout_pending', 'manual_refund_pending'].includes(r.refund_status);
-  return `<div style="margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);font-size:0.63rem;color:var(--cream-dim);line-height:1.7;">
-    Refund: ${method} ${rupees ? '· ' + rupees : ''} · <span style="color:${stColor};">${st}</span>
-    ${needsManual ? `<button onclick="markReturnRefunded('${r.id}',this)" title="Mark this refund as paid (after you've sent the UPI/manual refund)" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.5);color:#6dbf6d;cursor:pointer;border-radius:4px;">✓ Mark refund paid</button>` : ''}
-  </div>`;
-}
-
-async function markReturnRefunded(id, btn) {
-  if (!confirm('Mark this refund as PAID?\n\nDo this only after you have actually sent the refund (UPI/manual). This closes the return.')) return;
-  try {
-    await _returnCall({ return_request_id: id, action: 'mark_refunded' }, btn);
-    if (typeof fetchReturnRequests === 'function') fetchReturnRequests(); else location.reload();
-  } catch (e) {
-    alert('Could not update: ' + e.message);
-  }
 }
 
 async function _returnCall(body, btn) {
@@ -5016,36 +4262,11 @@ async function processReturn(returnId, btn) {
   if (!confirm('Auto-book a NimbusPost reverse pickup for this approved return?\n\nThis creates a reverse shipment, AWB, and pickup request from the customer address to the Delhi return office. The customer will be notified to hand over the books.')) return;
   try {
     const data = await _returnCall({ return_request_id: returnId }, btn);
-    alert(`✅ Reverse pickup created!\nAWB: ${data.awb}\nCourier: ${data.courier_name}\nFrom: ${data.pickup_from}${_notifySummary(data.notify_detail)}`);
+    alert(`✅ Reverse pickup created & customer notified!\nAWB: ${data.awb}\nCourier: ${data.courier_name}\nFrom: ${data.pickup_from}`);
     await fetchReturnRequests();
   } catch (e) {
     alert('Error: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = '🚚 Auto Pickup (NimbusPost)'; }
-  }
-}
-
-// Render the customer-notification outcome (email + WhatsApp) so a silent
-// Meta/template failure is visible instead of buried in Netlify logs.
-function _notifySummary(nd) {
-  if (!nd) return '';
-  const line = (label, r) => {
-    if (!r) return `\n${label}: —`;
-    if (r.ok) return `\n${label}: ✅ sent${r.to ? ' → ' + r.to : ''}`;
-    if (r.skipped) return `\n${label}: ⏭ ${r.skipped}`;
-    return `\n${label}: ❌ ${r.error || 'failed'}`;
-  };
-  return `\n\nCustomer notified:${line('Email', nd.email)}${line('WhatsApp', nd.whatsapp)}`;
-}
-
-async function pushSingleReturnNoAwb(returnId, btn) {
-  if (!confirm('Push ONLY this return into the NimbusPost panel as a New reverse order?\n\nNo courier is selected and no AWB is generated — the order lands as "New". Open it in NimbusPost and hit Ship to assign the reverse courier & AWB.')) return;
-  try {
-    const data = await _returnCall({ return_request_id: returnId, action: 'push_no_awb' }, btn);
-    alert(`✅ Reverse order pushed to NimbusPost.\n${data.message || ''}${_notifySummary(data.notify_detail)}`);
-    await fetchReturnRequests();
-  } catch (e) {
-    alert('Error: ' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = '⬆ Push to NP (No AWB)'; }
   }
 }
 
@@ -5097,36 +4318,6 @@ async function pushApprovedReturnsToNimbus(btn) {
   alert(message);
 }
 
-// Push approved returns into the NimbusPost panel WITHOUT an AWB (mirrors the
-// orders "Push to NimbusPost Panel (No AWB)" flow). Courier/AWB assigned later.
-async function pushReturnsToNimbusNoAwb(btn) {
-  const pending = allReturnRequests.filter(r => r.status === 'approved' && !r.awb);
-  if (!pending.length) {
-    alert('No approved returns waiting to be pushed.');
-    return;
-  }
-  if (!confirm(`Push ${pending.length} approved return${pending.length > 1 ? 's' : ''} to the NimbusPost panel?\n\nNo courier is selected and no AWB is generated — assign the reverse AWB later inside NimbusPost.`)) return;
-
-  const original = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = `Pushing 0/${pending.length}…`; }
-  let pushed = 0;
-  const failures = [];
-  for (const ret of pending) {
-    try {
-      await _returnCall({ return_request_id: ret.id, action: 'push_no_awb' }, null);
-      pushed++;
-    } catch (error) {
-      failures.push(`${ret.order_display_id || ret.order_id || ret.id}: ${error.message}`);
-    }
-    if (btn) btn.textContent = `Pushing ${pushed + failures.length}/${pending.length}…`;
-  }
-  if (btn) { btn.disabled = false; btn.textContent = original; }
-  await fetchReturnRequests();
-  let message = `NimbusPost panel push complete:\n\nPushed: ${pushed}\nFailed: ${failures.length}`;
-  if (failures.length) message += `\n\nFirst errors:\n${failures.slice(0, 5).join('\n')}`;
-  alert(message);
-}
-
 async function approveReturn(returnId, btn) {
   try {
     await _returnCall({ return_request_id: returnId, action: 'approve' }, btn);
@@ -5161,9 +4352,9 @@ async function recoverPayment() {
   result.innerHTML = '<span style="color:#a09080;">Checking Razorpay… please wait.</span>';
 
   try {
-    const res  = await adminFetch('/.netlify/functions/razorpay-reconcile', {
+    const res  = await fetch('/.netlify/functions/razorpay-reconcile', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         razorpay_payment_id: payId || undefined,
         razorpay_order_id:   ordId || undefined,
@@ -5200,8 +4391,6 @@ async function recoverPayment() {
 let inboxConversations = [];
 let activeInboxPhone   = null;
 let inboxFilter        = 'all';
-let inboxSearch        = '';
-function setInboxSearch(v) { inboxSearch = String(v || '').toLowerCase().trim(); renderInboxList(); }
 let inboxPollTimer     = null;
 
 function setInboxFilter(filter, btn) {
@@ -5213,7 +4402,9 @@ function setInboxFilter(filter, btn) {
 
 async function fetchInbox() {
   try {
-    const res  = await adminFetch('/.netlify/functions/bot-inbox?action=list');
+    const res  = await fetch('/.netlify/functions/bot-inbox?action=list', {
+      headers: { 'Authorization': 'Bearer ' + adminKey }
+    });
     const data = await res.json();
     inboxConversations = data.conversations || [];
     renderInboxList();
@@ -5240,15 +4431,6 @@ function renderInboxList() {
   if (inboxFilter === 'active')   convs = convs.filter(c => c.status !== 'resolved');
   if (inboxFilter === 'takeover') convs = convs.filter(c => c.human_takeover);
   if (inboxFilter === 'resolved') convs = convs.filter(c => c.status === 'resolved');
-  if (inboxSearch) {
-    const digits = inboxSearch.replace(/\D/g, '');
-    convs = convs.filter(c => {
-      const phone = String(c.customer_phone || '');
-      const name  = String(c.customer_name || '').toLowerCase();
-      return name.includes(inboxSearch) || phone.toLowerCase().includes(inboxSearch)
-          || (digits && phone.replace(/\D/g, '').includes(digits));
-    });
-  }
 
   if (!convs.length) {
     list.innerHTML = '<div style="padding:1.5rem;color:var(--cream-dim);font-size:0.8rem;">No conversations yet.</div>';
@@ -5303,7 +4485,9 @@ async function loadThread(phone, scroll = true) {
 
   // Load messages
   try {
-    const res  = await adminFetch(`/.netlify/functions/bot-inbox?action=thread&phone=${encodeURIComponent(phone)}`);
+    const res  = await fetch(`/.netlify/functions/bot-inbox?action=thread&phone=${encodeURIComponent(phone)}`, {
+      headers: { 'Authorization': 'Bearer ' + adminKey }
+    });
     const data = await res.json();
     renderMessages(data.messages || []);
   } catch (e) {
@@ -5312,9 +4496,9 @@ async function loadThread(phone, scroll = true) {
   }
 
   // Mark as read
-  await adminFetch('/.netlify/functions/bot-inbox', {
+  await fetch('/.netlify/functions/bot-inbox', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'mark_read', phone }),
   });
   // Update local count
@@ -5358,9 +4542,9 @@ function renderThreadActions(phone, conv) {
 
 async function inboxAction(action, phone) {
   try {
-    await adminFetch('/.netlify/functions/bot-inbox', {
+    await fetch('/.netlify/functions/bot-inbox', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, phone }),
     });
     await fetchInbox();
@@ -5380,15 +4564,13 @@ async function sendAdminReply() {
   input.disabled = true;
 
   try {
-    const res  = await adminFetch('/.netlify/functions/bot-inbox', {
+    const res  = await fetch('/.netlify/functions/bot-inbox', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'send', phone: activeInboxPhone, text }),
     });
     const data = await res.json();
-    if (!res.ok || !data.ok) {
-      throw new Error(data.detail ? `${data.error || 'Send failed'}: ${data.detail}` : (data.error || 'Send failed'));
-    }
+    if (!data.ok) throw new Error(data.error || 'Send failed');
     await loadThread(activeInboxPhone, false);
   } catch (e) {
     alert('Failed to send: ' + e.message);
