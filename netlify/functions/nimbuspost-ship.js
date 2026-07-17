@@ -84,14 +84,30 @@ function estimateDims(_cartItems) {
 // ── NimbusPost API helpers ─────────────────────────────────────────────────
 // NimbusPost Partners API — POST /v1/users/login → Authorization: Bearer {token}
 // (Old x-api-key + NP-API-SECRET format is no longer accepted by NimbusPost)
-async function npFetch(path, { method = 'GET', token, body } = {}) {
+async function npFetch(path, { method = 'GET', token, body, ms = 6500 } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(`${NP_BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  // Hard per-call timeout: without it a single hung NimbusPost call holds the
+  // function until Netlify's 10s gateway limit kills it — an opaque 502 with no
+  // hint of which step stalled. Fail fast with a named step instead.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  let res;
+  try {
+    res = await fetch(`${NP_BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') {
+      return { ok: false, status: 599, data: { message: `NimbusPost ${path} timed out after ${Math.round(ms / 1000)}s — their API is slow right now, try again shortly` } };
+    }
+    throw err;
+  }
+  clearTimeout(timer);
   let data;
   try { data = await res.json(); } catch { data = {}; }
   return { ok: res.ok, status: res.status, data };
@@ -101,6 +117,7 @@ async function npFetch(path, { method = 'GET', token, body } = {}) {
 // function budget, and the bulk-ship flow calls this function once per batch.
 let _npTokenCache = { token: null, at: 0 };
 const NP_TOKEN_TTL_MS = 10 * 60 * 1000;
+let _npWarehouseCache = null;   // warehouse id survives warm invocations
 
 async function npAuthenticate() {
   if (_npTokenCache.token && Date.now() - _npTokenCache.at < NP_TOKEN_TTL_MS) {
@@ -344,15 +361,17 @@ exports.handler = async (event) => {
     // ── Authenticate with NimbusPost ────────────────────────────────────
     const token = await npAuthenticate();
 
-    // ── Resolve warehouse ───────────────────────────────────────────────
+    // ── Resolve warehouse (cached across warm invocations — the lookup is
+    //    another NP round-trip out of the 10s budget) ───────────────────────
     let warehouseId = process.env.NIMBUSPOST_WAREHOUSE_ID
       ? parseInt(process.env.NIMBUSPOST_WAREHOUSE_ID, 10)
-      : null;
+      : _npWarehouseCache;
 
     if (!warehouseId) {
       const warehouses = await npGetWarehouses(token);
       if (!warehouses.length) throw new Error('No warehouses found in NimbusPost. Please add one at ship.nimbuspost.com → Settings → Warehouses.');
       warehouseId = warehouses[0].id || warehouses[0].warehouse_id;
+      _npWarehouseCache = warehouseId;
       console.log(`Auto-selected warehouse: ${warehouseId} (${warehouses[0].name || ''})`);
     }
 
