@@ -191,11 +191,24 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   const orderValueRs      = isPartialCod ? partialFullRs : amountRs;
   const collectableAmount = isPartialCod ? partialBalanceRs : (isCOD ? amountRs : 0);
 
-  // ── Serviceability → pick courier ────────────────────────────────────────
+  // ── Serviceability → pick courier by PRIORITY ladder ─────────────────────
+  // The store ships with a fixed courier preference order; the first preference
+  // that is serviceable for this pincode wins. If NONE of the preferred
+  // couriers serve the pincode, the order is left UNSHIPPED (reported in
+  // failures with the available alternatives) — no silent cheapest fallback.
+  // Match: every word of the preference must appear in the NimbusPost courier
+  // name (case-insensitive), so "delhivery surface dt" matches
+  // "Delhivery Surface DT 500gm" but not "Delhivery Air".
+  // Override the ladder without a deploy via env NIMBUS_COURIER_PRIORITY
+  // (comma-separated preference names).
   let courierId   = forceCourierId;
   let courierName = '';
 
   if (!courierId) {
+    const priority = (process.env.NIMBUS_COURIER_PRIORITY ||
+      'delhivery surface dt, xpressbees surface, dtdc, amazon, shadowfax')
+      .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
     const couriers = await npServiceability(token, {
       destination_pincode: pincode,
       weight,
@@ -203,14 +216,27 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
     });
     if (!couriers.length) throw new Error(`No couriers serviceable for pincode ${pincode}`);
 
-    // Pick cheapest available courier
-    const sorted = couriers
-      .filter(c => c.is_active !== false && c.is_available !== false)
-      .sort((a, b) => (Number(a.total_charges) || 0) - (Number(b.total_charges) || 0));
+    const available = couriers.filter(c => c.is_active !== false && c.is_available !== false);
+    const nameOf = (c) => String(c.name || c.courier_name || '').toLowerCase();
 
-    const best = sorted[0] || couriers[0];
+    let best = null, matchedPref = '';
+    for (const pref of priority) {
+      const words = pref.split(/\s+/);
+      const hit = available.find(c => { const n = nameOf(c); return words.every(w => n.includes(w)); });
+      if (hit) { best = hit; matchedPref = pref; break; }
+    }
+
+    if (!best) {
+      const names = available.map(c => c.name || c.courier_name).filter(Boolean).join(', ') || 'none';
+      throw new Error(
+        `No preferred courier (${priority.join(' → ')}) serves pincode ${pincode} — left unshipped. ` +
+        `Serviceable there: ${names}`
+      );
+    }
+
     courierId   = best.id || best.courier_id;
     courierName = best.name || best.courier_name || '';
+    console.log(`[nimbuspost-ship] ${orderId} → ${courierName} (matched "${matchedPref}", ₹${best.total_charges ?? '?'})`);
   }
 
   // ── Build products list ──────────────────────────────────────────────────
