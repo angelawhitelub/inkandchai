@@ -61,7 +61,9 @@ async function sendOFDNotification(order) {
   // quota (WhatsApp covers this stage).
   const firstName = (order.customer_name || 'there').split(' ')[0];
   const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
-  const bookTitle = items[0]?.title || 'your book';
+  // List EVERY book, like the in-transit and delivered messages — using only
+  // items[0] made a 2-book order read as if the second book wasn't coming.
+  const bookList  = items.map(i => i.title || i.name || '').filter(Boolean).join(', ') || 'your books';
   const isCOD     = !order.razorpay_payment_id || ['cod_pending','partial_cod_pending'].includes(order.status);
   const total     = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '';
   const trackUrl  = order.tracking_url || siteTrackUrl(order);
@@ -72,7 +74,7 @@ async function sendOFDNotification(order) {
       template: 'order_out_for_delivery',
       params: [
         firstName,
-        bookTitle,
+        bookList,
         isCOD ? `Please keep ${total} cash ready for delivery` : 'All set — no payment needed at door!',
         trackUrl,
       ],
