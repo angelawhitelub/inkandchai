@@ -141,6 +141,18 @@ exports.handler = async (event) => {
 
     const safeNotes = (clientNotes && typeof clientNotes === 'object') ? clientNotes : {};
 
+    // Build the item list from the AUTHORITATIVE server-resolved cart, never the
+    // client's `books` note. The browser sends cart items as { url|id|slug, qty }
+    // — most carry no title — so the client-built `books` string silently dropped
+    // every line whose title was missing, collapsing multi-book orders to one.
+    // Include quantities so a qty>1 line can't read as a single copy downstream.
+    const serverBooks = cart
+      .map(i => (Number(i.qty) > 1 ? `${i.title} ×${i.qty}` : i.title))
+      .filter(Boolean)
+      .join(', ')
+      .slice(0, 480);   // Razorpay note values cap ~512 chars; the full cart is
+                        // persisted to order_carts below, so truncation here is cosmetic.
+
     // Create the Razorpay order first, then atomically claim the scratch card
     // (if any). If the claim races and loses, recreate the order at full price
     // — better than letting one card discount N parallel carts.
@@ -169,6 +181,8 @@ exports.handler = async (event) => {
       receipt:  `ic_${Date.now()}`,
       notes: {
         ...safeNotes,
+        // Authoritative item list — overrides any client-supplied `books` note.
+        books:                   serverBooks || safeNotes.books || '',
         server_subtotal_paise:   Math.round(subtotal * 100),
         server_shipping_paise:   Math.round(shipping  * 100),
         server_discount_paise:   finalDiscountPaise,
@@ -178,6 +192,33 @@ exports.handler = async (event) => {
         server_coupon_code:      finalCouponCode,
       },
     });
+
+    // ── Persist the authoritative cart, keyed by the Razorpay order id ────────
+    // This is the durable source of truth for line items. If the browser's
+    // verify-payment callback never fires, razorpay-webhook.js reads this back
+    // so the real books (and quantities) survive instead of being rebuilt as a
+    // single placeholder line. Best-effort: never let a snapshot failure block a
+    // paid order. Requires sql/order_carts.sql (silently no-ops until it's run).
+    try {
+      const c = (customer && typeof customer === 'object') ? customer : {};
+      await supabase.from('order_carts').upsert({
+        razorpay_order_id: order.id,
+        cart_items:        cart,
+        subtotal_paise:    Math.round(subtotal * 100),
+        amount_paise:      finalAmountPaise,
+        full_total_paise:  Math.round(fullTotal * 100),
+        coupon_code:       finalCouponCode || null,
+        payment_mode:      isPartial ? 'partial_cod' : 'full',
+        customer: {
+          name:    c.name    || safeNotes.customer_name  || '',
+          email:   c.email   || safeNotes.customer_email || '',
+          phone:   c.phone   || safeNotes.customer_phone || '',
+          address: c.address || safeNotes.shipping_address || '',
+        },
+      }, { onConflict: 'razorpay_order_id' });
+    } catch (snapErr) {
+      console.warn('[create-order] order_carts snapshot skipped (run sql/order_carts.sql):', snapErr.message);
+    }
 
     // Re-tag the scratch-card claim with the real razorpay order id.
     if (couponInfo._provisionalId) {

@@ -22,6 +22,26 @@ const { makeOrderId } = require('./utils/pricing');
 
 const CORS = { 'Content-Type': 'application/json' };
 
+// Last-resort rebuild of line items from a `books` note when no cart snapshot or
+// abandoned-checkout row exists. The note is a comma-separated "Title ×qty" list
+// (create-order.js) or, for legacy/bot links, a single title. Split it into one
+// line PER TITLE with its parsed quantity, and spread the paid amount across all
+// units so the totals still add up — never one placeholder line at the full price.
+function splitBooksNote(note, amountPaise) {
+  const raw = String(note || '').trim();
+  if (!raw) return [];
+  const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+  const lines = parts.map(p => {
+    const m = p.match(/^(.*?)[\s]*[x×✕✖]\s*(\d{1,3})$/i);   // "Title ×3"
+    if (m && Number(m[2]) > 0) return { title: m[1].trim(), qty: Number(m[2]) };
+    return { title: p, qty: 1 };
+  }).filter(l => l.title);
+  if (!lines.length) return [];
+  const totalUnits = lines.reduce((s, l) => s + l.qty, 0) || 1;
+  const perUnit = Math.round((Number(amountPaise) || 0) / 100 / totalUnits);
+  return lines.map(l => ({ title: l.title, qty: l.qty, price: perUnit }));
+}
+
 function emailBase(content) {
   return `<div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
     <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
@@ -111,7 +131,7 @@ exports.handler = async (event) => {
           if (!existing.customer_address && botReq.address) patch.customer_address = botReq.address;
           if (!existing.customer_phone && botReq.customer_phone) patch.customer_phone = botReq.customer_phone;
           if ((!Array.isArray(existing.cart_items) || !existing.cart_items.length) && botReq.books) {
-            patch.cart_items = [{ title: botReq.books, qty: 1, price: Math.round((existing.amount_paise || amount_paise || 0) / 100) }];
+            patch.cart_items = splitBooksNote(botReq.books, existing.amount_paise || amount_paise || 0);
           }
           if (!/^IC-W-/i.test(existing.razorpay_order_id || '') && /^IC-W-\d{8}-[A-Z0-9]{5}$/i.test(botReq.order_id || '')) {
             patch.razorpay_order_id = botReq.order_id.toUpperCase();
@@ -132,6 +152,22 @@ exports.handler = async (event) => {
     return { statusCode: 200, body: 'OK — already exists' };
   }
 
+  // ── Authoritative cart snapshot (create-order.js writes this) ─────────────
+  // Keyed by the Razorpay order id, this holds the FULL server-resolved cart —
+  // every title, qty and price. It's the source of truth when the browser's
+  // verify-payment callback never fired and this webhook has to create the row.
+  // Without it we used to collapse the whole order into one placeholder line.
+  // Best-effort: silently null until sql/order_carts.sql is run.
+  let orderCart = null;
+  try {
+    const { data } = await supabase
+      .from('order_carts')
+      .select('cart_items, customer')
+      .eq('razorpay_order_id', razorpay_order_id)
+      .maybeSingle();
+    orderCart = data || null;
+  } catch (e) { console.warn('[razorpay-webhook] order_carts lookup skipped:', e.message); }
+
   // ── Try to find the abandoned checkout data (cart, customer, etc.) ────────
   // The checkout saves to Supabase abandoned_checkouts with razorpay_order_id
   const { data: abandoned } = await supabase
@@ -150,8 +186,11 @@ exports.handler = async (event) => {
     return { statusCode: 200, body: 'OK — other store' };
   }
 
-  const cart     = abandoned?.cart_items || [];
-  const customer = abandoned?.customer   || {};
+  // Prefer the authoritative snapshot, then abandoned-checkout, then nothing.
+  const cart     = (Array.isArray(orderCart?.cart_items) && orderCart.cart_items.length)
+                     ? orderCart.cart_items
+                     : (abandoned?.cart_items || []);
+  const customer = orderCart?.customer || abandoned?.customer || {};
   let   name     = customer.name    || customerName   || '';
   let   email    = customer.email   || customerEmail  || '';
   let   phone    = customer.phone   || customerPhone  || '';
@@ -184,10 +223,12 @@ exports.handler = async (event) => {
   // store that placeholder; leave the field blank instead.
   if (/^void@razorpay\.com$/i.test(email)) email = '';
 
-  // If cart is empty (no abandoned checkout), build a placeholder from notes.books
-  const cartItems = cart.length > 0 ? cart : (notesBooks
-    ? [{ title: notesBooks, qty: 1, price: Math.round(amount_paise / 100) }]
-    : []);
+  // If we still have no real cart (no snapshot, no abandoned checkout), rebuild
+  // line items from the `books` note. create-order.js now writes that note as a
+  // comma-separated "Title ×qty" list, so split it into SEPARATE lines with
+  // their quantities instead of one placeholder priced at the whole amount —
+  // that single-line collapse is exactly what shipped one book on a 5-book order.
+  const cartItems = cart.length > 0 ? cart : splitBooksNote(notesBooks, amount_paise);
 
   // IC- (or IC-CW- for Crossword-migrated genuine-tag carts) order ID.
   const inkOrderId = /^IC-W-\d{8}-[A-Z0-9]{5}$/i.test(botOrderId || '')
