@@ -2945,12 +2945,13 @@ async function fetchAbandonedCheckouts() {
   const body = document.getElementById('abandonedBody');
   const empty = document.getElementById('abandonedEmpty');
   const meta = document.getElementById('abandonedMeta');
-  if (!adminKey || !body || !meta) return;
+  // Gate on EITHER credential — passkey/restored sessions set adminToken but
+  // leave adminKey empty, which previously made this return early (never
+  // fetching) so the panel stayed stuck on its static hint with no rows.
+  if (!(adminToken || adminKey) || !body || !meta) return;
   meta.textContent = 'Loading abandoned checkouts…';
   try {
-    const res = await fetch('/.netlify/functions/get-abandoned-checkouts?limit=100&min_age_minutes=30', {
-      headers: { 'X-Admin-Key': adminKey },
-    });
+    const res = await adminFetch('/.netlify/functions/get-abandoned-checkouts?limit=100&min_age_minutes=30');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     abandonedLeads = data.checkouts || [];
@@ -3245,7 +3246,7 @@ function mergedProduct(row) {
 async function fetchProducts() {
   const meta = document.getElementById('productMeta');
   const list = document.getElementById('productList');
-  if (!adminKey || !meta || !list) return;
+  if (!(adminToken || adminKey) || !meta || !list) return;
   meta.textContent = 'Loading products…';
   try {
     const res = await fetch('/.netlify/functions/get-products-admin', {
@@ -4527,7 +4528,7 @@ setInterval(() => { if (adminKey) fetchOrders(true); }, 90000);
 let _lastAutoRecheck = 0;
 
 async function autoRecheckPhonePe() {
-  if (!adminKey) return;
+  if (!(adminToken || adminKey)) return;
   const pendingOrders = allOrders.filter(o =>
     o.status === 'pending_phonepe' || o.status === 'pending_partial_phonepe'
   );
