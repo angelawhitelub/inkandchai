@@ -3899,7 +3899,8 @@ async function submitEditOrder(orderUuid) {
         const prev = Array.isArray(o.cart_items) ? o.cart_items : [];
         o.cart_items = parsed.map(l => {
           const m = prev.find(i => String(i.title||'').trim().toLowerCase() === l.title.toLowerCase());
-          return { title: l.title, qty: l.explicitQty ? l.qty : (m?.qty || 1), price: m?.price || perUnit };
+          // Explicit ×N recomputes unit price (sum to total); else preserve.
+          return { title: l.title, qty: l.explicitQty ? l.qty : (m?.qty || 1), price: l.explicitQty ? perUnit : (m?.price || perUnit) };
         });
       }
     }

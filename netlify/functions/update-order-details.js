@@ -78,10 +78,15 @@ exports.handler = async (event) => {
       const perUnit    = Math.round(totalRs / totalUnits);
       patch.cart_items = parsed.map(l => {
         const match = existing.find(i => String(i.title || '').trim().toLowerCase() === l.title.toLowerCase());
+        // When a quantity is set explicitly, recompute the unit price from the
+        // order total so line prices SUM to the paid amount — never multiply a
+        // preserved price (a collapsed line often holds the whole order amount,
+        // which would inflate qty×price, e.g. 4×₹537=₹2,148). Preserve the
+        // matched unit price only for typo fixes where qty didn't change.
         return {
           title: l.title,
           qty:   l.explicitQty ? l.qty : (match?.qty || 1),
-          price: match?.price || perUnit,
+          price: l.explicitQty ? perUnit : (match?.price || perUnit),
           ...(match?.sku ? { sku: match.sku } : {}),
         };
       });
