@@ -3816,7 +3816,8 @@ function openEditOrderModal(orderUuid) {
   if (!o) { alert('Order not found in the current list — refresh and try again.'); return; }
   const displayId = o.razorpay_order_id || o.id;
   const books = (Array.isArray(o.cart_items) ? o.cart_items : [])
-    .map(i => i.title || '').filter(Boolean).join(', ');
+    .map(i => { const t = i.title || ''; return t && Number(i.qty) > 1 ? `${t} ×${i.qty}` : t; })
+    .filter(Boolean).join(', ');
 
   document.getElementById('iacEditModal')?.remove();
   const modal = document.createElement('div');
@@ -3836,8 +3837,8 @@ function openEditOrderModal(orderUuid) {
       ${field('Email', 'iacEditEmail', 'email (optional)')}
       <label style="display:block;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin:0.7rem 0 0.3rem;">Delivery address</label>
       <textarea id="iacEditAddress" rows="3" placeholder="Full address with pincode" style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.3);color:#f0e8d8;padding:0.6rem;font-family:inherit;font-size:0.85rem;box-sizing:border-box;resize:vertical;"></textarea>
-      ${field('Books (comma-separated)', 'iacEditBooks', 'Title 1, Title 2')}
-      <p style="color:#7a6f5f;font-size:0.62rem;line-height:1.5;margin:0.4rem 0 0;">Editing books rebuilds the item list; line prices are split evenly across titles to match the paid total.</p>
+      ${field('Books (comma-separated)', 'iacEditBooks', 'Ikigai ×2, Sapiens')}
+      <p style="color:#7a6f5f;font-size:0.62rem;line-height:1.5;margin:0.4rem 0 0;">Editing books rebuilds the item list. Add <strong style="color:#c9a84c;">×N</strong> after a title for quantity (e.g. <em>Ikigai ×4</em>). Line prices are split across total units to match the paid total.</p>
       <div id="iacEditMsg" style="display:none;font-size:0.72rem;line-height:1.5;margin:0.7rem 0 0;"></div>
       <div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1rem;">
         <button onclick="document.getElementById('iacEditModal')?.remove()"
@@ -3885,13 +3886,20 @@ async function submitEditOrder(orderUuid) {
       o.customer_email = payload.customer_email.trim();
       o.customer_address = payload.customer_address.trim();
       if (payload.books.trim()) {
-        const titles = payload.books.split(',').map(t => t.trim()).filter(Boolean);
+        // Mirror the server: parse optional "×N" quantities, split price per unit.
+        const parsed = payload.books.split(',').map(t => t.trim()).filter(Boolean).map(part => {
+          const m = part.match(/^(.*?)\s*[x×✕✖]\s*(\d{1,3})$/i);
+          return (m && Number(m[2]) > 0)
+            ? { title: m[1].trim(), qty: Number(m[2]), explicitQty: true }
+            : { title: part, qty: 1, explicitQty: false };
+        }).filter(l => l.title);
         const totalRs = Math.round((o.amount_paise || 0) / 100);
-        const per = titles.length ? Math.round(totalRs / titles.length) : totalRs;
+        const totalUnits = parsed.reduce((s, l) => s + l.qty, 0) || 1;
+        const perUnit = Math.round(totalRs / totalUnits);
         const prev = Array.isArray(o.cart_items) ? o.cart_items : [];
-        o.cart_items = titles.map(title => {
-          const m = prev.find(i => String(i.title||'').trim().toLowerCase() === title.toLowerCase());
-          return { title, qty: m?.qty || 1, price: m?.price || per };
+        o.cart_items = parsed.map(l => {
+          const m = prev.find(i => String(i.title||'').trim().toLowerCase() === l.title.toLowerCase());
+          return { title: l.title, qty: l.explicitQty ? l.qty : (m?.qty || 1), price: m?.price || perUnit };
         });
       }
     }

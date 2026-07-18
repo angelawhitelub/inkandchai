@@ -61,20 +61,27 @@ exports.handler = async (event) => {
       if (typeof body[f] === 'string') patch[f] = body[f].trim().slice(0, 1000);
     }
 
-    // books: rebuild cart_items from comma-separated titles. We preserve the
-    // existing per-item price where a title matches; otherwise split the order
-    // total evenly so the line prices still sum to the paid amount.
+    // books: rebuild cart_items from a comma-separated "Title ×qty" list. The
+    // "×N" suffix is optional (defaults to 1) and lets the admin set quantities
+    // — e.g. "Ikigai ×2, Sapiens". Per-unit prices are split across total UNITS
+    // (not titles) so the line prices still sum to the paid amount. Existing
+    // per-item price is preserved when a title matches and no ×N is given.
     if (typeof body.books === 'string' && body.books.trim()) {
-      const titles = body.books.split(',').map(t => t.trim()).filter(Boolean);
       const existing = Array.isArray(order.cart_items) ? order.cart_items : [];
-      const totalRs = Math.round((order.amount_paise || 0) / 100);
-      const perItem = titles.length ? Math.round(totalRs / titles.length) : totalRs;
-      patch.cart_items = titles.map(title => {
-        const match = existing.find(i => String(i.title || '').trim().toLowerCase() === title.toLowerCase());
+      const parsed = body.books.split(',').map(t => t.trim()).filter(Boolean).map(part => {
+        const m = part.match(/^(.*?)\s*[x×✕✖]\s*(\d{1,3})$/i);   // "Title ×3"
+        if (m && Number(m[2]) > 0) return { title: m[1].trim(), qty: Number(m[2]), explicitQty: true };
+        return { title: part, qty: 1, explicitQty: false };
+      }).filter(l => l.title);
+      const totalRs    = Math.round((order.amount_paise || 0) / 100);
+      const totalUnits = parsed.reduce((s, l) => s + l.qty, 0) || 1;
+      const perUnit    = Math.round(totalRs / totalUnits);
+      patch.cart_items = parsed.map(l => {
+        const match = existing.find(i => String(i.title || '').trim().toLowerCase() === l.title.toLowerCase());
         return {
-          title,
-          qty:   match?.qty   || 1,
-          price: match?.price || perItem,
+          title: l.title,
+          qty:   l.explicitQty ? l.qty : (match?.qty || 1),
+          price: match?.price || perUnit,
           ...(match?.sku ? { sku: match.sku } : {}),
         };
       });
