@@ -43,7 +43,7 @@ const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
  * Guard: at most ONE replacement per original order. Returns the new order id
  * or null (never throws — the report itself must still succeed).
  */
-async function createMissingReplacement(supabase, order, missingItems) {
+async function createMissingReplacement(supabase, order, replacementItems) {
   try {
     // One replacement per original — matches request-replacement's abuse guard.
     const { data: existing } = await supabase
@@ -61,8 +61,9 @@ async function createMissingReplacement(supabase, order, missingItems) {
     const origIsCW = /^IC-CW-/i.test(String(order.razorpay_order_id || ''));
     const replId = origIsCW ? `IC-R-CW-${datePart}-${randPart}` : `IC-R-${datePart}-${randPart}`;
 
-    // Cart = ONLY the missing books (fresh copies, without the _missing flags).
-    const cart = missingItems.map(({ _missing, _missing_at, ...it }) => ({ ...it }));
+    // Cart = ONLY the missing books, with the customer-selected quantities
+    // (already capped at what they ordered), stripped of any _missing flags.
+    const cart = replacementItems.map(({ _missing, _missing_at, _missing_qty, ...it }) => ({ ...it }));
     cart[0]._replacement = {
       original_order_id: order.razorpay_order_id || order.id,
       reason: 'missing_item',
@@ -173,12 +174,23 @@ exports.handler = async (event) => {
 
   const id = String(body.id || '').trim().replace(/\s+/g, '');
   const q  = String(body.q  || '').trim();
-  const missing = Array.from(new Set(
-    (Array.isArray(body.missing) ? body.missing : [])
-      .map(t => String(t || '').trim()).filter(Boolean)
-  ));
-  if (!id || !q)       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide order id and email/phone' }) };
-  if (!missing.length) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Select at least one missing book' }) };
+  // Accept either legacy `missing: ["Title", ...]` or the new
+  // `missing: [{ title, qty }, ...]`. Qty is validated/capped later against the
+  // quantity actually ordered; null here means "default to the full ordered qty".
+  const requested = [];
+  const seenTitles = new Set();
+  for (const m of (Array.isArray(body.missing) ? body.missing : [])) {
+    let title = '', qty = null;
+    if (typeof m === 'string') { title = m.trim(); }
+    else if (m && typeof m === 'object') { title = String(m.title || '').trim(); const n = Number(m.qty); if (Number.isFinite(n) && n > 0) qty = Math.floor(n); }
+    if (!title) continue;
+    const key = title.toLowerCase();
+    if (seenTitles.has(key)) continue;
+    seenTitles.add(key);
+    requested.push({ title, qty });
+  }
+  if (!id || !q)          return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide order id and email/phone' }) };
+  if (!requested.length)  return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Select at least one missing book' }) };
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -207,20 +219,37 @@ exports.handler = async (event) => {
       return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'This order can only be reported as incomplete once it has been shipped or delivered.' }) };
     }
 
-    // Only accept titles that are actually in this order.
+    // Map ordered titles → the ordered quantity (summing any duplicate lines),
+    // so we can cap each requested quantity at what the customer actually bought.
     const items = Array.isArray(order.cart_items) ? order.cart_items : [];
-    const titleSet = new Set(items.map(i => String(i?.title || i?.name || '').trim().toLowerCase()).filter(Boolean));
-    const valid = missing.filter(t => titleSet.has(t.toLowerCase()));
+    const orderedByTitle = new Map();   // titleLower → { item, orderedQty }
+    for (const it of items) {
+      const t = String(it?.title || it?.name || '').trim().toLowerCase();
+      if (!t) continue;
+      const prev = orderedByTitle.get(t);
+      orderedByTitle.set(t, { item: prev?.item || it, orderedQty: (prev?.orderedQty || 0) + (Number(it.qty) || 1) });
+    }
+
+    // Keep only titles in this order; clamp qty to [1, orderedQty] (the max limit).
+    const valid = [];   // { title, qty, orderedQty, item }
+    for (const r of requested) {
+      const hit = orderedByTitle.get(r.title.toLowerCase());
+      if (!hit) continue;
+      const cap = Math.max(1, hit.orderedQty);
+      const qty = r.qty == null ? cap : Math.min(Math.max(1, r.qty), cap);
+      valid.push({ title: String(hit.item.title || hit.item.name || r.title).trim(), qty, orderedQty: cap, item: hit.item });
+    }
     if (!valid.length) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Selected book(s) are not part of this order.' }) };
     }
 
-    // Flag the missing items on the order row (idempotent).
-    const validLower = new Set(valid.map(t => t.toLowerCase()));
+    // Flag the missing items on the order row (idempotent), recording how many
+    // of each were missing.
+    const validQtyByTitle = new Map(valid.map(v => [v.title.toLowerCase(), v.qty]));
     const stampedItems = items.map(it => {
       const title = String(it?.title || it?.name || '').trim();
-      return title && validLower.has(title.toLowerCase())
-        ? { ...it, _missing: true, _missing_at: new Date().toISOString() }
+      return title && validQtyByTitle.has(title.toLowerCase())
+        ? { ...it, _missing: true, _missing_qty: validQtyByTitle.get(title.toLowerCase()), _missing_at: new Date().toISOString() }
         : it;
     });
     try {
@@ -230,13 +259,19 @@ exports.handler = async (event) => {
     }
 
     // ── Auto-create the FREE replacement order for the missing book(s) ───────
-    const missingItems = stampedItems.filter(it => it && it._missing);
-    const repl = await createMissingReplacement(supabase, order, missingItems);
+    // Build clean replacement lines carrying the SELECTED (capped) quantities.
+    const replacementItems = valid.map(v => {
+      const { _missing, _missing_at, _missing_qty, ...clean } = v.item;
+      return { ...clean, qty: v.qty };
+    });
+    const repl = await createMissingReplacement(supabase, order, replacementItems);
     const replId = repl?.id || null;
 
     const result = { email: false, whatsapp: false, ownerEmail: false, replacement_order_id: replId, replacement_existed: !!repl?.existed };
     const first = String(order.customer_name || 'there').split(' ')[0];
-    const missingList = valid.join(', ');
+    // Human labels with quantity, e.g. "Market Wizards ×2, Mastering the Market Cycle".
+    const missingLabels = valid.map(v => (v.qty > 1 ? `${v.title} ×${v.qty}` : v.title));
+    const missingList = missingLabels.join(', ');
 
     // ── Customer email confirmation ──────────────────────────────────────────
     if (order.customer_email) {
@@ -245,7 +280,7 @@ exports.handler = async (event) => {
         subject: replId
           ? `Replacement on the way — order ${replId}`
           : `We've noted your incomplete order ${orderId(order)}`,
-        html: missingEmailHtml(order, valid, replId),
+        html: missingEmailHtml(order, missingLabels, replId),
       });
       result.email = !!em?.ok;
     }
@@ -289,7 +324,7 @@ exports.handler = async (event) => {
           subject: replId
             ? `📦 Incomplete order ${orderId(order)} → replacement ${replId} created — ${missingList}`
             : `📦 Customer reported incomplete order ${orderId(order)} — ${missingList}`,
-          html: ownerMissingEmailHtml(order, valid, replId),
+          html: ownerMissingEmailHtml(order, missingLabels, replId),
         });
         result.ownerEmail = !!sent?.ok;
       } catch (e) {
@@ -300,7 +335,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ success: true, missing: valid, replacement_order_id: replId, result }),
+      body: JSON.stringify({ success: true, missing: missingLabels, replacement_order_id: replId, result }),
     };
   } catch (err) {
     console.error('report-missing-books error:', err.message);

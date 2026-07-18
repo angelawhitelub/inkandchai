@@ -1925,8 +1925,10 @@
     const status = String(order.status || '').toLowerCase();
     if (!MISSING_REPORTABLE.includes(status)) return '';
     const items = Array.isArray(order.cart_items) ? order.cart_items : [];
-    const titles = items.map(i => String(i.title || i.name || '').trim()).filter(Boolean);
-    if (!titles.length) return '';
+    const lineItems = items
+      .map(i => ({ title: String(i.title || i.name || '').trim(), qty: Math.max(1, Number(i.qty) || 1) }))
+      .filter(i => i.title);
+    if (!lineItems.length) return '';
 
     // Already reported — show a confirmation note instead of the form.
     if (items.some(i => i && i._missing)) {
@@ -1952,12 +1954,18 @@
           If your parcel arrived without one of these, tap the missing one(s) and let us know — we'll send it or refund you.
         </div>
         <div class="miss-books" style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.7rem;">
-          ${titles.map(t => `
-            <button type="button" data-title="${escHtmlAttr(t)}" data-on="0" onclick="iacToggleMissBook(this)"
-              style="text-align:left;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
-                     padding:0.55rem 0.8rem;font-size:0.74rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
-              <span style="display:inline-block;width:1.1rem;">☐</span> ${escHtml(t)}
-            </button>`).join('')}
+          ${lineItems.map(it => `
+            <div class="miss-row" data-title="${escHtmlAttr(it.title)}" data-max="${it.qty}" style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+              <button type="button" data-on="0" onclick="iacToggleMissBook(this)"
+                style="flex:1;min-width:60%;text-align:left;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
+                       padding:0.55rem 0.8rem;font-size:0.74rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
+                <span style="display:inline-block;width:1.1rem;">☐</span> ${escHtml(it.title)}${it.qty > 1 ? ` <span style="color:#a09080;">(ordered ${it.qty})</span>` : ''}
+              </button>
+              ${it.qty > 1 ? `<label style="font-size:0.64rem;color:#a09080;display:flex;align-items:center;gap:0.25rem;">Qty
+                <select class="miss-qty" disabled style="background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.3rem;font-family:inherit;font-size:0.72rem;">
+                  ${Array.from({ length: it.qty }, (_, k) => k + 1).map(n => `<option value="${n}"${n === it.qty ? ' selected' : ''}>${n}</option>`).join('')}
+                </select></label>` : ''}
+            </div>`).join('')}
         </div>
         <button data-oid="${escHtmlAttr(oid)}" data-q="${escHtmlAttr(q)}" onclick="iacReportMissing(this)"
           style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
@@ -1976,18 +1984,29 @@
     btn.style.background = on ? '#0d0b08' : 'rgba(201,168,76,0.16)';
     btn.style.borderColor = on ? 'rgba(201,168,76,0.22)' : '#c9a84c';
     btn.style.color = on ? '#f0e8d8' : '#c9a84c';
+    const sel = btn.closest('.miss-row')?.querySelector('.miss-qty');
+    if (sel) sel.disabled = (btn.dataset.on !== '1');
   };
 
   window.iacReportMissing = async function (btn) {
     const wrap = btn.closest('[id^="miss-wrap-"]');
     const msg  = wrap.querySelector('.miss-msg');
-    const missing = [...wrap.querySelectorAll('.miss-books button[data-on="1"]')].map(b => b.dataset.title);
+    const missing = [...wrap.querySelectorAll('.miss-books .miss-row')]
+      .filter(row => row.querySelector('button')?.dataset.on === '1')
+      .map(row => {
+        const title = row.dataset.title;
+        const max = Math.max(1, Number(row.dataset.max) || 1);
+        const sel = row.querySelector('.miss-qty');
+        const qty = Math.min(max, Math.max(1, Number(sel?.value) || max));
+        return { title, qty };
+      });
     if (!missing.length) {
       msg.style.display = ''; msg.style.color = '#e06060';
       msg.textContent = 'Please tap the book(s) that were missing.';
       return;
     }
-    if (!confirm(`Report that ${missing.length > 1 ? 'these books were' : 'this book was'} missing from your parcel?\n\n• ${missing.join('\n• ')}`)) return;
+    const confirmLines = missing.map(m => m.qty > 1 ? `${m.title} ×${m.qty}` : m.title);
+    if (!confirm(`Report that ${missing.length > 1 ? 'these were' : 'this was'} missing from your parcel?\n\n• ${confirmLines.join('\n• ')}`)) return;
 
     const orig = btn.textContent;
     btn.disabled = true; btn.textContent = 'Sending…';
@@ -2005,7 +2024,7 @@
           <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
                        padding:0.28rem 0.7rem;border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;">✓ Reported</span>
           <span style="font-size:0.62rem;color:#a09080;margin-left:0.5rem;line-height:1.5;">
-            Thanks — we've noted <strong style="color:#c9a84c;">${escHtml((json.missing || missing).join(', '))}</strong> as missing.
+            Thanks — we've noted <strong style="color:#c9a84c;">${escHtml((Array.isArray(json.missing) && json.missing.length ? json.missing : confirmLines).join(', '))}</strong> as missing.
             ${json.replacement_order_id
               ? `📦 A free replacement order <strong style="color:#c9a84c;">${escHtml(json.replacement_order_id)}</strong> has been created — it ships at no charge.`
               : `You'll get a confirmation by email &amp; WhatsApp and our team will reach out.`}

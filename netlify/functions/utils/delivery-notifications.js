@@ -42,7 +42,7 @@ async function sendInTransitNotifications(order, awb) {
   // that still emails. `awb` is kept in the signature for call-site compatibility.
   const firstName = (order.customer_name || 'there').split(' ')[0];
   const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
-  const bookList  = items.map(i => i.title || i.name || '').filter(Boolean).join(', ') || 'your books';
+  const bookList  = items.map(i => i.title ? (Number(i.qty) > 1 ? `${i.title} ×${i.qty}` : i.title) : (i.name || '')).filter(Boolean).join(', ') || 'your books';
   const courier   = order.courier_name || 'DTDC Surface';
 
   if (order.customer_phone) {
@@ -61,9 +61,9 @@ async function sendOFDNotification(order) {
   // quota (WhatsApp covers this stage).
   const firstName = (order.customer_name || 'there').split(' ')[0];
   const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
-  // List EVERY book, like the in-transit and delivered messages — using only
-  // items[0] made a 2-book order read as if the second book wasn't coming.
-  const bookList  = items.map(i => i.title || i.name || '').filter(Boolean).join(', ') || 'your books';
+  // List EVERY book (with qty), like the in-transit and delivered messages —
+  // using only items[0] made a 2-book order read as if the second wasn't coming.
+  const bookList  = items.map(i => i.title ? (Number(i.qty) > 1 ? `${i.title} ×${i.qty}` : i.title) : (i.name || '')).filter(Boolean).join(', ') || 'your books';
   const isCOD     = !order.razorpay_payment_id || ['cod_pending','partial_cod_pending'].includes(order.status);
   const total     = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '';
   const trackUrl  = order.tracking_url || siteTrackUrl(order);
@@ -87,17 +87,20 @@ async function sendDeliveredNotification(order) {
   const firstName = (order.customer_name || 'there').split(' ')[0];
   const orderId   = order.razorpay_order_id || order.id;
   const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
-  const bookList  = items.map(i => i.title || i.name || '').filter(Boolean).join(', ') || 'your books';
+  const bookList  = items.map(i => i.title ? (Number(i.qty) > 1 ? `${i.title} ×${i.qty}` : i.title) : (i.name || '')).filter(Boolean).join(', ') || 'your books';
   const reviewUrl = `https://inkandchai.in/review/?order=${encodeURIComponent(orderId)}`;
+  const isReplacement = order.source === 'replacement';
 
   if (order.customer_email) {
     await sendEmail({
       to: order.customer_email,
-      subject: `✅ Delivered — enjoy your books! (${orderId})`,
+      subject: isReplacement
+        ? `✅ Your replacement books have arrived! (${orderId})`
+        : `✅ Delivered — enjoy your books! (${orderId})`,
       html: emailBase(`
-        <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Delivered — happy reading! ✅</h2>
+        <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">${isReplacement ? 'Your replacement has been delivered ✅' : 'Delivered — happy reading! ✅'}</h2>
         <p style="color:#a09080;line-height:1.8;margin-bottom:16px;">
-          Hi ${firstName}, ${bookList} ${items.length > 1 ? 'have' : 'has'} been delivered. We hope you love ${items.length > 1 ? 'them' : 'it'}!
+          Hi ${firstName}, ${isReplacement ? 'the replacement for your missing ' + (items.length > 1 ? 'books' : 'book') + ' — ' : ''}${bookList} ${items.length > 1 ? 'have' : 'has'} been delivered. We hope you love ${items.length > 1 ? 'them' : 'it'}!
         </p>
         <div style="margin:20px 0;padding:16px;background:#1c1916;border-left:3px solid #c9a84c;">
           <p style="color:#f0e8d8;font-size:13px;margin:0 0 12px;">⭐ Loved your books? A quick review means the world to us.</p>

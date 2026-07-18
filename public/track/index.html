@@ -283,8 +283,10 @@ function renderOrder(o) {
 // ── Report a missing book (customer-facing, on delivered/shipped orders) ─────
 function reportBlockHtml(o) {
   if (!REPORTABLE_STATUS.has(o.status)) return '';
-  const titles = (o.items || []).map(i => String(i.title || '').trim()).filter(Boolean);
-  if (!titles.length) return '';
+  const lineItems = (o.items || [])
+    .map(i => ({ title: String(i.title || '').trim(), qty: Math.max(1, Number(i.qty) || 1) }))
+    .filter(i => i.title);
+  if (!lineItems.length) return '';
   const already = (o.items || []).some(i => i && i._missing);
   if (already) {
     return `<div class="r-section" style="border-top:1px dashed var(--border);padding-top:1.2rem;">
@@ -296,11 +298,17 @@ function reportBlockHtml(o) {
     <div class="r-section-h">Missing a book?</div>
     <div class="r-row" style="color:var(--cream-dim);font-size:0.8rem;margin-bottom:0.9rem;">If your parcel arrived without one of these books, tap the missing one(s) and let us know. We'll send it or refund you.</div>
     <div id="missBooks" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;">
-      ${titles.map(t => `
-        <button type="button" data-title="${esc(t)}" data-on="0" onclick="toggleMissBook(this)"
-          style="text-align:left;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.65rem 0.9rem;font-size:0.82rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
-          <span style="display:inline-block;width:1.2rem;">☐</span> ${esc(t)}
-        </button>`).join('')}
+      ${lineItems.map(it => `
+        <div class="miss-row" data-title="${esc(it.title)}" data-max="${it.qty}" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+          <button type="button" data-on="0" onclick="toggleMissBook(this)"
+            style="flex:1;min-width:60%;text-align:left;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.65rem 0.9rem;font-size:0.82rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
+            <span style="display:inline-block;width:1.2rem;">☐</span> ${esc(it.title)}${it.qty > 1 ? ` <span style="color:var(--cream-dim)">(you ordered ${it.qty})</span>` : ''}
+          </button>
+          ${it.qty > 1 ? `<label style="font-size:0.72rem;color:var(--cream-dim);display:flex;align-items:center;gap:0.3rem;">Qty missing
+            <select class="miss-qty" disabled style="background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.35rem 0.4rem;font-family:inherit;font-size:0.8rem;">
+              ${Array.from({ length: it.qty }, (_, k) => k + 1).map(n => `<option value="${n}"${n === it.qty ? ' selected' : ''}>${n}</option>`).join('')}
+            </select></label>` : ''}
+        </div>`).join('')}
     </div>
     <button id="reportBtn" onclick="submitMissingReport(this)"
       style="background:var(--gold);border:1px solid var(--gold);color:#0d0b08;padding:0.65rem 1.4rem;font-size:0.65rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:600;">
@@ -317,11 +325,22 @@ function toggleMissBook(btn) {
   btn.style.background = on ? 'var(--bg3)' : 'rgba(201,168,76,0.16)';
   btn.style.borderColor = on ? 'var(--border)' : 'var(--gold)';
   btn.style.color = on ? 'var(--cream)' : 'var(--gold)';
+  // Enable the per-book quantity picker only while the book is marked missing.
+  const sel = btn.closest('.miss-row')?.querySelector('.miss-qty');
+  if (sel) sel.disabled = (btn.dataset.on !== '1');
 }
 
 async function submitMissingReport(btn) {
   if (!lastTracked) return;
-  const missing = [...document.querySelectorAll('#missBooks button[data-on="1"]')].map(b => b.dataset.title);
+  const missing = [...document.querySelectorAll('#missBooks .miss-row')]
+    .filter(row => row.querySelector('button')?.dataset.on === '1')
+    .map(row => {
+      const title = row.dataset.title;
+      const max = Math.max(1, Number(row.dataset.max) || 1);
+      const sel = row.querySelector('.miss-qty');
+      const qty = Math.min(max, Math.max(1, Number(sel?.value) || max));
+      return { title, qty };
+    });
   const msg = document.getElementById('reportMsg');
   if (!missing.length) {
     msg.style.display = ''; msg.style.color = '#e05050';
@@ -344,8 +363,11 @@ async function submitMissingReport(btn) {
       const replNote = data.replacement_order_id
         ? `📦 A <b>free replacement order ${esc(data.replacement_order_id)}</b> has been created for you — it ships at no charge and you'll get tracking once dispatched.`
         : `You'll get a confirmation by email &amp; WhatsApp, and our team will reach out to send the missing ${missing.length > 1 ? 'books' : 'book'} or refund you.`;
+      const labels = Array.isArray(data.missing) && data.missing.length
+        ? data.missing
+        : missing.map(m => m.qty > 1 ? `${m.title} ×${m.qty}` : m.title);
       section.innerHTML = `<div class="r-section-h">Missing a book?</div>
-        <div class="r-row" style="color:#6dbf6d;font-size:0.82rem;line-height:1.6;">✓ Thanks — we've noted that ${missing.length > 1 ? 'these books were' : 'this book was'} missing:<br/><b>${missing.map(esc).join(', ')}</b><br/>${replNote}</div>`;
+        <div class="r-row" style="color:#6dbf6d;font-size:0.82rem;line-height:1.6;">✓ Thanks — we've noted that ${labels.length > 1 ? 'these were' : 'this was'} missing:<br/><b>${labels.map(esc).join(', ')}</b><br/>${replNote}</div>`;
     }
   } catch (e) {
     msg.style.display = ''; msg.style.color = '#e05050';
