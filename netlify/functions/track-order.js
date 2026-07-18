@@ -12,6 +12,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { canEditAddress } = require('./utils/address-editable');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -101,6 +102,8 @@ exports.handler = async (event) => {
           name:            data.customer_name,
           phone_masked:    phoneMasked,
           address:         data.customer_address,
+          can_edit_address: canEditAddress(data),
+          address_updated:  !!data.address_updated_by_customer_at,
           items,
           total,
           paid_now:        paidNow,

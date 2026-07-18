@@ -1366,6 +1366,7 @@
                               font-size:0.55rem;">Deliver to</span><br/>
                  ${escHtml(o.customer_address)}
                </div>` : ''}
+          ${addressUpdateBlock(o)}
           ${orderTrackingBlock(o)}
           ${cancelOrderBlock(o)}
           ${returnRequestBlock(o)}
@@ -1921,6 +1922,89 @@
   // missing from their parcel; report-missing-books verifies ownership (order
   // id + checkout email/phone) and notifies the customer + owner.
   const MISSING_REPORTABLE = ['shipped', 'out_for_delivery', 'delivered', 'rto', 'undelivered'];
+  // ── Update delivery address (one-time, only before the order ships) ────────
+  const ADDR_LOCKED_STATUSES = ['shipped','in_transit','out_for_delivery','delivered','rto','undelivered','lost','cancelled','refunded'];
+  function canEditOrderAddress(order) {
+    if (!order) return false;
+    if (order.tracking_id) return false;
+    if (order.shipped_at) return false;
+    if (ADDR_LOCKED_STATUSES.includes(String(order.status || '').toLowerCase())) return false;
+    if (order.address_updated_by_customer_at) return false;
+    return true;
+  }
+
+  function addressUpdateBlock(order) {
+    if (order.address_updated_by_customer_at) {
+      return `<div style="margin-top:0.5rem;font-size:0.6rem;color:#6dbf6d;">✓ Address updated (one-time change used).</div>`;
+    }
+    if (!canEditOrderAddress(order)) return '';
+    const oid = order.razorpay_order_id || order.id;
+    const q   = order.customer_email || order.customer_phone || '';
+    return `
+      <div id="addr-wrap-${escJs(order.id)}" style="margin-top:0.5rem;">
+        <button type="button" data-oid="${escHtmlAttr(oid)}" data-q="${escHtmlAttr(q)}"
+          onclick="iacShowAddrEditor(this)"
+          style="background:transparent;border:1px solid rgba(201,168,76,0.4);color:#c9a84c;
+                 padding:0.4rem 0.85rem;font-size:0.54rem;letter-spacing:0.14em;text-transform:uppercase;
+                 cursor:pointer;font-family:'Montserrat',sans-serif;">✏️ Update delivery address</button>
+        <span style="font-size:0.58rem;color:#7a6330;margin-left:0.5rem;">You can change this once, before it ships.</span>
+        <div class="addr-form" style="display:none;margin-top:0.55rem;">
+          <textarea class="addr-input" rows="3" placeholder="Full address with area, city, state and pincode"
+            style="width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);
+                   color:#f0e8d8;padding:0.55rem 0.7rem;font-family:inherit;font-size:0.74rem;resize:vertical;">${escHtml(order.customer_address || '')}</textarea>
+          <div style="display:flex;gap:0.4rem;margin-top:0.45rem;">
+            <button type="button" onclick="iacSaveAddr(this)"
+              style="background:#c9a84c;border:1px solid #c9a84c;color:#1a1408;padding:0.45rem 0.9rem;
+                     font-size:0.54rem;letter-spacing:0.14em;text-transform:uppercase;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;">Save</button>
+            <button type="button" onclick="iacHideAddrEditor(this)"
+              style="background:transparent;border:1px solid rgba(160,144,128,0.3);color:#a09080;padding:0.45rem 0.9rem;
+                     font-size:0.54rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">Cancel</button>
+          </div>
+          <div class="addr-msg" style="margin-top:0.4rem;font-size:0.62rem;display:none;"></div>
+        </div>
+      </div>`;
+  }
+
+  window.iacShowAddrEditor = function (btn) {
+    const wrap = btn.closest('[id^="addr-wrap-"]');
+    wrap.querySelector('.addr-form').style.display = '';
+    btn.style.display = 'none';
+  };
+  window.iacHideAddrEditor = function (btn) {
+    const wrap = btn.closest('[id^="addr-wrap-"]');
+    wrap.querySelector('.addr-form').style.display = 'none';
+    const editBtn = wrap.querySelector('button[data-oid]');
+    if (editBtn) editBtn.style.display = '';
+  };
+  window.iacSaveAddr = async function (btn) {
+    const wrap = btn.closest('[id^="addr-wrap-"]');
+    const editBtn = wrap.querySelector('button[data-oid]');
+    const msg = wrap.querySelector('.addr-msg');
+    const address = (wrap.querySelector('.addr-input')?.value || '').trim();
+    if (address.length < 12) {
+      msg.style.display = ''; msg.style.color = '#e06060';
+      msg.textContent = 'Please enter a complete address (with city and pincode).';
+      return;
+    }
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Saving…';
+    msg.style.display = 'none';
+    try {
+      const res = await fetch('/.netlify/functions/update-order-address', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editBtn.dataset.oid, q: editBtn.dataset.q, address }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) throw new Error(json.error || 'Could not update the address.');
+      wrap.innerHTML = `<div style="font-size:0.62rem;color:#6dbf6d;line-height:1.6;">✓ Address updated — we'll ship here. This can only be changed once.</div>`;
+    } catch (err) {
+      msg.style.display = ''; msg.style.color = '#e06060';
+      msg.textContent = err.message;
+      btn.disabled = false; btn.textContent = orig;
+    }
+  };
+
   function missingBookBlock(order) {
     const status = String(order.status || '').toLowerCase();
     if (!MISSING_REPORTABLE.includes(status)) return '';

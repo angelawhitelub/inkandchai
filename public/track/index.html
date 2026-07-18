@@ -265,8 +265,9 @@ function renderOrder(o) {
     <div class="r-section">
       <div class="r-section-h">Delivery to</div>
       <div class="r-row"><b>${esc(o.name || '—')}</b></div>
-      <div class="r-row" style="white-space:pre-wrap;">${esc(o.address || '—')}</div>
+      <div id="addrText" class="r-row" style="white-space:pre-wrap;">${esc(o.address || '—')}</div>
       <div class="r-row" style="font-family:Menlo,Consolas,monospace;font-size:0.72rem;margin-top:0.3rem;">📞 ${esc(o.phone_masked || '')}</div>
+      ${addressEditHtml(o)}
     </div>
     <div class="r-section">
       <div class="r-section-h">Order Items</div>
@@ -278,6 +279,77 @@ function renderOrder(o) {
   const result = document.getElementById('result');
   result.innerHTML = html;
   result.classList.add('show');
+}
+
+// ── Update delivery address (one-time, only before the order ships) ──────────
+function addressEditHtml(o) {
+  if (o.address_updated && !o.can_edit_address) {
+    return `<div class="r-row" style="color:#6dbf6d;font-size:0.72rem;margin-top:0.6rem;">✓ Address updated — this can only be changed once.</div>`;
+  }
+  if (!o.can_edit_address) return '';
+  return `<div id="addrEditWrap" style="margin-top:0.7rem;">
+    <button id="addrEditBtn" type="button" onclick="showAddressEditor()"
+      style="background:transparent;border:1px solid var(--gold);color:var(--gold);padding:0.45rem 0.9rem;font-size:0.6rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">
+      ✏️ Update delivery address
+    </button>
+    <div style="color:var(--cream-dim);font-size:0.7rem;margin-top:0.4rem;">You can change this once, only while the order hasn't shipped yet.</div>
+    <div id="addrEditForm" style="display:none;margin-top:0.7rem;">
+      <textarea id="addrEditInput" rows="4" placeholder="Full address with area, city, state and pincode"
+        style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.65rem 0.8rem;font-family:inherit;font-size:0.82rem;resize:vertical;">${esc(o.address || '')}</textarea>
+      <div style="display:flex;gap:0.5rem;margin-top:0.6rem;">
+        <button id="addrSaveBtn" type="button" onclick="submitAddressUpdate(this)"
+          style="background:var(--gold);border:1px solid var(--gold);color:#0d0b08;padding:0.55rem 1.1rem;font-size:0.6rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:600;">Save address</button>
+        <button type="button" onclick="hideAddressEditor()"
+          style="background:transparent;border:1px solid var(--border);color:var(--cream-dim);padding:0.55rem 1.1rem;font-size:0.6rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;">Cancel</button>
+      </div>
+      <div id="addrMsg" style="margin-top:0.5rem;font-size:0.78rem;display:none;"></div>
+    </div>
+  </div>`;
+}
+
+function showAddressEditor() {
+  const f = document.getElementById('addrEditForm');
+  const b = document.getElementById('addrEditBtn');
+  if (f) f.style.display = '';
+  if (b) b.style.display = 'none';
+}
+function hideAddressEditor() {
+  const f = document.getElementById('addrEditForm');
+  const b = document.getElementById('addrEditBtn');
+  if (f) f.style.display = 'none';
+  if (b) b.style.display = '';
+}
+
+async function submitAddressUpdate(btn) {
+  if (!lastTracked) return;
+  const input = document.getElementById('addrEditInput');
+  const msg = document.getElementById('addrMsg');
+  const address = (input?.value || '').trim();
+  if (address.length < 12) {
+    msg.style.display = ''; msg.style.color = '#e05050';
+    msg.textContent = 'Please enter a complete delivery address (with city and pincode).';
+    return;
+  }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  msg.style.display = 'none';
+  try {
+    const res = await fetch('/.netlify/functions/update-order-address', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: lastTracked.id, q: lastTracked.q, address }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || 'Could not update the address.');
+    const shown = document.getElementById('addrText');
+    if (shown) shown.textContent = data.address || address;
+    const wrap = document.getElementById('addrEditWrap');
+    if (wrap) wrap.innerHTML = `<div class="r-row" style="color:#6dbf6d;font-size:0.78rem;line-height:1.6;">✓ Address updated — we'll ship here. This can only be changed once.</div>`;
+  } catch (e) {
+    msg.style.display = ''; msg.style.color = '#e05050';
+    msg.textContent = e.message;
+    btn.disabled = false; btn.textContent = orig;
+  }
 }
 
 // ── Report a missing book (customer-facing, on delivered/shipped orders) ─────
