@@ -585,6 +585,7 @@ td{padding:1rem;font-size:.94rem;}
     <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
     <button class="admin-tab" data-tab="abandoned" onclick="switchTab('abandoned')">🛒 Abandoned Carts</button>
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="botinbox"  onclick="switchTab('botinbox')">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="bookreq"   onclick="switchTab('bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
@@ -1131,6 +1132,42 @@ td{padding:1rem;font-size:.94rem;}
   </section>
 
   </div><!-- /tab-reviews -->
+
+  <!-- ═══ REPLACEMENTS TAB ═══ -->
+  <div class="admin-section" id="tab-replacements">
+
+  <section class="abandoned-panel">
+    <div class="abandoned-head">
+      <div>
+        <h2>Replacement Requests</h2>
+        <p>Every replacement request raised by a customer. Only the first replacement request from a customer is accepted; later requests are blocked automatically.</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-outline" onclick="refreshReplacementRequests(this)">↻ Refresh</button>
+      </div>
+    </div>
+    <div class="hint" id="replacementRequestsMeta" style="margin-bottom:0.8rem;">Loading replacement requests…</div>
+    <div class="tbl-wrap" style="box-shadow:none;">
+      <table class="mini-table">
+        <thead>
+          <tr>
+            <th>Requested</th>
+            <th>Replacement / Original</th>
+            <th>Customer</th>
+            <th>Items</th>
+            <th>Reason / Note</th>
+            <th>Photos</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="replacementRequestsBody"></tbody>
+      </table>
+    </div>
+    <div class="lead-empty" id="replacementRequestsEmpty" style="display:none;">No replacement requests found.</div>
+  </section>
+
+  </div><!-- /tab-replacements -->
 
   <!-- ═══ RETURNS TAB ═══ -->
   <div class="admin-section" id="tab-returns">
@@ -2293,6 +2330,7 @@ function updateStats() {
   const refundEl = document.getElementById('statRefunded');
   if (refundEl) refundEl.textContent = stillLoading ? '…' : refunded;
   document.getElementById('statRev').textContent       = stillLoading ? '…' : '₹' + Math.round(rev / 100).toLocaleString('en-IN');
+  renderReplacementRequests();
   if (!stillLoading) updateAnalytics();
   if (stillLoading) {
     const pct = Math.round((allOrders.length / displayTotal) * 100);
@@ -4687,7 +4725,8 @@ function copyAllAddresses() {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ── Auto-refresh orders every 90s ─────────────────────────────────────────
@@ -5039,7 +5078,7 @@ function rptPickProduct(idx) {
   document.getElementById('rptChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-const TABS = ['orders','create','products','abandoned','reviews','returns','botinbox','bookreq','insights','bot','recover','reports'];
+const TABS = ['orders','create','products','abandoned','reviews','replacements','returns','botinbox','bookreq','insights','bot','recover','reports'];
 
 // ── Customer Insights (AI over bot conversations) ──────────────────────────
 async function runBotInsights(btn) {
@@ -5119,6 +5158,94 @@ function renderInsights(data) {
     <div style="margin-top:1.2rem;font-size:0.62rem;color:#7a6330;">Generated ${m.generated_at ? new Date(m.generated_at).toLocaleString('en-IN') : ''} · AI-assisted from real conversations — review before acting.</div>`;
 }
 
+function replacementRequestRows() {
+  return allOrders
+    .filter(o => o.source === 'replacement' || (Array.isArray(o.cart_items) && o.cart_items[0]?._replacement))
+    .sort((a, b) => {
+      const am = a.cart_items?.[0]?._replacement;
+      const bm = b.cart_items?.[0]?._replacement;
+      return new Date(bm?.requested_at || b.created_at || 0) - new Date(am?.requested_at || a.created_at || 0);
+    });
+}
+
+function renderReplacementRequests() {
+  const body = document.getElementById('replacementRequestsBody');
+  const empty = document.getElementById('replacementRequestsEmpty');
+  const metaEl = document.getElementById('replacementRequestsMeta');
+  const badge = document.getElementById('replacementRequestsBadge');
+  if (!body || !empty || !metaEl || !badge) return;
+
+  const rows = replacementRequestRows();
+  const pending = rows.filter(o => o.status === 'replacement_pending').length;
+  badge.textContent = pending;
+  badge.style.display = pending ? '' : 'none';
+  metaEl.textContent = `${rows.length.toLocaleString('en-IN')} request${rows.length === 1 ? '' : 's'} · ${pending.toLocaleString('en-IN')} awaiting action`;
+  empty.style.display = rows.length ? 'none' : '';
+
+  body.innerHTML = rows.map(o => {
+    const items = Array.isArray(o.cart_items) ? o.cart_items : [];
+    const req = items[0]?._replacement || {};
+    const requestedAt = req.requested_at || o.created_at;
+    const date = requestedAt && !Number.isNaN(new Date(requestedAt).getTime())
+      ? new Date(requestedAt).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+      : '—';
+    const replacementId = o.razorpay_order_id || o.id || '—';
+    const originalId = req.original_order_id || '—';
+    const photos = Array.isArray(req.photos)
+      ? req.photos.filter(url => /^https:\/\//i.test(String(url))).slice(0, 3)
+      : [];
+    const orderRowId = encodeURIComponent(String(o.id || ''));
+    const photoHtml = photos.length
+      ? photos.map((url, i) => `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--gold);display:block;margin-bottom:.25rem;">Photo ${i + 1} ↗</a>`).join('')
+      : '<span style="color:var(--cream-dim)">None</span>';
+    const tracking = o.tracking_id
+      ? `<div style="font-size:.58rem;color:var(--cream-dim);margin-top:.35rem;">${esc(o.courier_name || 'Courier')} · ${esc(o.tracking_id)}</div>`
+      : '';
+
+    return `<tr>
+      <td style="white-space:nowrap;">${esc(date)}</td>
+      <td>
+        <div class="order-id">${esc(replacementId)}</div>
+        <div class="cust-sub">Original: ${esc(originalId)}</div>
+      </td>
+      <td>
+        <div class="cust-name">${esc(o.customer_name || '—')}</div>
+        <div class="cust-sub">${esc(o.customer_phone || '')}</div>
+        <div class="cust-sub">${esc(o.customer_email || '')}</div>
+      </td>
+      <td>${items.slice(0, 4).map(i => `<div>· ${esc(i.title || 'Book')} ×${Number(i.qty) || 1}</div>`).join('')}</td>
+      <td>
+        <div style="color:var(--cream);">${esc(req.reason_label || req.reason || '—')}</div>
+        ${req.note ? `<div class="cust-sub" style="margin-top:.3rem;white-space:pre-wrap;">${esc(req.note)}</div>` : ''}
+      </td>
+      <td>${photoHtml}</td>
+      <td><span class="badge b-${esc(o.status || 'confirmed')}">${esc((o.status || 'pending').replace(/_/g, ' '))}</span>${tracking}</td>
+      <td><button class="btn-outline" style="padding:.4rem .65rem;" onclick="openReplacementInOrders('${orderRowId}')">Open in Orders</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function openReplacementInOrders(encodedRowId) {
+  const rowId = decodeURIComponent(encodedRowId || '');
+  const order = allOrders.find(o => String(o.id || '') === rowId);
+  switchTab('orders');
+  const search = document.getElementById('searchBox');
+  if (search) search.value = order?.razorpay_order_id || rowId;
+  applyFilters();
+  setTimeout(() => document.getElementById('ordersTableSection')?.scrollIntoView({ behavior:'smooth', block:'start' }), 0);
+}
+
+async function refreshReplacementRequests(btn) {
+  const original = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Refreshing…'; }
+  try {
+    await fetchOrders(true);
+    renderReplacementRequests();
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = original || '↻ Refresh'; }
+  }
+}
+
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
 
@@ -5144,6 +5271,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'products' && _authed) fetchProducts();
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
   if (tab === 'reviews') fetchPendingReviews();
+  if (tab === 'replacements' && _authed) renderReplacementRequests();
   if (tab === 'returns' && _authed) fetchReturnRequests();
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();

@@ -19,7 +19,7 @@
  * Guards:
  *   - original must be `delivered` (or recently shipped — store policy)
  *   - within REPLACEMENT_WINDOW_DAYS of delivery
- *   - only ONE replacement per original (prevents abuse)
+ *   - only ONE replacement request per customer (prevents repeat requests)
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -169,12 +169,48 @@ exports.handler = async (event) => {
   const windowMs = REPLACEMENT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   if (ageMs > windowMs) return json(400, { error: `Replacement window (${REPLACEMENT_WINDOW_DAYS} days) has closed` });
 
-  // Only one replacement per original
+  // Only one replacement per original (clearer error for an exact repeat).
   const { data: prior } = await sb.from('orders')
     .select('razorpay_order_id').eq('source', 'replacement')
     .ilike('cart_items', `%${orig.razorpay_order_id}%`).limit(1);
   if (prior && prior.length) {
     return json(409, { error: 'A replacement was already created for this order: ' + prior[0].razorpay_order_id });
+  }
+
+  // Only one replacement request per customer, across all of their orders.
+  // Check on the server so the restriction cannot be bypassed by changing the
+  // storefront. New replacement rows always carry user_id; email and phone
+  // checks cover older rows and customers whose order predates account linking.
+  const identityChecks = [
+    sb.from('orders').select('razorpay_order_id').eq('source', 'replacement').eq('user_id', user.id).limit(1),
+  ];
+  const identityEmails = [...new Set([userEmail, String(orig.customer_email || '').trim().toLowerCase()].filter(Boolean))];
+  identityEmails.forEach(email => {
+    identityChecks.push(
+      sb.from('orders').select('razorpay_order_id').eq('source', 'replacement').ilike('customer_email', email).limit(1)
+    );
+  });
+  const identityPhones = [...new Set([
+    String(user.user_metadata?.phone || user.phone || '').trim(),
+    String(orig.customer_phone || '').trim(),
+  ].filter(Boolean))];
+  identityPhones.forEach(phone => {
+    identityChecks.push(
+      sb.from('orders').select('razorpay_order_id').eq('source', 'replacement').eq('customer_phone', phone).limit(1)
+    );
+  });
+
+  const customerChecks = await Promise.all(identityChecks);
+  const checkError = customerChecks.find(result => result.error)?.error;
+  if (checkError) {
+    console.error('[replacement] duplicate-customer check:', checkError.message);
+    return json(500, { error: 'Could not verify replacement eligibility — please try again' });
+  }
+  const priorCustomerRequest = customerChecks.flatMap(result => result.data || [])[0];
+  if (priorCustomerRequest) {
+    return json(409, {
+      error: `A replacement request has already been used by this customer (${priorCustomerRequest.razorpay_order_id}). Only one replacement request is allowed per customer.`,
+    });
   }
 
   // ── Upload photos (best-effort) ──────────────────────────────────────────
