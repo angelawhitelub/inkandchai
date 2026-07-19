@@ -955,6 +955,8 @@ td{padding:1rem;font-size:.94rem;}
         <p>Search a listing and update sale price, MRP, title, author, or category without editing code. These are live storefront overrides.</p>
       </div>
       <div class="mini-actions">
+        <input id="merchantPriceCsv" type="file" accept=".csv,text/csv" style="max-width:210px;font-size:.62rem;"/>
+        <button class="btn-green" onclick="applyMerchantPriceCsv(this)">Apply Suggested Prices</button>
         <button class="btn-outline" onclick="fetchProducts()">Refresh Products</button>
       </div>
     </div>
@@ -3600,6 +3602,93 @@ async function saveProductOverride(activeOverride = true) {
     renderProductList();
   } catch (err) {
     msg.textContent = 'Could not save: ' + err.message;
+  }
+}
+
+function merchantFeedMap(xmlText) {
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  const map = new Map();
+  doc.querySelectorAll('item').forEach(item => {
+    const children = [...item.children];
+    const id = children.find(el => el.localName === 'id')?.textContent?.trim();
+    const link = children.find(el => el.localName === 'link')?.textContent?.trim();
+    if (!id || !link) return;
+    try {
+      const match = new URL(link).pathname.match(/^\/product\/([^/]+)\/?$/);
+      if (match) map.set(id, decodeURIComponent(match[1]));
+    } catch {}
+  });
+  return map;
+}
+
+async function applyMerchantPriceCsv(btn) {
+  const input = document.getElementById('merchantPriceCsv');
+  const file = input?.files?.[0];
+  if (!file) { alert('Choose the Merchant Center price suggestions CSV first.'); return; }
+  const original = btn?.innerHTML || '';
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Reading suggestions…'; }
+
+  try {
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    const headerIndex = matrix.findIndex(row => row.map(normalizeHeader).includes('product_id') && row.map(normalizeHeader).includes('suggested_price'));
+    if (headerIndex < 0) throw new Error('Could not find Product ID and Suggested price columns.');
+    const headers = matrix[headerIndex].map(normalizeHeader);
+    const idIndex = headers.indexOf('product_id');
+    const priceIndex = headers.indexOf('suggested_price');
+    const currencyIndex = headers.indexOf('price_currency');
+    const suggestions = matrix.slice(headerIndex + 1)
+      .filter(row => String(row[idIndex] || '').trim())
+      .map(row => ({
+        product_id: String(row[idIndex]).trim(),
+        price_inr: Number(row[priceIndex]),
+        currency: currencyIndex >= 0 ? String(row[currencyIndex]).trim().toUpperCase() : 'INR',
+      }));
+    if (!suggestions.length) throw new Error('No price suggestions found.');
+    if (suggestions.length > 250) throw new Error('A maximum of 250 suggestions can be applied at once.');
+    if (suggestions.some(row => !Number.isFinite(row.price_inr) || row.price_inr <= 0 || row.currency !== 'INR')) {
+      throw new Error('The CSV contains an invalid or non-INR suggested price.');
+    }
+
+    if (btn) btn.innerHTML = 'Matching product IDs…';
+    const [staticFeedRes, customFeedRes] = await Promise.all([
+      fetch('/feed.xml?price-import=' + Date.now()),
+      fetch('/custom-feed.xml?price-import=' + Date.now()),
+    ]);
+    if (!staticFeedRes.ok || !customFeedRes.ok) throw new Error('Could not load the Merchant product feeds.');
+    const [staticMap, customMap] = await Promise.all([
+      staticFeedRes.text().then(merchantFeedMap),
+      customFeedRes.text().then(merchantFeedMap),
+    ]);
+    const missing = suggestions.filter(row => !staticMap.has(row.product_id) && !customMap.has(row.product_id));
+    if (missing.length) {
+      throw new Error(`${missing.length} Merchant product ID${missing.length === 1 ? '' : 's'} could not be matched. No prices were changed.`);
+    }
+    const updates = suggestions.map(row => ({
+      slug: staticMap.get(row.product_id) || customMap.get(row.product_id),
+      price_inr: row.price_inr,
+    }));
+    if (new Set(updates.map(row => row.slug)).size !== updates.length) {
+      throw new Error('The CSV resolves to duplicate product listings. No prices were changed.');
+    }
+    if (!confirm(`Apply ${updates.length} Merchant Center suggested prices?\n\nOnly price reductions are applied. Existing titles, MRP, covers and listing details remain unchanged.`)) return;
+
+    if (btn) btn.innerHTML = 'Applying prices…';
+    const res = await adminFetch('/.netlify/functions/bulk-update-product-prices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+    await fetchProducts();
+    alert(`Suggested prices applied.\n\nApplied and verified: ${data.verified}\nAlready at or below suggestion: ${data.skipped_already_lower}`);
+    input.value = '';
+  } catch (error) {
+    alert('Could not apply suggested prices: ' + error.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = original || 'Apply Suggested Prices'; }
   }
 }
 
