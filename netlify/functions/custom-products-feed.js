@@ -88,6 +88,24 @@ exports.handler = async () => {
       if (!data || data.length < to - from + 1) break;
     }
 
+    const productSlugs = products.map(product => product.slug).filter(Boolean);
+    const overrideRows = [];
+    for (let from = 0; from < productSlugs.length; from += 100) {
+      const { data, error } = await supabase
+        .from('product_overrides')
+        .select('slug,price_inr,original_price_inr,is_active')
+        .in('slug', productSlugs.slice(from, from + 100));
+      if (error) throw error;
+      overrideRows.push(...(data || []));
+    }
+    const overrideBySlug = new Map(overrideRows.map(row => [row.slug, row]));
+    products.forEach(product => {
+      const override = overrideBySlug.get(product.slug);
+      if (!override || override.is_active === false) return;
+      if (override.price_inr != null) product.price_inr = override.price_inr;
+      if (override.original_price_inr != null) product.original_price_inr = override.original_price_inr;
+    });
+
     const items = (products || []).map((p) => {
       const price = priceText(p.price_inr);
       if (!p.slug || !p.title || !p.image_url || !price) return '';  // skip incomplete rows
