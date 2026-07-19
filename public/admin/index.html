@@ -3290,7 +3290,10 @@ async function createProductListing() {
 }
 
 function openCreatedProduct() {
-  if (createdProductUrl) window.open(createdProductUrl, '_blank');
+  if (createdProductUrl) {
+    const separator = createdProductUrl.includes('?') ? '&' : '?';
+    window.open(createdProductUrl + separator + 'updated=' + Date.now(), '_blank');
+  }
 }
 
 function productImageSrc(url) {
@@ -3571,7 +3574,7 @@ function clearProductOverride() {
 
 function openSelectedProduct() {
   if (!selectedProduct) return;
-  window.open('/product/' + selectedProduct.slug + '/', '_blank');
+  window.open('/product/' + selectedProduct.slug + '/?updated=' + Date.now(), '_blank');
 }
 
 function exportSelectedCsv() {

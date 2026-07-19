@@ -354,13 +354,11 @@ exports.handler = async (event) => {
       statusCode: 200,
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'public, max-age=60',
-        // Durable, shared edge cache: a product page is fetched from Supabase at
-        // most ~once/hour globally no matter how many bots crawl it. This is the
-        // fix for the egress spike after 13.5k crawlable product pages went live.
-        // stale-while-revalidate serves instantly while refreshing in the
-        // background; admin price/detail edits reflect within the hour.
-        'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+        // Browsers must revalidate so an already-open product tab does not keep
+        // a pre-edit cover or price. Netlify's edge still caches the rendered
+        // page for five minutes to protect Supabase from crawler egress.
+        'Cache-Control': 'public, max-age=0, must-revalidate',
+        'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=300',
       },
       body: productHtml(product),
     };
