@@ -382,6 +382,9 @@ function reportBlockHtml(o) {
             </select></label>` : ''}
         </div>`).join('')}
     </div>
+    <label for="missComment" style="display:block;font-size:0.72rem;color:var(--cream-dim);margin:0 0 0.4rem;">Anything else we should know? <span style="opacity:0.7;">(optional)</span></label>
+    <textarea id="missComment" rows="3" maxlength="1000" placeholder="e.g. the packet was already open, or only some copies were inside…"
+      style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.8rem;font-family:inherit;font-size:0.82rem;resize:vertical;margin-bottom:1rem;"></textarea>
     <button id="reportBtn" onclick="submitMissingReport(this)"
       style="background:var(--gold);border:1px solid var(--gold);color:#0d0b08;padding:0.65rem 1.4rem;font-size:0.65rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:600;">
       Report missing book(s)
@@ -426,7 +429,7 @@ async function submitMissingReport(btn) {
     const res = await fetch('/.netlify/functions/report-missing-books', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: lastTracked.id, q: lastTracked.q, missing }),
+      body: JSON.stringify({ id: lastTracked.id, q: lastTracked.q, missing, comment: (document.getElementById('missComment')?.value || '').trim() }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) throw new Error(data.error || 'Could not submit your report.');

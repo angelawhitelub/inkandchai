@@ -43,7 +43,7 @@ const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
  * Guard: at most ONE replacement per original order. Returns the new order id
  * or null (never throws — the report itself must still succeed).
  */
-async function createMissingReplacement(supabase, order, replacementItems) {
+async function createMissingReplacement(supabase, order, replacementItems, comment = '') {
   try {
     // One replacement per original — matches request-replacement's abuse guard.
     const { data: existing } = await supabase
@@ -69,6 +69,7 @@ async function createMissingReplacement(supabase, order, replacementItems) {
       reason: 'missing_item',
       reason_label: 'Item missing from package',
       note: 'Auto-created from the customer\'s missing-book report.',
+      ...(comment ? { customer_comment: comment } : {}),
       requested_at: now.toISOString(),
     };
 
@@ -136,8 +137,15 @@ function missingEmailHtml(order, missing, replId) {
     </div>`;
 }
 
-function ownerMissingEmailHtml(order, missing, replId) {
+function ownerMissingEmailHtml(order, missing, replId, comment = '') {
   const rows = missing.map(t => `<li style="margin:4px 0;color:#f0e8d8;">${t}</li>`).join('');
+  const safeComment = String(comment || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+  const commentBlock = safeComment
+    ? `<div style="margin:14px 0;padding:14px;background:#1c1916;border-left:3px solid #c9a84c;">
+         <p style="color:#a09080;font-size:12px;margin:0 0 6px;text-transform:uppercase;letter-spacing:1px;">Customer's comment</p>
+         <p style="color:#f0e8d8;margin:0;line-height:1.7;white-space:pre-wrap;">${safeComment}</p>
+       </div>`
+    : '';
   const nextLine = replId
     ? `<p style="color:#6dbf6d;font-size:14px;">✅ Replacement order <strong style="color:#c9a84c;">${replId}</strong> was created automatically (₹0, only the missing book${missing.length > 1 ? 's' : ''}). It's in the unshipped list — ship it from the Orders tab. The customer has been notified.</p>`
     : `<p style="color:#a09080;font-size:13px;">Next: send a replacement (Replacement flow) or issue a refund from the admin panel. The customer has been emailed a confirmation.</p>`;
@@ -154,6 +162,7 @@ function ownerMissingEmailHtml(order, missing, replId) {
       </table>
       <p style="color:#a09080;margin:14px 0 6px;">Missing book(s) the customer flagged:</p>
       <ul style="margin:0 0 16px;padding-left:20px;">${rows}</ul>
+      ${commentBlock}
       ${nextLine}
       <hr style="border:none;border-top:1px solid #2a2a2a;margin:32px 0;"/>
       <p style="color:#7a6330;font-size:11px;">Sent to the store owner &middot; inkandchai.in</p>
@@ -174,6 +183,7 @@ exports.handler = async (event) => {
 
   const id = String(body.id || '').trim().replace(/\s+/g, '');
   const q  = String(body.q  || '').trim();
+  const comment = String(body.comment || '').trim().slice(0, 1000);   // optional customer note
   // Accept either legacy `missing: ["Title", ...]` or the new
   // `missing: [{ title, qty }, ...]`. Qty is validated/capped later against the
   // quantity actually ordered; null here means "default to the full ordered qty".
@@ -249,7 +259,7 @@ exports.handler = async (event) => {
     const stampedItems = items.map(it => {
       const title = String(it?.title || it?.name || '').trim();
       return title && validQtyByTitle.has(title.toLowerCase())
-        ? { ...it, _missing: true, _missing_qty: validQtyByTitle.get(title.toLowerCase()), _missing_at: new Date().toISOString() }
+        ? { ...it, _missing: true, _missing_qty: validQtyByTitle.get(title.toLowerCase()), _missing_at: new Date().toISOString(), ...(comment ? { _missing_comment: comment } : {}) }
         : it;
     });
     try {
@@ -264,7 +274,7 @@ exports.handler = async (event) => {
       const { _missing, _missing_at, _missing_qty, ...clean } = v.item;
       return { ...clean, qty: v.qty };
     });
-    const repl = await createMissingReplacement(supabase, order, replacementItems);
+    const repl = await createMissingReplacement(supabase, order, replacementItems, comment);
     const replId = repl?.id || null;
 
     const result = { email: false, whatsapp: false, ownerEmail: false, replacement_order_id: replId, replacement_existed: !!repl?.existed };
@@ -324,7 +334,7 @@ exports.handler = async (event) => {
           subject: replId
             ? `📦 Incomplete order ${orderId(order)} → replacement ${replId} created — ${missingList}`
             : `📦 Customer reported incomplete order ${orderId(order)} — ${missingList}`,
-          html: ownerMissingEmailHtml(order, missingLabels, replId),
+          html: ownerMissingEmailHtml(order, missingLabels, replId, comment),
         });
         result.ownerEmail = !!sent?.ok;
       } catch (e) {

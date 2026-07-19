@@ -2051,6 +2051,9 @@
                 </select></label>` : ''}
             </div>`).join('')}
         </div>
+        <textarea class="miss-comment" rows="2" maxlength="1000" placeholder="Anything else we should know? (optional) — e.g. the packet was open"
+          style="width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
+                 padding:0.5rem 0.7rem;font-family:inherit;font-size:0.72rem;resize:vertical;margin-bottom:0.6rem;"></textarea>
         <button data-oid="${escHtmlAttr(oid)}" data-q="${escHtmlAttr(q)}" onclick="iacReportMissing(this)"
           style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
                  padding:0.6rem 1rem;background:rgba(232,160,48,0.1);border:1px solid rgba(232,160,48,0.45);
@@ -2099,7 +2102,7 @@
       const res = await fetch('/.netlify/functions/report-missing-books', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: btn.dataset.oid, q: btn.dataset.q, missing }),
+        body: JSON.stringify({ id: btn.dataset.oid, q: btn.dataset.q, missing, comment: (wrap.querySelector('.miss-comment')?.value || '').trim() }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) throw new Error(json.error || 'Could not submit your report.');
