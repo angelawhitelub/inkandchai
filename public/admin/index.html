@@ -964,6 +964,10 @@ td{padding:1rem;font-size:.94rem;}
       <input class="search-box" id="productSearch" placeholder="🔍 Search product title, author, slug" oninput="renderProductList()"/>
       <span class="hint" id="productMeta">Product editor loads after login.</span>
     </div>
+    <details style="margin:-.25rem 0 .8rem;font-size:.62rem;color:var(--cream-dim);">
+      <summary style="cursor:pointer;color:var(--gold-dim);">Paste Merchant price CSV instead</summary>
+      <textarea id="merchantPriceCsvText" placeholder="Paste the complete Merchant Center price suggestions CSV here" style="width:100%;min-height:90px;margin-top:.5rem;"></textarea>
+    </details>
     <div class="product-grid">
       <div class="product-list" id="productList"></div>
       <div class="product-editor">
@@ -3624,12 +3628,15 @@ function merchantFeedMap(xmlText) {
 async function applyMerchantPriceCsv(btn) {
   const input = document.getElementById('merchantPriceCsv');
   const file = input?.files?.[0];
-  if (!file) { alert('Choose the Merchant Center price suggestions CSV first.'); return; }
+  const pastedCsv = document.getElementById('merchantPriceCsvText')?.value?.trim() || '';
+  if (!file && !pastedCsv) { alert('Choose the Merchant Center price suggestions CSV or paste its contents first.'); return; }
   const original = btn?.innerHTML || '';
   if (btn) { btn.disabled = true; btn.innerHTML = 'Reading suggestions…'; }
 
   try {
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const workbook = file
+      ? XLSX.read(await file.arrayBuffer(), { type: 'array' })
+      : XLSX.read(pastedCsv, { type: 'string' });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
     const headerIndex = matrix.findIndex(row => row.map(normalizeHeader).includes('product_id') && row.map(normalizeHeader).includes('suggested_price'));
@@ -3685,6 +3692,8 @@ async function applyMerchantPriceCsv(btn) {
     await fetchProducts();
     alert(`Suggested prices applied.\n\nApplied and verified: ${data.verified}\nAlready at or below suggestion: ${data.skipped_already_lower}`);
     input.value = '';
+    const pasted = document.getElementById('merchantPriceCsvText');
+    if (pasted) pasted.value = '';
   } catch (error) {
     alert('Could not apply suggested prices: ' + error.message);
   } finally {
