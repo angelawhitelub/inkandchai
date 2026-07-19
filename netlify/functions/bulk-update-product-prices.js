@@ -70,17 +70,25 @@ exports.handler = async event => {
     if (!dataPath) throw new Error('Catalogue file not found');
     const catalogue = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
     const basePrice = new Map();
+    const canonicalSlug = new Map();
     const seenShopify = new Set();
     for (const book of catalogue) {
       const sid = String(book.shopify_id || '');
       if (!sid || !book.title || seenShopify.has(sid)) continue;
       seenShopify.add(sid);
       const price = Number(book.price_inr);
-      if (Number.isFinite(price)) basePrice.set(makeSlug(book.title, sid), price);
+      if (Number.isFinite(price)) {
+        const slug = makeSlug(book.title, sid);
+        basePrice.set(slug, price);
+        canonicalSlug.set(slug.toLowerCase(), slug);
+      }
     }
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
+    });
+    updates.forEach(row => {
+      row.slug = canonicalSlug.get(row.slug.toLowerCase()) || row.slug;
     });
     const slugs = updates.map(row => row.slug);
     const customRows = [];
