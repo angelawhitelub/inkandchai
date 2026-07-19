@@ -883,7 +883,7 @@ td{padding:1rem;font-size:.94rem;}
     <div class="product-head">
       <div>
         <h2>Create new listing</h2>
-        <p>Add any book from the admin panel. It creates a live SEO product page with title, description, price, MRP, and cover image.</p>
+        <p>Add any book from the admin panel. It creates a live SEO product page with title, description, price, MRP, and an optional multi-image gallery.</p>
       </div>
       <div class="mini-actions">
         <button class="btn-outline" onclick="clearCreateProductForm()">Clear Form</button>
@@ -927,11 +927,12 @@ td{padding:1rem;font-size:.94rem;}
         <input id="newProdTags" placeholder="hindi books, self help, motivation, paperback"/>
       </div>
       <div class="form-row wide">
-        <label>Cover image *</label>
-        <input id="newProdImage" type="file" accept="image/png,image/jpeg,image/webp" onchange="previewCreateProductImage(this.files[0])"/>
+        <label>Book images (optional)</label>
+        <input id="newProdImage" type="file" accept="image/png,image/jpeg,image/webp" multiple onchange="previewCreateProductImages(this.files)"/>
+        <p class="hint" style="margin-top:.4rem;">Choose up to 9 images. The first becomes the main cover; the rest appear in the product gallery.</p>
         <div class="image-preview" id="newProdImagePreview" style="display:none;">
-          <img id="newProdImagePreviewImg" alt="Cover preview"/>
-          <span id="newProdImagePreviewText">Cover selected.</span>
+          <div id="newProdImagePreviewGrid" style="display:flex;gap:.65rem;flex-wrap:wrap;"></div>
+          <span id="newProdImagePreviewText">Images selected.</span>
         </div>
       </div>
     </div>
@@ -997,6 +998,13 @@ td{padding:1rem;font-size:.94rem;}
               <input id="prodImageUrl" type="url" placeholder="https://m.media-amazon.com/images/I/..." style="flex:1;"/>
               <img id="prodImagePreview" src="" alt="" style="width:40px;height:60px;object-fit:cover;border:1px solid var(--border);display:none;flex-shrink:0;"/>
             </div>
+          </div>
+          <div class="form-row" id="prodGalleryUploadRow" style="display:none;margin-top:.6rem;">
+            <label>Upload / replace book images</label>
+            <input id="prodGalleryImages" type="file" accept="image/png,image/jpeg,image/webp" multiple onchange="previewEditProductImages(this.files)"/>
+            <p class="hint" style="margin-top:.4rem;">For admin-created listings: choose up to 9 images. The first becomes the main cover and the rest form the gallery.</p>
+            <div id="prodGalleryPreview" style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:.6rem;"></div>
+            <button class="btn-green" id="prodGallerySaveBtn" type="button" onclick="saveCustomProductImages()" style="display:none;margin-top:.7rem;">Upload / Replace Images</button>
           </div>
           <div style="display:flex;gap:1.2rem;margin-top:0.4rem;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:var(--cream-dim);">
@@ -1629,6 +1637,8 @@ let abandonedLeads = [];
 let productRows = [];
 let selectedProduct = null;
 let newProductImageDataUrl = '';
+let newProductGalleryDataUrls = [];
+let editProductImageDataUrls = [];
 let createdProductUrl = '';
 
 // ── Login ──────────────────────────────────────────────────────────────────
@@ -3137,32 +3147,40 @@ window.iacImageToWebp = async function (input, quality = 0.85) {
   }
 };
 
-async function previewCreateProductImage(file) {
+async function previewCreateProductImages(fileList) {
   const preview = document.getElementById('newProdImagePreview');
-  const img = document.getElementById('newProdImagePreviewImg');
+  const grid = document.getElementById('newProdImagePreviewGrid');
   const text = document.getElementById('newProdImagePreviewText');
   newProductImageDataUrl = '';
-  if (!file) {
+  newProductGalleryDataUrls = [];
+  const files = Array.from(fileList || []);
+  if (!files.length) {
     if (preview) preview.style.display = 'none';
     return;
   }
-  if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) {
-    alert('Please upload a JPG, PNG, or WebP cover image.');
+  if (files.length > 9) {
+    alert('Please select up to 9 book images.');
     document.getElementById('newProdImage').value = '';
     return;
   }
-  if (file.size > 4 * 1024 * 1024) {
-    alert('Please upload an image below 4 MB.');
+  const invalid = files.find(file => !/^image\/(png|jpe?g|webp)$/i.test(file.type) || file.size > 4 * 1024 * 1024);
+  if (invalid) {
+    alert(`${invalid.name}: use a JPG, PNG, or WebP image below 4 MB.`);
     document.getElementById('newProdImage').value = '';
     return;
   }
   if (preview) preview.style.display = 'flex';
-  if (text) text.textContent = 'Processing…';
-  // Auto-convert JPG/PNG → WebP before it's ever uploaded.
-  newProductImageDataUrl = await window.iacImageToWebp(file);
-  if (img) img.src = newProductImageDataUrl;
-  const converted = /^data:image\/webp/i.test(newProductImageDataUrl) && !/webp$/i.test(file.type);
-  if (text) text.textContent = `${file.name} · ${(file.size / 1024).toFixed(0)} KB${converted ? ' → converted to WebP' : ''}`;
+  if (text) text.textContent = `Processing ${files.length} image${files.length === 1 ? '' : 's'}…`;
+  const convertedImages = await Promise.all(files.map(file => window.iacImageToWebp(file)));
+  newProductImageDataUrl = convertedImages[0] || '';
+  newProductGalleryDataUrls = convertedImages.slice(1);
+  if (grid) {
+    grid.innerHTML = convertedImages.map((url, index) => `<div style="position:relative;">
+      <img src="${esc(url)}" alt="Book image ${index + 1} preview" style="width:70px;height:92px;object-fit:cover;border-radius:8px;"/>
+      ${index === 0 ? '<span style="position:absolute;left:4px;bottom:4px;background:var(--gold);color:#fff;padding:1px 5px;border-radius:99px;font-size:.52rem;">Main</span>' : ''}
+    </div>`).join('');
+  }
+  if (text) text.textContent = `${files.length} image${files.length === 1 ? '' : 's'} ready · automatically stored as WebP`;
 }
 
 // ── Trigger the 99bookstores background import ───────────────────────────────
@@ -3202,6 +3220,9 @@ function clearCreateProductForm() {
   const preview = document.getElementById('newProdImagePreview');
   if (preview) preview.style.display = 'none';
   newProductImageDataUrl = '';
+  newProductGalleryDataUrls = [];
+  const grid = document.getElementById('newProdImagePreviewGrid');
+  if (grid) grid.innerHTML = '';
   createdProductUrl = '';
   const openBtn = document.getElementById('openCreatedProductBtn');
   if (openBtn) openBtn.style.display = 'none';
@@ -3215,8 +3236,8 @@ async function createProductListing() {
   const title = document.getElementById('newProdTitle').value.trim();
   const price = document.getElementById('newProdPrice').value.trim();
   const description = document.getElementById('newProdDescription').value.trim();
-  if (!title || !price || !description || !newProductImageDataUrl) {
-    alert('Please add title, sale price, description, and cover image.');
+  if (!title || !price || !description) {
+    alert('Please add title, sale price, and description.');
     return;
   }
 
@@ -3236,6 +3257,7 @@ async function createProductListing() {
     description,
     tags: document.getElementById('newProdTags').value,
     image_data_url: newProductImageDataUrl,
+    gallery_images: newProductGalleryDataUrls,
     is_active: true,
   };
 
@@ -3373,7 +3395,105 @@ function selectProduct(slug) {
   const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
   const delBtn = document.getElementById('prodDeleteBtn');
   if (delBtn) delBtn.style.display = isCustom ? '' : 'none';
+  const galleryRow = document.getElementById('prodGalleryUploadRow');
+  if (galleryRow) galleryRow.style.display = isCustom ? '' : 'none';
+  const galleryInput = document.getElementById('prodGalleryImages');
+  if (galleryInput) galleryInput.value = '';
+  const galleryPreview = document.getElementById('prodGalleryPreview');
+  if (galleryPreview) galleryPreview.innerHTML = '';
+  const gallerySave = document.getElementById('prodGallerySaveBtn');
+  if (gallerySave) gallerySave.style.display = 'none';
+  editProductImageDataUrls = [];
   renderProductList();
+}
+
+async function previewEditProductImages(fileList) {
+  const files = Array.from(fileList || []);
+  const preview = document.getElementById('prodGalleryPreview');
+  const saveBtn = document.getElementById('prodGallerySaveBtn');
+  editProductImageDataUrls = [];
+  if (preview) preview.innerHTML = '';
+  if (saveBtn) saveBtn.style.display = 'none';
+  if (!files.length) return;
+  if (files.length > 9) {
+    alert('Please select up to 9 book images.');
+    document.getElementById('prodGalleryImages').value = '';
+    return;
+  }
+  const invalid = files.find(file => !/^image\/(png|jpe?g|webp)$/i.test(file.type) || file.size > 4 * 1024 * 1024);
+  if (invalid) {
+    alert(`${invalid.name}: use a JPG, PNG, or WebP image below 4 MB.`);
+    document.getElementById('prodGalleryImages').value = '';
+    return;
+  }
+  if (preview) preview.innerHTML = '<span class="hint">Processing images…</span>';
+  editProductImageDataUrls = await Promise.all(files.map(file => window.iacImageToWebp(file)));
+  if (preview) {
+    preview.innerHTML = editProductImageDataUrls.map((url, index) => `<div style="position:relative;">
+      <img src="${esc(url)}" alt="Book image ${index + 1} preview" style="width:70px;height:92px;object-fit:cover;border-radius:8px;"/>
+      ${index === 0 ? '<span style="position:absolute;left:4px;bottom:4px;background:var(--gold);color:#fff;padding:1px 5px;border-radius:99px;font-size:.52rem;">Main</span>' : ''}
+    </div>`).join('');
+  }
+  if (saveBtn) saveBtn.style.display = '';
+}
+
+async function saveCustomProductImages() {
+  if (!selectedProduct || !String(selectedProduct.shopify_id || '').startsWith('CUSTOM:')) return;
+  if (!editProductImageDataUrls.length) {
+    alert('Choose one or more book images first.');
+    return;
+  }
+  const row = selectedProduct;
+  const p = mergedProduct(row);
+  const btn = document.getElementById('prodGallerySaveBtn');
+  const msg = document.getElementById('productSaveMsg');
+  const originalText = btn?.textContent || '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
+  if (msg) msg.textContent = `Uploading ${editProductImageDataUrls.length} image${editProductImageDataUrls.length === 1 ? '' : 's'}…`;
+  try {
+    const payload = {
+      slug: row.slug,
+      title: p.title,
+      author: p.author,
+      category: p.category || 'Books',
+      price_inr: p.price_inr,
+      original_price_inr: p.original_price_inr,
+      publisher: row.publisher || '',
+      isbn: row.isbn || '',
+      description: row.description || '',
+      tags: row.tags || '',
+      seo_title: row.seo_title || '',
+      meta_description: row.meta_description || '',
+      image_data_url: editProductImageDataUrls[0],
+      gallery_images: editProductImageDataUrls.slice(1),
+      is_active: row.is_active !== false,
+    };
+    const res = await fetch('/.netlify/functions/create-product-listing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    row.image_url = data.product?.image_url || row.image_url || '';
+    row.gallery_images = data.product?.gallery_images || [];
+    const imgEl = document.getElementById('prodImageUrl');
+    const imgPrev = document.getElementById('prodImagePreview');
+    if (imgEl) imgEl.value = row.image_url;
+    if (imgPrev && row.image_url) { imgPrev.src = row.image_url; imgPrev.style.display = 'block'; }
+    if (msg) msg.textContent = `Saved ${editProductImageDataUrls.length} book image${editProductImageDataUrls.length === 1 ? '' : 's'}. Open the product page to view the gallery.`;
+    editProductImageDataUrls = [];
+    const input = document.getElementById('prodGalleryImages');
+    if (input) input.value = '';
+    const preview = document.getElementById('prodGalleryPreview');
+    if (preview) preview.innerHTML = '';
+    if (btn) btn.style.display = 'none';
+    renderProductList();
+  } catch (err) {
+    if (msg) msg.textContent = 'Could not upload images: ' + err.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = originalText; }
+  }
 }
 
 async function deleteProductPage() {

@@ -237,7 +237,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
       <a href="/checkout/" style="display:inline-block;margin-left:0.6rem;padding:0.45rem 1rem;background:#6dbf6d;color:#0d0b08;text-decoration:none;font-weight:600;font-size:0.7rem;letter-spacing:0.16em;text-transform:uppercase;">Checkout →</a>
     </div>
     <div class="desc"><div class="label">About this book</div>${desc}</div>
-    <div class="details"><div class="label">Details</div><dl><dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
+    <div class="details"><div class="label">Details</div><dl><dt>Format</dt><dd>Paperback</dd><dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
 <script src="/js/cart.js"></script>

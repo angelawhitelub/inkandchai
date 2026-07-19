@@ -89,8 +89,15 @@ exports.handler = async (event) => {
         price_inr: money(p.price_inr),
         original_price_inr: money(p.original_price_inr),
         image_url: p.image_url || '',
+        gallery_images: Array.isArray(p.gallery_images) ? p.gallery_images : [],
         is_custom: true,
         description: p.description || '',
+        publisher: p.publisher || '',
+        isbn: p.isbn || '',
+        tags: p.tags || '',
+        seo_title: p.seo_title || '',
+        meta_description: p.meta_description || '',
+        is_active: p.is_active !== false,
       });
     }
 
