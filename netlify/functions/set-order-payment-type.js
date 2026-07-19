@@ -48,7 +48,12 @@ exports.handler = async (event) => {
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const SEL = 'id, razorpay_order_id, status, payment_status, razorpay_payment_id';
+    // NOTE: do NOT select payment_status — that column doesn't exist on this
+    // table, and selecting a missing column errors the whole query, which the
+    // lookup below then misreads as "order not found" (was a 404 on EVERY
+    // toggle). The UPDATE keeps a retry-without-payment_status fallback for the
+    // same reason.
+    const SEL = 'id, razorpay_order_id, status, razorpay_payment_id';
 
     // Locate the order by ANY identifier we were given, robust to:
     //  - the PK type (uuid or bigint) — we just query `id` directly; if `id` is
