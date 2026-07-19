@@ -10,6 +10,7 @@ const { sendEmail }    = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricing');
+const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -100,6 +101,17 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({
       error: 'Cash on Delivery is not available for one or more titles in your cart. Please choose Partial COD (pay 10% now) or prepaid checkout.',
       code: 'cod_disabled',
+    }) };
+  }
+
+  // RTO risk guard: customers who previously refused a COD parcel (it went RTO)
+  // can't use COD again — steer them to prepaid. Enforced here so a bypassed UI
+  // still can't place a COD order. Fails open on any DB error.
+  const codRisk = await codBlockedForCustomer(_sbForPrice, { phone: customer.phone, email: customer.email });
+  if (codRisk.blocked) {
+    return { statusCode: 403, headers: CORS, body: JSON.stringify({
+      error: COD_BLOCKED_MESSAGE,
+      code: 'cod_blocked_rto',
     }) };
   }
 

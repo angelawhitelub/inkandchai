@@ -908,18 +908,22 @@ function renderSummary() {
         : `Available on orders of ₹299 and above. COD fee waived. Add ₹${(PARTIAL_PAYMENT_THRESHOLD - partial.total).toLocaleString('en-IN')} more to enable.`;
     }
   }
-  const noCod = cartHasNoCod(cart);
+  const noCodCart = cartHasNoCod(cart);
+  const codBlocked = noCodCart || _codBlockedByRto;
   if (btnCOD) {
     const codTotals = orderTotals(cart, 'cod');
     const codNote = document.getElementById('codNote');
-    if (noCod) {
-      // Full crossword.in catalogue titles: COD disabled, partial COD pushed.
+    if (codBlocked) {
+      // COD disabled — either a no-COD title in cart, OR this customer refused a
+      // previous COD parcel (RTO). Partial COD + prepaid stay available.
       btnCOD.textContent = '🚫 Cash on Delivery unavailable';
       btnCOD.disabled = true;
       btnCOD.style.opacity = '0.5';
       btnCOD.style.cursor = 'not-allowed';
       if (codNote) {
-        codNote.innerHTML = `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
+        codNote.innerHTML = _codBlockedByRto
+          ? `Cash on Delivery isn't available for this phone/email — a previous COD order came back undelivered. Please use <strong style="color:var(--gold);">Pay 10% Now</strong> or <strong>Pay Now</strong> above; both work perfectly.`
+          : `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
       }
     } else {
     btnCOD.textContent = `🚚 Cash on Delivery — ₹${codTotals.total.toLocaleString('en-IN')}`;
@@ -965,6 +969,36 @@ function collectPartialAddr() {
 function scheduleAbandonedCapture() {
   clearTimeout(_abandonedTimer);
   _abandonedTimer = setTimeout(() => saveAbandonedCheckout('open'), 900);
+}
+
+// ── COD RTO block ──────────────────────────────────────────────────────────
+// Customers who previously refused a COD parcel (it went RTO) can't use Cash on
+// Delivery. Partial COD (10% prepaid) and full prepaid stay available. The
+// server enforces this too (cod-order.js) — this just hides the button early.
+let _codBlockedByRto = false;
+let _codCheckKey = '';
+let _codCheckTimer = null;
+function scheduleCodCheck() {
+  clearTimeout(_codCheckTimer);
+  _codCheckTimer = setTimeout(checkCodEligibility, 400);
+}
+async function checkCodEligibility() {
+  const phone = (document.getElementById('ch-phone')?.value || '').trim();
+  const email = (document.getElementById('ch-email')?.value || '').trim();
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 10 && !/^[^\s@]+@[^\s@]+$/.test(email)) return;  // need an identifier
+  const key = digits.slice(-10) + '|' + email.toLowerCase();
+  if (key === _codCheckKey) return;   // same identity — don't re-hit the API
+  _codCheckKey = key;
+  try {
+    const res = await fetch('/.netlify/functions/check-cod-eligibility', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, email }),
+    });
+    const data = await res.json().catch(() => ({}));
+    const blocked = !!data.cod_blocked;
+    if (blocked !== _codBlockedByRto) { _codBlockedByRto = blocked; renderSummary(); }
+  } catch (_) { /* fail open — leave COD as it was */ }
 }
 
 async function saveAbandonedCheckout(status = 'open', orderId = '') {
@@ -1394,6 +1428,15 @@ async function doCOD(addr) {
       }),
     });
     const data = await res.json();
+    // Customer blocked from COD (previous RTO): hide the button and steer to
+    // partial/prepaid instead of a generic error.
+    if (res.status === 403 && data.code === 'cod_blocked_rto') {
+      _codBlockedByRto = true;
+      if (typeof renderSummary === 'function') renderSummary();
+      alert(data.error);
+      setLoading(false);
+      return;
+    }
     if (!res.ok) throw new Error(data.error || 'Failed to place order');
 
     await saveAbandonedCheckout('converted', data.order_id);
@@ -1909,6 +1952,13 @@ window.addEventListener('pageshow', () => { setLoading(false); renderSummary(); 
   el.addEventListener('input', scheduleAbandonedCapture);
   el.addEventListener('blur', () => saveAbandonedCheckout('open'));
 });
+// Re-check COD eligibility whenever the identifying phone/email changes.
+['ch-phone','ch-email'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) { el.addEventListener('blur', scheduleCodCheck); el.addEventListener('change', scheduleCodCheck); }
+});
+// Prefilled from a saved profile? Check once on load.
+setTimeout(checkCodEligibility, 800);
 
 // Load saved address book on page open + whenever auth state changes
 refreshAddressBook();
