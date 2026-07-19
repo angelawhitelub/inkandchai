@@ -11,6 +11,7 @@ const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricing');
 const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk');
+const { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE } = require('./utils/pincode-valid');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -79,6 +80,17 @@ exports.handler = async (event) => {
   const { cart: rawCart, customer, user_id } = body;
   if (!Array.isArray(rawCart) || !rawCart.length || !customer?.phone) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
+  }
+
+  // Reject obviously-fake delivery pincodes (123456, 111111 …). Fails open:
+  // only blocks when a pincode is present AND definitely junk.
+  {
+    const pin = extractPincode(customer);
+    if (pin && isFakePincode(pin)) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({
+        error: PINCODE_INVALID_MESSAGE, code: 'invalid_pincode',
+      }) };
+    }
   }
 
   // Shipping rules — must match cart.js + checkout. Calculate server-side

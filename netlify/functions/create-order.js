@@ -17,6 +17,7 @@ const Razorpay = require('razorpay');
 const { createClient } = require('@supabase/supabase-js');
 const { resolveCartPrices } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
+const { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE } = require('./utils/pincode-valid');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -81,6 +82,18 @@ exports.handler = async (event) => {
   const { cart: rawCart, coupon: rawCoupon, payment_mode, customer, notes: clientNotes } = body;
   if (!Array.isArray(rawCart) || !rawCart.length) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Cart is required' }) };
+  }
+
+  // Reject obviously-fake delivery pincodes (123456, 111111 …) before we spend
+  // a Razorpay order on them. Fails open: only blocks when a pincode is present
+  // AND definitely junk — a missing pincode never blocks here.
+  {
+    const pin = extractPincode(customer);
+    if (pin && isFakePincode(pin)) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({
+        error: PINCODE_INVALID_MESSAGE, code: 'invalid_pincode',
+      }) };
+    }
   }
 
   try {

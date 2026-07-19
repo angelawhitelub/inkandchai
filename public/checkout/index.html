@@ -1027,6 +1027,47 @@ async function saveAbandonedCheckout(status = 'open', orderId = '') {
 }
 
 // ── Pincode → City / State ─────────────────────────────────────────────────
+// ── Fake-pincode guard ─────────────────────────────────────────────────────
+// Mirrors netlify/functions/utils/pincode-valid.js. Catches obviously-junk
+// pincodes (123456, 111111, 000000, 654321 …) — patterns no real Indian PIN
+// can be — so we can grey out the order buttons before a payment is spent.
+const _JUNK_PINCODES = new Set([
+  '000000','111111','222222','333333','444444','555555','666666','777777','888888','999999',
+  '123456','234567','345678','456789','567890','654321','765432','876543','987654','098765',
+  '123123','121212','112233','123321','100000','101010','110000','200000','999000','123000',
+]);
+function isFakePincode(raw) {
+  const pin = String(raw == null ? '' : raw).replace(/\D/g,'');
+  if (!/^[1-9]\d{5}$/.test(pin)) return true;
+  if (_JUNK_PINCODES.has(pin)) return true;
+  if (/^(\d)\1{5}$/.test(pin)) return true;              // all identical
+  if (pin.slice(0,3) === pin.slice(3)) return true;      // 123123
+  let asc = true, desc = true;
+  for (let i = 1; i < pin.length; i++) {
+    const d = pin.charCodeAt(i) - pin.charCodeAt(i - 1);
+    if (d !== 1)  asc  = false;
+    if (d !== -1) desc = false;
+  }
+  return asc || desc;                                     // 123456 / 654321
+}
+// Grey out (or re-enable) the order buttons based on the current pincode.
+// Only forces buttons OFF for a fake pincode; when the pincode is fine it hands
+// control back to setLoading (never overrides a mid-payment disabled state).
+let _pincodeIsFake = false;
+function updatePincodeGate() {
+  const pin = (document.getElementById('ch-pin')?.value || '').replace(/\D/g,'');
+  _pincodeIsFake = pin.length === 6 && isFakePincode(pin);
+  const ids = ['btnPayNow','btnPartial','btnCOD'];
+  ids.forEach(id => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    if (_pincodeIsFake) { b.disabled = true; b.title = 'Enter a valid delivery pincode'; }
+    else if (b.title === 'Enter a valid delivery pincode') { b.title = ''; }
+  });
+  if (!_pincodeIsFake && !_loadingMethod) setLoading(false);
+  return _pincodeIsFake;
+}
+
 let _pinTimer = null;
 function handlePin(val) {
   const msg = document.getElementById('pinMsg');
@@ -1034,6 +1075,16 @@ function handlePin(val) {
   const stateCol = document.querySelector('.ch-state-col');
   clearTimeout(_pinTimer);
   val = val.replace(/\D/g,'');
+  // Junk-pincode gate runs on every keystroke — no network, instant feedback.
+  if (val.length === 6 && isFakePincode(val)) {
+    updatePincodeGate();
+    msg.textContent = '⚠ That pincode isn’t valid — please enter your real 6-digit pincode.';
+    msg.style.color = '#c97a7a';
+    if (cityCol)  cityCol.style.display  = '';
+    if (stateCol) stateCol.style.display = '';
+    return;
+  }
+  updatePincodeGate();
   if (val.length < 6) {
     msg.textContent = ''; msg.style.color = '';
     // Show city/state inputs again so manual edit works while typing.
@@ -1100,6 +1151,12 @@ function collectAddr() {
   if (phone.replace(/\D/g,'').length < 10) { alert('Please enter a valid 10-digit phone number.'); return null; }
   if (!addr)             { alert('Please enter your delivery address.'); return null; }
   if (pin.length !== 6)  { alert('Please enter a valid 6-digit pincode.'); return null; }
+  if (isFakePincode(pin)) {
+    updatePincodeGate();
+    alert('That pincode doesn’t look valid. Please enter your correct 6-digit delivery pincode.');
+    document.getElementById('ch-pin')?.focus();
+    return null;
+  }
 
   // Normalise phone to digits only so DB lookups (My Orders / track) always match
   // — customers often type spaces or dashes ('87994 81113').
@@ -1275,7 +1332,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
-        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, pincode: addr.pincode },
         payment_mode: isPartial ? 'partial_cod' : 'online',
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
       }),
@@ -1324,7 +1381,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
-        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, pincode: addr.pincode },
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
         payment_mode: isPartial ? 'partial_cod' : 'full',
         notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, shipping_address: addr.address || '', books: cart.map(i=>i.title||'').filter(Boolean).join(', ').slice(0,200) },
@@ -1423,7 +1480,7 @@ async function doCOD(addr) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cart,
-        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, pincode: addr.pincode },
         amount: totals.total, shipping: totals.shipping,
       }),
     });
