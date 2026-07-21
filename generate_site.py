@@ -4623,8 +4623,8 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 
 <!-- PRODUCT CONTENT (rendered by JS) -->
 <div id="productContent"></div>
-<div id="fbtContent"></div>
 <div id="bookstagramContent"></div>
+<div id="fbtContent"></div>
 <div id="relatedContent"></div>
 
 <!-- Image lightbox (opens when cover is clicked) -->
@@ -6428,8 +6428,8 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
   </section>
 </main>
 {reviews_html}
-{also_like_html}
 {bkg_html}
+{also_like_html}
 
 <!-- Image lightbox -->
 <div id="lb" onclick="closeLB()" style="position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10500;display:none;align-items:center;justify-content:center;padding:1.5rem;cursor:zoom-out;backdrop-filter:blur(8px)" role="dialog" aria-label="Cover preview">

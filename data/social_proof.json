@@ -5,31 +5,31 @@
     {
       "type": "video",
       "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-1.mp4",
-      "poster": "",
+      "poster": "/images/social/reels/running-1.jpg",
       "caption": "What I Talk About When I Talk About Running · Murakami"
     },
     {
       "type": "video",
       "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-2.mp4",
-      "poster": "",
+      "poster": "/images/social/reels/running-2.jpg",
       "caption": "A runner's memoir · Haruki Murakami"
     },
     {
       "type": "video",
       "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-3.mp4",
-      "poster": "",
+      "poster": "/images/social/reels/running-3.jpg",
       "caption": "Unboxing · Murakami's running memoir"
     },
     {
       "type": "video",
       "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-4.mp4",
-      "poster": "",
+      "poster": "/images/social/reels/running-4.jpg",
       "caption": "All India delivery · COD available"
     },
     {
       "type": "video",
       "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-5.mp4",
-      "poster": "",
+      "poster": "/images/social/reels/running-5.jpg",
       "caption": "In stock now · Ink & Chai"
     }
   ],
