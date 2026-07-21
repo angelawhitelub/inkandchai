@@ -99,10 +99,21 @@ function refundInitiatedEmailHtml(order, amtPaise) {
  * @param {number} amountPaise Amount refunded, in paise
  * @param {object} [opts]
  * @param {object} [opts.supabase]  Supabase client — if provided, stamps refund_notified_at + skips if already stamped
+ * @param {string} [opts.state]     Confirmed gateway refund state. When provided and NOT 'COMPLETED',
+ *                                  the notification is suppressed. This is the money-safety backstop:
+ *                                  a PhonePe refund can return PENDING and then fail asynchronously
+ *                                  (merchant-balance policy), so we must never promise a refund that
+ *                                  hasn't actually completed. Razorpay callers omit state (their
+ *                                  refunds settle reliably once created) and keep the old behaviour.
  * @returns {Promise<{sent: boolean, skipped?: string}>}
  */
-async function sendRefundInitiated(order, amountPaise, { supabase } = {}) {
+async function sendRefundInitiated(order, amountPaise, { supabase, state } = {}) {
   if (!order || amountPaise <= 0) return { sent: false, skipped: 'no_amount' };
+
+  // Money-safety gate: if a gateway state was supplied, only notify on COMPLETED.
+  // A PENDING/FAILED refund must NOT trigger a "refund issued" message.
+  const st = String(state || '').toUpperCase();
+  if (st && st !== 'COMPLETED') return { sent: false, skipped: 'not_completed' };
 
   // Dedup: if we already notified, skip. Cheap protection against retry loops
   // notifying multiple times as refund state flips between PENDING/COMPLETED.

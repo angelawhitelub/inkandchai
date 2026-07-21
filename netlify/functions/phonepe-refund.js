@@ -306,19 +306,22 @@ exports.handler = async (event) => {
       })
       .eq('id', order.id);
 
-    // Send the "refund initiated — 2-3 business days" WhatsApp + email as soon
-    // as PhonePe accepts the refund (PENDING or COMPLETED). Guarded internally
-    // by refund_notified_at so a follow-up state change (PENDING → COMPLETED)
-    // doesn't renotify the customer.
-    await sendRefundInitiated(order, amountPaise, { supabase }).catch(e => console.error('refund-initiated notify:', e.message));
-
-    // Only send the "processed" email once PhonePe has actually completed the refund.
-    if (order.customer_email && nextStatus !== 'refund_pending') {
-      await sendEmail({
-        to: order.customer_email,
-        subject: `Refund processed — ${displayId}`,
-        html: refundConfirmHtml(order, merchantRefundId, amountPaise, isFullRefund),
-      });
+    // Notify the customer ONLY when PhonePe has CONFIRMED the refund COMPLETED.
+    // PhonePe frequently returns PENDING and then FAILS the refund asynchronously
+    // (merchant-balance policy) — so a PENDING refund must NOT trigger any "refund
+    // issued" message, or we promise money that never arrives. While it is still
+    // pending, the scheduled retry/reconcile job sends the notification once the
+    // refund actually completes. Dedup-guarded by refund_notified_at.
+    if (nextStatus !== 'refund_pending') {
+      await sendRefundInitiated(order, amountPaise, { supabase, state: refundState })
+        .catch(e => console.error('refund-initiated notify:', e.message));
+      if (order.customer_email) {
+        await sendEmail({
+          to: order.customer_email,
+          subject: `Refund processed — ${displayId}`,
+          html: refundConfirmHtml(order, merchantRefundId, amountPaise, isFullRefund),
+        });
+      }
     }
 
     return {

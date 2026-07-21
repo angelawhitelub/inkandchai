@@ -82,8 +82,12 @@ async function processOrder(supabase, order) {
     await supabase.from('orders').update({
       status: 'refunded', refund_state: 'COMPLETED', refund_updated_at: new Date().toISOString(),
     }).eq('id', order.id);
-    if (order.customer_email && order.refund_state !== 'COMPLETED') {
-      await sendEmail({ to: order.customer_email, subject: `Refund processed — ${displayId}`, html: refundEmailHtml(order, amountPaise) }).catch(() => {});
+    // The refund has ACTUALLY completed — safe to notify the customer now.
+    // sendRefundInitiated is dedup-guarded (refund_notified_at) and gated on the
+    // COMPLETED state, so this fires exactly once and never for a pending/failed refund.
+    if (order.refund_state !== 'COMPLETED') {
+      await sendRefundInitiated(order, amountPaise, { supabase, state: 'COMPLETED' })
+        .catch(e => console.error('reconcile refund-initiated notify:', e.message));
     }
     return { order: displayId, result: 'reconciled_completed' };
   }
@@ -119,12 +123,13 @@ async function processOrder(supabase, order) {
       refund_attempts: attempts + 1, refund_last_error: null,
       refund_updated_at: new Date().toISOString(),
     }).eq('id', order.id);
-    // Fire refund-initiated notifications now that PhonePe has accepted the
-    // refund (either PENDING or COMPLETED both count as "initiated" from the
-    // customer's POV). sendRefundInitiated is dedup-guarded by refund_notified_at.
-    await sendRefundInitiated(order, amountPaise, { supabase }).catch(e => console.error('retry refund-initiated notify:', e.message));
-    if (newStatus === 'refunded' && order.customer_email) {
-      await sendEmail({ to: order.customer_email, subject: `Refund processed — ${displayId}`, html: refundEmailHtml(order, amountPaise) }).catch(() => {});
+    // Notify ONLY when PhonePe confirms the refund COMPLETED. A re-issued refund
+    // usually comes back PENDING and can still fail asynchronously (balance
+    // policy) — so PENDING must not trigger any customer message. A later run
+    // will detect COMPLETED (above) and notify then. Dedup-guarded internally.
+    if (newStatus === 'refunded') {
+      await sendRefundInitiated(order, amountPaise, { supabase, state: st })
+        .catch(e => console.error('retry refund-initiated notify:', e.message));
     }
     return { order: displayId, result: st === 'COMPLETED' ? 'retried_completed' : 'retried_pending' };
   }

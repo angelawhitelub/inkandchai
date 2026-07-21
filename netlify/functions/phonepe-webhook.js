@@ -28,6 +28,7 @@ const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail } = require('./utils/email');
 const { generateCardForOrder } = require('./utils/scratch-cards');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const { sendRefundInitiated } = require('./utils/refund-notifications');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -300,6 +301,19 @@ exports.handler = async (event) => {
     if (!rows?.length) throw new Error(`PhonePe order update matched no row: ${orderId}`);
 
     const order = rows[0];
+
+    // Refund COMPLETED via the authoritative gateway callback → notify the
+    // customer now (email + WhatsApp) and the owner. Only fires on a genuine
+    // COMPLETED transition (not PENDING, not FAILED), and is dedup-guarded by
+    // refund_notified_at so the reconcile job never re-notifies. This is the
+    // core fix: customers are told about a refund ONLY once it actually lands.
+    if (isRefundEvent && refundResult?.refundState === 'COMPLETED'
+        && existing?.refund_state !== 'COMPLETED'
+        && !['refunded', 'partially_refunded'].includes(existing?.status)) {
+      const refundPaise = Number(amount) > 0 ? Number(amount) : (Number(order.amount_paise) || 0);
+      await sendRefundInitiated(order, refundPaise, { supabase, state: 'COMPLETED' })
+        .catch(e => console.error('webhook refund-completed notify:', e.message));
+    }
 
     if (dbStatus === 'cancelled' && existing?.status !== 'cancelled') {
       await notifyOrderCancelled(order, {
