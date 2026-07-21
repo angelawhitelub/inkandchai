@@ -928,6 +928,18 @@ td{padding:1rem;font-size:.94rem;}
         <input id="newProdTags" placeholder="hindi books, self help, motivation, paperback"/>
       </div>
       <div class="form-row wide">
+        <label>SEO title <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(recommended: 50–60 characters)</span></label>
+        <input id="newProdSeoTitle" maxlength="220" placeholder="Book Title by Author | Edition & Format"/>
+      </div>
+      <div class="form-row wide">
+        <label>Meta description <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(recommended: 140–160 characters)</span></label>
+        <textarea id="newProdMetaDescription" maxlength="300" placeholder="Search-result description with title, author, edition, format, price benefits and delivery details."></textarea>
+      </div>
+      <div class="form-row wide">
+        <label>Cover image URL <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(optional alternative to uploading)</span></label>
+        <input id="newProdImageUrl" type="url" placeholder="https://m.media-amazon.com/images/I/..."/>
+      </div>
+      <div class="form-row wide">
         <label>Book images (optional)</label>
         <input id="newProdImage" type="file" accept="image/png,image/jpeg,image/webp" multiple onchange="previewCreateProductImages(this.files)"/>
         <p class="hint" style="margin-top:.4rem;">Choose up to 9 images. The first becomes the main cover; the rest appear in the product gallery.</p>
@@ -3257,7 +3269,7 @@ async function run99Import(btn) {
 }
 
 function clearCreateProductForm() {
-  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdDescription','newProdTags']
+  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdDescription','newProdTags','newProdSeoTitle','newProdMetaDescription','newProdImageUrl']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const file = document.getElementById('newProdImage');
   if (file) file.value = '';
@@ -3300,7 +3312,9 @@ async function createProductListing() {
     isbn: document.getElementById('newProdIsbn').value,
     description,
     tags: document.getElementById('newProdTags').value,
-    image_data_url: newProductImageDataUrl,
+    seo_title: document.getElementById('newProdSeoTitle').value,
+    meta_description: document.getElementById('newProdMetaDescription').value,
+    image_data_url: newProductImageDataUrl || document.getElementById('newProdImageUrl').value.trim(),
     gallery_images: newProductGalleryDataUrls,
     is_active: true,
   };
