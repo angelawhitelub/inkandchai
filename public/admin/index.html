@@ -3315,9 +3315,13 @@ async function createProductListing() {
     seo_title: document.getElementById('newProdSeoTitle').value,
     meta_description: document.getElementById('newProdMetaDescription').value,
     image_data_url: newProductImageDataUrl || document.getElementById('newProdImageUrl').value.trim(),
-    gallery_images: newProductGalleryDataUrls,
     is_active: true,
   };
+
+  // An empty upload control means "leave the current gallery unchanged" when
+  // this form upserts an existing slug. Only send gallery_images when the admin
+  // actually selected replacement images.
+  if (newProductGalleryDataUrls.length) payload.gallery_images = newProductGalleryDataUrls;
 
   // Safety net: ensure EVERY image is WebP before upload — the cover (already
   // converted on select) plus any gallery images added by the multi-image
