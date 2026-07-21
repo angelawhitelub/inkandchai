@@ -5468,84 +5468,20 @@ function addBundleToCart() {
 }
 
 // ── #InkAndChaiBookstagram social proof strip ─────────────────────────────
-// Reads from SOCIAL_PROOF (data/social_proof.json) — fed at build time. If
-// the list is empty we still render a tiny "coming soon" line so customers
-// know to look here, but no fake content.
+// Rendered by the shared /js/reels.js module: a light poster strip that opens
+// an Instagram-style vertical viewer. Loads video only when a reel is opened,
+// and only the active one — and reels stream from Supabase's CDN, so this adds
+// zero Netlify video bandwidth.
 function renderBookstagram() {
   const el = document.getElementById('bookstagramContent');
   if (!el) return;
-  const items = (window.SOCIAL_PROOF || []).slice(0, 12);
-  if (!items.length) {
-    el.innerHTML = `
-      <section class="bkg-section">
-        <h2 class="bkg-title">#Ink<em>And</em>ChaiBookstagram</h2>
-        <div class="bkg-sub">Real customers · Real unboxings</div>
-        <div class="bkg-empty">
-          We're collecting unboxing photos and reels from our readers. Tag <code>@inkandchai</code> on Instagram and your post might land here.
-        </div>
-      </section>`;
-    return;
-  }
-  const cards = items.map((it, i) => {
-    const isVideo = (it.type || '').toLowerCase() === 'video' || /\\.(mp4|webm|mov)$/i.test(it.src || '');
-    const igChip = it.instagram
-      ? `<a class="bkg-ig-chip" href="${esc(it.instagram)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Instagram</a>`
-      : '';
-    const cap = it.caption ? `<div class="bkg-overlay">${esc(it.caption)}</div>` : '';
-    if (isVideo) {
-      const poster = it.poster ? ` poster="${esc(it.poster)}"` : '';
-      return `
-        <div class="bkg-card" onclick="bkgPlay(this)">
-          <video data-src="${esc(it.src)}"${poster} muted playsinline loop preload="none"></video>
-          <div class="bkg-play">▶</div>
-          ${igChip}${cap}
-        </div>`;
-    }
-    return `
-      <div class="bkg-card" ${it.instagram ? `onclick="window.open('${esc(it.instagram)}','_blank')"` : ''}>
-        <img src="${esc(it.src)}" alt="${esc(it.caption || 'Customer photo')}" loading="lazy"/>
-        ${igChip}${cap}
-      </div>`;
-  }).join('');
-  el.innerHTML = `
-    <section class="bkg-section">
-      <h2 class="bkg-title">#Ink<em>And</em>ChaiBookstagram</h2>
-      <div class="bkg-sub">Real customers · Real unboxings · Real reads</div>
-      <div class="bkg-strip">${cards}</div>
-    </section>`;
+  window.__IAC_REELS__ = (window.SOCIAL_PROOF || []);
+  if (window.IACReels) { window.IACReels.mount(el); return; }
+  if (document.getElementById('iac-reels-js')) return;   // already loading
+  const s = document.createElement('script');
+  s.id = 'iac-reels-js'; s.src = '/js/reels.js'; s.defer = true;
+  document.head.appendChild(s);
 }
-window.bkgPlay = function(card) {
-  const v = card.querySelector('video');
-  if (!v) return;
-  // Load video on first click if lazy-load hasn't fired yet
-  if (v.dataset.src && !v.getAttribute('src')) { v.src = v.dataset.src; }
-  if (v.paused) { v.play().then(() => card.classList.add('is-playing')).catch(()=>{}); }
-  else          { v.pause(); card.classList.remove('is-playing'); }
-};
-
-// Lazy-load bookstagram videos: only start downloading when card scrolls into view
-document.addEventListener('DOMContentLoaded', function() {
-  const bkgVidObs = ('IntersectionObserver' in window)
-    ? new IntersectionObserver(function(entries) {
-        entries.forEach(function(entry) {
-          if (!entry.isIntersecting) return;
-          const v = entry.target;
-          if (v.dataset.src && !v.getAttribute('src')) {
-            v.src = v.dataset.src;
-            v.play().catch(function(){});
-          }
-          bkgVidObs.unobserve(v);
-        });
-      }, { rootMargin: '400px' })
-    : null;
-
-  document.querySelectorAll('.bkg-card video[data-src]').forEach(function(v) {
-    if (bkgVidObs) { bkgVidObs.observe(v); }
-    else { v.src = v.dataset.src; v.play().catch(function(){}); }
-    v.addEventListener('play',  function() { v.closest('.bkg-card')?.classList.add('is-playing'); });
-    v.addEventListener('pause', function() { v.closest('.bkg-card')?.classList.remove('is-playing'); });
-  });
-});
 
 // Expose social-proof JSON to renderer
 window.SOCIAL_PROOF = SOCIAL_PROOF;
@@ -6193,40 +6129,16 @@ def static_product_html(book):
         )
 
     # ── Bookstagram / customer reels strip (loaded from data/social_proof.json) ──
+    # The strip + Instagram-style viewer are rendered client-side by /js/reels.js
+    # from window.__IAC_REELS__. The strip loads NO video bytes (poster tiles
+    # only); a reel streams from Supabase's CDN only when opened — zero Netlify
+    # video bandwidth. "<\/" guards against a caption ever closing the script.
     bkg_html = ""
     if social_items:
-        cards = []
-        for it in social_items[:6]:
-            src = it.get("src") or ""
-            poster = it.get("poster") or ""
-            cap = html_escape(it.get("caption") or "")
-            if it.get("type") == "video" and src:
-                cards.append(
-                    f'<div style="flex:0 0 200px;aspect-ratio:9/16;background:#1a1208;border:1px solid var(--border);'
-                    f'position:relative;overflow:hidden;scroll-snap-align:start">'
-                    f'<video data-src="{html_escape(src)}" {"poster=\"" + html_escape(poster) + "\"" if poster else ""} '
-                    f'muted playsinline loop preload="none" class="bkg-pv-lazy" '
-                    f'style="width:100%;height:100%;object-fit:cover;display:block"></video>'
-                    f'{f"<div style=\"position:absolute;left:0;right:0;bottom:0;padding:.6rem;background:linear-gradient(to top,rgba(0,0,0,.85),transparent);font-size:.65rem;color:#f0e8d8;line-height:1.3\">{cap}</div>" if cap else ""}'
-                    f'</div>'
-                )
-            elif src:
-                cards.append(
-                    f'<div style="flex:0 0 200px;aspect-ratio:9/16;background:#1a1208;border:1px solid var(--border);'
-                    f'position:relative;overflow:hidden;scroll-snap-align:start">'
-                    f'<img src="{html_escape(src)}" alt="{cap}" loading="lazy" '
-                    f'style="width:100%;height:100%;object-fit:cover;display:block"/>'
-                    f'{f"<div style=\"position:absolute;left:0;right:0;bottom:0;padding:.6rem;background:linear-gradient(to top,rgba(0,0,0,.85),transparent);font-size:.65rem;color:#f0e8d8;line-height:1.3\">{cap}</div>" if cap else ""}'
-                    f'</div>'
-                )
+        reels_json = json.dumps(social_items[:12], ensure_ascii=False).replace("</", "<\\/")
         bkg_html = (
-            f'<section style="max-width:1260px;margin:2rem auto 0;padding:0 1rem">'
-            f'<div style="border-top:1px solid var(--border);padding-top:1.6rem">'
-            f'<h2 style="font-family:\'Cormorant Garamond\',serif;font-size:1.4rem;font-weight:500;color:var(--cream);margin:0 0 1rem">'
-            f'#InkAndChaiBookstagram <span style="color:var(--muted);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-family:\'Inter\',sans-serif">Real customer unboxings</span></h2>'
-            f'<div style="display:flex;gap:.85rem;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:.5rem;-webkit-overflow-scrolling:touch">'
-            f'{"".join(cards)}'
-            f'</div></div></section>'
+            f'<section data-iac-reels></section>'
+            f'<script>window.__IAC_REELS__={reels_json};</script>'
         )
 
     # ── You May Also Like section (pre-computed at build time) ──────────────
@@ -6789,27 +6701,10 @@ document.addEventListener('keydown', e => {{
     + '</div></div>';
 }}());
 applyRuntimeProductOverride();
-// Lazy-load bookstagram videos embedded in static product page HTML
-(function() {{
-  var pvObs = ('IntersectionObserver' in window)
-    ? new IntersectionObserver(function(e) {{
-        e.forEach(function(en) {{
-          if (!en.isIntersecting) return;
-          var v = en.target;
-          if (v.dataset.src && !v.getAttribute('src')) {{
-            v.src = v.dataset.src;
-            v.play().catch(function() {{}});
-          }}
-          pvObs.unobserve(v);
-        }});
-      }}, {{rootMargin: '400px'}})
-    : null;
-  document.querySelectorAll('.bkg-pv-lazy[data-src]').forEach(function(v) {{
-    if (pvObs) {{ pvObs.observe(v); }}
-    else {{ v.src = v.dataset.src; v.play().catch(function() {{}}); }}
-  }});
-}}());
 </script>
+<!-- #InkAndChaiBookstagram reels: light poster strip + Instagram-style viewer.
+     Loads video only when a reel is opened, and only the active one. -->
+<script src="/js/reels.js" defer></script>
 </body>
 </html>"""
 

@@ -1,38 +1,44 @@
 {
-  "_README": "List of customer photos / unboxing videos shown in the #InkAndChaiBookstagram strip on EVERY product page. Drop new entries in the items[] array; rebuild picks them up. Schema at the bottom.",
+  "_README": "Customer photos / unboxing reels shown in the #InkAndChaiBookstagram strip on EVERY product page. VIDEOS ARE HOSTED ON SUPABASE STORAGE (public 'reels' bucket), NOT in this repo — this keeps Netlify video bandwidth at zero. To add a reel: drop the .mp4 into ./newvideos, run `node scripts/upload-reels.mjs`, then add an entry below with the printed src URL. Schema at the bottom.",
 
   "items": [
     {
       "type": "video",
-      "src":  "/videos/unboxing-people-magnet.mp4",
-      "poster": "/images/social/unboxing-people-magnet.jpg",
+      "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-1.mp4",
+      "poster": "",
+      "caption": "What I Talk About When I Talk About Running · Murakami"
+    },
+    {
+      "type": "video",
+      "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-2.mp4",
+      "poster": "",
+      "caption": "A runner's memoir · Haruki Murakami"
+    },
+    {
+      "type": "video",
+      "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-3.mp4",
+      "poster": "",
+      "caption": "Unboxing · Murakami's running memoir"
+    },
+    {
+      "type": "video",
+      "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-4.mp4",
+      "poster": "",
       "caption": "All India delivery · COD available"
     },
     {
       "type": "video",
-      "src":  "/videos/affordable-novels.mp4",
-      "poster": "/images/social/affordable-novels.jpg",
-      "caption": "Affordable novels from just ₹99"
-    },
-    {
-      "type": "video",
-      "src":  "/videos/rich-dad-collection.mp4",
-      "poster": "/images/social/rich-dad-collection.jpg",
-      "caption": "Different genres · Large collection to choose from"
-    },
-    {
-      "type": "video",
-      "src":  "/videos/customer-thanks.mp4",
-      "poster": "/images/social/customer-thanks.jpg",
-      "caption": "❤️ A note from one of our readers"
+      "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-5.mp4",
+      "poster": "",
+      "caption": "In stock now · Ink & Chai"
     }
   ],
 
   "_schema": {
-    "type":     "'video' | 'image'",
-    "src":      "Path under /public (e.g. /videos/file.mp4) OR full https:// URL",
-    "poster":   "Optional thumbnail (path or URL); auto-extracted from first frame if browser supports it",
-    "caption":  "1-line caption shown over the card",
-    "instagram": "Optional Instagram permalink — adds an 'View on Instagram' chip"
+    "type": "'video' | 'image'",
+    "src": "Full https:// URL. Videos MUST be a Supabase Storage public URL (or any external CDN) — never a /videos/ path in this repo, or it burns Netlify bandwidth.",
+    "poster": "Optional thumbnail URL shown in the strip before the reel opens. Leave '' to show a branded play tile.",
+    "caption": "1-line caption shown over the reel",
+    "instagram": "Optional Instagram permalink — adds a 'View on Instagram' chip"
   }
 }

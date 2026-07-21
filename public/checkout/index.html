@@ -547,11 +547,11 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-window.SUPABASE_URL      = "https://lajjjjkidxyfvmnyjboy.supabase.co";
-window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhampqamtpZHh5ZnZtbnlqYm95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIwMzgsImV4cCI6MjA5MjQyODAzOH0.rAVgue6qljChwHMWouemM74Ud73sSHX9Sh1ZaRm2Ax0";
+window.SUPABASE_URL      = "";
+window.SUPABASE_ANON_KEY = "";
 </script>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script>window.RAZORPAY_KEY_ID = "rzp_live_SjIBMzPKhttiUh";</script>
+<script>window.RAZORPAY_KEY_ID = "rzp_test_CHANGE_ME";</script>
 
 <script>
 // ── Cart (must match cart.js CART_KEY) ────────────────────────────────────
@@ -908,22 +908,18 @@ function renderSummary() {
         : `Available on orders of ₹299 and above. COD fee waived. Add ₹${(PARTIAL_PAYMENT_THRESHOLD - partial.total).toLocaleString('en-IN')} more to enable.`;
     }
   }
-  const noCodCart = cartHasNoCod(cart);
-  const codBlocked = noCodCart || _codBlockedByRto;
+  const noCod = cartHasNoCod(cart);
   if (btnCOD) {
     const codTotals = orderTotals(cart, 'cod');
     const codNote = document.getElementById('codNote');
-    if (codBlocked) {
-      // COD disabled — either a no-COD title in cart, OR this customer refused a
-      // previous COD parcel (RTO). Partial COD + prepaid stay available.
+    if (noCod) {
+      // Full crossword.in catalogue titles: COD disabled, partial COD pushed.
       btnCOD.textContent = '🚫 Cash on Delivery unavailable';
       btnCOD.disabled = true;
       btnCOD.style.opacity = '0.5';
       btnCOD.style.cursor = 'not-allowed';
       if (codNote) {
-        codNote.innerHTML = _codBlockedByRto
-          ? `Cash on Delivery isn't available for this phone/email — a previous COD order came back undelivered. Please use <strong style="color:var(--gold);">Pay 10% Now</strong> or <strong>Pay Now</strong> above; both work perfectly.`
-          : `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
+        codNote.innerHTML = `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
       }
     } else {
     btnCOD.textContent = `🚚 Cash on Delivery — ₹${codTotals.total.toLocaleString('en-IN')}`;
@@ -971,36 +967,6 @@ function scheduleAbandonedCapture() {
   _abandonedTimer = setTimeout(() => saveAbandonedCheckout('open'), 900);
 }
 
-// ── COD RTO block ──────────────────────────────────────────────────────────
-// Customers who previously refused a COD parcel (it went RTO) can't use Cash on
-// Delivery. Partial COD (10% prepaid) and full prepaid stay available. The
-// server enforces this too (cod-order.js) — this just hides the button early.
-let _codBlockedByRto = false;
-let _codCheckKey = '';
-let _codCheckTimer = null;
-function scheduleCodCheck() {
-  clearTimeout(_codCheckTimer);
-  _codCheckTimer = setTimeout(checkCodEligibility, 400);
-}
-async function checkCodEligibility() {
-  const phone = (document.getElementById('ch-phone')?.value || '').trim();
-  const email = (document.getElementById('ch-email')?.value || '').trim();
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length < 10 && !/^[^\s@]+@[^\s@]+$/.test(email)) return;  // need an identifier
-  const key = digits.slice(-10) + '|' + email.toLowerCase();
-  if (key === _codCheckKey) return;   // same identity — don't re-hit the API
-  _codCheckKey = key;
-  try {
-    const res = await fetch('/.netlify/functions/check-cod-eligibility', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, email }),
-    });
-    const data = await res.json().catch(() => ({}));
-    const blocked = !!data.cod_blocked;
-    if (blocked !== _codBlockedByRto) { _codBlockedByRto = blocked; renderSummary(); }
-  } catch (_) { /* fail open — leave COD as it was */ }
-}
-
 async function saveAbandonedCheckout(status = 'open', orderId = '') {
   const cart = getCart();
   const customer = collectPartialAddr();
@@ -1027,47 +993,6 @@ async function saveAbandonedCheckout(status = 'open', orderId = '') {
 }
 
 // ── Pincode → City / State ─────────────────────────────────────────────────
-// ── Fake-pincode guard ─────────────────────────────────────────────────────
-// Mirrors netlify/functions/utils/pincode-valid.js. Catches obviously-junk
-// pincodes (123456, 111111, 000000, 654321 …) — patterns no real Indian PIN
-// can be — so we can grey out the order buttons before a payment is spent.
-const _JUNK_PINCODES = new Set([
-  '000000','111111','222222','333333','444444','555555','666666','777777','888888','999999',
-  '123456','234567','345678','456789','567890','654321','765432','876543','987654','098765',
-  '123123','121212','112233','123321','100000','101010','110000','200000','999000','123000',
-]);
-function isFakePincode(raw) {
-  const pin = String(raw == null ? '' : raw).replace(/\D/g,'');
-  if (!/^[1-9]\d{5}$/.test(pin)) return true;
-  if (_JUNK_PINCODES.has(pin)) return true;
-  if (/^(\d)\1{5}$/.test(pin)) return true;              // all identical
-  if (pin.slice(0,3) === pin.slice(3)) return true;      // 123123
-  let asc = true, desc = true;
-  for (let i = 1; i < pin.length; i++) {
-    const d = pin.charCodeAt(i) - pin.charCodeAt(i - 1);
-    if (d !== 1)  asc  = false;
-    if (d !== -1) desc = false;
-  }
-  return asc || desc;                                     // 123456 / 654321
-}
-// Grey out (or re-enable) the order buttons based on the current pincode.
-// Only forces buttons OFF for a fake pincode; when the pincode is fine it hands
-// control back to setLoading (never overrides a mid-payment disabled state).
-let _pincodeIsFake = false;
-function updatePincodeGate() {
-  const pin = (document.getElementById('ch-pin')?.value || '').replace(/\D/g,'');
-  _pincodeIsFake = pin.length === 6 && isFakePincode(pin);
-  const ids = ['btnPayNow','btnPartial','btnCOD'];
-  ids.forEach(id => {
-    const b = document.getElementById(id);
-    if (!b) return;
-    if (_pincodeIsFake) { b.disabled = true; b.title = 'Enter a valid delivery pincode'; }
-    else if (b.title === 'Enter a valid delivery pincode') { b.title = ''; }
-  });
-  if (!_pincodeIsFake && !_loadingMethod) setLoading(false);
-  return _pincodeIsFake;
-}
-
 let _pinTimer = null;
 function handlePin(val) {
   const msg = document.getElementById('pinMsg');
@@ -1075,16 +1000,6 @@ function handlePin(val) {
   const stateCol = document.querySelector('.ch-state-col');
   clearTimeout(_pinTimer);
   val = val.replace(/\D/g,'');
-  // Junk-pincode gate runs on every keystroke — no network, instant feedback.
-  if (val.length === 6 && isFakePincode(val)) {
-    updatePincodeGate();
-    msg.textContent = '⚠ That pincode isn’t valid — please enter your real 6-digit pincode.';
-    msg.style.color = '#c97a7a';
-    if (cityCol)  cityCol.style.display  = '';
-    if (stateCol) stateCol.style.display = '';
-    return;
-  }
-  updatePincodeGate();
   if (val.length < 6) {
     msg.textContent = ''; msg.style.color = '';
     // Show city/state inputs again so manual edit works while typing.
@@ -1151,12 +1066,6 @@ function collectAddr() {
   if (phone.replace(/\D/g,'').length < 10) { alert('Please enter a valid 10-digit phone number.'); return null; }
   if (!addr)             { alert('Please enter your delivery address.'); return null; }
   if (pin.length !== 6)  { alert('Please enter a valid 6-digit pincode.'); return null; }
-  if (isFakePincode(pin)) {
-    updatePincodeGate();
-    alert('That pincode doesn’t look valid. Please enter your correct 6-digit delivery pincode.');
-    document.getElementById('ch-pin')?.focus();
-    return null;
-  }
 
   // Normalise phone to digits only so DB lookups (My Orders / track) always match
   // — customers often type spaces or dashes ('87994 81113').
@@ -1332,7 +1241,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
-        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, pincode: addr.pincode },
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
         payment_mode: isPartial ? 'partial_cod' : 'online',
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
       }),
@@ -1381,7 +1290,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
-        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, pincode: addr.pincode },
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
         payment_mode: isPartial ? 'partial_cod' : 'full',
         notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, shipping_address: addr.address || '', books: cart.map(i=>i.title||'').filter(Boolean).join(', ').slice(0,200) },
@@ -1480,20 +1389,11 @@ async function doCOD(addr) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cart,
-        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, pincode: addr.pincode },
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
         amount: totals.total, shipping: totals.shipping,
       }),
     });
     const data = await res.json();
-    // Customer blocked from COD (previous RTO): hide the button and steer to
-    // partial/prepaid instead of a generic error.
-    if (res.status === 403 && data.code === 'cod_blocked_rto') {
-      _codBlockedByRto = true;
-      if (typeof renderSummary === 'function') renderSummary();
-      alert(data.error);
-      setLoading(false);
-      return;
-    }
     if (!res.ok) throw new Error(data.error || 'Failed to place order');
 
     await saveAbandonedCheckout('converted', data.order_id);
@@ -2009,13 +1909,6 @@ window.addEventListener('pageshow', () => { setLoading(false); renderSummary(); 
   el.addEventListener('input', scheduleAbandonedCapture);
   el.addEventListener('blur', () => saveAbandonedCheckout('open'));
 });
-// Re-check COD eligibility whenever the identifying phone/email changes.
-['ch-phone','ch-email'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) { el.addEventListener('blur', scheduleCodCheck); el.addEventListener('change', scheduleCodCheck); }
-});
-// Prefilled from a saved profile? Check once on load.
-setTimeout(checkCodEligibility, 800);
 
 // Load saved address book on page open + whenever auth state changes
 refreshAddressBook();

@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>Ink & Chai — Buy Books Online India · Hindi & English · Free Shipping above ₹499</title>
-<link rel="preload" as="script" href="/js/books-lite-53d15812.js"/>
+<link rel="preload" as="script" href="/js/books-lite-83f09f10.js"/>
 <meta name="description" content="Buy books online in India at Ink & Chai. 2,300+ titles in Hindi and English — fiction, romance, self-help, mythology, manga & more. Free pan-India shipping above ₹499. Cash on delivery available. Genuine books, 7-day easy returns." />
 <meta name="keywords" content="buy books online india, hindi books online, online bookstore india, self help books hindi, romance books, fiction books, manga books, ana huang books, david goggins hindi, robin sharma, robert kiyosaki, mythology books, books at 99, cash on delivery books, free shipping books india, ink and chai" />
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
@@ -111,7 +111,7 @@
   :root {
     --bg: #0d0b08; --bg2: #141210; --bg3: #1c1916;
     --gold: #c9a84c; --gold-light: #e8c97a; --gold-dim: #7a6330;
-    --cream: #f3ecdd; --cream-dim: #c2b3a2; --white: #fdfaf5;
+    --cream: #f0e8d8; --cream-dim: #b5a595; --white: #faf7f2;
     --font-display: 'Fraunces', 'Cormorant Garamond', 'Noto Serif Devanagari', Georgia, serif;
     --font-serif: 'Lora', 'Cormorant Garamond', 'Noto Serif Devanagari', Georgia, serif;
     --font-sans: 'Inter', 'Noto Sans Devanagari', system-ui, sans-serif;
@@ -150,7 +150,7 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; background: #0d0b08; max-width:100%; overflow-x:hidden; }
   html[data-theme="light"] { background: #faf7f2; }
-  body { background: var(--bg); color: var(--cream); font-family: var(--font-sans); font-weight: 400; overflow-x: hidden; min-height: 100vh; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; font-size: 16px; line-height: 1.7; }
+  body { background: var(--bg); color: var(--cream); font-family: var(--font-sans); font-weight: 400; overflow-x: hidden; min-height: 100vh; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; font-size: 15px; line-height: 1.65; }
   /* Hard fallback: if anything goes wrong with vars, content still readable */
   html:not([data-theme="light"]) body { background: #0d0b08; color: #f0e8d8; }
   html[data-theme="light"] body { background: #faf7f2; color: #2a2018; }
@@ -276,20 +276,6 @@
   .sale-banner-link img { width:100%; display:block; object-fit:contain; }
   .sale-banner-code-badge { position:absolute; bottom:1.5rem; left:50%; transform:translateX(-50%); background:rgba(200,70,0,0.9); color:#fff; font-family:'Inter',sans-serif; font-size:0.7rem; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; padding:0.6rem 1.4rem; cursor:pointer; white-space:nowrap; border:2px solid rgba(255,255,255,0.5); transition:background 0.2s; z-index:3; }
   .sale-banner-code-badge:hover { background:rgba(200,70,0,1); }
-
-  /* SLIDE 4 — SHOP WORRY-FREE (store promises, CSS-only) */
-  .slide-worryfree { background: linear-gradient(135deg, #14100a 0%, #1e1710 55%, #12100c 100%); }
-  html[data-theme="light"] .slide-worryfree { background: linear-gradient(135deg, #fbf6ec 0%, #f4ead6 55%, #faf5ea 100%); }
-  .worryfree-cards { display: flex; flex-direction: column; gap: 1rem; width: min(420px, 90%); position: relative; z-index: 2; }
-  .worryfree-card { background: rgba(201,168,76,0.07); border: 1px solid var(--border); border-radius: 14px; padding: 1.1rem 1.3rem; backdrop-filter: blur(6px); box-shadow: 0 14px 34px rgba(0,0,0,0.22); }
-  html[data-theme="light"] .worryfree-card { background: rgba(255,255,255,0.72); box-shadow: 0 14px 34px rgba(90,60,20,0.1); }
-  .worryfree-card .wf-icon { font-size: 1.35rem; display: inline-block; margin-bottom: 0.35rem; }
-  .worryfree-card b { display: block; font-size: 0.85rem; letter-spacing: 0.06em; color: var(--cream); font-weight: 600; margin-bottom: 0.2rem; }
-  .worryfree-card span:not(.wf-icon) { display: block; font-size: 0.72rem; color: var(--cream-dim); line-height: 1.6; }
-  @media(max-width:900px){
-    .worryfree-cards { width: 100%; gap: 0.7rem; padding: 0 0.2rem; }
-    .worryfree-card { padding: 0.85rem 1rem; }
-  }
 
   /* SLIDE 2 — OFF CAMPUS */
   .slide-campus { background:linear-gradient(135deg,#0d0a1a 0%,#1a1230 50%,#0a0d1a 100%); }
@@ -951,18 +937,6 @@
     .hero-cover-card:nth-child(2),.hero-cover-card:nth-child(5),.hero-cover-card:nth-child(4),.hero-cover-card:nth-child(7){transform:none}
     .hero-cover-card:nth-child(7){display:none}
   }
-  /* MOBILE: condense the fixed header while scrolling down — the logo row and
-     category pill buttons were blocking the reading view. Scrolling down hides
-     them and keeps ONLY the search bar; scrolling up (or returning to the top)
-     brings the full header back. */
-  @media(max-width:780px){
-    nav:not(.mob-nav).nav-condensed .nav-logo,
-    nav:not(.mob-nav).nav-condensed .nav-actions,
-    nav:not(.mob-nav).nav-condensed .nav-links { display: none !important; }
-    nav:not(.mob-nav).nav-condensed { padding: 0.45rem 0.85rem 0.5rem; }
-    nav:not(.mob-nav).nav-condensed .nav-search { margin: 0; }
-  }
-
   /* Promo banner above nav */
   .promo-banner{background:linear-gradient(90deg,#1a1410,#2a1f15,#1a1410);border-bottom:1px solid rgba(201,168,76,0.25);padding:0.55rem 1rem;text-align:center;font-size:0.66rem;letter-spacing:0.12em;color:#f0e8d8;font-family:'Inter',sans-serif;position:relative;z-index:200}
   .promo-banner strong{color:#c9a84c;font-weight:600;letter-spacing:0.18em}
@@ -1075,7 +1049,7 @@
   --gold-light:#f0d889;
   --gold-dim:#806a36;
   --cream:#f4ecdc;
-  --cream-dim:#c4b5a3;
+  --cream-dim:#b9ab96;
   --border:rgba(214,184,94,.22);
   --pill:999px;
   --ink-blue:#182d3b;
@@ -1419,8 +1393,8 @@ gtag('config', 'AW-18139908537');
 }
 body{
   font-family:var(--font-sans);
-  font-size:16px;
-  line-height:1.7;
+  font-size:15px;
+  line-height:1.65;
   -webkit-font-smoothing:antialiased;
   -moz-osx-font-smoothing:grayscale;
   text-rendering:optimizeLegibility;
@@ -1454,7 +1428,7 @@ html[data-theme="light"] .nav-links a{ color:#3a2e18 !important; }
 .book-name{ font-size:1.08rem !important; line-height:1.28 !important; }
 .book-author,.book-meta{ font-size:.78rem !important; letter-spacing:.04em !important; }
 /* Brighter muted text for contrast on dark backgrounds */
-html:not([data-theme="light"]) body{ --cream-dim:#c4b5a3; }
+html:not([data-theme="light"]) body{ --cream-dim:#b5a595; }
 
 /* Solid gold buttons — metallic gradient, depth, springy hover lift */
 .btn-add,.btn-pay,.primary,.btn-checkout{
@@ -1742,37 +1716,11 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
     </div>
   </section>
 
-  <!-- ── SLIDE 4: Shop worry-free (store promises) ── -->
-  <section class="hero promo-slide slide-worryfree" style="padding:0;" aria-label="Shop worry-free at Ink and Chai">
-    <div class="hero-left">
-      <div class="hero-eyebrow">India's cosy online bookstore</div>
-      <h2 class="hero-title">Shop books<br/><em>worry-free.</em></h2>
-      <p class="hero-sub hero-sub-desktop">Cash on Delivery across India, free shipping above ₹499, and 7-day easy returns — choose a wallet refund and get ₹50 extra on top.</p>
-      <div class="hero-ctas">
-        <a href="/books/" class="btn-primary">Browse All Books</a>
-        <a href="/bestsellers/" class="btn-ghost">Bestsellers</a>
-      </div>
-      <div class="hero-stats">
-        <div><div class="stat-num">COD</div><div class="stat-label">Pan-India delivery</div></div>
-        <div><div class="stat-num">₹499+</div><div class="stat-label">Free shipping</div></div>
-        <div><div class="stat-num">7-day</div><div class="stat-label">Easy returns</div></div>
-      </div>
-    </div>
-    <div class="hero-right" style="justify-content:center;">
-      <div class="worryfree-cards">
-        <div class="worryfree-card"><span class="wf-icon">🚚</span><b>Cash on Delivery</b><span>Pay only when your books arrive — or pay just 10% now and ship sooner.</span></div>
-        <div class="worryfree-card"><span class="wf-icon">↩️</span><b>7-Day Easy Returns</b><span>Refund to your original payment method, or to your Ink &amp; Chai wallet with ₹50 extra.</span></div>
-        <div class="worryfree-card"><span class="wf-icon">🔒</span><b>100% Secure Payments</b><span>UPI, cards &amp; netbanking via Razorpay and PhonePe.</span></div>
-      </div>
-    </div>
-  </section>
-
   <!-- Navigation dots -->
   <div class="promo-dots" aria-label="Slide navigation">
     <button class="promo-dot active" aria-label="Slide 1: Summer Sale"></button>
     <button class="promo-dot" aria-label="Slide 2: Off Campus Series"></button>
     <button class="promo-dot" aria-label="Slide 3: Hindi Bestsellers"></button>
-    <button class="promo-dot" aria-label="Slide 4: Shop Worry-Free"></button>
   </div>
   <!-- Arrows -->
   <button class="promo-arrow prev" aria-label="Previous slide">&#8592;</button>
@@ -2228,23 +2176,23 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 <!-- Supabase JS (for user accounts) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-  window.SUPABASE_URL      = "https://lajjjjkidxyfvmnyjboy.supabase.co";
-  window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhampqamtpZHh5ZnZtbnlqYm95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIwMzgsImV4cCI6MjA5MjQyODAzOH0.rAVgue6qljChwHMWouemM74Ud73sSHX9Sh1ZaRm2Ax0";
+  window.SUPABASE_URL      = "";
+  window.SUPABASE_ANON_KEY = "";
 </script>
 <!-- Razorpay SDK -->
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <!-- Razorpay Affordability Widget -->
 <script src="https://cdn.razorpay.com/widgets/affordability/affordability.js"></script>
 <!-- Razorpay public key (set via env at build time) -->
-<script>window.RAZORPAY_KEY_ID = "rzp_live_SjIBMzPKhttiUh";</script>
+<script>window.RAZORPAY_KEY_ID = "rzp_test_CHANGE_ME";</script>
 <!-- Cart, Checkout & Auth -->
 <script src="/js/cart.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/search-suggest.js" defer></script>
 
-<script src="/js/books-lite-53d15812.js"></script>
-<script>window.BOOKS_FULL_URL="/js/books-full-c48d8b0f.js";</script>
+<script src="/js/books-lite-83f09f10.js"></script>
+<script>window.BOOKS_FULL_URL="/js/books-full-9a521ffc.js";</script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -3404,35 +3352,6 @@ if (Date.now() < SALE_END_DATE.getTime()) {
   }, {passive:true});
 
   startTimer();
-})();
-
-// ── MOBILE HEADER: hide on scroll-down, keep search bar ──────────────────
-(function () {
-  const topNav = document.querySelector('nav:not(.mob-nav)');
-  if (!topNav) return;
-  const getY = () => window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
-  let lastY = getY();
-  // No requestAnimationFrame here on purpose: rAF can freeze (background tab /
-  // throttled webview), which would wedge a ticking-flag debounce permanently.
-  // The work is a single conditional class toggle — cheap enough to run inline.
-  function onScroll() {
-    const y = getY();
-    if (Math.abs(y - lastY) < 4) return;
-    if (window.innerWidth <= 780) {
-      if (y > lastY && y > 140) topNav.classList.add('nav-condensed');        // scrolling down
-      else if (y < lastY || y < 60) topNav.classList.remove('nav-condensed'); // scrolling up / near top
-    } else {
-      topNav.classList.remove('nav-condensed');
-    }
-    lastY = y;
-  }
-  // Listen on window AND document (capture) — with html{overflow-x:hidden} some
-  // engines scroll the root element instead of the viewport, and window alone
-  // misses those events. The poller is a last-resort net for browsers where
-  // neither fires reliably; it's idle-cheap (one number compare).
-  window.addEventListener('scroll', onScroll, { passive: true });
-  document.addEventListener('scroll', onScroll, { passive: true, capture: true });
-  setInterval(onScroll, 250);
 })();
 
 // ── INIT ──────────────────────────────────────────────────────────────────
