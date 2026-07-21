@@ -33,10 +33,15 @@
 [functions."nimbuspost-awb-sync-scheduled"]
   schedule = "*/15 * * * *"
 
-# Re-check + retry failed PhonePe refunds every four hours. This short scheduled
-# function securely enqueues the separate long-running background worker.
+# Re-check + retry failed PhonePe refunds — AFTERNOON ONLY (IST).
+# PhonePe fails a refund when, on a given settlement date, the refund amount
+# exceeds the payments the merchant received that day. Received-payments grow
+# through the day, so early-morning retries almost always fail. Running hourly
+# across the afternoon (when the day's balance is highest) is when re-attempts
+# actually clear. Cron is UTC; IST = UTC+5:30.
+#   30 7-12 * * *  → 07:30–12:30 UTC  = 1:00 PM–6:00 PM IST, hourly (6 runs)
 [functions."phonepe-retry-refunds-scheduled"]
-  schedule = "0 */4 * * *"
+  schedule = "30 7-12 * * *"
 
 # 5-min follow-up confirmation ping for WhatsApp book-order requests placed via
 # the bot. Runs every 2 minutes; each row is pinged exactly once thanks to the

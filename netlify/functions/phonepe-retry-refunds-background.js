@@ -18,9 +18,11 @@
  * refund_id status, or the order-status API) that no refund is already
  * completed or pending — so a customer is never double-refunded.
  *
- * Invoked by phonepe-retry-refunds-scheduled every four hours. Admin can POST
- * to trigger on demand. Scheduling stays separate because Netlify scheduled
- * and background functions use different invocation modes.
+ * Invoked by phonepe-retry-refunds-scheduled hourly through the afternoon IST
+ * (1–6 PM), when the day's received payments are highest and PhonePe's
+ * balance policy will actually let a re-attempt clear. Admin can POST to
+ * trigger on demand. Scheduling stays separate because Netlify scheduled and
+ * background functions use different invocation modes.
  */
 
 const { createClient } = require('@supabase/supabase-js');
