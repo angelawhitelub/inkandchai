@@ -5547,6 +5547,14 @@ window.SOCIAL_PROOF = SOCIAL_PROOF;
     // ⑥ Same broad tab
     if (x.tab && x.tab === b.tab) s += 2;
 
+    // ⑥b Language match (Hindi vs English) — cross-language is penalised so
+    //     English titles don't surface on Hindi editions/combos and vice-versa.
+    const isHi = o => {
+      const hay = (o.t||'') + ' ' + (o.cat||'') + ' ' + (o.a||'');
+      return /[\\u0900-\\u097F]/.test(hay) || /hindi/i.test(hay);
+    };
+    s += (isHi(b) === isHi(x)) ? 5 : -9;
+
     // ⑦ Price proximity (same budget = same shopper)
     const bp = parseFloat(b.p)||0, xp = parseFloat(x.p)||0;
     if (bp && xp) {
