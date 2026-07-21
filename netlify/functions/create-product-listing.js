@@ -95,8 +95,9 @@ exports.handler = async (event) => {
 
     // Extra product images (back cover, spreads…) → gallery_images (array of URLs).
     // Accept an array, upload any data URLs, keep plain URLs as-is. Cap at 8.
-    let galleryImages = [];
+    let galleryImages;
     if (Array.isArray(body.gallery_images)) {
+      galleryImages = [];
       for (const g of body.gallery_images.slice(0, 8)) {
         const u = await uploadImageIfPossible(supabase, `${baseSlug}-g`, g);
         if (u) galleryImages.push(u);
@@ -112,7 +113,6 @@ exports.handler = async (event) => {
       price_inr: money(body.price_inr, true),
       original_price_inr: money(body.original_price_inr, false),
       image_url: imageUrl,
-      gallery_images: galleryImages,
       publisher: cleanText(body.publisher, 160),
       isbn: cleanText(body.isbn, 80),
       seo_title: cleanText(body.seo_title, 220) || `${title} | Buy Online in India | Ink & Chai`,
@@ -121,6 +121,9 @@ exports.handler = async (event) => {
       is_active: body.is_active !== false,
       updated_at: new Date().toISOString(),
     };
+    // Preserve an existing gallery when this update only changes listing data.
+    // Supplying an explicit array (including []) still replaces/clears it.
+    if (galleryImages !== undefined) payload.gallery_images = galleryImages;
 
     const { data, error } = await supabase
       .from('custom_products')
