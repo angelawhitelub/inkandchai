@@ -22,12 +22,32 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(__dir, '..');
-const SRC_DIR = join(REPO, 'newvideos');            // where the raw .mp4 live
+
+// Where the raw .mp4 live. Checked in order — first match wins — so this works
+// no matter which folder you run it from:
+//   1. a path you pass on the command line:  node scripts/upload-reels.mjs <dir>
+//   2. $REELS_DIR
+//   3. ./newvideos inside the repo
+//   4. ../newvideos next to the repo  (your Downloads/newvideos)
+const CANDIDATES = [
+  process.argv[2],
+  process.env.REELS_DIR,
+  join(REPO, 'newvideos'),
+  resolve(REPO, '..', 'newvideos'),
+].filter(Boolean);
+const SRC_DIR = CANDIDATES.find(d => existsSync(d));
+if (!SRC_DIR) {
+  console.error('✗ Could not find a newvideos folder. Looked in:\n  ' + CANDIDATES.join('\n  ')
+    + '\nPass the folder explicitly:  node scripts/upload-reels.mjs /Users/ausaf/Downloads/newvideos');
+  process.exit(1);
+}
+console.log('• reading videos from:', SRC_DIR);
 const BUCKET = 'reels';
 
 // local filename (in ./newvideos)  →  object name in the `reels` bucket
