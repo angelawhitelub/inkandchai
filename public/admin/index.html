@@ -948,6 +948,11 @@ td{padding:1rem;font-size:.94rem;}
           <span id="newProdImagePreviewText">Images selected.</span>
         </div>
       </div>
+      <div class="form-row wide">
+        <label>Gallery image URLs <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(optional alternative to uploading)</span></label>
+        <textarea id="newProdGalleryUrls" placeholder="One image URL per line"></textarea>
+        <p class="hint" style="margin-top:.4rem;">Useful for existing hosted back-cover or inside-page images. Up to 8 gallery images total.</p>
+      </div>
     </div>
     <div class="product-editor-actions">
       <button class="btn-green" id="createProductBtn" onclick="createProductListing()">Create SEO Product Page</button>
@@ -3269,7 +3274,7 @@ async function run99Import(btn) {
 }
 
 function clearCreateProductForm() {
-  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdDescription','newProdTags','newProdSeoTitle','newProdMetaDescription','newProdImageUrl']
+  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdDescription','newProdTags','newProdSeoTitle','newProdMetaDescription','newProdImageUrl','newProdGalleryUrls']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const file = document.getElementById('newProdImage');
   if (file) file.value = '';
@@ -3318,10 +3323,14 @@ async function createProductListing() {
     is_active: true,
   };
 
-  // An empty upload control means "leave the current gallery unchanged" when
-  // this form upserts an existing slug. Only send gallery_images when the admin
-  // actually selected replacement images.
-  if (newProductGalleryDataUrls.length) payload.gallery_images = newProductGalleryDataUrls;
+  const galleryImageUrls = document.getElementById('newProdGalleryUrls').value
+    .split(/[\n,]+/)
+    .map(url => url.trim())
+    .filter(url => /^https?:\/\//i.test(url));
+  const requestedGalleryImages = [...newProductGalleryDataUrls, ...galleryImageUrls].slice(0, 8);
+  // Empty upload and URL controls mean "leave the current gallery unchanged"
+  // when this form upserts an existing slug.
+  if (requestedGalleryImages.length) payload.gallery_images = requestedGalleryImages;
 
   // Safety net: ensure EVERY image is WebP before upload — the cover (already
   // converted on select) plus any gallery images added by the multi-image
