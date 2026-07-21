@@ -5954,39 +5954,144 @@ def breadcrumb_json_ld(book):
     return json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
 
 
+# ── Multi-signal "You May Also Like" relevance (static pages) ────────────────
+# Mirrors the richer JS scorer used on dynamic pages, and adds a LANGUAGE signal
+# (Hindi vs English) so English titles stop showing up on Hindi combo pages and
+# vice-versa — the main cause of "not so related" picks. Signals, strongest
+# first: same author / series-title-keyword overlap / same language / same
+# category / shared genre words / price proximity, with a hard cross-language
+# penalty and a relevance floor so a shared broad category alone isn't enough.
+_REL_STOP = {
+    "the","a","an","of","and","by","in","to","for","with","book","books","edition",
+    "special","hindi","english","volume","vol","series","set","complete","collection",
+    "combo","part","novel","paperback","new","best","selling","bestseller","author",
+    "story","stories","tale","pack","box","boxset","from","your","you","how",
+}
+_REL_GENRE = [
+    "romance","thriller","mystery","fantasy","horror","history","historical","science",
+    "self","help","habit","money","finance","financial","wealth","invest","stock",
+    "psychology","mindset","discipline","motivation","success","business","marketing",
+    "leadership","productivity","spiritual","philosophy","biography","memoir","fiction",
+    "poetry","manga","comic","children","enemies","lovers","mafia","billionaire","dark",
+    "academia","war","crime","detective","adventure","classic","health","fitness",
+    "entrepreneur","startup","habits","communication","negotiation","power","strategy",
+]
+
+def _rel_title_words(t):
+    return {w for w in re.split(r"[^a-z0-9ऀ-ॿ]+", (t or "").lower())
+            if len(w) > 3 and w not in _REL_STOP}
+
+def _rel_is_hindi(b):
+    hay = f"{b.get('t','')} {b.get('cat','')} {b.get('a','')}"
+    if re.search(r"[ऀ-ॿ]", hay):     # Devanagari script present
+        return True
+    return "hindi" in hay.lower()
+
+def _rel_genre_sig(b):
+    hay = f"{b.get('t','')} {b.get('desc','')} {b.get('cat','')}".lower()
+    return {g for g in _REL_GENRE if g in hay}
+
+def _rel_is_combo(b):
+    low = str(b.get("t","")).lower()
+    return any(k in low for k in ("combo","set of","boxset","box set","collection",
+                                  " pack","books |","2 books","3 books","4 books",
+                                  "5 books","6 books"))
+
+def _rel_price_num(v):
+    m = re.search(r"\d[\d,]*", str(v or ""))
+    return float(m.group(0).replace(",", "")) if m else 0.0
+
+# Per-book feature cache — computed ONCE per book, then reused across every
+# product page's scoring pass (otherwise scoring is O(N²) regex/desc scans).
+_REL_FEAT = {}
+
+def _rel_features(b):
+    key = b.get("slug") or id(b)
+    f = _REL_FEAT.get(key)
+    if f is None:
+        author = (b.get("a") or "").lower().strip()
+        try:
+            hi_rating = float(b.get("rating") or 0) >= 4.5
+        except (TypeError, ValueError):
+            hi_rating = False
+        f = {
+            "author":    author,
+            "awords":    {w for w in author.split() if len(w) > 2},
+            "tw":        _rel_title_words(b.get("t")),
+            "sig":       _rel_genre_sig(b),
+            "hindi":     _rel_is_hindi(b),
+            "combo":     _rel_is_combo(b),
+            "price":     _rel_price_num(b.get("p")),
+            "cat":       b.get("cat", ""),
+            "tab":       b.get("tab", ""),
+            "img":       bool(b.get("img")),
+            "new":       bool(b.get("n")),
+            "hi_rating": hi_rating,
+        }
+        _REL_FEAT[key] = f
+    return f
+
 def related_books_for(book, count=10):
-    """Return up to `count` related books scored by author › category › tab."""
+    """Return up to `count` genuinely-related books via multi-signal scoring."""
     current_url  = book.get("url", "")
     current_slug = book.get("slug", "")
-    author_norm  = (book.get("a") or "").lower().strip()
-    cat          = book.get("cat", "")
-    tab          = book.get("tab", "")
+    cur = _rel_features(book)
 
     def score(b):
-        s = 0
-        ba = (b.get("a") or "").lower().strip()
-        # Exact same author — strongest signal (catches series)
-        if ba and ba == author_norm: s += 8
-        elif author_norm and ba:
-            # Partial author match (shared meaningful word)
-            a_words = set(w for w in author_norm.split() if len(w) > 2)
-            b_words = set(w for w in ba.split() if len(w) > 2)
-            if a_words & b_words: s += 3
-        if b.get("cat") == cat: s += 4
-        if b.get("tab") == tab: s += 1
-        if b.get("img"): s += 0.5
+        bf = _rel_features(b)
+        s = 0.0
+        # ① Author — exact match is the strongest signal (series / same author)
+        if bf["author"] and bf["author"] == cur["author"]:
+            s += 12
+        elif cur["author"] and bf["author"] and (cur["awords"] & bf["awords"]):
+            s += 4
+        # ② Title / series keyword overlap ("Kings of Sin", "Psychology of Money")
+        s += len(cur["tw"] & bf["tw"]) * 6
+        # ③ Language match — strong; cross-language is heavily penalised
+        s += 5 if bf["hindi"] == cur["hindi"] else -9
+        # ④ Same category
+        if bf["cat"] and bf["cat"] == cur["cat"]:
+            s += 6
+        # ⑤ Shared genre / topic words (title + description + category)
+        s += min(len(cur["sig"] & bf["sig"]) * 1.5, 6)
+        # ⑥ Same broad tab
+        if bf["tab"] and bf["tab"] == cur["tab"]:
+            s += 2
+        # ⑦ Price proximity (same budget shopper)
+        if cur["price"] and bf["price"]:
+            diff = abs(cur["price"] - bf["price"]) / max(cur["price"], bf["price"])
+            if diff < 0.15:   s += 3
+            elif diff < 0.35: s += 1.5
+        # ⑧ Format affinity (combos pair with combos, singles with singles)
+        if bf["combo"] == cur["combo"]:
+            s += 1.5
+        # ⑨ Quality / freshness
+        if bf["img"]:       s += 0.5
+        if bf["new"]:       s += 1
+        if bf["hi_rating"]: s += 1
         return s
 
-    candidates = [
-        b for b in slim
-        if b.get("url") != current_url and b.get("slug") != current_slug
-    ]
-    scored = sorted(candidates, key=score, reverse=True)
-    # Keep only books with at least a minimal relevance score
-    filtered = [b for b in scored if score(b) > 0]
-    # Fallback to same category when nothing scores
+    scored = sorted(
+        ((score(b), b) for b in slim
+         if b.get("url") != current_url and b.get("slug") != current_slug),
+        key=lambda t: t[0], reverse=True,
+    )
+    # Relevance floor: needs more than a shared broad category alone. Same-category
+    # + same-language clears it (6+5); a shared broad category cross-language does
+    # not (6-9). One strong topical signal (author/title/genre) clears it too.
+    filtered = [b for sc, b in scored if sc > 9]
+    # Fallbacks keep the shelf full without reintroducing cross-language noise:
+    if len(filtered) < count:
+        seen = {b.get("slug") for b in filtered}
+        filtered += [b for sc, b in scored
+                     if b.get("slug") not in seen
+                     and b.get("cat") == cur["cat"]
+                     and _rel_features(b)["hindi"] == cur["hindi"]][: count - len(filtered)]
     if len(filtered) < 3:
-        filtered = [b for b in candidates if b.get("cat") == cat]
+        seen = {b.get("slug") for b in filtered}
+        filtered += [b for sc, b in scored
+                     if b.get("slug") not in seen
+                     and _rel_features(b)["hindi"] == cur["hindi"]][: 3 - len(filtered)]
     return filtered[:count]
 
 
