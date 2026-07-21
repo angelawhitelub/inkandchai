@@ -390,8 +390,18 @@ function renderInjectedFbt(data) {
     </div>
   `;
 
+  // Place the FBT bar directly BELOW the #InkAndChaiBookstagram reels so the
+  // reels always sit above it. The reels container ([data-iac-reels] on static
+  // pages, #bookstagramContent on the dynamic template) is server-rendered and
+  // present in the DOM even before reels.js finishes, so it's a stable anchor.
+  // Fall back to just-after-<main> when no reels strip exists on the page.
+  const reelsAnchor = document.querySelector('[data-iac-reels], #bookstagramContent');
   const main = document.querySelector('main.wrap') || document.querySelector('main') || document.getElementById('productContent');
-  if (main && main.parentNode) main.insertAdjacentElement('afterend', section);
+  if (reelsAnchor && reelsAnchor.parentNode) {
+    reelsAnchor.insertAdjacentElement('afterend', section);
+  } else if (main && main.parentNode) {
+    main.insertAdjacentElement('afterend', section);
+  }
   updateInjectedFbtTotal();
 }
 
