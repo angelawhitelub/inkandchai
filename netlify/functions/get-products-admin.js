@@ -64,6 +64,7 @@ exports.handler = async (event) => {
 
     let overrides = [];
     let customProducts = [];
+    let aplusContent = [];
     if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
       const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
       const { data, error } = await supabase.from('product_overrides').select('*');
@@ -76,6 +77,12 @@ exports.handler = async (event) => {
         .order('updated_at', { ascending: false });
       if (customError) console.warn('custom_products unavailable:', customError.message);
       else customProducts = customData || [];
+
+      const { data: aplusData, error: aplusError } = await supabase
+        .from('product_aplus_content')
+        .select('*');
+      if (aplusError) console.warn('product_aplus_content unavailable:', aplusError.message);
+      else aplusContent = aplusData || [];
     }
 
     for (const p of customProducts) {
@@ -101,7 +108,7 @@ exports.handler = async (event) => {
       });
     }
 
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ products, overrides, custom_products: customProducts }) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ products, overrides, custom_products: customProducts, aplus_content: aplusContent }) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }

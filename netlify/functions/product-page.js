@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const SOCIAL_PROOF = require('../../data/social_proof.json').items || [];
 
 function esc(value) {
   return String(value || '')
@@ -240,6 +241,10 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     <div class="details"><div class="label">Details</div><dl><dt>Format</dt><dd>Paperback</dd><dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
+<section data-iac-aplus hidden></section>
+<section id="bookstagramContent"></section>
+<script>window.__IAC_REELS__=${JSON.stringify(SOCIAL_PROOF).replace(/</g, '\\u003c')};</script>
+<script src="/js/reels.js" defer></script>
 <script src="/js/cart.js"></script>
 <script src="/js/search-suggest.js" defer></script>
 <script>

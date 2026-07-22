@@ -1030,6 +1030,25 @@ td{padding:1rem;font-size:.94rem;}
             <div id="prodGalleryPreview" style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:.6rem;"></div>
             <button class="btn-green" id="prodGallerySaveBtn" type="button" onclick="saveCustomProductImages()" style="display:none;margin-top:.7rem;">Upload / Replace Images</button>
           </div>
+          <details id="prodAplusEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(201,168,76,.035);">
+            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">A+ product content</summary>
+            <p class="hint" style="margin:.65rem 0 0;">Build visual publisher-style modules. They appear before video reels and Frequently Bought Together.</p>
+            <div class="form-row" style="margin-top:.75rem;">
+              <label>Section heading</label>
+              <input id="prodAplusHeading" maxlength="180" placeholder="Discover more about this book"/>
+            </div>
+            <div class="form-row">
+              <label>Intro text</label>
+              <textarea id="prodAplusIntro" maxlength="1200" placeholder="A short introduction shown above the modules."></textarea>
+            </div>
+            <div id="prodAplusBlocks" style="display:grid;gap:.8rem;"></div>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;">
+              <button class="btn-outline" type="button" onclick="addAplusBlock()">+ Add A+ Module</button>
+              <button class="btn-green" type="button" id="prodAplusSaveBtn" onclick="saveAplusContent(true)">Save A+ Content</button>
+              <button class="btn-outline" type="button" onclick="saveAplusContent(false)" style="border-color:rgba(224,80,80,.35);color:#c93636;">Disable A+</button>
+            </div>
+            <p class="hint" id="prodAplusSaveMsg" style="margin-top:.65rem;"></p>
+          </details>
           <div style="display:flex;gap:1.2rem;margin-top:0.4rem;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:var(--cream-dim);">
               <input type="checkbox" id="prodActive" checked style="accent-color:var(--green);"/> Override active
@@ -1699,6 +1718,7 @@ let selectedProduct = null;
 let newProductImageDataUrl = '';
 let newProductGalleryDataUrls = [];
 let editProductImageDataUrls = [];
+let aplusEditorBlocks = [];
 let createdProductUrl = '';
 
 // ── Login ──────────────────────────────────────────────────────────────────
@@ -3399,7 +3419,8 @@ async function fetchProducts() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     const overrides = new Map((data.overrides || []).map(o => [o.slug, o]));
-    productRows = (data.products || []).map(p => ({ ...p, override: overrides.get(p.slug) || null }));
+    const aplus = new Map((data.aplus_content || []).map(item => [item.slug, item]));
+    productRows = (data.products || []).map(p => ({ ...p, override: overrides.get(p.slug) || null, aplus: aplus.get(p.slug) || null }));
     meta.textContent = `${productRows.length.toLocaleString('en-IN')} products loaded · ${(data.overrides || []).length} override${(data.overrides || []).length === 1 ? '' : 's'}`;
     renderProductList();
   } catch (err) {
@@ -3478,7 +3499,125 @@ function selectProduct(slug) {
   const gallerySave = document.getElementById('prodGallerySaveBtn');
   if (gallerySave) gallerySave.style.display = 'none';
   editProductImageDataUrls = [];
+  loadAplusEditor(row);
   renderProductList();
+}
+
+function loadAplusEditor(row) {
+  const content = row?.aplus || {};
+  document.getElementById('prodAplusHeading').value = content.heading || '';
+  document.getElementById('prodAplusIntro').value = content.intro || '';
+  aplusEditorBlocks = (Array.isArray(content.blocks) ? content.blocks : []).map(block => ({
+    layout: ['wide','image-left','image-right'].includes(block.layout) ? block.layout : 'wide',
+    heading: block.heading || '',
+    body: block.body || '',
+    image_url: block.image_url || '',
+    image_alt: block.image_alt || '',
+  }));
+  renderAplusBlocks();
+  const msg = document.getElementById('prodAplusSaveMsg');
+  if (msg) msg.textContent = content.slug
+    ? (content.is_active === false ? 'A+ content is currently disabled.' : `${aplusEditorBlocks.length} A+ module${aplusEditorBlocks.length === 1 ? '' : 's'} live.`)
+    : 'No A+ content saved for this product yet.';
+}
+
+function renderAplusBlocks() {
+  const host = document.getElementById('prodAplusBlocks');
+  if (!host) return;
+  if (!aplusEditorBlocks.length) {
+    host.innerHTML = '<div class="hint" style="padding:.75rem;border:1px dashed var(--border);">No modules yet. Add a wide banner or split image-and-text module.</div>';
+    return;
+  }
+  host.innerHTML = aplusEditorBlocks.map((block, index) => `
+    <div style="border:1px solid var(--border);padding:.8rem;border-radius:10px;background:rgba(0,0,0,.08);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:.7rem;margin-bottom:.65rem;">
+        <strong style="font-size:.66rem;color:var(--gold);letter-spacing:.12em;text-transform:uppercase;">Module ${index + 1}</strong>
+        <button type="button" onclick="removeAplusBlock(${index})" style="background:transparent;border:0;color:#d96060;cursor:pointer;font-size:.68rem;">Remove</button>
+      </div>
+      <div class="form-row"><label>Layout</label><select onchange="updateAplusBlock(${index},'layout',this.value)">
+        <option value="wide" ${block.layout === 'wide' ? 'selected' : ''}>Full-width image / banner</option>
+        <option value="image-left" ${block.layout === 'image-left' ? 'selected' : ''}>Image left + text right</option>
+        <option value="image-right" ${block.layout === 'image-right' ? 'selected' : ''}>Text left + image right</option>
+      </select></div>
+      <div class="form-row"><label>Module heading</label><input maxlength="180" value="${esc(block.heading)}" oninput="updateAplusBlock(${index},'heading',this.value)" placeholder="What makes this edition special"/></div>
+      <div class="form-row"><label>Module text</label><textarea maxlength="1500" oninput="updateAplusBlock(${index},'body',this.value)" placeholder="Supporting copy for this visual.">${esc(block.body)}</textarea></div>
+      <div class="form-row"><label>Image URL</label><input type="url" value="${esc(block.image_url)}" oninput="updateAplusBlock(${index},'image_url',this.value);renderAplusImagePreview(${index})" placeholder="https://..."/></div>
+      <div class="form-row"><label>Or upload an image</label><input type="file" accept="image/png,image/jpeg,image/webp" onchange="previewAplusBlockImage(${index},this.files)"/></div>
+      <div class="form-row"><label>SEO image alt text</label><input maxlength="220" value="${esc(block.image_alt)}" oninput="updateAplusBlock(${index},'image_alt',this.value)" placeholder="Describe the image for accessibility and search"/></div>
+      <div id="prodAplusPreview${index}" style="margin-top:.55rem;${block.image_url ? '' : 'display:none;'}"><img src="${esc(block.image_url)}" alt="" style="width:100%;max-height:180px;object-fit:contain;background:#100c08;border:1px solid var(--border);"/></div>
+    </div>`).join('');
+}
+
+function addAplusBlock() {
+  if (aplusEditorBlocks.length >= 8) { alert('You can add up to 8 A+ modules.'); return; }
+  aplusEditorBlocks.push({ layout: 'wide', heading: '', body: '', image_url: '', image_alt: '' });
+  renderAplusBlocks();
+}
+
+function removeAplusBlock(index) {
+  aplusEditorBlocks.splice(index, 1);
+  renderAplusBlocks();
+}
+
+function updateAplusBlock(index, field, value) {
+  if (aplusEditorBlocks[index]) aplusEditorBlocks[index][field] = value;
+}
+
+function renderAplusImagePreview(index) {
+  const preview = document.getElementById(`prodAplusPreview${index}`);
+  const image = preview?.querySelector('img');
+  const value = aplusEditorBlocks[index]?.image_url || '';
+  if (preview) preview.style.display = value ? '' : 'none';
+  if (image) image.src = value;
+}
+
+async function previewAplusBlockImage(index, fileList) {
+  const file = Array.from(fileList || [])[0];
+  if (!file) return;
+  if (!/^image\/(png|jpe?g|webp)$/i.test(file.type) || file.size > 4 * 1024 * 1024) {
+    alert('Use a JPG, PNG, or WebP image below 4 MB.');
+    return;
+  }
+  const msg = document.getElementById('prodAplusSaveMsg');
+  if (msg) msg.textContent = `Preparing module ${index + 1} image…`;
+  aplusEditorBlocks[index].image_url = await window.iacImageToWebp(file);
+  renderAplusBlocks();
+  if (msg) msg.textContent = `Module ${index + 1} image ready. Save A+ Content to publish it.`;
+}
+
+async function saveAplusContent(isActive) {
+  if (!selectedProduct) return;
+  const btn = document.getElementById('prodAplusSaveBtn');
+  const msg = document.getElementById('prodAplusSaveMsg');
+  const original = btn?.textContent || '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (msg) msg.textContent = 'Saving A+ content…';
+  try {
+    const payload = {
+      slug: selectedProduct.slug,
+      heading: document.getElementById('prodAplusHeading').value,
+      intro: document.getElementById('prodAplusIntro').value,
+      blocks: aplusEditorBlocks,
+      is_active: isActive,
+    };
+    const res = await adminFetch('/.netlify/functions/update-aplus-content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    selectedProduct.aplus = data.content;
+    aplusEditorBlocks = Array.isArray(data.content?.blocks) ? data.content.blocks.map(block => ({ ...block })) : [];
+    renderAplusBlocks();
+    if (msg) msg.textContent = isActive
+      ? `A+ content is live with ${aplusEditorBlocks.length} module${aplusEditorBlocks.length === 1 ? '' : 's'}.`
+      : 'A+ content disabled. Saved modules are retained for later.';
+  } catch (err) {
+    if (msg) msg.textContent = 'Could not save A+ content: ' + err.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
 }
 
 async function previewEditProductImages(fileList) {

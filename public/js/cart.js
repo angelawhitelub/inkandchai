@@ -188,6 +188,7 @@ function showToast(msg) {
 // ── Init on DOM ready ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   updateCartUI();
+  initAplusContent();
   initFrequentlyBoughtTogether();
 
   // Close cart on overlay click
@@ -209,6 +210,33 @@ function isProductDetailPage() {
 function getProductPageSlug() {
   const parts = location.pathname.split('/').filter(Boolean);
   return parts[0] === 'product' && parts[1] ? parts[1].toLowerCase() : '';
+}
+
+// ── A+ Content ─────────────────────────────────────────────────────────────
+// Insert the A+ host synchronously BEFORE the existing reels anchor. The reels
+// implementation stays untouched, and FBT keeps inserting after the anchor,
+// giving a stable order: A+ → reels → frequently bought together.
+function initAplusContent() {
+  if (!isProductDetailPage()) return;
+  let host = document.querySelector('[data-iac-aplus]');
+  const reelsAnchor = document.querySelector('[data-iac-reels], #bookstagramContent');
+  const main = document.querySelector('main.wrap') || document.querySelector('main') || document.getElementById('productContent');
+  if (!host) {
+    host = document.createElement('section');
+    host.setAttribute('data-iac-aplus', '');
+    host.hidden = true;
+    if (reelsAnchor && reelsAnchor.parentNode) reelsAnchor.insertAdjacentElement('beforebegin', host);
+    else if (main && main.parentNode) main.insertAdjacentElement('afterend', host);
+  }
+  if (document.getElementById('iac-aplus-js')) {
+    if (window.IACAplus) window.IACAplus.init();
+    return;
+  }
+  const script = document.createElement('script');
+  script.id = 'iac-aplus-js';
+  script.src = '/js/aplus-content.js';
+  script.defer = true;
+  document.head.appendChild(script);
 }
 
 function getCurrentProductItem() {
