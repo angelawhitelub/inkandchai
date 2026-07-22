@@ -3546,7 +3546,7 @@ function renderAplusBlocks() {
       <div class="form-row"><label>Image URL</label><input type="url" value="${esc(block.image_url)}" oninput="updateAplusBlock(${index},'image_url',this.value);renderAplusImagePreview(${index})" placeholder="https://..."/></div>
       <div class="form-row"><label>Or upload an image</label><input type="file" accept="image/png,image/jpeg,image/webp" onchange="previewAplusBlockImage(${index},this.files)"/></div>
       <div class="form-row"><label>SEO image alt text</label><input maxlength="220" value="${esc(block.image_alt)}" oninput="updateAplusBlock(${index},'image_alt',this.value)" placeholder="Describe the image for accessibility and search"/></div>
-      <div id="prodAplusPreview${index}" style="margin-top:.55rem;${block.image_url ? '' : 'display:none;'}"><img src="${esc(block.image_url)}" alt="" style="width:100%;max-height:180px;object-fit:contain;background:#100c08;border:1px solid var(--border);"/></div>
+      <div id="prodAplusPreview${index}" style="margin-top:.55rem;${block.image_url ? '' : 'display:none;'}"><img src="${esc(block.image_url)}" alt="" style="display:block;width:100%;height:auto;border:1px solid var(--border);"/></div>
     </div>`).join('');
 }
 
