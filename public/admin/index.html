@@ -3410,7 +3410,9 @@ function mergedProduct(row) {
 async function fetchProducts() {
   const meta = document.getElementById('productMeta');
   const list = document.getElementById('productList');
-  if (!(adminToken || adminKey) || !meta || !list) return;
+  // A remembered-browser login authenticates through the HttpOnly session
+  // cookie, so it intentionally has no readable token/key in JavaScript.
+  if (!(adminToken || adminKey || adminCookieSession) || !meta || !list) return;
   meta.textContent = 'Loading products…';
   try {
     const res = await fetch('/.netlify/functions/get-products-admin', {
@@ -5528,10 +5530,10 @@ function switchTab(tab, pushState = true) {
   if (pushState) history.pushState(null, '', '/admin/#' + tab);
 
   // Lazy-load data for the activated tab.
-  // Gate on EITHER auth credential — passkey/restored sessions set adminToken
-  // but leave adminKey empty, so gating on adminKey alone left these tabs stuck
-  // on "Loading…" for token-authenticated admins.
-  const _authed = adminToken || adminKey;
+  // Accept password/passkey tokens and the remembered HttpOnly cookie session.
+  // The cookie is deliberately unreadable to JavaScript, so its verified flag
+  // is the only client-side signal that the remembered session is authenticated.
+  const _authed = adminToken || adminKey || adminCookieSession;
   if (tab === 'products' && _authed) fetchProducts();
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
   if (tab === 'reviews') fetchPendingReviews();
