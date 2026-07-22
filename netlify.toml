@@ -73,6 +73,15 @@
   to     = "/.netlify/functions/custom-products-feed"
   status = 200
 
+# Paginated Merchant feed for the BULK-IMPORTED catalog (crossword/99bookstores/
+# bookstohome rows in custom_products — excluded from /custom-feed.xml). Register
+# each page as its own scheduled-fetch feed: /custom-feed-bulk/1, /2, ...
+# Page 1's XML comment states the total page count.
+[[redirects]]
+  from   = "/custom-feed-bulk/:page"
+  to     = "/.netlify/functions/custom-products-feed-bulk?page=:page"
+  status = 200
+
 
 # Source map requests from browser devtools — return 404 cleanly instead of
 # falling through to index.html (which wastes bandwidth)
