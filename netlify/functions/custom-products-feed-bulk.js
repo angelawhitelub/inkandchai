@@ -74,7 +74,11 @@ exports.handler = async (event) => {
     // every 6h — the bulk catalog changes only when an import runs.
     'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=21600, stale-while-revalidate=86400',
   };
-  const page = Math.max(1, parseInt((event.queryStringParameters || {}).page, 10) || 1);
+  // Netlify rewrites don't reliably forward the ?page= from the redirect rule
+  // to the function, so read the page number from the pretty URL itself
+  // (/custom-feed-bulk/5) first, then fall back to the query string.
+  const pathMatch = String(event.rawUrl || event.path || '').match(/custom-feed-bulk\/(\d+)/);
+  const page = Math.max(1, parseInt(pathMatch ? pathMatch[1] : (event.queryStringParameters || {}).page, 10) || 1);
 
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     return { statusCode: 200, headers, body: emptyFeed(page) };
