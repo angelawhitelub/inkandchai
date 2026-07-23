@@ -3708,7 +3708,7 @@ async function saveCustomProductImages() {
   if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
   if (msg) msg.textContent = `Uploading ${editProductImageDataUrls.length} image${editProductImageDataUrls.length === 1 ? '' : 's'}…`;
   try {
-    const payload = {
+    const basePayload = {
       slug: row.slug,
       title: p.title,
       author: p.author,
@@ -3721,17 +3721,43 @@ async function saveCustomProductImages() {
       tags: row.tags || '',
       seo_title: row.seo_title || '',
       meta_description: row.meta_description || '',
-      image_data_url: editProductImageDataUrls[0],
-      gallery_images: editProductImageDataUrls.slice(1),
       is_active: row.is_active !== false,
     };
-    const res = await fetch('/.netlify/functions/create-product-listing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
-      body: JSON.stringify(payload),
+
+    // Keep every request below the serverless body-size limit. Sending up to
+    // nine base64 images in one JSON body can be rejected before the function
+    // runs, which leaves the database unchanged with no useful error message.
+    // The first request replaces the cover and clears the old gallery; each
+    // following request appends one newly uploaded gallery image URL.
+    const saveImageBatch = async (payload) => {
+      const res = await adminFetch('/.netlify/functions/create-product-listing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      return data;
+    };
+
+    const pendingImages = editProductImageDataUrls.slice();
+    let data = await saveImageBatch({
+      ...basePayload,
+      image_data_url: pendingImages[0],
+      gallery_images: [],
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    let mainImageUrl = data.product?.image_url || row.image_url || '';
+    let savedGallery = [];
+    for (let index = 1; index < pendingImages.length; index += 1) {
+      if (msg) msg.textContent = `Uploading image ${index + 1} of ${pendingImages.length}…`;
+      data = await saveImageBatch({
+        ...basePayload,
+        image_url: mainImageUrl,
+        gallery_images: [...savedGallery, pendingImages[index]],
+      });
+      mainImageUrl = data.product?.image_url || mainImageUrl;
+      savedGallery = Array.isArray(data.product?.gallery_images) ? data.product.gallery_images : savedGallery;
+    }
     row.image_url = data.product?.image_url || row.image_url || '';
     row.gallery_images = data.product?.gallery_images || [];
     const imgEl = document.getElementById('prodImageUrl');
