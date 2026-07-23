@@ -4359,9 +4359,9 @@ async function reconcilePhonePe(orderId, btn) {
   const origLabel = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking…'; }
   try {
-    const res = await fetch('/.netlify/functions/phonepe-reconcile', {
+    const res = await adminFetch('/.netlify/functions/phonepe-reconcile', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: orderId }),
     });
     const data = await res.json();
@@ -5109,9 +5109,9 @@ async function bulkReconcilePhonePe(btn) {
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking…'; }
   try {
-    const res = await fetch('/.netlify/functions/phonepe-reconcile', {
+    const res = await adminFetch('/.netlify/functions/phonepe-reconcile', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ all_pending: true }),
     });
     const data = await res.json();
@@ -5174,7 +5174,7 @@ function esc(s) {
 }
 
 // ── Auto-refresh orders every 90s ─────────────────────────────────────────
-setInterval(() => { if (adminKey) fetchOrders(true); }, 90000);
+setInterval(() => { if (adminToken || adminKey || adminCookieSession) fetchOrders(true); }, 90000);
 
 // ── Auto-recheck pending PhonePe orders every 3 minutes ───────────────────
 // Silently polls PhonePe for any order stuck on pending_phonepe or
@@ -5182,7 +5182,7 @@ setInterval(() => { if (adminKey) fetchOrders(true); }, 90000);
 let _lastAutoRecheck = 0;
 
 async function autoRecheckPhonePe() {
-  if (!(adminToken || adminKey)) return;
+  if (!(adminToken || adminKey || adminCookieSession)) return;
   const pendingOrders = allOrders.filter(o =>
     o.status === 'pending_phonepe' || o.status === 'pending_partial_phonepe'
   );
@@ -5193,9 +5193,9 @@ async function autoRecheckPhonePe() {
     .filter(Boolean);
 
   try {
-    const res = await fetch('/.netlify/functions/phonepe-reconcile', {
+    const res = await adminFetch('/.netlify/functions/phonepe-reconcile', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids }),
     });
     if (!res.ok) return;

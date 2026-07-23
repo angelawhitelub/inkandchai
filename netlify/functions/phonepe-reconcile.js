@@ -6,7 +6,7 @@
  * orders stuck on 'pending_phonepe'. Useful when the webhook was missed
  * or arrived after the customer left.
  *
- * Auth: X-Admin-Key header (same as other admin functions).
+ * Auth: signed admin token/cookie, with X-Admin-Key as a legacy fallback.
  *
  * Body (one of):
  *   { id: "IC-..." }              → re-check one order
@@ -28,7 +28,7 @@ const { notifyOrderCancelled } = require('./utils/order-cancelled-notification')
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key, X-Admin-Token',
   'Content-Type': 'application/json',
 };
 
