@@ -1024,9 +1024,16 @@ td{padding:1rem;font-size:.94rem;}
             </div>
           </div>
           <div class="form-row" id="prodGalleryUploadRow" style="display:none;margin-top:.6rem;">
-            <label>Upload / replace book images</label>
+            <label>Choose what to update</label>
+            <select id="prodGalleryAction" onchange="changeCustomProductImageAction()">
+              <option value="main">Replace main cover only</option>
+              <option value="append">Add new gallery images</option>
+              <option value="all">Replace the complete image set</option>
+            </select>
+            <div id="prodCurrentImages" style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:.6rem;"></div>
+            <label style="margin-top:.65rem;">Choose replacement image(s)</label>
             <input id="prodGalleryImages" type="file" accept="image/png,image/jpeg,image/webp" multiple onchange="previewEditProductImages(this.files)"/>
-            <p class="hint" style="margin-top:.4rem;">For admin-created listings: choose up to 9 images. The first becomes the main cover and the rest form the gallery.</p>
+            <p class="hint" id="prodGalleryActionHint" style="margin-top:.4rem;">Choose one image to replace only the main cover. Existing gallery images stay unchanged.</p>
             <div id="prodGalleryPreview" style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:.6rem;"></div>
             <button class="btn-green" id="prodGallerySaveBtn" type="button" onclick="saveCustomProductImages()" style="display:none;margin-top:.7rem;">Upload / Replace Images</button>
           </div>
@@ -3536,6 +3543,7 @@ function selectProduct(slug) {
   if (delBtn) delBtn.style.display = isCustom ? '' : 'none';
   const galleryRow = document.getElementById('prodGalleryUploadRow');
   if (galleryRow) galleryRow.style.display = isCustom ? '' : 'none';
+  if (isCustom) renderCurrentProductImages(row);
   const galleryInput = document.getElementById('prodGalleryImages');
   if (galleryInput) galleryInput.value = '';
   const galleryPreview = document.getElementById('prodGalleryPreview');
@@ -3545,6 +3553,56 @@ function selectProduct(slug) {
   editProductImageDataUrls = [];
   loadAplusEditor(row);
   renderProductList();
+}
+
+function customProductGallery(row = selectedProduct) {
+  const value = row?.gallery_images;
+  if (Array.isArray(value)) return value.filter(Boolean).slice(0, 8);
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.filter(Boolean).slice(0, 8) : [];
+    } catch {}
+  }
+  return [];
+}
+
+function renderCurrentProductImages(row = selectedProduct) {
+  const select = document.getElementById('prodGalleryAction');
+  const host = document.getElementById('prodCurrentImages');
+  if (!select || !host || !row) return;
+  const gallery = customProductGallery(row);
+  select.innerHTML = `
+    <option value="main">Replace main cover only</option>
+    ${gallery.map((_, index) => `<option value="gallery:${index}">Replace gallery image ${index + 1} only</option>`).join('')}
+    <option value="append">Add new gallery images</option>
+    <option value="all">Replace the complete image set</option>`;
+  select.value = 'main';
+  const images = [row.image_url, ...gallery].filter(Boolean);
+  host.innerHTML = images.map((url, index) => `<div style="position:relative;text-align:center;">
+    <img src="${esc(url)}" alt="${index === 0 ? 'Current main cover' : `Current gallery image ${index}`}" style="display:block;width:70px;height:92px;object-fit:contain;background:rgba(0,0,0,.08);border:1px solid var(--border);border-radius:8px;"/>
+    <span style="display:block;margin-top:.2rem;font-size:.52rem;color:var(--cream-dim);">${index === 0 ? 'Main cover' : `Gallery ${index}`}</span>
+  </div>`).join('');
+  changeCustomProductImageAction(false);
+}
+
+function changeCustomProductImageAction(clearSelection = true) {
+  const action = document.getElementById('prodGalleryAction')?.value || 'main';
+  const hint = document.getElementById('prodGalleryActionHint');
+  const input = document.getElementById('prodGalleryImages');
+  const preview = document.getElementById('prodGalleryPreview');
+  const saveBtn = document.getElementById('prodGallerySaveBtn');
+  if (clearSelection) {
+    editProductImageDataUrls = [];
+    if (input) input.value = '';
+    if (preview) preview.innerHTML = '';
+    if (saveBtn) saveBtn.style.display = 'none';
+  }
+  if (!hint) return;
+  if (action === 'main') hint.textContent = 'Choose one image to replace only the main cover. Existing gallery images stay unchanged.';
+  else if (action.startsWith('gallery:')) hint.textContent = `Choose one image to replace only gallery image ${Number(action.split(':')[1]) + 1}. All other images stay unchanged.`;
+  else if (action === 'append') hint.textContent = 'Choose one or more images to add after the existing gallery images.';
+  else hint.textContent = 'Choose up to 9 images. The first becomes the main cover and the rest replace the complete gallery.';
 }
 
 function loadAplusEditor(row) {
@@ -3666,13 +3724,25 @@ async function saveAplusContent(isActive) {
 
 async function previewEditProductImages(fileList) {
   const files = Array.from(fileList || []);
+  const action = document.getElementById('prodGalleryAction')?.value || 'main';
   const preview = document.getElementById('prodGalleryPreview');
   const saveBtn = document.getElementById('prodGallerySaveBtn');
   editProductImageDataUrls = [];
   if (preview) preview.innerHTML = '';
   if (saveBtn) saveBtn.style.display = 'none';
   if (!files.length) return;
-  if (files.length > 9) {
+  if ((action === 'main' || action.startsWith('gallery:')) && files.length !== 1) {
+    alert('Choose exactly one replacement image for this slot.');
+    document.getElementById('prodGalleryImages').value = '';
+    return;
+  }
+  const existingGalleryCount = customProductGallery().length;
+  if (action === 'append' && existingGalleryCount + files.length > 8) {
+    alert(`This product already has ${existingGalleryCount} gallery image${existingGalleryCount === 1 ? '' : 's'}. You can keep up to 8 gallery images total.`);
+    document.getElementById('prodGalleryImages').value = '';
+    return;
+  }
+  if (action === 'all' && files.length > 9) {
     alert('Please select up to 9 book images.');
     document.getElementById('prodGalleryImages').value = '';
     return;
@@ -3687,11 +3757,17 @@ async function previewEditProductImages(fileList) {
   editProductImageDataUrls = await Promise.all(files.map(file => window.iacImageToWebp(file)));
   if (preview) {
     preview.innerHTML = editProductImageDataUrls.map((url, index) => `<div style="position:relative;">
-      <img src="${esc(url)}" alt="Book image ${index + 1} preview" style="width:70px;height:92px;object-fit:cover;border-radius:8px;"/>
-      ${index === 0 ? '<span style="position:absolute;left:4px;bottom:4px;background:var(--gold);color:#fff;padding:1px 5px;border-radius:99px;font-size:.52rem;">Main</span>' : ''}
+      <img src="${esc(url)}" alt="Book image ${index + 1} preview" style="width:70px;height:92px;object-fit:contain;background:rgba(0,0,0,.08);border:1px solid var(--border);border-radius:8px;"/>
+      ${action === 'all' && index === 0 ? '<span style="position:absolute;left:4px;bottom:4px;background:var(--gold);color:#fff;padding:1px 5px;border-radius:99px;font-size:.52rem;">Main</span>' : ''}
     </div>`).join('');
   }
-  if (saveBtn) saveBtn.style.display = '';
+  if (saveBtn) {
+    saveBtn.textContent = action === 'main' ? 'Replace Main Cover'
+      : action.startsWith('gallery:') ? `Replace Gallery Image ${Number(action.split(':')[1]) + 1}`
+      : action === 'append' ? 'Add Gallery Images'
+      : 'Replace Complete Image Set';
+    saveBtn.style.display = '';
+  }
 }
 
 async function saveCustomProductImages() {
@@ -3702,6 +3778,7 @@ async function saveCustomProductImages() {
   }
   const row = selectedProduct;
   const p = mergedProduct(row);
+  const action = document.getElementById('prodGalleryAction')?.value || 'main';
   const btn = document.getElementById('prodGallerySaveBtn');
   const msg = document.getElementById('productSaveMsg');
   const originalText = btn?.textContent || '';
@@ -3741,22 +3818,51 @@ async function saveCustomProductImages() {
     };
 
     const pendingImages = editProductImageDataUrls.slice();
-    let data = await saveImageBatch({
-      ...basePayload,
-      image_data_url: pendingImages[0],
-      gallery_images: [],
-    });
-    let mainImageUrl = data.product?.image_url || row.image_url || '';
-    let savedGallery = [];
-    for (let index = 1; index < pendingImages.length; index += 1) {
-      if (msg) msg.textContent = `Uploading image ${index + 1} of ${pendingImages.length}…`;
+    const existingGallery = customProductGallery(row);
+    let data;
+    if (action === 'main') {
       data = await saveImageBatch({
         ...basePayload,
-        image_url: mainImageUrl,
-        gallery_images: [...savedGallery, pendingImages[index]],
+        image_data_url: pendingImages[0],
       });
-      mainImageUrl = data.product?.image_url || mainImageUrl;
-      savedGallery = Array.isArray(data.product?.gallery_images) ? data.product.gallery_images : savedGallery;
+    } else if (action.startsWith('gallery:')) {
+      const targetIndex = Number(action.split(':')[1]);
+      const nextGallery = existingGallery.slice();
+      nextGallery[targetIndex] = pendingImages[0];
+      data = await saveImageBatch({
+        ...basePayload,
+        image_url: row.image_url || '',
+        gallery_images: nextGallery,
+      });
+    } else if (action === 'append') {
+      let savedGallery = existingGallery.slice();
+      for (let index = 0; index < pendingImages.length; index += 1) {
+        if (msg) msg.textContent = `Uploading image ${index + 1} of ${pendingImages.length}…`;
+        data = await saveImageBatch({
+          ...basePayload,
+          image_url: row.image_url || '',
+          gallery_images: [...savedGallery, pendingImages[index]],
+        });
+        savedGallery = Array.isArray(data.product?.gallery_images) ? data.product.gallery_images : savedGallery;
+      }
+    } else {
+      data = await saveImageBatch({
+        ...basePayload,
+        image_data_url: pendingImages[0],
+        gallery_images: [],
+      });
+      let mainImageUrl = data.product?.image_url || row.image_url || '';
+      let savedGallery = [];
+      for (let index = 1; index < pendingImages.length; index += 1) {
+        if (msg) msg.textContent = `Uploading image ${index + 1} of ${pendingImages.length}…`;
+        data = await saveImageBatch({
+          ...basePayload,
+          image_url: mainImageUrl,
+          gallery_images: [...savedGallery, pendingImages[index]],
+        });
+        mainImageUrl = data.product?.image_url || mainImageUrl;
+        savedGallery = Array.isArray(data.product?.gallery_images) ? data.product.gallery_images : savedGallery;
+      }
     }
     row.image_url = data.product?.image_url || row.image_url || '';
     row.gallery_images = data.product?.gallery_images || [];
@@ -3764,13 +3870,17 @@ async function saveCustomProductImages() {
     const imgPrev = document.getElementById('prodImagePreview');
     if (imgEl) imgEl.value = row.image_url;
     if (imgPrev && row.image_url) { imgPrev.src = row.image_url; imgPrev.style.display = 'block'; }
-    if (msg) msg.textContent = `Saved ${editProductImageDataUrls.length} book image${editProductImageDataUrls.length === 1 ? '' : 's'}. Open the product page to view the gallery.`;
+    if (msg) msg.textContent = action === 'main' ? 'Main cover replaced. Existing gallery images were kept.'
+      : action.startsWith('gallery:') ? `Gallery image ${Number(action.split(':')[1]) + 1} replaced. All other images were kept.`
+      : action === 'append' ? `Added ${editProductImageDataUrls.length} gallery image${editProductImageDataUrls.length === 1 ? '' : 's'}.`
+      : `Saved ${editProductImageDataUrls.length} book image${editProductImageDataUrls.length === 1 ? '' : 's'}.`;
     editProductImageDataUrls = [];
     const input = document.getElementById('prodGalleryImages');
     if (input) input.value = '';
     const preview = document.getElementById('prodGalleryPreview');
     if (preview) preview.innerHTML = '';
     if (btn) btn.style.display = 'none';
+    renderCurrentProductImages(row);
     renderProductList();
   } catch (err) {
     if (msg) msg.textContent = 'Could not upload images: ' + err.message;
