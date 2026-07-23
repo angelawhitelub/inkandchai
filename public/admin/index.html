@@ -2094,8 +2094,17 @@ function changeOrdersPage(delta) {
 
 function orderIsUnshipped(o) {
   const status = String(o?.status || '').toLowerCase();
-  const shippedStatuses = new Set(['shipped','out_for_delivery','delivered','cancelled','refunded']);
-  return !shippedStatuses.has(status) && !o?.tracking_id;
+  // "Not to ship": already shipped/delivered, cancelled/refunded, OR owed a
+  // refund (refund_pending / refund_failed both mean the order was cancelled or
+  // returned and the customer is owed money, not a book), OR a post-shipment
+  // terminal state (rto / undelivered / lost). partially_refunded intentionally
+  // stays shippable — a partial refund can mean one combo item was refunded and
+  // the rest of the order still needs to go out.
+  const notToShip = new Set([
+    'shipped','out_for_delivery','delivered','cancelled','refunded',
+    'refund_pending','refund_failed','rto','undelivered','lost',
+  ]);
+  return !notToShip.has(status) && !o?.tracking_id;
 }
 
 function orderKey(o) {

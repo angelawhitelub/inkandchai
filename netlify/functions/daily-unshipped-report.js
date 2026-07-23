@@ -19,6 +19,8 @@ const { sendEmail }    = require('./utils/email');
 const EXCLUDE_STATUSES = [
   'shipped', 'out_for_delivery', 'delivered',
   'cancelled', 'refunded',
+  'refund_pending', 'refund_failed',   // refund owed (order cancelled/returned) — not a book to ship
+  'rto', 'undelivered', 'lost',        // post-shipment terminal states — not to (re)ship
   'pending', 'pending_phonepe', 'pending_partial_phonepe',
   'cod_awaiting_confirmation',   // high-value COD not yet confirmed by customer — not shippable yet
 ];
