@@ -41,6 +41,66 @@ exports.handler = async (event) => {
   if (event.httpMethod !== 'GET') return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method Not Allowed' }) };
 
   const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
+
+  // ?q= — server-side search over custom_products. The full-list response
+  // below can only carry the newest 1000 custom products (Supabase row cap;
+  // returning all ~20k full rows would also exceed Netlify's 6 MB limit), so
+  // the Product editor calls this for anything not in that window.
+  const q = String((event.queryStringParameters || {}).q || '').trim().slice(0, 120);
+  if (q) {
+    try {
+      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ products: [], overrides: [], aplus_content: [] }) };
+      }
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const safe = q.replace(/[%,()]/g, ' ').replace(/\s+/g, ' ').trim();
+      let rows = [];
+      if (safe) {
+        const { data, error } = await supabase
+          .from('custom_products')
+          .select('*')
+          .or(`title.ilike.%${safe}%,author.ilike.%${safe}%,slug.ilike.%${safe}%,isbn.ilike.%${safe}%`)
+          .order('updated_at', { ascending: false })
+          .limit(60);
+        if (error) throw error;
+        rows = data || [];
+      }
+      const slugs = rows.map(r => r.slug).filter(Boolean);
+      let overrides = [];
+      let aplusContent = [];
+      if (slugs.length) {
+        const [ovr, apl] = await Promise.all([
+          supabase.from('product_overrides').select('*').in('slug', slugs),
+          supabase.from('product_aplus_content').select('*').in('slug', slugs),
+        ]);
+        overrides = ovr.data || [];
+        aplusContent = apl.data || [];
+      }
+      const products = rows.map(p => ({
+        slug: p.slug,
+        shopify_id: `CUSTOM:${p.slug}`,
+        title: p.title || '',
+        author: p.author || '',
+        category: p.category || 'Books',
+        price_inr: money(p.price_inr),
+        original_price_inr: money(p.original_price_inr),
+        image_url: p.image_url || '',
+        gallery_images: Array.isArray(p.gallery_images) ? p.gallery_images : [],
+        is_custom: true,
+        description: p.description || '',
+        publisher: p.publisher || '',
+        isbn: p.isbn || '',
+        tags: p.tags || '',
+        seo_title: p.seo_title || '',
+        meta_description: p.meta_description || '',
+        is_active: p.is_active !== false,
+      }));
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ products, overrides, aplus_content: aplusContent }) };
+    } catch (err) {
+      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
+    }
+  }
+
   try {
     const dataPath = findCataloguePath();
     const raw = JSON.parse(fs.readFileSync(dataPath, 'utf8'));

@@ -3431,6 +3431,42 @@ async function fetchProducts() {
   }
 }
 
+// The initial load only carries the newest 1000 custom products (server row
+// cap) — older imported listings are found via server-side search instead.
+let productServerSearchTimer = null;
+let productServerSearchLast = '';
+function scheduleProductServerSearch(q) {
+  clearTimeout(productServerSearchTimer);
+  productServerSearchTimer = setTimeout(async () => {
+    if (productServerSearchLast === q) return;
+    productServerSearchLast = q;
+    try {
+      const res = await fetch('/.netlify/functions/get-products-admin?q=' + encodeURIComponent(q), {
+        headers: { 'X-Admin-Key': adminKey },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const overrides = new Map((data.overrides || []).map(o => [o.slug, o]));
+      const aplus = new Map((data.aplus_content || []).map(item => [item.slug, item]));
+      const known = new Set(productRows.map(r => r.slug));
+      let added = 0;
+      for (const p of (data.products || [])) {
+        if (!p.slug || known.has(p.slug)) continue;
+        productRows.push({ ...p, override: overrides.get(p.slug) || null, aplus: aplus.get(p.slug) || null });
+        known.add(p.slug);
+        added++;
+      }
+      // Re-render only if this query is still what's in the box.
+      const cur = (document.getElementById('productSearch')?.value || '').toLowerCase().trim();
+      if (cur !== q) return;
+      if (added) { renderProductList(); return; }
+      // Server found nothing new either — replace the "Searching…" placeholder.
+      const list = document.getElementById('productList');
+      if (list && list.querySelector('.lead-empty')) list.innerHTML = '<div class="lead-empty">No matching products.</div>';
+    } catch (_) { productServerSearchLast = ''; /* allow retry; local results still shown */ }
+  }, 350);
+}
+
 function renderProductList() {
   const list = document.getElementById('productList');
   if (!list) return;
@@ -3440,8 +3476,14 @@ function renderProductList() {
     if (!q) return true;
     return [p.title, p.author, p.category, p.slug, p.shopify_id].join(' ').toLowerCase().includes(q);
   }).slice(0, 80);
+  // Few/no local hits — the product may be outside the 1000 newest custom
+  // rows the initial load carries. Ask the server too (debounced).
+  const serverSearching = q.length >= 3 && rows.length < 5;
+  if (serverSearching) scheduleProductServerSearch(q);
   if (!rows.length) {
-    list.innerHTML = '<div class="lead-empty">No matching products.</div>';
+    list.innerHTML = serverSearching
+      ? '<div class="lead-empty">Searching the full catalogue…</div>'
+      : '<div class="lead-empty">No matching products.</div>';
     return;
   }
   list.innerHTML = rows.map(row => {
