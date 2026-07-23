@@ -28,9 +28,11 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-// Only orders that could plausibly have been received can be reported as
-// incomplete. Blocks pending/cancelled/refunded orders.
-const REPORTABLE = new Set(['shipped', 'out_for_delivery', 'delivered', 'rto', 'undelivered']);
+// A missing-from-the-box report only makes sense once the customer actually
+// holds the parcel — i.e. it's DELIVERED. shipped / out_for_delivery haven't
+// arrived yet; rto / undelivered never reached the customer. Blocks all of
+// those plus pending / cancelled / refunded.
+const REPORTABLE = new Set(['delivered']);
 
 const orderId = (o) => o.razorpay_order_id || o.id;
 const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -226,7 +228,7 @@ exports.handler = async (event) => {
     }
 
     if (!REPORTABLE.has(String(order.status || '').toLowerCase())) {
-      return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'This order can only be reported as incomplete once it has been shipped or delivered.' }) };
+      return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'You can report a missing book only after the parcel is delivered.' }) };
     }
 
     // Map ordered titles → the ordered quantity (summing any duplicate lines),

@@ -186,8 +186,11 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
 // Remembers the last successfully-tracked order so "report a missing book"
 // can re-send the same id + email/phone the backend verifies ownership with.
 let lastTracked = null;
-// Orders can only be reported incomplete once they're on the way / delivered.
-const REPORTABLE_STATUS = new Set(['shipped','out_for_delivery','delivered','rto','undelivered']);
+// A book can only be "missing from the box" once the customer physically has
+// the box — i.e. the parcel is DELIVERED. While it's still shipped / out for
+// delivery it simply hasn't arrived yet, and rto / undelivered mean it never
+// reached them, so none of those should show the missing-book report.
+const REPORTABLE_STATUS = new Set(['delivered']);
 
 async function doTrack() {
   // Strip all internal whitespace — handles "IC- 20260521-85YX6" → "IC-20260521-85YX6"
@@ -352,9 +355,9 @@ async function submitAddressUpdate(btn) {
   }
 }
 
-// ── Report a missing book (customer-facing, on delivered/shipped orders) ─────
+// ── Report a missing book (customer-facing, delivered orders only) ─────
 function reportBlockHtml(o) {
-  if (!REPORTABLE_STATUS.has(o.status)) return '';
+  if (!REPORTABLE_STATUS.has(String(o.status || '').toLowerCase())) return '';
   const lineItems = (o.items || [])
     .map(i => ({ title: String(i.title || '').trim(), qty: Math.max(1, Number(i.qty) || 1) }))
     .filter(i => i.title);
