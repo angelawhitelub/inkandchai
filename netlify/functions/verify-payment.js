@@ -377,6 +377,6 @@ exports.handler = async (event) => {
   return {
     statusCode: 200,
     headers: CORS,
-    body: JSON.stringify({ success: true, payment_id: razorpay_payment_id }),
+    body: JSON.stringify({ success: true, order_id: inkOrderId, payment_id: razorpay_payment_id }),
   };
 };

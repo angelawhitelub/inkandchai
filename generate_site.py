@@ -2922,6 +2922,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
 <!-- Cart, Checkout & Auth -->
 <script src="/js/cart.js"></script>
+<script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/search-suggest.js" defer></script>
@@ -4768,6 +4769,7 @@ document.addEventListener('keydown', e => {
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
 <script src="/js/cart.js"></script>
+<script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
 <script>
@@ -7194,8 +7196,8 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         </div>
 
         <div class="form-group">
-          <label for="ch-email">Email Address <span style="color:var(--cream-dim);font-weight:400;font-size:0.78em;letter-spacing:0.08em;">— for receipt (optional)</span></label>
-          <input id="ch-email" type="email" placeholder="you@example.com" autocomplete="email" inputmode="email"/>
+          <label for="ch-email">Email Address <span style="color:var(--gold);">*</span></label>
+          <input id="ch-email" type="email" placeholder="you@example.com" autocomplete="email" inputmode="email" required/>
         </div>
 
         <div class="form-group">
@@ -7311,6 +7313,7 @@ window.SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY_PLACEHOLDER";
 </script>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
+<script src="/js/google-customer-reviews.js"></script>
 
 <script>
 // ── Cart (must match cart.js CART_KEY) ────────────────────────────────────
@@ -7823,6 +7826,7 @@ function collectAddr() {
 
   if (!name)             { alert('Please enter your full name.'); return null; }
   if (phone.replace(/\\D/g,'').length < 10) { alert('Please enter a valid 10-digit phone number.'); return null; }
+  if (!/^\\S+@\\S+\\.\\S+$/.test(email)) { alert('Please enter a valid email address.'); return null; }
   if (!addr)             { alert('Please enter your delivery address.'); return null; }
   if (pin.length !== 6)  { alert('Please enter a valid 6-digit pincode.'); return null; }
 
@@ -8013,6 +8017,11 @@ async function doPhonePe(addr, paymentMode = 'online') {
     try {
       localStorage.setItem('iac_last_order_value', String(totals.total));
       localStorage.setItem(CHECKOUT_CART_KEY, activeCartKey());
+      localStorage.setItem('iac_google_reviews_pending', JSON.stringify({
+        order_id: data.order_id,
+        email: addr.email || '',
+        created_at: Date.now(),
+      }));
     } catch(e) {}
     // PhonePe takes over from here. The webhook + /phonepe-verify-status route
     // handle confirmation and the redirect back to /checkout/?paid=1&id=…
@@ -8091,13 +8100,14 @@ async function doRazorpay(addr, paymentMode = 'online') {
               payment_mode: isPartial ? 'partial_cod' : 'online',
             }),
           });
-          if (!vRes.ok) throw new Error('Verification failed');
+          const verifiedOrder = await vRes.json().catch(() => ({}));
+          if (!vRes.ok || !verifiedOrder.success) throw new Error('Verification failed');
           await saveAbandonedCheckout('converted', response.razorpay_order_id);
           localStorage.removeItem(ABANDONED_SESSION_KEY);
           saveAddressAfterOrder(addr);
           clearCart();
           await autoLogin(addr.email, addr.name, addr.phone);
-          showSuccess('paid', response.razorpay_payment_id, addr, totals.total);
+          showSuccess('paid', response.razorpay_payment_id, addr, totals.total, verifiedOrder.order_id || response.razorpay_order_id);
         } catch(e) {
           alert('Payment received but verification failed. Please contact support@inkandchai.in');
           setLoading(false);
@@ -8191,7 +8201,7 @@ function trackGoogleAdsPurchase(orderId, value) {
   localStorage.setItem(key, '1');
 }
 
-function showSuccess(type, orderId, addr, value) {
+function showSuccess(type, orderId, addr, value, surveyOrderId = orderId) {
   hideProcessing();
   trackGoogleAdsPurchase(orderId, value);
   document.getElementById('checkoutScreen').style.display = 'none';
@@ -8232,6 +8242,11 @@ function showSuccess(type, orderId, addr, value) {
     <div id="scratchCardSlot"></div>
     <a href="/" class="btn-home">← Continue Shopping</a>
   `;
+
+  window.IACGoogleCustomerReviews?.render({
+    orderId: surveyOrderId,
+    email: addr.email,
+  });
 
   // ── Scratch card reward (prepaid only) ─────────────────────────────────
   if (isPaid) loadScratchCard(orderId);
@@ -8397,11 +8412,14 @@ function fireConfetti(valuePaise) {
       if (addrForSave.phone || addrForSave.name) saveAddressAfterOrder(addrForSave);
     } catch(e) {}
     clearCart();
-    // Show success screen — try to read customer email from saved abandoned checkout
+    // Recover the short-lived survey payload saved immediately before PhonePe redirect.
     let savedEmail = '';
     try {
-      const sess = JSON.parse(localStorage.getItem('iac_checkout_lead') || '{}');
-      savedEmail = sess.email || sess.customer_email || '';
+      const pending = JSON.parse(localStorage.getItem('iac_google_reviews_pending') || '{}');
+      const isMatchingOrder = String(pending.order_id || '') === p.get('id');
+      const isFresh = Date.now() - Number(pending.created_at || 0) < 24 * 60 * 60 * 1000;
+      if (isMatchingOrder && isFresh) savedEmail = pending.email || '';
+      localStorage.removeItem('iac_google_reviews_pending');
     } catch {}
     let savedValue = 0;
     try { savedValue = Number(localStorage.getItem('iac_last_order_value')) || 0; localStorage.removeItem('iac_last_order_value'); } catch {}
@@ -8411,6 +8429,7 @@ function fireConfetti(valuePaise) {
     return;
   }
   if (p.get('failed') === '1') {
+    try { localStorage.removeItem('iac_google_reviews_pending'); } catch {}
     const code = p.get('code') || '';
     setTimeout(() => alert('PhonePe payment was cancelled or failed' + (code ? ' (' + code + ')' : '') + '. Please try again or use Cash on Delivery.'), 100);
     history.replaceState({}, '', '/checkout/');

@@ -73,7 +73,7 @@ function openCheckoutForm() {
 
         <!-- Email -->
         <div style="margin-bottom:1rem;">
-          ${chkField('ch-email', 'email', 'Email Address', 'you@example.com')}
+          ${chkField('ch-email', 'email', 'Email Address *', 'you@example.com')}
         </div>
 
         <!-- Address Line -->
@@ -215,6 +215,9 @@ function collectAddress() {
   if (!phone || phone.replace(/\D/g,'').length < 10) {
     showToast('Please enter a valid 10-digit phone number.'); return null;
   }
+  if (!/^\S+@\S+\.\S+$/.test(email)) {
+    showToast('Please enter a valid email address.'); return null;
+  }
   if (!addr) { showToast('Please enter your delivery address.'); return null; }
   if (!pin || pin.length !== 6) { showToast('Please enter a valid 6-digit pincode.'); return null; }
 
@@ -288,13 +291,14 @@ async function startCheckout(addr) {
               cart, customer: addr, amount: amountPaise,
             }),
           });
-          if (!vRes.ok) throw new Error('Verification failed');
+          const verifiedOrder = await vRes.json().catch(() => ({}));
+          if (!vRes.ok || !verifiedOrder.success) throw new Error('Verification failed');
           clearCart();
           closeCart();
           document.getElementById('unifiedCheckoutModal')?.remove();
           // Auto-create account & send magic link so customer can track order
           if (window.autoLoginAfterOrder) autoLoginAfterOrder(addr.email, addr.name, addr.phone);
-          showOrderSuccess(response.razorpay_payment_id, addr.email, cart, Math.round(amountPaise / 100), addr);
+          showOrderSuccess(response.razorpay_payment_id, addr.email, cart, Math.round(amountPaise / 100), addr, verifiedOrder.order_id || response.razorpay_order_id);
         } catch (err) {
           console.error(err);
           showToast('Payment received but verification failed. Please contact support.');
@@ -379,7 +383,7 @@ function orderSummaryHtml(cart, amountRs, addr, amountLabel) {
     </div>`;
 }
 
-function showOrderSuccess(paymentId, email, cart, amountRs, addr) {
+function showOrderSuccess(paymentId, email, cart, amountRs, addr, surveyOrderId) {
   const modal = document.createElement('div');
   modal.style.cssText = `
     position:fixed; inset:0; background:rgba(13,11,8,0.97);
@@ -417,6 +421,7 @@ function showOrderSuccess(paymentId, email, cart, amountRs, addr) {
     </div>
   `;
   document.body.appendChild(modal);
+  window.IACGoogleCustomerReviews?.render({ orderId: surveyOrderId, email });
 }
 
 function showCODSuccess(orderId, name, email, cart, amountRs, addr) {
@@ -458,6 +463,7 @@ function showCODSuccess(orderId, name, email, cart, amountRs, addr) {
     </div>
   `;
   document.body.appendChild(modal);
+  window.IACGoogleCustomerReviews?.render({ orderId, email });
 }
 
 // ── Legacy stubs (kept for any old references) ────────────────────────────
