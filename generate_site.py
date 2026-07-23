@@ -2186,7 +2186,16 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
     width:calc(100% - 18px);
     border-radius:28px;
     padding:.6rem .72rem;
+    transition:padding .22s ease;
   }
+  /* While scrolling the top bar collapses to just the search field so it stays
+     reachable without covering the page. It re-expands at the top of the page. */
+  body.nav-min nav:not(.mob-nav){padding:.4rem .55rem}
+  body.nav-min nav:not(.mob-nav) .nav-logo,
+  body.nav-min nav:not(.mob-nav) .nav-links,
+  body.nav-min nav:not(.mob-nav) .nav-actions,
+  body.nav-min nav:not(.mob-nav) .nav-break{display:none!important}
+  body.nav-min nav:not(.mob-nav) .nav-search{margin:0!important;width:100%;order:0}
   .hero{padding-top:7.8rem}
   .hero-title{font-size:clamp(2.65rem,13vw,4rem);line-height:.96;letter-spacing:0}
   .hero-desc{font-size:.94rem;line-height:1.72}
@@ -2201,13 +2210,13 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
     bottom:10px!important;
     border:1px solid var(--glass-border)!important;
     border-radius:28px!important;
-    background:rgba(250,247,242,.74)!important;
+    background:rgba(250,247,242,.58)!important;
     box-shadow:0 -12px 36px rgba(40,28,8,.18),var(--glass-highlight)!important;
     backdrop-filter:blur(24px) saturate(1.35)!important;
     padding:.42rem .45rem calc(.42rem + env(safe-area-inset-bottom,0px))!important;
   }
   html:not([data-theme="light"]) .mob-nav{
-    background:rgba(13,11,8,.7)!important;
+    background:rgba(13,11,8,.55)!important;
     box-shadow:0 -16px 42px rgba(0,0,0,.45),var(--glass-highlight)!important;
   }
   body{padding-bottom:90px!important}
@@ -2317,6 +2326,22 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
     </div>
   </div>
 </nav>
+<script>
+/* Mobile: collapse the top bar to just the search field once the page is
+   scrolled, so it stays reachable without eating screen space. Desktop is
+   untouched. */
+(function(){
+  var min=false;
+  function upd(){
+    if(window.innerWidth>780){ if(min){document.body.classList.remove('nav-min');min=false;} return; }
+    var want = (window.pageYOffset||document.documentElement.scrollTop||0) > 90;
+    if(want!==min){ document.body.classList.toggle('nav-min', want); min=want; }
+  }
+  window.addEventListener('scroll', upd, {passive:true});
+  window.addEventListener('resize', upd, {passive:true});
+  if(document.readyState!=='loading') upd(); else document.addEventListener('DOMContentLoaded', upd);
+})();
+</script>
 
 <!-- SEARCH OVERLAY -->
 <div class="srch-overlay" id="srchOverlay" role="dialog" aria-label="Search">
