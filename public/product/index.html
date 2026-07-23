@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Loading… — Ink &amp; Chai</title>
-<link rel="preload" as="script" href="/js/books-full-81c76693.js"/>
+<link rel="preload" as="script" href="/js/books-full-eb351c27.js"/>
 <meta name="description" content="Buy books online at Ink &amp; Chai — fast pan-India delivery."/>
 <meta name="robots" content="index,follow"/>
 <meta name="keywords" content="buy books online india, hindi books, self help books hindi, fiction books online, motivational books, ink and chai"/>
@@ -184,6 +184,10 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .insta-trust-btn-title{font-size:.72rem;font-weight:600;color:var(--cream);letter-spacing:.01em}
 .insta-trust-btn-sub{font-size:.58rem;color:var(--cream-dim);letter-spacing:.03em}
 .insta-trust-btn-arrow{font-size:.9rem;color:rgba(195,80,170,.7);flex-shrink:0}
+.pdp-cred{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 .3rem}
+.cred-chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.62rem;font-weight:600;letter-spacing:.02em;padding:.34rem .62rem;border:1px solid var(--border);border-radius:999px;color:var(--cream);background:rgba(255,255,255,.02)}
+.cred-chip svg{flex-shrink:0}
+.cred-meta{border-color:rgba(24,119,242,.45);background:rgba(24,119,242,.1)}
 
 /* ACTIONS */
 .prod-actions{display:flex;flex-direction:column;gap:0.8rem;margin-top:0.5rem}
@@ -742,7 +746,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-full-81c76693.js"></script>
+<script src="/js/books-full-eb351c27.js"></script>
 <script>
 const BOOKS = window.BOOKS_PRELOAD||[];
 const SOCIAL_PROOF = [{"type": "video", "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-1.mp4", "poster": "/images/social/reels/running-1.jpg", "caption": "What I Talk About When I Talk About Running · Murakami"}, {"type": "video", "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-2.mp4", "poster": "/images/social/reels/running-2.jpg", "caption": "A runner's memoir · Haruki Murakami"}, {"type": "video", "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-3.mp4", "poster": "/images/social/reels/running-3.jpg", "caption": "Unboxing · Murakami's running memoir"}, {"type": "video", "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-4.mp4", "poster": "/images/social/reels/running-4.jpg", "caption": "All India delivery · COD available"}, {"type": "video", "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-5.mp4", "poster": "/images/social/reels/running-5.jpg", "caption": "In stock now · Ink & Chai"}];
@@ -1108,11 +1112,13 @@ function renderProduct(b) {
           <span>🛡 7-day replacement</span>
         </div>
 
-        <a href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener" class="insta-trust-btn">
+        <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip cred-meta"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#1877F2" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.26 2.52-.81 3.91c-1.31.67-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.45 1.39-.2 2.9.81 3.91s2.52 1.26 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#fff" d="M10.09 15.42l-3.8-3.79 1.41-1.42 2.39 2.38 5.62-5.62 1.41 1.42z"/></svg>Meta Verified Business</span><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
+
+        <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="insta-trust-btn">
           <span class="insta-trust-btn-icon">📸</span>
           <span class="insta-trust-btn-body">
             <span class="insta-trust-btn-title">Still Doubtful? Check our Bookstagram</span>
-            <span class="insta-trust-btn-sub">@theinkandchai.in · Real unboxings from real customers</span>
+            <span class="insta-trust-btn-sub">@inkandchai.in · Real unboxings from real customers</span>
           </span>
           <span class="insta-trust-btn-arrow">→</span>
         </a>

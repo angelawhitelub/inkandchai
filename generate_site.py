@@ -1910,7 +1910,7 @@ HTML = r"""<!DOCTYPE html>
   .mob-nav .mn-badge{position:absolute;top:0;right:calc(50% - 18px);background:var(--gold);color:var(--bg);border-radius:50%;width:16px;height:16px;font-size:0.55rem;font-weight:600;display:flex;align-items:center;justify-content:center;letter-spacing:0}
 
   /* Trust strip — Why Choose Ink & Chai */
-  .trust-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:1.5rem;max-width:1200px;margin:0 auto;padding:2.5rem 2rem;border-bottom:1px solid var(--border)}
+  .trust-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:1.5rem;max-width:1240px;margin:0 auto;padding:2.5rem 2rem;border-bottom:1px solid var(--border)}
   .trust-item{display:flex;flex-direction:column;align-items:center;text-align:center;gap:0.5rem}
   .trust-link{text-decoration:none}
   .trust-link:hover .trust-title{color:var(--gold)}
@@ -2581,10 +2581,20 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
     <div class="trust-title">100% Secure Payments</div>
     <div class="trust-text">UPI · Cards · Net Banking · Cash on Delivery — your choice.</div>
   </div>
-  <a class="trust-item trust-link" href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener">
+  <div class="trust-item">
+    <div class="trust-icon">📦</div>
+    <div class="trust-title">25,000+ Orders Fulfilled</div>
+    <div class="trust-text">Trusted by readers across every state in India.</div>
+  </div>
+  <div class="trust-item">
+    <div class="trust-icon"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="vertical-align:middle"><path fill="#1877F2" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.26 2.52-.81 3.91c-1.31.67-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.45 1.39-.2 2.9.81 3.91s2.52 1.26 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#fff" d="M10.09 15.42l-3.8-3.79 1.41-1.42 2.39 2.38 5.62-5.62 1.41 1.42z"/></svg></div>
+    <div class="trust-title">Meta Verified Business</div>
+    <div class="trust-text">Our identity is verified by Meta on Instagram &amp; Facebook.</div>
+  </div>
+  <a class="trust-item trust-link" href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener">
     <div class="trust-icon">◎</div>
     <div class="trust-title">12.4K Instagram Readers</div>
-    <div class="trust-text">Follow @theinkandchai.in for customer highlights, book drops, and unboxings.</div>
+    <div class="trust-text">Follow @inkandchai.in for customer highlights, book drops, and unboxings.</div>
   </a>
 </section>
 
@@ -2859,7 +2869,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
         <li><a href="/contact/">Contact Us</a></li>
         <li><a href="/track/">Track Order</a></li>
         <li><a href="https://wa.me/917678400508" target="_blank">WhatsApp Support</a></li>
-        <li><a href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener">Instagram</a></li>
+        <li><a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener">Instagram</a></li>
       </ul>
     </div>
     <div>
@@ -4385,6 +4395,10 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .insta-trust-btn-title{font-size:.72rem;font-weight:600;color:var(--cream);letter-spacing:.01em}
 .insta-trust-btn-sub{font-size:.58rem;color:var(--cream-dim);letter-spacing:.03em}
 .insta-trust-btn-arrow{font-size:.9rem;color:rgba(195,80,170,.7);flex-shrink:0}
+.pdp-cred{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 .3rem}
+.cred-chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.62rem;font-weight:600;letter-spacing:.02em;padding:.34rem .62rem;border:1px solid var(--border);border-radius:999px;color:var(--cream);background:rgba(255,255,255,.02)}
+.cred-chip svg{flex-shrink:0}
+.cred-meta{border-color:rgba(24,119,242,.45);background:rgba(24,119,242,.1)}
 
 /* ACTIONS */
 .prod-actions{display:flex;flex-direction:column;gap:0.8rem;margin-top:0.5rem}
@@ -5137,11 +5151,13 @@ function renderProduct(b) {
           <span>🛡 7-day replacement</span>
         </div>
 
-        <a href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener" class="insta-trust-btn">
+        <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip cred-meta"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#1877F2" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.26 2.52-.81 3.91c-1.31.67-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.45 1.39-.2 2.9.81 3.91s2.52 1.26 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#fff" d="M10.09 15.42l-3.8-3.79 1.41-1.42 2.39 2.38 5.62-5.62 1.41 1.42z"/></svg>Meta Verified Business</span><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
+
+        <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="insta-trust-btn">
           <span class="insta-trust-btn-icon">📸</span>
           <span class="insta-trust-btn-body">
             <span class="insta-trust-btn-title">Still Doubtful? Check our Bookstagram</span>
-            <span class="insta-trust-btn-sub">@theinkandchai.in · Real unboxings from real customers</span>
+            <span class="insta-trust-btn-sub">@inkandchai.in · Real unboxings from real customers</span>
           </span>
           <span class="insta-trust-btn-arrow">→</span>
         </a>
@@ -6465,6 +6481,10 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
 .insta-trust-title{{font-size:.75rem;font-weight:600;color:var(--cream);letter-spacing:.01em}}
 .insta-trust-sub{{font-size:.6rem;color:#a09080;letter-spacing:.03em}}
 .insta-trust-arrow{{font-size:.9rem;color:rgba(195,80,170,.7);flex-shrink:0}}
+.pdp-cred{{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 .3rem}}
+.cred-chip{{display:inline-flex;align-items:center;gap:.35rem;font-size:.62rem;font-weight:600;letter-spacing:.02em;padding:.34rem .62rem;border:1px solid var(--border);border-radius:999px;color:var(--cream);background:rgba(255,255,255,.02)}}
+.cred-chip svg{{flex-shrink:0}}
+.cred-meta{{border-color:rgba(24,119,242,.45);background:rgba(24,119,242,.1)}}
 /* ── Nav cart button + sidebar (product page) ── */
 .pdp-cart-btn{{position:relative;background:transparent;border:1px solid var(--border);color:var(--gold);width:38px;height:38px;border-radius:50%;cursor:pointer;font-size:1rem;display:inline-flex;align-items:center;justify-content:center;transition:all .25s;padding:0}}
 .pdp-cart-btn:hover{{background:var(--gold);color:var(--bg);transform:translateY(-1px)}}
@@ -6524,11 +6544,12 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
     {scarcity_badge_html if scarcity_badge_html else '<span class="stock">In Stock</span>'}
     <div id="staticShipBy"></div>
     <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 <a href="#" onclick="event.preventDefault();openReturnVideo();" style="color:inherit;text-decoration:underline;cursor:pointer;">7-day replacement support ▶</a></span></div>
-    <a href="https://www.instagram.com/theinkandchai.in/" target="_blank" rel="noopener" class="insta-trust">
+    <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip cred-meta"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#1877F2" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.26 2.52-.81 3.91c-1.31.67-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.45 1.39-.2 2.9.81 3.91s2.52 1.26 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#fff" d="M10.09 15.42l-3.8-3.79 1.41-1.42 2.39 2.38 5.62-5.62 1.41 1.42z"/></svg>Meta Verified Business</span><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
+    <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="insta-trust">
       <span class="insta-trust-icon">📸</span>
       <span class="insta-trust-text">
         <span class="insta-trust-title">Still Doubtful? Check our Bookstagram</span>
-        <span class="insta-trust-sub">@theinkandchai.in · Real unboxings from real customers</span>
+        <span class="insta-trust-sub">@inkandchai.in · Real unboxings from real customers</span>
       </span>
       <span class="insta-trust-arrow">→</span>
     </a>
