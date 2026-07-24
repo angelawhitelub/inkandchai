@@ -3,7 +3,7 @@ Generates the Ink & Chai homepage with real book data
 from ALL_BOOKS.json.
 """
 
-import hashlib, json, re
+import hashlib, json, os, re
 import shutil
 from html import escape as html_escape
 from urllib.parse import quote
@@ -132,6 +132,23 @@ def make_slug(title, shopify_id):
 def clean_text(value):
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
+# Where product covers are served from.
+#
+# Default (unset) = the Netlify image-proxy function, which streams every cover
+# through our own domain. That hides the supplier CDN but costs ~889 MB/day of
+# Netlify bandwidth (~26 GB/month) because Netlify bills every byte it serves,
+# cache hit or not.
+#
+# Set IMAGE_CDN_BASE=https://img.inkandchai.in (Cloudflare R2, zero egress fees)
+# to serve them from our own subdomain instead: Netlify image bandwidth drops to
+# zero and the supplier stays hidden exactly as before. Object keys are the same
+# proxy tokens with a .webp suffix, so ONLY this base URL changes.
+#
+# Do NOT set this until scripts/upload-images-r2.mjs has finished uploading and
+# https://img.inkandchai.in/<token>.webp loads — otherwise every cover 404s.
+IMAGE_CDN_BASE = os.environ.get("IMAGE_CDN_BASE", "").rstrip("/")
+
+
 def public_image_url(url):
     """Hide third-party CDN fingerprints from public HTML while keeping images loadable."""
     url = str(url or "").strip()
@@ -139,6 +156,8 @@ def public_image_url(url):
         return url
     token = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24]
     IMAGE_PROXY_MAP[token] = url
+    if IMAGE_CDN_BASE:
+        return f"{IMAGE_CDN_BASE}/{token}.webp"
     return f"/.netlify/functions/image-proxy?i={token}"
 
 def crawlable_image_url(url):

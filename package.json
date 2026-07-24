@@ -11,5 +11,8 @@
     "razorpay": "^2.9.2",
     "@supabase/supabase-js": "^2.43.4",
     "@simplewebauthn/server": "^13.1.1"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.658.0"
   }
 }
