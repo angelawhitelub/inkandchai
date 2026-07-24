@@ -71,9 +71,14 @@ exports.handler = async (event) => {
     // Cache at CDN edge; product overrides change rarely (admin action).
     // Durable shared cache → this 0.75 MB per-pageview feed is rebuilt from
     // Supabase at most ~once/hour globally instead of once per edge per 5 min.
+    // Browser cache raised 300s → 900s: this is fetched on EVERY pageview, so a
+    // 5-minute browser TTL made one browsing session re-download it 4-5 times
+    // (~78 KB each, 125 MB/day in aggregate). The edge already serves data up to
+    // an hour old (s-maxage=3600), so a 15-minute browser cache adds no staleness
+    // beyond what this endpoint already tolerates, and cuts repeat fetches ~3x.
     const cacheHeaders = {
       ...CORS,
-      'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
+      'Cache-Control': 'public, max-age=900, stale-while-revalidate=600',
       'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
     };
     const overrides = (data || []).map(o => ({ ...o, image_url: proxifySupabaseImage(o.image_url) }));

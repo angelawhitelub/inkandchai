@@ -5312,8 +5312,25 @@ function esc(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-// ── Auto-refresh orders every 90s ─────────────────────────────────────────
-setInterval(() => { if (adminToken || adminKey || adminCookieSession) fetchOrders(true); }, 90000);
+// ── Auto-refresh orders every 90s — ONLY while the tab is actually visible ──
+// A background admin tab left open all day was re-downloading the whole order
+// list every 90s (~960 refetches/day/tab, the single biggest bandwidth item
+// after images). We skip the poll when the tab is hidden and instead refresh
+// once, immediately, when it becomes visible again — so it still feels live.
+let _ordersPollMissedWhileHidden = false;
+setInterval(() => {
+  if (!(adminToken || adminKey || adminCookieSession)) return;
+  if (document.visibilityState !== 'visible') { _ordersPollMissedWhileHidden = true; return; }
+  fetchOrders(true);
+}, 90000);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (!_ordersPollMissedWhileHidden) return;
+  if (!(adminToken || adminKey || adminCookieSession)) return;
+  _ordersPollMissedWhileHidden = false;
+  fetchOrders(true);
+});
 
 // ── Auto-recheck pending PhonePe orders every 3 minutes ───────────────────
 // Silently polls PhonePe for any order stuck on pending_phonepe or
@@ -5408,8 +5425,10 @@ function updateAutoRecheckBadge() {
   badge.title = 'PhonePe auto-recheck runs every 3 minutes';
 }
 
-// Run every 3 minutes; also update the badge every 30s
-setInterval(autoRecheckPhonePe, 3 * 60 * 1000);
+// Run every 3 minutes; also update the badge every 30s.
+// Skipped while the tab is hidden — a background tab polling PhonePe all day
+// burns function invocations for orders nobody is looking at.
+setInterval(() => { if (document.visibilityState === 'visible') autoRecheckPhonePe(); }, 3 * 60 * 1000);
 setInterval(updateAutoRecheckBadge, 30_000);
 
 document.getElementById('adminPass').focus();
@@ -6573,6 +6592,7 @@ async function sendAdminReply() {
 function startInboxPolling() {
   if (inboxPollTimer) return;
   inboxPollTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible') return;   // skip hidden tabs
     const tab = document.querySelector('.admin-tab[data-tab="botinbox"]');
     if (tab?.classList.contains('active')) fetchInbox();
   }, 30000);
