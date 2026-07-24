@@ -165,8 +165,13 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .pay-id{font-size:0.65rem;color:#4a3a1a;margin-top:0.15rem;}
 .cust-name{font-size:0.9rem;color:var(--cream);}
 .cust-sub{font-size:0.72rem;color:var(--cream-dim);margin-top:0.1rem;}
-.items-cell{font-size:0.75rem;color:var(--cream-dim);max-width:220px;}
+.items-cell{font-size:0.75rem;color:var(--cream-dim);max-width:280px;}
 .items-cell div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:0.1rem;}
+/* Per-item price breakdown: title truncates, price stays pinned and readable. */
+.items-cell .item-line{display:flex;align-items:baseline;gap:0.5rem;justify-content:space-between;}
+.items-cell .item-line .it-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.items-cell .item-line .it-price{flex-shrink:0;color:var(--gold);font-variant-numeric:tabular-nums;font-size:0.7rem;}
+.items-cell .items-subtotal{margin-top:0.25rem;padding-top:0.25rem;border-top:1px dashed var(--border);color:var(--gold-dim);font-size:0.66rem;}
 .amount{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--gold);}
 .amount-sub{font-size:0.65rem;color:var(--cream-dim);line-height:1.5;margin-top:0.15rem;}
 .amount-sub strong{color:var(--gold-dim);font-weight:500;}
@@ -249,7 +254,7 @@ tr:hover td{background:rgba(122,88,21,0.075);}
 .pay-id{font-size:0.72rem;color:#514538;font-weight:500;}
 .cust-name{font-size:1rem;color:var(--white);font-weight:600;}
 .cust-sub{font-size:0.82rem;color:var(--cream-dim);font-weight:500;line-height:1.45;}
-.items-cell{font-size:0.84rem;color:#4b4034;max-width:260px;font-weight:500;}
+.items-cell{font-size:0.84rem;color:#4b4034;max-width:300px;font-weight:500;}
 .amount{font-size:1.45rem;color:#73530f;font-weight:600;}
 .amount-sub{font-size:0.75rem;color:var(--cream-dim);font-weight:500;}
 .method-badge,.badge{font-size:0.68rem;font-weight:700;letter-spacing:0.1em;}
@@ -2116,6 +2121,31 @@ function orderPaymentMeta(o) {
   return items[0]?._payment || {};
 }
 
+// ── Per-item price breakdown ────────────────────────────────────────────────
+// cart_items carry a per-unit `price`; the line value is price × qty. Older
+// orders may have no price — those render title-only rather than "₹0".
+function itemQty(i)  { const q = Number(i?.qty);   return Number.isFinite(q) && q > 0 ? q : 1; }
+function itemUnit(i) { const p = Number(i?.price); return Number.isFinite(p) && p > 0 ? p : 0; }
+function itemLineTotal(i) { return itemUnit(i) * itemQty(i); }
+function itemsSubtotal(items) {
+  return (Array.isArray(items) ? items : []).reduce((s, i) => s + itemLineTotal(i), 0);
+}
+
+function itemLineHtml(i) {
+  const qty  = itemQty(i);
+  const unit = itemUnit(i);
+  const line = unit * qty;
+  // qty > 1 → show the unit×qty maths so the line total is self-explanatory.
+  const priceHtml = line > 0
+    ? `<span class="it-price" ${qty > 1 ? `title="₹${unit.toLocaleString('en-IN')} each × ${qty}"` : ''}>${
+        qty > 1 ? `₹${unit.toLocaleString('en-IN')}×${qty} = ` : ''
+      }₹${line.toLocaleString('en-IN')}</span>`
+    : '';
+  return `<div class="item-line">
+    <span class="it-title">· ${esc(i?.title || '')} ×${qty}</span>${priceHtml}
+  </div>`;
+}
+
 function isPendingOnlineOrder(o) {
   const status = String(o?.status || '').toLowerCase();
   // Orders where online payment was initiated but not yet completed
@@ -2569,8 +2599,14 @@ function _drawTable() {
         <div class="cust-sub">${esc(o.customer_email || '')}</div>
       </td>
       <td class="items-cell">
-        ${items.slice(0,4).map(i=>`<div>· ${esc(i.title||'')} ×${i.qty}</div>`).join('')}
-        ${items.length > 4 ? `<div style="color:var(--gold-dim);">+${items.length-4} more</div>` : ''}
+        ${items.slice(0,4).map(itemLineHtml).join('')}
+        ${items.length > 4 ? `<div style="color:var(--gold-dim);">+${items.length-4} more${(() => {
+          const rest = itemsSubtotal(items.slice(4));
+          return rest > 0 ? ` · ₹${rest.toLocaleString('en-IN')}` : '';
+        })()}</div>` : ''}
+        ${items.length > 1 && itemsSubtotal(items) > 0
+          ? `<div class="items-subtotal">Items total ₹${itemsSubtotal(items).toLocaleString('en-IN')}</div>`
+          : ''}
       </td>
       <td>
         <div class="amount">${amount}</div>
@@ -4415,7 +4451,16 @@ async function reconcilePhonePe(orderId, btn) {
 // button. Avoids the old workflow of: search order in admin -> change status
 // to refund_pending manually -> click refund. Now: click button, pick amount,
 // confirm.
-function openRefundModal(orderId, fullAmtRupees, customerName) {
+// Context for a refund that should ALSO cancel a replacement order once the
+// money is successfully returned (missing-book "refund instead of reship" flow).
+// Cleared whenever a plain refund modal is opened so it can never leak across.
+let pendingRefundContext = null;
+
+function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
+  opts = opts || {};
+  pendingRefundContext = opts.cancelReplacementRowId
+    ? { cancelReplacementRowId: opts.cancelReplacementRowId, orderId }
+    : null;
   if (!customerName) {
     const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
     customerName = ord?.customer_name || '';
@@ -4471,6 +4516,64 @@ function openRefundModal(orderId, fullAmtRupees, customerName) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+
+  // Prefill a partial amount (e.g. refunding only a missing book's value):
+  // select the Partial radio, reveal the amount row and fill it in.
+  const prefill = Number(opts.prefillPartial);
+  if (Number.isFinite(prefill) && prefill > 0) {
+    const partialRadio = modal.querySelector('input[name="iacRefundType"][value="partial"]');
+    if (partialRadio) {
+      partialRadio.checked = true;
+      iacRefundToggleAmount();
+      const amtEl = document.getElementById('iacRefundAmount');
+      if (amtEl) amtEl.value = Math.min(prefill, fullAmtRupees);
+    }
+  }
+  if (opts.contextNote) {
+    const msg = document.getElementById('iacRefundMsg');
+    if (msg) { msg.textContent = opts.contextNote; msg.style.color = '#c9a84c'; msg.style.display = ''; }
+  }
+}
+
+// Missing-book flow: refund only the missing book's value on the ORIGINAL order
+// instead of reshipping, then cancel the free replacement order.
+function refundMissingInsteadOfReplacement(encodedRowId) {
+  const rowId = decodeURIComponent(encodedRowId || '');
+  const repl = allOrders.find(o => String(o.id || '') === rowId);
+  if (!repl) { alert('Replacement not found in the current list — hit Refresh and try again.'); return; }
+
+  const items = Array.isArray(repl.cart_items) ? repl.cart_items : [];
+  const missingValue = itemsSubtotal(items);
+  if (!(missingValue > 0)) {
+    alert('This replacement has no per-item price recorded, so the refund amount cannot be derived automatically.\n\nOpen the original order and use the Refund button with a manual amount.');
+    return;
+  }
+
+  const originalId = items[0]?._replacement?.original_order_id || '';
+  const original = allOrders.find(o => (o.razorpay_order_id || o.id) === originalId);
+  if (!original) {
+    alert(`Original order ${originalId || '(unknown)'} isn't loaded in the current view.\n\nClear the filters / search for it, then use its Refund button with amount ₹${missingValue.toLocaleString('en-IN')}.`);
+    return;
+  }
+
+  const payId = String(original.razorpay_payment_id || '');
+  if (!payId || payId.startsWith('pay_')) {
+    alert(`Order ${originalId} was not paid via PhonePe${payId.startsWith('pay_') ? ' (it is a Razorpay payment)' : ''}.\n\nRefund ₹${missingValue.toLocaleString('en-IN')} from the ${payId.startsWith('pay_') ? 'Razorpay' : 'relevant payment'} dashboard instead.`);
+    return;
+  }
+  const fullAmt = original.amount_paise ? Math.round(original.amount_paise / 100) : 0;
+  if (!fullAmt) { alert(`Original order ${originalId} has no captured amount to refund.`); return; }
+  if (missingValue > fullAmt) {
+    alert(`The missing book's value (₹${missingValue.toLocaleString('en-IN')}) is more than what was captured on ${originalId} (₹${fullAmt.toLocaleString('en-IN')}).\n\nRefund manually after checking the order.`);
+    return;
+  }
+
+  const titles = items.map(i => `${i.title || 'Book'} ×${itemQty(i)}`).join(', ');
+  openRefundModal(originalId, fullAmt, original.customer_name || '', {
+    prefillPartial: missingValue,
+    cancelReplacementRowId: rowId,
+    contextNote: `Refunding the missing book only (${titles}). On success, replacement ${repl.razorpay_order_id || rowId} will be cancelled.`,
+  });
 }
 
 // ── Edit order customer details / books ──────────────────────────────────────
@@ -4620,6 +4723,33 @@ async function iacSubmitRefund(orderId, fullAmtRupees) {
       const state = String(data.state || '').toUpperCase();
       if (state === 'COMPLETED') ord.status = data.is_full ? 'refunded' : 'partially_refunded';
       else ord.status = 'refund_pending';
+    }
+    // Missing-book flow: the money is on its way back, so the free replacement
+    // should no longer ship. Only fires when this modal was opened for it.
+    if (pendingRefundContext && pendingRefundContext.orderId === orderId) {
+      const replRowId = pendingRefundContext.cancelReplacementRowId;
+      pendingRefundContext = null;
+      try {
+        // Called directly rather than via updateStatus() because that helper
+        // swallows errors in its own alert, so we could not report failure here.
+        // The replacement is a ₹0 order with no payment id, so cancelling it
+        // never triggers another refund server-side.
+        const cRes = await fetch('/.netlify/functions/update-order-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+          body: JSON.stringify({ id: replRowId, status: 'cancelled', tracking_id: '', courier_name: '' }),
+        });
+        if (!cRes.ok) {
+          const e = await cRes.json().catch(() => ({}));
+          throw new Error(e.error || ('HTTP ' + cRes.status));
+        }
+        const repl = allOrders.find(o => String(o.id) === String(replRowId));
+        if (repl) repl.status = 'cancelled';
+        show('✅ Refunded. Replacement cancelled — it will not ship.', '#6dbf6d');
+        if (window.renderReplacementRequests) renderReplacementRequests();
+      } catch (e) {
+        show(`✅ Refund done, but the replacement could not be cancelled automatically (${e.message}). Cancel it from the Orders tab.`, '#e8a030');
+      }
     }
     if (window.updateStats) updateStats();
     if (window.applyFilters) applyFilters();
@@ -5644,6 +5774,10 @@ function renderReplacementRequests() {
       : '—';
     const replacementId = o.razorpay_order_id || o.id || '—';
     const originalId = req.original_order_id || '—';
+    // The replacement order itself is ₹0 (free reshipment), but its cart keeps
+    // each book's original per-unit price — that sum is what the customer is
+    // owed if we refund instead of reshipping.
+    const missingValue = itemsSubtotal(items);
     const photos = Array.isArray(req.photos)
       ? req.photos.filter(url => /^https:\/\//i.test(String(url))).slice(0, 3)
       : [];
@@ -5666,14 +5800,27 @@ function renderReplacementRequests() {
         <div class="cust-sub">${esc(o.customer_phone || '')}</div>
         <div class="cust-sub">${esc(o.customer_email || '')}</div>
       </td>
-      <td>${items.slice(0, 4).map(i => `<div>· ${esc(i.title || 'Book')} ×${Number(i.qty) || 1}</div>`).join('')}</td>
+      <td class="items-cell">
+        ${items.slice(0, 4).map(itemLineHtml).join('')}
+        ${items.length > 4 ? `<div style="color:var(--gold-dim);">+${items.length - 4} more</div>` : ''}
+        ${missingValue > 0
+          ? `<div class="items-subtotal" title="Value of the missing book(s), from the original order's per-item price">Missing value ₹${missingValue.toLocaleString('en-IN')}</div>`
+          : ''}
+      </td>
       <td>
         <div style="color:var(--cream);">${esc(req.reason_label || req.reason || '—')}</div>
         ${req.note ? `<div class="cust-sub" style="margin-top:.3rem;white-space:pre-wrap;">${esc(req.note)}</div>` : ''}
       </td>
       <td>${photoHtml}</td>
       <td><span class="badge b-${esc(o.status || 'confirmed')}">${esc((o.status || 'pending').replace(/_/g, ' '))}</span>${tracking}</td>
-      <td><button class="btn-outline" style="padding:.4rem .65rem;" onclick="openReplacementInOrders('${orderRowId}')">Open in Orders</button></td>
+      <td>
+        <button class="btn-outline" style="padding:.4rem .65rem;" onclick="openReplacementInOrders('${orderRowId}')">Open in Orders</button>
+        ${missingValue > 0 && o.status === 'replacement_pending'
+          ? `<button class="btn-outline" style="padding:.4rem .65rem;margin-top:.35rem;border-color:rgba(224,96,96,.5);color:#e06060;display:block;width:100%;"
+               title="Cancel this replacement and refund only the missing book's value (₹${missingValue.toLocaleString('en-IN')}) on the original order"
+               onclick="refundMissingInsteadOfReplacement('${orderRowId}')">Refund ₹${missingValue.toLocaleString('en-IN')} instead</button>`
+          : ''}
+      </td>
     </tr>`;
   }).join('');
 }
