@@ -149,16 +149,30 @@ def clean_text(value):
 IMAGE_CDN_BASE = os.environ.get("IMAGE_CDN_BASE", "").rstrip("/")
 
 
-def public_image_url(url):
-    """Hide third-party CDN fingerprints from public HTML while keeping images loadable."""
+# Rendered slot sizes, measured in the browser at devicePixelRatio 2:
+#   listing/related cards render at 185px  → 400px covers retina
+#   product-page hero cover renders at 370px → 800px covers retina
+# Serving the 1500px originals was costing ~101 KB per cover; these cost ~37 KB
+# and ~81 KB. Cards outnumber the hero ~10:1 per page, so sizing them separately
+# matters far more than picking one middle value.
+IMG_W_CARD = 400
+IMG_W_HERO = 800
+
+
+def public_image_url(url, w=IMG_W_CARD):
+    """Hide third-party CDN fingerprints from public HTML while keeping images loadable.
+
+    `w` is the pixel width to request — it becomes part of the URL, so each size
+    is cached independently at the edge.
+    """
     url = str(url or "").strip()
     if not url or not url.startswith("http"):
         return url
     token = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24]
     IMAGE_PROXY_MAP[token] = url
     if IMAGE_CDN_BASE:
-        return f"{IMAGE_CDN_BASE}/{token}.webp"
-    return f"/.netlify/functions/image-proxy?i={token}"
+        return f"{IMAGE_CDN_BASE}/{token}-{w}.webp"
+    return f"/.netlify/functions/image-proxy?i={token}&w={w}"
 
 def crawlable_image_url(url):
     """Use direct image URLs for Merchant Center and sitemaps.
@@ -304,6 +318,8 @@ for b in books:
         "p":    price_str,
         "op":   orig_str,
         "img":  public_image_url(b.get("image_url", "")),
+        # Hero-sized copy of the same cover for the product page's large slot.
+        "img_lg": public_image_url(b.get("image_url", ""), IMG_W_HERO),
         "back_img": public_image_url(b.get("back_image_url", "")),
         "url":  product_path(slug),
         "slug": slug,
@@ -5862,8 +5878,10 @@ def price_number(book):
     except Exception:
         return 0.0
 
-def absolute_img(book):
-    img = book.get("img") or ""
+def absolute_img(book, large=False):
+    """Absolute cover URL. `large=True` returns the hero-sized variant used by
+    the product page's big cover slot (falls back to the card size if absent)."""
+    img = (book.get("img_lg") if large else None) or book.get("img") or ""
     return img if img.startswith("http") else f"https://inkandchai.in{img}"
 
 def absolute_back_img(book):
@@ -6176,7 +6194,7 @@ def static_product_html(book):
     orig = html_escape(book.get("op") or "")
     desc = html_escape(book_description(book))
     canonical = product_abs_url(book["slug"])
-    img = html_escape(absolute_img(book))
+    img = html_escape(absolute_img(book, large=True))
     back_img = html_escape(absolute_back_img(book))
     static_cover_class = "cover cover-gallery" if back_img else "cover"
     static_back_cover = f'<img src="{back_img}" alt="{title} back cover" loading="lazy" onclick="openLB(this.src,this.alt)" style="cursor:zoom-in"/>' if back_img else ""

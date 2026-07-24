@@ -9,11 +9,11 @@
  * supplier CDN stays hidden exactly like the proxy did.
  *
  * WHAT IT DOES
- *   Reads netlify/functions/image-map.json (token -> source Shopify URL), and for
- *   each entry downloads a RESIZED WebP from Shopify (width=400, which is what the
- *   pages actually render) and uploads it to R2 as "<token>.webp".
- *   Object keys stay identical to the existing proxy tokens, so the site can
- *   switch hosts by changing one base URL — no slug/mapping churn.
+ *   Reads netlify/functions/image-map.json (token -> source Shopify URL) and, for
+ *   each cover, downloads RESIZED WebP renditions from Shopify at the widths the
+ *   pages actually render (400px cards, 800px product hero), uploading each as
+ *   "<token>-<width>.webp". Those keys are exactly what public_image_url() emits
+ *   when IMAGE_CDN_BASE is set, so switching hosts changes only a base URL.
  *
  * SETUP (one time, in your Cloudflare account)
  *   1. R2 → Create bucket, name it:  inkandchai-images
@@ -32,7 +32,7 @@
  * Flags:
  *   --limit=50     only do the first N (use this for a smoke test first)
  *   --force        re-upload even if the object already exists
- *   --width=400    source width to fetch from Shopify (default 400)
+ *   --widths=400,800  renditions to build (default 400,800)
  *
  * Safe to re-run: it skips objects that already exist unless --force is passed.
  * Your keys are read from the environment, never written to disk or committed.
@@ -53,8 +53,11 @@ const argVal = (name, dflt) => {
   return hit ? hit.split('=')[1] : dflt;
 };
 const LIMIT = Number(argVal('limit', 0)) || 0;
-const WIDTH = Number(argVal('width', 400)) || 400;
 const FORCE = args.includes('--force');
+// Two renditions per cover, matching IMG_W_CARD / IMG_W_HERO in generate_site.py.
+// Keys are "<token>-<width>.webp", which is exactly what public_image_url()
+// emits when IMAGE_CDN_BASE is set.
+const WIDTHS = (argVal('widths', '400,800')).split(',').map(Number).filter(n => n >= 200 && n <= 1600);
 
 const accountId = process.env.R2_ACCOUNT_ID;
 const accessKeyId = process.env.R2_ACCESS_KEY_ID;
@@ -78,9 +81,9 @@ async function exists(key) {
 // Shopify's CDN resizes and format-negotiates for us: ask for width=N and send
 // an Accept that prefers WebP. A 1500px JPEG (~129 KB) comes back as a 400px
 // WebP (~38 KB) — 70% smaller before it ever touches R2.
-async function fetchOptimised(sourceUrl) {
+async function fetchOptimised(sourceUrl, width) {
   const u = new URL(sourceUrl);
-  u.searchParams.set('width', String(WIDTH));
+  u.searchParams.set('width', String(width));
   const res = await fetch(u.toString(), {
     headers: {
       'user-agent': 'InkAndChaiImageMigrate/1.0',
@@ -100,8 +103,8 @@ async function main() {
   if (LIMIT) entries = entries.slice(0, LIMIT);
 
   console.log(`• bucket        : ${BUCKET}`);
-  console.log(`• images to do  : ${entries.length}${LIMIT ? ` (--limit=${LIMIT})` : ''}`);
-  console.log(`• source width  : ${WIDTH}px, WebP preferred`);
+  console.log(`• covers to do  : ${entries.length}${LIMIT ? ` (--limit=${LIMIT})` : ''}  x ${WIDTHS.length} sizes = ${entries.length*WIDTHS.length} objects`);
+  console.log(`• sizes         : ${WIDTHS.join('px, ')}px (WebP)`);
   console.log(`• skip existing : ${FORCE ? 'no (--force)' : 'yes'}\n`);
 
   let done = 0, skipped = 0, failed = 0, bytesUp = 0;
@@ -113,22 +116,24 @@ async function main() {
     while (cursor < entries.length) {
       const idx = cursor++;
       const [token, sourceUrl] = entries[idx];
-      const key = `${token}.webp`;
-      try {
-        if (!FORCE && await exists(key)) { skipped++; continue; }
-        const { bytes, type } = await fetchOptimised(sourceUrl);
-        await s3.send(new PutObjectCommand({
-          Bucket: BUCKET,
-          Key: key,
-          Body: bytes,
-          ContentType: type,
-          CacheControl: 'public, max-age=31536000, immutable',
-        }));
-        done++; bytesUp += bytes.length;
-        if (done % 100 === 0) console.log(`  …${done} uploaded (${(bytesUp / 1e6).toFixed(1)} MB)`);
-      } catch (e) {
-        failed++;
-        if (failed <= 10) console.warn(`⚠ ${token}: ${e.message}`);
+      for (const width of WIDTHS) {
+        const key = `${token}-${width}.webp`;
+        try {
+          if (!FORCE && await exists(key)) { skipped++; continue; }
+          const { bytes, type } = await fetchOptimised(sourceUrl, width);
+          await s3.send(new PutObjectCommand({
+            Bucket: BUCKET,
+            Key: key,
+            Body: bytes,
+            ContentType: type,
+            CacheControl: 'public, max-age=31536000, immutable',
+          }));
+          done++; bytesUp += bytes.length;
+          if (done % 200 === 0) console.log(`  …${done} objects uploaded (${(bytesUp / 1e6).toFixed(1)} MB)`);
+        } catch (e) {
+          failed++;
+          if (failed <= 10) console.warn(`⚠ ${token}@${width}: ${e.message}`);
+        }
       }
     }
   }
@@ -138,7 +143,7 @@ async function main() {
   console.log(`\nDone. uploaded=${done}  skipped=${skipped}  failed=${failed}  (${(bytesUp / 1e6).toFixed(1)} MB stored)`);
   console.log(`\nNext: verify one object loads, e.g.`);
   const [firstToken] = entries[0] || [];
-  if (firstToken) console.log(`  https://img.inkandchai.in/${firstToken}.webp`);
+  if (firstToken) console.log(`  https://img.inkandchai.in/${firstToken}-${WIDTHS[0]}.webp`);
   console.log(`\nThen flip the site over by setting IMAGE_CDN_BASE and rebuilding:`);
   console.log(`  IMAGE_CDN_BASE=https://img.inkandchai.in python3 generate_site.py`);
 }

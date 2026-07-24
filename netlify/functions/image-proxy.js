@@ -11,6 +11,17 @@ exports.handler = async (event) => {
       return { statusCode: 400, body: "Unsupported image source" };
     }
 
+    // Ask Shopify's CDN for the size we actually render instead of the full
+    // original. Covers were arriving as 1500px files (~101 KB) for slots that
+    // are 185px (cards) or 370px (product hero) — the single biggest chunk of
+    // our Netlify bandwidth. width=400 → ~37 KB, width=800 → ~81 KB.
+    // Whitelisted range so the param can't be used to hammer arbitrary sizes;
+    // the width is part of the request URL, so each size caches separately.
+    const wRaw = parseInt(event.queryStringParameters?.w || "", 10);
+    if (Number.isFinite(wRaw) && wRaw >= 200 && wRaw <= 1600) {
+      url.searchParams.set("width", String(wRaw));
+    }
+
     const upstream = await fetch(url.toString(), {
       headers: {
         "user-agent": "InkAndChaiImageProxy/1.0",
