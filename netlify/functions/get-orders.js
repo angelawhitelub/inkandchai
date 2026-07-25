@@ -29,6 +29,16 @@ exports.handler = async (event) => {
     const from  = (page - 1) * limit;
 
     const status = event.queryStringParameters?.status;
+    // `statuses` (comma-separated) fetches several statuses at once. The admin's
+    // Cancelled tab needs this: cancelling a PREPAID order immediately flips it to
+    // refund_pending → refunded/refund_failed (see utils/order-cancelled-notification),
+    // so a plain status=cancelled query returns COD orders only and silently hides
+    // every prepaid cancellation.
+    const statusesRaw = event.queryStringParameters?.statuses;
+    const statuses = statusesRaw
+      ? statusesRaw.split(',').map(s => s.trim()).filter(Boolean).slice(0, 12)
+      : null;
+
     let query = supabase
       .from('orders')
       .select('*', { count: 'exact' })
@@ -36,7 +46,8 @@ exports.handler = async (event) => {
       .order('created_at', { ascending: false })
       .range(from, from + limit - 1);
 
-    if (status) query = query.eq('status', status);
+    if (statuses && statuses.length) query = query.in('status', statuses);
+    else if (status) query = query.eq('status', status);
 
     const { data, error, count } = await query;
     if (error) throw error;

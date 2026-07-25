@@ -70,6 +70,8 @@ h1{font-family:'DM Serif Display',serif;font-size:2.4rem;font-weight:300;color:v
 .sub-label{font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--red);font-weight:700;margin-right:0.2rem;}
 .sub-btn{font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.4rem 0.9rem;border:1px solid var(--border);color:var(--cream-dim);background:var(--bg3);cursor:pointer;font-family:'Manrope',sans-serif;font-weight:600;transition:all 0.15s;border-radius:4px;}
 .sub-btn.active,.sub-btn:hover{border-color:rgba(224,96,96,0.55);color:var(--red);background:rgba(224,96,96,0.1);}
+.sub-sep{width:1px;height:20px;background:rgba(224,96,96,0.28);margin:0 0.35rem;}
+.sub-count{font-size:0.72rem;color:var(--cream);font-weight:600;margin-left:0.35rem;}
 input[type="date"]{background:var(--bg3);border:1px solid var(--border);color:var(--cream-dim);padding:0.45rem 0.8rem;font-family:'Manrope',sans-serif;font-size:0.78rem;outline:none;color-scheme:light;}
 input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .date-sep{font-size:0.72rem;color:var(--gold-dim);padding:0 0.2rem;}
@@ -841,9 +843,13 @@ td{padding:1rem;font-size:.94rem;}
   <!-- ── Cancelled sub-filters (shown only when the Cancelled tab is active) ── -->
   <div class="sub-toolbar" id="cancelledSubBar" style="display:none;">
     <span class="sub-label">Cancelled:</span>
-    <button class="sub-btn active" id="cancSubAll"   onclick="setCancelledSub(this,'')">All</button>
-    <button class="sub-btn"        id="cancSubToday" onclick="setCancelledSub(this,'today')">Today</button>
-    <button class="sub-btn"        id="cancSubNp"    onclick="setCancelledSub(this,'np')" title="Cancelled by NimbusPost because the courier never picked the parcel up (~10-day threshold), rather than cancelled by you or the customer">Cancelled by courier (not picked up)</button>
+    <button class="sub-btn active" data-range=""          onclick="setCancelledRange(this,'')">All</button>
+    <button class="sub-btn"        data-range="today"     onclick="setCancelledRange(this,'today')">Today</button>
+    <button class="sub-btn"        data-range="yesterday" onclick="setCancelledRange(this,'yesterday')">Yesterday</button>
+    <button class="sub-btn"        data-range="7d"        onclick="setCancelledRange(this,'7d')">Last 7 days</button>
+    <span class="sub-sep"></span>
+    <button class="sub-btn" id="cancSubNp" onclick="toggleCourierCancelled(this)" title="Only orders NimbusPost cancelled because the courier never picked the parcel up (~10-day threshold) — not the ones you or the customer cancelled. Click again to clear.">🚚 Courier cancelled only</button>
+    <span class="sub-count" id="cancSubCount"></span>
   </div>
 
   <!-- ── Orders table ───────────────────────────────────────── -->
@@ -1727,11 +1733,18 @@ async function adminFetch(url, opts = {}) {
 let allOrders     = [];   // all loaded orders
 let filtered      = [];   // after search/filter/date
 let currentFilter = '';
-// Sub-slice of the Cancelled tab: '' = all, 'today' = cancelled today,
-// 'np' = cancelled by NimbusPost because the courier never picked the parcel up
-// (NP auto-cancels around a 10-day threshold) rather than by us or the customer.
-// All three slice the already-loaded cancelled set — no extra fetch.
-let cancelledSub = '';
+// A cancelled PREPAID order never keeps status='cancelled': the auto-refund in
+// utils/order-cancelled-notification flips it to refund_pending immediately, then
+// refunded / refund_failed. So "cancelled orders" really spans this whole family,
+// and querying only 'cancelled' returns COD orders exclusively.
+const CANCELLED_FAMILY = ['cancelled','refund_pending','refunded','refund_failed','partially_refunded'];
+
+// Cancelled tab sub-slices — two independent dimensions:
+//   cancelledRange:  '' | 'today' | 'yesterday' | '7d'   (by cancellation date)
+//   cancelledCourierOnly: only orders NimbusPost cancelled for non-pickup
+// Both slice the already-loaded set, so switching them costs no extra fetch.
+let cancelledRange = '';
+let cancelledCourierOnly = false;
 
 // True when the courier — not a human — ended this order. nimbuspost-webhook.js
 // stores NimbusPost's own wording in last_nimbuspost_status on every event, so
@@ -1970,7 +1983,12 @@ function saveOrdersToCache(orders, total) {
 
 async function fetchOrdersPage(pageNum, limit) {
   const params = new URLSearchParams({ page: pageNum, limit });
-  if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending' && currentFilter !== 'cw_only') {
+  if (currentFilter === 'cancelled') {
+    // Prepaid cancellations don't keep status='cancelled' — the auto-refund flips
+    // them to refund_pending → refunded/refund_failed. Fetch the whole family or
+    // the tab shows COD orders only.
+    params.set('statuses', CANCELLED_FAMILY.join(','));
+  } else if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending' && currentFilter !== 'cw_only') {
     params.set('status', currentFilter);
   }
   const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
@@ -2498,10 +2516,11 @@ function setFilter(el, status) {
   if (status === 'cancelled') {
     if (subBar) subBar.style.display = 'flex';
   } else {
-    cancelledSub = '';
+    cancelledRange = '';
+    cancelledCourierOnly = false;
     if (subBar) subBar.style.display = 'none';
     document.querySelectorAll('#cancelledSubBar .sub-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('cancSubAll')?.classList.add('active');
+    document.querySelector('#cancelledSubBar .sub-btn[data-range=""]')?.classList.add('active');
   }
   fetchOrders(true);
 }
@@ -2513,19 +2532,32 @@ function setFilter(el, status) {
 function cancellationTime(o) {
   return o.auto_cancelled_at || o.customer_cancelled_at || o.updated_at || o.created_at || null;
 }
-function isCancelledToday(o) {
+// Whole-day comparison in the admin's local timezone (IST for us), so "today"
+// means today's calendar date rather than a rolling 24h window.
+function _dayStart(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function cancelledInRange(o) {
+  if (!cancelledRange) return true;
   const t = cancellationTime(o);
   if (!t) return false;
   const d = new Date(t);
   if (isNaN(d)) return false;
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  const daysAgo = Math.round((_dayStart(new Date()) - _dayStart(d)) / 86400000);
+  if (cancelledRange === 'today')     return daysAgo === 0;
+  if (cancelledRange === 'yesterday') return daysAgo === 1;
+  if (cancelledRange === '7d')        return daysAgo >= 0 && daysAgo < 7;
+  return true;
 }
 
-function setCancelledSub(el, sub) {
-  cancelledSub = sub;
-  document.querySelectorAll('#cancelledSubBar .sub-btn').forEach(b => b.classList.remove('active'));
+function setCancelledRange(el, range) {
+  cancelledRange = range;
+  document.querySelectorAll('#cancelledSubBar .sub-btn[data-range]').forEach(b => b.classList.remove('active'));
   if (el) el.classList.add('active');
+  applyFilters();
+}
+
+function toggleCourierCancelled(el) {
+  cancelledCourierOnly = !cancelledCourierOnly;
+  if (el) el.classList.toggle('active', cancelledCourierOnly);
   applyFilters();
 }
 
@@ -2552,9 +2584,11 @@ function applyFilters() {
       // Keep the Crossword tab to actionable orders — hide cancelled/refunded.
       if (['cancelled', 'refunded', 'refund_pending'].includes(String(o.status || '').toLowerCase())) return false;
     }
-    // Cancelled sub-slices, both applied over the loaded cancelled set.
-    if (currentFilter === 'cancelled' && cancelledSub === 'today' && !isCancelledToday(o)) return false;
-    if (currentFilter === 'cancelled' && cancelledSub === 'np' && !isCourierCancelled(o)) return false;
+    // Cancelled sub-slices — date range and courier-cancelled apply independently.
+    if (currentFilter === 'cancelled') {
+      if (!cancelledInRange(o)) return false;
+      if (cancelledCourierOnly && !isCourierCancelled(o)) return false;
+    }
     // Search
     if (q) {
       const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
@@ -2575,6 +2609,18 @@ function applyFilters() {
     if (va > vb) return sortAsc ? 1 : -1;
     return 0;
   });
+
+  // Cancelled tab: show the split so a missing group is obvious at a glance.
+  const cancCount = document.getElementById('cancSubCount');
+  if (cancCount) {
+    if (currentFilter === 'cancelled') {
+      const courier = filtered.filter(isCourierCancelled).length;
+      const prepaid = filtered.filter(o => orderPayKind(o) !== 'cod').length;
+      cancCount.textContent = `${filtered.length} shown · ${courier} courier-cancelled · ${prepaid} prepaid`;
+    } else {
+      cancCount.textContent = '';
+    }
+  }
 
   // Update export count
   document.getElementById('exportCount').textContent = filtered.length;
