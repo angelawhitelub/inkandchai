@@ -9257,7 +9257,18 @@ def feed_safe(text):
     return s
 
 SITE = "https://inkandchai.in"
+
+# Google disapproves images that carry logos, watermarks or "coming soon" text
+# as "Promotional overlay on image". Our supplier placeholders (99Bookstores.com_*
+# "IMAGE COMING SOON" graphics) are exactly that — a branded card, not a cover.
+# There is no valid cover to submit, so skip the whole item rather than earn an
+# item-level disapproval that hurts account-wide Shopping quality.
+_PLACEHOLDER_IMAGE_RE = re.compile(r'(99bookstores\.com_|coming[-_ ]?soon|no[-_ ]?image|placeholder|image[-_ ]?not[-_ ]?available)', re.I)
+def is_placeholder_image(url):
+    return bool(_PLACEHOLDER_IMAGE_RE.search(str(url or '')))
+
 items = []
+_skipped_placeholder = 0
 for b in slim:
     price = (b.get("p") or "").replace("₹", "").replace(",", "").strip()
     try:
@@ -9268,6 +9279,12 @@ for b in slim:
             continue   # skip books with no price
 
     img = feed_image_by_slug.get(b.get("slug", "")) or crawlable_image_url(b.get("img", ""))
+
+    # Don't feed placeholder/"coming soon" graphics — Google rejects them as
+    # promotional overlays (see is_placeholder_image).
+    if is_placeholder_image(img):
+        _skipped_placeholder += 1
+        continue
 
     slug = b.get("slug", "")
     link = f"{SITE}/product/{slug}/"
@@ -9319,7 +9336,7 @@ feed_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 
 feed_out = Path(__file__).parent / "public" / "feed.xml"
 feed_out.write_text(feed_xml, encoding="utf-8")
-print(f"Generated: {feed_out}  ({len(feed_xml.encode())//1024} KB, {len(items)} products)")
+print(f"Generated: {feed_out}  ({len(feed_xml.encode())//1024} KB, {len(items)} products; {_skipped_placeholder} placeholder-image items skipped)")
 
 # ── SEO: Author hub pages ────────────────────────────────────────────────────
 # For every author with 2+ books we generate a clean /author/[slug]/ page that
