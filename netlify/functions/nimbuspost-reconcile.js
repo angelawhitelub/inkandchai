@@ -225,6 +225,14 @@ exports.handler = async (event) => {
 
       const updateData = { status: ourStatus };
       if (ourStatus === 'delivered') updateData.delivered_at = new Date().toISOString();
+      // NimbusPost maps "cancelled" → our rto bucket. Tag it so the admin's
+      // "Via NimbusPost panel" cancelled sub-filter can tell a panel-cancellation
+      // apart from a genuine transit RTO. Best-effort: skipped silently if the
+      // columns aren't present (mirrors auto-cancel-stale-cod's convention).
+      if (ourStatus === 'rto' && String(rawStatus || '').toLowerCase().trim() === 'cancelled') {
+        updateData.cancellation_source = 'nimbuspost_panel';
+        updateData.cancellation_reason = 'Cancelled in the NimbusPost panel';
+      }
 
       await supabase.from('orders').update(updateData).eq('id', order.id);
 

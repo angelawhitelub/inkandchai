@@ -66,6 +66,10 @@ h1{font-family:'DM Serif Display',serif;font-size:2.4rem;font-weight:300;color:v
 .filter-btn.active,.filter-btn:hover{border-color:var(--gold-dim);color:var(--gold);background:rgba(201,168,76,0.07);}
 .search-box{background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.5rem 1rem;font-family:'Manrope',sans-serif;font-size:0.82rem;outline:none;min-width:260px;}
 .search-box:focus{border-color:rgba(201,168,76,0.4);}
+.sub-toolbar{display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin:0.1rem 0 0.9rem;padding:0.55rem 0.85rem;background:rgba(224,96,96,0.05);border:1px solid rgba(224,96,96,0.22);border-radius:6px;}
+.sub-label{font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--red);font-weight:700;margin-right:0.2rem;}
+.sub-btn{font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.4rem 0.9rem;border:1px solid var(--border);color:var(--cream-dim);background:var(--bg3);cursor:pointer;font-family:'Manrope',sans-serif;font-weight:600;transition:all 0.15s;border-radius:4px;}
+.sub-btn.active,.sub-btn:hover{border-color:rgba(224,96,96,0.55);color:var(--red);background:rgba(224,96,96,0.1);}
 input[type="date"]{background:var(--bg3);border:1px solid var(--border);color:var(--cream-dim);padding:0.45rem 0.8rem;font-family:'Manrope',sans-serif;font-size:0.78rem;outline:none;color-scheme:light;}
 input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .date-sep{font-size:0.72rem;color:var(--gold-dim);padding:0 0.2rem;}
@@ -493,8 +497,10 @@ input[type="date"]:focus,.status-sel:focus,.thread-input:focus{
 table{font-size:.96rem;}
 th{padding:1rem;background:#faf5e9;}
 td{padding:1rem;font-size:.94rem;}
-.cust-name{font-size:1.05rem;}
-.cust-sub,.items-cell{font-size:.86rem;}
+.cust-name{font-size:1.18rem;font-weight:700;color:var(--white);}
+.cust-sub{font-size:0.98rem;color:var(--cream);font-weight:600;line-height:1.55;}
+.items-cell{font-size:.9rem;}
+.addr-cell{font-size:0.9rem!important;color:var(--cream)!important;font-weight:600!important;}
 .order-id{font-size:.82rem;}
 .pay-id,.amount-sub{font-size:.78rem;}
 .amount{font-size:1.55rem;}
@@ -830,6 +836,14 @@ td{padding:1rem;font-size:.94rem;}
     <span class="date-sep">→</span>
     <input type="date" id="dateTo" onchange="applyFilters()" title="To date"/>
     <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID" oninput="applyFilters()"/>
+  </div>
+
+  <!-- ── Cancelled sub-filters (shown only when the Cancelled tab is active) ── -->
+  <div class="sub-toolbar" id="cancelledSubBar" style="display:none;">
+    <span class="sub-label">Cancelled:</span>
+    <button class="sub-btn active" id="cancSubAll"   onclick="setCancelledSub(this,'')">All</button>
+    <button class="sub-btn"        id="cancSubToday" onclick="setCancelledSub(this,'today')">Today</button>
+    <button class="sub-btn"        id="cancSubNp"    onclick="setCancelledSub(this,'np')" title="Orders NimbusPost reported as cancelled — stored as RTO in your database">Via NimbusPost panel (RTO)</button>
   </div>
 
   <!-- ── Orders table ───────────────────────────────────────── -->
@@ -1713,6 +1727,11 @@ async function adminFetch(url, opts = {}) {
 let allOrders     = [];   // all loaded orders
 let filtered      = [];   // after search/filter/date
 let currentFilter = '';
+// Sub-slice of the Cancelled tab: '' = all cancelled, 'today' = cancelled today,
+// 'np' = orders NimbusPost reported cancelled (stored as status 'rto' in our DB,
+// because nimbuspost-reconcile maps NP "cancelled" → rto). 'np' needs a different
+// server fetch (status=rto); the others slice the loaded cancelled set client-side.
+let cancelledSub = '';
 let sortField     = 'created_at';
 let sortAsc       = false;
 let page          = 1;
@@ -1942,8 +1961,11 @@ function saveOrdersToCache(orders, total) {
 
 async function fetchOrdersPage(pageNum, limit) {
   const params = new URLSearchParams({ page: pageNum, limit });
-  if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending' && currentFilter !== 'cw_only') {
-    params.set('status', currentFilter);
+  // "Via NimbusPost panel" cancelled sub-view lives in status=rto (reconcile maps
+  // NP "cancelled" → rto), so fetch rto rows for it while the tab stays "Cancelled".
+  const effStatus = (currentFilter === 'cancelled' && cancelledSub === 'np') ? 'rto' : currentFilter;
+  if (effStatus && effStatus !== '__unshipped' && effStatus !== 'partial_cod_pending' && effStatus !== 'online_pending' && effStatus !== 'cw_only') {
+    params.set('status', effStatus);
   }
   const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
     headers: { 'X-Admin-Key': adminKey },
@@ -2465,7 +2487,44 @@ function setFilter(el, status) {
   document.querySelectorAll(`[data-status="${status}"]`).forEach(b => b.classList.add('active'));
   if (el) el.classList.add('active');
   currentFilter = status;
+  // Leaving the Cancelled tab clears its sub-slice; entering it shows the chips.
+  const subBar = document.getElementById('cancelledSubBar');
+  if (status === 'cancelled') {
+    if (subBar) subBar.style.display = 'flex';
+  } else {
+    cancelledSub = '';
+    if (subBar) subBar.style.display = 'none';
+    document.querySelectorAll('#cancelledSubBar .sub-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('cancSubAll')?.classList.add('active');
+  }
   fetchOrders(true);
+}
+
+// Best-known moment an order became cancelled/RTO. No single "cancelled_at"
+// column exists for manual cancels, so fall back through the specific stamps to
+// updated_at (which, for a terminal cancelled/rto order, is effectively when it
+// was cancelled).
+function cancellationTime(o) {
+  return o.auto_cancelled_at || o.customer_cancelled_at || o.updated_at || o.created_at || null;
+}
+function isCancelledToday(o) {
+  const t = cancellationTime(o);
+  if (!t) return false;
+  const d = new Date(t);
+  if (isNaN(d)) return false;
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+function setCancelledSub(el, sub) {
+  const prev = cancelledSub;
+  cancelledSub = sub;
+  document.querySelectorAll('#cancelledSubBar .sub-btn').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  // Switching in/out of the NP (rto) slice needs a fresh server fetch; 'all' vs
+  // 'today' both live inside the already-loaded cancelled set, so slice locally.
+  if ((sub === 'np') !== (prev === 'np')) fetchOrders(true);
+  else applyFilters();
 }
 
 let _sortDir = {};
@@ -2491,6 +2550,9 @@ function applyFilters() {
       // Keep the Crossword tab to actionable orders — hide cancelled/refunded.
       if (['cancelled', 'refunded', 'refund_pending'].includes(String(o.status || '').toLowerCase())) return false;
     }
+    // Cancelled sub-slices. 'today' keeps only orders cancelled today; 'np'
+    // already loaded status=rto from the server, so no extra client filter.
+    if (currentFilter === 'cancelled' && cancelledSub === 'today' && !isCancelledToday(o)) return false;
     // Search
     if (q) {
       const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
@@ -2625,6 +2687,7 @@ function _drawTable() {
         <span class="badge ${bc}">${esc((o.status||'pending').replace(/_/g,' '))}</span>
         ${o.cancellation_source === 'stale_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no courier movement for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · stale COD 7d</div>` : ''}
         ${o.cancellation_source === 'no_awb_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no AWB assigned for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · no AWB 7d</div>` : ''}
+        ${o.cancellation_source === 'nimbuspost_panel' ? `<div title="${esc(o.cancellation_reason || 'Cancelled in the NimbusPost panel')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">NimbusPost panel · cancelled</div>` : ''}
         <br/>
         <select class="status-sel" onchange="updateStatus('${esc(o.id)}',this.value)">
           <option value="">Update status…</option>
@@ -2654,7 +2717,7 @@ function _drawTable() {
             style="display:block;margin-top:0.5rem;background:rgba(224,80,80,0.1);border:1px solid rgba(224,80,80,0.5);color:#e06060;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">💸 Refund</button>`;
         })()}
       </td>
-      <td style="font-size:0.65rem;color:var(--cream-dim);max-width:200px;line-height:1.5;">
+      <td class="addr-cell" style="max-width:220px;line-height:1.55;">
         ${esc(o.customer_address || '—')}
         ${orderIsUnshipped(o) ? `<button onclick="npShipOrder('${esc(o.razorpay_order_id||o.id)}', this)" title="Create shipment on NimbusPost and get AWB automatically"
           style="display:block;margin-top:0.5rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;width:100%;"
