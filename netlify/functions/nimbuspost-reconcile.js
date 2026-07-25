@@ -234,6 +234,9 @@ exports.handler = async (event) => {
       // admin's "Cancelled by courier" filter keys off it — without this, orders
       // reconciled here would be indistinguishable from manual cancellations.
       updateData.last_nimbuspost_status = String(rawStatus).slice(0, 200);
+      // Cancellation/RTO time for the admin's date filters — orders has no
+      // updated_at column, so without this these rows have no usable timestamp.
+      updateData.last_nimbuspost_event_at = new Date().toISOString();
 
       await supabase.from('orders').update(updateData).eq('id', order.id);
 

@@ -2525,12 +2525,19 @@ function setFilter(el, status) {
   fetchOrders(true);
 }
 
-// Best-known moment an order became cancelled/RTO. No single "cancelled_at"
-// column exists for manual cancels, so fall back through the specific stamps to
-// updated_at (which, for a terminal cancelled/rto order, is effectively when it
-// was cancelled).
+// Best-known moment an order was actually cancelled.
+//   auto_cancelled_at        — stale-COD / no-AWB auto-cancel
+//   customer_cancelled_at    — customer cancelled via the bot
+//   last_nimbuspost_event_at — courier event time (this IS the cancellation
+//                              moment for courier-cancelled orders)
+//   refund_updated_at        — prepaid cancellations, when the refund kicked off
+// Deliberately does NOT fall back to created_at: `orders` has no updated_at
+// column, so an earlier version fell through to created_at and silently turned
+// these range filters into ORDER-date filters (Today then matched nothing).
+// Returning null instead keeps undated orders out and lets the UI report them.
 function cancellationTime(o) {
-  return o.auto_cancelled_at || o.customer_cancelled_at || o.updated_at || o.created_at || null;
+  return o.auto_cancelled_at || o.customer_cancelled_at
+      || o.last_nimbuspost_event_at || o.refund_updated_at || null;
 }
 // Whole-day comparison in the admin's local timezone (IST for us), so "today"
 // means today's calendar date rather than a rolling 24h window.
@@ -2616,7 +2623,14 @@ function applyFilters() {
     if (currentFilter === 'cancelled') {
       const courier = filtered.filter(isCourierCancelled).length;
       const prepaid = filtered.filter(o => orderPayKind(o) !== 'cod').length;
-      cancCount.textContent = `${filtered.length} shown · ${courier} courier-cancelled · ${prepaid} prepaid`;
+      let txt = `${filtered.length} shown · ${courier} courier-cancelled · ${prepaid} prepaid`;
+      // A date range can only judge orders that carry a cancellation timestamp.
+      // Say so out loud instead of quietly dropping them.
+      if (cancelledRange) {
+        const undated = allOrders.filter(o => !cancellationTime(o)).length;
+        if (undated) txt += ` · ${undated} with no cancellation date (not shown)`;
+      }
+      cancCount.textContent = txt;
     } else {
       cancCount.textContent = '';
     }
