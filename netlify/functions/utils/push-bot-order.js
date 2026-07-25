@@ -26,10 +26,22 @@ const { priceBooksList } = require('./book-lookup');
 // "comma-separated"). Storing that as ONE cart item makes NimbusPost print all
 // titles jammed into a single product row. Split it into one cart item per book
 // — same delimiter the pricing lookup uses — so each title ships on its own row.
+// Split a books string into titles on STRUCTURAL separators only — commas,
+// semicolons, newlines, pipes and bullets. Deliberately NOT " and "/"&"/"+"/"/",
+// which occur inside real titles (Pride and Prejudice, wealth & happiness, C++).
+// Also strip a leading list marker ("1. ", "2) ", "- ", "• ") the LLM sometimes
+// prepends when it enumerates many books.
+function splitBookTitles(raw) {
+  return String(raw || '')
+    .split(/[,;\n|•·]+/)
+    .map(s => s.replace(/^\s*(?:\d{1,2}[.)]|[-*])\s+/, '').trim())
+    .filter(Boolean);
+}
+
 async function buildCartFromBooks(booksStr, amountRupees) {
   const raw = String(booksStr || '').trim();
   if (!raw) return [{ title: 'Book', qty: 1, price: amountRupees }];
-  const titles = raw.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+  const titles = splitBookTitles(raw);
   if (titles.length <= 1) return [{ title: raw, qty: 1, price: amountRupees }];
 
   // Per-book prices: priceBooksList splits with the SAME regex, so its items are

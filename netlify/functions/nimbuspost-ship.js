@@ -280,7 +280,13 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   }
 
   // ── Build products list ──────────────────────────────────────────────────
-  const cartItems = Array.isArray(order.cart_items) ? order.cart_items : [];
+  // cart_items may arrive as an array (jsonb) OR a JSON string (text column /
+  // some writers). The other two push paths parse both via parseItems; this one
+  // used Array.isArray only, so a stringified cart silently collapsed to a single
+  // "Books" line on the AWB. Parse defensively so every book ships on its own row.
+  const cartItems = Array.isArray(order.cart_items)
+    ? order.cart_items
+    : (() => { try { const p = JSON.parse(order.cart_items || '[]'); return Array.isArray(p) ? p : []; } catch { return []; } })();
   const products  = cartItems.length
     ? cartItems.map(i => ({
         product_name: sanitizeForCourier(i.title || i.name || 'Book'),

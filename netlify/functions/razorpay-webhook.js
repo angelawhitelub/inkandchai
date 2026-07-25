@@ -30,7 +30,14 @@ const CORS = { 'Content-Type': 'application/json' };
 function splitBooksNote(note, amountPaise) {
   const raw = String(note || '').trim();
   if (!raw) return [];
-  const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+  // Structural separators only (comma/semicolon/newline/pipe/bullet), never
+  // " and "/"&"/"+" which live inside real titles. Strip a leading list marker
+  // ("1. ", "- ") the LLM sometimes prepends. Mirrors splitBookTitles in
+  // utils/push-bot-order.js so both order-creation paths split identically.
+  const parts = raw
+    .split(/[,;\n|•·]+/)
+    .map(s => s.replace(/^\s*(?:\d{1,2}[.)]|[-*])\s+/, '').trim())
+    .filter(Boolean);
   const lines = parts.map(p => {
     const m = p.match(/^(.*?)[\s]*[x×✕✖]\s*(\d{1,3})$/i);   // "Title ×3"
     if (m && Number(m[2]) > 0) return { title: m[1].trim(), qty: Number(m[2]) };
