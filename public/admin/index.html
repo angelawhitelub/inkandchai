@@ -2724,10 +2724,14 @@ function _drawTable() {
       </td>
       <td class="items-cell">
         ${items.slice(0,4).map(itemLineHtml).join('')}
-        ${items.length > 4 ? `<div style="color:var(--gold-dim);">+${items.length-4} more${(() => {
+        ${items.length > 4 ? (() => {
+          const moreId = 'items-more-' + esc(String(o.razorpay_order_id || o.id)).replace(/[^A-Za-z0-9_-]/g, '');
           const rest = itemsSubtotal(items.slice(4));
-          return rest > 0 ? ` · ₹${rest.toLocaleString('en-IN')}` : '';
-        })()}</div>` : ''}
+          const restLabel = rest > 0 ? ` · ₹${rest.toLocaleString('en-IN')}` : '';
+          return `<div id="${moreId}" style="display:none;">${items.slice(4).map(itemLineHtml).join('')}</div>
+            <div class="items-more-toggle" style="color:var(--gold-dim);cursor:pointer;text-decoration:underline;"
+              onclick="(function(t){const b=document.getElementById('${moreId}');const open=b.style.display==='none';b.style.display=open?'block':'none';t.textContent=open?'− show less':'+${items.length-4} more${restLabel}';})(this)">+${items.length-4} more${restLabel}</div>`;
+        })() : ''}
         ${items.length > 1 && itemsSubtotal(items) > 0
           ? `<div class="items-subtotal">Items total ₹${itemsSubtotal(items).toLocaleString('en-IN')}</div>`
           : ''}
