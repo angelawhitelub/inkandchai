@@ -14,7 +14,8 @@
  * NimbusPost status → our status mapping (same as nimbuspost-webhook.js):
  *   delivered → delivered
  *   out for delivery → out_for_delivery
- *   cancelled / rto → rto
+ *   cancelled → cancelled (courier never picked it up)
+ *   rto → rto
  *   undelivered / ndr → undelivered
  *   others (in transit, etc.) → ignored
  */
@@ -51,7 +52,11 @@ const STATUS_MAP = {
   'rto initiated':      'rto',
   'rto in transit':     'rto',
   'rto delivered':      'rto',
-  'cancelled':          'rto',
+  // NimbusPost cancels shipments it never manages to pick up (~10-day threshold).
+  // That is a cancellation, not a return — the parcel never left us. Mapped to
+  // 'cancelled' to match nimbuspost-webhook.js, which is the path these actually
+  // arrive on; this file previously said 'rto' and disagreed with the webhook.
+  'cancelled':          'cancelled',
   'undelivered':        'undelivered',
   'ndr':                'undelivered',
   'delivery failed':    'undelivered',
@@ -225,14 +230,10 @@ exports.handler = async (event) => {
 
       const updateData = { status: ourStatus };
       if (ourStatus === 'delivered') updateData.delivered_at = new Date().toISOString();
-      // NimbusPost maps "cancelled" → our rto bucket. Tag it so the admin's
-      // "Via NimbusPost panel" cancelled sub-filter can tell a panel-cancellation
-      // apart from a genuine transit RTO. Best-effort: skipped silently if the
-      // columns aren't present (mirrors auto-cancel-stale-cod's convention).
-      if (ourStatus === 'rto' && String(rawStatus || '').toLowerCase().trim() === 'cancelled') {
-        updateData.cancellation_source = 'nimbuspost_panel';
-        updateData.cancellation_reason = 'Cancelled in the NimbusPost panel';
-      }
+      // Record the courier's own wording. The webhook already does this, and the
+      // admin's "Cancelled by courier" filter keys off it — without this, orders
+      // reconciled here would be indistinguishable from manual cancellations.
+      updateData.last_nimbuspost_status = String(rawStatus).slice(0, 200);
 
       await supabase.from('orders').update(updateData).eq('id', order.id);
 

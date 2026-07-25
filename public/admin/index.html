@@ -843,7 +843,7 @@ td{padding:1rem;font-size:.94rem;}
     <span class="sub-label">Cancelled:</span>
     <button class="sub-btn active" id="cancSubAll"   onclick="setCancelledSub(this,'')">All</button>
     <button class="sub-btn"        id="cancSubToday" onclick="setCancelledSub(this,'today')">Today</button>
-    <button class="sub-btn"        id="cancSubNp"    onclick="setCancelledSub(this,'np')" title="Orders NimbusPost reported as cancelled — stored as RTO in your database">Via NimbusPost panel (RTO)</button>
+    <button class="sub-btn"        id="cancSubNp"    onclick="setCancelledSub(this,'np')" title="Cancelled by NimbusPost because the courier never picked the parcel up (~10-day threshold), rather than cancelled by you or the customer">Cancelled by courier (not picked up)</button>
   </div>
 
   <!-- ── Orders table ───────────────────────────────────────── -->
@@ -1727,11 +1727,20 @@ async function adminFetch(url, opts = {}) {
 let allOrders     = [];   // all loaded orders
 let filtered      = [];   // after search/filter/date
 let currentFilter = '';
-// Sub-slice of the Cancelled tab: '' = all cancelled, 'today' = cancelled today,
-// 'np' = orders NimbusPost reported cancelled (stored as status 'rto' in our DB,
-// because nimbuspost-reconcile maps NP "cancelled" → rto). 'np' needs a different
-// server fetch (status=rto); the others slice the loaded cancelled set client-side.
+// Sub-slice of the Cancelled tab: '' = all, 'today' = cancelled today,
+// 'np' = cancelled by NimbusPost because the courier never picked the parcel up
+// (NP auto-cancels around a 10-day threshold) rather than by us or the customer.
+// All three slice the already-loaded cancelled set — no extra fetch.
 let cancelledSub = '';
+
+// True when the courier — not a human — ended this order. nimbuspost-webhook.js
+// stores NimbusPost's own wording in last_nimbuspost_status on every event, so
+// this works retroactively on existing orders with no migration. Manual
+// cancellations (admin or customer) never carry a courier status.
+function isCourierCancelled(o) {
+  if (o.cancellation_source === 'nimbuspost_panel') return true;
+  return /cancel/i.test(String(o.last_nimbuspost_status || ''));
+}
 let sortField     = 'created_at';
 let sortAsc       = false;
 let page          = 1;
@@ -1961,11 +1970,8 @@ function saveOrdersToCache(orders, total) {
 
 async function fetchOrdersPage(pageNum, limit) {
   const params = new URLSearchParams({ page: pageNum, limit });
-  // "Via NimbusPost panel" cancelled sub-view lives in status=rto (reconcile maps
-  // NP "cancelled" → rto), so fetch rto rows for it while the tab stays "Cancelled".
-  const effStatus = (currentFilter === 'cancelled' && cancelledSub === 'np') ? 'rto' : currentFilter;
-  if (effStatus && effStatus !== '__unshipped' && effStatus !== 'partial_cod_pending' && effStatus !== 'online_pending' && effStatus !== 'cw_only') {
-    params.set('status', effStatus);
+  if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending' && currentFilter !== 'cw_only') {
+    params.set('status', currentFilter);
   }
   const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
     headers: { 'X-Admin-Key': adminKey },
@@ -2517,14 +2523,10 @@ function isCancelledToday(o) {
 }
 
 function setCancelledSub(el, sub) {
-  const prev = cancelledSub;
   cancelledSub = sub;
   document.querySelectorAll('#cancelledSubBar .sub-btn').forEach(b => b.classList.remove('active'));
   if (el) el.classList.add('active');
-  // Switching in/out of the NP (rto) slice needs a fresh server fetch; 'all' vs
-  // 'today' both live inside the already-loaded cancelled set, so slice locally.
-  if ((sub === 'np') !== (prev === 'np')) fetchOrders(true);
-  else applyFilters();
+  applyFilters();
 }
 
 let _sortDir = {};
@@ -2550,9 +2552,9 @@ function applyFilters() {
       // Keep the Crossword tab to actionable orders — hide cancelled/refunded.
       if (['cancelled', 'refunded', 'refund_pending'].includes(String(o.status || '').toLowerCase())) return false;
     }
-    // Cancelled sub-slices. 'today' keeps only orders cancelled today; 'np'
-    // already loaded status=rto from the server, so no extra client filter.
+    // Cancelled sub-slices, both applied over the loaded cancelled set.
     if (currentFilter === 'cancelled' && cancelledSub === 'today' && !isCancelledToday(o)) return false;
+    if (currentFilter === 'cancelled' && cancelledSub === 'np' && !isCourierCancelled(o)) return false;
     // Search
     if (q) {
       const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
@@ -2687,7 +2689,7 @@ function _drawTable() {
         <span class="badge ${bc}">${esc((o.status||'pending').replace(/_/g,' '))}</span>
         ${o.cancellation_source === 'stale_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no courier movement for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · stale COD 7d</div>` : ''}
         ${o.cancellation_source === 'no_awb_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no AWB assigned for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · no AWB 7d</div>` : ''}
-        ${o.cancellation_source === 'nimbuspost_panel' ? `<div title="${esc(o.cancellation_reason || 'Cancelled in the NimbusPost panel')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">NimbusPost panel · cancelled</div>` : ''}
+        ${(String(o.status||'').toLowerCase() === 'cancelled' && isCourierCancelled(o)) ? `<div title="NimbusPost marked this shipment cancelled — the courier never picked it up. Courier status: ${esc(o.last_nimbuspost_status || 'cancelled')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Courier cancelled · not picked up</div>` : ''}
         <br/>
         <select class="status-sel" onchange="updateStatus('${esc(o.id)}',this.value)">
           <option value="">Update status…</option>
