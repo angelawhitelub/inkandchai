@@ -6026,7 +6026,7 @@ function openReplacementItemsEditor(encodedRowId) {
       <div id="iacReplacementItemsMsg" style="display:none;font-size:.72rem;margin-top:.7rem;"></div>
       <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem;">
         <button class="btn-outline" onclick="document.getElementById('iacReplacementItemsModal')?.remove()">Cancel</button>
-        <button class="btn-green" id="iacReplacementItemsSave" onclick="saveReplacementItems('${orderRowId}')">Save books</button>
+        <button class="btn-green" id="iacReplacementItemsSave" onclick="saveReplacementItems('${encodeURIComponent(rowId)}')">Save books</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
