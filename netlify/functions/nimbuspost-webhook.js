@@ -330,7 +330,14 @@ exports.handler = async (event) => {
           continue;
         }
         console.log(`[NimbusPost] 🚚 In-transit notify → ${order.razorpay_order_id || order.id}`);
-        await sendInTransitNotifications(order, awb);
+        const notification = await sendInTransitNotifications(order, awb);
+        // sendWhatsApp is intentionally non-throwing. Check its result before
+        // keeping the durable claim; otherwise a transient Meta/template error
+        // would permanently suppress every later retry for this shipment.
+        if (order.customer_phone && !notification?.whatsapp?.ok) {
+          await supabase.from('orders').update({ in_transit_notified_at: null }).eq('id', order.id);
+          console.error(`[NimbusPost] In-transit notification failed for ${order.razorpay_order_id || order.id}; claim released for retry`);
+        }
         continue;
       }
 

@@ -46,13 +46,20 @@ async function sendInTransitNotifications(order, awb) {
   const courier   = order.courier_name || 'DTDC Surface';
 
   if (order.customer_phone) {
-    await sendWhatsApp({
+    const whatsapp = await sendWhatsApp({
       to: order.customer_phone,
       template: 'order_in_transit',
       params: [firstName, bookList, courier],          // {{1}} {{2}} {{3}}
       urlButtonParam: String(order.razorpay_order_id || order.id), // Track button → /track/?id={{1}}
-    }).catch(e => console.error('[delivery-notify] in-transit WhatsApp error:', e.message));
+    }).catch(e => {
+      console.error('[delivery-notify] in-transit WhatsApp error:', e.message);
+      return { ok: false, error: e.message };
+    });
+    return { whatsapp };
   }
+  // No delivery channel exists, so callers should not repeatedly release and
+  // reclaim the dedup marker on every courier hub scan.
+  return { whatsapp: { ok: false, skipped: true, reason: 'no_customer_phone' } };
 }
 
 // ── Out for delivery ─────────────────────────────────────────────────────────

@@ -217,8 +217,14 @@ exports.handler = async (event) => {
           .is('in_transit_notified_at', null)
           .select('id');
         if (claim.error || !claim.data || claim.data.length === 0) { summary.no_change++; continue; }
-        await sendInTransitNotifications(order, awb);
-        summary.updated++;
+        const notification = await sendInTransitNotifications(order, awb);
+        if (order.customer_phone && !notification?.whatsapp?.ok) {
+          await supabase.from('orders').update({ in_transit_notified_at: null }).eq('id', order.id);
+          console.error(`[NimbusPost Reconcile] In-transit notification failed for ${order.razorpay_order_id || order.id}; claim released for retry`);
+          summary.no_change++;
+        } else {
+          summary.updated++;
+        }
         continue;
       }
 
