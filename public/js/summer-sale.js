@@ -126,3 +126,12 @@
     init();
   }
 })();
+
+// Static catalogue pages already load this file. Load the independent runtime
+// gallery enhancer here so existing generated pages gain admin-managed cover
+// and gallery overrides without rebuilding thousands of product HTML files.
+if (/^\/product\/[^/]+\/?$/.test(location.pathname)) {
+  import('/js/product-gallery-overrides.js').catch(function (error) {
+    console.warn('Product gallery enhancer unavailable:', error.message);
+  });
+}

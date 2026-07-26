@@ -3,7 +3,7 @@ const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key, X-Admin-Token',
   'Content-Type': 'application/json',
 };
 
@@ -17,6 +17,32 @@ function money(v) {
   const n = Number(String(v).replace(/[^0-9.]/g, ''));
   if (!Number.isFinite(n) || n < 0) return null;
   return n.toFixed(2);
+}
+
+function extensionFromMime(mime) {
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/webp') return 'webp';
+  return 'jpg';
+}
+
+async function uploadImage(supabase, slug, value) {
+  const image = String(value || '').trim();
+  if (!image.startsWith('data:image/')) return image.slice(0, 4000) || null;
+  const match = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) throw new Error('Invalid image upload');
+  const buffer = Buffer.from(match[2], 'base64');
+  if (buffer.length > 4 * 1024 * 1024) throw new Error('Image is too large. Use an image below 4 MB.');
+  const bucket = 'product-images';
+  const path = `overrides/${slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extensionFromMime(match[1])}`;
+  await supabase.storage.createBucket(bucket, { public: true }).catch(() => {});
+  const { error } = await supabase.storage.from(bucket).upload(path, buffer, {
+    contentType: match[1],
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  if (!data?.publicUrl) throw new Error('Could not create a public image URL');
+  return data.publicUrl;
 }
 
 exports.handler = async (event) => {
@@ -35,7 +61,20 @@ exports.handler = async (event) => {
   const slug = cleanText(body.slug, 160);
   if (!slug) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing product slug' }) };
 
-  const payload = {
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const imageValue = body.image_data_url !== undefined ? body.image_data_url : body.image_url;
+    const imageUrl = await uploadImage(supabase, slug, imageValue);
+    let galleryImages;
+    if (Array.isArray(body.gallery_images)) {
+      galleryImages = [];
+      for (const value of body.gallery_images.slice(0, 8)) {
+        const url = await uploadImage(supabase, `${slug}-gallery`, value);
+        if (url) galleryImages.push(url);
+      }
+    }
+
+    const payload = {
     slug,
     title: cleanText(body.title, 220),
     author: cleanText(body.author, 120),
@@ -45,12 +84,11 @@ exports.handler = async (event) => {
     // scarcity: shows "Only 4 left" urgency badge — always pinned, never runs out
     scarcity: body.scarcity === true || body.scarcity === 'true',
     is_active: body.is_active !== false,
-    image_url: (body.image_url || '').trim().slice(0, 500) || null,
+    image_url: imageUrl,
     updated_at: new Date().toISOString(),
-  };
-
-  try {
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    };
+    // Omitted means preserve the current gallery; [] explicitly clears it.
+    if (galleryImages !== undefined) payload.gallery_images = galleryImages;
     const { data, error } = await supabase
       .from('product_overrides')
       .upsert(payload, { onConflict: 'slug' })

@@ -3599,6 +3599,8 @@ function mergedProduct(row) {
     category: o.category || row.category || '',
     price_inr: o.price_inr ?? row.price_inr ?? '',
     original_price_inr: o.original_price_inr ?? row.original_price_inr ?? '',
+    image_url: o.image_url || row.image_url || '',
+    gallery_images: Array.isArray(o.gallery_images) ? o.gallery_images : (Array.isArray(row.gallery_images) ? row.gallery_images : []),
     is_active: o.is_active !== false,
   };
 }
@@ -3731,8 +3733,8 @@ function selectProduct(slug) {
   const delBtn = document.getElementById('prodDeleteBtn');
   if (delBtn) delBtn.style.display = isCustom ? '' : 'none';
   const galleryRow = document.getElementById('prodGalleryUploadRow');
-  if (galleryRow) galleryRow.style.display = isCustom ? '' : 'none';
-  if (isCustom) renderCurrentProductImages(row);
+  if (galleryRow) galleryRow.style.display = '';
+  renderCurrentProductImages(row);
   const galleryInput = document.getElementById('prodGalleryImages');
   if (galleryInput) galleryInput.value = '';
   const galleryPreview = document.getElementById('prodGalleryPreview');
@@ -3745,7 +3747,9 @@ function selectProduct(slug) {
 }
 
 function customProductGallery(row = selectedProduct) {
-  const value = row?.gallery_images;
+  const value = Array.isArray(row?.override?.gallery_images)
+    ? row.override.gallery_images
+    : row?.gallery_images;
   if (Array.isArray(value)) return value.filter(Boolean).slice(0, 8);
   if (typeof value === 'string') {
     try {
@@ -3767,7 +3771,7 @@ function renderCurrentProductImages(row = selectedProduct) {
     <option value="append">Add new gallery images</option>
     <option value="all">Replace the complete image set</option>`;
   select.value = 'main';
-  const images = [row.image_url, ...gallery].filter(Boolean);
+  const images = [mergedProduct(row).image_url, ...gallery].filter(Boolean);
   host.innerHTML = images.map((url, index) => `<div style="position:relative;text-align:center;">
     <img src="${esc(url)}" alt="${index === 0 ? 'Current main cover' : `Current gallery image ${index}`}" style="display:block;width:70px;height:92px;object-fit:contain;background:rgba(0,0,0,.08);border:1px solid var(--border);border-radius:8px;"/>
     <span style="display:block;margin-top:.2rem;font-size:.52rem;color:var(--cream-dim);">${index === 0 ? 'Main cover' : `Gallery ${index}`}</span>
@@ -3960,13 +3964,14 @@ async function previewEditProductImages(fileList) {
 }
 
 async function saveCustomProductImages() {
-  if (!selectedProduct || !String(selectedProduct.shopify_id || '').startsWith('CUSTOM:')) return;
+  if (!selectedProduct) return;
   if (!editProductImageDataUrls.length) {
     alert('Choose one or more book images first.');
     return;
   }
   const row = selectedProduct;
   const p = mergedProduct(row);
+  const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
   const action = document.getElementById('prodGalleryAction')?.value || 'main';
   const btn = document.getElementById('prodGallerySaveBtn');
   const msg = document.getElementById('productSaveMsg');
@@ -3988,6 +3993,7 @@ async function saveCustomProductImages() {
       seo_title: row.seo_title || '',
       meta_description: row.meta_description || '',
       is_active: row.is_active !== false,
+      scarcity: !!(row.sc || row.override?.scarcity),
     };
 
     // Keep every request below the serverless body-size limit. Sending up to
@@ -3996,14 +4002,16 @@ async function saveCustomProductImages() {
     // The first request replaces the cover and clears the old gallery; each
     // following request appends one newly uploaded gallery image URL.
     const saveImageBatch = async (payload) => {
-      const res = await adminFetch('/.netlify/functions/create-product-listing', {
+      const res = await adminFetch(isCustom
+        ? '/.netlify/functions/create-product-listing'
+        : '/.netlify/functions/update-product-override', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-      return data;
+      return isCustom ? data : { ...data, product: data.override };
     };
 
     const pendingImages = editProductImageDataUrls.slice();
@@ -4020,7 +4028,7 @@ async function saveCustomProductImages() {
       nextGallery[targetIndex] = pendingImages[0];
       data = await saveImageBatch({
         ...basePayload,
-        image_url: row.image_url || '',
+        image_url: p.image_url || '',
         gallery_images: nextGallery,
       });
     } else if (action === 'append') {
@@ -4029,7 +4037,7 @@ async function saveCustomProductImages() {
         if (msg) msg.textContent = `Uploading image ${index + 1} of ${pendingImages.length}…`;
         data = await saveImageBatch({
           ...basePayload,
-          image_url: row.image_url || '',
+          image_url: p.image_url || '',
           gallery_images: [...savedGallery, pendingImages[index]],
         });
         savedGallery = Array.isArray(data.product?.gallery_images) ? data.product.gallery_images : savedGallery;
@@ -4040,7 +4048,7 @@ async function saveCustomProductImages() {
         image_data_url: pendingImages[0],
         gallery_images: [],
       });
-      let mainImageUrl = data.product?.image_url || row.image_url || '';
+      let mainImageUrl = data.product?.image_url || p.image_url || '';
       let savedGallery = [];
       for (let index = 1; index < pendingImages.length; index += 1) {
         if (msg) msg.textContent = `Uploading image ${index + 1} of ${pendingImages.length}…`;
@@ -4053,12 +4061,17 @@ async function saveCustomProductImages() {
         savedGallery = Array.isArray(data.product?.gallery_images) ? data.product.gallery_images : savedGallery;
       }
     }
-    row.image_url = data.product?.image_url || row.image_url || '';
-    row.gallery_images = data.product?.gallery_images || [];
+    if (isCustom) {
+      row.image_url = data.product?.image_url || row.image_url || '';
+      row.gallery_images = data.product?.gallery_images || [];
+    } else {
+      row.override = { ...(row.override || {}), ...(data.product || {}) };
+    }
+    const saved = mergedProduct(row);
     const imgEl = document.getElementById('prodImageUrl');
     const imgPrev = document.getElementById('prodImagePreview');
-    if (imgEl) imgEl.value = row.image_url;
-    if (imgPrev && row.image_url) { imgPrev.src = row.image_url; imgPrev.style.display = 'block'; }
+    if (imgEl) imgEl.value = saved.image_url;
+    if (imgPrev && saved.image_url) { imgPrev.src = saved.image_url; imgPrev.style.display = 'block'; }
     if (msg) msg.textContent = action === 'main' ? 'Main cover replaced. Existing gallery images were kept.'
       : action.startsWith('gallery:') ? `Gallery image ${Number(action.split(':')[1]) + 1} replaced. All other images were kept.`
       : action === 'append' ? `Added ${editProductImageDataUrls.length} gallery image${editProductImageDataUrls.length === 1 ? '' : 's'}.`

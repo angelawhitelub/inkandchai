@@ -17,6 +17,27 @@ exports.handler = async (event) => {
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const requestedSlug = String(event.queryStringParameters?.slug || '').trim().toLowerCase().slice(0, 180);
+    if (requestedSlug) {
+      const { data: single, error: singleError } = await supabase
+        .from('product_overrides')
+        .select('slug,title,author,category,price_inr,original_price_inr,image_url,gallery_images,scarcity,is_active,updated_at')
+        .eq('slug', requestedSlug)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (singleError) throw singleError;
+      const override = single ? {
+        ...single,
+        image_url: proxifySupabaseImage(single.image_url),
+        gallery_images: (Array.isArray(single.gallery_images) ? single.gallery_images : [])
+          .map(proxifySupabaseImage).filter(Boolean),
+      } : null;
+      return {
+        statusCode: 200,
+        headers: { ...CORS, 'Cache-Control': 'no-store, max-age=0' },
+        body: JSON.stringify({ overrides: override ? [override] : [] }),
+      };
+    }
     const { data, error } = await supabase
       .from('product_overrides')
       .select('slug,title,author,category,price_inr,original_price_inr,image_url,scarcity,is_active,updated_at')
