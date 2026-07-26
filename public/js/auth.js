@@ -1368,7 +1368,7 @@
                </div>` : ''}
           ${addressUpdateBlock(o)}
           ${orderTrackingBlock(o)}
-          ${cancelOrderBlock(o)}
+          ${(() => { const c = cancelOrderBlock(o); return c || requestCancellationBlock(o); })()}
           ${returnRequestBlock(o)}
           ${missingBookBlock(o)}
           ${invoiceDownloadBlock(o)}
@@ -1804,6 +1804,71 @@
     } catch (err) {
       alert('Could not cancel order: ' + err.message);
       if (btn) { btn.disabled = false; btn.textContent = isPrepaid ? 'Cancel & Refund' : 'Cancel Order'; }
+    }
+  };
+
+  // ── Request cancellation (in-transit / any live status, COD or prepaid) ──────
+  // Shown only when the instant-cancel block above is NOT available. This is a
+  // REQUEST — it never cancels or refunds; it alerts the team to act manually.
+  function requestCancellationBlock(order) {
+    const status = String(order.status || '').toLowerCase();
+
+    // Already asked — show a calm "under review" state, no button.
+    if (order.cancellation_requested_at) {
+      return `
+        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                    font-size:0.6rem;color:#e8a030;line-height:1.6;">
+          ⏳ Cancellation requested — our team is reviewing it. The order isn't cancelled yet; we'll be in touch.
+        </div>`;
+    }
+
+    // Terminal / non-requestable states: nothing to request.
+    // Delivered uses the Return flow (rendered separately), so skip it here too.
+    const NO_REQUEST = ['cancelled', 'refunded', 'refund_pending', 'refund_failed',
+                        'partially_refunded', 'delivered'];
+    if (NO_REQUEST.includes(status)) return '';
+
+    return `
+      <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                  display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">
+        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
+          Need to cancel? Send us a request — we'll review it.
+        </div>
+        <button onclick="iacRequestCancellation('${escJs(order.id)}')"
+          id="reqcancel-btn-${escJs(order.id)}"
+          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                 padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,168,48,0.5);
+                 color:#e8a030;cursor:pointer;transition:all 0.2s;">
+          Request Cancellation
+        </button>
+      </div>`;
+  }
+
+  window.iacRequestCancellation = async function (orderId) {
+    const reason = prompt('Tell us briefly why you\'d like to cancel (optional). We\'ll review your request — the order will not be cancelled automatically.');
+    if (reason === null) return; // user hit Cancel on the prompt
+
+    const btn = document.getElementById(`reqcancel-btn-${orderId}`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+
+    try {
+      const sb = getSB();
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token || '';
+
+      const res = await fetch('/.netlify/functions/request-cancellation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ order_id: orderId, reason: String(reason || '').trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Request failed');
+
+      alert(json.message || 'Your cancellation request has been sent. The order is not cancelled yet — we\'ll review it.');
+      await openMyOrders();
+    } catch (err) {
+      alert('Could not send request: ' + err.message);
+      if (btn) { btn.disabled = false; btn.textContent = 'Request Cancellation'; }
     }
   };
 
