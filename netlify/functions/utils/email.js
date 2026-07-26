@@ -17,7 +17,22 @@
 const FROM_NAME  = 'Ink & Chai';
 const FROM_EMAIL = 'support@inkandchai.in';
 
-async function sendViaBrevo(key, { to, subject, html }) {
+// Attachments arrive as [{ filename, content, contentType? }] where `content`
+// is a Buffer or a raw string; every provider wants base64, so normalise once.
+function normalizeAttachments(attachments) {
+  return (Array.isArray(attachments) ? attachments : [])
+    .filter(a => a && a.filename && a.content != null)
+    .map(a => ({
+      filename: a.filename,
+      contentType: a.contentType || 'application/octet-stream',
+      base64: Buffer.isBuffer(a.content)
+        ? a.content.toString('base64')
+        : Buffer.from(String(a.content), 'utf8').toString('base64'),
+    }));
+}
+
+async function sendViaBrevo(key, { to, subject, html, attachments }) {
+  const atts = normalizeAttachments(attachments);
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: { 'api-key': key, 'Content-Type': 'application/json' },
@@ -26,6 +41,7 @@ async function sendViaBrevo(key, { to, subject, html }) {
       to:          [{ email: to }],
       subject,
       htmlContent: html,
+      ...(atts.length ? { attachment: atts.map(a => ({ name: a.filename, content: a.base64 })) } : {}),
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -33,12 +49,16 @@ async function sendViaBrevo(key, { to, subject, html }) {
   console.log('Email sent via Brevo:', data?.messageId, '→', to);
 }
 
-async function sendViaResend(key, { to, subject, html }) {
+async function sendViaResend(key, { to, subject, html, attachments }) {
+  const atts = normalizeAttachments(attachments);
   async function attempt(from) {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to, subject, html }),
+      body: JSON.stringify({
+        from, to, subject, html,
+        ...(atts.length ? { attachments: atts.map(a => ({ filename: a.filename, content: a.base64 })) } : {}),
+      }),
     });
     const data = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, data };
@@ -58,7 +78,8 @@ async function sendViaResend(key, { to, subject, html }) {
   throw new Error(`Resend error ${r.status}: ${JSON.stringify(r.data)}`);
 }
 
-async function sendViaMailjet(pub, priv, { to, subject, html }) {
+async function sendViaMailjet(pub, priv, { to, subject, html, attachments }) {
+  const atts = normalizeAttachments(attachments);
   const auth = Buffer.from(`${pub}:${priv}`).toString('base64');
   const res = await fetch('https://api.mailjet.com/v3.1/send', {
     method: 'POST',
@@ -69,6 +90,7 @@ async function sendViaMailjet(pub, priv, { to, subject, html }) {
         To:       [{ Email: to }],
         Subject:  subject,
         HTMLPart: html,
+        ...(atts.length ? { Attachments: atts.map(a => ({ ContentType: a.contentType, Filename: a.filename, Base64Content: a.base64 })) } : {}),
       }],
     }),
   });
@@ -83,12 +105,12 @@ async function sendViaMailjet(pub, priv, { to, subject, html }) {
 /**
  * Send a transactional email. Non-fatal — logs errors but never throws.
  * Always returns { ok: boolean } so callers can check success.
- * @param {{ to: string, subject: string, html: string }} opts
+ * @param {{ to: string, subject: string, html: string, attachments?: Array<{filename:string, content:(Buffer|string), contentType?:string}> }} opts
  * @returns {{ ok: boolean }}
  */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-async function sendEmail({ to, subject, html }) {
+async function sendEmail({ to, subject, html, attachments }) {
   if (!to)              { console.warn('sendEmail: empty "to" — skipped'); return { ok: false }; }
   if (!EMAIL_RE.test(to)) { console.warn(`sendEmail: invalid address "${to}" — skipped`); return { ok: false }; }
   if (!subject)         { console.warn('sendEmail: empty subject — skipped'); return { ok: false }; }
@@ -96,13 +118,13 @@ async function sendEmail({ to, subject, html }) {
   // Each provider is only attempted if its env keys are present.
   const providers = {
     resend:  process.env.RESEND_API_KEY
-      ? () => sendViaResend(process.env.RESEND_API_KEY, { to, subject, html })
+      ? () => sendViaResend(process.env.RESEND_API_KEY, { to, subject, html, attachments })
       : null,
     brevo:   process.env.BREVO_API_KEY
-      ? () => sendViaBrevo(process.env.BREVO_API_KEY, { to, subject, html })
+      ? () => sendViaBrevo(process.env.BREVO_API_KEY, { to, subject, html, attachments })
       : null,
     mailjet: (process.env.MAILJET_API_KEY && process.env.MAILJET_SECRET_KEY)
-      ? () => sendViaMailjet(process.env.MAILJET_API_KEY, process.env.MAILJET_SECRET_KEY, { to, subject, html })
+      ? () => sendViaMailjet(process.env.MAILJET_API_KEY, process.env.MAILJET_SECRET_KEY, { to, subject, html, attachments })
       : null,
   };
 
