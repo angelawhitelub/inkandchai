@@ -2787,14 +2787,17 @@ function _drawTable() {
           style="display:block;margin-top:0.5rem;background:rgba(95,37,159,0.12);border:1px solid rgba(95,37,159,0.5);color:#a275d6;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">🔄 Re-check PhonePe</button>` : ''}
         ${(() => {
           const pid = String(o.razorpay_payment_id || '');
-          const isPhonePe = pid && !pid.startsWith('pay_');  // PhonePe ids start with OM/T; Razorpay starts with pay_
-          const REFUNDABLE = ['paid','confirmed','shipped','out_for_delivery','delivered','refund_pending','cancelled','rto','undelivered','lost'];
-          if (!isPhonePe || !REFUNDABLE.includes(o.status) || !o.amount_paise) return '';
+          // PhonePe ids start with OM/T; Razorpay starts with pay_. Both are now refundable in-app.
+          const isRazorpay = pid.startsWith('pay_');
+          const isPhonePe  = pid && !isRazorpay;
+          const REFUNDABLE = ['paid','confirmed','shipped','out_for_delivery','delivered','refund_pending','refund_failed','partially_refunded','cancelled','rto','undelivered','lost'];
+          if ((!isPhonePe && !isRazorpay) || !REFUNDABLE.includes(o.status) || !o.amount_paise) return '';
           const amtRupees = Math.round(o.amount_paise/100);
-          // Customer name is looked up inside openRefundModal from allOrders
-          // so we don't have to escape it through the onclick attribute string
+          const via = isRazorpay ? 'Razorpay' : 'PhonePe';
+          // Customer name + payment provider are looked up inside openRefundModal
+          // from allOrders so we don't escape them through the onclick string
           // (apostrophes in names like O'Brien would otherwise break the JS).
-          return `<button onclick="openRefundModal('${esc(o.razorpay_order_id||o.id)}',${amtRupees})" title="Refund — full or partial — via PhonePe"
+          return `<button onclick="openRefundModal('${esc(o.razorpay_order_id||o.id)}',${amtRupees})" title="Refund — full or partial — via ${via}"
             style="display:block;margin-top:0.5rem;background:rgba(224,80,80,0.1);border:1px solid rgba(224,80,80,0.5);color:#e06060;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">💸 Refund</button>`;
         })()}
       </td>
@@ -4618,10 +4621,11 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
   pendingRefundContext = opts.cancelReplacementRowId
     ? { cancelReplacementRowId: opts.cancelReplacementRowId, orderId }
     : null;
-  if (!customerName) {
-    const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
-    customerName = ord?.customer_name || '';
-  }
+  const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+  if (!customerName) customerName = ord?.customer_name || '';
+  // Route + label by payment provider. Razorpay ids start with pay_; PhonePe OM/T.
+  const isRazorpay = String(ord?.razorpay_payment_id || '').startsWith('pay_');
+  const provider   = isRazorpay ? 'Razorpay' : 'PhonePe';
   const existing = document.getElementById('iacRefundModal');
   if (existing) existing.remove();
   const modal = document.createElement('div');
@@ -4632,7 +4636,7 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
       <button onclick="document.getElementById('iacRefundModal')?.remove()"
         style="position:absolute;top:0.9rem;right:1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
       <h3 style="font-family:'DM Serif Display',serif;color:#e06060;font-weight:500;margin:0 0 0.4rem;font-size:1.3rem;">
-        💸 Refund — PhonePe
+        💸 Refund — ${provider}
       </h3>
       <p style="color:#a09080;font-size:0.72rem;line-height:1.55;margin:0 0 1rem;">
         Order <strong style="color:#c9a84c;">${orderId}</strong>${customerName ? ' · ' + customerName.replace(/[<>]/g,'') : ''}<br/>
@@ -4857,8 +4861,16 @@ async function iacSubmitRefund(orderId, fullAmtRupees) {
     payload.amount_rupees = amt;
   }
 
+  // Route by payment provider: Razorpay (pay_…) → razorpay-refund, else PhonePe.
+  const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+  const isRazorpay = String(ord?.razorpay_payment_id || '').startsWith('pay_');
+  const endpoint = isRazorpay ? '/.netlify/functions/razorpay-refund' : '/.netlify/functions/phonepe-refund';
+
   const confirmText = partial
-    ? `Refund ₹${payload.amount_rupees.toLocaleString('en-IN')} (partial) for ${orderId}?\n\nThis is a one-shot partial — after this, any remaining balance must be refunded via the PhonePe dashboard.`
+    ? `Refund ₹${payload.amount_rupees.toLocaleString('en-IN')} (partial) for ${orderId}?` +
+      (isRazorpay
+        ? `\n\nRazorpay allows further partial refunds later if needed.`
+        : `\n\nThis is a one-shot partial — after this, any remaining balance must be refunded via the PhonePe dashboard.`)
     : `Refund full ₹${fullAmtRupees.toLocaleString('en-IN')} for ${orderId}?`;
   if (!confirm(confirmText)) return;
 
@@ -4866,7 +4878,7 @@ async function iacSubmitRefund(orderId, fullAmtRupees) {
   btn.disabled = true;
   btn.textContent = 'Processing…';
   try {
-    const res = await fetch('/.netlify/functions/phonepe-refund', {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
       body: JSON.stringify(payload),
