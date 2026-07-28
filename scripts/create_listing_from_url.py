@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Create an SEO-ready Ink & Chai product listing from an Amazon book URL.
 
-The script intentionally never imports or uploads a cover image. Amazon pages
-occasionally block automated requests, so metadata is supplemented from Google
-Books using the ISBN/ASIN embedded in the URL.
+The script intentionally never imports or uploads a cover image. It can open
+the product in Chrome with Playwright, read the rendered page, and fall back to
+Google Books/Open Library using the ISBN/ASIN embedded in the URL.
+
+Examples:
+  python3 scripts/create_listing_from_url.py AMAZON_URL --price 299 --browser always
+  python3 scripts/create_listing_from_url.py AMAZON_URL --dry-run --show-browser
 """
 
 from __future__ import annotations
@@ -124,13 +128,10 @@ def author_names(value: Any) -> str:
     return ", ".join(filter(None, (clean(item) for item in values)))
 
 
-def amazon_metadata(url: str) -> dict[str, Any]:
-    try:
-        parser = MetadataParser()
-        parser.feed(fetch_html(url))
-    except (HTTPError, URLError, TimeoutError):
-        return {}
-
+def amazon_metadata_from_html(raw_html: str) -> dict[str, Any]:
+    """Extract metadata that Amazon exposes in meta tags or JSON-LD."""
+    parser = MetadataParser()
+    parser.feed(raw_html)
     product: dict[str, Any] = {}
     for item in parser.json_ld:
         graph = item.get("@graph", []) if isinstance(item.get("@graph"), list) else []
@@ -149,6 +150,123 @@ def amazon_metadata(url: str) -> dict[str, Any]:
         "isbn": clean(product.get("isbn")),
         "publisher": clean(product.get("publisher")),
     }
+
+
+def amazon_metadata(url: str) -> dict[str, Any]:
+    try:
+        return amazon_metadata_from_html(fetch_html(url))
+    except (HTTPError, URLError, TimeoutError):
+        return {}
+
+
+def merge_metadata(*sources: dict[str, Any]) -> dict[str, Any]:
+    """Keep the first non-empty value for every metadata field."""
+    merged: dict[str, Any] = {}
+    for source in sources:
+        for key, value in source.items():
+            if merged.get(key) in (None, "", []) and value not in (None, "", []):
+                merged[key] = value
+    return merged
+
+
+def browser_metadata(url: str, *, visible: bool = False, timeout_seconds: int = 45) -> dict[str, Any]:
+    """Read an Amazon product from rendered Chrome without downloading its cover.
+
+    A separate temporary browser context is used; the user's normal Chrome
+    profile, cookies, passwords, and open tabs are never read.
+    """
+    try:
+        from playwright.sync_api import Error as PlaywrightError
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError(
+            "Browser mode needs Playwright. Install it with: pip install playwright"
+        ) from exc
+
+    timeout_ms = max(10, timeout_seconds) * 1000
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(
+                channel="chrome",
+                headless=not visible,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = browser.new_context(
+                locale="en-IN",
+                user_agent=USER_AGENT,
+                viewport={"width": 1440, "height": 1000},
+            )
+            # Covers are intentionally left for the admin to upload. Skipping
+            # images/media also makes product extraction substantially faster.
+            context.route(
+                "**/*",
+                lambda route: route.abort()
+                if route.request.resource_type in {"image", "media", "font"}
+                else route.continue_(),
+            )
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            body_text = page.locator("body").inner_text(timeout=min(timeout_ms, 5000))
+            if visible and re.search(
+                r"enter the characters you see below|sorry, we just need to make sure",
+                body_text,
+                re.I,
+            ):
+                try:
+                    input("Complete Amazon's verification in Chrome, then press Enter here to continue… ")
+                except EOFError as exc:
+                    raise RuntimeError("Amazon verification requires an interactive terminal") from exc
+            try:
+                page.locator("#productTitle").wait_for(state="attached", timeout=min(timeout_ms, 12000))
+            except PlaywrightTimeoutError:
+                pass
+
+            rendered = amazon_metadata_from_html(page.content())
+            dom = page.evaluate(
+                """() => {
+                  const text = (selector) => document.querySelector(selector)?.textContent?.replace(/\\s+/g, ' ').trim() || '';
+                  const texts = (selector) => [...document.querySelectorAll(selector)]
+                    .map(node => node.textContent?.replace(/\\s+/g, ' ').trim() || '').filter(Boolean);
+                  const detailText = texts('#detailBullets_feature_div li, #productDetails_detailBullets_sections1 tr, #productDetails_techSpec_section_1 tr').join(' | ');
+                  return {
+                    title: text('#productTitle') || text('#ebooksProductTitle'),
+                    authors: texts('#bylineInfo .author a, #bylineInfo .contributorNameID, #bylineInfo a.a-link-normal')
+                      .filter((value, index, all) => all.indexOf(value) === index).join(', '),
+                    description: [text('#bookDescription_feature_div'), text('#productDescription'), ...texts('#feature-bullets li')]
+                      .filter(Boolean).join(' '),
+                    detailText,
+                    pageText: document.body?.innerText?.slice(0, 25000) || '',
+                    blocked: /enter the characters you see below|sorry, we just need to make sure/i.test(document.body?.innerText || '')
+                  };
+                }"""
+            )
+            browser.close()
+
+        if dom.get("blocked"):
+            hint = " Re-run with --show-browser to complete Amazon's check." if not visible else ""
+            raise RuntimeError("Amazon showed a browser verification page." + hint)
+
+        details = clean(dom.get("detailText"))
+        page_text = clean(dom.get("pageText"))
+        isbn_match = re.search(r"(?:ISBN-13|ISBN)\s*[:：]?\s*([0-9-]{10,17})", details + " " + page_text, re.I)
+        publisher_match = re.search(
+            r"Publisher\s*[:：]?\s*([^|\n]{2,120}?)(?=\s+(?:Language|Paperback|Hardcover|ISBN|Publication)|\s*\||$)",
+            details + " | " + page_text,
+            re.I,
+        )
+        browser_values = {
+            "title": clean(dom.get("title")),
+            "authors": clean(dom.get("authors")),
+            "description": clean(dom.get("description")),
+            "isbn": clean(isbn_match.group(1).replace("-", "")) if isbn_match else "",
+            "publisher": clean(publisher_match.group(1)) if publisher_match else "",
+        }
+        return merge_metadata(browser_values, rendered)
+    except PlaywrightTimeoutError as exc:
+        raise RuntimeError(f"Browser timed out after {timeout_seconds} seconds") from exc
+    except PlaywrightError as exc:
+        raise RuntimeError(f"Chrome extraction failed: {exc}") from exc
 
 
 def google_books_metadata(isbn: str) -> dict[str, Any]:
@@ -229,6 +347,22 @@ def truncate(value: str, limit: int) -> str:
 def build_payload(args: argparse.Namespace) -> dict[str, Any]:
     asin = isbn_from_url(args.url)
     amazon = amazon_metadata(args.url)
+    needs_browser = args.browser == "always" or (
+        args.browser == "auto"
+        and (not amazon.get("title") or not amazon.get("authors") or len(clean(amazon.get("description"))) < 80)
+    )
+    if needs_browser:
+        try:
+            rendered = browser_metadata(
+                args.url,
+                visible=args.show_browser,
+                timeout_seconds=args.browser_timeout,
+            )
+            amazon = merge_metadata(rendered, amazon)
+        except RuntimeError as exc:
+            if args.browser == "always":
+                raise
+            print(f"warning: browser extraction unavailable: {exc}", file=sys.stderr)
     lookup_isbn = choose(amazon.get("isbn"), asin)
     books = google_books_metadata(lookup_isbn)
     fallback = open_library_metadata(lookup_isbn)
@@ -326,6 +460,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--category", help="Override detected category")
     parser.add_argument("--description", help="Override source description")
     parser.add_argument("--slug", help="Override generated URL slug")
+    parser.add_argument(
+        "--browser",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help="Rendered Chrome extraction: auto fallback (default), always, or never",
+    )
+    parser.add_argument(
+        "--show-browser",
+        action="store_true",
+        help="Show Chrome during extraction (useful if Amazon requests verification)",
+    )
+    parser.add_argument(
+        "--browser-timeout",
+        type=int,
+        default=45,
+        help="Maximum browser navigation time in seconds (default: 45)",
+    )
     parser.add_argument("--site", default=os.getenv("INKANDCHAI_SITE_URL", DEFAULT_SITE))
     parser.add_argument("--admin-key", default=os.getenv("INKANDCHAI_ADMIN_SECRET", ""))
     parser.add_argument("--dry-run", action="store_true", help="Print payload without publishing")
