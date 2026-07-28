@@ -3000,6 +3000,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
 const BOOKS = BOOKS_DATA_PLACEHOLDER;
+window.IAC_BOOKS = BOOKS;
 
 const COLLECTIONS = COLLECTIONS_DATA_PLACEHOLDER;
 const ALL_CATS    = ALL_CATS_DATA_PLACEHOLDER;
@@ -3032,6 +3033,9 @@ function applyProductOverride(book, override) {
 
 function customProductToBook(product) {
   if (!product || !product.slug || !product.title) return null;
+  const createdAt = product.created_at || product.updated_at || '';
+  const createdTime = Date.parse(createdAt);
+  const isNew = Number.isFinite(createdTime) && (Date.now() - createdTime) <= 45 * 86400000;
   return {
     t: product.title || '',
     a: product.author || '',
@@ -3046,8 +3050,8 @@ function customProductToBook(product) {
     desc: product.description || '',
     isbn: product.isbn || '',
     pub: product.publisher || 'Ink & Chai',
-    n: 1,
-    ts: product.updated_at || new Date().toISOString(),
+    n: isNew ? 1 : 0,
+    ts: createdAt,
     pdf: '',
     pdf_pages: 0,
     rating: '',
@@ -3078,7 +3082,7 @@ async function loadProductOverrides() {
     (data.custom_products || []).forEach(product => {
       const book = customProductToBook(product);
       if (book && !BOOKS.some(existing => String(existing.slug || '').toLowerCase() === String(book.slug).toLowerCase())) {
-        BOOKS.unshift(book);
+        BOOKS.push(book);
       }
     });
   } catch (err) {
@@ -3221,9 +3225,22 @@ function editionPenalty(b) {
 function homepageRank(a, b) {
   // New arrivals always appear first on All tab
   if ((b.n || 0) !== (a.n || 0)) return (b.n || 0) - (a.n || 0);
-  return trendScore(b) - trendScore(a)
+  if ((b.n || 0) && (a.n || 0)) {
+    const byCreated = Date.parse(b.ts || 0) - Date.parse(a.ts || 0);
+    if (byCreated) return byCreated;
+  }
+  return liveSalesScore(b) - liveSalesScore(a)
+    || trendScore(b) - trendScore(a)
     || editionPenalty(a) - editionPenalty(b)
     || a.t.localeCompare(b.t);
+}
+
+function liveSalesScore(book) {
+  const sales = window.IAC_BESTSELLER_SALES;
+  if (!(sales instanceof Map)) return 0;
+  const slug = String(book?.slug || '').toLowerCase();
+  const title = normalizeSearchText(book?.t || '');
+  return Number(sales.get('s:' + slug) || sales.get('t:' + title) || 0);
 }
 
 function normalizeSearchText(value) {
@@ -3348,9 +3365,11 @@ function searchScore(book, rawQuery) {
 
 function filteredBooks() {
   const q = normalizeSearchText(currentQuery);
+  const hasLiveBestsellers = window.IAC_BESTSELLER_SALES instanceof Map
+    && window.IAC_BESTSELLER_SALES.size > 0;
   const tabFiltered = BOOKS.filter(b => currentTab === 'All'
     || (currentTab === 'New' && b.n === 1)
-    || (currentTab === 'Bestsellers' && trendScore(b) > 0)
+    || (currentTab === 'Bestsellers' && (hasLiveBestsellers ? liveSalesScore(b) > 0 : trendScore(b) > 0))
     || b.tab === currentTab);
   if (!q) return tabFiltered.sort(homepageRank);
 
@@ -4233,6 +4252,7 @@ document.querySelectorAll('.stat-num').forEach(el => {
   statObs.observe(el);
 });
 </script>
+<script src="/js/homepage-merchandising.js" defer></script>
 </body>
 </html>
 """

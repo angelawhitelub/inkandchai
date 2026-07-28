@@ -2233,6 +2233,7 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
 const BOOKS = window.BOOKS_PRELOAD||[];
+window.IAC_BOOKS = BOOKS;
 
 const COLLECTIONS = [{"name": "Fiction & Romance", "slug": "fiction--romance", "count": 668, "cats": ["fiction", "all romance books", "romance (on sale)"], "thumb": "/images/our-perfect-storm-carley-fortune.webp"}, {"name": "Self-Help", "slug": "self-help", "count": 430, "cats": ["all self help", "self-help (on sale)", "best self help books from publishers"], "thumb": "/images/psychology-of-money-hindi-thinking-fast-slow-hindi-combo-2.webp"}, {"name": "Kids & Young Adult", "slug": "kids--young-adult", "count": 255, "cats": ["kids book", "kids book age: 3-5", "kids book age: 2-6", "kids book age: 5-8", "kids book age: 8-11"], "thumb": "/.netlify/functions/image-proxy?i=c7de220e0fc2b70d19f74362&w=400"}, {"name": "Manga & Comics", "slug": "manga--comics", "count": 125, "cats": ["manga", "comics", "dc comics", "marvel comics"], "thumb": "/.netlify/functions/image-proxy?i=f4386050f1607b6dec01dd76&w=400"}, {"name": "Mythology & Spirituality", "slug": "mythology--spirituality", "count": 14, "cats": ["mythology", "best of spirituality and mythology", "spirituality", "amish tripathi books"], "thumb": "/.netlify/functions/image-proxy?i=5b49e020dff2350769597e29&w=400"}];
 const ALL_CATS    = [{"name": "Preloved Books", "count": 474}, {"name": "All Self Help", "count": 430}, {"name": "Fiction", "count": 302}, {"name": "All Romance Books", "count": 271}, {"name": "Kids Book", "count": 255}, {"name": "Hindi Books", "count": 202}, {"name": "Self-help (On Sale)", "count": 135}, {"name": "Romance (On Sale)", "count": 95}, {"name": "Comics", "count": 70}, {"name": "Children Books", "count": 66}, {"name": "Manga", "count": 55}, {"name": "Best Self Help Books from Publishers", "count": 43}, {"name": "Board Books", "count": 30}, {"name": "Business and Finance", "count": 25}, {"name": "OTHER LANGUAGES", "count": 25}, {"name": "Best of Spirituality and Mythology", "count": 24}, {"name": "Bengali Books", "count": 19}, {"name": "Biography and Autobiography", "count": 19}, {"name": "Classics", "count": 17}, {"name": "All Romance", "count": 16}, {"name": "Ana Huang books", "count": 16}, {"name": "Boxsets", "count": 15}, {"name": "Marathi Books", "count": 14}, {"name": "Amish Tripathi Books", "count": 10}, {"name": "Colleen Hoover Special", "count": 10}, {"name": "Coloring Books", "count": 10}, {"name": "Indian Mythology", "count": 8}, {"name": "Science", "count": 7}, {"name": "Akshat Gupta Books", "count": 6}, {"name": "Fiction & Romance Combos🔥", "count": 6}, {"name": "Thriller & Mystery", "count": 6}, {"name": "Self-help & Finance Combos🔥", "count": 5}, {"name": "Sudha Murti Special", "count": 5}, {"name": "Freida McFadden Special", "count": 4}, {"name": "Mythology", "count": 4}, {"name": "Poetry", "count": 4}, {"name": "Ali Hazelwood Special", "count": 3}, {"name": "Lauren Asher Special", "count": 3}, {"name": "Malayalam Books", "count": 3}, {"name": "Sunday Sale", "count": 3}, {"name": "Self Help", "count": 2}, {"name": "Non Fiction", "count": 2}, {"name": "Business & Finance", "count": 2}, {"name": "Hardcover Store", "count": 2}, {"name": "KIDS BOOK Age: 12+", "count": 2}];
@@ -2265,6 +2266,9 @@ function applyProductOverride(book, override) {
 
 function customProductToBook(product) {
   if (!product || !product.slug || !product.title) return null;
+  const createdAt = product.created_at || product.updated_at || '';
+  const createdTime = Date.parse(createdAt);
+  const isNew = Number.isFinite(createdTime) && (Date.now() - createdTime) <= 45 * 86400000;
   return {
     t: product.title || '',
     a: product.author || '',
@@ -2279,8 +2283,8 @@ function customProductToBook(product) {
     desc: product.description || '',
     isbn: product.isbn || '',
     pub: product.publisher || 'Ink & Chai',
-    n: 1,
-    ts: product.updated_at || new Date().toISOString(),
+    n: isNew ? 1 : 0,
+    ts: createdAt,
     pdf: '',
     pdf_pages: 0,
     rating: '',
@@ -2311,7 +2315,7 @@ async function loadProductOverrides() {
     (data.custom_products || []).forEach(product => {
       const book = customProductToBook(product);
       if (book && !BOOKS.some(existing => String(existing.slug || '').toLowerCase() === String(book.slug).toLowerCase())) {
-        BOOKS.unshift(book);
+        BOOKS.push(book);
       }
     });
   } catch (err) {
@@ -2454,9 +2458,22 @@ function editionPenalty(b) {
 function homepageRank(a, b) {
   // New arrivals always appear first on All tab
   if ((b.n || 0) !== (a.n || 0)) return (b.n || 0) - (a.n || 0);
-  return trendScore(b) - trendScore(a)
+  if ((b.n || 0) && (a.n || 0)) {
+    const byCreated = Date.parse(b.ts || 0) - Date.parse(a.ts || 0);
+    if (byCreated) return byCreated;
+  }
+  return liveSalesScore(b) - liveSalesScore(a)
+    || trendScore(b) - trendScore(a)
     || editionPenalty(a) - editionPenalty(b)
     || a.t.localeCompare(b.t);
+}
+
+function liveSalesScore(book) {
+  const sales = window.IAC_BESTSELLER_SALES;
+  if (!(sales instanceof Map)) return 0;
+  const slug = String(book?.slug || '').toLowerCase();
+  const title = normalizeSearchText(book?.t || '');
+  return Number(sales.get('s:' + slug) || sales.get('t:' + title) || 0);
 }
 
 function normalizeSearchText(value) {
@@ -2581,9 +2598,11 @@ function searchScore(book, rawQuery) {
 
 function filteredBooks() {
   const q = normalizeSearchText(currentQuery);
+  const hasLiveBestsellers = window.IAC_BESTSELLER_SALES instanceof Map
+    && window.IAC_BESTSELLER_SALES.size > 0;
   const tabFiltered = BOOKS.filter(b => currentTab === 'All'
     || (currentTab === 'New' && b.n === 1)
-    || (currentTab === 'Bestsellers' && trendScore(b) > 0)
+    || (currentTab === 'Bestsellers' && (hasLiveBestsellers ? liveSalesScore(b) > 0 : trendScore(b) > 0))
     || b.tab === currentTab);
   if (!q) return tabFiltered.sort(homepageRank);
 
@@ -3642,6 +3661,7 @@ document.querySelectorAll('.stat-num').forEach(el => {
   }, true);
 })();
 </script>
+<script src="/js/homepage-merchandising.js" defer></script>
 
 </body>
 </html>

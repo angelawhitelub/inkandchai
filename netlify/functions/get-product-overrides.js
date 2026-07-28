@@ -60,7 +60,7 @@ exports.handler = async (event) => {
     // sink — 74% of the old payload was description/meta bytes nobody displayed).
     const { data: customData, error: customError } = await supabase
       .from('custom_products')
-      .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,publisher,isbn,tags,is_active,updated_at')
+      .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,publisher,isbn,tags,is_active,created_at,updated_at')
       .eq('is_active', true)
       // EXCLUDE the big browse-only catalogues (crossword.in + 99bookstores).
       // Those thousands of books are browsed via the paginated /books page +
