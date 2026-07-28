@@ -1391,7 +1391,9 @@ td{padding:1rem;font-size:.94rem;}
         <p>All customer WhatsApp conversations. Click a chat to read it, take over from the bot, or reply directly.</p>
       </div>
       <div class="mini-actions">
+        <button id="retryMissedBotBtn" class="btn-outline" onclick="retryMissedBotReplies()">🤖 Retry missed replies</button>
         <button class="btn-outline" onclick="fetchInbox()">↻ Refresh</button>
+        <span id="retryMissedBotStatus" style="font-size:.68rem;color:var(--cream-dim);"></span>
       </div>
     </div>
 
@@ -6676,6 +6678,60 @@ async function fetchInbox() {
   } catch (e) {
     document.getElementById('inboxConvList').innerHTML =
       `<div style="padding:1rem;color:#c93636;font-size:0.8rem;">Error loading: ${e.message}</div>`;
+  }
+}
+
+async function retryMissedBotReplies() {
+  const button = document.getElementById('retryMissedBotBtn');
+  const status = document.getElementById('retryMissedBotStatus');
+  button.disabled = true;
+  status.textContent = 'Scanning last 24 hours…';
+  try {
+    const previewRes = await adminFetch('/.netlify/functions/retry-missed-bot-replies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run: true, limit: 10 }),
+    });
+    const preview = await previewRes.json();
+    if (!previewRes.ok) throw new Error(preview.error || 'Could not scan missed replies');
+    if (!preview.candidate_count) {
+      status.textContent = 'No unanswered chats in the last 24 hours.';
+      return;
+    }
+
+    const processCount = preview.process_count || preview.candidate_count;
+    status.textContent = `${preview.candidate_count} unanswered chat${preview.candidate_count === 1 ? '' : 's'} found.`;
+    const approved = confirm(
+      `Send one AI-generated WhatsApp reply to ${processCount} unanswered chat${processCount === 1 ? '' : 's'}?\n\n` +
+      `There ${preview.candidate_count === 1 ? 'is' : 'are'} ${preview.candidate_count} eligible in the last 24 hours. ` +
+      'Human-takeover, resolved, and already-answered chats are skipped. Up to 10 are processed per run.'
+    );
+    if (!approved) {
+      status.textContent = 'Cancelled — no replies sent.';
+      return;
+    }
+
+    status.textContent = 'Generating and sending replies…';
+    const sendRes = await adminFetch('/.netlify/functions/retry-missed-bot-replies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run: false, limit: 10 }),
+    });
+    const result = await sendRes.json();
+    if (!sendRes.ok) throw new Error(result.error || 'Recovery failed');
+    const remaining = result.remaining_after_run || 0;
+    status.textContent = `Sent ${result.sent || 0}; skipped ${result.skipped || 0}; failed ${result.failed || 0}` +
+      (remaining ? `; ${remaining} still queued — run again.` : '.');
+    if (result.failed) {
+      const failures = (result.results || []).filter(item => item.status === 'failed');
+      alert(`Recovery finished with ${result.failed} failed chat(s).\n\n${failures.map(item => `${item.phone}: ${item.reason}`).join('\n')}`);
+    }
+    await fetchInbox();
+  } catch (error) {
+    status.textContent = `Error: ${error.message}`;
+    alert('Could not retry missed replies: ' + error.message);
+  } finally {
+    button.disabled = false;
   }
 }
 

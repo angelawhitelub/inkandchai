@@ -337,22 +337,61 @@ async function upsertBotCustomer(phone, { customer_name, address, order_id }) {
 // env-configured PHONE_ID when the caller doesn't know the sender.
 async function sendReply(to, text, senderPhoneId) {
   const token = process.env.WHATSAPP_TOKEN;
-  if (!token) { console.warn('WHATSAPP_TOKEN not set'); return; }
+  if (!token) {
+    console.warn('WHATSAPP_TOKEN not set');
+    return { ok: false, error: 'WHATSAPP_TOKEN not set' };
+  }
 
   const phoneId = senderPhoneId || PHONE_ID;
   const url = `https://graph.facebook.com/${API_VER}/${phoneId}/messages`;
 
   const phone = normalizePhone(to) || to;
-  await fetch(url, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: phone,
-      type: 'text',
-      text: { body: text, preview_url: false },
-    }),
-  }).catch(e => console.error('sendReply error:', e.message));
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: phone,
+        type: 'text',
+        text: { body: text, preview_url: false },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    const error = data?.error?.message || (!res.ok ? `Meta returned HTTP ${res.status}` : '');
+    if (!res.ok) console.error(`sendReply failed via ${phoneId} -> ${phone}:`, JSON.stringify(data));
+    return { ok: res.ok, data, phoneId, error };
+  } catch (e) {
+    console.error('sendReply error:', e.message);
+    return { ok: false, error: e.message, phoneId };
+  }
+}
+
+function formatOrderContext(order, displayId) {
+  const id = displayId || order.razorpay_order_id || '—';
+  const amt = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '—';
+  const date = order.created_at
+    ? new Date(order.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })
+    : '—';
+  const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
+  const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
+  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nTracking: ${track}\nTrack URL: ${trackUrl}`;
+}
+
+async function buildOrderContext(from, userText) {
+  const orderId = extractOrderId(userText);
+  if (orderId) {
+    const order = await lookupOrder(orderId);
+    if (order) return formatOrderContext(order, orderId);
+    return `Order ID ${orderId} was searched in our database but was not found. This could mean the customer typed it incorrectly, or it belongs to a different account. Ask them to double-check the order ID from their confirmation email/SMS or from My Orders on inkandchai.in.`;
+  }
+
+  const isOrderQuery = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book/i.test(userText);
+  if (!isOrderQuery) return '';
+  const orders = await lookupOrdersByPhone(from);
+  if (!orders.length) return '';
+  return `Customer's recent orders (looked up by their WhatsApp number):\n` +
+    orders.map((o, i) => `--- Order ${i + 1} ---\n${formatOrderContext(o, o.razorpay_order_id)}`).join('\n');
 }
 
 // ── High-value COD confirmation handler ───────────────────────────────────────
@@ -983,39 +1022,8 @@ exports.handler = async (event) => {
       }
     }
 
-    // ── Check if message contains an Order ID — look it up ───────────────────
-    let extraContext = '';
-    const orderId = extractOrderId(userText);
-
-    // Helper: format a single order row into readable context for the AI
-    function formatOrderContext(order, displayId) {
-      const id    = displayId || order.razorpay_order_id || '—';
-      const amt   = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '—';
-      const date  = order.created_at ? new Date(order.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-      const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
-      const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
-      return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nTracking: ${track}\nTrack URL: ${trackUrl}`;
-    }
-
-    if (orderId) {
-      // Customer explicitly shared an order ID — look it up directly
-      const order = await lookupOrder(orderId);
-      if (order) {
-        extraContext = formatOrderContext(order, orderId);
-      } else {
-        extraContext = `Order ID ${orderId} was searched in our database but was not found. This could mean the customer typed it incorrectly, or it belongs to a different account. Ask them to double-check the order ID from their confirmation email/SMS or from My Orders on inkandchai.in.`;
-      }
-    } else {
-      // No order ID in message — check if message is order-related and look up by phone
-      const isOrderQuery = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book/i.test(userText);
-      if (isOrderQuery) {
-        const orders = await lookupOrdersByPhone(from);
-        if (orders.length > 0) {
-          extraContext = `Customer's recent orders (looked up by their WhatsApp number):\n` +
-            orders.map((o, i) => `--- Order ${i + 1} ---\n${formatOrderContext(o, o.razorpay_order_id)}`).join('\n');
-        }
-      }
-    }
+    // ── Check order context by ID or customer phone ──────────────────────────
+    const extraContext = await buildOrderContext(from, userText);
 
     // ── Get AI reply ──────────────────────────────────────────────────────────
     let reply = await askOpenAI(from, userText, extraContext);
@@ -1042,7 +1050,8 @@ exports.handler = async (event) => {
       } catch (e) { console.error('takeover upsert error:', e.message); }
     }
 
-    await sendReply(from, reply, recvPhoneId);
+    const sendResult = await sendReply(from, reply, recvPhoneId);
+    if (!sendResult.ok) throw new Error(`WhatsApp send failed: ${sendResult.error || 'Meta rejected the message'}`);
     // Persist bot reply (reset unread — bot replied so nothing new for admin)
     await persistMessage(from, 'bot', reply, null, recvPhoneId);
     console.log(`[OUT] ${from}: ${reply.slice(0, 120)}`);
@@ -1054,3 +1063,8 @@ exports.handler = async (event) => {
 
   return { statusCode: 200, body: 'ok' };
 };
+
+// Shared with the admin-only missed-reply recovery function. Keeping these
+// internals here ensures live replies and retries use exactly the same prompt,
+// order lookup, WhatsApp sender selection, and persistence rules.
+exports._internal = { askOpenAI, sendReply, persistMessage, isHumanTakeover, buildOrderContext };
