@@ -511,6 +511,19 @@ const OPENAI_TOOLS = [{
   },
 }];
 
+function openAIRetryDelayMs(response, data) {
+  const retryAfter = response?.headers?.get?.('retry-after');
+  if (retryAfter && Number.isFinite(Number(retryAfter))) return Math.ceil(Number(retryAfter) * 1000) + 500;
+
+  const reset = response?.headers?.get?.('x-ratelimit-reset-tokens') || '';
+  const message = data?.error?.message || '';
+  const match = String(reset).match(/([\d.]+)\s*(ms|s)/i) || message.match(/try again in\s+([\d.]+)\s*(ms|s)/i);
+  if (!match) return 3000;
+  return Math.ceil(Number(match[1]) * (match[2].toLowerCase() === 'ms' ? 1 : 1000)) + 500;
+}
+
+function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
 async function callOpenAIChat(messages, { tools = false } = {}) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not set');
@@ -525,14 +538,23 @@ async function callOpenAIChat(messages, { tools = false } = {}) {
     temperature: 0.4,        // steadier, less erratic tool selection
   };
   if (tools) { payload.tools = OPENAI_TOOLS; payload.tool_choice = 'auto'; }
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`OpenAI error ${res.status}: ${data.error?.message || JSON.stringify(data)}`);
-  return data.choices?.[0]?.message || {};
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (res.ok) return data.choices?.[0]?.message || {};
+    if (res.status === 429 && attempt === 0) {
+      const retryMs = Math.min(Math.max(openAIRetryDelayMs(res, data), 1000), 15000);
+      console.warn(`OpenAI rate limit reached; retrying once in ${retryMs}ms`);
+      await wait(retryMs);
+      continue;
+    }
+    throw new Error(`OpenAI error ${res.status}: ${data.error?.message || JSON.stringify(data)}`);
+  }
+  throw new Error('OpenAI request failed after retry');
 }
 
 // ── Admin-editable extra instructions / FAQ (from the admin panel) ───────────
@@ -1067,4 +1089,4 @@ exports.handler = async (event) => {
 // Shared with the admin-only missed-reply recovery function. Keeping these
 // internals here ensures live replies and retries use exactly the same prompt,
 // order lookup, WhatsApp sender selection, and persistence rules.
-exports._internal = { askOpenAI, sendReply, persistMessage, isHumanTakeover, buildOrderContext };
+exports._internal = { askOpenAI, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs };

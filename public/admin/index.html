@@ -6690,7 +6690,7 @@ async function retryMissedBotReplies() {
     const previewRes = await adminFetch('/.netlify/functions/retry-missed-bot-replies', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dry_run: true, limit: 10 }),
+      body: JSON.stringify({ dry_run: true, limit: 5 }),
     });
     const preview = await previewRes.json();
     if (!previewRes.ok) throw new Error(preview.error || 'Could not scan missed replies');
@@ -6704,7 +6704,7 @@ async function retryMissedBotReplies() {
     const approved = confirm(
       `Send one AI-generated WhatsApp reply to ${processCount} unanswered chat${processCount === 1 ? '' : 's'}?\n\n` +
       `There ${preview.candidate_count === 1 ? 'is' : 'are'} ${preview.candidate_count} eligible in the last 24 hours. ` +
-      'Human-takeover, resolved, and already-answered chats are skipped. Up to 10 are processed per run.'
+      'Human-takeover, resolved, and already-answered chats are skipped. Up to 5 are processed per run to stay within the AI rate limit.'
     );
     if (!approved) {
       status.textContent = 'Cancelled — no replies sent.';
@@ -6715,7 +6715,7 @@ async function retryMissedBotReplies() {
     const sendRes = await adminFetch('/.netlify/functions/retry-missed-bot-replies', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dry_run: false, limit: 10 }),
+      body: JSON.stringify({ dry_run: false, limit: 5 }),
     });
     const result = await sendRes.json();
     if (!sendRes.ok) throw new Error(result.error || 'Recovery failed');
@@ -6724,7 +6724,12 @@ async function retryMissedBotReplies() {
       (remaining ? `; ${remaining} still queued — run again.` : '.');
     if (result.failed) {
       const failures = (result.results || []).filter(item => item.status === 'failed');
-      alert(`Recovery finished with ${result.failed} failed chat(s).\n\n${failures.map(item => `${item.phone}: ${item.reason}`).join('\n')}`);
+      const rateLimited = failures.some(item => /OpenAI error 429|rate limit/i.test(item.reason || ''));
+      if (rateLimited) {
+        alert(`${result.failed} chat(s) remain queued because the AI rate limit was reached.\n\nWait about one minute, then click Retry missed replies again. Successful chats will be skipped automatically, so customers will not receive duplicates.`);
+      } else {
+        alert(`Recovery finished with ${result.failed} failed chat(s).\n\n${failures.map(item => `${item.phone}: ${String(item.reason || 'Unknown error').slice(0, 180)}`).join('\n')}`);
+      }
     }
     await fetchInbox();
   } catch (error) {

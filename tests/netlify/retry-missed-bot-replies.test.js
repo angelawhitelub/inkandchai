@@ -5,6 +5,7 @@ const {
   combinePendingMessages,
   findMissedConversations,
 } = require('../../netlify/functions/retry-missed-bot-replies')._test;
+const { openAIRetryDelayMs } = require('../../netlify/functions/whatsapp-bot')._internal;
 
 const conversations = [
   { customer_phone: '111', whatsapp_phone_id: 'phone-a', status: 'active', human_takeover: false },
@@ -52,5 +53,14 @@ test('combines consecutive customer messages into one clear recovery prompt', ()
   assert.equal(
     combinePendingMessages([{ message: 'Where is my order?' }, { message: 'It has been eight days' }]),
     'The customer sent these messages while support was temporarily unavailable:\n1. Where is my order?\n2. It has been eight days'
+  );
+});
+
+test('uses OpenAI retry timing from headers or the rate-limit message', () => {
+  const headers = { get: name => name === 'x-ratelimit-reset-tokens' ? '5.714s' : null };
+  assert.equal(openAIRetryDelayMs({ headers }, {}), 6214);
+  assert.equal(
+    openAIRetryDelayMs({ headers: { get: () => null } }, { error: { message: 'Please try again in 840ms.' } }),
+    1340
   );
 });

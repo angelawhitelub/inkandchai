@@ -127,7 +127,10 @@ exports.handler = async event => {
   try {
     const body = JSON.parse(event.body || '{}');
     const dryRun = body.dry_run !== false;
-    const limit = Math.max(1, Math.min(Number(body.limit) || 10, 10));
+    // Each GPT-4o reply consumes roughly 4k TPM with the store instructions.
+    // Stay comfortably below the account's 30k TPM ceiling and let the admin
+    // run another guarded batch for the remainder.
+    const limit = Math.max(1, Math.min(Number(body.limit) || 5, 5));
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -170,11 +173,11 @@ exports.handler = async event => {
       };
     }
 
-    // Small batches keep the operation fast enough for a serverless request
-    // without producing a sudden burst to OpenAI or Meta.
+    // Process sequentially. Parallel generation caused a burst against the
+    // account's token-per-minute limit even though billing credit was healthy.
     const results = [];
-    for (let i = 0; i < candidates.length; i += 3) {
-      results.push(...await Promise.all(candidates.slice(i, i + 3).map(candidate => recoverOne(db, candidate))));
+    for (const candidate of candidates) {
+      results.push(await recoverOne(db, candidate));
     }
     const sent = results.filter(result => result.status === 'sent').length;
     const skipped = results.filter(result => result.status === 'skipped').length;
