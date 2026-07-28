@@ -1261,6 +1261,19 @@
     renderOrders(container, orders);
   }
 
+  function isNimbusInTransit(order) {
+    const status = String(order?.status || '').toLowerCase();
+    if (['out_for_delivery','delivered','rto','undelivered','lost','cancelled','refunded','refund_pending'].includes(status)) return false;
+    const raw = String(order?.last_nimbuspost_status || '').toLowerCase().trim();
+    return /^(?:in[ -]?transit|reached (?:at|nearest|destination) hub|in sorting centre|sorting|spd)$/.test(raw);
+  }
+
+  function shipmentHasMoved(order) {
+    if (order?.shipment_moved_at || isNimbusInTransit(order)) return true;
+    const raw = String(order?.last_nimbuspost_status || '').toLowerCase().trim();
+    return /^(?:picked up|pickup done|shipped|dispatched|out[ _]for delivery|ofd|delivered|rto|return to origin|undelivered|ndr|delivery (?:failed|attempt failed|exception)|lost)/.test(raw);
+  }
+
   function renderOrders(container, data) {
     if (!data?.length) {
       container.innerHTML = `
@@ -1279,6 +1292,7 @@
       const items  = Array.isArray(o.cart_items) ? o.cart_items : [];
 
       // Complete status colour map — covers every status the NimbusPost webhook can set
+      const displayStatus = isNimbusInTransit(o) ? 'in_transit' : o.status;
       const statusColor = {
         // Payment states
         pending:              '#a09080',
@@ -1289,6 +1303,7 @@
         pending_phonepe:      '#a09080',
         // Shipping progression
         shipped:              '#c9a84c',
+        in_transit:           '#4db8ff',
         out_for_delivery:     '#4db8ff',   // bright blue — action needed for COD
         delivered:            '#6dbf6d',
         // Problem states
@@ -1297,7 +1312,7 @@
         lost:                 '#e06060',
         cancelled:            '#e06060',
         refunded:             '#a09080',
-      }[o.status] || '#a09080';
+      }[displayStatus] || '#a09080';
 
       // Human-readable label — replace ALL underscores, add emoji for key states
       const STATUS_LABEL = {
@@ -1308,6 +1323,7 @@
         partial_cod_pending:  'Partial COD — Pay Balance on Delivery',
         pending_phonepe:      'Awaiting Payment',
         shipped:              '📦 Shipped',
+        in_transit:           '🚚 In Transit',
         out_for_delivery:     '🚚 Out for Delivery',
         delivered:            '✅ Delivered',
         undelivered:          '⚠️ Delivery Attempted',
@@ -1316,7 +1332,7 @@
         cancelled:            '✕ Cancelled',
         refunded:             '↩ Refunded',
       };
-      const statusLabel = STATUS_LABEL[o.status] || (o.status || 'Pending').replace(/_/g, ' ');
+      const statusLabel = STATUS_LABEL[displayStatus] || (displayStatus || 'Pending').replace(/_/g, ' ');
 
       return `
         <div style="border:1px solid rgba(201,168,76,0.14);margin-bottom:1.2rem;padding:1.4rem;">
@@ -1434,13 +1450,14 @@
 
   // ── Tracking / shipping progress block ────────────────────────────────────
   function orderTrackingBlock(order) {
-    const status = String(order.status || '').toLowerCase();
-    const shippingStatuses = ['shipped','out_for_delivery','delivered','undelivered','rto','lost'];
+    const baseStatus = String(order.status || '').toLowerCase();
+    const status = isNimbusInTransit(order) ? 'in_transit' : baseStatus;
+    const shippingStatuses = ['shipped','in_transit','out_for_delivery','delivered','undelivered','rto','lost'];
     if (!shippingStatuses.includes(status)) return '';
 
     // Progress steps
-    const STEPS = ['shipped', 'out_for_delivery', 'delivered'];
-    const stepLabels = { shipped: 'Shipped', out_for_delivery: 'Out for Delivery', delivered: 'Delivered' };
+    const STEPS = ['shipped', 'in_transit', 'out_for_delivery', 'delivered'];
+    const stepLabels = { shipped: 'Shipped', in_transit: 'In Transit', out_for_delivery: 'Out for Delivery', delivered: 'Delivered' };
     const activeIdx = STEPS.indexOf(status);  // -1 for rto/undelivered/lost
 
     const stepsHtml = STEPS.map((s, i) => {
@@ -1706,6 +1723,11 @@
     const isPrepaid  = status === 'paid';
 
     if (!isCOD && !isPrepaid) return '';
+
+    // COD can be cancelled after AWB assignment, but never after NimbusPost has
+    // recorded pickup/in-transit movement. The API repeats this check
+    // atomically; this client guard only controls whether the button is shown.
+    if (isCOD && shipmentHasMoved(order)) return '';
 
     // Prepaid only: an assigned tracking_id means the courier has the parcel —
     // even if the webhook hasn't fired "shipped" yet, refunding a prepaid order

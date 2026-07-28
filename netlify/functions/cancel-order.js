@@ -32,6 +32,16 @@ const COD_CANCELLABLE   = ['cod_pending', 'partial_cod_pending', 'confirmed'];
 const FINAL_STATUSES    = ['shipped', 'out_for_delivery', 'delivered', 'cancelled', 'refunded', 'refund_pending'];
 const PREPAID_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
+// An AWB can be assigned while a parcel is still sitting at the warehouse, so
+// tracking_id alone must not block COD cancellation. NimbusPost webhook events
+// stamp shipment_moved_at on the first pickup/in-transit scan. The raw-status
+// fallback protects older rows and aliases while that timestamp is populated.
+function shipmentHasMoved(order) {
+  if (order?.shipment_moved_at) return true;
+  const raw = String(order?.last_nimbuspost_status || '').toLowerCase().trim();
+  return /^(?:in[ -]?transit|reached (?:at|nearest|destination) hub|in sorting centre|sorting|spd|picked up|pickup done|shipped|dispatched|out[ _]for delivery|ofd|delivered|rto|return to origin|undelivered|ndr|delivery (?:failed|attempt failed|exception)|lost)/.test(raw);
+}
+
 // ── Email helper ─────────────────────────────────────────────────────────────
 
 // ── Email templates ──────────────────────────────────────────────────────────
@@ -164,7 +174,34 @@ exports.handler = async (event) => {
 
   // ── Case 1: COD order ────────────────────────────────────────────────────
   if (COD_CANCELLABLE.includes(status)) {
-    await supabase.from('orders').update({ status: 'cancelled' }).eq('id', order_id);
+    if (shipmentHasMoved(order)) {
+      return {
+        statusCode: 422, headers: CORS,
+        body: JSON.stringify({ error: 'This COD order is already in transit. Cancellation is not possible after courier movement starts.' }),
+      };
+    }
+
+    // Recheck status + movement in the UPDATE itself. This closes the race where
+    // an in-transit webhook arrives after the order was fetched but before the
+    // customer confirms cancellation.
+    const cancelled = await supabase
+      .from('orders')
+      .update({ status: 'cancelled' })
+      .eq('id', order_id)
+      .in('status', COD_CANCELLABLE)
+      .is('shipment_moved_at', null)
+      .select('id')
+      .maybeSingle();
+    if (cancelled.error) {
+      console.error('[cancel-order] atomic COD cancellation failed:', cancelled.error.message);
+      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Could not cancel this order. Please try again.' }) };
+    }
+    if (!cancelled.data) {
+      return {
+        statusCode: 409, headers: CORS,
+        body: JSON.stringify({ error: 'The shipment status changed while cancelling. Refresh your orders to see its latest status.' }),
+      };
+    }
 
     // Cancel the order inside NimbusPost too so the courier doesn't ship it.
     // COD orders are auto-pushed to the NP panel at creation, so there's almost
@@ -278,3 +315,5 @@ exports.handler = async (event) => {
 
   return { statusCode: 422, headers: CORS, body: JSON.stringify({ error: 'This order cannot be cancelled.' }) };
 };
+
+exports._test = { shipmentHasMoved };

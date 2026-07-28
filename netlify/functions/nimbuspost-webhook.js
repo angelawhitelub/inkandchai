@@ -84,6 +84,7 @@ const STATUS_MAP = {
   'reached destination hub':    'in_transit',
   'in sorting centre':          'in_transit',
   'sorting':                    'in_transit',
+  'spd':                        'in_transit', // shipment received at origin centre
 
   // Pre-transit scans — still ignore (no customer-facing meaning yet)
   'manifested':                 null,
@@ -400,3 +401,5 @@ exports.handler = async (event) => {
 
   return { statusCode: 200, body: 'OK' };
 };
+
+exports._test = { normalizeStatus };

@@ -640,6 +640,10 @@ td{padding:1rem;font-size:.94rem;}
       <div class="stat-label">Shipped</div>
       <div class="stat-val" id="statShipped" style="color:var(--gold);">—</div>
     </div>
+    <div class="stat-card" data-status="__in_transit" onclick="setFilter(this,'__in_transit')">
+      <div class="stat-label">In Transit</div>
+      <div class="stat-val" id="statInTransit" style="color:#4db8ff;">—</div>
+    </div>
     <div class="stat-card" data-status="delivered" onclick="setFilter(this,'delivered')">
       <div class="stat-label">Delivered</div>
       <div class="stat-val" id="statDelivered" style="color:var(--green);">—</div>
@@ -829,6 +833,7 @@ td{padding:1rem;font-size:.94rem;}
     <button class="filter-btn" data-status="online_pending" onclick="setFilter(this,'online_pending')" style="border-color:rgba(162,117,214,0.5);color:#a275d6;">Online Pending</button>
     <button class="filter-btn" data-status="confirmed" onclick="setFilter(this,'confirmed')">Confirmed</button>
     <button class="filter-btn" data-status="shipped" onclick="setFilter(this,'shipped')">Shipped</button>
+    <button class="filter-btn" data-status="__in_transit" onclick="setFilter(this,'__in_transit')" style="border-color:rgba(77,184,255,0.5);color:#4db8ff;">🚚 In Transit</button>
     <button class="filter-btn" data-status="delivered" onclick="setFilter(this,'delivered')">Delivered</button>
     <button class="filter-btn" data-status="paid" onclick="setFilter(this,'paid')">Paid Online</button>
     <button class="filter-btn" data-status="replacement_pending" onclick="setFilter(this,'replacement_pending')" style="border-color:rgba(109,191,109,0.5);color:#6dbf6d;">🔄 Replacement</button>
@@ -1756,6 +1761,15 @@ function isCourierCancelled(o) {
   return /cancel/i.test(String(o.last_nimbuspost_status || ''));
 }
 
+// NimbusPost intentionally leaves the top-level order status as "shipped" for
+// hub scans. Expose the courier's current wording as a filterable sub-status.
+function isNimbusInTransit(o) {
+  const status = String(o?.status || '').toLowerCase();
+  if (['out_for_delivery','delivered','rto','undelivered','lost','cancelled','refunded','refund_pending'].includes(status)) return false;
+  const raw = String(o?.last_nimbuspost_status || '').toLowerCase().trim();
+  return /^(?:in[ -]?transit|reached (?:at|nearest|destination) hub|in sorting centre|sorting|spd)$/.test(raw);
+}
+
 // Customer asked to cancel but the order is still live (not yet cancelled/
 // refunded). Mirrors the row badge; once the order is actually cancelled or
 // refunded the request is resolved and drops out of this list.
@@ -1997,7 +2011,7 @@ async function fetchOrdersPage(pageNum, limit) {
     // them to refund_pending → refunded/refund_failed. Fetch the whole family or
     // the tab shows COD orders only.
     params.set('statuses', CANCELLED_FAMILY.join(','));
-  } else if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending' && currentFilter !== 'cw_only' && currentFilter !== 'cancel_requested') {
+  } else if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== '__in_transit' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending' && currentFilter !== 'cw_only' && currentFilter !== 'cancel_requested') {
     params.set('status', currentFilter);
   }
   const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
@@ -2447,6 +2461,7 @@ function updateStats() {
   const onlinePending= allOrders.filter(isPendingOnlineOrder).length;
   const paid         = allOrders.filter(o => o.status === 'paid').length;
   const shipped      = allOrders.filter(o => o.status === 'shipped').length;
+  const inTransit    = allOrders.filter(isNimbusInTransit).length;
   const delivered    = allOrders.filter(o => o.status === 'delivered').length;
   const cancelled    = allOrders.filter(o => o.status === 'cancelled').length;
   const refunded     = allOrders.filter(o => o.status === 'refunded').length;
@@ -2471,6 +2486,8 @@ function updateStats() {
   if (onlinePendingEl) onlinePendingEl.textContent = stillLoading ? '…' : onlinePending;
   document.getElementById('statPaid').textContent      = stillLoading ? '…' : paid;
   document.getElementById('statShipped').textContent   = stillLoading ? '…' : shipped;
+  const transitEl = document.getElementById('statInTransit');
+  if (transitEl) transitEl.textContent = stillLoading ? '…' : inTransit;
   const delEl = document.getElementById('statDelivered');
   if (delEl) delEl.textContent = stillLoading ? '…' : delivered;
   const cancelEl = document.getElementById('statCancelled');
@@ -2597,6 +2614,7 @@ function applyFilters() {
 
   filtered = allOrders.filter(o => {
     if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
+    if (currentFilter === '__in_transit' && !isNimbusInTransit(o)) return false;
     if (currentFilter === 'partial_cod_pending' && !isPartialOrder(o)) return false;
     if (currentFilter === 'online_pending' && !isPendingOnlineOrder(o)) return false;
     if (currentFilter === 'cancel_requested' && !hasOpenCancelRequest(o)) return false;
@@ -2765,6 +2783,7 @@ function _drawTable() {
       </td>
       <td>
         <span class="badge ${bc}">${esc((o.status||'pending').replace(/_/g,' '))}</span>
+        ${isNimbusInTransit(o) ? `<div title="Latest NimbusPost status: ${esc(o.last_nimbuspost_status || 'in transit')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(77,184,255,0.1);border:1px solid rgba(77,184,255,0.45);color:#4db8ff;">🚚 In transit</div>` : ''}
         ${(o.cancellation_requested_at && !['cancelled','refunded','refund_pending','partially_refunded'].includes(String(o.status||'').toLowerCase())) ? `<div title="Customer requested cancellation on ${esc(String(o.cancellation_requested_at).slice(0,16).replace('T',' '))}${o.cancellation_request_note ? ' — “' + esc(o.cancellation_request_note) + '”' : ''}. This is a request only — nothing was auto-cancelled." style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(232,160,48,0.14);border:1px solid rgba(232,160,48,0.6);color:var(--orange);font-weight:700;">⏳ Cancellation requested</div>` : ''}
         ${o.cancellation_source === 'stale_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no courier movement for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · stale COD 7d</div>` : ''}
         ${o.cancellation_source === 'no_awb_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no AWB assigned for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · no AWB 7d</div>` : ''}

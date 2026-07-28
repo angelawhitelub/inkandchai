@@ -48,6 +48,7 @@ const STATUS_MAP = {
   'in-transit':         'in_transit',
   'reached at hub':     'in_transit',
   'in sorting centre':  'in_transit',
+  'spd':                'in_transit',
   'rto':                'rto',
   'rto initiated':      'rto',
   'rto in transit':     'rto',
