@@ -4252,7 +4252,7 @@ document.querySelectorAll('.stat-num').forEach(el => {
   statObs.observe(el);
 });
 </script>
-<script src="/js/homepage-merchandising.js" defer></script>
+<script src="/js/homepage-merchandising.js?v=20260729" defer></script>
 </body>
 </html>
 """
