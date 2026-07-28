@@ -79,8 +79,8 @@
     ensureSection();
     const newGrid = document.getElementById('home-new-arrivals');
     const bestGrid = document.getElementById('home-bestsellers');
-    if (newGrid) newGrid.innerHTML = newArrivals.slice(0, 10).map(book => card(book, 'NEW')).join('');
-    if (bestGrid) bestGrid.innerHTML = bestsellers.slice(0, 10)
+    if (newGrid) newGrid.innerHTML = newArrivals.slice(0, 5).map(book => card(book, 'NEW')).join('');
+    if (bestGrid) bestGrid.innerHTML = bestsellers.slice(0, 5)
       .map(book => card(book, `${book.sales_qty || 0} sold`)).join('');
   }
 
