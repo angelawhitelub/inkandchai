@@ -82,22 +82,43 @@ async function exists(key) {
   catch { return false; }
 }
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
 // Shopify's CDN resizes and format-negotiates for us: ask for width=N and send
 // an Accept that prefers WebP. A 1500px JPEG (~129 KB) comes back as a 400px
 // WebP (~38 KB) — 70% smaller before it ever touches R2.
+//
+// Retries transient failures (dropped connection / "fetch failed" / "terminated"
+// / 429 / 5xx) with backoff — those come from Shopify's CDN briefly throttling
+// under concurrent load, and self-heal on a second try. A real 404 (source image
+// deleted) is NOT retried — no point, and it fails fast so the run isn't slowed.
 async function fetchOptimised(sourceUrl, width) {
   const u = new URL(sourceUrl);
   u.searchParams.set('width', String(width));
-  const res = await fetch(u.toString(), {
-    headers: {
-      'user-agent': 'InkAndChaiImageMigrate/1.0',
-      'accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-    },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const type = res.headers.get('content-type') || '';
-  if (!type.startsWith('image/')) throw new Error(`not an image (${type})`);
-  return { bytes: Buffer.from(await res.arrayBuffer()), type };
+  const MAX_TRIES = 4;
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+    try {
+      const res = await fetch(u.toString(), {
+        headers: {
+          'user-agent': 'InkAndChaiImageMigrate/1.0',
+          'accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        },
+      });
+      // 404/403 = the source itself is gone/forbidden — don't waste retries.
+      if (res.status === 404 || res.status === 403) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);   // 429/5xx fall through to retry
+      const type = res.headers.get('content-type') || '';
+      if (!type.startsWith('image/')) throw new Error(`not an image (${type})`);
+      return { bytes: Buffer.from(await res.arrayBuffer()), type };
+    } catch (e) {
+      lastErr = e;
+      const permanent = /HTTP 40[34]/.test(e.message);
+      if (permanent || attempt === MAX_TRIES) throw e;
+      await sleep(400 * attempt * attempt);   // 0.4s, 1.6s, 3.6s
+    }
+  }
+  throw lastErr;
 }
 
 async function main() {
