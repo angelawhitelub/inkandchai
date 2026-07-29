@@ -22,6 +22,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE } = require('./utils/pincode-valid');
+const { findShippingRestriction } = require('./utils/shipping-restrictions');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -158,6 +159,10 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'No catalogue items in cart' }) };
   }
   const cart        = priced.cart;
+  const shippingRestriction = findShippingRestriction(cart, customer || {});
+  if (shippingRestriction.blocked) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
+  }
   const subtotal    = priced.subtotal;
   const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   let couponInfo    = await resolveCouponDiscount(_supabaseForCoupon, subtotal, coupon);

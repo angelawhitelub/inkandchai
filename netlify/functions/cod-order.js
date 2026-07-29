@@ -12,6 +12,7 @@ const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricing');
 const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk');
 const { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE } = require('./utils/pincode-valid');
+const { findShippingRestriction } = require('./utils/shipping-restrictions');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -106,6 +107,10 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'No catalogue items in cart' }) };
   }
   const cart = priced.cart;
+  const shippingRestriction = findShippingRestriction(cart, customer || {});
+  if (shippingRestriction.blocked) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
+  }
 
   // Server-side COD guard: the full crossword.in catalogue import disables COD.
   // Reject even if the client UI was bypassed — steer to partial COD / prepaid.

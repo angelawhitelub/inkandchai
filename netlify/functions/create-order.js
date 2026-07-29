@@ -18,6 +18,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { resolveCartPrices } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE } = require('./utils/pincode-valid');
+const { findShippingRestriction } = require('./utils/shipping-restrictions');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -106,6 +107,11 @@ exports.handler = async (event) => {
         error: 'No catalogue items in cart',
         dropped,
       }) };
+    }
+
+    const shippingRestriction = findShippingRestriction(cart, customer || {});
+    if (shippingRestriction.blocked) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
     }
 
     const shipping   = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;

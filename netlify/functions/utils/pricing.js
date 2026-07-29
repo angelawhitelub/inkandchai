@@ -11,6 +11,7 @@
 
 const path = require('path');
 const fs   = require('fs');
+const { parseShippingRestrictionTags } = require('./shipping-restrictions');
 
 // Hardcoded slug overrides — MUST stay in sync with `make_slug` in generate_site.py.
 // (Combo packs ship under hand-picked slugs that don't follow the auto-slug rule.)
@@ -88,7 +89,10 @@ function getCatalogIndex() {
     const price = Number.parseFloat(b.price_inr || 0) || 0;
     if (price <= 0) continue;
     const title = String(b.title || '').slice(0, 240);
-    const entry = { slug: '', title, price };
+    const entry = {
+      slug: '', title, price,
+      shippingRestrictions: parseShippingRestrictionTags(b.tags),
+    };
     // Index under BOTH the computed make_slug (matches /product/ pages generated
     // by generate_site.py) AND the slug embedded in the raw `url` field if it
     // points at our domain (matches manually-curated CUSTOM listings).
@@ -172,7 +176,11 @@ async function resolveCartPrices(cart, supabase) {
       if (price <= 0) continue;
       const publisherSourced = /publisher-sourced-bestseller/i.test(String(row.tags || ''));
       const noCod = /(?:^|,)\s*no-cod\s*(?:,|$)/i.test(String(row.tags || ''));
-      customMap[String(row.slug).toLowerCase()] = { title: row.title || '', price, publisherSourced, noCod, updatedAt: ts(row.updated_at) };
+      customMap[String(row.slug).toLowerCase()] = {
+        title: row.title || '', price, publisherSourced, noCod,
+        shippingRestrictions: parseShippingRestrictionTags(row.tags),
+        updatedAt: ts(row.updated_at),
+      };
     }
   }
 
@@ -212,9 +220,17 @@ async function resolveCartPrices(cart, supabase) {
       // COD / publisher-sourced flags only live on custom_products rows.
       if (custom?.publisherSourced) item._publisher_sourced = true;
       if (custom?.noCod) item._no_cod = true;
+      const shippingRestrictions = custom?.shippingRestrictions || staticHit?.shippingRestrictions;
+      if (shippingRestrictions?.states?.length || shippingRestrictions?.pins?.length) {
+        item._shipping_restrictions = shippingRestrictions;
+      }
       resolved.push(item);
     } else if (staticHit) {
-      resolved.push({ ...raw, slug, qty, title: staticHit.title, price: staticHit.price });
+      const item = { ...raw, slug, qty, title: staticHit.title, price: staticHit.price };
+      if (staticHit.shippingRestrictions?.states?.length || staticHit.shippingRestrictions?.pins?.length) {
+        item._shipping_restrictions = staticHit.shippingRestrictions;
+      }
+      resolved.push(item);
     } else {
       dropped.push({ reason: 'not_in_catalogue', slug, item: raw });
     }

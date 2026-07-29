@@ -259,8 +259,8 @@ async function startCheckout(addr) {
       }),
     });
 
-    if (!res.ok) throw new Error(`Order creation failed (${res.status})`);
-    const order = await res.json();
+    const order = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(order.error || `Order creation failed (${res.status})`);
     // Server is authoritative — use what it returned, not the local cart estimate.
     const amountPaise = order.amount;
 
@@ -313,7 +313,7 @@ async function startCheckout(addr) {
 
   } catch (err) {
     console.error(err);
-    showToast('Could not start checkout. Please try again.');
+    showToast(err.message || 'Could not start checkout. Please try again.');
   }
 }
 
@@ -348,7 +348,7 @@ async function submitCOD(addr) {
 
   } catch (err) {
     console.error(err);
-    showToast('Could not place order. Please try again.');
+    showToast(err.message || 'Could not place order. Please try again.');
   }
 }
 
