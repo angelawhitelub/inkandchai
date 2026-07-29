@@ -97,9 +97,16 @@ exports.handler = async (event) => {
     // (~78 KB each, 125 MB/day in aggregate). The edge already serves data up to
     // an hour old (s-maxage=3600), so a 15-minute browser cache adds no staleness
     // beyond what this endpoint already tolerates, and cuts repeat fetches ~3x.
+    // Browser cache raised 900s → 3600s. Only BROWSER-cache hits save Netlify
+    // bandwidth (edge-cache hits are still billed as served bytes), and this feed
+    // is fetched on every pageview — at 15 min a single browsing session
+    // re-downloaded it repeatedly (~345 MB/day in aggregate). 1h matches the edge
+    // s-maxage this endpoint already tolerated, so it adds no staleness beyond
+    // what was already in effect, and checkout re-resolves prices server-side so a
+    // stale listing price is never charged. ~4× fewer refetches per active user.
     const cacheHeaders = {
       ...CORS,
-      'Cache-Control': 'public, max-age=900, stale-while-revalidate=600',
+      'Cache-Control': 'public, max-age=3600, stale-while-revalidate=3600',
       'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
     };
     const overrides = (data || []).map(o => ({ ...o, image_url: proxifySupabaseImage(o.image_url) }));
