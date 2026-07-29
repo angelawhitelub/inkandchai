@@ -1513,11 +1513,28 @@
   }
 
   // ── Invoice download block ────────────────────────────────────────────────
+  // Invoice is available ONLY after the order is delivered (status set by the
+  // NimbusPost webhook/reconcile, or a manual "delivered" mark in admin). Before
+  // that we show a disabled hint instead of the button, so the customer knows an
+  // invoice is coming rather than thinking it's missing.
   function invoiceDownloadBlock(order) {
-    // Only show for paid / confirmed / shipped / delivered orders
-    const paid = ['paid','confirmed','cod_pending','partial_cod_pending','shipped',
-                  'out_for_delivery','delivered'].includes(order.status);
-    if (!paid) return '';
+    const status = String(order.status || '').toLowerCase();
+    // Terminal non-fulfilment states never get an invoice.
+    if (['cancelled','refunded','refund_pending','refund_failed'].includes(status)) return '';
+
+    if (status !== 'delivered') {
+      return `
+        <div style="margin-top:0.8rem;padding-top:0.8rem;border-top:1px solid rgba(201,168,76,0.08);">
+          <span style="display:inline-flex;align-items:center;gap:0.4rem;background:none;
+                 border:1px solid rgba(160,144,128,0.25);color:#8a7f70;
+                 font-family:'Montserrat',sans-serif;font-size:0.6rem;letter-spacing:0.16em;
+                 text-transform:uppercase;padding:0.45rem 1rem;cursor:not-allowed;"
+                 title="Your invoice will be available to download once the order is delivered.">
+            ⬇ Invoice available after delivery
+          </span>
+        </div>`;
+    }
+
     const oid = escHtmlAttr(JSON.stringify(order).replace(/'/g,"&#39;"));
     return `
       <div style="margin-top:0.8rem;padding-top:0.8rem;border-top:1px solid rgba(201,168,76,0.08);">
@@ -1533,6 +1550,11 @@
 
   window.iacDownloadInvoice = function(order) {
     const o     = typeof order === 'string' ? JSON.parse(order) : order;
+    // Guard: invoice only after delivery, even if this is called directly.
+    if (String(o.status || '').toLowerCase() !== 'delivered') {
+      alert('The invoice will be available to download once your order is delivered.');
+      return;
+    }
     const date  = new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
     const items = Array.isArray(o.cart_items) ? o.cart_items : [];
     const subtotal = items.reduce((s, i) => s + (i.price * (i.qty || 1)), 0);
