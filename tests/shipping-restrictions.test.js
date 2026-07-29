@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   parseShippingRestrictionTags,
+  normalizeShippingRule,
   findShippingRestriction,
   stateFromPincode,
 } = require('../netlify/functions/utils/shipping-restrictions');
@@ -20,6 +21,16 @@ test('derives Delhi and Haryana from delivery PIN', () => {
   assert.equal(stateFromPincode('122001'), 'haryana');
   assert.equal(stateFromPincode('136027'), 'haryana');
   assert.equal(stateFromPincode('201301'), '');
+});
+
+test('normalizes dedicated database rules', () => {
+  assert.deepEqual(normalizeShippingRule({
+    excluded_states: ['Delhi', 'Haryana', 'Delhi'],
+    excluded_pincodes: ['110001', '122*', 'bad'],
+  }), {
+    states: ['delhi', 'haryana'],
+    pins: ['110001', '122*'],
+  });
 });
 
 test('blocks a restricted product before checkout', () => {
@@ -49,22 +60,30 @@ test('allows unrestricted destinations', () => {
   assert.equal(findShippingRestriction(cart, { address: 'Mumbai, Maharashtra, 400001' }).blocked, false);
 });
 
-test('authoritative price resolution carries custom-product rules into the cart', async () => {
+test('authoritative price resolution carries durable database rules into the cart', async () => {
   const supabase = {
     from(table) {
       return {
         select() { return this; },
         or() {
-          return Promise.resolve(table === 'custom_products' ? {
+          if (table === 'custom_products') return Promise.resolve({
             data: [{
               slug: 'restricted-test-book',
               title: 'Restricted Test Book',
               price_inr: '249.00',
               is_active: true,
-              tags: 'fiction,shipping-exclude-state:delhi,shipping-exclude-state:haryana',
+              tags: 'fiction',
               updated_at: '2026-07-30T00:00:00Z',
             }],
-          } : { data: [] });
+          });
+          if (table === 'product_shipping_rules') return Promise.resolve({
+            data: [{
+              slug: 'restricted-test-book',
+              excluded_states: ['delhi', 'haryana'],
+              excluded_pincodes: [],
+            }],
+          });
+          return Promise.resolve({ data: [] });
         },
       };
     },

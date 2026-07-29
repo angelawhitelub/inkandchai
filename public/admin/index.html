@@ -3708,17 +3708,20 @@ function productShippingTagParts(tags) {
 }
 
 function productTagsWithShippingRules() {
-  const base = String(document.getElementById('prodTags')?.value || '')
-    .split(',').map(tag => tag.trim()).filter(Boolean);
-  const states = String(document.getElementById('prodExcludedStates')?.value || '')
-    .split(',').map(value => value.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean)
-    .map(value => `shipping-exclude-state:${value}`);
-  const pins = String(document.getElementById('prodExcludedPincodes')?.value || '')
-    .split(',').map(value => value.replace(/[^0-9*]/g, '')).filter(value => /^(?:[1-9]\d{5}|[1-9]\d{1,4}\*)$/.test(value))
-    .map(value => `shipping-exclude-pin:${value}`);
-  // Put enforcement tags first: create-product-listing caps the combined tags
-  // field, so a long SEO tag list must never truncate delivery rules.
-  return [...new Set([...states, ...pins, ...base])].join(', ');
+  return [...new Set(String(document.getElementById('prodTags')?.value || '')
+    .split(',').map(tag => tag.trim()).filter(Boolean))].join(', ');
+}
+
+function productShippingRulePayload() {
+  const excluded_states = [...new Set(String(document.getElementById('prodExcludedStates')?.value || '')
+    .split(',')
+    .map(value => value.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))
+    .filter(Boolean))];
+  const excluded_pincodes = [...new Set(String(document.getElementById('prodExcludedPincodes')?.value || '')
+    .split(',')
+    .map(value => value.replace(/[^0-9*]/g, ''))
+    .filter(value => /^(?:[1-9]\d{5}|[1-9]\d{1,4}\*)$/.test(value)))];
+  return { excluded_states, excluded_pincodes };
 }
 
 async function fetchProducts() {
@@ -3736,7 +3739,8 @@ async function fetchProducts() {
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     const overrides = new Map((data.overrides || []).map(o => [o.slug, o]));
     const aplus = new Map((data.aplus_content || []).map(item => [item.slug, item]));
-    productRows = (data.products || []).map(p => ({ ...p, override: overrides.get(p.slug) || null, aplus: aplus.get(p.slug) || null }));
+    const shippingRules = new Map((data.shipping_rules || []).map(item => [item.slug, item]));
+    productRows = (data.products || []).map(p => ({ ...p, override: overrides.get(p.slug) || null, aplus: aplus.get(p.slug) || null, shippingRule: shippingRules.get(p.slug) || null }));
     meta.textContent = `${productRows.length.toLocaleString('en-IN')} products loaded · ${(data.overrides || []).length} override${(data.overrides || []).length === 1 ? '' : 's'}`;
     renderProductList();
   } catch (err) {
@@ -3762,11 +3766,12 @@ function scheduleProductServerSearch(q) {
       if (!res.ok) return;
       const overrides = new Map((data.overrides || []).map(o => [o.slug, o]));
       const aplus = new Map((data.aplus_content || []).map(item => [item.slug, item]));
+      const shippingRules = new Map((data.shipping_rules || []).map(item => [item.slug, item]));
       const known = new Set(productRows.map(r => r.slug));
       let added = 0;
       for (const p of (data.products || [])) {
         if (!p.slug || known.has(p.slug)) continue;
-        productRows.push({ ...p, override: overrides.get(p.slug) || null, aplus: aplus.get(p.slug) || null });
+        productRows.push({ ...p, override: overrides.get(p.slug) || null, aplus: aplus.get(p.slug) || null, shippingRule: shippingRules.get(p.slug) || null });
         known.add(p.slug);
         added++;
       }
@@ -3835,8 +3840,9 @@ function selectProduct(slug) {
   document.getElementById('prodMetaDescription').value = p.meta_description;
   const shippingTagParts = productShippingTagParts(p.tags);
   document.getElementById('prodTags').value = shippingTagParts.publicTags.join(', ');
-  document.getElementById('prodExcludedStates').value = shippingTagParts.states.join(', ');
-  document.getElementById('prodExcludedPincodes').value = shippingTagParts.pins.join(', ');
+  const shippingRule = row.shippingRule || {};
+  document.getElementById('prodExcludedStates').value = (shippingRule.excluded_states || shippingTagParts.states).join(', ');
+  document.getElementById('prodExcludedPincodes').value = (shippingRule.excluded_pincodes || shippingTagParts.pins).join(', ');
   document.getElementById('prodActive').checked = p.is_active !== false;
   document.getElementById('prodScarcity').checked = !!(row.sc || (row.override && row.override.scarcity));
   // Image URL — use override if set, else current image
@@ -3855,7 +3861,7 @@ function selectProduct(slug) {
   // Delete is only possible for custom products (DB-backed dynamic pages).
   // Catalogue books are baked static files — deleting them needs a redirect.
   const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
-  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodDescription', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodExcludedStates', 'prodExcludedPincodes'];
+  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodDescription', 'prodSeoTitle', 'prodMetaDescription', 'prodTags'];
   metadataFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
   const metadataHint = document.getElementById('prodMetadataHint');
   if (metadataHint) metadataHint.textContent = isCustom
@@ -4309,8 +4315,18 @@ async function saveProductOverride(activeOverride = true) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+    const shippingRes = await adminFetch('/.netlify/functions/update-product-shipping-rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: payload.slug, ...productShippingRulePayload() }),
+    });
+    const shippingData = await shippingRes.json().catch(() => ({}));
+    if (!shippingRes.ok) throw new Error(shippingData.error || ('HTTP ' + shippingRes.status));
+
     if (savedCustom) Object.assign(selectedProduct, savedCustom, { shopify_id: `CUSTOM:${savedCustom.slug}`, is_custom: true });
     selectedProduct.override = data.override;
+    selectedProduct.shippingRule = shippingData.rule || null;
     const idx = productRows.findIndex(p => p.slug === selectedProduct.slug);
     if (idx >= 0) productRows[idx] = selectedProduct;
     msg.textContent = data.override?.is_active === false ? 'Override disabled. Storefront will use generated catalogue values.' : 'Saved. Refresh the storefront product page to see the update.';

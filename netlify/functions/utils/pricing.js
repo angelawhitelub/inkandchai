@@ -11,7 +11,7 @@
 
 const path = require('path');
 const fs   = require('fs');
-const { parseShippingRestrictionTags } = require('./shipping-restrictions');
+const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipping-restrictions');
 
 // Hardcoded slug overrides — MUST stay in sync with `make_slug` in generate_site.py.
 // (Combo packs ship under hand-picked slugs that don't follow the auto-slug rule.)
@@ -204,6 +204,21 @@ async function resolveCartPrices(cart, supabase) {
     }
   }
 
+  // Delivery rules live in their own table so ordinary product metadata saves
+  // cannot silently erase them. Product-tag rules remain only as a backwards-
+  // compatible fallback for listings that have not yet been migrated.
+  const shippingRuleMap = {};
+  if (items.length && supabase) {
+    const { data, error } = await supabase
+      .from('product_shipping_rules')
+      .select('slug,excluded_states,excluded_pincodes')
+      .or(orFilter);
+    if (error) console.error('[pricing] product_shipping_rules lookup:', error.message);
+    for (const row of (data || [])) {
+      shippingRuleMap[String(row.slug).toLowerCase()] = normalizeShippingRule(row);
+    }
+  }
+
   const resolved = [];
   for (const { slug, qty, raw } of items) {
     const override = overrideMap[slug];      // admin price edit (product_overrides)
@@ -220,15 +235,16 @@ async function resolveCartPrices(cart, supabase) {
       // COD / publisher-sourced flags only live on custom_products rows.
       if (custom?.publisherSourced) item._publisher_sourced = true;
       if (custom?.noCod) item._no_cod = true;
-      const shippingRestrictions = custom?.shippingRestrictions || staticHit?.shippingRestrictions;
+      const shippingRestrictions = shippingRuleMap[slug] || custom?.shippingRestrictions || staticHit?.shippingRestrictions;
       if (shippingRestrictions?.states?.length || shippingRestrictions?.pins?.length) {
         item._shipping_restrictions = shippingRestrictions;
       }
       resolved.push(item);
     } else if (staticHit) {
       const item = { ...raw, slug, qty, title: staticHit.title, price: staticHit.price };
-      if (staticHit.shippingRestrictions?.states?.length || staticHit.shippingRestrictions?.pins?.length) {
-        item._shipping_restrictions = staticHit.shippingRestrictions;
+      const shippingRestrictions = shippingRuleMap[slug] || staticHit.shippingRestrictions;
+      if (shippingRestrictions?.states?.length || shippingRestrictions?.pins?.length) {
+        item._shipping_restrictions = shippingRestrictions;
       }
       resolved.push(item);
     } else {

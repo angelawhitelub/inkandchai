@@ -68,13 +68,16 @@ exports.handler = async (event) => {
       const slugs = rows.map(r => r.slug).filter(Boolean);
       let overrides = [];
       let aplusContent = [];
+      let shippingRules = [];
       if (slugs.length) {
-        const [ovr, apl] = await Promise.all([
+        const [ovr, apl, ship] = await Promise.all([
           supabase.from('product_overrides').select('*').in('slug', slugs),
           supabase.from('product_aplus_content').select('*').in('slug', slugs),
+          supabase.from('product_shipping_rules').select('*').in('slug', slugs),
         ]);
         overrides = ovr.data || [];
         aplusContent = apl.data || [];
+        shippingRules = ship.data || [];
       }
       const products = rows.map(p => ({
         slug: p.slug,
@@ -95,7 +98,7 @@ exports.handler = async (event) => {
         meta_description: p.meta_description || '',
         is_active: p.is_active !== false,
       }));
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({ products, overrides, aplus_content: aplusContent }) };
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ products, overrides, aplus_content: aplusContent, shipping_rules: shippingRules }) };
     } catch (err) {
       return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
     }
@@ -125,6 +128,7 @@ exports.handler = async (event) => {
     let overrides = [];
     let customProducts = [];
     let aplusContent = [];
+    let shippingRules = [];
     if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
       const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
       const { data, error } = await supabase.from('product_overrides').select('*');
@@ -143,6 +147,12 @@ exports.handler = async (event) => {
         .select('*');
       if (aplusError) console.warn('product_aplus_content unavailable:', aplusError.message);
       else aplusContent = aplusData || [];
+
+      const { data: shippingData, error: shippingError } = await supabase
+        .from('product_shipping_rules')
+        .select('*');
+      if (shippingError) console.warn('product_shipping_rules unavailable:', shippingError.message);
+      else shippingRules = shippingData || [];
     }
 
     for (const p of customProducts) {
@@ -168,7 +178,7 @@ exports.handler = async (event) => {
       });
     }
 
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ products, overrides, custom_products: customProducts, aplus_content: aplusContent }) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ products, overrides, custom_products: customProducts, aplus_content: aplusContent, shipping_rules: shippingRules }) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }

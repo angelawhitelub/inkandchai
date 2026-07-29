@@ -32,6 +32,20 @@ function parseShippingRestrictionTags(tags) {
   return { states, pins };
 }
 
+function normalizeShippingRule(rule) {
+  const states = [];
+  const pins = [];
+  for (const value of (Array.isArray(rule?.excluded_states) ? rule.excluded_states : (rule?.states || []))) {
+    const state = normalizeState(value);
+    if (state && !states.includes(state)) states.push(state);
+  }
+  for (const value of (Array.isArray(rule?.excluded_pincodes) ? rule.excluded_pincodes : (rule?.pins || []))) {
+    const pin = String(value || '').replace(/[^0-9*]/g, '');
+    if (/^(?:[1-9]\d{5}|[1-9]\d{1,4}\*)$/.test(pin) && !pins.includes(pin)) pins.push(pin);
+  }
+  return { states, pins };
+}
+
 // PIN prefix truth is used for the two state-wide restrictions requested by
 // the store. It cannot be bypassed by changing the free-text city/state.
 function stateFromPincode(pin) {
@@ -75,6 +89,7 @@ function findShippingRestriction(cart, customer) {
 
 module.exports = {
   parseShippingRestrictionTags,
+  normalizeShippingRule,
   findShippingRestriction,
   normalizeState,
   stateFromPincode,
