@@ -881,7 +881,11 @@ READER_ACTIVITY_JS = r"""
 """
 
 def with_reader_activity(html: str) -> str:
-    if "reader-activity-toast" not in html:
+    # A few page-level refinement rules mention `.reader-activity-toast`
+    # (for example, border-radius or mobile bottom spacing). That does not mean
+    # the component's base fixed-position stylesheet is present. Use the
+    # component marker so a partial selector cannot suppress the real CSS.
+    if "/* Animated reader activity notification */" not in html:
         html = html.replace("</style>", READER_ACTIVITY_CSS + "\n</style>", 1)
     if "readerActivityToast" not in html:
         html = html.replace("</body>", READER_ACTIVITY_JS.replace("RECENT_ORDER_ACTIVITY_PLACEHOLDER", recent_order_activity_js) + "\n</body>", 1)
