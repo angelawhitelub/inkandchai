@@ -8865,7 +8865,12 @@ renderSummary();
 // When returning to checkout — including bfcache back/forward from a payment
 // page (PhonePe redirect, Razorpay) — clear any stuck loading state and repaint
 // so Pay Now / COD / Partial COD are clickable again.
-window.addEventListener('pageshow', () => { setLoading(false); renderSummary(); });
+window.addEventListener('pageshow', () => {
+  setLoading(false);
+  renderSummary();
+  const pin = document.getElementById('ch-pin')?.value?.replace(/\\D/g, '') || '';
+  if (pin.length === 6) checkProductShippingForPin(pin);
+});
 
 ['ch-name','ch-phone','ch-email','ch-addr','ch-pin','ch-city','ch-state'].forEach(id => {
   const el = document.getElementById(id);
@@ -8919,6 +8924,11 @@ function clearAutofill() {
       }
     }
     if (name || address) showAutofillBanner(name);
+    // Programmatic profile autofill does not emit the input event used by
+    // handlePin(). Check the populated PIN explicitly so restricted products
+    // disable every payment button as soon as checkout opens.
+    const normalizedPin = String(pincode || '').replace(/\\D/g, '');
+    if (normalizedPin.length === 6) checkProductShippingForPin(normalizedPin);
   }
 
   // 1. sessionStorage cache (instant — set by auth.js on main site)
