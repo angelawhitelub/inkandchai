@@ -7334,6 +7334,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
           </div>
         </div>
         <div id="pinMsg" class="pin-msg"></div>
+        <div id="shippingRestrictionMsg" style="display:none;margin:.65rem 0 1rem;padding:.85rem 1rem;border:1px solid rgba(224,80,80,.55);border-radius:14px;background:rgba(224,80,80,.09);color:#f09a8c;font-size:.7rem;line-height:1.6;"></div>
 
         <div id="paymentBlock">
         <div class="divider-label"><span>Choose Payment</span></div>
@@ -7822,6 +7823,7 @@ function renderSummary() {
     }
     }
   }
+  applyShippingRestrictionUi();
 }
 
 function esc(s) {
@@ -7878,6 +7880,59 @@ async function saveAbandonedCheckout(status = 'open', orderId = '') {
 
 // ── Pincode → City / State ─────────────────────────────────────────────────
 let _pinTimer = null;
+let _shippingRestrictionBlocked = false;
+let _shippingRestrictionText = '';
+let _shippingRestrictionSeq = 0;
+
+function applyShippingRestrictionUi() {
+  const blocked = _shippingRestrictionBlocked;
+  const notice = document.getElementById('shippingRestrictionMsg');
+  if (notice) {
+    notice.style.display = blocked ? '' : 'none';
+    notice.textContent = blocked ? `🚫 ${_shippingRestrictionText}` : '';
+  }
+  const pay = document.getElementById('btnPayNow');
+  const partial = document.getElementById('btnPartial');
+  const cod = document.getElementById('btnCOD');
+  if (pay) pay.disabled = blocked || !!_loadingMethod;
+  if (partial) partial.disabled = blocked || !!_loadingMethod || !partialPaymentTotals(getCart()).eligible;
+  if (cod) cod.disabled = blocked || !!_loadingMethod || cartHasNoCod(getCart());
+  [pay, partial, cod].filter(Boolean).forEach(button => {
+    button.style.opacity = blocked ? '0.45' : '';
+    button.style.cursor = blocked ? 'not-allowed' : '';
+    button.title = blocked ? _shippingRestrictionText : '';
+  });
+}
+
+async function checkProductShippingForPin(pin) {
+  const seq = ++_shippingRestrictionSeq;
+  if (String(pin || '').length !== 6 || !getCart().length) {
+    _shippingRestrictionBlocked = false;
+    _shippingRestrictionText = '';
+    applyShippingRestrictionUi();
+    return;
+  }
+  try {
+    const res = await fetch('/.netlify/functions/check-product-shipping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cart: getCart(),
+        pincode: pin,
+        state: document.getElementById('ch-state')?.value || '',
+        address: document.getElementById('ch-addr')?.value || '',
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (seq !== _shippingRestrictionSeq || !res.ok) return;
+    _shippingRestrictionBlocked = data.allowed === false;
+    _shippingRestrictionText = data.error || '';
+    applyShippingRestrictionUi();
+  } catch (_) {
+    // The final order endpoint still enforces the same rule server-side.
+  }
+}
+
 function handlePin(val) {
   const msg = document.getElementById('pinMsg');
   const cityCol  = document.querySelector('.ch-city-col');
@@ -7885,6 +7940,10 @@ function handlePin(val) {
   clearTimeout(_pinTimer);
   val = val.replace(/\\D/g,'');
   if (val.length < 6) {
+    _shippingRestrictionSeq++;
+    _shippingRestrictionBlocked = false;
+    _shippingRestrictionText = '';
+    applyShippingRestrictionUi();
     msg.textContent = ''; msg.style.color = '';
     // Show city/state inputs again so manual edit works while typing.
     if (cityCol)  cityCol.style.display  = '';
@@ -7893,6 +7952,7 @@ function handlePin(val) {
   }
   msg.textContent = 'Looking up pincode…';
   msg.style.color = '#a09080';
+  checkProductShippingForPin(val);
   _pinTimer = setTimeout(async () => {
     try {
       const res  = await fetch(`/.netlify/functions/pincode-lookup?pin=${val}`);
@@ -8022,16 +8082,16 @@ function setLoading(on, method = '') {
   const pay = document.getElementById('btnPayNow');
   const cod = document.getElementById('btnCOD');
   if (pay) {
-    pay.disabled = on;
+    pay.disabled = on || _shippingRestrictionBlocked;
     pay.classList.toggle('is-loading', on && method === 'online');
   }
   const partial = document.getElementById('btnPartial');
   if (partial) {
-    partial.disabled = on || !partialPaymentTotals(getCart()).eligible;
+    partial.disabled = on || _shippingRestrictionBlocked || !partialPaymentTotals(getCart()).eligible;
     partial.classList.toggle('is-loading', on && method === 'partial');
   }
   if (cod) {
-    cod.disabled = on;
+    cod.disabled = on || _shippingRestrictionBlocked || cartHasNoCod(getCart());
     cod.classList.toggle('is-loading', on && method === 'cod');
   }
 }
@@ -8051,6 +8111,10 @@ document.addEventListener('change', e => {
 
 // ── Main submit ────────────────────────────────────────────────────────────
 async function submitOrder(method) {
+  if (_shippingRestrictionBlocked) {
+    alert(_shippingRestrictionText || 'A product in your cart cannot be delivered to this pincode.');
+    return;
+  }
   const addr = collectAddr();
   if (!addr) return;
   // Persist the address NOW (not only after a successful order) so a failed or
