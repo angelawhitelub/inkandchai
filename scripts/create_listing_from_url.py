@@ -28,6 +28,7 @@ from urllib.request import Request, urlopen
 
 
 DEFAULT_SITE = "https://inkandchai.in"
+NETLIFY_SITE_ID = "33218f5b-ce20-4bc4-9b49-a77bf2941ca1"
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
@@ -321,17 +322,48 @@ def open_library_metadata(isbn: str) -> dict[str, Any]:
     }
 
 
-def netlify_admin_secret() -> str:
+def netlify_api_json(method: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Call the authenticated Netlify API without depending on current cwd."""
+    result = subprocess.run(
+        ["netlify", "api", method, "--data", json.dumps(data)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    parsed = json.loads(result.stdout)
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def netlify_admin_secret(site_id: str = NETLIFY_SITE_ID) -> str:
+    """Read the production function secret for the Ink & Chai Netlify site.
+
+    `netlify env:get` silently prints a "run netlify link" sentence when this
+    standalone script is launched outside the repository. The old code treated
+    that sentence as the key and sent it to production, producing HTTP 401.
+    The API calls below identify the site explicitly and work from any folder.
+    """
     try:
-        result = subprocess.run(
-            ["netlify", "env:get", "ADMIN_SECRET"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=20,
+        site = netlify_api_json("getSite", {"site_id": site_id})
+        account_id = clean(site.get("account_id"))
+        if not account_id:
+            return ""
+        variable = netlify_api_json(
+            "getEnvVar",
+            {"account_id": account_id, "site_id": site_id, "key": "ADMIN_SECRET"},
         )
-        return result.stdout.strip()
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        values = variable.get("values") or []
+        for wanted in ("production", "all"):
+            for item in values:
+                if item.get("context") == wanted and clean(item.get("value")):
+                    return clean(item["value"])
+        return ""
+    except (
+        FileNotFoundError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        json.JSONDecodeError,
+    ):
         return ""
 
 
@@ -432,12 +464,22 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def publish(payload: dict[str, Any], endpoint: str, secret: str) -> dict[str, Any]:
+def publish(
+    payload: dict[str, Any],
+    endpoint: str,
+    secret: str = "",
+    admin_token: str = "",
+) -> dict[str, Any]:
+    headers = {"Content-Type": "application/json"}
+    if admin_token:
+        headers["X-Admin-Token"] = admin_token
+    elif secret:
+        headers["X-Admin-Key"] = secret
     request = Request(
         endpoint,
         data=json.dumps(payload).encode(),
         method="POST",
-        headers={"Content-Type": "application/json", "X-Admin-Key": secret},
+        headers=headers,
     )
     try:
         with urlopen(request, timeout=30, context=ssl_context()) as response:
@@ -479,6 +521,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--site", default=os.getenv("INKANDCHAI_SITE_URL", DEFAULT_SITE))
     parser.add_argument("--admin-key", default=os.getenv("INKANDCHAI_ADMIN_SECRET", ""))
+    parser.add_argument(
+        "--admin-token",
+        default=os.getenv("INKANDCHAI_ADMIN_TOKEN", ""),
+        help="Optional signed admin session token (preferred over --admin-key)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print payload without publishing")
     return parser.parse_args()
 
@@ -493,14 +540,15 @@ def main() -> int:
         if args.dry_run:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
             return 0
-        secret = args.admin_key or netlify_admin_secret()
-        if not secret:
+        admin_token = clean(args.admin_token)
+        secret = clean(args.admin_key) or ("" if admin_token else netlify_admin_secret())
+        if not admin_token and not secret:
             raise RuntimeError(
-                "Admin credential unavailable. Set INKANDCHAI_ADMIN_SECRET, pass --admin-key, "
-                "or run from the linked Netlify repository."
+                "Admin credential unavailable. Run `netlify login`, set INKANDCHAI_ADMIN_TOKEN, "
+                "or pass --admin-token/--admin-key."
             )
         endpoint = args.site.rstrip("/") + "/.netlify/functions/create-product-listing"
-        result = publish(payload, endpoint, secret)
+        result = publish(payload, endpoint, secret=secret, admin_token=admin_token)
         product_url = args.site.rstrip("/") + result["url"]
         print(f"Created: {product_url}")
         print(f"Cover: intentionally blank (upload it in Admin → Products & Prices)")
