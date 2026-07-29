@@ -15,11 +15,15 @@
  *   "<token>-<width>.webp". Those keys are exactly what public_image_url() emits
  *   when IMAGE_CDN_BASE is set, so switching hosts changes only a base URL.
  *
- * SETUP (one time, in your Cloudflare account)
+ * SETUP (one time, in your Cloudflare account) — NO DNS change required
  *   1. R2 → Create bucket, name it:  inkandchai-images
- *   2. Bucket → Settings → Public access → Connect a custom domain
- *        domain:  img.inkandchai.in
- *      Cloudflare adds the DNS record for you. Wait until it shows "Active".
+ *   2. Bucket → Settings → Public access → "R2.dev subdomain" → Allow / Enable.
+ *      Cloudflare gives you a public URL like  https://pub-<hash>.r2.dev
+ *      This needs NO custom domain and NO nameserver change (your DNS stays on
+ *      Netlify). That pub-…r2.dev URL is what you put in IMAGE_CDN_BASE below.
+ *      (r2.dev is rate-limited by Cloudflare and meant for lighter traffic — fine
+ *      to start; if covers ever throttle, ask for the tiny Worker upgrade, which
+ *      is also zero-DNS and lifts the limit.)
  *   3. R2 → Manage API tokens → Create token (Object Read & Write for that bucket).
  *      Note the Access Key ID, Secret Access Key, and your Account ID.
  *
@@ -141,11 +145,15 @@ async function main() {
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
   console.log(`\nDone. uploaded=${done}  skipped=${skipped}  failed=${failed}  (${(bytesUp / 1e6).toFixed(1)} MB stored)`);
-  console.log(`\nNext: verify one object loads, e.g.`);
+  console.log(`\nNext: verify one object loads in a browser — take your bucket's`);
+  console.log(`public r2.dev URL (Cloudflare shows it under Public access) and append a key:`);
   const [firstToken] = entries[0] || [];
-  if (firstToken) console.log(`  https://img.inkandchai.in/${firstToken}-${WIDTHS[0]}.webp`);
-  console.log(`\nThen flip the site over by setting IMAGE_CDN_BASE and rebuilding:`);
-  console.log(`  IMAGE_CDN_BASE=https://img.inkandchai.in python3 generate_site.py`);
+  if (firstToken) console.log(`  https://pub-<your-hash>.r2.dev/${firstToken}-${WIDTHS[0]}.webp`);
+  console.log(`\nThen flip the WHOLE site over — set IMAGE_CDN_BASE in Netlify (Site config`);
+  console.log(`→ Environment variables) to that r2.dev origin and redeploy. Locally to test:`);
+  console.log(`  IMAGE_CDN_BASE=https://pub-<your-hash>.r2.dev python3 generate_site.py`);
+  console.log(`\nOnce set in Netlify, every cover loads from R2 (zero egress) and the`);
+  console.log(`/.netlify/functions/image-proxy bandwidth drops to ~0.`);
 }
 
 main().catch(e => { console.error('Fatal:', e.message); process.exit(1); });
