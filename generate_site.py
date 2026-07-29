@@ -7933,17 +7933,21 @@ async function checkProductShippingForPin(pin) {
   }
 }
 
+function clearShippingRestrictionUi() {
+  _shippingRestrictionSeq++;
+  _shippingRestrictionBlocked = false;
+  _shippingRestrictionText = '';
+  applyShippingRestrictionUi();
+}
+
 function handlePin(val) {
   const msg = document.getElementById('pinMsg');
   const cityCol  = document.querySelector('.ch-city-col');
   const stateCol = document.querySelector('.ch-state-col');
   clearTimeout(_pinTimer);
   val = val.replace(/\\D/g,'');
+  clearShippingRestrictionUi();
   if (val.length < 6) {
-    _shippingRestrictionSeq++;
-    _shippingRestrictionBlocked = false;
-    _shippingRestrictionText = '';
-    applyShippingRestrictionUi();
     msg.textContent = ''; msg.style.color = '';
     // Show city/state inputs again so manual edit works while typing.
     if (cityCol)  cityCol.style.display  = '';
@@ -7952,7 +7956,6 @@ function handlePin(val) {
   }
   msg.textContent = 'Looking up pincode…';
   msg.style.color = '#a09080';
-  checkProductShippingForPin(val);
   _pinTimer = setTimeout(async () => {
     try {
       const res  = await fetch(`/.netlify/functions/pincode-lookup?pin=${val}`);
@@ -7981,9 +7984,11 @@ function handlePin(val) {
           if (cityCol)  cityCol.style.display  = '';
           if (stateCol) stateCol.style.display = '';
         }
+        checkProductShippingForPin(val);
         return;
       }
     } catch(e){}
+    checkProductShippingForPin(val);
     msg.textContent = 'Pincode not found — enter city and state manually.';
     msg.style.color = '#c97a7a';
     if (cityCol)  cityCol.style.display  = '';
