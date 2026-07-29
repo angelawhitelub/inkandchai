@@ -1000,7 +1000,7 @@ td{padding:1rem;font-size:.94rem;}
     <div class="product-head">
       <div>
         <h2>Product editor</h2>
-        <p>Search a listing and update sale price, MRP, title, author, or category without editing code. These are live storefront overrides.</p>
+        <p>Search a listing and update pricing, book details, images, and SEO metadata without editing code. Changes are live on the storefront.</p>
       </div>
       <div class="mini-actions">
         <input id="merchantPriceCsv" type="file" accept=".csv,text/csv" style="max-width:210px;font-size:.62rem;"/>
@@ -1047,6 +1047,44 @@ td{padding:1rem;font-size:.94rem;}
               <input id="prodOriginalPrice" inputmode="decimal" placeholder="499"/>
             </div>
           </div>
+          <details id="prodMetadataEditor" open style="margin-top:.8rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(201,168,76,.035);">
+            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">Book details &amp; SEO</summary>
+            <p class="hint" id="prodMetadataHint" style="margin:.65rem 0 0;">Edit the product details used on the product page, search engines, and Merchant Center.</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:.75rem;">
+              <div class="form-row">
+                <label>Publisher</label>
+                <input id="prodPublisher" maxlength="160" placeholder="HarperCollins India"/>
+              </div>
+              <div class="form-row">
+                <label>ISBN</label>
+                <input id="prodIsbn" maxlength="80" inputmode="numeric" placeholder="9789373076698"/>
+              </div>
+              <div class="form-row">
+                <label>Format</label>
+                <input value="Paperback" readonly title="Ink &amp; Chai product listings currently use Paperback as the store-wide book format."/>
+              </div>
+              <div class="form-row">
+                <label>Language</label>
+                <input value="English" readonly title="The current product-page template uses English for these listings."/>
+              </div>
+            </div>
+            <div class="form-row">
+              <label>Product description</label>
+              <textarea id="prodDescription" maxlength="5000" placeholder="Detailed description shown under About this book."></textarea>
+            </div>
+            <div class="form-row">
+              <label>SEO title</label>
+              <input id="prodSeoTitle" maxlength="220" placeholder="Buy Book Title Paperback by Author | Ink &amp; Chai"/>
+            </div>
+            <div class="form-row">
+              <label>Meta description</label>
+              <textarea id="prodMetaDescription" maxlength="300" placeholder="Search-result description (recommended: 140–160 characters)."></textarea>
+            </div>
+            <div class="form-row">
+              <label>Tags <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(comma separated)</span></label>
+              <input id="prodTags" maxlength="700" placeholder="hindi-fiction, contemporary-fiction"/>
+            </div>
+          </details>
           <div class="form-row" style="margin-top:0.6rem;">
             <label>Cover Image URL <span style="font-weight:400;color:var(--cream-dim);font-size:0.58rem;">(paste Amazon/CDN link or /images/filename.webp)</span></label>
             <div style="display:flex;gap:0.5rem;align-items:center;">
@@ -3625,6 +3663,12 @@ function mergedProduct(row) {
     original_price_inr: o.original_price_inr ?? row.original_price_inr ?? '',
     image_url: o.image_url || row.image_url || '',
     gallery_images: Array.isArray(o.gallery_images) ? o.gallery_images : (Array.isArray(row.gallery_images) ? row.gallery_images : []),
+    publisher: row.publisher || '',
+    isbn: row.isbn || '',
+    description: row.description || '',
+    seo_title: row.seo_title || '',
+    meta_description: row.meta_description || '',
+    tags: row.tags || '',
     is_active: o.is_active !== false,
   };
 }
@@ -3696,7 +3740,7 @@ function renderProductList() {
   const rows = productRows.filter(row => {
     const p = mergedProduct(row);
     if (!q) return true;
-    return [p.title, p.author, p.category, p.slug, p.shopify_id].join(' ').toLowerCase().includes(q);
+    return [p.title, p.author, p.category, p.publisher, p.isbn, p.slug, p.shopify_id].join(' ').toLowerCase().includes(q);
   }).slice(0, 80);
   // Few/no local hits — the product may be outside the 1000 newest custom
   // rows the initial load carries. Ask the server too (debounced).
@@ -3736,6 +3780,12 @@ function selectProduct(slug) {
   document.getElementById('prodCategory').value = p.category;
   document.getElementById('prodPrice').value = p.price_inr;
   document.getElementById('prodOriginalPrice').value = p.original_price_inr;
+  document.getElementById('prodPublisher').value = p.publisher;
+  document.getElementById('prodIsbn').value = p.isbn;
+  document.getElementById('prodDescription').value = p.description;
+  document.getElementById('prodSeoTitle').value = p.seo_title;
+  document.getElementById('prodMetaDescription').value = p.meta_description;
+  document.getElementById('prodTags').value = p.tags;
   document.getElementById('prodActive').checked = p.is_active !== false;
   document.getElementById('prodScarcity').checked = !!(row.sc || (row.override && row.override.scarcity));
   // Image URL — use override if set, else current image
@@ -3754,6 +3804,12 @@ function selectProduct(slug) {
   // Delete is only possible for custom products (DB-backed dynamic pages).
   // Catalogue books are baked static files — deleting them needs a redirect.
   const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
+  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodDescription', 'prodSeoTitle', 'prodMetaDescription', 'prodTags'];
+  metadataFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
+  const metadataHint = document.getElementById('prodMetadataHint');
+  if (metadataHint) metadataHint.textContent = isCustom
+    ? 'Edit the product details used on the product page, search engines, and Merchant Center.'
+    : 'Publisher, ISBN, description, and SEO metadata are editable for admin-created listings. This catalogue product is generated from the source feed.';
   const delBtn = document.getElementById('prodDeleteBtn');
   if (delBtn) delBtn.style.display = isCustom ? '' : 'none';
   const galleryRow = document.getElementById('prodGalleryUploadRow');
@@ -4151,6 +4207,7 @@ async function deleteProductPage() {
 async function saveProductOverride(activeOverride = true) {
   if (!selectedProduct) return;
   const msg = document.getElementById('productSaveMsg');
+  const isCustom = String(selectedProduct.shopify_id || '').startsWith('CUSTOM:');
   const payload = {
     slug: document.getElementById('prodSlug').value,
     title: document.getElementById('prodTitle').value,
@@ -4164,13 +4221,44 @@ async function saveProductOverride(activeOverride = true) {
   };
   msg.textContent = 'Saving…';
   try {
-    const res = await fetch('/.netlify/functions/update-product-override', {
+    // Custom listings own their full metadata in custom_products. Save that
+    // first so publisher/ISBN/description/SEO changes reach the dynamic page
+    // and Merchant feed, then keep the existing override for scarcity and the
+    // pricing behaviour shared with catalogue products.
+    let savedCustom = null;
+    if (isCustom) {
+      const customPayload = {
+        ...payload,
+        // "Override active" controls product_overrides only. Do not disable
+        // the underlying custom product when an admin merely disables its
+        // override, otherwise the dynamic product page would start returning
+        // 404 instead of falling back to the base listing.
+        is_active: selectedProduct.is_active !== false,
+        publisher: document.getElementById('prodPublisher').value,
+        isbn: document.getElementById('prodIsbn').value,
+        description: document.getElementById('prodDescription').value,
+        seo_title: document.getElementById('prodSeoTitle').value,
+        meta_description: document.getElementById('prodMetaDescription').value,
+        tags: document.getElementById('prodTags').value,
+      };
+      const customRes = await adminFetch('/.netlify/functions/create-product-listing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customPayload),
+      });
+      const customData = await customRes.json().catch(() => ({}));
+      if (!customRes.ok) throw new Error(customData.error || ('HTTP ' + customRes.status));
+      savedCustom = customData.product;
+    }
+
+    const res = await adminFetch('/.netlify/functions/update-product-override', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (savedCustom) Object.assign(selectedProduct, savedCustom, { shopify_id: `CUSTOM:${savedCustom.slug}`, is_custom: true });
     selectedProduct.override = data.override;
     const idx = productRows.findIndex(p => p.slug === selectedProduct.slug);
     if (idx >= 0) productRows[idx] = selectedProduct;
