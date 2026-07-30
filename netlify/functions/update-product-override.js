@@ -101,11 +101,25 @@ exports.handler = async (event) => {
     };
     // Omitted means preserve the current gallery; [] explicitly clears it.
     if (galleryImages !== undefined) payload.gallery_images = galleryImages;
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('product_overrides')
       .upsert(payload, { onConflict: 'slug' })
       .select()
       .single();
+    // Resilience: if sql/product_stock.sql hasn't been run yet, the stock_qty
+    // column won't exist. Rather than fail the whole save, retry once without it
+    // (stock simply won't persist until the migration is applied).
+    if (error && /stock_qty/i.test(error.message || '')) {
+      const { stock_qty, ...withoutStock } = payload;
+      ({ data, error } = await supabase
+        .from('product_overrides')
+        .upsert(withoutStock, { onConflict: 'slug' })
+        .select()
+        .single());
+      if (!error) {
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, override: data, warning: 'Saved, but stock quantity was ignored — run sql/product_stock.sql to enable it.' }) };
+      }
+    }
     if (error) throw error;
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, override: data }) };
   } catch (err) {
