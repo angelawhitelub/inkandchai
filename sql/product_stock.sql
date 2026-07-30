@@ -1,0 +1,15 @@
+-- Per-product stock quantity (manual inventory).
+--
+-- Lives on product_overrides (keyed by slug) — the same admin layer that already
+-- carries price/scarcity overrides and is read on every storefront page load.
+--
+-- Semantics:
+--   NULL         → treated as IN STOCK (effectively unlimited / 999). This is the
+--                  default for the ~20k bulk catalogue rows that have no override,
+--                  so nothing needs writing to them.
+--   >= 1         → in stock, that many units.
+--   0 (or below) → sold out → storefront shows "Coming Soon" and hides Buy.
+--
+-- The admin product editor defaults the field to 999; the owner lowers it for any
+-- product they want to limit. (Auto-decrement on each sale is a later phase.)
+alter table product_overrides add column if not exists stock_qty integer;

@@ -1059,17 +1059,21 @@ async function checkProductShippingForPin(pin) {
   }
 }
 
+function clearShippingRestrictionUi() {
+  _shippingRestrictionSeq++;
+  _shippingRestrictionBlocked = false;
+  _shippingRestrictionText = '';
+  applyShippingRestrictionUi();
+}
+
 function handlePin(val) {
   const msg = document.getElementById('pinMsg');
   const cityCol  = document.querySelector('.ch-city-col');
   const stateCol = document.querySelector('.ch-state-col');
   clearTimeout(_pinTimer);
   val = val.replace(/\D/g,'');
+  clearShippingRestrictionUi();
   if (val.length < 6) {
-    _shippingRestrictionSeq++;
-    _shippingRestrictionBlocked = false;
-    _shippingRestrictionText = '';
-    applyShippingRestrictionUi();
     msg.textContent = ''; msg.style.color = '';
     // Show city/state inputs again so manual edit works while typing.
     if (cityCol)  cityCol.style.display  = '';
@@ -1078,7 +1082,6 @@ function handlePin(val) {
   }
   msg.textContent = 'Looking up pincode…';
   msg.style.color = '#a09080';
-  checkProductShippingForPin(val);
   _pinTimer = setTimeout(async () => {
     try {
       const res  = await fetch(`/.netlify/functions/pincode-lookup?pin=${val}`);
@@ -1107,9 +1110,11 @@ function handlePin(val) {
           if (cityCol)  cityCol.style.display  = '';
           if (stateCol) stateCol.style.display = '';
         }
+        checkProductShippingForPin(val);
         return;
       }
     } catch(e){}
+    checkProductShippingForPin(val);
     msg.textContent = 'Pincode not found — enter city and state manually.';
     msg.style.color = '#c97a7a';
     if (cityCol)  cityCol.style.display  = '';
@@ -1991,7 +1996,12 @@ renderSummary();
 // When returning to checkout — including bfcache back/forward from a payment
 // page (PhonePe redirect, Razorpay) — clear any stuck loading state and repaint
 // so Pay Now / COD / Partial COD are clickable again.
-window.addEventListener('pageshow', () => { setLoading(false); renderSummary(); });
+window.addEventListener('pageshow', () => {
+  setLoading(false);
+  renderSummary();
+  const pin = document.getElementById('ch-pin')?.value?.replace(/\D/g, '') || '';
+  if (pin.length === 6) checkProductShippingForPin(pin);
+});
 
 ['ch-name','ch-phone','ch-email','ch-addr','ch-pin','ch-city','ch-state'].forEach(id => {
   const el = document.getElementById(id);
@@ -2045,6 +2055,11 @@ function clearAutofill() {
       }
     }
     if (name || address) showAutofillBanner(name);
+    // Programmatic profile autofill does not emit the input event used by
+    // handlePin(). Check the populated PIN explicitly so restricted products
+    // disable every payment button as soon as checkout opens.
+    const normalizedPin = String(pincode || '').replace(/\D/g, '');
+    if (normalizedPin.length === 6) checkProductShippingForPin(normalizedPin);
   }
 
   // 1. sessionStorage cache (instant — set by auth.js on main site)

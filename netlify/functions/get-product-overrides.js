@@ -21,7 +21,7 @@ exports.handler = async (event) => {
     if (requestedSlug) {
       const { data: single, error: singleError } = await supabase
         .from('product_overrides')
-        .select('slug,title,author,category,price_inr,original_price_inr,image_url,gallery_images,scarcity,is_active,updated_at')
+        .select('slug,title,author,category,price_inr,original_price_inr,image_url,gallery_images,scarcity,stock_qty,is_active,updated_at')
         .eq('slug', requestedSlug)
         .eq('is_active', true)
         .maybeSingle();
@@ -40,7 +40,7 @@ exports.handler = async (event) => {
     }
     const { data, error } = await supabase
       .from('product_overrides')
-      .select('slug,title,author,category,price_inr,original_price_inr,image_url,scarcity,is_active,updated_at')
+      .select('slug,title,author,category,price_inr,original_price_inr,image_url,scarcity,stock_qty,is_active,updated_at')
       .eq('is_active', true);
 
     if (error) {

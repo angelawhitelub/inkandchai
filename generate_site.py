@@ -3032,7 +3032,14 @@ function applyProductOverride(book, override) {
   if (override.price_inr !== null && override.price_inr !== undefined) book.p = priceToText(override.price_inr);
   if (override.original_price_inr !== null && override.original_price_inr !== undefined) book.op = priceToText(override.original_price_inr);
   if (override.scarcity != null) book.sc = override.scarcity ? 1 : 0;
+  // Manual stock: null/absent = in stock; <=0 = sold out ("Coming Soon").
+  if (override.stock_qty !== null && override.stock_qty !== undefined) book.stock = override.stock_qty;
   if (override.image_url) book.img = override.image_url;  // cover image override
+}
+// A book is sold out only when an explicit stock override brought it to 0 or
+// below. No override / undefined stock = in stock (the 999 default).
+function isSoldOut(book) {
+  return book && book.stock !== null && book.stock !== undefined && Number(book.stock) <= 0;
 }
 
 function customProductToBook(product) {
@@ -3410,13 +3417,16 @@ function renderBooks() {
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
       </div>
-      <button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
+      ${isSoldOut(b)
+        ? `<span class="btn-add-card" style="opacity:0.65;cursor:not-allowed;color:#e8a030;border-color:rgba(232,160,48,0.4);">Coming Soon</span>`
+        : `<button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
         data-url="${escHtml(b.url)}"
         data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}"
         data-price="${priceNum}"
         data-img="${escHtml(b.img)}"
-        data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>
+        data-stock="${b.stock ?? ''}"
+        data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>`}
     </a>`;
   }).join('');
 
@@ -3533,6 +3543,7 @@ function openCollection(catsEncoded, name) {
         data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}"
         data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
+        data-stock="${b.stock ?? ''}"
         data-img="${escHtml(b.img)}">+ Add to Cart</button>
     </a>
   `).join('');
@@ -3545,6 +3556,12 @@ function openCollection(catsEncoded, name) {
 
 // Called by Add to Cart buttons — reads data-* attrs from button element
 function addToCartById(btn) {
+  // Central sold-out guard: any card button carrying data-stock<=0 can't add.
+  const st = btn && btn.dataset ? btn.dataset.stock : '';
+  if (st !== '' && st !== undefined && st !== null && Number(st) <= 0) {
+    if (window.showToast) showToast('Out of stock — Coming Soon');
+    return;
+  }
   addToCart({
     id:     btn.dataset.url,
     title:  btn.dataset.title,
@@ -3941,6 +3958,7 @@ function renderShelf(rowId, filterFn, limit) {
       <button class="shelf-card-btn" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
         data-url="${escHtml(b.url)}" data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}" data-price="${price}"
+        data-stock="${b.stock ?? ''}"
         data-img="${escHtml(b.img)}" data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>
     </a>`;
   }).join('');
@@ -4018,6 +4036,7 @@ function renderBooksForCat(cat) {
         data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}"
         data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
+        data-stock="${b.stock ?? ''}"
         data-img="${escHtml(b.img)}">+ Add to Cart</button>
     </a>
   `).join('');
@@ -4938,8 +4957,13 @@ function applyProductOverride(book, override) {
   if (override.price_inr !== null && override.price_inr !== undefined) next.p = priceToText(override.price_inr);
   if (override.original_price_inr !== null && override.original_price_inr !== undefined) next.op = priceToText(override.original_price_inr);
   if (override.scarcity != null) next.sc = override.scarcity ? 1 : 0;
+  // Manual stock: null/absent = in stock; <=0 = sold out ("Coming Soon").
+  if (override.stock_qty !== null && override.stock_qty !== undefined) next.stock = override.stock_qty;
   if (override.image_url) next.img = override.image_url;  // cover image override
   return next;
+}
+function isSoldOut(book) {
+  return book && book.stock !== null && book.stock !== undefined && Number(book.stock) <= 0;
 }
 
 function customProductToBook(product) {
@@ -5286,12 +5310,17 @@ function renderProduct(b) {
         </div>
 
         <div class="prod-actions">
+          ${isSoldOut(b) ? `
+          <div class="coming-soon-box" style="display:flex;flex-direction:column;gap:0.3rem;padding:1rem 1.2rem;border:1px solid rgba(232,160,48,0.4);background:rgba(232,160,48,0.08);border-radius:2px;text-align:center;">
+            <div style="font-size:0.62rem;letter-spacing:0.28em;text-transform:uppercase;color:#e8a030;font-weight:700;">Coming Soon</div>
+            <div style="font-size:0.78rem;color:var(--cream-dim);">Currently out of stock — check back soon.</div>
+          </div>` : `
           <button class="btn-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug, this)">
             + Add to Cart
           </button>
           <button class="btn-cod" data-slug="${esc(b.slug)}" onclick="buyNowBook(this.dataset.slug, this)">
             ⚡ Buy Now — ${esc(b.p)}
-          </button>
+          </button>`}
           <div style="display:flex;gap:0.6rem;margin-top:0.2rem">
             <button class="btn-share" onclick="shareBook()">↗ Share</button>
             <button id="prodWishBtn"
@@ -5351,12 +5380,14 @@ function renderProduct(b) {
 
     <!-- Mobile sticky bottom bar (shown only on mobile via CSS) -->
     <div class="prod-bottom-bar">
+      ${isSoldOut(b) ? `
+      <div style="flex:1;text-align:center;padding:0.7rem;font-size:0.66rem;letter-spacing:0.2em;text-transform:uppercase;color:#e8a030;font-weight:700;">Coming Soon — out of stock</div>` : `
       <button class="pbb-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug, this)">
         + Add to Cart
       </button>
       <button class="pbb-buy" data-slug="${esc(b.slug)}" onclick="buyNowBook(this.dataset.slug, this)">
         Buy Now · ${esc(b.p)}
-      </button>
+      </button>`}
     </div>
   `;
   // Set initial wishlist state
@@ -6768,6 +6799,15 @@ async function applyRuntimeProductOverride() {{
         el.setAttribute('data-live-override', 'original-price');
       }});
     }}
+    // Manual stock: <=0 means sold out → replace Buy with a "Coming Soon" box and
+    // flag the buy handlers so nothing can be added to cart. null/absent = in stock.
+    if (override.stock_qty !== null && override.stock_qty !== undefined && Number(override.stock_qty) <= 0) {{
+      window.__soldOut = true;
+      const actions = document.querySelector('.actions');
+      if (actions) actions.innerHTML = '<div style="flex:1;padding:1rem 1.2rem;border:1px solid rgba(232,160,48,0.4);background:rgba(232,160,48,0.08);text-align:center;"><div style="font-size:0.62rem;letter-spacing:0.28em;text-transform:uppercase;color:#e8a030;font-weight:700;">Coming Soon</div><div style="font-size:0.78rem;color:var(--muted);margin-top:0.3rem;">Currently out of stock — check back soon.</div></div>';
+      const stockEl = document.querySelector('.stock');
+      if (stockEl) {{ stockEl.textContent = 'Coming Soon'; stockEl.style.color = '#e8a030'; stockEl.style.borderColor = 'rgba(232,160,48,0.4)'; }}
+    }}
   }} catch (err) {{
     console.warn('Product override unavailable:', err.message);
   }} finally {{
@@ -6780,6 +6820,7 @@ function setBtnLoading(btn,on) {{
   btn.disabled = !!on;
 }}
 function addBookToCart(btn) {{
+  if (window.__soldOut) {{ if (window.showToast) showToast('Out of stock — Coming Soon'); else alert('This book is currently out of stock (Coming Soon).'); return; }}
   if (window.stopReaderActivity) stopReaderActivity();
   setBtnLoading(btn, true);
   localStorage.removeItem('iac_buy_now_cart');
@@ -6796,6 +6837,7 @@ function addBookToCart(btn) {{
   }}, 180);
 }}
 function buyNowBook(btn) {{
+  if (window.__soldOut) {{ if (window.showToast) showToast('Out of stock — Coming Soon'); else alert('This book is currently out of stock (Coming Soon).'); return; }}
   if (window.stopReaderActivity) stopReaderActivity();
   setBtnLoading(btn, true);
   const item = {{ ...currentItem }};

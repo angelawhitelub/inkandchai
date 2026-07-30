@@ -19,6 +19,15 @@ function money(v) {
   return n.toFixed(2);
 }
 
+// Manual stock quantity. Blank/omitted → null (in stock / unlimited). A number
+// is clamped to a non-negative integer (0 = sold out). Cap avoids absurd values.
+function stockQty(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(9999999, Math.round(n)));
+}
+
 function extensionFromMime(mime) {
   if (mime === 'image/png') return 'png';
   if (mime === 'image/webp') return 'webp';
@@ -83,6 +92,9 @@ exports.handler = async (event) => {
     original_price_inr: money(body.original_price_inr),
     // scarcity: shows "Only 4 left" urgency badge — always pinned, never runs out
     scarcity: body.scarcity === true || body.scarcity === 'true',
+    // stock_qty: manual inventory. null (field omitted/blank) = in stock / unlimited;
+    // 0 or less = sold out → storefront shows "Coming Soon". Clamped to a sane int.
+    stock_qty: stockQty(body.stock_qty),
     is_active: body.is_active !== false,
     image_url: imageUrl,
     updated_at: new Date().toISOString(),

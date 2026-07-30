@@ -1047,6 +1047,10 @@ td{padding:1rem;font-size:.94rem;}
               <input id="prodOriginalPrice" inputmode="decimal" placeholder="499"/>
             </div>
           </div>
+          <div class="form-row" style="margin-top:0.6rem;">
+            <label>Stock quantity <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— set 0 to show “Coming Soon”. Default 999.</span></label>
+            <input id="prodStock" type="number" min="0" step="1" inputmode="numeric" placeholder="999" style="max-width:180px;"/>
+          </div>
           <details id="prodMetadataEditor" open style="margin-top:.8rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(201,168,76,.035);">
             <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">Book details &amp; SEO</summary>
             <p class="hint" id="prodMetadataHint" style="margin:.65rem 0 0;">Edit the product details used on the product page, search engines, and Merchant Center.</p>
@@ -3845,6 +3849,11 @@ function selectProduct(slug) {
   document.getElementById('prodExcludedPincodes').value = (shippingRule.excluded_pincodes || shippingTagParts.pins).join(', ');
   document.getElementById('prodActive').checked = p.is_active !== false;
   document.getElementById('prodScarcity').checked = !!(row.sc || (row.override && row.override.scarcity));
+  // Stock: existing override value, else default 999 (in stock).
+  {
+    const sq = row.override && row.override.stock_qty;
+    document.getElementById('prodStock').value = (sq === null || sq === undefined) ? 999 : sq;
+  }
   // Image URL — use override if set, else current image
   const imgUrl = p.image_url || row.image_url || '';
   const imgEl = document.getElementById('prodImageUrl');
@@ -4131,6 +4140,9 @@ async function saveCustomProductImages() {
       meta_description: row.meta_description || '',
       is_active: row.is_active !== false,
       scarcity: !!(row.sc || row.override?.scarcity),
+      // Preserve existing stock on image-only saves (upsert replaces the row, so
+      // omitting this would reset the product to in-stock).
+      stock_qty: row.override?.stock_qty ?? null,
     };
 
     // Keep every request below the serverless body-size limit. Sending up to
@@ -4274,6 +4286,8 @@ async function saveProductOverride(activeOverride = true) {
     original_price_inr: document.getElementById('prodOriginalPrice').value,
     is_active: activeOverride && document.getElementById('prodActive').checked,
     scarcity: document.getElementById('prodScarcity').checked,
+    // Manual stock. Blank → null (in stock / unlimited); 0 → sold out ("Coming Soon").
+    stock_qty: (document.getElementById('prodStock')?.value ?? '').trim() === '' ? null : document.getElementById('prodStock').value,
     image_url: document.getElementById('prodImageUrl')?.value.trim() || '',
   };
   msg.textContent = 'Saving…';

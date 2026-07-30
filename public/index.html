@@ -1312,6 +1312,22 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 }
 
 
+/* Animated reader activity notification */
+.reader-activity-toast{position:fixed;left:22px;bottom:96px;width:min(340px,calc(100vw - 32px));display:grid;grid-template-columns:58px 1fr 28px;gap:.85rem;align-items:center;padding:.72rem .72rem;background:rgba(250,247,242,.97);border:1px solid rgba(138,106,31,.25);box-shadow:0 18px 44px rgba(30,20,8,.18);z-index:8997;color:#2a2018;opacity:0;transform:translateY(18px);pointer-events:none;transition:opacity .35s ease,transform .35s ease;backdrop-filter:blur(12px)}
+html:not([data-theme="light"]) .reader-activity-toast{background:rgba(20,18,16,.96);border-color:rgba(201,168,76,.24);box-shadow:0 18px 44px rgba(0,0,0,.42);color:#f0e8d8}
+.reader-activity-toast.show{opacity:1;transform:translateY(0);pointer-events:auto}
+.reader-activity-img{width:58px;height:78px;object-fit:cover;background:#f0e8d4;border:1px solid rgba(138,106,31,.22)}
+.reader-activity-kicker{font-size:.58rem;letter-spacing:.13em;text-transform:uppercase;color:#8a6a1f;margin-bottom:.22rem}
+html:not([data-theme="light"]) .reader-activity-kicker{color:#c9a84c}
+.reader-activity-title{font-family:'Cormorant Garamond',serif;font-size:1rem;line-height:1.15;color:inherit;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.reader-activity-time{font-size:.62rem;color:#7d6d5b;margin-top:.35rem}
+html:not([data-theme="light"]) .reader-activity-time{color:#a09080}
+.reader-activity-close{width:28px;height:28px;border:0;background:transparent;color:inherit;font-size:1.15rem;line-height:1;cursor:pointer;opacity:.62}
+.reader-activity-close:hover{opacity:1}
+@media(max-width:780px){.reader-activity-toast{left:14px;bottom:146px;width:min(330px,calc(100vw - 28px));grid-template-columns:54px 1fr 26px;padding:.65rem}.reader-activity-img{width:54px;height:72px}.reader-activity-title{font-size:.95rem}}
+@media(prefers-reduced-motion:reduce){.reader-activity-toast{transition:none}}
+
+
 /* Book page-transition loader */
 #iacPageLoader{position:fixed;inset:0;z-index:100000;background:rgba(13,11,8,0.93);backdrop-filter:blur(6px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.3rem;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .28s ease,visibility .28s ease}
 html[data-theme="light"] #iacPageLoader{background:rgba(250,247,242,0.93)}
@@ -1328,21 +1344,6 @@ html[data-theme="light"] .iac-bookload-base{border-color:#8a6a1f;box-shadow:0 14
 html[data-theme="light"] .iac-bookload-text{color:#8a6a1f}
 @keyframes iacBookPulse{0%,100%{opacity:.55}50%{opacity:1}}
 @media(prefers-reduced-motion:reduce){.iac-bookload-page{animation:none;transform:rotateY(-30deg)}.iac-bookload-text{animation:none}}
-
-/* Animated reader activity notification */
-.reader-activity-toast{position:fixed;left:22px;bottom:96px;width:min(340px,calc(100vw - 32px));display:grid;grid-template-columns:58px 1fr 28px;gap:.85rem;align-items:center;padding:.72rem;background:rgba(250,247,242,.97);border:1px solid rgba(138,106,31,.25);box-shadow:0 18px 44px rgba(30,20,8,.18);z-index:8997;color:#2a2018;opacity:0;transform:translateY(18px);pointer-events:none;transition:opacity .35s ease,transform .35s ease;backdrop-filter:blur(12px)}
-html:not([data-theme="light"]) .reader-activity-toast{background:rgba(20,18,16,.96);border-color:rgba(201,168,76,.24);box-shadow:0 18px 44px rgba(0,0,0,.42);color:#f0e8d8}
-.reader-activity-toast.show{opacity:1;transform:translateY(0);pointer-events:auto}
-.reader-activity-img{width:58px;height:78px;object-fit:cover;background:#f0e8d4;border:1px solid rgba(138,106,31,.22)}
-.reader-activity-kicker{font-size:.58rem;letter-spacing:.13em;text-transform:uppercase;color:#8a6a1f;margin-bottom:.22rem}
-html:not([data-theme="light"]) .reader-activity-kicker{color:#c9a84c}
-.reader-activity-title{font-family:'Cormorant Garamond',serif;font-size:1rem;line-height:1.15;color:inherit;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.reader-activity-time{font-size:.62rem;color:#7d6d5b;margin-top:.35rem}
-html:not([data-theme="light"]) .reader-activity-time{color:#a09080}
-.reader-activity-close{width:28px;height:28px;border:0;background:transparent;color:inherit;font-size:1.15rem;line-height:1;cursor:pointer;opacity:.62}
-.reader-activity-close:hover{opacity:1}
-@media(max-width:780px){.reader-activity-toast{left:14px;bottom:146px;width:min(330px,calc(100vw - 28px));grid-template-columns:54px 1fr 26px;padding:.65rem}.reader-activity-img{width:54px;height:72px}.reader-activity-title{font-size:.95rem}}
-@media(prefers-reduced-motion:reduce){.reader-activity-toast{transition:none}}
 
 </style>
 <!-- Meta Pixel Code -->
@@ -2243,7 +2244,7 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 <script src="/js/search-suggest.js" defer></script>
 
 <script src="/js/books-lite-556e7565.js"></script>
-<script>window.BOOKS_FULL_URL="/js/books-full-23dcd584.js";</script>
+<script>window.BOOKS_FULL_URL="/js/books-full-10e3878d.js";</script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -2276,7 +2277,14 @@ function applyProductOverride(book, override) {
   if (override.price_inr !== null && override.price_inr !== undefined) book.p = priceToText(override.price_inr);
   if (override.original_price_inr !== null && override.original_price_inr !== undefined) book.op = priceToText(override.original_price_inr);
   if (override.scarcity != null) book.sc = override.scarcity ? 1 : 0;
+  // Manual stock: null/absent = in stock; <=0 = sold out ("Coming Soon").
+  if (override.stock_qty !== null && override.stock_qty !== undefined) book.stock = override.stock_qty;
   if (override.image_url) book.img = override.image_url;  // cover image override
+}
+// A book is sold out only when an explicit stock override brought it to 0 or
+// below. No override / undefined stock = in stock (the 999 default).
+function isSoldOut(book) {
+  return book && book.stock !== null && book.stock !== undefined && Number(book.stock) <= 0;
 }
 
 function customProductToBook(product) {
@@ -2654,13 +2662,16 @@ function renderBooks() {
         <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
         <span class="book-category">${escHtml(b.cat)}</span>
       </div>
-      <button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
+      ${isSoldOut(b)
+        ? `<span class="btn-add-card" style="opacity:0.65;cursor:not-allowed;color:#e8a030;border-color:rgba(232,160,48,0.4);">Coming Soon</span>`
+        : `<button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
         data-url="${escHtml(b.url)}"
         data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}"
         data-price="${priceNum}"
         data-img="${escHtml(b.img)}"
-        data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>
+        data-stock="${b.stock ?? ''}"
+        data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>`}
     </a>`;
   }).join('');
 
@@ -2777,6 +2788,7 @@ function openCollection(catsEncoded, name) {
         data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}"
         data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
+        data-stock="${b.stock ?? ''}"
         data-img="${escHtml(b.img)}">+ Add to Cart</button>
     </a>
   `).join('');
@@ -2789,6 +2801,12 @@ function openCollection(catsEncoded, name) {
 
 // Called by Add to Cart buttons — reads data-* attrs from button element
 function addToCartById(btn) {
+  // Central sold-out guard: any card button carrying data-stock<=0 can't add.
+  const st = btn && btn.dataset ? btn.dataset.stock : '';
+  if (st !== '' && st !== undefined && st !== null && Number(st) <= 0) {
+    if (window.showToast) showToast('Out of stock — Coming Soon');
+    return;
+  }
   addToCart({
     id:     btn.dataset.url,
     title:  btn.dataset.title,
@@ -3185,6 +3203,7 @@ function renderShelf(rowId, filterFn, limit) {
       <button class="shelf-card-btn" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
         data-url="${escHtml(b.url)}" data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}" data-price="${price}"
+        data-stock="${b.stock ?? ''}"
         data-img="${escHtml(b.img)}" data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>
     </a>`;
   }).join('');
@@ -3262,6 +3281,7 @@ function renderBooksForCat(cat) {
         data-title="${escHtml(b.t)}"
         data-author="${escHtml(b.a||'')}"
         data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
+        data-stock="${b.stock ?? ''}"
         data-img="${escHtml(b.img)}">+ Add to Cart</button>
     </a>
   `).join('');
@@ -3500,6 +3520,7 @@ document.querySelectorAll('.stat-num').forEach(el => {
   statObs.observe(el);
 });
 </script>
+<script src="/js/homepage-merchandising.js?v=20260729" defer></script>
 
 <script>
 (function(){
@@ -3676,7 +3697,6 @@ document.querySelectorAll('.stat-num').forEach(el => {
   }, true);
 })();
 </script>
-<script src="/js/homepage-merchandising.js?v=20260729" defer></script>
 
 </body>
 </html>

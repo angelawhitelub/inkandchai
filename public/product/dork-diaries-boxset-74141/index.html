@@ -529,6 +529,15 @@ async function applyRuntimeProductOverride() {
         el.setAttribute('data-live-override', 'original-price');
       });
     }
+    // Manual stock: <=0 means sold out → replace Buy with a "Coming Soon" box and
+    // flag the buy handlers so nothing can be added to cart. null/absent = in stock.
+    if (override.stock_qty !== null && override.stock_qty !== undefined && Number(override.stock_qty) <= 0) {
+      window.__soldOut = true;
+      const actions = document.querySelector('.actions');
+      if (actions) actions.innerHTML = '<div style="flex:1;padding:1rem 1.2rem;border:1px solid rgba(232,160,48,0.4);background:rgba(232,160,48,0.08);text-align:center;"><div style="font-size:0.62rem;letter-spacing:0.28em;text-transform:uppercase;color:#e8a030;font-weight:700;">Coming Soon</div><div style="font-size:0.78rem;color:var(--muted);margin-top:0.3rem;">Currently out of stock — check back soon.</div></div>';
+      const stockEl = document.querySelector('.stock');
+      if (stockEl) { stockEl.textContent = 'Coming Soon'; stockEl.style.color = '#e8a030'; stockEl.style.borderColor = 'rgba(232,160,48,0.4)'; }
+    }
   } catch (err) {
     console.warn('Product override unavailable:', err.message);
   } finally {
@@ -541,6 +550,7 @@ function setBtnLoading(btn,on) {
   btn.disabled = !!on;
 }
 function addBookToCart(btn) {
+  if (window.__soldOut) { if (window.showToast) showToast('Out of stock — Coming Soon'); else alert('This book is currently out of stock (Coming Soon).'); return; }
   if (window.stopReaderActivity) stopReaderActivity();
   setBtnLoading(btn, true);
   localStorage.removeItem('iac_buy_now_cart');
@@ -557,6 +567,7 @@ function addBookToCart(btn) {
   }, 180);
 }
 function buyNowBook(btn) {
+  if (window.__soldOut) { if (window.showToast) showToast('Out of stock — Coming Soon'); else alert('This book is currently out of stock (Coming Soon).'); return; }
   if (window.stopReaderActivity) stopReaderActivity();
   setBtnLoading(btn, true);
   const item = { ...currentItem };
