@@ -276,9 +276,27 @@ exports.handler = async (event) => {
       throw new Error(failMsg);
     }
 
-    const refundState = String(refundData.state || refundData.status || '').toUpperCase();
+    let refundState = String(refundData.state || refundData.status || '').toUpperCase();
     const phonePeRefundId = refundData.refundId || null;
-    // PhonePe typically returns PENDING first; webhook/status API will move it to COMPLETED later.
+
+    // PhonePe's refund POST almost always returns PENDING even when the refund
+    // actually completes within a few seconds. If we stopped here, the customer
+    // notification would be deferred to the hourly reconcile job (1–6 PM IST) —
+    // so an admin issuing a refund sees "nothing sent". Poll the refund status a
+    // few times right here to catch the common fast-completing case and notify
+    // immediately. MONEY-SAFE: we only ever promote to COMPLETED/FAILED on a
+    // CONFIRMED state from PhonePe; a refund still PENDING after this short window
+    // stays 'refund_pending' and the scheduled reconcile job confirms + notifies.
+    if (refundState !== 'COMPLETED' && refundState !== 'FAILED') {
+      for (let i = 0; i < 3; i++) {
+        await new Promise(r => setTimeout(r, 1500));
+        const poll = await getRefundStatus(host, authorization, merchantRefundId).catch(() => null);
+        const st = String(poll?.data?.state || '').toUpperCase();
+        if (st === 'COMPLETED') { refundState = 'COMPLETED'; break; }
+        if (st === 'FAILED')    { refundState = 'FAILED'; break; }
+      }
+    }
+
     if (refundState === 'FAILED') {
       // Mark it refund_failed + record the id/error so the scheduled retry job
       // re-attempts it once the merchant balance replenishes (PhonePe fails a
