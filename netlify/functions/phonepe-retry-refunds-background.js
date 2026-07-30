@@ -58,7 +58,7 @@ function refundEmailHtml(order, amtPaise) {
   </div>`;
 }
 
-async function processOrder(supabase, order) {
+async function processOrder(supabase, order, force = false) {
   const displayId = order.razorpay_order_id || order.id;
   const amountPaise = Number(order.amount_paise) || 0;
   if (amountPaise <= 0) return { order: displayId, result: 'skip_no_amount' };
@@ -99,8 +99,10 @@ async function processOrder(supabase, order) {
   }
 
   // trueState is FAILED or null (no refund exists / all failed) → safe to re-issue.
+  // The trueState guard above still ran, so an admin-forced retry can never
+  // double-refund — it only lifts the 10-attempt anti-spam cap.
   const attempts = Number(order.refund_attempts) || 0;
-  if (attempts >= MAX_ATTEMPTS) return { order: displayId, result: 'max_attempts' };
+  if (!force && attempts >= MAX_ATTEMPTS) return { order: displayId, result: 'max_attempts' };
 
   const merchantRefundId = `REFUND-${displayId}-${Date.now()}`;
   let res;
@@ -161,13 +163,25 @@ exports.handler = async (event) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  // Admin can force a specific set of orders (bypasses the 10-attempt cap) via
+  // { order_ids: ["IC-…"], force: true }. Scheduled runs pass neither.
+  let reqBody = {};
+  try { reqBody = JSON.parse(event.body || '{}'); } catch { /* scheduled = empty body */ }
+  const forceOrderIds = Array.isArray(reqBody.order_ids)
+    ? reqBody.order_ids.map(s => String(s).trim()).filter(Boolean).slice(0, 100)
+    : null;
+  const force = reqBody.force === true || reqBody.force === 'true';
+
   try {
-    const { data: rows, error } = await supabase
+    let query = supabase
       .from('orders')
       .select('*')
       .in('status', OWED_STATUSES)
       .order('created_at', { ascending: false })
       .limit(500);
+    // Targeted force-retry: restrict to the requested order ids.
+    if (forceOrderIds && forceOrderIds.length) query = query.in('razorpay_order_id', forceOrderIds);
+    const { data: rows, error } = await query;
     if (error) throw error;
 
     // Only PhonePe-paid orders (Razorpay refunds go through the Razorpay path).
@@ -177,7 +191,7 @@ exports.handler = async (event) => {
     const details = [];
     for (const order of candidates) {
       let r;
-      try { r = await processOrder(supabase, order); }
+      try { r = await processOrder(supabase, order, force); }
       catch (e) { r = { order: order.razorpay_order_id || order.id, result: 'error', error: e.message }; }
       if (summary[r.result] != null) summary[r.result]++;
       details.push(r);

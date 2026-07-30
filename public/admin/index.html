@@ -2878,6 +2878,17 @@ function _drawTable() {
           return `<button onclick="openRefundModal('${esc(o.razorpay_order_id||o.id)}',${amtRupees})" title="Refund — full or partial — via ${via}"
             style="display:block;margin-top:0.5rem;background:rgba(224,80,80,0.1);border:1px solid rgba(224,80,80,0.5);color:#e06060;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">💸 Refund</button>`;
         })()}
+        ${(['refund_failed','refund_pending'].includes(String(o.status||'').toLowerCase()) && !String(o.razorpay_payment_id||'').startsWith('pay_')) ? (() => {
+          const attempts = Number(o.refund_attempts) || 0;
+          const capped = attempts >= 10;
+          const err = o.refund_last_error ? esc(String(o.refund_last_error)) : (String(o.status).toLowerCase()==='refund_pending' ? 'Accepted by PhonePe, awaiting completion' : 'No reason recorded by PhonePe');
+          return `<div style="margin-top:0.5rem;padding:0.4rem 0.55rem;background:rgba(224,80,80,0.06);border:1px solid rgba(224,80,80,0.3);font-size:0.56rem;line-height:1.5;color:var(--cream-dim);">
+            <div style="color:#e06060;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-size:0.5rem;margin-bottom:2px;">Refund ${esc(String(o.status).replace(/_/g,' '))} · ${attempts} attempt${attempts===1?'':'s'}${capped ? ' · CAPPED' : ''}</div>
+            <div title="${err}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${err}</div>
+            <button onclick="forceRetryRefund('${esc(o.razorpay_order_id||o.id)}', this)" title="${capped ? 'This order hit the 10-attempt cap. Force a fresh retry (money-safe: re-checks PhonePe first, never double-refunds).' : 'Re-attempt this refund now via the money-safe retry job.'}"
+              style="display:block;margin-top:0.4rem;background:rgba(232,160,48,0.1);border:1px solid rgba(232,160,48,0.5);color:var(--orange);padding:0.28rem 0.6rem;font-size:0.5rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">🔁 Force retry${capped ? ' (reset cap)' : ''}</button>
+          </div>`;
+        })() : ''}
       </td>
       <td class="addr-cell" style="max-width:220px;line-height:1.55;">
         ${esc(o.customer_address || '—')}
@@ -5649,6 +5660,32 @@ async function retryFailedRefunds(btn) {
     setTimeout(() => fetchOrders(true), 20000);
   } catch (err) {
     alert('Retry failed to start: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// Force-retry ONE order's refund now — bypasses the 10-attempt cap. Still
+// money-safe server-side: the retry job re-checks PhonePe's true refund state
+// before re-issuing, so a completed/pending refund is never duplicated.
+async function forceRetryRefund(orderId, btn) {
+  if (!confirm(`Force a fresh refund attempt for ${orderId}?\n\nThis lifts the 10-attempt cap and re-tries now. It stays money-safe — PhonePe is re-checked first, so a refund already completed or pending is never duplicated.\n\nNote: if PhonePe keeps rejecting it (wrong amount, payment not captured, or a partial refund already done), retrying won't fix it — check the failure reason shown above.`)) return;
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Retrying…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/phonepe-retry-refunds-background', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_ids: [orderId], force: true }),
+    });
+    let data = {}; try { data = await res.json(); } catch (e) {}
+    if (res.status === 202 || res.ok) {
+      alert(`🔁 Force retry started for ${orderId}.\n\nReload orders in a minute to see the updated status. If it lands on "still failing", open the failure reason — PhonePe is declining it for a specific reason that a retry alone can't fix.`);
+    } else if (data.error) {
+      throw new Error(data.error);
+    }
+    setTimeout(() => fetchOrders(true), 15000);
+  } catch (err) {
+    alert('Force retry failed to start: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
