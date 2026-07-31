@@ -2898,6 +2898,12 @@ function _drawTable() {
           onmouseout="this.style.background='rgba(201,168,76,0.08)';">
           🚀 Ship via NimbusPost
         </button>` : ''}
+        ${['delivered','shipped','out_for_delivery','rto','undelivered'].includes(String(o.status||'').toLowerCase()) ? `<button onclick="createReturnOrder('${esc(o.razorpay_order_id||o.id)}', this)" title="Create a reverse pickup (return order) for this order on NimbusPost — picks up from the customer, delivers to your warehouse"
+          style="display:block;margin-top:0.4rem;background:rgba(232,160,48,0.08);border:1px solid rgba(232,160,48,0.45);color:var(--orange);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;width:100%;"
+          onmouseover="this.style.background='rgba(232,160,48,0.18)';"
+          onmouseout="this.style.background='rgba(232,160,48,0.08)';">
+          ↩ Create return
+        </button>` : ''}
         <button onclick="openEditOrderModal('${esc(o.id)}')" title="Edit customer name, phone, email, address or books"
           style="display:block;margin-top:0.4rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
           onmouseover="this.style.background='rgba(201,168,76,0.18)';"
@@ -3080,6 +3086,37 @@ async function _npCall(body) {
     throw new Error(data.error || 'HTTP ' + res.status);
   }
   return data;
+}
+
+// Create a return (reverse pickup) for a specific order, admin-initiated — no
+// customer return request needed. Mirrors the customer return flow: it creates
+// a pre-approved return_request from the order, then asks NimbusPost for a
+// reverse-capable courier and creates the reverse order (lands in the panel; you
+// then push/ship it there, or it schedules pickup if a reverse courier is found).
+async function createReturnOrder(orderId, btn) {
+  const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+  const who = ord ? `\n\nPickup from: ${ord.customer_name || ''} — ${ord.customer_address || ''}` : '';
+  if (!confirm(`Create a RETURN (reverse pickup) for ${orderId}?${who}\n\nThis creates a reverse order in NimbusPost (customer → your warehouse). It does NOT refund the customer.`)) return;
+
+  const origText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Creating…'; }
+  try {
+    const res = await fetch('/.netlify/functions/process-return', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ order_display_id: orderId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) throw new Error(data.error || 'HTTP ' + res.status);
+    const parts = [data.message || 'Return created in NimbusPost.'];
+    if (data.awb) parts.push(`AWB: ${data.awb}${data.courier_name ? ' · ' + data.courier_name : ''}`);
+    if (data.notified) parts.push('Customer notified about the pickup.');
+    alert('↩ ' + parts.join('\n'));
+    if (btn) btn.innerHTML = data.awb ? '✅ Pickup scheduled' : '✅ Return created';
+  } catch (err) {
+    alert('Could not create return: ' + err.message);
+    if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+  }
 }
 
 // Ship a single order via NimbusPost

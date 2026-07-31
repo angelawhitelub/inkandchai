@@ -198,20 +198,66 @@ exports.handler = async (event) => {
   let body;
   try { body = JSON.parse(event.body || '{}'); } catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
-  const { return_request_id, action } = body;
-  if (!return_request_id) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'return_request_id required' }) };
+  let { return_request_id } = body;
+  const { order_display_id, action } = body;
+  if (!return_request_id && !order_display_id) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'return_request_id or order_display_id required' }) };
+  }
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-    // Fetch return request
-    const { data: ret, error: retErr } = await supabase
-      .from('return_requests')
-      .select('*')
-      .eq('id', return_request_id)
-      .maybeSingle();
+    let ret;
+    if (return_request_id) {
+      // Customer-initiated flow: fetch the existing return request by id.
+      const { data, error: retErr } = await supabase
+        .from('return_requests').select('*').eq('id', return_request_id).maybeSingle();
+      if (retErr) throw retErr;
+      ret = data;
+    } else {
+      // ── Admin-initiated return for a specific order ─────────────────────────
+      // No customer request needed. Look the order up, reuse an existing return
+      // request if one exists, otherwise synthesize one (pre-approved) from the
+      // order so the reverse-pickup logic below runs unchanged. displayId is
+      // sanitized to [A-Za-z0-9-] before it goes into the PostgREST .or() filter.
+      const displayId = String(order_display_id).trim().replace(/[^A-Za-z0-9-]/g, '').slice(0, 64);
+      if (!displayId) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid order id' }) };
+      const { data: order, error: ordErr } = await supabase
+        .from('orders').select('*')
+        .or(`razorpay_order_id.eq.${displayId},id.eq.${displayId}`)
+        .maybeSingle();
+      if (ordErr) throw ordErr;
+      if (!order) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: `Order not found: ${displayId}` }) };
 
-    if (retErr) throw retErr;
+      const { data: existing } = await supabase
+        .from('return_requests').select('*').eq('order_id', order.id).maybeSingle();
+      if (existing) {
+        ret = existing;
+      } else {
+        const { data: created, error: cErr } = await supabase.from('return_requests').insert({
+          order_id:         order.id,
+          order_display_id: order.razorpay_order_id || order.id,
+          customer_name:    order.customer_name    || '',
+          customer_email:   order.customer_email   || '',
+          customer_phone:   order.customer_phone   || '',
+          customer_address: order.customer_address || '',
+          items:            order.cart_items       || [],
+          amount_paise:     order.amount_paise      || 0,
+          reason:           'Admin-initiated return',
+          status:           'approved',   // admin-initiated = pre-approved
+        }).select('*').single();
+        if (cErr) throw cErr;
+        ret = created;
+      }
+      return_request_id = ret.id;
+      // Pre-approve so the reverse-pickup guard passes (unless already pushed).
+      const alreadyPushed = ret.awb || ret.status === 'pushed_to_nimbus' || ret.status === 'pickup_scheduled';
+      if (!alreadyPushed && ret.status !== 'approved') {
+        await supabase.from('return_requests').update({ status: 'approved' }).eq('id', ret.id);
+        ret.status = 'approved';
+      }
+    }
+
     if (!ret) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Return request not found' }) };
 
     // Handle status updates (approve/reject without creating pickup)
