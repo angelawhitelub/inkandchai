@@ -281,6 +281,44 @@ exports.handler = async (event) => {
       html: customerEmailHtml(order, info),
     }).catch(e => console.error('request-return customer email:', e.message));
 
+    // ── Auto-push the reverse pickup to NimbusPost ─────────────────────────────
+    // The return is auto-approved above; immediately book the NimbusPost reverse
+    // pickup so an AWB is assigned and the customer is told the courier will
+    // collect the books — no manual admin step. Reuses process-return (the exact
+    // code the Returns-tab buttons call) via an internal, admin-secret-authed
+    // call. BEST-EFFORT: if no reverse-capable courier serves the pincode (or NP
+    // is down) the return still stands as "approved" for the admin to push by
+    // hand, and the customer's return-approved email above still went out.
+    let autoPickup = { attempted: false, ok: false };
+    try {
+      const site = String(process.env.SITE_URL || process.env.URL || 'https://inkandchai.in').replace(/\/$/, '');
+      const secret = process.env.ADMIN_SECRET || '';
+      if (!secret) {
+        autoPickup = { attempted: false, ok: false, error: 'ADMIN_SECRET not set' };
+        console.warn('[request-return] auto-pickup skipped: ADMIN_SECRET not set');
+      } else {
+        const pr = await fetch(`${site}/.netlify/functions/process-return`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Key': secret },
+          body: JSON.stringify({ return_request_id: inserted.id }),
+        });
+        const prData = await pr.json().catch(() => ({}));
+        autoPickup = {
+          attempted: true,
+          ok: pr.ok && !prData.error,
+          awb: prData.awb || null,
+          courier: prData.courier_name || null,
+          status: prData.status || null,
+          error: prData.error || null,
+        };
+        if (!autoPickup.ok) console.warn('[request-return] auto-pickup failed:', prData.error || `HTTP ${pr.status}`);
+        else console.log(`[request-return] auto-pickup ok: ${inserted.id} awb=${autoPickup.awb || '(none)'} courier=${autoPickup.courier || '-'}`);
+      }
+    } catch (e) {
+      autoPickup = { attempted: true, ok: false, error: e.message };
+      console.error('[request-return] auto-pickup error:', e.message);
+    }
+
     return {
       statusCode: 200,
       headers: CORS,
@@ -291,6 +329,7 @@ exports.handler = async (event) => {
         refund_rupees: refundRupees,
         wallet_code: walletCode,
         wallet_rupees: walletRupees || null,
+        auto_pickup: autoPickup,
         message: refundMethod === 'wallet'
           ? `Wallet credit of ₹${walletRupees} is ready — use code ${walletCode} at checkout. Keep the package ready for pickup.`
           : (paymentType === 'cod'
