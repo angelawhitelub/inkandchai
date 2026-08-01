@@ -22,6 +22,7 @@
  * "ignored" reason so PhonePe doesn't keep retrying.
  */
 
+const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 
@@ -91,6 +92,28 @@ function refundDecision(existing, state, amount) {
 // ── Email via Resend (same fallback pattern as other functions) ────────────
 
 // ── Verify Basic auth header matches our secrets (constant-time) ───────────
+// Constant-time string compare (equal-length only; length itself isn't secret).
+function safeEq(a, b) {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+
+/**
+ * Verify a PhonePe webhook callback.
+ *
+ * PhonePe registers webhooks with auth Type "SHA" (visible in the dashboard's
+ * webhook list) and sends:
+ *     Authorization: <hex sha256("username:password")>
+ * — NOT HTTP Basic. We previously only accepted `Basic base64(user:pass)`, so
+ * EVERY callback was rejected with 401 (118 of them in one day). That silently
+ * killed real-time payment AND refund updates: a refund PhonePe had already
+ * COMPLETED kept showing "refund pending" until a scheduled reconcile ran.
+ *
+ * We accept the SHA-256 forms (bare hex, or prefixed) and still accept Basic, so
+ * this works regardless of which auth type the webhook is configured with.
+ */
 function verifyAuth(event) {
   const u = process.env.PHONEPE_WEBHOOK_USER;
   const p = process.env.PHONEPE_WEBHOOK_PASS;
@@ -98,12 +121,19 @@ function verifyAuth(event) {
     console.error('PHONEPE_WEBHOOK_USER / PHONEPE_WEBHOOK_PASS not set in Netlify env');
     return false;
   }
-  const expected = 'Basic ' + Buffer.from(`${u}:${p}`).toString('base64');
-  const got = event.headers['authorization'] || event.headers['Authorization'] || '';
-  if (got.length !== expected.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < got.length; i++) mismatch |= got.charCodeAt(i) ^ expected.charCodeAt(i);
-  return mismatch === 0;
+  const got = String(event.headers['authorization'] || event.headers['Authorization'] || '').trim();
+  if (!got) return false;
+
+  const creds = `${u}:${p}`;
+  const sha = crypto.createHash('sha256').update(creds).digest('hex');
+  // Hex is case-insensitive — normalise before comparing the SHA variants.
+  const gotLower = got.toLowerCase();
+  if (safeEq(gotLower, sha)) return true;
+  if (safeEq(gotLower, `sha256 ${sha}`)) return true;
+  if (safeEq(gotLower, `sha256=${sha}`)) return true;
+
+  // Legacy / alternate config: HTTP Basic.
+  return safeEq(got, 'Basic ' + Buffer.from(creds).toString('base64'));
 }
 
 // ── Admin/owner notification (shows order + customer info, not addressed to customer) ──
