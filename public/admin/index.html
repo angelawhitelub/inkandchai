@@ -2889,6 +2889,8 @@ function _drawTable() {
           return `<div style="margin-top:0.5rem;padding:0.4rem 0.55rem;background:rgba(224,80,80,0.06);border:1px solid rgba(224,80,80,0.3);font-size:0.56rem;line-height:1.5;color:var(--cream-dim);">
             <div style="color:#e06060;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-size:0.5rem;margin-bottom:2px;">Refund ${esc(String(o.status).replace(/_/g,' '))} · ${attempts} attempt${attempts===1?'':'s'}${capped ? ' · CAPPED' : ''}</div>
             <div title="${err}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${err}</div>
+            <button onclick="checkRefundStatus('${esc(o.razorpay_order_id||o.id)}', this)" title="Ask PhonePe for this refund's true status right now and sync it. Read-only — never re-issues a refund."
+              style="display:block;margin-top:0.4rem;background:rgba(109,191,109,0.1);border:1px solid rgba(109,191,109,0.5);color:#6dbf6d;padding:0.28rem 0.6rem;font-size:0.5rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">🔄 Check status at PhonePe</button>
             <button onclick="forceRetryRefund('${esc(o.razorpay_order_id||o.id)}', this)" title="${capped ? 'This order hit the 10-attempt cap. Force a fresh retry (money-safe: re-checks PhonePe first, never double-refunds).' : 'Re-attempt this refund now via the money-safe retry job.'}"
               style="display:block;margin-top:0.4rem;background:rgba(232,160,48,0.1);border:1px solid rgba(232,160,48,0.5);color:var(--orange);padding:0.28rem 0.6rem;font-size:0.5rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">🔁 Force retry${capped ? ' (reset cap)' : ''}</button>
           </div>`;
@@ -5727,6 +5729,29 @@ async function forceRetryRefund(orderId, btn) {
     setTimeout(() => fetchOrders(true), 15000);
   } catch (err) {
     alert('Force retry failed to start: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// Ask PhonePe for a refund's TRUE state right now and sync our record. Read-only:
+// reconcile_only never re-issues a refund, so this is safe to click any time. Use
+// it when PhonePe's dashboard shows COMPLETED but admin still says pending — the
+// hourly reconcile would catch it too, this just doesn't wait.
+async function checkRefundStatus(orderId, btn) {
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Checking…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/phonepe-retry-refunds-background', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_ids: [orderId], reconcile_only: true }),
+    });
+    let data = {}; try { data = await res.json(); } catch (e) {}
+    if (!res.ok && res.status !== 202 && data.error) throw new Error(data.error);
+    alert(`🔄 Checking ${orderId} against PhonePe.\n\nIf PhonePe reports the refund COMPLETED, the order flips to Refunded and the customer is emailed automatically. Reloading orders shortly…`);
+    setTimeout(() => fetchOrders(true), 12000);
+  } catch (err) {
+    alert('Status check failed: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }

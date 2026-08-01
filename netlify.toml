@@ -43,6 +43,14 @@
 [functions."phonepe-retry-refunds-scheduled"]
   schedule = "30 7-12 * * *"
 
+# READ-ONLY refund reconciliation, hourly around the clock. Refunds complete at
+# any hour; this flips PENDING → refunded and notifies the customer as soon as
+# PhonePe confirms, instead of waiting for the afternoon re-issue window above
+# (a refund completing at 12:45 AM used to show "pending" for ~12 hours).
+# It never re-issues, so it can't trip the balance policy or burn the attempt cap.
+[functions."phonepe-reconcile-refunds-scheduled"]
+  schedule = "15 * * * *"
+
 # 5-min follow-up confirmation ping for WhatsApp book-order requests placed via
 # the bot. Runs every 2 minutes; each row is pinged exactly once thanks to the
 # follow_up_sent_at guard column.

@@ -58,7 +58,7 @@ function refundEmailHtml(order, amtPaise) {
   </div>`;
 }
 
-async function processOrder(supabase, order, force = false) {
+async function processOrder(supabase, order, force = false, reconcileOnly = false) {
   const displayId = order.razorpay_order_id || order.id;
   const amountPaise = Number(order.amount_paise) || 0;
   if (amountPaise <= 0) return { order: displayId, result: 'skip_no_amount' };
@@ -107,6 +107,14 @@ async function processOrder(supabase, order, force = false) {
   // trueState is FAILED or null (no refund exists / all failed) → safe to re-issue.
   // The trueState guard above still ran, so an admin-forced retry can never
   // double-refund — it only lifts the 10-attempt anti-spam cap.
+  //
+  // Reconcile-only runs stop here: they exist to flip PENDING→refunded promptly
+  // (a refund that completes at 1 AM shouldn't wait for the 1–6 PM re-issue
+  // window before the customer is told). Re-issuing must stay in that window —
+  // PhonePe's balance policy makes off-window attempts fail, and every attempt
+  // burns the MAX_ATTEMPTS cap.
+  if (reconcileOnly) return { order: displayId, result: 'reconcile_only' };
+
   const attempts = Number(order.refund_attempts) || 0;
   if (!force && attempts >= MAX_ATTEMPTS) return { order: displayId, result: 'max_attempts' };
 
@@ -177,6 +185,9 @@ exports.handler = async (event) => {
     ? reqBody.order_ids.map(s => String(s).trim()).filter(Boolean).slice(0, 100)
     : null;
   const force = reqBody.force === true || reqBody.force === 'true';
+  // Read-only mode: sync refund state from PhonePe (and notify on COMPLETED)
+  // without ever re-issuing. Safe to run at any hour.
+  const reconcileOnly = reqBody.reconcile_only === true || reqBody.reconcile_only === 'true';
 
   try {
     let query = supabase
@@ -193,11 +204,11 @@ exports.handler = async (event) => {
     // Only PhonePe-paid orders (Razorpay refunds go through the Razorpay path).
     const candidates = (rows || []).filter(o => isPhonePePayment(o.razorpay_payment_id));
 
-    const summary = { scanned: candidates.length, reconciled_completed: 0, retried_completed: 0, retried_pending: 0, retry_failed: 0, retry_error: 0, still_pending: 0, max_attempts: 0, skip_no_amount: 0 };
+    const summary = { scanned: candidates.length, reconciled_completed: 0, retried_completed: 0, retried_pending: 0, retry_failed: 0, retry_error: 0, still_pending: 0, max_attempts: 0, skip_no_amount: 0, reconcile_only: 0 };
     const details = [];
     for (const order of candidates) {
       let r;
-      try { r = await processOrder(supabase, order, force); }
+      try { r = await processOrder(supabase, order, force, reconcileOnly); }
       catch (e) { r = { order: order.razorpay_order_id || order.id, result: 'error', error: e.message }; }
       if (summary[r.result] != null) summary[r.result]++;
       details.push(r);
