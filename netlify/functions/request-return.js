@@ -281,42 +281,37 @@ exports.handler = async (event) => {
       html: customerEmailHtml(order, info),
     }).catch(e => console.error('request-return customer email:', e.message));
 
-    // ── Auto-push the reverse pickup to NimbusPost ─────────────────────────────
-    // The return is auto-approved above; immediately book the NimbusPost reverse
-    // pickup so an AWB is assigned and the customer is told the courier will
-    // collect the books — no manual admin step. Reuses process-return (the exact
-    // code the Returns-tab buttons call) via an internal, admin-secret-authed
-    // call. BEST-EFFORT: if no reverse-capable courier serves the pincode (or NP
-    // is down) the return still stands as "approved" for the admin to push by
-    // hand, and the customer's return-approved email above still went out.
-    let autoPickup = { attempted: false, ok: false };
+    // ── Auto-push the reverse pickup to NimbusPost (backgrounded) ──────────────
+    // The return is auto-approved above; now book the NimbusPost reverse pickup
+    // so an AWB is assigned and the customer is told the courier will collect the
+    // books — no manual admin step. This is dispatched to a BACKGROUND function
+    // (Netlify returns 202 instantly, 15-min budget) rather than done inline: the
+    // reverse pickup (NP login + serviceability + shipment + notifications) takes
+    // ~10s, which added to this handler's own work would blow the 10s synchronous
+    // timeout and silently drop the push (that's exactly what left earlier returns
+    // "approved, no AWB"). The background worker reuses process-return and emails
+    // the owner if it can't schedule (e.g. no reverse courier for the pincode), so
+    // failures are visible, not silent. Best-effort: never blocks the customer.
+    let autoPickup = { attempted: false, queued: false };
     try {
       const site = String(process.env.SITE_URL || process.env.URL || 'https://inkandchai.in').replace(/\/$/, '');
       const secret = process.env.ADMIN_SECRET || '';
       if (!secret) {
-        autoPickup = { attempted: false, ok: false, error: 'ADMIN_SECRET not set' };
+        autoPickup = { attempted: false, queued: false, error: 'ADMIN_SECRET not set' };
         console.warn('[request-return] auto-pickup skipped: ADMIN_SECRET not set');
       } else {
-        const pr = await fetch(`${site}/.netlify/functions/process-return`, {
+        const pr = await fetch(`${site}/.netlify/functions/auto-return-pickup-background`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Admin-Key': secret },
           body: JSON.stringify({ return_request_id: inserted.id }),
         });
-        const prData = await pr.json().catch(() => ({}));
-        autoPickup = {
-          attempted: true,
-          ok: pr.ok && !prData.error,
-          awb: prData.awb || null,
-          courier: prData.courier_name || null,
-          status: prData.status || null,
-          error: prData.error || null,
-        };
-        if (!autoPickup.ok) console.warn('[request-return] auto-pickup failed:', prData.error || `HTTP ${pr.status}`);
-        else console.log(`[request-return] auto-pickup ok: ${inserted.id} awb=${autoPickup.awb || '(none)'} courier=${autoPickup.courier || '-'}`);
+        // Background functions ack with 202 (accepted) and finish out-of-band.
+        autoPickup = { attempted: true, queued: pr.status === 202 || pr.ok, status: pr.status };
+        console.log(`[request-return] auto-pickup queued for ${inserted.id} (HTTP ${pr.status})`);
       }
     } catch (e) {
-      autoPickup = { attempted: true, ok: false, error: e.message };
-      console.error('[request-return] auto-pickup error:', e.message);
+      autoPickup = { attempted: true, queued: false, error: e.message };
+      console.error('[request-return] auto-pickup dispatch error:', e.message);
     }
 
     return {
