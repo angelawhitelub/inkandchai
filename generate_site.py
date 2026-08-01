@@ -2437,7 +2437,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
     <a href="/bestsellers/" class="sale-banner-link" aria-label="Summer Sale — Shop Now">
       <picture>
         <source srcset="/images/summer-sale-banner.webp" type="image/webp"/>
-        <img src="/images/summer-sale-banner.png" alt="Summer Sale — Up to 60% off on selected books. Use code SUMMER10 at checkout." loading="eager" fetchpriority="high"/>
+        <img src="/images/summer-sale-banner.webp" alt="Summer Sale — Up to 60% off on selected books. Use code SUMMER10 at checkout." loading="eager" fetchpriority="high"/>
       </picture>
       <div class="sale-banner-code-badge" onclick="event.preventDefault();navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Code: SUMMER10',2000)" title="Click to copy code">Code: SUMMER10</div>
     </a>
