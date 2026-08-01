@@ -78,13 +78,20 @@ async function notifyOwnerRefund(order, amountPaise, meta = {}) {
   }
 }
 
-function refundInitiatedEmailHtml(order, amtPaise) {
+function refundInitiatedEmailHtml(order, amtPaise, refundRef) {
   const amt = `₹${(amtPaise / 100).toLocaleString('en-IN')}`;
   const oid = order.razorpay_order_id || order.id || '';
+  // Payment-gateway reference for the refund. Customers whose bank is slow can
+  // quote this to their bank to trace the credit, so surface it when we have it.
+  const ref = refundRef || order.phonepe_refund_id || null;
   return `<div style="font-family:Georgia,serif;color:#3a2f25;max-width:520px;margin:0 auto;padding:24px;background:#faf7f2;">
     <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;margin:0 0 12px;">Your refund is on its way 💚</h2>
     <p>Hi ${firstName(order.customer_name)},</p>
     <p>We've initiated a refund of <strong>${amt}</strong> for your order <strong>${oid}</strong>.</p>
+    ${ref ? `<p style="background:#f2ece1;padding:10px 14px;border-left:3px solid #8a6a1f;">
+      <strong>Refund reference:</strong> <span style="font-family:Menlo,Consolas,monospace;">${ref}</span><br>
+      <span style="font-size:12px;color:#6f6255;">Quote this to your bank if you need to trace the credit.</span>
+    </p>` : ''}
     <p><strong>Timeline:</strong> the amount will reflect in your original payment method within <strong>2–3 business days</strong>. Some banks may take a little longer — up to 5–7 business days in rare cases.</p>
     <p>You don't need to do anything from your side. Once the money reaches your bank, you'll see it as a credit against the original transaction.</p>
     <p style="color:#6f6255;font-size:13px;margin-top:24px;">If you don't see the refund after 7 business days, just reply to this email or WhatsApp us at +91 76784 00508 with your Order ID and we'll chase it with our payment provider right away.</p>
@@ -107,7 +114,7 @@ function refundInitiatedEmailHtml(order, amtPaise) {
  *                                  refunds settle reliably once created) and keep the old behaviour.
  * @returns {Promise<{sent: boolean, skipped?: string}>}
  */
-async function sendRefundInitiated(order, amountPaise, { supabase, state } = {}) {
+async function sendRefundInitiated(order, amountPaise, { supabase, state, refundRef } = {}) {
   if (!order || amountPaise <= 0) return { sent: false, skipped: 'no_amount' };
 
   // Money-safety gate: if a gateway state was supplied, only notify on COMPLETED.
@@ -127,7 +134,7 @@ async function sendRefundInitiated(order, amountPaise, { supabase, state } = {})
     ? sendEmail({
         to: order.customer_email,
         subject: `Refund initiated — ${oid}`,
-        html: refundInitiatedEmailHtml(order, amountPaise),
+        html: refundInitiatedEmailHtml(order, amountPaise, refundRef),
       }).catch(e => console.error('refund email:', e.message))
     : Promise.resolve();
 
@@ -144,7 +151,9 @@ async function sendRefundInitiated(order, amountPaise, { supabase, state } = {})
   const ownerProvider = String(order.razorpay_payment_id || '').startsWith('pay_') ? 'Razorpay' : 'PhonePe';
   const ownerPromise = notifyOwnerRefund(order, amountPaise, {
     provider: ownerProvider,
-    refundId: order.refund_id || null,
+    // Prefer the gateway's own reference (PhonePe refundId / Razorpay rfnd_…)
+    // over our internal merchantRefundId — that's the one support can trace.
+    refundId: refundRef || order.phonepe_refund_id || order.refund_id || null,
     state: order.refund_state || 'processed',
   }).catch(e => console.error('owner refund notify:', e.message));
 

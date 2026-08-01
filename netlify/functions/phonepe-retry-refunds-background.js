@@ -65,10 +65,12 @@ async function processOrder(supabase, order, force = false) {
 
   // ── 1. Establish the TRUE current refund state (money-safe guard) ──────────
   let trueState = null;                       // COMPLETED | PENDING | FAILED | null
+  let gatewayRef = order.phonepe_refund_id || null;  // PhonePe's own refundId
   if (order.refund_id) {
     try {
       const s = await getRefundStatus(order.refund_id);
       if (s.ok || s.state) trueState = s.state || null;
+      if (s.data?.refundId) gatewayRef = s.data.refundId;
     } catch (e) { /* fall through to order-status */ }
   }
   if (!trueState) {
@@ -81,14 +83,18 @@ async function processOrder(supabase, order, force = false) {
 
   // ── 2. Act on the confirmed state ─────────────────────────────────────────
   if (trueState === 'COMPLETED') {
-    await supabase.from('orders').update({
-      status: 'refunded', refund_state: 'COMPLETED', refund_updated_at: new Date().toISOString(),
-    }).eq('id', order.id);
+    const done = { status: 'refunded', refund_state: 'COMPLETED', refund_updated_at: new Date().toISOString() };
+    if (gatewayRef) done.phonepe_refund_id = gatewayRef;
+    const { error: dErr } = await supabase.from('orders').update(done).eq('id', order.id);
+    if (dErr && /phonepe_refund_id/i.test(dErr.message || '')) {
+      const { phonepe_refund_id, ...noRef } = done;
+      await supabase.from('orders').update(noRef).eq('id', order.id);
+    }
     // The refund has ACTUALLY completed — safe to notify the customer now.
     // sendRefundInitiated is dedup-guarded (refund_notified_at) and gated on the
     // COMPLETED state, so this fires exactly once and never for a pending/failed refund.
     if (order.refund_state !== 'COMPLETED') {
-      await sendRefundInitiated(order, amountPaise, { supabase, state: 'COMPLETED' })
+      await sendRefundInitiated(order, amountPaise, { supabase, state: 'COMPLETED', refundRef: gatewayRef })
         .catch(e => console.error('reconcile refund-initiated notify:', e.message));
     }
     return { order: displayId, result: 'reconciled_completed' };

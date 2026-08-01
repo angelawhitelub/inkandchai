@@ -313,16 +313,25 @@ exports.handler = async (event) => {
     const nextStatus = refundState === 'COMPLETED'
       ? (isFullRefund ? 'refunded' : 'partially_refunded')
       : 'refund_pending';
-    await supabase
-      .from('orders')
-      .update({
-        status: nextStatus, razorpay_payment_id: paymentId,
-        // Persist the refund id + state so the scheduled retry job can re-check
-        // this refund precisely (a PENDING refund can fail asynchronously later).
-        refund_id: merchantRefundId, refund_state: refundState || 'PENDING',
-        refund_updated_at: new Date().toISOString(),
-      })
-      .eq('id', order.id);
+    const updatePayload = {
+      status: nextStatus, razorpay_payment_id: paymentId,
+      // Persist the refund id + state so the scheduled retry job can re-check
+      // this refund precisely (a PENDING refund can fail asynchronously later).
+      // NOTE: refund_id MUST stay our merchantRefundId — it's the lookup key for
+      // getRefundStatus and hence the double-refund guard. PhonePe's own
+      // reference goes in phonepe_refund_id (what a customer quotes to a bank).
+      refund_id: merchantRefundId, refund_state: refundState || 'PENDING',
+      refund_updated_at: new Date().toISOString(),
+    };
+    if (phonePeRefundId) updatePayload.phonepe_refund_id = phonePeRefundId;
+    let { error: updErr } = await supabase.from('orders').update(updatePayload).eq('id', order.id);
+    // Resilience: if sql/orders_phonepe_refund_id.sql hasn't been run yet, retry
+    // without the new column rather than losing the refund status update.
+    if (updErr && /phonepe_refund_id/i.test(updErr.message || '')) {
+      const { phonepe_refund_id, ...withoutRef } = updatePayload;
+      await supabase.from('orders').update(withoutRef).eq('id', order.id);
+      console.warn('[phonepe-refund] phonepe_refund_id column missing — run sql/orders_phonepe_refund_id.sql');
+    }
 
     // Notify the customer ONLY when PhonePe has CONFIRMED the refund COMPLETED.
     // PhonePe frequently returns PENDING and then FAILS the refund asynchronously
@@ -331,7 +340,7 @@ exports.handler = async (event) => {
     // pending, the scheduled retry/reconcile job sends the notification once the
     // refund actually completes. Dedup-guarded by refund_notified_at.
     if (nextStatus !== 'refund_pending') {
-      await sendRefundInitiated(order, amountPaise, { supabase, state: refundState })
+      await sendRefundInitiated(order, amountPaise, { supabase, state: refundState, refundRef: phonePeRefundId })
         .catch(e => console.error('refund-initiated notify:', e.message));
       if (order.customer_email) {
         await sendEmail({

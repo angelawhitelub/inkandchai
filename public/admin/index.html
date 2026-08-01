@@ -2878,6 +2878,10 @@ function _drawTable() {
           return `<button onclick="openRefundModal('${esc(o.razorpay_order_id||o.id)}',${amtRupees})" title="Refund — full or partial — via ${via}"
             style="display:block;margin-top:0.5rem;background:rgba(224,80,80,0.1);border:1px solid rgba(224,80,80,0.5);color:#e06060;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">💸 Refund</button>`;
         })()}
+        ${(['refunded','partially_refunded'].includes(String(o.status||'').toLowerCase()) && (o.phonepe_refund_id || o.refund_state)) ? `<div style="margin-top:0.5rem;padding:0.4rem 0.55rem;background:rgba(109,191,109,0.06);border:1px solid rgba(109,191,109,0.3);font-size:0.56rem;line-height:1.5;color:var(--cream-dim);">
+          <div style="color:#6dbf6d;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-size:0.5rem;margin-bottom:2px;">Refund ${esc(String(o.refund_state||'').toLowerCase()||'confirmed')} at gateway</div>
+          ${o.phonepe_refund_id ? `<div title="Gateway refund reference — the customer can quote this to their bank." style="font-family:Menlo,Consolas,monospace;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(String(o.phonepe_refund_id))}</div>` : '<div style="opacity:0.7;">No gateway reference recorded</div>'}
+        </div>` : ''}
         ${(['refund_failed','refund_pending'].includes(String(o.status||'').toLowerCase()) && !String(o.razorpay_payment_id||'').startsWith('pay_')) ? (() => {
           const attempts = Number(o.refund_attempts) || 0;
           const capped = attempts >= 10;
