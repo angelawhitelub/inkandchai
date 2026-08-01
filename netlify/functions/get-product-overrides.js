@@ -32,9 +32,20 @@ exports.handler = async (event) => {
         gallery_images: (Array.isArray(single.gallery_images) ? single.gallery_images : [])
           .map(proxifySupabaseImage).filter(Boolean),
       } : null;
+      // Fetched on EVERY product-page view. This was `no-store`, so it cost a
+      // function invocation + full transfer on every single PDP hit — the most
+      // frequent uncached call on the site. The whole-catalog branch below
+      // already serves data up to an hour old, so a no-cache single-slug lookup
+      // bought no real freshness; a short browser TTL + durable edge cache keeps
+      // admin edits visibly quick while cutting repeat hits sharply. Checkout
+      // re-resolves price server-side, so a briefly stale price is never charged.
       return {
         statusCode: 200,
-        headers: { ...CORS, 'Cache-Control': 'no-store, max-age=0' },
+        headers: {
+          ...CORS,
+          'Cache-Control': 'public, max-age=300, stale-while-revalidate=600',
+          'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=300, stale-while-revalidate=3600',
+        },
         body: JSON.stringify({ overrides: override ? [override] : [] }),
       };
     }
