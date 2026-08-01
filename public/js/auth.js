@@ -2160,7 +2160,7 @@
                 </select></label>` : ''}
             </div>`).join('')}
         </div>
-        <textarea class="miss-comment" rows="2" maxlength="1000" placeholder="Anything else we should know? (optional) — e.g. the packet was open"
+        <textarea class="miss-comment" rows="2" maxlength="1000" required placeholder="Required — what happened? e.g. the packet was open and one book was missing"
           style="width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
                  padding:0.5rem 0.7rem;font-family:inherit;font-size:0.72rem;resize:vertical;margin-bottom:0.6rem;"></textarea>
         <button data-oid="${escHtmlAttr(oid)}" data-q="${escHtmlAttr(q)}" onclick="iacReportMissing(this)"
@@ -2201,6 +2201,17 @@
       msg.textContent = 'Please tap the book(s) that were missing.';
       return;
     }
+    // A written account is required — it's the only way we learn what actually
+    // happened (packet open, wrong book swapped in, seal broken, etc.).
+    const commentEl = wrap.querySelector('.miss-comment');
+    const commentText = (commentEl?.value || '').trim();
+    if (commentText.length < 10) {
+      msg.style.display = ''; msg.style.color = '#e06060';
+      msg.textContent = 'Please tell us what happened (at least 10 characters) — e.g. "the packet was open and one book was missing".';
+      commentEl?.focus();
+      return;
+    }
+
     const confirmLines = missing.map(m => m.qty > 1 ? `${m.title} ×${m.qty}` : m.title);
     if (!confirm(`Report that ${missing.length > 1 ? 'these were' : 'this was'} missing from your parcel?\n\n• ${confirmLines.join('\n• ')}`)) return;
 
@@ -2211,7 +2222,7 @@
       const res = await fetch('/.netlify/functions/report-missing-books', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: btn.dataset.oid, q: btn.dataset.q, missing, comment: (wrap.querySelector('.miss-comment')?.value || '').trim() }),
+        body: JSON.stringify({ id: btn.dataset.oid, q: btn.dataset.q, missing, comment: commentText }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) throw new Error(json.error || 'Could not submit your report.');
@@ -2264,8 +2275,8 @@
           <option value="other">Other</option>
         </select>
 
-        <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">Notes (optional)</label>
-        <textarea id="iacReplNote" rows="3" maxlength="500" placeholder="Anything that helps us pack the replacement right…"
+        <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">What happened? <span style="color:#e8a030;">(required)</span></label>
+        <textarea id="iacReplNote" rows="3" maxlength="500" required placeholder="Required — tell us what was wrong, e.g. pages torn from page 40, or a different book was sent"
           style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.7rem;font-family:inherit;font-size:0.82rem;line-height:1.55;resize:vertical;margin-bottom:1rem;"></textarea>
 
         <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">Photos (optional, up to 3)</label>
@@ -2321,6 +2332,12 @@
 
     if (!sb || !currentUser) { show('Please sign in again — session expired.', '#e06060'); return; }
     if (!reason) { show('Please choose a reason.'); return; }
+    // Required so every replacement carries the customer's account of the problem.
+    if (note.length < 10) {
+      show('Please describe what happened (at least 10 characters) so we know what went wrong.');
+      document.getElementById('iacReplNote')?.focus();
+      return;
+    }
 
     // Read photos as data URLs (max 3, 2MB each)
     const photos = [];

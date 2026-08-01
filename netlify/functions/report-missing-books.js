@@ -185,7 +185,11 @@ exports.handler = async (event) => {
 
   const id = String(body.id || '').trim().replace(/\s+/g, '');
   const q  = String(body.q  || '').trim();
-  const comment = String(body.comment || '').trim().slice(0, 1000);   // optional customer note
+  // REQUIRED customer note. Validated server-side (not just in the form) so the
+  // owner always gets an account of what actually happened — an empty report
+  // gives nothing to act on. Min length keeps it from being a single character.
+  const comment = String(body.comment || '').trim().slice(0, 1000);
+  const MIN_COMMENT = 10;
   // Accept either legacy `missing: ["Title", ...]` or the new
   // `missing: [{ title, qty }, ...]`. Qty is validated/capped later against the
   // quantity actually ordered; null here means "default to the full ordered qty".
@@ -203,6 +207,11 @@ exports.handler = async (event) => {
   }
   if (!id || !q)          return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide order id and email/phone' }) };
   if (!requested.length)  return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Select at least one missing book' }) };
+  if (comment.length < MIN_COMMENT) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({
+      error: `Please tell us what happened (at least ${MIN_COMMENT} characters) — e.g. "the packet was open and one book was missing".`,
+    }) };
+  }
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);

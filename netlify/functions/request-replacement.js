@@ -119,7 +119,13 @@ exports.handler = async (event) => {
   const { original_order_id, reason, note, photos } = body;
   if (!original_order_id || !reason) return json(400, { error: 'original_order_id and reason are required' });
   if (!REASONS.has(reason))          return json(400, { error: 'Invalid reason' });
+  // REQUIRED note. Enforced server-side as well as in the form so every
+  // replacement request carries the customer's account of what went wrong.
   const cleanNote = String(note || '').trim().slice(0, 500);
+  const MIN_NOTE = 10;
+  if (cleanNote.length < MIN_NOTE) {
+    return json(400, { error: `Please describe the problem (at least ${MIN_NOTE} characters) so we know what happened.` });
+  }
 
   // ── Auth: signed-in customer only ────────────────────────────────────────
   const authHeader = event.headers.authorization || event.headers.Authorization || '';
