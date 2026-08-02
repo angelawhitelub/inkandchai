@@ -1733,15 +1733,30 @@
   function cancelOrderBlock(order) {
     const status = String(order.status || '').toLowerCase();
 
-    // Hard block: once shipped/dispatched, no cancellation under any circumstance.
-    // For COD orders this is the ONLY gate — the customer can cancel right up
-    // until NimbusPost reports the shipment as picked up / in-transit (which
-    // our webhook maps to status='shipped').
-    const SHIPPED_STATUSES = ['shipped', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled',
+    // Hard block: once dispatched, no cancellation under any circumstance.
+    //
+    // The exception is status='shipped' on an unpaid order that has not moved.
+    // That comment used to claim the webhook set 'shipped' on pickup — it does
+    // not. nimbuspost-ship.js sets it when an AWB is created from the panel,
+    // often minutes after the order and with the packet still in the shop. Real
+    // courier movement lands in shipment_moved_at via the webhook, which is what
+    // shipmentHasMoved() reads. Treating 'shipped' as dispatched hid the Cancel
+    // button from customers whose parcel had not gone anywhere, and sent them to
+    // the manual request queue instead. cancel-order.js repeats every one of
+    // these checks server-side.
+    const SHIPPED_STATUSES = ['in_transit', 'out_for_delivery', 'delivered', 'cancelled',
                                'refunded', 'refund_pending', 'rto', 'undelivered', 'lost'];
     if (SHIPPED_STATUSES.includes(status)) return '';
 
-    const isCOD      = ['cod_pending', 'partial_cod_pending', 'confirmed'].includes(status);
+    // Partial COD has a captured 10% deposit, so it needs a real refund —
+    // those keep going through the request path, not this instant cancel.
+    const moneyCaptured = Boolean(order.razorpay_payment_id)
+      || Number(order.advance_paid_paise || 0) > 0
+      || status === 'paid';
+    const awaitingPickup = status === 'shipped' && !moneyCaptured && !shipmentHasMoved(order);
+    if (status === 'shipped' && !awaitingPickup) return '';
+
+    const isCOD      = ['cod_pending', 'partial_cod_pending', 'confirmed'].includes(status) || awaitingPickup;
     const isPrepaid  = status === 'paid';
 
     if (!isCOD && !isPrepaid) return '';

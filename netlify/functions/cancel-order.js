@@ -42,6 +42,31 @@ function shipmentHasMoved(order) {
   return /^(?:in[ -]?transit|reached (?:at|nearest|destination) hub|in sorting centre|sorting|spd|picked up|pickup done|shipped|dispatched|out[ _]for delivery|ofd|delivered|rto|return to origin|undelivered|ndr|delivery (?:failed|attempt failed|exception)|lost)/.test(raw);
 }
 
+// Has the customer's money actually been taken? Nothing captured means
+// cancelling costs nobody anything — there is no refund to get wrong.
+// advance_paid_paise > 0 is partial COD: the 10% deposit IS captured, so those
+// stay on the manual request path where a refund can be handled deliberately.
+function moneyCaptured(order) {
+  return Boolean(order?.razorpay_payment_id)
+    || Number(order?.advance_paid_paise || 0) > 0
+    || String(order?.status || '').toLowerCase() === 'paid';
+}
+
+// status 'shipped' does NOT mean a courier has the parcel.
+// nimbuspost-ship.js sets status='shipped' the moment an AWB is created from
+// the panel — minutes after the order, with the packet still on the table.
+// Actual courier movement is recorded separately, by webhook, in
+// shipment_moved_at / last_nimbuspost_status.
+//
+// Both this file and auth.js used to treat 'shipped' as terminal, believing the
+// webhook set it. That made shipmentHasMoved() unreachable for every pushed
+// order and pushed genuine "not dispatched yet" COD cancellations into the
+// manual request queue. An unpaid order whose shipment has not moved is still
+// cancellable — that is the rule this restores.
+function awaitingPickup(order, status) {
+  return status === 'shipped' && !moneyCaptured(order) && !shipmentHasMoved(order);
+}
+
 // ── Email helper ─────────────────────────────────────────────────────────────
 
 // ── Email templates ──────────────────────────────────────────────────────────
@@ -146,8 +171,10 @@ exports.handler = async (event) => {
 
   const status = String(order.status || '').toLowerCase();
 
-  // Already in a terminal state
-  if (FINAL_STATUSES.includes(status)) {
+  // Already in a terminal state — except an unpaid order sitting at the
+  // warehouse under a freshly-minted AWB, which is not dispatched in any real
+  // sense and falls through to the COD branch below.
+  if (FINAL_STATUSES.includes(status) && !awaitingPickup(order, status)) {
     const msg = status === 'cancelled'     ? 'This order is already cancelled.' :
                 status === 'refunded'      ? 'This order is already refunded.' :
                 status === 'refund_pending'? 'Your refund is already being processed.' :
@@ -173,7 +200,7 @@ exports.handler = async (event) => {
   }
 
   // ── Case 1: COD order ────────────────────────────────────────────────────
-  if (COD_CANCELLABLE.includes(status)) {
+  if (COD_CANCELLABLE.includes(status) || awaitingPickup(order, status)) {
     if (shipmentHasMoved(order)) {
       return {
         statusCode: 422, headers: CORS,
@@ -184,11 +211,16 @@ exports.handler = async (event) => {
     // Recheck status + movement in the UPDATE itself. This closes the race where
     // an in-transit webhook arrives after the order was fetched but before the
     // customer confirms cancellation.
+    // The status list must include the one we actually came in on, or the
+    // atomic guard would reject the very order it just approved. shipment_moved_at
+    // stays in the guard either way, so a pickup scan landing mid-request still
+    // wins the race.
+    const allowedStatuses = COD_CANCELLABLE.includes(status) ? COD_CANCELLABLE : [status];
     const cancelled = await supabase
       .from('orders')
       .update({ status: 'cancelled' })
       .eq('id', order_id)
-      .in('status', COD_CANCELLABLE)
+      .in('status', allowedStatuses)
       .is('shipment_moved_at', null)
       .select('id')
       .maybeSingle();
