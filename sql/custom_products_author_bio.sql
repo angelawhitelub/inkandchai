@@ -1,0 +1,11 @@
+-- "About the author" copy for admin-created product pages.
+--
+-- Rendered as its own section under the book description on the product page,
+-- and hidden entirely when blank — so adding the column changes nothing until
+-- an author bio is actually written.
+--
+-- Like the description, it supports the markdown-lite subset handled by
+-- netlify/functions/utils/rich-text.js (**bold**, *italic*, ## heading,
+-- - bullet). The text is escaped before any tag is added, so it is safe even
+-- though it is written by hand in the admin panel.
+alter table custom_products add column if not exists author_bio text;

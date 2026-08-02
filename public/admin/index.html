@@ -954,6 +954,11 @@ td{padding:1rem;font-size:.94rem;}
       <div class="form-row wide">
         <label>Product description *</label>
         <textarea id="newProdDescription" placeholder="Write the book description customers should see on the product detail page."></textarea>
+        <p class="hint" style="margin-top:.4rem;">Formatting: <code>**bold**</code> · <code>*italic*</code> · <code>## Heading</code> · <code>- bullet</code> · blank line = new paragraph.</p>
+      </div>
+      <div class="form-row wide">
+        <label>About the author</label>
+        <textarea id="newProdAuthorBio" placeholder="Optional. Shown as its own &quot;About the author&quot; section under the description."></textarea>
       </div>
       <div class="form-row wide">
         <label>SEO keywords / tags</label>
@@ -1077,6 +1082,12 @@ td{padding:1rem;font-size:.94rem;}
             <div class="form-row">
               <label>Product description</label>
               <textarea id="prodDescription" maxlength="5000" placeholder="Detailed description shown under About this book."></textarea>
+              <p class="hint" style="margin-top:.4rem;">Formatting: <code>**bold**</code> · <code>*italic*</code> · <code>## Heading</code> · <code>- bullet</code> · blank line = new paragraph. Everything else stays plain text.</p>
+            </div>
+            <div class="form-row">
+              <label>About the author</label>
+              <textarea id="prodAuthorBio" maxlength="5000" placeholder="Who wrote this book? Shown as its own &quot;About the author&quot; section under the description. Leave blank to hide the section."></textarea>
+              <p class="hint" style="margin-top:.4rem;">Same formatting as above. The section only appears on the product page when this has text.</p>
             </div>
             <div class="form-row">
               <label>SEO title</label>
@@ -3653,7 +3664,7 @@ async function run99Import(btn) {
 }
 
 function clearCreateProductForm() {
-  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdDescription','newProdTags','newProdSeoTitle','newProdMetaDescription','newProdImageUrl','newProdGalleryUrls']
+  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdDescription','newProdAuthorBio','newProdTags','newProdSeoTitle','newProdMetaDescription','newProdImageUrl','newProdGalleryUrls']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const file = document.getElementById('newProdImage');
   if (file) file.value = '';
@@ -3695,6 +3706,7 @@ async function createProductListing() {
     publisher: document.getElementById('newProdPublisher').value,
     isbn: document.getElementById('newProdIsbn').value,
     description,
+    author_bio: document.getElementById('newProdAuthorBio').value,
     tags: document.getElementById('newProdTags').value,
     seo_title: document.getElementById('newProdSeoTitle').value,
     meta_description: document.getElementById('newProdMetaDescription').value,
@@ -3922,6 +3934,7 @@ function selectProduct(slug) {
   document.getElementById('prodPublisher').value = p.publisher;
   document.getElementById('prodIsbn').value = p.isbn;
   document.getElementById('prodDescription').value = p.description;
+  document.getElementById('prodAuthorBio').value = p.author_bio || '';
   document.getElementById('prodSeoTitle').value = p.seo_title;
   document.getElementById('prodMetaDescription').value = p.meta_description;
   const shippingTagParts = productShippingTagParts(p.tags);
@@ -3952,7 +3965,7 @@ function selectProduct(slug) {
   // Delete is only possible for custom products (DB-backed dynamic pages).
   // Catalogue books are baked static files — deleting them needs a redirect.
   const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
-  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodDescription', 'prodSeoTitle', 'prodMetaDescription', 'prodTags'];
+  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags'];
   metadataFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
   const metadataHint = document.getElementById('prodMetadataHint');
   if (metadataHint) metadataHint.textContent = isCustom
@@ -4408,6 +4421,7 @@ async function saveProductOverride(activeOverride = true) {
         publisher: document.getElementById('prodPublisher').value,
         isbn: document.getElementById('prodIsbn').value,
         description: document.getElementById('prodDescription').value,
+        author_bio: document.getElementById('prodAuthorBio').value,
         seo_title: document.getElementById('prodSeoTitle').value,
         meta_description: document.getElementById('prodMetaDescription').value,
         tags: productTagsWithShippingRules(),

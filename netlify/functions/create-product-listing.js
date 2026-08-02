@@ -121,15 +121,41 @@ exports.handler = async (event) => {
       is_active: body.is_active !== false,
       updated_at: new Date().toISOString(),
     };
+    // "About the author" copy. Omitted (undefined) preserves whatever is
+    // stored; an explicit empty string clears the section.
+    if (body.author_bio !== undefined) payload.author_bio = cleanText(body.author_bio, 5000);
     // Preserve an existing gallery when this update only changes listing data.
     // Supplying an explicit array (including []) still replaces/clears it.
     if (galleryImages !== undefined) payload.gallery_images = galleryImages;
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('custom_products')
       .upsert(payload, { onConflict: 'slug' })
       .select()
       .single();
+    // Resilience: if sql/custom_products_author_bio.sql hasn't been run yet the
+    // column won't exist. Rather than fail the whole save — losing the price and
+    // description edits with it — retry once without it, and say so.
+    if (error && /author_bio/i.test(error.message || '')) {
+      const { author_bio, ...withoutBio } = payload;
+      ({ data, error } = await supabase
+        .from('custom_products')
+        .upsert(withoutBio, { onConflict: 'slug' })
+        .select()
+        .single());
+      if (!error) {
+        return {
+          statusCode: 200,
+          headers: CORS,
+          body: JSON.stringify({
+            success: true,
+            product: data,
+            url: `/product/${data.slug}/`,
+            warning: 'Saved, but the author bio was ignored — run sql/custom_products_author_bio.sql to enable it.',
+          }),
+        };
+      }
+    }
     if (error) throw error;
 
     return {

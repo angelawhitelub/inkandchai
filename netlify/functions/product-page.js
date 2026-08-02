@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const SOCIAL_PROOF = require('../../data/social_proof.json').items || [];
+const { richText, plainText } = require('./utils/rich-text');
 
 function esc(value) {
   return String(value || '')
@@ -16,7 +17,9 @@ function moneyText(value) {
 
 function shortDescription(product) {
   const fallback = `Buy ${product.title} online at Ink & Chai. Fast pan-India delivery, secure checkout, COD and prepaid payment available.`;
-  return String(product.meta_description || product.description || fallback).replace(/\s+/g, ' ').slice(0, 160);
+  // plainText strips the markdown marks — a meta description reading
+  // "**Bold** and *italic*" would show the asterisks verbatim in Google.
+  return plainText(product.meta_description || product.description || fallback).slice(0, 160);
 }
 
 // Route Supabase Storage image URLs through our Netlify image proxy so
@@ -89,7 +92,11 @@ function productHtml(product) {
   const title = esc(product.title);
   const author = esc(product.author || 'Ink & Chai');
   const category = esc(product.category || 'Books');
-  const desc = esc(product.description || '');
+  // Admin copy supports markdown-lite (**bold**, *italic*, ## heading, - list).
+  // richText escapes first and only then adds the tags it generates itself, so
+  // a plain-text description from before this existed renders unchanged.
+  const desc = richText(product.description);
+  const authorBio = richText(product.author_bio);
   // Crossword-bestseller import tags products with `publisher-sourced-bestseller`
   // so this Lambda-rendered page can light up the same trust banner the
   // static-rendered catalogue pages already show. GST invoice line is part of
@@ -121,7 +128,8 @@ function productHtml(product) {
   const displayImgs = galleryImgs.map(src => (isVideoUrl(src) ? src : cdnImage(src, 600)));
   const price = moneyText(product.price_inr);
   const mrp = moneyText(product.original_price_inr);
-  const plainDesc = String(product.description || metaDesc).replace(/\s+/g, ' ');
+  // schema.org description is ingested by Google Merchant — must be prose, not markdown.
+  const plainDesc = plainText(product.description) || metaDesc;
 
   // Hide browse-only catalogue imports from Google Shopping / free listings.
   // These bulk imports carry a `*-catalog` tag and their cover images are tiny
@@ -190,6 +198,18 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 .crumb{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}h1{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}.author{color:var(--muted);letter-spacing:.08em;margin-bottom:1rem}.price{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}.orig{color:var(--muted);text-decoration:line-through;margin-left:.8rem}.stock{display:inline-block;margin:1rem 0;color:#237a3b;border:1px solid rgba(35,122,59,.25);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}
 .trust{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}.trust span{border:1px solid var(--border);border-radius:999px;background:rgba(214,184,94,.075);padding:.75rem;color:var(--cream);font-size:.78rem;box-shadow:var(--glass-highlight)}html[data-theme="light"] .trust span{background:rgba(138,106,31,.06);box-shadow:inset 0 1px rgba(255,255,255,.5)}.actions{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}button{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);border-radius:999px;cursor:pointer;min-height:52px;transition:transform .2s ease,filter .2s ease,box-shadow .2s ease}button:hover{transform:translateY(-1px);filter:brightness(1.05)}.primary{background:linear-gradient(135deg,var(--gold),var(--copper));color:#100c08;box-shadow:0 14px 30px rgba(214,184,94,.18),var(--glass-highlight)}.secondary{background:rgba(214,184,94,.075);color:var(--gold-light)}
 .desc,.details{border-top:1px solid var(--border);border-radius:24px;padding-top:1.2rem;margin-top:1.2rem;color:var(--muted);font-size:.9rem;line-height:1.8;white-space:pre-line}.label{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}.details dl{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}.details dt{color:var(--gold)}.details dd{margin:0;color:var(--cream)}
+/* Rich admin copy. pre-line is turned OFF here because richText() emits real
+   <p>/<br> blocks — leaving it on would double every line break. */
+.rich{white-space:normal}
+.rich p{margin:0 0 .85rem}.rich p:last-child{margin-bottom:0}
+.rich strong{color:var(--cream);font-weight:700}
+.rich em{font-style:italic;color:var(--cream)}
+.rich h3{margin:1.15rem 0 .5rem;font-size:.95rem;font-weight:600;color:var(--gold-light);letter-spacing:.01em}
+.rich h3:first-of-type{margin-top:0}
+.rich ul{margin:0 0 .85rem;padding-left:1.15rem}
+.rich li{margin:.3rem 0}
+.rich li::marker{color:var(--gold)}
+.authorbio p:first-of-type{margin-top:0}
 @media(max-width:760px){.promo{width:calc(100% - 20px);margin:.45rem auto .1rem;border-radius:999px;white-space:normal;line-height:1.45}nav{width:calc(100% - 18px);margin:.45rem auto 0;border-radius:28px;padding:.7rem .85rem;top:8px}.wrap{display:block;padding:.9rem 1rem 7.6rem}.cover{margin-bottom:1.2rem;border-radius:24px}.trust{grid-template-columns:1fr}.actions{position:fixed;left:12px;right:12px;bottom:10px;z-index:9;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:.6rem;background:rgba(13,11,8,.72);padding:.6rem .6rem calc(.6rem + env(safe-area-inset-bottom));border:1px solid var(--glass-border);border-radius:30px;box-shadow:0 -16px 42px rgba(0,0,0,.45),var(--glass-highlight);backdrop-filter:blur(24px) saturate(1.35)}html[data-theme="light"] .actions{background:rgba(250,247,242,.76);box-shadow:0 -12px 38px rgba(70,52,24,.16),var(--glass-highlight)}.actions button{min-height:52px;padding:.9rem .45rem;font-size:.6rem;letter-spacing:.14em}}
 /* Swipeable image gallery (front + back cover etc.) */
 .gallery{position:relative;width:100%}
@@ -265,7 +285,8 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
       ✓ Added to cart.
       <a href="/checkout/" style="display:inline-block;margin-left:0.6rem;padding:0.45rem 1rem;background:#6dbf6d;color:#0d0b08;text-decoration:none;font-weight:600;font-size:0.7rem;letter-spacing:0.16em;text-transform:uppercase;">Checkout →</a>
     </div>
-    <div class="desc"><div class="label">About this book</div>${desc}</div>
+    <div class="desc rich"><div class="label">About this book</div>${desc}</div>
+    ${authorBio ? `<div class="desc rich authorbio"><div class="label">About the author</div>${authorBio}</div>` : ''}
     <div class="details"><div class="label">Details</div><dl><dt>Format</dt><dd>Paperback</dd><dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
