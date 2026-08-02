@@ -377,7 +377,10 @@ exports.handler = async (event) => {
 
   // Fail closed via centralised gate (signed token preferred, legacy key OK).
   // Anyone hitting this can push real shipments and burn courier credits.
-  const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
+  // CORS_HEADERS, not CORS — the latter is not defined in this file, so this
+  // line threw ReferenceError on every single call and the endpoint has been
+  // dead since the auth gate was centralised (d5bf10a65f, 2026-06-28).
+  const _adminBlock = requireAdmin(event, CORS_HEADERS); if (_adminBlock) return _adminBlock;
 
   let body;
   try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Invalid JSON' }); }
