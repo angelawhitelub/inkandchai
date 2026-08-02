@@ -3948,9 +3948,14 @@ function selectProduct(slug) {
 }
 
 function customProductGallery(row = selectedProduct) {
-  const value = Array.isArray(row?.override?.gallery_images)
-    ? row.override.gallery_images
-    : row?.gallery_images;
+  // An override row created for price/title carries gallery_images: [] — an
+  // array, so the old Array.isArray check preferred it and the panel showed NO
+  // gallery for products that plainly had one (Musafir Cafe was one). The
+  // storefront reads the gallery off custom_products and ignores the override's
+  // copy entirely, so an EMPTY override array must mean "not overriding" or the
+  // admin disagrees with the page it is meant to be editing.
+  const ovr = row?.override?.gallery_images;
+  const value = Array.isArray(ovr) && ovr.length ? ovr : row?.gallery_images;
   if (Array.isArray(value)) return value.filter(Boolean).slice(0, 8);
   if (typeof value === 'string') {
     try {
