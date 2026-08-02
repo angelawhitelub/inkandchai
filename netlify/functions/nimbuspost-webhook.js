@@ -379,6 +379,27 @@ exports.handler = async (event) => {
       Object.assign(order, updateData);
       console.log(`[NimbusPost] ✅ Order ${order.razorpay_order_id || order.id} → ${ourStatus}`);
 
+      // Notify — unless this order is being repaired by hand.
+      //
+      // Cancelling a shipment in the NimbusPost panel produces a 'cancelled'
+      // webhook, which would email and WhatsApp the customer "Order Cancelled"
+      // for an order that is actually being re-shipped a minute later; the
+      // re-ship then sends a second "shipped" mail with new tracking. Both are
+      // confusing and neither is true. Listing an order id in
+      // NOTIFY_SUPPRESS_ORDER_IDS (comma-separated) keeps the status tracking
+      // fully intact while sending the customer nothing.
+      //
+      // Deliberately env-driven and per-order: no migration needed, it cannot
+      // silence anything not explicitly named, and clearing the variable when
+      // the repair is done restores normal behaviour with no code change.
+      const suppressList = String(process.env.NOTIFY_SUPPRESS_ORDER_IDS || '')
+        .split(',').map(s => s.trim()).filter(Boolean);
+      const displayId = String(order.razorpay_order_id || order.id || '');
+      if (suppressList.length && suppressList.includes(displayId)) {
+        console.log(`[NimbusPost] 🔇 ${displayId} → ${ourStatus} (customer notification suppressed for manual repair)`);
+        continue;
+      }
+
       // Notify
       if (ourStatus === 'shipped') {
         await sendShippedNotifications(order, awb);
