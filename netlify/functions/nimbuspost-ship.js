@@ -208,9 +208,6 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   const { weight, length, height, breadth } = estimateDims(order.cart_items);
   const amountRs = order.amount_paise ? Math.round(order.amount_paise / 100) : 0;
 
-  const isCOD = ['cod_pending', 'partial_cod_pending'].includes(order.status);
-  const isPartialCod = order.status === 'partial_cod_pending';
-
   // For partial COD, order.amount_paise is only the 10% deposit already paid
   // online — the courier must collect the OUTSTANDING BALANCE at the door, not
   // that deposit. The balance (and full order value) live in cart_items[0]._payment,
@@ -220,6 +217,29 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   const _pm = (Array.isArray(order.cart_items) && order.cart_items[0] && order.cart_items[0]._payment) || {};
   const partialBalanceRs = Math.round(Math.max(0, Number(_pm.balance || 0)));
   const partialFullRs    = Math.round(Math.max(0, Number(_pm.full_total || 0))) || (partialBalanceRs + amountRs);
+
+  // COD is decided by WHETHER THERE IS STILL MONEY TO COLLECT, not by which
+  // status label the order happens to be wearing.
+  //
+  // This used to be `status in (cod_pending, partial_cod_pending)`. Any other
+  // status on an unpaid order — most easily 'confirmed', which the admin's
+  // Update-status dropdown sets — fell through to prepaid and the shipment went
+  // out with collectable_amount 0. The courier then delivers without collecting
+  // a rupee and the sale is simply lost. 36 real orders shipped that way before
+  // this was caught.
+  //
+  // Order matters here: a partial-COD deposit IS a captured online payment, so
+  // the partial test must run BEFORE the prepaid test or every partial COD would
+  // look fully paid and collect nothing.
+  const isPartialCod = order.status === 'partial_cod_pending'
+    || Number(order.advance_paid_paise || 0) > 0
+    || partialBalanceRs > 0;
+  // Fully prepaid = a gateway payment covering the whole order (razorpay_payment_id
+  // holds PhonePe ids too — see phonepe-refund.js), or an explicit 'paid'.
+  const fullyPrepaid = !isPartialCod
+    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
+  // A ₹0 order (free replacement) has nothing to collect and is prepaid by definition.
+  const isCOD = isPartialCod || (!fullyPrepaid && amountRs > 0);
 
   if (isPartialCod && partialBalanceRs <= 0) {
     // Fail closed rather than ship a partial-COD order collecting the wrong

@@ -54,7 +54,12 @@ async function buildPayload(order) {
     return sum + (Number(item.price || 0) * Math.max(1, Number(item.qty || item.quantity || 1)));
   }, 0);
   const paymentMeta = items[0]?._payment || {};
-  const isPartialCod = order.status === 'partial_cod_pending';
+  // Partial COD is "there is still a balance to collect", not a status label —
+  // the deposit itself is a captured online payment, so this test must come
+  // before the prepaid one. See nimbuspost-ship.js for the same reasoning.
+  const isPartialCod = order.status === 'partial_cod_pending'
+    || Number(order.advance_paid_paise || 0) > 0
+    || Number(paymentMeta.balance || 0) > 0;
   // For partial COD, NimbusPost must collect only the outstanding balance.
   // For every other payment type, use the final charged/order amount so coupon
   // discounts are preserved instead of rebuilding the undiscounted subtotal.
@@ -65,7 +70,14 @@ async function buildPayload(order) {
   const name = splitName(order.customer_name);
   const address = await enrichAddress(parseAddress(order.customer_address));  // fills city/state from pincode
   const phone = normalizeIndianPhone(order.customer_phone);
-  const isCod = ['cod_pending', 'partial_cod_pending'].includes(order.status);
+  // Was `status in (cod_pending, partial_cod_pending)`, which pushed any unpaid
+  // order in another status (e.g. 'confirmed', set by the admin status dropdown)
+  // to the panel as prepaid — the courier then collects nothing at the door.
+  // Decide on captured money instead: prepaid only when a gateway payment exists
+  // or the order is explicitly 'paid'. A ₹0 order has nothing to collect.
+  const fullyPrepaid = !isPartialCod
+    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
+  const isCod = isPartialCod || (!fullyPrepaid && amount > 0);
 
   if (!phone) throw new Error('Customer phone must contain a valid 10-digit mobile number');
   if (!address.pincode) throw new Error('Customer address has no 6-digit pincode');
