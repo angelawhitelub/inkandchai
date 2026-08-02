@@ -573,6 +573,16 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid pincode' }) };
   }
 
+  // Does this PIN actually EXIST in India Post's directory?
+  //   true  → confirmed real
+  //   false → India Post explicitly reports no such PIN (a typo like 782417)
+  //   null  → we couldn't reach India Post, so we simply don't know
+  // Tiers 2 and 3 below can always produce a plausible city/state from the
+  // 3-digit prefix, which is why a non-existent PIN used to sail through
+  // checkout. Callers must block ONLY on an explicit false, never on null —
+  // a flaky upstream API must not stop real customers from ordering.
+  let exists = null;
+
   // ── Tier 1: postalpincode.in (most detailed, but unreliable) ──────────────
   try {
     const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`, {
@@ -580,16 +590,21 @@ exports.handler = async (event) => {
     });
     if (res.ok) {
       const data = await res.json();
-      if (data[0]?.Status === 'Success' && data[0].PostOffice?.length) {
+      const status = String(data?.[0]?.Status || '');
+      if (status === 'Success' && data[0].PostOffice?.length) {
+        exists = true;
         const po = data[0].PostOffice[0];
         const city  = po.District || po.Division || po.Block || po.Name || '';
         const state = po.State || '';
         if (city && state) {
-          return { statusCode: 200, headers: CORS, body: JSON.stringify({ city, state }) };
+          return { statusCode: 200, headers: CORS, body: JSON.stringify({ city, state, exists: true, verified: true }) };
         }
+      } else if (/^(error|no records? found)/i.test(status)) {
+        // India Post answered and said this PIN does not exist.
+        exists = false;
       }
     }
-  } catch (_) { /* fall through */ }
+  } catch (_) { /* unreachable → exists stays null (unknown) */ }
 
   // ── Tier 2: Built-in city table (instant) ─────────────────────────────────
   const builtinCity = lookupCity(pin);
@@ -626,7 +641,7 @@ exports.handler = async (event) => {
     };
     return {
       statusCode: 200, headers: CORS,
-      body: JSON.stringify({ city: builtinCity, state: cityStateMap[builtinCity] || state }),
+      body: JSON.stringify({ city: builtinCity, state: cityStateMap[builtinCity] || state, exists, verified: false }),
     };
   }
 
@@ -666,10 +681,10 @@ exports.handler = async (event) => {
     };
     const stateForCity = cityStateMap2[prefixResult];
     if (stateForCity) {
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({ city: prefixResult, state: stateForCity }) };
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ city: prefixResult, state: stateForCity, exists, verified: false }) };
     }
     // Just a state name — return empty city so user fills it, but state is auto-filled
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ city: '', state: prefixResult }) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ city: '', state: prefixResult, exists, verified: false }) };
   }
 
   return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Pincode not found' }) };

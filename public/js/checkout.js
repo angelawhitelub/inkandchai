@@ -12,7 +12,13 @@ async function fetchPincodeData(pin) {
   try {
     const res = await fetch(`/.netlify/functions/pincode-lookup?pin=${pin}`);
     const data = await res.json();
-    if (res.ok && data.city && data.state) return { city: data.city, state: data.state };
+    // `exists` is true when India Post confirmed the PIN, false when it
+    // explicitly reported no such PIN, and null when it was unreachable. The
+    // lookup can always guess a state from the 3-digit prefix, so city/state
+    // being filled does NOT mean the pincode is real — pass the flag through.
+    if (res.ok && data.city && data.state) {
+      return { city: data.city, state: data.state, exists: data.exists ?? null };
+    }
   } catch (e) { /* ignore */ }
   return null;
 }
@@ -179,6 +185,8 @@ function chkField(id, type, label, placeholder) {
 
 // ── Pincode live lookup ────────────────────────────────────────────────────
 let _pinTimer = null;
+// Pincode that India Post explicitly reported as non-existent. Blocks submit.
+let _badPincode = '';
 function handlePincodeInput(val) {
   const msg = document.getElementById('ch-pin-msg');
   clearTimeout(_pinTimer);
@@ -189,13 +197,24 @@ function handlePincodeInput(val) {
   if (msg) msg.textContent = 'Looking up pincode…';
   _pinTimer = setTimeout(async () => {
     const data = await fetchPincodeData(val);
-    if (data) {
+    if (data && data.exists === false) {
+      // India Post says this PIN doesn't exist. Don't autofill a guessed
+      // city/state — that's what made a typo look accepted. Flag it here and
+      // block on submit (see collectAddress).
+      _badPincode = val;
+      if (msg) {
+        msg.textContent = '✕ No such pincode in India Post records — please check and re-enter.';
+        msg.style.color = '#c97a7a';
+      }
+    } else if (data) {
+      _badPincode = '';
       const cityEl  = document.getElementById('ch-city');
       const stateEl = document.getElementById('ch-state');
       if (cityEl)  cityEl.value  = data.city;
       if (stateEl) stateEl.value = data.state;
       if (msg) { msg.textContent = '✓ ' + data.city + ', ' + data.state; msg.style.color = '#8fa87a'; }
     } else {
+      _badPincode = '';
       if (msg) { msg.textContent = 'Pincode not found — please enter city and state manually.'; msg.style.color = '#c97a7a'; }
     }
   }, 500);
@@ -220,6 +239,15 @@ function collectAddress() {
   }
   if (!addr) { showToast('Please enter your delivery address.'); return null; }
   if (!pin || pin.length !== 6) { showToast('Please enter a valid 6-digit pincode.'); return null; }
+  // A structurally valid but non-existent PIN (e.g. 782417) used to pass:
+  // the lookup guesses a state from the 3-digit prefix, so the form looked
+  // filled. Block only when India Post explicitly denied it — never when the
+  // lookup was merely unreachable, so a flaky API can't stop real orders.
+  if (_badPincode && _badPincode === pin) {
+    showToast('That pincode doesn\u2019t exist in India Post records. Please check your 6-digit delivery pincode.');
+    document.getElementById('ch-pin')?.focus();
+    return null;
+  }
 
   return {
     name, phone, email,
