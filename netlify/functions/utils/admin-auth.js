@@ -26,6 +26,34 @@ const TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 const TOKEN_VERSION = 'v1';
 const ADMIN_COOKIE_NAME = 'iac_admin_session';
 
+// Limited staff access is intentionally narrow. Anything not listed here is
+// owner-only, even if a staff member manually calls the function URL.
+const STAFF_ENDPOINT_PERMISSIONS = {
+  'get-orders': 'orders.read',
+  'update-order-status': 'orders.manage',
+  'update-order-details': 'orders.manage',
+  'set-order-payment-type': 'orders.manage',
+  'get-return-requests': 'returns.read',
+  'process-return': 'returns.manage',
+  'cancel-return': 'returns.manage',
+  'update-replacement-items': 'replacements.manage',
+  'bot-inbox': 'support.inbox',
+  'whatsapp-broadcast': 'support.inbox',
+  'retry-missed-bot-replies': 'support.inbox',
+  'phonepe-refund': 'refunds.issue',
+  'razorpay-refund': 'refunds.issue',
+  'phonepe-retry-refunds-background': 'refunds.issue',
+  'phonepe-reconcile': 'refunds.issue',
+  'razorpay-reconcile': 'refunds.issue',
+};
+
+const STAFF_ROLE_PERMISSIONS = {
+  support: new Set([
+    'orders.read', 'orders.manage', 'returns.read', 'returns.manage',
+    'replacements.manage', 'support.inbox', 'refunds.issue',
+  ]),
+};
+
 function getSigningSecret() {
   // Prefer a dedicated env var so rotating signing keys doesn't lock people
   // out of admin endpoints that gate on ADMIN_SECRET equality.
@@ -51,11 +79,11 @@ function sign(payloadObj, secret) {
  * Issue a signed admin token. Optional sub identifies the principal
  * (e.g. "passkey:cred_xyz" or "password").
  */
-function signAdminToken({ sub = 'admin', ttlMs = TOKEN_TTL_MS } = {}) {
+function signAdminToken({ sub = 'admin', role = 'owner', ttlMs = TOKEN_TTL_MS } = {}) {
   const secret = getSigningSecret();
   if (!secret) throw new Error('No signing secret configured');
   const now = Date.now();
-  return sign({ iat: now, exp: now + ttlMs, sub }, secret);
+  return sign({ iat: now, exp: now + ttlMs, sub, role }, secret);
 }
 
 /** Returns the payload object if valid, otherwise null. */
@@ -103,6 +131,22 @@ function getAdminPayload(event) {
   return verifyAdminToken(getAdminToken(event));
 }
 
+function endpointName(event) {
+  const path = String(event?.path || event?.requestContext?.functionName || '');
+  const match = path.match(/(?:^|\/)\.netlify\/functions\/([^/?]+)/);
+  return match ? match[1] : '';
+}
+
+function isOwnerPayload(payload) {
+  return payload && (payload.role === 'owner' || String(payload.sub || '').startsWith('email:')) && payload.role !== 'support';
+}
+
+function hasStaffPermission(payload, event) {
+  if (!payload || payload.role === 'owner' || !payload.role) return true;
+  const permission = STAFF_ENDPOINT_PERMISSIONS[endpointName(event)];
+  return !!permission && !!STAFF_ROLE_PERMISSIONS[payload.role]?.has(permission);
+}
+
 function legacyKeyOk(sent) {
   const expected = process.env.ADMIN_SECRET || '';
   if (!expected || !sent) return false;
@@ -137,8 +181,16 @@ function requireAdmin(event, cors = {}) {
   if (!getSigningSecret()) {
     return { statusCode: 503, headers, body: JSON.stringify({ error: 'Admin auth not configured' }) };
   }
-  if (!isAdminAuthed(event)) {
+  const payload = getAdminPayload(event);
+  const legacyKey = (event.headers || {})['x-admin-key'] || (event.headers || {})['X-Admin-Key'] || '';
+  const authed = !!payload || legacyKeyOk(legacyKey);
+  if (!authed) {
     return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
+  }
+  // Legacy shared-key requests are owner access. Signed staff tokens are
+  // restricted by endpoint.
+  if (payload && !hasStaffPermission(payload, event)) {
+    return { statusCode: 403, headers, body: JSON.stringify({ error: 'This account is not allowed to use this admin feature.' }) };
   }
   return null;
 }
@@ -150,6 +202,9 @@ module.exports = {
   verifyAdminToken,
   getAdminToken,
   getAdminPayload,
+  endpointName,
+  STAFF_ENDPOINT_PERMISSIONS,
+  STAFF_ROLE_PERMISSIONS,
   isAdminAuthed,
   requireAdmin,
   legacyKeyOk,

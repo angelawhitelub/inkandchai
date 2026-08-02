@@ -17,6 +17,6 @@ exports.handler = async (event) => {
   return {
     statusCode: 200,
     headers: HEADERS,
-    body: JSON.stringify({ ok: true, exp: payload.exp, sub: payload.sub }),
+    body: JSON.stringify({ ok: true, exp: payload.exp, sub: payload.sub, role: payload.role || 'owner' }),
   };
 };
