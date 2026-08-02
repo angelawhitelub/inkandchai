@@ -170,15 +170,37 @@ async function npGetWarehouses(token) {
   );
 }
 
-async function npServiceability(token, { destination_pincode, weight, is_cod }) {
+// Pickup pincode. The API REQUIRES `origin` — without it the call returns
+// status:false and an empty list, which reads exactly like "nothing serviceable".
+// /client/warehouses is 403 on this account (hence the hardcoded
+// NIMBUSPOST_WAREHOUSE_ID), so the pincode cannot be looked up and lives here.
+const NP_ORIGIN_PINCODE = process.env.NIMBUSPOST_ORIGIN_PINCODE || '110006';
+
+/**
+ * The payload here was wrong in every field name and omitted `origin`
+ * entirely, so it returned ZERO couriers for every pincode — verified against
+ * the API: pincode 126102 gives 54 COD couriers with the correct payload and 0
+ * with the old one. Combined with a ReferenceError in the handler, this endpoint
+ * had been dead since 2026-06-28 and the breakage went unnoticed because real
+ * shipping runs through the panel push + AWB sync instead.
+ *
+ * `order_amount` matters for COD: couriers gate on the collectable value, so
+ * quoting with 0 would return a different (or empty) courier set than the one
+ * that can actually carry the shipment.
+ */
+async function npServiceability(token, { destination_pincode, weight, is_cod, order_amount = 0 }) {
   const { ok, data } = await npFetch('/courier/serviceability', {
     method: 'POST',
     token,
     body: {
-      destination_pincode: String(destination_pincode),
+      origin: String(NP_ORIGIN_PINCODE),
+      destination: String(destination_pincode),
+      payment_type: is_cod ? 'cod' : 'prepaid',
+      order_amount: Number(order_amount) || 0,
       weight: Number(weight) || 300,
-      cod: is_cod ? 1 : 0,
-      mode: 'surface',
+      length: 15,
+      breadth: 10,
+      height: 5,
     },
   });
   if (!ok) throw new Error(`NimbusPost serviceability failed: ${JSON.stringify(data)}`);
@@ -273,6 +295,8 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
       destination_pincode: pincode,
       weight,
       is_cod: isCOD,
+      // Quote on the amount the courier will actually have to collect.
+      order_amount: collectableAmount || orderValueRs,
     });
     if (!couriers.length) throw new Error(`No couriers serviceable for pincode ${pincode}`);
 
@@ -423,7 +447,10 @@ exports.handler = async (event) => {
         && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
       const isCOD = _svcPartial || (!_svcPrepaid && Number(order.amount_paise || 0) > 0);
 
-      const couriers = await npServiceability(token, { destination_pincode: pincode, weight, is_cod: isCOD });
+      const couriers = await npServiceability(token, {
+        destination_pincode: pincode, weight, is_cod: isCOD,
+        order_amount: isCOD ? Math.round(Number(order.amount_paise || 0) / 100) : 0,
+      });
       return json(200, {
         pincode,
         weight_g: weight,
