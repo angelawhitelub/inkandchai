@@ -980,9 +980,10 @@ td{padding:1rem;font-size:.94rem;}
         </div>
       </div>
       <div class="form-row wide">
-        <label>Gallery image URLs <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(optional alternative to uploading)</span></label>
-        <textarea id="newProdGalleryUrls" placeholder="One image URL per line"></textarea>
-        <p class="hint" style="margin-top:.4rem;">Useful for existing hosted back-cover or inside-page images. Up to 8 gallery images total.</p>
+        <label>Gallery image / video URLs <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(optional alternative to uploading)</span></label>
+        <textarea id="newProdGalleryUrls" placeholder="One image or video URL per line"></textarea>
+        <p class="hint" style="margin-top:.4rem;">Useful for existing hosted back-cover or inside-page images. Up to 8 gallery items total.<br/>
+        <strong>Book-quality video proof:</strong> paste an <code>.mp4</code> URL and it becomes a playable slide in the gallery. Host it on R2 (<code>pub-…r2.dev</code>) — never Netlify or Supabase — using <code>node scripts/upload-product-video-r2.mjs &lt;file.mov&gt; &lt;slug&gt;</code>, which also uploads the poster frame the slide needs.</p>
       </div>
     </div>
     <div class="product-editor-actions">
@@ -3960,6 +3961,11 @@ function customProductGallery(row = selectedProduct) {
   return [];
 }
 
+// A gallery entry pointing at a video file (hosted on R2) renders as a playable
+// "quality proof" slide on the product page instead of an <img>. Same test the
+// storefront uses — see netlify/functions/product-page.js.
+window.iacIsVideoUrl = (url) => /\.(mp4|webm|mov|m4v)(?=$|[?#])/i.test(String(url || ''));
+
 function renderCurrentProductImages(row = selectedProduct) {
   const select = document.getElementById('prodGalleryAction');
   const host = document.getElementById('prodCurrentImages');
@@ -3967,15 +3973,23 @@ function renderCurrentProductImages(row = selectedProduct) {
   const gallery = customProductGallery(row);
   select.innerHTML = `
     <option value="main">Replace main cover only</option>
-    ${gallery.map((_, index) => `<option value="gallery:${index}">Replace gallery image ${index + 1} only</option>`).join('')}
+    ${gallery.map((url, index) => `<option value="gallery:${index}">Replace gallery ${window.iacIsVideoUrl(url) ? 'video' : 'image'} ${index + 1} only</option>`).join('')}
     <option value="append">Add new gallery images</option>
     <option value="all">Replace the complete image set</option>`;
   select.value = 'main';
   const images = [mergedProduct(row).image_url, ...gallery].filter(Boolean);
-  host.innerHTML = images.map((url, index) => `<div style="position:relative;text-align:center;">
-    <img src="${esc(url)}" alt="${index === 0 ? 'Current main cover' : `Current gallery image ${index}`}" style="display:block;width:70px;height:92px;object-fit:contain;background:rgba(0,0,0,.08);border:1px solid var(--border);border-radius:8px;"/>
-    <span style="display:block;margin-top:.2rem;font-size:.52rem;color:var(--cream-dim);">${index === 0 ? 'Main cover' : `Gallery ${index}`}</span>
-  </div>`).join('');
+  host.innerHTML = images.map((url, index) => {
+    const isVideo = window.iacIsVideoUrl(url);
+    // Videos need a <video> preview — an <img> pointed at an .mp4 just shows a
+    // broken-image icon, which reads as "the gallery is broken".
+    const thumb = isVideo
+      ? `<video src="${esc(url)}" muted playsinline preload="metadata" style="display:block;width:70px;height:92px;object-fit:cover;background:#000;border:1px solid var(--gold);border-radius:8px;"></video>`
+      : `<img src="${esc(url)}" alt="${index === 0 ? 'Current main cover' : `Current gallery image ${index}`}" style="display:block;width:70px;height:92px;object-fit:contain;background:rgba(0,0,0,.08);border:1px solid var(--border);border-radius:8px;"/>`;
+    return `<div style="position:relative;text-align:center;">
+    ${thumb}
+    <span style="display:block;margin-top:.2rem;font-size:.52rem;color:var(--cream-dim);">${index === 0 ? 'Main cover' : (isVideo ? `🎬 Video ${index}` : `Gallery ${index}`)}</span>
+  </div>`;
+  }).join('');
   changeCustomProductImageAction(false);
 }
 

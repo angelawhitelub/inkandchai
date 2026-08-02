@@ -56,6 +56,22 @@ function cdnImage(url, width, absolute = false) {
   return absolute ? `https://inkandchai.in${t}` : t;
 }
 
+// ── Video "quality proof" slides ──────────────────────────────────────────────
+// A gallery entry that points at a video file becomes a playable slide instead
+// of an <img>. This is how we show the ACTUAL book — paper, print, binding —
+// rather than only the publisher's cover render.
+//
+// Convention (no schema change, no migration): any gallery_images entry ending
+// in .mp4/.webm/.mov/.m4v is a video. Its poster frame is the same URL with the
+// extension swapped for "-poster.webp", uploaded alongside it by
+// scripts/upload-product-video-r2.mjs. Videos MUST be hosted on R2
+// (pub-….r2.dev) — Cloudflare charges zero egress, so an 8 MB clip costs
+// nothing, whereas the same file on Netlify or Supabase would eat the bandwidth
+// quota in a day.
+const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(?=$|[?#])/i;
+function isVideoUrl(url) { return VIDEO_EXT.test(String(url || '')); }
+function posterForVideo(url) { return String(url || '').replace(VIDEO_EXT, '-poster.webp'); }
+
 function applyOverride(product, override) {
   if (!product || !override || override.is_active === false) return product;
   return {
@@ -96,9 +112,13 @@ function productHtml(product) {
   const galleryImgs = [image, ...galleryExtra].filter((v, i, a) => v && a.indexOf(v) === i);
   // Resized/webp versions for on-page display + social preview. `image` (full
   // res) stays as-is for the schema.org/Merchant feed; only the visible <img>
-  // and og:image use the CDN-transformed variants.
+  // and og:image use the CDN-transformed variants. og:image and the schema.org
+  // feed always use the main cover, which is never a video — so a quality-proof
+  // clip in the gallery can't leak into a Merchant listing.
   const ogImage = cdnImage(image, 800, true);
-  const displayImgs = galleryImgs.map(src => cdnImage(src, 600));
+  // Videos are already served at their final size from R2; only run real images
+  // through the Netlify Image CDN (it would 500 on an .mp4 under /spimg/).
+  const displayImgs = galleryImgs.map(src => (isVideoUrl(src) ? src : cdnImage(src, 600)));
   const price = moneyText(product.price_inr);
   const mrp = moneyText(product.original_price_inr);
   const plainDesc = String(product.description || metaDesc).replace(/\s+/g, ' ');
@@ -183,6 +203,12 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 .gallery-dots{display:flex;gap:.45rem;justify-content:center;margin-top:.9rem}
 .gallery-dot{width:9px;height:9px;min-height:9px;border-radius:50%;background:var(--border);border:none;padding:0;cursor:pointer;transition:background .2s,transform .2s}
 .gallery-dot.active{background:var(--gold);transform:scale(1.15)}
+.gallery-dot.is-video{border:1px solid var(--gold);background:transparent}
+.gallery-dot.is-video.active{background:var(--gold)}
+/* Video "quality proof" slide — the real book on camera, not a cover render. */
+.gallery-slide-video{position:relative}
+.gallery-slide-video video{max-width:100%;max-height:600px;border-radius:16px;background:#000;box-shadow:0 24px 64px rgba(0,0,0,.35)}
+.vid-badge{position:absolute;top:10px;left:10px;z-index:2;pointer-events:none;font-size:.56rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-light);background:rgba(13,11,8,.72);border:1px solid var(--glass-border);border-radius:999px;padding:.32rem .6rem;backdrop-filter:blur(8px)}
 @media(max-width:760px){.gal-arrow{display:none}}
 /* Nav search — hands the query to the homepage full-catalogue search (/?q=) */
 .nav-search{display:flex;align-items:center;gap:.4rem;flex:1;max-width:420px;margin:0 1rem;background:rgba(214,184,94,.07);border:1px solid var(--glass-border);border-radius:999px;padding:.28rem .28rem .28rem .9rem}
@@ -199,11 +225,13 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 <main class="wrap">
   <section class="cover">${galleryImgs.length > 1 ? `<div class="gallery">
       <div class="gallery-track" id="galTrack">
-        ${displayImgs.map((src, i) => `<div class="gallery-slide"><img src="${esc(src)}" alt="${title} ${i === 0 ? 'front cover' : 'cover view ' + (i + 1)}" loading="${i === 0 ? 'eager' : 'lazy'}"${i === 0 ? ' fetchpriority="high"' : ''} onerror="this.onerror=null;this.src='${esc(galleryImgs[i] || image)}'"/></div>`).join('')}
+        ${displayImgs.map((src, i) => (isVideoUrl(src)
+          ? `<div class="gallery-slide gallery-slide-video"><video src="${esc(src)}" poster="${esc(posterForVideo(src))}" controls playsinline muted loop preload="metadata" aria-label="${title} — video of the actual book"></video><span class="vid-badge">&#9654; Real book &middot; video</span></div>`
+          : `<div class="gallery-slide"><img src="${esc(src)}" alt="${title} ${i === 0 ? 'front cover' : 'cover view ' + (i + 1)}" loading="${i === 0 ? 'eager' : 'lazy'}"${i === 0 ? ' fetchpriority="high"' : ''} onerror="this.onerror=null;this.src='${esc(galleryImgs[i] || image)}'"/></div>`)).join('')}
       </div>
       <button class="gal-arrow gal-prev" id="galPrev" type="button" aria-label="Previous image">&#8249;</button>
       <button class="gal-arrow gal-next" id="galNext" type="button" aria-label="Next image">&#8250;</button>
-      <div class="gallery-dots">${galleryImgs.map((_, i) => `<button class="gallery-dot${i === 0 ? ' active' : ''}" type="button" aria-label="Show image ${i + 1}"></button>`).join('')}</div>
+      <div class="gallery-dots">${displayImgs.map((src, i) => `<button class="gallery-dot${i === 0 ? ' active' : ''}${isVideoUrl(src) ? ' is-video' : ''}" type="button" aria-label="${isVideoUrl(src) ? 'Show video of the real book' : `Show image ${i + 1}`}"></button>`).join('')}</div>
     </div>` : `<img src="${esc(displayImgs[0] || image)}" alt="${title} book cover" loading="eager" fetchpriority="high" onerror="this.onerror=null;this.src='${esc(image)}'"/>`}</section>
   <section>
     <div class="crumb"><a href="/">Home</a> / <a href="/category/?name=${encodeURIComponent(product.category || 'Books')}">${category}</a></div>
@@ -305,8 +333,29 @@ function addProductToCart(buyNow) {
   if (!track) return;
   var slides = track.children.length;
   var dots = [].slice.call(document.querySelectorAll('.gallery-dot'));
+  // Swiping away from the quality-proof clip stops it — otherwise it keeps
+  // playing behind a slide nobody is looking at. Measured geometrically rather
+  // than from the rounded scroll index: that index flips to the new slide only
+  // at the very END of a smooth scroll, so an index check would pause a video
+  // the customer had just tapped play on. Overlap is continuous and exact — a
+  // fully visible video is never touched.
+  var vids = [].slice.call(track.querySelectorAll('video'));
+  function pauseOffscreenVideos(){
+    if (!vids.length) return;
+    var box = track.getBoundingClientRect();
+    vids.forEach(function(v){
+      if (v.paused) return;
+      var r = v.getBoundingClientRect();
+      var visible = Math.max(0, Math.min(r.right, box.right) - Math.max(r.left, box.left));
+      if (!r.width || visible / r.width < 0.5) v.pause();
+    });
+  }
   function current(){ return track.clientWidth ? Math.round(track.scrollLeft / track.clientWidth) : 0; }
-  function update(){ var c = current(); dots.forEach(function(d,i){ d.classList.toggle('active', i === c); }); }
+  function update(){
+    var c = current();
+    dots.forEach(function(d,i){ d.classList.toggle('active', i === c); });
+    pauseOffscreenVideos();
+  }
   function go(i){ i = Math.max(0, Math.min(slides - 1, i)); track.scrollTo({ left: i * track.clientWidth, behavior: 'smooth' }); }
   var raf;
   track.addEventListener('scroll', function(){ if (raf) cancelAnimationFrame(raf); raf = requestAnimationFrame(update); });
