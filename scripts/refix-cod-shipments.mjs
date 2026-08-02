@@ -45,6 +45,20 @@ for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_KEY, ADMIN_SECRET, 
   if (!v) { console.error(`✗ Missing ${k}. Run via:  netlify dev:exec -- node scripts/refix-cod-shipments.mjs`); process.exit(1); }
 }
 
+// ── HOLD ──────────────────────────────────────────────────────────────────────
+// This script routes re-pushes through /nimbuspost-ship, which is NOT usable yet:
+// npServiceability() posts the wrong payload (destination_pincode/cod instead of
+// destination/payment_type, and no `origin`, which the API requires), so it
+// returns ZERO couriers for every pincode and every re-push fails with "No
+// couriers serviceable". A pilot run cancelled one real AWB before this was
+// understood. Do not run with --apply until that helper is fixed and verified.
+if (APPLY && !process.env.REFIX_I_KNOW_SHIP_IS_FIXED) {
+  console.error('✗ Refusing to run: /nimbuspost-ship serviceability is broken (missing `origin`, wrong field names).');
+  console.error('  Fix npServiceability first, verify a single re-push by hand, then set');
+  console.error('  REFIX_I_KNOW_SHIP_IS_FIXED=1 to re-enable --apply.');
+  process.exit(1);
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 
