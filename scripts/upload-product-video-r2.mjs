@@ -52,15 +52,21 @@ const PUBLIC_BASE = (process.env.IMAGE_CDN_BASE || 'https://pub-e82e9bd0c7bd4d1e
 const argv = process.argv.slice(2);
 const flags = {};
 const positional = [];
+// Bare switches are listed explicitly, otherwise "--attach clip.mp4" would
+// swallow the filename as --attach's value and lose a positional argument.
+const SWITCHES = new Set(['attach']);
 for (let i = 0; i < argv.length; i++) {
-  if (argv[i].startsWith('--')) flags[argv[i].slice(2)] = argv[++i];
-  else positional.push(argv[i]);
+  if (!argv[i].startsWith('--')) { positional.push(argv[i]); continue; }
+  const name = argv[i].slice(2);
+  if (SWITCHES.has(name)) { flags[name] = true; continue; }
+  flags[name] = argv[++i];
 }
 
 const videoPath = positional[0];
 const slug = String(positional[1] || '').trim().toLowerCase();
-const posterPath = flags.poster || '';
+const posterPath = typeof flags.poster === 'string' ? flags.poster : '';
 const index = Number(flags.n) || 1;
+const attach = flags.attach === true;
 
 if (!videoPath || !slug) {
   console.error('usage: node scripts/upload-product-video-r2.mjs <video.mp4> <product-slug> [--poster poster.webp] [--n 1]');
@@ -128,10 +134,64 @@ async function main() {
   if (posterPath) posterUrl = await put(posterKey, posterPath);
   else console.warn(`  ! No --poster given. The slide will fall back to the first frame; upload one as ${posterKey} for a clean still.`);
 
+  if (attach) {
+    await attachToProduct(videoUrl);
+    if (posterUrl) console.log(`(poster served automatically from ${posterUrl})`);
+    return;
+  }
+
   console.log('\nPaste this into the product\'s "Gallery image / video URLs" box in the admin panel:\n');
   console.log(`  ${videoUrl}\n`);
   if (posterUrl) console.log(`(poster served automatically from ${posterUrl})\n`);
   console.log('Then Save. The product page renders it as a playable "Real book · video" slide.');
+  console.log('Or re-run with --attach to append it to the gallery automatically.');
+}
+
+/**
+ * Append the video to the product's gallery so the slide goes live without a
+ * trip through the admin panel.
+ *
+ * Deliberately a targeted UPDATE of gallery_images only — never an upsert of a
+ * whole row. create-product-listing rebuilds the entire record from its request
+ * body, so driving this through that endpoint would blank any field not resent
+ * (description, SEO, publisher…). Appending in place cannot lose data.
+ *
+ * The gallery lives on custom_products; product_overrides only carries the
+ * fields it means to override, and its gallery is usually empty.
+ */
+async function attachToProduct(videoUrl) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.error('\n✗ --attach needs SUPABASE_URL and SUPABASE_SERVICE_KEY.');
+    console.error('  Easiest:  netlify dev:exec -- node scripts/upload-product-video-r2.mjs …  (injects them for you)');
+    process.exit(1);
+  }
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(url, key, { auth: { persistSession: false } });
+
+  for (const table of ['custom_products', 'product_overrides']) {
+    const { data, error } = await supabase.from(table).select('slug,gallery_images').eq('slug', slug).maybeSingle();
+    if (error) throw error;
+    if (!data) continue;
+
+    const existing = Array.isArray(data.gallery_images) ? data.gallery_images : [];
+    if (existing.includes(videoUrl)) {
+      console.log(`\n• ${table}: video already in the gallery — nothing to change.`);
+      return;
+    }
+    const next = [...existing, videoUrl];   // appended last, after the still images
+    const { error: updErr } = await supabase.from(table).update({ gallery_images: next }).eq('slug', slug);
+    if (updErr) throw updErr;
+
+    console.log(`\n✓ Added to ${table}.${slug} — gallery is now ${next.length + 1} slides (cover + ${next.length}).`);
+    console.log(`  ${videoUrl}`);
+    console.log(`\nLive at https://inkandchai.in/product/${slug}/ within ~5 minutes (the product feed is edge-cached).`);
+    return;
+  }
+  console.error(`\n✗ No product found with slug "${slug}" in custom_products or product_overrides.`);
+  console.error('  The upload succeeded — check the slug and re-run with --attach.');
+  process.exit(1);
 }
 
 main().catch(e => { console.error('Fatal:', e.message); process.exit(1); });
