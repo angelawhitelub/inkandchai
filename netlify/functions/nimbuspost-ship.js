@@ -410,7 +410,15 @@ exports.handler = async (event) => {
       const order  = orders[0];
       const { pincode } = parseAddress(order.customer_address || '');
       const { weight }  = estimateDims(order.cart_items);
-      const isCOD = ['cod_pending', 'partial_cod_pending'].includes(order.status);
+      // Same money-based test as shipOrder — a serviceability preview that
+      // disagreed with the actual push would quote the wrong couriers.
+      const _svcPm = (Array.isArray(order.cart_items) && order.cart_items[0] && order.cart_items[0]._payment) || {};
+      const _svcPartial = order.status === 'partial_cod_pending'
+        || Number(order.advance_paid_paise || 0) > 0
+        || Number(_svcPm.balance || 0) > 0;
+      const _svcPrepaid = !_svcPartial
+        && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
+      const isCOD = _svcPartial || (!_svcPrepaid && Number(order.amount_paise || 0) > 0);
 
       const couriers = await npServiceability(token, { destination_pincode: pincode, weight, is_cod: isCOD });
       return json(200, {
