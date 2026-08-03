@@ -1,0 +1,4 @@
+const { requireAdmin, getAdminPayload } = require('./utils/admin-auth');
+const { requireConfig, getIntegration } = require('./utils/gmail');
+const CORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type, X-Admin-Key, X-Admin-Token','Content-Type':'application/json','Cache-Control':'no-store'};
+exports.handler = async (event) => { if(event.httpMethod==='OPTIONS') return {statusCode:204,headers:CORS,body:''}; const b=requireAdmin(event,CORS);if(b)return b;const p=getAdminPayload(event);if(p?.role&&p.role!=='owner')return {statusCode:403,headers:CORS,body:JSON.stringify({error:'Owner access required'})}; try{requireConfig();const i=await getIntegration();return {statusCode:200,headers:CORS,body:JSON.stringify({connected:!!i,enabled:i?.enabled!==false,email:i?.email||null,watch_expiration:i?.watch_expiration||null})};}catch(e){return {statusCode:503,headers:CORS,body:JSON.stringify({error:e.message})};} };

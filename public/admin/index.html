@@ -1375,6 +1375,12 @@ td{padding:1rem;font-size:.94rem;}
     <div class="tbl-wrap" style="box-shadow:none;"><table class="mini-table"><thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="adminUsersBody"></tbody></table></div>
     <div class="lead-empty" id="adminUsersEmpty" style="display:none;">No limited admin accounts yet.</div>
   </section>
+  <section class="abandoned-panel" style="margin-top:1rem;">
+    <div class="abandoned-head"><div><h2>✉️ Gmail automatic acknowledgements</h2><p>Connect support@inkandchai.in so new customer emails receive an acknowledgement from the website.</p></div></div>
+    <div id="gmailIntegrationStatus" class="hint" style="margin-bottom:.8rem;">Not checked.</div>
+    <div style="display:flex;gap:.7rem;flex-wrap:wrap;"><button class="btn-gold" onclick="connectGmail()">Connect Gmail</button><button class="btn-outline" onclick="startGmailWatch()">Enable / renew mailbox watch</button><button class="btn-outline" onclick="loadGmailStatus()">↻ Check status</button></div>
+    <p class="hint" style="margin-top:.8rem;">Requires the one-time Google OAuth and Pub/Sub setup documented in <code>docs/gmail-auto-ack.md</code>.</p>
+  </section>
   </div><!-- /tab-adminaccess -->
 
   <!-- ═══ RECOVER PAYMENT TAB ═══ -->
@@ -6511,7 +6517,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'bookreq' && _authed) fetchBookRequests();
   if (tab === 'bot' && _authed) loadBotSettings();
   if (tab === 'reports') initReports();
-  if (tab === 'adminaccess' && adminRole === 'owner') loadAdminUsers();
+  if (tab === 'adminaccess' && adminRole === 'owner') { loadAdminUsers(); loadGmailStatus(); }
 
   // Scroll to top of content
   document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -6556,6 +6562,20 @@ async function disableAdminUser(id) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return alert(data.error || 'Could not disable account');
   loadAdminUsers();
+}
+
+async function loadGmailStatus() {
+  const el = document.getElementById('gmailIntegrationStatus'); if (!el || adminRole !== 'owner') return;
+  try { const r = await adminFetch('/.netlify/functions/gmail-status'); const d = await r.json().catch(()=>({})); if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); el.textContent = d.connected ? `Connected: ${d.email || 'support mailbox'} · ${d.enabled ? 'enabled' : 'disabled'}${d.watch_expiration ? ` · watch until ${new Date(d.watch_expiration).toLocaleString()}` : ''}` : 'Gmail is not connected yet.'; }
+  catch (e) { el.textContent = 'Gmail status: ' + e.message; }
+}
+async function connectGmail() {
+  try { const r = await adminFetch('/.netlify/functions/gmail-auth-url'); const d = await r.json().catch(()=>({})); if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); window.location.href = d.url; }
+  catch (e) { alert('Could not start Gmail setup: ' + e.message); }
+}
+async function startGmailWatch() {
+  try { const r = await adminFetch('/.netlify/functions/gmail-watch', {method:'POST'}); const d = await r.json().catch(()=>({})); if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); alert('Gmail mailbox watch enabled.'); loadGmailStatus(); }
+  catch (e) { alert('Could not enable Gmail watch: ' + e.message); }
 }
 
 // Read hash on load / back-forward
