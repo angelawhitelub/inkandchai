@@ -10,6 +10,18 @@
  *   courier_name   courier name used to build tracking URL
  *
  * Shipment emails are sent for rows whose final status is "shipped".
+ *
+ * SECOND AWB (re-booking): when a row sets status=shipped with a tracking_id
+ * that DIFFERS from the one already on the order, the customer gets a "new
+ * tracking number" mail instead of the first-shipment one — they already have a
+ * mail carrying the old AWB, and that link is dead once the shipment is
+ * cancelled. The fire-once webhook markers (in_transit_notified_at,
+ * shipment_moved_at, last_nimbuspost_status) are cleared at the same time, or
+ * the customer would never receive in-transit or delivered notices for the
+ * parcel that is actually moving.
+ *
+ * Re-uploading the SAME AWB on an already-shipped order sends nothing — that is
+ * a no-op, and re-running a CSV must not mail everyone twice.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -56,7 +68,13 @@ function isUuid(v) {
 }
 
 
-function shipmentEmailHtml(order) {
+/**
+ * @param reship  true when this order already had a DIFFERENT AWB. The customer
+ *                has already had a "shipped" mail carrying a tracking number
+ *                that is now dead, so repeating the first-shipment wording
+ *                would leave them chasing a link that returns nothing.
+ */
+function shipmentEmailHtml(order, reship = false) {
   const items = Array.isArray(order.cart_items) ? order.cart_items : [];
   const meta = items[0]?._payment || {};
   const isPartial = meta.mode === 'partial_cod' || order.status === 'partial_cod_pending';
@@ -80,10 +98,15 @@ function shipmentEmailHtml(order) {
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
       <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
       <p style="color:#a09080;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;">inkandchai.in</p>
-      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">📦 Your order has shipped!</h2>
+      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">${reship ? '📦 New tracking number for your order' : '📦 Your order has shipped!'}</h2>
       <p style="color:#a09080;line-height:1.8;margin:14px 0;">
-        Hi ${order.customer_name?.split(' ')[0] || 'there'}, great news — your books are on the way to you.
+        ${reship
+          ? `Hi ${order.customer_name?.split(' ')[0] || 'there'}, your order has been re-booked with a different courier, so it now has a <strong style="color:#f0e8d8;">new tracking number</strong>. Your books are on the way — nothing is needed from you.`
+          : `Hi ${order.customer_name?.split(' ')[0] || 'there'}, great news — your books are on the way to you.`}
       </p>
+      ${reship ? `<p style="color:#a09080;font-size:13px;line-height:1.8;background:rgba(201,168,76,0.08);border-left:3px solid #c9a84c;padding:10px 14px;margin:14px 0;">
+        Please use the tracking number below. Any earlier tracking link we sent you is no longer active.
+      </p>` : ''}
       ${trackBlock}
       <p style="color:#a09080;font-size:13px;line-height:1.8;">Order ID: <strong style="color:#c9a84c;">${order.razorpay_order_id || order.id}</strong></p>
       <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
@@ -154,6 +177,8 @@ exports.handler = async (event) => {
     let updated      = 0;
     let emailsSent   = 0;
     let cancellationsNotified = 0;
+    let reshipsNotified = 0;
+    let skippedNoOp = 0;
     const shippedAt  = new Date().toISOString();
 
     for (const { orderId, status, trackingId, courierName } of rows) {
@@ -174,11 +199,31 @@ exports.handler = async (event) => {
 
       const trackingUrl = status === 'shipped' && trackingId ? buildTrackingUrl(courierName, trackingId) : '';
       const payload = { status };
+
+      // A SECOND AWB — the order already carried a different one, so this row is
+      // a re-booking (cancelled shipment, re-created with another courier).
+      const prevAwb = text(order.tracking_id);
+      const isReship = status === 'shipped' && Boolean(trackingId) && Boolean(prevAwb) && prevAwb !== trackingId;
+      // Nothing actually changed: same AWB on an already-shipped order. Re-running
+      // the same CSV must not mail the customer the identical notice again.
+      const isNoOpReship = status === 'shipped' && Boolean(trackingId) && prevAwb === trackingId
+        && order.status === 'shipped';
+
       if (status === 'shipped') {
         if (trackingId)   payload.tracking_id   = trackingId;
         if (courierName)  payload.courier_name  = courierName;
         if (trackingUrl)  payload.tracking_url  = trackingUrl;
         payload.shipped_at = shippedAt;
+      }
+      if (isReship) {
+        // The new consignment has its own journey. These flags are all "fire
+        // once" markers set from the OLD shipment's webhook events — left in
+        // place, the customer would never get an in-transit or delivered notice
+        // for the parcel that is actually moving.
+        payload.in_transit_notified_at  = null;
+        payload.shipment_moved_at       = null;
+        payload.last_nimbuspost_status  = null;
+        payload.last_nimbuspost_event_at = null;
       }
 
       const { data: saved, error: updateErr } = await supabase
@@ -194,12 +239,14 @@ exports.handler = async (event) => {
       }
 
       let emailSent = false;
-      if (status === 'shipped' && saved) {
+      if (status === 'shipped' && saved && !isNoOpReship) {
         if (saved.customer_email) {
           await sendEmail({
             to: saved.customer_email,
-            subject: `📦 Your Ink & Chai order has shipped (${saved.razorpay_order_id || saved.id})`,
-            html: shipmentEmailHtml(saved),
+            subject: isReship
+              ? `📦 New tracking number for your Ink & Chai order (${saved.razorpay_order_id || saved.id})`
+              : `📦 Your Ink & Chai order has shipped (${saved.razorpay_order_id || saved.id})`,
+            html: shipmentEmailHtml(saved, isReship),
           });
           emailSent = true;
           emailsSent++;
@@ -207,12 +254,18 @@ exports.handler = async (event) => {
         if (saved.customer_phone) {
           const firstName = (saved.customer_name || 'there').split(' ')[0];
           const trkUrl = saved.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(saved.razorpay_order_id || saved.id)}`;
+          // Same approved template either way — Meta template text can't be
+          // varied at send time, and it already reads as "here is your tracking",
+          // which is true for a re-booking too. The email carries the explanation.
           await sendWhatsApp({
             to: saved.customer_phone,
             template: 'order_shipped',
             params: [firstName, saved.courier_name || 'Courier', saved.tracking_id || '—', trkUrl],
           });
         }
+        if (isReship) reshipsNotified++;
+      } else if (isNoOpReship) {
+        skippedNoOp++;
       }
 
       if (status === 'cancelled' && order.status !== 'cancelled' && saved) {
@@ -227,6 +280,9 @@ exports.handler = async (event) => {
         success: true,
         order_id: orderId,
         email_sent: emailSent,
+        reship: isReship,
+        skipped_duplicate: isNoOpReship,
+        previous_awb: isReship ? prevAwb : null,
         tracking_url: saved?.tracking_url || null,
         order: saved,
       });
@@ -241,6 +297,8 @@ exports.handler = async (event) => {
         failed: results.filter(r => !r.success).length,
         emails_sent: emailsSent,
         cancellations_notified: cancellationsNotified,
+        reships_notified: reshipsNotified,
+        skipped_duplicate_awb: skippedNoOp,
         results,
         truncated: updates.length < (Array.isArray(body.updates) ? body.updates.length : 0),
       }),

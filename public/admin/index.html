@@ -4669,13 +4669,33 @@ async function bulkUpdateFromFile(file) {
     }
 
     const shippedWithTracking = rows.filter(r => r.status === 'shipped' && r.tracking_id).length;
-    const msg = `Bulk update ${rows.length} order${rows.length>1?'s':''}?\n\nRows marked shipped with AWB: ${shippedWithTracking}\nShipment emails will be sent for shipped rows.\n\nExpected columns: order_id, status, courier_name, tracking_id/AWB.`;
+    // Classify BEFORE sending so the count of customer messages is visible at
+    // confirm time — a re-booking mails people who were already told the order
+    // shipped, and that is worth seeing before you commit to it.
+    const awbOf = (o) => String(o?.tracking_id || '').trim();
+    let reship = 0, firstShip = 0, sameAwb = 0;
+    for (const r of rows) {
+      if (r.status !== 'shipped' || !r.tracking_id) continue;
+      const existing = allOrders.find(o => String(o.razorpay_order_id || '') === r.order_id || String(o.id) === r.order_id);
+      const prev = awbOf(existing);
+      if (prev && prev !== r.tracking_id) reship++;
+      else if (prev === r.tracking_id && existing?.status === 'shipped') sameAwb++;
+      else firstShip++;
+    }
+    const msg = `Bulk update ${rows.length} order${rows.length>1?'s':''}?\n\n`
+      + `Rows marked shipped with AWB: ${shippedWithTracking}\n`
+      + `  • First shipment (normal "shipped" email): ${firstShip}\n`
+      + `  • NEW AWB on an already-shipped order: ${reship}\n`
+      + (reship ? `      \u2192 these customers get a "new tracking number" email\n`
+                + `      \u2192 their in-transit / delivered notices are reset for the new parcel\n` : '')
+      + (sameAwb ? `  • Same AWB already sent \u2014 skipped, no email: ${sameAwb}\n` : '')
+      + `\nExpected columns: order_id, status, courier_name, tracking_id/AWB.`;
     if (!confirm(msg)) return;
 
     // ── Send in batches of 8 to avoid Netlify's 26s timeout ──────────────────
     const BATCH = 8;
     const allResults = [];
-    let totalUpdated = 0, totalFailed = 0, totalEmails = 0;
+    let totalUpdated = 0, totalFailed = 0, totalEmails = 0, totalReships = 0, totalSkipped = 0;
     const batches = Math.ceil(rows.length / BATCH);
 
     for (let i = 0; i < rows.length; i += BATCH) {
@@ -4697,6 +4717,8 @@ async function bulkUpdateFromFile(file) {
       totalUpdated += data.updated  || 0;
       totalFailed  += data.failed   || 0;
       totalEmails  += data.emails_sent || 0;
+      totalReships += data.reships_notified || 0;
+      totalSkipped += data.skipped_duplicate_awb || 0;
     }
 
     // Merge updated orders back into the in-memory list
@@ -4707,7 +4729,13 @@ async function bulkUpdateFromFile(file) {
     applyFilters();
 
     const sampleErrors = allResults.filter(r => !r.success).slice(0, 5).map(r => `• ${r.order_id}: ${r.error}`).join('\n');
-    alert(`✅ Bulk update complete.\n\nUpdated: ${totalUpdated}\nEmails sent: ${totalEmails}\nFailed: ${totalFailed}${sampleErrors ? '\n\nFirst errors:\n' + sampleErrors : ''}`);
+    alert(`✅ Bulk update complete.\n\n`
+      + `Updated: ${totalUpdated}\n`
+      + `Emails sent: ${totalEmails}\n`
+      + (totalReships ? `↻ New-AWB notices (re-booked): ${totalReships}\n` : '')
+      + (totalSkipped ? `⏭ Skipped (same AWB already sent): ${totalSkipped}\n` : '')
+      + `Failed: ${totalFailed}`
+      + (sampleErrors ? '\n\nFirst errors:\n' + sampleErrors : ''));
   } catch (err) {
     alert('Bulk update failed: ' + err.message);
   }
