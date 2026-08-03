@@ -241,7 +241,18 @@ exports.handler = async (event) => {
   const orderId = isRefundEvent
     ? originalOrderIdFromRefundPayload(payload)
     : (payload.merchantOrderId || payload.merchant_order_id || payload.orderId || payload.order_id);
-  const txnId   = payload.transactionId   || payload.transaction_id   || payload.paymentId  || null;
+  // PhonePe v2 nests the payment reference under paymentDetails[], exactly as
+  // the status API does — the flat transactionId/paymentId keys are legacy and
+  // are simply absent on current webhooks. Reading only those left
+  // razorpay_payment_id NULL on every PhonePe order from the moment this
+  // webhook started being accepted (the SHA auth fix): before that it 401'd, so
+  // phonepe-verify-status.js did the write and the id landed correctly. The
+  // working webhook then won the race and wrote nothing. Mirrors the fallback
+  // chain in phonepe-verify-status.js so both paths store the same reference.
+  const txnId   = payload.paymentDetails?.[0]?.transactionId
+               || payload.paymentDetails?.[0]?.paymentId
+               || payload.transactionId   || payload.transaction_id   || payload.paymentId
+               || payload.orderId         || null;
   const state   = (payload.state || payload.status || '').toUpperCase();
   const amount  = payload.amount || payload.amount_paise || null;
 
