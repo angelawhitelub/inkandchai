@@ -2911,7 +2911,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
         <p style="font-size:0.72rem;color:var(--cream-dim);line-height:2;letter-spacing:0.03em;">
           📧 <a href="mailto:support@inkandchai.in" style="color:var(--gold);text-decoration:none;">support@inkandchai.in</a><br/>
           💬 <a href="https://wa.me/917678400508" target="_blank" style="color:var(--gold);text-decoration:none;">+91 76784 00508 (WhatsApp)</a><br/>
-          📍 Delhi – 110002
+          📍 2379 Kucha Mir Hashim, Turkman Gate, Delhi – 110006
         </p>
       </div>
     </div>
@@ -2950,13 +2950,13 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
   <!-- Business identity block — transparency for customers & Google Merchant -->
   <div class="footer-business">
     <span><strong>Ink &amp; Chai</strong> — Online Bookstore</span>
-    <span>Delhi – 110002, India</span>
+    <span>2379 Kucha Mir Hashim, Turkman Gate, Delhi – 110006, India</span>
     <span>📧 <a href="mailto:support@inkandchai.in">support@inkandchai.in</a></span>
     <span>📞 <a href="https://wa.me/917678400508">+91 76784 00508</a> · Mon–Fri 9 AM–6 PM IST</span>
     <span>🔒 Secure payments via UPI · Cards · Net Banking · Cash on Delivery</span>
   </div>
   <div class="footer-bottom">
-    <span class="footer-copy">© 2026 Ink &amp; Chai · Delhi – 110002 · All rights reserved.</span>
+    <span class="footer-copy">© 2026 Ink &amp; Chai · 2379 Kucha Mir Hashim, Turkman Gate, Delhi – 110006 · All rights reserved.</span>
     <div class="footer-bottom-links">
       <a href="/about/">About</a>
       <a href="/contact/">Contact</a>
