@@ -2955,6 +2955,12 @@ function _drawTable() {
           onmouseout="this.style.background='rgba(232,160,48,0.08)';">
           ↩ Create return
         </button>` : ''}
+        ${String(o.status||'').toLowerCase() === 'delivered' ? `<button onclick="openReplacementModal('${esc(o.id)}')" title="Create a free (or paid) replacement shipment for specific books from this delivered order"
+          style="display:block;margin-top:0.4rem;background:rgba(109,191,109,0.08);border:1px solid rgba(109,191,109,0.45);color:#6dbf6d;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;width:100%;"
+          onmouseover="this.style.background='rgba(109,191,109,0.18)';"
+          onmouseout="this.style.background='rgba(109,191,109,0.08)';">
+          📦 Replace book
+        </button>` : ''}
         <button onclick="openEditOrderModal('${esc(o.id)}')" title="Edit customer name, phone, email, address or books"
           style="display:block;margin-top:0.4rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
           onmouseover="this.style.background='rgba(201,168,76,0.18)';"
@@ -5076,6 +5082,135 @@ function refundMissingInsteadOfReplacement(encodedRowId) {
 }
 
 // ── Edit order customer details / books ──────────────────────────────────────
+// ── Manual missing-book replacement (delivered orders) ──────────────────────
+// The customer-facing report (report-missing-books.js) only exists when the
+// customer uses the site. Plenty report a missing or damaged book by WhatsApp or
+// phone instead, and there was no way to act on that without hand-writing a row.
+function openReplacementModal(orderUuid) {
+  const o = allOrders.find(x => String(x.id) === String(orderUuid) || String(x.razorpay_order_id) === String(orderUuid));
+  if (!o) { alert('Order not found in the current list — refresh and try again.'); return; }
+  const displayId = o.razorpay_order_id || o.id;
+  const items = Array.isArray(o.cart_items) ? o.cart_items : [];
+  if (!items.length) { alert('This order has no books recorded, so there is nothing to replace.'); return; }
+
+  document.getElementById('iacReplModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'iacReplModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.9);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:10100;padding:1rem;';
+
+  const rows = items.map((i, idx) => {
+    const qty = Math.max(1, Number(i.qty || i.quantity || 1));
+    const price = Number(i.price || 0);
+    return `
+    <div style="display:grid;grid-template-columns:auto 1fr 74px 92px;gap:.55rem;align-items:center;padding:.5rem 0;border-bottom:1px solid rgba(201,168,76,.12);">
+      <input type="checkbox" class="iac-repl-pick" data-index="${idx}" style="width:17px;height:17px;accent-color:#c9a84c;cursor:pointer;"/>
+      <div style="min-width:0;">
+        <div style="color:#f0e8d8;font-size:.82rem;line-height:1.35;">${esc(i.title || i.name || 'Book')}</div>
+        <div style="color:#7a6f5f;font-size:.62rem;">ordered ${qty} · ₹${price}</div>
+      </div>
+      <input type="number" class="iac-repl-qty" data-index="${idx}" value="1" min="1" max="${qty}" title="How many to reship"
+        style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,.3);color:#f0e8d8;padding:.4rem;font-family:inherit;font-size:.8rem;box-sizing:border-box;"/>
+      <input type="number" class="iac-repl-price" data-index="${idx}" value="${price}" min="0" step="1" title="Declared value on the label (not what the courier collects)"
+        style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,.3);color:#f0e8d8;padding:.4rem;font-family:inherit;font-size:.8rem;box-sizing:border-box;"/>
+    </div>`;
+  }).join('');
+
+  modal.innerHTML = `
+    <div style="background:#1c1916;border:1px solid rgba(201,168,76,.35);width:min(620px,96vw);max-height:92vh;overflow:auto;padding:1.6rem;position:relative;">
+      <button onclick="document.getElementById('iacReplModal')?.remove()"
+        style="position:absolute;top:.9rem;right:1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
+      <h3 style="font-family:'DM Serif Display',serif;color:#c9a84c;font-weight:500;margin:0 0 .3rem;font-size:1.3rem;">📦 Create replacement shipment</h3>
+      <p style="color:#a09080;font-size:.72rem;margin:0 0 .2rem;">Order <strong style="color:#c9a84c;">${esc(String(displayId))}</strong> · ${esc(o.customer_name || '')}</p>
+      <p style="color:#7a6f5f;font-size:.66rem;margin:0 0 .9rem;">A new <strong>IC-R-…</strong> order is created for just the books you tick. It joins the unshipped list and ships like any other order.</p>
+
+      <div style="display:grid;grid-template-columns:auto 1fr 74px 92px;gap:.55rem;font-size:.55rem;letter-spacing:.14em;text-transform:uppercase;color:#c9a84c;padding-bottom:.35rem;border-bottom:1px solid rgba(201,168,76,.25);">
+        <span></span><span>Book</span><span>Qty</span><span>Value ₹</span>
+      </div>
+      ${rows}
+
+      <label style="display:block;font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:#c9a84c;margin:1rem 0 .3rem;">Amount to collect on delivery (₹)</label>
+      <input id="iacReplAmount" type="number" value="0" min="0" step="1"
+        style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,.3);color:#f0e8d8;padding:.6rem;font-family:inherit;font-size:.85rem;box-sizing:border-box;"/>
+      <p style="color:#7a6f5f;font-size:.63rem;margin:.3rem 0 0;">0 = free reshipment (the usual case). Anything above 0 ships as COD and the courier collects exactly that.</p>
+
+      <label style="display:block;font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:#c9a84c;margin:.9rem 0 .3rem;">Reason</label>
+      <select id="iacReplReason" style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,.3);color:#f0e8d8;padding:.6rem;font-family:inherit;font-size:.85rem;box-sizing:border-box;">
+        <option value="missing_item|Item missing from package">Book missing from the package</option>
+        <option value="damaged|Book arrived damaged">Book arrived damaged</option>
+        <option value="wrong_item|Wrong book sent">Wrong book sent</option>
+        <option value="other|Replacement">Other</option>
+      </select>
+
+      <label style="display:block;font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:#c9a84c;margin:.9rem 0 .3rem;">Note — what the customer told you</label>
+      <textarea id="iacReplNote" rows="2" placeholder="e.g. called on WhatsApp, packet was open and one book missing"
+        style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,.3);color:#f0e8d8;padding:.6rem;font-family:inherit;font-size:.85rem;box-sizing:border-box;"></textarea>
+
+      <label style="display:flex;align-items:center;gap:.5rem;margin:.9rem 0 0;color:#a09080;font-size:.75rem;cursor:pointer;">
+        <input type="checkbox" id="iacReplNotify" checked style="width:16px;height:16px;accent-color:#c9a84c;cursor:pointer;"/>
+        Email the customer that a replacement is on the way
+      </label>
+
+      <div id="iacReplMsg" style="color:#e87070;font-size:.72rem;margin-top:.7rem;min-height:1em;"></div>
+      <div style="display:flex;gap:.6rem;margin-top:.9rem;">
+        <button onclick="document.getElementById('iacReplModal')?.remove()"
+          style="flex:1;background:none;border:1px solid rgba(201,168,76,.3);color:#a09080;padding:.7rem;font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">Cancel</button>
+        <button id="iacReplGo" onclick="submitReplacement('${esc(String(displayId))}', this)"
+          style="flex:2;background:#c9a84c;border:none;color:#0d0b08;padding:.7rem;font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;font-weight:700;cursor:pointer;font-family:'Manrope',sans-serif;">Create replacement</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function submitReplacement(displayId, btn, force) {
+  const msg = document.getElementById('iacReplMsg');
+  const picks = [...document.querySelectorAll('.iac-repl-pick')].filter(c => c.checked);
+  if (!picks.length) { if (msg) msg.textContent = 'Tick at least one book to replace.'; return; }
+  const items = picks.map(c => {
+    const idx = c.dataset.index;
+    return {
+      index: Number(idx),
+      qty: Number(document.querySelector(`.iac-repl-qty[data-index="${idx}"]`)?.value || 1),
+      price: document.querySelector(`.iac-repl-price[data-index="${idx}"]`)?.value,
+    };
+  });
+  const [reason, reasonLabel] = String(document.getElementById('iacReplReason')?.value || 'missing_item|Item missing from package').split('|');
+  const payload = {
+    order_id: displayId,
+    items,
+    amount_rs: Number(document.getElementById('iacReplAmount')?.value || 0),
+    reason, reason_label: reasonLabel,
+    note: document.getElementById('iacReplNote')?.value || '',
+    notify: !!document.getElementById('iacReplNotify')?.checked,
+    ...(force ? { force: true } : {}),
+  };
+  const old = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Creating…'; }
+  if (msg) msg.textContent = '';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-create-replacement', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    // A prior replacement is a soft block — confirm, then retry with force.
+    if (res.status === 409 && data.needs_force) {
+      if (btn) { btn.disabled = false; btn.innerHTML = old; }
+      if (confirm(`${data.error}\n\nCreate another replacement anyway?`)) return submitReplacement(displayId, btn, true);
+      return;
+    }
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    document.getElementById('iacReplModal')?.remove();
+    alert(`✅ Replacement ${data.replacement_id} created.\n\n`
+      + data.items.map(i => `• ${i.title}${i.qty > 1 ? ' ×' + i.qty : ''}`).join('\n')
+      + `\n\nCollect on delivery: ₹${data.amount_rs}`
+      + `\nCustomer emailed: ${data.emailed ? 'yes' : 'no'}`
+      + `\n\nIt is now in Unshipped — push it to NimbusPost when you're ready.`);
+    loadOrders();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+    if (btn) { btn.disabled = false; btn.innerHTML = old; }
+  }
+}
+
 function openEditOrderModal(orderUuid) {
   const o = allOrders.find(x => String(x.id) === String(orderUuid));
   if (!o) { alert('Order not found in the current list — refresh and try again.'); return; }
