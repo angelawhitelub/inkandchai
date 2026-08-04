@@ -529,6 +529,52 @@ td{padding:1rem;font-size:.94rem;}
   .product-panel,.abandoned-panel{padding:1.1rem;}
   .btn-gold,.btn-outline,.btn-green,.btn-danger,.filter-btn{min-height:46px;}
 }
+
+/* ── Appearance pass ───────────────────────────────────────────────────────
+   Warmer paper background instead of the cold grey, larger base type, and
+   darker body/label colours. The greys here were failing at small sizes on a
+   bright screen; every pairing below is at least WCAG AA on its background. */
+:root{
+  --bg:#f4efe4;              /* warm paper, not grey */
+  --bg2:#fbf8f1;
+  --bg3:#ffffff;
+  --cream:#1a1f25;           /* body text — darker than #20252b */
+  --cream-dim:#3f4954;       /* secondary text — was #4f5964, too light */
+  --white:#0c0f13;
+  --gold:#5c3f0b;            /* labels/headings — deeper for contrast on cream */
+  --gold-light:#7a570f;
+  --gold-dim:#5f4c26;
+  --border:#c2b79f;
+  --shadow:0 8px 24px rgba(60,48,28,0.10);
+}
+body{font-size:17px;line-height:1.6;}
+h1{font-size:2.6rem;}
+.subtitle{font-size:0.95rem;color:var(--cream-dim);}
+table{font-size:0.95rem;}
+th{font-size:0.72rem;letter-spacing:0.12em;}
+td{color:var(--cream);}
+.hint{font-size:0.8rem;color:var(--cream-dim);}
+.chip{font-size:0.7rem;}
+.stat-card{background:var(--bg3);}
+.stat-value,.stat-card strong{font-size:2.1rem;}
+.stat-label{font-size:0.74rem;color:var(--gold);}
+.filter-btn{font-size:0.74rem;}
+.search-box{font-size:0.95rem;}
+.amount{font-size:1.15rem;}
+.method-badge{font-size:0.68rem;font-weight:700;}
+.addr-cell{font-size:0.86rem;}
+.items-subtotal,.amount-sub{font-size:0.78rem;}
+
+/* Collapsed tools drawer */
+.tools-drawer{margin:0 2rem 1rem;border:1px solid var(--border);border-radius:14px;background:var(--bg2);box-shadow:var(--shadow);overflow:hidden;}
+.tools-drawer > .export-bar{display:flex!important;flex-wrap:wrap;gap:0.5rem;align-items:center;padding:1rem 1.2rem;border-top:1px solid var(--border);}
+.tools-summary{cursor:pointer;list-style:none;padding:0.95rem 1.2rem;font-size:0.82rem;font-weight:700;letter-spacing:0.06em;color:var(--gold);user-select:none;}
+.tools-summary::-webkit-details-marker{display:none}
+.tools-summary::before{content:'▸ ';display:inline-block;transition:transform .15s;}
+.tools-drawer[open] .tools-summary::before{transform:rotate(90deg);}
+.tools-summary:hover{background:rgba(122,87,15,0.06);}
+.tools-hint{font-weight:500;color:var(--cream-dim);letter-spacing:0;}
+@media(max-width:760px){.tools-drawer{margin:0 1rem 1rem;}}
 </style>
 </head>
 <body>
@@ -737,6 +783,8 @@ td{padding:1rem;font-size:.94rem;}
   </section>
 
   <!-- ── Export bar ─────────────────────────────────────────── -->
+  <details id="toolsDrawer" class="tools-drawer">
+    <summary class="tools-summary">🛠 Export &amp; bulk tools <span class="tools-hint">— CSV, labels, NimbusPost, broadcasts</span></summary>
   <div class="export-bar" id="exportBar" style="display:none;">
     <span class="export-label">Export</span>
     <span id="exportCount">0</span>
@@ -813,6 +861,7 @@ td{padding:1rem;font-size:.94rem;}
     </button>
     <span id="autoRecheckBadge" style="font-size:0.52rem;color:#a275d6;margin-left:0.6rem;opacity:0.75;cursor:default;"></span>
   </div>
+  </details>
 
   <!-- ── Day-range filters ──────────────────────────────────── -->
   <div class="toolbar" style="border-bottom:none;padding-bottom:0;">
