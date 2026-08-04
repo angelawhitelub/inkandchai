@@ -566,15 +566,9 @@ td{color:var(--cream);}
 .items-subtotal,.amount-sub{font-size:0.78rem;}
 
 /* Collapsed tools drawer */
-.tools-drawer{margin:0 2rem 1rem;border:1px solid var(--border);border-radius:14px;background:var(--bg2);box-shadow:var(--shadow);overflow:hidden;}
-.tools-drawer > .export-bar{display:flex!important;flex-wrap:wrap;gap:0.5rem;align-items:center;padding:1rem 1.2rem;border-top:1px solid var(--border);}
-.tools-summary{cursor:pointer;list-style:none;padding:0.95rem 1.2rem;font-size:0.82rem;font-weight:700;letter-spacing:0.06em;color:var(--gold);user-select:none;}
-.tools-summary::-webkit-details-marker{display:none}
-.tools-summary::before{content:'▸ ';display:inline-block;transition:transform .15s;}
-.tools-drawer[open] .tools-summary::before{transform:rotate(90deg);}
-.tools-summary:hover{background:rgba(122,87,15,0.06);}
-.tools-hint{font-weight:500;color:var(--cream-dim);letter-spacing:0;}
-@media(max-width:760px){.tools-drawer{margin:0 1rem 1rem;}}
+#tab-tools .export-bar{display:flex!important;flex-wrap:wrap;gap:0.6rem;align-items:center;padding:1.2rem;background:var(--bg2);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);}
+#tab-tools h1{margin-bottom:0.3rem;}
+#tab-tools .subtitle{margin-bottom:1.2rem;max-width:70ch;}
 </style>
 </head>
 <body>
@@ -639,6 +633,7 @@ td{color:var(--cream);}
   <!-- Tab bar (hidden until login) -->
   <nav class="admin-tabs" id="adminTabBar" style="display:none">
     <button class="admin-tab" data-tab="orders"    onclick="switchTab('orders')">📦 Orders</button>
+    <button class="admin-tab owner-only" data-tab="tools" onclick="switchTab('tools')">🛠 Tools</button>
     <button class="admin-tab" data-tab="reports"   onclick="switchTab('reports')">📊 Reports</button>
     <button class="admin-tab" data-tab="create"    onclick="switchTab('create')">➕ Create Listing</button>
     <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
@@ -783,85 +778,6 @@ td{color:var(--cream);}
   </section>
 
   <!-- ── Export bar ─────────────────────────────────────────── -->
-  <details id="toolsDrawer" class="tools-drawer">
-    <summary class="tools-summary">🛠 Export &amp; bulk tools <span class="tools-hint">— CSV, labels, NimbusPost, broadcasts</span></summary>
-  <div class="export-bar" id="exportBar" style="display:none;">
-    <span class="export-label">Export</span>
-    <span id="exportCount">0</span>
-    <span class="hint">orders ready</span>
-    <span class="export-label" style="margin-left:1rem;">Selected</span>
-    <span id="selectedCount" style="font-family:'DM Serif Display',serif;font-size:1.1rem;color:var(--green);">0</span>
-
-    <!-- Limit input — how many rows to export from the filtered list -->
-    <span style="font-size:0.6rem;color:var(--cream-dim);margin-left:1rem;">Limit:</span>
-    <input type="number" id="exportLimit" value="" min="1" placeholder="all" title="Leave blank to export all filtered orders, or set a max row count (e.g. 50, 100, 500)"
-      style="width:78px;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.4rem 0.5rem;font-family:'Manrope',sans-serif;font-size:0.62rem;text-align:center;outline:none;"/>
-
-    <button class="btn-green" onclick="exportExcel('filtered')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.4rem;">
-      ⬇ Download Excel (.xlsx)
-    </button>
-    <button class="btn-green" onclick="exportExcel('all')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      ⬇ All Orders Excel
-    </button>
-    <button class="btn-green" onclick="exportSelectedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      ⬇ Selected CSV
-    </button>
-    <button class="btn-green" onclick="exportUnshippedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      ⬇ Unshipped CSV
-    </button>
-    <button onclick="npBulkShip(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.45);color:var(--gold);cursor:pointer;font-family:'Manrope',sans-serif;letter-spacing:0.08em;text-transform:uppercase;transition:background 0.2s;"
-      onmouseover="this.style.background='rgba(201,168,76,0.22)';" onmouseout="this.style.background='rgba(201,168,76,0.12)';">
-      🚀 Create NimbusPost AWBs
-    </button>
-    <button class="btn-outline" onclick="selectVisibleOrders()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      Select Visible
-    </button>
-    <button class="btn-outline" onclick="clearSelection()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      Clear Selection
-    </button>
-    <button class="btn-outline" onclick="printLabels()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      🖨 Print Shipping Labels
-    </button>
-    <button class="btn-outline" onclick="copyAllAddresses()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      📋 Copy Addresses
-    </button>
-    <button class="btn-outline" onclick="downloadBulkTemplate()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      ⬇ Bulk Template
-    </button>
-    <button class="btn-outline" onclick="document.getElementById('bulkUpdateFile').click()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
-      ⬆ Bulk Update CSV
-    </button>
-    <input type="file" id="bulkUpdateFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="bulkUpdateFromFile(this.files[0]); this.value='';"/>
-    <button class="btn-outline" onclick="bulkDeleteFiltered()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(224,80,80,0.4);color:#e05050;" title="Permanently delete every order currently shown by the filters (asks for confirmation)">
-      🗑 Delete Filtered
-    </button>
-    <button class="btn-outline" onclick="bulkReconcilePhonePe(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(95,37,159,0.5);color:#a275d6;" title="Re-check every order stuck on 'pending_phonepe' from the last 30 days">
-      🔄 Re-check All Pending PhonePe
-    </button>
-    <button class="btn-outline" onclick="retryFailedRefunds(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(214,120,60,0.6);color:#e0904a;" title="Re-check PhonePe refund status for every order owed a refund and re-attempt any that failed (money-safe: never double-refunds). Also runs automatically every 4 hours.">
-      🔁 Retry Failed Refunds
-    </button>
-    <button class="btn-outline" onclick="reconcileShippedOrders(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Check NimbusPost for real delivery status of all Shipped + Out for Delivery orders — fixes stuck statuses">
-      📦 Sync Shipped &amp; OFD → Delivered
-    </button>
-    <button class="btn-outline" onclick="autoMarkDelivered(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Mark OFD ≥3 days / Shipped ≥8 days as Delivered (time-based fallback for NimbusPost not sending delivered events). Sends WhatsApp + email.">
-      ✅ Auto-Mark Stale OFD as Delivered
-    </button>
-    <button class="btn-outline" onclick="pushAllToShiprocket(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Push all pending/paid/COD unshipped orders to Shiprocket panel">
-      🚀 Push All to Shiprocket
-    </button>
-    <button class="btn-outline" onclick="pushAllToNimbusPanel(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Import all unshipped orders into NimbusPost without assigning couriers or AWBs">
-      Push to NimbusPost Panel (No AWB)
-    </button>
-    <button class="btn-outline" onclick="openBroadcastModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(37,211,102,0.55);color:#25D366;" title="Send a WhatsApp template to all past customers. Use when paid ads are down to re-engage existing buyers.">
-      📣 WhatsApp Broadcast
-    </button>
-    <button class="btn-outline" onclick="openReviewRequestModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(201,168,76,0.55);color:#c9a84c;" title="Ask delivered customers to leave a review (reputation building). Sends a personal review link + ₹50 scratch-card incentive.">
-      ⭐ Request Reviews
-    </button>
-    <span id="autoRecheckBadge" style="font-size:0.52rem;color:#a275d6;margin-left:0.6rem;opacity:0.75;cursor:default;"></span>
-  </div>
-  </details>
 
   <!-- ── Day-range filters ──────────────────────────────────── -->
   <div class="toolbar" style="border-bottom:none;padding-bottom:0;">
@@ -946,6 +862,92 @@ td{color:var(--cream);}
   </div><!-- /tab-orders -->
 
   <!-- ═══ CREATE LISTING TAB ═══ -->
+  <!-- ═══ TOOLS TAB ═══ -->
+  <!-- Export, bulk actions and the courier/maintenance jobs. These used to sit
+       permanently between the stats and the orders table on the Orders tab,
+       which is where the actual work happens. The controls themselves are
+       moved verbatim — same ids, same handlers — only their home changed. -->
+  <div class="admin-section" id="tab-tools">
+    <h1>Tools</h1>
+    <p class="subtitle">Exports, bulk updates, courier pushes and maintenance jobs. These act on the orders currently loaded and filtered on the Orders tab.</p>
+  <div class="export-bar" id="exportBar" style="display:none;">
+    <span class="export-label">Export</span>
+    <span id="exportCount">0</span>
+    <span class="hint">orders ready</span>
+    <span class="export-label" style="margin-left:1rem;">Selected</span>
+    <span id="selectedCount" style="font-family:'DM Serif Display',serif;font-size:1.1rem;color:var(--green);">0</span>
+
+    <!-- Limit input — how many rows to export from the filtered list -->
+    <span style="font-size:0.6rem;color:var(--cream-dim);margin-left:1rem;">Limit:</span>
+    <input type="number" id="exportLimit" value="" min="1" placeholder="all" title="Leave blank to export all filtered orders, or set a max row count (e.g. 50, 100, 500)"
+      style="width:78px;background:var(--bg2);border:1px solid var(--border);color:var(--cream);padding:0.4rem 0.5rem;font-family:'Manrope',sans-serif;font-size:0.62rem;text-align:center;outline:none;"/>
+
+    <button class="btn-green" onclick="exportExcel('filtered')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.4rem;">
+      ⬇ Download Excel (.xlsx)
+    </button>
+    <button class="btn-green" onclick="exportExcel('all')" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ All Orders Excel
+    </button>
+    <button class="btn-green" onclick="exportSelectedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ Selected CSV
+    </button>
+    <button class="btn-green" onclick="exportUnshippedCsv()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ Unshipped CSV
+    </button>
+    <button onclick="npBulkShip(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.45);color:var(--gold);cursor:pointer;font-family:'Manrope',sans-serif;letter-spacing:0.08em;text-transform:uppercase;transition:background 0.2s;"
+      onmouseover="this.style.background='rgba(201,168,76,0.22)';" onmouseout="this.style.background='rgba(201,168,76,0.12)';">
+      🚀 Create NimbusPost AWBs
+    </button>
+    <button class="btn-outline" onclick="selectVisibleOrders()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      Select Visible
+    </button>
+    <button class="btn-outline" onclick="clearSelection()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      Clear Selection
+    </button>
+    <button class="btn-outline" onclick="printLabels()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      🖨 Print Shipping Labels
+    </button>
+    <button class="btn-outline" onclick="copyAllAddresses()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      📋 Copy Addresses
+    </button>
+    <button class="btn-outline" onclick="downloadBulkTemplate()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬇ Bulk Template
+    </button>
+    <button class="btn-outline" onclick="document.getElementById('bulkUpdateFile').click()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      ⬆ Bulk Update CSV
+    </button>
+    <input type="file" id="bulkUpdateFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="bulkUpdateFromFile(this.files[0]); this.value='';"/>
+    <button class="btn-outline" onclick="bulkDeleteFiltered()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(224,80,80,0.4);color:#e05050;" title="Permanently delete every order currently shown by the filters (asks for confirmation)">
+      🗑 Delete Filtered
+    </button>
+    <button class="btn-outline" onclick="bulkReconcilePhonePe(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(95,37,159,0.5);color:#a275d6;" title="Re-check every order stuck on 'pending_phonepe' from the last 30 days">
+      🔄 Re-check All Pending PhonePe
+    </button>
+    <button class="btn-outline" onclick="retryFailedRefunds(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(214,120,60,0.6);color:#e0904a;" title="Re-check PhonePe refund status for every order owed a refund and re-attempt any that failed (money-safe: never double-refunds). Also runs automatically every 4 hours.">
+      🔁 Retry Failed Refunds
+    </button>
+    <button class="btn-outline" onclick="reconcileShippedOrders(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Check NimbusPost for real delivery status of all Shipped + Out for Delivery orders — fixes stuck statuses">
+      📦 Sync Shipped &amp; OFD → Delivered
+    </button>
+    <button class="btn-outline" onclick="autoMarkDelivered(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Mark OFD ≥3 days / Shipped ≥8 days as Delivered (time-based fallback for NimbusPost not sending delivered events). Sends WhatsApp + email.">
+      ✅ Auto-Mark Stale OFD as Delivered
+    </button>
+    <button class="btn-outline" onclick="pushAllToShiprocket(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(99,202,110,0.5);color:#63ca6e;" title="Push all pending/paid/COD unshipped orders to Shiprocket panel">
+      🚀 Push All to Shiprocket
+    </button>
+    <button class="btn-outline" onclick="pushAllToNimbusPanel(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Import all unshipped orders into NimbusPost without assigning couriers or AWBs">
+      Push to NimbusPost Panel (No AWB)
+    </button>
+    <button class="btn-outline" onclick="openBroadcastModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(37,211,102,0.55);color:#25D366;" title="Send a WhatsApp template to all past customers. Use when paid ads are down to re-engage existing buyers.">
+      📣 WhatsApp Broadcast
+    </button>
+    <button class="btn-outline" onclick="openReviewRequestModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(201,168,76,0.55);color:#c9a84c;" title="Ask delivered customers to leave a review (reputation building). Sends a personal review link + ₹50 scratch-card incentive.">
+      ⭐ Request Reviews
+    </button>
+    <span id="autoRecheckBadge" style="font-size:0.52rem;color:#a275d6;margin-left:0.6rem;opacity:0.75;cursor:default;"></span>
+  </div>
+  </div>
+
   <div class="admin-section" id="tab-create">
 
   <section class="product-panel" style="margin-bottom:1.2rem;">
@@ -6420,7 +6422,7 @@ function rptPickProduct(idx) {
   document.getElementById('rptChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-const TABS = ['orders','create','products','abandoned','reviews','replacements','returns','botinbox','bookreq','insights','bot','recover','reports','adminaccess'];
+const TABS = ['orders','tools','create','products','abandoned','reviews','replacements','returns','botinbox','bookreq','insights','bot','recover','reports','adminaccess'];
 
 function applyRoleVisibility() {
   const limited = adminRole !== 'owner';
