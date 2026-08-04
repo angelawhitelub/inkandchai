@@ -11,7 +11,8 @@ function ackHtml(name) { return `<div style="font-family:Arial,sans-serif;max-wi
 async function handle(event) {
   const expected=process.env.GMAIL_WEBHOOK_TOKEN||''; const supplied=event.queryStringParameters?.token||event.headers?.['x-gmail-webhook-token']||'';
   if(!expected||supplied!==expected){console.warn('[gmail-webhook] rejected: invalid webhook token');return;}
-  const body=JSON.parse(event.body||'{}');
+  const rawBody=event.isBase64Encoded?Buffer.from(event.body||'','base64').toString('utf8'):(event.body||'{}');
+  const body=JSON.parse(rawBody);
   // Pub/Sub normally wraps the Gmail notification in message.data. When
   // "payload unwrapping" is enabled on the push subscription, the decoded
   // Gmail notification is delivered as the request body instead. Accept both.
