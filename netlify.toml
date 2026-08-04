@@ -30,8 +30,14 @@
 
 # Backfill AWBs assigned inside NimbusPost every 15 minutes. This short
 # scheduled function securely enqueues the separate background worker.
+# Every 3 minutes, not 15. NimbusPost's webhook cannot tell us about a NEW AWB
+# — its payload carries only awb_number, and the handler finds the order by
+# .eq('tracking_id', awb), which is the value we are still missing. So polling
+# is the only way an AWB assigned in the panel reaches us, and the interval IS
+# the latency. One run scans ~5 pages of 50, so 3 minutes is a handful of API
+# calls per run and well inside NimbusPost's limits.
 [functions."nimbuspost-awb-sync-scheduled"]
-  schedule = "*/15 * * * *"
+  schedule = "*/3 * * * *"
 
 # Re-check + retry failed PhonePe refunds — AFTERNOON ONLY (IST).
 # PhonePe fails a refund when, on a given settlement date, the refund amount
