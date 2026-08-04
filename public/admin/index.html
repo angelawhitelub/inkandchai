@@ -531,40 +531,54 @@ td{padding:1rem;font-size:.94rem;}
 }
 
 /* ── Appearance pass ───────────────────────────────────────────────────────
-   Warmer paper background instead of the cold grey, larger base type, and
-   darker body/label colours. The greys here were failing at small sizes on a
-   bright screen; every pairing below is at least WCAG AA on its background. */
+   The first attempt (16→17px, marginally darker greys) was too timid to read
+   as a change at all. This is deliberately unmistakable: a warm sand page
+   instead of near-white, 18px base type, and text dark enough that the small
+   cells — address, item lines, badges — stop being the hard part. */
 :root{
-  --bg:#f4efe4;              /* warm paper, not grey */
-  --bg2:#fbf8f1;
-  --bg3:#ffffff;
-  --cream:#1a1f25;           /* body text — darker than #20252b */
-  --cream-dim:#3f4954;       /* secondary text — was #4f5964, too light */
-  --white:#0c0f13;
-  --gold:#5c3f0b;            /* labels/headings — deeper for contrast on cream */
-  --gold-light:#7a570f;
-  --gold-dim:#5f4c26;
-  --border:#c2b79f;
-  --shadow:0 8px 24px rgba(60,48,28,0.10);
+  --bg:#ece3d2;              /* warm sand — clearly not white, clearly not grey */
+  --bg2:#f7f2e8;
+  --bg3:#ffffff;             /* cards stay white so they lift off the page */
+  --cream:#14181d;           /* body text: near-black */
+  --cream-dim:#39424d;       /* secondary: dark enough to read at 0.8rem */
+  --white:#080b0e;
+  --gold:#54390a;            /* labels & headings */
+  --gold-light:#70500d;
+  --gold-dim:#57451f;
+  --border:#bcae93;
+  --shadow:0 10px 28px rgba(60,48,28,0.13);
 }
-body{font-size:17px;line-height:1.6;}
-h1{font-size:2.6rem;}
-.subtitle{font-size:0.95rem;color:var(--cream-dim);}
-table{font-size:0.95rem;}
-th{font-size:0.72rem;letter-spacing:0.12em;}
-td{color:var(--cream);}
-.hint{font-size:0.8rem;color:var(--cream-dim);}
-.chip{font-size:0.7rem;}
-.stat-card{background:var(--bg3);}
-.stat-value,.stat-card strong{font-size:2.1rem;}
-.stat-label{font-size:0.74rem;color:var(--gold);}
-.filter-btn{font-size:0.74rem;}
-.search-box{font-size:0.95rem;}
-.amount{font-size:1.15rem;}
-.method-badge{font-size:0.68rem;font-weight:700;}
-.addr-cell{font-size:0.86rem;}
-.items-subtotal,.amount-sub{font-size:0.78rem;}
+/* Scale from the ROOT, not body. Almost every size in this file is in rem,
+   which resolves against <html> — setting body alone left the tables at 15px
+   and the change invisible, which is exactly what was reported. */
+html{font-size:18px;}
+body{font-size:1rem;line-height:1.62;}
+td{font-size:0.98rem;}
+th{font-size:0.8rem;}
+h1{font-size:2.8rem;letter-spacing:-0.01em;}
+.subtitle{font-size:1rem;color:var(--cream-dim);}
 
+/* Tables — where the actual reading happens */
+table{font-size:1rem;}
+th{font-size:0.78rem;letter-spacing:0.1em;color:var(--gold);}
+td{color:var(--cream);padding-top:1rem;padding-bottom:1rem;}
+.addr-cell{font-size:0.92rem;line-height:1.6;}
+.items-subtotal,.amount-sub{font-size:0.84rem;}
+.amount{font-size:1.35rem;font-weight:700;}
+.method-badge{font-size:0.74rem;font-weight:700;}
+.badge{font-size:0.72rem;padding:0.32rem 0.7rem;}
+
+/* Cards & controls */
+.stat-card{background:var(--bg3);border-color:#c9bda4;}
+.stat-value,.stat-card strong{font-size:2.3rem;}
+.stat-label{font-size:0.78rem;color:var(--gold);font-weight:700;}
+.filter-btn{font-size:0.8rem;padding:0.6rem 1.1rem;}
+.search-box{font-size:1rem;padding:0.7rem 1rem;}
+.hint{font-size:0.85rem;color:var(--cream-dim);}
+.chip{font-size:0.74rem;}
+.section-title{font-size:1rem;}
+.btn-gold,.btn-outline,.btn-green,.load-more-btn{font-size:0.78rem;}
+select,input,textarea{font-size:1rem;}
 /* Collapsed tools drawer */
 #tab-tools .export-bar{display:flex!important;flex-wrap:wrap;gap:0.6rem;align-items:center;padding:1.2rem;background:var(--bg2);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);}
 #tab-tools h1{margin-bottom:0.3rem;}
