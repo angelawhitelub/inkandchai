@@ -605,8 +605,19 @@ select,input,textarea{font-size:1rem;}
   </div>
 </nav>
 
+<!-- Shown while the remembered-browser cookie is being verified. The login card
+     used to be visible from first paint and was only hidden once BOTH the
+     session check and the first orders page had come back — so a signed-in
+     owner was shown "Admin Access", and a password box, for a couple of
+     seconds on every single load before it vanished on its own. -->
+<div id="bootCheck" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.9rem;padding:5rem 1rem;">
+  <div style="width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:bootspin 0.8s linear infinite;"></div>
+  <p style="font-size:0.8rem;color:var(--cream-dim);letter-spacing:0.08em;">Checking your session…</p>
+</div>
+<style>@keyframes bootspin{to{transform:rotate(360deg)}}</style>
+
 <!-- LOGIN -->
-<div id="loginPanel">
+<div id="loginPanel" style="display:none;">
   <h2>Admin Access</h2>
   <button class="btn-gold" id="passkeyLoginBtn" onclick="passkeyLogin()" style="display:none;width:100%;margin-bottom:0.8rem;background:#1c1916;color:var(--gold);border:1px solid rgba(201,168,76,0.5);">🔐 Sign in with Passkey</button>
   <div id="passkeyDivider" style="display:none;text-align:center;font-size:0.55rem;letter-spacing:0.3em;color:var(--cream-dim);margin:0.6rem 0;">— OR —</div>
@@ -2017,6 +2028,7 @@ function logout() {
   serverTotal = null;
   selectedOrderIds.clear();
   try { localStorage.removeItem(ORDERS_CACHE_KEY); } catch {}
+  hideBootCheck();
   ['loginPanel','loginErr'].forEach(id => document.getElementById(id).style.display = id === 'loginPanel' ? '' : 'none');
   document.getElementById('dashboard').style.display = 'none';
   ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar','passkeyRegBtn']
@@ -2139,15 +2151,37 @@ async function restoreAdminCookieSession() {
   }
 }
 
+// The boot splash stands in for whichever outcome wins: the dashboard when a
+// session is restored, the login card when there isn't one. Both paths call
+// this, so the spinner can never outlive the decision.
+function hideBootCheck() {
+  const el = document.getElementById('bootCheck');
+  if (el) el.style.display = 'none';
+}
+function showLoginGate() {
+  hideBootCheck();
+  const el = document.getElementById('loginPanel');
+  if (el) el.style.display = '';
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
   initPasskeyUi();
   restoreAdminSession();
+
+  // Whatever happens, never strand the page on the spinner: if neither the
+  // dashboard nor the login has appeared, fall back to asking for a password.
+  setTimeout(() => {
+    const boot = document.getElementById('bootCheck');
+    if (boot && boot.style.display !== 'none') showLoginGate();
+  }, 8000);
+
   if (adminToken && Date.now() < adminTokenExp) {
     scheduleAutoLogout();
-    try { fetchOrders(true); } catch {}
+    try { fetchOrders(true); } catch { showLoginGate(); }
     return;
   }
-  await restoreAdminCookieSession();
+  const restored = await restoreAdminCookieSession();
+  if (!restored) showLoginGate();
 });
 
 // ── Fetch — parallel pagination + localStorage cache ───────────────────────
@@ -2211,6 +2245,7 @@ async function fetchOrders(reset = false) {
       serverTotal = cached.total ?? cached.orders.length;
       // Show dashboard + cached table immediately while fresh data fetches in background
       document.getElementById('loginPanel').style.display = 'none';
+      hideBootCheck();
       document.getElementById('dashboard').style.display  = '';
       ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar','passkeyRegBtn']
         .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
@@ -2249,6 +2284,7 @@ async function fetchOrders(reset = false) {
 
     // Reveal dashboard if not yet shown (cache miss path)
     document.getElementById('loginPanel').style.display = 'none';
+    hideBootCheck();
     document.getElementById('dashboard').style.display  = '';
     ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar']
       .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
