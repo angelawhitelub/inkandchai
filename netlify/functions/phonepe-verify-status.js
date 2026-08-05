@@ -137,6 +137,35 @@ function paidEmailHtml(order) {
 }
 
 // ── Reconcile a confirmed-paid order in Supabase (idempotent) ──────────────
+/**
+ * What this order is worth for ad-conversion reporting, in rupees.
+ *
+ * NOT the captured amount. On a partial-COD order PhonePe captures only the 10%
+ * deposit, so reporting that as the conversion value tells Smart Bidding a ₹950
+ * basket was worth ₹95 and it optimises away from the customers who spend most.
+ * The basket is the number ROAS has to be measured against.
+ */
+async function conversionValue(orderId, capturedPaise) {
+  const fallback = Math.round(Number(capturedPaise) || 0) / 100;
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data } = await supabase.from('orders')
+      .select('amount_paise, cart_items')
+      .eq('razorpay_order_id', orderId)
+      .maybeSingle();
+    if (!data) return fallback;
+    const meta = (Array.isArray(data.cart_items) ? data.cart_items : [])
+      .map(i => i?._payment).find(Boolean) || {};
+    const fullTotal = Number(meta.full_total) || 0;
+    if (fullTotal > 0) return Math.round(fullTotal * 100) / 100;
+    const paise = Number(data.amount_paise) || Number(capturedPaise) || 0;
+    return Math.round(paise) / 100;
+  } catch (e) {
+    console.warn('[phonepe-verify-status] conversion value lookup failed:', e.message);
+    return fallback;
+  }
+}
+
 async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -290,9 +319,18 @@ exports.handler = async (event) => {
     if (state === 'COMPLETED') {
       // Safety net: update DB + email if the webhook hasn't arrived yet.
       await reconcilePaidOrder(id, txnId, amount);
+      // Carry the order value back in the URL for the Google Ads conversion.
+      // The success page used to read it from localStorage, which is empty
+      // whenever the customer returns in a different browser context than the
+      // one they left from — an in-app browser handing off to the default
+      // browser is the common case. The conversion still fired, just with no
+      // value, so Ads fell back to the conversion action's default value and
+      // ROAS was computed from a made-up number.
+      const convValue = await conversionValue(id, amount);
+      const query = `paid=1&id=${encodeURIComponent(id)}` + (convValue > 0 ? `&v=${convValue}` : '');
       return {
         statusCode: 302,
-        headers: { Location: `${siteUrl}/checkout/?paid=1&id=${encodeURIComponent(id)}` },
+        headers: { Location: `${siteUrl}/checkout/?${query}` },
         body: '',
       };
     }

@@ -8654,8 +8654,17 @@ function fireConfetti(valuePaise) {
       if (isMatchingOrder && isFresh) savedEmail = pending.email || '';
       localStorage.removeItem('iac_google_reviews_pending');
     } catch {}
-    let savedValue = 0;
-    try { savedValue = Number(localStorage.getItem('iac_last_order_value')) || 0; localStorage.removeItem('iac_last_order_value'); } catch {}
+    // Order value for the Ads conversion. The server puts it on the return URL
+    // (?v=), which survives the redirect no matter which browser the customer
+    // lands back in. localStorage is only a fallback now: it is empty whenever
+    // the checkout started in an in-app browser and PhonePe handed back to the
+    // default one, and a conversion fired without a value makes Ads substitute
+    // the conversion action's default value.
+    let savedValue = Number(p.get('v')) || 0;
+    try {
+      if (!savedValue) savedValue = Number(localStorage.getItem('iac_last_order_value')) || 0;
+      localStorage.removeItem('iac_last_order_value');
+    } catch {}
     showSuccess('paid', p.get('id'), { email: savedEmail }, savedValue);
     // Clean URL so refresh doesn't re-trigger success
     history.replaceState({}, '', '/checkout/');
