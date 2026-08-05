@@ -61,7 +61,14 @@ async function buildPayload(order, opts = {}) {
   const amountRs = Math.max(0, Number(order.amount_paise || 0) / 100);
   const itemSubtotal = items.reduce((s, i) => s + (Number(i.price || 0) * Math.max(1, Number(i.qty || i.quantity || 1))), 0);
   const paymentMeta = items[0]?._payment || {};
-  const isPartialCod = order.status === 'partial_cod_pending';
+  // Decide COD on captured money, not on the status label — same rule as
+  // nimbuspost-order-push.js. A status-only test ships anything in another
+  // status ('confirmed' from the admin dropdown, 'paid' written by the Razorpay
+  // webhook before it knew the order was partial COD) as prepaid, and then the
+  // courier collects nothing at the door.
+  const isPartialCod = order.status === 'partial_cod_pending'
+    || Number(order.advance_paid_paise || 0) > 0
+    || Number(paymentMeta.balance || 0) > 0;
   const amount = Math.round(isPartialCod
     ? Math.max(0, Number(paymentMeta.balance || 0))
     : (amountRs || itemSubtotal));
@@ -69,7 +76,9 @@ async function buildPayload(order, opts = {}) {
   const name = splitName(order.customer_name);
   const addr = await enrichAddress(parseAddress(order.customer_address));  // fills city/state from pincode
   const phone = normalizeIndianPhone(order.customer_phone);
-  const isCod = ['cod_pending', 'partial_cod_pending'].includes(order.status);
+  const fullyPrepaid = !isPartialCod
+    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
+  const isCod = isPartialCod || (!fullyPrepaid && amount > 0);
 
   if (!phone) throw new Error('Customer phone must contain a valid 10-digit mobile number');
   if (!addr.pincode) throw new Error('Customer address has no 6-digit pincode');

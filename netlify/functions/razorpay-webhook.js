@@ -169,7 +169,7 @@ exports.handler = async (event) => {
   try {
     const { data } = await supabase
       .from('order_carts')
-      .select('cart_items, customer')
+      .select('cart_items, customer, payment_mode, full_total_paise')
       .eq('razorpay_order_id', razorpay_order_id)
       .maybeSingle();
     orderCart = data || null;
@@ -237,6 +237,33 @@ exports.handler = async (event) => {
   // that single-line collapse is exactly what shipped one book on a 5-book order.
   const cartItems = cart.length > 0 ? cart : splitBooksNote(notesBooks, amount_paise);
 
+  // ── Partial COD ──────────────────────────────────────────────────────────
+  // A partial-COD deposit is an ordinary captured payment as far as Razorpay is
+  // concerned: `payment.captured` carries ₹63 on a ₹625 order and says nothing
+  // about the balance. Saving that as a plain 'paid' order made this webhook
+  // push the shipment to NimbusPost as PREPAID with ₹63 declared — so the
+  // courier collected nothing and the customer never paid the remaining ₹562.
+  // create-order.js records the real mode in both the order_carts snapshot and
+  // the Razorpay notes; use them.
+  const isPartial = String(orderCart?.payment_mode || notes.server_payment_mode || '') === 'partial_cod';
+  const fullTotalRs = Math.round(
+    (Number(orderCart?.full_total_paise) || Number(notes.server_full_total_paise) || 0) / 100
+  ) || cartItems.reduce((s, i) => s + (Number(i.price) || 0) * Math.max(1, Number(i.qty || i.quantity) || 1), 0);
+  const depositRs = Math.round(amount_paise / 100);
+  const balanceRs = Math.max(0, fullTotalRs - depositRs);
+  if (isPartial && cartItems[0]) {
+    // Same shape verify-payment writes, so every downstream reader (the pusher,
+    // the AWB sync, the admin panel) sees one consistent partial-COD marker
+    // whichever path created the row.
+    cartItems[0]._payment = {
+      mode: 'partial_cod',
+      full_total: fullTotalRs,
+      deposit: depositRs,
+      balance: balanceRs,
+      rate: 0.10,
+    };
+  }
+
   // IC- (or IC-CW- for Crossword-migrated genuine-tag carts) order ID.
   const inkOrderId = /^IC-W-\d{8}-[A-Z0-9]{5}$/i.test(botOrderId || '')
     ? botOrderId.toUpperCase()
@@ -247,7 +274,7 @@ exports.handler = async (event) => {
     razorpay_order_id:   inkOrderId,
     razorpay_payment_id: razorpay_payment_id,
     amount_paise:        amount_paise,
-    status:              'paid',
+    status:              isPartial ? 'partial_cod_pending' : 'paid',
     customer_name:       name,
     customer_email:      email,
     customer_phone:      phone,
@@ -281,20 +308,30 @@ exports.handler = async (event) => {
   // ── Auto-push recovered order to NimbusPost panel (no AWB) ───────────────
   pushOrderToNimbusPost({
     razorpay_order_id: inkOrderId,
-    status: 'paid',
+    status: isPartial ? 'partial_cod_pending' : 'paid',
+    razorpay_payment_id,
     customer_name: name || '',
     customer_phone: phone || '',
     customer_address: address || '',
     amount_paise: amount_paise,
     cart_items: cartItems,
-  }).catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
+  })
+    // Stamp the row so a later bulk push doesn't create a second panel order.
+    // verify-payment does the same after its own push; the webhook used to skip
+    // it, which is why a webhook-created order looked un-pushed forever.
+    .then(() => supabase.from('orders').update({ nimbus_pushed_at: new Date().toISOString() }).eq('razorpay_order_id', inkOrderId))
+    .catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
 
   // ── Scratch card reward (non-fatal) ──────────────────────────────────────
-  generateCardForOrder(supabase, {
-    razorpay_order_id: inkOrderId,
-    status: 'paid',
-    customer_phone: phone, customer_email: email, customer_name: name,
-  }).catch(e => console.error('[ScratchCard] generate failed (non-fatal):', e.message));
+  // Full prepaid only — matches verify-payment. A partial-COD customer has paid
+  // a 10% deposit and still owes the balance.
+  if (!isPartial) {
+    generateCardForOrder(supabase, {
+      razorpay_order_id: inkOrderId,
+      status: 'paid',
+      customer_phone: phone, customer_email: email, customer_name: name,
+    }).catch(e => console.error('[ScratchCard] generate failed (non-fatal):', e.message));
+  }
 
   // ── Notify store owner ───────────────────────────────────────────────────
   const ownerEmail = process.env.STORE_OWNER_EMAIL;
@@ -302,7 +339,7 @@ exports.handler = async (event) => {
     const amtDisplay = `₹${(amount_paise / 100).toLocaleString('en-IN')}`;
     await sendEmail({
       to: ownerEmail,
-      subject: `⚡ Recovered Payment — ${inkOrderId} · ${amtDisplay}`,
+      subject: `⚡ Recovered Payment — ${inkOrderId} · ${amtDisplay}${isPartial ? ` (partial COD · collect ₹${balanceRs.toLocaleString('en-IN')})` : ''}`,
       html: emailBase(`
         <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">⚡ Payment Recovered via Webhook</h2>
         <p style="color:#a09080;margin-bottom:16px;">
@@ -318,7 +355,9 @@ exports.handler = async (event) => {
           <tr><td style="color:#a09080;padding-right:16px;">Email</td><td>${email||'—'}</td></tr>
           <tr><td style="color:#a09080;padding-right:16px;">Address</td><td>${address||'—'}</td></tr>
         </table>
-        <p style="color:#6dbf6d;font-size:13px;margin-top:16px;">✅ Order is confirmed and ready to ship.</p>
+        ${isPartial
+          ? `<p style="color:#c9a84c;font-size:13px;background:#1c1916;padding:10px 14px;margin-top:16px;">💰 Partial COD — customer paid ₹${depositRs.toLocaleString('en-IN')} now. Collect <strong>₹${balanceRs.toLocaleString('en-IN')}</strong> on delivery. Full order value ₹${fullTotalRs.toLocaleString('en-IN')}.</p>`
+          : `<p style="color:#6dbf6d;font-size:13px;margin-top:16px;">✅ Order is confirmed and ready to ship.</p>`}
       `),
     });
   }
@@ -356,7 +395,9 @@ exports.handler = async (event) => {
           <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Order Confirmed 📚</h2>
           <p style="color:#a09080;line-height:1.8;margin-bottom:16px;">
             Hi ${firstName}, your books are on their way!<br/>
-            Your payment of <strong style="color:#c9a84c;">${amtDisplay}</strong> was received successfully.
+            ${isPartial
+              ? `We received your 10% booking payment of <strong style="color:#c9a84c;">${amtDisplay}</strong>. Please keep the remaining <strong style="color:#c9a84c;">₹${balanceRs.toLocaleString('en-IN')}</strong> ready for the delivery agent.`
+              : `Your payment of <strong style="color:#c9a84c;">${amtDisplay}</strong> was received successfully.`}
           </p>
           <p style="color:#a09080;font-size:13px;"><strong style="color:#f0e8d8;">Delivery address:</strong><br/>${address || '—'}</p>
           <p style="margin-top:16px;color:#7a6330;font-size:12px;">Order ID: <strong style="color:#c9a84c;">${inkOrderId}</strong></p>
