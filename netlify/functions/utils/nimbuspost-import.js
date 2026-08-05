@@ -82,7 +82,12 @@ async function buildPayload(order, opts = {}) {
 
   if (!phone) throw new Error('Customer phone must contain a valid 10-digit mobile number');
   if (!addr.pincode) throw new Error('Customer address has no 6-digit pincode');
-  if (!addr.city || !addr.state) throw new Error('Customer address must include city and state');
+  if (!addr.address) throw new Error('Customer address has no street line — only a city/state/pincode was saved');
+  // city/state are derived from the pincode when the address doesn't spell them
+  // out, so reaching here almost always means the pincode itself isn't real.
+  if (!addr.city || !addr.state) {
+    throw new Error(`Pincode ${addr.pincode} did not resolve to a city/state — check it is a real pincode (address: "${addr.address}")`);
+  }
 
   return {
     order_number: orderId,

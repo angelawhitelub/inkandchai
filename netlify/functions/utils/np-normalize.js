@@ -46,13 +46,22 @@ function parseAddress(value) {
 
   const parts = work.split(',').map(s => s.trim()).filter(Boolean);
   let city = '', state = '', address = '';
-  if (parts.length >= 2) {
+  // Only treat the tail as city + state when there is a street line LEFT OVER.
+  // At exactly two segments the old code popped both and left `address` empty,
+  // and NimbusPost rejects the push with "address is required" — that is what
+  // killed "House No A-68 ... , Near Kendriya Bhandar Pin code 110021", where
+  // both segments are street. Two segments can't be told apart from
+  // [street, city] anyway, so keep the whole line and let the pincode supply
+  // city/state, which is authoritative rather than guessed.
+  if (parts.length >= 3) {
     state   = parts.pop();
     city    = parts.pop();
     address = parts.join(', ');
   } else {
-    address = work;                       // comma-less: keep whole line; city/state come from pincode
+    address = parts.join(', ') || work;   // keep whole line; city/state come from pincode
   }
+  // Belt and braces: never emit a blank address line, whatever the input shape.
+  if (!address.trim()) address = [work, city, state].map(s => String(s || '').trim()).filter(Boolean).join(', ');
   return {
     address: address.slice(0, 200),
     city:    city.slice(0, 64),
