@@ -57,6 +57,15 @@
 [functions."phonepe-reconcile-refunds-scheduled"]
   schedule = "15 * * * *"
 
+# Catch PhonePe payments that completed but never reached the order row — the
+# webhook and the browser redirect can BOTH miss, and when they do the order
+# keeps no payment id, so every money check reads it as unpaid and ships it COD.
+# 41 orders hit this before anything looked; phonepe-reconcile only ever
+# re-checked status='pending_phonepe', which those orders had already left.
+# Every 10 minutes, so a dropped payment is found long before the shipment moves.
+[functions."phonepe-payment-sweep-scheduled"]
+  schedule = "*/10 * * * *"
+
 # 5-min follow-up confirmation ping for WhatsApp book-order requests placed via
 # the bot. Runs every 2 minutes; each row is pinged exactly once thanks to the
 # follow_up_sent_at guard column.
