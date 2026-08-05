@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "preview",
+      "name": "static-public",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "public"],
-      "port": 8765
+      "runtimeArgs": ["-m", "http.server", "8899", "--directory", "public"],
+      "port": 8899
     }
   ]
 }

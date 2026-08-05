@@ -655,7 +655,10 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab" data-tab="botinbox"  onclick="switchTab('botinbox')">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <!-- The inbox lives on its own page now. Inside the SPA every 30s poll
+         re-rendered the whole panel, so a thread being read scrolled itself
+         away and a reply in progress felt like the page resetting. -->
+    <button class="admin-tab" data-tab="botinbox"  onclick="location.href='/admin/inbox.html'">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="bookreq"   onclick="switchTab('bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="insights"  onclick="switchTab('insights')">💡 Insights</button>
     <button class="admin-tab" data-tab="bot"       onclick="switchTab('bot')">🤖 Bot Instructions</button>
