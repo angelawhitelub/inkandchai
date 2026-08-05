@@ -100,10 +100,18 @@ function adjustmentTimeFor(order, now) {
   return new Date(Math.min(Math.max(t, floor), now.getTime()));
 }
 
-/** `2026-06-22 08:02:17+05:30` — self-describing, so no Parameters row is needed. */
+/**
+ * `2026-06-22 08:02:17` in IST — the `yyyy-MM-dd HH:mm:ss` form Google
+ * documents, with the zone declared once in the file's Parameters row.
+ *
+ * An earlier version appended a `+05:30` offset instead and Google rejected
+ * every row: its offset form is RFC 822 (`+0530`, no colon), and dropping the
+ * offset in favour of the Parameters row avoids that parsing question
+ * entirely.
+ */
 function istStamp(date) {
   const shifted = new Date(date.getTime() + 5.5 * HOUR_MS).toISOString();
-  return `${shifted.slice(0, 10)} ${shifted.slice(11, 19)}+05:30`;
+  return `${shifted.slice(0, 10)} ${shifted.slice(11, 19)}`;
 }
 
 /**
@@ -165,17 +173,34 @@ function csvCell(value) {
 
 /**
  * Render Google's conversion-adjustment upload format.
+ *
+ * Shaped to match the official "Conversion Adjustment Import - Order ID"
+ * template exactly, because Google's importer is unforgiving about all three
+ * of these:
+ *
+ *   - The leading `Parameters:TimeZone=` row declares the zone for every
+ *     timestamp below it, so the timestamps carry no offset of their own.
+ *   - The adjustment type is `RETRACT`, not the `RETRACTION` the Google Ads
+ *     API enum uses. The file format and the API do not agree here.
+ *   - All six template columns are present. Retractions leave the two value
+ *     columns empty, but removing them fails the import.
+ *
  * `conversionName` must be the conversion action's name in the destination
  * account, spelled exactly as it appears there.
  */
 function toCsv(rows, conversionName) {
-  const lines = ['Order ID,Conversion Name,Adjustment Time,Adjustment Type'];
+  const lines = [
+    'Parameters:TimeZone=Asia/Calcutta',
+    'Order ID,Conversion Name,Adjustment Time,Adjustment Type,Adjusted Value,Adjusted Value Currency',
+  ];
   for (const row of rows) {
     lines.push([
       csvCell(row.orderId),
       csvCell(conversionName),
       csvCell(istStamp(row.adjustmentTime)),
-      'RETRACTION',
+      'RETRACT',
+      '',
+      '',
     ].join(','));
   }
   return `${lines.join('\n')}\n`;

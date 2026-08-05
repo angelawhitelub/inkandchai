@@ -106,15 +106,35 @@ test('clamps an adjustment that predates its own conversion', () => {
   assert.equal(future.getTime(), NOW.getTime());
 });
 
-test('writes IST timestamps carrying their own offset', () => {
-  assert.equal(istStamp(new Date('2026-06-22T02:32:17.133Z')), '2026-06-22 08:02:17+05:30');
+test('writes bare IST timestamps, with the zone declared in the Parameters row', () => {
+  // No offset suffix: Google rejects "+05:30" outright, and its own offset
+  // form is RFC 822 ("+0530"). The Parameters row settles it instead.
+  assert.equal(istStamp(new Date('2026-06-22T02:32:17.133Z')), '2026-06-22 08:02:17');
 });
 
 test('renders the upload format Google expects', () => {
   const { rows } = buildAdjustmentRows([order({ cancelled_at: daysAgo(4) })], { now: NOW });
   const csv = toCsv(rows, 'Purchase');
-  assert.equal(csv, 'Order ID,Conversion Name,Adjustment Time,Adjustment Type\n'
-    + 'IC-20260701-AAAAA,Purchase,2026-08-02 17:30:00+05:30,RETRACTION\n');
+  assert.equal(csv,
+    'Parameters:TimeZone=Asia/Calcutta\n'
+    + 'Order ID,Conversion Name,Adjustment Time,Adjustment Type,Adjusted Value,Adjusted Value Currency\n'
+    + 'IC-20260701-AAAAA,Purchase,2026-08-02 17:30:00,RETRACT,,\n');
+});
+
+test('says RETRACT, not the API enum RETRACTION', () => {
+  // The upload file format and the Google Ads API disagree on this word, and
+  // sending the API's spelling failed all 2,145 rows.
+  const { rows } = buildAdjustmentRows([order()], { now: NOW });
+  const csv = toCsv(rows, 'Purchase');
+  assert.match(csv, /,RETRACT,/);
+  assert.doesNotMatch(csv, /RETRACTION/);
+});
+
+test('keeps all six template columns, empty value columns included', () => {
+  const { rows } = buildAdjustmentRows([order()], { now: NOW });
+  const [, header, first] = toCsv(rows, 'Purchase').trim().split('\n');
+  assert.equal(header.split(',').length, 6);
+  assert.equal(first.split(',').length, 6);
 });
 
 test('quotes a conversion name containing a comma', () => {
