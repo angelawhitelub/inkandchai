@@ -54,6 +54,14 @@ const MAX_CHECKS = Number(process.env.PHONEPE_SWEEP_MAX || 400);
 // Statuses that already account for the money, so there is nothing to discover.
 const SETTLED = new Set(['paid', 'refunded', 'partially_refunded', 'refund_pending', 'partial_cod_pending']);
 
+// The admin "mark prepaid" button writes a synthetic `prepaid:<uuid>` in place
+// of a gateway reference. That is a bookkeeping marker, not a payment id: it
+// records that a human believes the order is paid, and it must NOT stop us
+// finding and recording the real transaction. Refunds and support both need the
+// actual PhonePe reference.
+const PLACEHOLDER_ID = /^(prepaid|manual|cod)\s*:/i;
+const hasRealGatewayId = (v) => Boolean(String(v || '').trim()) && !PLACEHOLDER_ID.test(String(v));
+
 let _token = { value: null, expiresAt: 0 };
 async function accessToken() {
   if (_token.value && Date.now() < _token.expiresAt - 60_000) return _token.value;
@@ -161,8 +169,15 @@ exports.handler = async (event) => {
     if (data.length < 1000) break;
   }
 
-  const candidates = rows.filter(o =>
-    o.razorpay_order_id && !o.razorpay_payment_id && !SETTLED.has(String(o.status || '')));
+  // A placeholder id still counts as "no gateway reference", and an order marked
+  // paid by hand still deserves its real transaction recorded — so the settled
+  // check is skipped for those.
+  const candidates = rows.filter(o => {
+    if (!o.razorpay_order_id) return false;
+    if (hasRealGatewayId(o.razorpay_payment_id)) return false;
+    if (PLACEHOLDER_ID.test(String(o.razorpay_payment_id || ''))) return true;
+    return !SETTLED.has(String(o.status || ''));
+  });
 
   const token = await accessToken();
   const found = [], atRisk = [];
@@ -211,13 +226,23 @@ exports.handler = async (event) => {
 
     const patch = {
       razorpay_payment_id: txn,
-      status: isPartial ? 'partial_cod_pending' : 'paid',
       shipment_payment_type: isPartial ? 'partial_cod' : 'prepaid',
     };
+    // Only ever move a PRE-shipment status forward. These orders are usually
+    // already shipped or delivered by the time the missing payment is found, and
+    // writing 'paid' over 'delivered' would erase the fulfilment state — the
+    // order would drop back into the unshipped list and could be sent twice.
+    const PRE_SHIPMENT = ['cod_pending', 'cod_awaiting_confirmation', 'pending',
+      'pending_phonepe', 'pending_partial_phonepe', 'confirmed'];
+    if (PRE_SHIPMENT.includes(String(o.status || ''))) {
+      patch.status = isPartial ? 'partial_cod_pending' : 'paid';
+    }
     // Conditional on the id still being null so a webhook landing in the same
     // second wins instead of being overwritten.
     const { data: updated, error: uErr } = await supabase.from('orders')
-      .update(patch).eq('id', o.id).is('razorpay_payment_id', null).select('id');
+      .update(patch).eq('id', o.id)
+      .or('razorpay_payment_id.is.null,razorpay_payment_id.ilike.prepaid:%,razorpay_payment_id.ilike.manual:%,razorpay_payment_id.ilike.cod:%')
+      .select('id');
     if (uErr) { failed++; console.error(`[phonepe-sweep] update ${o.razorpay_order_id}: ${uErr.message}`); continue; }
     if (!updated?.length) continue;              // webhook got there first
 
