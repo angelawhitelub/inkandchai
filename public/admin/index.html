@@ -2435,11 +2435,17 @@ function isPartialOrder(o) {
   const anyPartialMeta = items.some(i => i?._payment?.mode === 'partial_cod');
   const meta = items[0]?._payment || {};
   const status = String(o?.status || '').toLowerCase();
+  // 'partially_refunded' contains the word "partial" but is the opposite of a
+  // partial COD — the order was paid in full and some of it was given back.
+  // The old bare status.includes('partial') matched it, so eight fully prepaid
+  // orders rendered as "10% + COD" with a phantom balance for the courier to
+  // collect. Every one was a CHAI10BACK order: 10% off, not 10% down.
+  const partialStatus = status.includes('partial') && !status.includes('refund');
   return anyPartialMeta ||
          meta.mode === 'partial_cod' ||
          status === 'partial_cod_pending' ||
          status === 'pending_partial_phonepe' ||
-         status.includes('partial') ||
+         partialStatus ||
          // balance field present means a COD balance is still owed
          Number(meta.balance) > 0;
 }
