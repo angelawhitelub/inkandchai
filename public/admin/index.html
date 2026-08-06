@@ -5463,7 +5463,7 @@ function openEditOrderModal(orderUuid) {
       <label style="display:block;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin:0.7rem 0 0.3rem;">Delivery address</label>
       <textarea id="iacEditAddress" rows="3" placeholder="Full address with pincode" style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.3);color:#f0e8d8;padding:0.6rem;font-family:inherit;font-size:0.85rem;box-sizing:border-box;resize:vertical;"></textarea>
       ${field('Books (comma-separated)', 'iacEditBooks', 'Ikigai ×2, Sapiens')}
-      <p style="color:#7a6f5f;font-size:0.62rem;line-height:1.5;margin:0.4rem 0 0;">Editing books rebuilds the item list. Add <strong style="color:#c9a84c;">×N</strong> after a title for quantity (e.g. <em>Ikigai ×4</em>). Line prices are split across total units to match the paid total.</p>
+      <p style="color:#7a6f5f;font-size:0.62rem;line-height:1.5;margin:0.4rem 0 0;">Editing books rebuilds the item list. Add <strong style="color:#c9a84c;">×N</strong> after a title for quantity (e.g. <em>Ikigai ×4</em>). Prices come from the catalogue, and on an unpaid COD order the total is recalculated to match.</p>
       <div id="iacEditMsg" style="display:none;font-size:0.72rem;line-height:1.5;margin:0.7rem 0 0;"></div>
       <div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1rem;">
         <button onclick="document.getElementById('iacEditModal')?.remove()"
@@ -5510,27 +5510,19 @@ async function submitEditOrder(orderUuid) {
       o.customer_phone = payload.customer_phone.trim();
       o.customer_email = payload.customer_email.trim();
       o.customer_address = payload.customer_address.trim();
-      if (payload.books.trim()) {
-        // Mirror the server: parse optional "×N" quantities, split price per unit.
-        const parsed = payload.books.split(',').map(t => t.trim()).filter(Boolean).map(part => {
-          const m = part.match(/^(.*?)\s*[x×✕✖]\s*(\d{1,3})$/i);
-          return (m && Number(m[2]) > 0)
-            ? { title: m[1].trim(), qty: Number(m[2]), explicitQty: true }
-            : { title: part, qty: 1, explicitQty: false };
-        }).filter(l => l.title);
-        const totalRs = Math.round((o.amount_paise || 0) / 100);
-        const totalUnits = parsed.reduce((s, l) => s + l.qty, 0) || 1;
-        const perUnit = Math.round(totalRs / totalUnits);
-        const prev = Array.isArray(o.cart_items) ? o.cart_items : [];
-        o.cart_items = parsed.map(l => {
-          const m = prev.find(i => String(i.title||'').trim().toLowerCase() === l.title.toLowerCase());
-          // Explicit ×N recomputes unit price (sum to total); else preserve.
-          return { title: l.title, qty: l.explicitQty ? l.qty : (m?.qty || 1), price: l.explicitQty ? perUnit : (m?.price || perUnit) };
-        });
-      }
     }
     document.getElementById('iacEditModal')?.remove();
-    if (typeof renderTable === 'function') renderTable();
+    // Book lines are priced from the catalogue on the server now, and the
+    // order total can move with them, so there is nothing sensible to mirror
+    // locally — refetch and show what was actually saved.
+    if (payload.books.trim() && typeof fetchOrders === 'function') await fetchOrders(true);
+    else if (typeof renderTable === 'function') renderTable();
+    if (data.repriced) {
+      alert(`Books repriced from the catalogue. Order total ₹${data.repriced.from} → ₹${data.repriced.to}.`
+        + (data.warning ? `\n\n${data.warning}` : ''));
+    } else if (data.warning) {
+      alert(data.warning);
+    }
   } catch (e) {
     show('Could not save: ' + e.message, '#e06060');
     btn.disabled = false; btn.textContent = 'Save changes';
