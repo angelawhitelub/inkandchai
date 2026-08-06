@@ -30,6 +30,7 @@ const { sendEmail } = require('./utils/email');
 const { generateCardForOrder } = require('./utils/scratch-cards');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { sendRefundInitiated } = require('./utils/refund-notifications');
+const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -371,6 +372,18 @@ exports.handler = async (event) => {
     const items   = Array.isArray(order.cart_items) ? order.cart_items : [];
     const metaNotif = items[0]?._payment || {};
     const balanceNotif = isPartialNotif ? Math.max(0, Number(metaNotif.balance) || 0) : 0;
+
+    // ── Auto-push to NimbusPost panel (no AWB) ───────────────────────────
+    // This webhook used to push nothing, leaving phonepe-verify-status — the
+    // customer's browser coming back from PhonePe — as the only trigger. When
+    // that return went missing, and it often does for a customer handed off
+    // from an in-app browser, the paid order reached no panel until someone
+    // pushed it by hand hours later. Claim-guarded, so whichever of the two
+    // arrives first pushes and the other stands down.
+    if (isNotified) {
+      await pushToNimbusOnce(supabase, order)
+        .catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
+    }
 
     // ── Scratch card reward — only for full prepaid (not partial COD) ────
     if (dbStatus === 'paid') {

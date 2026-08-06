@@ -17,7 +17,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { generateCardForOrder } = require('./utils/scratch-cards');
-const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
+const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { makeOrderId } = require('./utils/pricing');
 
 const CORS = { 'Content-Type': 'application/json' };
@@ -306,7 +306,10 @@ exports.handler = async (event) => {
   console.log(`[razorpay-webhook] ✅ Saved missed order: ${inkOrderId} (${razorpay_payment_id})`);
 
   // ── Auto-push recovered order to NimbusPost panel (no AWB) ───────────────
-  pushOrderToNimbusPost({
+  // Claim-guarded: verify-payment pushes the same order from the browser
+  // callback. The stamp is the lock, so only one of the two reaches the panel
+  // and a failed push releases it for the other to retry.
+  pushToNimbusOnce(supabase, {
     razorpay_order_id: inkOrderId,
     status: isPartial ? 'partial_cod_pending' : 'paid',
     razorpay_payment_id,
@@ -315,12 +318,7 @@ exports.handler = async (event) => {
     customer_address: address || '',
     amount_paise: amount_paise,
     cart_items: cartItems,
-  })
-    // Stamp the row so a later bulk push doesn't create a second panel order.
-    // verify-payment does the same after its own push; the webhook used to skip
-    // it, which is why a webhook-created order looked un-pushed forever.
-    .then(() => supabase.from('orders').update({ nimbus_pushed_at: new Date().toISOString() }).eq('razorpay_order_id', inkOrderId))
-    .catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
+  }).catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
 
   // ── Scratch card reward (non-fatal) ──────────────────────────────────────
   // Full prepaid only — matches verify-payment. A partial-COD customer has paid

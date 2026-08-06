@@ -21,7 +21,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail }     = require('./utils/email');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
-const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
+const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
@@ -217,7 +217,9 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
     }).catch(e => console.error('[Shiprocket] push failed (non-fatal):', e.message));
 
     // ── Auto-push to NimbusPost panel (no AWB) ─────────────────────────────
-    pushOrderToNimbusPost({ ...order, status: update.status })
+    // Claim-guarded: the webhook pushes too, and either may arrive first or
+    // not at all. Whichever wins the claim does the push.
+    pushToNimbusOnce(supabase, { ...order, status: update.status })
       .catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
 
     // ── Scratch card reward — only for full prepaid orders (not partial COD) ─
