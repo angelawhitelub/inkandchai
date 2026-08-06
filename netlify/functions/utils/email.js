@@ -2,17 +2,23 @@
  * Shared sendEmail utility — multi-provider with automatic failover.
  *
  * Providers (each tried in order until one succeeds):
- *   • Resend  — RESEND_API_KEY                       (free: 100/day, 3k/month)
+ *   • SES     — AWS_SES_ACCESS_KEY_ID + AWS_SES_SECRET_ACCESS_KEY [+ AWS_SES_REGION]
+ *                                                     ($0.10 per 1,000 — the cheap one)
+ *   • Resend  — RESEND_API_KEY                        (free: 100/day, 3k/month)
  *   • Brevo   — BREVO_API_KEY                         (free: 300/day, 9k/month)
  *   • Mailjet — MAILJET_API_KEY + MAILJET_SECRET_KEY  (free: 200/day, 6k/month)
  *
- * Default order: resend → brevo → mailjet. Override WITHOUT a redeploy by
- * setting EMAIL_PROVIDER_ORDER in Netlify, e.g. "mailjet,resend,brevo" — handy
- * when one provider's monthly quota is exhausted and you want a fresh one first
- * (avoids wasting a failed API call on the dead provider before every send).
+ * Default order: resend → brevo → mailjet, kept as-is so adding the SES keys
+ * alone changes nothing. Put SES first WITHOUT a redeploy by setting
+ * EMAIL_PROVIDER_ORDER in Netlify to "ses,brevo,mailjet" — and flip it straight
+ * back the same way if SES misbehaves. That override is also how you skip a
+ * provider whose monthly quota is spent, instead of burning a failed API call
+ * on it before every send.
  *
  * Set/unset the relevant env vars in the Netlify dashboard. No code changes needed.
  */
+
+const { sendViaSes } = require('./ses-send');
 
 const FROM_NAME  = 'Ink & Chai';
 const FROM_EMAIL = 'support@inkandchai.in';
@@ -117,6 +123,17 @@ async function sendEmail({ to, subject, html, attachments }) {
 
   // Each provider is only attempted if its env keys are present.
   const providers = {
+    ses:     (process.env.AWS_SES_ACCESS_KEY_ID && process.env.AWS_SES_SECRET_ACCESS_KEY)
+      ? () => sendViaSes({
+        accessKeyId:     process.env.AWS_SES_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SES_SECRET_ACCESS_KEY,
+        region:          process.env.AWS_SES_REGION || 'ap-south-1',
+      }, {
+        to, subject, html,
+        from: `${FROM_NAME} <${FROM_EMAIL}>`,
+        attachments: normalizeAttachments(attachments),
+      })
+      : null,
     resend:  process.env.RESEND_API_KEY
       ? () => sendViaResend(process.env.RESEND_API_KEY, { to, subject, html, attachments })
       : null,
@@ -147,7 +164,7 @@ async function sendEmail({ to, subject, html, attachments }) {
     }
   }
 
-  if (!attempted) console.warn('No email provider configured (set RESEND_API_KEY, BREVO_API_KEY, or MAILJET_API_KEY + MAILJET_SECRET_KEY)');
+  if (!attempted) console.warn('No email provider configured (set AWS_SES_ACCESS_KEY_ID + AWS_SES_SECRET_ACCESS_KEY, RESEND_API_KEY, BREVO_API_KEY, or MAILJET_API_KEY + MAILJET_SECRET_KEY)');
   else console.error('All configured email providers failed for →', to);
   return { ok: false, error: attempted ? errors.join(' | ') : 'no provider configured' };
 }
