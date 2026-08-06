@@ -189,6 +189,7 @@ function showToast(msg) {
 document.addEventListener('DOMContentLoaded', () => {
   updateCartUI();
   initAplusContent();
+  initProductCouponBadge();
   initFrequentlyBoughtTogether();
 
   // Close cart on overlay click
@@ -200,6 +201,33 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape') closeCart();
   });
 });
+
+async function initProductCouponBadge() {
+  if (!isProductDetailPage()) return;
+  const slug = getProductPageSlug();
+  if (!slug || document.getElementById('iacProductCouponBadge')) return;
+  try {
+    const res = await fetch(`/.netlify/functions/product-coupons?slugs=${encodeURIComponent(slug)}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const coupon = data.coupons?.[0];
+    if (!coupon) return;
+    const offer = coupon.discount_type === 'percent'
+      ? `${Number(coupon.discount_value)}% off`
+      : `₹${Number(coupon.discount_value).toLocaleString('en-IN')} off`;
+    const badge = document.createElement('div');
+    badge.id = 'iacProductCouponBadge';
+    badge.setAttribute('role', 'note');
+    badge.style.cssText = 'display:inline-flex;align-items:center;gap:.45rem;margin:.65rem 0;padding:.55rem .75rem;border:1px solid rgba(201,168,76,.45);border-radius:8px;background:rgba(201,168,76,.09);color:var(--gold,#c9a84c);font-size:.72rem;line-height:1.4;font-weight:700;';
+    badge.innerHTML = `🏷️ <span>${esc(coupon.label || offer)} · Use <strong>${esc(coupon.code)}</strong> at checkout</span>`;
+    const price = document.querySelector('[data-product-price], .price');
+    const stock = document.querySelector('.stock');
+    const anchor = stock || price?.parentElement;
+    if (anchor) anchor.insertAdjacentElement('afterend', badge);
+  } catch (err) {
+    console.warn('Product offer unavailable:', err.message);
+  }
+}
 
 // ── Frequently Bought Together ─────────────────────────────────────────────
 function isProductDetailPage() {

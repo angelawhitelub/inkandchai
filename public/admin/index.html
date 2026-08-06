@@ -1196,6 +1196,32 @@ select,input,textarea{font-size:1rem;}
               <p class="hint" style="margin:.35rem 0 0;">Use a complete six-digit PIN or an asterisk prefix such as <code>110*</code>. State-wide Delhi and Haryana rules are also checked from the PIN itself.</p>
             </div>
           </details>
+          <details id="prodCouponEditor" open style="margin-top:.8rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(201,168,76,.035);">
+            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">Product-specific coupons</summary>
+            <p class="hint" style="margin:.65rem 0 0;">Create a prepaid coupon for this product. Percentage discounts apply only to eligible product lines; fixed INR discounts apply once per order.</p>
+            <div class="form-row" style="margin-top:.75rem;">
+              <label>Existing coupon</label>
+              <select id="prodCouponExisting" onchange="selectProductCoupon(this.value)"><option value="">Create a new coupon</option></select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;">
+              <div class="form-row"><label>Coupon code</label><input id="prodCouponCode" maxlength="32" placeholder="NETFLIX10" style="text-transform:uppercase;"/></div>
+              <div class="form-row"><label>Discount type</label><select id="prodCouponType"><option value="percent">Percentage off</option><option value="fixed">INR off</option></select></div>
+              <div class="form-row"><label>Discount value</label><input id="prodCouponValue" type="number" min="0.01" step="0.01" placeholder="10"/></div>
+              <div class="form-row"><label>Minimum eligible subtotal (₹)</label><input id="prodCouponMinimum" type="number" min="0" step="1" value="0"/></div>
+            </div>
+            <div class="form-row"><label>Promotional tag shown on product page</label><input id="prodCouponLabel" maxlength="180" placeholder="Special 10% off for Netflix series"/></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;">
+              <div class="form-row"><label>Starts at (optional)</label><input id="prodCouponStarts" type="datetime-local"/></div>
+              <div class="form-row"><label>Expires at (optional)</label><input id="prodCouponExpires" type="datetime-local"/></div>
+            </div>
+            <label style="display:flex;align-items:center;gap:.45rem;font-size:.64rem;color:var(--cream-dim);"><input type="checkbox" id="prodCouponActive" checked style="accent-color:var(--green);"/> Coupon active</label>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;">
+              <button class="btn-green" type="button" onclick="saveProductCoupon()">Save Coupon</button>
+              <button class="btn-outline" type="button" onclick="newProductCoupon()">New Coupon</button>
+              <button class="btn-outline" type="button" onclick="deleteProductCoupon()" style="border-color:rgba(224,80,80,.35);color:#c93636;">Delete Coupon</button>
+            </div>
+            <p class="hint" id="prodCouponMsg" style="margin-top:.65rem;"></p>
+          </details>
           <div class="form-row" style="margin-top:0.6rem;">
             <label>Cover Image URL <span style="font-weight:400;color:var(--cream-dim);font-size:0.58rem;">(paste Amazon/CDN link or /images/filename.webp)</span></label>
             <div style="display:flex;gap:0.5rem;align-items:center;">
@@ -4106,7 +4132,96 @@ function selectProduct(slug) {
   if (gallerySave) gallerySave.style.display = 'none';
   editProductImageDataUrls = [];
   loadAplusEditor(row);
+  loadProductCouponsForAdmin(row.slug);
   renderProductList();
+}
+
+let productCouponRows = [];
+function couponDateInput(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+function newProductCoupon() {
+  document.getElementById('prodCouponExisting').value = '';
+  document.getElementById('prodCouponCode').value = '';
+  document.getElementById('prodCouponType').value = 'percent';
+  document.getElementById('prodCouponValue').value = '';
+  document.getElementById('prodCouponMinimum').value = '0';
+  document.getElementById('prodCouponLabel').value = '';
+  document.getElementById('prodCouponStarts').value = '';
+  document.getElementById('prodCouponExpires').value = '';
+  document.getElementById('prodCouponActive').checked = true;
+  document.getElementById('prodCouponMsg').textContent = selectedProduct ? `New coupon will apply to ${selectedProduct.title}.` : '';
+}
+function selectProductCoupon(code) {
+  const coupon = productCouponRows.find(row => row.code === code);
+  if (!coupon) { newProductCoupon(); return; }
+  document.getElementById('prodCouponCode').value = coupon.code;
+  document.getElementById('prodCouponType').value = coupon.discount_type;
+  document.getElementById('prodCouponValue').value = coupon.discount_value;
+  document.getElementById('prodCouponMinimum').value = coupon.min_subtotal_inr || 0;
+  document.getElementById('prodCouponLabel').value = coupon.label || '';
+  document.getElementById('prodCouponStarts').value = couponDateInput(coupon.starts_at);
+  document.getElementById('prodCouponExpires').value = couponDateInput(coupon.expires_at);
+  document.getElementById('prodCouponActive').checked = coupon.is_active !== false;
+}
+async function loadProductCouponsForAdmin(slug) {
+  const select = document.getElementById('prodCouponExisting');
+  const msg = document.getElementById('prodCouponMsg');
+  if (!select) return;
+  try {
+    const res = await adminFetch(`/.netlify/functions/admin-product-coupons?slug=${encodeURIComponent(slug)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    productCouponRows = data.coupons || [];
+    select.innerHTML = '<option value="">Create a new coupon</option>' + productCouponRows.map(c => `<option value="${esc(c.code)}">${esc(c.code)} · ${esc(c.label)}</option>`).join('');
+    if (productCouponRows.length) { select.value = productCouponRows[0].code; selectProductCoupon(productCouponRows[0].code); }
+    else newProductCoupon();
+  } catch (err) {
+    productCouponRows = [];
+    select.innerHTML = '<option value="">Create a new coupon</option>';
+    if (msg) msg.textContent = 'Coupons unavailable: ' + err.message;
+  }
+}
+async function saveProductCoupon() {
+  if (!selectedProduct) return;
+  const msg = document.getElementById('prodCouponMsg');
+  const localIso = id => { const value = document.getElementById(id).value; return value ? new Date(value).toISOString() : null; };
+  const payload = {
+    code: document.getElementById('prodCouponCode').value,
+    label: document.getElementById('prodCouponLabel').value,
+    discount_type: document.getElementById('prodCouponType').value,
+    discount_value: document.getElementById('prodCouponValue').value,
+    min_subtotal_inr: document.getElementById('prodCouponMinimum').value,
+    product_slugs: [selectedProduct.slug],
+    starts_at: localIso('prodCouponStarts'),
+    expires_at: localIso('prodCouponExpires'),
+    is_active: document.getElementById('prodCouponActive').checked,
+  };
+  msg.textContent = 'Saving coupon…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-product-coupons', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    msg.textContent = `${data.coupon.code} saved. Its tag is now live on the product page.`;
+    await loadProductCouponsForAdmin(selectedProduct.slug);
+    document.getElementById('prodCouponExisting').value = data.coupon.code;
+    selectProductCoupon(data.coupon.code);
+  } catch (err) { msg.textContent = 'Could not save coupon: ' + err.message; }
+}
+async function deleteProductCoupon() {
+  const code = document.getElementById('prodCouponCode').value.trim().toUpperCase();
+  if (!code || !confirm(`Delete coupon ${code}?`)) return;
+  const msg = document.getElementById('prodCouponMsg');
+  try {
+    const res = await adminFetch(`/.netlify/functions/admin-product-coupons?code=${encodeURIComponent(code)}`, { method:'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    await loadProductCouponsForAdmin(selectedProduct.slug);
+    msg.textContent = `${code} deleted.`;
+  } catch (err) { msg.textContent = 'Could not delete coupon: ' + err.message; }
 }
 
 function customProductGallery(row = selectedProduct) {

@@ -648,6 +648,17 @@ function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
 function cartSubtotal(cart) { return cart.reduce((s, i) => s + itemPrice(i) * itemQty(i), 0); }
+function couponItemSlug(item) {
+  if (item?.slug) return String(item.slug);
+  const raw = String(item?.url || item?.id || '');
+  const match = raw.match(/\/product\/([^/?#]+)/i);
+  return match ? decodeURIComponent(match[1]) : raw.replace(/^\/+|\/+$/g, '');
+}
+function couponEligibleSubtotal(cart, productSlugs) {
+  const allowed = new Set(productSlugs || []);
+  return cart.reduce((sum, item) => allowed.has(couponItemSlug(item))
+    ? sum + itemPrice(item) * itemQty(item) : sum, 0);
+}
 function saveCart(cart) { localStorage.setItem(activeCartKey(), JSON.stringify(cart)); }
 function normalizeCouponCode(value) {
   const s = String(value || '').toUpperCase().trim();
@@ -655,7 +666,8 @@ function normalizeCouponCode(value) {
   if (s.startsWith('SCRATCH-')) return s.replace(/[^A-Z0-9-]/g, '');
   return s.replace(/[^A-Z0-9]/g, '');
 }
-function couponDiscount(subtotal, method = 'online') {
+function couponDiscount(cart, method = 'online') {
+  const subtotal = cartSubtotal(cart);
   const code = normalizeCouponCode(appliedCouponCode);
 
   // ── Scratch card path ───────────────────────────────────────────────────
@@ -684,13 +696,22 @@ function couponDiscount(subtotal, method = 'online') {
   if (coupon.onlineOnly && method === 'cod') {
     return { code, discount: 0, message: `${code} is valid only on Pay Now orders.` };
   }
-  const discount = coupon.type === 'percent' ? Math.floor(subtotal * coupon.value / 100) : Math.floor(coupon.value);
+  const discountBase = coupon.productSlugs
+    ? couponEligibleSubtotal(cart, coupon.productSlugs)
+    : subtotal;
+  if (coupon.productSlugs && discountBase <= 0) {
+    return { code, discount: 0, message: `${code} is only valid for selected products.` };
+  }
+  if (discountBase < coupon.minSubtotal) {
+    return { code, discount: 0, message: `Add ₹${(coupon.minSubtotal - discountBase).toLocaleString('en-IN')} more in eligible products to use ${code}.` };
+  }
+  const discount = coupon.type === 'percent' ? Math.floor(discountBase * coupon.value / 100) : Math.min(Math.floor(discountBase), Math.floor(coupon.value));
   return { code, discount: Math.max(0, discount), message: `${coupon.label} applied.` };
 }
 function orderTotals(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
-  const coupon = couponDiscount(subtotal, method);
+  const coupon = couponDiscount(cart, method);
   // COD fee waived on subtotal >= ₹999 (pushes customers to add more to cart)
   const codFee  = (method === 'cod' && subtotal < COD_FEE_WAIVER_THRESHOLD) ? COD_HANDLING_FEE : 0;
   const grand   = Math.max(1, subtotal + shipping + codFee - coupon.discount);
@@ -802,13 +823,15 @@ async function applyCoupon() {
     }
     return;
   }
-  // ── Static coupon flow ─────────────────────────────────────────────────
+  // Product-specific codes are fetched on demand as well as shown in the
+  // dropdown. Payment functions independently verify the product and price.
   if (!COUPONS[code]) {
-    if (msg) {
-      msg.textContent = 'This coupon code is not valid.';
-      msg.style.color = '#c97a7a';
+    if (msg) { msg.textContent = 'Checking coupon…'; msg.style.color = 'var(--cream-dim)'; }
+    await loadProductCoupons(getCart(), code);
+    if (!COUPONS[code]) {
+      if (msg) { msg.textContent = 'This coupon code is not valid for the products in your cart.'; msg.style.color = '#c97a7a'; }
+      return;
     }
-    return;
   }
   appliedCouponCode = code;
   appliedScratchCard = null;
@@ -819,6 +842,43 @@ async function applyCoupon() {
     select.value = hasVisibleOption ? code : '';
   }
   renderSummary();
+}
+
+let loadedProductCouponCartKey = '';
+async function loadProductCoupons(cart, requestedCode = '') {
+  const slugs = [...new Set(cart.map(couponItemSlug).filter(Boolean))];
+  if (!slugs.length) return;
+  const key = slugs.slice().sort().join(',');
+  if (!requestedCode && key === loadedProductCouponCartKey) return;
+  try {
+    const res = await fetch(`/.netlify/functions/product-coupons?slugs=${encodeURIComponent(slugs.join(','))}`, { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+    const select = document.getElementById('couponSelect');
+    if (select) select.querySelectorAll('[data-product-coupon]').forEach(option => option.remove());
+    (data.coupons || []).forEach(rule => {
+      COUPONS[rule.code] = {
+        type: rule.discount_type,
+        value: Number(rule.discount_value) || 0,
+        minSubtotal: Number(rule.min_subtotal_inr) || 0,
+        onlineOnly: rule.online_only !== false,
+        label: rule.label,
+        expiresAt: rule.expires_at,
+        productSlugs: rule.product_slugs || [],
+      };
+      if (select) {
+        const option = document.createElement('option');
+        option.value = rule.code;
+        option.dataset.productCoupon = '1';
+        const offer = rule.discount_type === 'percent' ? `${Number(rule.discount_value)}% off` : `₹${Number(rule.discount_value)} off`;
+        option.textContent = `${rule.code} · ${offer} · ${rule.label}`;
+        select.appendChild(option);
+      }
+    });
+    loadedProductCouponCartKey = key;
+  } catch (err) {
+    console.warn('Product coupons unavailable:', err.message);
+  }
 }
 
 // ── Render order summary ────────────────────────────────────────────────────
@@ -1279,7 +1339,7 @@ async function doPartialPayment(addr) {
   // Partial is COD-with-deposit — strip any prepaid-only coupon silently
   // (same UX as doCOD).
   if (appliedCouponCode) {
-    const codCheck = couponDiscount(cartSubtotal(cart), 'cod');
+    const codCheck = couponDiscount(cart, 'cod');
     if (codCheck.discount <= 0 && codCheck.message) {
       const removed = appliedCouponCode;
       appliedCouponCode = '';
@@ -1452,7 +1512,7 @@ async function doCOD(addr) {
   // scratch cards are both prepaid-only. The previous behaviour blocked
   // checkout with an alert until the user removed the code by hand.
   if (appliedCouponCode) {
-    const codCheck = couponDiscount(cartSubtotal(cart), 'cod');
+    const codCheck = couponDiscount(cart, 'cod');
     if (codCheck.discount <= 0 && codCheck.message) {
       const removed = appliedCouponCode;
       appliedCouponCode = '';
@@ -2000,6 +2060,7 @@ window.addrShowNewForm = function() {
 };
 
 // ── Init ───────────────────────────────────────────────────────────────────
+loadProductCoupons(getCart()).then(renderSummary);
 renderSummary();
 
 // When returning to checkout — including bfcache back/forward from a payment

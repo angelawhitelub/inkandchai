@@ -23,6 +23,7 @@ const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
+const { resolveProductCoupon } = require('./utils/product-coupons');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -57,10 +58,13 @@ function couponDiscount(subtotal, code) {
 }
 
 // Check static COUPONS first, then fall back to user-earned scratch cards
-async function resolveCouponDiscount(supabase, subtotal, rawCode) {
+async function resolveCouponDiscount(supabase, cart, subtotal, rawCode) {
   // Static check
   const staticResult = couponDiscount(subtotal, rawCode);
   if (staticResult.discount > 0) return { ...staticResult, source: 'static' };
+
+  const productResult = await resolveProductCoupon(supabase, cart, rawCode);
+  if (productResult.discount > 0) return productResult;
 
   // Scratch card check — normalize: keep dashes for scratch codes
   const scratchCode = String(rawCode || '').toUpperCase().trim();
@@ -165,7 +169,7 @@ exports.handler = async (event) => {
   }
   const subtotal    = priced.subtotal;
   const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-  let couponInfo    = await resolveCouponDiscount(_supabaseForCoupon, subtotal, coupon);
+  let couponInfo    = await resolveCouponDiscount(_supabaseForCoupon, cart, subtotal, coupon);
   const meta        = paymentMeta(cart);
   const isPartial   = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
 

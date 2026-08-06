@@ -19,6 +19,7 @@ const { resolveCartPrices } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
+const { resolveProductCoupon } = require('./utils/product-coupons');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -51,9 +52,12 @@ function staticCouponDiscount(subtotal, rawCode) {
   return { code, discount: Math.max(0, discount) };
 }
 
-async function resolveCoupon(supabase, subtotal, rawCode) {
+async function resolveCoupon(supabase, cart, subtotal, rawCode) {
   const staticHit = staticCouponDiscount(subtotal, rawCode);
   if (staticHit.discount > 0) return { ...staticHit, source: 'static' };
+
+  const productHit = await resolveProductCoupon(supabase, cart, rawCode);
+  if (productHit.discount > 0) return productHit;
 
   const scratchCode = String(rawCode || '').toUpperCase().trim();
   if (!scratchCode.startsWith('SCRATCH-')) return { code: '', discount: 0 };
@@ -115,7 +119,7 @@ exports.handler = async (event) => {
     }
 
     const shipping   = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-    const couponInfo = await resolveCoupon(supabase, subtotal, rawCoupon);
+    const couponInfo = await resolveCoupon(supabase, cart, subtotal, rawCoupon);
     const isPartial  = payment_mode === 'partial_cod';
     const fullTotal  = Math.max(1, subtotal + shipping - (isPartial ? 0 : couponInfo.discount));
     const charged    = isPartial ? Math.max(1, Math.ceil(fullTotal * 0.10)) : fullTotal;
