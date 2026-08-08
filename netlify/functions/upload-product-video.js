@@ -3,7 +3,16 @@
  * POST /.netlify/functions/upload-product-video
  *
  * Stores a "quality proof" clip (the real book — paper, print, binding) plus its
- * poster frame, and returns the public URLs. It does NOT touch the product row:
+ * poster frame on Cloudflare R2, and returns the public URLs.
+ *
+ * R2 because Cloudflare charges ZERO egress: a clip played thousands of times
+ * costs nothing, whereas on Supabase Storage it eats the 5 GB/month cached-egress
+ * cap and on Netlify it is billed bandwidth. Covers already live in the same
+ * bucket (scripts/upload-images-r2.mjs). Supabase Storage remains the fallback
+ * for when R2 is not configured, so a missing env var degrades instead of
+ * breaking the feature — check the returned `storage` field to see which ran.
+ *
+ * It does NOT touch the product row:
  * the admin panel takes the returned video URL and saves it through the existing
  * gallery "append" path, so the clip lands at the END of gallery_images, after
  * every cover image. That is also why nothing here needs a schema change —
@@ -28,6 +37,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { r2PutObject, r2Configured, r2Config } = require('./utils/r2-put');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -103,36 +113,56 @@ exports.handler = async (event) => {
   // One stem for both files so posterForVideo() in product-page.js resolves.
   const stem = `videos/${slug}-video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+  const videoKey = `${stem}.${ext}`;
+  const posterKey = `${stem}-poster.webp`;
+
   try {
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    await supabase.storage.createBucket(BUCKET, { public: true }).catch(() => {});
-
-    const { error: videoErr } = await supabase.storage
-      .from(BUCKET)
-      .upload(`${stem}.${ext}`, video, { contentType: videoType, upsert: false });
-    if (videoErr) throw videoErr;
-
+    // R2 when it is fully configured, Supabase Storage otherwise. R2 is strongly
+    // preferred: Cloudflare charges zero egress, so a clip played thousands of
+    // times costs nothing, while the same file on Supabase eats the 5 GB/month
+    // cached-egress cap. Partial R2 config falls back instead of half-working.
+    const useR2 = r2Configured();
+    let videoUrl = null;
     let posterUrl = null;
-    if (poster) {
-      // A missing poster costs a black first frame, not a broken gallery — so a
-      // poster failure must not lose the clip that already uploaded.
-      const { error: posterErr } = await supabase.storage
-        .from(BUCKET)
-        .upload(`${stem}-poster.webp`, poster, { contentType: 'image/webp', upsert: false });
-      if (posterErr) console.warn('[upload-product-video] poster failed:', posterErr.message);
-      else posterUrl = supabase.storage.from(BUCKET).getPublicUrl(`${stem}-poster.webp`).data?.publicUrl || null;
+
+    if (useR2) {
+      const cfg = r2Config();
+      videoUrl = await r2PutObject(cfg, { key: videoKey, body: video, contentType: videoType });
+      if (poster) {
+        // A missing poster costs a black first frame, not a broken gallery — so a
+        // poster failure must not lose the clip that already uploaded.
+        try {
+          posterUrl = await r2PutObject(cfg, { key: posterKey, body: poster, contentType: 'image/webp' });
+        } catch (e) { console.warn('[upload-product-video] R2 poster failed:', e.message); }
+      }
+    } else {
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      await supabase.storage.createBucket(BUCKET, { public: true }).catch(() => {});
+
+      const { error: videoErr } = await supabase.storage
+        .from(BUCKET).upload(videoKey, video, { contentType: videoType, upsert: false });
+      if (videoErr) throw videoErr;
+
+      if (poster) {
+        const { error: posterErr } = await supabase.storage
+          .from(BUCKET).upload(posterKey, poster, { contentType: 'image/webp', upsert: false });
+        if (posterErr) console.warn('[upload-product-video] poster failed:', posterErr.message);
+        else posterUrl = supabase.storage.from(BUCKET).getPublicUrl(posterKey).data?.publicUrl || null;
+      }
+
+      videoUrl = supabase.storage.from(BUCKET).getPublicUrl(videoKey).data?.publicUrl || null;
     }
 
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(`${stem}.${ext}`);
-    if (!data?.publicUrl) throw new Error('Could not create a public video URL');
+    if (!videoUrl) throw new Error('Could not create a public video URL');
 
     console.log(`[upload-product-video] ${slug}: ${(video.length / 1024).toFixed(0)} KB ${ext}`
-      + `${posterUrl ? ' + poster' : ' (no poster)'}`);
+      + `${posterUrl ? ' + poster' : ' (no poster)'} → ${useR2 ? 'R2' : 'Supabase Storage'}`);
     return json(200, {
       success: true,
-      video_url: data.publicUrl,
+      video_url: videoUrl,
       poster_url: posterUrl,
       bytes: video.length,
+      storage: useR2 ? 'r2' : 'supabase',
     });
   } catch (err) {
     console.error('[upload-product-video]', err.message);

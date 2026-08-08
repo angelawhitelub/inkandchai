@@ -22,12 +22,21 @@ function shortDescription(product) {
   return plainText(product.meta_description || product.description || fallback).slice(0, 160);
 }
 
+// Declared up here because proxifySupabaseImage needs it — see the fuller note
+// on the video-slide convention further down.
+const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(?=$|[?#])/i;
+
 // Route Supabase Storage image URLs through our Netlify image proxy so
 // Supabase egress isn't hit every time a crawler / Google Merchant / visitor
 // loads a product page. Anything else (local /images, external CDNs) is left
 // untouched. See netlify/functions/img-proxy.js for the cache policy.
 function proxifySupabaseImage(url) {
   try {
+    // /spimg/ routes to the image proxy, which cannot serve a video — an .mp4
+    // sent through it fails. A gallery video hosted on Supabase (the fallback
+    // when R2 is unconfigured) must be linked directly. R2 URLs are a different
+    // host and already fall through untouched below.
+    if (VIDEO_EXT.test(String(url || ''))) return url;
     const supaHost = process.env.SUPABASE_URL ? new URL(process.env.SUPABASE_URL).host : null;
     if (!supaHost) return url;
     const u = new URL(url);
@@ -66,12 +75,15 @@ function cdnImage(url, width, absolute = false) {
 //
 // Convention (no schema change, no migration): any gallery_images entry ending
 // in .mp4/.webm/.mov/.m4v is a video. Its poster frame is the same URL with the
-// extension swapped for "-poster.webp", uploaded alongside it by
+// extension swapped for "-poster.webp", uploaded alongside it by the admin
+// panel's video uploader (netlify/functions/upload-product-video.js) or by
 // scripts/upload-product-video-r2.mjs. Videos MUST be hosted on R2
 // (pub-….r2.dev) — Cloudflare charges zero egress, so an 8 MB clip costs
 // nothing, whereas the same file on Netlify or Supabase would eat the bandwidth
 // quota in a day.
-const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(?=$|[?#])/i;
+//
+// VIDEO_EXT itself is declared near the top of the file, because
+// proxifySupabaseImage has to consult it before rewriting anything.
 function isVideoUrl(url) { return VIDEO_EXT.test(String(url || '')); }
 function posterForVideo(url) { return String(url || '').replace(VIDEO_EXT, '-poster.webp'); }
 
