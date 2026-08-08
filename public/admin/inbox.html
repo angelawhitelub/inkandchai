@@ -27,7 +27,7 @@ nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-
 .logo span{font-size:0.7rem;color:var(--cream-dim);font-weight:700;font-style:italic;margin-left:.4rem}
 .nav-right{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
 button{font-family:inherit}
-.btn{font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;padding:.5rem 1rem;
+.btn{font-size:0.8rem;letter-spacing:.08em;text-transform:uppercase;padding:.5rem 1rem;
      border:1px solid var(--border);background:#fff;color:var(--cream);cursor:pointer;border-radius:6px;font-weight:700}
 .btn:hover{background:var(--bg2)}
 .btn.gold{background:var(--gold);color:#fff;border-color:var(--gold)}
@@ -37,34 +37,51 @@ button{font-family:inherit}
 
 /* ── view switch ────────────────────────────────────────────────────────── */
 .viewtabs{display:flex;gap:.35rem}
-.viewtab{font-size:.75rem;font-weight:700;padding:.5rem 1rem;border:1px solid var(--border);background:#fff;
+.viewtab{font-size:.88rem;font-weight:700;padding:.5rem 1.05rem;border:1px solid var(--border);background:#fff;
          color:var(--cream-dim);cursor:pointer;border-radius:6px}
 .viewtab.active{background:var(--gold);color:#fff;border-color:var(--gold)}
-.viewtab .count{background:var(--red);color:#fff;border-radius:9px;padding:0 .4rem;font-size:.65rem;margin-left:.35rem}
+.viewtab .count{background:var(--red);color:#fff;border-radius:9px;padding:0 .4rem;font-size:.75rem;margin-left:.35rem}
 main{flex:1;min-height:0;display:flex}
 .view{display:none;flex:1;min-height:0}
 .view.active{display:flex}
 
 /* ── inbox ──────────────────────────────────────────────────────────────── */
-.sidebar{width:340px;flex:0 0 340px;border-right:1px solid var(--border);background:var(--bg2);
+/* Sized to read like WhatsApp Desktop rather than like a dense data table:
+   a 56px row with an avatar, a 15px name, a 14px preview and a 12px timestamp.
+   The previous 11-13px text was unreadable at a glance on a large screen. */
+.sidebar{width:400px;flex:0 0 400px;border-right:1px solid var(--border);background:var(--bg2);
          display:flex;flex-direction:column;min-height:0}
-.sidebar .tools{padding:.6rem;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:.45rem}
-.sidebar input[type=search]{width:100%;padding:.5rem .7rem;font-size:.85rem;font-family:inherit;
-  border:1px solid var(--border);background:#fff;color:var(--cream);border-radius:6px}
-.filters{display:flex;gap:.3rem;flex-wrap:wrap}
-.fbtn{font-size:.68rem;font-weight:700;padding:.3rem .6rem;border:1px solid var(--border);background:#fff;
+.sidebar .tools{padding:.75rem;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:.55rem}
+.sidebar input[type=search]{width:100%;padding:.6rem .85rem;font-size:.95rem;font-family:inherit;
+  border:1px solid var(--border);background:#fff;color:var(--cream);border-radius:8px}
+.sidebar input[type=search]:focus{outline:2px solid var(--gold);outline-offset:-1px}
+.filters{display:flex;gap:.35rem;flex-wrap:wrap}
+.fbtn{font-size:.8rem;font-weight:700;padding:.35rem .75rem;border:1px solid var(--border);background:#fff;
       color:var(--cream-dim);cursor:pointer;border-radius:20px}
 .fbtn.active{background:var(--gold);color:#fff;border-color:var(--gold)}
 .convlist{flex:1;overflow-y:auto;min-height:0}
-.conv{padding:.65rem .8rem;border-bottom:1px solid var(--border);cursor:pointer;display:block;width:100%;text-align:left;
-      background:transparent;border-left:3px solid transparent}
+.conv{padding:.7rem .85rem;cursor:pointer;width:100%;text-align:left;font-family:inherit;
+      background:transparent;border:0;border-bottom:1px solid var(--border);border-left:3px solid transparent;
+      display:grid;grid-template-columns:auto 1fr;gap:.75rem;align-items:center}
 .conv:hover{background:#fff}
 .conv.active{background:#fff;border-left-color:var(--gold)}
+/* Avatar: initials on a colour derived from the phone number, so the same
+   customer keeps the same colour and rows are distinguishable at a glance. */
+.conv .av{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+          font-size:1rem;font-weight:700;color:#fff;flex:0 0 auto;letter-spacing:.02em}
+.conv .body{min-width:0;display:block}
 .conv .top{display:flex;justify-content:space-between;gap:.5rem;align-items:baseline}
-.conv .who{font-weight:700;font-size:.84rem;color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.conv .when{font-size:.66rem;color:var(--cream-dim);flex:0 0 auto}
-.conv .prev{font-size:.75rem;color:var(--cream-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:.15rem}
-.badge{display:inline-block;font-size:.6rem;font-weight:700;padding:.1rem .4rem;border-radius:4px;margin-right:.25rem}
+.conv .who{font-weight:700;font-size:.95rem;color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv .when{font-size:.72rem;color:var(--cream-dim);flex:0 0 auto}
+.conv.unread .when{color:var(--green);font-weight:700}
+.conv .prev{font-size:.85rem;color:var(--cream-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+            margin-top:.2rem;display:flex;align-items:center;gap:.3rem}
+.conv .prevtext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Unread count sits right, as a green pill — WhatsApp's own affordance. */
+.conv .unread{margin-left:auto;flex:0 0 auto;background:var(--green);color:#fff;font-size:.72rem;font-weight:700;
+              min-width:1.35rem;height:1.35rem;padding:0 .4rem;border-radius:1rem;
+              display:inline-flex;align-items:center;justify-content:center}
+.badge{display:inline-block;font-size:.68rem;font-weight:700;padding:.12rem .45rem;border-radius:5px;flex:0 0 auto}
 .b-unread{background:var(--red);color:#fff}
 .b-human{background:#e7f0fb;color:#12539b}
 .b-resolved{background:#eaf7ee;color:var(--green)}
@@ -73,31 +90,33 @@ main{flex:1;min-height:0;display:flex}
 .b-medium{background:#fdf3e3;color:var(--orange)}
 
 .thread{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg3)}
-.empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--cream-dim);font-size:.9rem}
+.empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--cream-dim);font-size:1rem}
 .thead{padding:.7rem 1rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;
        gap:.6rem;flex-wrap:wrap;align-items:center;flex:0 0 auto}
-.thead .name{font-weight:700;font-size:.95rem}
-.thead .ph{font-size:.72rem;color:var(--cream-dim)}
+.thead .name{font-weight:700;font-size:1.1rem}
+.thead .ph{font-size:.85rem;color:var(--cream-dim)}
 .tactions{display:flex;gap:.4rem;flex-wrap:wrap}
-.msgs{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.55rem;min-height:0}
-.msg{max-width:74%;padding:.55rem .8rem;border-radius:12px;font-size:.86rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
-.msg .meta{font-size:.62rem;color:var(--cream-dim);margin-top:.25rem}
+.msgs{flex:1;overflow-y:auto;padding:1.1rem 1.4rem;display:flex;flex-direction:column;gap:.5rem;min-height:0}
+.msg{max-width:66%;padding:.6rem .85rem;border-radius:12px;font-size:1rem;line-height:1.45;white-space:pre-wrap;word-break:break-word;
+     box-shadow:0 1px 1px rgba(0,0,0,.06)}
+/* Timestamp tucks to the bottom-right of the bubble, WhatsApp-style. */
+.msg .meta{font-size:.72rem;color:var(--cream-dim);margin-top:.2rem;text-align:right}
 .m-user{align-self:flex-start;background:var(--bg2);border:1px solid var(--border)}
 .m-bot{align-self:flex-end;background:#fdf6e6;border:1px solid #e6d6ac}
 .m-admin{align-self:flex-end;background:#e7f0fb;border:1px solid #b9d3f0}
 .msg.pending{opacity:.55}
-.newdivider{align-self:center;font-size:.62rem;font-weight:700;color:var(--red);letter-spacing:.1em;text-transform:uppercase;
-            padding:.15rem .6rem;border-top:1px solid rgba(180,35,44,.3);width:100%;text-align:center}
-.composer{flex:0 0 auto;border-top:1px solid var(--border);padding:.6rem;display:flex;gap:.5rem;align-items:flex-end}
-.composer textarea{flex:1;padding:.6rem .8rem;font-family:inherit;font-size:.88rem;border:1px solid var(--border);
-  background:#fff;color:var(--cream);border-radius:8px;resize:vertical;min-height:2.6rem;max-height:9rem}
+.newdivider{align-self:center;font-size:.72rem;font-weight:700;color:var(--red);letter-spacing:.1em;text-transform:uppercase;
+            padding:.2rem .6rem;border-top:1px solid rgba(180,35,44,.3);width:100%;text-align:center}
+.composer{flex:0 0 auto;border-top:1px solid var(--border);padding:.7rem .9rem;display:flex;gap:.5rem;align-items:flex-end}
+.composer textarea{flex:1;padding:.7rem .9rem;font-family:inherit;font-size:1rem;line-height:1.45;border:1px solid var(--border);
+  background:#fff;color:var(--cream);border-radius:10px;resize:vertical;min-height:2.9rem;max-height:9rem}
 .jump{position:absolute;right:1.4rem;bottom:5.2rem;z-index:5}
 
 /* ── triage ─────────────────────────────────────────────────────────────── */
 .triage{flex:1;overflow-y:auto;padding:1.1rem 1.4rem;min-height:0}
 .triage-head{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:.9rem}
 .triage h1{font-family:'DM Serif Display',serif;font-size:1.5rem;font-weight:400}
-.triage .sub{font-size:.8rem;color:var(--cream-dim)}
+.triage .sub{font-size:.9rem;color:var(--cream-dim)}
 .card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;margin-bottom:.7rem;
       box-shadow:var(--shadow);border-left:5px solid var(--border)}
 .card.critical{border-left-color:var(--red)}
@@ -105,11 +124,11 @@ main{flex:1;min-height:0;display:flex}
 .card.medium{border-left-color:var(--gold-light)}
 .card .row1{display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:baseline}
 .card .who{font-weight:700;font-size:1rem}
-.card .score{font-size:.72rem;font-weight:700;color:var(--cream-dim)}
-.quote{margin:.5rem 0;padding:.5rem .75rem;background:var(--bg2);border-left:3px solid var(--border);
-       font-size:.85rem;font-style:italic;color:var(--cream);white-space:pre-wrap;word-break:break-word}
+.card .score{font-size:.82rem;font-weight:700;color:var(--cream-dim)}
+.quote{margin:.5rem 0;padding:.55rem .8rem;background:var(--bg2);border-left:3px solid var(--border);
+       font-size:.95rem;font-style:italic;color:var(--cream);white-space:pre-wrap;word-break:break-word}
 .reasons{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.4rem}
-.reason{font-size:.68rem;font-weight:700;padding:.2rem .5rem;border-radius:5px;background:#fdecea;color:var(--red)}
+.reason{font-size:.78rem;font-weight:700;padding:.22rem .55rem;border-radius:5px;background:#fdecea;color:var(--red)}
 .reason.neg{background:#eaf7ee;color:var(--green)}
 .card .foot{display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.6rem}
 .card .orders{font-size:.72rem;color:var(--cream-dim)}
@@ -236,6 +255,26 @@ function ago(ts) {
   return Math.round(m / 1440) + 'd';
 }
 
+// Up to two initials from a name; for a bare phone number the last two digits,
+// which is the part an operator actually recognises.
+function initials(label) {
+  const s = String(label || '').trim();
+  if (!s) return '?';
+  if (/^[+\d][\d\s-]*$/.test(s)) return s.replace(/\D/g, '').slice(-2) || '#';
+  const words = s.split(/\s+/).filter(Boolean);
+  return ((words[0][0] || '') + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
+}
+
+// Stable per-phone hue so a conversation keeps its colour between refreshes.
+const AVATAR_COLORS = ['#8b5a2b', '#176b35', '#12539b', '#8a2f6b', '#b4232c',
+                       '#c07a12', '#2b6f74', '#5a4b9b'];
+function avatarColor(phone) {
+  const s = String(phone || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // State
 // ═══════════════════════════════════════════════════════════════════════════
@@ -305,18 +344,23 @@ function renderList() {
   if (!list.length) { el.innerHTML = '<div class="spin">No conversations match.</div>'; return; }
   el.innerHTML = list.map(c => {
     const flag = flaggedPhones.get(c.customer_phone);
-    return `<button class="conv ${c.customer_phone === activePhone ? 'active' : ''}" onclick="openThread('${esc(c.customer_phone)}')">
-      <div class="top">
-        <span class="who">${esc(c.customer_name || c.customer_phone)}</span>
-        <span class="when">${ago(c.last_message_at)}</span>
-      </div>
-      <div class="prev">
-        ${flag ? `<span class="badge b-${flag.severity}">${flag.severity === 'critical' ? '🚨' : '⚠'} ${flag.score}</span>` : ''}
-        ${c.unread_count > 0 ? `<span class="badge b-unread">${c.unread_count}</span>` : ''}
-        ${c.human_takeover ? '<span class="badge b-human">HUMAN</span>' : ''}
-        ${c.status === 'resolved' ? '<span class="badge b-resolved">DONE</span>' : ''}
-        ${esc((c.last_message || '').slice(0, 70))}
-      </div>
+    const label = c.customer_name || c.customer_phone;
+    const unread = Number(c.unread_count || 0);
+    return `<button class="conv ${c.customer_phone === activePhone ? 'active' : ''} ${unread > 0 ? 'unread' : ''}" onclick="openThread('${esc(c.customer_phone)}')">
+      <span class="av" style="background:${avatarColor(c.customer_phone)}">${esc(initials(label))}</span>
+      <span class="body">
+        <span class="top">
+          <span class="who">${esc(label)}</span>
+          <span class="when">${ago(c.last_message_at)}</span>
+        </span>
+        <span class="prev">
+          ${flag ? `<span class="badge b-${flag.severity}">${flag.severity === 'critical' ? '🚨' : '⚠'} ${flag.score}</span>` : ''}
+          ${c.human_takeover ? '<span class="badge b-human">HUMAN</span>' : ''}
+          ${c.status === 'resolved' ? '<span class="badge b-resolved">DONE</span>' : ''}
+          <span class="prevtext">${esc((c.last_message || '').slice(0, 90))}</span>
+          ${unread > 0 ? `<span class="unread">${unread > 99 ? '99+' : unread}</span>` : ''}
+        </span>
+      </span>
     </button>`;
   }).join('');
 }
