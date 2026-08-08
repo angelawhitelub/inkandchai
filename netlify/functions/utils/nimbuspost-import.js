@@ -13,6 +13,7 @@
  */
 
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./np-normalize');
+const { isReplacementOrder } = require('./replacement-order');
 
 const NP_ORDER_URL = 'https://ship.nimbuspost.com/api/orders/create';
 
@@ -61,24 +62,34 @@ async function buildPayload(order, opts = {}) {
   const amountRs = Math.max(0, Number(order.amount_paise || 0) / 100);
   const itemSubtotal = items.reduce((s, i) => s + (Number(i.price || 0) * Math.max(1, Number(i.qty || i.quantity || 1))), 0);
   const paymentMeta = items[0]?._payment || {};
+  // A replacement's cart is copied from the original order, so it inherits that
+  // order's _payment meta — including a partial-COD balance that was already
+  // collected once. Rule it out before any of the money tests run.
+  const isReplacement = isReplacementOrder(order, items);
   // Decide COD on captured money, not on the status label — same rule as
   // nimbuspost-order-push.js. A status-only test ships anything in another
   // status ('confirmed' from the admin dropdown, 'paid' written by the Razorpay
   // webhook before it knew the order was partial COD) as prepaid, and then the
   // courier collects nothing at the door.
-  const isPartialCod = order.status === 'partial_cod_pending'
+  const isPartialCod = !isReplacement && (order.status === 'partial_cod_pending'
     || Number(order.advance_paid_paise || 0) > 0
-    || Number(paymentMeta.balance || 0) > 0;
-  const amount = Math.round(isPartialCod
+    || Number(paymentMeta.balance || 0) > 0);
+  // What the courier collects. For a replacement amount_paise is authoritative
+  // — 0 means free — so the itemSubtotal fallback must NOT apply: the subtotal
+  // is what the customer already paid on the original order.
+  const collectable = Math.round(isPartialCod
     ? Math.max(0, Number(paymentMeta.balance || 0))
-    : (amountRs || itemSubtotal));
+    : (isReplacement ? amountRs : (amountRs || itemSubtotal)));
   const totalQty = items.reduce((s, i) => s + Math.max(1, Number(i.qty || i.quantity || 1)), 0) || 1;
   const name = splitName(order.customer_name);
   const addr = await enrichAddress(parseAddress(order.customer_address));  // fills city/state from pincode
   const phone = normalizeIndianPhone(order.customer_phone);
   const fullyPrepaid = !isPartialCod
     && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
-  const isCod = isPartialCod || (!fullyPrepaid && amount > 0);
+  const isCod = isPartialCod || (!fullyPrepaid && collectable > 0);
+  // `amount` doubles as the declared value of the parcel, so a free replacement
+  // still declares the books' worth — it just isn't collected.
+  const amount = isCod ? collectable : Math.round(collectable || itemSubtotal);
 
   if (!phone) throw new Error('Customer phone must contain a valid 10-digit mobile number');
   if (!addr.pincode) throw new Error('Customer address has no 6-digit pincode');

@@ -29,6 +29,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier } = require('./utils/nimbuspost-import');
 const { requireAdmin } = require('./utils/admin-auth');
+const { isReplacementOrder } = require('./utils/replacement-order');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 
@@ -253,9 +254,14 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   // Order matters here: a partial-COD deposit IS a captured online payment, so
   // the partial test must run BEFORE the prepaid test or every partial COD would
   // look fully paid and collect nothing.
-  const isPartialCod = order.status === 'partial_cod_pending'
+  // A replacement's cart is copied from the original order, so _payment (and
+  // with it a partial-COD balance the customer already settled) rides along.
+  // Excluding replacements here is what stops a free reship from being sent out
+  // collecting the original order's balance a second time.
+  const isReplacement = isReplacementOrder(order);
+  const isPartialCod = !isReplacement && (order.status === 'partial_cod_pending'
     || Number(order.advance_paid_paise || 0) > 0
-    || partialBalanceRs > 0;
+    || partialBalanceRs > 0);
   // Fully prepaid = a gateway payment covering the whole order (razorpay_payment_id
   // holds PhonePe ids too — see phonepe-refund.js), or an explicit 'paid'.
   const fullyPrepaid = !isPartialCod
@@ -270,7 +276,14 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   }
 
   // order_amount = declared value of goods (full order); collectable_amount = cash to collect.
-  const orderValueRs      = isPartialCod ? partialFullRs : amountRs;
+  // A free replacement has amount_paise 0, which would declare a ₹0 parcel —
+  // fall back to what the books are worth for the declared value only. The
+  // collectable stays 0 because isCOD is false.
+  const replacementValueRs = isReplacement
+    ? Math.round((Array.isArray(order.cart_items) ? order.cart_items : [])
+      .reduce((sum, i) => sum + (Number(i?.price || 0) * Math.max(1, Number(i?.qty || i?.quantity || 1))), 0))
+    : 0;
+  const orderValueRs      = isPartialCod ? partialFullRs : (amountRs || replacementValueRs);
   const collectableAmount = isPartialCod ? partialBalanceRs : (isCOD ? amountRs : 0);
 
   // ── Serviceability → pick courier by PRIORITY ladder ─────────────────────

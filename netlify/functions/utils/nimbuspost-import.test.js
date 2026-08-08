@@ -47,3 +47,68 @@ test('a genuinely prepaid order stays prepaid at its full charged amount', async
   assert.equal(p.payment_method, 'prepaid');
   assert.equal(p.amount, 625);
 });
+
+// ── Replacements ────────────────────────────────────────────────────────────
+// Regression: IC-R-20260808-BG7VM shipped as COD ₹179. A free reshipment has
+// amount_paise 0, and the `amountRs || itemSubtotal` fallback read that 0 as
+// "missing" and substituted the price the customer had ALREADY paid on the
+// original order — so the courier arrived asking them to pay twice for a book
+// we'd failed to send. Every replacement in the table had gone out this way.
+const replacementCart = [
+  { title: 'The Art of Letting Go', qty: 1, price: 179,
+    _replacement: { original_order_id: 'IC-20260801-ABCDE', reason: 'missing_item' } },
+];
+const replBase = {
+  razorpay_order_id: 'IC-R-20260808-BG7VM',
+  customer_name: 'Sneha Prabhu',
+  customer_phone: '8601153704',
+  customer_address: 'Rauta Par, Marwa nagar rd., Basti, Uttar Pradesh, 272001',
+  amount_paise: 0,
+  status: 'replacement_pending',
+  source: 'replacement',
+  cart_items: replacementCart,
+};
+
+test('a free replacement ships prepaid, collecting nothing', async () => {
+  const p = await buildPayload(replBase);
+  assert.equal(p.payment_method, 'prepaid');
+});
+
+test('a free replacement still declares the books\' value on the label', async () => {
+  const p = await buildPayload(replBase);
+  assert.equal(p.amount, 179);   // declared, not collected
+});
+
+test('a replacement the customer agreed to pay for is still COD', async () => {
+  // admin-create-replacement sets amount_rs deliberately for a paid reship.
+  const p = await buildPayload({ ...replBase, amount_paise: 5000 });
+  assert.equal(p.payment_method, 'COD');
+  assert.equal(p.amount, 50);
+});
+
+test('a replacement of a partial-COD order does not inherit its balance', async () => {
+  // The cart is copied from the original, so _payment rides along; without the
+  // replacement guard the courier would re-collect ₹561.91.
+  const p = await buildPayload({
+    ...replBase,
+    cart_items: [{ ...replacementCart[0], _payment: partialCart[0]._payment }],
+  });
+  assert.equal(p.payment_method, 'prepaid');
+  assert.equal(p.amount, 179);
+});
+
+test('a replacement is recognised from its id alone on legacy rows', async () => {
+  const { source, status, ...noMarkers } = replBase;
+  const p = await buildPayload({ ...noMarkers, cart_items: [{ title: 'X', qty: 1, price: 249 }] });
+  assert.equal(p.payment_method, 'prepaid');
+});
+
+test('an ordinary order with no amount still falls back to the subtotal', async () => {
+  // The fallback exists for real reasons; only replacements opt out of it.
+  const p = await buildPayload({
+    ...base, status: 'cod_pending', amount_paise: 0, razorpay_order_id: 'IC-20260808-PLAIN',
+    cart_items: [{ title: 'A', qty: 2, price: 150 }],
+  });
+  assert.equal(p.payment_method, 'COD');
+  assert.equal(p.amount, 300);
+});

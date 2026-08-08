@@ -1401,6 +1401,9 @@ select,input,textarea{font-size:1rem;}
         <button class="btn-outline" onclick="refreshReplacementRequests(this)">↻ Refresh</button>
       </div>
     </div>
+    <input class="search-box" id="replacementSearch" style="margin-bottom:0.6rem;"
+           placeholder="🔍  Replacement ID · Original order ID · Name · Phone · Email · Book · Reason"
+           oninput="renderReplacementRequests()"/>
     <div class="hint" id="replacementRequestsMeta" style="margin-bottom:0.8rem;">Loading replacement requests…</div>
     <div class="tbl-wrap" style="box-shadow:none;">
       <table class="mini-table">
@@ -2318,6 +2321,12 @@ async function fetchOrders(reset = false) {
     document.getElementById('adminTabBar').style.display = 'flex';
     applyRoleVisibility();
     initTabFromHash();
+    // Returns are keyed by the original order id and are shown as a link on the
+    // order's own row, so they have to be loaded even when the Returns tab was
+    // never opened. Non-fatal: the orders table renders fine without them.
+    if (!allReturns().length) {
+      Promise.resolve().then(() => fetchReturnRequests()).then(() => renderTable()).catch(() => {});
+    }
 
     // Render immediately; DOM pagination limits this to 50 rows by default.
     if (!usedCache) {
@@ -2432,6 +2441,76 @@ function itemUnit(i) { const p = Number(i?.price); return Number.isFinite(p) && 
 function itemLineTotal(i) { return itemUnit(i) * itemQty(i); }
 function itemsSubtotal(items) {
   return (Array.isArray(items) ? items : []).reduce((s, i) => s + itemLineTotal(i), 0);
+}
+
+// ── Linked replacements / returns ───────────────────────────────────────────
+// A replacement lives in `orders` as its own IC-R- row pointing back at the
+// original through cart_items[0]._replacement.original_order_id; a return lives
+// in a separate table keyed by the original's display id. Neither is visible
+// from the original order's own row, so searching an order id used to show only
+// half the story. Index both by original id once per render.
+let _linkedIndex = { key: '', byOriginal: new Map() };
+
+function replacementOriginalId(order) {
+  const items = Array.isArray(order?.cart_items) ? order.cart_items : [];
+  const meta = items.find(i => i && i._replacement)?._replacement;
+  return meta?.original_order_id ? String(meta.original_order_id) : '';
+}
+
+function allReturns() {
+  return typeof allReturnRequests !== 'undefined' && Array.isArray(allReturnRequests) ? allReturnRequests : [];
+}
+
+function linkedRecordsFor(order) {
+  const key = `${allOrders.length}|${allReturns().length}`;
+  if (_linkedIndex.key !== key) {
+    const byOriginal = new Map();
+    const add = (originalId, entry) => {
+      if (!originalId) return;
+      const k = String(originalId).toLowerCase();
+      if (!byOriginal.has(k)) byOriginal.set(k, []);
+      byOriginal.get(k).push(entry);
+    };
+    for (const o of allOrders) {
+      const orig = replacementOriginalId(o);
+      if (orig) add(orig, { kind: 'replacement', id: o.razorpay_order_id || o.id, rowId: o.id, status: o.status || '' });
+    }
+    for (const r of allReturns()) {
+      add(r.order_display_id || r.order_id, { kind: 'return', id: r.order_display_id || r.order_id, status: r.status || 'pending' });
+    }
+    _linkedIndex = { key, byOriginal };
+  }
+  const id = String(order?.razorpay_order_id || order?.id || '').toLowerCase();
+  return id ? (_linkedIndex.byOriginal.get(id) || []) : [];
+}
+
+function linkedRecordsHtml(order) {
+  const linked = linkedRecordsFor(order);
+  if (!linked.length) return '';
+  return linked.map(l => {
+    const label = l.kind === 'replacement' ? '🔄 Replacement' : '↩ Return request';
+    const colour = l.kind === 'replacement' ? '109,191,109' : '232,160,48';
+    const status = String(l.status || '').replace(/_/g, ' ');
+    const jump = l.kind === 'replacement'
+      ? ` onclick="event.preventDefault(); searchOrders('${esc(String(l.id))}')" href="#"`
+      : ' onclick="event.preventDefault(); switchTab(\'returns\')" href="#"';
+    return `<a${jump} title="${label} raised against this order — click to open"
+      style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;background:rgba(${colour},0.12);border:1px solid rgba(${colour},0.4);color:rgb(${colour});font-weight:600;text-decoration:none;">
+      ${label}${l.kind === 'replacement' ? ` · ${esc(String(l.id))}` : ''}${status ? ` · ${esc(status)}` : ''}</a>`;
+  }).join('');
+}
+
+// Put a value in the orders search box and run the filter. Used by every
+// "jump to the linked order" affordance.
+function searchOrders(value) {
+  switchTab('orders');
+  const box = document.getElementById('searchBox');
+  if (box) box.value = value || '';
+  // Clear any status slice first: jumping to one specific order and landing on
+  // "no results" because the Unshipped tab was active is just confusing.
+  if (typeof setFilter === 'function') setFilter(null, '');
+  applyFilters();
+  setTimeout(() => document.getElementById('ordersTableSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
 }
 
 function itemLineHtml(i) {
@@ -2870,8 +2949,13 @@ function applyFilters() {
     }
     // Search
     if (q) {
+      // Searching an original order id must also surface its replacement row,
+      // and searching a replacement id must surface the original — otherwise
+      // half of what happened to that customer stays hidden.
+      const linked = linkedRecordsFor(o).map(l => l.id);
       const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
-                   o.customer_email, o.customer_address].join(' ').toLowerCase();
+                   o.customer_email, o.customer_address,
+                   replacementOriginalId(o), ...linked].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     // Date range
@@ -2985,8 +3069,11 @@ function _drawTable() {
           const meta = Array.isArray(o.cart_items) && o.cart_items[0]?._replacement;
           const orig = meta?.original_order_id ? esc(meta.original_order_id) : '';
           const reasonLabel = meta?.reason_label ? esc(meta.reason_label) : '';
-          return `<div title="Replacement of ${orig}${reasonLabel ? ' — ' + reasonLabel : ''}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;font-weight:600;">🔄 Replacement${orig ? ` · <a href="#" onclick="event.preventDefault(); document.getElementById('searchInput').value='${orig}'; if(window.applyFilters) applyFilters(); else if(window.renderOrders) renderOrders();" style="color:#6dbf6d;text-decoration:underline;">${orig}</a>` : ''}</div>`;
+          // The jump used to target #searchInput, which does not exist — the
+          // link threw and nothing happened. The search box is #searchBox.
+          return `<div title="Replacement of ${orig}${reasonLabel ? ' — ' + reasonLabel : ''}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;font-weight:600;">🔄 Replacement${orig ? ` · <a href="#" onclick="event.preventDefault(); searchOrders('${orig}')" style="color:#6dbf6d;text-decoration:underline;">${orig}</a>` : ''}</div>`;
         })() : ''}
+        ${linkedRecordsHtml(o)}
       </td>
       <td style="font-size:0.65rem;color:var(--cream-dim);white-space:nowrap;">${date}</td>
       <td>
@@ -6692,6 +6779,20 @@ function replacementRequestRows() {
     });
 }
 
+// Everything worth typing into the Replacements search: both order ids, the
+// customer, the books, the reason and what the customer actually wrote.
+function replacementHaystack(order) {
+  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const req = items.find(i => i && i._replacement)?._replacement || {};
+  return [
+    order.razorpay_order_id, order.id, req.original_order_id,
+    order.customer_name, order.customer_phone, order.customer_email,
+    order.status, order.tracking_id, order.courier_name,
+    req.reason, req.reason_label, req.note, req.customer_comment,
+    ...items.map(i => i?.title || i?.name || ''),
+  ].join(' ').toLowerCase();
+}
+
 function renderReplacementRequests() {
   const body = document.getElementById('replacementRequestsBody');
   const empty = document.getElementById('replacementRequestsEmpty');
@@ -6699,11 +6800,20 @@ function renderReplacementRequests() {
   const badge = document.getElementById('replacementRequestsBadge');
   if (!body || !empty || !metaEl || !badge) return;
 
-  const rows = replacementRequestRows();
-  const pending = rows.filter(o => o.status === 'replacement_pending').length;
+  const all = replacementRequestRows();
+  // The badge and the "awaiting action" count describe the whole queue, not the
+  // current search — a filtered count there would read as work disappearing.
+  const pending = all.filter(o => o.status === 'replacement_pending').length;
   badge.textContent = pending;
   badge.style.display = pending ? '' : 'none';
-  metaEl.textContent = `${rows.length.toLocaleString('en-IN')} request${rows.length === 1 ? '' : 's'} · ${pending.toLocaleString('en-IN')} awaiting action`;
+
+  const q = (document.getElementById('replacementSearch')?.value || '').toLowerCase().trim();
+  const rows = q ? all.filter(o => replacementHaystack(o).includes(q)) : all;
+
+  metaEl.textContent = q
+    ? `${rows.length.toLocaleString('en-IN')} of ${all.length.toLocaleString('en-IN')} request${all.length === 1 ? '' : 's'} match “${q}” · ${pending.toLocaleString('en-IN')} awaiting action overall`
+    : `${all.length.toLocaleString('en-IN')} request${all.length === 1 ? '' : 's'} · ${pending.toLocaleString('en-IN')} awaiting action`;
+  empty.textContent = q ? 'No replacement requests match that search.' : 'No replacement requests found.';
   empty.style.display = rows.length ? 'none' : '';
 
   body.innerHTML = rows.map(o => {
@@ -6734,7 +6844,8 @@ function renderReplacementRequests() {
       <td style="white-space:nowrap;">${esc(date)}</td>
       <td>
         <div class="order-id">${esc(replacementId)}</div>
-        <div class="cust-sub">Original: ${esc(originalId)}</div>
+        <div class="cust-sub">Original: ${originalId === '—' ? '—'
+          : `<a href="#" onclick="event.preventDefault(); searchOrders('${esc(originalId)}')" title="Open the original order" style="color:var(--gold);text-decoration:underline;">${esc(originalId)}</a>`}</div>
       </td>
       <td>
         <div class="cust-name">${esc(o.customer_name || '—')}</div>
@@ -6847,11 +6958,7 @@ async function saveReplacementItems(encodedRowId) {
 function openReplacementInOrders(encodedRowId) {
   const rowId = decodeURIComponent(encodedRowId || '');
   const order = allOrders.find(o => String(o.id || '') === rowId);
-  switchTab('orders');
-  const search = document.getElementById('searchBox');
-  if (search) search.value = order?.razorpay_order_id || rowId;
-  applyFilters();
-  setTimeout(() => document.getElementById('ordersTableSection')?.scrollIntoView({ behavior:'smooth', block:'start' }), 0);
+  searchOrders(order?.razorpay_order_id || rowId);
 }
 
 async function refreshReplacementRequests(btn) {
