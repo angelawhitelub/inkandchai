@@ -31,6 +31,7 @@ const { generateCardForOrder } = require('./utils/scratch-cards');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { sendRefundInitiated } = require('./utils/refund-notifications');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
+const { PAYMENT_FAILED_REASON } = require('./utils/payment-failed');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -326,6 +327,16 @@ exports.handler = async (event) => {
       update.refund_updated_at = new Date().toISOString();
       if (refundMerchantId) update.refund_id = refundMerchantId;
       if (update.refund_state === 'COMPLETED') update.refund_last_error = null;
+    } else if (dbStatus === 'cancelled') {
+      // FAILED/DECLINED payment. A failed attempt still carries a txn id, but
+      // writing it into razorpay_payment_id made the order indistinguishable
+      // from a paid one: the refund cron treats 'cancelled' + a non-'pay_' id as
+      // money owed, tried to refund it, and PhonePe answered "Order not in
+      // completed state" — 89 orders ended up stuck in that loop. Leave the
+      // payment id null (nothing was captured) and record why it was cancelled.
+      update.cancellation_reason = PAYMENT_FAILED_REASON;
+      if (!existing?.cancelled_at) update.cancelled_at = new Date().toISOString();
+      if (txnId) console.log(`[PHONEPE] ${orderId} payment failed, txn ${txnId} (not stored as a payment id)`);
     } else {
       // A refund transaction id is not the original payment id, and a partial
       // refund amount is not the order total. Preserve both on refund events.

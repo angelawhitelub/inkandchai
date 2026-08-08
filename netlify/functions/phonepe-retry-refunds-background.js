@@ -29,6 +29,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
 const { sendRefundInitiated } = require('./utils/refund-notifications');
+const { neverCapturedPayment, NEVER_CAPTURED_ERROR, PAYMENT_FAILED_REASON } = require('./utils/payment-failed');
 const {
   getRefundStatus, getOrderStatus, refundStateFromOrder, issueRefund,
 } = require('./utils/phonepe-core');
@@ -154,6 +155,22 @@ async function processOrder(supabase, order, force = false, reconcileOnly = fals
 
   // Still failing (balance likely still short) — record and leave for next run.
   const errMsg = res.data?.message || res.data?.error || res.data?.code || `HTTP ${res.status}`;
+
+  // …unless PhonePe says the original payment never completed. That is
+  // permanent: this order took no money, so it owes no refund. Mark it as a
+  // failed-payment cancellation and let it fall out of the sweep for good
+  // instead of coming back every run until the attempt cap.
+  if (NEVER_CAPTURED_ERROR.test(String(errMsg))) {
+    await supabase.from('orders').update({
+      status: 'cancelled', refund_state: null, refund_id: null,
+      cancellation_reason: PAYMENT_FAILED_REASON,
+      refund_attempts: attempts + 1, refund_last_error: String(errMsg).slice(0, 300),
+      refund_updated_at: new Date().toISOString(),
+    }).eq('id', order.id);
+    console.log(`[phonepe-retry-refunds] ${displayId} never captured — closed, not owed`);
+    return { order: displayId, result: 'never_captured' };
+  }
+
   await supabase.from('orders').update({
     status: 'refund_failed', refund_state: 'FAILED', refund_id: merchantRefundId,
     refund_attempts: attempts + 1, refund_last_error: String(errMsg).slice(0, 300),
@@ -201,10 +218,18 @@ exports.handler = async (event) => {
     const { data: rows, error } = await query;
     if (error) throw error;
 
-    // Only PhonePe-paid orders (Razorpay refunds go through the Razorpay path).
-    const candidates = (rows || []).filter(o => isPhonePePayment(o.razorpay_payment_id));
+    // Only PhonePe-paid orders (Razorpay refunds go through the Razorpay path)
+    // that actually took money. An order pre-inserted at checkout whose payment
+    // then FAILED is also 'cancelled' with a PhonePe-shaped txn id, and used to
+    // be swept in here and submitted for refund on every run — PhonePe rejects
+    // it with "Order not in completed state" every time. Nothing is owed on a
+    // payment that never completed, so it must never enter the retry loop, not
+    // even under `force`.
+    const candidates = (rows || [])
+      .filter(o => isPhonePePayment(o.razorpay_payment_id))
+      .filter(o => !neverCapturedPayment(o));
 
-    const summary = { scanned: candidates.length, reconciled_completed: 0, retried_completed: 0, retried_pending: 0, retry_failed: 0, retry_error: 0, still_pending: 0, max_attempts: 0, skip_no_amount: 0, reconcile_only: 0 };
+      const summary = { scanned: candidates.length, skipped_never_captured: (rows || []).filter(o => isPhonePePayment(o.razorpay_payment_id) && neverCapturedPayment(o)).length, reconciled_completed: 0, retried_completed: 0, retried_pending: 0, retry_failed: 0, retry_error: 0, still_pending: 0, max_attempts: 0, skip_no_amount: 0, reconcile_only: 0, never_captured: 0 };
     const details = [];
     for (const order of candidates) {
       let r;
