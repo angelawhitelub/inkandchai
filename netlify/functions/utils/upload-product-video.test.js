@@ -33,7 +33,12 @@ test('the poster itself is never mistaken for a video', () => {
 process.env.ADMIN_SECRET = process.env.ADMIN_SECRET || 'test-secret';
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'test-key';
-const { handler } = require(path.resolve(__dirname, 'upload-product-video.js'));
+// Lives in utils/ rather than beside the function it tests: Netlify treats every
+// top-level .js in netlify/functions/ as a deployable function, and
+// "upload-product-video.test" is not a legal function name — the dot fails the
+// build for the whole site. Every other test in this repo is here for the same
+// reason.
+const { handler } = require(path.resolve(__dirname, '..', 'upload-product-video.js'));
 
 const call = (body) => handler({
   httpMethod: 'POST',
