@@ -184,6 +184,52 @@ function appendHistory(phone, role, content) {
   conversationHistory.set(phone, hist);
 }
 
+// ── Placeholder text for a message the bot cannot read ───────────────────────
+// The Bot Inbox shows text only, so a photo or voice note has to be recorded as
+// something. Without this the thread just skips it and appears to start
+// mid-conversation. Media often carries a caption — that caption is frequently
+// the actual question, so keep it.
+const NON_TEXT_LABELS = {
+  image: '📷 Photo', video: '🎥 Video', audio: '🎤 Voice note', voice: '🎤 Voice note',
+  document: '📄 Document', sticker: '🌟 Sticker', location: '📍 Location',
+  contacts: '👤 Contact card', reaction: '❤️ Reaction', order: '🛒 Cart',
+  unsupported: '⚠️ Unsupported message',
+};
+// Every inbound message in a webhook delivery, flattened. Meta batches: one POST
+// can carry several entries, each with several changes, each with several
+// messages. Reading entry[0].changes[0].value.messages[0] dropped the rest.
+function collectInboundMessages(body) {
+  const out = [];
+  for (const entry of (body?.entry || [])) {
+    for (const change of (entry?.changes || [])) {
+      const value = change?.value;
+      if (!value?.messages?.length) continue;   // status updates carry no messages
+      for (const msg of value.messages) out.push({ msg, value });
+    }
+  }
+  return out;
+}
+
+// The label shown on a quick-reply/interactive button, preferring what the
+// customer actually saw over the internal payload id.
+function buttonLabelOf(msg) {
+  return String(
+    msg?.button?.text || msg?.interactive?.button_reply?.title ||
+    msg?.button?.payload || msg?.interactive?.button_reply?.id || ''
+  ).trim();
+}
+
+function describeNonText(msg) {
+  const type = String(msg?.type || 'unknown');
+  const label = NON_TEXT_LABELS[type] || type;
+  let extra = '';
+  if (type === 'reaction') extra = String(msg.reaction?.emoji || '');
+  else if (type === 'location') extra = String(msg.location?.name || msg.location?.address || '');
+  else extra = String(msg?.[type]?.caption || msg?.document?.filename || '');
+  extra = extra.trim().slice(0, 400);
+  return extra ? `[${label}] ${extra}` : `[${label}]`;
+}
+
 // ── Persist a message to Supabase + update conversation row ──────────────────
 async function persistMessage(phone, role, message, customerName = null, whatsappPhoneId = null) {
   try {
@@ -973,14 +1019,25 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body); } catch { return { statusCode: 200, body: 'ok' }; }
 
   try {
-    const entry   = body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value   = changes?.value;
+    // Meta may batch several messages into one delivery, and may send more than
+    // one entry/change. Taking only [0] silently discarded the rest — they were
+    // never logged and never answered.
+    for (const { msg, value } of collectInboundMessages(body)) {
+      await handleInboundMessage(msg, value);
+    }
+  } catch (err) {
+    console.error('whatsapp-bot error:', err.message);
+    // Don't let errors surface to Meta (it would retry)
+  }
 
-    // Ignore status updates (delivery receipts etc.)
-    if (!value?.messages?.length) return { statusCode: 200, body: 'ok' };
+  return { statusCode: 200, body: 'ok' };
+};
 
-    const msg           = value.messages[0];
+// Everything that happens for ONE inbound message. Split out of the handler so a
+// batched payload can run it per message; a throw here is caught per message so
+// one bad message can't swallow the others in the same delivery.
+async function handleInboundMessage(msg, value) {
+  try {
     const msgId         = msg.id;
     const from          = msg.from;  // sender's WhatsApp phone number
     // The number that RECEIVED this message. We reply through the same one so
@@ -989,7 +1046,7 @@ exports.handler = async (event) => {
     const recvPhoneId   = value?.metadata?.phone_number_id || PHONE_ID;
 
     // Dedupe
-    if (processedMsgIds.has(msgId)) return { statusCode: 200, body: 'ok' };
+    if (processedMsgIds.has(msgId)) return;
     processedMsgIds.add(msgId);
     if (processedMsgIds.size > 500) {
       // Trim set to avoid memory leak on long-lived instances
@@ -1002,17 +1059,23 @@ exports.handler = async (event) => {
     // 'interactive'. If this is a Confirm/Cancel tap and the customer has a COD
     // order awaiting confirmation, act on it and stop (don't run the AI bot).
     if (msg.type === 'button' || msg.type === 'interactive') {
-      const btnText = (
-        msg.button?.text || msg.button?.payload ||
-        msg.interactive?.button_reply?.title || msg.interactive?.button_reply?.id || ''
-      ).toLowerCase();
+      const btnLabel = buttonLabelOf(msg);
+      const btnText = btnLabel.toLowerCase();
       if (btnText.includes('confirm') || btnText.includes('cancel')) {
+        // Log the tap BEFORE acting on it. It used to return without persisting,
+        // so an order confirmed or cancelled by button left no trace in the inbox.
+        await persistMessage(from, 'user', btnLabel || '[button tap]', null, recvPhoneId);
         const handled = await handleCodConfirm(from, btnText.includes('cancel') ? 'cancel' : 'confirm', recvPhoneId);
-        if (handled) return { statusCode: 200, body: 'ok' };
+        if (handled) {
+          await persistMessage(from, 'bot',
+            btnText.includes('cancel') ? 'COD order cancelled by customer' : 'COD order confirmed by customer',
+            null, recvPhoneId);
+          return;
+        }
       }
     }
 
-    // Only handle text messages for now
+    // Only text (and button/list replies) can be answered by the bot.
     let userText = '';
     if (msg.type === 'text') {
       userText = msg.text?.body?.trim() || '';
@@ -1020,12 +1083,22 @@ exports.handler = async (event) => {
       // Button/list replies
       userText = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
     } else {
-      // Audio, image, etc — politely decline
-      await sendReply(from, "Hi! I can only read text messages right now 😊 Please type your question and I'll help you out!", recvPhoneId);
-      return { statusCode: 200, body: 'ok' };
+      // Photo, voice note, document… The bot can't read it, but it must still be
+      // recorded: this used to return before persisting, so a customer who opened
+      // with a photo produced a thread that appeared to start mid-conversation.
+      await persistMessage(from, 'user', describeNonText(msg), null, recvPhoneId);
+      // A human handling this thread should not be talked over by the decline.
+      if (await isHumanTakeover(from)) {
+        console.log(`[TAKEOVER] ${from} — ${msg.type} received, bot suppressed`);
+        return;
+      }
+      const decline = "Hi! I can only read text messages right now 😊 Please type your question and I'll help you out!";
+      await sendReply(from, decline, recvPhoneId);
+      await persistMessage(from, 'bot', decline, null, recvPhoneId);
+      return;
     }
 
-    if (!userText) return { statusCode: 200, body: 'ok' };
+    if (!userText) return;
 
     console.log(`[IN]  ${from}: ${userText.slice(0, 120)}`);
 
@@ -1035,7 +1108,7 @@ exports.handler = async (event) => {
     // ── If human has taken over this conversation, just persist + stop ────────
     if (await isHumanTakeover(from)) {
       console.log(`[TAKEOVER] ${from} — bot suppressed, human handling`);
-      return { statusCode: 200, body: 'ok' };
+      return;
     }
 
     // ── Short YES/NO reply to the 5-min bot-order confirmation ping ──────────
@@ -1048,7 +1121,7 @@ exports.handler = async (event) => {
       const handled = await handleBotOrderConfirm(from, isNo ? 'cancel' : 'confirm', recvPhoneId);
       if (handled) {
         await persistMessage(from, 'bot', isNo ? 'Order cancelled by customer' : 'Order confirmed by customer');
-        return { statusCode: 200, body: 'ok' };
+        return;
       }
     }
 
@@ -1087,14 +1160,13 @@ exports.handler = async (event) => {
     console.log(`[OUT] ${from}: ${reply.slice(0, 120)}`);
 
   } catch (err) {
-    console.error('whatsapp-bot error:', err.message);
-    // Don't let errors surface to Meta (it would retry)
+    console.error(`whatsapp-bot message error (${msg?.id || 'no id'}):`, err.message);
+    // Swallowed per message so the rest of a batched delivery still runs.
   }
-
-  return { statusCode: 200, body: 'ok' };
-};
+}
 
 // Shared with the admin-only missed-reply recovery function. Keeping these
 // internals here ensures live replies and retries use exactly the same prompt,
 // order lookup, WhatsApp sender selection, and persistence rules.
-exports._internal = { askOpenAI, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs };
+exports._internal = { askOpenAI, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
+  describeNonText, collectInboundMessages, buttonLabelOf, handleInboundMessage, processedMsgIds };
