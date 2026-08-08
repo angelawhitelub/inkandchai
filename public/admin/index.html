@@ -1242,6 +1242,17 @@ select,input,textarea{font-size:1rem;}
             <p class="hint" id="prodGalleryActionHint" style="margin-top:.4rem;">Choose one image to replace only the main cover. Existing gallery images stay unchanged.</p>
             <div id="prodGalleryPreview" style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:.6rem;"></div>
             <button class="btn-green" id="prodGallerySaveBtn" type="button" onclick="saveCustomProductImages()" style="display:none;margin-top:.7rem;">Upload / Replace Images</button>
+
+            <div style="margin-top:1rem;padding-top:.9rem;border-top:1px dashed var(--border);">
+              <label>Add a video of the real book <span style="font-weight:400;color:var(--cream-dim);font-size:0.58rem;">(goes last, after every cover image)</span></label>
+              <input id="prodGalleryVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*" onchange="prepareProductVideo(this.files)"/>
+              <p class="hint" id="prodVideoHint" style="margin-top:.4rem;">
+                Any phone clip works — it is compressed and converted to a web-safe format here in the browser before uploading.
+                Kept silent and trimmed to the first 30 seconds. Shoot it portrait, and show the paper and print rather than the cover.
+              </p>
+              <div id="prodVideoPreview" style="display:none;gap:.8rem;align-items:flex-start;margin-top:.7rem;"></div>
+              <button class="btn-green" id="prodVideoSaveBtn" type="button" onclick="saveProductVideo()" style="display:none;margin-top:.7rem;">Add Video to Gallery</button>
+            </div>
           </div>
           <details id="prodAplusEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(201,168,76,.035);">
             <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">A+ product content</summary>
@@ -3833,6 +3844,237 @@ window.iacImageToWebp = async function (input, quality = 0.85) {
   }
 };
 
+// ── Product video: browser-side transcode ───────────────────────────────────
+// A phone clip is unusable as-is. An iPhone .MOV is HEVC, which Chrome and
+// Firefox cannot play at all, and it is ~8 MB for 13 seconds — a hundred views
+// is 800 MB of egress. Both problems have to be solved before the file is
+// stored, and they cannot be solved on the server: the Netlify runtime has no
+// ffmpeg, and a raw clip is larger than the request body limit, so it could
+// never even arrive to be converted.
+//
+// So the conversion happens here. The clip is played into a canvas and
+// re-encoded through MediaRecorder, which gives us H.264/MP4 (or VP9/WebM,
+// whichever the browser can write) at a size we choose. That also launders the
+// codec: whatever the phone produced, the browser decodes it and we write a
+// format the storefront can definitely play.
+//
+// Audio is dropped on purpose. These clips are shown muted on the product page,
+// so the audio track is pure bandwidth.
+const VIDEO_MAX_EDGE     = 720;       // long edge in px — enough to read print
+const VIDEO_MAX_SECONDS  = 30;
+const VIDEO_BITS_PER_SEC  = 800000;   // ~3 MB at the 30 s cap
+const VIDEO_INPUT_MAX_MB = 200;       // guard against a 4K movie being picked
+
+// H.264 in MP4 first: it plays in every browser and on every phone. WebM is the
+// fallback for browsers that will not write MP4 — product-page.js accepts both.
+function pickVideoMime() {
+  const candidates = [
+    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  if (!window.MediaRecorder?.isTypeSupported) return '';
+  return candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
+}
+
+function seekVideo(video, time) {
+  return new Promise((resolve) => {
+    if (Math.abs(video.currentTime - time) < 0.01 && video.readyState >= 2) return resolve();
+    const done = () => { video.removeEventListener('seeked', done); resolve(); };
+    video.addEventListener('seeked', done);
+    try { video.currentTime = time; } catch { done(); }
+  });
+}
+
+// Real playable length of a recording. MediaRecorder writes fragmented MP4 with
+// no duration in the header, so `video.duration` arrives as Infinity or 0 until
+// the file is fully buffered; seeking far past the end forces the browser to
+// compute it. Returns 0 when it cannot be determined, so callers can tell
+// "unknown" from "too short".
+window.iacBlobDuration = function (blob) {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    const url = URL.createObjectURL(blob);
+    let settled = false;
+    const done = (seconds) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      resolve(Number.isFinite(seconds) && seconds > 0 ? seconds : 0);
+    };
+    video.preload = 'metadata';
+    video.muted = true;
+    video.onloadedmetadata = () => {
+      if (Number.isFinite(video.duration) && video.duration > 0) return done(video.duration);
+      video.ontimeupdate = () => { video.ontimeupdate = null; done(video.duration); };
+      try { video.currentTime = 1e101; } catch { done(0); }
+    };
+    video.onerror = () => done(0);
+    setTimeout(() => done(0), 5000);
+    video.src = url;
+  });
+};
+
+/**
+ * @returns {Promise<{blob:Blob, posterDataUrl:string, mimeType:string, ext:string,
+ *                    width:number, height:number, seconds:number, trimmed:boolean}>}
+ */
+window.iacTranscodeVideo = async function (file, onProgress) {
+  const mimeType = pickVideoMime();
+  if (!mimeType) throw new Error('This browser cannot re-encode video. Use Chrome, Edge, or Safari.');
+  if (file.size > VIDEO_INPUT_MAX_MB * 1024 * 1024) {
+    throw new Error(`That file is ${(file.size / 1048576).toFixed(0)} MB. Pick a clip under ${VIDEO_INPUT_MAX_MB} MB.`);
+  }
+  if (document.hidden) {
+    throw new Error('Bring this tab to the front before converting — browsers pause video compositing in a background tab, which would produce a one-frame clip.');
+  }
+
+  const src = URL.createObjectURL(file);
+  try {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.preload = 'auto';
+    video.src = src;
+
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      // The usual cause is HEVC (every iPhone clip) in a browser that cannot
+      // decode it. Safari can, so say so instead of failing blankly.
+      video.onerror = () => reject(new Error(
+        'This browser could not read that video. iPhone clips are usually HEVC — '
+        + 'open the admin in Safari to upload it, or export the clip as H.264/MP4 first.'));
+    });
+
+    const srcW = video.videoWidth, srcH = video.videoHeight;
+    if (!srcW || !srcH) throw new Error('Could not read the video size — the file may be audio-only or corrupt.');
+
+    // H.264 requires even dimensions; rounding to a multiple of 2 avoids a
+    // silent encoder failure that yields a zero-byte recording.
+    const scale = Math.min(1, VIDEO_MAX_EDGE / Math.max(srcW, srcH));
+    const width  = Math.max(2, Math.round((srcW * scale) / 2) * 2);
+    const height = Math.max(2, Math.round((srcH * scale) / 2) * 2);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { alpha: false });
+
+    // Poster frame first, while we can still seek freely. Taken slightly in so a
+    // clip that starts on a black or blurred frame doesn't get one as its poster.
+    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+    await seekVideo(video, duration > 1 ? Math.min(0.5, duration / 10) : 0);
+    ctx.drawImage(video, 0, 0, width, height);
+    const posterDataUrl = canvas.toDataURL('image/webp', 0.72);
+    await seekVideo(video, 0);
+
+    const stream = canvas.captureStream(30);
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: VIDEO_BITS_PER_SEC });
+    const chunks = [];
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    const finished = new Promise((resolve) => { recorder.onstop = () => resolve(); });
+    recorder.start(250);
+
+    const limit = Math.min(duration || VIDEO_MAX_SECONDS, VIDEO_MAX_SECONDS);
+    let stopped = false;
+    let frameTimer = null;
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      if (frameTimer) clearInterval(frameTimer);
+      try { recorder.stop(); } catch {}
+      try { video.pause(); } catch {}
+      stream.getTracks().forEach(t => { try { t.stop(); } catch {} });
+    };
+
+    // Re-encoding runs in real time: the clip plays once and each displayed frame
+    // is copied to the canvas the recorder is reading.
+    //
+    // The copy is driven by a timer rather than requestAnimationFrame, which is
+    // paused outright in a background tab. But a timer is not enough on its own:
+    // MediaRecorder's output duration follows the number of frames the canvas
+    // stream actually emitted, and a hidden tab both throttles timers to ~1/s and
+    // pauses compositing. The result is not a choppy clip — it is a FROZEN one
+    // (measured: a 4-second source came back as 0.03 s, one frame). So the tab
+    // has to stay in front, and it is checked below rather than trusted.
+    const FRAME_MS = 1000 / 30;
+    let lastSeen = -1;
+    let lastAdvance = Date.now();
+    const pump = () => {
+      if (stopped) return;
+      ctx.drawImage(video, 0, 0, width, height);
+      if (onProgress && limit) onProgress(Math.min(1, video.currentTime / limit));
+      if (video.currentTime >= limit || video.ended) { stop(); return; }
+      // Wall-clock stall check, so it behaves the same when timers are throttled.
+      if (video.currentTime > lastSeen + 0.001) {
+        lastSeen = video.currentTime;
+        lastAdvance = Date.now();
+      } else if (Date.now() - lastAdvance > 8000) {
+        stop();
+      }
+    };
+    video.onended = stop;
+    frameTimer = setInterval(pump, FRAME_MS);
+
+    // Backgrounding mid-conversion corrupts the rest of the clip, so abandon it
+    // and say so rather than hand back something frozen half way through.
+    let backgrounded = false;
+    const onVisibility = () => { if (document.hidden) { backgrounded = true; stop(); } };
+    document.addEventListener('visibilitychange', onVisibility);
+    // Deliberately NOT awaited. On a short clip the play() promise rejects with
+    // "interrupted by end of playback" AFTER the recording has already completed
+    // perfectly well, and awaiting it would throw away a good result. A genuine
+    // failure to start instead shows up as an empty recording, checked below.
+    let playError = null;
+    video.play().catch((err) => { playError = err; });
+
+    // A stalled element would otherwise leave this awaiting forever.
+    const guard = setTimeout(stop, (limit + 15) * 1000);
+    let blob;
+    try {
+      await finished;
+    } finally {
+      clearTimeout(guard);
+      document.removeEventListener('visibilitychange', onVisibility);
+      blob = new Blob(chunks, { type: mimeType });
+    }
+
+    if (backgrounded) {
+      throw new Error('The tab was switched away part-way through, which freezes the conversion. Keep this tab in front and try again.');
+    }
+    if (!blob.size) {
+      throw new Error(playError
+        ? `The browser could not play that clip to convert it — ${playError.message}`
+        : 'The re-encode produced an empty file. Try a shorter clip.');
+    }
+
+    // Never trust the recording: measure what actually came out. A short result
+    // means frames were dropped, and shipping that would put a frozen clip on the
+    // product page where nobody would notice until a customer did.
+    const expected = Math.min(duration || limit, limit);
+    const outSeconds = await iacBlobDuration(blob);
+    if (outSeconds > 0 && expected > 1.5 && outSeconds < expected * 0.6) {
+      throw new Error(`The conversion only captured ${outSeconds.toFixed(1)}s of a ${expected.toFixed(1)}s clip. `
+        + 'Keep this tab in front, leave the window unminimised, and try again.');
+    }
+
+    return {
+      blob,
+      posterDataUrl: posterDataUrl.startsWith('data:image/webp') ? posterDataUrl : '',
+      mimeType: mimeType.split(';')[0],
+      ext: mimeType.includes('mp4') ? 'mp4' : 'webm',
+      width, height,
+      seconds: outSeconds > 0 ? outSeconds : expected,
+      trimmed: duration > VIDEO_MAX_SECONDS,
+    };
+  } finally {
+    URL.revokeObjectURL(src);
+  }
+};
+
 async function previewCreateProductImages(fileList) {
   const preview = document.getElementById('newProdImagePreview');
   const grid = document.getElementById('newProdImagePreviewGrid');
@@ -4218,6 +4460,22 @@ function selectProduct(slug) {
   const gallerySave = document.getElementById('prodGallerySaveBtn');
   if (gallerySave) gallerySave.style.display = 'none';
   editProductImageDataUrls = [];
+  // A transcoded clip is held in memory against the product that was open when
+  // it was picked — carrying it to a different product would attach it to the
+  // wrong book.
+  pendingProductVideo = null;
+  const videoInput = document.getElementById('prodGalleryVideo');
+  if (videoInput) videoInput.value = '';
+  const videoPreview = document.getElementById('prodVideoPreview');
+  if (videoPreview) { videoPreview.style.display = 'none'; videoPreview.innerHTML = ''; }
+  const videoSave = document.getElementById('prodVideoSaveBtn');
+  if (videoSave) videoSave.style.display = 'none';
+  const videoHint = document.getElementById('prodVideoHint');
+  if (videoHint) {
+    videoHint.style.color = '';
+    videoHint.textContent = 'Any phone clip works — it is compressed and converted to a web-safe format here in the browser before uploading. '
+      + 'Kept silent and trimmed to the first 30 seconds. Shoot it portrait, and show the paper and print rather than the cover.';
+  }
   loadAplusEditor(row);
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
@@ -4672,6 +4930,163 @@ async function saveCustomProductImages() {
     renderProductList();
   } catch (err) {
     if (msg) msg.textContent = 'Could not upload images: ' + err.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = originalText; }
+  }
+}
+
+// ── Product video: pick → transcode → preview ───────────────────────────────
+let pendingProductVideo = null;
+
+async function prepareProductVideo(fileList) {
+  const file = (fileList || [])[0];
+  const hint = document.getElementById('prodVideoHint');
+  const preview = document.getElementById('prodVideoPreview');
+  const saveBtn = document.getElementById('prodVideoSaveBtn');
+  pendingProductVideo = null;
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+  if (saveBtn) saveBtn.style.display = 'none';
+  if (!file) return;
+
+  if (customProductGallery().length >= 8) {
+    alert('This product already has 8 gallery slots filled. Remove one before adding a video.');
+    document.getElementById('prodGalleryVideo').value = '';
+    return;
+  }
+
+  const setHint = (text, colour) => {
+    if (!hint) return;
+    hint.textContent = text;
+    hint.style.color = colour || '';
+  };
+
+  // Re-encoding is real time, so a 20-second clip takes 20 seconds. Say what is
+  // happening or it reads as a hang.
+  setHint('Reading the clip…');
+  try {
+    const result = await window.iacTranscodeVideo(file, (progress) => {
+      // Browsers throttle background tabs, so leaving this one drops the frame
+      // rate of the converted clip. Worth saying while they are watching it.
+      setHint(`Converting and compressing… ${Math.round(progress * 100)}% — runs in real time, so it takes about as long as the clip. Keep this tab open.`);
+    });
+    pendingProductVideo = result;
+
+    const beforeMb = (file.size / 1048576).toFixed(1);
+    const afterMb = (result.blob.size / 1048576).toFixed(2);
+    const saved = file.size > 0 ? Math.max(0, Math.round((1 - result.blob.size / file.size) * 100)) : 0;
+    setHint(`Ready: ${result.width}×${result.height} ${result.ext.toUpperCase()}, `
+      + `${beforeMb} MB → ${afterMb} MB (${saved}% smaller)`
+      + `${result.trimmed ? `, trimmed to the first ${VIDEO_MAX_SECONDS}s` : ''}. `
+      + 'Check it plays, then add it to the gallery.', '#5d9b55');
+
+    if (preview) {
+      preview.style.display = 'flex';
+      preview.innerHTML = `
+        <video src="${URL.createObjectURL(result.blob)}" controls playsinline muted loop
+               ${result.posterDataUrl ? `poster="${esc(result.posterDataUrl)}"` : ''}
+               style="width:150px;max-height:230px;background:#000;border:1px solid var(--gold);border-radius:10px;"></video>
+        <div style="font-size:.62rem;color:var(--cream-dim);line-height:1.7;">
+          <div><strong style="color:var(--cream);">${esc(result.ext.toUpperCase())}</strong> · ${result.width}×${result.height} · ${result.seconds.toFixed(1)}s · silent</div>
+          <div>${beforeMb} MB → <strong style="color:#5d9b55;">${afterMb} MB</strong></div>
+          <div style="margin-top:.35rem;">${result.posterDataUrl ? 'Poster frame captured.' : 'No poster frame — the slide will start black.'}</div>
+        </div>`;
+    }
+    if (saveBtn) saveBtn.style.display = '';
+  } catch (err) {
+    setHint(err.message, '#c93636');
+    document.getElementById('prodGalleryVideo').value = '';
+  }
+}
+
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || '').replace(/^data:[^,]*,/, ''));
+  reader.onerror = () => reject(new Error('Could not read the converted video'));
+  reader.readAsDataURL(blob);
+});
+
+async function saveProductVideo() {
+  if (!selectedProduct || !pendingProductVideo) { alert('Choose a video first.'); return; }
+  const row = selectedProduct;
+  const p = mergedProduct(row);
+  const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
+  const btn = document.getElementById('prodVideoSaveBtn');
+  const msg = document.getElementById('productSaveMsg');
+  const originalText = btn?.textContent || 'Add Video to Gallery';
+  if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
+  if (msg) msg.textContent = 'Uploading the video…';
+
+  try {
+    // Step 1 — store the clip and its poster, and get back a plain URL.
+    const uploadRes = await adminFetch('/.netlify/functions/upload-product-video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug: row.slug,
+        video_type: pendingProductVideo.mimeType,
+        video_base64: await blobToBase64(pendingProductVideo.blob),
+        poster_base64: pendingProductVideo.posterDataUrl
+          ? pendingProductVideo.posterDataUrl.replace(/^data:[^,]*,/, '')
+          : undefined,
+      }),
+    });
+    const uploaded = await uploadRes.json().catch(() => ({}));
+    if (!uploadRes.ok || !uploaded.video_url) throw new Error(uploaded.error || `HTTP ${uploadRes.status}`);
+
+    // Step 2 — append that URL to the gallery through the SAME endpoint the
+    // image uploader uses. Both accept a plain https URL untouched, so the video
+    // needs no special handling server-side and lands after every cover image.
+    if (msg) msg.textContent = 'Adding the video to the gallery…';
+    const saveRes = await adminFetch(isCustom
+      ? '/.netlify/functions/create-product-listing'
+      : '/.netlify/functions/update-product-override', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug: row.slug,
+        title: p.title,
+        author: p.author,
+        category: p.category || 'Books',
+        price_inr: p.price_inr,
+        original_price_inr: p.original_price_inr,
+        publisher: row.publisher || '',
+        isbn: row.isbn || '',
+        description: row.description || '',
+        tags: row.tags || '',
+        seo_title: row.seo_title || '',
+        meta_description: row.meta_description || '',
+        is_active: row.is_active !== false,
+        scarcity: !!(row.sc || row.override?.scarcity),
+        stock_qty: row.override?.stock_qty ?? null,
+        image_url: p.image_url || '',
+        gallery_images: [...customProductGallery(row), uploaded.video_url],
+      }),
+    });
+    const saved = await saveRes.json().catch(() => ({}));
+    if (!saveRes.ok) throw new Error(saved.error || `HTTP ${saveRes.status}`);
+
+    const product = isCustom ? saved.product : saved.override;
+    if (isCustom) {
+      row.image_url = product?.image_url || row.image_url || '';
+      row.gallery_images = product?.gallery_images || [];
+    } else {
+      row.override = { ...(row.override || {}), ...(product || {}) };
+    }
+
+    if (msg) msg.textContent = 'Video added as the last gallery slide.';
+    pendingProductVideo = null;
+    const input = document.getElementById('prodGalleryVideo');
+    if (input) input.value = '';
+    const preview = document.getElementById('prodVideoPreview');
+    if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+    if (btn) btn.style.display = 'none';
+    const hint = document.getElementById('prodVideoHint');
+    if (hint) { hint.textContent = 'Video added. Open the product page to see it as the last slide.'; hint.style.color = '#5d9b55'; }
+    renderCurrentProductImages(row);
+    renderProductList();
+  } catch (err) {
+    if (msg) msg.textContent = 'Could not add the video: ' + err.message;
+    alert('Could not add the video: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = originalText; }
   }
