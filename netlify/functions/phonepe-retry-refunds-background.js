@@ -30,6 +30,7 @@ const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
 const { sendRefundInitiated } = require('./utils/refund-notifications');
 const { neverCapturedPayment, NEVER_CAPTURED_ERROR, PAYMENT_FAILED_REASON } = require('./utils/payment-failed');
+const { refundIdForAttempt, knownRefundIds } = require('./utils/refund-id');
 const {
   getRefundStatus, getOrderStatus, refundStateFromOrder, issueRefund,
 } = require('./utils/phonepe-core');
@@ -65,17 +66,29 @@ async function processOrder(supabase, order, force = false, reconcileOnly = fals
   if (amountPaise <= 0) return { order: displayId, result: 'skip_no_amount' };
 
   // ── 1. Establish the TRUE current refund state (money-safe guard) ──────────
+  // Check EVERY merchant refund id this order could have used, not just the one
+  // currently stored. Retries used to mint a throwaway `-<epoch>` id and
+  // overwrite refund_id, so a refund that had already COMPLETED under an earlier
+  // id became invisible: the stored id answers REFUND_TRANSACTION_NOT_FOUND and
+  // the order-status payload carries no refund fields at all. A single COMPLETED
+  // anywhere in this list means the money is already back — stop.
   let trueState = null;                       // COMPLETED | PENDING | FAILED | null
   let gatewayRef = order.phonepe_refund_id || null;  // PhonePe's own refundId
-  if (order.refund_id) {
-    try {
-      const s = await getRefundStatus(order.refund_id);
-      if (s.ok || s.state) trueState = s.state || null;
-      if (s.data?.refundId) gatewayRef = s.data.refundId;
-    } catch (e) { /* fall through to order-status */ }
+  let matchedRefundId = null;
+  for (const rid of knownRefundIds(order)) {
+    let s;
+    try { s = await getRefundStatus(rid); } catch (e) { continue; }
+    const st = s.state || s.data?.state || null;
+    if (!st) continue;                        // 400 / not found — id never landed
+    if (s.data?.refundId) gatewayRef = s.data.refundId;
+    matchedRefundId = rid;
+    trueState = st;
+    if (st === 'COMPLETED') break;            // authoritative, look no further
   }
   if (!trueState) {
-    // No stored refund id (legacy) or status lookup failed — ask the order API.
+    // Nothing found by id — ask the order API. (PhonePe does not currently
+    // return refund details there, so this rarely helps; kept as a fallback in
+    // case the payload gains them.)
     try {
       const os = await getOrderStatus(displayId);
       if (os.ok) trueState = refundStateFromOrder(os.data);
@@ -86,6 +99,9 @@ async function processOrder(supabase, order, force = false, reconcileOnly = fals
   if (trueState === 'COMPLETED') {
     const done = { status: 'refunded', refund_state: 'COMPLETED', refund_updated_at: new Date().toISOString() };
     if (gatewayRef) done.phonepe_refund_id = gatewayRef;
+    // Point refund_id at the id that actually completed, so the record stops
+    // naming an attempt PhonePe never accepted.
+    if (matchedRefundId && matchedRefundId !== order.refund_id) done.refund_id = matchedRefundId;
     const { error: dErr } = await supabase.from('orders').update(done).eq('id', order.id);
     if (dErr && /phonepe_refund_id/i.test(dErr.message || '')) {
       const { phonepe_refund_id, ...noRef } = done;
@@ -119,7 +135,9 @@ async function processOrder(supabase, order, force = false, reconcileOnly = fals
   const attempts = Number(order.refund_attempts) || 0;
   if (!force && attempts >= MAX_ATTEMPTS) return { order: displayId, result: 'max_attempts' };
 
-  const merchantRefundId = `REFUND-${displayId}-${Date.now()}`;
+  // Derived from the attempt number, not the clock, so this id stays findable:
+  // the next run reconstructs it from refund_attempts and can see how it went.
+  const merchantRefundId = refundIdForAttempt(displayId, attempts);
   let res;
   try {
     res = await issueRefund({ merchantRefundId, originalMerchantOrderId: displayId, amountPaise });

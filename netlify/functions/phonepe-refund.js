@@ -24,6 +24,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
 const { sendRefundInitiated } = require('./utils/refund-notifications');
 const { requireAdmin } = require('./utils/admin-auth');
+const { refundIdForAttempt } = require('./utils/refund-id');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -167,7 +168,11 @@ exports.handler = async (event) => {
     }
     const isFullRefund = amountPaise >= orderAmount;
 
-    const merchantRefundId = `REFUND-${displayId}-${Date.now()}`;
+    // Attempt-derived, never clock-derived (utils/refund-id.js). A timestamp id
+    // is unreconstructible, so a refund that completed under one became
+    // invisible to every later check and the order looked unrefunded forever.
+    const refundAttempt = Math.max(0, Number(order.refund_attempts) || 0);
+    const merchantRefundId = refundIdForAttempt(displayId, refundAttempt);
     const authorization = await getAccessToken(host);
 
     const refundBody = {
@@ -321,6 +326,10 @@ exports.handler = async (event) => {
       // getRefundStatus and hence the double-refund guard. PhonePe's own
       // reference goes in phonepe_refund_id (what a customer quotes to a bank).
       refund_id: merchantRefundId, refund_state: refundState || 'PENDING',
+      // Count this attempt even on success: the id is derived from the attempt
+      // number, so leaving it unincremented would make the next refund on this
+      // order reuse an id PhonePe has already seen.
+      refund_attempts: refundAttempt + 1,
       refund_updated_at: new Date().toISOString(),
     };
     if (phonePeRefundId) updatePayload.phonepe_refund_id = phonePeRefundId;

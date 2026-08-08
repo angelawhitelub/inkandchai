@@ -116,9 +116,18 @@ async function maybeAutoRefund(order) {
   }
 
   // ── PhonePe ───────────────────────────────────────────────────────────────
-  const res = await issuePhonePeRefund({ displayId, amountPaise });
+  // The refund id is derived from the attempt number so it stays findable later
+  // (utils/refund-id.js). Record the id and the attempt alongside the status, or
+  // the retry cron cannot reconstruct what this call already used.
+  const attempt = Math.max(0, Number(row.refund_attempts) || 0);
+  const res = await issuePhonePeRefund({ displayId, amountPaise, attempt });
   if (res.ok) {
-    await supabase.from('orders').update({ status: res.nextStatus }).eq('id', row.id);
+    await supabase.from('orders').update({
+      status: res.nextStatus,
+      refund_id: res.merchantRefundId,
+      refund_attempts: attempt + 1,
+      refund_updated_at: new Date().toISOString(),
+    }).eq('id', row.id);
     console.log(`[AUTO-REFUND] ${displayId} → ${res.state} (${res.nextStatus}) refundId=${res.merchantRefundId}`);
     // Tell the customer their money is on its way + email the owner.
     await notifyRefundIssued(row, amountPaise, res.merchantRefundId, { provider: 'PhonePe', state: res.state });

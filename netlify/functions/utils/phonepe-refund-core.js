@@ -16,6 +16,8 @@
  * Env: PHONEPE_CLIENT_ID, PHONEPE_CLIENT_SECRET, PHONEPE_CLIENT_VERSION, PHONEPE_HOST
  */
 
+const { refundIdForAttempt } = require('./refund-id');
+
 let _tokenCache = { authorization: null, expiresAt: 0 };
 
 async function getAccessToken(host) {
@@ -55,9 +57,12 @@ function phonePeHeaders(authorization) {
  * @param {number} opts.amountPaise - refund amount in paise (full order amount for a full refund)
  * @returns {Promise<{ok:boolean, state?:string, refundId?:string, merchantRefundId:string, nextStatus?:string, error?:string}>}
  */
-async function issuePhonePeRefund({ displayId, amountPaise }) {
+async function issuePhonePeRefund({ displayId, amountPaise, attempt = 0 }) {
   const host = process.env.PHONEPE_HOST || 'https://api.phonepe.com/apis';
-  const merchantRefundId = `REFUND-${displayId}-${Date.now()}`;
+  // Attempt-derived, never clock-derived — see utils/refund-id.js. A timestamp
+  // id cannot be reconstructed later, so a refund that completed under it became
+  // invisible and the order looked unrefunded forever.
+  const merchantRefundId = refundIdForAttempt(displayId, attempt);
   const refundBody = {
     merchantRefundId,
     originalMerchantOrderId: displayId,
