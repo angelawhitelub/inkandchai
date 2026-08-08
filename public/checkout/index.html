@@ -1867,25 +1867,25 @@ const SAVED_ADDR_KEY = 'iac_saved_address';
  * everything after the first comma, so the saved copy was a fragment, and the
  * NEXT order autofilled that fragment and shipped to an incomplete address.
  *
- * Prefer the raw field collectAddr() now carries; only fall back to unpicking
- * the joined string, and do that by stripping the city/state/pin SUFFIX we
- * appended ourselves rather than by cutting at the first comma.
+ * Prefer the raw field collectAddr() now carries. Only fall back to unpicking
+ * the joined string, and do that by dropping trailing segments that exactly
+ * match the city/state/pincode we appended ourselves — never by cutting at the
+ * first comma. Dropping only exact matches is what keeps an address whose street
+ * ends in its own city name ("…bhadrakali Hooghly, Hooghly, West Bengal") intact.
  */
 function streetOf(addr) {
   const raw = String(addr?.street || '').trim();
   if (raw) return raw;
 
-  let out = String(addr?.address || '').trim();
-  // Reverse order: the suffix was appended as city, state, pin.
+  const joined = String(addr?.address || '').trim();
+  const parts = joined.split(',');
+  // Reverse of the order they were appended in: city, state, pin.
   for (const part of [addr?.pincode, addr?.state, addr?.city]) {
-    const token = String(part || '').trim();
-    if (!token) continue;
-    out = out.replace(
-      new RegExp(',\\s*' + token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$', 'i'),
-      '',
-    ).trim();
+    const token = String(part || '').trim().toLowerCase();
+    if (!token || parts.length <= 1) continue;
+    if (parts[parts.length - 1].trim().toLowerCase() === token) parts.pop();
   }
-  return out || String(addr?.address || '').trim();
+  return parts.join(',').trim().replace(/,+$/, '').trim() || joined;
 }
 
 function saveAddressLocally(addr) {

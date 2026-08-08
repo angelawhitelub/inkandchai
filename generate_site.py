@@ -8125,6 +8125,9 @@ function collectAddr() {
   return {
     name, phone: phoneDigits, email,
     address: [addr, city, state, pin].filter(Boolean).join(', '),
+    // The house/street line on its own. The savers below need it, and it CANNOT
+    // be recovered from `address` by splitting on commas — see streetOf().
+    street: addr,
     pincode: pin, city, state,
   };
 }
@@ -8769,11 +8772,43 @@ function fireConfetti(valuePaise) {
 // ── Saved address helpers ──────────────────────────────────────────────────
 const SAVED_ADDR_KEY = 'iac_saved_address';
 
+/**
+ * The house/street line on its own, for the savers that store it separately
+ * from city/state/pincode.
+ *
+ * This used to be `address.split(',')[0]`, which was wrong in the most ordinary
+ * case there is: `address` is "<street>, <city>, <state>, <pin>" and the street
+ * a customer types almost always contains a comma of its own — "Room 312, AHS
+ * Hostel", "Flat 4B, Sunrise Apartments". Taking the first segment threw away
+ * everything after the first comma, so the saved copy was a fragment, and the
+ * NEXT order autofilled that fragment and shipped to an incomplete address.
+ *
+ * Prefer the raw field collectAddr() now carries. Only fall back to unpicking
+ * the joined string, and do that by dropping trailing segments that exactly
+ * match the city/state/pincode we appended ourselves — never by cutting at the
+ * first comma. Dropping only exact matches is what keeps an address whose street
+ * ends in its own city name ("…bhadrakali Hooghly, Hooghly, West Bengal") intact.
+ */
+function streetOf(addr) {
+  const raw = String(addr?.street || '').trim();
+  if (raw) return raw;
+
+  const joined = String(addr?.address || '').trim();
+  const parts = joined.split(',');
+  // Reverse of the order they were appended in: city, state, pin.
+  for (const part of [addr?.pincode, addr?.state, addr?.city]) {
+    const token = String(part || '').trim().toLowerCase();
+    if (!token || parts.length <= 1) continue;
+    if (parts[parts.length - 1].trim().toLowerCase() === token) parts.pop();
+  }
+  return parts.join(',').trim().replace(/,+$/, '').trim() || joined;
+}
+
 function saveAddressLocally(addr) {
   try {
     localStorage.setItem(SAVED_ADDR_KEY, JSON.stringify({
       name: addr.name, phone: addr.phone, email: addr.email,
-      addr: addr.address?.split(',')[0]?.trim() || '',   // just house/street part
+      addr: streetOf(addr),   // just house/street part
       pincode: addr.pincode, city: addr.city, state: addr.state,
     }));
   } catch(e) {}
@@ -8789,7 +8824,7 @@ async function saveAddressToProfile(addr) {
       id:      session.user.id,
       name:    addr.name,
       phone:   addr.phone,
-      address: addr.address?.split(',')[0]?.trim() || '',
+      address: streetOf(addr),
       pincode: addr.pincode,
       city:    addr.city,
       state:   addr.state,
@@ -8844,7 +8879,7 @@ async function saveAddressToBook(addr) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return;
 
-  const street = addr.address?.split(',')[0]?.trim() || addr.address || '';
+  const street = streetOf(addr);
   if (!street || !addr.name) return;
 
   // Dedupe: if same fingerprint exists, just bump last_used_at instead of inserting
