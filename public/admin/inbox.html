@@ -35,6 +35,22 @@ button{font-family:inherit}
 .btn.green{background:#eaf7ee;color:var(--green);border-color:rgba(23,107,53,.35)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 
+/* ── text size ──────────────────────────────────────────────────────────────
+   Everything below is in rem against html{font-size:17px}, so moving the root
+   scales bubbles, rows and avatars together. Kept in PX itself so the control
+   stays the same clickable size at every step. Its own key — the inbox is read
+   at a different distance than the orders table. */
+.fontzoom{display:inline-flex;align-items:stretch;border:1px solid var(--border);border-radius:999px;
+          background:#fff;overflow:hidden;flex:0 0 auto}
+.fontzoom button{font-family:'Manrope',sans-serif;border:0;background:transparent;color:var(--gold);
+                 cursor:pointer;font-weight:700;line-height:1;height:34px;padding:0 11px;min-width:34px}
+.fontzoom button:hover:not(:disabled){background:var(--bg2)}
+.fontzoom button:disabled{opacity:.35;cursor:not-allowed}
+.fontzoom .fz-minus{font-size:13px}
+.fontzoom .fz-plus{font-size:17px}
+.fontzoom .fz-val{font-size:11px;letter-spacing:.06em;color:var(--cream-dim);min-width:50px;padding:0 4px;
+                  border-left:1px solid var(--border);border-right:1px solid var(--border)}
+
 /* ── view switch ────────────────────────────────────────────────────────── */
 .viewtabs{display:flex;gap:.35rem}
 .viewtab{font-size:.88rem;font-weight:700;padding:.5rem 1.05rem;border:1px solid var(--border);background:#fff;
@@ -139,6 +155,41 @@ main{flex:1;min-height:0;display:flex}
   .sidebar.hide-mobile{display:none}
 }
 </style>
+<!-- Applied in <head> so the saved size is on <html> before first paint. -->
+<script>
+(function () {
+  var KEY = 'iac_inbox_font_scale', BASE = 17, MIN = 0.8, MAX = 1.6, STEP = 0.1;
+  function clamp(v) { return Math.min(MAX, Math.max(MIN, Math.round(v * 100) / 100)); }
+  function read() { var v; try { v = parseFloat(localStorage.getItem(KEY)); } catch (e) {} return isFinite(v) ? clamp(v) : 1; }
+  function apply(scale) {
+    document.documentElement.style.fontSize = (BASE * scale).toFixed(2) + 'px';
+    var val = document.getElementById('fzVal');
+    if (val) val.textContent = Math.round(scale * 100) + '%';
+    var minus = document.getElementById('fzMinus'), plus = document.getElementById('fzPlus');
+    if (minus) minus.disabled = scale <= MIN;
+    if (plus) plus.disabled = scale >= MAX;
+  }
+  window.__fzStep = STEP;
+  window.setFontScale = function (scale) {
+    var s = clamp(scale);
+    try { localStorage.setItem(KEY, String(s)); } catch (e) {}
+    apply(s);
+  };
+  window.bumpFontScale = function (delta) { window.setFontScale(read() + delta); };
+  window.resetFontScale = function () { window.setFontScale(1); };
+  apply(read());
+  document.addEventListener('DOMContentLoaded', function () { apply(read()); });
+  // Ctrl/⌘ + SHIFT + −/+/0 — Shift keeps the browser's own zoom out of it.
+  document.addEventListener('keydown', function (e) {
+    if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
+    var tag = e.target && e.target.tagName;
+    if (tag === 'TEXTAREA' || tag === 'INPUT') return;   // composer keeps its keys
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); window.bumpFontScale(STEP); }
+    else if (e.key === '-' || e.key === '_') { e.preventDefault(); window.bumpFontScale(-STEP); }
+    else if (e.key === '0') { e.preventDefault(); window.resetFontScale(); }
+  });
+})();
+</script>
 </head>
 <body>
 
@@ -149,6 +200,14 @@ main{flex:1;min-height:0;display:flex}
     <button class="viewtab" id="tabTriageBtn" onclick="showView('triage')">🚨 Needs attention <span class="count" id="triageCount" style="display:none">0</span></button>
   </div>
   <div class="nav-right">
+    <div class="fontzoom" role="group" aria-label="Text size">
+      <button type="button" class="fz-minus" id="fzMinus" aria-label="Decrease text size"
+              title="Smaller text (Ctrl/⌘ + Shift + −)" onclick="bumpFontScale(-__fzStep)">A−</button>
+      <button type="button" class="fz-val" id="fzVal" title="Reset text size to 100%"
+              onclick="resetFontScale()">100%</button>
+      <button type="button" class="fz-plus" id="fzPlus" aria-label="Increase text size"
+              title="Larger text (Ctrl/⌘ + Shift + +)" onclick="bumpFontScale(__fzStep)">A+</button>
+    </div>
     <button class="btn" onclick="refreshAll()">↻ Refresh</button>
     <a class="btn" href="/admin/">← Admin</a>
   </div>
