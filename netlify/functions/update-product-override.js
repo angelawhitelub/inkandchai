@@ -67,7 +67,11 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body || '{}'); }
   catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
-  const slug = cleanText(body.slug, 160);
+  // LOWERCASE on write. get-product-overrides lowercases the slug it looks up
+  // and then does a case-sensitive .eq(), so a row saved as "...-NG-HI" can
+  // never be read back — the override silently does nothing. 13 rows (12 of
+  // them price overrides, one a product video) were stranded exactly this way.
+  const slug = cleanText(body.slug, 160).toLowerCase();
   if (!slug) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing product slug' }) };
 
   try {

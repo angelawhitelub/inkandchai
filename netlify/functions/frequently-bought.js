@@ -25,44 +25,13 @@ function findCataloguePath() {
 }
 
 // Kept in sync with generate_site.py make_slug()
-const CUSTOM_SLUGS = {
-  'CUSTOM-KINGS-OF-SIN-COMPLETE-SET-6-AH':        'kings-of-sin-series-complete-set-6-books-ana-huang',
-  'CUSTOM-HINDI-BESTSELLERS-COMBO-5':              '5-hindi-bestsellers-combo-set-of-5-books-MBO-5',
-  'CUSTOM-100M-HINDI-COMBO-2':                     '100m-leads-hindi-100m-offers-hindi-combo-2-books',
-  'CUSTOM-GOGGINS-COMBO-HI':                       'david-goggins-combo-hindi-cant-hurt-me-never-finished',
-  'CUSTOM-MOTHER-MARY-COMES-TO-ME-HI-ARUNDHATI-ROY': 'mother-mary-comes-to-me-hindi-edition-arundhati-roy',
-  'CUSTOM-SHAKTI-GOGGINS-COMBO-3-HI':              'shakti-ke-48-niyam-cant-hurt-me-never-finished-hindi-combo-3-books',
-  'CUSTOM-HIDDEN-HINDU-TRILOGY-3':                 'hidden-hindu-complete-trilogy-3-books-akshat-gupta',
-  'CUSTOM-COLLEEN-HOOVER-STARTER-3':               'colleen-hoover-3-book-starter-set-it-ends-verity-reminders',
-  'CUSTOM-ANA-HUANG-TWISTED-SPECIAL-3':            'ana-huang-twisted-special-editions-3-pack',
-  'CUSTOM-ROBERT-GREENE-POWER-TRILOGY-3':          'robert-greene-power-trilogy-48-laws-human-nature-seduction',
-  'CUSTOM-MARK-DOUGLAS-TRADING-DUO-2':             'mark-douglas-trading-duo-zone-disciplined-trader',
-  'CUSTOM-HINDI-MOTIVATION-BIG-4':                 'hindi-motivation-big-4-atomic-habits-rich-dad-shakti-think',
-  'CUSTOM-FELUDA-4-PACK':                          'feluda-complete-mysteries-4-book-set-satyajit-ray',
-  'CUSTOM-STOIC-ESSENTIALS-TRIO-3':                'stoic-essentials-trio-ego-daily-stoic-meditations',
-  'CUSTOM-ENID-BLYTON-FAMOUS-FIVE-1-3':            'enid-blyton-famous-five-books-1-2-3-starter-set',
-  'CUSTOM-WEALTH-PACK-299':                        'wealth-starter-pack-psychology-of-money-rich-dad-think-grow',
-  'CUSTOM-KIDS-ACTIVITY-4-PACK':                   'kids-activity-4-pack-pete-cat-wipe-clean-learning',
-  'CUSTOM-CLASSIC-POCKET-TRIO-3':                  'classic-pocket-trio-diary-young-girl-alice-meditations',
-  'CUSTOM-OSHO-DUO-2':                             'osho-duo-dhyan-darshan-nari-aur-kranti',
-  'CUSTOM-ANA-HUANG-KINGS-SIN-1-3':               'ana-huang-kings-of-sin-series-books-1-2-3',
-  'CUSTOM-OFF-CAMPUS-5-ELLE-KENNEDY':              'off-campus-complete-5-book-collection-elle-kennedy',
-  'CUSTOM-PSYCH-MONEY-THINKING-FAST-HINDI-2':      'psychology-of-money-hindi-thinking-fast-slow-hindi-combo-2-books',
-  'CUSTOM-OFF-CAMPUS-COMBO-3-EK':                  'the-deal-the-mistake-the-score-elle-kennedy-off-campus-combo',
-  'CUSTOM-TAIWAN-TRAVELOGUE':                      'taiwan-travelogue-yang-shuang-zi-international-booker-prize',
-};
 
-function makeSlug(title, shopifyId) {
-  const sid = String(shopifyId || '');
-  if (CUSTOM_SLUGS[sid]) return CUSTOM_SLUGS[sid];
-  const base = String(title || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 55);
-  const suffix = sid.slice(-5);
-  return suffix ? `${base}-${suffix}` : base;
-}
+// Slug rule lives in utils/pricing.js — the ONLY copy. Local re-implementations
+// here dropped the `.toLowerCase()` on the shopify_id suffix (and carried only a
+// subset of the special-case slugs), so this file wrote/read product_overrides
+// under e.g. "...-NG-HI" while the storefront looks for "...-ng-hi". 13 override
+// rows — 12 of them price overrides — were silently doing nothing as a result.
+const { makeSlug } = require('./utils/pricing');
 
 function slugFromUrl(url) {
   try {

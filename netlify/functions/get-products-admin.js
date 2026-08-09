@@ -9,16 +9,12 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-function makeSlug(title, shopifyId) {
-  const sid = String(shopifyId || '');
-  if (sid === 'CUSTOM-KINGS-OF-SIN-COMPLETE-SET-6-AH') return 'kings-of-sin-series-complete-set-6-books-ana-huang';
-  if (sid === 'CUSTOM-HINDI-BESTSELLERS-COMBO-5') return '5-hindi-bestsellers-combo-set-of-5-books-MBO-5';
-  if (sid === 'CUSTOM-GOGGINS-COMBO-HI') return 'david-goggins-combo-hindi-cant-hurt-me-never-finished';
-  if (sid === 'CUSTOM-MOTHER-MARY-COMES-TO-ME-HI-ARUNDHATI-ROY') return 'mother-mary-comes-to-me-hindi-edition-arundhati-roy';
-  const base = String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 55);
-  const suffix = sid.slice(-5);
-  return suffix ? `${base}-${suffix}` : base;
-}
+// Slug rule lives in utils/pricing.js — the ONLY copy. Local re-implementations
+// here dropped the `.toLowerCase()` on the shopify_id suffix (and carried only a
+// subset of the special-case slugs), so this file wrote/read product_overrides
+// under e.g. "...-NG-HI" while the storefront looks for "...-ng-hi". 13 override
+// rows — 12 of them price overrides — were silently doing nothing as a result.
+const { makeSlug } = require('./utils/pricing');
 
 function money(v) {
   const n = Number(v);
