@@ -12,7 +12,13 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { pincodeExists, pincodeRejection, isFakePincode } = require('./pincode-valid');
+const { pincodeExists, pincodeRejection, isFakePincode, _resetNpToken } = require('./pincode-valid');
+
+// The courier stage is skipped entirely when credentials are absent (fail open),
+// so the blocking tests below need them present. Every upstream call is stubbed;
+// nothing here touches the real NimbusPost.
+process.env.NIMBUSPOST_EMAIL = process.env.NIMBUSPOST_EMAIL || 'test@example.invalid';
+process.env.NIMBUSPOST_PASSWORD = process.env.NIMBUSPOST_PASSWORD || 'test-password';
 
 // Minimal fetch double. `payload` is what res.json() resolves to.
 function fakeFetch(payload, { ok = true, throws = null, hang = false } = {}) {
@@ -92,9 +98,77 @@ test('no fetch available in the runtime resolves null', async () => {
 });
 
 // ── the shared guard used by all three order endpoints ──────────────────────
-test('guard blocks a nonexistent pincode with pincode_not_found', async () => {
-  const bad = await pincodeRejection({ pincode: '206014' }, { fetchImpl: fakeFetch(NOT_FOUND) });
-  assert.strictEqual(bad?.code, 'pincode_not_found');
+// Two-stage: India Post miss alone must NOT block (its dataset is incomplete);
+// only a confirmed zero-courier answer does. Routes by URL so one double can
+// answer for both upstreams.
+function stagedFetch({ postal, couriers }) {
+  return (url) => {
+    if (String(url).includes('postalpincode')) {
+      return Promise.resolve({ ok: true, json: async () => postal });
+    }
+    if (String(url).includes('/users/login')) {
+      return Promise.resolve({ ok: true, json: async () => ({ data: 'tok_test' }) });
+    }
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({ status: true, data: Array.from({ length: couriers }, (_, i) => ({ id: i })) }),
+    });
+  };
+}
+
+test('guard blocks only when NO courier serves the pincode', async () => {
+  _resetNpToken();
+  const bad = await pincodeRejection({ pincode: '206014' },
+    { fetchImpl: stagedFetch({ postal: NOT_FOUND, couriers: 0 }) });
+  assert.strictEqual(bad?.code, 'pincode_undeliverable');
+});
+
+test('REGRESSION: a pincode India Post lacks but couriers serve is ALLOWED', async () => {
+  // 452008 (Indore), 122022 (Gurgaon), 560114, 440004, 201318, 400036 are all
+  // absent from India Post yet served by 22–37 couriers, and 34 such orders had
+  // already been delivered. Blocking these would refuse real customers.
+  _resetNpToken();
+  for (const pin of ['452008', '122022', '440004', '560114', '201318', '400036']) {
+    const res = await pincodeRejection({ pincode: pin },
+      { fetchImpl: stagedFetch({ postal: NOT_FOUND, couriers: 25 }) });
+    assert.strictEqual(res, null, `${pin} must not be blocked`);
+  }
+});
+
+test('a courier lookup that fails resolves null → order allowed', async () => {
+  _resetNpToken();
+  const impl = (url) => String(url).includes('postalpincode')
+    ? Promise.resolve({ ok: true, json: async () => NOT_FOUND })
+    : Promise.reject(new Error('nimbus down'));
+  assert.strictEqual(await pincodeRejection({ pincode: '206014' }, { fetchImpl: impl }), null);
+});
+
+test('missing NimbusPost credentials → unknown, order allowed', async () => {
+  _resetNpToken();
+  const email = process.env.NIMBUSPOST_EMAIL, pw = process.env.NIMBUSPOST_PASSWORD;
+  delete process.env.NIMBUSPOST_EMAIL; delete process.env.NIMBUSPOST_PASSWORD;
+  try {
+    const res = await pincodeRejection({ pincode: '206014' },
+      { fetchImpl: stagedFetch({ postal: NOT_FOUND, couriers: 0 }) });
+    assert.strictEqual(res, null);
+  } finally {
+    process.env.NIMBUSPOST_EMAIL = email;
+    process.env.NIMBUSPOST_PASSWORD = pw;
+  }
+});
+
+test('a pincode India Post knows never reaches the courier check', async () => {
+  _resetNpToken();
+  let courierCalled = false;
+  const impl = (url) => {
+    if (String(url).includes('postalpincode')) {
+      return Promise.resolve({ ok: true, json: async () => FOUND });
+    }
+    courierCalled = true;
+    return Promise.resolve({ ok: true, json: async () => ({ status: true, data: [] }) });
+  };
+  assert.strictEqual(await pincodeRejection({ pincode: '226001' }, { fetchImpl: impl }), null);
+  assert.strictEqual(courierCalled, false, 'the expensive check must stay rare');
 });
 
 test('guard blocks junk without ever calling the network', async () => {
@@ -106,6 +180,7 @@ test('guard blocks junk without ever calling the network', async () => {
 });
 
 test('guard allows a real pincode', async () => {
+  _resetNpToken();
   assert.strictEqual(await pincodeRejection({ pincode: '226001' }, { fetchImpl: fakeFetch(FOUND) }), null);
 });
 
@@ -115,12 +190,14 @@ test('guard allows when no pincode is present at all', async () => {
 });
 
 test('guard allows when the lookup is unreachable (fail open)', async () => {
+  _resetNpToken();
   const impl = fakeFetch(null, { throws: new Error('offline') });
   assert.strictEqual(await pincodeRejection({ pincode: '226001' }, { fetchImpl: impl }), null);
 });
 
 test('guard reads the pincode off the address line when no field is given', async () => {
+  _resetNpToken();
   const customer = { address: '15/33 Sharada Nagar, Lucknow, Uttar Pradesh, 206014' };
-  const bad = await pincodeRejection(customer, { fetchImpl: fakeFetch(NOT_FOUND) });
-  assert.strictEqual(bad?.code, 'pincode_not_found');
+  const bad = await pincodeRejection(customer, { fetchImpl: stagedFetch({ postal: NOT_FOUND, couriers: 0 }) });
+  assert.strictEqual(bad?.code, 'pincode_undeliverable');
 });
