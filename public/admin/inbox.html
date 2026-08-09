@@ -65,7 +65,10 @@ main{flex:1;min-height:0;display:flex}
 /* Sized to read like WhatsApp Desktop rather than like a dense data table:
    a 56px row with an avatar, a 15px name, a 14px preview and a 12px timestamp.
    The previous 11-13px text was unreadable at a glance on a large screen. */
-.sidebar{width:400px;flex:0 0 400px;border-right:1px solid var(--border);background:var(--bg2);
+/* Width in REM so the column grows with the text-size control — at a fixed
+   400px, names and previews just wrapped onto more lines as you scaled up.
+   23.5rem is the same 400px at the default root size. */
+.sidebar{width:23.5rem;flex:0 0 23.5rem;border-right:1px solid var(--border);background:var(--bg2);
          display:flex;flex-direction:column;min-height:0}
 .sidebar .tools{padding:.75rem;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:.55rem}
 .sidebar input[type=search]{width:100%;padding:.6rem .85rem;font-size:.95rem;font-family:inherit;
@@ -83,7 +86,7 @@ main{flex:1;min-height:0;display:flex}
 .conv.active{background:#fff;border-left-color:var(--gold)}
 /* Avatar: initials on a colour derived from the phone number, so the same
    customer keeps the same colour and rows are distinguishable at a glance. */
-.conv .av{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+.conv .av{width:2.7rem;height:2.7rem;border-radius:50%;display:flex;align-items:center;justify-content:center;
           font-size:1rem;font-weight:700;color:#fff;flex:0 0 auto;letter-spacing:.02em}
 .conv .body{min-width:0;display:block}
 .conv .top{display:flex;justify-content:space-between;gap:.5rem;align-items:baseline}

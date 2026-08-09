@@ -240,7 +240,10 @@ nav{padding:1.1rem 2rem;background:#fff;border-bottom-color:#c6ccd2;}
   border-color:rgba(122,88,21,0.38);
 }
 .form-row input,.form-row textarea,.form-row select{padding:0.86rem 1rem;}
-.search-box{font-size:0.92rem;padding:0.62rem 0.95rem;min-width:280px;}
+/* min-width in REM, not px: with the text-size control the font grows but a
+   px box does not, so the placeholder truncated harder at every step up.
+   15.5rem is the same 280px at the default root size. */
+.search-box{font-size:0.92rem;padding:0.62rem 0.95rem;min-width:15.5rem;}
 input[type="date"]{font-size:0.88rem;padding:0.58rem 0.75rem;}
 h1{font-size:2.45rem;font-weight:400;color:var(--white);}
 .subtitle{font-size:0.9rem;color:var(--cream-dim);font-weight:600;}
