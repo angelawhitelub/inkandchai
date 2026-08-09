@@ -129,3 +129,53 @@ test('defaults to the bucket the covers already use', () => {
   assert.equal(r2Config(FULL).bucket, 'inkandchai-images');
   assert.equal(r2Config({ ...FULL, R2_BUCKET: 'other' }).bucket, 'other');
 });
+
+// ── presigned PUT (direct browser upload) ────────────────────────────────────
+// Added when book videos stayed blurry: the base64-through-a-function route
+// capped a 20 s clip near 1.3 Mbps, so the original file could never be kept.
+const { r2PresignPut } = require('./r2-put');
+
+const PRESIGN_CFG = {
+  accountId: 'acct123', accessKeyId: 'AKIATEST', secretAccessKey: 'secret',
+  bucket: 'inkandchai-images', publicBase: 'https://pub-test.r2.dev',
+};
+
+test('presign returns an upload URL and the matching public URL', () => {
+  const { uploadUrl, publicUrl } = r2PresignPut(PRESIGN_CFG, { key: 'videos/a b.mp4', contentType: 'video/mp4' });
+  assert.match(uploadUrl, /^https:\/\/acct123\.r2\.cloudflarestorage\.com\/inkandchai-images\/videos\/a%20b\.mp4\?/);
+  assert.strictEqual(publicUrl, 'https://pub-test.r2.dev/videos/a%20b.mp4');
+});
+
+test('presign signs content-type;host and nothing else', () => {
+  // The browser sends only Content-Type; any other signed header would 403.
+  const { uploadUrl } = r2PresignPut(PRESIGN_CFG, { key: 'v.mp4', contentType: 'video/mp4' });
+  const q = new URL(uploadUrl).searchParams;
+  assert.strictEqual(q.get('X-Amz-SignedHeaders'), 'content-type;host');
+  assert.strictEqual(q.get('X-Amz-Algorithm'), 'AWS4-HMAC-SHA256');
+  assert.match(q.get('X-Amz-Credential'), /^AKIATEST\/\d{8}\/auto\/s3\/aws4_request$/);
+  assert.match(q.get('X-Amz-Signature'), /^[0-9a-f]{64}$/);
+});
+
+test('the secret never appears in the URL', () => {
+  const { uploadUrl } = r2PresignPut(PRESIGN_CFG, { key: 'v.mp4', contentType: 'video/mp4' });
+  assert.ok(!uploadUrl.includes('secret'), 'secret key leaked into the presigned URL');
+});
+
+test('a different content-type produces a different signature', () => {
+  const a = r2PresignPut(PRESIGN_CFG, { key: 'v.mp4', contentType: 'video/mp4' }).uploadUrl;
+  const b = r2PresignPut(PRESIGN_CFG, { key: 'v.mp4', contentType: 'image/webp' }).uploadUrl;
+  const sig = (u) => new URL(u).searchParams.get('X-Amz-Signature');
+  assert.notStrictEqual(sig(a), sig(b), 'content-type must be covered by the signature');
+});
+
+test('expiry is clamped to a sane window', () => {
+  const exp = (n) => new URL(r2PresignPut(PRESIGN_CFG, { key: 'v.mp4', contentType: 'video/mp4', expiresIn: n }).uploadUrl).searchParams.get('X-Amz-Expires');
+  assert.strictEqual(exp(5), '60');
+  assert.strictEqual(exp(999999), '3600');
+  assert.strictEqual(exp(600), '600');
+});
+
+test('presign refuses to run without credentials or a public base', () => {
+  assert.throws(() => r2PresignPut({ ...PRESIGN_CFG, accessKeyId: '' }, { key: 'v.mp4', contentType: 'video/mp4' }), /credentials/i);
+  assert.throws(() => r2PresignPut({ ...PRESIGN_CFG, publicBase: '' }, { key: 'v.mp4', contentType: 'video/mp4' }), /R2_PUBLIC_BASE/);
+});

@@ -139,4 +139,65 @@ async function r2PutObject(config, { key, body, contentType }) {
   return `${publicBase}/${encodeKey(key)}`;
 }
 
-module.exports = { r2PutObject, r2Configured, r2Config, signAwsV4, encodeKey };
+/**
+ * A presigned PUT URL the BROWSER can upload to directly.
+ *
+ * Why this exists: a clip posted through a Netlify function is base64 in the
+ * request body, which inflates it by a third against a 6 MB limit — about
+ * 3.2 MB of video, or ~1.3 Mbps for a 20 s clip. That is not enough bitrate for
+ * printed text, so book videos came out blurry however the encoder was tuned.
+ * Uploading straight to R2 removes the ceiling entirely, which lets the ORIGINAL
+ * phone file be stored with no re-encode and no generation loss at all.
+ *
+ * Credentials never reach the browser: this signs a URL that is only good for
+ * one key, one method, and a few minutes.
+ */
+function r2PresignPut(config, { key, contentType, expiresIn = 600 }) {
+  const { accountId, accessKeyId, secretAccessKey, bucket, publicBase } = config;
+  if (!accountId || !accessKeyId || !secretAccessKey) throw new Error('R2 credentials are not configured');
+  if (!publicBase) throw new Error('R2_PUBLIC_BASE (or IMAGE_CDN_BASE) is not set — uploads would have no readable URL');
+
+  const host = `${accountId}.r2.cloudflarestorage.com`;
+  const path = `/${bucket}/${encodeKey(key)}`;
+  const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const scope = `${dateStamp}/auto/s3/aws4_request`;
+
+  // Query-string signing, not a header: the browser cannot attach an
+  // Authorization header to a cross-origin PUT without a second preflight.
+  // Content-Type is the only signed header, so the browser must send exactly it.
+  //
+  // The canonical request is built here rather than through signAwsV4, which
+  // derives SignedHeaders from whatever headers it is handed — that would
+  // disagree with the content-type;host promised in the query string and fail
+  // as an opaque 403.
+  const ct = contentType || 'application/octet-stream';
+  const query = [
+    ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
+    ['X-Amz-Credential', `${accessKeyId}/${scope}`],
+    ['X-Amz-Date', amzDate],
+    ['X-Amz-Expires', String(Math.max(60, Math.min(3600, expiresIn)))],
+    ['X-Amz-SignedHeaders', 'content-type;host'],
+  ].map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).sort().join('&');
+
+  const canonicalRequest = [
+    'PUT',
+    path,
+    query,
+    `content-type:${ct}\nhost:${host}\n`,
+    'content-type;host',
+    'UNSIGNED-PAYLOAD',
+  ].join('\n');
+
+  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, sha256hex(canonicalRequest)].join('\n');
+  let signingKey = hmac(`AWS4${secretAccessKey}`, dateStamp);
+  for (const part of ['auto', 's3', 'aws4_request']) signingKey = hmac(signingKey, part);
+  const signature = crypto.createHmac('sha256', signingKey).update(stringToSign, 'utf8').digest('hex');
+
+  return {
+    uploadUrl: `https://${host}${path}?${query}&X-Amz-Signature=${signature}`,
+    publicUrl: `${publicBase}/${encodeKey(key)}`,
+  };
+}
+
+module.exports = { r2PutObject, r2PresignPut, r2Configured, r2Config, signAwsV4, encodeKey };

@@ -725,6 +725,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="reports"   onclick="switchTab('reports')">📊 Reports</button>
     <button class="admin-tab" data-tab="create"    onclick="switchTab('create')">➕ Create Listing</button>
     <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
+    <button class="admin-tab" data-tab="reels"     onclick="switchTab('reels')">🎬 Video Reels</button>
     <button class="admin-tab" data-tab="abandoned" onclick="switchTab('abandoned')">🛒 Abandoned Carts</button>
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
@@ -1038,6 +1039,33 @@ select,input,textarea{font-size:1rem;}
     <span id="autoRecheckBadge" style="font-size:0.52rem;color:#a275d6;margin-left:0.6rem;opacity:0.75;cursor:default;"></span>
   </div>
   </div>
+
+  <!-- ═══ VIDEO REELS TAB ═══ -->
+  <div class="admin-section" id="tab-reels">
+    <section class="product-panel">
+      <div class="product-head">
+        <div>
+          <h2>🎬 Storefront Video Reels</h2>
+          <p>Select one or more phone videos. Each upload is compressed here and appended after the existing reels on every product page, before Frequently Bought Together.</p>
+        </div>
+        <div class="mini-actions"><button class="btn-outline" onclick="loadSiteReels()">↻ Refresh</button></div>
+      </div>
+      <div class="form-row wide">
+        <label>Select videos <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(up to 8 at once, first 30 seconds of each)</span></label>
+        <input id="siteReelFiles" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*" multiple onchange="prepareSiteReels(this.files)"/>
+        <p class="hint" style="margin-top:.45rem;">Keep this tab visible while uploading: conversion runs in real time. A poster frame is generated automatically.</p>
+      </div>
+      <div id="siteReelQueue" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.8rem;margin-top:.9rem;"></div>
+      <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-top:1rem;">
+        <button class="btn-green" id="uploadSiteReelsBtn" type="button" onclick="uploadSiteReels()" style="display:none;">Upload &amp; Append Videos</button>
+        <span class="hint" id="siteReelUploadStatus"></span>
+      </div>
+    </section>
+    <section class="product-panel" style="margin-top:1rem;">
+      <div class="product-head"><div><h2>Admin-added reels</h2><p>These appear after the five original reels, in the order shown below.</p></div></div>
+      <div id="siteReelsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.8rem;"><span class="hint">Open this tab to load videos.</span></div>
+    </section>
+  </div><!-- /tab-reels -->
 
   <div class="admin-section" id="tab-create">
 
@@ -5032,8 +5060,84 @@ async function saveCustomProductImages() {
   }
 }
 
-// ── Product video: pick → transcode → preview ───────────────────────────────
+// ── Product video: pick → keep or transcode → preview ───────────────────────
 let pendingProductVideo = null;
+
+// A clip good enough to upload untouched. Re-encoding through canvas +
+// MediaRecorder is genuinely lossy — asked for 1391 kbps it wrote 583, and the
+// browser gives no way to insist — so the sharpest possible result is simply not
+// to re-encode. The phone's own H.264 is far better per byte than anything we
+// can produce here.
+const PASSTHROUGH_MAX_MB      = 80;   // ~2 min of phone 1080p; R2 PUT allows far more
+const PASSTHROUGH_MAX_SECONDS = 60;
+
+/**
+ * Which video codec an MP4 actually carries. Chrome and Firefox cannot play
+ * HEVC, which iPhones record by default, so an hvc1 file MUST be transcoded
+ * however pristine it is — shipping it would show most visitors a black slide.
+ *
+ * Reads the sample-description fourcc out of the header rather than trusting
+ * file.type, which is only ever "video/mp4" whatever is inside.
+ */
+async function videoCodecOf(file) {
+  const head = new Uint8Array(await file.slice(0, 3 * 1024 * 1024).arrayBuffer());
+  const find = (fourcc) => {
+    const p = [...fourcc].map(c => c.charCodeAt(0));
+    outer: for (let i = 0; i < head.length - 4; i++) {
+      for (let j = 0; j < 4; j++) if (head[i + j] !== p[j]) continue outer;
+      return true;
+    }
+    return false;
+  };
+  if (find('hvc1') || find('hev1')) return 'hevc';
+  if (find('avc1')) return 'h264';
+  if (find('vp09') || find('VP90')) return 'vp9';
+  return 'unknown';
+}
+
+/** Real dimensions and playable length, without decoding the whole file. */
+async function probeVideoFile(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const v = document.createElement('video');
+    v.preload = 'metadata'; v.muted = true; v.src = url;
+    await new Promise((res, rej) => {
+      v.onloadedmetadata = res;
+      v.onerror = () => rej(new Error('That file could not be read as a video.'));
+      setTimeout(res, 8000);
+    });
+    let seconds = v.duration;
+    if (!Number.isFinite(seconds) || seconds <= 0) seconds = await window.iacBlobDuration(file);
+    return { width: v.videoWidth, height: v.videoHeight, seconds: seconds || 0 };
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/** Poster frame straight from the source, at full source resolution. */
+async function posterFromFile(file, seconds) {
+  const url = URL.createObjectURL(file);
+  try {
+    const v = document.createElement('video');
+    v.preload = 'auto'; v.muted = true; v.playsInline = true; v.src = url;
+    await new Promise((res, rej) => {
+      v.onloadeddata = res;
+      v.onerror = () => rej(new Error('Could not read a frame for the poster.'));
+      setTimeout(res, 8000);
+    });
+    // Slightly in, so a clip opening on a black or blurred frame doesn't get one.
+    await seekVideo(v, seconds > 1 ? Math.min(0.5, seconds / 10) : 0);
+    const scale = Math.min(1, 1080 / Math.max(v.videoWidth || 1, v.videoHeight || 1));
+    const c = document.createElement('canvas');
+    c.width = Math.max(2, Math.round((v.videoWidth * scale) / 2) * 2);
+    c.height = Math.max(2, Math.round((v.videoHeight * scale) / 2) * 2);
+    const ctx = c.getContext('2d', { alpha: false });
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+    return c.toDataURL('image/webp', 0.85);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+const dataUrlToBlob = async (dataUrl) => (await fetch(dataUrl)).blob();
 
 async function prepareProductVideo(fileList) {
   const file = (fileList || [])[0];
@@ -5061,6 +5165,49 @@ async function prepareProductVideo(fileList) {
   // happening or it reads as a hang.
   setHint('Reading the clip…');
   try {
+    // Fast path: the file is already something every browser plays, and small
+    // enough to store as-is. Upload it UNTOUCHED — no canvas, no MediaRecorder,
+    // no generation loss. This is the only way to get a genuinely sharp clip;
+    // re-encoding in the browser cannot be made to hold detail on printed text.
+    const codec = await videoCodecOf(file).catch(() => 'unknown');
+    const meta = await probeVideoFile(file).catch(() => null);
+    const smallEnough = file.size <= PASSTHROUGH_MAX_MB * 1024 * 1024;
+    const shortEnough = meta && meta.seconds > 0 && meta.seconds <= PASSTHROUGH_MAX_SECONDS;
+
+    if (codec === 'h264' && /mp4/i.test(file.type || '') && smallEnough && shortEnough) {
+      setHint('Already web-ready — keeping the original quality…');
+      const posterDataUrl = await posterFromFile(file, meta.seconds).catch(() => '');
+      pendingProductVideo = {
+        blob: file, posterDataUrl, mimeType: 'video/mp4', ext: 'mp4',
+        width: meta.width, height: meta.height, seconds: meta.seconds,
+        trimmed: false, passthrough: true,
+      };
+      const mb = (file.size / 1048576).toFixed(1);
+      setHint(`Ready: ${meta.width}×${meta.height} MP4, ${mb} MB, original quality — not re-encoded. `
+        + 'Check it plays, then add it to the gallery.', '#5d9b55');
+      if (preview) {
+        preview.style.display = 'flex';
+        preview.innerHTML = `
+          <video src="${URL.createObjectURL(file)}" controls playsinline muted loop
+                 ${posterDataUrl ? `poster="${esc(posterDataUrl)}"` : ''}
+                 style="width:150px;max-height:230px;background:#000;border:1px solid var(--gold);border-radius:10px;"></video>
+          <div style="font-size:.62rem;color:var(--cream-dim);line-height:1.7;">
+            <div><strong style="color:var(--cream);">MP4 · H.264</strong> · ${meta.width}×${meta.height} · ${meta.seconds.toFixed(1)}s</div>
+            <div><strong style="color:#5d9b55;">Original quality</strong> — uploaded without re-encoding.</div>
+            <div style="margin-top:.35rem;">${posterDataUrl ? 'Poster frame captured.' : 'No poster frame — the slide will start black.'}</div>
+          </div>`;
+      }
+      if (saveBtn) saveBtn.style.display = '';
+      return;
+    }
+
+    // Slow path — HEVC (which Chrome and Firefox cannot play), an unusual codec,
+    // over a minute, or simply enormous. Re-encode, accepting the quality cost.
+    const why = codec === 'hevc' ? 'iPhone HEVC, which Chrome cannot play'
+      : !smallEnough ? `${(file.size / 1048576).toFixed(0)} MB`
+      : !shortEnough ? 'longer than a minute'
+      : 'not a web-ready MP4';
+    setHint(`Converting (${why})…`);
     const result = await window.iacTranscodeVideo(file, (progress) => {
       // Browsers throttle background tabs, so leaving this one drops the frame
       // rate of the converted clip. Worth saying while they are watching it.
@@ -5101,6 +5248,157 @@ const blobToBase64 = (blob) => new Promise((resolve, reject) => {
   reader.onerror = () => reject(new Error('Could not read the converted video'));
   reader.readAsDataURL(blob);
 });
+
+// ── Global storefront reels ────────────────────────────────────────────────
+// These are deliberately separate from a product's gallery videos. A reel is
+// shown on every product page in the Bookstagram strip; a gallery clip belongs
+// only to the selected book.
+let pendingSiteReelFiles = [];
+let siteReelObjectUrls = [];
+
+function clearSiteReelObjectUrls() {
+  siteReelObjectUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch {} });
+  siteReelObjectUrls = [];
+}
+
+function defaultReelCaption(name) {
+  return String(name || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
+}
+
+function prepareSiteReels(fileList) {
+  clearSiteReelObjectUrls();
+  pendingSiteReelFiles = Array.from(fileList || []).slice(0, 8).map((file, index) => ({
+    file,
+    key: `${Date.now()}-${index}`,
+    caption: defaultReelCaption(file.name),
+  }));
+  renderSiteReelQueue();
+  const status = document.getElementById('siteReelUploadStatus');
+  if (status) status.textContent = pendingSiteReelFiles.length
+    ? `${pendingSiteReelFiles.length} video${pendingSiteReelFiles.length === 1 ? '' : 's'} ready. Add or edit captions, then upload.`
+    : '';
+}
+
+function renderSiteReelQueue() {
+  const queue = document.getElementById('siteReelQueue');
+  const button = document.getElementById('uploadSiteReelsBtn');
+  if (!queue || !button) return;
+  if (!pendingSiteReelFiles.length) {
+    queue.innerHTML = '';
+    button.style.display = 'none';
+    return;
+  }
+  queue.innerHTML = pendingSiteReelFiles.map((entry, index) => {
+    const url = URL.createObjectURL(entry.file);
+    siteReelObjectUrls.push(url);
+    return `<div style="border:1px solid var(--border);background:var(--bg3);border-radius:10px;padding:.7rem;">
+      <video src="${esc(url)}" controls muted playsinline preload="metadata" style="display:block;width:100%;height:220px;object-fit:contain;background:#080706;border-radius:7px;"></video>
+      <div style="font-size:.58rem;color:var(--cream-dim);margin:.45rem 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(entry.file.name)} · ${(entry.file.size / 1048576).toFixed(1)} MB</div>
+      <label style="font-size:.55rem;">Caption</label>
+      <input value="${esc(entry.caption)}" maxlength="180" oninput="pendingSiteReelFiles[${index}].caption=this.value" placeholder="What is shown in this video?" style="width:100%;box-sizing:border-box;"/>
+      <button class="btn-outline" type="button" onclick="removePendingSiteReel(${index})" style="margin-top:.55rem;padding:.35rem .7rem;font-size:.52rem;color:#d66;">Remove</button>
+      <div id="siteReelProgress-${esc(entry.key)}" class="hint" style="margin-top:.45rem;"></div>
+    </div>`;
+  }).join('');
+  button.style.display = '';
+}
+
+function removePendingSiteReel(index) {
+  pendingSiteReelFiles.splice(Number(index), 1);
+  clearSiteReelObjectUrls();
+  renderSiteReelQueue();
+}
+
+async function uploadSiteReels() {
+  if (!pendingSiteReelFiles.length) return;
+  const button = document.getElementById('uploadSiteReelsBtn');
+  const overall = document.getElementById('siteReelUploadStatus');
+  const original = button?.textContent || 'Upload & Append Videos';
+  if (button) { button.disabled = true; button.textContent = 'Uploading…'; }
+  const failed = [];
+  let uploadedCount = 0;
+
+  for (let index = 0; index < pendingSiteReelFiles.length; index += 1) {
+    const entry = pendingSiteReelFiles[index];
+    const progress = document.getElementById(`siteReelProgress-${entry.key}`);
+    try {
+      if (overall) overall.textContent = `Preparing video ${index + 1} of ${pendingSiteReelFiles.length}…`;
+      const converted = await window.iacTranscodeVideo(entry.file, value => {
+        if (progress) progress.textContent = `Converting… ${Math.round(value * 100)}% — keep this tab visible`;
+      });
+      if (progress) progress.textContent = 'Uploading compressed video…';
+      const response = await adminFetch('/.netlify/functions/upload-site-reel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caption: entry.caption,
+          video_type: converted.mimeType,
+          video_base64: await blobToBase64(converted.blob),
+          poster_base64: converted.posterDataUrl
+            ? converted.posterDataUrl.replace(/^data:[^,]*,/, '')
+            : undefined,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+      uploadedCount += 1;
+      if (progress) { progress.textContent = '✓ Uploaded and appended'; progress.style.color = '#5d9b55'; }
+    } catch (error) {
+      failed.push(entry);
+      if (progress) { progress.textContent = 'Could not upload: ' + error.message; progress.style.color = '#c93636'; }
+    }
+  }
+
+  pendingSiteReelFiles = failed;
+  if (overall) {
+    overall.textContent = failed.length
+      ? `${uploadedCount} uploaded; ${failed.length} failed. The failed videos remain selected so you can retry.`
+      : `${uploadedCount} video${uploadedCount === 1 ? '' : 's'} uploaded. They now appear after the previous last reel.`;
+    overall.style.color = failed.length ? '#c98236' : '#5d9b55';
+  }
+  clearSiteReelObjectUrls();
+  if (!failed.length) {
+    const input = document.getElementById('siteReelFiles');
+    if (input) input.value = '';
+  }
+  renderSiteReelQueue();
+  await loadSiteReels();
+  if (button) { button.disabled = false; button.textContent = original; }
+}
+
+async function loadSiteReels() {
+  const list = document.getElementById('siteReelsList');
+  if (!list) return;
+  list.innerHTML = '<span class="hint">Loading admin-added reels…</span>';
+  try {
+    const response = await adminFetch('/.netlify/functions/admin-site-reels', { cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (!items.length) {
+      list.innerHTML = '<span class="hint">No manual reels yet. The five original reels are still shown on the storefront.</span>';
+      return;
+    }
+    list.innerHTML = items.map((item, index) => `<div style="border:1px solid var(--border);background:var(--bg3);border-radius:10px;padding:.55rem;min-width:0;">
+      ${item.poster
+        ? `<img src="${esc(item.poster)}" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:9/16;object-fit:cover;background:#080706;border-radius:7px;"/>`
+        : `<video src="${esc(item.src)}" muted playsinline preload="metadata" style="display:block;width:100%;aspect-ratio:9/16;object-fit:cover;background:#080706;border-radius:7px;"></video>`}
+      <div style="font-size:.61rem;color:var(--cream);line-height:1.4;margin:.45rem 0;min-height:2.8em;">${esc(item.caption || 'Untitled reel')}</div>
+      <div class="hint">Position ${index + 6}</div>
+      <button class="btn-outline" type="button" onclick="deleteSiteReel('${esc(item.id)}')" style="margin-top:.45rem;padding:.35rem .6rem;font-size:.5rem;color:#d66;">Remove reel</button>
+    </div>`).join('');
+  } catch (error) {
+    list.innerHTML = `<span class="hint" style="color:#c93636;">Could not load reels: ${esc(error.message)}</span>`;
+  }
+}
+
+async function deleteSiteReel(id) {
+  if (!confirm('Remove this video from the storefront reel strip?')) return;
+  const response = await adminFetch('/.netlify/functions/admin-site-reels?id=' + encodeURIComponent(id), { method: 'DELETE' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) return alert(data.error || 'Could not remove the reel');
+  loadSiteReels();
+}
 
 /**
  * Write a new gallery array for a product and fold the response back into the
@@ -5201,21 +5499,41 @@ async function saveProductVideo() {
   if (msg) msg.textContent = 'Uploading the video…';
 
   try {
-    // Step 1 — store the clip and its poster, and get back a plain URL.
-    const uploadRes = await adminFetch('/.netlify/functions/upload-product-video', {
+    // Step 1 — upload STRAIGHT to R2 with a short-lived presigned URL.
+    //
+    // The old route sent the clip as base64 inside the function's request body,
+    // which inflates it by a third against a 6 MB serverless limit — about
+    // 3.2 MB of video. That is what forced the aggressive re-encode that made
+    // book text mushy. Going direct has no such ceiling, so an original phone
+    // MP4 can be stored exactly as recorded.
+    const signRes = await adminFetch('/.netlify/functions/sign-product-video-upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        slug: row.slug,
-        video_type: pendingProductVideo.mimeType,
-        video_base64: await blobToBase64(pendingProductVideo.blob),
-        poster_base64: pendingProductVideo.posterDataUrl
-          ? pendingProductVideo.posterDataUrl.replace(/^data:[^,]*,/, '')
-          : undefined,
-      }),
+      body: JSON.stringify({ slug: row.slug, content_type: pendingProductVideo.mimeType }),
     });
-    const uploaded = await uploadRes.json().catch(() => ({}));
-    if (!uploadRes.ok || !uploaded.video_url) throw new Error(uploaded.error || `HTTP ${uploadRes.status}`);
+    const signed = await signRes.json().catch(() => ({}));
+    if (!signRes.ok || !signed.video_upload_url) throw new Error(signed.error || `HTTP ${signRes.status}`);
+
+    // Content-Type must match what was signed exactly, or R2 answers 403.
+    const putVideo = await fetch(signed.video_upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': signed.content_type },
+      body: pendingProductVideo.blob,
+    });
+    if (!putVideo.ok) throw new Error(`Storage rejected the upload (HTTP ${putVideo.status})`);
+
+    // The poster is best-effort: without it the slide simply starts on a black
+    // frame, which is not worth failing a good upload over.
+    if (pendingProductVideo.posterDataUrl && signed.poster_upload_url) {
+      try {
+        await fetch(signed.poster_upload_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'image/webp' },
+          body: await dataUrlToBlob(pendingProductVideo.posterDataUrl),
+        });
+      } catch (e) { console.warn('poster upload failed:', e.message); }
+    }
+    const uploaded = { video_url: signed.video_url };
 
     // Step 2 — append that URL to the gallery through the SAME endpoint the
     // image uploader uses. Both accept a plain https URL untouched, so the video
@@ -7296,14 +7614,14 @@ function rptPickProduct(idx) {
   document.getElementById('rptChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-const TABS = ['orders','tools','create','products','abandoned','reviews','replacements','returns','botinbox','bookreq','insights','bot','recover','reports','adminaccess'];
+const TABS = ['orders','tools','create','products','reels','abandoned','reviews','replacements','returns','botinbox','bookreq','insights','bot','recover','reports','adminaccess'];
 
 function applyRoleVisibility() {
   const limited = adminRole !== 'owner';
   document.querySelectorAll('.owner-only').forEach(el => { el.style.display = limited ? 'none' : ''; });
   if (limited) {
     // Keep the staff workflow focused on support operations.
-    const allowed = new Set(['orders','replacements','returns','botinbox','recover']);
+    const allowed = new Set(['orders','replacements','returns','botinbox','recover','reels']);
     document.querySelectorAll('.admin-tab').forEach(btn => {
       if (!allowed.has(btn.dataset.tab)) btn.style.display = 'none';
     });
@@ -7595,7 +7913,7 @@ async function refreshReplacementRequests(btn) {
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
-  if (adminRole !== 'owner' && !new Set(['orders','replacements','returns','botinbox','recover']).has(tab)) tab = 'orders';
+  if (adminRole !== 'owner' && !new Set(['orders','replacements','returns','botinbox','recover','reels']).has(tab)) tab = 'orders';
 
   // Show/hide panels
   TABS.forEach(t => {
@@ -7617,6 +7935,7 @@ function switchTab(tab, pushState = true) {
   // is the only client-side signal that the remembered session is authenticated.
   const _authed = adminToken || adminKey || adminCookieSession;
   if (tab === 'products' && _authed) fetchProducts();
+  if (tab === 'reels' && _authed) loadSiteReels();
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
   if (tab === 'reviews') fetchPendingReviews();
   if (tab === 'replacements' && _authed) renderReplacementRequests();

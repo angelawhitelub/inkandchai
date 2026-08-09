@@ -37,6 +37,8 @@ const STAFF_ENDPOINT_PERMISSIONS = {
   'process-return': 'returns.manage',
   'cancel-return': 'returns.manage',
   'update-replacement-items': 'replacements.manage',
+  'admin-site-reels': 'content.reels',
+  'upload-site-reel': 'content.reels',
   'bot-inbox': 'support.inbox',
   'whatsapp-broadcast': 'support.inbox',
   'retry-missed-bot-replies': 'support.inbox',
@@ -50,7 +52,7 @@ const STAFF_ENDPOINT_PERMISSIONS = {
 const STAFF_ROLE_PERMISSIONS = {
   support: new Set([
     'orders.read', 'orders.manage', 'returns.read', 'returns.manage',
-    'replacements.manage', 'support.inbox', 'refunds.issue',
+    'replacements.manage', 'support.inbox', 'refunds.issue', 'content.reels',
   ]),
 };
 
