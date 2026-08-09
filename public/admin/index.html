@@ -4699,8 +4699,18 @@ function renderCurrentProductImages(row = selectedProduct) {
     const thumb = isVideo
       ? `<video src="${esc(url)}" muted playsinline preload="metadata" style="display:block;width:70px;height:92px;object-fit:cover;background:#000;border:1px solid var(--gold);border-radius:8px;"></video>`
       : `<img src="${esc(url)}" alt="${index === 0 ? 'Current main cover' : `Current gallery image ${index}`}" style="display:block;width:70px;height:92px;object-fit:contain;background:rgba(0,0,0,.08);border:1px solid var(--border);border-radius:8px;"/>`;
+    // The main cover has no remove button: image_url feeds the storefront, the
+    // Merchant feed and the OG tags, so a product without one is broken in
+    // several places at once. It is replaced, never deleted.
+    const removeBtn = index === 0 ? '' : `<button type="button" title="Remove this ${isVideo ? 'video' : 'image'}"
+      aria-label="Remove ${isVideo ? 'video' : 'image'} ${index}"
+      onclick="removeProductGalleryEntry(${index})"
+      style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;line-height:1;padding:0;
+             border:1px solid var(--border);border-radius:50%;background:var(--bg3);color:var(--red);
+             font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.2);">&times;</button>`;
     return `<div style="position:relative;text-align:center;">
     ${thumb}
+    ${removeBtn}
     <span style="display:block;margin-top:.2rem;font-size:.52rem;color:var(--cream-dim);">${index === 0 ? 'Main cover' : (isVideo ? `🎬 Video ${index}` : `Gallery ${index}`)}</span>
   </div>`;
   }).join('');
@@ -5092,6 +5102,93 @@ const blobToBase64 = (blob) => new Promise((resolve, reject) => {
   reader.readAsDataURL(blob);
 });
 
+/**
+ * Write a new gallery array for a product and fold the response back into the
+ * in-memory row.
+ *
+ * One copy on purpose. Every caller needs the same full payload — these
+ * endpoints upsert the whole record, so omitting a field blanks it — and this
+ * session has already been bitten twice by the same logic living in two places
+ * and drifting apart.
+ */
+async function saveProductGallery(row, gallery) {
+  const p = mergedProduct(row);
+  const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
+  const res = await adminFetch(isCustom
+    ? '/.netlify/functions/create-product-listing'
+    : '/.netlify/functions/update-product-override', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      slug: row.slug,
+      title: p.title,
+      author: p.author,
+      category: p.category || 'Books',
+      price_inr: p.price_inr,
+      original_price_inr: p.original_price_inr,
+      publisher: row.publisher || '',
+      isbn: row.isbn || '',
+      description: row.description || '',
+      tags: row.tags || '',
+      seo_title: row.seo_title || '',
+      meta_description: row.meta_description || '',
+      is_active: row.is_active !== false,
+      scarcity: !!(row.sc || row.override?.scarcity),
+      stock_qty: row.override?.stock_qty ?? null,
+      image_url: p.image_url || '',
+      gallery_images: gallery,
+    }),
+  });
+  const saved = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(saved.error || `HTTP ${res.status}`);
+
+  const product = isCustom ? saved.product : saved.override;
+  if (isCustom) {
+    row.image_url = product?.image_url || row.image_url || '';
+    row.gallery_images = product?.gallery_images || [];
+  } else {
+    row.override = { ...(row.override || {}), ...(product || {}) };
+  }
+  return product;
+}
+
+/**
+ * Remove one gallery slide. `index` is the position in the THUMBNAIL strip,
+ * where 0 is the main cover — so the gallery index is index - 1.
+ *
+ * The main cover is not removable: the storefront, the Merchant feed and the OG
+ * tags all read image_url, and a product with no cover is broken everywhere.
+ * Replace it instead, via "Replace main cover only".
+ *
+ * The file itself is left on R2. Storage is pennies and an orphaned object is
+ * harmless, whereas deleting a URL that another product or a cached page still
+ * references is not reversible.
+ */
+async function removeProductGalleryEntry(index, row = selectedProduct) {
+  if (!row) return;
+  const gallery = customProductGallery(row);
+  const galleryIndex = Number(index) - 1;
+  const url = gallery[galleryIndex];
+  if (!url) return;
+
+  const isVideo = window.iacIsVideoUrl(url);
+  const label = isVideo ? `video ${galleryIndex + 1}` : `gallery image ${galleryIndex + 1}`;
+  if (!confirm(`Remove ${label} from this product?\n\nIt stops showing on the product page straight away. The file stays on storage, so this can be undone by re-adding the URL.`)) return;
+
+  const next = gallery.filter((_, i) => i !== galleryIndex);
+  const hint = document.getElementById('prodVideoHint');
+  try {
+    if (hint) { hint.textContent = `Removing ${label}…`; hint.style.color = ''; }
+    await saveProductGallery(row, next);
+    if (hint) { hint.textContent = `Removed ${label}.`; hint.style.color = '#5d9b55'; }
+    renderCurrentProductImages(row);
+    renderProductList();
+  } catch (err) {
+    if (hint) { hint.textContent = 'Could not remove it: ' + err.message; hint.style.color = 'var(--red)'; }
+    alert('Could not remove it: ' + err.message);
+  }
+}
+
 async function saveProductVideo() {
   if (!selectedProduct || !pendingProductVideo) { alert('Choose a video first.'); return; }
   const row = selectedProduct;
@@ -5124,41 +5221,7 @@ async function saveProductVideo() {
     // image uploader uses. Both accept a plain https URL untouched, so the video
     // needs no special handling server-side and lands after every cover image.
     if (msg) msg.textContent = 'Adding the video to the gallery…';
-    const saveRes = await adminFetch(isCustom
-      ? '/.netlify/functions/create-product-listing'
-      : '/.netlify/functions/update-product-override', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        slug: row.slug,
-        title: p.title,
-        author: p.author,
-        category: p.category || 'Books',
-        price_inr: p.price_inr,
-        original_price_inr: p.original_price_inr,
-        publisher: row.publisher || '',
-        isbn: row.isbn || '',
-        description: row.description || '',
-        tags: row.tags || '',
-        seo_title: row.seo_title || '',
-        meta_description: row.meta_description || '',
-        is_active: row.is_active !== false,
-        scarcity: !!(row.sc || row.override?.scarcity),
-        stock_qty: row.override?.stock_qty ?? null,
-        image_url: p.image_url || '',
-        gallery_images: [...customProductGallery(row), uploaded.video_url],
-      }),
-    });
-    const saved = await saveRes.json().catch(() => ({}));
-    if (!saveRes.ok) throw new Error(saved.error || `HTTP ${saveRes.status}`);
-
-    const product = isCustom ? saved.product : saved.override;
-    if (isCustom) {
-      row.image_url = product?.image_url || row.image_url || '';
-      row.gallery_images = product?.gallery_images || [];
-    } else {
-      row.override = { ...(row.override || {}), ...(product || {}) };
-    }
+    await saveProductGallery(row, [...customProductGallery(row), uploaded.video_url]);
 
     if (msg) msg.textContent = 'Video added as the last gallery slide.';
     pendingProductVideo = null;
