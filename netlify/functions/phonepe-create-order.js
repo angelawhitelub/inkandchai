@@ -21,7 +21,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
-const { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE } = require('./utils/pincode-valid');
+const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 
@@ -145,15 +145,13 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
   }
 
-  // Reject obviously-fake delivery pincodes (123456, 111111 …). Fails open:
-  // only blocks when a pincode is present AND definitely junk.
+  // Reject junk pincodes (123456 …) AND pincodes India Post has no record of.
+  // The browser checks this too, but that check is a 500ms debounce the
+  // customer can out-click — this is the gate that decides. Fails open on a
+  // missing pincode or an unreachable lookup.
   {
-    const pin = extractPincode(customer);
-    if (pin && isFakePincode(pin)) {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({
-        error: PINCODE_INVALID_MESSAGE, code: 'invalid_pincode',
-      }) };
-    }
+    const bad = await pincodeRejection(customer);
+    if (bad) return { statusCode: 400, headers: CORS, body: JSON.stringify(bad) };
   }
 
   // Re-derive prices + total server-side. NEVER trust client-supplied i.price.

@@ -17,7 +17,7 @@ const Razorpay = require('razorpay');
 const { createClient } = require('@supabase/supabase-js');
 const { resolveCartPrices } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
-const { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE } = require('./utils/pincode-valid');
+const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 
@@ -89,16 +89,13 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Cart is required' }) };
   }
 
-  // Reject obviously-fake delivery pincodes (123456, 111111 …) before we spend
-  // a Razorpay order on them. Fails open: only blocks when a pincode is present
-  // AND definitely junk — a missing pincode never blocks here.
+  // Reject junk pincodes (123456 …) AND pincodes India Post has no record of,
+  // before we spend a Razorpay order on them. The browser checks this too, but
+  // that check is a 500ms debounce the customer can out-click — this is the gate
+  // that decides. Fails open on a missing pincode or an unreachable lookup.
   {
-    const pin = extractPincode(customer);
-    if (pin && isFakePincode(pin)) {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({
-        error: PINCODE_INVALID_MESSAGE, code: 'invalid_pincode',
-      }) };
-    }
+    const bad = await pincodeRejection(customer);
+    if (bad) return { statusCode: 400, headers: CORS, body: JSON.stringify(bad) };
   }
 
   try {

@@ -11,7 +11,7 @@ const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricing');
 const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk');
-const { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE } = require('./utils/pincode-valid');
+const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 
 const CORS = {
@@ -83,15 +83,13 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing cart or phone' }) };
   }
 
-  // Reject obviously-fake delivery pincodes (123456, 111111 …). Fails open:
-  // only blocks when a pincode is present AND definitely junk.
+  // Reject junk pincodes (123456 …) AND pincodes India Post has no record of.
+  // The browser checks this too, but that check is a 500ms debounce the
+  // customer can out-click — this is the gate that decides. Fails open on a
+  // missing pincode or an unreachable lookup.
   {
-    const pin = extractPincode(customer);
-    if (pin && isFakePincode(pin)) {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({
-        error: PINCODE_INVALID_MESSAGE, code: 'invalid_pincode',
-      }) };
-    }
+    const bad = await pincodeRejection(customer);
+    if (bad) return { statusCode: 400, headers: CORS, body: JSON.stringify(bad) };
   }
 
   // Shipping rules — must match cart.js + checkout. Calculate server-side

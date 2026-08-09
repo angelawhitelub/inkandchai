@@ -73,4 +73,67 @@ function extractPincode(customer) {
 const PINCODE_INVALID_MESSAGE =
   'That pincode doesn’t look valid. Please enter your correct 6-digit delivery pincode.';
 
-module.exports = { isFakePincode, extractPincode, PINCODE_INVALID_MESSAGE, JUNK_PINCODES };
+const PINCODE_NOT_FOUND_MESSAGE =
+  'That pincode doesn’t exist in India Post records. Please check your 6-digit delivery pincode.';
+
+// ── Existence check (authoritative) ──────────────────────────────────────────
+// isFakePincode above only catches typed junk. A pincode can be perfectly
+// well-formed and still have no delivery office at all — 206014 is real-looking
+// (206xxx is the Etawah/Auraiya range) but India Post has no record of it, and
+// an order shipped to it on a Lucknow address.
+//
+// The browser already asks pincode-lookup for this, but that check is racy (a
+// 500ms debounce the customer can out-click) and client-side, so it cannot be
+// the gate. This runs on the server, where it actually decides.
+//
+// Returns TRUE (exists), FALSE (India Post explicitly has no record), or NULL
+// (unknown — unreachable, timed out, or an unexpected shape). Callers MUST fail
+// open on null: a flaky upstream must never block a genuine order.
+const INDIA_POST_URL = 'https://api.postalpincode.in/pincode/';
+
+async function pincodeExists(raw, opts = {}) {
+  const { timeoutMs = 2500, fetchImpl = globalThis.fetch } = opts;
+  const pin = String(raw == null ? '' : raw).replace(/\D/g, '');
+  if (!/^[1-9]\d{5}$/.test(pin)) return null;   // shape is isFakePincode's job
+  if (typeof fetchImpl !== 'function') return null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(INDIA_POST_URL + pin, { signal: controller.signal });
+    if (!res || !res.ok) return null;
+    const body = await res.json();
+    const rec = Array.isArray(body) ? body[0] : null;
+    if (!rec) return null;
+    if (rec.Status === 'Success' && Array.isArray(rec.PostOffice) && rec.PostOffice.length) return true;
+    // Only a definite "no records found" counts as a denial. Any other error
+    // string is treated as unknown so upstream hiccups fail open.
+    if (/no records? found/i.test(String(rec.Message || ''))) return false;
+    return null;
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// One guard for every order-creating endpoint (Razorpay, PhonePe, COD) so the
+// three can't drift — that drift is the whole reason a bad pincode shipped.
+// Resolves to a {error, code} body to return with a 400, or null to proceed.
+// Fails open twice over: no pincode present → allow; lookup unknown → allow.
+async function pincodeRejection(customer, opts) {
+  const pin = extractPincode(customer);
+  if (!pin) return null;
+  if (isFakePincode(pin)) {
+    return { error: PINCODE_INVALID_MESSAGE, code: 'invalid_pincode' };
+  }
+  if ((await pincodeExists(pin, opts)) === false) {
+    return { error: PINCODE_NOT_FOUND_MESSAGE, code: 'pincode_not_found' };
+  }
+  return null;
+}
+
+module.exports = {
+  isFakePincode, extractPincode, pincodeExists, pincodeRejection,
+  PINCODE_INVALID_MESSAGE, PINCODE_NOT_FOUND_MESSAGE, JUNK_PINCODES,
+};

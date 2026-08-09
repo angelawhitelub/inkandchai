@@ -7982,6 +7982,9 @@ async function saveAbandonedCheckout(status = 'open', orderId = '') {
 
 // ── Pincode → City / State ─────────────────────────────────────────────────
 let _pinTimer = null;
+// The pincode India Post explicitly denied, if any. Only ever set from a
+// definite "no records" answer — never from a failed/unreachable lookup.
+let _badPin = '';
 let _shippingRestrictionBlocked = false;
 let _shippingRestrictionText = '';
 let _shippingRestrictionSeq = 0;
@@ -8062,6 +8065,23 @@ function handlePin(val) {
     try {
       const res  = await fetch(`/.netlify/functions/pincode-lookup?pin=${val}`);
       const data = await res.json();
+      // India Post explicitly says this PIN does not exist. This MUST be
+      // checked before `data.state`, because the lookup always guesses a state
+      // from the 3-digit prefix — so a nonexistent PIN like 206014 came back as
+      // {city:'', state:'Uttar Pradesh', exists:false} and this branch happily
+      // treated it as a hit, autofilled the state and asked for the city by
+      // hand. That is how a Lucknow address shipped with an Etawah-region PIN
+      // that has no delivery office at all.
+      if (data && data.exists === false) {
+        _badPin = val;
+        msg.textContent = '✕ No such pincode in India Post records — please check and re-enter.';
+        msg.style.color = '#c97a7a';
+        msg.style.cursor = ''; msg.onclick = null;
+        if (cityCol)  cityCol.style.display  = '';
+        if (stateCol) stateCol.style.display = '';
+        return;
+      }
+      _badPin = '';
       if (res.ok && data.state) {
         if (data.city) document.getElementById('ch-city').value  = data.city;
         document.getElementById('ch-state').value = data.state;
@@ -8089,7 +8109,7 @@ function handlePin(val) {
         checkProductShippingForPin(val);
         return;
       }
-    } catch(e){}
+    } catch(e){ _badPin = ''; }   // lookup unreachable → fail OPEN, never block a real order
     checkProductShippingForPin(val);
     msg.textContent = 'Pincode not found — enter city and state manually.';
     msg.style.color = '#c97a7a';
@@ -8118,6 +8138,11 @@ function collectAddr() {
   if (!/^\\S+@\\S+\\.\\S+$/.test(email)) { alert('Please enter a valid email address.'); return null; }
   if (!addr)             { alert('Please enter your delivery address.'); return null; }
   if (pin.length !== 6)  { alert('Please enter a valid 6-digit pincode.'); return null; }
+  if (_badPin && _badPin === pin) {
+    alert('That pincode doesn’t exist in India Post records. Please check your 6-digit delivery pincode.');
+    document.getElementById('ch-pin')?.focus();
+    return null;
+  }
 
   // Normalise phone to digits only so DB lookups (My Orders / track) always match
   // — customers often type spaces or dashes ('87994 81113').
