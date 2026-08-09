@@ -49,7 +49,9 @@ const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stri
 
 const BUCKET = 'product-images';
 // Comfortably inside the serverless request-body limit once base64 inflates the
-// payload by a third. The browser targets ~800 kbps, so 30 s lands near 3 MB.
+// payload by a third. The browser now derives its bitrate from the clip length to
+// land just under ~3.2 MB whatever the duration (see videoBitrateFor in
+// public/admin/index.html), so this stays a backstop rather than a routine limit.
 const MAX_VIDEO_BYTES = 4 * 1024 * 1024;
 const MAX_POSTER_BYTES = 512 * 1024;
 

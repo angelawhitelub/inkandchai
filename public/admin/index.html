@@ -3923,10 +3923,32 @@ window.iacImageToWebp = async function (input, quality = 0.85) {
 //
 // Audio is dropped on purpose. These clips are shown muted on the product page,
 // so the audio track is pure bandwidth.
-const VIDEO_MAX_EDGE     = 720;       // long edge in px — enough to read print
+// 900, not 720. The slide is ~330 CSS px wide, which is 660 real pixels on a
+// phone or a retina laptop — a 406 px-wide encode was being upscaled 1.6x on
+// every device that matters.
+const VIDEO_MAX_EDGE     = 900;
 const VIDEO_MAX_SECONDS  = 30;
-const VIDEO_BITS_PER_SEC  = 800000;   // ~3 MB at the 30 s cap
+const VIDEO_FPS          = 24;        // fewer frames = more bits per frame; these
+                                      // are slow hand-held clips, not action
 const VIDEO_INPUT_MAX_MB = 200;       // guard against a 4K movie being picked
+
+// Bitrate is derived from the clip's LENGTH rather than fixed, so every clip
+// fills the upload budget instead of leaving most of it unspent. The old fixed
+// 800 kbps was sized for the 30 s worst case, so a 19 s clip of a book shipped
+// at ~430 kbps actual (MediaRecorder treats the number as a hint and undershoots)
+// — far too little for printed text, which is the hardest thing to encode.
+//
+// The ceiling is not ours to raise: the clip is POSTed as base64, which inflates
+// it by a third, against a 6 MB serverless request-body limit. 3.2 MB of video
+// leaves room for that inflation plus the JSON around it, and stays under the
+// function's own 4 MB guard even if the encoder overshoots the hint.
+const VIDEO_TARGET_BYTES = 3.2 * 1024 * 1024;
+const VIDEO_BITS_MIN     = 900000;
+const VIDEO_BITS_MAX     = 3500000;
+function videoBitrateFor(seconds) {
+  const s = Math.max(1, Math.min(Number(seconds) || VIDEO_MAX_SECONDS, VIDEO_MAX_SECONDS));
+  return Math.round(Math.min(VIDEO_BITS_MAX, Math.max(VIDEO_BITS_MIN, (VIDEO_TARGET_BYTES * 8) / s)));
+}
 
 // H.264 in MP4 first: it plays in every browser and on every phone. WebM is the
 // fallback for browsers that will not write MP4 — product-page.js accepts both.
@@ -4025,17 +4047,19 @@ window.iacTranscodeVideo = async function (file, onProgress) {
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
     // Poster frame first, while we can still seek freely. Taken slightly in so a
     // clip that starts on a black or blurred frame doesn't get one as its poster.
     const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
     await seekVideo(video, duration > 1 ? Math.min(0.5, duration / 10) : 0);
     ctx.drawImage(video, 0, 0, width, height);
-    const posterDataUrl = canvas.toDataURL('image/webp', 0.72);
+    const posterDataUrl = canvas.toDataURL('image/webp', 0.85);
     await seekVideo(video, 0);
 
-    const stream = canvas.captureStream(30);
-    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: VIDEO_BITS_PER_SEC });
+    const stream = canvas.captureStream(VIDEO_FPS);
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: videoBitrateFor(duration) });
     const chunks = [];
     recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     const finished = new Promise((resolve) => { recorder.onstop = () => resolve(); });
@@ -4063,7 +4087,7 @@ window.iacTranscodeVideo = async function (file, onProgress) {
     // pauses compositing. The result is not a choppy clip — it is a FROZEN one
     // (measured: a 4-second source came back as 0.03 s, one frame). So the tab
     // has to stay in front, and it is checked below rather than trusted.
-    const FRAME_MS = 1000 / 30;
+    const FRAME_MS = 1000 / VIDEO_FPS;
     let lastSeen = -1;
     let lastAdvance = Date.now();
     const pump = () => {
