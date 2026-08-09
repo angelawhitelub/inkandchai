@@ -13,6 +13,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
+const { skipFromFeed } = require('./utils/feed-image-filter');
 
 const SITE = 'https://inkandchai.in';
 const BRAND = 'Ink & Chai';
@@ -114,7 +115,8 @@ exports.handler = async () => {
       if (/\._S[XY](?:\d{1,2}|1\d\d)[_.]/.test(String(p.image_url))) return '';
       // Skip "coming soon" / supplier-branded placeholders — Merchant rejects
       // them as "Promotional overlay on image" (logo + text, not a real cover).
-      if (/99bookstores\.com_|coming[-_ ]?soon|no[-_ ]?image|placeholder|image[-_ ]?not[-_ ]?available/i.test(String(p.image_url))) return '';
+      // Rules are shared with feed.xml via utils/feed-image-filter.json.
+      if (skipFromFeed({ slug: p.slug, imageUrl: p.image_url })) return '';
       const link = `${SITE}/product/${encodeURIComponent(p.slug)}/`;
       const desc = plainText(p.description) || `Buy ${p.title} online at ${BRAND}. Fast pan-India delivery, COD and prepaid available.`;
       const salePrice = priceText(p.original_price_inr);

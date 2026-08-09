@@ -1,0 +1,44 @@
+{
+  "_comment": [
+    "Shared by generate_site.py (feed.xml) and the custom-products feed functions.",
+    "Edit here only — both readers load THIS file, so the two feeds cannot drift.",
+    "",
+    "placeholder_image_patterns: case-insensitive regex fragments matched against",
+    "the image URL. Google disapproves images carrying logos, watermarks or",
+    "'coming soon' text as 'Promotional overlay on image'. There is no valid cover",
+    "to submit for these, so the whole item is skipped rather than earn an",
+    "item-level disapproval that drags on account-wide Shopping quality.",
+    "",
+    "The ChatGPT_Image_May_25_2026 fragment matters: the 99 Bookstore",
+    "'IMAGE COMING SOON' card (competitor logo + 'LEARN MORE, GROW MORE') was",
+    "re-uploaded to Shopify under generic filenames like",
+    "ChatGPT_Image_May_25_2026_03_28_31_PM_<uuid>.png, which none of the",
+    "word-based patterns match. 2,238 custom_products rows carry it; on",
+    "2026-08-09 Google flagged 61 of them. They were only kept out of the feed by",
+    "the catalog tag filters — an untagged product with that image would have",
+    "gone straight in.",
+    "",
+    "excluded_slugs: products whose image is a genuine policy breach and for which",
+    "no clean replacement exists yet. Remove a slug once its image is fixed.",
+    "",
+    "Merchant Center caps g:id at 50 chars, so what an issue report calls the",
+    "Product ID may be a TRUNCATED slug. Readers must test both the slug and the",
+    "truncated feed id — the Elle Kennedy combo is exactly that case."
+  ],
+
+  "placeholder_image_patterns": [
+    "99bookstores\\.com_",
+    "coming[-_ ]?soon",
+    "no[-_ ]?image",
+    "placeholder",
+    "image[-_ ]?not[-_ ]?available",
+    "ChatGPT_Image_May_25_2026_03_28_31_PM"
+  ],
+
+  "excluded_slugs": {
+    "ink-chai-library-box-52733": "Marketing creative, not a product shot: '10 BOOKS FOR Rs 999', 'FREE BOOKMARKS', '3 FREE POSTERS', '1500+ 5-STAR REVIEWS', plus a 99BOOKSTORE logo on the box. Price and promo text in an image is an unambiguous breach. Needs a plain product photo.",
+    "contemporary-glamour-opulent-interiors-from-53725": "Uses the 99 Bookstore 'IMAGE COMING SOON' placeholder — the only one that reached the main feed. Needs a real cover.",
+    "the-deal-the-mistake-the-score-elle-kennedy-off-campus-combo": "Amazon 'prime' badge on The Deal cover — a third-party promotional badge, not part of the printed cover art. Needs a re-shot combo image.",
+    "the-deal-the-mistake-the-score-elle-kennedy-combo": "Same product as above, listed under the 50-char TRUNCATED g:id that Merchant Center reports as its Product ID."
+  }
+}

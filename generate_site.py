@@ -9513,12 +9513,29 @@ SITE = "https://inkandchai.in"
 # "IMAGE COMING SOON" graphics) are exactly that — a branded card, not a cover.
 # There is no valid cover to submit, so skip the whole item rather than earn an
 # item-level disapproval that hurts account-wide Shopping quality.
-_PLACEHOLDER_IMAGE_RE = re.compile(r'(99bookstores\.com_|coming[-_ ]?soon|no[-_ ]?image|placeholder|image[-_ ]?not[-_ ]?available)', re.I)
+#
+# The patterns and the excluded-slug list live in
+# netlify/functions/utils/feed-image-filter.json so this generator and the
+# custom-products feed functions read ONE source and cannot drift. Three copies
+# of this regex used to exist and all three missed the same images: the
+# 99 Bookstore "IMAGE COMING SOON" card was re-uploaded to Shopify under generic
+# ChatGPT_Image_* filenames, which none of the word-based patterns match.
+_FEED_FILTER_PATH = Path(__file__).parent / "netlify" / "functions" / "utils" / "feed-image-filter.json"
+with open(_FEED_FILTER_PATH, encoding="utf-8") as _f:
+    _FEED_FILTER = json.load(_f)
+_PLACEHOLDER_IMAGE_RE = re.compile('(' + '|'.join(_FEED_FILTER["placeholder_image_patterns"]) + ')', re.I)
+_FEED_EXCLUDED_SLUGS = set(_FEED_FILTER.get("excluded_slugs", {}))
+
 def is_placeholder_image(url):
     return bool(_PLACEHOLDER_IMAGE_RE.search(str(url or '')))
 
+def is_excluded_slug(slug):
+    """Products whose image is a genuine policy breach with no clean replacement."""
+    return str(slug or '') in _FEED_EXCLUDED_SLUGS
+
 items = []
 _skipped_placeholder = 0
+_skipped_excluded = 0
 for b in slim:
     price = (b.get("p") or "").replace("₹", "").replace(",", "").strip()
     try:
@@ -9537,6 +9554,7 @@ for b in slim:
         continue
 
     slug = b.get("slug", "")
+
     link = f"{SITE}/product/{slug}/"
 
     # Google Merchant Center caps <g:id> at 50 characters. Our slug can be up
@@ -9551,6 +9569,16 @@ for b in slim:
             feed_id = prefix[:max_prefix].rstrip("-") + "-" + suffix
         else:
             feed_id = feed_id[:50]
+
+    # Genuine "Promotional overlay on image" breaches — a marketing creative with
+    # pricing, a competitor's placeholder, an Amazon prime badge. Withheld until
+    # the image is replaced; see excluded_slugs in feed-image-filter.json.
+    # Checked against BOTH the slug and the truncated feed id: what Merchant
+    # Center reports as the Product ID is the truncated id, so a list written
+    # from a Merchant issue report will name that, not the slug.
+    if is_excluded_slug(slug) or is_excluded_slug(feed_id):
+        _skipped_excluded += 1
+        continue
 
     raw_desc = feed_safe(b.get("desc") or b.get("t") or "")
     desc = xml_escape(raw_desc)
@@ -9586,7 +9614,8 @@ feed_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 
 feed_out = Path(__file__).parent / "public" / "feed.xml"
 feed_out.write_text(feed_xml, encoding="utf-8")
-print(f"Generated: {feed_out}  ({len(feed_xml.encode())//1024} KB, {len(items)} products; {_skipped_placeholder} placeholder-image items skipped)")
+print(f"Generated: {feed_out}  ({len(feed_xml.encode())//1024} KB, {len(items)} products; "
+      f"{_skipped_placeholder} placeholder-image items skipped, {_skipped_excluded} policy-excluded)")
 
 # ── SEO: Author hub pages ────────────────────────────────────────────────────
 # For every author with 2+ books we generate a clean /author/[slug]/ page that
