@@ -21,6 +21,7 @@ const { sendEmail } = require('./utils/email');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
 const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
+const { npShipmentMoved, statusImpliesMovement } = require('./utils/nimbuspost-track');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -36,10 +37,15 @@ const PREPAID_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 // tracking_id alone must not block COD cancellation. NimbusPost webhook events
 // stamp shipment_moved_at on the first pickup/in-transit scan. The raw-status
 // fallback protects older rows and aliases while that timestamp is populated.
+//
+// This is a LOCAL read, and both columns are NULL until a webhook lands. The
+// pattern lives in utils/nimbuspost-track.js now, which added "picked" — the
+// status NimbusPost actually sends first, and the one this file's old pattern
+// missed because it only listed "picked up". See npShipmentMoved() at the
+// cancellation site for the check that does not depend on a webhook at all.
 function shipmentHasMoved(order) {
   if (order?.shipment_moved_at) return true;
-  const raw = String(order?.last_nimbuspost_status || '').toLowerCase().trim();
-  return /^(?:in[ -]?transit|reached (?:at|nearest|destination) hub|in sorting centre|sorting|spd|picked up|pickup done|shipped|dispatched|out[ _]for delivery|ofd|delivered|rto|return to origin|undelivered|ndr|delivery (?:failed|attempt failed|exception)|lost)/.test(raw);
+  return statusImpliesMovement(order?.last_nimbuspost_status);
 }
 
 // Has the customer's money actually been taken? Nothing captured means
@@ -206,6 +212,36 @@ exports.handler = async (event) => {
         statusCode: 422, headers: CORS,
         body: JSON.stringify({ error: 'This COD order is already in transit. Cancellation is not possible after courier movement starts.' }),
       };
+    }
+
+    // Local markers said "not moved" — but they are only ever written by an
+    // inbound webhook, so they are equally NULL for "nothing has happened yet"
+    // and for "the pickup event never reached us". Those are opposite facts and
+    // we were treating them the same: IC-R-20260807-P7DX5 was picked up by
+    // Delhivery at 17:48 and cancelled at 23:5x with both columns still NULL.
+    //
+    // With an AWB in hand, ask NimbusPost outright. Unknown (creds, network,
+    // timeout) still falls through to allowing the cancellation — the previous
+    // behaviour, so a NimbusPost outage cannot trap customers in orders.
+    if (order.tracking_id) {
+      const live = await npShipmentMoved(order.tracking_id);
+      if (live.moved === true) {
+        // Persist it, or the Cancel button stays on screen and the customer
+        // keeps hitting a wall with no idea why.
+        await supabase.from('orders').update({
+          // The courier's own event_time carries no timezone, so stamping it
+          // would be a guess. This column is read as a flag, not a clock.
+          shipment_moved_at: new Date().toISOString(),
+          last_nimbuspost_status: String(live.status || 'picked').slice(0, 200),
+        }).eq('id', order_id);
+        return {
+          statusCode: 422, headers: CORS,
+          body: JSON.stringify({ error: `This order has already been picked up by ${order.courier_name || 'the courier'} (AWB ${order.tracking_id}). Cancellation is not possible once a parcel is with the courier — please refuse the delivery instead, or contact us.` }),
+        };
+      }
+      if (live.moved === null) {
+        console.warn(`[cancel-order] live NimbusPost check inconclusive for AWB ${order.tracking_id} (${live.error}) — allowing cancellation on local state`);
+      }
     }
 
     // Recheck status + movement in the UPDATE itself. This closes the race where

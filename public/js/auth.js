@@ -1268,10 +1268,16 @@
     return /^(?:in[ -]?transit|reached (?:at|nearest|destination) hub|in sorting centre|sorting|spd)$/.test(raw);
   }
 
+  // Browser-side twin of MOVED_RE in netlify/functions/utils/nimbuspost-track.js
+  // (no module system here, hence the copy). Keep them in step: if this one is
+  // laxer the Cancel button shows and then cancel-order refuses it.
+  // "picked" — unanchored to "picked up" — is the status NimbusPost really
+  // sends first, and its absence here is half of why a picked-up parcel still
+  // offered a Cancel button.
   function shipmentHasMoved(order) {
     if (order?.shipment_moved_at || isNimbusInTransit(order)) return true;
     const raw = String(order?.last_nimbuspost_status || '').toLowerCase().trim();
-    return /^(?:picked up|pickup done|shipped|dispatched|out[ _]for delivery|ofd|delivered|rto|return to origin|undelivered|ndr|delivery (?:failed|attempt failed|exception)|lost)/.test(raw);
+    return /^(?:picked|pickup done|shipped|dispatched|out[ _-]?for[ _-]?delivery|ofd|delivered|rto|return to origin|undelivered|ndr|delivery (?:failed|attempt failed|exception)|lost)/.test(raw);
   }
 
   function renderOrders(container, data) {

@@ -69,7 +69,15 @@ const STATUS_MAP = {
   // Shipped / dispatched — notify customer with tracking link
   'shipped':                    'shipped',
   'dispatched':                 'shipped',
+  // "picked" is what NimbusPost actually sends on the first movement scan —
+  // confirmed against /shipments/track/bulk, which reports status:"picked" and a
+  // history entry status_code:"PICKED". Only the "picked up" spelling was mapped
+  // here, so every real pickup event fell through the `if (!ourStatus) continue`
+  // below and nothing — not even last_nimbuspost_status — was recorded. That is
+  // how a picked-up parcel still looked cancellable.
+  'picked':                     'shipped',
   'picked up':                  'shipped',
+  'shipment picked up':         'shipped',
   'pickup done':                'shipped',
   'shipment booked':            null,
 
@@ -340,6 +348,20 @@ exports.handler = async (event) => {
           console.error(`[NimbusPost] In-transit notification failed for ${order.razorpay_order_id || order.id}; claim released for retry`);
         }
         continue;
+      }
+
+      // Movement markers are recorded BEFORE the skip guards below, never after.
+      // nimbuspost-ship.js sets status='shipped' the moment an AWB is minted, so
+      // the real pickup scan arrives as shipped→shipped and gets skipped as a
+      // no-op transition — which used to throw away the only evidence that the
+      // parcel had left the building. cancel-order.js reads exactly these two
+      // columns, so dropping them let a picked-up order stay cancellable.
+      if (['shipped', 'out_for_delivery', 'delivered'].includes(ourStatus)) {
+        await supabase.from('orders').update({
+          shipment_moved_at: order.shipment_moved_at || eventTimestamp(evt),
+          last_nimbuspost_status: String(rawStatus).slice(0, 200),
+          last_nimbuspost_event_at: eventTimestamp(evt),
+        }).eq('id', order.id);
       }
 
       // Guard against backwards transitions

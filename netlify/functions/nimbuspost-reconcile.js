@@ -43,6 +43,11 @@ const STATUS_MAP = {
   'delivery done':      'delivered',
   'out for delivery':   'out_for_delivery',
   'out_for_delivery':   'out_for_delivery',
+  // NimbusPost's first movement scan. Mirrors nimbuspost-webhook.js — it was
+  // missing from both, so pickups were invisible to the cancellation guard.
+  'picked':             'shipped',
+  'picked up':          'shipped',
+  'pickup done':        'shipped',
   'in transit':         'in_transit',
   'intransit':          'in_transit',
   'in-transit':         'in_transit',
@@ -227,6 +232,17 @@ exports.handler = async (event) => {
           summary.updated++;
         }
         continue;
+      }
+
+      // Stamp movement before the no-op/downgrade guards below, same as the
+      // webhook: a shipped→shipped pickup scan is skipped as "no change", and
+      // that skip used to discard the evidence cancel-order.js depends on.
+      if (['shipped', 'out_for_delivery', 'delivered'].includes(ourStatus) && !order.shipment_moved_at) {
+        await supabase.from('orders').update({
+          shipment_moved_at: new Date().toISOString(),
+          last_nimbuspost_status: String(rawStatus).slice(0, 200),
+          last_nimbuspost_event_at: new Date().toISOString(),
+        }).eq('id', order.id);
       }
 
       if (ourStatus === order.status) { summary.no_change++; continue; }
