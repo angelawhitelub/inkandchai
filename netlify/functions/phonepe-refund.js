@@ -143,9 +143,15 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Order status is '${order.status}' — not eligible for refund.` }) };
     }
 
+    // These two were one branch, so an order with NO payment id at all was told
+    // it "has a Razorpay payment" — which sent whoever read it to the wrong
+    // dashboard looking for a transaction that was never there.
     const paymentId = order.razorpay_payment_id || '';
-    if (!paymentId || paymentId.startsWith('pay_')) {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'This order has a Razorpay payment — use the Razorpay dashboard to refund, not this tool.' }) };
+    if (paymentId.startsWith('pay_')) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'This order has a Razorpay payment — refund it with the Razorpay tool, not this one.' }) };
+    }
+    if (!paymentId) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'This order has no recorded gateway payment id, so there is nothing to refund against. Check the order in the gateway dashboard first.' }) };
     }
 
     const orderAmount = order.amount_paise;

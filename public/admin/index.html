@@ -1051,7 +1051,7 @@ select,input,textarea{font-size:1rem;}
         <div class="mini-actions"><button class="btn-outline" onclick="loadSiteReels()">↻ Refresh</button></div>
       </div>
       <div class="form-row wide">
-        <label>Select videos <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(up to 8 at once, first 30 seconds of each)</span></label>
+        <label>Select videos <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(up to 8 at once; web-ready MP4s up to 60 seconds keep original quality and sound)</span></label>
         <input id="siteReelFiles" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*" multiple onchange="prepareSiteReels(this.files)"/>
         <p class="hint" style="margin-top:.45rem;">Keep this tab visible while uploading: conversion runs in real time. A poster frame is generated automatically.</p>
       </div>
@@ -5323,22 +5323,58 @@ async function uploadSiteReels() {
     const progress = document.getElementById(`siteReelProgress-${entry.key}`);
     try {
       if (overall) overall.textContent = `Preparing video ${index + 1} of ${pendingSiteReelFiles.length}…`;
-      const converted = await window.iacTranscodeVideo(entry.file, value => {
-        if (progress) progress.textContent = `Converting… ${Math.round(value * 100)}% — keep this tab visible`;
-      });
-      if (progress) progress.textContent = 'Uploading compressed video…';
-      const response = await adminFetch('/.netlify/functions/upload-site-reel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          caption: entry.caption,
-          video_type: converted.mimeType,
-          video_base64: await blobToBase64(converted.blob),
-          poster_base64: converted.posterDataUrl
-            ? converted.posterDataUrl.replace(/^data:[^,]*,/, '')
-            : undefined,
-        }),
-      });
+      const codec = await videoCodecOf(entry.file).catch(() => 'unknown');
+      const meta = await probeVideoFile(entry.file).catch(() => null);
+      const direct = codec === 'h264' && /mp4/i.test(entry.file.type || '')
+        && entry.file.size <= PASSTHROUGH_MAX_MB * 1024 * 1024
+        && meta && meta.seconds > 0 && meta.seconds <= PASSTHROUGH_MAX_SECONDS;
+      let response;
+
+      if (direct) {
+        if (progress) progress.textContent = 'Original-quality MP4 — preparing direct upload…';
+        const posterDataUrl = await posterFromFile(entry.file, meta.seconds).catch(() => '');
+        const signResponse = await adminFetch('/.netlify/functions/sign-product-video-upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: 'storefront-reel', content_type: 'video/mp4' }),
+        });
+        const signed = await signResponse.json().catch(() => ({}));
+        if (!signResponse.ok || !signed.video_upload_url) throw new Error(signed.error || `HTTP ${signResponse.status}`);
+        if (progress) progress.textContent = 'Uploading original video with sound…';
+        const videoPut = await fetch(signed.video_upload_url, {
+          method: 'PUT', headers: { 'Content-Type': signed.content_type }, body: entry.file,
+        });
+        if (!videoPut.ok) throw new Error(`Storage rejected the video (HTTP ${videoPut.status})`);
+        let posterUrl = '';
+        if (posterDataUrl && signed.poster_upload_url) {
+          const posterPut = await fetch(signed.poster_upload_url, {
+            method: 'PUT', headers: { 'Content-Type': 'image/webp' }, body: await dataUrlToBlob(posterDataUrl),
+          });
+          if (posterPut.ok) posterUrl = signed.poster_url;
+        }
+        response = await adminFetch('/.netlify/functions/upload-site-reel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ caption: entry.caption, video_url: signed.video_url, poster_url: posterUrl }),
+        });
+      } else {
+        const converted = await window.iacTranscodeVideo(entry.file, value => {
+          if (progress) progress.textContent = `Converting… ${Math.round(value * 100)}% — keep this tab visible`;
+        });
+        if (progress) progress.textContent = 'Uploading compressed video…';
+        response = await adminFetch('/.netlify/functions/upload-site-reel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            caption: entry.caption,
+            video_type: converted.mimeType,
+            video_base64: await blobToBase64(converted.blob),
+            poster_base64: converted.posterDataUrl
+              ? converted.posterDataUrl.replace(/^data:[^,]*,/, '')
+              : undefined,
+          }),
+        });
+      }
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
       uploadedCount += 1;
@@ -6240,7 +6276,7 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
                  padding:0.65rem 1rem;background:transparent;border:1px solid rgba(160,144,128,0.3);color:#a09080;cursor:pointer;">
           Cancel
         </button>
-        <button id="iacRefundSubmit" onclick="iacSubmitRefund('${orderId.replace(/'/g,"\\'")}',${fullAmtRupees})"
+        <button id="iacRefundSubmit" onclick="iacSubmitRefund('${orderId.replace(/'/g,"\\'")}',${fullAmtRupees},'${isRazorpay ? 'razorpay' : 'phonepe'}')"
           style="font-family:'Manrope',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
                  padding:0.65rem 1.2rem;background:#e06060;border:1px solid #e06060;color:#1a0a0a;cursor:pointer;font-weight:700;">
           Issue Refund
@@ -6561,7 +6597,7 @@ function iacRefundItemToggle(box, fullAmtRupees) {
   }
 }
 
-async function iacSubmitRefund(orderId, fullAmtRupees) {
+async function iacSubmitRefund(orderId, fullAmtRupees, gateway) {
   const partial = document.querySelector('input[name="iacRefundType"]:checked')?.value === 'partial';
   const msg = document.getElementById('iacRefundMsg');
   const show = (text, color = '#e8a030') => { msg.textContent = text; msg.style.color = color; msg.style.display = ''; };
@@ -6578,8 +6614,23 @@ async function iacSubmitRefund(orderId, fullAmtRupees) {
   }
 
   // Route by payment provider: Razorpay (pay_…) → razorpay-refund, else PhonePe.
+  //
+  // The gateway is decided ONCE, when the modal opens, and passed in here — it is
+  // deliberately NOT looked up again. The 90s auto-refresh calls fetchOrders(true),
+  // whose first act is `allOrders = []` before it refills page by page, and the
+  // modal is a detached element that survives that. A re-lookup at click time can
+  // therefore miss, and the old code read a missing order as "not Razorpay" and
+  // sent a Razorpay refund to the PhonePe endpoint (IC-20260806-ASIVX, pay_TMUEB…,
+  // which came back as "This order has a Razorpay payment"). An unknown gateway
+  // must stop, never guess: the two endpoints move real money at two providers.
   const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
-  const isRazorpay = String(ord?.razorpay_payment_id || '').startsWith('pay_');
+  let isRazorpay;
+  if (gateway === 'razorpay' || gateway === 'phonepe') isRazorpay = gateway === 'razorpay';
+  else if (ord) isRazorpay = String(ord.razorpay_payment_id || '').startsWith('pay_');
+  else {
+    show('Lost track of which gateway this order used (the list refreshed underneath). Hit Refresh, then open the refund again.');
+    return;
+  }
   const endpoint = isRazorpay ? '/.netlify/functions/razorpay-refund' : '/.netlify/functions/phonepe-refund';
 
   const confirmText = partial
@@ -6640,7 +6691,10 @@ async function iacSubmitRefund(orderId, fullAmtRupees) {
     if (window.applyFilters) applyFilters();
     setTimeout(() => { document.getElementById('iacRefundModal')?.remove(); }, 1600);
   } catch (err) {
-    show(`Refund failed: ${err.message}. If PhonePe API is unavailable, process manually at business.phonepe.com`);
+    // Name the gateway that actually failed. This line used to say PhonePe
+    // unconditionally, so a Razorpay failure pointed at the wrong dashboard.
+    show(`Refund failed: ${err.message}. If the ${isRazorpay ? 'Razorpay' : 'PhonePe'} API is unavailable, `
+       + `process manually at ${isRazorpay ? 'dashboard.razorpay.com' : 'business.phonepe.com'}`);
     btn.disabled = false;
     btn.textContent = 'Issue Refund';
   }
