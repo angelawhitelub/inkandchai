@@ -21,6 +21,40 @@ function decodeBase64(value, label) {
   return buffer;
 }
 
+function cleanDirectUrl(value, kind) {
+  let url;
+  try { url = new URL(String(value || '').trim()); }
+  catch { throw new Error(`Invalid ${kind} URL`); }
+  if (url.protocol !== 'https:') throw new Error(`${kind} URL must use HTTPS`);
+  const allowedBases = [process.env.R2_PUBLIC_BASE, process.env.IMAGE_CDN_BASE]
+    .filter(Boolean).map(base => String(base).replace(/\/+$/, '') + '/');
+  if (!allowedBases.some(base => url.href.startsWith(base))) {
+    throw new Error(`${kind} URL is not on the configured media storage`);
+  }
+  return url.href;
+}
+
+async function appendReel(current, body, videoUrl, posterUrl, extra = {}) {
+  if (current.length >= MAX_REELS) {
+    const error = new Error(`The admin reel limit of ${MAX_REELS} has been reached.`);
+    error.statusCode = 409;
+    throw error;
+  }
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const item = {
+    id,
+    src: videoUrl,
+    poster: posterUrl || '',
+    caption: String(body.caption || '').trim().slice(0, 180),
+    instagram: '',
+    type: 'video',
+    created_at: new Date().toISOString(),
+    position: current.reduce((max, row) => Math.max(max, Number(row.position) || 0), 0) + 1,
+  };
+  await writeSiteReels([...current, item]);
+  return { success: true, item, ...extra };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
@@ -30,6 +64,21 @@ exports.handler = async (event) => {
   let body;
   try { body = JSON.parse(event.body || '{}'); }
   catch { return json(400, { error: 'Invalid JSON' }); }
+
+  // Web-ready MP4s upload straight from the browser to R2 using a short-lived
+  // signed PUT. Register that already-stored URL here so original resolution,
+  // bitrate and audio are preserved without passing a huge file through Lambda.
+  if (body.video_url) {
+    try {
+      const videoUrl = cleanDirectUrl(body.video_url, 'video');
+      if (!/\.(?:mp4|webm)(?:$|[?#])/i.test(videoUrl)) throw new Error('Direct reel URL must be MP4 or WebM');
+      const posterUrl = body.poster_url ? cleanDirectUrl(body.poster_url, 'poster') : '';
+      const current = await readSiteReels();
+      return json(200, await appendReel(current, body, videoUrl, posterUrl, { storage: 'r2-direct' }));
+    } catch (error) {
+      return json(error.statusCode || 400, { error: error.message });
+    }
+  }
 
   const videoType = String(body.video_type || '').toLowerCase().split(';')[0].trim();
   const ext = VIDEO_TYPES[videoType];
@@ -78,18 +127,7 @@ exports.handler = async (event) => {
     }
     if (!videoUrl) throw new Error('Could not create a public video URL');
 
-    const item = {
-      id,
-      src: videoUrl,
-      poster: posterUrl,
-      caption: String(body.caption || '').trim().slice(0, 180),
-      instagram: '',
-      type: 'video',
-      created_at: new Date().toISOString(),
-      position: current.reduce((max, row) => Math.max(max, Number(row.position) || 0), 0) + 1,
-    };
-    await writeSiteReels([...current, item]);
-    return json(200, { success: true, item, storage, bytes: video.length });
+    return json(200, await appendReel(current, body, videoUrl, posterUrl, { storage, bytes: video.length }));
   } catch (error) {
     console.error('[upload-site-reel]', error.message);
     return json(500, { error: error.message });

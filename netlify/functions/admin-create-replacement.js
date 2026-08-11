@@ -166,6 +166,10 @@ exports.handler = async (event) => {
       razorpay_payment_id: null,
       amount_paise:        Math.round(amountRs * 100),
       status:              'replacement_pending',
+      // Replacements are fulfilment shipments, never cash-on-delivery sales.
+      // Persist this explicitly so generic order/admin status changes cannot
+      // make NimbusPost collect from the customer again.
+      shipment_payment_type: 'prepaid',
       customer_name:       order.customer_name || '',
       customer_email:      order.customer_email || '',
       customer_phone:      order.customer_phone || '',

@@ -79,10 +79,10 @@ test('a free replacement still declares the books\' value on the label', async (
   assert.equal(p.amount, 179);   // declared, not collected
 });
 
-test('a replacement the customer agreed to pay for is still COD', async () => {
-  // admin-create-replacement sets amount_rs deliberately for a paid reship.
+test('a replacement with a declared amount is still prepaid', async () => {
+  // A replacement amount is parcel value only; it must never be collected.
   const p = await buildPayload({ ...replBase, amount_paise: 5000 });
-  assert.equal(p.payment_method, 'COD');
+  assert.equal(p.payment_method, 'prepaid');
   assert.equal(p.amount, 50);
 });
 

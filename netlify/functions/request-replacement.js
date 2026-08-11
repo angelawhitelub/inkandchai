@@ -260,6 +260,7 @@ exports.handler = async (event) => {
     razorpay_payment_id: null,
     amount_paise:        0,              // free
     status:              'replacement_pending',
+    shipment_payment_type: 'prepaid',
     customer_name:       orig.customer_name || '',
     customer_email:      orig.customer_email || '',
     customer_phone:      orig.customer_phone || '',

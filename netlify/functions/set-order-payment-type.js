@@ -18,6 +18,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { isReplacementOrder } = require('./utils/replacement-order');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -53,7 +54,7 @@ exports.handler = async (event) => {
     // lookup below then misreads as "order not found" (was a 404 on EVERY
     // toggle). The UPDATE keeps a retry-without-payment_status fallback for the
     // same reason.
-    const SEL = 'id, razorpay_order_id, status, razorpay_payment_id';
+    const SEL = 'id, razorpay_order_id, status, razorpay_payment_id, source, cart_items, amount_paise, tracking_id, shipment_payment_type';
 
     // Locate the order by ANY identifier we were given, robust to:
     //  - the PK type (uuid or bigint) — we just query `id` directly; if `id` is
@@ -72,6 +73,30 @@ exports.handler = async (event) => {
     await tryEq('razorpay_order_id', id);       // in case `id` IS the IC- display id
     if (!order) {
       return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: `Order not found (id="${id}", ref="${orderRef}")` }) };
+    }
+
+    // A replacement is never a new sale. It must not be converted to COD,
+    // otherwise the courier may collect the original book value a second time.
+    if (isReplacementOrder(order)) {
+      if (paymentType === 'cod') {
+        return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'Replacement orders are always prepaid and cannot be changed to COD.' }) };
+      }
+      const replacementStatus = order.tracking_id
+        ? order.status
+        : (['paid', 'confirmed', 'cod_pending', 'partial_cod_pending'].includes(String(order.status || '').toLowerCase())
+          ? 'replacement_pending'
+          : order.status);
+      const patch = {
+        shipment_payment_type: 'prepaid',
+        status: replacementStatus || 'replacement_pending',
+      };
+      const { error } = await supabase.from('orders').update(patch).eq('id', order.id);
+      if (error) throw error;
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({ success: true, id: order.id, status: patch.status, payment_status: null, razorpay_payment_id: order.razorpay_payment_id, shipment_payment_type: 'prepaid' }),
+      };
     }
 
     // Don't clobber a REAL gateway payment (pay_… / PhonePe id). Only manual

@@ -14,6 +14,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { isReplacementOrder } = require('./utils/replacement-order');
 const { sendWhatsApp } = require('./utils/whatsapp');
 
 const { sendEmail } = require('./utils/email');
@@ -129,6 +130,18 @@ exports.handler = async (event) => {
 
     if (fetchErr) throw fetchErr;
     if (!previousOrder) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found' }) };
+
+    // Payment-state labels are not valid lifecycle states for replacements.
+    // Keeping them out also prevents the admin UI from losing its edit/refund
+    // actions, which correctly operate while the replacement is pending.
+    if (isReplacementOrder(previousOrder)
+      && ['paid', 'cod_pending', 'partial_cod_pending', 'confirmed'].includes(String(status).toLowerCase())) {
+      return {
+        statusCode: 409,
+        headers: CORS,
+        body: JSON.stringify({ error: 'Replacement orders are always prepaid. Use Replacement Pending, Shipped, Out for Delivery, Delivered, Cancelled, or Refunded.' }),
+      };
+    }
 
     // First update just the status (always works regardless of migration state)
     {
