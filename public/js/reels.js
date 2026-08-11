@@ -278,6 +278,14 @@
     });
   }
 
+  function sameReels(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (String(a[i] && a[i].src) !== String(b[i] && b[i].src)) return false;
+    }
+    return true;
+  }
+
   function remountAll() {
     // Dynamic reels normally arrive before anyone can open the viewer. Resetting
     // here also makes the API safe on a slow connection: stale slide indexes can
@@ -291,11 +299,18 @@
   }
 
   function loadAdminReels() {
-    return fetch('/.netlify/functions/site-reels', { cache: 'no-store' })
+    // No `cache: 'no-store'`: this runs on every page view, and forcing a fresh
+    // request bypassed both the browser and the CDN, costing a function
+    // invocation per visitor. The endpoint's own Cache-Control governs freshness
+    // now (60s browser, 5min edge).
+    return fetch('/.netlify/functions/site-reels')
       .then(function (response) { return response.ok ? response.json() : { items: [] }; })
       .then(function (data) {
         var merged = mergeReels(data && data.items);
-        if (merged.length === reels.length) return;
+        // Compare identity, not count: swapping one reel for another leaves the
+        // length identical, and the old check treated that as "nothing changed"
+        // so the new video never appeared until a hard reload.
+        if (sameReels(merged, reels)) return;
         reels = merged;
         window.__IAC_REELS__ = reels.slice();
         remountAll();

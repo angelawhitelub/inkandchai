@@ -2508,6 +2508,57 @@ async function fetchOrders(reset = false) {
   }
 }
 
+// ── Incremental refresh, used by the 90-second poll ─────────────────────────
+// fetchOrders(true) downloads the COMPLETE order set: at ~8,600 orders and
+// PAGE=500 that is 18 requests, every 90 seconds, for as long as the Orders tab
+// is open. The comment on the poll below already calls the old version "the
+// single biggest bandwidth item after images", and making the fetch
+// unconditional made it worse.
+//
+// get-orders sorts created_at DESC, so page 1 IS the recent activity: new
+// orders, and the status changes that webhooks and admins actually produce.
+// Fetching that one page and merging by id costs 1 request instead of 18.
+//
+// Deliberately NOT a full replacement for fetchOrders: an old order changed by
+// something outside this browser still needs the ↻ Refresh button, which
+// remains a complete reload. This keeps the table live, not authoritative.
+async function refreshRecentOrders() {
+  if (!allOrders.length) return fetchOrders(true);   // nothing to merge into
+
+  const fetchGeneration = ++ordersFetchGeneration;
+  try {
+    const data = await fetchOrdersPage(1, PAGE, '');
+    // Same generation guard as fetchOrders: a slow poll must never overwrite a
+    // newer manual refresh.
+    if (fetchGeneration !== ordersFetchGeneration) return;
+
+    const fresh = data.orders || [];
+    if (!fresh.length) return;
+    serverTotal = data.total ?? serverTotal;
+
+    const freshIds = new Set(fresh.map(o => String(o.id)));
+    const merged = fresh.concat(allOrders.filter(o => !freshIds.has(String(o.id))));
+
+    // Skip the re-render when nothing actually moved — the common case on a
+    // quiet night, and re-rendering steals focus from whatever is open.
+    const changed = merged.length !== allOrders.length
+      || fresh.some((o, i) => {
+        const prev = allOrders[i];
+        return !prev || String(prev.id) !== String(o.id) || prev.status !== o.status
+          || prev.tracking_id !== o.tracking_id;
+      });
+    allOrders = merged;
+    if (!changed) return;
+
+    updateStats();
+    applyFilters();
+    saveOrdersToCache(allOrders, serverTotal);
+  } catch (e) {
+    if (String(e.message) === 'UNAUTHORIZED') return;
+    console.error('[orders] incremental refresh failed:', e.message);
+  }
+}
+
 function showLoginErr(msg) {
   const el = document.getElementById('loginErr');
   el.textContent = msg;
@@ -7406,7 +7457,9 @@ setInterval(() => {
   if (!(adminToken || adminKey || adminCookieSession)) return;
   if (document.visibilityState !== 'visible') { _ordersPollMissedWhileHidden = true; return; }
   if (activeAdminTabName() !== 'orders') { _ordersPollMissedWhileInactive = true; return; }
-  fetchOrders(true);
+  // Delta, not a full reload: one request instead of eighteen. See
+  // refreshRecentOrders(). The ↻ Refresh button is still a complete reload.
+  refreshRecentOrders();
 }, 90000);
 
 document.addEventListener('visibilitychange', () => {
@@ -7415,7 +7468,7 @@ document.addEventListener('visibilitychange', () => {
   if (!(adminToken || adminKey || adminCookieSession)) return;
   _ordersPollMissedWhileHidden = false;
   if (activeAdminTabName() !== 'orders') { _ordersPollMissedWhileInactive = true; return; }
-  fetchOrders(true);
+  refreshRecentOrders();
 });
 
 // ── Auto-recheck pending PhonePe orders every 3 minutes ───────────────────
@@ -8115,7 +8168,7 @@ function switchTab(tab, pushState = true) {
   // return instead of continuously rebuilding hidden panels in the background.
   if (tab === 'orders' && _ordersPollMissedWhileInactive && _authed) {
     _ordersPollMissedWhileInactive = false;
-    setTimeout(() => fetchOrders(true), 0);
+    setTimeout(() => refreshRecentOrders(), 0);
   }
 
   // Scroll to top of content
