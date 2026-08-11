@@ -39,6 +39,7 @@ const path = require('path');
 const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp, normalizePhone } = require('./utils/whatsapp');
+const { optedOutPhoneSet, phoneKey } = require('./utils/bot-optout');
 const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
@@ -315,7 +316,7 @@ exports.handler = async (event) => {
       }
     }
 
-    const recipients = [...phoneToOrders.entries()]
+    let recipients = [...phoneToOrders.entries()]
       .slice(0, limit)
       .map(([phone, info]) => ({ phone, name: info.name, orders: info.orders }));
 
@@ -350,6 +351,28 @@ exports.handler = async (event) => {
       for (const r of recipients) r.params = [r.name];
     }
 
+    // ── Drop anyone who sent STOP ───────────────────────────────────────────
+    // A broadcast is exactly what opting out means you no longer want. One bulk
+    // lookup rather than a query per recipient. Deliberately NOT wrapped in a
+    // try/catch that carries on: if we cannot tell who opted out, the safe move
+    // is to send nothing, not to message everyone and hope.
+    let optedOutRemoved = 0;
+    {
+      const blocked = await optedOutPhoneSet(supabase);
+      if (blocked.size) {
+        const before = recipients.length;
+        recipients = recipients.filter(r => !blocked.has(phoneKey(r.phone)));
+        optedOutRemoved = before - recipients.length;
+        console.log(`[broadcast] ${optedOutRemoved} opted-out recipient(s) removed; ${recipients.length} remain`);
+      }
+    }
+    if (!recipients.length) {
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({
+        success: true, sent: 0, opted_out_removed: optedOutRemoved,
+        message: 'Every matching recipient has opted out — nothing was sent.',
+      }) };
+    }
+
     // ── Dry run ─────────────────────────────────────────────────────────────
     if (dryRun) {
       const segmentCounts = {};
@@ -362,6 +385,7 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: CORS, body: JSON.stringify({
         success: true,
         dry_run: true,
+        opted_out_removed: optedOutRemoved,
         personalized,
         total: recipients.length,
         segment_counts: personalized ? segmentCounts : undefined,
