@@ -20,7 +20,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
-const { sendRefundInitiated } = require('./utils/refund-notifications');
+const { sendRefundInitiated, cleanRefundItems } = require('./utils/refund-notifications');
 const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
@@ -83,6 +83,8 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Refund ₹${amountPaise / 100} exceeds order amount ₹${orderAmount / 100}.` }) };
     }
     const isFullRefund = amountPaise >= orderAmount;
+    // Which books the admin ticked; only meaningful on a partial.
+    const refundItems = isFullRefund ? [] : cleanRefundItems(body.refund_items);
 
     // Create the refund. issueRazorpayRefund throws on any non-2xx (e.g. amount
     // exceeds the remaining refundable balance — Razorpay validates that for us,
@@ -116,18 +118,30 @@ exports.handler = async (event) => {
 
     // 2xx + not-failed ⇒ committed. Mark refunded / partially_refunded.
     const nextStatus = isFullRefund ? 'refunded' : 'partially_refunded';
-    await supabase.from('orders').update({
+    const refundUpdate = {
       status: nextStatus,
       refund_id: refund.id || null,
       refund_state: (refund.status || 'processed').toUpperCase(),
       refund_updated_at: new Date().toISOString(),
-    }).eq('id', order.id);
+    };
+    if (refundItems.length) refundUpdate.refund_items = refundItems;
+    {
+      const { error } = await supabase.from('orders').update(refundUpdate).eq('id', order.id);
+      // sql/refund_partial_notifications.sql may not have been run yet — the
+      // refund itself is already committed at Razorpay, so never let a missing
+      // column lose the status write.
+      if (error && /refund_items/i.test(error.message || '')) {
+        const { refund_items, ...withoutItems } = refundUpdate;
+        await supabase.from('orders').update(withoutItems).eq('id', order.id);
+        console.warn('[razorpay-refund] refund_items column missing — run sql/refund_partial_notifications.sql');
+      }
+    }
 
     // Notify the customer (+ owner) that the refund was issued. Razorpay callers
     // omit `state` — the refund is committed on creation, so this is the correct
     // "refund issued" moment (see utils/refund-notifications). Dedup-guarded by
     // refund_notified_at so a later re-run never double-notifies.
-    await sendRefundInitiated(order, amountPaise, { supabase })
+    await sendRefundInitiated(order, amountPaise, { supabase, items: refundItems })
       .catch(e => console.error('refund-initiated notify:', e.message));
 
     const amtLabel = `₹${(amountPaise / 100).toLocaleString('en-IN')}`;

@@ -21,8 +21,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { sendEmail } = require('./utils/email');
-const { sendRefundInitiated } = require('./utils/refund-notifications');
+const { sendRefundInitiated, cleanRefundItems } = require('./utils/refund-notifications');
 const { requireAdmin } = require('./utils/admin-auth');
 const { refundIdForAttempt } = require('./utils/refund-id');
 
@@ -86,20 +85,6 @@ async function getRefundStatus(host, authorization, merchantRefundId) {
   );
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };
-}
-
-function refundConfirmHtml(order, refundId, refundAmtPaise, isFull) {
-  const refundAmt = `₹${(refundAmtPaise / 100).toLocaleString('en-IN')}`;
-  const orderAmt = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '—';
-  return `
-    <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#2a2018;background:#faf7f2;">
-      <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;margin:0 0 12px;">Ink &amp; Chai</h2>
-      <p>Hi ${(order.customer_name || 'there').split(' ')[0]},</p>
-      <p>${isFull ? 'A full refund' : `A partial refund of <strong>${refundAmt}</strong>`} for order <strong>${order.razorpay_order_id || order.id}</strong> has been processed via PhonePe.${isFull ? ` Refund amount: <strong>${refundAmt}</strong>.` : ` (Original order: ${orderAmt}.)`}</p>
-      <p>Refund ID: <strong>${refundId}</strong><br/>
-      The amount will appear in your original payment method within <strong>5–7 business days</strong>.</p>
-      <p style="font-size:12px;color:#8a7a62;margin-top:24px;">Ink &amp; Chai · inkandchai.in</p>
-    </div>`;
 }
 
 exports.handler = async (event) => {
@@ -173,6 +158,9 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Refund ₹${amountPaise / 100} exceeds order amount ₹${orderAmount / 100}.` }) };
     }
     const isFullRefund = amountPaise >= orderAmount;
+    // Which books the admin ticked. Only meaningful on a partial — a full
+    // refund covers everything, so naming a subset would be misleading.
+    const refundItems = isFullRefund ? [] : cleanRefundItems(body.refund_items);
 
     // Attempt-derived, never clock-derived (utils/refund-id.js). A timestamp id
     // is unreconstructible, so a refund that completed under one became
@@ -339,13 +327,33 @@ exports.handler = async (event) => {
       refund_updated_at: new Date().toISOString(),
     };
     if (phonePeRefundId) updatePayload.phonepe_refund_id = phonePeRefundId;
-    let { error: updErr } = await supabase.from('orders').update(updatePayload).eq('id', order.id);
-    // Resilience: if sql/orders_phonepe_refund_id.sql hasn't been run yet, retry
-    // without the new column rather than losing the refund status update.
-    if (updErr && /phonepe_refund_id/i.test(updErr.message || '')) {
-      const { phonepe_refund_id, ...withoutRef } = updatePayload;
-      await supabase.from('orders').update(withoutRef).eq('id', order.id);
-      console.warn('[phonepe-refund] phonepe_refund_id column missing — run sql/orders_phonepe_refund_id.sql');
+    // Persist WHICH books this partial covers. A PhonePe partial often comes
+    // back PENDING and is only confirmed hours later by the retry job, which
+    // has no access to this request — without storing it, that notification
+    // could only quote an amount.
+    if (refundItems.length) updatePayload.refund_items = refundItems;
+
+    // Resilience: two of these columns come from migrations that may not have
+    // been run on this database yet. Drop whichever one Postgres complains about
+    // and retry, rather than losing the refund status update — that record is
+    // what the retry job and the double-refund guard both read.
+    // Loops because more than one can be missing at once.
+    {
+      let payload = updatePayload;
+      const MIGRATION_HINT = {
+        phonepe_refund_id: 'sql/orders_phonepe_refund_id.sql',
+        refund_items: 'sql/refund_partial_notifications.sql',
+      };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { error } = await supabase.from('orders').update(payload).eq('id', order.id);
+        if (!error) break;
+        const missing = Object.keys(MIGRATION_HINT).find(
+          col => col in payload && new RegExp(col, 'i').test(error.message || ''));
+        if (!missing) { console.error('[phonepe-refund] order update failed:', error.message); break; }
+        console.warn(`[phonepe-refund] ${missing} column missing — run ${MIGRATION_HINT[missing]}`);
+        const { [missing]: _dropped, ...rest } = payload;
+        payload = rest;
+      }
     }
 
     // Notify the customer ONLY when PhonePe has CONFIRMED the refund COMPLETED.
@@ -355,15 +363,13 @@ exports.handler = async (event) => {
     // pending, the scheduled retry/reconcile job sends the notification once the
     // refund actually completes. Dedup-guarded by refund_notified_at.
     if (nextStatus !== 'refund_pending') {
-      await sendRefundInitiated(order, amountPaise, { supabase, state: refundState, refundRef: phonePeRefundId })
-        .catch(e => console.error('refund-initiated notify:', e.message));
-      if (order.customer_email) {
-        await sendEmail({
-          to: order.customer_email,
-          subject: `Refund processed — ${displayId}`,
-          html: refundConfirmHtml(order, merchantRefundId, amountPaise, isFullRefund),
-        });
-      }
+      // sendRefundInitiated is the ONLY customer email here now. It used to be
+      // followed by a second "Refund processed" mail from this file, so every
+      // refund sent two — and they disagreed, one promising 2–3 business days
+      // and the other 5–7. The surviving one is itemised and partial-aware.
+      await sendRefundInitiated(order, amountPaise, {
+        supabase, state: refundState, refundRef: phonePeRefundId, items: refundItems,
+      }).catch(e => console.error('refund-initiated notify:', e.message));
     }
 
     return {

@@ -6224,6 +6224,7 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
           <label style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.65rem;font-size:0.74rem;color:${it.amount > 0 ? '#f0e8d8' : '#6d6255'};
                         border-bottom:1px solid rgba(201,168,76,0.1);cursor:${it.amount > 0 ? 'pointer' : 'not-allowed'};">
             <input type="checkbox" class="iacRefundItem" data-amount="${it.amount}" ${it.amount > 0 ? '' : 'disabled'}
+                   data-title="${String(it.title).replace(/[<>"]/g, '')}" data-qty="${it.qty}"
                    onchange="iacRefundItemToggle(this,${Math.round(fullAmtRupees)})" style="margin:0;flex:0 0 auto;"/>
             <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
               ${String(it.title).replace(/[<>]/g, '')}${it.qty > 1 ? ' ×' + it.qty : ''}
@@ -6611,6 +6612,13 @@ async function iacSubmitRefund(orderId, fullAmtRupees, gateway) {
       return;
     }
     payload.amount_rupees = amt;
+    // Which books this partial covers. The customer's email and WhatsApp name
+    // them, so "₹239 refunded" doesn't leave them guessing which of three books
+    // it was for. Empty when the amount was typed by hand rather than ticked —
+    // the notification falls back to amount-only wording in that case.
+    payload.refund_items = Array.from(document.querySelectorAll('.iacRefundItem:checked'))
+      .map(b => ({ title: b.dataset.title || '', qty: Number(b.dataset.qty) || 1, amount: Number(b.dataset.amount) || 0 }))
+      .filter(i => i.title);
   }
 
   // Route by payment provider: Razorpay (pay_…) → razorpay-refund, else PhonePe.
