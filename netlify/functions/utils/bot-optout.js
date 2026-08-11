@@ -21,11 +21,19 @@
  *   that would cause more harm than the opt-out prevents.
  */
 
-// Whole-message matches only. A customer writing "please stop sending me the
-// wrong book" is complaining, not unsubscribing, and silencing them would be
-// the worst possible outcome — so substring matching is deliberately avoided.
+// Whole-message matches only. Substring matching is deliberately avoided, and
+// the live data shows why: customers send "Heartstopper volume 6" and "Stop
+// Letting Everything Affect You" — those are BOOK TITLES — as well as "Stop
+// lying and give me the exact status", which is a complaint that must reach a
+// human. Silencing any of them is a worse failure than the bug being fixed.
+//
+// "stop messaging" earns its place the other way round: it appeared verbatim in
+// the message history as a clear opt-out that the plain "stop" rule missed.
 const OPT_OUT = new Set([
   'stop', 'stop all', 'stopall', 'unsubscribe', 'unsub',
+  'stop messaging', 'stop messaging me', 'stop msg', 'stop msgs',
+  'stop sending messages', 'stop sending message', 'stop messages',
+  'stop the messages', 'no more messages',
   'opt out', 'optout', 'opt-out', 'cancel subscription',
   'do not message', "don't message", 'dont message',
   'do not message me', "don't message me", 'dont message me',
