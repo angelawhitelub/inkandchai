@@ -1122,7 +1122,16 @@ select,input,textarea{font-size:1rem;}
         <input id="newProdIsbn" placeholder="Optional"/>
       </div>
       <div class="form-row wide">
-        <label>Product description *</label>
+        <label style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+          Product description *
+          <button type="button" id="newProdAiBtn" onclick="generateListingCopy()"
+            style="font-family:'Manrope',sans-serif;font-size:.52rem;letter-spacing:.16em;text-transform:uppercase;
+                   padding:.4rem .75rem;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.5);
+                   color:var(--gold);cursor:pointer;border-radius:3px;">
+            ✨ Draft with AI
+          </button>
+          <span id="newProdAiMsg" style="font-weight:400;font-size:.58rem;color:var(--cream-dim);text-transform:none;letter-spacing:0;"></span>
+        </label>
         <textarea id="newProdDescription" placeholder="Write the book description customers should see on the product detail page."></textarea>
         <p class="hint" style="margin-top:.4rem;">Formatting: <code>**bold**</code> · <code>*italic*</code> · <code>## Heading</code> · <code>- bullet</code> · blank line = new paragraph.</p>
       </div>
@@ -3150,6 +3159,9 @@ function _drawTable() {
     const payInfo = orderPaymentBreakdown(o);
     const amount  = payInfo.full ? '₹' + payInfo.full.toLocaleString('en-IN') : '—';
     const partial = isPartialOrder(o);
+    const isReplacement = o.source === 'replacement'
+      || /^IC-R-/i.test(String(o.razorpay_order_id || ''))
+      || items.some(i => i && i._replacement);
     const payKind = orderPayKind(o);
     const isCOD   = payKind === 'cod';
     const date    = o.created_at
@@ -3202,10 +3214,10 @@ function _drawTable() {
         ${partial ? `<div class="amount-sub"><strong>Paid:</strong> ₹${payInfo.paid.toLocaleString('en-IN')}<br/><strong>Collect:</strong> ₹${payInfo.balance.toLocaleString('en-IN')}</div>` : ''}
       </td>
       <td>
-        <div class="method-badge" style="color:${payKind === 'cod' ? 'var(--orange)' : payKind === 'prepaid_pending' ? 'var(--gold)' : 'var(--green)'};">
-          ${partial ? '💰 10% + COD' : payKind === 'online_paid' ? '💳 Online' : payKind === 'prepaid_pending' ? '💳 Prepaid · awaiting' : '🚚 COD'}
+        <div class="method-badge" style="color:${isReplacement ? 'var(--green)' : payKind === 'cod' ? 'var(--orange)' : payKind === 'prepaid_pending' ? 'var(--gold)' : 'var(--green)'};">
+          ${isReplacement ? '💳 Prepaid replacement' : partial ? '💰 10% + COD' : payKind === 'online_paid' ? '💳 Online' : payKind === 'prepaid_pending' ? '💳 Prepaid · awaiting' : '🚚 COD'}
         </div>
-        ${!partial ? `<button onclick="togglePaymentType('${esc(o.id)}','${payKind === 'cod' ? 'prepaid' : 'cod'}', this)" title="Switch this order's payment type"
+        ${!partial && !isReplacement ? `<button onclick="togglePaymentType('${esc(o.id)}','${payKind === 'cod' ? 'prepaid' : 'cod'}', this)" title="Switch this order's payment type"
           style="margin-top:0.4rem;background:none;border:1px solid var(--border);color:var(--cream-dim);padding:0.2rem 0.5rem;font-size:0.52rem;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">
           ${payKind === 'cod' ? '→ 💳 Mark Prepaid' : '→ 🚚 Mark COD'}
         </button>` : ''}
@@ -3224,9 +3236,7 @@ function _drawTable() {
           <option value="shipped">📦 Shipped (will prompt for tracking)</option>
           <option value="out_for_delivery">🚚 Out for Delivery</option>
           <option value="delivered">✅ Delivered</option>
-          <option value="paid">Paid</option>
-          <option value="cod_pending">COD Pending</option>
-          <option value="partial_cod_pending">Partial COD Pending</option>
+          ${isReplacement ? '' : '<option value="paid">Paid</option><option value="cod_pending">COD Pending</option><option value="partial_cod_pending">Partial COD Pending</option>'}
           <option value="cancelled">Cancelled</option>
           <option value="refunded">Refunded</option>
         </select>
@@ -4271,6 +4281,64 @@ function clearCreateProductForm() {
   if (openBtn) openBtn.style.display = 'none';
   const msg = document.getElementById('createProductMsg');
   if (msg) msg.textContent = 'New listings appear in catalogue/search after refresh and have a direct `/product/.../` URL immediately.';
+}
+
+// ── AI first draft for the copy fields ───────────────────────────────────────
+// Fills description, author bio, tags, SEO title and meta description from the
+// title (and author, if given — without it the model is guessing which book you
+// mean). A DRAFT: nothing is saved, the admin still edits and still presses
+// Create. Fields already containing text are left alone unless you confirm,
+// because the common mistake is clicking this after typing a description.
+async function generateListingCopy() {
+  const btn = document.getElementById('newProdAiBtn');
+  const msg = document.getElementById('newProdAiMsg');
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const say = (text, color = 'var(--cream-dim)') => { if (msg) { msg.textContent = text; msg.style.color = color; } };
+
+  const title = val('newProdTitle');
+  if (!title) { say('Enter the book title first.', '#e8a030'); document.getElementById('newProdTitle')?.focus(); return; }
+
+  const targets = ['newProdDescription', 'newProdAuthorBio', 'newProdTags', 'newProdSeoTitle', 'newProdMetaDescription'];
+  const filled = targets.filter(id => val(id));
+  if (filled.length && !confirm(`This will replace ${filled.length} field${filled.length > 1 ? 's' : ''} you have already filled in.\n\nOverwrite them?`)) return;
+
+  const old = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = '✨ Drafting…'; }
+  say('Asking the model — this takes a few seconds.');
+
+  try {
+    const res = await adminFetch('/.netlify/functions/generate-listing-copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        author: val('newProdAuthor'),
+        category: val('newProdCategory'),
+        publisher: val('newProdPublisher'),
+        isbn: val('newProdIsbn'),
+        price_inr: val('newProdPrice'),
+        original_price_inr: val('newProdOriginalPrice'),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    const set = (id, value) => { const el = document.getElementById(id); if (el && value) el.value = value; };
+    set('newProdDescription', data.description);
+    set('newProdAuthorBio', data.author_bio);
+    set('newProdTags', data.tags);
+    set('newProdSeoTitle', data.seo_title);
+    set('newProdMetaDescription', data.meta_description);
+
+    // Character counts, because these two are the fields Google truncates and
+    // the model treats the limits as a suggestion.
+    const t = (data.seo_title || '').length, m = (data.meta_description || '').length;
+    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.`, '#6dbf6d');
+  } catch (e) {
+    say(e.message, '#e06060');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = old; }
+  }
 }
 
 async function createProductListing() {
