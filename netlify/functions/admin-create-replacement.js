@@ -12,7 +12,12 @@
  *   items        [{ index, qty, price?, title? }]                   REQUIRED, >=1
  *                index = position in the ORIGINAL cart_items. price is rupees
  *                and overrides the original line price when supplied.
- *   amount_rs    what the courier collects, in rupees. 0 = free reshipment.
+ *   amount_rs    DECLARED PARCEL VALUE in rupees — never collected. 0 = declare
+ *                the books' own worth. Replacements ship prepaid without
+ *                exception (see utils/replacement-order.js and the isCod guards
+ *                in nimbuspost-ship / nimbuspost-order-push / nimbuspost-import),
+ *                because collecting cash on a reshipment charges the customer a
+ *                second time for a book they already paid for.
  *   reason       short slug, default 'missing_item'
  *   reason_label human-readable label shown in the admin Replacements tab
  *   note         internal note / what the customer said
@@ -24,10 +29,11 @@
  * — so it lands in the unshipped list, the NimbusPost push and the Replacements
  * tab with no special-casing anywhere downstream.
  *
- * Amount is deliberately settable. A replacement is usually free (0), but a
- * partial reship the customer agreed to pay for is a real case, and since COD is
- * decided by captured money (see nimbuspost-order-push), an amount > 0 with no
- * payment id ships as COD and the courier collects exactly that.
+ * Amount is settable, but it is a DECLARED VALUE for the label only. It used to
+ * become a COD collectable — "an amount > 0 ships as COD and the courier
+ * collects exactly that" — which meant a customer could be charged a second
+ * time for a book they had already paid for. Every shipping path now forces
+ * prepaid for replacements, so nothing is ever collected at the door.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -51,13 +57,15 @@ function replacementId(originalId) {
   return /^IC-CW-/i.test(String(originalId || '')) ? `IC-R-CW-${datePart}-${randPart}` : `IC-R-${datePart}-${randPart}`;
 }
 
-function replacementEmailHtml(order, items, replId, amountRs) {
+function replacementEmailHtml(order, items, replId) {
   const first = String(order.customer_name || 'there').split(' ')[0];
   const rows = items.map(i => `
     <tr><td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;color:#f0e8d8;">📕 ${i.title || 'Book'}${i.qty > 1 ? ` × ${i.qty}` : ''}</td></tr>`).join('');
-  const payLine = amountRs > 0
-    ? `<p style="color:#e8a030;margin:0;line-height:1.8;">Please keep <strong>₹${amountRs.toLocaleString('en-IN')}</strong> ready for the delivery agent.</p>`
-    : `<p style="color:#6dbf6d;margin:0;line-height:1.8;">There is <strong>nothing to pay</strong> — this reshipment is free.</p>`;
+  // Never "keep ₹X ready". Replacements ship prepaid, so the courier collects
+  // nothing — and amountRs is only the value declared on the label. Telling the
+  // customer otherwise made them expect a payment that never comes, and made us
+  // look like we were charging twice for a book they had already bought.
+  const payLine = `<p style="color:#6dbf6d;margin:0;line-height:1.8;">There is <strong>nothing to pay</strong> — this reshipment is free.</p>`;
   return `
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
       <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
@@ -143,8 +151,8 @@ exports.handler = async (event) => {
         ...rest,
         qty,
         title: clean(sel.title || src.title || src.name || 'Book', 200),
-        // A price override is for declaring value on the label; the collectable
-        // is amount_rs. They are separate on purpose.
+        // A per-line price override and amount_rs are both declared values,
+        // for the line and for the whole parcel. Neither is ever collected.
         ...(sel.price != null && sel.price !== '' ? { price: Math.max(0, Number(sel.price) || 0) } : {}),
       });
     }
@@ -186,7 +194,7 @@ exports.handler = async (event) => {
         await sendEmail({
           to: order.customer_email,
           subject: `📦 Replacement on the way for your Ink & Chai order (${replId})`,
-          html: replacementEmailHtml(order, cart, replId, amountRs),
+          html: replacementEmailHtml(order, cart, replId),
         });
         emailed = true;
       } catch (e) {

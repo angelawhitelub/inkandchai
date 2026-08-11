@@ -6480,10 +6480,10 @@ function openReplacementModal(orderUuid) {
       </div>
       ${rows}
 
-      <label style="display:block;font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:#c9a84c;margin:1rem 0 .3rem;">Amount to collect on delivery (₹)</label>
+      <label style="display:block;font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:#c9a84c;margin:1rem 0 .3rem;">Declared parcel value (₹)</label>
       <input id="iacReplAmount" type="number" value="0" min="0" step="1"
         style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,.3);color:#f0e8d8;padding:.6rem;font-family:inherit;font-size:.85rem;box-sizing:border-box;"/>
-      <p style="color:#7a6f5f;font-size:.63rem;margin:.3rem 0 0;">0 = free reshipment (the usual case). Anything above 0 ships as COD and the courier collects exactly that.</p>
+      <p style="color:#7a6f5f;font-size:.63rem;margin:.3rem 0 0;">For the shipping label only — <strong>nothing is ever collected</strong> from the customer. Leave 0 to declare the books' own value. Replacements always ship prepaid.</p>
 
       <label style="display:block;font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:#c9a84c;margin:.9rem 0 .3rem;">Reason</label>
       <select id="iacReplReason" style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,.3);color:#f0e8d8;padding:.6rem;font-family:inherit;font-size:.85rem;box-sizing:border-box;">
@@ -6553,7 +6553,7 @@ async function submitReplacement(displayId, btn, force) {
     document.getElementById('iacReplModal')?.remove();
     alert(`✅ Replacement ${data.replacement_id} created.\n\n`
       + data.items.map(i => `• ${i.title}${i.qty > 1 ? ' ×' + i.qty : ''}`).join('\n')
-      + `\n\nCollect on delivery: ₹${data.amount_rs}`
+      + `\n\nDeclared value: ₹${data.amount_rs} (prepaid — nothing collected)`
       + `\nCustomer emailed: ${data.emailed ? 'yes' : 'no'}`
       + `\n\nIt is now in Unshipped — push it to NimbusPost when you're ready.`);
     loadOrders();
