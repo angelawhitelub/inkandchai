@@ -24,6 +24,10 @@ const { normalizePhone } = require('./utils/whatsapp');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
+const {
+  isOptOutKeyword, isOptInKeyword, isOptedOut,
+  OPT_OUT_CONFIRMATION, OPT_IN_CONFIRMATION,
+} = require('./utils/bot-optout');
 
 const PHONE_ID   = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VER    = 'v20.0';
@@ -1102,8 +1106,45 @@ async function handleInboundMessage(msg, value) {
 
     console.log(`[IN]  ${from}: ${userText.slice(0, 120)}`);
 
+    // Read opt-out state BEFORE persisting: isOptedOut() derives it from message
+    // history, so once this message is stored a "STOP" would find itself and
+    // every repeat would look like a fresh opt-out.
+    const wasOptedOut = await isOptedOut(
+      createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), from);
+
     // ── Persist inbound message ───────────────────────────────────────────────
     await persistMessage(from, 'user', userText, null, recvPhoneId);
+
+    // ── Opt-out / opt-in ─────────────────────────────────────────────────────
+    // STOP is WhatsApp's universal opt-out keyword. The bot used to greet the
+    // people who sent it — 18 of them — which is both rude to someone asking to
+    // be left alone and a quality-rating risk on the number the order flow runs
+    // through. Whole-message match only: "please stop sending the wrong book" is
+    // a complaint, and silencing that customer would be the worst outcome here.
+    if (isOptOutKeyword(userText)) {
+      if (!wasOptedOut) {
+        await sendReply(from, OPT_OUT_CONFIRMATION, recvPhoneId);
+        await persistMessage(from, 'bot', OPT_OUT_CONFIRMATION, null, recvPhoneId);
+      }
+      console.log(`[OPTOUT] ${from} opted out${wasOptedOut ? ' (already; staying silent)' : ''}`);
+      return;
+    }
+    // Only meaningful to someone who opted out — otherwise "start" and
+    // "continue" are ordinary words and must reach the assistant as usual.
+    if (wasOptedOut && isOptInKeyword(userText)) {
+      await sendReply(from, OPT_IN_CONFIRMATION, recvPhoneId);
+      await persistMessage(from, 'bot', OPT_IN_CONFIRMATION, null, recvPhoneId);
+      console.log(`[OPTOUT] ${from} opted back in — assistant resumed`);
+      return;
+    }
+    // Opted out and saying something else: stay silent, but the message is
+    // already persisted, so it still appears in the admin Bot Inbox with an
+    // unread badge and a human can answer. Silence here is the assistant's,
+    // not the shop's.
+    if (wasOptedOut) {
+      console.log(`[OPTOUT] ${from} is opted out — assistant suppressed, message left for a human`);
+      return;
+    }
 
     // ── If human has taken over this conversation, just persist + stop ────────
     if (await isHumanTakeover(from)) {
