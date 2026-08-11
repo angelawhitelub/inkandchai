@@ -85,7 +85,9 @@ async function buildPayload(order) {
   // or the order is explicitly 'paid'. A ₹0 order has nothing to collect.
   const fullyPrepaid = !isPartialCod
     && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
-  const isCod = isPartialCod || (!fullyPrepaid && collectable > 0);
+  // Replacements are always prepaid fulfilment shipments. Even when an admin
+  // records a non-zero declared value, it must not become a COD collection.
+  const isCod = !isReplacement && (isPartialCod || (!fullyPrepaid && collectable > 0));
   // `amount` doubles as the declared value of the parcel, so a free replacement
   // still declares the books' worth — it just isn't collected.
   const amount = isCod ? collectable : Math.round(collectable || itemSubtotal);

@@ -266,8 +266,9 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
   // holds PhonePe ids too — see phonepe-refund.js), or an explicit 'paid'.
   const fullyPrepaid = !isPartialCod
     && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
-  // A ₹0 order (free replacement) has nothing to collect and is prepaid by definition.
-  const isCOD = isPartialCod || (!fullyPrepaid && amountRs > 0);
+  // Every replacement is a prepaid fulfilment shipment. A non-zero amount on
+  // one is its declared value, not permission to collect cash at the door.
+  const isCOD = !isReplacement && (isPartialCod || (!fullyPrepaid && amountRs > 0));
 
   if (isPartialCod && partialBalanceRs <= 0) {
     // Fail closed rather than ship a partial-COD order collecting the wrong

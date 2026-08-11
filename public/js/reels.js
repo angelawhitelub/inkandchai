@@ -76,6 +76,7 @@
   }
 
   var reels = [];   // normalised video reels only
+  var fixedReels = [];
   var viewer = null, scroller = null, upBtn = null, downBtn = null;
   var slides = [];
   var muted = true;
@@ -263,10 +264,51 @@
     });
   }
 
+  function normalise(items) {
+    return (Array.isArray(items) ? items : []).filter(function (it) { return it && it.src && isVideo(it); });
+  }
+
+  function mergeReels(extra) {
+    var seen = Object.create(null);
+    return fixedReels.concat(normalise(extra)).filter(function (it) {
+      var key = String(it.src || '');
+      if (!key || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+
+  function remountAll() {
+    // Dynamic reels normally arrive before anyone can open the viewer. Resetting
+    // here also makes the API safe on a slow connection: stale slide indexes can
+    // never point at the wrong newly-appended video.
+    if (viewer) viewer.remove();
+    viewer = null; scroller = null; upBtn = null; downBtn = null; slides = [];
+    document.querySelectorAll('[data-iac-reels], #bookstagramContent').forEach(function (container) {
+      delete container.dataset.iacMounted;
+      mount(container);
+    });
+  }
+
+  function loadAdminReels() {
+    return fetch('/.netlify/functions/site-reels', { cache: 'no-store' })
+      .then(function (response) { return response.ok ? response.json() : { items: [] }; })
+      .then(function (data) {
+        var merged = mergeReels(data && data.items);
+        if (merged.length === reels.length) return;
+        reels = merged;
+        window.__IAC_REELS__ = reels.slice();
+        remountAll();
+      })
+      .catch(function () { /* fixed reels remain available when storage is down */ });
+  }
+
   function init() {
     injectCss();
-    reels = (window.__IAC_REELS__ || []).filter(function (it) { return it && it.src && isVideo(it); });
+    fixedReels = normalise(window.__IAC_REELS__ || []);
+    reels = fixedReels.slice();
     document.querySelectorAll('[data-iac-reels], #bookstagramContent').forEach(mount);
+    loadAdminReels();
   }
 
   // Public API (lets the JS-rendered page mount a late container).
@@ -275,10 +317,15 @@
       injectCss();
       if (Array.isArray(elOrData)) {
         window.__IAC_REELS__ = elOrData;
-        reels = elOrData.filter(function (it) { return it && it.src && isVideo(it); });
+        fixedReels = normalise(elOrData);
+        reels = fixedReels.slice();
+        loadAdminReels();
         return;
       }
-      if (!reels.length) reels = (window.__IAC_REELS__ || []).filter(function (it) { return it && it.src && isVideo(it); });
+      if (!reels.length) {
+        fixedReels = normalise(window.__IAC_REELS__ || []);
+        reels = fixedReels.slice();
+      }
       mount(elOrData);
     },
     open: openViewer,

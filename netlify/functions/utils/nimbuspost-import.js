@@ -86,7 +86,9 @@ async function buildPayload(order, opts = {}) {
   const phone = normalizeIndianPhone(order.customer_phone);
   const fullyPrepaid = !isPartialCod
     && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
-  const isCod = isPartialCod || (!fullyPrepaid && collectable > 0);
+  // A replacement is always a prepaid fulfilment shipment. Its amount is a
+  // declared parcel value only; NimbusPost must never collect it at delivery.
+  const isCod = !isReplacement && (isPartialCod || (!fullyPrepaid && collectable > 0));
   // `amount` doubles as the declared value of the parcel, so a free replacement
   // still declares the books' worth — it just isn't collected.
   const amount = isCod ? collectable : Math.round(collectable || itemSubtotal);

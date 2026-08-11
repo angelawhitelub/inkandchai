@@ -39,6 +39,7 @@ const STAFF_ENDPOINT_PERMISSIONS = {
   'update-replacement-items': 'replacements.manage',
   'admin-site-reels': 'content.reels',
   'upload-site-reel': 'content.reels',
+  'sign-product-video-upload': 'content.reels',
   'bot-inbox': 'support.inbox',
   'whatsapp-broadcast': 'support.inbox',
   'retry-missed-bot-replies': 'support.inbox',

@@ -2348,15 +2348,15 @@ function saveOrdersToCache(orders, total) {
   } catch {}
 }
 
-async function fetchOrdersPage(pageNum, limit) {
+async function fetchOrdersPage(pageNum, limit, filterSnapshot = currentFilter) {
   const params = new URLSearchParams({ page: pageNum, limit });
-  if (currentFilter === 'cancelled') {
+  if (filterSnapshot === 'cancelled') {
     // Prepaid cancellations don't keep status='cancelled' — the auto-refund flips
     // them to refund_pending → refunded/refund_failed. Fetch the whole family or
     // the tab shows COD orders only.
     params.set('statuses', CANCELLED_FAMILY.join(','));
-  } else if (currentFilter && currentFilter !== '__unshipped' && currentFilter !== '__in_transit' && currentFilter !== 'partial_cod_pending' && currentFilter !== 'online_pending' && currentFilter !== 'cw_only' && currentFilter !== 'cancel_requested') {
-    params.set('status', currentFilter);
+  } else if (filterSnapshot && filterSnapshot !== '__unshipped' && filterSnapshot !== '__in_transit' && filterSnapshot !== 'partial_cod_pending' && filterSnapshot !== 'online_pending' && filterSnapshot !== 'cw_only' && filterSnapshot !== 'cancel_requested') {
+    params.set('status', filterSnapshot);
   }
   const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
     headers: { 'X-Admin-Key': adminKey },
@@ -2370,15 +2370,22 @@ async function fetchOrdersPage(pageNum, limit) {
   return res.json();
 }
 
+// Every refresh is an atomic data swap. Older/slower requests are allowed to
+// finish at the network layer, but only the newest request may replace the
+// visible orders. This prevents overlapping timers from rolling the table back.
+let ordersFetchGeneration = 0;
+
 async function fetchOrders(reset = false) {
-  if (reset) { page = 1; tablePage = 1; allOrders = []; }
+  const fetchGeneration = ++ordersFetchGeneration;
+  if (reset) { page = 1; tablePage = 1; }
   const btn     = document.getElementById('refreshBtn');
   const tblWrap = document.querySelector('.tbl-wrap');
   if (btn) btn.innerHTML = '<span class="spinner"></span>Refreshing…';
 
-  // ── Show cached data INSTANTLY on first load (perceived speed = near-zero) ─
-  let usedCache = false;
-  if (reset && !currentFilter) {
+  // Never blank a populated table while fresh pages load. When there is no
+  // in-memory data yet, use the cache; only a true cold start gets skeletons.
+  let usedCache = allOrders.length > 0;
+  if (reset && !usedCache) {
     const cached = loadOrdersFromCache();
     if (cached?.orders?.length) {
       allOrders   = cached.orders;
@@ -2391,9 +2398,8 @@ async function fetchOrders(reset = false) {
         .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
       document.getElementById('adminTabBar').style.display = 'flex';
       applyRoleVisibility();
-      initTabFromHash();
+      ensureAdminTabInitialized();
       updateStats();
-      fetchProducts();
       applyFilters();
       if (tblWrap) tblWrap.classList.add('tbl-loading');
       usedCache = true;
@@ -2418,7 +2424,11 @@ async function fetchOrders(reset = false) {
 
   try {
     // ── Step 1: Fetch page 1 to discover total count ─────────────────────────
-    const firstData = await fetchOrdersPage(1, PAGE);
+    // Always refresh the complete order set. Status/date/search controls are
+    // local filters; downloading a server-side slice here poisoned later
+    // searches because `allOrders` no longer meant all orders.
+    const firstData = await fetchOrdersPage(1, PAGE, '');
+    if (fetchGeneration !== ordersFetchGeneration) return;
     serverTotal = firstData.total ?? serverTotal;
     let combined = firstData.orders || [];
 
@@ -2431,7 +2441,7 @@ async function fetchOrders(reset = false) {
     document.getElementById('loginErr').style.display = 'none';
     document.getElementById('adminTabBar').style.display = 'flex';
     applyRoleVisibility();
-    initTabFromHash();
+    ensureAdminTabInitialized();
     // Returns are keyed by the original order id and are shown as a link on the
     // order's own row, so they have to be loaded even when the Returns tab was
     // never opened. Non-fatal: the orders table renders fine without them.
@@ -2458,8 +2468,9 @@ async function fetchOrders(reset = false) {
     const totalPages = Math.ceil((serverTotal || 0) / PAGE);
     if (totalPages > 1) {
       const remaining = [];
-      for (let p = 2; p <= totalPages; p++) remaining.push(fetchOrdersPage(p, PAGE));
+      for (let p = 2; p <= totalPages; p++) remaining.push(fetchOrdersPage(p, PAGE, ''));
       const results = await Promise.all(remaining);
+      if (fetchGeneration !== ordersFetchGeneration) return;
       for (const r of results) combined = combined.concat(r.orders || []);
     }
 
@@ -2467,7 +2478,9 @@ async function fetchOrders(reset = false) {
     hasMore = false;
     page = totalPages + 1;
 
-    fetchProducts();
+    // Product data is lazy-loaded by the Products tab. Re-fetching it during
+    // every orders poll was visibly rebuilding unrelated admin panels.
+    if (activeAdminTabName() === 'products') fetchProducts();
     updateStats();
     applyFilters();
     saveOrdersToCache(combined, serverTotal);
@@ -2488,8 +2501,10 @@ async function fetchOrders(reset = false) {
       console.warn('Background refresh failed (cached data still shown):', err.message);
     }
   } finally {
-    if (btn) btn.innerHTML = '↻ Refresh';
-    if (tblWrap) tblWrap.classList.remove('tbl-loading');
+    if (fetchGeneration === ordersFetchGeneration) {
+      if (btn) btn.innerHTML = '↻ Refresh';
+      if (tblWrap) tblWrap.classList.remove('tbl-loading');
+    }
   }
 }
 
@@ -2619,8 +2634,10 @@ function searchOrders(value) {
   if (box) box.value = value || '';
   // Clear any status slice first: jumping to one specific order and landing on
   // "no results" because the Unshipped tab was active is just confusing.
+  // This is a local jump through the already-loaded order set. Starting a full
+  // network refresh here made the result disappear until all pages returned.
   if (typeof setFilter === 'function') setFilter(null, '');
-  applyFilters();
+  else applyFilters();
   setTimeout(() => document.getElementById('ordersTableSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
 }
 
@@ -2982,7 +2999,9 @@ function setFilter(el, status) {
     document.querySelectorAll('#cancelledSubBar .sub-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('#cancelledSubBar .sub-btn[data-range=""]')?.classList.add('active');
   }
-  fetchOrders(true);
+  // The complete order set is already in memory. Filtering locally is instant
+  // and, unlike the old network reload, cannot make a search result disappear.
+  applyFilters();
 }
 
 // Best-known moment an order was actually cancelled.
@@ -7382,9 +7401,11 @@ function esc(s) {
 // after images). We skip the poll when the tab is hidden and instead refresh
 // once, immediately, when it becomes visible again — so it still feels live.
 let _ordersPollMissedWhileHidden = false;
+let _ordersPollMissedWhileInactive = false;
 setInterval(() => {
   if (!(adminToken || adminKey || adminCookieSession)) return;
   if (document.visibilityState !== 'visible') { _ordersPollMissedWhileHidden = true; return; }
+  if (activeAdminTabName() !== 'orders') { _ordersPollMissedWhileInactive = true; return; }
   fetchOrders(true);
 }, 90000);
 
@@ -7393,6 +7414,7 @@ document.addEventListener('visibilitychange', () => {
   if (!_ordersPollMissedWhileHidden) return;
   if (!(adminToken || adminKey || adminCookieSession)) return;
   _ordersPollMissedWhileHidden = false;
+  if (activeAdminTabName() !== 'orders') { _ordersPollMissedWhileInactive = true; return; }
   fetchOrders(true);
 });
 
@@ -7745,6 +7767,19 @@ function rptPickProduct(idx) {
 }
 
 const TABS = ['orders','tools','create','products','reels','abandoned','reviews','replacements','returns','botinbox','bookreq','insights','bot','recover','reports','adminaccess'];
+let adminTabInitialized = false;
+
+function activeAdminTabName() {
+  return document.querySelector('.admin-tab.active')?.dataset.tab
+    || location.hash.replace('#', '')
+    || 'orders';
+}
+
+function ensureAdminTabInitialized() {
+  if (adminTabInitialized) return;
+  adminTabInitialized = true;
+  initTabFromHash();
+}
 
 function applyRoleVisibility() {
   const limited = adminRole !== 'owner';
@@ -8076,6 +8111,13 @@ function switchTab(tab, pushState = true) {
   if (tab === 'reports') initReports();
   if (tab === 'adminaccess' && adminRole === 'owner') { loadAdminUsers(); loadGmailStatus(); }
 
+  // Orders polling pauses on every other internal admin tab. Refresh once on
+  // return instead of continuously rebuilding hidden panels in the background.
+  if (tab === 'orders' && _ordersPollMissedWhileInactive && _authed) {
+    _ordersPollMissedWhileInactive = false;
+    setTimeout(() => fetchOrders(true), 0);
+  }
+
   // Scroll to top of content
   document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
 }
@@ -8138,6 +8180,7 @@ async function startGmailWatch() {
 // Read hash on load / back-forward
 function initTabFromHash() {
   const hash = location.hash.replace('#','') || 'orders';
+  adminTabInitialized = true;
   switchTab(hash, false);
 }
 

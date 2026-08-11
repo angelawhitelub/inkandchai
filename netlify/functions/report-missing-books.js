@@ -80,6 +80,7 @@ async function createMissingReplacement(supabase, order, replacementItems, comme
       razorpay_payment_id: null,
       amount_paise:        0,                       // free reshipment
       status:              'replacement_pending',
+      shipment_payment_type: 'prepaid',
       customer_name:       order.customer_name || '',
       customer_email:      order.customer_email || '',
       customer_phone:      order.customer_phone || '',
