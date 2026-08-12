@@ -141,8 +141,13 @@ exports.handler = async (event) => {
     // omit `state` — the refund is committed on creation, so this is the correct
     // "refund issued" moment (see utils/refund-notifications). Dedup-guarded by
     // refund_notified_at so a later re-run never double-notifies.
-    await sendRefundInitiated(order, amountPaise, { supabase, items: refundItems })
-      .catch(e => console.error('refund-initiated notify:', e.message));
+    // refundRef is Razorpay's own rfnd_… — the reference the customer quotes to
+    // their bank. It was already being written to the row but never handed to
+    // the notifier, so `order` (read before the refund existed) had no way to
+    // supply it and every Razorpay refund message went out without a reference.
+    await sendRefundInitiated(order, amountPaise, {
+      supabase, items: refundItems, refundRef: refund.id || null,
+    }).catch(e => console.error('refund-initiated notify:', e.message));
 
     const amtLabel = `₹${(amountPaise / 100).toLocaleString('en-IN')}`;
     return {

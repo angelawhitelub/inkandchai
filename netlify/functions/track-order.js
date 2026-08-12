@@ -13,6 +13,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { canEditAddress } = require('./utils/address-editable');
+const { resolveRefundRef, cleanRefundItems } = require('./utils/refund-notifications');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -21,6 +22,42 @@ const CORS = {
 };
 
 function norm(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ''); }
+
+/**
+ * Refund details for the tracking page — the destination of the "View your
+ * order" button on the refund WhatsApp/email, so it has to actually explain the
+ * refund the customer was just told about.
+ *
+ * The amount is only ever reported when it is CERTAIN: the full order amount
+ * for a full refund, or the sum of the recorded line items for a partial. There
+ * is no refund-amount column, so a partial with no items recorded shows the
+ * reference and the timeline but no figure — an unqualified number here is the
+ * kind of thing a customer holds you to, and a guessed one would be worse than
+ * none. `refund_pending` deliberately says "processing", never "issued": the
+ * money has not left the gateway yet and may still fail.
+ */
+function refundView(data) {
+  const status = String(data.status || '');
+  const REFUND_STATUS = ['refunded', 'partially_refunded', 'refund_pending'];
+  if (!REFUND_STATUS.includes(status)) return {};
+
+  const items = cleanRefundItems(data.refund_items);
+  const itemsPaise = items.reduce((s, i) => s + i.amount, 0) * 100;
+  let refundPaise = null;
+  if (status === 'refunded') refundPaise = Number(data.amount_paise) || null;
+  else if (itemsPaise > 0)   refundPaise = itemsPaise;
+
+  return {
+    refund: {
+      state:      status === 'refund_pending' ? 'processing' : 'issued',
+      is_partial: status === 'partially_refunded',
+      amount:     refundPaise ? refundPaise / 100 : null,
+      reference:  resolveRefundRef(data, null),
+      items:      items.map(i => ({ title: i.title, qty: i.qty, amount: i.amount })),
+      at:         data.refund_updated_at || null,
+    },
+  };
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
@@ -114,6 +151,7 @@ exports.handler = async (event) => {
           courier_name:    data.courier_name,
           tracking_id:     data.tracking_id,
           tracking_url:    data.tracking_url,
+          ...refundView(data),
         },
       }),
     };

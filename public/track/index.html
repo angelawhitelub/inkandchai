@@ -71,6 +71,8 @@ html[data-theme="light"] .result{background:var(--bg3)}
 .s-shipped,.s-out_for_delivery{background:rgba(91,165,255,0.15);color:#5ba5ff;border:1px solid rgba(91,165,255,0.4)}
 .s-delivered{background:rgba(109,191,109,0.2);color:#6dbf6d;border:1px solid rgba(109,191,109,0.5)}
 .s-cancelled,.s-refunded{background:rgba(224,80,80,0.12);color:#e05050;border:1px solid rgba(224,80,80,0.4)}
+/* Gold, not red: a partial refund is not a dead order — the rest still ships. */
+.s-partially_refunded,.s-refund_pending{background:rgba(201,168,76,0.15);color:var(--gold);border:1px solid rgba(201,168,76,0.4)}
 
 /* Stepper */
 .steps{display:flex;justify-content:space-between;align-items:flex-start;margin:0 0 1.8rem;position:relative;gap:0.4rem}
@@ -163,6 +165,10 @@ const STATUS_LABELS = {
   delivered:        'Delivered',
   cancelled:        'Cancelled',
   refunded:         'Refunded',
+  // Without these two, a refunded order rendered the raw column value —
+  // "partially_refunded" — straight at the customer.
+  partially_refunded: 'Partially Refunded',
+  refund_pending:     'Refund Processing',
 };
 
 const STEPS = [
@@ -173,11 +179,17 @@ const STEPS = [
   { key: 'delivered',        label: 'Delivered' },
 ];
 
-function statusToStepIdx(s) {
+function statusToStepIdx(s, o) {
   if (s === 'delivered')        return 4;
   if (s === 'out_for_delivery') return 3;
   if (s === 'shipped')          return 2;
   if (s === 'paid' || s === 'confirmed' || s === 'cod_pending') return 1;
+  // A partial refund overwrites the shipping status in the same column, so the
+  // stage has to be inferred from the shipment instead — otherwise a delivered
+  // order with one book refunded snapped its progress bar back to "Placed".
+  if (s === 'partially_refunded' || s === 'refund_pending') {
+    return (o && (o.tracking_id || o.shipped_at)) ? 2 : 1;
+  }
   return 0;
 }
 
@@ -186,6 +198,9 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
 // Remembers the last successfully-tracked order so "report a missing book"
 // can re-send the same id + email/phone the backend verifies ownership with.
 let lastTracked = null;
+// Declared up here rather than beside its use at the bottom: doTrack() reads it
+// and would hit the temporal dead zone if the const sat below.
+const REMEMBERED = 'iac_track_q';
 // A book can only be "missing from the box" once the customer physically has
 // the box — i.e. the parcel is DELIVERED. While it's still shipped / out for
 // delivery it simply hasn't arrived yet, and rto / undelivered mean it never
@@ -215,6 +230,10 @@ async function doTrack() {
       return;
     }
     lastTracked = { id: oid, q: oq, order: data.order };
+    // Remember the contact that just worked, so a link with only an order id in
+    // it (a refund or dispatch notification) opens straight onto the order next
+    // time. Only ever this browser's own localStorage — never the URL.
+    try { localStorage.setItem(REMEMBERED, oq); } catch (e) { /* private mode */ }
     renderOrder(data.order);
   } catch (e) {
     errBox.textContent = 'Network error. Please try again.';
@@ -226,7 +245,10 @@ async function doTrack() {
 }
 
 function renderOrder(o) {
-  const stepIdx = statusToStepIdx(o.status);
+  const stepIdx = statusToStepIdx(o.status, o);
+  // partially_refunded is deliberately NOT here: the rest of the order is still
+  // coming, so collapsing the progress into a dead "Cancelled" pill would tell
+  // the customer their delivery is off when it isn't.
   const isCancelled = o.status === 'cancelled' || o.status === 'refunded';
   const placedDate = o.placed_at ? new Date(o.placed_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : '';
 
@@ -264,6 +286,7 @@ function renderOrder(o) {
       <div class="r-status s-${esc(o.status)}">${esc(STATUS_LABELS[o.status] || o.status)}</div>
     </div>
     ${stepsHtml}
+    ${refundBlockHtml(o)}
     ${trackBlock}
     <div class="r-section">
       <div class="r-section-h">Delivery to</div>
@@ -282,6 +305,51 @@ function renderOrder(o) {
   const result = document.getElementById('result');
   result.innerHTML = html;
   result.classList.add('show');
+}
+
+// ── Refund detail ───────────────────────────────────────────────────────────
+// This is where the "View your order" button on the refund WhatsApp and email
+// lands, so it has to answer the questions that message raises: how much, for
+// which book, what reference do I give my bank, and when does it arrive.
+function refundBlockHtml(o) {
+  const r = o.refund;
+  if (!r) return '';
+  const processing = r.state === 'processing';
+
+  const itemsHtml = (r.items || []).length ? `
+    <div style="margin-top:0.7rem;">
+      ${r.items.map(i => `<div class="r-item">
+        <span>${esc(i.title)}${i.qty > 1 ? ` <span style="color:var(--cream-dim)">×${i.qty}</span>` : ''}</span>
+        <span style="color:var(--gold)">₹${Number(i.amount).toLocaleString('en-IN')}</span>
+      </div>`).join('')}
+    </div>` : '';
+
+  return `
+    <div class="r-section" style="border-left:2px solid var(--gold);padding-left:0.9rem;">
+      <div class="r-section-h">${processing ? 'Refund processing' : 'Refund issued'}</div>
+      <div class="r-row" style="color:var(--cream);">
+        ${r.amount != null
+          ? `<b style="color:var(--gold);font-size:1.05rem;">₹${Number(r.amount).toLocaleString('en-IN')}</b>
+             ${r.is_partial ? ' <span style="color:var(--cream-dim);">(partial refund)</span>' : ''}`
+          : `A ${r.is_partial ? 'partial ' : ''}refund on this order`}
+        ${processing ? ' is being processed by your payment provider.' : ' has been sent back to your original payment method.'}
+      </div>
+      ${itemsHtml}
+      ${r.is_partial ? `<div class="r-row" style="color:var(--cream-dim);font-size:0.78rem;margin-top:0.6rem;">
+        The rest of your order is unaffected — anything still to be delivered is on its way as normal.
+      </div>` : ''}
+      ${r.reference ? `<div class="r-row" style="margin-top:0.7rem;font-size:0.78rem;">
+        <span style="color:var(--cream-dim);">Reference</span>
+        <span style="font-family:Menlo,Consolas,monospace;color:var(--gold);margin-left:0.4rem;">${esc(r.reference)}</span>
+        <div style="color:var(--cream-dim);font-size:0.72rem;margin-top:0.2rem;">Quote this to your bank if you need to trace the credit.</div>
+      </div>` : ''}
+      <div class="r-row" style="color:var(--cream-dim);font-size:0.78rem;margin-top:0.6rem;">
+        ${processing
+          ? 'Once your provider confirms it, the amount reflects in 2–3 business days.'
+          : 'It usually reflects within 2–3 business days — some banks take up to 7.'}
+        Not there after 7 business days? <a href="https://wa.me/919217175546">WhatsApp us</a> with your Order ID.
+      </div>
+    </div>`;
 }
 
 // ── Update delivery address (one-time, only before the order ships) ──────────
@@ -454,11 +522,29 @@ async function submitMissingReport(btn) {
   }
 }
 
-// Auto-fill from URL params (e.g. tracking link in email)
+// Auto-fill from URL params (e.g. the tracking link in an email, or the "View
+// your order" button on a refund WhatsApp).
 const params = new URLSearchParams(location.search);
 if (params.get('id')) document.getElementById('oid').value = params.get('id').trim().replace(/\s+/g,'');
 if (params.get('q'))  document.getElementById('oq').value  = params.get('q');
-if (params.get('id') && params.get('q')) setTimeout(doTrack, 200);
+
+// Remembered contact: a link can only carry the order id — putting the
+// customer's phone or email in the URL would leak it into server logs and would
+// open the order for anyone the message got forwarded to. So the id arrives in
+// the link and the contact comes from this browser, where they typed it last
+// time. Together those make the button land straight on the order; on a browser
+// that has never been used here, they fill one field. The server verifies the
+// contact either way, so a stale value just falls back to the form.
+try {
+  if (!document.getElementById('oq').value) {
+    const saved = localStorage.getItem(REMEMBERED);
+    if (saved) document.getElementById('oq').value = saved;
+  }
+} catch (e) { /* Safari private mode throws on localStorage — form still works */ }
+
+if (document.getElementById('oid').value && document.getElementById('oq').value) {
+  setTimeout(doTrack, 200);
+}
 </script>
 </body>
 </html>

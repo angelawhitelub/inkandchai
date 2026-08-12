@@ -107,12 +107,21 @@ async function notifyOwnerRefund(order, amountPaise, meta = {}) {
   }
 }
 
+/** "View your order" button — the same destination as the WhatsApp button. */
+function orderButtonHtml(oid) {
+  if (!oid) return '';
+  return `<p style="margin:20px 0;">
+      <a href="https://inkandchai.in/track/?id=${encodeURIComponent(oid)}"
+         style="display:inline-block;background:#8a6a1f;color:#faf7f2;text-decoration:none;padding:11px 22px;font-size:14px;border-radius:2px;">View your order →</a>
+    </p>`;
+}
+
 function refundInitiatedEmailHtml(order, amtPaise, refundRef) {
   const amt = `₹${(amtPaise / 100).toLocaleString('en-IN')}`;
   const oid = order.razorpay_order_id || order.id || '';
   // Payment-gateway reference for the refund. Customers whose bank is slow can
   // quote this to their bank to trace the credit, so surface it when we have it.
-  const ref = refundRef || order.phonepe_refund_id || null;
+  const ref = resolveRefundRef(order, refundRef);
   return `<div style="font-family:Georgia,serif;color:#3a2f25;max-width:520px;margin:0 auto;padding:24px;background:#faf7f2;">
     <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;margin:0 0 12px;">Your refund is on its way 💚</h2>
     <p>Hi ${firstName(order.customer_name)},</p>
@@ -121,6 +130,7 @@ function refundInitiatedEmailHtml(order, amtPaise, refundRef) {
       <strong>Refund reference:</strong> <span style="font-family:Menlo,Consolas,monospace;">${ref}</span><br>
       <span style="font-size:12px;color:#6f6255;">Quote this to your bank if you need to trace the credit.</span>
     </p>` : ''}
+    ${orderButtonHtml(oid)}
     <p><strong>Timeline:</strong> the amount will reflect in your original payment method within <strong>2–3 business days</strong>. Some banks may take a little longer — up to 5–7 business days in rare cases.</p>
     <p>You don't need to do anything from your side. Once the money reaches your bank, you'll see it as a credit against the original transaction.</p>
     <p style="color:#6f6255;font-size:13px;margin-top:24px;">If you don't see the refund after 7 business days, just reply to this email or WhatsApp us at +91 76784 00508 with your Order ID and we'll chase it with our payment provider right away.</p>
@@ -129,46 +139,91 @@ function refundInitiatedEmailHtml(order, amtPaise, refundRef) {
 }
 
 /**
- * WhatsApp for a refund — the partial template when we can name the books,
- * the long-standing full-refund template otherwise.
+ * The gateway's own reference for this refund — what the customer quotes to
+ * their bank, and the only id that means anything to PhonePe/Razorpay support.
  *
- * NEW TEMPLATE REQUIRED: `refund_partial` must be created and approved in the
- * Meta Business panel before this sends anything. Suggested body, matching the
- * parameter order below:
- *
- *   Hi {{1}}, a partial refund for your order {{2}} of Rs {{3}} has been
- *   issued. This covers: {{4}}. It will reflect in your original payment
- *   method within 2-3 business days. The rest of your order is unaffected.
- *   Thank you, Ink & Chai.
- *
- *   {{1}} first name   {{2}} order id   {{3}} amount, plain number
- *   {{4}} book titles, comma separated
- *
- * Until it is approved Meta rejects the send, so we fall back to the approved
- * `refund_processed` — the customer still hears from us on WhatsApp, and the
- * email (which needs no approval) already carries the per-book breakdown.
+ * Preference order matters: `refundRef` is what the caller just got back from
+ * the gateway, `phonepe_refund_id` is PhonePe's, and `refund_id` holds
+ * Razorpay's rfnd_… Returns null rather than '' — Meta rejects an empty
+ * template parameter outright, so callers must be able to test for absence.
  */
-async function sendRefundWhatsApp({ order, oid, amtPlain, isPartial, itemsLine }) {
+function resolveRefundRef(order, refundRef) {
+  const ref = refundRef || order?.phonepe_refund_id || order?.refund_id || '';
+  return String(ref).replace(/\s+/g, '').trim().slice(0, 64) || null;
+}
+
+/**
+ * WhatsApp for a refund.
+ *
+ * Templates are tried in order of how much they tell the customer, and the
+ * first one Meta accepts wins. That fallthrough is the point: a template that
+ * has not been approved yet is rejected at send time, so this ships working
+ * code today and gets better on its own the moment each template goes live —
+ * no redeploy, no flag to remember to flip.
+ *
+ *   1. refund_partial       partial, itemised, with reference   (5 vars + button)
+ *   2. refund_processed_ref full/unitemised, with reference     (4 vars + button)
+ *   3. refund_processed     the long-approved fallback          (3 vars, no button)
+ *
+ * TWO NEW TEMPLATES REQUIRED in Meta Business Manager. Both must be category
+ * UTILITY (a Marketing-category template is suppressed for anyone who opted out
+ * of marketing, and a refund notice must always reach them), a SINGLE paragraph
+ * with no blank lines, and variables in ascending order — the three things the
+ * panel rejects. Each needs a URL button of type "Visit website" → "Dynamic":
+ *
+ *   https://inkandchai.in/track/?id={{1}}
+ *
+ * refund_partial — body:
+ *   Hi {{1}}, a partial refund of Rs {{3}} for your order {{2}} has been issued.
+ *   This covers: {{4}}. Reference: {{5}}. It will reflect in your original
+ *   payment method within 2-3 business days. The rest of your order is
+ *   unaffected. Thank you, Ink & Chai.
+ *
+ * refund_processed_ref — body:
+ *   Hi {{1}}, your refund of Rs {{3}} for order {{2}} has been issued.
+ *   Reference: {{4}}. It will reflect in your original payment method within
+ *   2-3 business days. Thank you, Ink & Chai.
+ *
+ * A partial refund with no gateway reference falls through to a full-refund
+ * template and loses the book names on WhatsApp. That combination is rare (it
+ * means an admin marked the order refunded by hand rather than calling a
+ * gateway), and the EMAIL still carries the full per-book breakdown, which
+ * needs nobody's approval.
+ */
+async function sendRefundWhatsApp({ order, oid, amtPlain, isPartial, itemsLine, refundRef }) {
   const name = firstName(order.customer_name);
-  const generic = () => sendWhatsApp({
-    to: order.customer_phone,
-    template: 'refund_processed',
-    params: [name, String(oid), amtPlain],
-  });
+  const id = String(oid || '');
+  // Deep link for the template's URL button: /track/?id={{1}}. Only the order
+  // id goes in the URL — never the customer's phone or email, which would then
+  // sit in server logs and would open the order for anyone the message is
+  // forwarded to. The track page still verifies ownership before showing it.
+  const button = id;
 
-  // Meta rejects an empty template parameter outright, so a partial we cannot
-  // itemise has to go out on the generic template.
-  if (!isPartial || !itemsLine) return generic();
+  const candidates = [];
+  if (isPartial && itemsLine && refundRef) {
+    candidates.push({ template: 'refund_partial', params: [name, id, amtPlain, itemsLine, refundRef], button });
+  }
+  if (refundRef) {
+    candidates.push({ template: 'refund_processed_ref', params: [name, id, amtPlain, refundRef], button });
+  }
+  candidates.push({ template: 'refund_processed', params: [name, id, amtPlain] });
 
-  const res = await sendWhatsApp({
-    to: order.customer_phone,
-    template: 'refund_partial',
-    params: [name, String(oid), amtPlain, itemsLine],
-  });
-  if (res?.ok) return res;
-
-  console.warn(`[refund] refund_partial template rejected (${JSON.stringify(res?.data || res?.error || '').slice(0, 200)}) — falling back to refund_processed. Approve "refund_partial" in Meta Business Manager.`);
-  return generic();
+  let last = null;
+  for (const c of candidates) {
+    const res = await sendWhatsApp({
+      to: order.customer_phone,
+      template: c.template,
+      params: c.params,
+      ...(c.button ? { urlButtonParam: c.button } : {}),
+    });
+    if (res?.ok) return res;
+    // A missing token or an unusable phone number fails every template equally —
+    // walking the rest of the list would just repeat the same error three times.
+    if (res?.skipped) return res;
+    last = res;
+    console.warn(`[refund] template ${c.template} rejected (${JSON.stringify(res?.data?.error || res?.error || '').slice(0, 200)}) — trying the next one. Create/approve "${c.template}" in Meta Business Manager to use it.`);
+  }
+  return last;
 }
 
 /**
@@ -183,7 +238,7 @@ function refundPartialEmailHtml(order, amtPaise, refundRef, items) {
   const oid = order.razorpay_order_id || order.id || '';
   const total = Number(order.amount_paise) || 0;
   const rest = total > amtPaise ? `₹${((total - amtPaise) / 100).toLocaleString('en-IN')}` : null;
-  const ref = refundRef || order.phonepe_refund_id || null;
+  const ref = resolveRefundRef(order, refundRef);
   const list = cleanRefundItems(items);
 
   const itemsBlock = list.length ? `
@@ -208,6 +263,7 @@ function refundPartialEmailHtml(order, amtPaise, refundRef, items) {
       <strong>Refund reference:</strong> <span style="font-family:Menlo,Consolas,monospace;">${ref}</span><br>
       <span style="font-size:12px;color:#6f6255;">Quote this to your bank if you need to trace the credit.</span>
     </p>` : ''}
+    ${orderButtonHtml(oid)}
     <p><strong>Timeline:</strong> the amount will reflect in your original payment method within <strong>2–3 business days</strong>. Some banks may take a little longer — up to 5–7 business days in rare cases.</p>
     <p style="color:#6f6255;font-size:13px;margin-top:24px;">If you don't see it after 7 business days, reply to this email or WhatsApp us at +91 76784 00508 with your Order ID and we'll chase it with our payment provider.</p>
     <p style="color:#6f6255;font-size:13px;">Thank you for shopping with us,<br>Ink &amp; Chai</p>
@@ -265,8 +321,12 @@ async function sendRefundInitiated(order, amountPaise, { supabase, state, refund
       }).catch(e => console.error('refund email:', e.message))
     : Promise.resolve();
 
+  // Same reference the email and the owner notification quote, so a customer
+  // reading both sees one number rather than two that look unrelated.
+  const ref = resolveRefundRef(order, refundRef);
+
   const waPromise = order.customer_phone
-    ? sendRefundWhatsApp({ order, oid, amtPlain, isPartial, itemsLine })
+    ? sendRefundWhatsApp({ order, oid, amtPlain, isPartial, itemsLine, refundRef: ref })
         .catch(e => console.error('refund whatsapp:', e.message))
     : Promise.resolve();
 
@@ -277,7 +337,7 @@ async function sendRefundInitiated(order, amountPaise, { supabase, state, refund
     provider: ownerProvider,
     // Prefer the gateway's own reference (PhonePe refundId / Razorpay rfnd_…)
     // over our internal merchantRefundId — that's the one support can trace.
-    refundId: refundRef || order.phonepe_refund_id || order.refund_id || null,
+    refundId: ref,
     state: order.refund_state || 'processed',
     items: lineItems,
   }).catch(e => console.error('owner refund notify:', e.message));
@@ -304,4 +364,6 @@ module.exports = {
   notifyOwnerRefund,
   cleanRefundItems,
   refundItemsLine,
+  resolveRefundRef,
+  sendRefundWhatsApp,
 };
