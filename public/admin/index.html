@@ -1100,6 +1100,7 @@ select,input,textarea{font-size:1rem;}
       <div class="form-row">
         <label>Author</label>
         <input id="newProdAuthor" placeholder="Author name"/>
+        <div id="newProdAuthorHint" style="display:none;color:#a09080;font-size:.7rem;margin-top:.3rem;"></div>
       </div>
       <div class="form-row">
         <label>Category</label>
@@ -1220,6 +1221,7 @@ select,input,textarea{font-size:1rem;}
           <div class="form-row">
             <label>Author</label>
             <input id="prodAuthor"/>
+            <div id="prodAuthorHint" style="display:none;color:#a09080;font-size:.7rem;margin-top:.3rem;"></div>
           </div>
           <div class="form-row">
             <label>Category</label>
@@ -3186,6 +3188,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('searchBox')?.addEventListener('input', applyFilters);
   document.getElementById('dateFrom')?.addEventListener('change', applyFilters);
   document.getElementById('dateTo')?.addEventListener('change', applyFilters);
+  // The Create Listing form is in the DOM from the start; the product editor's
+  // field is bound when a product is opened.
+  bindAuthorField('newProdAuthor', 'newProdAuthorHint');
 });
 
 // ── Render Table ───────────────────────────────────────────────────────────
@@ -4413,6 +4418,148 @@ async function generateListingCopy() {
   }
 }
 
+// ── Author name formatting ──────────────────────────────────────────────────
+// Author names arrive pasted from distributor catalogues and Amazon, which
+// shout them in caps and often put the surname first ("DUKE ANNIE"). Whatever
+// is typed here goes straight onto the live product page, the SEO title and the
+// structured data, so it is worth normalising.
+//
+// The line this draws: CASE is fixed automatically, ORDER never is. Reversing
+// "Duke Annie" to "Annie Duke" is right; doing the same to "Chetan Bhagat" is
+// wrong, and nothing in the string says which is which. A silent reversal that
+// happens to be wrong ships a mangled author to a live page and is exactly the
+// kind of thing nobody notices. So a reorder is offered as a one-click
+// suggestion instead — see authorSwapSuggestion.
+
+// Particles stay lowercase inside a name: "Ludwig van Beethoven", "Simone de
+// Beauvoir". Never when they lead the name, where they are capitalised.
+const NAME_PARTICLES = new Set(['van', 'von', 'de', 'del', 'della', 'der', 'den', 'di', 'da',
+  'do', 'dos', 'du', 'la', 'le', 'les', 'ter', 'ten', 'bin', 'binte', 'ibn', 'al', 'el', 'y', 'e']);
+// Suffixes and post-nominals, spelled the way they are actually written — a
+// blanket toUpperCase() would produce "JR" and "PHD".
+const NAME_SUFFIX = {
+  jr: 'Jr.', sr: 'Sr.', ii: 'II', iii: 'III', iv: 'IV', vi: 'VI', vii: 'VII', viii: 'VIII', ix: 'IX',
+  phd: 'PhD', md: 'MD', dds: 'DDS', mba: 'MBA',
+};
+
+/** Recase a single whitespace-free token. */
+function formatNameToken(tok, isFirst) {
+  if (!tok) return tok;
+  // Mixed case is left exactly as typed: it is the only evidence that someone
+  // meant "McEwan", "DeLillo" or "bell hooks", and re-casing would destroy it.
+  const hasLower = /[a-z]/.test(tok), hasUpper = /[A-Z]/.test(tok);
+  if (hasLower && hasUpper) return tok;
+
+  const bare = tok.replace(/[.,]/g, '').toLowerCase();
+  if (!isFirst && NAME_SUFFIX[bare]) return NAME_SUFFIX[bare];
+  if (!isFirst && NAME_PARTICLES.has(bare)) return tok.toLowerCase();
+
+  // Initials: "j.k." / "j.r.r." — every letter capitalised, dots kept.
+  if (/^(?:[a-z]\.){2,}$/i.test(tok)) return tok.toUpperCase();
+  if (/^[a-z]\.$/i.test(tok)) return tok.toUpperCase();
+
+  // Capitalise across hyphens and apostrophes: "jean-paul" → "Jean-Paul",
+  // "o'brien" → "O'Brien". ’ is the curly apostrophe Word and iOS insert.
+  let out = tok.toLowerCase().replace(/(^|[-'’])([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
+  // "mcewan" → "McEwan". Mc is almost always followed by a capital; Mac is not
+  // ("Macklin", "Machado"), so Mac is deliberately left alone.
+  out = out.replace(/^Mc([a-z])/, (_, ch) => 'Mc' + ch.toUpperCase());
+  return out;
+}
+
+/**
+ * Normalise one author name. Case only — never word order, except for the
+ * unambiguous bibliographic "Surname, Firstname", where the comma IS the
+ * statement that the surname came first.
+ */
+function formatOneAuthor(raw) {
+  let s = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+
+  // "Duke, Annie" → "Annie Duke", but ONLY when the left side is a bare surname:
+  // one word, or a particle plus one ("van Gogh, Vincent"). Anything longer is
+  // a list — "Annie Duke, Chetan Bhagat" is two authors, and an earlier version
+  // of this rule turned it into "Chetan Bhagat Annie Duke".
+  const comma = s.split(',');
+  if (comma.length === 2) {
+    const left = comma[0].trim(), right = comma[1].trim();
+    const lw = left.split(' ').filter(Boolean);
+    const leftIsSurname = lw.length === 1
+      || (lw.length === 2 && NAME_PARTICLES.has(lw[0].toLowerCase()));
+    // "King, Jr." is a suffix, not a first name — flipping it gives "Jr. King".
+    const rightIsSuffix = !!NAME_SUFFIX[right.replace(/\./g, '').toLowerCase()];
+    if (left && right && leftIsSurname && right.split(' ').filter(Boolean).length <= 3 && !rightIsSuffix) {
+      s = right + ' ' + left;
+    }
+  }
+
+  const toks = s.split(' ').filter(Boolean);
+  return toks.map((t, i) => formatNameToken(t, i === 0)).join(' ');
+}
+
+/** Format a whole field, which may name several authors. */
+function formatAuthorName(raw) {
+  const s = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  // Split on separators that can only mean "another author", never on a bare
+  // comma — that is handled inside formatOneAuthor, where it may mean
+  // "Surname, Firstname".
+  const parts = s.split(/\s*(&|;|\band\b)\s*/i);
+  return parts
+    .map(p => (/^(&|;|and)$/i.test(p) ? (p === ';' ? ';' : (p === '&' ? '&' : 'and')) : formatOneAuthor(p)))
+    .join(' ')
+    .replace(/\s*;\s*/g, '; ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Suggest a surname-first reorder, or null when there is nothing to suggest.
+ *
+ * Deliberately only offered when the RAW input was all-caps: that is the
+ * catalogue-paste fingerprint ("DUKE ANNIE"), and it keeps the prompt away from
+ * a normally typed "Chetan Bhagat", where it would be noise and half the time
+ * wrong. Two words only — a middle name or initial makes the order unguessable.
+ */
+function authorSwapSuggestion(raw, formatted) {
+  const s = String(raw || '').trim();
+  if (!s || /[a-z]/.test(s)) return null;      // not an all-caps paste
+  if (s.includes(',')) return null;            // a comma was already obeyed
+  const toks = String(formatted || '').split(' ').filter(Boolean);
+  if (toks.length !== 2) return null;
+  if (toks.some(t => t.includes('.') || NAME_PARTICLES.has(t.toLowerCase()) || NAME_SUFFIX[t.toLowerCase()])) return null;
+  return toks[1] + ' ' + toks[0];
+}
+
+/**
+ * Wire an author input: tidy the case when the field loses focus, and offer the
+ * reorder underneath it. On blur rather than on input, so it never fights
+ * someone mid-type.
+ */
+function bindAuthorField(inputId, hintId) {
+  const el = document.getElementById(inputId);
+  const hint = document.getElementById(hintId);
+  if (!el || el.dataset.authorBound) return;
+  el.dataset.authorBound = '1';
+  el.addEventListener('blur', () => {
+    const raw = el.value;
+    const formatted = formatAuthorName(raw);
+    if (formatted !== raw) el.value = formatted;
+    const swap = authorSwapSuggestion(raw, formatted);
+    if (!hint) return;
+    if (!swap) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
+    hint.style.display = '';
+    hint.innerHTML = `Surname first? <button type="button" data-swap="${swap.replace(/"/g, '&quot;')}"
+      style="background:transparent;border:1px solid var(--gold);color:var(--gold);padding:.15rem .5rem;
+             font-size:.68rem;cursor:pointer;font-family:inherit;margin-left:.3rem;">Use “${esc(swap)}”</button>`;
+    hint.querySelector('button').onclick = () => {
+      el.value = swap;
+      hint.style.display = 'none';
+      hint.innerHTML = '';
+    };
+  });
+}
+
 async function createProductListing() {
   const btn = document.getElementById('createProductBtn');
   const msg = document.getElementById('createProductMsg');
@@ -4461,7 +4608,9 @@ async function createProductListing() {
   const payload = {
     title,
     slug: productSlugFromTitle(title),
-    author: document.getElementById('newProdAuthor').value,
+    // Formatted here too, not just on blur: pasting a name and going straight to
+    // the Create button with a keyboard shortcut never fires a blur.
+    author: formatAuthorName(document.getElementById('newProdAuthor').value),
     category: document.getElementById('newProdCategory').value || 'Books',
     price_inr: price,
     original_price_inr: document.getElementById('newProdOriginalPrice').value,
@@ -4690,6 +4839,10 @@ function selectProduct(slug) {
   document.getElementById('prodSlug').value = row.slug;
   document.getElementById('prodTitle').value = p.title;
   document.getElementById('prodAuthor').value = p.author;
+  // The existing value is shown untouched — reformatting it here would look
+  // like the product had unsaved changes the moment it was opened. It gets
+  // tidied if the field is edited, or on save.
+  bindAuthorField('prodAuthor', 'prodAuthorHint');
   document.getElementById('prodCategory').value = p.category;
   document.getElementById('prodPrice').value = p.price_inr;
   document.getElementById('prodOriginalPrice').value = p.original_price_inr;
@@ -5806,7 +5959,7 @@ async function saveProductOverride(activeOverride = true) {
   const payload = {
     slug: document.getElementById('prodSlug').value,
     title: document.getElementById('prodTitle').value,
-    author: document.getElementById('prodAuthor').value,
+    author: formatAuthorName(document.getElementById('prodAuthor').value),
     category: document.getElementById('prodCategory').value,
     price_inr: document.getElementById('prodPrice').value,
     original_price_inr: document.getElementById('prodOriginalPrice').value,
