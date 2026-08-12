@@ -1107,11 +1107,13 @@ select,input,textarea{font-size:1rem;}
       </div>
       <div class="form-row">
         <label>Sale price INR *</label>
-        <input id="newProdPrice" inputmode="decimal" placeholder="299"/>
+        <!-- "e.g." earns its place: a bare "299" beside a typed MRP reads as a
+             filled-in field, and the form then refuses to save with no clue why. -->
+        <input id="newProdPrice" inputmode="decimal" placeholder="e.g. 299"/>
       </div>
       <div class="form-row">
         <label>MRP INR</label>
-        <input id="newProdOriginalPrice" inputmode="decimal" placeholder="499"/>
+        <input id="newProdOriginalPrice" inputmode="decimal" placeholder="e.g. 499"/>
       </div>
       <div class="form-row">
         <label>Publisher</label>
@@ -4417,8 +4419,38 @@ async function createProductListing() {
   const title = document.getElementById('newProdTitle').value.trim();
   const price = document.getElementById('newProdPrice').value.trim();
   const description = document.getElementById('newProdDescription').value.trim();
-  if (!title || !price || !description) {
-    alert('Please add title, sale price, and description.');
+
+  // Name the field that is ACTUALLY missing, and jump to it. The old message
+  // listed all three whichever one was blank, which sent you hunting through a
+  // filled-in title and description looking for a fault that wasn't there. The
+  // usual culprit is Sale Price, whose placeholder ("299") reads as a real value
+  // at a glance — especially with a genuine MRP typed in right beside it.
+  const missing = [];
+  if (!title)       missing.push(['product title', 'newProdTitle']);
+  if (!price)       missing.push(['sale price', 'newProdPrice']);
+  if (!description) missing.push(['product description', 'newProdDescription']);
+  if (missing.length) {
+    const names = missing.map(m => m[0]);
+    const first = document.getElementById(missing[0][1]);
+    if (first) {
+      first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      first.focus({ preventScroll: true });
+      const before = first.style.borderColor;
+      first.style.borderColor = '#e06060';
+      setTimeout(() => { first.style.borderColor = before; }, 2500);
+    }
+    alert(names.length === 1
+      ? `The ${names[0]} is empty — that's the only thing missing.`
+        + (missing[0][1] === 'newProdPrice' ? '\n\nThe grey "299" in that box is placeholder text, not a value.' : '')
+      : `Still empty: ${names.join(', ')}.`);
+    return;
+  }
+  // A price that isn't a positive number fails server-side with a much vaguer
+  // error, so catch it here where the offending box can be pointed at.
+  if (!(Number(price) > 0)) {
+    const el = document.getElementById('newProdPrice');
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus({ preventScroll: true }); }
+    alert(`"${price}" isn't a valid sale price. Enter a number in rupees, e.g. 299.`);
     return;
   }
 
