@@ -1,6 +1,6 @@
 /**
  * Netlify Function: nimbuspost-awb-sync
- * Invoked every 15 minutes by nimbuspost-awb-sync-scheduled.
+ * Invoked every 3 minutes by nimbuspost-awb-sync-scheduled.
  * Manual: POST with authenticated admin headers.
  *
  * The Problem We're Solving:
@@ -11,7 +11,7 @@
  * panel and the customer never gets a shipped notification.
  *
  * The Fix:
- * Poll NimbusPost's orders panel, match each NimbusPost order to ours by
+ * Poll NimbusPost's shipments feed, match each NimbusPost shipment to ours by
  * order_number (the IC-… id we sent), and when NimbusPost has assigned an AWB,
  * write it back: tracking_id + courier + tracking_url + status='shipped', then
  * fire the same shipped notification the webhook sends. Once tracking_id is set,
@@ -27,8 +27,6 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
 
-const NP_ORDERS_URL = 'https://ship.nimbuspost.com/api/orders';
-
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
@@ -39,7 +37,7 @@ const CORS = {
 const UNSHIPPED_STATUSES = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending'];
 
 const NP_MAX_PAGE   = 50;   // NimbusPost rejects page > 50
-const NP_SCAN_PAGES = 5;    // newest pages only — keeps total calls well under the function timeout
+const NP_PAGE_SIZE  = 200;  // accepted by /api/shipments; 500 is rejected
 const NOTIFY_LIMIT  = 60;   // cap synced orders + notifications per run (safety)
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -59,12 +57,15 @@ function orderRowsFromResponse(payload) {
   return candidates.find(Array.isArray) || [];
 }
 
-function paginationFromResponse(payload) {
+function paginationFromResponse(payload, pageSize = NP_PAGE_SIZE) {
   const sources = [payload?.data, payload?.meta, payload?.pagination, payload];
   for (const source of sources) {
     if (!source || Array.isArray(source) || typeof source !== 'object') continue;
     const current = Number(source.current_page || source.page || 0);
-    const last = Number(source.last_page || source.total_pages || source.pages || 0);
+    const last = Number(source.last_page || source.total_pages || source.pages || 0)
+      || (Number(source.count || source.total || 0) > 0
+        ? Math.ceil(Number(source.count || source.total) / pageSize)
+        : 0);
     if (current || last) return { current, last };
   }
   return { current: 0, last: 0 };
@@ -108,13 +109,12 @@ function orderNumberFromRow(row) {
   );
 }
 
-// Candidate listing endpoints — NimbusPost exposes orders/shipments under a few
-// paths depending on the account. We probe page 1 of each to find the one that
-// returns rows, then scan only that endpoint (keeps us well under the timeout).
+// AWBs belong to shipment rows. /api/orders is the draft/panel-order feed and
+// may contain a few AWBs, but stopping on it hid real shipments on pages 6–7.
+// Keep a fallback for older NimbusPost accounts, but always prefer shipments.
 const NP_LIST_ENDPOINTS = [
-  { url: 'https://ship.nimbuspost.com/api/orders',       params: {} },
-  { url: 'https://ship.nimbuspost.com/api/shipping/all', params: { ship_status: 'booked' } },
   { url: 'https://ship.nimbuspost.com/api/shipments',    params: {} },
+  { url: 'https://ship.nimbuspost.com/api/orders',       params: {} },
 ];
 
 // fetch with a hard per-call timeout so one slow call can't kill the function.
@@ -138,8 +138,8 @@ async function npGet(url, apiKey, ms = 6000) {
 function buildListUrl(endpoint, page) {
   const url = new URL(endpoint.url);
   url.searchParams.set('page', String(page));
-  url.searchParams.set('limit', '50');
-  url.searchParams.set('per_page', '50');
+  url.searchParams.set('limit', String(NP_PAGE_SIZE));
+  url.searchParams.set('per_page', String(NP_PAGE_SIZE));
   url.searchParams.set('sort', 'desc');
   url.searchParams.set('sort_by', 'id');
   for (const [k, v] of Object.entries(endpoint.params)) url.searchParams.set(k, v);
@@ -159,12 +159,14 @@ function collectRows(payload, map) {
   return added;
 }
 
-// Returns { map, diag }. Phase 1: probe page 1 of each endpoint. Phase 2: scan a
-// few more pages of whichever endpoint returned usable rows.
+// Returns { map, diag }. Probe the shipment feed first, then scan every page it
+// reports (currently ~8 requests for the whole account). This is both faster
+// and complete compared with five 50-row pages from /api/orders.
 async function fetchNimbusAwbMap(apiKey) {
   const map = new Map();
   const diag = [];
   let working = null;
+  let firstPayload = null;
 
   // ── Phase 1: discovery (≤3 calls) ──
   for (const endpoint of NP_LIST_ENDPOINTS) {
@@ -175,23 +177,25 @@ async function fetchNimbusAwbMap(apiKey) {
       diag.push(`${endpoint.url} → HTTP ${response.status}, rows:${rows.length}${firstKeys ? `, keys:[${firstKeys}]` : `, body:${snippet}`}`);
       if (response.ok && rows.length) {
         const added = collectRows(payload, map);
-        if (added > 0) { working = endpoint; break; }
+        if (added > 0) { working = endpoint; firstPayload = payload; break; }
       }
     } catch (err) {
       diag.push(`${endpoint.url} → ${err.name === 'AbortError' ? 'timeout' : 'error: ' + err.message}`);
     }
   }
 
-  // ── Phase 2: scan a few more pages of the working endpoint ──
+  // ── Phase 2: scan every reported page of the working endpoint ──
   if (working) {
-    const lastPage = Math.min(NP_SCAN_PAGES, NP_MAX_PAGE);
+    let lastPage = NP_MAX_PAGE;
+    const pagination = paginationFromResponse(firstPayload);
+    if (pagination.last) lastPage = Math.min(pagination.last, NP_MAX_PAGE);
     for (let page = 2; page <= lastPage; page++) {
       try {
         const { response, payload } = await npGet(buildListUrl(working, page), apiKey);
         if (!response.ok) break;
         const rows = orderRowsFromResponse(payload);
         collectRows(payload, map);
-        if (rows.length < 50) break;
+        if (rows.length < NP_PAGE_SIZE) break;
       } catch (_) { break; }
     }
   }
@@ -329,4 +333,8 @@ exports.handler = async (event) => {
   }
 };
 
-exports._test = { normalizeOrderNumber, orderRowsFromResponse, awbFromRow, orderNumberFromRow, collectRows };
+exports._test = {
+  normalizeOrderNumber, orderRowsFromResponse, paginationFromResponse,
+  awbFromRow, orderNumberFromRow, collectRows, buildListUrl,
+  fetchNimbusAwbMap,
+};
