@@ -6464,9 +6464,17 @@ function refundMissingInsteadOfReplacement(encodedRowId) {
     return;
   }
 
+  // Only an order with NO online payment is unrefundable here: that is COD, and
+  // the courier — not a gateway — holds the customer's money, so no API can send
+  // it back. Both gateways are fine: this hands off to openRefundModal, which
+  // picks razorpay-refund or phonepe-refund from the same payment id.
+  //
+  // This used to reject `pay_…` too, back when the flow was PhonePe-only, and so
+  // refused every Razorpay order (IC-20260807-NF598, ₹149) with "was not paid via
+  // PhonePe" — pushing a routine partial refund to the dashboard by hand.
   const payId = String(original.razorpay_payment_id || '');
-  if (!payId || payId.startsWith('pay_')) {
-    alert(`Order ${originalId} was not paid via PhonePe${payId.startsWith('pay_') ? ' (it is a Razorpay payment)' : ''}.\n\nRefund ₹${missingValue.toLocaleString('en-IN')} from the ${payId.startsWith('pay_') ? 'Razorpay' : 'relevant payment'} dashboard instead.`);
+  if (!payId) {
+    alert(`Order ${originalId} has no online payment recorded — it looks like COD, so there is nothing for a gateway to refund.\n\nReturn ₹${missingValue.toLocaleString('en-IN')} to the customer directly (UPI/bank transfer), then cancel this replacement from the Orders tab.`);
     return;
   }
   const fullAmt = original.amount_paise ? Math.round(original.amount_paise / 100) : 0;
