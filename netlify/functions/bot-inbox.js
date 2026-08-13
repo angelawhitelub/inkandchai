@@ -85,10 +85,18 @@ exports.handler = async (event) => {
           .from('bot_messages')
           .select('*')
           .eq('customer_phone', q.phone)
-          .order('created_at', { ascending: true })
+          // Fetch the newest rows before applying the cap. Ordering ascending
+          // here returned the *oldest* 200 messages, so recent human replies
+          // were saved and shown in the sidebar preview but disappeared from
+          // long threads. Reverse below to keep the UI chronological.
+          .order('created_at', { ascending: false })
           .limit(200);
         if (error) throw error;
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({ messages: data || [] }) };
+        return {
+          statusCode: 200,
+          headers: CORS,
+          body: JSON.stringify({ messages: (data || []).reverse() }),
+        };
       }
 
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Unknown action' }) };
