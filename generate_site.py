@@ -6894,11 +6894,36 @@ function setBtnLoading(btn,on) {{
   btn.classList.toggle('is-loading', !!on);
   btn.disabled = !!on;
 }}
+// Meta events for the static product page. These have to live here rather than
+// in cart.js: addBookToCart/buyNowBook write akshar_cart themselves and never
+// call cart.js's addToCart, so the copy over there is never reached on a PDP —
+// which is exactly the page where a view and an add matter most.
+// content_ids uses currentItem.id, the same value the cart stores and the
+// checkout later reports, so a view, an add and a purchase all name the product
+// identically; otherwise Meta cannot connect them or match the catalogue.
+function metaProductParams() {{
+  return {{
+    content_ids: [String(currentItem.id || '')],
+    content_type: 'product',
+    content_name: String(currentItem.title || ''),
+    currency: 'INR',
+    value: Number(currentItem.price) || 0,
+  }};
+}}
+let _iacViewed = false;
+function reportViewContent() {{
+  // Fires after the override fetch settles so the title and price reported are
+  // the ones the customer actually saw, with a timeout in case that fetch hangs.
+  if (_iacViewed || !window.iacMeta) return;
+  _iacViewed = true;
+  window.iacMeta('ViewContent', metaProductParams());
+}}
 function addBookToCart(btn) {{
   if (window.__soldOut) {{ if (window.showToast) showToast('Out of stock — Coming Soon'); else alert('This book is currently out of stock (Coming Soon).'); return; }}
   if (window.stopReaderActivity) stopReaderActivity();
   setBtnLoading(btn, true);
   localStorage.removeItem('iac_buy_now_cart');
+  if (window.iacMeta) window.iacMeta('AddToCart', metaProductParams());
   const item = {{ ...currentItem }};
   const cart = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
   const existing = cart.find(x => x.id === item.id);
@@ -6915,6 +6940,8 @@ function buyNowBook(btn) {{
   if (window.__soldOut) {{ if (window.showToast) showToast('Out of stock — Coming Soon'); else alert('This book is currently out of stock (Coming Soon).'); return; }}
   if (window.stopReaderActivity) stopReaderActivity();
   setBtnLoading(btn, true);
+  // Buy Now is an add too — it just skips the basket on the way to checkout.
+  if (window.iacMeta) window.iacMeta('AddToCart', metaProductParams());
   const item = {{ ...currentItem }};
   localStorage.setItem('iac_buy_now_cart', JSON.stringify([item]));
   setTimeout(() => {{ location.href='/checkout/?buynow=1'; }}, 220);
@@ -7045,7 +7072,8 @@ document.addEventListener('keydown', e => {{
     + limited
     + '</div></div>';
 }}());
-applyRuntimeProductOverride();
+applyRuntimeProductOverride().then(reportViewContent, reportViewContent);
+setTimeout(reportViewContent, 3000);
 </script>
 <!-- #InkAndChaiBookstagram reels: light poster strip + Instagram-style viewer.
      Loads video only when a reel is opened, and only the active one. -->
