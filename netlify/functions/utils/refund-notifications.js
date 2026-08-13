@@ -63,7 +63,7 @@ function stateLabel(state) {
 }
 
 function ownerRefundEmailHtml(order, amtPaise, { provider, refundId, state, items } = {}) {
-  const amt = `₹${(amtPaise / 100).toLocaleString('en-IN')}`;
+  const amt = `₹${rupees(amtPaise)}`;
   const oid = order.razorpay_order_id || order.id || '';
   const covers = refundItemsLine(items);
   return `<div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
@@ -93,7 +93,7 @@ async function notifyOwnerRefund(order, amountPaise, meta = {}) {
   const ownerEmail = process.env.STORE_OWNER_EMAIL;
   if (!ownerEmail || !order || amountPaise <= 0) return { sent: false };
   const oid = order.razorpay_order_id || order.id || '';
-  const amt = `₹${(amountPaise / 100).toLocaleString('en-IN')}`;
+  const amt = `₹${rupees(amountPaise)}`;
   try {
     const r = await sendEmail({
       to: ownerEmail,
@@ -117,7 +117,7 @@ function orderButtonHtml(oid) {
 }
 
 function refundInitiatedEmailHtml(order, amtPaise, refundRef) {
-  const amt = `₹${(amtPaise / 100).toLocaleString('en-IN')}`;
+  const amt = `₹${rupees(amtPaise)}`;
   const oid = order.razorpay_order_id || order.id || '';
   // Payment-gateway reference for the refund. Customers whose bank is slow can
   // quote this to their bank to trace the credit, so surface it when we have it.
@@ -234,10 +234,10 @@ async function sendRefundWhatsApp({ order, oid, amtPlain, isPartial, itemsLine, 
  * being unwound, which would be wrong and would generate a support reply.
  */
 function refundPartialEmailHtml(order, amtPaise, refundRef, items) {
-  const amt = `₹${(amtPaise / 100).toLocaleString('en-IN')}`;
+  const amt = `₹${rupees(amtPaise)}`;
   const oid = order.razorpay_order_id || order.id || '';
   const total = Number(order.amount_paise) || 0;
-  const rest = total > amtPaise ? `₹${((total - amtPaise) / 100).toLocaleString('en-IN')}` : null;
+  const rest = total > amtPaise ? `₹${rupees(total - amtPaise)}` : null;
   const ref = resolveRefundRef(order, refundRef);
   const list = cleanRefundItems(items);
 
@@ -246,7 +246,7 @@ function refundPartialEmailHtml(order, amtPaise, refundRef, items) {
     <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px;">
       ${list.map(i => `<tr>
         <td style="padding:7px 10px;border-bottom:1px solid #e6ddcd;">${i.title}${i.qty > 1 ? ` <span style="color:#6f6255;">×${i.qty}</span>` : ''}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid #e6ddcd;text-align:right;white-space:nowrap;"><strong>₹${i.amount.toLocaleString('en-IN')}</strong></td>
+        <td style="padding:7px 10px;border-bottom:1px solid #e6ddcd;text-align:right;white-space:nowrap;"><strong>₹${rupees(Math.round((Number(i.amount) || 0) * 100))}</strong></td>
       </tr>`).join('')}
     </table>`
     : '';
@@ -299,7 +299,7 @@ async function sendRefundInitiated(order, amountPaise, { supabase, state, refund
 
   const oid = order.razorpay_order_id || order.id || '';
   // Template body prepends "Rs " itself — pass a plain, comma-formatted number.
-  const amtPlain = (amountPaise / 100).toLocaleString('en-IN');
+  const amtPlain = rupees(amountPaise);
 
   // Partial = we kept some of the customer's money. Decided from the amounts,
   // not from a caller's flag, so the async paths (phonepe-webhook, the retry
@@ -357,6 +357,15 @@ async function sendRefundInitiated(order, amountPaise, { supabase, state, refund
   return { sent: true };
 }
 
+// Paise → "1,234.50". Always two decimals: a bare toLocaleString turned a
+// ₹230.10 refund into "₹230.1", which reads to a customer like we kept the
+// paise. Rupee amounts the customer is told must match the gateway exactly.
+function rupees(paise) {
+  const n = Number(paise);
+  return ((Number.isFinite(n) ? n : 0) / 100)
+    .toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 module.exports = {
   sendRefundInitiated,
   refundInitiatedEmailHtml,
@@ -366,4 +375,5 @@ module.exports = {
   refundItemsLine,
   resolveRefundRef,
   sendRefundWhatsApp,
+  rupees,
 };

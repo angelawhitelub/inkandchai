@@ -20,7 +20,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
-const { sendRefundInitiated, cleanRefundItems } = require('./utils/refund-notifications');
+const { sendRefundInitiated, cleanRefundItems, rupees } = require('./utils/refund-notifications');
 const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
@@ -149,7 +149,7 @@ exports.handler = async (event) => {
       supabase, items: refundItems, refundRef: refund.id || null,
     }).catch(e => console.error('refund-initiated notify:', e.message));
 
-    const amtLabel = `₹${(amountPaise / 100).toLocaleString('en-IN')}`;
+    const amtLabel = `₹${rupees(amountPaise)}`;
     return {
       statusCode: 200,
       headers: CORS,

@@ -21,7 +21,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { sendRefundInitiated, cleanRefundItems } = require('./utils/refund-notifications');
+const { sendRefundInitiated, cleanRefundItems, rupees } = require('./utils/refund-notifications');
 const { requireAdmin } = require('./utils/admin-auth');
 const { refundIdForAttempt } = require('./utils/refund-id');
 
@@ -254,9 +254,9 @@ exports.handler = async (event) => {
                 refund_id: merchantRefundId,
                 phonepe_refund_id: statusCheck.data?.refundId || null,
                 state,
-                amount: `₹${(amountPaise / 100).toLocaleString('en-IN')}`,
+                amount: `₹${rupees(amountPaise)}`,
                 is_full: isFullRefund,
-                message: `${isFullRefund ? 'Full refund' : 'Partial refund'} of ₹${(amountPaise / 100).toLocaleString('en-IN')} is ${state.toLowerCase()} at PhonePe.`,
+                message: `${isFullRefund ? 'Full refund' : 'Partial refund'} of ₹${rupees(amountPaise)} is ${state.toLowerCase()} at PhonePe.`,
               }),
             };
           }
@@ -380,13 +380,13 @@ exports.handler = async (event) => {
         refund_id: merchantRefundId,
         phonepe_refund_id: phonePeRefundId,
         state: refundState || 'PENDING',
-        amount: `₹${(amountPaise / 100).toLocaleString('en-IN')}`,
+        amount: `₹${rupees(amountPaise)}`,
         is_full: isFullRefund,
         message: nextStatus === 'refunded'
-          ? `Full refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} completed.`
+          ? `Full refund of ₹${rupees(amountPaise)} completed.`
           : nextStatus === 'partially_refunded'
-            ? `Partial refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} completed.`
-          : `Refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} accepted by PhonePe and is ${String(refundState || 'PENDING').toLowerCase()}.`,
+            ? `Partial refund of ₹${rupees(amountPaise)} completed.`
+          : `Refund of ₹${rupees(amountPaise)} accepted by PhonePe and is ${String(refundState || 'PENDING').toLowerCase()}.`,
       }),
     };
   } catch (err) {

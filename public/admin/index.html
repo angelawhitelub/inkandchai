@@ -2631,6 +2631,24 @@ function itemsSubtotal(items) {
   return (Array.isArray(items) ? items : []).reduce((s, i) => s + itemLineTotal(i), 0);
 }
 
+// ── Money ───────────────────────────────────────────────────────────────────
+// Always two decimals. Refund screens used to run amount_paise through
+// Math.round(paise/100) and print it with a bare toLocaleString, so a ₹230.10
+// capture showed as "Captured: ₹230" and its Full refund button as "₹230" — the
+// paise were invisible on screen and dropped from every partial amount derived
+// from that figure. Anything that shows or computes a refund goes through these.
+function money(rupees) {
+  const n = Number(rupees);
+  return (Number.isFinite(n) ? n : 0)
+    .toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+// Float rupees drift (0.1 + 0.2 = 0.30000000000000004). Snap to whole paise
+// after every arithmetic step so ticked item totals stay exact.
+function paiseRound(rupees) {
+  const n = Number(rupees);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
 // ── Linked replacements / returns ───────────────────────────────────────────
 // A replacement lives in `orders` as its own IC-R- row pointing back at the
 // original through cart_items[0]._replacement.original_order_id; a return lives
@@ -3338,7 +3356,7 @@ function _drawTable() {
           const isPhonePe  = pid && !isRazorpay;
           const REFUNDABLE = ['paid','confirmed','shipped','out_for_delivery','delivered','refund_pending','refund_failed','partially_refunded','cancelled','rto','undelivered','lost'];
           if ((!isPhonePe && !isRazorpay) || !REFUNDABLE.includes(o.status) || !o.amount_paise) return '';
-          const amtRupees = Math.round(o.amount_paise/100);
+          const amtRupees = o.amount_paise / 100;
           const via = isRazorpay ? 'Razorpay' : 'PhonePe';
           // Customer name + payment provider are looked up inside openRefundModal
           // from allOrders so we don't escape them through the onclick string
@@ -6543,12 +6561,14 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
   // delta to whatever is there rather than overwriting it. Lines with no
   // recorded price are shown disabled: there is no amount to add.
   const refundItems = (Array.isArray(ord?.cart_items) ? ord.cart_items : [])
-    .map((i, idx) => ({ idx, title: String(i?.title || 'Item'), qty: itemQty(i), amount: Math.round(itemLineTotal(i)) }));
+    .map((i, idx) => ({ idx, title: String(i?.title || 'Item'), qty: itemQty(i), amount: paiseRound(itemLineTotal(i)) }));
   // Anything captured beyond the item lines (shipping, COD fee, rounding) gets
   // its own row so ticking everything still reaches the full captured amount.
-  const itemsTotal = refundItems.reduce((s, i) => s + i.amount, 0);
-  const rest = Math.round(fullAmtRupees) - itemsTotal;
-  if (refundItems.length && rest > 0) {
+  // Kept in paise so the leftover is exact — this row is where a rounded item
+  // total used to quietly bury the customer's paise.
+  const itemsTotal = paiseRound(refundItems.reduce((s, i) => s + i.amount, 0));
+  const rest = paiseRound(fullAmtRupees - itemsTotal);
+  if (refundItems.length && rest >= 0.01) {
     refundItems.push({ idx: -1, title: 'Shipping / other charges', qty: 1, amount: rest });
   }
   const itemPickerHtml = refundItems.length ? `
@@ -6559,12 +6579,12 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
                         border-bottom:1px solid rgba(201,168,76,0.1);cursor:${it.amount > 0 ? 'pointer' : 'not-allowed'};">
             <input type="checkbox" class="iacRefundItem" data-amount="${it.amount}" ${it.amount > 0 ? '' : 'disabled'}
                    data-title="${String(it.title).replace(/[<>"]/g, '')}" data-qty="${it.qty}"
-                   onchange="iacRefundItemToggle(this,${Math.round(fullAmtRupees)})" style="margin:0;flex:0 0 auto;"/>
+                   onchange="iacRefundItemToggle(this,${fullAmtRupees})" style="margin:0;flex:0 0 auto;"/>
             <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
               ${String(it.title).replace(/[<>]/g, '')}${it.qty > 1 ? ' ×' + it.qty : ''}
             </span>
             <span style="flex:0 0 auto;color:${it.amount > 0 ? '#c9a84c' : '#6d6255'};font-weight:700;">
-              ${it.amount > 0 ? '₹' + it.amount.toLocaleString('en-IN') : 'no price'}
+              ${it.amount > 0 ? '₹' + money(it.amount) : 'no price'}
             </span>
           </label>`).join('')}
         </div>` : '';
@@ -6581,13 +6601,13 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
       </h3>
       <p style="color:#a09080;font-size:0.72rem;line-height:1.55;margin:0 0 1rem;">
         Order <strong style="color:#c9a84c;">${orderId}</strong>${customerName ? ' · ' + customerName.replace(/[<>]/g,'') : ''}<br/>
-        Captured: <strong style="color:#c9a84c;">₹${fullAmtRupees.toLocaleString('en-IN')}</strong>
+        Captured: <strong style="color:#c9a84c;">₹${money(fullAmtRupees)}</strong>
       </p>
 
       <div style="display:flex;gap:0.5rem;margin-bottom:0.85rem;">
         <label style="flex:1;display:flex;align-items:center;gap:0.5rem;padding:0.7rem;border:1px solid rgba(224,80,80,0.4);background:rgba(224,80,80,0.06);cursor:pointer;font-size:0.78rem;color:#f0e8d8;">
           <input type="radio" name="iacRefundType" value="full" checked onchange="iacRefundToggleAmount()" style="margin:0;"/>
-          Full refund (₹${fullAmtRupees.toLocaleString('en-IN')})
+          Full refund (₹${money(fullAmtRupees)})
         </label>
         <label style="flex:1;display:flex;align-items:center;gap:0.5rem;padding:0.7rem;border:1px solid rgba(201,168,76,0.3);background:rgba(201,168,76,0.05);cursor:pointer;font-size:0.78rem;color:#f0e8d8;">
           <input type="radio" name="iacRefundType" value="partial" onchange="iacRefundToggleAmount()" style="margin:0;"/>
@@ -6598,8 +6618,8 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
       <div id="iacRefundAmountRow" style="display:none;margin-bottom:0.85rem;">
         ${itemPickerHtml}
         <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.35rem;">Refund amount (₹)</label>
-        <input id="iacRefundAmount" type="number" min="1" max="${fullAmtRupees}" step="1"
-          placeholder="Up to ${fullAmtRupees}"
+        <input id="iacRefundAmount" type="number" min="0.01" max="${fullAmtRupees}" step="0.01"
+          placeholder="Up to ${money(fullAmtRupees)}"
           style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.3);color:#f0e8d8;padding:0.7rem;font-family:inherit;font-size:0.9rem;"/>
       </div>
 
@@ -6629,7 +6649,7 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
       partialRadio.checked = true;
       iacRefundToggleAmount();
       const amtEl = document.getElementById('iacRefundAmount');
-      if (amtEl) amtEl.value = Math.min(prefill, fullAmtRupees);
+      if (amtEl) amtEl.value = paiseRound(Math.min(prefill, fullAmtRupees));
     }
   }
   if (opts.contextNote) {
@@ -6656,7 +6676,7 @@ function refundMissingInsteadOfReplacement(encodedRowId) {
   const originalId = items[0]?._replacement?.original_order_id || '';
   const original = allOrders.find(o => (o.razorpay_order_id || o.id) === originalId);
   if (!original) {
-    alert(`Original order ${originalId || '(unknown)'} isn't loaded in the current view.\n\nClear the filters / search for it, then use its Refund button with amount ₹${missingValue.toLocaleString('en-IN')}.`);
+    alert(`Original order ${originalId || '(unknown)'} isn't loaded in the current view.\n\nClear the filters / search for it, then use its Refund button with amount ₹${money(missingValue)}.`);
     return;
   }
 
@@ -6670,13 +6690,13 @@ function refundMissingInsteadOfReplacement(encodedRowId) {
   // PhonePe" — pushing a routine partial refund to the dashboard by hand.
   const payId = String(original.razorpay_payment_id || '');
   if (!payId) {
-    alert(`Order ${originalId} has no online payment recorded — it looks like COD, so there is nothing for a gateway to refund.\n\nReturn ₹${missingValue.toLocaleString('en-IN')} to the customer directly (UPI/bank transfer), then cancel this replacement from the Orders tab.`);
+    alert(`Order ${originalId} has no online payment recorded — it looks like COD, so there is nothing for a gateway to refund.\n\nReturn ₹${money(missingValue)} to the customer directly (UPI/bank transfer), then cancel this replacement from the Orders tab.`);
     return;
   }
-  const fullAmt = original.amount_paise ? Math.round(original.amount_paise / 100) : 0;
+  const fullAmt = original.amount_paise ? original.amount_paise / 100 : 0;
   if (!fullAmt) { alert(`Original order ${originalId} has no captured amount to refund.`); return; }
   if (missingValue > fullAmt) {
-    alert(`The missing book's value (₹${missingValue.toLocaleString('en-IN')}) is more than what was captured on ${originalId} (₹${fullAmt.toLocaleString('en-IN')}).\n\nRefund manually after checking the order.`);
+    alert(`The missing book's value (₹${money(missingValue)}) is more than what was captured on ${originalId} (₹${money(fullAmt)}).\n\nRefund manually after checking the order.`);
     return;
   }
 
@@ -6922,10 +6942,15 @@ function iacRefundToggleAmount() {
 function iacRefundItemToggle(box, fullAmtRupees) {
   const amtEl = document.getElementById('iacRefundAmount');
   if (!amtEl) return;
-  const delta = Number(box.dataset.amount || 0) * (box.checked ? 1 : -1);
-  const current = Number(amtEl.value) || 0;
-  const next = Math.min(Math.max(0, current + delta), Number(fullAmtRupees) || current + delta);
-  amtEl.value = next > 0 ? next : '';
+  // Added in whole paise: three ticked lines of ₹76.70 must land on ₹230.10,
+  // not ₹230.09999999999997.
+  const deltaP = Math.round((Number(box.dataset.amount) || 0) * 100) * (box.checked ? 1 : -1);
+  const currentP = Math.round((Number(amtEl.value) || 0) * 100);
+  const capP = Math.round((Number(fullAmtRupees) || 0) * 100);
+  let nextP = Math.max(0, currentP + deltaP);
+  if (capP > 0) nextP = Math.min(nextP, capP);
+  const next = nextP / 100;
+  amtEl.value = nextP > 0 ? next : '';
   // Ticking everything is a full refund in all but name — say so rather than
   // letting it go out as a partial, since PhonePe allows only one partial.
   const msg = document.getElementById('iacRefundMsg');
@@ -6948,9 +6973,11 @@ async function iacSubmitRefund(orderId, fullAmtRupees, gateway) {
 
   let payload = { order_id: orderId };
   if (partial) {
-    const amt = parseFloat(document.getElementById('iacRefundAmount').value);
-    if (!Number.isFinite(amt) || amt < 1 || amt > fullAmtRupees) {
-      show(`Enter an amount between ₹1 and ₹${fullAmtRupees.toLocaleString('en-IN')}.`);
+    // Snapped to whole paise: the gateways bill in paise, and a value like
+    // 230.104 from a typed figure would be silently rounded server-side.
+    const amt = paiseRound(parseFloat(document.getElementById('iacRefundAmount').value));
+    if (!Number.isFinite(amt) || amt < 0.01 || amt > fullAmtRupees) {
+      show(`Enter an amount between ₹0.01 and ₹${money(fullAmtRupees)}.`);
       return;
     }
     payload.amount_rupees = amt;
@@ -6984,11 +7011,11 @@ async function iacSubmitRefund(orderId, fullAmtRupees, gateway) {
   const endpoint = isRazorpay ? '/.netlify/functions/razorpay-refund' : '/.netlify/functions/phonepe-refund';
 
   const confirmText = partial
-    ? `Refund ₹${payload.amount_rupees.toLocaleString('en-IN')} (partial) for ${orderId}?` +
+    ? `Refund ₹${money(payload.amount_rupees)} (partial) for ${orderId}?` +
       (isRazorpay
         ? `\n\nRazorpay allows further partial refunds later if needed.`
         : `\n\nThis is a one-shot partial — after this, any remaining balance must be refunded via the PhonePe dashboard.`)
-    : `Refund full ₹${fullAmtRupees.toLocaleString('en-IN')} for ${orderId}?`;
+    : `Refund full ₹${money(fullAmtRupees)} for ${orderId}?`;
   if (!confirm(confirmText)) return;
 
   const btn = document.getElementById('iacRefundSubmit');
@@ -7053,7 +7080,7 @@ async function iacSubmitRefund(orderId, fullAmtRupees, gateway) {
 // Kept for the legacy refund_pending flow — same endpoint, default full refund.
 async function processPhonePeRefund(orderId, btn) {
   const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
-  openRefundModal(orderId, ord?.amount_paise ? Math.round(ord.amount_paise/100) : 0, ord?.customer_name || '');
+  openRefundModal(orderId, ord?.amount_paise ? ord.amount_paise / 100 : 0, ord?.customer_name || '');
 }
 
 // ── NimbusPost: sync all "shipped" orders to real delivery status ──────────
@@ -8236,8 +8263,8 @@ function renderReplacementRequests() {
         <button class="btn-outline" style="padding:.4rem .65rem;" onclick="openReplacementInOrders('${orderRowId}')">Open in Orders</button>
         ${missingValue > 0 && o.status === 'replacement_pending'
           ? `<button class="btn-outline" style="padding:.4rem .65rem;margin-top:.35rem;border-color:rgba(224,96,96,.5);color:#e06060;display:block;width:100%;"
-               title="Cancel this replacement and refund only the missing book's value (₹${missingValue.toLocaleString('en-IN')}) on the original order"
-               onclick="refundMissingInsteadOfReplacement('${orderRowId}')">Refund ₹${missingValue.toLocaleString('en-IN')} instead</button>`
+               title="Cancel this replacement and refund only the missing book's value (₹${money(missingValue)}) on the original order"
+               onclick="refundMissingInsteadOfReplacement('${orderRowId}')">Refund ₹${money(missingValue)} instead</button>`
           : ''}
       </td>
     </tr>`;
@@ -8694,7 +8721,7 @@ function renderReturns() {
 // Refund method / amount / status + a "mark paid" control for the manual cases.
 function returnRefundInfo(r) {
   if (!r.refund_method) return '';
-  const rupees = r.refund_amount_paise ? '₹' + Math.round(r.refund_amount_paise / 100).toLocaleString('en-IN') : '';
+  const rupees = r.refund_amount_paise ? '₹' + money(r.refund_amount_paise / 100) : '';
   const method = r.refund_method === 'wallet'
     ? `👛 Wallet${r.wallet_code ? ' · <b style="color:var(--gold)">' + r.wallet_code + '</b>' : ''}`
     : (r.payment_type === 'cod'
