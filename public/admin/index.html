@@ -171,11 +171,14 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .pay-id{font-size:0.65rem;color:#4a3a1a;margin-top:0.15rem;}
 .cust-name{font-size:0.9rem;color:var(--cream);}
 .cust-sub{font-size:0.72rem;color:var(--cream-dim);margin-top:0.1rem;}
-.items-cell{font-size:0.75rem;color:var(--cream-dim);max-width:280px;}
-.items-cell div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:0.1rem;}
-/* Per-item price breakdown: title truncates, price stays pinned and readable. */
+.items-cell{font-size:0.75rem;color:var(--cream-dim);max-width:300px;}
+/* Book titles WRAP rather than truncate. "(Hindi) The Power…" and "You left m…"
+   hid the one thing the column exists to tell you — which book to pick off the
+   shelf — and the full title was only reachable by hovering for a tooltip. */
+.items-cell div{white-space:normal;overflow-wrap:anywhere;margin-bottom:0.1rem;}
+/* Per-item price breakdown: title wraps, price stays pinned to the first line. */
 .items-cell .item-line{display:flex;align-items:baseline;gap:0.5rem;justify-content:space-between;}
-.items-cell .item-line .it-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.items-cell .item-line .it-title{white-space:normal;overflow-wrap:anywhere;min-width:0;line-height:1.35;}
 .items-cell .item-line .it-price{flex-shrink:0;color:var(--gold);font-variant-numeric:tabular-nums;font-size:0.7rem;}
 .items-cell .items-subtotal{margin-top:0.25rem;padding-top:0.25rem;border-top:1px dashed var(--border);color:var(--gold-dim);font-size:0.66rem;}
 .amount{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--gold);}
