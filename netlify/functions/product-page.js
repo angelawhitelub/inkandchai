@@ -398,6 +398,10 @@ function addProductToCart(buyNow) {
   dots.forEach(function(d,i){ d.addEventListener('click', function(){ go(i); }); });
 })();
 </script>
+<!-- Runtime-rendered admin listings do not pass through generate_site.py, so
+     load the shared campaign enhancer here as well. This keeps new products
+     in sync with the sale badge/countdown shown on static catalogue pages. -->
+<script src="/js/summer-sale.js" defer></script>
 </body>
 </html>`;
 }
