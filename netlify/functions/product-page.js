@@ -87,6 +87,48 @@ function cdnImage(url, width, absolute = false) {
 function isVideoUrl(url) { return VIDEO_EXT.test(String(url || '')); }
 function posterForVideo(url) { return String(url || '').replace(VIDEO_EXT, '-poster.webp'); }
 
+// ── Tracking tags ────────────────────────────────────────────────────────────
+// These pages carried NO Meta Pixel and NO Google tag at all. They serve any
+// product not yet in the static build — i.e. a listing created in the admin
+// panel between deploys, which is exactly when a new book is most likely to be
+// advertised. Views on it were invisible to both platforms.
+//
+// Kept byte-identical to META_PIXEL_CODE / GOOGLE_ADS_TAG in generate_site.py.
+// Three copies of the pixel id now exist (there, here, and public/track/), so a
+// pixel change has to touch all three — grep the id, don't edit just one.
+const META_PIXEL_CODE = `<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1702042431242274');
+fbq('init', '1639520197322862');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
+/></noscript>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1639520197322862&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->`;
+
+const GOOGLE_ADS_TAG = `<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-18119332653"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'AW-18119332653');
+gtag('config', 'AW-18139908537');
+</script>
+<!-- End Google tag -->`;
+
 // Trust badges. Inline SVG rather than emoji: emoji are drawn by the reader's
 // OS, so they differ on every device and cannot take the page's gold. These
 // inherit currentColor and stay sharp at any size. Keep in step with the same
@@ -201,6 +243,8 @@ function productHtml(product) {
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
+${META_PIXEL_CODE}
+${GOOGLE_ADS_TAG}
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${esc(product.seo_title || `${product.title} | Buy Online in India | Ink & Chai`)}</title>
 <meta name="description" content="${metaDesc}"/>
