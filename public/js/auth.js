@@ -1754,23 +1754,24 @@
                                'refunded', 'refund_pending', 'rto', 'undelivered', 'lost'];
     if (SHIPPED_STATUSES.includes(status)) return '';
 
-    // Partial COD has a captured 10% deposit, so it needs a real refund —
-    // those keep going through the request path, not this instant cancel.
     const moneyCaptured = Boolean(order.razorpay_payment_id)
       || Number(order.advance_paid_paise || 0) > 0
       || status === 'paid';
     const awaitingPickup = status === 'shipped' && !moneyCaptured && !shipmentHasMoved(order);
     if (status === 'shipped' && !awaitingPickup) return '';
 
-    const isCOD      = ['cod_pending', 'partial_cod_pending', 'confirmed'].includes(status) || awaitingPickup;
+    const isPartial  = status === 'partial_cod_pending'
+      || Number(order.advance_paid_paise || 0) > 0
+      || String(order.shipment_payment_type || '').toLowerCase() === 'partial_cod';
+    const isCOD      = ['cod_pending', 'confirmed'].includes(status) || awaitingPickup;
     const isPrepaid  = status === 'paid';
 
-    if (!isCOD && !isPrepaid) return '';
+    if (!isCOD && !isPrepaid && !isPartial) return '';
 
     // COD can be cancelled after AWB assignment, but never after NimbusPost has
     // recorded pickup/in-transit movement. The API repeats this check
     // atomically; this client guard only controls whether the button is shown.
-    if (isCOD && shipmentHasMoved(order)) return '';
+    if ((isCOD || isPartial) && shipmentHasMoved(order)) return '';
 
     // Prepaid only: an assigned tracking_id means the courier has the parcel —
     // even if the webhook hasn't fired "shipped" yet, refunding a prepaid order
@@ -1778,9 +1779,9 @@
     // For COD we deliberately DON'T check tracking_id — an AWB alone doesn't
     // mean the parcel has moved, and the customer should keep the ability to
     // cancel until NP confirms in-transit.
-    if (isPrepaid && order.tracking_id) return '';
+    if ((isPrepaid || isPartial) && order.tracking_id) return '';
 
-    if (isPrepaid) {
+    if (isPrepaid || isPartial) {
       const createdAt = order.created_at ? new Date(order.created_at).getTime() : 0;
       const msLeft    = PREPAID_CANCEL_WINDOW - (Date.now() - createdAt);
       if (msLeft <= 0) return ''; // window expired — don't show button
@@ -1800,7 +1801,7 @@
             style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
                    padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,112,112,0.4);
                    color:#e87070;cursor:pointer;transition:all 0.2s;">
-            Cancel &amp; Refund
+            ${isPartial ? 'Cancel &amp; Refund Advance' : 'Cancel &amp; Refund'}
           </button>
         </div>`;
     }

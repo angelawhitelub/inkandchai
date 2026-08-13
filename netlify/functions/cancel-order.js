@@ -4,8 +4,11 @@
  *
  * Unified customer-facing cancellation endpoint for both COD and prepaid orders.
  *
- * COD orders  (cod_pending / partial_cod_pending / confirmed):
+ * COD orders  (cod_pending / confirmed):
  *   → Marks as "cancelled". No refund needed.
+ *
+ * Partial COD orders (partial_cod_pending) within 30 minutes of creation:
+ *   → Cancels only before shipment and refunds the captured deposit.
  *
  * Prepaid orders (status "paid") within 30 minutes of creation:
  *   → Issues full Razorpay refund (if razorpay_payment_id starts with "pay_").
@@ -32,6 +35,25 @@ const CORS = {
 const COD_CANCELLABLE   = ['cod_pending', 'partial_cod_pending', 'confirmed'];
 const FINAL_STATUSES    = ['shipped', 'out_for_delivery', 'delivered', 'cancelled', 'refunded', 'refund_pending'];
 const PREPAID_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+
+function isPartialCod(order) {
+  if (String(order?.status || '').toLowerCase() === 'partial_cod_pending') return true;
+  if (Number(order?.advance_paid_paise || 0) > 0) return true;
+  if (String(order?.shipment_payment_type || '').toLowerCase() === 'partial_cod') return true;
+  const items = Array.isArray(order?.cart_items) ? order.cart_items : [];
+  return items.some(item => {
+    const meta = item?._payment || item?.__payment || {};
+    return String(meta.mode || meta.payment_type || '').toLowerCase() === 'partial_cod';
+  });
+}
+
+function cancellationAge(order, now = Date.now()) {
+  const createdAt = order?.created_at ? new Date(order.created_at).getTime() : 0;
+  return {
+    ageMs: createdAt ? now - createdAt : Number.POSITIVE_INFINITY,
+    minutesAgo: createdAt ? Math.max(0, Math.floor((now - createdAt) / 60000)) : null,
+  };
+}
 
 // An AWB can be assigned while a parcel is still sitting at the warehouse, so
 // tracking_id alone must not block COD cancellation. NimbusPost webhook events
@@ -176,6 +198,7 @@ exports.handler = async (event) => {
     return { statusCode: 403, headers: CORS, body: JSON.stringify({ error: 'You do not have permission to cancel this order' }) };
 
   const status = String(order.status || '').toLowerCase();
+  const partialCod = isPartialCod(order);
 
   // Already in a terminal state — except an unpaid order sitting at the
   // warehouse under a freshly-minted AWB, which is not dispatched in any real
@@ -203,6 +226,26 @@ exports.handler = async (event) => {
       statusCode: 422, headers: CORS,
       body: JSON.stringify({ error: 'This order has already been dispatched (AWB: ' + order.tracking_id + '). Cancellation is not possible once a courier has picked it up.' }),
     };
+  }
+
+  // Partial COD includes a captured deposit, so it follows the same strict
+  // 30-minute customer cancellation window as prepaid. It is still represented
+  // as COD to NimbusPost because the balance is collected on delivery; that
+  // must not accidentally grant it pure-COD's longer cancellation window.
+  if (partialCod) {
+    const { ageMs, minutesAgo } = cancellationAge(order);
+    if (ageMs > PREPAID_WINDOW_MS) {
+      return {
+        statusCode: 422, headers: CORS,
+        body: JSON.stringify({ error: `Partial COD orders can only be cancelled within 30 minutes of placing. This order was placed ${minutesAgo === null ? 'more than 30' : minutesAgo} minutes ago.` }),
+      };
+    }
+    if (status === 'shipped' || shipmentHasMoved(order) || order.tracking_id) {
+      return {
+        statusCode: 422, headers: CORS,
+        body: JSON.stringify({ error: 'This Partial COD order has already been shipped or is in transit. Cancellation is not possible after dispatch.' }),
+      };
+    }
   }
 
   // ── Case 1: COD order ────────────────────────────────────────────────────
@@ -252,14 +295,17 @@ exports.handler = async (event) => {
     // stays in the guard either way, so a pickup scan landing mid-request still
     // wins the race.
     const allowedStatuses = COD_CANCELLABLE.includes(status) ? COD_CANCELLABLE : [status];
-    const cancelled = await supabase
+    let cancelQuery = supabase
       .from('orders')
       .update({ status: 'cancelled' })
       .eq('id', order_id)
       .in('status', allowedStatuses)
-      .is('shipment_moved_at', null)
-      .select('id')
-      .maybeSingle();
+      .is('shipment_moved_at', null);
+    // Partial COD loses its cancellation right as soon as an AWB is assigned;
+    // include that fact in the atomic update so a simultaneous panel push wins
+    // the race and the customer is told to refresh instead of being refunded.
+    if (partialCod) cancelQuery = cancelQuery.is('tracking_id', null);
+    const cancelled = await cancelQuery.select('id').maybeSingle();
     if (cancelled.error) {
       console.error('[cancel-order] atomic COD cancellation failed:', cancelled.error.message);
       return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Could not cancel this order. Please try again.' }) };
@@ -302,8 +348,10 @@ exports.handler = async (event) => {
     });
     return { statusCode: 200, headers: CORS, body: JSON.stringify({
       success: true,
-      type: 'cod',
-      message: 'Order cancelled successfully.',
+      type: partialCod ? 'partial_cod' : 'cod',
+      message: partialCod
+        ? 'Order cancelled successfully. Your advance payment refund is being processed.'
+        : 'Order cancelled successfully.',
       nimbuspost: npResult.ok ? 'cancelled' : `failed: ${npResult.error}`,
     }) };
   }
@@ -384,4 +432,4 @@ exports.handler = async (event) => {
   return { statusCode: 422, headers: CORS, body: JSON.stringify({ error: 'This order cannot be cancelled.' }) };
 };
 
-exports._test = { shipmentHasMoved };
+exports._test = { shipmentHasMoved, isPartialCod, cancellationAge, PREPAID_WINDOW_MS };

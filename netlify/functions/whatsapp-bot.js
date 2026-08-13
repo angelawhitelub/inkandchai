@@ -22,6 +22,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
 const {
@@ -734,7 +735,7 @@ async function customerAskedToCancel(supabase, phone) {
 }
 
 async function cancelOrderViaBot(phone, args = {}) {
-  const FINAL = ['shipped', 'out_for_delivery', 'delivered', 'cancelled', 'refunded', 'refund_pending', 'rto'];
+  const CUSTOMER_CANCEL_WINDOW_MS = 30 * 60 * 1000;
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -751,7 +752,7 @@ async function cancelOrderViaBot(phone, args = {}) {
     const ten = String(phone).replace(/\D/g, '').slice(-10);
     const { data: orders, error } = await supabase
       .from('orders')
-      .select('id, razorpay_order_id, status, amount_paise, razorpay_payment_id, customer_name, customer_email, customer_phone, customer_address, cart_items, created_at')
+      .select('*')
       .or(`customer_phone.eq.${ten},customer_phone.eq.91${ten},customer_phone.eq.+91${ten}`)
       .order('created_at', { ascending: false })
       .limit(10);
@@ -773,8 +774,15 @@ async function cancelOrderViaBot(phone, args = {}) {
     }
 
     const st = String(target.status || '').toLowerCase();
+    const isPartialCod = st === 'partial_cod_pending'
+      || Number(target.advance_paid_paise || 0) > 0
+      || String(target.shipment_payment_type || '').toLowerCase() === 'partial_cod';
+    const isPrepaid = st === 'paid' && !isPartialCod;
+    const createdAt = target.created_at ? new Date(target.created_at).getTime() : 0;
+    const ageMs = createdAt ? Date.now() - createdAt : Number.POSITIVE_INFINITY;
+
     // Guard: already shipped or delivered → cannot cancel.
-    if (['shipped', 'out_for_delivery'].includes(st)) {
+    if (['shipped', 'in_transit', 'out_for_delivery'].includes(st)) {
       return { ok: false, error: 'shipped', message: `Your order ${target.razorpay_order_id} has already been dispatched, so it can't be cancelled now. Once it arrives you can return it — just reply here and we'll help.` };
     }
     if (st === 'delivered') {
@@ -787,20 +795,59 @@ async function cancelOrderViaBot(phone, args = {}) {
       return { ok: false, error: 'rto', message: `Your order ${target.razorpay_order_id} is on its way back to us (return in transit). Reply here and our team will sort out a re-delivery or refund for you.` };
     }
 
+    // Partial COD has a captured advance, so customer cancellation follows the
+    // same 30-minute limit as fully prepaid orders. Do this before changing the
+    // local row or touching NimbusPost; after the limit the bot must not create
+    // a cancellation/refund side effect. Pure COD behaviour remains unchanged.
+    if ((isPartialCod || isPrepaid) && ageMs > CUSTOMER_CANCEL_WINDOW_MS) {
+      const label = isPartialCod ? 'Partial COD' : 'prepaid';
+      return {
+        ok: false,
+        error: 'cancellation-window-expired',
+        message: `Your ${label} order ${target.razorpay_order_id} can only be cancelled within 30 minutes of placing it. That window has now ended. Reply here if you need our support team to review it.`,
+      };
+    }
+
     // Cancel + auto-refund (notifyOrderCancelled → maybeAutoRefund for prepaid).
-    await supabase.from('orders').update({ status: 'cancelled' }).eq('id', target.id);
+    let cancelQuery = supabase
+      .from('orders')
+      .update({ status: 'cancelled' })
+      .eq('id', target.id)
+      .eq('status', target.status);
+    if (isPartialCod || isPrepaid) cancelQuery = cancelQuery.is('tracking_id', null);
+    const { data: cancelled, error: cancelErr } = await cancelQuery.select('id').maybeSingle();
+    if (cancelErr) throw cancelErr;
+    if (!cancelled) {
+      return { ok: false, error: 'status-changed', message: `The shipping status of order ${target.razorpay_order_id} changed while I was cancelling it. Please ask me to check its latest status before trying again.` };
+    }
+
+    // The bot previously stopped after updating Supabase. Auto-pushed COD and
+    // Partial COD orders therefore remained as live "new" rows in NimbusPost
+    // and could still be shipped. Mirror the website cancellation endpoint:
+    // cancel by AWB when present, otherwise by the IC order number in the panel.
+    const displayId = target.razorpay_order_id || target.id;
+    const npResult = target.tracking_id
+      ? await cancelNimbusShipment(target.tracking_id)
+      : await cancelNimbusOrder(displayId);
+    if (!npResult.ok) {
+      console.error(`[WHATSAPP-CANCEL] NimbusPost cancel failed for ${displayId}: ${npResult.error}`);
+    }
     await notifyOrderCancelled({ ...target, status: 'cancelled' }, {
-      reason: 'Your order has been cancelled as requested on WhatsApp.',
+      reason: 'Your order has been cancelled as requested on WhatsApp.'
+        + (!npResult.ok
+          ? ` (⚠️ NimbusPost auto-cancel failed: ${npResult.error}. Cancel this order manually in NimbusPost.)`
+          : ''),
     });
 
-    const isPrepaid = !!target.razorpay_payment_id;   // online/prepaid orders carry a payment id
-    const refundLine = isPrepaid
-      ? ' Since this was a prepaid order, a refund to your original payment method has been issued automatically and usually reflects within 2–3 business days.'
+    const hasCapturedPayment = !!target.razorpay_payment_id || Number(target.advance_paid_paise || 0) > 0;
+    const refundLine = hasCapturedPayment
+      ? ` Since this was ${isPartialCod ? 'a Partial COD order with an advance payment' : 'a prepaid order'}, a refund to your original payment method has been issued automatically and usually reflects within 2–3 business days.`
       : ' As this was a Cash-on-Delivery order, there\'s nothing to refund.';
     return {
       ok: true,
       order_id: target.razorpay_order_id,
-      was_prepaid: isPrepaid,
+      was_prepaid: hasCapturedPayment,
+      nimbuspost: npResult.ok ? 'cancelled' : `failed: ${npResult.error}`,
       message: `Done — your order ${target.razorpay_order_id} has been cancelled.${refundLine} If this was a mistake, just reply here and we'll help. 💛`,
     };
   } catch (e) {
