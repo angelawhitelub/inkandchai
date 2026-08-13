@@ -1478,13 +1478,13 @@ HTML = r"""<!DOCTYPE html>
   .section-title em { font-style: italic; color: var(--gold-light); }
 
   /* ── SUMMER SALE BANNER ──────────────────────────────────────────── */
-  .summer-sale-banner { background: linear-gradient(135deg,#8b1a1a 0%,#6b0f0f 45%,#8b1a1a 100%); border-bottom: 1px solid rgba(255,120,120,0.25); padding: 2.8rem 6rem; position: relative; overflow: hidden; }
+  .summer-sale-banner { background: linear-gradient(115deg,#ff9933 0 30%,#fff8e8 30% 68%,#138808 68% 100%); color:#0b2f63; border-bottom:3px solid #138808; padding:2.8rem 6rem; position:relative; overflow:hidden; }
   .summer-sale-banner::before { content:''; position:absolute; inset:0; background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"); }
   .summer-sale-inner { display:flex; align-items:center; justify-content:space-between; gap:2rem; position:relative; }
   .summer-sale-left { flex:1; }
-  .sale-eyebrow { font-size:0.52rem; letter-spacing:0.3em; text-transform:uppercase; color:rgba(255,200,200,0.85); margin-bottom:0.5rem; }
-  .sale-headline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.7rem,3.5vw,2.6rem); font-weight:400; color:#fff; line-height:1.1; margin-bottom:0.55rem; }
-  .sale-headline em { font-style:italic; color:#ffb3b3; }
+  .sale-eyebrow { font-size:0.52rem; letter-spacing:0.3em; text-transform:uppercase; color:#0b2f63; margin-bottom:0.5rem; font-weight:700; }
+  .sale-headline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.7rem,3.5vw,2.6rem); font-weight:600; color:#0b2f63; line-height:1.1; margin-bottom:0.55rem; }
+  .sale-headline em { font-style:italic; color:#0b2f63; }
   .sale-code-row { display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; }
   .sale-code-label { font-size:0.62rem; color:rgba(255,255,255,0.75); letter-spacing:0.08em; }
   .sale-code { background:rgba(255,255,255,0.15); border:1px dashed rgba(255,255,255,0.5); color:#fff; font-family:'Inter',sans-serif; font-size:0.78rem; font-weight:700; letter-spacing:0.22em; padding:0.3rem 0.75rem; cursor:pointer; transition:background 0.2s; }
@@ -2288,20 +2288,20 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 </head>
 <body>
 
-<!-- Promo banner -->
+<!-- Independence Day promo banner -->
 <div class="promo-banner" id="promoBanner">
-  <strong>☀️ SUMMER SALE</strong> &nbsp;10% OFF on ₹299+ &nbsp;·&nbsp; Code: <code onclick="navigator.clipboard?.writeText('SUMMER10')" title="Click to copy" style="cursor:pointer;">SUMMER10</code> &nbsp;·&nbsp; Ends in: <span id="promoTimer" style="font-weight:600;color:#f0c060;letter-spacing:0.08em;"></span>
+  <strong>🇮🇳 FREEDOM SALE</strong> &nbsp;15% OFF on orders above ₹399 &nbsp;·&nbsp; Automatically applied &nbsp;·&nbsp; <code>FREEDOM</code> &nbsp;·&nbsp; Ends in: <span id="promoTimer" style="font-weight:600;color:#f0c060;letter-spacing:0.08em;"></span>
 </div>
 
 <!-- SUMMER SALE BANNER -->
 <section class="summer-sale-banner" id="summerSale">
   <div class="summer-sale-inner">
     <div class="summer-sale-left">
-      <div class="sale-eyebrow">☀️ Limited Time &nbsp;·&nbsp; Summer 2026</div>
-      <div class="sale-headline">10% Off on All Books<br/><em>₹299 &amp; Above</em></div>
+      <div class="sale-eyebrow">🇮🇳 Independence Day &nbsp;·&nbsp; 15 August</div>
+      <div class="sale-headline">Freedom Sale: 15% Off<br/><em>Orders Above ₹399</em></div>
       <div class="sale-code-row" style="margin-top:0.7rem;">
-        <span class="sale-code-label">Use code at checkout:</span>
-        <span class="sale-code" onclick="navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='SUMMER10',2000)" title="Click to copy">SUMMER10</span>
+        <span class="sale-code-label">Automatically applied at checkout:</span>
+        <span class="sale-code">FREEDOM</span>
       </div>
     </div>
     <div class="sale-countdown-wrap">
@@ -2432,14 +2432,11 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 <!-- HERO PROMO CAROUSEL -->
 <div class="promo-carousel" id="promoCarousel">
 
-  <!-- ── SLIDE 1: Summer Sale (banner image) ── -->
-  <section class="promo-slide slide-sale active" aria-label="Summer Sale promotion">
-    <a href="/bestsellers/" class="sale-banner-link" aria-label="Summer Sale — Shop Now">
-      <picture>
-        <source srcset="/images/summer-sale-banner.webp" type="image/webp"/>
-        <img src="/images/summer-sale-banner.webp" alt="Summer Sale — Up to 60% off on selected books. Use code SUMMER10 at checkout." loading="eager" fetchpriority="high"/>
-      </picture>
-      <div class="sale-banner-code-badge" onclick="event.preventDefault();navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Code: SUMMER10',2000)" title="Click to copy code">Code: SUMMER10</div>
+  <!-- ── SLIDE 1: Freedom Sale ── -->
+  <section class="promo-slide slide-sale active" aria-label="Freedom Sale promotion">
+    <a href="/bestsellers/" class="sale-banner-link" aria-label="Freedom Sale — Shop Now" style="display:grid;place-items:center;min-height:100%;background:linear-gradient(115deg,#ff9933 0 32%,#fff8e8 32% 68%,#138808 68% 100%);text-decoration:none;color:#0b2f63;text-align:center;padding:2rem;">
+      <div><div style="font-size:clamp(.7rem,1.4vw,1rem);letter-spacing:.25em;text-transform:uppercase;font-weight:800;">Ink &amp; Chai celebrates India</div><div style="font-family:'Cormorant Garamond',serif;font-size:clamp(2.2rem,6vw,5.5rem);line-height:.9;margin:.6rem 0;font-weight:700;">Freedom Sale</div><div style="font-size:clamp(1rem,2.5vw,1.8rem);font-weight:800;">15% OFF · ORDERS ABOVE ₹399</div><div style="margin-top:.8rem;font-size:.75rem;letter-spacing:.14em;">AUTO-APPLIED AT CHECKOUT · FREEDOM</div></div>
+      <div class="sale-banner-code-badge">15% AUTO APPLIED</div>
     </a>
   </section>
 
@@ -2517,7 +2514,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 
   <!-- Navigation dots -->
   <div class="promo-dots" aria-label="Slide navigation">
-    <button class="promo-dot active" aria-label="Slide 1: Summer Sale"></button>
+    <button class="promo-dot active" aria-label="Slide 1: Freedom Sale"></button>
     <button class="promo-dot" aria-label="Slide 2: Off Campus Series"></button>
     <button class="promo-dot" aria-label="Slide 3: Hindi Bestsellers"></button>
   </div>
@@ -4108,8 +4105,8 @@ function subscribeNewsletter(e) {
   document.getElementById('nlEmail').value = '';
 }
 
-// ── SUMMER SALE COUNTDOWN ─────────────────────────────────────────────────
-const SALE_END_DATE = new Date('2026-05-19T18:30:00Z'); // midnight IST May 19
+// ── FREEDOM SALE COUNTDOWN ────────────────────────────────────────────────
+const SALE_END_DATE = new Date('2026-08-15T18:29:59Z'); // 11:59:59 PM IST Aug 15
 
 function formatCountdown(diff) {
   if (diff <= 0) return null;
@@ -5223,12 +5220,11 @@ function renderProduct(b) {
 
         <div id="razorpay-affordability-widget"></div>
 
-        ${sale >= 299 && Date.now() < new Date('2026-05-19T18:30:00Z').getTime() ? `
+        ${Date.now() < new Date('2026-08-15T18:29:59Z').getTime() ? `
         <div class="prod-sale-box">
-          <div class="prod-sale-box-head">☀️ Summer Sale Price</div>
-          <span class="prod-sale-price">₹${Math.round(sale * 0.9).toLocaleString('en-IN')}</span>
-          <span class="prod-sale-saving">You save ₹${Math.round(sale * 0.1).toLocaleString('en-IN')} (10%)</span>
-          <div class="prod-sale-code">Use code <strong onclick="navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='SUMMER10',2000)" title="Click to copy">SUMMER10</strong> at checkout</div>
+          <div class="prod-sale-box-head">🇮🇳 Freedom Sale · 15 August</div>
+          ${sale > 399 ? `<span class="prod-sale-price">₹${Math.max(1, sale - Math.floor(sale * 0.15)).toLocaleString('en-IN')}</span><span class="prod-sale-saving">You save ₹${Math.floor(sale * 0.15).toLocaleString('en-IN')} (15%)</span>` : ''}
+          <div class="prod-sale-code"><strong>FREEDOM</strong> auto-applies when your order subtotal is above ₹399.</div>
           <div class="prod-sale-timer" style="margin-top:0.5rem;">
             <span class="prod-cd-label">Ends in</span>
             <div class="prod-cd" id="prodCountdown"></div>
@@ -5408,7 +5404,7 @@ function renderProduct(b) {
   })();
 
   // Product page sale countdown
-  const _saleEnd = new Date('2026-05-19T18:30:00Z');
+  const _saleEnd = new Date('2026-08-15T18:29:59Z');
   function _tickProd() {
     const el = document.getElementById('prodCountdown');
     if (!el) return;
@@ -7121,7 +7117,7 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:400;color
 .checkout-qty-num{min-width:24px;text-align:center;color:var(--cream);font-size:0.78rem;font-weight:500;}
 .checkout-remove{border:none;background:transparent;color:#c97a7a;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;margin-left:0.2rem;}
 .checkout-remove:hover{color:#e06060;}
-.coupon-box{border-top:1px solid var(--border);margin-top:1rem;padding-top:1rem;}
+.coupon-box{border-top:1px solid var(--border);margin-top:1rem;padding:1rem .85rem .2rem;border-radius:14px;background:linear-gradient(135deg,rgba(255,153,51,.11),rgba(255,255,255,.04) 48%,rgba(19,136,8,.11));box-shadow:inset 3px 0 #ff9933,inset -3px 0 #138808;}
 .coupon-row{display:grid;grid-template-columns:1fr auto;gap:0.55rem;align-items:stretch;}
 .coupon-select{width:100%;margin-bottom:0.55rem;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Inter',sans-serif;font-size:0.72rem;letter-spacing:0.08em;outline:none;}
 .coupon-input{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.12em;}
@@ -7445,7 +7441,8 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         <div class="coupon-box" id="couponBox" style="display:none;">
           <label for="couponSelect">Available Coupons</label>
           <select class="coupon-select" id="couponSelect" onchange="handleCouponSelect(this.value)">
-            <option value="">Choose a prepaid offer</option>
+            <option value="FREEDOM">🇮🇳 FREEDOM · 15% auto-applied above ₹399</option>
+            <option value="">Choose another prepaid offer</option>
             <option value="INKLOVE10">INKLOVE10 · 10% off prepaid above ₹499</option>
             <option value="SAVE12">SAVE12 · 12% off prepaid above ₹999</option>
             <option value="SAVE15">SAVE15 · 15% off prepaid above ₹1499</option>
@@ -7545,6 +7542,7 @@ const COD_HANDLING_FEE = 20;  // extra ₹20 charged on COD orders to cover RTO 
 const COD_FEE_WAIVER_THRESHOLD = 999;  // fee is WAIVED on COD orders at or above this subtotal — pushes AOV up
 const COUPON_KEY = 'iac_checkout_coupon';
 const COUPONS = {
+  FREEDOM:   { type: 'percent', value: 15, minSubtotal: 400, onlineOnly: false, label: '🇮🇳 Freedom Sale 15% off', expiresAt: '2026-08-15T18:29:59Z' },
   SUMMER10:  { type: 'percent', value: 10, minSubtotal: 299, onlineOnly: false, label: '☀️ Summer Sale 10% off', expiresAt: '2026-05-19T18:30:00Z' },
   INKLOVE10: { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
   '499HIT':  { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
@@ -7585,6 +7583,14 @@ function normalizeCouponCode(value) {
 function couponDiscount(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
   const code = normalizeCouponCode(appliedCouponCode);
+
+  // Independence Day sale is automatic for every payment mode and never
+  // stacks with another code. “Above ₹399” means ₹400 or more.
+  const freedom = COUPONS.FREEDOM;
+  if (Date.now() <= new Date(freedom.expiresAt).getTime() && subtotal > 399) {
+    const discount = Math.floor(subtotal * freedom.value / 100);
+    return { code: 'FREEDOM', discount, message: '🇮🇳 FREEDOM automatically applied — 15% off your books.' };
+  }
 
   // ── Scratch card path ───────────────────────────────────────────────────
   if (code.startsWith('SCRATCH-') && appliedScratchCard && appliedScratchCard.code === code) {
@@ -7635,13 +7641,15 @@ function orderTotals(cart, method = 'online') {
 }
 function partialPaymentTotals(cart) {
   // Partial COD: COD handling fee is WAIVED as the incentive to pre-pay 10%.
-  // No coupon discount applied either — matches server (create-order.js + verify-payment.js).
+  // FREEDOM is the one coupon valid on partial COD as well as every other mode.
   const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
-  const total = Math.max(1, subtotal + shipping);
+  const coupon = couponDiscount(cart, 'cod');
+  const discount = coupon.code === 'FREEDOM' ? coupon.discount : 0;
+  const total = Math.max(1, subtotal + shipping - discount);
   const eligible = total >= PARTIAL_PAYMENT_THRESHOLD;
   const deposit = eligible ? Math.max(1, Math.ceil(total * PARTIAL_PAYMENT_RATE)) : 0;
-  return { subtotal, shipping, codFee: 0, discount: 0, couponCode: '', couponMessage: '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
+  return { subtotal, shipping, codFee: 0, discount, couponCode: discount ? 'FREEDOM' : '', couponMessage: discount ? coupon.message : '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
 }
 // True when the cart contains any item flagged _no_cod — the full crossword.in
 // catalogue import (tag 'no-cod'). Those titles disable Cash on Delivery and
@@ -7832,13 +7840,14 @@ function renderSummary() {
   if (_pb) _pb.style.display = '';
   const { subtotal, shipping, discount, couponCode, couponMessage, total: grand } = orderTotals(cart, 'online');
   if (couponBox) couponBox.style.display = 'block';
-  if (couponInput && couponInput.value !== appliedCouponCode) couponInput.value = appliedCouponCode;
+  const displayedCouponCode = couponCode || appliedCouponCode;
+  if (couponInput && couponInput.value !== displayedCouponCode) couponInput.value = displayedCouponCode;
   if (couponSelect) {
-    const hasVisibleOption = Array.from(couponSelect.options).some(option => option.value === appliedCouponCode);
-    couponSelect.value = hasVisibleOption ? appliedCouponCode : '';
+    const hasVisibleOption = Array.from(couponSelect.options).some(option => option.value === displayedCouponCode);
+    couponSelect.value = hasVisibleOption ? displayedCouponCode : '';
   }
   if (couponMsg) {
-    couponMsg.textContent = couponMessage || 'Choose a prepaid offer: 10% above ₹499, 12% above ₹999, or 15% above ₹1499.';
+    couponMsg.textContent = couponMessage || '🇮🇳 Add books until the subtotal is above ₹399 and FREEDOM will apply 15% off automatically.';
     couponMsg.style.color = couponCode && discount > 0 ? '#5d9b55' : (couponMessage ? '#c97a7a' : 'var(--cream-dim)');
   }
   container.innerHTML = cart.map((i, idx) => `

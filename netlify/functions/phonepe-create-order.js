@@ -24,6 +24,7 @@ const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { resolveProductCoupon } = require('./utils/product-coupons');
+const { freedomSaleDiscount } = require('./utils/freedom-sale');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -59,6 +60,9 @@ function couponDiscount(subtotal, code) {
 
 // Check static COUPONS first, then fall back to user-earned scratch cards
 async function resolveCouponDiscount(supabase, cart, subtotal, rawCode) {
+  const freedomResult = freedomSaleDiscount(subtotal);
+  if (freedomResult.discount > 0) return freedomResult;
+
   // Static check
   const staticResult = couponDiscount(subtotal, rawCode);
   if (staticResult.discount > 0) return { ...staticResult, source: 'static' };
@@ -182,7 +186,9 @@ exports.handler = async (event) => {
     if (!claim.claimed) couponInfo = { code: '', discount: 0 };
   }
 
-  const fullTotal   = Math.max(1, subtotal + shipping - (isPartial ? 0 : couponInfo.discount));
+  const partialDiscount = couponInfo.source === 'freedom_sale' ? couponInfo.discount : 0;
+  const appliedDiscount = isPartial ? partialDiscount : couponInfo.discount;
+  const fullTotal   = Math.max(1, subtotal + shipping - appliedDiscount);
   const deposit     = isPartial ? Math.max(1, Math.ceil(fullTotal * 0.10)) : fullTotal;
   if (isPartial && cart[0]) {
     cart[0]._payment = {
@@ -226,7 +232,7 @@ exports.handler = async (event) => {
         breakdown: {
           subtotal: Math.round(subtotal),
           shipping,
-          discount: isPartial ? 0 : couponInfo.discount,
+          discount: appliedDiscount,
           coupon: couponInfo.code || '',
           total: Math.round(fullTotal),
         },
