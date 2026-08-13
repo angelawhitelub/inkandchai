@@ -12,6 +12,10 @@
   if (Date.now() >= SALE_END.getTime()) return; // sale over — do nothing
 
   function init() {
+    // Generated product pages already contain their own campaign block and
+    // countdown. Do not add a second one when this shared enhancer is loaded.
+    if (document.getElementById('prodSaleBox') || document.querySelector('.prod-sale-box')) return;
+
     // Get price from the currentItem global (set inline on every static page)
     var price = (typeof currentItem !== 'undefined' && currentItem.price) ? Number(currentItem.price) : 0;
 
@@ -72,14 +76,16 @@
       '</div>';
 
     // Insert after the price/orig line
-    var priceWrapper = document.querySelector('[data-product-price]');
-    var insertAfter  = priceWrapper ? (priceWrapper.closest('div') || priceWrapper.parentNode) : null;
+    var priceWrapper = document.querySelector('[data-product-price], main .price');
+    var insertAfter  = document.querySelector('[data-sale-anchor]') ||
+      (priceWrapper ? (priceWrapper.closest('.prod-price-row, .product-price-row') || priceWrapper.parentNode) : null);
     if (insertAfter && insertAfter.parentNode) {
       insertAfter.parentNode.insertBefore(box, insertAfter.nextSibling);
     } else {
-      // Last resort: prepend to first <section> inside main
-      var sec = document.querySelector('main section');
-      if (sec) sec.insertBefore(box, sec.firstChild);
+      // Last resort: use the product-information section. Never inject into
+      // the cover/gallery, where the campaign would look like another image.
+      var info = document.querySelector('main .prod-info, main .info, main section:not(.cover)');
+      if (info) info.insertBefore(box, info.firstChild);
     }
 
     // Countdown tick
