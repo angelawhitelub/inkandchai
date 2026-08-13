@@ -6487,7 +6487,26 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 .ship-by-date{{font-size:0.95rem;font-weight:600;color:#faf7f2;font-family:'Cormorant Garamond',serif}}
 .ship-by-sub{{font-size:0.62rem;color:#a09080;margin-top:0.1rem}}
 .ship-by-limited{{font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#c9a84c;margin-top:0.15rem}}
-.trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1.2rem 0}} .trust span{{border:1px solid var(--border);background:rgba(138,106,31,.06);padding:.75rem;color:var(--cream);font-size:.78rem}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:var(--bg)}} .secondary{{background:transparent;color:var(--gold)}} .is-loading{{position:relative;color:transparent!important;pointer-events:none;opacity:.78}} .is-loading::after{{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:#fff}} .secondary.is-loading::after{{color:var(--gold)}} @keyframes spinBtn{{to{{transform:rotate(360deg)}}}}
+/* Trust badges. Were four full-width emoji pills with a 24px radius — the
+   stadium shape and the OS-drawn emoji are what dated them. Now a 2x2 grid of
+   compact cards: a tinted round icon chip carrying an inline SVG (crisp at any
+   size, inherits currentColor, identical on every platform, unlike emoji), a
+   bold label, and a muted second line that adds the detail the old single line
+   had no room for. */
+.trust{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem;margin:1.2rem 0}}
+.trust span{{display:flex;align-items:center;gap:.65rem;border:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(201,168,76,.07),rgba(201,168,76,.02));
+  padding:.7rem .8rem;color:var(--cream);font-size:.78rem;border-radius:14px;
+  box-shadow:inset 0 1px rgba(255,255,255,.05);transition:border-color .2s ease,transform .2s ease}}
+.trust span:hover{{border-color:rgba(201,168,76,.45);transform:translateY(-1px)}}
+.trust .ti{{flex:0 0 auto;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(201,168,76,.12);color:var(--gold)}}
+.trust .ti svg{{width:17px;height:17px;display:block}}
+.trust .tt{{min-width:0;display:flex;flex-direction:column;gap:.1rem;line-height:1.25}}
+.trust .tt b{{font-weight:600;font-size:.8rem;color:var(--cream)}}
+.trust .tt i{{font-style:normal;font-size:.68rem;color:var(--muted)}}
+.trust .tt a{{color:inherit;text-decoration:none;border-bottom:1px solid rgba(201,168,76,.4)}}
+html[data-theme="light"] .trust span{{background:linear-gradient(180deg,rgba(255,255,255,.7),rgba(255,255,255,.35))}} .actions{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}} button,.btn{{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);cursor:pointer;text-align:center;text-decoration:none}} .primary{{background:var(--gold);color:var(--bg)}} .secondary{{background:transparent;color:var(--gold)}} .is-loading{{position:relative;color:transparent!important;pointer-events:none;opacity:.78}} .is-loading::after{{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:#fff}} .secondary.is-loading::after{{color:var(--gold)}} @keyframes spinBtn{{to{{transform:rotate(360deg)}}}}
 .desc,.details{{border-top:1px solid var(--border);padding-top:1.2rem;margin-top:1.2rem;word-break:break-word;overflow-wrap:anywhere}} .desc{{font-family:Lora,Georgia,serif;color:var(--cream);font-size:1rem;line-height:1.85;letter-spacing:.005em;font-weight:400}} html[data-theme="light"] .desc{{color:#2f251b}} .details{{color:var(--muted);font-size:.9rem;line-height:1.8}} .label{{font-size:.66rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:.85rem;font-weight:700}} .details dl{{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}} .details dt{{color:var(--gold)}} .details dd{{margin:0;color:var(--cream)}}
 .reviews{{border:1px solid var(--border);background:rgba(138,106,31,.055);padding:1.15rem;margin-top:1.3rem;color:var(--muted);line-height:1.7}} .review-head{{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}} .review-head h2{{font-size:1.45rem;margin:.1rem 0 0}} .score{{text-align:right;flex-shrink:0}} .score strong{{display:block;font-family:"Cormorant Garamond",serif;font-size:2.2rem;color:var(--gold);line-height:.9}} .score span{{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}} .review-media{{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.8rem;margin-top:.9rem}} .review-media figure{{margin:0;border:1px solid var(--border);background:#fff;overflow:hidden}} .review-media img,.review-media video{{display:block;width:100%;height:240px;object-fit:cover;background:#f4efe7}} .review-media figcaption{{padding:.65rem .75rem;font-size:.65rem;letter-spacing:.08em;color:var(--muted)}}
 @media(max-width:760px){{
@@ -6497,8 +6516,10 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
   .cover-gallery img{{width:calc((100% - .5rem)/2);max-width:none}}
   h1{{font-size:clamp(1.5rem,5.5vw,2.2rem);margin:.1rem 0 .4rem}}
   .price{{font-size:2.1rem}}
-  .trust{{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  .trust span{{font-size:.68rem;padding:.55rem .5rem}}
+  .trust{{grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}}
+  .trust span{{padding:.6rem .55rem;gap:.5rem}}
+  .trust .ti{{width:28px;height:28px}} .trust .ti svg{{width:15px;height:15px}}
+  .trust .tt b{{font-size:.73rem}} .trust .tt i{{font-size:.62rem}}
   .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;margin:0;background:rgba(13,11,8,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);box-shadow:0 -10px 26px rgba(60,40,10,.12)}}
   .desc{{font-size:.96rem;line-height:1.78}}
   .details{{font-size:.82rem;line-height:1.75}}
@@ -6513,7 +6534,11 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 @media(max-width:400px){{
   h1{{font-size:1.4rem}}
   .price{{font-size:1.8rem}}
-  .trust span{{font-size:.6rem;padding:.4rem .35rem}}
+  /* Narrowest phones: the second line is the first thing to go, so the label
+     itself never has to shrink to an unreadable size. */
+  .trust span{{padding:.5rem .45rem;gap:.45rem}}
+  .trust .ti{{width:26px;height:26px}} .trust .ti svg{{width:14px;height:14px}}
+  .trust .tt b{{font-size:.68rem}} .trust .tt i{{display:none}}
   button,.btn{{padding:.85rem .4rem;font-size:.6rem;letter-spacing:.12em}}
   .details dl{{grid-template-columns:70px 1fr}}
 }}
@@ -6547,7 +6572,9 @@ nav{{
   backdrop-filter:blur(24px) saturate(1.25);
 }}
 html[data-theme="light"] nav{{background:rgba(250,247,242,.74)!important;box-shadow:0 18px 55px rgba(70,52,24,.12),inset 0 1px rgba(255,255,255,.62)}}
-.cover,.trust span,.reviews,.insta-trust,.desc,.details,.ship-by-box{{
+/* .trust span is deliberately not here — it sets its own 14px radius. At 24px
+   on a short two-line card the corners meet in the middle and read as a pill. */
+.cover,.reviews,.insta-trust,.desc,.details,.ship-by-box{{
   border-radius:24px;
   box-shadow:inset 0 1px rgba(255,255,255,.05);
 }}
@@ -6662,7 +6689,7 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
     <div><span class="price" data-product-price style="opacity:0;transition:opacity 0.15s">{price}</span>{f'<span class="orig" data-product-original-price style="opacity:0;transition:opacity 0.15s">{orig}</span>' if orig else ''}</div>
     {scarcity_badge_html if scarcity_badge_html else '<span class="stock">In Stock</span>'}
     <div id="staticShipBy"></div>
-    <div class="trust"><span>🚚 Delivery in 2-5 days</span><span>💵 Cash on delivery available</span><span>💳 UPI, cards, net banking</span><span>🛡 <a href="#" onclick="event.preventDefault();openReturnVideo();" style="color:inherit;text-decoration:underline;cursor:pointer;">7-day replacement support ▶</a></span></div>
+    <div class="trust"><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></svg></span><span class="tt"><b>Delivery in 2-5 days</b><i>Shipped across India</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span><span class="tt"><b>Cash on delivery</b><i>Pay when it arrives</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/><path d="M6 14.5h4"/></svg></span><span class="tt"><b>UPI, cards, net banking</b><i>Secure checkout</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.3-3.1 7.7-7.5 9-4.4-1.3-7.5-4.7-7.5-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="tt"><b>7-day replacement</b><i><a href="#" onclick="event.preventDefault();openReturnVideo();" style="cursor:pointer">Watch how it works &#9654;</a></i></span></span></div>
     <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div> <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="meta-verified" title="Ink &amp; Chai on Instagram — Meta Verified Business"><img src="/images/meta-verified-inkandchai.webp" alt="Ink &amp; Chai is a Meta Verified Business on Instagram — 28.8K followers" width="760" height="368" loading="lazy"/><span class="meta-verified-cap"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#fff" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.26 2.52-.81 3.91c-1.31.67-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.45 1.39-.2 2.9.81 3.91s2.52 1.26 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#1877F2" d="M10.09 15.42l-3.8-3.79 1.41-1.42 2.39 2.38 5.62-5.62 1.41 1.42z"/></svg>Meta Verified Business →</span></a>
     <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="insta-trust">
       <span class="insta-trust-icon">📸</span>
