@@ -585,12 +585,26 @@ t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '1702042431242274');
+fbq('init', '1639520197322862');
 fbq('track', 'PageView');
 </script>
 <noscript><img height="1" width="1" style="display:none"
 src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
 /></noscript>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1639520197322862&ev=PageView&noscript=1"
+/></noscript>
 <!-- End Meta Pixel Code -->"""
+# Two pixels, ONE loader and ONE PageView — deliberately not two pasted copies
+# of Meta's snippet. The loader starts with `if(f.fbq)return;`, so a second copy
+# no-ops its own loader but still runs `fbq('track','PageView')`, and track
+# fires for EVERY initialised pixel. Pasting the second snippet whole would
+# therefore have reported two PageViews per visit against 1702042431242274 and
+# silently doubled its traffic numbers.
+#
+# Every other fbq('track'/'trackCustom') on the site — ReadSample, AddToCart,
+# Purchase — now reports to both pixels automatically, for the same reason.
+# Nothing else needs changing to give the new pixel full conversion data.
 
 GOOGLE_ADS_TAG = """<!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18119332653"></script>
