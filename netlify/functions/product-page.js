@@ -285,7 +285,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     <div class="crumb"><a href="/">Home</a> / <a href="/category/?name=${encodeURIComponent(product.category || 'Books')}">${category}</a></div>
     <h1>${title}</h1>
     <div class="author">by ${author}</div>
-    <div><span class="price">${esc(price)}</span>${mrp ? `<span class="orig">${esc(mrp)}</span>` : ''}</div>
+    <div class="product-price-row" data-sale-anchor><span class="price" data-product-price="${Number(product.price_inr) || 0}">${esc(price)}</span>${mrp ? `<span class="orig">${esc(mrp)}</span>` : ''}</div>
     <span class="stock">In Stock</span>
     <div class="trust">${trustBadge(ICON.truck, 'Delivery in 2-5 days', 'Shipped across India')}${noCod
       ? trustBadge(ICON.cash, 'Partial COD', 'Pay 10% now, rest on delivery')
