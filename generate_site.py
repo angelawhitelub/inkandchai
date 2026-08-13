@@ -587,6 +587,31 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
 fbq('init', '1702042431242274');
 fbq('init', '1639520197322862');
 fbq('track', 'PageView');
+
+// Standard-event helper. Lives here because it is the only code guaranteed on
+// every page — checkout has its own cart implementation and does not load
+// cart.js, so a helper defined there would not exist where Purchase fires.
+// fbq('track') reports to every initialised pixel, so one call feeds both.
+// dedupKey (optional) makes an event fire once per order however many times the
+// success screen is re-rendered or reloaded.
+window.iacMeta = function(event, params, dedupKey) {
+  if (typeof fbq !== 'function') return;
+  if (dedupKey) {
+    try { if (localStorage.getItem(dedupKey)) return; } catch (e) {}
+  }
+  try {
+    fbq('track', event, params || {});
+    if (dedupKey) localStorage.setItem(dedupKey, '1');
+  } catch (e) {}
+};
+// content_ids for a cart, in the shape Meta matches catalogue items on.
+window.iacMetaIds = function(cart) {
+  try {
+    return (cart || []).map(function(i) {
+      return String(i.id || i.url || i.slug || '');
+    }).filter(Boolean);
+  } catch (e) { return []; }
+};
 </script>
 <noscript><img height="1" width="1" style="display:none"
 src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
@@ -5882,6 +5907,19 @@ const slug    = params.get('id') || pathSlug;
     const liveBook = applyProductOverride(baseBook, liveData.override);
     renderProduct(liveBook);
     trackProductView(liveBook);
+    // ViewContent. content_ids uses the same field the cart stores as `id`
+    // (b.url), so a view, an add and a purchase all name the product
+    // identically — otherwise Meta cannot connect them or match the catalogue.
+    if (window.iacMeta) {
+      window.iacMeta('ViewContent', {
+        content_ids: [String(liveBook.url || liveBook.slug || '')],
+        content_type: 'product',
+        content_name: String(liveBook.t || ''),
+        content_category: String(liveBook.cat || ''),
+        currency: 'INR',
+        value: Number(String(liveBook.p || '').replace(/[^0-9.]/g, '')) || 0,
+      });
+    }
     renderFBT(liveBook);
     renderBookstagram();
     renderRelated(liveBook);
@@ -7847,6 +7885,22 @@ async function loadProductCoupons(cart, requestedCode = '') {
 }
 
 // ── Render order summary ────────────────────────────────────────────────────
+// InitiateCheckout, once per page load with a non-empty cart. renderSummary()
+// re-runs on every quantity change and coupon entry, so it is guarded — without
+// that, editing a basket would report a dozen checkout starts for one shopper.
+let _iacCheckoutReported = false;
+function reportInitiateCheckout(cart, total) {
+  if (_iacCheckoutReported || !cart.length || typeof window.iacMeta !== 'function') return;
+  _iacCheckoutReported = true;
+  window.iacMeta('InitiateCheckout', {
+    currency: 'INR',
+    value: Number(total) || 0,
+    content_ids: window.iacMetaIds(cart),
+    content_type: 'product',
+    num_items: cart.reduce((s, i) => s + (Number(i.qty) || 1), 0),
+  });
+}
+
 function renderSummary() {
   const cart = getCart();
   const container = document.getElementById('orderItems');
@@ -7927,6 +7981,9 @@ function renderSummary() {
 
   totalEl.textContent = '₹' + grand.toLocaleString('en-IN');
   totalRow.style.display = 'flex';
+  // Reported here rather than on page load: `grand` is the real payable total,
+  // after shipping and any auto-applied coupon.
+  reportInitiateCheckout(cart, grand);
 
   // Update Pay Now button label with total
   if (btnPay) {
@@ -8387,6 +8444,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
     try {
       localStorage.setItem('iac_last_order_value', String(totals.total));
       localStorage.setItem(CHECKOUT_CART_KEY, activeCartKey());
+      stashPurchaseItems(cart);   // the redirect unloads the page; stash now
       localStorage.setItem('iac_google_reviews_pending', JSON.stringify({
         order_id: data.order_id,
         email: addr.email || '',
@@ -8475,6 +8533,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
           await saveAbandonedCheckout('converted', response.razorpay_order_id);
           localStorage.removeItem(ABANDONED_SESSION_KEY);
           saveAddressAfterOrder(addr);
+          stashPurchaseItems(cart);   // must run BEFORE clearCart
           clearCart();
           await autoLogin(addr.email, addr.name, addr.phone);
           showSuccess('paid', response.razorpay_payment_id, addr, totals.total, verifiedOrder.order_id || response.razorpay_order_id);
@@ -8538,6 +8597,7 @@ async function doCOD(addr) {
     await saveAbandonedCheckout('converted', data.order_id);
     localStorage.removeItem(ABANDONED_SESSION_KEY);
     saveAddressAfterOrder(addr);
+    stashPurchaseItems(cart);   // must run BEFORE clearCart
     clearCart();
     await autoLogin(addr.email, addr.name, addr.phone);
     showSuccess('cod', data.order_id, addr, totals.total);
@@ -8571,9 +8631,51 @@ function trackGoogleAdsPurchase(orderId, value) {
   localStorage.setItem(key, '1');
 }
 
+// Meta Purchase. Fires for BOTH pixels in one call, next to the Ads conversion
+// so the two platforms can never disagree about what counted as a sale.
+//
+// COD COUNTS AT ORDER PLACEMENT, not on delivery — a deliberate choice. It
+// means Meta's reported revenue includes COD orders that later RTO, so ROAS
+// here reads higher than money actually banked. The trade is that Meta's
+// optimiser gets the signal within seconds instead of days, which is what it
+// needs to find buyers.
+//
+// content_ids come from stashPurchaseItems(), because every checkout path
+// clears the cart before this runs.
+function trackMetaPurchase(orderId, value) {
+  if (!orderId || typeof window.iacMeta !== 'function') return;
+  const params = { currency: 'INR', value: Number(value) || 0 };
+  try {
+    const stash = JSON.parse(localStorage.getItem('iac_last_purchase_items') || 'null');
+    // Two hours: long enough for a slow PhonePe redirect, short enough that a
+    // stale basket from an abandoned attempt cannot attach itself to a later order.
+    if (stash && Date.now() - Number(stash.ts || 0) < 2 * 60 * 60 * 1000) {
+      if (stash.ids && stash.ids.length) {
+        params.content_ids = stash.ids;
+        params.content_type = 'product';
+      }
+      if (stash.num_items) params.num_items = stash.num_items;
+    }
+    localStorage.removeItem('iac_last_purchase_items');
+  } catch (e) {}
+  window.iacMeta('Purchase', params, 'iac_meta_purchase_' + orderId);
+}
+
+// Called immediately before clearCart() on every checkout path (and before the
+// PhonePe redirect, where the cart has to survive a page load).
+function stashPurchaseItems(cart) {
+  try {
+    const ids = window.iacMetaIds ? window.iacMetaIds(cart) : [];
+    const num = (cart || []).reduce((s, i) => s + (Number(i.qty) || 1), 0);
+    localStorage.setItem('iac_last_purchase_items',
+      JSON.stringify({ ids: ids, num_items: num, ts: Date.now() }));
+  } catch (e) {}
+}
+
 function showSuccess(type, orderId, addr, value, surveyOrderId = orderId) {
   hideProcessing();
   trackGoogleAdsPurchase(orderId, value);
+  trackMetaPurchase(orderId, value);
   document.getElementById('checkoutScreen').style.display = 'none';
   const s = document.getElementById('successScreen');
   s.style.display = 'block';

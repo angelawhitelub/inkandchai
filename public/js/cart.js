@@ -27,6 +27,19 @@ function addToCart(book) {
     cart.push({ ...book, qty: 1 });
   }
   saveCart(cart);
+  // Meta AddToCart. iacMeta is defined by the pixel snippet in the page head,
+  // so it is present on every page that loads this file; the guard covers the
+  // case where the pixel is blocked by an ad blocker. Not deduped — adding the
+  // same book twice is two genuine add-to-cart actions.
+  if (window.iacMeta) {
+    window.iacMeta('AddToCart', {
+      content_ids: [String(book.id || book.url || '')],
+      content_type: 'product',
+      content_name: String(book.title || ''),
+      currency: 'INR',
+      value: Number(book.price) || 0,
+    });
+  }
   openCart();
   showToast(`"${book.title.slice(0, 30)}…" added to cart`);
 }

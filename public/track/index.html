@@ -23,6 +23,31 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
 fbq('init', '1702042431242274');
 fbq('init', '1639520197322862');
 fbq('track', 'PageView');
+
+// Standard-event helper. Lives here because it is the only code guaranteed on
+// every page — checkout has its own cart implementation and does not load
+// cart.js, so a helper defined there would not exist where Purchase fires.
+// fbq('track') reports to every initialised pixel, so one call feeds both.
+// dedupKey (optional) makes an event fire once per order however many times the
+// success screen is re-rendered or reloaded.
+window.iacMeta = function(event, params, dedupKey) {
+  if (typeof fbq !== 'function') return;
+  if (dedupKey) {
+    try { if (localStorage.getItem(dedupKey)) return; } catch (e) {}
+  }
+  try {
+    fbq('track', event, params || {});
+    if (dedupKey) localStorage.setItem(dedupKey, '1');
+  } catch (e) {}
+};
+// content_ids for a cart, in the shape Meta matches catalogue items on.
+window.iacMetaIds = function(cart) {
+  try {
+    return (cart || []).map(function(i) {
+      return String(i.id || i.url || i.slug || '');
+    }).filter(Boolean);
+  } catch (e) { return []; }
+};
 </script>
 <noscript><img height="1" width="1" style="display:none"
 src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"

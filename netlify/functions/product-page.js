@@ -109,6 +109,31 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
 fbq('init', '1702042431242274');
 fbq('init', '1639520197322862');
 fbq('track', 'PageView');
+
+// Standard-event helper. Lives here because it is the only code guaranteed on
+// every page — checkout has its own cart implementation and does not load
+// cart.js, so a helper defined there would not exist where Purchase fires.
+// fbq('track') reports to every initialised pixel, so one call feeds both.
+// dedupKey (optional) makes an event fire once per order however many times the
+// success screen is re-rendered or reloaded.
+window.iacMeta = function(event, params, dedupKey) {
+  if (typeof fbq !== 'function') return;
+  if (dedupKey) {
+    try { if (localStorage.getItem(dedupKey)) return; } catch (e) {}
+  }
+  try {
+    fbq('track', event, params || {});
+    if (dedupKey) localStorage.setItem(dedupKey, '1');
+  } catch (e) {}
+};
+// content_ids for a cart, in the shape Meta matches catalogue items on.
+window.iacMetaIds = function(cart) {
+  try {
+    return (cart || []).map(function(i) {
+      return String(i.id || i.url || i.slug || '');
+    }).filter(Boolean);
+  } catch (e) { return []; }
+};
 </script>
 <noscript><img height="1" width="1" style="display:none"
 src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
@@ -383,6 +408,18 @@ const currentItem = ${JSON.stringify({
     ...(noCod ? { _no_cod: true } : {}),
     ...(publisherSourced ? { _publisher_sourced: true } : {}),
   }).replace(/</g, '\\u003c')};
+// ViewContent. content_ids uses currentItem.id — the same value that goes into
+// the cart and therefore into AddToCart and Purchase — so Meta sees one
+// consistent identifier for the product across the whole funnel.
+if (window.iacMeta) {
+  window.iacMeta('ViewContent', {
+    content_ids: [String(currentItem.id)],
+    content_type: 'product',
+    content_name: String(currentItem.title || ''),
+    currency: 'INR',
+    value: Number(currentItem.price) || 0,
+  });
+}
 // Write directly to localStorage so the cart is saved EVEN IF cart.js's
 // UI helpers throw on missing sidebar DOM elements (this Lambda page is
 // intentionally minimalist and has no cart sidebar). Previously cart.js
@@ -418,9 +455,21 @@ function addProductToCart(buyNow) {
     btn.style.color = '#6dbf6d';
     btn.style.borderColor = '#6dbf6d';
   }
-  // Fire-and-forget call to cart.js too, so if the customer is on a full-site
-  // page (rare for Lambda but possible after navigation) the sidebar updates.
-  if (window.addToCart) { try { window.addToCart(currentItem); } catch(e) {} }
+  // Refresh the cart.js sidebar/badge — but do NOT call window.addToCart here.
+  // cart.js reads the same 'akshar_cart' key this function just wrote, so
+  // addToCart() found the item already present and incremented it again: one
+  // click on Add to Cart put TWO copies in the basket. updateCartUI only redraws.
+  if (window.updateCartUI) { try { window.updateCartUI(); } catch(e) {} }
+  // Meta AddToCart, fired here because cart.js's copy is no longer reached.
+  if (window.iacMeta) {
+    window.iacMeta('AddToCart', {
+      content_ids: [String(currentItem.id || '')],
+      content_type: 'product',
+      content_name: String(currentItem.title || ''),
+      currency: 'INR',
+      value: Number(currentItem.price) || 0,
+    });
+  }
 }
 // ── Swipeable image gallery: native scroll-snap swipe + arrows + dots ──────────
 (function(){
