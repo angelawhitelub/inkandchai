@@ -20,6 +20,7 @@ const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { resolveProductCoupon } = require('./utils/product-coupons');
+const { freedomSaleDiscount } = require('./utils/freedom-sale');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -53,6 +54,11 @@ function staticCouponDiscount(subtotal, rawCode) {
 }
 
 async function resolveCoupon(supabase, cart, subtotal, rawCode) {
+  // Independence Day offer is automatic, applies to every payment mode, and
+  // replaces rather than stacks with any manually selected coupon.
+  const freedomHit = freedomSaleDiscount(subtotal);
+  if (freedomHit.discount > 0) return freedomHit;
+
   const staticHit = staticCouponDiscount(subtotal, rawCode);
   if (staticHit.discount > 0) return { ...staticHit, source: 'static' };
 
@@ -118,7 +124,9 @@ exports.handler = async (event) => {
     const shipping   = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
     const couponInfo = await resolveCoupon(supabase, cart, subtotal, rawCoupon);
     const isPartial  = payment_mode === 'partial_cod';
-    const fullTotal  = Math.max(1, subtotal + shipping - (isPartial ? 0 : couponInfo.discount));
+    const partialDiscount = couponInfo.source === 'freedom_sale' ? couponInfo.discount : 0;
+    const appliedDiscount = isPartial ? partialDiscount : couponInfo.discount;
+    const fullTotal  = Math.max(1, subtotal + shipping - appliedDiscount);
     const charged    = isPartial ? Math.max(1, Math.ceil(fullTotal * 0.10)) : fullTotal;
     const amountPaise = Math.round(charged * 100);
 
@@ -144,7 +152,7 @@ exports.handler = async (event) => {
           breakdown: {
             subtotal: Math.round(subtotal),
             shipping,
-            discount: isPartial ? 0 : couponInfo.discount,
+            discount: appliedDiscount,
             coupon: couponInfo.code || '',
             total: Math.round(fullTotal),
           },
@@ -178,7 +186,7 @@ exports.handler = async (event) => {
     // — better than letting one card discount N parallel carts.
     let finalAmountPaise   = amountPaise;
     let finalCouponCode    = couponInfo.code || '';
-    let finalDiscountPaise = Math.round((isPartial ? 0 : couponInfo.discount) * 100);
+    let finalDiscountPaise = Math.round(appliedDiscount * 100);
     if (couponInfo.source === 'scratch') {
       // Two-step claim: provisional id now, rewrite to real razorpay order id
       // once create() returns. Race-safe at the DB level (see scratch-cards.js).
@@ -262,7 +270,7 @@ exports.handler = async (event) => {
         server_full_total: fullTotal,
         server_subtotal: subtotal,
         server_shipping: shipping,
-        server_discount: isPartial ? 0 : couponInfo.discount,
+        server_discount: appliedDiscount,
         server_coupon: couponInfo.code || '',
         payment_mode: isPartial ? 'partial_cod' : 'full',
       }),

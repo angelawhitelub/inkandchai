@@ -13,6 +13,7 @@ const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricin
 const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
+const { freedomSaleDiscount } = require('./utils/freedom-sale');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -22,7 +23,7 @@ const CORS = {
 
 // ── Send email via Resend (with auto-fallback to onboarding@resend.dev) ───
 
-function cartTable(cart, shippingFee) {
+function cartTable(cart, shippingFee, codFee = 0, discount = 0, coupon = '') {
   const rows = cart.map(i => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
@@ -31,7 +32,9 @@ function cartTable(cart, shippingFee) {
     </tr>`).join('');
   const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
   const ship = (typeof shippingFee === 'number') ? shippingFee : (subtotal >= 499 ? 0 : 40);
-  const total = subtotal + ship;
+  const safeDiscount = Math.max(0, Number(discount) || 0);
+  const safeCodFee = Math.max(0, Number(codFee) || 0);
+  const total = Math.max(1, subtotal + ship + safeCodFee - safeDiscount);
   return `
     <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
       <thead>
@@ -47,6 +50,14 @@ function cartTable(cart, shippingFee) {
           <td colspan="2" style="padding:8px 12px;color:#a09080;">Subtotal</td>
           <td style="padding:8px 12px;text-align:right;color:#f0e8d8;">₹${subtotal.toLocaleString('en-IN')}</td>
         </tr>
+        ${safeDiscount > 0 ? `<tr>
+          <td colspan="2" style="padding:8px 12px;color:#a09080;">Freedom Sale (${coupon})</td>
+          <td style="padding:8px 12px;text-align:right;color:#6dbf6d;">- ₹${safeDiscount.toLocaleString('en-IN')}</td>
+        </tr>` : ''}
+        ${safeCodFee > 0 ? `<tr>
+          <td colspan="2" style="padding:8px 12px;color:#a09080;">COD handling</td>
+          <td style="padding:8px 12px;text-align:right;color:#f0e8d8;">₹${safeCodFee.toLocaleString('en-IN')}</td>
+        </tr>` : ''}
         <tr>
           <td colspan="2" style="padding:8px 12px;color:#a09080;">Shipping (Delhivery)</td>
           <td style="padding:8px 12px;text-align:right;color:${ship === 0 ? '#6dbf6d' : '#f0e8d8'};">${ship === 0 ? 'FREE' : '₹' + ship}</td>
@@ -135,7 +146,11 @@ exports.handler = async (event) => {
   const subtotal = priced.subtotal;
   const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   const codFee   = subtotal >= COD_FEE_WAIVER_THRESHOLD ? 0 : COD_HANDLING_FEE;
-  const total    = subtotal + shipping + codFee;
+  const couponInfo = freedomSaleDiscount(subtotal);
+  const total    = Math.max(1, subtotal + shipping + codFee - couponInfo.discount);
+  if (couponInfo.code && cart[0]) {
+    cart[0]._coupon = { code: couponInfo.code, discount: couponInfo.discount, source: couponInfo.source };
+  }
 
   // ── 1. Save to Supabase (non-fatal — emails still send even if DB is down) ──
   try {
@@ -231,7 +246,7 @@ exports.handler = async (event) => {
           <tr><td style="color:#a09080;padding-right:16px;">Email</td><td>${customer.email||'—'}</td></tr>
           <tr><td style="color:#a09080;padding-right:16px;">Address</td><td>${customer.address||'—'}</td></tr>
         </table>
-        ${cartTable(cart, shipping)}
+        ${cartTable(cart, shipping, codFee, couponInfo.discount, couponInfo.code)}
         <p style="color:#6dbf6d;font-size:13px;">💰 Collect ₹${total.toLocaleString('en-IN')} cash at delivery.</p>
       `),
     });
@@ -248,7 +263,7 @@ exports.handler = async (event) => {
           Hi ${customer.name?.split(' ')[0]||'there'}, your books are on their way!<br/>
           You'll pay <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> in cash when they arrive.
         </p>
-        ${cartTable(cart, shipping)}
+        ${cartTable(cart, shipping, codFee, couponInfo.discount, couponInfo.code)}
         <p style="color:#a09080;font-size:13px;line-height:1.8;">
           <strong style="color:#f0e8d8;">Delivery address:</strong><br/>${customer.address||'—'}
         </p>

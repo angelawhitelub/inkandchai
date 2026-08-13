@@ -505,13 +505,13 @@
   .section-title em { font-style: italic; color: var(--gold-light); }
 
   /* ── SUMMER SALE BANNER ──────────────────────────────────────────── */
-  .summer-sale-banner { background: linear-gradient(135deg,#8b1a1a 0%,#6b0f0f 45%,#8b1a1a 100%); border-bottom: 1px solid rgba(255,120,120,0.25); padding: 2.8rem 6rem; position: relative; overflow: hidden; }
+  .summer-sale-banner { background: linear-gradient(115deg,#ff9933 0 30%,#fff8e8 30% 68%,#138808 68% 100%); color:#0b2f63; border-bottom:3px solid #138808; padding:2.8rem 6rem; position:relative; overflow:hidden; }
   .summer-sale-banner::before { content:''; position:absolute; inset:0; background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"); }
   .summer-sale-inner { display:flex; align-items:center; justify-content:space-between; gap:2rem; position:relative; }
   .summer-sale-left { flex:1; }
-  .sale-eyebrow { font-size:0.52rem; letter-spacing:0.3em; text-transform:uppercase; color:rgba(255,200,200,0.85); margin-bottom:0.5rem; }
-  .sale-headline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.7rem,3.5vw,2.6rem); font-weight:400; color:#fff; line-height:1.1; margin-bottom:0.55rem; }
-  .sale-headline em { font-style:italic; color:#ffb3b3; }
+  .sale-eyebrow { font-size:0.52rem; letter-spacing:0.3em; text-transform:uppercase; color:#0b2f63; margin-bottom:0.5rem; font-weight:700; }
+  .sale-headline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.7rem,3.5vw,2.6rem); font-weight:600; color:#0b2f63; line-height:1.1; margin-bottom:0.55rem; }
+  .sale-headline em { font-style:italic; color:#0b2f63; }
   .sale-code-row { display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; }
   .sale-code-label { font-size:0.62rem; color:rgba(255,255,255,0.75); letter-spacing:0.08em; }
   .sale-code { background:rgba(255,255,255,0.15); border:1px dashed rgba(255,255,255,0.5); color:#fff; font-family:'Inter',sans-serif; font-size:0.78rem; font-weight:700; letter-spacing:0.22em; padding:0.3rem 0.75rem; cursor:pointer; transition:background 0.2s; }
@@ -1486,20 +1486,20 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 </head>
 <body>
 
-<!-- Promo banner -->
+<!-- Independence Day promo banner -->
 <div class="promo-banner" id="promoBanner">
-  <strong>☀️ SUMMER SALE</strong> &nbsp;10% OFF on ₹299+ &nbsp;·&nbsp; Code: <code onclick="navigator.clipboard?.writeText('SUMMER10')" title="Click to copy" style="cursor:pointer;">SUMMER10</code> &nbsp;·&nbsp; Ends in: <span id="promoTimer" style="font-weight:600;color:#f0c060;letter-spacing:0.08em;"></span>
+  <strong>🇮🇳 FREEDOM SALE</strong> &nbsp;15% OFF on orders above ₹399 &nbsp;·&nbsp; Automatically applied &nbsp;·&nbsp; <code>FREEDOM</code> &nbsp;·&nbsp; Ends in: <span id="promoTimer" style="font-weight:600;color:#f0c060;letter-spacing:0.08em;"></span>
 </div>
 
 <!-- SUMMER SALE BANNER -->
 <section class="summer-sale-banner" id="summerSale">
   <div class="summer-sale-inner">
     <div class="summer-sale-left">
-      <div class="sale-eyebrow">☀️ Limited Time &nbsp;·&nbsp; Summer 2026</div>
-      <div class="sale-headline">10% Off on All Books<br/><em>₹299 &amp; Above</em></div>
+      <div class="sale-eyebrow">🇮🇳 Independence Day &nbsp;·&nbsp; 15 August</div>
+      <div class="sale-headline">Freedom Sale: 15% Off<br/><em>Orders Above ₹399</em></div>
       <div class="sale-code-row" style="margin-top:0.7rem;">
-        <span class="sale-code-label">Use code at checkout:</span>
-        <span class="sale-code" onclick="navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='SUMMER10',2000)" title="Click to copy">SUMMER10</span>
+        <span class="sale-code-label">Automatically applied at checkout:</span>
+        <span class="sale-code">FREEDOM</span>
       </div>
     </div>
     <div class="sale-countdown-wrap">
@@ -1674,15 +1674,11 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 <!-- HERO PROMO CAROUSEL -->
 <div class="promo-carousel" id="promoCarousel">
 
-  <!-- ── SLIDE 1: Summer Sale (banner image) ── -->
-  <section class="promo-slide slide-sale active" aria-label="Summer Sale promotion">
-    <a href="/bestsellers/" class="sale-banner-link" aria-label="Summer Sale — Shop Now">
-      <picture>
-        <source srcset="/images/summer-sale-banner.webp" type="image/webp"/>
-        <img src="/images/summer-sale-banner.webp" alt="Summer Sale — Up to 60% off on selected books. Use code SUMMER10 at checkout." loading="eager" fetchpriority="high"/>
-      </picture>
-      <div class="sale-banner-code-badge" onclick="event.preventDefault();navigator.clipboard?.writeText('SUMMER10');this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Code: SUMMER10',2000)" title="Click to copy code">Code: SUMMER10</div>
-    </a>
+  <!-- ── SLIDE 1: Freedom Sale ── -->
+  <section class="promo-slide slide-sale active" aria-label="Freedom Sale promotion">
+    <a href="/bestsellers/" class="sale-banner-link" aria-label="Freedom Sale — Shop Now" style="display:grid;place-items:center;min-height:100%;background:linear-gradient(115deg,#ff9933 0 32%,#fff8e8 32% 68%,#138808 68% 100%);text-decoration:none;color:#0b2f63;text-align:center;padding:2rem;">
+      <div><div style="font-size:clamp(.7rem,1.4vw,1rem);letter-spacing:.25em;text-transform:uppercase;font-weight:800;">Ink &amp; Chai celebrates India</div><div style="font-family:'Cormorant Garamond',serif;font-size:clamp(2.2rem,6vw,5.5rem);line-height:.9;margin:.6rem 0;font-weight:700;">Freedom Sale</div><div style="font-size:clamp(1rem,2.5vw,1.8rem);font-weight:800;">15% OFF · ORDERS ABOVE ₹399</div><div style="margin-top:.8rem;font-size:.75rem;letter-spacing:.14em;">AUTO-APPLIED AT CHECKOUT · FREEDOM</div></div>
+      <div class="sale-banner-code-badge">15% AUTO APPLIED</div>
   </section>
 
   <!-- ── SLIDE 2: Off Campus Series ── -->
@@ -1759,7 +1755,7 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 
   <!-- Navigation dots -->
   <div class="promo-dots" aria-label="Slide navigation">
-    <button class="promo-dot active" aria-label="Slide 1: Summer Sale"></button>
+    <button class="promo-dot active" aria-label="Slide 1: Freedom Sale"></button>
     <button class="promo-dot" aria-label="Slide 2: Off Campus Series"></button>
     <button class="promo-dot" aria-label="Slide 3: Hindi Bestsellers"></button>
   </div>
@@ -3353,8 +3349,8 @@ function subscribeNewsletter(e) {
   document.getElementById('nlEmail').value = '';
 }
 
-// ── SUMMER SALE COUNTDOWN ─────────────────────────────────────────────────
-const SALE_END_DATE = new Date('2026-05-19T18:30:00Z'); // midnight IST May 19
+// ── FREEDOM SALE COUNTDOWN ────────────────────────────────────────────────
+const SALE_END_DATE = new Date('2026-08-15T18:29:59Z'); // 11:59:59 PM IST Aug 15
 
 function formatCountdown(diff) {
   if (diff <= 0) return null;

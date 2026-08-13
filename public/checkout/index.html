@@ -50,7 +50,7 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:400;color
 .checkout-qty-num{min-width:24px;text-align:center;color:var(--cream);font-size:0.78rem;font-weight:500;}
 .checkout-remove{border:none;background:transparent;color:#c97a7a;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;margin-left:0.2rem;}
 .checkout-remove:hover{color:#e06060;}
-.coupon-box{border-top:1px solid var(--border);margin-top:1rem;padding-top:1rem;}
+.coupon-box{border-top:1px solid var(--border);margin-top:1rem;padding:1rem .85rem .2rem;border-radius:14px;background:linear-gradient(135deg,rgba(255,153,51,.11),rgba(255,255,255,.04) 48%,rgba(19,136,8,.11));box-shadow:inset 3px 0 #ff9933,inset -3px 0 #138808;}
 .coupon-row{display:grid;grid-template-columns:1fr auto;gap:0.55rem;align-items:stretch;}
 .coupon-select{width:100%;margin-bottom:0.55rem;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Inter',sans-serif;font-size:0.72rem;letter-spacing:0.08em;outline:none;}
 .coupon-input{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.12em;}
@@ -529,7 +529,8 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
         <div class="coupon-box" id="couponBox" style="display:none;">
           <label for="couponSelect">Available Coupons</label>
           <select class="coupon-select" id="couponSelect" onchange="handleCouponSelect(this.value)">
-            <option value="">Choose a prepaid offer</option>
+            <option value="FREEDOM">🇮🇳 FREEDOM · 15% auto-applied above ₹399</option>
+            <option value="">Choose another prepaid offer</option>
             <option value="INKLOVE10">INKLOVE10 · 10% off prepaid above ₹499</option>
             <option value="SAVE12">SAVE12 · 12% off prepaid above ₹999</option>
             <option value="SAVE15">SAVE15 · 15% off prepaid above ₹1499</option>
@@ -629,6 +630,7 @@ const COD_HANDLING_FEE = 20;  // extra ₹20 charged on COD orders to cover RTO 
 const COD_FEE_WAIVER_THRESHOLD = 999;  // fee is WAIVED on COD orders at or above this subtotal — pushes AOV up
 const COUPON_KEY = 'iac_checkout_coupon';
 const COUPONS = {
+  FREEDOM:   { type: 'percent', value: 15, minSubtotal: 400, onlineOnly: false, label: '🇮🇳 Freedom Sale 15% off', expiresAt: '2026-08-15T18:29:59Z' },
   SUMMER10:  { type: 'percent', value: 10, minSubtotal: 299, onlineOnly: false, label: '☀️ Summer Sale 10% off', expiresAt: '2026-05-19T18:30:00Z' },
   INKLOVE10: { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
   '499HIT':  { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
@@ -669,6 +671,14 @@ function normalizeCouponCode(value) {
 function couponDiscount(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
   const code = normalizeCouponCode(appliedCouponCode);
+
+  // Independence Day sale is automatic for every payment mode and never
+  // stacks with another code. “Above ₹399” means ₹400 or more.
+  const freedom = COUPONS.FREEDOM;
+  if (Date.now() <= new Date(freedom.expiresAt).getTime() && subtotal > 399) {
+    const discount = Math.floor(subtotal * freedom.value / 100);
+    return { code: 'FREEDOM', discount, message: '🇮🇳 FREEDOM automatically applied — 15% off your books.' };
+  }
 
   // ── Scratch card path ───────────────────────────────────────────────────
   if (code.startsWith('SCRATCH-') && appliedScratchCard && appliedScratchCard.code === code) {
@@ -719,13 +729,15 @@ function orderTotals(cart, method = 'online') {
 }
 function partialPaymentTotals(cart) {
   // Partial COD: COD handling fee is WAIVED as the incentive to pre-pay 10%.
-  // No coupon discount applied either — matches server (create-order.js + verify-payment.js).
+  // FREEDOM is the one coupon valid on partial COD as well as every other mode.
   const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
-  const total = Math.max(1, subtotal + shipping);
+  const coupon = couponDiscount(cart, 'cod');
+  const discount = coupon.code === 'FREEDOM' ? coupon.discount : 0;
+  const total = Math.max(1, subtotal + shipping - discount);
   const eligible = total >= PARTIAL_PAYMENT_THRESHOLD;
   const deposit = eligible ? Math.max(1, Math.ceil(total * PARTIAL_PAYMENT_RATE)) : 0;
-  return { subtotal, shipping, codFee: 0, discount: 0, couponCode: '', couponMessage: '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
+  return { subtotal, shipping, codFee: 0, discount, couponCode: discount ? 'FREEDOM' : '', couponMessage: discount ? coupon.message : '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
 }
 // True when the cart contains any item flagged _no_cod — the full crossword.in
 // catalogue import (tag 'no-cod'). Those titles disable Cash on Delivery and
@@ -916,13 +928,14 @@ function renderSummary() {
   if (_pb) _pb.style.display = '';
   const { subtotal, shipping, discount, couponCode, couponMessage, total: grand } = orderTotals(cart, 'online');
   if (couponBox) couponBox.style.display = 'block';
-  if (couponInput && couponInput.value !== appliedCouponCode) couponInput.value = appliedCouponCode;
+  const displayedCouponCode = couponCode || appliedCouponCode;
+  if (couponInput && couponInput.value !== displayedCouponCode) couponInput.value = displayedCouponCode;
   if (couponSelect) {
-    const hasVisibleOption = Array.from(couponSelect.options).some(option => option.value === appliedCouponCode);
-    couponSelect.value = hasVisibleOption ? appliedCouponCode : '';
+    const hasVisibleOption = Array.from(couponSelect.options).some(option => option.value === displayedCouponCode);
+    couponSelect.value = hasVisibleOption ? displayedCouponCode : '';
   }
   if (couponMsg) {
-    couponMsg.textContent = couponMessage || 'Choose a prepaid offer: 10% above ₹499, 12% above ₹999, or 15% above ₹1499.';
+    couponMsg.textContent = couponMessage || '🇮🇳 Add books until the subtotal is above ₹399 and FREEDOM will apply 15% off automatically.';
     couponMsg.style.color = couponCode && discount > 0 ? '#5d9b55' : (couponMessage ? '#c97a7a' : 'var(--cream-dim)');
   }
   container.innerHTML = cart.map((i, idx) => `
