@@ -38,6 +38,10 @@ const {
 } = require('./utils/delivery-notifications');
 const { handleReturnAwbDelivered } = require('./utils/return-auto-refund');
 
+// Order states that record where the MONEY is. A courier scan must never
+// overwrite one of them — see the guard in the handler.
+const REFUND_STATES = ['refunded', 'partially_refunded', 'refund_pending', 'refund_failed'];
+
 // ── NimbusPost status string → internal status ────────────────────────────
 // Comprehensive map — NimbusPost / Delhivery use many different strings.
 // ALL strings are lowercased before lookup.
@@ -375,6 +379,29 @@ exports.handler = async (event) => {
       }
       if (newRank > 0 && newRank <= currentRank) {
         console.log(`[NimbusPost] Skip — already at ${order.status}`);
+        continue;
+      }
+
+      // ── Never let a courier scan erase a refund ────────────────────────────
+      // RANK has no entry for the refund statuses, so currentRank fell to 0 and
+      // an 'rto'/'undelivered'/'lost'/'cancelled' event (all rank 0 too) walked
+      // straight past the guard above and rewrote status. A refunded order then
+      // showed as plain RTO in admin: the "Refund confirmed at gateway" box is
+      // gated on status, so it vanished, and the Refund button came back on an
+      // order whose money was already returned. The courier's own view is still
+      // recorded in last_nimbuspost_status — it just no longer owns `status`,
+      // because where the money is outranks where the parcel is.
+      if (REFUND_STATES.includes(String(order.status || '').toLowerCase())) {
+        await supabase.from('orders').update({
+          last_nimbuspost_status: String(rawStatus).slice(0, 200),
+          last_nimbuspost_event_at: eventTimestamp(evt),
+        }).eq('id', order.id);
+        console.log(`[NimbusPost] ${order.razorpay_order_id || order.id}: courier says ${ourStatus}, but the order is ${order.status} — status kept, courier state recorded`);
+        // The owner still hears about a parcel coming back; the customer does
+        // not, since nothing about their refund has changed.
+        if (['undelivered', 'rto', 'lost'].includes(ourStatus)) {
+          await notifyOwnerIssue(order, ourStatus, message, location).catch(() => {});
+        }
         continue;
       }
 

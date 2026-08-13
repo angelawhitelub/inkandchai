@@ -3364,10 +3364,32 @@ function _drawTable() {
           return `<button onclick="openRefundModal('${esc(o.razorpay_order_id||o.id)}',${amtRupees})" title="Refund — full or partial — via ${via}"
             style="display:block;margin-top:0.5rem;background:rgba(224,80,80,0.1);border:1px solid rgba(224,80,80,0.5);color:#e06060;padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">💸 Refund</button>`;
         })()}
-        ${(['refunded','partially_refunded'].includes(String(o.status||'').toLowerCase()) && (o.phonepe_refund_id || o.refund_state)) ? `<div style="margin-top:0.5rem;padding:0.4rem 0.55rem;background:rgba(109,191,109,0.06);border:1px solid rgba(109,191,109,0.3);font-size:0.56rem;line-height:1.5;color:var(--cream-dim);">
-          <div style="color:#6dbf6d;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-size:0.5rem;margin-bottom:2px;">Refund ${esc(String(o.refund_state||'').toLowerCase()||'confirmed')} at gateway</div>
-          ${o.phonepe_refund_id ? `<div title="Gateway refund reference — the customer can quote this to their bank." style="font-family:Menlo,Consolas,monospace;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(String(o.phonepe_refund_id))}</div>` : '<div style="opacity:0.7;">No gateway reference recorded</div>'}
-        </div>` : ''}
+        ${(() => {
+          // Refund history is shown whenever the row HAS any, not only while
+          // status still says refunded. A courier RTO scan used to rewrite that
+          // status, and this box — gated on it — disappeared with it: an order
+          // whose money was already back looked like an ordinary RTO, with the
+          // Refund button offered again. The status is now protected upstream,
+          // but the box no longer depends on it either.
+          const st = String(o.refund_state || '').toUpperCase();
+          if (!o.refund_utr && !o.phonepe_refund_id && !st && !o.refund_id) return '';
+          if (['refund_failed','refund_pending'].includes(String(o.status||'').toLowerCase()) && st !== 'COMPLETED') return '';
+          const done = st === 'COMPLETED' || ['refunded','partially_refunded'].includes(String(o.status||'').toLowerCase());
+          const tone = done ? '109,191,109' : '232,160,48';
+          const colour = done ? '#6dbf6d' : 'var(--orange)';
+          const mismatch = done && !['refunded','partially_refunded'].includes(String(o.status||'').toLowerCase())
+            ? ` · order status says ${esc(String(o.status||'').replace(/_/g,' '))}` : '';
+          // UTR first — it is the only reference the customer's bank can trace.
+          const ref = o.refund_utr
+            ? { label: 'UTR', value: String(o.refund_utr), hint: 'Bank rail reference. This is what the customer quotes to their bank.' }
+            : o.phonepe_refund_id
+              ? { label: 'Gateway ref', value: String(o.phonepe_refund_id), hint: 'Gateway refund id — traceable by PhonePe/Razorpay support, not by the bank.' }
+              : { label: 'Our ref', value: String(o.refund_id || ''), hint: 'Our own merchant refund id. Not traceable by the bank — no UTR recorded yet.' };
+          return `<div style="margin-top:0.5rem;padding:0.4rem 0.55rem;background:rgba(${tone},0.06);border:1px solid rgba(${tone},0.3);font-size:0.56rem;line-height:1.5;color:var(--cream-dim);">
+          <div style="color:${colour};font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-size:0.5rem;margin-bottom:2px;">Refund ${esc(st.toLowerCase() || 'confirmed')} at gateway${mismatch}</div>
+          ${ref.value ? `<div title="${esc(ref.hint)}" style="font-family:Menlo,Consolas,monospace;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span style="opacity:0.65;">${ref.label}</span> ${esc(ref.value)}</div>` : '<div style="opacity:0.7;">No gateway reference recorded</div>'}
+        </div>`;
+        })()}
         ${(['refund_failed','refund_pending'].includes(String(o.status||'').toLowerCase()) && !String(o.razorpay_payment_id||'').startsWith('pay_')) ? (() => {
           const attempts = Number(o.refund_attempts) || 0;
           const capped = attempts >= 10;
@@ -6650,6 +6672,19 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
       iacRefundToggleAmount();
       const amtEl = document.getElementById('iacRefundAmount');
       if (amtEl) amtEl.value = paiseRound(Math.min(prefill, fullAmtRupees));
+    }
+  }
+  // A refund already completed on this order? Say so, loudly, before anyone
+  // sends a second one. The gateway state is the source of truth here — order
+  // status can be rewritten by a later courier scan, and was.
+  if (String(ord?.refund_state || '').toUpperCase() === 'COMPLETED' && !opts.contextNote) {
+    const msg = document.getElementById('iacRefundMsg');
+    const ref = ord.refund_utr || ord.phonepe_refund_id || ord.refund_id || '';
+    if (msg) {
+      msg.textContent = `⚠️ A refund on this order already COMPLETED at the gateway${ref ? ' (ref ' + ref + ')' : ''}. Only continue if you mean to send a SECOND refund.`;
+      msg.style.color = '#e06060';
+      msg.style.display = '';
+      msg.dataset.sticky = '1';
     }
   }
   if (opts.contextNote) {

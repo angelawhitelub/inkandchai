@@ -22,6 +22,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sendRefundInitiated, cleanRefundItems, rupees } = require('./utils/refund-notifications');
+const { refundUtrFrom } = require('./utils/phonepe-core');
 const { requireAdmin } = require('./utils/admin-auth');
 const { refundIdForAttempt } = require('./utils/refund-id');
 
@@ -286,10 +287,15 @@ exports.handler = async (event) => {
     // immediately. MONEY-SAFE: we only ever promote to COMPLETED/FAILED on a
     // CONFIRMED state from PhonePe; a refund still PENDING after this short window
     // stays 'refund_pending' and the scheduled reconcile job confirms + notifies.
+    // The UTR is the bank-visible reference for this refund and is what the
+    // customer is told to quote. It only exists once PhonePe has actually moved
+    // the money, so it comes from the status payload, never from the POST reply.
+    let refundUtr = refundUtrFrom(refundData);
     if (refundState !== 'COMPLETED' && refundState !== 'FAILED') {
       for (let i = 0; i < 3; i++) {
         await new Promise(r => setTimeout(r, 1500));
         const poll = await getRefundStatus(host, authorization, merchantRefundId).catch(() => null);
+        refundUtr = refundUtrFrom(poll?.data) || refundUtr;
         const st = String(poll?.data?.state || '').toUpperCase();
         if (st === 'COMPLETED') { refundState = 'COMPLETED'; break; }
         if (st === 'FAILED')    { refundState = 'FAILED'; break; }
@@ -327,6 +333,7 @@ exports.handler = async (event) => {
       refund_updated_at: new Date().toISOString(),
     };
     if (phonePeRefundId) updatePayload.phonepe_refund_id = phonePeRefundId;
+    if (refundUtr) updatePayload.refund_utr = refundUtr;
     // Persist WHICH books this partial covers. A PhonePe partial often comes
     // back PENDING and is only confirmed hours later by the retry job, which
     // has no access to this request — without storing it, that notification
@@ -343,6 +350,7 @@ exports.handler = async (event) => {
       const MIGRATION_HINT = {
         phonepe_refund_id: 'sql/orders_phonepe_refund_id.sql',
         refund_items: 'sql/refund_partial_notifications.sql',
+        refund_utr: 'sql/orders_refund_utr.sql',
       };
       for (let attempt = 0; attempt < 3; attempt++) {
         const { error } = await supabase.from('orders').update(payload).eq('id', order.id);
@@ -368,7 +376,8 @@ exports.handler = async (event) => {
       // refund sent two — and they disagreed, one promising 2–3 business days
       // and the other 5–7. The surviving one is itemised and partial-aware.
       await sendRefundInitiated(order, amountPaise, {
-        supabase, state: refundState, refundRef: phonePeRefundId, items: refundItems,
+        // UTR first: it is the only reference the customer's bank can trace.
+        supabase, state: refundState, refundRef: refundUtr || phonePeRefundId, items: refundItems,
       }).catch(e => console.error('refund-initiated notify:', e.message));
     }
 
@@ -379,6 +388,7 @@ exports.handler = async (event) => {
         success: true,
         refund_id: merchantRefundId,
         phonepe_refund_id: phonePeRefundId,
+        refund_utr: refundUtr || null,
         state: refundState || 'PENDING',
         amount: `₹${rupees(amountPaise)}`,
         is_full: isFullRefund,

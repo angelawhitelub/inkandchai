@@ -32,7 +32,7 @@ const { sendRefundInitiated } = require('./utils/refund-notifications');
 const { neverCapturedPayment, NEVER_CAPTURED_ERROR, PAYMENT_FAILED_REASON } = require('./utils/payment-failed');
 const { refundIdForAttempt, knownRefundIds } = require('./utils/refund-id');
 const {
-  getRefundStatus, getOrderStatus, refundStateFromOrder, issueRefund,
+  getRefundStatus, getOrderStatus, refundStateFromOrder, issueRefund, refundUtrFrom,
 } = require('./utils/phonepe-core');
 
 const CORS = {
@@ -75,12 +75,14 @@ async function processOrder(supabase, order, force = false, reconcileOnly = fals
   let trueState = null;                       // COMPLETED | PENDING | FAILED | null
   let gatewayRef = order.phonepe_refund_id || null;  // PhonePe's own refundId
   let matchedRefundId = null;
+  let refundUtr = order.refund_utr || null;           // bank-visible reference
   for (const rid of knownRefundIds(order)) {
     let s;
     try { s = await getRefundStatus(rid); } catch (e) { continue; }
     const st = s.state || s.data?.state || null;
     if (!st) continue;                        // 400 / not found — id never landed
     if (s.data?.refundId) gatewayRef = s.data.refundId;
+    refundUtr = refundUtrFrom(s.data) || refundUtr;
     matchedRefundId = rid;
     trueState = st;
     if (st === 'COMPLETED') break;            // authoritative, look no further
@@ -99,19 +101,26 @@ async function processOrder(supabase, order, force = false, reconcileOnly = fals
   if (trueState === 'COMPLETED') {
     const done = { status: 'refunded', refund_state: 'COMPLETED', refund_updated_at: new Date().toISOString() };
     if (gatewayRef) done.phonepe_refund_id = gatewayRef;
+    if (refundUtr) done.refund_utr = refundUtr;
     // Point refund_id at the id that actually completed, so the record stops
     // naming an attempt PhonePe never accepted.
     if (matchedRefundId && matchedRefundId !== order.refund_id) done.refund_id = matchedRefundId;
-    const { error: dErr } = await supabase.from('orders').update(done).eq('id', order.id);
+    let { error: dErr } = await supabase.from('orders').update(done).eq('id', order.id);
+    // Both columns are optional: drop whichever one the schema is missing rather
+    // than losing the status flip because a migration hasn't been run yet.
+    if (dErr && /refund_utr/i.test(dErr.message || '')) {
+      const { refund_utr, ...noUtr } = done;
+      ({ error: dErr } = await supabase.from('orders').update(noUtr).eq('id', order.id));
+    }
     if (dErr && /phonepe_refund_id/i.test(dErr.message || '')) {
-      const { phonepe_refund_id, ...noRef } = done;
+      const { phonepe_refund_id, refund_utr, ...noRef } = done;
       await supabase.from('orders').update(noRef).eq('id', order.id);
     }
     // The refund has ACTUALLY completed — safe to notify the customer now.
     // sendRefundInitiated is dedup-guarded (refund_notified_at) and gated on the
     // COMPLETED state, so this fires exactly once and never for a pending/failed refund.
     if (order.refund_state !== 'COMPLETED') {
-      await sendRefundInitiated(order, amountPaise, { supabase, state: 'COMPLETED', refundRef: gatewayRef })
+      await sendRefundInitiated(order, amountPaise, { supabase, state: 'COMPLETED', refundRef: refundUtr || gatewayRef })
         .catch(e => console.error('reconcile refund-initiated notify:', e.message));
     }
     return { order: displayId, result: 'reconciled_completed' };
@@ -225,16 +234,33 @@ exports.handler = async (event) => {
   const reconcileOnly = reqBody.reconcile_only === true || reqBody.reconcile_only === 'true';
 
   try {
-    let query = supabase
-      .from('orders')
-      .select('*')
-      .in('status', OWED_STATUSES)
-      .order('created_at', { ascending: false })
-      .limit(500);
-    // Targeted force-retry: restrict to the requested order ids.
-    if (forceOrderIds && forceOrderIds.length) query = query.in('razorpay_order_id', forceOrderIds);
-    const { data: rows, error } = await query;
-    if (error) throw error;
+    // Paged, and filtered to PhonePe payments in SQL rather than afterwards.
+    //
+    // This used to be a single .limit(500) over every OWED status — which
+    // includes cancelled/rto/undelivered/lost, overwhelmingly COD orders that
+    // owe nothing. They filled the 500-row window, so genuinely stuck refunds
+    // older than a couple of weeks were never even looked at: IC-20260726-RU6EE
+    // sat 'refund_failed' for days while PhonePe had completed it, because the
+    // reconcile that would have caught it never saw the row.
+    const PAGE = 500;
+    const MAX_ROWS = 5000;
+    const rows = [];
+    for (let from = 0; from < MAX_ROWS; from += PAGE) {
+      let query = supabase
+        .from('orders')
+        .select('*')
+        .in('status', OWED_STATUSES)
+        .not('razorpay_payment_id', 'is', null)
+        .not('razorpay_payment_id', 'like', 'pay_%')   // pay_… = Razorpay, other path
+        .order('created_at', { ascending: false })
+        .range(from, from + PAGE - 1);
+      // Targeted force-retry: restrict to the requested order ids.
+      if (forceOrderIds && forceOrderIds.length) query = query.in('razorpay_order_id', forceOrderIds);
+      const { data: page, error } = await query;
+      if (error) throw error;
+      rows.push(...(page || []));
+      if (!page || page.length < PAGE) break;
+    }
 
     // Only PhonePe-paid orders (Razorpay refunds go through the Razorpay path)
     // that actually took money. An order pre-inserted at checkout whose payment

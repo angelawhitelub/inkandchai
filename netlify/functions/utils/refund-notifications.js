@@ -148,7 +148,13 @@ function refundInitiatedEmailHtml(order, amtPaise, refundRef) {
  * template parameter outright, so callers must be able to test for absence.
  */
 function resolveRefundRef(order, refundRef) {
-  const ref = refundRef || order?.phonepe_refund_id || order?.refund_id || '';
+  // Preference order is "what can the customer's bank actually act on":
+  //   1. the UTR — the bank rail reference, traceable by their bank
+  //   2. the gateway's own refund id — traceable by PhonePe/Razorpay support
+  //   3. our merchantRefundId (REFUND-IC-…-A0) — a last resort, meaningless
+  //      outside this codebase, and for a while it was what customers were
+  //      told to quote to their bank.
+  const ref = refundRef || order?.refund_utr || order?.phonepe_refund_id || order?.refund_id || '';
   return String(ref).replace(/\s+/g, '').trim().slice(0, 64) || null;
 }
 

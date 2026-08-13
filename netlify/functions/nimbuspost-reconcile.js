@@ -30,6 +30,10 @@ const {
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 
+// Order states that record where the MONEY is. A courier scan must never
+// overwrite one of them — see the guard in the handler.
+const REFUND_STATES = ['refunded', 'partially_refunded', 'refund_pending', 'refund_failed'];
+
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
@@ -246,6 +250,20 @@ exports.handler = async (event) => {
       }
 
       if (ourStatus === order.status) { summary.no_change++; continue; }
+
+      // A refund outranks a courier scan. Same guard as the webhook: without it
+      // an RTO event rewrites a refunded/refund_pending order to 'rto', which
+      // hides the refund in admin and offers the Refund button again on money
+      // that has already gone back. Record what the courier said, keep `status`.
+      if (REFUND_STATES.includes(String(order.status || '').toLowerCase())) {
+        await supabase.from('orders').update({
+          last_nimbuspost_status: String(rawStatus).slice(0, 200),
+          last_nimbuspost_event_at: new Date().toISOString(),
+        }).eq('id', order.id);
+        console.log(`[NimbusPost Reconcile] ${order.razorpay_order_id || order.id}: courier says ${ourStatus}, order is ${order.status} — status kept`);
+        summary.no_change++;
+        continue;
+      }
 
       // Don't downgrade (e.g. delivered → out_for_delivery)
       const RANK = { shipped:1, out_for_delivery:2, delivered:3 };

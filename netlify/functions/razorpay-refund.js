@@ -118,22 +118,29 @@ exports.handler = async (event) => {
 
     // 2xx + not-failed ⇒ committed. Mark refunded / partially_refunded.
     const nextStatus = isFullRefund ? 'refunded' : 'partially_refunded';
+    // The bank rail reference. Razorpay usually has none at creation time (the
+    // refund is still 'pending' on the rail) and fills acquirer_data in later —
+    // so this is best-effort here, and rfnd_… remains the reference until a
+    // reconcile picks the UTR up.
+    const rzpUtr = refund?.acquirer_data?.utr || refund?.acquirer_data?.rrn
+                || refund?.acquirer_data?.arn || null;
     const refundUpdate = {
       status: nextStatus,
       refund_id: refund.id || null,
       refund_state: (refund.status || 'processed').toUpperCase(),
       refund_updated_at: new Date().toISOString(),
     };
+    if (rzpUtr) refundUpdate.refund_utr = String(rzpUtr);
     if (refundItems.length) refundUpdate.refund_items = refundItems;
     {
       const { error } = await supabase.from('orders').update(refundUpdate).eq('id', order.id);
       // sql/refund_partial_notifications.sql may not have been run yet — the
       // refund itself is already committed at Razorpay, so never let a missing
       // column lose the status write.
-      if (error && /refund_items/i.test(error.message || '')) {
-        const { refund_items, ...withoutItems } = refundUpdate;
-        await supabase.from('orders').update(withoutItems).eq('id', order.id);
-        console.warn('[razorpay-refund] refund_items column missing — run sql/refund_partial_notifications.sql');
+      if (error && /refund_items|refund_utr/i.test(error.message || '')) {
+        const { refund_items, refund_utr, ...withoutOptional } = refundUpdate;
+        await supabase.from('orders').update(withoutOptional).eq('id', order.id);
+        console.warn('[razorpay-refund] optional refund column missing — run sql/refund_partial_notifications.sql and sql/orders_refund_utr.sql');
       }
     }
 
@@ -146,7 +153,7 @@ exports.handler = async (event) => {
     // the notifier, so `order` (read before the refund existed) had no way to
     // supply it and every Razorpay refund message went out without a reference.
     await sendRefundInitiated(order, amountPaise, {
-      supabase, items: refundItems, refundRef: refund.id || null,
+      supabase, items: refundItems, refundRef: rzpUtr || refund.id || null,
     }).catch(e => console.error('refund-initiated notify:', e.message));
 
     const amtLabel = `₹${rupees(amountPaise)}`;

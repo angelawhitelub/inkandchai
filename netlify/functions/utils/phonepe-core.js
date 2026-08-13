@@ -54,6 +54,25 @@ async function getRefundStatus(merchantRefundId, host = phonePeHost()) {
   return { ok: res.ok, status: res.status, state: String(data.state || data.status || '').toUpperCase(), data };
 }
 
+/**
+ * The UTR of a completed refund, from a refund-status payload.
+ *
+ * This is the only reference the customer's bank can act on. We used to hand
+ * them our own merchantRefundId (REFUND-IC-…-A0) — an id that means nothing to
+ * anyone outside this codebase, so "quote this to your bank" was useless advice.
+ * PhonePe nests the real one under paymentDetails[].rail.utr, the same shape the
+ * payment sweep already reads for forward payments.
+ */
+function refundUtrFrom(data) {
+  const details = Array.isArray(data?.paymentDetails) ? data.paymentDetails : [];
+  const completed = details.find(d => String(d?.state || '').toUpperCase() === 'COMPLETED');
+  for (const d of [completed, ...details]) {
+    const utr = d?.rail?.utr || d?.utr || '';
+    if (utr) return String(utr).trim();
+  }
+  return null;
+}
+
 // GET the order's overall status (includes refund transactions). Used as a
 // double-refund guard when we have no stored merchantRefundId for an order.
 async function getOrderStatus(merchantOrderId, host = phonePeHost()) {
@@ -113,4 +132,5 @@ async function issueRefund({ merchantRefundId, originalMerchantOrderId, amountPa
 
 module.exports = {
   phonePeHost, getAccessToken, getRefundStatus, getOrderStatus, refundStateFromOrder, issueRefund,
+  refundUtrFrom,
 };
