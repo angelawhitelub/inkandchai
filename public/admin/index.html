@@ -172,13 +172,17 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .cust-name{font-size:0.9rem;color:var(--cream);}
 .cust-sub{font-size:0.72rem;color:var(--cream-dim);margin-top:0.1rem;}
 .items-cell{font-size:0.75rem;color:var(--cream-dim);max-width:300px;}
-/* Book titles WRAP rather than truncate. "(Hindi) The Power…" and "You left m…"
-   hid the one thing the column exists to tell you — which book to pick off the
-   shelf — and the full title was only reachable by hovering for a tooltip. */
+/* Book titles wrap rather than truncate at one line — "(Hindi) The Power…" and
+   "You left m…" hid the one thing the column exists to tell you, which book to
+   pick off the shelf. Capped at two lines so a long title cannot stretch the
+   row; the remainder is on hover. Two lines is the point: a single line could
+   not separate titles sharing a prefix, which is what made the old ellipsis
+   useless rather than merely terse. */
 .items-cell div{white-space:normal;overflow-wrap:anywhere;margin-bottom:0.1rem;}
 /* Per-item price breakdown: title wraps, price stays pinned to the first line. */
 .items-cell .item-line{display:flex;align-items:baseline;gap:0.5rem;justify-content:space-between;}
-.items-cell .item-line .it-title{white-space:normal;overflow-wrap:anywhere;min-width:0;line-height:1.35;}
+.items-cell .item-line .it-title{white-space:normal;overflow-wrap:anywhere;min-width:0;line-height:1.35;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;}
 .items-cell .item-line .it-price{flex-shrink:0;color:var(--gold);font-variant-numeric:tabular-nums;font-size:0.7rem;}
 .items-cell .items-subtotal{margin-top:0.25rem;padding-top:0.25rem;border-top:1px dashed var(--border);color:var(--gold-dim);font-size:0.66rem;}
 .amount{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--gold);}
@@ -2709,8 +2713,12 @@ function itemLineHtml(i) {
         qty > 1 ? `₹${unit.toLocaleString('en-IN')}×${qty} = ` : ''
       }₹${line.toLocaleString('en-IN')}</span>`
     : '';
+  // title attribute: the CSS clamps to two lines, so anything longer is only
+  // readable on hover. Always set, not just when it overflows — whether it
+  // overflows depends on the column width at render time, which this cannot know.
+  const full = esc(i?.title || '');
   return `<div class="item-line">
-    <span class="it-title">· ${esc(i?.title || '')} ×${qty}</span>${priceHtml}
+    <span class="it-title" title="${full}">· ${full} ×${qty}</span>${priceHtml}
   </div>`;
 }
 
