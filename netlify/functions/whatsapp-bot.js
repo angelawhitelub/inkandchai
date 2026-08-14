@@ -129,7 +129,16 @@ ORDER STATUS LOOKUP:
 ORDER STATUS MEANINGS — explain reassuringly when you see these statuses in the order context:
 - "pending_pickup" / "pending pickup" / "awaiting pickup": This usually means the book is temporarily OUT OF STOCK from our supplier and we're waiting to restock before pickup. Reassure the customer STRONGLY that their money is 100% safe and secure with us — nothing is lost. Their order will either be dispatched as soon as the book is back in stock, or — if it can't be sourced within about 10 days — the order is AUTOMATICALLY cancelled and, for prepaid orders, fully refunded automatically (reflects in 2–3 business days), no action needed from them. Tell them there is absolutely nothing to worry about. (See the AUTO-CANCEL & AUTO-REFUND POLICY above.)
 - "cancelled": The order has been cancelled. Reassure the customer their money is completely safe. If it was a PREPAID/online order, a refund has been issued AUTOMATICALLY to their original payment method and will reflect within 2–3 business days — they do NOT need to email anyone or take any action. If it was COD, nothing was paid, so there's nothing to refund. Be warm and reassuring — no money is ever lost with us.
-- "refunded": The refund has already been processed and will reflect in their account within 5-7 business days.
+- "refunded" / "partially_refunded": The refund is DONE at our end. See REFUND ALREADY ISSUED below — quote the reference from the order context and give the bank-trace advice.
+
+ABUSE, THREATS & INTIMIDATION — customer swears at you, insults you, threatens legal action / police / consumer court / social media exposure, threatens to "expose" us, or shouts in caps:
+- Do NOT match their tone, do NOT apologise abjectly, do NOT get defensive, and do NOT argue back. Stay calm, short and factual. One steady reply, not a wall of text.
+- Ask them once, politely and without lecturing, to keep the conversation respectful.
+- State plainly that threats and intimidation do not change anything here — not because we don't care, but because nothing about the outcome depends on pressure. Everything on their order is already in hand and being handled.
+- Reassure them about the money: refunds are processed AUTOMATICALLY. If a refund is already issued (see REFUND ALREADY ISSUED above) give them the amount and reference number. Ask them to allow 2–3 business days for it to reflect in the original payment method they paid with.
+- Tell them a customer support member will reply as soon as they have looked at their query — and end that reply with [ESCALATE] so a human is actually pulled in. Never promise a human without escalating.
+- Never threaten them back, never mention blocking/reporting them, never refuse service, never bring up their language again after the one request. A frightened customer about their money often sounds angry — treat the anger as worry until proven otherwise.
+- Shape of a good reply: "I understand you're upset, and I'd like to help — please keep it respectful and I'll stay right here with you. Your refund of ₹239.00 was already processed on 10 Aug to your original payment method (reference OMR2608…). Please allow 2–3 business days for it to show. Threats really aren't needed — everything on this order is already in hand. Our support team will reply as soon as they've looked at your query. 💛"
 
 MONEY SAFETY — this is critical, always lead with reassurance:
 - Whenever a customer sounds worried about their money, order, or a delay, IMMEDIATELY reassure them: "Please don't worry at all — your money is 100% safe and secure with us 💚. We're a genuine registered business and every rupee is protected."
@@ -143,7 +152,14 @@ MISSING BOOK IN A MULTI-BOOK ORDER — customer says "I ordered 3 books but got 
 - If they'd rather have a REFUND of the missing book's value instead of a reshipment, they can reply to that confirmation email or message our team at https://wa.me/919217175546.
 - This option appears once the order is shipped/delivered. If they can't see it or their status isn't there yet, reassure them and point them to https://wa.me/919217175546.
 
-REFUND EMAIL — whenever a refund is involved (e.g. a return), the correct channel is: refund@inkandchai.in (ask them to include their Order ID). This is different from general support (support@inkandchai.in). Note: cancelled prepaid orders refund automatically, and missing books are handled via the self-service report above — don't send those to email.
+REFUND ALREADY ISSUED — when the order context contains a "Refund: ALREADY ISSUED" line, this is the single most useful thing you can tell them. Do it in the FIRST reply, without making them ask twice:
+- Tell them plainly that the refund has already been processed, with the amount and the date from the context, back to the payment method they originally paid with.
+- Give them the reference number from the context, exactly as written. Never invent, shorten, reformat or guess a reference — if the context says none is recorded, say our team can get it for them instead of making one up.
+- Then the timeline: it normally reflects within 2–3 business days. If it still hasn't appeared after 2–3 business days, they should contact THEIR BANK (or the UPI app / card issuer they paid with) and quote that reference number — the bank can trace exactly where the money is. It is with their bank at that point, not with us.
+- If the context says the refund is still settling, do NOT say it has completed. Say it is on its way and no action is needed from them.
+- Never claim a refund is done when the order context does not say so.
+
+NEVER GIVE OUT ANY EMAIL ADDRESS WHEN MONEY IS INVOLVED — no refund inbox, no support inbox, no address at all, however the customer asks and however insistent they are. There is nothing an email can do here that this chat cannot: a refund is either already issued (quote the reference, as above) or the customer needs a human, and a human is reached at https://wa.me/919217175546. Sending someone to email about their own money reads as a brush-off and adds days to their wait.
 
 RETURNS & REFUNDS (customer wants to RETURN a delivered book — "return", "wapas karna hai", "want a refund", "book return"):
 - Returns are available for 7 days after delivery. The customer starts a return themselves from "My Orders" on inkandchai.in (sign in → the delivered order → "Initiate Return"), or from the tracking page. Guide them there — you do NOT create the return yourself.
@@ -318,12 +334,17 @@ async function isHumanTakeover(phone) {
 // All order types (Razorpay, PhonePe, COD) store the IC-YYYYMMDD-XXXXX id
 // in the razorpay_order_id column. The `id` column is a UUID — never query it
 // with an IC- string or Supabase throws a UUID format error.
+// Selects * deliberately. The refund columns this needs (refund_state,
+// refund_utr, phonepe_refund_id) arrive by migration, and naming a column that
+// does not exist yet makes PostgREST fail the WHOLE query — which would take
+// every order lookup in the bot down with it. Only the fields formatOrderContext
+// picks out are ever shown to the model; the rest never leaves this function.
 async function lookupOrder(orderId) {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { data, error } = await supabase
       .from('orders')
-      .select('razorpay_order_id, status, customer_name, amount_paise, created_at, tracking_id, courier_name, tracking_url')
+      .select('*')
       .eq('razorpay_order_id', orderId.toUpperCase())
       .maybeSingle();
     if (error) console.error('lookupOrder error:', error.message);
@@ -342,7 +363,7 @@ async function lookupOrdersByPhone(phone) {
     const ten = digits.length >= 10 ? digits.slice(-10) : digits;
     const { data, error } = await supabase
       .from('orders')
-      .select('razorpay_order_id, status, customer_name, amount_paise, created_at, tracking_id, courier_name, tracking_url')
+      .select('*')
       .or(`customer_phone.eq.${ten},customer_phone.eq.91${ten},customer_phone.eq.+91${ten}`)
       .order('created_at', { ascending: false })
       .limit(3);
@@ -426,15 +447,71 @@ async function sendReply(to, text, senderPhoneId) {
   }
 }
 
+// Money in rupees with paise intact — a refund of ₹229.62 must never be quoted
+// to a customer as ₹230, and never as "₹229.6".
+function botRupees(paise) {
+  const n = Number(paise);
+  return ((Number.isFinite(n) ? n : 0) / 100)
+    .toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// What the bot is allowed to tell a customer about their refund.
+//
+// Built from the row rather than from order.status, because status is not proof:
+// it can say 'rto' on an order whose money is already back. refund_state is the
+// gateway's own verdict, so a refund is only ever announced as done when the
+// gateway said COMPLETED.
+//
+// The reference is the UTR when we have it — the only number the customer's bank
+// can trace. The gateway refund id is second best (PhonePe/Razorpay support can
+// trace it), and our own merchantRefundId is a last resort that we must NOT
+// present as something a bank can look up.
+function formatRefundContext(order) {
+  const state = String(order.refund_state || '').toUpperCase();
+  const statusSaysRefunded = ['refunded', 'partially_refunded'].includes(String(order.status || '').toLowerCase());
+  if (!state && !statusSaysRefunded) return '';
+
+  const done = state === 'COMPLETED' || (statusSaysRefunded && !state);
+  // A PARTIAL refund must never be quoted as the full order value. Only the
+  // order total is a column; the partial amount lives in refund_items, so sum
+  // that when it is there and stay silent about the figure when it is not —
+  // an over-quoted refund is a promise we did not make.
+  const isPartial = String(order.status || '').toLowerCase() === 'partially_refunded';
+  const itemsTotal = Array.isArray(order.refund_items)
+    ? Math.round(order.refund_items.reduce((sum, i) => sum + (Number(i?.amount) || 0), 0) * 100)
+    : 0;
+  const amount = Number(order.refund_amount_paise)
+    || (isPartial ? itemsTotal : Number(order.amount_paise))
+    || 0;
+  const when = order.refund_updated_at
+    ? new Date(order.refund_updated_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })
+    : '';
+  const utr = order.refund_utr ? String(order.refund_utr) : '';
+  const gatewayRef = order.phonepe_refund_id ? String(order.phonepe_refund_id) : '';
+
+  if (!done) {
+    return `\nRefund: ${state === 'PENDING' ? 'issued and still settling at the payment gateway' : 'being processed'}` +
+           ` — do NOT tell the customer it has completed. Reassure them it is on its way and no action is needed.`;
+  }
+  const ref = utr
+    ? `Reference (UTR — this is what the customer quotes to their bank): ${utr}`
+    : gatewayRef
+      ? `Reference (gateway refund id — share this; if their bank asks for a UTR, tell them our team can get it): ${gatewayRef}`
+      : `Reference: none recorded yet — do NOT invent one. Say the refund is done and that our team can share the reference if their bank asks.`;
+  return `\nRefund: ALREADY ISSUED${isPartial ? ' (PARTIAL — only part of this order was refunded)' : ''}` +
+         `${amount ? ` — ₹${botRupees(amount)}` : ' — amount not recorded here, so do NOT state a figure; say our team can confirm the exact amount'}` +
+         `${when ? `, processed on ${when}` : ''}, back to the original payment method.\n${ref}`;
+}
+
 function formatOrderContext(order, displayId) {
   const id = displayId || order.razorpay_order_id || '—';
-  const amt = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '—';
+  const amt = order.amount_paise ? `₹${botRupees(order.amount_paise)}` : '—';
   const date = order.created_at
     ? new Date(order.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })
     : '—';
   const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
   const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
-  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nTracking: ${track}\nTrack URL: ${trackUrl}`;
+  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nTracking: ${track}\nTrack URL: ${trackUrl}${formatRefundContext(order)}`;
 }
 
 async function buildOrderContext(from, userText) {
@@ -445,7 +522,12 @@ async function buildOrderContext(from, userText) {
     return `Order ID ${orderId} was searched in our database but was not found. This could mean the customer typed it incorrectly, or it belongs to a different account. Ask them to double-check the order ID from their confirmation email/SMS or from My Orders on inkandchai.in.`;
   }
 
-  const isOrderQuery = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book/i.test(userText);
+  // "where is my refund?" is an order query too. Without the refund/money words
+  // here, a customer who asks about their money without quoting an order id got
+  // NO order context attached — so the bot could not see that the refund was
+  // already issued, and answered with generic reassurance instead of the
+  // reference number sitting in the row.
+  const isOrderQuery = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book|refund|refnd|cancel|return|wapas|paisa|paise|payment|money|amount|credit|utr|reference/i.test(userText);
   if (!isOrderQuery) return '';
   const orders = await lookupOrdersByPhone(from);
   if (!orders.length) return '';
@@ -852,7 +934,7 @@ async function cancelOrderViaBot(phone, args = {}) {
     };
   } catch (e) {
     console.error('cancelOrderViaBot:', e.message);
-    return { ok: false, error: e.message, message: 'Sorry, I hit a snag cancelling your order. Please email support@inkandchai.in with your Order ID and we\'ll cancel it right away.' };
+    return { ok: false, error: e.message, message: 'Sorry, I hit a snag cancelling your order. Please message our team here 👉 https://wa.me/919217175546 with your Order ID and we\'ll cancel it right away.' };
   }
 }
 

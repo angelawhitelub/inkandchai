@@ -6,7 +6,7 @@ const {
   orderIdFromRefundMerchantId,
   originalOrderIdFromRefundPayload,
   refundDecision,
-} = require('./phonepe-webhook')._test;
+} = require('../../netlify/functions/phonepe-webhook')._test;
 
 test('extracts the original order from an Ink & Chai refund merchant id', () => {
   assert.equal(

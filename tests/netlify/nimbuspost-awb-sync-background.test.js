@@ -7,7 +7,7 @@ const {
   awbFromRow,
   orderNumberFromRow,
   collectRows,
-} = require('./nimbuspost-awb-sync-background')._test;
+} = require('../../netlify/functions/nimbuspost-awb-sync-background')._test;
 
 test('reads NimbusPost shipment rows from the live response shape', () => {
   const payload = { status: true, count: 1, data: [{
