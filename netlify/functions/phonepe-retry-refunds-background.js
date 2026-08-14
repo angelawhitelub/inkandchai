@@ -232,6 +232,61 @@ exports.handler = async (event) => {
   // Read-only mode: sync refund state from PhonePe (and notify on COMPLETED)
   // without ever re-issuing. Safe to run at any hour.
   const reconcileOnly = reqBody.reconcile_only === true || reqBody.reconcile_only === 'true';
+  // UTR backfill: for orders ALREADY marked refunded, ask PhonePe for the rail
+  // reference and store it. These rows are not in OWED_STATUSES, so no other run
+  // mode ever revisits them — a refund that completed before refund_utr existed
+  // would keep quoting an internal id to the customer forever. Writes nothing
+  // but refund_utr: no status changes, no notifications, no refunds issued.
+  const backfillUtr = reqBody.backfill_utr === true || reqBody.backfill_utr === 'true';
+
+  if (backfillUtr) {
+    try {
+      const rows = [];
+      const PAGE = 500;
+      for (let from = 0; from < 5000; from += PAGE) {
+        let q = supabase
+          .from('orders')
+          .select('id, razorpay_order_id, razorpay_payment_id, refund_id, refund_attempts, refund_utr, phonepe_refund_id')
+          .in('status', ['refunded', 'partially_refunded'])
+          .is('refund_utr', null)
+          .not('razorpay_payment_id', 'is', null)
+          .not('razorpay_payment_id', 'like', 'pay_%')
+          .order('created_at', { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (forceOrderIds && forceOrderIds.length) q = q.in('razorpay_order_id', forceOrderIds);
+        const { data: page, error } = await q;
+        if (error) throw error;
+        rows.push(...(page || []));
+        if (!page || page.length < PAGE) break;
+      }
+      const summary = { scanned: rows.length, filled: 0, no_utr: 0, error: 0 };
+      const details = [];
+      for (const order of rows) {
+        let utr = null;
+        for (const rid of knownRefundIds(order)) {
+          let st;
+          try { st = await getRefundStatus(rid); } catch (e) { continue; }
+          utr = refundUtrFrom(st?.data);
+          if (utr) break;
+        }
+        if (!utr) { summary.no_utr++; continue; }
+        const { error } = await supabase.from('orders').update({ refund_utr: utr }).eq('id', order.id);
+        if (error) {
+          summary.error++;
+          details.push({ order: order.razorpay_order_id, error: error.message });
+        } else {
+          summary.filled++;
+          details.push({ order: order.razorpay_order_id, refund_utr: utr });
+        }
+        await new Promise(r => setTimeout(r, 120));   // gentle pacing vs PhonePe
+      }
+      console.log('[phonepe-retry-refunds] utr backfill', JSON.stringify(summary));
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, mode: 'backfill_utr', summary, details }) };
+    } catch (err) {
+      console.error('[phonepe-retry-refunds] utr backfill failed:', err.message);
+      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
+    }
+  }
 
   try {
     // Paged, and filtered to PhonePe payments in SQL rather than afterwards.

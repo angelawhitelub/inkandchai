@@ -1025,6 +1025,9 @@ select,input,textarea{font-size:1rem;}
     <button class="btn-outline" onclick="retryFailedRefunds(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(214,120,60,0.6);color:#e0904a;" title="Re-check PhonePe refund status for every order owed a refund and re-attempt any that failed (money-safe: never double-refunds). Also runs automatically every 4 hours.">
       🔁 Retry Failed Refunds
     </button>
+    <button class="btn-outline" onclick="backfillRefundUtrs(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(109,191,109,0.5);color:#6dbf6d;" title="Fetch the bank UTR from PhonePe for refunds that completed before we started recording it. Read-only: stores the reference and nothing else — no status changes, no refunds, no customer messages.">
+      🏦 Backfill Refund UTRs
+    </button>
     <button class="btn-outline" onclick="reconcileShippedOrders(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Check NimbusPost for real delivery status of all Shipped + Out for Delivery orders — fixes stuck statuses">
       📦 Sync Shipped &amp; OFD → Delivered
     </button>
@@ -7612,6 +7615,37 @@ async function bulkReconcilePhonePe(btn) {
     fetchOrders(true);
   } catch (err) {
     alert('Bulk re-check failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// ── Backfill bank UTRs on already-refunded orders ──────────────────────────
+// Refunds that completed before refund_utr existed keep quoting an internal id
+// (REFUND-IC-…-A0) that no bank can trace. Those rows sit at status 'refunded',
+// which no other job revisits — the retry/reconcile only scans orders still OWED
+// a refund — so without this they would never gain a reference the customer can
+// use. Read-only against the gateway: it fetches and stores the UTR, nothing else.
+async function backfillRefundUtrs(btn) {
+  if (!confirm('Fetch the bank UTR from PhonePe for every already-refunded order that has none recorded?\n\nRead-only: it stores the reference and nothing else. No status changes, no refunds issued, no messages sent to customers.')) return;
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Fetching…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/phonepe-retry-refunds-background', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backfill_utr: true }),
+    });
+    let data = {}; try { data = await res.json(); } catch (e) {}
+    if (data.error) throw new Error(data.error);
+    const s = data.summary;
+    if (s) {
+      alert(`UTR backfill complete:\n\n  refunded orders missing a UTR: ${s.scanned}\n  UTR found and saved: ${s.filled}\n  no UTR at PhonePe yet: ${s.no_utr}\n  write errors: ${s.error}\n\nReloading orders…`);
+      fetchOrders(true);
+    } else {
+      alert('✅ UTR backfill started in the background. Reload orders in a minute — refund boxes will show "UTR" instead of a gateway ref.');
+    }
+  } catch (err) {
+    alert('UTR backfill failed: ' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
