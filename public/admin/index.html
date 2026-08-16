@@ -1195,6 +1195,24 @@ select,input,textarea{font-size:1rem;}
 
   <div class="admin-section" id="tab-products">
 
+  <section class="product-panel" id="removedListingsSection">
+    <div class="product-head">
+      <div>
+        <h2>Removed listings</h2>
+        <p>Products currently off sale. <strong>Sold out</strong> means the product page shows “Coming Soon” instead of Add to Cart. <strong>Hidden</strong> means the listing is also gone from search and category pages. Restore puts a product back exactly as it was before it was removed.</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-outline" onclick="fetchRemovedListings(this)">Refresh</button>
+      </div>
+    </div>
+    <div class="toolbar" style="margin-bottom:0.8rem;">
+      <input class="search-box" id="removedSearch" placeholder="🔍 Search removed listings by title or slug" oninput="renderRemovedListings()"/>
+      <span class="hint" id="removedMeta">Removed listings load after login.</span>
+    </div>
+    <div class="product-list" id="removedList"></div>
+    <p class="hint" id="removedCacheNote" style="margin-top:0.7rem;">The storefront caches stock for an hour, at the CDN and again in each visitor's browser — a restored product can take up to that long to become buyable for everyone.</p>
+  </section>
+
   <section class="product-panel" id="productEditorSection">
     <div class="product-head">
       <div>
@@ -2122,6 +2140,7 @@ const ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;  // 5 min
 const selectedOrderIds = new Set();
 let abandonedLeads = [];
 let productRows = [];
+let removedListings = [];
 let selectedProduct = null;
 let newProductImageDataUrl = '';
 let newProductGalleryDataUrls = [];
@@ -4809,6 +4828,157 @@ async function fetchProducts() {
   } catch (err) {
     meta.textContent = 'Product editor not ready: ' + err.message;
     list.innerHTML = '<div class="lead-empty">Run the product_overrides SQL migration, then refresh.</div>';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Removed listings — products taken off sale, and the button to put them back.
+//
+// Two independent levers remove a product, and the panel shows both:
+//   sold-out → product_overrides.stock_qty <= 0, the page shows "Coming Soon"
+//   hidden   → custom_products.is_active = false, gone from search/listings
+// A product can carry one or both. Restore clears whichever apply.
+// ---------------------------------------------------------------------------
+async function fetchRemovedListings(btn) {
+  const meta = document.getElementById('removedMeta');
+  const list = document.getElementById('removedList');
+  if (!(adminToken || adminKey || adminCookieSession) || !meta || !list) return;
+  if (btn) btn.disabled = true;
+  meta.textContent = 'Loading removed listings…';
+  try {
+    const res = await adminFetch('/.netlify/functions/get-products-admin?removed=1');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    removedListings = data.removed || [];
+    restoredThisSession.clear();
+    renderRemovedListings();
+  } catch (err) {
+    meta.textContent = 'Could not load removed listings: ' + err.message;
+    list.innerHTML = '<div class="lead-empty">Removed listings unavailable. Try Refresh.</div>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function renderRemovedListings() {
+  const list = document.getElementById('removedList');
+  const meta = document.getElementById('removedMeta');
+  if (!list) return;
+  const q = (document.getElementById('removedSearch')?.value || '').toLowerCase().trim();
+  const matches = removedListings.filter(r =>
+    !q || [r.title, r.author, r.slug].join(' ').toLowerCase().includes(q));
+  const rows = matches.slice(0, 200);
+
+  if (meta) {
+    meta.textContent = removedListings.length === 0
+      ? 'Nothing is removed — every listing is on sale.'
+      : `${removedListings.length.toLocaleString('en-IN')} removed`
+        + (q ? ` · ${matches.length.toLocaleString('en-IN')} matching` : '')
+        + (rows.length < matches.length ? ` · showing first ${rows.length}` : '');
+  }
+  if (!rows.length) {
+    list.innerHTML = `<div class="lead-empty">${removedListings.length ? 'No removed listing matches that search.' : 'No removed listings.'}</div>`;
+    return;
+  }
+
+  list.innerHTML = rows.map(r => {
+    const badges = (r.reasons || []).map(reason => reason === 'hidden'
+      ? '<span class="override-pill" style="color:#c98a3a;border-color:rgba(201,138,58,0.35);">hidden</span>'
+      : '<span class="override-pill" style="color:#c96a6a;border-color:rgba(201,106,106,0.35);">sold out</span>').join('');
+    return `<div class="product-row" style="cursor:default;" id="removed-row-${esc(r.slug)}">
+      <img src="${esc(productImageSrc(r.image_url))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"/>
+      <div>
+        <div class="product-row-title">${esc(r.title || r.slug)}${badges}</div>
+        <div class="product-row-meta">${esc(r.author || '—')} · ${moneyText(r.price_inr) || '—'}
+          · <a href="/product/${esc(r.slug)}/" target="_blank" rel="noopener" style="color:var(--gold-dim);">view page ↗</a></div>
+        <div class="product-row-meta" data-removed-msg style="display:none;"></div>
+      </div>
+      <button class="btn-green" onclick="restoreListing('${esc(r.slug)}', this)">Restore</button>
+    </div>`;
+  }).join('');
+}
+
+// Entries restored during this page view, so Undo can return them to the list
+// without refetching. Cleared whenever the panel reloads.
+const restoredThisSession = new Map();
+
+async function restoreListing(slug, btn) {
+  const row = btn?.closest('.product-row');
+  const msg = row?.querySelector('[data-removed-msg]');
+  const say = (text, colour) => {
+    if (!msg) return;
+    msg.textContent = text;
+    msg.style.color = colour || 'var(--cream-dim)';
+    msg.style.display = '';
+  };
+  const entry = removedListings.find(r => r.slug === slug);
+  if (!confirm(`Put "${(entry && entry.title) || slug}" back on sale?`)) return;
+
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = 'Restoring…';
+  try {
+    const res = await adminFetch('/.netlify/functions/restore-listing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, action: 'restore' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+
+    // Drop it from the list rather than re-fetching, so restoring several in a
+    // row doesn't reshuffle the rows under the pointer. The entry is kept aside
+    // so Undo can put it back in the count without a round trip.
+    if (entry) restoredThisSession.set(slug, entry);
+    removedListings = removedListings.filter(r => r.slug !== slug);
+    if (row) {
+      row.style.opacity = '0.55';
+      btn.textContent = 'Undo';
+      btn.className = 'btn-outline';
+      btn.onclick = () => removeListingAgain(slug, btn);
+      btn.disabled = false;
+      say(data.message || 'Restored.', 'var(--green)');
+    }
+    const meta = document.getElementById('removedMeta');
+    if (meta) meta.textContent = `${removedListings.length.toLocaleString('en-IN')} removed`;
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = label;
+    say('Restore failed: ' + err.message, '#c96a6a');
+  }
+}
+
+// Undo for a restore clicked by mistake — puts the product straight back to
+// sold out. Only reachable from a row that was just restored in this session.
+async function removeListingAgain(slug, btn) {
+  const row = btn?.closest('.product-row');
+  const msg = row?.querySelector('[data-removed-msg]');
+  btn.disabled = true;
+  btn.textContent = 'Undoing…';
+  try {
+    const res = await adminFetch('/.netlify/functions/restore-listing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, action: 'remove' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+    if (msg) { msg.textContent = 'Removed again — back to sold out.'; msg.style.color = 'var(--cream-dim)'; }
+    // Put it back in the count it was taken out of on restore.
+    const entry = restoredThisSession.get(slug);
+    if (entry && !removedListings.some(r => r.slug === slug)) removedListings.push(entry);
+    restoredThisSession.delete(slug);
+    if (row) row.style.opacity = '';
+    const meta = document.getElementById('removedMeta');
+    if (meta) meta.textContent = `${removedListings.length.toLocaleString('en-IN')} removed`;
+    btn.textContent = 'Restore';
+    btn.className = 'btn-green';
+    btn.onclick = () => restoreListing(slug, btn);
+    btn.disabled = false;
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Undo';
+    if (msg) { msg.textContent = 'Undo failed: ' + err.message; msg.style.color = '#c96a6a'; }
   }
 }
 
@@ -8452,7 +8622,7 @@ function switchTab(tab, pushState = true) {
   // The cookie is deliberately unreadable to JavaScript, so its verified flag
   // is the only client-side signal that the remembered session is authenticated.
   const _authed = adminToken || adminKey || adminCookieSession;
-  if (tab === 'products' && _authed) fetchProducts();
+  if (tab === 'products' && _authed) { fetchProducts(); fetchRemovedListings(); }
   if (tab === 'reels' && _authed) loadSiteReels();
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
   if (tab === 'reviews') fetchPendingReviews();

@@ -38,6 +38,83 @@ exports.handler = async (event) => {
 
   const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
 
+  // ?removed=1 — every listing currently off sale, for the Removed listings
+  // panel. Deliberately its own query rather than something the browser filters
+  // out of the full response: that response carries only the newest 1000 custom
+  // products, so a listing delisted long ago would silently never appear in the
+  // panel and could never be restored from it.
+  if (String((event.queryStringParameters || {}).removed || '') === '1') {
+    try {
+      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ removed: [] }) };
+      }
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+      // Lever 1: a stock override of 0 or less. `.lte` skips NULLs (SQL NULL
+      // comparisons are never true), which is what we want — NULL means "no
+      // manual stock set", i.e. on sale.
+      const [{ data: blocked, error: blockedErr }, { data: hidden, error: hiddenErr }] = await Promise.all([
+        supabase.from('product_overrides').select('slug,stock_qty,title,author,price_inr,image_url').lte('stock_qty', 0),
+        // Lever 2: custom listings hidden from search and category pages.
+        supabase.from('custom_products').select('slug,title,author,price_inr,image_url').eq('is_active', false).limit(5000),
+      ]);
+      if (blockedErr) throw blockedErr;
+      if (hiddenErr) throw hiddenErr;
+
+      // money() turns a null price into "0.00" (Number(null) === 0), which is
+      // both wrong to display and truthy — it would block the catalogue
+      // fallback below from ever filling the real price in.
+      const price = (v) => (v === null || v === undefined || v === '' ? '' : money(v));
+
+      const bySlug = new Map();
+      const note = (slug, reason, src) => {
+        if (!slug) return;
+        const cur = bySlug.get(slug) || { slug, reasons: [], title: '', author: '', price_inr: '', image_url: '', is_custom: false };
+        if (!cur.reasons.includes(reason)) cur.reasons.push(reason);
+        cur.title = cur.title || src.title || '';
+        cur.author = cur.author || src.author || '';
+        cur.price_inr = cur.price_inr || price(src.price_inr);
+        cur.image_url = cur.image_url || src.image_url || '';
+        bySlug.set(slug, cur);
+      };
+      for (const r of (blocked || [])) note(r.slug, 'sold-out', r);
+      for (const r of (hidden || [])) {
+        note(r.slug, 'hidden', r);
+        // note() skips blank slugs, so this lookup can miss.
+        const entry = bySlug.get(r.slug);
+        if (entry) entry.is_custom = true;
+      }
+
+      // Most delisted rows are catalogue books, whose override row carries no
+      // title — fill those in from the catalogue file so the panel is readable.
+      const needTitle = [...bySlug.values()].filter(r => !r.title);
+      if (needTitle.length) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(findCataloguePath(), 'utf8'));
+          const cat = new Map();
+          for (const b of raw) {
+            const sid = String(b.shopify_id || '');
+            if (!sid || !b.title) continue;
+            cat.set(makeSlug(b.title, sid), b);
+          }
+          for (const r of needTitle) {
+            const b = cat.get(r.slug);
+            if (!b) continue;
+            r.title = b.title || '';
+            r.author = r.author || b.author || '';
+            r.price_inr = r.price_inr || price(b.price_inr);
+            r.image_url = r.image_url || b.image_url || '';
+          }
+        } catch (_) { /* titles stay blank; the panel falls back to the slug */ }
+      }
+
+      const removed = [...bySlug.values()].sort((a, b) => (a.title || a.slug).localeCompare(b.title || b.slug));
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ removed }) };
+    } catch (err) {
+      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
+    }
+  }
+
   // ?q= — server-side search over custom_products. The full-list response
   // below can only carry the newest 1000 custom products (Supabase row cap;
   // returning all ~20k full rows would also exceed Netlify's 6 MB limit), so
