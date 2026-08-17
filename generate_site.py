@@ -7449,7 +7449,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
           </div>
           <div class="form-group" style="margin:0;">
             <label for="ch-phone">Phone Number *</label>
-            <input id="ch-phone" type="tel" placeholder="10-digit mobile" autocomplete="tel"/>
+            <input id="ch-phone" type="tel" placeholder="10-digit mobile" autocomplete="tel" inputmode="tel" oninput="sanitizePhoneField(this)"/>
           </div>
         </div>
 
@@ -8254,6 +8254,37 @@ function handlePin(val) {
   }, 500);
 }
 
+// ── Phone field hygiene ────────────────────────────────────────────────────
+// Browser autofill mis-maps this field: on adjacent Full Name / Phone inputs it
+// can treat the pair as given-name / family-name and drop a SURNAME into the
+// phone box, `autocomplete="tel"` notwithstanding. The customer then sees a
+// filled-looking field, gets "enter a valid 10-digit phone number" on submit,
+// and reports there is no mobile field at all — because the one there looks done.
+// (arvindsinghee@yahoo.in, 15 Aug 2026: two abandoned checkouts, both stored
+// name "arvind" / phone "singhee". He never completed, and lost the sale price.)
+//
+// Stripping letters makes the bad value visibly vanish so the field reads empty
+// and asks to be filled. Digits, +, spaces, dashes and brackets are kept: people
+// legitimately type "+91 98765 43210", and truncating to 10 would silently
+// mangle that into a wrong number.
+function sanitizePhoneField(el) {
+  if (!el) return;
+  const cleaned = String(el.value || '').replace(/[^0-9+\\-\\s()]/g, '');
+  if (cleaned !== el.value) el.value = cleaned;
+}
+
+// Point the customer at the field that is actually wrong. A bare alert() leaves
+// them hunting, which is how "no option to enter mobile number" happens.
+function failField(id, message) {
+  alert(message);
+  const el = document.getElementById(id);
+  if (el) {
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) { el.scrollIntoView(); }
+    el.focus({ preventScroll: true });
+  }
+  return null;
+}
+
 // ── Collect + validate address ─────────────────────────────────────────────
 function collectAddr() {
   const get = id => document.getElementById(id)?.value.trim() || '';
@@ -8269,11 +8300,11 @@ function collectAddr() {
   const city  = get('ch-city');
   const state = get('ch-state');
 
-  if (!name)             { alert('Please enter your full name.'); return null; }
-  if (phone.replace(/\\D/g,'').length < 10) { alert('Please enter a valid 10-digit phone number.'); return null; }
-  if (!/^\\S+@\\S+\\.\\S+$/.test(email)) { alert('Please enter a valid email address.'); return null; }
-  if (!addr)             { alert('Please enter your delivery address.'); return null; }
-  if (pin.length !== 6)  { alert('Please enter a valid 6-digit pincode.'); return null; }
+  if (!name)             { return failField('ch-name', 'Please enter your full name.'); }
+  if (phone.replace(/\\D/g,'').length < 10) { return failField('ch-phone', 'Please enter a valid 10-digit mobile number.'); }
+  if (!/^\\S+@\\S+\\.\\S+$/.test(email)) { return failField('ch-email', 'Please enter a valid email address.'); }
+  if (!addr)             { return failField('ch-addr', 'Please enter your delivery address.'); }
+  if (pin.length !== 6)  { return failField('ch-pin', 'Please enter a valid 6-digit pincode.'); }
   // Deliberately no client-side existence block: India Post's dataset is
   // incomplete and would turn away real customers. The order endpoints refuse
   // only pincodes NO courier serves, and their error surfaces here.
