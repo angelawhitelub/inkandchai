@@ -1416,6 +1416,7 @@ select,input,textarea{font-size:1rem;}
           <div class="product-editor-actions">
             <button class="btn-green" onclick="saveProductOverride()">Save Product Override</button>
             <button class="btn-outline" onclick="openSelectedProduct()">Open Product Page</button>
+            <button id="prodRemoveBtn" class="btn-outline" onclick="toggleProductRemoved(this)" style="border-color:rgba(224,80,80,0.35);color:#c93636;">Remove From Sale</button>
             <button class="btn-outline" onclick="clearProductOverride()" style="border-color:rgba(224,80,80,0.35);color:#c93636;">Disable Override</button>
             <button id="prodDeleteBtn" onclick="deleteProductPage()" style="display:none;background:transparent;border:1px solid rgba(224,80,80,0.55);color:#e05050;padding:0.65rem 1.4rem;font-family:'Manrope',sans-serif;font-size:0.72rem;letter-spacing:0.16em;text-transform:uppercase;cursor:pointer;">🗑 Delete Product Page</button>
           </div>
@@ -4902,6 +4903,72 @@ function renderRemovedListings() {
 // without refetching. Cleared whenever the panel reloads.
 const restoredThisSession = new Map();
 
+// Is the selected product currently off sale? Mirrors the server's test: a
+// stock override of 0 or less, or a custom listing marked inactive. A NULL /
+// absent stock_qty means "no manual stock set" — on sale.
+function productIsRemoved(row) {
+  if (!row) return false;
+  const sq = row.override && row.override.stock_qty;
+  const soldOut = sq !== null && sq !== undefined && Number(sq) <= 0;
+  const hidden = row.is_custom && row.is_active === false;
+  return soldOut || hidden;
+}
+
+// Keeps the editor's Remove/Restore button matching the product on screen.
+function syncProductRemoveButton() {
+  const btn = document.getElementById('prodRemoveBtn');
+  if (!btn) return;
+  if (!selectedProduct) { btn.style.display = 'none'; return; }
+  const removed = productIsRemoved(selectedProduct);
+  btn.style.display = '';
+  btn.disabled = false;
+  btn.textContent = removed ? 'Restore To Sale' : 'Remove From Sale';
+  btn.style.borderColor = removed ? 'rgba(35,122,59,0.45)' : 'rgba(224,80,80,0.35)';
+  btn.style.color = removed ? 'var(--green)' : '#c93636';
+}
+
+// Take the selected product off sale, or put it back. Same endpoint the
+// Removed listings panel uses, so both routes behave identically.
+async function toggleProductRemoved(btn) {
+  const row = selectedProduct;
+  if (!row) return;
+  const msg = document.getElementById('productSaveMsg');
+  const removed = productIsRemoved(row);
+  const action = removed ? 'restore' : 'remove';
+  const title = (mergedProduct(row).title) || row.slug;
+
+  const question = removed
+    ? `Put "${title}" back on sale?`
+    : `Take "${title}" off sale?\n\nThe product page will show "Coming Soon" instead of Add to Cart. Existing orders are not affected.`;
+  if (!confirm(question)) return;
+
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = removed ? 'Restoring…' : 'Removing…';
+  try {
+    const res = await adminFetch('/.netlify/functions/restore-listing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: row.slug, action }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+
+    // Reflect the new state locally so the button flips without a full reload.
+    row.override = row.override || { slug: row.slug };
+    row.override.stock_qty = removed ? null : 0;
+    if (row.is_custom) row.is_active = removed ? true : row.is_active;
+    if (msg) { msg.textContent = data.message || 'Done.'; msg.style.color = 'var(--cream-dim)'; }
+    syncProductRemoveButton();
+    // Also refresh the panel above so its count and rows stay truthful.
+    fetchRemovedListings();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = label;
+    if (msg) { msg.textContent = (removed ? 'Restore' : 'Remove') + ' failed: ' + err.message; msg.style.color = '#c96a6a'; }
+  }
+}
+
 async function restoreListing(slug, btn) {
   const row = btn?.closest('.product-row');
   const msg = row?.querySelector('[data-removed-msg]');
@@ -5101,6 +5168,7 @@ function selectProduct(slug) {
     if (imgPrev) { imgPrev.src = v; imgPrev.style.display = v ? 'block' : 'none'; }
   };
   document.getElementById('productSaveMsg').textContent = row.override ? 'This product has a live override.' : 'No override saved yet.';
+  syncProductRemoveButton();
   // Delete is only possible for custom products (DB-backed dynamic pages).
   // Catalogue books are baked static files — deleting them needs a redirect.
   const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
