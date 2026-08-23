@@ -32,6 +32,7 @@ const NP_BASE = 'https://api.nimbuspost.com/v1';
 
 // Order states that record where the MONEY is. A courier scan must never
 // overwrite one of them — see the guard in the handler.
+const { cancellationAllowed, CANCEL_MIN_AGE_DAYS } = require('./utils/cancellation-guard');
 const REFUND_STATES = ['refunded', 'partially_refunded', 'refund_pending', 'refund_failed'];
 
 const CORS = {
@@ -263,6 +264,24 @@ exports.handler = async (event) => {
         console.log(`[NimbusPost Reconcile] ${order.razorpay_order_id || order.id}: courier says ${ourStatus}, order is ${order.status} — status kept`);
         summary.no_change++;
         continue;
+      }
+
+      // ── Hard 10-day guard (mirrors nimbuspost-webhook.js) ──────────────────
+      // The RANK check below happens to drop 'cancelled' today, because
+      // cancelled has no rank and scores 0. That is incidental, not a decision —
+      // adding cancelled to RANK, or reordering these checks, would silently
+      // re-open the hole. State the rule explicitly instead of relying on it.
+      if (ourStatus === 'cancelled') {
+        const verdict = cancellationAllowed(order);
+        if (!verdict.allowed) {
+          await supabase.from('orders').update({
+            last_nimbuspost_status: String(rawStatus).slice(0, 200),
+            last_nimbuspost_event_at: new Date().toISOString(),
+          }).eq('id', order.id);
+          console.warn(`[NimbusPost Reconcile] BLOCKED cancel for ${order.razorpay_order_id || order.id}: ${verdict.reason} (min ${CANCEL_MIN_AGE_DAYS}d)`);
+          summary.no_change++;
+          continue;
+        }
       }
 
       // Don't downgrade (e.g. delivered → out_for_delivery)

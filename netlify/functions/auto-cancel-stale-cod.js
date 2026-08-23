@@ -8,6 +8,7 @@ const { requireAdmin } = require('./utils/admin-auth');
 const { cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
+const { cancellationAllowed, CANCEL_MIN_AGE_DAYS } = require('./utils/cancellation-guard');
 const { sendEmail } = require('./utils/email');
 const { sendText } = require('./utils/whatsapp');
 
@@ -17,7 +18,10 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-const THRESHOLD_DAYS = 7;
+// Was 7, which cancelled orders three days inside the protected window. The
+// threshold is now the guard itself, so this job and the courier sync can never
+// drift apart: raising one raises both.
+const THRESHOLD_DAYS = CANCEL_MIN_AGE_DAYS;
 const MAX_PER_RUN = 25;
 const CUSTOMER_REASON = 'The book in your order was out of stock with us, so we had to cancel your order. We are sorry for the inconvenience.';
 
@@ -113,12 +117,26 @@ async function runSweep(supabase, { dryRun = false } = {}) {
       await notifyCancellationFailure(order, np.error);
     }
 
+    // Belt and braces: the cutoff above filters the QUERY, this checks the ROW.
+    // A stale claim, a retry, or a future edit to the query could otherwise put
+    // an order here that is younger than the guard allows.
+    const verdict = cancellationAllowed(order);
+    if (!verdict.allowed) {
+      await supabase.from('orders').update({ auto_cancel_claimed_at: null }).eq('id', order.id);
+      console.warn(`[stale-cod] BLOCKED cancel for ${displayId(order)}: ${verdict.reason} (min ${CANCEL_MIN_AGE_DAYS}d) — claim released`);
+      summary.blocked_too_young = (summary.blocked_too_young || 0) + 1;
+      continue;
+    }
+
     const cancelledAt = new Date().toISOString();
     const npError = np.ok ? null : `NimbusPost panel cancellation failed: ${np.error || 'unknown error'}`.slice(0, 1000);
     const update = await supabase.from('orders').update({
       status: 'cancelled',
       auto_cancel_claimed_at: null,
       auto_cancelled_at: cancelledAt,
+      // Stable identifier, not a duration: ~2,000 historical rows carry this
+      // exact string and the admin badge filters on it. The actual threshold is
+      // CANCEL_MIN_AGE_DAYS above — do not encode the number here again.
       cancellation_source: 'no_awb_cod_7_day',
       cancellation_reason: CUSTOMER_REASON,
       auto_cancel_last_error_at: np.ok ? null : cancelledAt,

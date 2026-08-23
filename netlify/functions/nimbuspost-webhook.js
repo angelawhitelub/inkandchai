@@ -29,6 +29,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail }     = require('./utils/email');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const { cancellationAllowed, CANCEL_MIN_AGE_DAYS } = require('./utils/cancellation-guard');
 const {
   npTrackUrl,
   emailBase,
@@ -403,6 +404,26 @@ exports.handler = async (event) => {
           await notifyOwnerIssue(order, ourStatus, message, location).catch(() => {});
         }
         continue;
+      }
+
+      // ── Hard 10-day guard ──────────────────────────────────────────────────
+      // NimbusPost gives up on shipments it cannot pick and reports them
+      // "cancelled" from ~7.6 days — well inside the window where the parcel is
+      // still ours to chase. Mirroring that onto the order kills it AND
+      // auto-refunds it if prepaid, so an order the customer is still waiting
+      // for silently ends. Record what the courier said, tell the owner, and
+      // leave the order alone until it is genuinely old enough.
+      if (ourStatus === 'cancelled') {
+        const verdict = cancellationAllowed(order);
+        if (!verdict.allowed) {
+          await supabase.from('orders').update({
+            last_nimbuspost_status: String(rawStatus).slice(0, 200),
+            last_nimbuspost_event_at: eventTimestamp(evt),
+          }).eq('id', order.id);
+          console.warn(`[NimbusPost] BLOCKED cancel for ${order.razorpay_order_id || order.id}: ${verdict.reason} (min ${CANCEL_MIN_AGE_DAYS}d) — courier state recorded, order untouched`);
+          await notifyOwnerIssue(order, 'courier-cancelled-too-early', `Courier marked this cancelled but ${verdict.reason}. Order left as ${order.status}.`, location).catch(() => {});
+          continue;
+        }
       }
 
       const previousStatus = order.status;
