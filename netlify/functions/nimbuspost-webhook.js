@@ -30,6 +30,7 @@ const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail }     = require('./utils/email');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { cancellationAllowed, CANCEL_MIN_AGE_DAYS } = require('./utils/cancellation-guard');
+const { courierTimeToIso } = require('./utils/courier-time');
 const {
   npTrackUrl,
   emailBase,
@@ -136,13 +137,12 @@ function normalizeStatus(statusStr) {
   return null;
 }
 
+// NimbusPost sends zone-less IST ("2021-02-26 16:19:59"). `new Date(raw)` reads
+// a zone-less string in the SERVER's timezone, so on Netlify's UTC boxes every
+// event landed 5.5 hours in the future — see utils/courier-time.js for the
+// measurements. Parsing is explicit now and no longer depends on where this runs.
 function eventTimestamp(evt) {
-  const raw = evt?.event_time || evt?.timestamp || evt?.updated_at;
-  if (raw) {
-    const parsed = new Date(raw);
-    if (Number.isFinite(parsed.getTime())) return parsed.toISOString();
-  }
-  return new Date().toISOString();
+  return courierTimeToIso(evt?.event_time || evt?.timestamp || evt?.updated_at);
 }
 
 // npTrackUrl + emailBase are imported from ./utils/delivery-notifications
