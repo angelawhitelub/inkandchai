@@ -26,6 +26,9 @@ const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-
 const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
 const {
+  findAwaitingOrders, applyRecoveredDetails, isAwaitingDetails,
+} = require('./utils/order-detail-recovery');
+const {
   isOptOutKeyword, isOptInKeyword, isOptedOut,
   OPT_OUT_CONFIRMATION, OPT_IN_CONFIRMATION,
 } = require('./utils/bot-optout');
@@ -514,7 +517,41 @@ function formatOrderContext(order, displayId) {
   return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nTracking: ${track}\nTrack URL: ${trackUrl}${formatRefundContext(order)}`;
 }
 
+/**
+ * Orders whose books and address were lost in the 24 Aug outage. The customer
+ * paid, we know how much, and everything else has to come back from them.
+ *
+ * This is checked on EVERY message from the customer, not just ones that look
+ * like an order query: they are replying to us, so their message is usually
+ * just an address with no keyword in it at all.
+ */
+async function awaitingDetailsContext(from) {
+  try {
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const orders = await findAwaitingOrders(db, { phone: from, limit: 3 });
+    if (!orders.length) return '';
+    return orders.map((o) => {
+      const paid = `₹${(o.amount_paise / 100).toLocaleString('en-IN')}`;
+      const partial = o.status === 'partial_cod_pending';
+      return 'DETAILS MISSING FOR A PAID ORDER — THIS IS THE PRIORITY FOR THIS CONVERSATION.\n'
+        + `Order ID: ${o.razorpay_order_id}\n`
+        + `The customer paid ${paid}${partial ? ' as a 10% advance on a Cash on Delivery order' : ''} on our website and the payment is confirmed.\n`
+        + 'A technical fault at our end lost the delivery address and the list of books on this order. Nothing else is missing and their money is safe.\n'
+        + 'Ask them, warmly and briefly, for exactly two things: (1) their complete delivery address INCLUDING the 6-digit pincode, and (2) the name(s) of the book(s) they ordered.\n'
+        + 'Ask for both in ONE message. Do not ask for anything else — not their name, not payment, not the order id.\n'
+        + 'The moment you have BOTH, call the provide_missing_order_details tool. If they give only one, thank them and ask only for the other.\n'
+        + 'Never invent or guess a book title or an address. Use only what they actually typed.';
+    }).join('\n\n');
+  } catch (err) {
+    console.error('[detail-recovery] context failed:', err.message);
+    return '';
+  }
+}
+
 async function buildOrderContext(from, userText) {
+  const awaiting = await awaitingDetailsContext(from);
+  if (awaiting) return awaiting;
+
   const orderId = extractOrderId(userText);
   if (orderId) {
     const order = await lookupOrder(orderId);
@@ -635,6 +672,21 @@ const OPENAI_TOOLS = [{
         notes:         { type: 'string', description: 'Any extra notes (quantity, language, edition, etc.)' },
       },
       required: ['customer_name', 'address', 'books', 'payment_mode'],
+    },
+  },
+}, {
+  type: 'function',
+  function: {
+    name: 'provide_missing_order_details',
+    description: 'Record the delivery address and/or the books for an EXISTING paid order whose details were lost by a fault at our end. Call this ONLY when ORDER CONTEXT says details are missing for this customer, and only with values the customer actually typed in this conversation. Call it as soon as you have either half — you do not have to wait for both. NEVER guess, complete, or correct a book title or an address; pass them through verbatim. This does not create a new order and never takes payment.',
+    parameters: {
+      type: 'object',
+      properties: {
+        order_id: { type: 'string', description: 'The IC-… order id from ORDER CONTEXT. Omit only if the context names no order.' },
+        address:  { type: 'string', description: 'The complete delivery address exactly as the customer typed it, including the 6-digit pincode. Omit if they have not given it yet.' },
+        books:    { type: 'string', description: 'The book title(s) exactly as the customer typed them, comma-separated if there are several. Omit if they have not given them yet.' },
+      },
+      required: [],
     },
   },
 }, {
@@ -762,6 +814,10 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
         let args = {};
         try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
         result = await submitOrderRequest(phone, args);
+      } else if (call.function?.name === 'provide_missing_order_details') {
+        let args = {};
+        try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
+        result = await recordMissingDetails(phone, args);
       } else if (call.function?.name === 'cancel_order') {
         let args = {};
         try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
@@ -785,6 +841,88 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
 // still lands the right amount; the owner is notified about unmatched titles
 // so they can correct it manually.
 const UNMATCHED_BOOK_FALLBACK_RS = 349;
+
+// ── Fill in the details of an order the 24 Aug outage stripped ───────────────
+/**
+ * The customer has told us the address and/or the books for an order that lost
+ * them. Everything the model passes is treated as raw customer text; what makes
+ * it safe to write unattended is the arithmetic in order-detail-recovery: a
+ * book list is only saved when it plus shipping equals what they actually paid.
+ * Anything short of that saves the address, leaves the cart alone and calls a
+ * human, because shipping the wrong book is worse than a delay.
+ */
+async function recordMissingDetails(phone, args = {}) {
+  try {
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const orders = await findAwaitingOrders(db, { phone, limit: 5 });
+    if (!orders.length) return { ok: false, error: 'This customer has no order waiting for details. Do not ask them for an address or book list.' };
+
+    const wanted = String(args.order_id || '').trim().toUpperCase();
+    const order = (wanted && orders.find(o => o.razorpay_order_id.toUpperCase() === wanted)) || orders[0];
+
+    const out = await applyRecoveredDetails(db, order, {
+      address: String(args.address || '').trim(),
+      books: String(args.books || '').trim(),
+    });
+
+    const stillNeeded = [];
+    if (!out.address_saved) stillNeeded.push('the complete delivery address with pincode');
+    if (!out.books_saved) stillNeeded.push('the name(s) of the book(s)');
+
+    if (out.address_saved && out.books_saved) {
+      await notifyOwnerDetailsRecovered(order, out, 'complete');
+      return {
+        ok: true, order_id: order.razorpay_order_id, complete: true,
+        saved: { address: out.address, books: out.cart.map(i => `${i.qty}x ${i.title}`).join(', ') },
+        say: 'Thank them, confirm the books and address are now on the order, and tell them it will be dispatched shortly. Do not ask for anything else.',
+      };
+    }
+
+    // Something did not verify. A human decides, and the customer is not told a
+    // half-recorded order is on its way.
+    if (out.needs_review || (args.books && !out.books_saved)) {
+      await notifyOwnerDetailsRecovered(order, out, 'needs review');
+    }
+    return {
+      ok: true, order_id: order.razorpay_order_id, complete: false,
+      recorded: { address: out.address_saved, books: out.books_saved },
+      still_needed: stillNeeded,
+      say: out.needs_review && args.books
+        ? 'Thank them. Say the book details need a quick check by a colleague who will confirm shortly. Ask them to confirm the exact title if it is easy for them. Do NOT promise dispatch yet.'
+        : `Thank them for what they sent and ask only for: ${stillNeeded.join(' and ')}.`,
+    };
+  } catch (err) {
+    console.error('[detail-recovery] record failed:', err.message);
+    return { ok: false, error: 'Could not save that just now. Apologise briefly and say a colleague will follow up.' };
+  }
+}
+
+async function notifyOwnerDetailsRecovered(order, out, verdict) {
+  const to = process.env.STORE_OWNER_EMAIL;
+  if (!to) return;
+  try {
+    const { sendEmail } = require('./utils/email');
+    const p = out.pricing || {};
+    const books = (out.cart || []).map(i => `${i.qty}x ${i.title} — Rs ${i.price}`).join('<br/>') || '(none matched)';
+    await sendEmail({
+      to,
+      subject: `${verdict === 'complete' ? '✅' : '⚠️'} ${order.razorpay_order_id} — customer sent the missing details (${verdict})`,
+      html: `<div style="font-family:system-ui,sans-serif;font-size:14px;line-height:1.7">
+        <h2 style="font-weight:500">${order.razorpay_order_id} — ${verdict}</h2>
+        <p><strong>${order.customer_name || ''}</strong> · ${order.customer_phone || ''} · paid Rs ${(order.amount_paise || 0) / 100}</p>
+        <p><strong>Address:</strong><br/>${out.address || '(not saved)'}</p>
+        <p><strong>Books:</strong><br/>${books}</p>
+        ${p.expected !== undefined ? `<p>Books Rs ${p.goods} + shipping Rs ${p.shipping} = Rs ${p.expected}; customer paid Rs ${p.paid}</p>` : ''}
+        ${out.reason ? `<p style="color:#b00"><strong>Needs a look:</strong> ${out.reason}</p>` : ''}
+        <p>${verdict === 'complete'
+          ? 'Both halves verified against the payment and written to the order. It is ready to push to NimbusPost.'
+          : 'The cart was NOT written. Open the order in admin and fill it in by hand.'}</p>
+      </div>`,
+    });
+  } catch (err) {
+    console.error('[detail-recovery] owner email failed:', err.message);
+  }
+}
 
 // ── Cancel the customer's order from the bot ─────────────────────────────────
 // Matched by the last 10 digits of their WhatsApp number. Cancels the most
