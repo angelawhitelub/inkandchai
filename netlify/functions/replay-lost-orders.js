@@ -21,6 +21,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { replayLostOrders, countLostOrders, reconcileMirror } = require('./utils/order-fallback');
+const { reconcileFromNeon, isEnabled: neonEnabled } = require('./utils/neon-mirror');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -51,7 +52,8 @@ exports.handler = async (event) => {
       const pending = await countLostOrders(event);
       const supabase = supabaseClient();
       const mirror = supabase ? await reconcileMirror(event, supabase, { dryRun: true }) : null;
-      return json(200, { success: true, dry_run: true, pending, mirror });
+      const neon = supabase ? await reconcileFromNeon(supabase, { dryRun: true }) : null;
+      return json(200, { success: true, dry_run: true, pending, mirror, neon });
     }
 
     const supabase = supabaseClient();
@@ -60,7 +62,8 @@ exports.handler = async (event) => {
     const limit = Math.min(Math.max(Number(body.limit) || 100, 1), 500);
     const summary = await replayLostOrders(event, supabase, { limit });
     const mirror = await reconcileMirror(event, supabase, { dryRun: !!body.reconcile_dry_run });
-    return json(200, { success: true, summary, mirror });
+    const neon = await reconcileFromNeon(supabase, { dryRun: !!body.reconcile_dry_run });
+    return json(200, { success: true, summary, mirror, neon });
   }
 
   // Scheduled run.
@@ -80,6 +83,13 @@ exports.handler = async (event) => {
     console.error('[replay-lost-orders] mirror reconcile:', JSON.stringify(mirror));
   }
 
+  // Third copy: the Neon standby. Checked independently of the blob mirror on
+  // purpose — one of them is meant to still be there when the other is not.
+  const neon = await reconcileFromNeon(supabase, {});
+  if (neon.restored || neon.failed) {
+    console.error('[replay-lost-orders] neon reconcile:', JSON.stringify(neon));
+  }
+
   if (summary.found) {
     console.log('[replay-lost-orders]', JSON.stringify(summary));
   }
@@ -89,5 +99,5 @@ exports.handler = async (event) => {
     // will not fix it, so say so loudly rather than looping forever in silence.
     console.error(`[replay-lost-orders] ${summary.abandoned} order(s) past the retry cap and need a human`);
   }
-  return json(200, { success: true, summary, mirror });
+  return json(200, { success: true, summary, mirror, neon, neon_enabled: neonEnabled() });
 };

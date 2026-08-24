@@ -26,6 +26,7 @@ const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 const { freedomSaleDiscount } = require('./utils/freedom-sale');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
+const { neonMirrorOrder } = require('./utils/neon-mirror');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -262,6 +263,7 @@ exports.handler = async (event) => {
     cart_items:          cart,
   };
   await mirrorOrder(event, orderRow, { source: 'phonepe-create-order' });
+  await neonMirrorOrder(orderRow, { source: 'phonepe-create-order' });
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);

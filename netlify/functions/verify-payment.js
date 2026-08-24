@@ -13,6 +13,7 @@ const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
+const { neonMirrorOrder } = require('./utils/neon-mirror');
 
 // Authoritative amount comes from Razorpay, not the browser.
 async function fetchRazorpayOrderAmount(orderId) {
@@ -213,6 +214,7 @@ exports.handler = async (event) => {
   let orderSaved = false;
 
   await mirrorOrder(event, orderRow, { source: 'verify-payment' });
+  await neonMirrorOrder(orderRow, { source: 'verify-payment' });
 
   try {
     const supabase = createClient(

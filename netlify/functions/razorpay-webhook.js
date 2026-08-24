@@ -20,6 +20,7 @@ const { generateCardForOrder } = require('./utils/scratch-cards');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { makeOrderId } = require('./utils/pricing');
 const { mirrorOrder, stashLostOrder } = require('./utils/order-fallback');
+const { neonMirrorOrder } = require('./utils/neon-mirror');
 
 const CORS = { 'Content-Type': 'application/json' };
 
@@ -283,6 +284,7 @@ exports.handler = async (event) => {
     cart_items:          cartItems,
   };
   await mirrorOrder(event, orderRow, { source: 'razorpay-webhook' });
+  await neonMirrorOrder(orderRow, { source: 'razorpay-webhook' });
   const { error: saveErr } = await supabase.from('orders').insert(orderRow);
 
   if (saveErr) {

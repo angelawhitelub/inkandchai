@@ -15,6 +15,7 @@ const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { freedomSaleDiscount } = require('./utils/freedom-sale');
+const { neonMirrorOrder } = require('./utils/neon-mirror');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -185,6 +186,7 @@ exports.handler = async (event) => {
   // when the database is unreachable, so it must not depend on anything below
   // it succeeding.
   await mirrorOrder(event, orderRow, { source: 'cod-order' });
+  await neonMirrorOrder(orderRow, { source: 'cod-order' });
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);

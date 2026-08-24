@@ -8,6 +8,7 @@
     "deploy": "netlify deploy --prod"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@netlify/blobs": "^11.0.1",
     "@simplewebauthn/server": "^13.1.1",
     "@supabase/supabase-js": "^2.43.4",

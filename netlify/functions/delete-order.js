@@ -12,6 +12,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { tombstoneMirroredOrder } = require('./utils/order-fallback');
+const { neonTombstoneOrder } = require('./utils/neon-mirror');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -53,6 +54,7 @@ exports.handler = async (event) => {
     for (const row of (doomed || [])) {
       if (row?.razorpay_order_id) {
         await tombstoneMirroredOrder(event, row.razorpay_order_id, 'deleted from admin');
+        await neonTombstoneOrder(row.razorpay_order_id, 'deleted from admin');
       }
     }
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, deleted: count ?? ids.length }) };
