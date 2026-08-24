@@ -7,6 +7,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
+const { stashLostOrder } = require('./utils/order-fallback');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricing');
@@ -153,18 +154,39 @@ exports.handler = async (event) => {
   }
 
   // ── 1. Save to Supabase (non-fatal — emails still send even if DB is down) ──
+  const amountPaiseVal = Math.round(total * 100);
+  // High-value COD (> ₹999) must be confirmed by the customer over WhatsApp
+  // before we ship it — cuts RTO losses. It stays "awaiting confirmation" until
+  // they tap Confirm/Cancel on the WhatsApp template.
+  const needsConfirm = total > 999;
+  const initialStatus = needsConfirm ? 'cod_awaiting_confirmation' : 'cod_pending';
+
+  // Built before the try so the catch below can still stash it: when Supabase is
+  // unreachable the duplicate-check query throws before the insert is reached,
+  // and an order that never got as far as being attempted is still an order.
+  const orderRow = {
+    razorpay_order_id:   orderId,
+    razorpay_payment_id: null,
+    amount_paise:        amountPaiseVal,
+    status:              initialStatus,
+    customer_name:       customer.name    || '',
+    customer_email:      customer.email   || '',
+    customer_phone:      customer.phone,
+    customer_address:    customer.address || '',
+    cart_items:          cart,
+    user_id:             user_id || null,
+  };
+  // Set once the row is safely in the database, so a throw from any of the
+  // follow-up work inside the same try does not park a copy of an order that
+  // already exists.
+  let orderSaved = false;
+
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
     // ── Idempotency guard ──────────────────────────────────────────────────────
     // COD has no payment id, so a double-submit / retry would create a duplicate
     // order. Skip if an identical COD order (same phone + amount) was just placed.
-    const amountPaiseVal = Math.round(total * 100);
-    // High-value COD (> ₹999) must be confirmed by the customer over WhatsApp
-    // before we ship it — cuts RTO losses. It stays "awaiting confirmation" until
-    // they tap Confirm/Cancel on the WhatsApp template.
-    const needsConfirm = total > 999;
-    const initialStatus = needsConfirm ? 'cod_awaiting_confirmation' : 'cod_pending';
     const dupeWindow = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const { data: recentDupe } = await supabase
       .from('orders')
@@ -183,19 +205,18 @@ exports.handler = async (event) => {
       };
     }
 
-    const { error } = await supabase.from('orders').insert({
-      razorpay_order_id:   orderId,
-      razorpay_payment_id: null,
-      amount_paise:        amountPaiseVal,
-      status:              initialStatus,
-      customer_name:       customer.name    || '',
-      customer_email:      customer.email   || '',
-      customer_phone:      customer.phone,
-      customer_address:    customer.address || '',
-      cart_items:          cart,
-      user_id:             user_id || null,
-    });
-    if (error) console.error('Supabase error (non-fatal):', error.message);
+    const { error } = await supabase.from('orders').insert(orderRow);
+    // A rejected insert used to be logged and forgotten. On 24 Aug that lost 20
+    // real orders — customers had confirmation emails and NimbusPost had the
+    // shipments, but nothing had a row here. The order now goes to Netlify
+    // Blobs, a different service with a different failure domain, and
+    // replay-lost-orders drains it once the database answers again.
+    if (error) {
+      console.error('Supabase insert failed, stashing order:', error.message);
+      await stashLostOrder(event, orderRow, { source: 'cod-order', reason: error.message });
+    } else {
+      orderSaved = true;
+    }
 
     // ── Auto-push to Shiprocket panel ─────────────────────────────────────
     // Skip for orders awaiting WhatsApp confirmation — don't ship until confirmed.
@@ -229,6 +250,11 @@ exports.handler = async (event) => {
 
   } catch (err) {
     console.error('Supabase error (non-fatal):', err.message);
+    // Thrown rather than returned — typically the whole database being
+    // unreachable, which is when orders are most likely to be lost.
+    if (!orderSaved) {
+      await stashLostOrder(event, orderRow, { source: 'cod-order:exception', reason: err.message });
+    }
   }
 
   // ── 2. Email YOU (store owner) ────────────────────────────────────────────

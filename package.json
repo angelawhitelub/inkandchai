@@ -3,14 +3,15 @@
   "version": "1.0.0",
   "description": "Akshar & Co. — Fine Books",
   "scripts": {
-    "dev":   "netlify dev",
+    "dev": "netlify dev",
     "build": "python3 generate_site.py",
     "deploy": "netlify deploy --prod"
   },
   "dependencies": {
-    "razorpay": "^2.9.2",
+    "@netlify/blobs": "^11.0.1",
+    "@simplewebauthn/server": "^13.1.1",
     "@supabase/supabase-js": "^2.43.4",
-    "@simplewebauthn/server": "^13.1.1"
+    "razorpay": "^2.9.2"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.658.0"

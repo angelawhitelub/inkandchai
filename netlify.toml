@@ -22,6 +22,14 @@
 [functions."auto-mark-delivered"]
   schedule = "0 4 * * *"
 
+# Drain the lost-orders blob pen: orders the database refused while it was
+# unreachable (paused project, outage) are parked in Netlify Blobs by the
+# checkout functions and inserted here once Supabase answers again. An empty
+# pen costs one list() call, so a 5-minute interval is effectively free and
+# keeps recovery ahead of anyone noticing an order is missing from admin.
+[functions."replay-lost-orders"]
+  schedule = "*/5 * * * *"
+
 # Cancel pure-COD orders only when no AWB has been assigned for seven days.
 # Orders that already have an AWB are never cancelled for lack of movement.
 # Prepaid and partial-COD orders are always excluded.

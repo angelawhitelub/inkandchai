@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
+const { stashLostOrder } = require('./utils/order-fallback');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
@@ -190,6 +191,27 @@ exports.handler = async (event) => {
   const _sbForId = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const inkOrderId = await makeOrderId('IC', cart, _sbForId);
 
+  // Built before the try, not inside it: everything below the try is wrapped by
+  // a catch that swallows DB failures, and that includes the idempotency query.
+  // If Supabase is unreachable the very first await throws, so a payload built
+  // further down would not exist yet and a captured payment would vanish.
+  const orderRow = {
+    razorpay_order_id:   inkOrderId,          // IC- format — consistent across all payment methods
+    razorpay_payment_id: razorpay_payment_id, // pay_XXXXX — actual Razorpay payment ID (for refunds)
+    amount_paise:     trustedAmountPaise,
+    status:           isPartial ? 'partial_cod_pending' : 'paid',
+    customer_name:    customer?.name    || '',
+    customer_email:   customer?.email   || '',
+    customer_phone:   customer?.phone   || '',
+    customer_address: customer?.address || '',
+    cart_items:       cart,
+  };
+
+  // Set once the row is safely in the database, so a throw from any of the
+  // follow-up work inside the same try (scratch cards, Shiprocket) does not
+  // park a copy of an order that already exists.
+  let orderSaved = false;
+
   try {
     const supabase = createClient(
       process.env.SUPABASE_URL,
@@ -223,17 +245,7 @@ exports.handler = async (event) => {
       };
     }
 
-    const { error } = await supabase.from('orders').insert({
-      razorpay_order_id:   inkOrderId,          // IC- format — consistent across all payment methods
-      razorpay_payment_id: razorpay_payment_id, // pay_XXXXX — actual Razorpay payment ID (for refunds)
-      amount_paise:     trustedAmountPaise,
-      status:           isPartial ? 'partial_cod_pending' : 'paid',
-      customer_name:    customer?.name    || '',
-      customer_email:   customer?.email   || '',
-      customer_phone:   customer?.phone   || '',
-      customer_address: customer?.address || '',
-      cart_items:       cart,
-    });
+    const { error } = await supabase.from('orders').insert(orderRow);
 
     if (error) {
       // Unique-violation on razorpay_payment_id (DB index) means the webhook just
@@ -248,7 +260,12 @@ exports.handler = async (event) => {
           body: JSON.stringify({ success: true, order_id: row?.razorpay_order_id || inkOrderId, payment_id: razorpay_payment_id, deduped: true }),
         };
       }
-      throw error;
+      // Razorpay has already captured this payment. Throwing would leave the
+      // customer paid with no order anywhere, so the row is parked in Blobs and
+      // replayed when the database returns.
+      await stashLostOrder(event, orderRow, { source: 'verify-payment', reason: error.message });
+    } else {
+      orderSaved = true;
     }
 
     // ── Auto-push to Shiprocket panel ─────────────────────────────────────
@@ -298,7 +315,11 @@ exports.handler = async (event) => {
 
   } catch (err) {
     console.error('Supabase save error:', err);
-    // Payment was valid even if DB save fails — still send emails and return success
+    // Payment was valid even if DB save fails — still send emails and return success.
+    // Park the row so it can be replayed instead of existing only in an email.
+    if (!orderSaved) {
+      await stashLostOrder(event, orderRow, { source: 'verify-payment:exception', reason: err.message });
+    }
   }
 
   // ── 3. Email YOU (store owner) ────────────────────────────────────────────

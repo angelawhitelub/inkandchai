@@ -25,6 +25,7 @@ const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 const { freedomSaleDiscount } = require('./utils/freedom-sale');
+const { stashLostOrder } = require('./utils/order-fallback');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -245,22 +246,31 @@ exports.handler = async (event) => {
   // (orderId was generated above so the scratch-card claim could use it.)
 
   // ── 1. Save pending order to Supabase (non-fatal) ─────────────────────────
+  // "Non-fatal" only for the checkout response — the customer is still sent to
+  // PhonePe. But if this row never lands and they pay, the payment sweep has no
+  // pending order to reconcile against and the money is orphaned, so a failed
+  // insert is parked in Blobs and replayed rather than only logged.
+  const orderRow = {
+    razorpay_order_id:   orderId,
+    razorpay_payment_id: null,
+    amount_paise:        amountPaise,
+    status:              isPartial ? 'pending_partial_phonepe' : 'pending_phonepe',
+    customer_name:       customer.name    || '',
+    customer_email:      customer.email   || '',
+    customer_phone:      customer.phone,
+    customer_address:    customer.address || '',
+    cart_items:          cart,
+  };
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const { error: dbErr } = await supabase.from('orders').insert({
-      razorpay_order_id:   orderId,
-      razorpay_payment_id: null,
-      amount_paise:        amountPaise,
-      status:              isPartial ? 'pending_partial_phonepe' : 'pending_phonepe',
-      customer_name:       customer.name    || '',
-      customer_email:      customer.email   || '',
-      customer_phone:      customer.phone,
-      customer_address:    customer.address || '',
-      cart_items:          cart,
-    });
-    if (dbErr) console.error('Supabase pre-order error (non-fatal):', dbErr.message);
+    const { error: dbErr } = await supabase.from('orders').insert(orderRow);
+    if (dbErr) {
+      console.error('Supabase pre-order error (non-fatal):', dbErr.message);
+      await stashLostOrder(event, orderRow, { source: 'phonepe-create-order', reason: dbErr.message });
+    }
   } catch (err) {
     console.error('Supabase exception (non-fatal):', err.message);
+    await stashLostOrder(event, orderRow, { source: 'phonepe-create-order:exception', reason: err.message });
   }
 
   // ── 2. Get OAuth token + create the payment ──────────────────────────────
