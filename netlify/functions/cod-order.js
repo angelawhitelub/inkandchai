@@ -7,7 +7,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
-const { stashLostOrder } = require('./utils/order-fallback');
+const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricing');
@@ -180,6 +180,11 @@ exports.handler = async (event) => {
   // follow-up work inside the same try does not park a copy of an order that
   // already exists.
   let orderSaved = false;
+
+  // Mirror first, and outside the try: this copy is the point of the exercise
+  // when the database is unreachable, so it must not depend on anything below
+  // it succeeding.
+  await mirrorOrder(event, orderRow, { source: 'cod-order' });
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);

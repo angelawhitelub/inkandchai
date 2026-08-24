@@ -35,22 +35,30 @@
 const { getStore, connectLambda } = require('@netlify/blobs');
 
 const STORE_NAME = 'lost-orders';
+const MIRROR_STORE_NAME = 'orders-mirror';
 const MAX_REPLAY_ATTEMPTS = 50;
+// How far back the mirror reconcile looks. An order missing for longer than
+// this is not something a sweep should quietly recreate — by then a human has
+// either dealt with it or the absence is deliberate.
+const MIRROR_RECONCILE_DAYS = 14;
 
 /**
  * Blobs reads its credentials from the Lambda event in the classic handler
  * signature. Without connectLambda(event) first, getStore() throws
  * "The environment has not been configured to use Netlify Blobs".
  */
-function openStore(event) {
+function openNamedStore(event, name) {
   try {
     if (event) connectLambda(event);
-    return getStore({ name: STORE_NAME, consistency: 'strong' });
+    return getStore({ name, consistency: 'strong' });
   } catch (err) {
-    console.error('[order-fallback] blob store unavailable:', err.message);
+    console.error(`[order-fallback] blob store ${name} unavailable:`, err.message);
     return null;
   }
 }
+
+const openStore = (event) => openNamedStore(event, STORE_NAME);
+const openMirrorStore = (event) => openNamedStore(event, MIRROR_STORE_NAME);
 
 const keyFor = (row) => `${String(row?.razorpay_order_id || 'unknown').replace(/[^A-Za-z0-9._-]/g, '_')}.json`;
 
@@ -149,6 +157,118 @@ async function replayWithStore(store, supabase, { limit = 100 } = {}) {
   return out;
 }
 
+// ── mirror ─────────────────────────────────────────────────────────────────
+// The pen above only catches orders the database REFUSED. It cannot catch an
+// order the database accepted and then lost — a restored-from-backup project,
+// a bad migration, a row deleted by mistake. The mirror is the answer to that:
+// every order is written here at checkout, unconditionally, in a service that
+// has nothing to do with Supabase. It is never read by the storefront and never
+// replayed automatically except by the reconcile below.
+
+async function mirrorWithStore(store, row, meta = {}) {
+  if (!store) return { mirrored: false, reason: 'no store' };
+  const key = keyFor(row);
+  try {
+    const existing = await store.get(key, { type: 'json' }).catch(() => null);
+    // A tombstone means an admin deleted this order on purpose. Re-mirroring it
+    // would let the reconcile resurrect it, so the tombstone wins.
+    if (existing?.deleted_at) return { mirrored: false, reason: 'tombstoned' };
+    await store.setJSON(key, {
+      row,
+      source: meta.source || 'unknown',
+      mirrored_at: existing?.mirrored_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    return { mirrored: true, key };
+  } catch (err) {
+    console.error(`[order-mirror] mirror failed for ${row?.razorpay_order_id}: ${err.message}`);
+    return { mirrored: false, reason: err.message };
+  }
+}
+
+// Deliberate deletions must not come back. The entry is kept as a tombstone
+// rather than removed, because a missing key and a deleted order look identical
+// to the reconcile — and one of those should be restored while the other must
+// never be.
+async function tombstoneWithStore(store, orderId, reason = '') {
+  if (!store || !orderId) return { tombstoned: false };
+  const key = keyFor({ razorpay_order_id: orderId });
+  try {
+    const existing = await store.get(key, { type: 'json' }).catch(() => null);
+    await store.setJSON(key, {
+      ...(existing || {}),
+      deleted_at: new Date().toISOString(),
+      deleted_reason: String(reason || '').slice(0, 200),
+    });
+    return { tombstoned: true, key };
+  } catch (err) {
+    console.error(`[order-mirror] tombstone failed for ${orderId}: ${err.message}`);
+    return { tombstoned: false, reason: err.message };
+  }
+}
+
+/**
+ * Compare the mirror against the orders table and put back anything the
+ * database no longer has. This is what catches a silent loss: on 24 Aug the
+ * project was unreachable for eight hours and twelve paid orders simply were
+ * not there, with nothing in any log to say so.
+ */
+async function reconcileWithStore(store, supabase, { days = MIRROR_RECONCILE_DAYS, limit = 500, dryRun = false } = {}) {
+  const out = { checked: 0, present: 0, tombstoned: 0, stale: 0, restored: 0, failed: 0, missing: [], errors: [] };
+  if (!store || !supabase) { out.errors.push('missing store or supabase'); return out; }
+
+  let listing;
+  try { listing = await store.list(); }
+  catch (err) { out.errors.push(`list failed: ${err.message}`); return out; }
+
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+  for (const b of (listing?.blobs || []).slice(0, limit)) {
+    let entry;
+    try { entry = await store.get(b.key, { type: 'json' }); }
+    catch (err) { out.errors.push(`${b.key}: read ${err.message}`); continue; }
+    if (!entry?.row) continue;
+    if (entry.deleted_at) { out.tombstoned++; continue; }
+
+    const mirroredAt = Date.parse(entry.mirrored_at || '') || 0;
+    if (mirroredAt && mirroredAt < cutoff) { out.stale++; continue; }
+
+    const orderId = entry.row.razorpay_order_id;
+    if (!orderId) continue;
+    out.checked++;
+
+    const { data: row, error } = await supabase
+      .from('orders').select('id').eq('razorpay_order_id', orderId).maybeSingle();
+    if (error) { out.failed++; out.errors.push(`${orderId}: lookup ${error.message}`); continue; }
+    if (row) { out.present++; continue; }
+
+    out.missing.push(orderId);
+    if (dryRun) continue;
+
+    const { error: insErr } = await supabase.from('orders').insert(entry.row);
+    if (insErr && insErr.code !== '23505') {
+      out.failed++;
+      out.errors.push(`${orderId}: insert ${insErr.message}`);
+      continue;
+    }
+    out.restored++;
+    console.error(`[order-mirror] RESTORED ${orderId} — it was in the mirror but gone from the database`);
+  }
+  return out;
+}
+
+async function mirrorOrder(event, row, meta) {
+  return mirrorWithStore(openMirrorStore(event), row, meta);
+}
+
+async function tombstoneMirroredOrder(event, orderId, reason) {
+  return tombstoneWithStore(openMirrorStore(event), orderId, reason);
+}
+
+async function reconcileMirror(event, supabase, opts) {
+  return reconcileWithStore(openMirrorStore(event), supabase, opts);
+}
+
 async function replayLostOrders(event, supabase, opts) {
   return replayWithStore(openStore(event), supabase, opts);
 }
@@ -161,8 +281,9 @@ async function countLostOrders(event) {
 }
 
 module.exports = {
-  STORE_NAME, MAX_REPLAY_ATTEMPTS,
+  STORE_NAME, MIRROR_STORE_NAME, MAX_REPLAY_ATTEMPTS, MIRROR_RECONCILE_DAYS,
   stashLostOrder, replayLostOrders, countLostOrders,
+  mirrorOrder, tombstoneMirroredOrder, reconcileMirror,
   // exported for tests, which inject a fake store rather than reaching Netlify
-  stashWithStore, replayWithStore, keyFor,
+  stashWithStore, replayWithStore, mirrorWithStore, tombstoneWithStore, reconcileWithStore, keyFor,
 };

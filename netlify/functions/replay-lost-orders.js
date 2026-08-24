@@ -20,7 +20,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { replayLostOrders, countLostOrders } = require('./utils/order-fallback');
+const { replayLostOrders, countLostOrders, reconcileMirror } = require('./utils/order-fallback');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -49,7 +49,9 @@ exports.handler = async (event) => {
 
     if (body.dry_run) {
       const pending = await countLostOrders(event);
-      return json(200, { success: true, dry_run: true, pending });
+      const supabase = supabaseClient();
+      const mirror = supabase ? await reconcileMirror(event, supabase, { dryRun: true }) : null;
+      return json(200, { success: true, dry_run: true, pending, mirror });
     }
 
     const supabase = supabaseClient();
@@ -57,7 +59,8 @@ exports.handler = async (event) => {
 
     const limit = Math.min(Math.max(Number(body.limit) || 100, 1), 500);
     const summary = await replayLostOrders(event, supabase, { limit });
-    return json(200, { success: true, summary });
+    const mirror = await reconcileMirror(event, supabase, { dryRun: !!body.reconcile_dry_run });
+    return json(200, { success: true, summary, mirror });
   }
 
   // Scheduled run.
@@ -68,6 +71,15 @@ exports.handler = async (event) => {
   }
 
   const summary = await replayLostOrders(event, supabase, { limit: 100 });
+
+  // Second line of defence: the pen only holds orders the database refused.
+  // This compares the mirror against the orders table and puts back anything
+  // that went missing after being accepted.
+  const mirror = await reconcileMirror(event, supabase, {});
+  if (mirror.restored || mirror.failed) {
+    console.error('[replay-lost-orders] mirror reconcile:', JSON.stringify(mirror));
+  }
+
   if (summary.found) {
     console.log('[replay-lost-orders]', JSON.stringify(summary));
   }
@@ -77,5 +89,5 @@ exports.handler = async (event) => {
     // will not fix it, so say so loudly rather than looping forever in silence.
     console.error(`[replay-lost-orders] ${summary.abandoned} order(s) past the retry cap and need a human`);
   }
-  return json(200, { success: true, summary });
+  return json(200, { success: true, summary, mirror });
 };

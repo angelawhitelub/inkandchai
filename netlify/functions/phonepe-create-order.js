@@ -25,7 +25,7 @@ const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 const { freedomSaleDiscount } = require('./utils/freedom-sale');
-const { stashLostOrder } = require('./utils/order-fallback');
+const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -261,6 +261,8 @@ exports.handler = async (event) => {
     customer_address:    customer.address || '',
     cart_items:          cart,
   };
+  await mirrorOrder(event, orderRow, { source: 'phonepe-create-order' });
+
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { error: dbErr } = await supabase.from('orders').insert(orderRow);

@@ -19,6 +19,7 @@ const { sendEmail }    = require('./utils/email');
 const { generateCardForOrder } = require('./utils/scratch-cards');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { makeOrderId } = require('./utils/pricing');
+const { mirrorOrder, stashLostOrder } = require('./utils/order-fallback');
 
 const CORS = { 'Content-Type': 'application/json' };
 
@@ -270,7 +271,7 @@ exports.handler = async (event) => {
     : await makeOrderId('IC', cartItems, supabase);
 
   // ── Save the order ────────────────────────────────────────────────────────
-  const { error: saveErr } = await supabase.from('orders').insert({
+  const orderRow = {
     razorpay_order_id:   inkOrderId,
     razorpay_payment_id: razorpay_payment_id,
     amount_paise:        amount_paise,
@@ -280,7 +281,9 @@ exports.handler = async (event) => {
     customer_phone:      phone,
     customer_address:    address,
     cart_items:          cartItems,
-  });
+  };
+  await mirrorOrder(event, orderRow, { source: 'razorpay-webhook' });
+  const { error: saveErr } = await supabase.from('orders').insert(orderRow);
 
   if (saveErr) {
     // Unique-violation on razorpay_payment_id means the browser callback already
@@ -291,6 +294,10 @@ exports.handler = async (event) => {
       return { statusCode: 200, body: 'OK — already exists' };
     }
     console.error('[razorpay-webhook] DB save error:', saveErr.message);
+    // The 500 is deliberate — it makes Razorpay retry, and on 24 Aug that retry
+    // is what eventually saved a paid order after an eight-hour outage. The
+    // stash is the backstop for when Razorpay gives up before the DB returns.
+    await stashLostOrder(event, orderRow, { source: 'razorpay-webhook', reason: saveErr.message });
     return { statusCode: 500, body: JSON.stringify({ error: saveErr.message }) };
   }
 

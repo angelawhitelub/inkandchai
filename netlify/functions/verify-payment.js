@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
-const { stashLostOrder } = require('./utils/order-fallback');
+const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
@@ -211,6 +211,8 @@ exports.handler = async (event) => {
   // follow-up work inside the same try (scratch cards, Shiprocket) does not
   // park a copy of an order that already exists.
   let orderSaved = false;
+
+  await mirrorOrder(event, orderRow, { source: 'verify-payment' });
 
   try {
     const supabase = createClient(

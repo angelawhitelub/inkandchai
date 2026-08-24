@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { stashWithStore, replayWithStore, keyFor, MAX_REPLAY_ATTEMPTS } =
+const { stashWithStore, replayWithStore, mirrorWithStore, tombstoneWithStore,
+  reconcileWithStore, keyFor, MAX_REPLAY_ATTEMPTS } =
   require('../../netlify/functions/utils/order-fallback');
 
 // In-memory stand-in for a Netlify Blobs store. Only the four methods the
@@ -171,4 +172,87 @@ test('a missing blob store degrades quietly instead of throwing', async () => {
 test('a slug-hostile order id still makes a safe blob key', () => {
   assert.strictEqual(keyFor({ razorpay_order_id: 'IC/2026 08:24' }), 'IC_2026_08_24.json');
   assert.strictEqual(keyFor({}), 'unknown.json');
+});
+
+// ── mirror: the backup copy of every order, not just the failed ones ────────
+
+test('every order is mirrored, and re-mirroring keeps the first timestamp', async () => {
+  const store = fakeStore();
+  await mirrorWithStore(store, ROW, { source: 'cod-order' });
+  const first = await store.get(keyFor(ROW));
+  assert.deepStrictEqual(first.row, ROW);
+  assert.strictEqual(first.source, 'cod-order');
+
+  await mirrorWithStore(store, { ...ROW, status: 'paid' }, { source: 'cod-order' });
+  const second = await store.get(keyFor(ROW));
+  assert.strictEqual(second.mirrored_at, first.mirrored_at);
+  assert.strictEqual(second.row.status, 'paid');
+  assert.strictEqual(store.data.size, 1);
+});
+
+test('reconcile restores an order the database no longer has', async () => {
+  const store = fakeStore();
+  await mirrorWithStore(store, ROW, { source: 'cod-order' });
+  const supabase = fakeSupabase();               // nothing in the DB
+  const out = await reconcileWithStore(store, supabase);
+  assert.strictEqual(out.restored, 1);
+  assert.deepStrictEqual(out.missing, [ROW.razorpay_order_id]);
+  assert.deepStrictEqual(supabase.calls.inserts[0], ROW);
+  // The mirror keeps its copy — it is a backup, not a queue.
+  assert.strictEqual(store.data.size, 1);
+});
+
+test('reconcile leaves an order that is already in the database alone', async () => {
+  const store = fakeStore();
+  await mirrorWithStore(store, ROW, { source: 'cod-order' });
+  const supabase = fakeSupabase({ existing: [ROW.razorpay_order_id] });
+  const out = await reconcileWithStore(store, supabase);
+  assert.strictEqual(out.present, 1);
+  assert.strictEqual(out.restored, 0);
+  assert.strictEqual(supabase.calls.inserts.length, 0);
+});
+
+test('a deliberately deleted order is never resurrected', async () => {
+  const store = fakeStore();
+  await mirrorWithStore(store, ROW, { source: 'cod-order' });
+  await tombstoneWithStore(store, ROW.razorpay_order_id, 'deleted from admin');
+
+  const supabase = fakeSupabase();               // gone from the DB, as intended
+  const out = await reconcileWithStore(store, supabase);
+  assert.strictEqual(out.tombstoned, 1);
+  assert.strictEqual(out.restored, 0);
+  assert.strictEqual(supabase.calls.inserts.length, 0);
+
+  // And a later checkout writing the same id must not clear the tombstone.
+  const again = await mirrorWithStore(store, ROW, { source: 'cod-order' });
+  assert.strictEqual(again.mirrored, false);
+  assert.ok((await store.get(keyFor(ROW))).deleted_at);
+});
+
+test('reconcile ignores entries older than the window', async () => {
+  const store = fakeStore();
+  await mirrorWithStore(store, ROW, { source: 'cod-order' });
+  const key = keyFor(ROW);
+  const old = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString();
+  await store.setJSON(key, { ...(await store.get(key)), mirrored_at: old });
+
+  const out = await reconcileWithStore(store, fakeSupabase());
+  assert.strictEqual(out.stale, 1);
+  assert.strictEqual(out.restored, 0);
+});
+
+test('reconcile dry run reports what is missing without writing', async () => {
+  const store = fakeStore();
+  await mirrorWithStore(store, ROW, { source: 'cod-order' });
+  const supabase = fakeSupabase();
+  const out = await reconcileWithStore(store, supabase, { dryRun: true });
+  assert.deepStrictEqual(out.missing, [ROW.razorpay_order_id]);
+  assert.strictEqual(out.restored, 0);
+  assert.strictEqual(supabase.calls.inserts.length, 0);
+});
+
+test('a mirror write failure never throws into checkout', async () => {
+  const broken = { ...fakeStore(), setJSON: async () => { throw new Error('blobs down'); } };
+  assert.strictEqual((await mirrorWithStore(broken, ROW, {})).mirrored, false);
+  assert.strictEqual((await mirrorWithStore(null, ROW, {})).mirrored, false);
 });
