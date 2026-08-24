@@ -54,8 +54,19 @@ exports.handler = async (event) => {
   const email      = String(order.customer_email || '').trim();
   const address    = String(order.customer_address || '').trim();
   const amount     = Math.round((order.amount_paise || 0) / 100);
-  const amtDisplay = `₹${amount.toLocaleString('en-IN')}`;
   const cart       = Array.isArray(order.cart_items) ? order.cart_items : [];
+
+  // Partial COD: amount_paise is only the 10% advance, so quoting it on its own
+  // tells the customer their order costs a tenth of what they actually owe —
+  // and the rest is what the courier will ask for at the door. Checkout words
+  // it as "advance + COD"; this must match, or the resend contradicts the
+  // message the customer already has. The split rides on the first cart item.
+  const payMeta    = cart.find(i => i && i._payment)?._payment || null;
+  const isPartial  = order.status === 'partial_cod_pending' || payMeta?.mode === 'partial_cod';
+  const balanceDue = isPartial ? Math.round(payMeta?.balance ?? 0) : 0;
+  const amtDisplay = isPartial && balanceDue > 0
+    ? `₹${amount.toLocaleString('en-IN')} (10% advance) + ₹${balanceDue.toLocaleString('en-IN')} COD`
+    : `₹${amount.toLocaleString('en-IN')}`;
   const bookList   = cart.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200) || 'your books';
   const addrShort  = address.slice(0, 80);
 
@@ -88,6 +99,7 @@ exports.handler = async (event) => {
           <p style="color:#a09080;line-height:1.8;margin-bottom:16px;">
             Hi ${firstName}, here's a fresh copy of your order confirmation.<br/>
             Amount: <strong style="color:#c9a84c;">${amtDisplay}</strong><br/>
+            ${isPartial && balanceDue > 0 ? `Please keep <strong style="color:#f0e8d8;">₹${balanceDue.toLocaleString('en-IN')}</strong> ready for the delivery agent.<br/>` : ''}
             ${bookList ? `Books: <strong style="color:#f0e8d8;">${bookList}</strong>` : ''}
           </p>
           <p style="color:#a09080;font-size:13px;"><strong style="color:#f0e8d8;">Delivery address:</strong><br/>${address || '—'}</p>
