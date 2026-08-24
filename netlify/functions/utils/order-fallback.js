@@ -26,8 +26,8 @@
  *    rather than duplicating.
  *  - Replay treats a 23505 unique violation as SUCCESS: it means the row arrived
  *    by another route (the payment webhook usually), so the pen should drop it.
- *  - Strong consistency, because a replay running seconds after a stash must see
- *    it. Eventual consistency would let an order sit invisible for minutes.
+ *  - Eventual consistency: strong consistency is unavailable in scheduled and
+ *    background invocations, and nothing here reads its own write.
  *  - Every failure path here is swallowed and logged. This is the safety net; if
  *    the net itself tears, it must not also break the checkout it is protecting.
  */
@@ -50,7 +50,13 @@ const MIRROR_RECONCILE_DAYS = 14;
 function openNamedStore(event, name) {
   try {
     if (event) connectLambda(event);
-    return getStore({ name, consistency: 'strong' });
+    // Eventual consistency, deliberately. Strong consistency needs an
+    // `uncachedEdgeURL` that is absent in scheduled and background invocations,
+    // and the failure only surfaces at read time — list() throws and the sweep
+    // quietly finds nothing, which is precisely the silent-safety-net failure
+    // this whole system exists to prevent. Nothing here needs read-after-write:
+    // the replay runs on a five-minute timer and the reconcile looks back days.
+    return getStore({ name });
   } catch (err) {
     console.error(`[order-fallback] blob store ${name} unavailable:`, err.message);
     return null;

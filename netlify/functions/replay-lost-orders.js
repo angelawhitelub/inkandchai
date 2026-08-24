@@ -58,18 +58,20 @@ exports.handler = async (event) => {
   // This compares the mirror against the orders table and puts back anything
   // that went missing after being accepted.
   const mirror = await reconcileMirror(event, supabase, {});
-  if (mirror.restored || mirror.failed) {
+  // errors matter even when nothing was restored: a sweep that cannot read the
+  // store reports zero of everything, which is indistinguishable from healthy.
+  if (mirror.restored || mirror.failed || mirror.errors.length) {
     console.error('[replay-lost-orders] mirror reconcile:', JSON.stringify(mirror));
   }
 
   // Third copy: the Neon standby. Checked independently of the blob mirror on
   // purpose — one of them is meant to still be there when the other is not.
   const neon = await reconcileFromNeon(supabase, {});
-  if (neon.restored || neon.failed) {
+  if (neon.restored || neon.failed || neon.errors.length) {
     console.error('[replay-lost-orders] neon reconcile:', JSON.stringify(neon));
   }
 
-  if (summary.found) {
+  if (summary.found || summary.errors.length) {
     console.log('[replay-lost-orders]', JSON.stringify(summary));
   }
   if (summary.abandoned) {

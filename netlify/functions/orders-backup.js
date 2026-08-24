@@ -82,7 +82,7 @@ exports.handler = async (event) => {
   let store;
   try {
     connectLambda(event);
-    store = getStore({ name: MIRROR_STORE_NAME, consistency: 'strong' });
+    store = getStore({ name: MIRROR_STORE_NAME });
   } catch (err) {
     return json(500, { error: `blob store unavailable: ${err.message}` });
   }
