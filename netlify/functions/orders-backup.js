@@ -1,7 +1,13 @@
 /**
  * Netlify Function: orders-backup
  * GET  ?format=json|csv&limit=…   — read the order mirror
+ * POST { dry_run?: true }         — run the recovery sweep by hand
  * Admin only (X-Admin-Key / X-Admin-Token).
+ *
+ * The sweep also runs on a schedule inside replay-lost-orders. It lives here
+ * as well because Netlify refuses direct HTTP invocation of a scheduled
+ * function — it answers 403 before the handler is ever reached — so a
+ * scheduled function cannot also be the manual trigger.
  *
  * The mirror is a copy of every order, written to Netlify Blobs at checkout,
  * in a service with no dependency on Supabase. It exists so that a repeat of
@@ -13,8 +19,10 @@
  * written, and pull a CSV of everything if the database is unavailable.
  */
 
+const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { MIRROR_STORE_NAME } = require('./utils/order-fallback');
+const { MIRROR_STORE_NAME, replayLostOrders, reconcileMirror, countLostOrders } = require('./utils/order-fallback');
+const { reconcileFromNeon, isEnabled: neonEnabled } = require('./utils/neon-mirror');
 const { getStore, connectLambda } = require('@netlify/blobs');
 
 const CORS = {
@@ -35,10 +43,37 @@ function itemsSummary(items) {
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
-  if (event.httpMethod !== 'GET') return json(405, { error: 'Method Not Allowed' });
+  if (event.httpMethod !== 'GET' && event.httpMethod !== 'POST') {
+    return json(405, { error: 'Method Not Allowed' });
+  }
 
   const _adminBlock = requireAdmin(event, { ...CORS, 'Content-Type': 'application/json' });
   if (_adminBlock) return _adminBlock;
+
+  // ── POST: run the recovery sweep now ───────────────────────────────────
+  if (event.httpMethod === 'POST') {
+    let body = {};
+    try { body = JSON.parse(event.body || '{}'); } catch {}
+    const dryRun = !!body.dry_run;
+
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      return json(500, { error: 'SUPABASE_URL and SUPABASE_SERVICE_KEY are required.' });
+    }
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const pending = await countLostOrders(event);
+    const replayed = dryRun ? null : await replayLostOrders(event, supabase, { limit: 100 });
+    const mirror = await reconcileMirror(event, supabase, { dryRun });
+    const neon = await reconcileFromNeon(supabase, { dryRun });
+
+    return json(200, {
+      success: true, dry_run: dryRun,
+      pending_in_pen: pending, replayed, mirror,
+      neon, neon_enabled: neonEnabled(),
+    });
+  }
 
   const qs = event.queryStringParameters || {};
   const format = String(qs.format || 'json').toLowerCase();

@@ -1,7 +1,7 @@
 /**
  * Netlify Function: replay-lost-orders
  * Scheduled: every 5 minutes (netlify.toml)
- * Manual:    POST with X-Admin-Key  { dry_run?: true, limit?: number }
+ * Manual:    POST /orders-backup (this one cannot be invoked over HTTP)
  *
  * Drains the `lost-orders` blob store — orders that were paid for, emailed to
  * the customer and in some cases already handed to the courier, but that the
@@ -19,8 +19,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { requireAdmin } = require('./utils/admin-auth');
-const { replayLostOrders, countLostOrders, reconcileMirror } = require('./utils/order-fallback');
+const { replayLostOrders, reconcileMirror } = require('./utils/order-fallback');
 const { reconcileFromNeon, isEnabled: neonEnabled } = require('./utils/neon-mirror');
 
 const CORS = {
@@ -41,30 +40,10 @@ function supabaseClient() {
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
 
-  // Manual trigger (admin) — also the only way to ask for a dry run.
-  if (event.httpMethod === 'POST') {
-    const _adminBlock = requireAdmin(event, CORS); if (_adminBlock) return _adminBlock;
-
-    let body = {};
-    try { body = JSON.parse(event.body || '{}'); } catch {}
-
-    if (body.dry_run) {
-      const pending = await countLostOrders(event);
-      const supabase = supabaseClient();
-      const mirror = supabase ? await reconcileMirror(event, supabase, { dryRun: true }) : null;
-      const neon = supabase ? await reconcileFromNeon(supabase, { dryRun: true }) : null;
-      return json(200, { success: true, dry_run: true, pending, mirror, neon });
-    }
-
-    const supabase = supabaseClient();
-    if (!supabase) return json(500, { error: 'SUPABASE_URL and SUPABASE_SERVICE_KEY are required.' });
-
-    const limit = Math.min(Math.max(Number(body.limit) || 100, 1), 500);
-    const summary = await replayLostOrders(event, supabase, { limit });
-    const mirror = await reconcileMirror(event, supabase, { dryRun: !!body.reconcile_dry_run });
-    const neon = await reconcileFromNeon(supabase, { dryRun: !!body.reconcile_dry_run });
-    return json(200, { success: true, summary, mirror, neon });
-  }
+  // No manual branch here on purpose: Netlify answers 403 to a direct HTTP
+  // call of a scheduled function before the handler runs, so anything served
+  // from this file by hand would be unreachable. The admin trigger lives in
+  // orders-backup (POST), which is not scheduled.
 
   // Scheduled run.
   const supabase = supabaseClient();
