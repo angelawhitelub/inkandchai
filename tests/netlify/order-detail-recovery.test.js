@@ -47,7 +47,15 @@ function fakeSupabase() {
   return {
     calls,
     from() {
-      return { update(patch) { calls.push(patch); return { eq: async () => ({ error: null }) }; } };
+      return {
+        update(patch) {
+          calls.push(patch);
+          const eq = () => ({
+            select: () => ({ maybeSingle: async () => ({ data: { ...order(), ...patch }, error: null }) }),
+          });
+          return { eq };
+        },
+      };
     },
   };
 }
@@ -152,7 +160,7 @@ test('a fully verified reply writes both halves', async () => {
 });
 
 test('a failed write is never reported as success', async () => {
-  const sb = { from: () => ({ update: () => ({ eq: async () => ({ error: { message: 'connection refused' } }) }) }) };
+  const sb = { from: () => ({ update: () => ({ eq: () => ({ select: () => ({ maybeSingle: async () => ({ data: null, error: { message: 'connection refused' } }) }) }) }) }) };
   const out = await applyRecoveredDetails(sb, order(), {
     address: 'WZ-40A, Hari Nagar, New Delhi 110064',
     books: '7 Habits of highly effective people',
@@ -170,3 +178,29 @@ test('nothing is written when the customer supplied neither half', async () => {
 });
 
 Module._resolveFilename = origResolve;
+
+// The bot pushes the recovered order to NimbusPost the moment both halves
+// verify. It must push the row as saved — the copy it started with still has
+// the empty address and cart the outage left behind.
+test('the saved row comes back so a push does not use the stale copy', async () => {
+  const sb = fakeSupabase();
+  const out = await applyRecoveredDetails(sb, order(), {
+    address: 'WZ-40A, Hari Nagar, New Delhi 110064',
+    books: '7 Habits of highly effective people',
+  });
+  assert.strictEqual(out.address_saved, true);
+  assert.strictEqual(out.books_saved, true);
+  assert.ok(out.order, 'expected the updated row back');
+  assert.match(out.order.customer_address, /Hari Nagar/);
+  assert.strictEqual(out.order.cart_items.length, 1);
+  assert.match(out.order.cart_items[0].title, /7 Habits/i);
+});
+
+test('a failed write hands back no row, so nothing can be pushed', async () => {
+  const sb = { from: () => ({ update: () => ({ eq: () => ({ select: () => ({ maybeSingle: async () => ({ data: null, error: { message: 'connection refused' } }) }) }) }) }) };
+  const out = await applyRecoveredDetails(sb, order(), {
+    address: 'WZ-40A, Hari Nagar, New Delhi 110064',
+    books: '7 Habits of highly effective people',
+  });
+  assert.strictEqual(out.order, undefined);
+});

@@ -209,13 +209,19 @@ async function applyRecoveredDetails(supabase, order, { address = '', books = ''
 
   if (!Object.keys(update).length) return out;
 
-  const { error } = await supabase
-    .from('orders').update(update).eq('razorpay_order_id', order.razorpay_order_id);
+  // `.select()` so the caller gets the row as it now stands. Anything that acts
+  // on the recovered order — a NimbusPost push above all — must use this and not
+  // the stale copy passed in, which still has the empty address and cart.
+  const { data: saved, error } = await supabase
+    .from('orders').update(update).eq('razorpay_order_id', order.razorpay_order_id)
+    .select('*').maybeSingle();
   if (error) {
     out.address_saved = false;
     out.books_saved = false;
     out.reason = `database write failed: ${error.message}`;
+    return out;
   }
+  out.order = saved || { ...order, ...update };
   return out;
 }
 

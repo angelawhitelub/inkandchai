@@ -28,6 +28,7 @@ const { priceBooksList } = require('./utils/book-lookup');
 const {
   findAwaitingOrders, applyRecoveredDetails, isAwaitingDetails,
 } = require('./utils/order-detail-recovery');
+const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const {
   isOptOutKeyword, isOptInKeyword, isOptedOut,
   OPT_OUT_CONFIRMATION, OPT_IN_CONFIRMATION,
@@ -897,7 +898,17 @@ async function recordMissingDetails(phone, args = {}) {
     if (!out.books_saved) stillNeeded.push('the name(s) of the book(s)');
 
     if (out.address_saved && out.books_saved) {
-      await notifyOwnerDetailsRecovered(order, out, 'complete');
+      // Both halves verified, so the order is now indistinguishable from one
+      // that checked out normally — and normal orders are pushed at checkout.
+      // These never were: the outage stripped them before the push, and nothing
+      // pushes them later (the */3 cron only syncs AWBs for orders already in
+      // the panel). Without this they sit in admin looking complete and never
+      // ship. pushToNimbusOnce claims `nimbus_pushed_at` first, so a customer
+      // who sends their details twice still gets one shipment, and it never
+      // throws — a failed push releases the claim and the owner email below
+      // says so, so the fallback is a manual push, not a lost order.
+      const push = await pushToNimbusOnce(db, out.order || order);
+      await notifyOwnerDetailsRecovered(order, out, 'complete', push);
       return {
         ok: true, order_id: order.razorpay_order_id, complete: true,
         saved: { address: out.address, books: out.cart.map(i => `${i.qty}x ${i.title}`).join(', ') },
@@ -924,7 +935,7 @@ async function recordMissingDetails(phone, args = {}) {
   }
 }
 
-async function notifyOwnerDetailsRecovered(order, out, verdict) {
+async function notifyOwnerDetailsRecovered(order, out, verdict, push = null) {
   const to = process.env.STORE_OWNER_EMAIL;
   if (!to) return;
   try {
@@ -942,8 +953,13 @@ async function notifyOwnerDetailsRecovered(order, out, verdict) {
         ${p.expected !== undefined ? `<p>Books Rs ${p.goods} + shipping Rs ${p.shipping} = Rs ${p.expected}; customer paid Rs ${p.paid}</p>` : ''}
         ${out.reason ? `<p style="color:#b00"><strong>Needs a look:</strong> ${out.reason}</p>` : ''}
         <p>${verdict === 'complete'
-          ? 'Both halves verified against the payment and written to the order. It is ready to push to NimbusPost.'
+          ? 'Both halves verified against the payment and written to the order.'
           : 'The cart was NOT written. Open the order in admin and fill it in by hand.'}</p>
+        ${push ? `<p>${push.pushed
+          ? '<strong>Pushed to NimbusPost.</strong> Assign a courier in the panel to get an AWB.'
+          : push.reason === 'already_pushed'
+            ? 'Already in NimbusPost — not pushed again.'
+            : `<strong style="color:#b00">NimbusPost push FAILED:</strong> ${push.error || push.reason}. Push it by hand from the admin panel.`}</p>` : ''}
       </div>`,
     });
   } catch (err) {
