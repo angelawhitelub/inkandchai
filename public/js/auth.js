@@ -2182,6 +2182,7 @@
                 </select></label>` : ''}
             </div>`).join('')}
         </div>
+        ${missUpiFieldHtml(order)}
         <textarea class="miss-comment" rows="2" maxlength="1000" required placeholder="Required — what happened? e.g. the packet was open and one book was missing"
           style="width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
                  padding:0.5rem 0.7rem;font-family:inherit;font-size:0.72rem;resize:vertical;margin-bottom:0.6rem;"></textarea>
@@ -2192,6 +2193,43 @@
           Report missing book(s)
         </button>
         <div class="miss-msg" style="margin-top:0.6rem;font-size:0.66rem;display:none;"></div>
+      </div>`;
+  }
+
+  // Mirrors netlify/functions/utils/order-payment-kind.js and fails closed the
+  // same way: partial COD has a deposit captured online, so it refunds to that
+  // instrument and is NOT treated as COD here. The server re-checks before it
+  // stores anything, so a wrong guess in the browser cannot save a UPI ID
+  // against a prepaid order.
+  function isCodOrder(order) {
+    const persisted = String(order?.shipment_payment_type || '').toLowerCase();
+    if (persisted === 'cod') return true;
+    if (persisted === 'prepaid' || persisted === 'partial_cod') return false;
+    const items = Array.isArray(order?.cart_items) ? order.cart_items : [];
+    const meta = items.find(i => i && (i._payment || i.__payment));
+    const mode = String((meta?._payment || meta?.__payment || {}).mode || '').toLowerCase();
+    if (mode === 'partial_cod' || mode === 'prepaid' || mode === 'online') return false;
+    if (mode === 'cod') return true;
+    const status = String(order?.status || '').toLowerCase();
+    if (status === 'partial_cod_pending') return false;
+    if (status === 'cod_pending' || status === 'cod_awaiting_confirmation') return true;
+    return !String(order?.razorpay_payment_id || '').trim() && status === 'shipped';
+  }
+
+  // A COD parcel was never paid for online, so if the missing book cannot be
+  // arranged there is no instrument to refund to. Optional, COD only.
+  function missUpiFieldHtml(order) {
+    if (!isCodOrder(order)) return '';
+    return `
+      <div style="border:1px solid rgba(201,168,76,0.25);background:rgba(201,168,76,0.05);padding:0.6rem 0.7rem;margin-bottom:0.6rem;">
+        <div style="font-size:0.62rem;color:#f0e8d8;margin-bottom:0.3rem;">Your UPI ID <span style="color:#a09080;">(optional)</span></div>
+        <div style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-bottom:0.45rem;">
+          We'll send the missing book free of charge. In the rare event we can't arrange it,
+          share your UPI ID and we'll refund the value of the missing book to it instead.
+        </div>
+        <input class="miss-upi" type="text" inputmode="email" autocomplete="off" maxlength="128" placeholder="e.g. 9876543210@ybl"
+          style="width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
+                 padding:0.45rem 0.6rem;font-family:inherit;font-size:0.72rem;"/>
       </div>`;
   }
 
@@ -2244,7 +2282,10 @@
       const res = await fetch('/.netlify/functions/report-missing-books', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: btn.dataset.oid, q: btn.dataset.q, missing, comment: commentText }),
+        body: JSON.stringify({
+          id: btn.dataset.oid, q: btn.dataset.q, missing, comment: commentText,
+          upi_id: (wrap.querySelector('.miss-upi')?.value || '').trim(),
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) throw new Error(json.error || 'Could not submit your report.');

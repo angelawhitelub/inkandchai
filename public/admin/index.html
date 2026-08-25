@@ -8642,6 +8642,10 @@ function renderReplacementRequests() {
         ${req.customer_comment ? `<div title="What the customer wrote when reporting this" style="margin-top:.4rem;padding:.4rem .55rem;background:rgba(232,160,48,0.08);border-left:2px solid var(--orange);white-space:pre-wrap;font-size:0.8rem;line-height:1.5;color:var(--cream);">
           <span style="display:block;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;color:var(--orange);font-weight:700;margin-bottom:2px;">Customer's words</span>${esc(req.customer_comment)}
         </div>` : ''}
+        ${req.refund_upi_id ? `<div title="COD order — the customer gave this UPI ID for a refund if the missing book cannot be arranged. There is no online payment to reverse." style="margin-top:.4rem;padding:.4rem .55rem;background:rgba(109,191,109,0.08);border-left:2px solid #6dbf6d;font-size:0.8rem;line-height:1.5;color:var(--cream);">
+          <span style="display:block;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;color:#6dbf6d;font-weight:700;margin-bottom:2px;">COD · refund UPI</span>
+          <span style="user-select:all;font-family:ui-monospace,Menlo,monospace;">${esc(req.refund_upi_id)}</span>
+        </div>` : ''}
       </td>
       <td>${photoHtml}</td>
       <td><span class="badge b-${esc(o.status || 'confirmed')}">${esc((o.status || 'pending').replace(/_/g, ' '))}</span>${tracking}</td>

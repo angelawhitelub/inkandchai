@@ -47,6 +47,15 @@
 [functions."nimbuspost-awb-sync-scheduled"]
   schedule = "*/3 * * * *"
 
+# Push pending replacement orders into the NimbusPost panel. Replacements have
+# no checkout to push them and the AWB sync above only touches orders already in
+# the panel, so before this they shipped only when someone pushed them by hand.
+# Every 15 minutes, and only for replacements older than the grace window
+# (REPLACEMENT_PUSH_GRACE_MINUTES, default 120) so the owner can still edit the
+# books — editing is locked once an order is pushed.
+[functions."auto-push-replacements-scheduled"]
+  schedule = "*/15 * * * *"
+
 # Re-check + retry failed PhonePe refunds — AFTERNOON ONLY (IST).
 # PhonePe fails a refund when, on a given settlement date, the refund amount
 # exceeds the payments the merchant received that day. Received-payments grow

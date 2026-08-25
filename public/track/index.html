@@ -515,6 +515,7 @@ function reportBlockHtml(o) {
             </select></label>` : ''}
         </div>`).join('')}
     </div>
+    ${upiFieldHtml(o)}
     <label for="missComment" style="display:block;font-size:0.72rem;color:var(--cream-dim);margin:0 0 0.4rem;">Anything else we should know? <span style="opacity:0.7;">(optional)</span></label>
     <textarea id="missComment" rows="3" maxlength="1000" placeholder="e.g. the packet was already open, or only some copies were inside…"
       style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.8rem;font-family:inherit;font-size:0.82rem;resize:vertical;margin-bottom:1rem;"></textarea>
@@ -523,6 +524,23 @@ function reportBlockHtml(o) {
       Report missing book(s)
     </button>
     <div id="reportMsg" style="margin-top:0.9rem;font-size:0.82rem;display:none;"></div>
+  </div>`;
+}
+
+// A COD parcel was never paid for online, so if the missing book turns out to
+// be unarrangeable there is no card or UPI to send the money back to. Asking
+// here, optionally, beats chasing the customer for it later. Prepaid and
+// partial-COD orders refund to the original instrument and never see this.
+function upiFieldHtml(o) {
+  if (String(o.payment_method || '') !== 'cod') return '';
+  return `<div style="border:1px solid rgba(201,168,76,0.25);background:rgba(201,168,76,0.05);padding:0.8rem 0.9rem;margin-bottom:1rem;">
+    <label for="missUpi" style="display:block;font-size:0.72rem;color:var(--cream);margin:0 0 0.35rem;">Your UPI ID <span style="opacity:0.7;">(optional)</span></label>
+    <div style="font-size:0.72rem;color:var(--cream-dim);line-height:1.6;margin-bottom:0.55rem;">
+      We'll send the missing book free of charge. In the rare event we can't arrange it,
+      share your UPI ID and we'll refund the value of the missing book to it instead.
+    </div>
+    <input id="missUpi" type="text" inputmode="email" autocomplete="off" maxlength="128" placeholder="e.g. 9876543210@ybl"
+      style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.8rem;font-family:inherit;font-size:0.82rem;"/>
   </div>`;
 }
 
@@ -562,7 +580,11 @@ async function submitMissingReport(btn) {
     const res = await fetch('/.netlify/functions/report-missing-books', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: lastTracked.id, q: lastTracked.q, missing, comment: (document.getElementById('missComment')?.value || '').trim() }),
+      body: JSON.stringify({
+        id: lastTracked.id, q: lastTracked.q, missing,
+        comment: (document.getElementById('missComment')?.value || '').trim(),
+        upi_id: (document.getElementById('missUpi')?.value || '').trim(),
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) throw new Error(data.error || 'Could not submit your report.');
