@@ -517,6 +517,40 @@ function addProductToCart(buyNow) {
 </html>`;
 }
 
+/**
+ * A 404 is a promise that the page is gone for good: Google Merchant disapproves
+ * the product ("Product page unavailable") and Search drops the URL. On 24 Aug
+ * 2026 Supabase was unreachable for eight hours and this function answered 404
+ * to every custom-product URL, which disapproved 175 listings that were fine.
+ *
+ * So a missing row gets 404, and every other failure gets 503 + Retry-After —
+ * crawlers back off and retry instead of delisting, and the outage stays an
+ * outage rather than turning into a catalogue full of dead products.
+ */
+class DatabaseDown extends Error {
+  constructor(message) { super(message); this.name = 'DatabaseDown'; }
+}
+
+const notFound = () => ({
+  statusCode: 404,
+  headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  body: '<!doctype html><title>Product not found</title><h1>Product not found</h1><p>This product is not available.</p>',
+});
+
+function unavailable(reason) {
+  console.error('[product-page] serving 503:', reason);
+  return {
+    statusCode: 503,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Retry-After': '600',
+      'Cache-Control': 'no-store',
+    },
+    body: '<!doctype html><title>Temporarily unavailable</title><h1>Just a moment</h1>'
+        + '<p>We could not load this page right now. Please try again in a few minutes.</p>',
+  };
+}
+
 exports.handler = async (event) => {
   // Slug comes from the /product/* rewrite (?slug=:splat). Fall back to the
   // request path if the splat wasn't passed, and guard against an empty result
@@ -528,11 +562,11 @@ exports.handler = async (event) => {
   }
   const slug = (String(raw).split('/').filter(Boolean).pop() || '').toLowerCase();
 
-  if (!slug) {
-    return { statusCode: 404, headers: { 'Content-Type': 'text/html' }, body: 'Product not found' };
-  }
+  if (!slug) return notFound();
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-    return { statusCode: 404, headers: { 'Content-Type': 'text/html' }, body: 'Product not found' };
+    // Our configuration is broken, not the product. 404 here would tell Google
+    // the page is permanently gone.
+    return unavailable('supabase env vars missing');
   }
 
   try {
@@ -543,7 +577,11 @@ exports.handler = async (event) => {
       .eq('slug', slug)
       .eq('is_active', true)
       .single();
-    if (error || !data) throw error || new Error('Not found');
+    // "No rows" and "the database is unreachable" are different answers and must
+    // not share a status code. PostgREST returns PGRST116 for an empty .single();
+    // anything else — DNS failure, 5xx, auth — means we simply could not look.
+    if (error && error.code !== 'PGRST116') throw new DatabaseDown(error.message || 'lookup failed');
+    if (!data) return notFound();
 
     const { data: override } = await supabase
       .from('product_overrides')
@@ -565,10 +603,11 @@ exports.handler = async (event) => {
       body: productHtml(product),
     };
   } catch (err) {
-    return {
-      statusCode: 404,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
-      body: '<!doctype html><title>Product not found</title><h1>Product not found</h1><p>This product is not available.</p>',
-    };
+    if (err instanceof DatabaseDown || err?.name === 'DatabaseDown') {
+      return unavailable(err.message);
+    }
+    // An unexpected render fault is still our problem, not a missing product.
+    console.error('[product-page]', slug, err);
+    return unavailable(err?.message || 'render failed');
   }
 };

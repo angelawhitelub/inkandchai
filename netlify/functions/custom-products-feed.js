@@ -60,7 +60,7 @@ exports.handler = async () => {
     'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
   };
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-    return { statusCode: 200, headers, body: emptyFeed() };
+    return feedUnavailable('supabase env vars missing');
   }
 
   try {
@@ -153,13 +153,24 @@ ${items}
     return { statusCode: 200, headers, body: feed };
   } catch (e) {
     console.error('custom-products-feed error:', e.message);
-    return { statusCode: 200, headers, body: emptyFeed() };
+    return feedUnavailable(e.message);
   }
 };
 
-function emptyFeed() {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
-  <channel><title>${xmlEscape(BRAND)} — Custom Products</title><link>${SITE}</link><description>No products.</description></channel>
-</rss>`;
+/**
+ * Never serve an empty feed to explain a failure.
+ *
+ * A valid feed with zero items is not an error to Google — it is an
+ * instruction to remove every product in it. When Supabase was unreachable on
+ * 24 Aug 2026 this function answered 200 with an empty channel, and the whole
+ * custom catalogue looked deliberately withdrawn. A failed fetch, by contrast,
+ * makes Merchant keep the last good feed and try again.
+ */
+function feedUnavailable(reason) {
+  console.error('[custom-products-feed] refusing to serve an empty feed:', reason);
+  return {
+    statusCode: 503,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '900', 'Cache-Control': 'no-store' },
+    body: 'Feed temporarily unavailable. Retry shortly.',
+  };
 }
