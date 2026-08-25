@@ -730,6 +730,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="orders"    onclick="switchTab('orders')">📦 Orders</button>
     <button class="admin-tab owner-only" data-tab="tools" onclick="switchTab('tools')">🛠 Tools</button>
     <button class="admin-tab" data-tab="reports"   onclick="switchTab('reports')">📊 Reports</button>
+    <button class="admin-tab owner-only" data-tab="profit" onclick="switchTab('profit')">💰 Profit</button>
     <button class="admin-tab" data-tab="create"    onclick="switchTab('create')">➕ Create Listing</button>
     <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
     <button class="admin-tab" data-tab="reels"     onclick="switchTab('reels')">🎬 Video Reels</button>
@@ -1729,6 +1730,87 @@ select,input,textarea{font-size:1rem;}
     </div>
   </section>
   </div><!-- /tab-reports -->
+
+  <!-- ═══ PROFIT TAB ═══ -->
+  <div class="admin-section" id="tab-profit">
+  <section class="abandoned-panel">
+    <div class="abandoned-head">
+      <div>
+        <h2>💰 Net Profit</h2>
+        <p>What the business actually keeps after ad spend, courier charges and stock. Uses your average per-order costs — an estimate, not accounting. Read straight from the database, every order in the range.</p>
+      </div>
+      <button class="btn-outline" onclick="loadProfit()">↻ Refresh</button>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:1rem;">
+      <span class="section-title">Period:</span>
+      <button class="filter-btn pft-range" data-days="7"   onclick="pftRange(this,7)">7D</button>
+      <button class="filter-btn pft-range active" data-days="30" onclick="pftRange(this,30)">30D</button>
+      <button class="filter-btn pft-range" data-days="90"  onclick="pftRange(this,90)">90D</button>
+      <button class="filter-btn pft-range" data-days="180" onclick="pftRange(this,180)">6 months</button>
+      <button class="filter-btn pft-range" data-days="365" onclick="pftRange(this,365)">1 year</button>
+      <button class="filter-btn pft-range" data-days="all" onclick="pftRange(this,'all')">All time</button>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:.9rem;align-items:flex-end;margin-bottom:1.2rem;">
+      <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);">Google Ads / order ₹<br>
+        <input type="number" id="pftAd" value="92" min="0" step="1" style="padding:.4rem;width:110px;" onchange="loadProfit()"></label>
+      <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);">Shipping / parcel ₹<br>
+        <input type="number" id="pftShip" value="62" min="0" step="1" style="padding:.4rem;width:110px;" onchange="loadProfit()"></label>
+      <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);">Cost per book ₹<br>
+        <input type="number" id="pftBook" value="80" min="0" step="1" style="padding:.4rem;width:110px;" onchange="loadProfit()"></label>
+      <span style="font-size:.68rem;color:var(--cream-dim,#8a7a62);max-width:420px;line-height:1.5;">
+        Change any figure to re-run instantly. RTO is charged shipping twice; cancelled orders are charged none (NimbusPost credits it back); returned books are not counted as stock lost.
+      </span>
+    </div>
+
+    <div id="pftStatus" style="font-size:.78rem;color:var(--cream-dim,#8a7a62);margin-bottom:1rem;">Loading…</div>
+
+    <div class="stats-row" id="pftHeadline" style="display:none;">
+      <div class="stat-card" style="cursor:default;">
+        <div class="stat-label">Revenue earned</div>
+        <div class="stat-val" id="pftRevenue">—</div>
+      </div>
+      <div class="stat-card" style="cursor:default;">
+        <div class="stat-label">Total costs</div>
+        <div class="stat-val" id="pftCosts" style="color:var(--red);">—</div>
+      </div>
+      <div class="stat-card" style="cursor:default;">
+        <div class="stat-label">Net profit</div>
+        <div class="stat-val" id="pftNet">—</div>
+      </div>
+      <div class="stat-card" style="cursor:default;">
+        <div class="stat-label">Margin</div>
+        <div class="stat-val" id="pftMargin">—</div>
+      </div>
+    </div>
+
+    <div id="pftBody" style="display:none;">
+      <h3 class="section-title" style="margin:1.6rem 0 .6rem;">Where the money went</h3>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:.78rem;min-width:640px;">
+          <thead><tr style="text-align:right;">
+            <th style="text-align:left;padding:.5rem;">Outcome</th>
+            <th style="padding:.5rem;">Orders</th>
+            <th style="padding:.5rem;">Books</th>
+            <th style="padding:.5rem;">Revenue</th>
+            <th style="padding:.5rem;">Ads</th>
+            <th style="padding:.5rem;">Shipping</th>
+            <th style="padding:.5rem;">Stock</th>
+            <th style="padding:.5rem;">Net</th>
+          </tr></thead>
+          <tbody id="pftRows"></tbody>
+          <tfoot id="pftFoot"></tfoot>
+        </table>
+      </div>
+
+      <h3 class="section-title" style="margin:1.8rem 0 .6rem;">What is driving it</h3>
+      <div class="stats-row" id="pftKpis"></div>
+
+      <p id="pftNote" style="font-size:.7rem;color:var(--cream-dim,#8a7a62);margin-top:1.4rem;line-height:1.6;"></p>
+    </div>
+  </section>
+  </div><!-- /tab-profit -->
 
   <!-- ═══ BOT INBOX TAB ═══ -->
   <div class="admin-section" id="tab-botinbox">
@@ -8357,7 +8439,7 @@ function rptPickProduct(idx) {
   document.getElementById('rptChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-const TABS = ['orders','tools','create','products','reels','abandoned','reviews','replacements','returns','botinbox','bookreq','insights','bot','recover','reports','adminaccess'];
+const TABS = ['orders','tools','create','products','reels','abandoned','reviews','replacements','returns','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -8700,6 +8782,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'bookreq' && _authed) fetchBookRequests();
   if (tab === 'bot' && _authed) loadBotSettings();
   if (tab === 'reports') initReports();
+  if (tab === 'profit' && _authed) loadProfit();
   if (tab === 'adminaccess' && adminRole === 'owner') { loadAdminUsers(); loadGmailStatus(); }
 
   // Orders polling pauses on every other internal admin tab. Refresh once on
@@ -8711,6 +8794,125 @@ function switchTab(tab, pushState = true) {
 
   // Scroll to top of content
   document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
+}
+
+// ═══════════════ PROFIT TAB ═══════════════
+// Net profit from real orders, costed with the owner's per-order averages.
+// Every figure on the panel comes from profit-report, which paginates past
+// Supabase's 1000-row cap — a truncated fetch would quietly under-report
+// profit with nothing on screen to say so.
+let pftDays = 30;
+let _pftSeq = 0;
+
+function pftRange(btn, days) {
+  document.querySelectorAll('.pft-range').forEach(b => b.classList.toggle('active', b === btn));
+  pftDays = days;
+  loadProfit();
+}
+
+const pftRs = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
+const pftSigned = (n) => (n < 0 ? '−' : '') + pftRs(Math.abs(n));
+
+async function loadProfit() {
+  const status = document.getElementById('pftStatus');
+  const head   = document.getElementById('pftHeadline');
+  const body   = document.getElementById('pftBody');
+  if (!status) return;
+
+  const ad   = document.getElementById('pftAd').value   || 92;
+  const ship = document.getElementById('pftShip').value || 62;
+  const book = document.getElementById('pftBook').value || 80;
+
+  // Range switches can be clicked faster than an all-time fetch returns; only
+  // the newest request is allowed to paint.
+  const seq = ++_pftSeq;
+  status.textContent = 'Crunching every order in the period…';
+  head.style.display = 'none';
+  body.style.display = 'none';
+
+  try {
+    const qs = `days=${encodeURIComponent(pftDays)}&ad=${ad}&ship=${ship}&book=${book}`;
+    const res = await adminFetch('/.netlify/functions/profit-report?' + qs);
+    const data = await res.json();
+    if (seq !== _pftSeq) return;
+    if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    renderProfit(data);
+  } catch (err) {
+    if (seq !== _pftSeq) return;
+    status.innerHTML = `<span style="color:var(--red);">Could not load the profit report: ${err.message}</span>`;
+  }
+}
+
+function renderProfit(d) {
+  const t = d.totals;
+  const costs = t.ads + t.shipping + t.cogs;
+
+  document.getElementById('pftRevenue').textContent = pftRs(t.revenue);
+  document.getElementById('pftCosts').textContent   = pftRs(costs);
+  const netEl = document.getElementById('pftNet');
+  netEl.textContent = pftSigned(t.net);
+  netEl.style.color = t.net >= 0 ? 'var(--green)' : 'var(--red)';
+  const marEl = document.getElementById('pftMargin');
+  marEl.textContent = (d.kpis.margin_pct).toFixed(1) + '%';
+  marEl.style.color = t.net >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const order = ['delivered', 'in_transit', 'rto', 'cancelled', 'refunded', 'pending'];
+  const rows = order.map(k => {
+    const b = d.buckets[k];
+    if (!b || !b.orders) return '';
+    const netColor = b.net >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<tr style="text-align:right;border-top:1px solid var(--border);">
+      <td style="text-align:left;padding:.5rem;">${d.labels[k]}</td>
+      <td style="padding:.5rem;">${b.orders.toLocaleString('en-IN')}</td>
+      <td style="padding:.5rem;">${b.units.toLocaleString('en-IN')}</td>
+      <td style="padding:.5rem;">${pftRs(b.revenue)}</td>
+      <td style="padding:.5rem;color:var(--red);">−${pftRs(b.ads)}</td>
+      <td style="padding:.5rem;color:var(--red);">−${pftRs(b.shipping)}</td>
+      <td style="padding:.5rem;color:var(--red);">−${pftRs(b.cogs)}</td>
+      <td style="padding:.5rem;font-weight:600;color:${netColor};">${pftSigned(b.net)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('pftRows').innerHTML = rows;
+
+  document.getElementById('pftFoot').innerHTML = `<tr style="text-align:right;border-top:2px solid var(--border);font-weight:600;">
+    <td style="text-align:left;padding:.6rem .5rem;">Total</td>
+    <td style="padding:.6rem .5rem;">${t.orders.toLocaleString('en-IN')}</td>
+    <td style="padding:.6rem .5rem;">${t.units.toLocaleString('en-IN')}</td>
+    <td style="padding:.6rem .5rem;">${pftRs(t.revenue)}</td>
+    <td style="padding:.6rem .5rem;color:var(--red);">−${pftRs(t.ads)}</td>
+    <td style="padding:.6rem .5rem;color:var(--red);">−${pftRs(t.shipping)}</td>
+    <td style="padding:.6rem .5rem;color:var(--red);">−${pftRs(t.cogs)}</td>
+    <td style="padding:.6rem .5rem;color:${t.net >= 0 ? 'var(--green)' : 'var(--red)'};">${pftSigned(t.net)}</td>
+  </tr>`;
+
+  const k = d.kpis;
+  const card = (label, value, colour) =>
+    `<div class="stat-card" style="cursor:default;"><div class="stat-label">${label}</div>
+     <div class="stat-val" style="font-size:1.6rem;${colour ? 'color:' + colour : ''}">${value}</div></div>`;
+  document.getElementById('pftKpis').innerHTML = [
+    card('RTO rate', k.rto_rate_pct.toFixed(1) + '%', k.rto_rate_pct > 15 ? 'var(--red)' : 'var(--green)'),
+    card('Cancel rate', k.cancel_rate_pct.toFixed(1) + '%', k.cancel_rate_pct > 25 ? 'var(--red)' : ''),
+    card('Avg delivered order', pftRs(k.avg_order_value)),
+    card('Profit per delivered order', pftSigned(k.profit_per_delivered_order),
+      k.profit_per_delivered_order >= 0 ? 'var(--green)' : 'var(--red)'),
+  ].join('');
+
+  const rangeLabel = d.range.days === 'all'
+    ? 'all time'
+    : `the last ${d.range.days} days`;
+  document.getElementById('pftStatus').innerHTML =
+    `<strong>${d.orders_counted.toLocaleString('en-IN')}</strong> orders over ${rangeLabel}` +
+    (d.truncated ? ' <span style="color:var(--red);">— row limit hit, figures incomplete</span>' : '');
+
+  document.getElementById('pftNote').textContent =
+    `Ads charged at ₹${d.rates.adCostPerOrder} on ${d.rates_applied_to.ads}. ` +
+    `Shipping at ₹${d.rates.shippingPerOrder}: ${d.rates_applied_to.shipping}. ` +
+    `Stock at ₹${d.rates.bookCost} per book, ${d.rates_applied_to.books}. ` +
+    `Partial-COD orders count the full value once delivered, not just the 10% advance. ` +
+    `Orders not yet shipped carry ad spend only.`;
+
+  document.getElementById('pftHeadline').style.display = '';
+  document.getElementById('pftBody').style.display = '';
 }
 
 async function loadAdminUsers() {
