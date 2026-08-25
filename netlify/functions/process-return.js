@@ -22,6 +22,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { sanitizeOrderId, orderIdFilter } = require('./utils/order-id-filter');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 const STORE_NAME = 'Ink and Chai';
@@ -220,11 +221,11 @@ exports.handler = async (event) => {
       // request if one exists, otherwise synthesize one (pre-approved) from the
       // order so the reverse-pickup logic below runs unchanged. displayId is
       // sanitized to [A-Za-z0-9-] before it goes into the PostgREST .or() filter.
-      const displayId = String(order_display_id).trim().replace(/[^A-Za-z0-9-]/g, '').slice(0, 64);
+      const displayId = sanitizeOrderId(order_display_id);
       if (!displayId) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid order id' }) };
       const { data: order, error: ordErr } = await supabase
         .from('orders').select('*')
-        .or(`razorpay_order_id.eq.${displayId},id.eq.${displayId}`)
+        .or(orderIdFilter(displayId))
         .maybeSingle();
       if (ordErr) throw ordErr;
       if (!order) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: `Order not found: ${displayId}` }) };

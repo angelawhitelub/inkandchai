@@ -26,6 +26,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const { orderIdFilter } = require('./utils/order-id-filter');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -268,11 +269,12 @@ exports.handler = async (event) => {
       // Find the order — try IC- order ID first, then AWB, then Shiprocket order ID
       let order = null;
 
-      if (channelOrderId) {
+      const orderFilter = orderIdFilter(channelOrderId);
+      if (orderFilter) {
         const { data } = await supabase
           .from('orders')
           .select('*')
-          .or(`razorpay_order_id.eq.${channelOrderId},id.eq.${channelOrderId}`)
+          .or(orderFilter)
           .maybeSingle();
         order = data;
       }

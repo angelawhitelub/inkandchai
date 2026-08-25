@@ -19,6 +19,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { orderIdFilter } = require('./utils/order-id-filter');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -64,11 +65,14 @@ exports.handler = async (event) => {
     let orderId = '';
     let customerEmail = '';
     if (orderIdIn) {
-      const { data: ord } = await supabase
-        .from('orders')
-        .select('razorpay_order_id,id,customer_email')
-        .or(`razorpay_order_id.eq.${orderIdIn},id.eq.${orderIdIn}`)
-        .maybeSingle();
+      const filter = orderIdFilter(orderIdIn);
+      const { data: ord } = filter
+        ? await supabase
+            .from('orders')
+            .select('razorpay_order_id,id,customer_email')
+            .or(filter)
+            .maybeSingle()
+        : { data: null };
       if (!ord) {
         return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: `Order "${orderIdIn}" not found. Leave Order ID blank to add without linking, or check the ID.` }) };
       }
