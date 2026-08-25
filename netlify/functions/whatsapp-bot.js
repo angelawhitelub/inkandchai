@@ -234,6 +234,33 @@ function collectInboundMessages(body) {
   return out;
 }
 
+// Delivery receipts for messages WE sent (order-summary templates, order
+// updates). Meta reports a template that was accepted at send time but dropped
+// before delivery ONLY here — the send call still returns 200 with a wamid, so
+// without this the failure is invisible. Log every non-delivery with its code.
+function logStatusUpdates(body) {
+  for (const entry of (body?.entry || [])) {
+    for (const change of (entry?.changes || [])) {
+      for (const st of (change?.value?.statuses || [])) {
+        if (st.status === 'failed') {
+          const errs = st.errors || [];
+          if (!errs.length) {
+            console.error(`[WA-STATUS] FAILED to ${st.recipient_id} wamid=${st.id} (no error detail)`);
+          }
+          for (const err of errs) {
+            console.error(
+              `[WA-STATUS] FAILED to ${st.recipient_id} wamid=${st.id} ` +
+              `code=${err.code} title=${err.title} details=${err.error_data?.details || ''}`
+            );
+          }
+        } else {
+          console.log(`[WA-STATUS] ${st.status} to ${st.recipient_id} wamid=${st.id}`);
+        }
+      }
+    }
+  }
+}
+
 // The label shown on a quick-reply/interactive button, preferring what the
 // customer actually saw over the internal payload id.
 function buttonLabelOf(msg) {
@@ -1289,6 +1316,10 @@ exports.handler = async (event) => {
   let body;
   try { body = JSON.parse(event.body); } catch { return { statusCode: 200, body: 'ok' }; }
 
+  // Statuses ride along in the same POST as inbound messages; log them before
+  // the inbound loop so a throw below cannot swallow them.
+  try { logStatusUpdates(body); } catch (e) { console.error('logStatusUpdates:', e.message); }
+
   try {
     // Meta may batch several messages into one delivery, and may send more than
     // one entry/change. Taking only [0] silently discarded the rest — they were
@@ -1477,4 +1508,4 @@ async function handleInboundMessage(msg, value) {
 // internals here ensures live replies and retries use exactly the same prompt,
 // order lookup, WhatsApp sender selection, and persistence rules.
 exports._internal = { askOpenAI, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
-  describeNonText, collectInboundMessages, buttonLabelOf, handleInboundMessage, processedMsgIds };
+  describeNonText, collectInboundMessages, logStatusUpdates, buttonLabelOf, handleInboundMessage, processedMsgIds };
