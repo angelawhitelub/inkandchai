@@ -340,6 +340,8 @@ exports.handler = async (event) => {
   return {
     statusCode: 200,
     headers: CORS,
-    body: JSON.stringify({ success: true, order_id: orderId, amount: total }),
+    // server_cart carries each line's Merchant Center offer id, which the
+    // purchase conversion needs for cart data.
+    body: JSON.stringify({ success: true, order_id: orderId, amount: total, server_cart: cart }),
   };
 };

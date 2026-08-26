@@ -327,6 +327,9 @@ exports.handler = async (event) => {
         order_id: orderId,
         redirect_url: data.redirectUrl,
         phonepe_order_id: data.orderId,
+        // The redirect unloads the page, so the browser stashes cart data for
+        // the purchase conversion before leaving. It needs the offer ids.
+        server_cart: cart,
       }),
     };
 

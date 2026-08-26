@@ -71,10 +71,12 @@ function bulkFilter(q) {
 exports.handler = async (event) => {
   const headers = {
     'Content-Type': 'application/xml; charset=utf-8',
-    'Cache-Control': 'public, max-age=600',
+    'Cache-Control': 'public, max-age=300',
     // Durable edge cache: Google/Meta re-fetch on a schedule; rebuild at most
     // every 6h — the bulk catalog changes only when an import runs.
-    'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=21600, stale-while-revalidate=86400',
+    // Was s-maxage=21600 + SWR=86400: a bulk price change could take 30 hours to
+    // reach Google. Each page rebuilds in ~1.5s, so this is affordable.
+    'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=900, stale-while-revalidate=1800',
   };
   // Netlify rewrites don't reliably forward the ?page= from the redirect rule
   // to the function, so read the page number from the pretty URL itself

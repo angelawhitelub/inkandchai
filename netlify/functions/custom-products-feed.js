@@ -57,8 +57,12 @@ exports.handler = async () => {
   // at most ~once/hour instead of on every fetch/retry.
   const headers = {
     'Content-Type': 'application/xml; charset=utf-8',
-    'Cache-Control': 'public, max-age=600',
-    'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+    // The origin rebuilds this feed in about 1.5s, so a long stale window buys
+    // nothing and costs freshness: with s-maxage=3600 + SWR=86400 the CDN could
+    // hand Google a copy over a day old, which is how admin price edits kept
+    // showing the old price in Merchant Center. Minutes, not hours.
+    'Cache-Control': 'public, max-age=300',
+    'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=300, stale-while-revalidate=600',
   };
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     return feedUnavailable('supabase env vars missing');

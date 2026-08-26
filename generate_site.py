@@ -8507,7 +8507,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
     try {
       localStorage.setItem('iac_last_order_value', String(totals.total));
       localStorage.setItem(CHECKOUT_CART_KEY, activeCartKey());
-      stashPurchaseItems(cart);   // the redirect unloads the page; stash now
+      stashPurchaseItems(cart, data.server_cart);   // the redirect unloads the page; stash now
       localStorage.setItem('iac_google_reviews_pending', JSON.stringify({
         order_id: data.order_id,
         email: addr.email || '',
@@ -8552,6 +8552,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
         payment_mode: isPartial ? 'partial_cod' : 'full',
+        discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
         notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, shipping_address: addr.address || '', books: cart.map(i=>i.title||'').filter(Boolean).join(', ').slice(0,200) },
       }),
     });
@@ -8588,6 +8589,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
               shipping: isPartial ? partial.shipping : totals.shipping,
               coupon: isPartial ? '' : totals.couponCode,
               discount: isPartial ? 0 : totals.discount,
+              discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
               payment_mode: isPartial ? 'partial_cod' : 'online',
             }),
           });
@@ -8596,7 +8598,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
           await saveAbandonedCheckout('converted', response.razorpay_order_id);
           localStorage.removeItem(ABANDONED_SESSION_KEY);
           saveAddressAfterOrder(addr);
-          stashPurchaseItems(cart);   // must run BEFORE clearCart
+          stashPurchaseItems(cart, verifiedOrder.server_cart || order.server_cart);   // must run BEFORE clearCart
           clearCart();
           await autoLogin(addr.email, addr.name, addr.phone);
           showSuccess('paid', response.razorpay_payment_id, addr, totals.total, verifiedOrder.order_id || response.razorpay_order_id);
@@ -8652,6 +8654,7 @@ async function doCOD(addr) {
         cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
         amount: totals.total, shipping: totals.shipping,
+        discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
       }),
     });
     const data = await res.json();
@@ -8660,7 +8663,7 @@ async function doCOD(addr) {
     await saveAbandonedCheckout('converted', data.order_id);
     localStorage.removeItem(ABANDONED_SESSION_KEY);
     saveAddressAfterOrder(addr);
-    stashPurchaseItems(cart);   // must run BEFORE clearCart
+    stashPurchaseItems(cart, data.server_cart);   // must run BEFORE clearCart
     clearCart();
     await autoLogin(addr.email, addr.name, addr.phone);
     showSuccess('cod', data.order_id, addr, totals.total);
@@ -8689,6 +8692,18 @@ function trackGoogleAdsPurchase(orderId, value) {
   const v = Number(value) || 0;
   const base = { transaction_id: String(orderId) };
   if (v > 0) { base.value = v; base.currency = 'INR'; }
+  // Cart data — required for automated discounts, which uses it to pick which
+  // products to discount, and for product-level reporting in Ads.
+  try {
+    const stash = JSON.parse(localStorage.getItem('iac_last_purchase_items') || '{}');
+    if (stash && Array.isArray(stash.cart_data) && stash.cart_data.length) {
+      base.aw_merchant_id = 5782474419;
+      base.aw_feed_country = 'IN';
+      base.aw_feed_language = 'en';
+      base.discount = 0;
+      base.items = stash.cart_data;
+    }
+  } catch (e) {}
   gtag('event', 'conversion', Object.assign({ send_to: 'AW-18119332653/dQPCCJ7L8KQcEK2m_L9D' }, base));
   gtag('event', 'conversion', Object.assign({ send_to: 'AW-18139908537/M2fkCNvV57ocELmT5MlD' }, base));
   localStorage.setItem(key, '1');
@@ -8726,13 +8741,24 @@ function trackMetaPurchase(orderId, value) {
 
 // Called immediately before clearCart() on every checkout path (and before the
 // PhonePe redirect, where the cart has to survive a page load).
-function stashPurchaseItems(cart) {
+function stashPurchaseItems(cart, serverCart) {
   try {
     const ids = window.iacMetaIds ? window.iacMetaIds(cart) : [];
     const num = (cart || []).reduce((s, i) => s + (Number(i.qty) || 1), 0);
     localStorage.setItem('iac_last_purchase_items',
-      JSON.stringify({ ids: ids, num_items: num, ts: Date.now() }));
+      JSON.stringify({ ids: ids, num_items: num, ts: Date.now(), cart_data: cartDataItems(serverCart || cart) }));
   } catch (e) {}
+}
+
+// Google Ads "conversions with cart data". The ids MUST match the Merchant
+// Center feed exactly, and only the server knows which feed a product is in —
+// so these come from server_cart (_offer_id, stamped in utils/pricing.js) and
+// fall back to the slug, which is the id for the static catalogue.
+function cartDataItems(cart) {
+  return (cart || []).map(function (i) {
+    var id = i._offer_id || i.slug || '';
+    return id ? { id: String(id), price: Number(i.price) || 0, quantity: Number(i.qty) || 1 } : null;
+  }).filter(Boolean);
 }
 
 function showSuccess(type, orderId, addr, value, surveyOrderId = orderId) {

@@ -12,7 +12,7 @@
 const path = require('path');
 const fs   = require('fs');
 const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipping-restrictions');
-const { grantMap } = require('./google-discount');
+const { grantMap, feedOfferId } = require('./google-discount');
 
 // Hardcoded slug overrides — MUST stay in sync with `make_slug` in generate_site.py.
 // (Combo packs ship under hand-picked slugs that don't follow the auto-slug rule.)
@@ -251,6 +251,14 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
     } else {
       dropped.push({ reason: 'not_in_catalogue', slug, item: raw });
     }
+  }
+
+  // The Merchant Center id for each line. Google Ads "conversions with cart
+  // data" only counts if the item ids match the feed exactly, and only the
+  // server knows which feed a product came from: a custom_products hit ships
+  // under `cp-…`, everything else under its bare slug.
+  for (const item of resolved) {
+    item._offer_id = feedOfferId(item.slug, { custom: !!customMap[String(item.slug || '').toLowerCase()] });
   }
 
   // ── Google automated discounts ───────────────────────────────────────────

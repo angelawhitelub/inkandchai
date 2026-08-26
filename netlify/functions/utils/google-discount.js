@@ -179,8 +179,23 @@ function grantMap(grants, { now = Date.now() } = {}) {
   return out;
 }
 
+/**
+ * The id this product actually carries in whichever feed lists it — the value
+ * Google Ads cart data must match EXACTLY. Custom/bulk products go out under
+ * `cp-<slug>` (hashed past Google's 50-char id cap); the static catalogue uses
+ * the bare slug. Mirrors feedId() in custom-products-feed.js.
+ */
+function feedOfferId(slug, { custom = false } = {}) {
+  const s = String(slug || '').trim();
+  if (!s) return '';
+  if (!custom) return s;
+  const id = `cp-${s}`;
+  if (id.length <= 50) return id;
+  return 'cp-' + crypto.createHash('sha1').update(s).digest('hex').slice(0, 20);
+}
+
 module.exports = {
   verifyGoogleToken, mintGrant, verifyGrant, grantMap,
-  offerIdsForSlug, offerMatchesSlug,
+  offerIdsForSlug, offerMatchesSlug, feedOfferId,
   GOOGLE_PUBLIC_KEY_PEM, GRANT_TTL_MS,
 };
