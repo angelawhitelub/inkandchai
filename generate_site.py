@@ -8507,7 +8507,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
     try {
       localStorage.setItem('iac_last_order_value', String(totals.total));
       localStorage.setItem(CHECKOUT_CART_KEY, activeCartKey());
-      stashPurchaseItems(cart, data.server_cart);   // the redirect unloads the page; stash now
+      stashPurchaseItems(cart, data.server_cart, isPartial ? 0 : totals.discount);   // the redirect unloads the page; stash now
       localStorage.setItem('iac_google_reviews_pending', JSON.stringify({
         order_id: data.order_id,
         email: addr.email || '',
@@ -8598,7 +8598,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
           await saveAbandonedCheckout('converted', response.razorpay_order_id);
           localStorage.removeItem(ABANDONED_SESSION_KEY);
           saveAddressAfterOrder(addr);
-          stashPurchaseItems(cart, verifiedOrder.server_cart || order.server_cart);   // must run BEFORE clearCart
+          stashPurchaseItems(cart, verifiedOrder.server_cart || order.server_cart, isPartial ? 0 : totals.discount);   // must run BEFORE clearCart
           clearCart();
           await autoLogin(addr.email, addr.name, addr.phone);
           showSuccess('paid', response.razorpay_payment_id, addr, totals.total, verifiedOrder.order_id || response.razorpay_order_id);
@@ -8663,7 +8663,7 @@ async function doCOD(addr) {
     await saveAbandonedCheckout('converted', data.order_id);
     localStorage.removeItem(ABANDONED_SESSION_KEY);
     saveAddressAfterOrder(addr);
-    stashPurchaseItems(cart, data.server_cart);   // must run BEFORE clearCart
+    stashPurchaseItems(cart, data.server_cart, totals.discount);   // must run BEFORE clearCart
     clearCart();
     await autoLogin(addr.email, addr.name, addr.phone);
     showSuccess('cod', data.order_id, addr, totals.total);
@@ -8700,7 +8700,7 @@ function trackGoogleAdsPurchase(orderId, value) {
       base.aw_merchant_id = 5782474419;
       base.aw_feed_country = 'IN';
       base.aw_feed_language = 'en';
-      base.discount = 0;
+      base.discount = Number(stash.discount) || 0;
       base.items = stash.cart_data;
     }
   } catch (e) {}
@@ -8741,12 +8741,18 @@ function trackMetaPurchase(orderId, value) {
 
 // Called immediately before clearCart() on every checkout path (and before the
 // PhonePe redirect, where the cart has to survive a page load).
-function stashPurchaseItems(cart, serverCart) {
+function stashPurchaseItems(cart, serverCart, discountRs) {
   try {
     const ids = window.iacMetaIds ? window.iacMetaIds(cart) : [];
     const num = (cart || []).reduce((s, i) => s + (Number(i.qty) || 1), 0);
     localStorage.setItem('iac_last_purchase_items',
-      JSON.stringify({ ids: ids, num_items: num, ts: Date.now(), cart_data: cartDataItems(serverCart || cart) }));
+      JSON.stringify({
+        ids: ids, num_items: num, ts: Date.now(),
+        cart_data: cartDataItems(serverCart || cart),
+        // Reported separately so the line prices and the order value reconcile:
+        // items carry the per-unit price charged, and a coupon comes off here.
+        discount: Number(discountRs) || 0,
+      }));
   } catch (e) {}
 }
 
