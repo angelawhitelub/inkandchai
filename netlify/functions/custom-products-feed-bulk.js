@@ -24,6 +24,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const { skipFromFeed } = require('./utils/feed-image-filter');
+const { identifierXml } = require('./utils/gtin');
 
 const SITE = 'https://inkandchai.in';
 const BRAND = 'Ink & Chai';
@@ -127,9 +128,9 @@ exports.handler = async (event) => {
       const salePrice = priceText(p.original_price_inr);
       const hasSale = salePrice && Number(p.original_price_inr) > Number(p.price_inr);
       const brand = xmlEscape(p.publisher || p.author || BRAND);
-      const idTag = p.isbn
-        ? `<g:identifier_exists>yes</g:identifier_exists><g:isbn>${xmlEscape(p.isbn)}</g:isbn>`
-        : `<g:identifier_exists>no</g:identifier_exists>`;
+      // g:isbn is not a Merchant attribute — see utils/gtin. The ISBN becomes a
+      // g:gtin, and only when it is genuinely valid.
+      const idTag = identifierXml(p.isbn);
       return `    <item>
       <g:id>${xmlEscape(feedId(p.slug))}</g:id>
       <g:title>${xmlEscape(p.title)}</g:title>

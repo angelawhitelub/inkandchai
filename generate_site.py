@@ -9714,6 +9714,36 @@ def xml_escape(s):
             .replace('>', '&gt;')
             .replace('"', '&quot;'))
 
+# ── Merchant identifiers ─────────────────────────────────────────────────────
+# `g:isbn` is not a Google Merchant attribute; it is ignored. Pairing it with
+# identifier_exists=yes told Google the product had a unique identifier while
+# supplying none, which is an error and gets the item disapproved. A book's GTIN
+# is its ISBN-13, so an ISBN-10 is converted and anything invalid falls back to
+# identifier_exists=no. Mirrors netlify/functions/utils/gtin.js.
+
+def _ean13_check_digit(twelve):
+    total = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(twelve))
+    return str((10 - (total % 10)) % 10)
+
+
+def isbn_to_gtin(raw):
+    s = re.sub(r'[^0-9X]', '', str(raw or '').upper())
+    if re.fullmatch(r'97[89]\d{10}', s) and _ean13_check_digit(s[:12]) == s[12]:
+        return s
+    if re.fullmatch(r'\d{9}[\dX]', s):
+        total = sum((i + 1) * (10 if c == 'X' else int(c)) for i, c in enumerate(s))
+        if total % 11 == 0:
+            body = '978' + s[:9]
+            return body + _ean13_check_digit(body)
+    return ''
+
+
+def identifier_xml(raw):
+    gtin = isbn_to_gtin(raw)
+    return (f"<g:identifier_exists>yes</g:identifier_exists><g:gtin>{gtin}</g:gtin>"
+            if gtin else "<g:identifier_exists>no</g:identifier_exists>")
+
+
 # Google Shopping flags these as adult/restricted content → causes "Limited" status.
 # We replace them with neutral alternatives in the FEED ONLY (not on product pages).
 _FEED_REPLACEMENTS = [
@@ -9834,7 +9864,7 @@ for b in slim:
       <g:brand>{xml_escape(b.get('a') or 'Ink &amp; Chai')}</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>{xml_escape(b.get('cat','Books'))}</g:product_type>
-      {f"<g:identifier_exists>yes</g:identifier_exists><g:isbn>{xml_escape(b.get('isbn',''))}</g:isbn>" if b.get('isbn') else "<g:identifier_exists>no</g:identifier_exists>"}
+      {identifier_xml(b.get('isbn',''))}
     </item>""")
 
 feed_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
