@@ -12,6 +12,7 @@
 const path = require('path');
 const fs   = require('fs');
 const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipping-restrictions');
+const { grantMap } = require('./google-discount');
 
 // Hardcoded slug overrides — MUST stay in sync with `make_slug` in generate_site.py.
 // (Combo packs ship under hand-picked slugs that don't follow the auto-slug rule.)
@@ -129,7 +130,7 @@ function extractSlug(item) {
  * @param {object} supabase - Supabase client (service key) — used for custom_products lookup
  * @returns {Promise<{ cart: Array, subtotal: number, dropped: Array }>}
  */
-async function resolveCartPrices(cart, supabase) {
+async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   if (!Array.isArray(cart) || cart.length === 0) {
     return { cart: [], subtotal: 0, dropped: [] };
   }
@@ -250,6 +251,22 @@ async function resolveCartPrices(cart, supabase) {
     } else {
       dropped.push({ reason: 'not_in_catalogue', slug, item: raw });
     }
+  }
+
+  // ── Google automated discounts ───────────────────────────────────────────
+  // Applied here, at the one point every checkout path agrees is authoritative,
+  // and only after the catalogue price is known. A grant is an HMAC-signed
+  // slug+price minted by us after verifying Google's own signed token (see
+  // utils/google-discount), so the browser cannot name its own price. It can
+  // only ever bring a price DOWN: a grant at or above the catalogue price is
+  // ignored, so a stale grant on a since-discounted book can never overcharge.
+  const discounts = grantMap(discountGrants);
+  for (const item of resolved) {
+    const discounted = discounts[String(item.slug || '').toLowerCase()];
+    if (discounted === undefined || !(discounted < item.price)) continue;
+    item._list_price = item.price;
+    item._google_discount = { price: discounted, was: item.price };
+    item.price = discounted;
   }
 
   const subtotal = resolved.reduce((s, i) => s + i.price * i.qty, 0);

@@ -3032,6 +3032,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
 <!-- Cart, Checkout & Auth -->
 <script src="/js/cart.js"></script>
+<script src="/js/google-discount.js"></script>
 <script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
@@ -4925,6 +4926,7 @@ document.addEventListener('keydown', e => {
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
 <script src="/js/cart.js"></script>
+<script src="/js/google-discount.js"></script>
 <script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
@@ -6809,6 +6811,7 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
 </div>
 
 <script src="/js/cart.js"></script>
+<script src="/js/google-discount.js"></script>
 <script src="/js/search-suggest.js" defer></script>
 <script src="/js/summer-sale.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
@@ -8493,6 +8496,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
         payment_mode: isPartial ? 'partial_cod' : 'online',
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
+        discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
       }),
     });
     const data = await res.json();

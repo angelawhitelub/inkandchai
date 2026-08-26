@@ -113,7 +113,7 @@ exports.handler = async (event) => {
   const COD_HANDLING_FEE = 20;            // matches generate_site.py CHECKOUT_HTML
   const COD_FEE_WAIVER_THRESHOLD = 999;   // fee waived on subtotal >= ₹999
   const _sbForPrice = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-  const priced = await resolveCartPrices(rawCart, _sbForPrice);
+  const priced = await resolveCartPrices(rawCart, _sbForPrice, { discountGrants: body.discount_grants });
   if (!priced.cart.length) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'No catalogue items in cart' }) };
   }

@@ -283,6 +283,7 @@ async function startCheckout(addr) {
         customer: addr,
         coupon: (typeof appliedCouponCode === 'string' ? appliedCouponCode : ''),
         payment_mode: 'full',
+        discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
         notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name },
       }),
     });
@@ -317,6 +318,7 @@ async function startCheckout(addr) {
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature:  response.razorpay_signature,
               cart, customer: addr, amount: amountPaise,
+              discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
             }),
           });
           const verifiedOrder = await vRes.json().catch(() => ({}));
@@ -361,6 +363,7 @@ async function submitCOD(addr) {
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
         amount,
         user_id: window.IAC ? IAC.getUserId() : null,
+        discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
       }),
     });
 

@@ -157,7 +157,7 @@ exports.handler = async (event) => {
   // leak into our DB or emails.
   try {
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const resolved = await resolveCartPrices(cart, sb);
+    const resolved = await resolveCartPrices(cart, sb, { discountGrants: body.discount_grants });
     if (resolved.cart.length) {
       const firstMeta = (cart && cart[0]) || {};
       if (firstMeta._payment) resolved.cart[0]._payment = firstMeta._payment;

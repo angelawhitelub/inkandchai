@@ -162,7 +162,7 @@ exports.handler = async (event) => {
 
   // Re-derive prices + total server-side. NEVER trust client-supplied i.price.
   const _supabaseForCoupon = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-  const priced = await resolveCartPrices(rawCart, _supabaseForCoupon);
+  const priced = await resolveCartPrices(rawCart, _supabaseForCoupon, { discountGrants: body.discount_grants });
   if (!priced.cart.length) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'No catalogue items in cart' }) };
   }

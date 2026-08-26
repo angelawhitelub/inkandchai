@@ -108,7 +108,7 @@ exports.handler = async (event) => {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
     // ── Authoritative pricing ───────────────────────────────────────────────
-    const { cart, subtotal, dropped } = await resolveCartPrices(rawCart, supabase);
+    const { cart, subtotal, dropped } = await resolveCartPrices(rawCart, supabase, { discountGrants: body.discount_grants });
     if (!cart.length) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({
         error: 'No catalogue items in cart',
