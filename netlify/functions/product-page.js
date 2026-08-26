@@ -394,6 +394,9 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 <script>window.__IAC_REELS__=${JSON.stringify(SOCIAL_PROOF).replace(/</g, '\\u003c')};</script>
 <script src="/js/reels.js" defer></script>
 <script src="/js/cart.js"></script>
+<!-- Google automated discounts: this page is rendered live, not prerendered by
+     generate_site.py, so it needs the include of its own. -->
+<script src="/js/google-discount.js"></script>
 <script src="/js/search-suggest.js" defer></script>
 <script>
 const currentItem = ${JSON.stringify({
