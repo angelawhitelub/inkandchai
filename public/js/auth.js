@@ -1578,6 +1578,12 @@
       delivered: 'Paid',
     }[o.status] || 'Online';
 
+    // A free replacement was never charged; labelling it Prepaid/COD on the
+    // invoice is wrong in both directions.
+    const payLabel = (isReplacementOrderClient(o) && !(Number(o.amount_paise || 0) > 0))
+      ? 'Free Replacement (No Charge)'
+      : payMethod;
+
     const rows = items.map((i, idx) => `
       <tr style="${idx % 2 ? 'background:#f9f7f4;' : ''}">
         <td style="padding:10px 12px;font-size:13px;color:#2a1a08;">${escHtml(i.title || 'Book')}</td>
@@ -1679,7 +1685,7 @@
   <div class="order-info">
     <div class="info-chip"><span>Order ID</span>${orderId}</div>
     <div class="info-chip"><span>Order Date</span>${date}</div>
-    <div class="info-chip"><span>Payment</span>${payMethod}</div>
+    <div class="info-chip"><span>Payment</span>${payLabel}</div>
     ${o.tracking_id ? `<div class="info-chip"><span>AWB / Tracking</span>${escHtml(o.tracking_id)}</div>` : ''}
   </div>
 
@@ -1736,6 +1742,22 @@
   // ── Cancel order block (COD + prepaid within 30 min) ─────────────────────
   const PREPAID_CANCEL_WINDOW = 30 * 60 * 1000; // 30 minutes
 
+  // Mirrors netlify/functions/utils/replacement-order.js. A replacement is a
+  // free reshipment of something the customer already paid for: amount_paise is
+  // 0, there is no razorpay_payment_id, and once it reaches 'shipped' the cancel
+  // block below read "no money captured + not moved yet" as an undispatched COD
+  // parcel — so the customer was told their free replacement was Cash on
+  // Delivery and offered a Cancel button for it.
+  function isReplacementOrderClient(order) {
+    if (!order) return false;
+    if (String(order.source || '').toLowerCase() === 'replacement') return true;
+    if (String(order.status || '').toLowerCase() === 'replacement_pending') return true;
+    if (/^IC-R-/i.test(String(order.razorpay_order_id || ''))) return true;
+    let cart = order.cart_items;
+    if (typeof cart === 'string') { try { cart = JSON.parse(cart); } catch (e) { cart = []; } }
+    return Array.isArray(cart) && cart.some(i => i && i._replacement);
+  }
+
   function cancelOrderBlock(order) {
     const status = String(order.status || '').toLowerCase();
 
@@ -1753,6 +1775,18 @@
     const SHIPPED_STATUSES = ['in_transit', 'out_for_delivery', 'delivered', 'cancelled',
                                'refunded', 'refund_pending', 'rto', 'undelivered', 'lost'];
     if (SHIPPED_STATUSES.includes(status)) return '';
+
+    // Nothing to cancel and nothing to pay on a free replacement. A paid reship
+    // (admin sets amount_rs, so amount_paise > 0) is a real order and falls
+    // through to the normal rules below.
+    if (isReplacementOrderClient(order) && !(Number(order.amount_paise || 0) > 0)) {
+      return `
+      <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
+        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
+          Free replacement · nothing to pay on delivery
+        </div>
+      </div>`;
+    }
 
     const moneyCaptured = Boolean(order.razorpay_payment_id)
       || Number(order.advance_paid_paise || 0) > 0
