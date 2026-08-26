@@ -100,29 +100,53 @@ test('the query only ever asks for unpushed, un-AWBed pending replacements', asy
   assert.strictEqual(db.filters.status, 'replacement_pending');
   assert.strictEqual(db.filters.nimbus_pushed_at, null);
   assert.strictEqual(db.filters.tracking_id, null);
-  assert.ok(db.filters['lte:created_at'], 'grace-window cutoff must be applied');
+  // The grace window is no longer a SQL cutoff: it is applied per row, because
+  // an owner-created replacement skips it entirely and a cutoff in the query
+  // would have hidden those rows from the sweep for two hours.
+  assert.strictEqual(db.filters['lte:created_at'], undefined);
 });
 
-test('the grace window is honoured and configurable', async () => {
+const minutesAgo = m => new Date(Date.now() - m * 60 * 1000).toISOString();
+const ownerMade = over => repl({
+  cart_items: [{ title: 'Ikigai', qty: 1, _replacement: { created_by: 'admin' } }],
+  ...over,
+});
+
+test('a customer-raised replacement inside the edit window is held, not pushed', async () => {
   const seen = [];
   const { _runSweep } = loadWithPushStub(seen);
-  const before = Date.now();
-  process.env.REPLACEMENT_PUSH_GRACE_MINUTES = '30';
-  const db = fakeDb([]);
-  await _runSweep(db);
-  const cutoff = new Date(db.filters['lte:created_at']).getTime();
-  assert.ok(cutoff <= before - 29 * 60 * 1000 && cutoff >= before - 31 * 60 * 1000,
-    'cutoff should be ~30 minutes ago');
+  process.env.REPLACEMENT_PUSH_GRACE_MINUTES = '120';
+  const out = await _runSweep(fakeDb([repl({ created_at: minutesAgo(10) })]));
   delete process.env.REPLACEMENT_PUSH_GRACE_MINUTES;
+  assert.deepStrictEqual(out.pushed, []);
+  assert.strictEqual(seen.length, 0);
+  assert.match(out.skipped[0].reason, /edit window/);
 });
 
-test('grace 0 pushes everything the sweep can see', async () => {
+test('a customer-raised replacement past the edit window is pushed', async () => {
+  const seen = [];
+  const { _runSweep } = loadWithPushStub(seen);
+  process.env.REPLACEMENT_PUSH_GRACE_MINUTES = '120';
+  const out = await _runSweep(fakeDb([repl({ created_at: minutesAgo(200) })]));
+  delete process.env.REPLACEMENT_PUSH_GRACE_MINUTES;
+  assert.deepStrictEqual(out.pushed, ['IC-R-20260825-AAAAA']);
+});
+
+test('an owner-created replacement skips the edit window — the owner picked the books', async () => {
+  const seen = [];
+  const { _runSweep } = loadWithPushStub(seen);
+  process.env.REPLACEMENT_PUSH_GRACE_MINUTES = '120';
+  const out = await _runSweep(fakeDb([ownerMade({ created_at: minutesAgo(1) })]));
+  delete process.env.REPLACEMENT_PUSH_GRACE_MINUTES;
+  assert.deepStrictEqual(out.pushed, ['IC-R-20260825-AAAAA']);
+  assert.deepStrictEqual(seen, ['IC-R-20260825-AAAAA']);
+});
+
+test('grace 0 pushes a fresh customer-raised replacement immediately', async () => {
   const seen = [];
   const { _runSweep } = loadWithPushStub(seen);
   process.env.REPLACEMENT_PUSH_GRACE_MINUTES = '0';
-  const db = fakeDb([]);
-  const before = Date.now();
-  await _runSweep(db);
-  assert.ok(new Date(db.filters['lte:created_at']).getTime() >= before - 2000);
+  const out = await _runSweep(fakeDb([repl({ created_at: minutesAgo(0) })]));
   delete process.env.REPLACEMENT_PUSH_GRACE_MINUTES;
+  assert.deepStrictEqual(out.pushed, ['IC-R-20260825-AAAAA']);
 });

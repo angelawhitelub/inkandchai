@@ -18,10 +18,16 @@
  * update-replacement-items refuses to edit a replacement once `nimbus_pushed_at`
  * is set, because the parcel contents must not disagree with the label. The
  * owner would lose the chance to correct a customer's claim before free books
- * go out the door. So a replacement is pushed only once it has sat untouched
- * for REPLACEMENT_PUSH_GRACE_MINUTES (default 120) — long enough to review and
- * edit, short enough that nothing waits a day. Set the env var to 0 to push as
- * soon as the sweep sees it.
+ * go out the door. So a customer-raised replacement is pushed only once it has
+ * sat untouched for REPLACEMENT_PUSH_GRACE_MINUTES (default 120) — long enough
+ * to review and edit, short enough that nothing waits a day. Set the env var to
+ * 0 to push as soon as the sweep sees it.
+ *
+ * The window does NOT apply to a replacement the owner created in the admin
+ * panel: they picked the books themselves, so there is no claim to review, and
+ * making them wait two hours was the whole complaint. Those are pushed inline
+ * by admin-create-replacement; this sweep is the safety net that catches one
+ * whose inline push failed, on the next run rather than two hours later.
  *
  * Skipped, never pushed: anything without a delivery address or without books,
  * and anything already pushed or already carrying an AWB (pushToNimbusOnce
@@ -55,6 +61,15 @@ function shippable(order) {
   return '';
 }
 
+// The owner creating a replacement from the admin panel IS the review — there
+// is no customer claim left to check — so those skip the edit window. Anything
+// else (customer request, missing-book report on /track) still gets it.
+function isOwnerCreated(order) {
+  const cart = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const meta = (cart[0] || {})._replacement || {};
+  return String(meta.created_by || '').toLowerCase() === 'admin';
+}
+
 async function runSweep(supabase, { dryRun = false } = {}) {
   const cutoff = new Date(Date.now() - graceMinutes() * 60 * 1000).toISOString();
 
@@ -64,7 +79,6 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     .eq('status', 'replacement_pending')
     .is('nimbus_pushed_at', null)
     .is('tracking_id', null)
-    .lte('created_at', cutoff)
     .order('created_at', { ascending: true })
     .limit(MAX_PER_RUN);
   if (error) throw new Error(error.message);
@@ -75,6 +89,10 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     const id = order.razorpay_order_id || order.id;
     const why = shippable(order);
     if (why) { out.skipped.push({ id, reason: why }); continue; }
+    if (!isOwnerCreated(order) && String(order.created_at || '') > cutoff) {
+      out.skipped.push({ id, reason: 'still inside the edit window' });
+      continue;
+    }
     if (dryRun) { out.pushed.push(id); continue; }
 
     const res = await pushToNimbusOnce(supabase, order);
@@ -106,3 +124,4 @@ exports.handler = async (event) => {
 
 exports._runSweep = runSweep;
 exports._shippable = shippable;
+exports._isOwnerCreated = isOwnerCreated;

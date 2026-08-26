@@ -39,6 +39,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -169,7 +170,7 @@ exports.handler = async (event) => {
       requested_at: new Date().toISOString(),
     };
 
-    const { error: insErr } = await supabase.from('orders').insert({
+    const { data: inserted, error: insErr } = await supabase.from('orders').insert({
       razorpay_order_id:   replId,
       razorpay_payment_id: null,
       amount_paise:        Math.round(amountRs * 100),
@@ -185,8 +186,23 @@ exports.handler = async (event) => {
       cart_items:          cart,
       ...(order.user_id ? { user_id: order.user_id } : {}),
       source:              'replacement',
-    });
+    }).select('*').single();
     if (insErr) throw insErr;
+
+    // Push to NimbusPost right away. The sweep's two-hour edit window exists so
+    // a customer's claim can be reviewed before free books go out; a
+    // replacement the owner just built by hand has already been reviewed — by
+    // them — and waiting two hours for it to appear in the courier panel was
+    // the actual complaint. Best-effort: pushToNimbusOnce never throws and
+    // releases its claim on failure, and the sweep re-tries within 15 minutes,
+    // so a courier outage cannot lose the replacement or duplicate it.
+    let push = { pushed: false, reason: 'not attempted' };
+    if (inserted) {
+      push = await pushToNimbusOnce(supabase, inserted);
+      if (!push.pushed && push.reason !== 'already_pushed') {
+        console.error('[admin-create-replacement] nimbus push failed:', push.error || push.reason);
+      }
+    }
 
     let emailed = false;
     if (body.notify !== false && order.customer_email) {
@@ -210,6 +226,8 @@ exports.handler = async (event) => {
       amount_rs: amountRs,
       items: cart.map(i => ({ title: i.title, qty: i.qty })),
       emailed,
+      pushed_to_nimbus: !!push.pushed,
+      push_reason: push.pushed ? undefined : (push.error || push.reason),
       duplicate_of: existing?.length ? existing.map(e => e.razorpay_order_id) : undefined,
     });
   } catch (err) {

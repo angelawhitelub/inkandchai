@@ -1007,6 +1007,9 @@ select,input,textarea{font-size:1rem;}
     <button class="btn-outline" onclick="printLabels()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       🖨 Print Shipping Labels
     </button>
+    <button class="btn-outline" onclick="printSelectedPicklists()" title="One full pick list per selected order — every book title in full, with tick boxes" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
+      🖨 Print Item Lists (selected)
+    </button>
     <button class="btn-outline" onclick="copyAllAddresses()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;">
       📋 Copy Addresses
     </button>
@@ -3529,6 +3532,12 @@ function _drawTable() {
           onmouseout="this.style.background='rgba(109,191,109,0.08)';">
           📦 Replace book
         </button>` : ''}
+        <button onclick="printPicklist('${esc(o.id)}')" title="Print the full, untruncated list of books in this order — one tick box per line for the packer"
+          style="display:block;margin-top:0.4rem;background:rgba(160,144,128,0.08);border:1px solid rgba(160,144,128,0.4);color:var(--cream-dim);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
+          onmouseover="this.style.background='rgba(160,144,128,0.18)';"
+          onmouseout="this.style.background='rgba(160,144,128,0.08)';">
+          🖨 Print item list
+        </button>
         <button onclick="openEditOrderModal('${esc(o.id)}')" title="Edit customer name, phone, email, address or books"
           style="display:block;margin-top:0.4rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
           onmouseover="this.style.background='rgba(201,168,76,0.18)';"
@@ -6724,6 +6733,134 @@ function printLabels() {
   w.document.close();
 }
 
+// ── Pick list (full product list for one or more orders) ───────────────────
+// The Items column clamps every title to two lines, so a packer working from
+// the screen cannot read what "Everythi…" or "The Intellige…" actually is.
+// This prints the untruncated list — full title, author, slug, qty, unit and
+// line total — with a tick box per line so the shelf pick can be checked off.
+function picklistDocHtml(orders) {
+  const pages = orders.map(o => {
+    const items = Array.isArray(o.cart_items) ? o.cart_items : [];
+    const displayId = String(o.razorpay_order_id || o.id || '—');
+    const isReplacement = o.source === 'replacement'
+      || /^IC-R-/i.test(displayId)
+      || items.some(i => i && i._replacement);
+    const payKind = orderPayKind(o);
+    const partial = isPartialOrder(o);
+    const breakdown = orderPaymentBreakdown(o);
+    const books = items.reduce((s, i) => s + itemQty(i), 0);
+    const subtotal = itemsSubtotal(items);
+    const date = o.created_at
+      ? new Date(o.created_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+      : '—';
+
+    // A blank title is a real data problem, not a rendering one — say so on the
+    // sheet and print the slug so the packer can still identify the book.
+    const rows = items.map((i, n) => {
+      const title = String(i?.title || '').trim();
+      const qty = itemQty(i);
+      const unit = itemUnit(i);
+      return `<tr>
+        <td class="tick">☐</td>
+        <td class="num">${n + 1}</td>
+        <td class="title">${title ? esc(title) : '<span class="missing">— no title recorded —</span>'}
+          ${i?.author ? `<div class="author">${esc(String(i.author))}</div>` : ''}
+          ${i?.slug ? `<div class="slug">${esc(String(i.slug))}</div>` : ''}
+        </td>
+        <td class="qty">${qty}</td>
+        <td class="rs">${unit > 0 ? '₹' + money(unit) : '—'}</td>
+        <td class="rs">${unit > 0 ? '₹' + money(unit * qty) : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    const payLine = isReplacement
+      ? '<span class="pay green">FREE REPLACEMENT — COLLECT NOTHING</span>'
+      : partial
+        ? `<span class="pay amber">PARTIAL COD — COLLECT ₹${money(breakdown.balance)} (₹${money(breakdown.paid)} already paid)</span>`
+        : payKind === 'cod'
+          ? `<span class="pay amber">COD — COLLECT ₹${money(breakdown.full)}</span>`
+          : payKind === 'prepaid_pending'
+            ? `<span class="pay amber">PREPAID — PAYMENT NOT RECEIVED YET (₹${money(breakdown.full)})</span>`
+            : `<span class="pay green">PREPAID — ₹${money(breakdown.full)} PAID, COLLECT NOTHING</span>`;
+
+    return `<section class="sheet">
+      <div class="hdr">
+        <div><div class="brand">Ink &amp; Chai</div><div class="kind">Pick list</div></div>
+        <div class="oid">${esc(displayId)}<div class="when">${esc(date)}</div></div>
+      </div>
+      <div class="who">
+        <div><b>${esc(o.customer_name || '—')}</b> · ${esc(o.customer_phone || '—')}</div>
+        <div class="addr">${esc(o.customer_address || '—')}</div>
+        ${o.tracking_id ? `<div class="awb">${esc(o.courier_name || 'AWB')} · ${esc(o.tracking_id)}</div>` : ''}
+      </div>
+      <table>
+        <thead><tr><th class="tick"></th><th class="num">#</th><th>Book</th><th class="qty">Qty</th><th class="rs">Unit</th><th class="rs">Total</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" class="missing">No books recorded on this order.</td></tr>'}</tbody>
+      </table>
+      <div class="foot">
+        <div><b>${items.length}</b> line${items.length === 1 ? '' : 's'} · <b>${books}</b> book${books === 1 ? '' : 's'}${subtotal > 0 ? ` · items ₹${money(subtotal)}` : ''}</div>
+        <div>${payLine}</div>
+      </div>
+      <div class="sign">Picked by ______________  ·  Packed by ______________  ·  Date ____________</div>
+    </section>`;
+  }).join('');
+
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>Pick list — Ink &amp; Chai</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,Helvetica,sans-serif}
+      body{background:#fff;color:#000;padding:10mm;font-size:11pt}
+      .sheet{page-break-after:always;padding-bottom:6mm}
+      .sheet:last-child{page-break-after:auto}
+      .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #000;padding-bottom:3mm;margin-bottom:3mm}
+      .brand{font-size:16pt;font-weight:bold}
+      .kind{font-size:9pt;letter-spacing:2px;text-transform:uppercase;color:#555}
+      .oid{text-align:right;font-size:12pt;font-weight:bold;font-family:Menlo,Consolas,monospace}
+      .when{font-size:9pt;font-weight:normal;font-family:Arial,sans-serif;color:#555}
+      .who{font-size:10.5pt;line-height:1.5;margin-bottom:4mm}
+      .who .addr{color:#333}
+      .who .awb{font-family:Menlo,Consolas,monospace;font-size:9.5pt;color:#333;margin-top:1mm}
+      table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #999;padding:2.2mm 2.5mm;vertical-align:top;text-align:left}
+      th{background:#f0ece4;font-size:9pt;letter-spacing:1px;text-transform:uppercase}
+      td.title{font-size:11.5pt;line-height:1.35}
+      .author{font-size:9pt;color:#444;margin-top:0.8mm}
+      .slug{font-size:8pt;color:#777;font-family:Menlo,Consolas,monospace;margin-top:0.6mm}
+      .missing{color:#b00;font-style:italic}
+      .tick{width:9mm;text-align:center;font-size:15pt;line-height:1}
+      .num{width:8mm;text-align:center;color:#666}
+      .qty{width:14mm;text-align:center;font-weight:bold;font-size:12pt}
+      .rs{width:22mm;text-align:right;white-space:nowrap}
+      .foot{display:flex;justify-content:space-between;align-items:center;gap:6mm;margin-top:3mm;font-size:10.5pt;flex-wrap:wrap}
+      .pay{display:inline-block;padding:1.5mm 3mm;font-weight:bold;font-size:10.5pt}
+      .pay.amber{background:#ffe9b3}
+      .pay.green{background:#c8e6c9}
+      .sign{margin-top:6mm;font-size:9pt;color:#666}
+      @media print{body{padding:6mm}tr{break-inside:avoid}}
+    </style></head><body>${pages}<script>window.onload=function(){window.print();};<\/script></body></html>`;
+}
+
+function openPrintWindow(html) {
+  const w = window.open('', '_blank');
+  if (!w) { alert('Your browser blocked the print window. Allow pop-ups for this site and try again.'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
+// One order — from the button on its row.
+function printPicklist(orderId) {
+  const key = String(orderId);
+  const o = allOrders.find(x => String(x.id) === key || String(x.razorpay_order_id) === key);
+  if (!o) { alert('Order not found in the current list — refresh and try again.'); return; }
+  openPrintWindow(picklistDocHtml([o]));
+}
+
+// Selected orders — one sheet per order, from the Tools bar.
+function printSelectedPicklists() {
+  const orders = getSelectedOrders();
+  if (!orders.length) { alert('Tick the orders you want pick lists for first (or use Select Visible).'); return; }
+  openPrintWindow(picklistDocHtml(orders));
+}
+
 // ── Quick date-range filter (Today / Yesterday / 7 / 30 / 90 / all) ────────
 function setDayRange(btn, days) {
   document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
@@ -7188,7 +7325,9 @@ async function submitReplacement(displayId, btn, force) {
       + data.items.map(i => `• ${i.title}${i.qty > 1 ? ' ×' + i.qty : ''}`).join('\n')
       + `\n\nDeclared value: ₹${data.amount_rs} (prepaid — nothing collected)`
       + `\nCustomer emailed: ${data.emailed ? 'yes' : 'no'}`
-      + `\n\nIt is now in Unshipped — push it to NimbusPost when you're ready.`);
+      + (data.pushed_to_nimbus
+          ? `\n\n🚀 Already pushed to the NimbusPost panel — assign a courier there to get the AWB.\nIts contents can no longer be edited.`
+          : `\n\n⚠️ Not pushed to NimbusPost yet (${data.push_reason || 'unknown reason'}).\nThe auto-push sweep retries within 15 minutes, or push it by hand from Unshipped.`));
     loadOrders();
   } catch (e) {
     if (msg) msg.textContent = e.message;
