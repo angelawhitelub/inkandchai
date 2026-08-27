@@ -616,11 +616,12 @@ select,input,textarea{font-size:1rem;}
    that became one horizontally-scrolling sheet where reading an address meant
    dragging sideways past six other columns.
 
-   Below 820px the orders table stops being a table and becomes one card per
-   order. thead is hidden and each cell carries its own label from data-label,
-   so the markup and every JS handler stay exactly as they are — only the
-   presentation changes. Column order lives in the row template; the labels
-   travel with the cells, so moving a column cannot mislabel it.
+   Below 820px the three working tables — Orders, Replacements and Returns —
+   stop being tables and become one card per row. thead is hidden and each cell
+   carries its own label from data-label, so the markup and every JS handler
+   stay exactly as they are — only the presentation changes. Column order lives
+   in the row templates; the labels travel with the cells, so moving a column
+   cannot mislabel it.
    ────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 820px) {
   /* iOS zooms the page when a focused input is under 16px. Every control the
@@ -628,31 +629,31 @@ select,input,textarea{font-size:1rem;}
      the layout. */
   input, select, textarea, .search-box { font-size: 16px !important; }
 
-  #ordersTableSection { overflow-x: visible; background: transparent; border: 0; box-shadow: none; }
-  #ordersTableSection table { display: block; width: 100%; font-size: 0.95rem; }
-  #ordersTableSection thead { display: none; }
-  #ordersTableSection tbody { display: block; }
+  #ordersTableSection, #replacementsTableSection, #returnsTableSection { overflow-x: visible; background: transparent; border: 0; box-shadow: none; }
+  #ordersTableSection table, #replacementsTableSection table, #returnsTableSection table { display: block; width: 100%; font-size: 0.95rem; }
+  #ordersTableSection thead, #replacementsTableSection thead, #returnsTableSection thead { display: none; }
+  #ordersTableSection tbody, #replacementsTableSection tbody, #returnsTableSection tbody { display: block; }
 
-  #ordersTableSection tbody tr {
+  #ordersTableSection tbody tr, #replacementsTableSection tbody tr, #returnsTableSection tbody tr{
     display: block; position: relative;
     background: var(--bg3); border: 1px solid var(--border); box-shadow: var(--shadow);
     margin: 0 0 1rem; padding: 0.85rem 1rem 0.95rem;
   }
-  #ordersTableSection tbody tr.selected-row { border-color: var(--gold); }
+  #ordersTableSection tbody tr.selected-row, #replacementsTableSection tbody tr.selected-row, #returnsTableSection tbody tr.selected-row{ border-color: var(--gold); }
 
   /* Label above value, both full width. A two-column grid was the obvious
      layout and the wrong one: every child of a cell becomes its own grid item,
      so the customer's phone landed in the label column and the item list
      reflowed into two ragged columns. Stacking keeps each cell's own markup —
      including bare text nodes like the address — laid out exactly as written. */
-  #ordersTableSection tbody td {
+  #ordersTableSection tbody td, #replacementsTableSection tbody td, #returnsTableSection tbody td{
     display: block;
     max-width: none !important; width: auto;
     padding: 0.6rem 0; border-bottom: 1px solid rgba(138, 106, 31, 0.11);
     white-space: normal; overflow-wrap: anywhere;
   }
-  #ordersTableSection tbody td:last-child { border-bottom: 0; padding-bottom: 0; }
-  #ordersTableSection tbody td::before {
+  #ordersTableSection tbody td:last-child, #replacementsTableSection tbody td:last-child, #returnsTableSection tbody td:last-child{ border-bottom: 0; padding-bottom: 0; }
+  #ordersTableSection tbody td::before, #replacementsTableSection tbody td::before, #returnsTableSection tbody td::before{
     content: attr(data-label); display: block; margin-bottom: 0.3rem;
     font-size: 0.56rem; letter-spacing: 0.13em; text-transform: uppercase;
     color: var(--gold); line-height: 1.5;
@@ -660,37 +661,47 @@ select,input,textarea{font-size:1rem;}
 
   /* The order id is the card's heading — full width, no label, and the select
      checkbox sits beside it rather than in a column of its own. */
-  #ordersTableSection tbody td[data-card-head] {
-    display: block; padding: 0 2.6rem 0.6rem 0;
+  #ordersTableSection tbody td[data-card-head], #replacementsTableSection tbody td[data-card-head], #returnsTableSection tbody td[data-card-head]{
+    display: block; padding: 0 0 0.6rem;
     border-bottom: 1px solid rgba(138, 106, 31, 0.18);
   }
-  #ordersTableSection tbody td[data-card-head]::before { content: none; }
-  #ordersTableSection tbody td[data-card-head] .order-id { font-size: 1rem; }
-  #ordersTableSection tbody td.select-cell {
+  #ordersTableSection tbody td[data-card-head]::before, #replacementsTableSection tbody td[data-card-head]::before, #returnsTableSection tbody td[data-card-head]::before{ content: none; }
+  #ordersTableSection tbody td[data-card-head] .order-id, #replacementsTableSection tbody td[data-card-head] .order-id, #returnsTableSection tbody td[data-card-head] .order-id{ font-size: 1rem; }
+  #ordersTableSection tbody td[data-card-head] { padding-right: 2.6rem; }
+  #ordersTableSection tbody td.select-cell, #replacementsTableSection tbody td.select-cell, #returnsTableSection tbody td.select-cell{
     display: block; position: absolute; top: 0.8rem; right: 0.9rem;
     padding: 0; border: 0; width: auto;
   }
-  #ordersTableSection tbody td.select-cell::before { content: none; }
-  #ordersTableSection tbody td.select-cell input { width: 22px; height: 22px; }
+  #ordersTableSection tbody td.select-cell::before, #replacementsTableSection tbody td.select-cell::before, #returnsTableSection tbody td.select-cell::before{ content: none; }
+  #ordersTableSection tbody td.select-cell input, #replacementsTableSection tbody td.select-cell input, #returnsTableSection tbody td.select-cell input{ width: 22px; height: 22px; }
 
   /* Items are the reason a card gets tall. Cap the list and let the existing
      "+N more" toggle do its job rather than burying the actions below a
      twenty-line cart. Titles are NOT clamped here — a phone is exactly where
      "The Hitc…" is useless, and the row has the width to spare now. */
-  #ordersTableSection tbody td.items-cell { max-width: none; max-height: 16rem; overflow-y: auto; }
-  #ordersTableSection tbody td.items-cell .item-line { gap: 0.75rem; }
-  #ordersTableSection tbody td.items-cell .it-title {
+  #ordersTableSection tbody td.items-cell, #replacementsTableSection tbody td.items-cell, #returnsTableSection tbody td.items-cell{ max-width: none; max-height: 16rem; overflow-y: auto; }
+  #ordersTableSection tbody td.items-cell .item-line, #replacementsTableSection tbody td.items-cell .item-line, #returnsTableSection tbody td.items-cell .item-line{ gap: 0.75rem; }
+  #ordersTableSection tbody td.items-cell .it-title, #replacementsTableSection tbody td.items-cell .it-title, #returnsTableSection tbody td.items-cell .it-title{
     -webkit-line-clamp: unset; line-clamp: unset; display: block; overflow: visible;
   }
-  #ordersTableSection tbody td.items-cell,
-  #ordersTableSection tbody td.items-cell .it-price { font-size: 0.8rem; }
+  #ordersTableSection tbody td.items-cell, #replacementsTableSection tbody td.items-cell, #returnsTableSection tbody td.items-cell,
+  #ordersTableSection tbody td.items-cell .it-price, #replacementsTableSection tbody td.items-cell .it-price, #returnsTableSection tbody td.items-cell .it-price{ font-size: 0.8rem; }
 
   /* Row actions (Ship / Edit / Print / Resend / Delete) stack full-width so
      they are thumb-sized instead of 0.55rem tap targets. */
-  #ordersTableSection tbody td.addr-cell button {
+  #ordersTableSection tbody td.addr-cell button, #replacementsTableSection tbody td.addr-cell button, #returnsTableSection tbody td.addr-cell button,
+  #ordersTableSection tbody td[data-label="Actions"] button, #replacementsTableSection tbody td[data-label="Actions"] button, #returnsTableSection tbody td[data-label="Actions"] button{
     width: 100%; min-height: 44px; margin-top: 0.5rem; font-size: 0.62rem !important;
   }
-  #ordersTableSection tbody td .status-sel { width: 100%; min-height: 44px; }
+  /* Replacement/return action cells lay their buttons out inline for desktop;
+     on a card they stack. */
+  #ordersTableSection tbody td[data-label="Actions"], #replacementsTableSection tbody td[data-label="Actions"], #returnsTableSection tbody td[data-label="Actions"]{
+    display: flex; flex-direction: column; align-items: stretch; gap: 0;
+  }
+  #ordersTableSection tbody td[data-label="Actions"]::before, #replacementsTableSection tbody td[data-label="Actions"]::before, #returnsTableSection tbody td[data-label="Actions"]::before{ flex: 0 0 auto; }
+  #ordersTableSection tbody td .status-sel, #replacementsTableSection tbody td .status-sel, #returnsTableSection tbody td .status-sel{ width: 100%; min-height: 44px; }
+
+  #ordersTableSection tbody td[data-label="Photos"] img, #replacementsTableSection tbody td[data-label="Photos"] img, #returnsTableSection tbody td[data-label="Photos"] img{ max-width: 88px; height: auto; }
 
   /* Toolbar / filters: one horizontally-scrollable strip each, so they never
      push the page itself sideways. */
@@ -1660,7 +1671,7 @@ select,input,textarea{font-size:1rem;}
            placeholder="🔍  Replacement ID · Original order ID · Name · Phone · Email · Book · Reason"
            oninput="renderReplacementRequests()"/>
     <div class="hint" id="replacementRequestsMeta" style="margin-bottom:0.8rem;">Loading replacement requests…</div>
-    <div class="tbl-wrap" style="box-shadow:none;">
+    <div class="tbl-wrap" id="replacementsTableSection" style="box-shadow:none;">
       <table class="mini-table">
         <thead>
           <tr>
@@ -1698,7 +1709,7 @@ select,input,textarea{font-size:1rem;}
       </div>
     </div>
     <div class="hint" id="returnsMeta" style="margin-bottom:0.8rem;">Loading return requests…</div>
-    <div class="tbl-wrap" style="box-shadow:none;">
+    <div class="tbl-wrap" id="returnsTableSection" style="box-shadow:none;">
       <table class="mini-table">
         <thead>
           <tr>
@@ -8864,25 +8875,25 @@ function renderReplacementRequests() {
       : '';
 
     return `<tr>
-      <td style="white-space:nowrap;">${esc(date)}</td>
-      <td>
+      <td data-label="Requested" style="white-space:nowrap;">${esc(date)}</td>
+      <td data-label="Replacement" data-card-head>
         <div class="order-id">${esc(replacementId)}</div>
         <div class="cust-sub">Original: ${originalId === '—' ? '—'
           : `<a href="#" onclick="event.preventDefault(); searchOrders('${esc(originalId)}')" title="Open the original order" style="color:var(--gold);text-decoration:underline;">${esc(originalId)}</a>`}</div>
       </td>
-      <td>
+      <td data-label="Customer">
         <div class="cust-name">${esc(o.customer_name || '—')}</div>
         <div class="cust-sub">${esc(o.customer_phone || '')}</div>
         <div class="cust-sub">${esc(o.customer_email || '')}</div>
       </td>
-      <td class="items-cell">
+      <td class="items-cell" data-label="Items">
         ${items.slice(0, 4).map(itemLineHtml).join('')}
         ${items.length > 4 ? `<div style="color:var(--gold-dim);">+${items.length - 4} more</div>` : ''}
         ${missingValue > 0
           ? `<div class="items-subtotal" title="Value of the missing book(s), from the original order's per-item price">Missing value ₹${missingValue.toLocaleString('en-IN')}</div>`
           : ''}
       </td>
-      <td>
+      <td data-label="Reason">
         <div style="color:var(--cream);">${esc(req.reason_label || req.reason || '—')}</div>
         ${req.note ? `<div class="cust-sub" style="margin-top:.3rem;white-space:pre-wrap;">${esc(req.note)}</div>` : ''}
         ${req.customer_comment ? `<div title="What the customer wrote when reporting this" style="margin-top:.4rem;padding:.4rem .55rem;background:rgba(232,160,48,0.08);border-left:2px solid var(--orange);white-space:pre-wrap;font-size:0.8rem;line-height:1.5;color:var(--cream);">
@@ -8893,9 +8904,9 @@ function renderReplacementRequests() {
           <span style="user-select:all;font-family:ui-monospace,Menlo,monospace;">${esc(req.refund_upi_id)}</span>
         </div>` : ''}
       </td>
-      <td>${photoHtml}</td>
-      <td><span class="badge b-${esc(o.status || 'confirmed')}">${esc((o.status || 'pending').replace(/_/g, ' '))}</span>${tracking}</td>
-      <td>
+      <td data-label="Photos">${photoHtml}</td>
+      <td data-label="Status"><span class="badge b-${esc(o.status || 'confirmed')}">${esc((o.status || 'pending').replace(/_/g, ' '))}</span>${tracking}</td>
+      <td data-label="Actions">
         ${o.status === 'replacement_pending' && !o.tracking_id && !o.nimbus_pushed_at
           ? `<button class="btn-gold" style="padding:.4rem .65rem;margin-bottom:.35rem;display:block;width:100%;" onclick="openReplacementItemsEditor('${orderRowId}')">Edit books</button>`
           : ''}
@@ -9448,18 +9459,18 @@ function renderReturns() {
     const canTrack   = !r.awb && r.status !== 'rejected';
 
     return `<tr>
-      <td style="white-space:nowrap;font-size:0.72rem;">${date}</td>
-      <td style="font-size:0.75rem;color:var(--gold-dim);">${r.order_display_id||r.order_id||'—'}</td>
-      <td>
+      <td data-label="Date" style="white-space:nowrap;font-size:0.72rem;">${date}</td>
+      <td data-label="Order" data-card-head style="font-size:0.75rem;color:var(--gold-dim);">${r.order_display_id||r.order_id||'—'}</td>
+      <td data-label="Customer">
         <div style="font-size:0.82rem;">${r.customer_name||'—'}</div>
         <div style="font-size:0.65rem;color:var(--cream-dim);">${r.customer_email||''}</div>
         <div style="font-size:0.65rem;color:var(--cream-dim);">${r.customer_phone||''}</div>
       </td>
-      <td style="font-size:0.72rem;">${items}</td>
-      <td style="font-size:0.75rem;max-width:200px;">${r.reason ? r.reason.slice(0,150) + (r.reason.length>150?'…':'') : '<span style="color:var(--cream-dim)">No reason given</span>'}</td>
-      <td><span class="badge" style="${statusStyle}">${statusLabel}</span></td>
-      <td>${awbHtml}</td>
-      <td>
+      <td data-label="Items" style="font-size:0.72rem;">${items}</td>
+      <td data-label="Reason" style="font-size:0.75rem;max-width:200px;">${r.reason ? r.reason.slice(0,150) + (r.reason.length>150?'…':'') : '<span style="color:var(--cream-dim)">No reason given</span>'}</td>
+      <td data-label="Status"><span class="badge" style="${statusStyle}">${statusLabel}</span></td>
+      <td data-label="AWB">${awbHtml}</td>
+      <td data-label="Actions">
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
           ${canApprove ? `<button class="btn-green" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="approveReturn('${r.id}',this)">✓ Approve</button>` : ''}
           ${canReject  ? `<button class="btn-danger" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="rejectReturn('${r.id}',this)">✗ Reject</button>` : ''}
