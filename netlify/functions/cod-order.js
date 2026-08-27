@@ -247,7 +247,12 @@ exports.handler = async (event) => {
       customer_name: customer.name || '',
       customer_phone: customer.phone || '',
       customer_address: customer.address || '',
-      amount_paise: Math.round(total * 100),
+      // The SAME value written to the row above. These were two independent
+      // expressions off `total`, so a bad total could persist ₹359 to the
+      // database while handing the courier something else entirely — which is
+      // exactly the divergence that made IC-20260826-YD4LD unexplainable from
+      // the order row alone. One variable, one number, no way to disagree.
+      amount_paise: amountPaiseVal,
       cart_items: cart,
     })
       // Stamp the row so a later manual bulk push never re-pushes this order

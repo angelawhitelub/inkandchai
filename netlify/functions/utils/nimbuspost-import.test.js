@@ -103,12 +103,19 @@ test('a replacement is recognised from its id alone on legacy rows', async () =>
   assert.equal(p.payment_method, 'prepaid');
 });
 
-test('an ordinary order with no amount still falls back to the subtotal', async () => {
-  // The fallback exists for real reasons; only replacements opt out of it.
-  const p = await buildPayload({
-    ...base, status: 'cod_pending', amount_paise: 0, razorpay_order_id: 'IC-20260808-PLAIN',
-    cart_items: [{ title: 'A', qty: 2, price: 150 }],
-  });
-  assert.equal(p.payment_method, 'COD');
-  assert.equal(p.amount, 300);
+test('an ordinary COD order with no amount is refused, not shipped at the subtotal', async () => {
+  // This test used to assert the opposite — that the subtotal stood in for a
+  // missing order total. IC-20260826-YD4LD showed what that costs: it reached
+  // the courier at ₹299 instead of ₹359 and the ₹40 shipping + ₹20 COD fee were
+  // never collected, while the order row read ₹359 throughout. A collectable
+  // amount cannot be guessed from the items, because the items are exactly the
+  // part that excludes the fees. Refusing is recoverable; under-collecting at
+  // the customer's door is not.
+  await assert.rejects(
+    () => buildPayload({
+      ...base, status: 'cod_pending', amount_paise: 0, razorpay_order_id: 'IC-20260808-PLAIN',
+      cart_items: [{ title: 'A', qty: 2, price: 150 }],
+    }),
+    /no usable amount to collect/,
+  );
 });

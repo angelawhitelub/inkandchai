@@ -74,18 +74,43 @@ async function buildPayload(order, opts = {}) {
   const isPartialCod = !isReplacement && (order.status === 'partial_cod_pending'
     || Number(order.advance_paid_paise || 0) > 0
     || Number(paymentMeta.balance || 0) > 0);
+  const fullyPrepaid = !isPartialCod
+    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
+
   // What the courier collects. For a replacement amount_paise is authoritative
-  // — 0 means free — so the itemSubtotal fallback must NOT apply: the subtotal
-  // is what the customer already paid on the original order.
+  // — 0 means free — so no fallback may apply: the subtotal is what the
+  // customer already paid on the original order.
+  //
+  // Nor may one apply to a COD parcel. This used to read `amountRs ||
+  // itemSubtotal`, and on 26 Aug IC-20260826-YD4LD reached the courier at ₹299
+  // instead of ₹359: the order's own total never arrived, the subtotal stood in
+  // for it, and the ₹40 shipping + ₹20 COD fee were simply never collected.
+  // The row in our database said ₹359 the whole time, so nothing looked wrong
+  // until the panel was opened by hand.
+  //
+  // A collectable amount is the one number here that moves money, and there is
+  // no safe way to guess it. Refusing the push is recoverable — pushToNimbusOnce
+  // releases its claim, the order stays visibly un-pushed, and the next trigger
+  // retries it. Shipping at the wrong price is not recoverable: the courier
+  // collects the wrong amount at the customer's door and the shortfall is gone.
   const collectable = Math.round(isPartialCod
     ? Math.max(0, Number(paymentMeta.balance || 0))
-    : (isReplacement ? amountRs : (amountRs || itemSubtotal)));
+    : amountRs);
+  if (!isReplacement && !fullyPrepaid && !(collectable > 0)) {
+    const seen = isPartialCod
+      ? `partial-COD balance=${JSON.stringify(paymentMeta.balance)}`
+      : `amount_paise=${JSON.stringify(order.amount_paise)}`;
+    throw new Error(
+      `${orderId}: COD order has no usable amount to collect (${seen}). Refusing to push — `
+      + `the item subtotal of ₹${Math.round(itemSubtotal)} is not the order total and omits `
+      + `shipping and COD fees. Fix the order's amount, then push again.`
+    );
+  }
+
   const totalQty = items.reduce((s, i) => s + Math.max(1, Number(i.qty || i.quantity || 1)), 0) || 1;
   const name = splitName(order.customer_name);
   const addr = await enrichAddress(parseAddress(order.customer_address));  // fills city/state from pincode
   const phone = normalizeIndianPhone(order.customer_phone);
-  const fullyPrepaid = !isPartialCod
-    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
   // A replacement is always a prepaid fulfilment shipment. Its amount is a
   // declared parcel value only; NimbusPost must never collect it at delivery.
   const isCod = !isReplacement && (isPartialCod || (!fullyPrepaid && collectable > 0));
