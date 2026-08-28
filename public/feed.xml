@@ -142,7 +142,7 @@ Perfect standalone read — no need to have read Book 1. But fair warning: once 
       <g:brand>Elle Kennedy</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>Fiction</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9781511372831</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9781511372831</g:gtin>
     </item>
     <item>
       <g:id>the-score-by-elle-kennedy-off-campus-series-book-3</g:id>
@@ -162,7 +162,7 @@ Can be read as a standalone. Part of the Off-Campus series: The Deal → The Mis
       <g:brand>Elle Kennedy</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>Fiction</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9781519388155</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9781519388155</g:gtin>
     </item>
     <item>
       <g:id>the-goal-by-elle-kennedy-off-campus-series-book-4</g:id>
@@ -184,7 +184,7 @@ Can be read as a standalone. Part of the Off-Campus series: The Deal → The Mis
       <g:brand>Elle Kennedy</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>Fiction</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9781519413093</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9781519413093</g:gtin>
     </item>
     <item>
       <g:id>the-legacy-by-elle-kennedy-off-campus-series-boo-5</g:id>
@@ -206,7 +206,7 @@ The perfect final chapter to an unforgettable series.</g:description>
       <g:brand>Elle Kennedy</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>Fiction</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9781728229058</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9781728229058</g:gtin>
     </item>
     <item>
       <g:id>atomic-habits-psychology-of-money-ikigai-the-cou-4</g:id>
@@ -254,7 +254,7 @@ A bold, necessary read for anyone who refuses to sleepwalk into civilisational c
       <g:brand>Gad Saad</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>Non Fiction</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9780063446533</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9780063446533</g:gtin>
     </item>
     <item>
       <g:id>ironwood-by-michael-connelly-a-catalina-nove-nelly</g:id>
@@ -276,7 +276,7 @@ The second Detective Stilwell novel, following Nightshade. Perfect for fans of H
       <g:brand>Michael Connelly</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>Fiction</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9780316595384</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9780316595384</g:gtin>
     </item>
     <item>
       <g:id>yesteryear-by-caro-claire-burke-gma-book-clu-burke</g:id>
@@ -300,7 +300,7 @@ For fans of Lessons in Chemistry, The Handmaid's Tale, and anyone who has ever w
       <g:brand>Caro Claire Burke</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>Fiction</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9780593804216</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9780593804216</g:gtin>
     </item>
     <item>
       <g:id>the-correspondent-my-friends-my-husband-s-wife-f-3</g:id>
@@ -338,7 +338,7 @@ Ideal as a gift or for your own reading list.</g:description>
       <g:brand>Michael Jackson</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>Non Fiction</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9780307716880</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9780307716880</g:gtin>
     </item>
     <item>
       <g:id>psychology-of-money-hindi-thinking-fast-slow-books</g:id>
@@ -1503,7 +1503,7 @@ Ana Huang's writing style is fast-paced, compelling, and emotionally gripping. E
       <g:brand>Daniel Chidiac</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>All Self Help</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9798250178938</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9798250178938</g:gtin>
     </item>
     <item>
       <g:id>5-hindi-bestsellers-combo-set-of-5-books-MBO-5</g:id>
@@ -1539,7 +1539,7 @@ Ana Huang's writing style is fast-paced, compelling, and emotionally gripping. E
       <g:brand>David Goggins</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>All Self Help</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9789395073301</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9789395073301</g:gtin>
     </item>
     <item>
       <g:id>king-of-gluttony-kings-of-sin-book-6-by-ana-hua-ah</g:id>
@@ -1553,7 +1553,7 @@ Ana Huang's writing style is fast-paced, compelling, and emotionally gripping. E
       <g:brand>Ana Huang</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>Ana Huang books</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9781728289823</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9781728289823</g:gtin>
     </item>
     <item>
       <g:id>the-hard-thing-about-hard-things-hindi-ng-hi</g:id>
@@ -1567,7 +1567,7 @@ Ana Huang's writing style is fast-paced, compelling, and emotionally gripping. E
       <g:brand>Ben Horowitz</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>All Self Help</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9789356290181</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9789356290181</g:gtin>
     </item>
     <item>
       <g:id>never-finished-hindi-ed-hi</g:id>
@@ -1581,7 +1581,7 @@ Ana Huang's writing style is fast-paced, compelling, and emotionally gripping. E
       <g:brand>David Goggins</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>All Self Help</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9789395073554</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9789395073554</g:gtin>
     </item>
     <item>
       <g:id>thinking-fast-and-slow-hindi-ow-hi</g:id>
@@ -1595,7 +1595,7 @@ Ana Huang's writing style is fast-paced, compelling, and emotionally gripping. E
       <g:brand>Daniel Kahneman</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>All Self Help</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9780143456292</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9780143456292</g:gtin>
     </item>
     <item>
       <g:id>can-t-hurt-me-hindi-me-hi</g:id>
@@ -1609,7 +1609,7 @@ Ana Huang's writing style is fast-paced, compelling, and emotionally gripping. E
       <g:brand>David Goggins</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>All Self Help</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>9789395073271</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9789395073271</g:gtin>
     </item>
     <item>
       <g:id>trading-price-action-reversals-92701</g:id>
@@ -32227,7 +32227,7 @@ Ana Huang's writing style is fast-paced, compelling, and emotionally gripping. E
       <g:brand>Elle Kennedy</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>
       <g:product_type>All Romance Books</g:product_type>
-      <g:identifier_exists>yes</g:identifier_exists><g:isbn>978-1-4642-9017-6</g:isbn>
+      <g:identifier_exists>yes</g:identifier_exists><g:gtin>9781464290176</g:gtin>
     </item>
     <item>
       <g:id>twisted-games-special-edition-by-ana-huang-86397</g:id>

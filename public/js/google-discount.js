@@ -83,6 +83,8 @@
     el.textContent = inr(price);
     var orig = el.parentElement && el.parentElement.querySelector('.orig');
     if (orig && was) orig.textContent = inr(was);
+    // Keep the "% off MRP" badge honest — the discount just moved the sale price.
+    if (typeof window.syncSaveBadge === 'function') { try { window.syncSaveBadge(); } catch (e) {} }
     var badge = document.createElement('span');
     badge.className = 'iac-gd-badge';
     badge.style.cssText = 'display:inline-block;margin-left:.5rem;font-size:.62rem;letter-spacing:.1em;'

@@ -12,10 +12,39 @@ t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '1702042431242274');
+fbq('init', '1639520197322862');
 fbq('track', 'PageView');
+
+// Standard-event helper. Lives here because it is the only code guaranteed on
+// every page — checkout has its own cart implementation and does not load
+// cart.js, so a helper defined there would not exist where Purchase fires.
+// fbq('track') reports to every initialised pixel, so one call feeds both.
+// dedupKey (optional) makes an event fire once per order however many times the
+// success screen is re-rendered or reloaded.
+window.iacMeta = function(event, params, dedupKey) {
+  if (typeof fbq !== 'function') return;
+  if (dedupKey) {
+    try { if (localStorage.getItem(dedupKey)) return; } catch (e) {}
+  }
+  try {
+    fbq('track', event, params || {});
+    if (dedupKey) localStorage.setItem(dedupKey, '1');
+  } catch (e) {}
+};
+// content_ids for a cart, in the shape Meta matches catalogue items on.
+window.iacMetaIds = function(cart) {
+  try {
+    return (cart || []).map(function(i) {
+      return String(i.id || i.url || i.slug || '');
+    }).filter(Boolean);
+  } catch (e) { return []; }
+};
 </script>
 <noscript><img height="1" width="1" style="display:none"
 src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
+/></noscript>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1639520197322862&ev=PageView&noscript=1"
 /></noscript>
 <!-- End Meta Pixel Code -->
 <!-- Google tag (gtag.js) -->
@@ -155,7 +184,7 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/hindi-atomic-habits-33309/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=ef473daad850d7811eda86c5&amp;w=400" alt="Hindi Atomic Habits cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/ef473daad850d7811eda86c5-400.webp" alt="Hindi Atomic Habits cover" loading="lazy"/></span>
         <strong>Hindi Atomic Habits</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 249</span>
@@ -169,7 +198,7 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/hindi-rich-dad-poor-dad-80989/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=9885dcc7430bbee6619c8f86&amp;w=400" alt="(HINDI) Rich Dad Poor Dad cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/9885dcc7430bbee6619c8f86-400.webp" alt="(HINDI) Rich Dad Poor Dad cover" loading="lazy"/></span>
         <strong>(HINDI) Rich Dad Poor Dad</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 199</span>
@@ -190,28 +219,28 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/hindi-the-intelligent-investor-42589/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=8b465c9c7ee1fe580bb9380f&amp;w=400" alt="(Hindi) The Intelligent Investor cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/8b465c9c7ee1fe580bb9380f-400.webp" alt="(Hindi) The Intelligent Investor cover" loading="lazy"/></span>
         <strong>(Hindi) The Intelligent Investor</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 399</span>
       </a>
 
       <a class="card" href="/product/hindi-how-to-make-money-with-breakout-trading-49757/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=5dc61780651466a64e60be22&amp;w=400" alt="Hindi How to Make Money with Breakout trading cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/5dc61780651466a64e60be22-400.webp" alt="Hindi How to Make Money with Breakout trading cover" loading="lazy"/></span>
         <strong>Hindi How to Make Money with Breakout trading</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 229</span>
       </a>
 
       <a class="card" href="/product/before-you-start-up-hindi-business-ka-sapna-poora-karne-72445/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=64ced1d4207cb604c0733fe9&amp;w=400" alt="Before You Start Up (Hindi) : Business ka Sapna Poora Karney Ki Guide cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/64ced1d4207cb604c0733fe9-400.webp" alt="Before You Start Up (Hindi) : Business ka Sapna Poora Karney Ki Guide cover" loading="lazy"/></span>
         <strong>Before You Start Up (Hindi) : Business ka Sapna Poora Karney Ki Guide</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 179</span>
       </a>
 
       <a class="card" href="/product/hindi-yuddh-ki-psychology-91741/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=3507e699f2bcc96c0a74de8c&amp;w=400" alt="Hindi Yuddh Ki Psychology cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/3507e699f2bcc96c0a74de8c-400.webp" alt="Hindi Yuddh Ki Psychology cover" loading="lazy"/></span>
         <strong>Hindi Yuddh Ki Psychology</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 179</span>

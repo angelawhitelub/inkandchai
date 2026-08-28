@@ -12,10 +12,39 @@ t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '1702042431242274');
+fbq('init', '1639520197322862');
 fbq('track', 'PageView');
+
+// Standard-event helper. Lives here because it is the only code guaranteed on
+// every page — checkout has its own cart implementation and does not load
+// cart.js, so a helper defined there would not exist where Purchase fires.
+// fbq('track') reports to every initialised pixel, so one call feeds both.
+// dedupKey (optional) makes an event fire once per order however many times the
+// success screen is re-rendered or reloaded.
+window.iacMeta = function(event, params, dedupKey) {
+  if (typeof fbq !== 'function') return;
+  if (dedupKey) {
+    try { if (localStorage.getItem(dedupKey)) return; } catch (e) {}
+  }
+  try {
+    fbq('track', event, params || {});
+    if (dedupKey) localStorage.setItem(dedupKey, '1');
+  } catch (e) {}
+};
+// content_ids for a cart, in the shape Meta matches catalogue items on.
+window.iacMetaIds = function(cart) {
+  try {
+    return (cart || []).map(function(i) {
+      return String(i.id || i.url || i.slug || '');
+    }).filter(Boolean);
+  } catch (e) { return []; }
+};
 </script>
 <noscript><img height="1" width="1" style="display:none"
 src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
+/></noscript>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1639520197322862&ev=PageView&noscript=1"
 /></noscript>
 <!-- End Meta Pixel Code -->
 <!-- Google tag (gtag.js) -->
@@ -239,7 +268,7 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/hidden-hindu-complete-trilogy-3-books-akshat-gupta/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=e6d2a8df9059fd77f79ab8ed&amp;w=400" alt="The Hidden Hindu Trilogy — Complete Set of 3 Books by Akshat Gupta | Books 1, 2 cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/e6d2a8df9059fd77f79ab8ed-400.webp" alt="The Hidden Hindu Trilogy — Complete Set of 3 Books by Akshat Gupta | Books 1, 2 cover" loading="lazy"/></span>
         <strong>The Hidden Hindu Trilogy — Complete Set of 3 Books by Akshat Gupta | Books 1, 2</strong>
         <small>Akshat Gupta</small>
         <span class="price">₹ 749</span>
@@ -253,42 +282,42 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/women-in-the-material-world-22653/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=00bdf8420f49fafb6950674f&amp;w=400" alt="Women in the Material World cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/00bdf8420f49fafb6950674f-400.webp" alt="Women in the Material World cover" loading="lazy"/></span>
         <strong>Women in the Material World</strong>
         <small>All Self Help</small>
         <span class="price">₹ 2,367</span>
       </a>
 
       <a class="card" href="/product/contemporary-glamour-opulent-interiors-from-grand-to-ex-53725/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=76f8f67b050f530953e9e600&amp;w=400" alt="Contemporary Glamour: Opulent Interiors From Grand to Exotic cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/76f8f67b050f530953e9e600-400.webp" alt="Contemporary Glamour: Opulent Interiors From Grand to Exotic cover" loading="lazy"/></span>
         <strong>Contemporary Glamour: Opulent Interiors From Grand to Exotic</strong>
         <small>All Self Help</small>
         <span class="price">₹ 2,088</span>
       </a>
 
       <a class="card" href="/product/dork-diaries-boxset-74141/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=85cb089276a0180c3cc52b4f&amp;w=400" alt="Dork Diaries BOXSET cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/85cb089276a0180c3cc52b4f-400.webp" alt="Dork Diaries BOXSET cover" loading="lazy"/></span>
         <strong>Dork Diaries BOXSET</strong>
         <small>Kids Book</small>
         <span class="price">₹ 1,499</span>
       </a>
 
       <a class="card" href="/product/sakti-and-sakta-78013/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=4034141ba474120168d1642a&amp;w=400" alt="Sakti and Sakta cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/4034141ba474120168d1642a-400.webp" alt="Sakti and Sakta cover" loading="lazy"/></span>
         <strong>Sakti and Sakta</strong>
         <small>Best of Spirituality and Mythology</small>
         <span class="price">₹ 1,080</span>
       </a>
 
       <a class="card" href="/product/phenomenal-woman-four-poems-celebrating-women-24349/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=16a17a2c1c42ddd86b85e0a1&amp;w=400" alt="Phenomenal Woman: Four Poems Celebrating Women cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/16a17a2c1c42ddd86b85e0a1-400.webp" alt="Phenomenal Woman: Four Poems Celebrating Women cover" loading="lazy"/></span>
         <strong>Phenomenal Woman: Four Poems Celebrating Women</strong>
         <small>All Self Help</small>
         <span class="price">₹ 1,079</span>
       </a>
 
       <a class="card" href="/product/grammar-of-ornament-illustrated-by-example-46941/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=f0c8ca92c79cd19c104a4ad7&amp;w=400" alt="Grammar of Ornament Illustrated By Example cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/f0c8ca92c79cd19c104a4ad7-400.webp" alt="Grammar of Ornament Illustrated By Example cover" loading="lazy"/></span>
         <strong>Grammar of Ornament Illustrated By Example</strong>
         <small>All Self Help</small>
         <span class="price">₹ 878</span>
@@ -302,21 +331,21 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/long-walk-to-freedom-38461/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=e95551e383389978dba3bf87&amp;w=400" alt="Long Walk to Freedom cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/e95551e383389978dba3bf87-400.webp" alt="Long Walk to Freedom cover" loading="lazy"/></span>
         <strong>Long Walk to Freedom</strong>
         <small>Fiction</small>
         <span class="price">₹ 809</span>
       </a>
 
       <a class="card" href="/product/italian-folk-tales-77469/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=0094efc52d8b2a61a41f04d0&amp;w=400" alt="Italian Folk Tales cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/0094efc52d8b2a61a41f04d0-400.webp" alt="Italian Folk Tales cover" loading="lazy"/></span>
         <strong>Italian Folk Tales</strong>
         <small>Fiction</small>
         <span class="price">₹ 764</span>
       </a>
 
       <a class="card" href="/product/collected-short-stories-48093/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=19afbfba4433a64274d000b3&amp;w=400" alt="Collected Short Stories cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/19afbfba4433a64274d000b3-400.webp" alt="Collected Short Stories cover" loading="lazy"/></span>
         <strong>Collected Short Stories</strong>
         <small>Fiction</small>
         <span class="price">₹ 719</span>
@@ -330,28 +359,28 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/plays-unpleasant-36221/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=eecfc5772df2cc84b93ec7e7&amp;w=400" alt="Plays Unpleasant cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/eecfc5772df2cc84b93ec7e7-400.webp" alt="Plays Unpleasant cover" loading="lazy"/></span>
         <strong>Plays Unpleasant</strong>
         <small>Fiction</small>
         <span class="price">₹ 629</span>
       </a>
 
       <a class="card" href="/product/surely-you-re-joking-mr-feynman-49181/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=3e8ef52e3ae12e30297acd9a&amp;w=400" alt="Surely You&#x27;re Joking, Mr. Feynman! cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/3e8ef52e3ae12e30297acd9a-400.webp" alt="Surely You&#x27;re Joking, Mr. Feynman! cover" loading="lazy"/></span>
         <strong>Surely You&#x27;re Joking, Mr. Feynman!</strong>
         <small>Science</small>
         <span class="price">₹ 629</span>
       </a>
 
       <a class="card" href="/product/the-hungry-tide-67837/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=a5a138612ee4661dd93fe396&amp;w=400" alt="The Hungry Tide cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/a5a138612ee4661dd93fe396-400.webp" alt="The Hungry Tide cover" loading="lazy"/></span>
         <strong>The Hungry Tide</strong>
         <small>Fiction</small>
         <span class="price">₹ 629</span>
       </a>
 
       <a class="card" href="/product/the-razor-s-edge-13565/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=8a5f671191c021576a179df7&amp;w=400" alt="The Razor&#x27;s Edge cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/8a5f671191c021576a179df7-400.webp" alt="The Razor&#x27;s Edge cover" loading="lazy"/></span>
         <strong>The Razor&#x27;s Edge</strong>
         <small>Fiction</small>
         <span class="price">₹ 587</span>
@@ -365,7 +394,7 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/silent-spring-31133/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=97f2b6d8084bff5264c14559&amp;w=400" alt="Silent Spring cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/97f2b6d8084bff5264c14559-400.webp" alt="Silent Spring cover" loading="lazy"/></span>
         <strong>Silent Spring</strong>
         <small>Science</small>
         <span class="price">₹ 539</span>

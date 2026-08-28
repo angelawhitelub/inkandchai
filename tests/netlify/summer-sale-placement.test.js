@@ -9,7 +9,12 @@ const productPage = fs.readFileSync(path.join(root, 'netlify/functions/product-p
 
 test('dynamic product pages expose a stable price-row anchor', () => {
   assert.match(productPage, /class="product-price-row" data-sale-anchor/);
-  assert.match(productPage, /data-product-price="\$\{Number\(product\.price_inr\) \|\| 0\}"/);
+  // The attribute must carry a NUMBER, not the display string — the savings
+  // badge and the Google-discount script both read a price out of it. The value
+  // moved into `saleNum` when the badge was added; assert the derivation too, so
+  // this still fails if the attribute ever goes back to being empty.
+  assert.match(productPage, /data-product-price="\$\{saleNum\}"/);
+  assert.match(productPage, /const saleNum = Number\(product\.price_inr\) \|\| 0;/);
 });
 
 test('campaign fallback never inserts into the cover gallery', () => {

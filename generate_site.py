@@ -5981,6 +5981,13 @@ def price_number(book):
     except Exception:
         return 0.0
 
+def _price_to_number(raw):
+    """A display price ('₹ 1,299') as a bare float. 0.0 when absent or unparseable."""
+    try:
+        return float(re.sub(r"[^0-9.]", "", str(raw or "")) or 0)
+    except Exception:
+        return 0.0
+
 def absolute_img(book, large=False):
     """Absolute cover URL. `large=True` returns the hero-sized variant used by
     the product page's big cover slot (falls back to the card size if absent)."""
@@ -6295,6 +6302,12 @@ def static_product_html(book):
     cat = html_escape(book.get("cat") or "Books")
     price = html_escape(book.get("p") or "")
     orig = html_escape(book.get("op") or "")
+    # Numeric forms for the data-* attributes. The display strings above carry a
+    # currency symbol and separators, so anything reading a price out of the DOM
+    # (the Google-discount script, the savings badge) needs the bare number.
+    price_num = price_number(book)
+    orig_num = _price_to_number(book.get("op"))
+    save_pct = int(round((orig_num - price_num) / orig_num * 100)) if orig_num > price_num > 0 else 0
     desc = html_escape(book_description(book))
     canonical = product_abs_url(book["slug"])
     img = html_escape(absolute_img(book, large=True))
@@ -6531,7 +6544,7 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 .pdp-search button:hover{{color:var(--gold-light,var(--gold));border-color:var(--gold)}}
 @media(max-width:780px){{nav{{flex-wrap:wrap}} .pdp-search{{order:3;flex:1 0 100%;max-width:none;margin:.55rem 0 0}} .pdp-search input{{font-size:.95rem}} .pdp-search button{{padding:.5rem .85rem;width:auto;height:auto}}}}
 .wrap{{max-width:1260px;margin:0 auto;padding:clamp(1.2rem,4vw,4rem) 1rem 4rem;display:grid;grid-template-columns:minmax(360px,.95fr) 1.05fr;gap:clamp(1.4rem,4vw,4rem);align-items:start}} .cover{{align-self:start;background:var(--panel);border:1px solid var(--border);padding:clamp(1rem,2.5vw,1.8rem);display:flex;align-items:center;justify-content:center;gap:.85rem;flex-wrap:wrap}} .cover img{{max-width:100%;max-height:560px;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,.5)}} .cover-gallery img{{width:calc((100% - .85rem)/2);max-width:310px}} .cover-gallery img+img{{max-height:540px}}
-.crumb{{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}} h1{{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}} .author{{color:var(--muted);letter-spacing:.08em;margin-bottom:1rem}} .order-badge{{display:inline-flex;margin:0 0 1rem;border:1px solid rgba(138,106,31,.32);background:rgba(138,106,31,.08);color:var(--gold);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;padding:.42rem .75rem}} .rating-line{{display:flex;align-items:center;gap:.55rem;margin:0 0 1rem;color:var(--muted);font-size:.72rem}} .stars{{color:var(--gold);letter-spacing:.04em}} .price{{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}} .orig{{color:var(--muted);text-decoration:line-through;margin-left:.8rem}} .stock{{display:inline-block;margin:1rem 0;color:#7fd37f;border:1px solid rgba(127,211,127,.3);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}}
+.crumb{{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}} h1{{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}} .author{{color:var(--muted);letter-spacing:.08em;margin-bottom:1rem}} .order-badge{{display:inline-flex;margin:0 0 1rem;border:1px solid rgba(138,106,31,.32);background:rgba(138,106,31,.08);color:var(--gold);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;padding:.42rem .75rem}} .rating-line{{display:flex;align-items:center;gap:.55rem;margin:0 0 1rem;color:var(--muted);font-size:.72rem}} .stars{{color:var(--gold);letter-spacing:.04em}} .price{{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}} .orig{{color:var(--muted);text-decoration:line-through;margin-left:.8rem}} .price-row{{display:flex;align-items:baseline;flex-wrap:wrap;gap:.55rem}} .price-row .orig{{margin-left:0}} .save-badge{{font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:#6dbf6d;background:rgba(109,191,109,.1);border:1px solid rgba(109,191,109,.28);padding:.28rem .6rem;white-space:nowrap}} .save-badge[hidden]{{display:none}} .stock{{display:inline-block;margin:1rem 0;color:#7fd37f;border:1px solid rgba(127,211,127,.3);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}}
 .ship-by-box{{display:flex;align-items:flex-start;gap:0.65rem;padding:0.75rem 1rem;background:rgba(109,191,109,0.07);border:1px solid rgba(109,191,109,0.22);border-radius:2px;margin:.9rem 0}}
 .ship-by-icon{{font-size:1.15rem;line-height:1;flex-shrink:0;margin-top:0.1rem}}
 .ship-by-text{{display:flex;flex-direction:column;gap:0.18rem}}
@@ -6738,7 +6751,7 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
     <div class="author">by {author}</div>
 {order_badge_html}
 {rating_line_html}
-    <div><span class="price" data-product-price style="opacity:0;transition:opacity 0.15s">{price}</span>{f'<span class="orig" data-product-original-price style="opacity:0;transition:opacity 0.15s">{orig}</span>' if orig else ''}</div>
+    <div class="price-row"><span class="price" data-product-price="{price_num:g}" style="opacity:0;transition:opacity 0.15s">{price}</span>{f'<span class="orig" data-product-original-price="{orig_num:g}" style="opacity:0;transition:opacity 0.15s">{orig}</span>' if orig else ''}{f'<span class="save-badge" data-save-badge style="opacity:0;transition:opacity 0.15s">{save_pct}% off</span>' if save_pct else '<span class="save-badge" data-save-badge hidden></span>'}</div>
     {scarcity_badge_html if scarcity_badge_html else '<span class="stock">In Stock</span>'}
     <div id="staticShipBy"></div>
     <div class="trust"><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></svg></span><span class="tt"><b>Delivery in 2-5 days</b><i>Shipped across India</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span><span class="tt"><b>Cash on delivery</b><i>Pay when it arrives</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/><path d="M6 14.5h4"/></svg></span><span class="tt"><b>UPI, cards, net banking</b><i>Secure checkout</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.3-3.1 7.7-7.5 9-4.4-1.3-7.5-4.7-7.5-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="tt"><b>7-day replacement</b><i><a href="#" onclick="event.preventDefault();openReturnVideo();" style="cursor:pointer">Watch how it works &#9654;</a></i></span></span></div>
@@ -6819,8 +6832,29 @@ function priceText(value) {{
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? '₹ ' + n.toLocaleString('en-IN', {{ maximumFractionDigits: 0 }}) : '';
 }}
+function priceValue(sel) {{
+  const el = document.querySelector(sel);
+  if (!el) return 0;
+  // Prefer the numeric attribute; fall back to the rendered text for any page
+  // that was generated before the attribute carried a value.
+  const attr = Number(el.getAttribute(sel === '[data-product-price]' ? 'data-product-price' : 'data-product-original-price'));
+  if (Number.isFinite(attr) && attr > 0) return attr;
+  return Number(String(el.textContent || '').replace(/[^0-9.]/g, '')) || 0;
+}}
+// Percentage off MRP, recomputed from whatever the two price elements currently
+// say — so it stays correct after an admin price override or a Google discount.
+function syncSaveBadge() {{
+  const badge = document.querySelector('[data-save-badge]');
+  if (!badge) return;
+  const sale = priceValue('[data-product-price]');
+  const mrp = priceValue('[data-product-original-price]');
+  if (!(mrp > sale && sale > 0)) {{ badge.hidden = true; return; }}
+  badge.textContent = Math.round((mrp - sale) / mrp * 100) + '% off';
+  badge.hidden = false;
+}}
 function revealPrice() {{
-  document.querySelectorAll('[data-product-price],[data-product-original-price]').forEach(el => {{
+  syncSaveBadge();
+  document.querySelectorAll('[data-product-price],[data-product-original-price],[data-save-badge]').forEach(el => {{
     el.style.opacity = '1';
   }});
 }}
@@ -6853,6 +6887,7 @@ async function applyRuntimeProductOverride() {{
       const saleText = priceText(override.price_inr);
       document.querySelectorAll('[data-product-price], .price, .prod-price').forEach(el => {{
         el.textContent = saleText;
+        el.setAttribute('data-product-price', String(Number(override.price_inr) || 0));
         el.setAttribute('data-live-override', 'price');
       }});
     }}
@@ -6872,6 +6907,7 @@ async function applyRuntimeProductOverride() {{
       }}
       origEls.forEach(el => {{
         el.textContent = mrpText;
+        el.setAttribute('data-product-original-price', String(Number(override.original_price_inr) || 0));
         el.setAttribute('data-live-override', 'original-price');
       }});
     }}
@@ -7584,6 +7620,11 @@ window.SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY_PLACEHOLDER";
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
 <script src="/js/google-customer-reviews.js"></script>
+<!-- Google automated discounts. Must load HERE too, not only on product pages:
+     every checkout request reads window.iacDiscountGrants() to replay the grant
+     the server re-verifies before pricing. Without it the grants array is always
+     empty and a Google-discounted price silently reverts to full price. -->
+<script src="/js/google-discount.js"></script>
 
 <script>
 // ── Cart (must match cart.js CART_KEY) ────────────────────────────────────

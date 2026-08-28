@@ -12,10 +12,39 @@ t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '1702042431242274');
+fbq('init', '1639520197322862');
 fbq('track', 'PageView');
+
+// Standard-event helper. Lives here because it is the only code guaranteed on
+// every page — checkout has its own cart implementation and does not load
+// cart.js, so a helper defined there would not exist where Purchase fires.
+// fbq('track') reports to every initialised pixel, so one call feeds both.
+// dedupKey (optional) makes an event fire once per order however many times the
+// success screen is re-rendered or reloaded.
+window.iacMeta = function(event, params, dedupKey) {
+  if (typeof fbq !== 'function') return;
+  if (dedupKey) {
+    try { if (localStorage.getItem(dedupKey)) return; } catch (e) {}
+  }
+  try {
+    fbq('track', event, params || {});
+    if (dedupKey) localStorage.setItem(dedupKey, '1');
+  } catch (e) {}
+};
+// content_ids for a cart, in the shape Meta matches catalogue items on.
+window.iacMetaIds = function(cart) {
+  try {
+    return (cart || []).map(function(i) {
+      return String(i.id || i.url || i.slug || '');
+    }).filter(Boolean);
+  } catch (e) { return []; }
+};
 </script>
 <noscript><img height="1" width="1" style="display:none"
 src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
+/></noscript>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1639520197322862&ev=PageView&noscript=1"
 /></noscript>
 <!-- End Meta Pixel Code -->
 <!-- Google tag (gtag.js) -->
@@ -141,7 +170,7 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 </head>
 <body><nav><a class="logo" href="/">Ink &amp; Chai</a><div class="links"><a href="/hindi-books/">Hindi</a><a href="/self-help-books/">Self-help</a><a href="/bestsellers/">Bestsellers</a><a href="/new-arrivals/">New</a><a href="/book-combos/">Combos</a></div></nav><main><div class="eyebrow">Curated collection</div><h1>COD Books Online India</h1><p>Bestselling books you can order with cash on delivery, UPI, cards, and pan-India shipping.</p><div class="trust"><span>Free delivery on ₹499+</span><span>COD available</span><span>UPI/cards accepted</span><span>7-day replacement support</span></div><a class="cta" href="/">Search full catalogue</a><section class="grid">
       <a class="card" href="/product/special-hindi-combo-73213/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=6598443a6f194816de36d950&amp;w=400" alt="Special HINDI COMBO cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/6598443a6f194816de36d950-400.webp" alt="Special HINDI COMBO cover" loading="lazy"/></span>
         <strong>Special HINDI COMBO</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 1,599</span>
@@ -190,14 +219,14 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/hindi-the-diary-of-a-ceo-23805/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=8c20c73efcd5ad1e6246f746&amp;w=400" alt="Hindi The Diary of a CEO cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/8c20c73efcd5ad1e6246f746-400.webp" alt="Hindi The Diary of a CEO cover" loading="lazy"/></span>
         <strong>Hindi The Diary of a CEO</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 459</span>
       </a>
 
       <a class="card" href="/product/hindi-men-are-from-mars-women-are-from-venus-23389/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=d68ce72c63bf539623e14452&amp;w=400" alt="Hindi Men Are From Mars, Women Are From Venus cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/d68ce72c63bf539623e14452-400.webp" alt="Hindi Men Are From Mars, Women Are From Venus cover" loading="lazy"/></span>
         <strong>Hindi Men Are From Mars, Women Are From Venus</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 419</span>
@@ -211,77 +240,77 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/hindi-the-intelligent-investor-42589/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=8b465c9c7ee1fe580bb9380f&amp;w=400" alt="(Hindi) The Intelligent Investor cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/8b465c9c7ee1fe580bb9380f-400.webp" alt="(Hindi) The Intelligent Investor cover" loading="lazy"/></span>
         <strong>(Hindi) The Intelligent Investor</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 399</span>
       </a>
 
       <a class="card" href="/product/hindi-shrimad-bhagwat-gita-29149/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=d130041263766bb87ffb6243&amp;w=400" alt="Hindi Shrimad Bhagwat Gita श्रीमदभगवतगीता cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/d130041263766bb87ffb6243-400.webp" alt="Hindi Shrimad Bhagwat Gita श्रीमदभगवतगीता cover" loading="lazy"/></span>
         <strong>Hindi Shrimad Bhagwat Gita श्रीमदभगवतगीता</strong>
         <small>All Self Help</small>
         <span class="price">₹ 399</span>
       </a>
 
       <a class="card" href="/product/hindi-aatm-anushasan-ki-shakti-bahane-banana-chhode-de--34077/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=b31fc220dff11a7ed841f506&amp;w=400" alt="Hindi Aatm Anushasan Ki Shakti: Bahane Banana Chhode.de ... No Excuses! power of cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/b31fc220dff11a7ed841f506-400.webp" alt="Hindi Aatm Anushasan Ki Shakti: Bahane Banana Chhode.de ... No Excuses! power of cover" loading="lazy"/></span>
         <strong>Hindi Aatm Anushasan Ki Shakti: Bahane Banana Chhode.de ... No Excuses! power of</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 369</span>
       </a>
 
       <a class="card" href="/product/hindi-bramhand-ke-bade-sawalo-ke-sankshipt-jawab-60061/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=edcffc1945fb994e0ba124a0&amp;w=400" alt="Hindi Bramhand Ke Bade Sawalo Ke Sankshipt Jawab cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/edcffc1945fb994e0ba124a0-400.webp" alt="Hindi Bramhand Ke Bade Sawalo Ke Sankshipt Jawab cover" loading="lazy"/></span>
         <strong>Hindi Bramhand Ke Bade Sawalo Ke Sankshipt Jawab</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 369</span>
       </a>
 
       <a class="card" href="/product/hindi-kyun-se-kare-shuruwat-17757/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=f25d0163e43dce0670d85bd8&amp;w=400" alt="Hindi Kyun Se Kare Shuruwat cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/f25d0163e43dce0670d85bd8-400.webp" alt="Hindi Kyun Se Kare Shuruwat cover" loading="lazy"/></span>
         <strong>Hindi Kyun Se Kare Shuruwat</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 369</span>
       </a>
 
       <a class="card" href="/product/hindi-the-greatest-secret-38621/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=74fd3e9a983d2d8b5677aca6&amp;w=400" alt="Hindi The Greatest Secret cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/74fd3e9a983d2d8b5677aca6-400.webp" alt="Hindi The Greatest Secret cover" loading="lazy"/></span>
         <strong>Hindi The Greatest Secret</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 369</span>
       </a>
 
       <a class="card" href="/product/hindi-think-again-27741/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=c512f8b0f0f1a04cb6480b4d&amp;w=400" alt="Hindi Think Again cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/c512f8b0f0f1a04cb6480b4d-400.webp" alt="Hindi Think Again cover" loading="lazy"/></span>
         <strong>Hindi Think Again</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 369</span>
       </a>
 
       <a class="card" href="/product/hindi-youre-too-good-to-feel-this-bad-05693/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=06d3a9d6bec7a2e4a91838dc&amp;w=400" alt="Hindi Youre Too Good to Feel This Bad cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/06d3a9d6bec7a2e4a91838dc-400.webp" alt="Hindi Youre Too Good to Feel This Bad cover" loading="lazy"/></span>
         <strong>Hindi Youre Too Good to Feel This Bad</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 369</span>
       </a>
 
       <a class="card" href="/product/bharat-ka-samvidhan-the-constitution-of-india-in-hindi-11261/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=ff14ed97c222c2d2dbb5a5ee&amp;w=400" alt="Bharat Ka Samvidhan (The Constitution of India) in Hindi cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/ff14ed97c222c2d2dbb5a5ee-400.webp" alt="Bharat Ka Samvidhan (The Constitution of India) in Hindi cover" loading="lazy"/></span>
         <strong>Bharat Ka Samvidhan (The Constitution of India) in Hindi</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 329</span>
       </a>
 
       <a class="card" href="/product/hindi-one-up-on-the-wall-street-37501/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=89b24d2fe8f20b2b928ad58f&amp;w=400" alt="Hindi One up on the wall street cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/89b24d2fe8f20b2b928ad58f-400.webp" alt="Hindi One up on the wall street cover" loading="lazy"/></span>
         <strong>Hindi One up on the wall street</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 329</span>
       </a>
 
       <a class="card" href="/product/vaishali-ki-nagarvadhu-42301/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=ac986714d83b2dba1c7e07e9&amp;w=400" alt="Vaishali Ki Nagarvadhu cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/ac986714d83b2dba1c7e07e9-400.webp" alt="Vaishali Ki Nagarvadhu cover" loading="lazy"/></span>
         <strong>Vaishali Ki Nagarvadhu</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 319</span>
@@ -323,70 +352,70 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
       </a>
 
       <a class="card" href="/product/hindi-the-magic-by-ronda-bryne-92637/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=fcd566b832a8ef2a6c71f853&amp;w=400" alt="Hindi The Magic By Ronda Bryne cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/fcd566b832a8ef2a6c71f853-400.webp" alt="Hindi The Magic By Ronda Bryne cover" loading="lazy"/></span>
         <strong>Hindi The Magic By Ronda Bryne</strong>
         <small>Rhonda Byrne Books</small>
         <span class="price">₹ 299</span>
       </a>
 
       <a class="card" href="/product/sophie-ka-sansar-hindi-44157/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=e5c47f7cda1fef2634ce07d2&amp;w=400" alt="Sophie Ka Sansar Hindi cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/e5c47f7cda1fef2634ce07d2-400.webp" alt="Sophie Ka Sansar Hindi cover" loading="lazy"/></span>
         <strong>Sophie Ka Sansar Hindi</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 299</span>
       </a>
 
       <a class="card" href="/product/hindi-gaban-by-munshi-premchand-43837/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=3e509c653cdf42e99cb3471e&amp;w=400" alt="Hindi Gaban by Munshi Premchand cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/3e509c653cdf42e99cb3471e-400.webp" alt="Hindi Gaban by Munshi Premchand cover" loading="lazy"/></span>
         <strong>Hindi Gaban by Munshi Premchand</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 279</span>
       </a>
 
       <a class="card" href="/product/hindi-har-mangal-morrie-ke-sang-55453/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=b088b5cf9462eaf600578b94&amp;w=400" alt="Hindi Har Mangal Morrie Ke Sang cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/b088b5cf9462eaf600578b94-400.webp" alt="Hindi Har Mangal Morrie Ke Sang cover" loading="lazy"/></span>
         <strong>Hindi Har Mangal Morrie Ke Sang</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 279</span>
       </a>
 
       <a class="card" href="/product/hindi-the-one-thing-32829/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=9e4f2fceb7eb23379735be45&amp;w=400" alt="Hindi The One Thing cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/9e4f2fceb7eb23379735be45-400.webp" alt="Hindi The One Thing cover" loading="lazy"/></span>
         <strong>Hindi The One Thing</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 279</span>
       </a>
 
       <a class="card" href="/product/hindi-warren-buffett-ke-nivesh-siddhant-14173/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=97ff17a198a70b0b5048feb7&amp;w=400" alt="Hindi Warren Buffett Ke Nivesh Siddhant cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/97ff17a198a70b0b5048feb7-400.webp" alt="Hindi Warren Buffett Ke Nivesh Siddhant cover" loading="lazy"/></span>
         <strong>Hindi Warren Buffett Ke Nivesh Siddhant</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 279</span>
       </a>
 
       <a class="card" href="/product/hindi-don-t-believe-everything-you-think-74749/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=c7d66bd70bc7c0fd3d6bc0af&amp;w=400" alt="Hindi Don&#x27;t Believe Everything You Think cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/c7d66bd70bc7c0fd3d6bc0af-400.webp" alt="Hindi Don&#x27;t Believe Everything You Think cover" loading="lazy"/></span>
         <strong>Hindi Don&#x27;t Believe Everything You Think</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 276</span>
       </a>
 
       <a class="card" href="/product/hindi-samay-ka-saral-aur-sanshipt-itihas-86621/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=a786dc7409e4ee7023d11e07&amp;w=400" alt="Hindi Samay Ka Saral Aur Sanshipt Itihas cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/a786dc7409e4ee7023d11e07-400.webp" alt="Hindi Samay Ka Saral Aur Sanshipt Itihas cover" loading="lazy"/></span>
         <strong>Hindi Samay Ka Saral Aur Sanshipt Itihas</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 269</span>
       </a>
 
       <a class="card" href="/product/hindi-atomic-habits-33309/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=ef473daad850d7811eda86c5&amp;w=400" alt="Hindi Atomic Habits cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/ef473daad850d7811eda86c5-400.webp" alt="Hindi Atomic Habits cover" loading="lazy"/></span>
         <strong>Hindi Atomic Habits</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 249</span>
       </a>
 
       <a class="card" href="/product/hindi-death-by-sadhguru-17277/">
-        <span class="cover"><img src="https://inkandchai.in/.netlify/functions/image-proxy?i=a61f6c8d8c51f12bd1415818&amp;w=400" alt="(Hindi) Death by Sadhguru cover" loading="lazy"/></span>
+        <span class="cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/a61f6c8d8c51f12bd1415818-400.webp" alt="(Hindi) Death by Sadhguru cover" loading="lazy"/></span>
         <strong>(Hindi) Death by Sadhguru</strong>
         <small>Hindi Books</small>
         <span class="price">₹ 249</span>
