@@ -258,9 +258,12 @@ async function inspectNimbusOrder(orderNumber) {
 async function listNimbusOrders(apiKey, pages = NP_SCAN_PAGES) {
   const perPage = 100;
   const lastPage = Math.min(pages, NP_MAX_PAGE);
-  const out = [];
 
-  for (let page = 1; page <= lastPage; page++) {
+  // Pages are fetched in PARALLEL, not in sequence. findNimbusOrder walks pages
+  // one at a time because it stops the moment it finds its order; this wants the
+  // whole window, and serial paging cost ~1s a page -- 5 pages already used half
+  // the function's budget and the deeper scans could not have finished at all.
+  const fetchPage = async (page) => {
     const url = new URL(NP_PANEL_ORDERS_URL);
     url.searchParams.set('page', String(page));
     url.searchParams.set('per_page', String(perPage));
@@ -276,16 +279,17 @@ async function listNimbusOrders(apiKey, pages = NP_SCAN_PAGES) {
 
     if (!response.ok || payload.status === false || payload.success === false || payload.error) {
       const msg = JSON.stringify(payload).toLowerCase();
-      if (response.status === 404 && /(page|sort).*(must|one of|less than)/.test(msg)) break;
+      // Past the last page. Expected when the panel holds fewer rows than asked
+      // for, so it ends this page rather than failing the whole scan.
+      if (response.status === 404 && /(page|sort).*(must|one of|less than)/.test(msg)) return [];
       throw new Error(`NimbusPost order list failed (${response.status}): ${JSON.stringify(payload).slice(0, 300)}`);
     }
+    return orderRowsFromResponse(payload);
+  };
 
-    const rows = orderRowsFromResponse(payload);
-    if (!rows.length) break;
-    out.push(...rows);
-    if (rows.length < perPage) break;
-  }
-  return out;
+  const pageNumbers = Array.from({ length: lastPage }, (_, i) => i + 1);
+  const settled = await Promise.all(pageNumbers.map(n => fetchPage(n)));
+  return settled.flat();
 }
 
 // A panel row NimbusPost itself considers cancelled. Deliberately narrow: this
