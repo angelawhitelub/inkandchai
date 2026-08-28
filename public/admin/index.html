@@ -629,31 +629,31 @@ select,input,textarea{font-size:1rem;}
      the layout. */
   input, select, textarea, .search-box { font-size: 16px !important; }
 
-  #ordersTableSection, #replacementsTableSection, #returnsTableSection { overflow-x: visible; background: transparent; border: 0; box-shadow: none; }
-  #ordersTableSection table, #replacementsTableSection table, #returnsTableSection table { display: block; width: 100%; font-size: 0.95rem; }
-  #ordersTableSection thead, #replacementsTableSection thead, #returnsTableSection thead { display: none; }
-  #ordersTableSection tbody, #replacementsTableSection tbody, #returnsTableSection tbody { display: block; }
+  #ordersTableSection, #replacementsTableSection, #returnsTableSection, #npCancelledSection { overflow-x: visible; background: transparent; border: 0; box-shadow: none; }
+  #ordersTableSection table, #replacementsTableSection table, #returnsTableSection table , #npCancelledSection table { display: block; width: 100%; font-size: 0.95rem; }
+  #ordersTableSection thead, #replacementsTableSection thead, #returnsTableSection thead , #npCancelledSection thead { display: none; }
+  #ordersTableSection tbody, #replacementsTableSection tbody, #returnsTableSection tbody , #npCancelledSection tbody { display: block; }
 
-  #ordersTableSection tbody tr, #replacementsTableSection tbody tr, #returnsTableSection tbody tr{
+  #ordersTableSection tbody tr, #replacementsTableSection tbody tr, #returnsTableSection tbody tr, #npCancelledSection tbody tr{
     display: block; position: relative;
     background: var(--bg3); border: 1px solid var(--border); box-shadow: var(--shadow);
     margin: 0 0 1rem; padding: 0.85rem 1rem 0.95rem;
   }
-  #ordersTableSection tbody tr.selected-row, #replacementsTableSection tbody tr.selected-row, #returnsTableSection tbody tr.selected-row{ border-color: var(--gold); }
+  #ordersTableSection tbody tr.selected-row, #replacementsTableSection tbody tr.selected-row, #returnsTableSection tbody tr.selected-row, #npCancelledSection tbody tr.selected-row{ border-color: var(--gold); }
 
   /* Label above value, both full width. A two-column grid was the obvious
      layout and the wrong one: every child of a cell becomes its own grid item,
      so the customer's phone landed in the label column and the item list
      reflowed into two ragged columns. Stacking keeps each cell's own markup —
      including bare text nodes like the address — laid out exactly as written. */
-  #ordersTableSection tbody td, #replacementsTableSection tbody td, #returnsTableSection tbody td{
+  #ordersTableSection tbody td, #replacementsTableSection tbody td, #returnsTableSection tbody td, #npCancelledSection tbody td{
     display: block;
     max-width: none !important; width: auto;
     padding: 0.6rem 0; border-bottom: 1px solid rgba(138, 106, 31, 0.11);
     white-space: normal; overflow-wrap: anywhere;
   }
-  #ordersTableSection tbody td:last-child, #replacementsTableSection tbody td:last-child, #returnsTableSection tbody td:last-child{ border-bottom: 0; padding-bottom: 0; }
-  #ordersTableSection tbody td::before, #replacementsTableSection tbody td::before, #returnsTableSection tbody td::before{
+  #ordersTableSection tbody td:last-child, #replacementsTableSection tbody td:last-child, #returnsTableSection tbody td:last-child, #npCancelledSection tbody td:last-child{ border-bottom: 0; padding-bottom: 0; }
+  #ordersTableSection tbody td::before, #replacementsTableSection tbody td::before, #returnsTableSection tbody td::before, #npCancelledSection tbody td::before{
     content: attr(data-label); display: block; margin-bottom: 0.3rem;
     font-size: 0.56rem; letter-spacing: 0.13em; text-transform: uppercase;
     color: var(--gold); line-height: 1.5;
@@ -661,47 +661,47 @@ select,input,textarea{font-size:1rem;}
 
   /* The order id is the card's heading — full width, no label, and the select
      checkbox sits beside it rather than in a column of its own. */
-  #ordersTableSection tbody td[data-card-head], #replacementsTableSection tbody td[data-card-head], #returnsTableSection tbody td[data-card-head]{
+  #ordersTableSection tbody td[data-card-head], #replacementsTableSection tbody td[data-card-head], #returnsTableSection tbody td[data-card-head], #npCancelledSection tbody td[data-card-head]{
     display: block; padding: 0 0 0.6rem;
     border-bottom: 1px solid rgba(138, 106, 31, 0.18);
   }
-  #ordersTableSection tbody td[data-card-head]::before, #replacementsTableSection tbody td[data-card-head]::before, #returnsTableSection tbody td[data-card-head]::before{ content: none; }
-  #ordersTableSection tbody td[data-card-head] .order-id, #replacementsTableSection tbody td[data-card-head] .order-id, #returnsTableSection tbody td[data-card-head] .order-id{ font-size: 1rem; }
+  #ordersTableSection tbody td[data-card-head]::before, #replacementsTableSection tbody td[data-card-head]::before, #returnsTableSection tbody td[data-card-head]::before, #npCancelledSection tbody td[data-card-head]::before{ content: none; }
+  #ordersTableSection tbody td[data-card-head] .order-id, #replacementsTableSection tbody td[data-card-head] .order-id, #returnsTableSection tbody td[data-card-head] .order-id, #npCancelledSection tbody td[data-card-head] .order-id{ font-size: 1rem; }
   #ordersTableSection tbody td[data-card-head] { padding-right: 2.6rem; }
-  #ordersTableSection tbody td.select-cell, #replacementsTableSection tbody td.select-cell, #returnsTableSection tbody td.select-cell{
+  #ordersTableSection tbody td.select-cell, #replacementsTableSection tbody td.select-cell, #returnsTableSection tbody td.select-cell, #npCancelledSection tbody td.select-cell{
     display: block; position: absolute; top: 0.8rem; right: 0.9rem;
     padding: 0; border: 0; width: auto;
   }
-  #ordersTableSection tbody td.select-cell::before, #replacementsTableSection tbody td.select-cell::before, #returnsTableSection tbody td.select-cell::before{ content: none; }
-  #ordersTableSection tbody td.select-cell input, #replacementsTableSection tbody td.select-cell input, #returnsTableSection tbody td.select-cell input{ width: 22px; height: 22px; }
+  #ordersTableSection tbody td.select-cell::before, #replacementsTableSection tbody td.select-cell::before, #returnsTableSection tbody td.select-cell::before, #npCancelledSection tbody td.select-cell::before{ content: none; }
+  #ordersTableSection tbody td.select-cell input, #replacementsTableSection tbody td.select-cell input, #returnsTableSection tbody td.select-cell input, #npCancelledSection tbody td.select-cell input{ width: 22px; height: 22px; }
 
   /* Items are the reason a card gets tall. Cap the list and let the existing
      "+N more" toggle do its job rather than burying the actions below a
      twenty-line cart. Titles are NOT clamped here — a phone is exactly where
      "The Hitc…" is useless, and the row has the width to spare now. */
-  #ordersTableSection tbody td.items-cell, #replacementsTableSection tbody td.items-cell, #returnsTableSection tbody td.items-cell{ max-width: none; max-height: 16rem; overflow-y: auto; }
-  #ordersTableSection tbody td.items-cell .item-line, #replacementsTableSection tbody td.items-cell .item-line, #returnsTableSection tbody td.items-cell .item-line{ gap: 0.75rem; }
-  #ordersTableSection tbody td.items-cell .it-title, #replacementsTableSection tbody td.items-cell .it-title, #returnsTableSection tbody td.items-cell .it-title{
+  #ordersTableSection tbody td.items-cell, #replacementsTableSection tbody td.items-cell, #returnsTableSection tbody td.items-cell, #npCancelledSection tbody td.items-cell{ max-width: none; max-height: 16rem; overflow-y: auto; }
+  #ordersTableSection tbody td.items-cell .item-line, #replacementsTableSection tbody td.items-cell .item-line, #returnsTableSection tbody td.items-cell .item-line, #npCancelledSection tbody td.items-cell .item-line{ gap: 0.75rem; }
+  #ordersTableSection tbody td.items-cell .it-title, #replacementsTableSection tbody td.items-cell .it-title, #returnsTableSection tbody td.items-cell .it-title, #npCancelledSection tbody td.items-cell .it-title{
     -webkit-line-clamp: unset; line-clamp: unset; display: block; overflow: visible;
   }
-  #ordersTableSection tbody td.items-cell, #replacementsTableSection tbody td.items-cell, #returnsTableSection tbody td.items-cell,
-  #ordersTableSection tbody td.items-cell .it-price, #replacementsTableSection tbody td.items-cell .it-price, #returnsTableSection tbody td.items-cell .it-price{ font-size: 0.8rem; }
+  #ordersTableSection tbody td.items-cell, #replacementsTableSection tbody td.items-cell, #returnsTableSection tbody td.items-cell, #npCancelledSection tbody td.items-cell,
+  #ordersTableSection tbody td.items-cell .it-price, #replacementsTableSection tbody td.items-cell .it-price, #returnsTableSection tbody td.items-cell .it-price, #npCancelledSection tbody td.items-cell .it-price{ font-size: 0.8rem; }
 
   /* Row actions (Ship / Edit / Print / Resend / Delete) stack full-width so
      they are thumb-sized instead of 0.55rem tap targets. */
-  #ordersTableSection tbody td.addr-cell button, #replacementsTableSection tbody td.addr-cell button, #returnsTableSection tbody td.addr-cell button,
-  #ordersTableSection tbody td[data-label="Actions"] button, #replacementsTableSection tbody td[data-label="Actions"] button, #returnsTableSection tbody td[data-label="Actions"] button{
+  #ordersTableSection tbody td.addr-cell button, #replacementsTableSection tbody td.addr-cell button, #returnsTableSection tbody td.addr-cell button, #npCancelledSection tbody td.addr-cell button,
+  #ordersTableSection tbody td[data-label="Actions"] button, #replacementsTableSection tbody td[data-label="Actions"] button, #returnsTableSection tbody td[data-label="Actions"] button, #npCancelledSection tbody td[data-label="Actions"] button{
     width: 100%; min-height: 44px; margin-top: 0.5rem; font-size: 0.62rem !important;
   }
   /* Replacement/return action cells lay their buttons out inline for desktop;
      on a card they stack. */
-  #ordersTableSection tbody td[data-label="Actions"], #replacementsTableSection tbody td[data-label="Actions"], #returnsTableSection tbody td[data-label="Actions"]{
+  #ordersTableSection tbody td[data-label="Actions"], #replacementsTableSection tbody td[data-label="Actions"], #returnsTableSection tbody td[data-label="Actions"], #npCancelledSection tbody td[data-label="Actions"]{
     display: flex; flex-direction: column; align-items: stretch; gap: 0;
   }
-  #ordersTableSection tbody td[data-label="Actions"]::before, #replacementsTableSection tbody td[data-label="Actions"]::before, #returnsTableSection tbody td[data-label="Actions"]::before{ flex: 0 0 auto; }
-  #ordersTableSection tbody td .status-sel, #replacementsTableSection tbody td .status-sel, #returnsTableSection tbody td .status-sel{ width: 100%; min-height: 44px; }
+  #ordersTableSection tbody td[data-label="Actions"]::before, #replacementsTableSection tbody td[data-label="Actions"]::before, #returnsTableSection tbody td[data-label="Actions"]::before, #npCancelledSection tbody td[data-label="Actions"]::before{ flex: 0 0 auto; }
+  #ordersTableSection tbody td .status-sel, #replacementsTableSection tbody td .status-sel, #returnsTableSection tbody td .status-sel, #npCancelledSection tbody td .status-sel{ width: 100%; min-height: 44px; }
 
-  #ordersTableSection tbody td[data-label="Photos"] img, #replacementsTableSection tbody td[data-label="Photos"] img, #returnsTableSection tbody td[data-label="Photos"] img{ max-width: 88px; height: auto; }
+  #ordersTableSection tbody td[data-label="Photos"] img, #replacementsTableSection tbody td[data-label="Photos"] img, #returnsTableSection tbody td[data-label="Photos"] img, #npCancelledSection tbody td[data-label="Photos"] img{ max-width: 88px; height: auto; }
 
   /* Toolbar / filters: one horizontally-scrollable strip each, so they never
      push the page itself sideways. */
@@ -856,6 +856,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab" data-tab="npcancelled" onclick="switchTab('npcancelled')">🚫 NP Cancelled <span id="npCancelledBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <!-- The inbox lives on its own page now. Inside the SPA every 30s poll
          re-rendered the whole panel, so a thread being read scrolled itself
          away and a reply in progress felt like the page resetting. -->
@@ -1756,6 +1757,62 @@ select,input,textarea{font-size:1rem;}
     <p class="hint" style="margin-top:.8rem;">Requires the one-time Google OAuth and Pub/Sub setup documented in <code>docs/gmail-auto-ack.md</code>.</p>
   </section>
   </div><!-- /tab-adminaccess -->
+
+  <!-- ═══ NIMBUSPOST-CANCELLED TAB ═══ -->
+  <div class="admin-section" id="tab-npcancelled">
+  <section class="abandoned-panel" id="npCancelledSection">
+    <div class="abandoned-head">
+      <div>
+        <h2>🚫 Cancelled by NimbusPost</h2>
+        <p>Shipments NimbusPost cancelled on its side that are still open on ours. Until these are cancelled here the customer sees the order as live, gets no notice, and a prepaid customer never gets their money back. Select the ones to close — each is cancelled, the customer is emailed and WhatsApped, and any prepaid amount is refunded automatically.</p>
+      </div>
+      <div class="mini-actions">
+        <label class="hint" style="display:flex;align-items:center;gap:.35rem;">Scan
+          <select id="npCancelledPages" style="padding:.3rem;">
+            <option value="3">300 newest</option>
+            <option value="5" selected>500 newest</option>
+            <option value="10">1000 newest</option>
+            <option value="15">1500 newest</option>
+          </select>
+        </label>
+        <button class="btn-outline" onclick="loadNpCancelled()">↻ Scan NimbusPost</button>
+        <button class="btn-green" onclick="exportNpCancelledCsv()">Download CSV</button>
+      </div>
+    </div>
+
+    <div class="hint" id="npCancelledMeta" style="margin-bottom:.8rem;">Not scanned yet — press “Scan NimbusPost”.</div>
+
+    <div id="npCancelledTotals" style="display:none;flex-wrap:wrap;gap:.7rem;margin-bottom:.9rem;"></div>
+
+    <div id="npCancelledActions" style="display:none;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:.8rem;padding:.75rem .9rem;border:1px solid rgba(201,168,76,.28);background:rgba(201,168,76,.06);">
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.7rem;">
+        <input type="checkbox" id="npSelectAll" onchange="npToggleAll(this.checked)"/> Select all
+      </label>
+      <span class="hint" id="npSelectionSummary" style="margin:0;">Nothing selected.</span>
+      <button class="btn-gold owner-only" id="npCancelBtn" onclick="cancelSelectedNpOrders(this)" disabled>Cancel selected &amp; refund</button>
+    </div>
+
+    <div class="tbl-wrap" style="box-shadow:none;margin-top:0;">
+      <table class="mini-table" id="npCancelledTable">
+        <thead>
+          <tr>
+            <th style="width:34px;"></th>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Books</th>
+            <th>AWB / Courier</th>
+            <th>NimbusPost</th>
+            <th>Amount</th>
+            <th>Refund due</th>
+          </tr>
+        </thead>
+        <tbody id="npCancelledBody">
+          <tr><td colspan="8" style="text-align:center;color:#a09080;padding:1.4rem;">Press “Scan NimbusPost” to check.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  </div><!-- /tab-npcancelled -->
 
   <!-- ═══ RECOVER PAYMENT TAB ═══ -->
   <div class="admin-section" id="tab-recover">
@@ -6979,6 +7036,187 @@ function printSelectedPicklists() {
   openPrintWindow(picklistDocHtml(orders));
 }
 
+// ── Cancelled by NimbusPost ────────────────────────────────────────────────
+// NimbusPost auto-cancels a shipment, reverses the freight into the wallet, and
+// tells us nothing. The order stays `shipped` here and in the customer's My
+// Orders page, no notice goes out, and a prepaid customer's money sits with us
+// until somebody reconciles a wallet CSV by hand. This panel is that
+// reconciliation. The scan is read-only; cancelling routes through
+// bulk-update-orders, the one chokepoint that also refunds and notifies.
+let npCancelledRows = [];
+
+function npFmt(n) {
+  return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+async function loadNpCancelled() {
+  const meta = document.getElementById('npCancelledMeta');
+  const body = document.getElementById('npCancelledBody');
+  if (!meta || !body) return;
+  const pages = document.getElementById('npCancelledPages')?.value || '5';
+  meta.textContent = 'Scanning the NimbusPost panel…';
+  body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#a09080;padding:1.4rem;">Scanning…</td></tr>';
+  document.getElementById('npCancelledTotals').style.display = 'none';
+  document.getElementById('npCancelledActions').style.display = 'none';
+
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-nimbuspost-cancelled?pages=' + encodeURIComponent(pages));
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+    npCancelledRows = data.orders || [];
+    const t = data.totals || {};
+    meta.innerHTML = `Scanned <strong>${data.scanned}</strong> NimbusPost rows · `
+      + `<strong>${data.cancelled_at_nimbus}</strong> cancelled there · `
+      + `<strong style="color:${npCancelledRows.length ? '#e07020' : '#5d9b55'};">${npCancelledRows.length}</strong> still open here.`;
+
+    const badge = document.getElementById('npCancelledBadge');
+    if (badge) {
+      badge.textContent = npCancelledRows.length || '';
+      badge.style.display = npCancelledRows.length ? 'inline-block' : 'none';
+    }
+
+    if (!npCancelledRows.length) {
+      body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#5d9b55;padding:1.4rem;">Nothing to reconcile — every NimbusPost cancellation is already closed here.</td></tr>';
+      return;
+    }
+
+    const card = (label, value, colour) => `<div style="border:1px solid rgba(201,168,76,.25);background:rgba(201,168,76,.05);padding:.6rem .9rem;min-width:120px;">
+      <div style="font-size:.55rem;letter-spacing:.14em;text-transform:uppercase;color:#a09080;">${label}</div>
+      <div style="font-size:1.05rem;color:${colour || '#f0e8d8'};margin-top:.15rem;">${value}</div></div>`;
+    document.getElementById('npCancelledTotals').innerHTML =
+      card('Orders', t.orders, '#e07020')
+      + card('Refund due', npFmt(t.refund_due_inr), '#c93636')
+      + card('Order value', npFmt(t.order_value_inr))
+      + card('Prepaid', t.prepaid_orders)
+      + card('COD', t.cod_orders)
+      + (t.replacements ? card('Replacements', t.replacements) : '');
+    document.getElementById('npCancelledTotals').style.display = 'flex';
+    document.getElementById('npCancelledActions').style.display = 'flex';
+
+    body.innerHTML = npCancelledRows.map(o => {
+      const books = (o.items || []).map(i => esc(i.title || '—') + (i.qty > 1 ? ' ×' + i.qty : '')).join('<br/>')
+        || '<span style="color:#a09080;">— no items recorded —</span>';
+      return `<tr>
+        <td class="select-cell" data-label=""><input type="checkbox" class="np-pick" value="${esc(o.order_id)}" onchange="npUpdateSelection()"/></td>
+        <td data-label="Order" data-card-head><div class="order-id">${esc(o.order_id)}</div>
+          <div class="hint" style="margin:.2rem 0 0;">${new Date(o.created_at).toLocaleDateString('en-IN')} · ${esc(o.status)}</div></td>
+        <td data-label="Customer">${esc(o.customer_name || '—')}<div class="hint" style="margin:.2rem 0 0;">${esc(o.customer_phone || '')}</div></td>
+        <td data-label="Books" style="font-size:.66rem;line-height:1.5;">${books}</td>
+        <td data-label="AWB / Courier" style="font-family:monospace;font-size:.62rem;">${esc(o.awb || '—')}<div class="hint" style="margin:.2rem 0 0;font-family:inherit;">${esc(o.courier || '')}</div></td>
+        <td data-label="NimbusPost"><span style="color:#c93636;">${esc(o.nimbus_status)}</span></td>
+        <td data-label="Amount">${npFmt(o.amount_inr)}<div class="hint" style="margin:.2rem 0 0;">${esc(o.payment)}</div></td>
+        <td data-label="Refund due" style="color:${o.refund_due_inr > 0 ? '#c93636' : '#5d9b55'};">${o.refund_due_inr > 0 ? npFmt(o.refund_due_inr) : '—'}</td>
+      </tr>`;
+    }).join('');
+    npUpdateSelection();
+  } catch (e) {
+    meta.innerHTML = '<span style="color:#c93636;">Scan failed: ' + esc(e.message) + '</span>';
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c93636;padding:1.4rem;">' + esc(e.message) + '</td></tr>';
+  }
+}
+
+function exportNpCancelledCsv() {
+  if (!npCancelledRows.length) { alert('Nothing to export — scan NimbusPost first.'); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  downloadCsv(npCancelledRows.map(o => ({
+    order_id: o.order_id,
+    awb: o.awb,
+    courier: o.courier,
+    our_status: o.status,
+    nimbuspost_status: o.nimbus_status,
+    customer: o.customer_name,
+    phone: o.customer_phone,
+    email: o.customer_email,
+    payment: o.payment,
+    amount_inr: o.amount_inr,
+    refund_due_inr: o.refund_due_inr,
+    ordered_on: String(o.created_at || '').slice(0, 10),
+    books: (o.items || []).map(i => i.title + (i.qty > 1 ? ' x' + i.qty : '')).join('; '),
+  })), `inkandchai-nimbuspost-cancelled-${today}.csv`);
+}
+
+function npToggleAll(on) {
+  document.querySelectorAll('.np-pick').forEach(cb => { cb.checked = on; });
+  npUpdateSelection();
+}
+
+function npSelectedIds() {
+  return [...document.querySelectorAll('.np-pick:checked')].map(cb => cb.value);
+}
+
+function npUpdateSelection() {
+  const ids = npSelectedIds();
+  const picked = npCancelledRows.filter(o => ids.includes(o.order_id));
+  const refund = picked.reduce((s, o) => s + Number(o.refund_due_inr || 0), 0);
+  const value = picked.reduce((s, o) => s + Number(o.amount_inr || 0), 0);
+  const summary = document.getElementById('npSelectionSummary');
+  if (summary) {
+    summary.innerHTML = picked.length
+      ? `<strong>${picked.length}</strong> selected · order value ${npFmt(value)} · <strong style="color:#c93636;">${npFmt(refund)} to refund</strong>`
+      : 'Nothing selected.';
+  }
+  const btn = document.getElementById('npCancelBtn');
+  if (btn) {
+    btn.disabled = !picked.length;
+    btn.textContent = picked.length
+      ? `Cancel ${picked.length} & refund ${npFmt(refund)}`
+      : 'Cancel selected & refund';
+  }
+  const all = document.getElementById('npSelectAll');
+  const boxes = document.querySelectorAll('.np-pick');
+  if (all) all.checked = boxes.length > 0 && ids.length === boxes.length;
+}
+
+async function cancelSelectedNpOrders(btn) {
+  const ids = npSelectedIds();
+  if (!ids.length) return;
+  const picked = npCancelledRows.filter(o => ids.includes(o.order_id));
+  const refund = picked.reduce((s, o) => s + Number(o.refund_due_inr || 0), 0);
+  const prepaid = picked.filter(o => o.refund_due_inr > 0).length;
+
+  if (!confirm(
+    `Cancel ${picked.length} order(s)?\n\n`
+    + `• every customer is emailed and WhatsApped that the order is cancelled\n`
+    + `• ${prepaid} prepaid order(s) are refunded automatically — ${npFmt(refund)}\n`
+    + `• ${picked.length - prepaid} COD order(s) are cancelled with no refund\n\n`
+    + `This cannot be undone.`
+  )) return;
+
+  const original = btn.textContent;
+  btn.disabled = true;
+  const done = [];
+  const failed = [];
+
+  // One order per request on purpose. Each cancellation calls a payment gateway
+  // and sends two messages, so a batch of thirty would blow the function
+  // timeout and leave us unsure which ones actually went through.
+  for (let i = 0; i < ids.length; i++) {
+    btn.textContent = `Cancelling ${i + 1} of ${ids.length}…`;
+    try {
+      const res = await adminFetch('/.netlify/functions/bulk-update-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: [{ order_id: ids[i], status: 'cancelled' }] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.updated === 1) done.push(ids[i]);
+      else failed.push(ids[i] + ': ' + (data.error || data.results?.[0]?.error || ('HTTP ' + res.status)));
+    } catch (e) {
+      failed.push(ids[i] + ': ' + e.message);
+    }
+  }
+
+  btn.textContent = original;
+  alert(
+    `Cancelled ${done.length} of ${ids.length}.\n\n`
+    + (failed.length ? `Failed:\n${failed.join('\n')}\n\n` : '')
+    + `Prepaid refunds are issued automatically. PhonePe refunds settle over a few hours — `
+    + `the hourly reconcile marks them refunded and mails the customer once the gateway confirms.`
+  );
+  loadNpCancelled();
+}
+
 // ── Quick date-range filter (Today / Yesterday / 7 / 30 / 90 / all) ────────
 function setDayRange(btn, days) {
   document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
@@ -8696,7 +8934,7 @@ function rptPickProduct(idx) {
   document.getElementById('rptChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-const TABS = ['orders','tools','create','products','reels','abandoned','reviews','replacements','returns','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','reels','abandoned','reviews','replacements','returns','npcancelled','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -9012,7 +9250,7 @@ async function refreshReplacementRequests(btn) {
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
-  if (adminRole !== 'owner' && !new Set(['orders','replacements','returns','botinbox','recover','reels']).has(tab)) tab = 'orders';
+  if (adminRole !== 'owner' && !new Set(['orders','replacements','returns','npcancelled','botinbox','recover','reels']).has(tab)) tab = 'orders';
 
   // Show/hide panels
   TABS.forEach(t => {
@@ -9036,6 +9274,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'products' && _authed) { fetchProducts(); fetchRemovedListings(); }
   if (tab === 'reels' && _authed) loadSiteReels();
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
+  if (tab === 'npcancelled' && _authed) loadNpCancelled();
   if (tab === 'reviews') fetchPendingReviews();
   if (tab === 'replacements' && _authed) renderReplacementRequests();
   if (tab === 'returns' && _authed) fetchReturnRequests();

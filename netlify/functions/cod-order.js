@@ -112,12 +112,29 @@ exports.handler = async (event) => {
   const SHIPPING_FEE = 40;
   const COD_HANDLING_FEE = 20;            // matches generate_site.py CHECKOUT_HTML
   const COD_FEE_WAIVER_THRESHOLD = 999;   // fee waived on subtotal >= ₹999
+  // Minimum item value for COD. Mirrors COD_MIN_SUBTOTAL in generate_site.py,
+  // which disables the button — enforced here as well because the browser is
+  // hostile and the UI can be bypassed.
+  const COD_MIN_SUBTOTAL = 199;
   const _sbForPrice = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const priced = await resolveCartPrices(rawCart, _sbForPrice, { discountGrants: body.discount_grants });
   if (!priced.cart.length) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'No catalogue items in cart' }) };
   }
   const cart = priced.cart;
+
+  // COD minimum. Uses the server-derived subtotal, never a client figure.
+  if (priced.subtotal < COD_MIN_SUBTOTAL) {
+    const short = Math.ceil(COD_MIN_SUBTOTAL - priced.subtotal);
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({
+      error: `Add more items of ₹${short.toLocaleString('en-IN')} to avail Cash on Delivery `
+        + `(minimum ₹${COD_MIN_SUBTOTAL} order value). You can also pay now with UPI, card or net banking — no minimum.`,
+      code: 'cod_below_minimum',
+      minimum_inr: COD_MIN_SUBTOTAL,
+      shortfall_inr: short,
+    }) };
+  }
+
   const shippingRestriction = findShippingRestriction(cart, customer || {});
   if (shippingRestriction.blocked) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };

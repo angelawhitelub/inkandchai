@@ -35,7 +35,11 @@ function refundSentence(order, refund, opts = {}) {
   }
   const total = moneyFromPaise(order.amount_paise);
   const amount = total ? ` of ${total}` : '';
-  if (refund && refund.ok) {
+  // `ok` only means the gateway ACCEPTED the request. A PhonePe refund sits at
+  // PENDING for hours before it settles, and we do not tell a customer their
+  // money is issued until it actually is -- nextStatus is 'refunded' only once
+  // the gateway confirms (Razorpay immediately, PhonePe via the reconcile cron).
+  if (refund && refund.ok && refund.nextStatus === 'refunded') {
     return `Your refund${amount} has been issued automatically to your original payment method. `
       + 'Banks usually take 3-7 working days to show it on your statement.';
   }
@@ -48,7 +52,7 @@ function refundSentence(order, refund, opts = {}) {
 function refundSentenceShort(order, refund, opts = {}) {
   const paid = Number(order.amount_paise || 0) > 0 && !!order.razorpay_payment_id;
   if (opts.skipRefund || !paid) return 'You were not charged, so there is nothing to refund.';
-  if (refund && refund.ok) return 'Your refund has been issued to your original payment method and takes 3-7 working days.';
+  if (refund && refund.ok && refund.nextStatus === 'refunded') return 'Your refund has been issued to your original payment method and takes 3-7 working days.';
   return 'Your refund is being processed to your original payment method and takes 3-7 working days.';
 }
 

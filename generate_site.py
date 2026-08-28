@@ -7689,6 +7689,13 @@ const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
 const COD_HANDLING_FEE = 20;  // extra ₹20 charged on COD orders to cover RTO risk + courier surcharge
 const COD_FEE_WAIVER_THRESHOLD = 999;  // fee is WAIVED on COD orders at or above this subtotal — pushes AOV up
+// Minimum item value for Cash on Delivery. A sub-₹199 COD parcel cannot carry
+// its own cost once the ₹40 freight and the RTO risk are counted — and COD is
+// the rail that fails, so the smallest baskets are the least worth shipping on
+// it. Below this the button is disabled and the shortfall is quoted, which
+// nudges the basket up instead of simply refusing. MUST stay in step with
+// COD_MIN_SUBTOTAL in netlify/functions/cod-order.js, which enforces it.
+const COD_MIN_SUBTOTAL = 199;
 const COUPON_KEY = 'iac_checkout_coupon';
 const COUPONS = {
   FREEDOM:   { type: 'percent', value: 15, minSubtotal: 400, onlineOnly: false, label: '🇮🇳 Freedom Sale 15% off', expiresAt: '2026-08-15T18:29:59Z' },
@@ -8076,7 +8083,21 @@ function renderSummary() {
   if (btnCOD) {
     const codTotals = orderTotals(cart, 'cod');
     const codNote = document.getElementById('codNote');
-    if (noCod) {
+    const codSub = cartSubtotal(cart);
+    const codShort = COD_MIN_SUBTOTAL - codSub;
+    if (codShort > 0) {
+      // Below the COD minimum. Quote the exact shortfall rather than just
+      // refusing — the customer is one small book away from qualifying.
+      btnCOD.textContent = `🚫 Cash on Delivery — add ₹${codShort.toLocaleString('en-IN')} more`;
+      btnCOD.disabled = true;
+      btnCOD.style.opacity = '0.5';
+      btnCOD.style.cursor = 'not-allowed';
+      if (codNote) {
+        codNote.innerHTML = `Add more items of <strong style="color:var(--gold);">₹${codShort.toLocaleString('en-IN')}</strong> to avail Cash on Delivery `
+          + `(minimum ₹${COD_MIN_SUBTOTAL} order value). Or choose <strong>Pay Now</strong> above — no minimum, no COD fee, `
+          + `and it earns a cashback scratch card (up to ₹200).`;
+      }
+    } else if (noCod) {
       // Full crossword.in catalogue titles: COD disabled, partial COD pushed.
       btnCOD.textContent = '🚫 Cash on Delivery unavailable';
       btnCOD.disabled = true;

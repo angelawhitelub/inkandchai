@@ -243,4 +243,67 @@ async function inspectNimbusOrder(orderNumber) {
   }
 }
 
-module.exports = { cancelNimbusShipment, cancelNimbusOrder, inspectNimbusOrder };
+/**
+ * Every NimbusPost panel row, newest first, as far back as NP_SCAN_PAGES allows.
+ *
+ * findNimbusOrder above walks the same pages looking for ONE order and stops as
+ * soon as it finds it. The cancelled-orders sweep needs the whole window, so
+ * this returns the rows instead of searching them. Same paging, same early
+ * break on NimbusPost's "page out of range" 404.
+ *
+ * @param {string} apiKey
+ * @param {number} [pages] how many pages of 100 to pull (default NP_SCAN_PAGES)
+ * @returns {Promise<Array<object>>}
+ */
+async function listNimbusOrders(apiKey, pages = NP_SCAN_PAGES) {
+  const perPage = 100;
+  const lastPage = Math.min(pages, NP_MAX_PAGE);
+  const out = [];
+
+  for (let page = 1; page <= lastPage; page++) {
+    const url = new URL(NP_PANEL_ORDERS_URL);
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('per_page', String(perPage));
+    url.searchParams.set('sort', 'desc');
+    url.searchParams.set('sort_by', 'id');
+
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json', 'NP-API-KEY': apiKey },
+    });
+    const text = await response.text();
+    let payload;
+    try { payload = text ? JSON.parse(text) : {}; } catch (_) { payload = { message: text }; }
+
+    if (!response.ok || payload.status === false || payload.success === false || payload.error) {
+      const msg = JSON.stringify(payload).toLowerCase();
+      if (response.status === 404 && /(page|sort).*(must|one of|less than)/.test(msg)) break;
+      throw new Error(`NimbusPost order list failed (${response.status}): ${JSON.stringify(payload).slice(0, 300)}`);
+    }
+
+    const rows = orderRowsFromResponse(payload);
+    if (!rows.length) break;
+    out.push(...rows);
+    if (rows.length < perPage) break;
+  }
+  return out;
+}
+
+// A panel row NimbusPost itself considers cancelled. Deliberately narrow: this
+// drives a money action, so "cancel" must be the actual status word and not a
+// substring of something else. "auto cancelled", "cancelled by system" and
+// "shipment auto cancelled" all match; "cancellation requested" does not, since
+// that is a request and not a completed cancellation.
+const NP_CANCELLED_RE = /\b(cancell?ed)\b/i;
+
+function rowIsCancelled(row) {
+  const status = shipmentStatusFromRow(row);
+  if (!status) return false;
+  if (/cancellation\s+requested/i.test(status)) return false;
+  return NP_CANCELLED_RE.test(status);
+}
+
+module.exports = {
+  cancelNimbusShipment, cancelNimbusOrder, inspectNimbusOrder,
+  listNimbusOrders, rowIsCancelled, shipmentStatusFromRow,
+  orderNumberFromRow, awbFromRow, orderIdFromRow,
+};
