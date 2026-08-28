@@ -14,7 +14,45 @@ function orderId(order) {
   return order.razorpay_order_id || order.id;
 }
 
-function orderCancelledEmailHtml(order, reason) {
+// What we can honestly tell the customer about their money.
+//
+// This is the whole reason the cancellation copy is not one fixed paragraph.
+// COD is ~two thirds of orders and about a third of those cancel, so a blanket
+// "your refund is on its way" would be wrong far more often than it is right --
+// and it would send those customers looking for money that was never taken.
+//
+// The states, and why each is worded the way it is:
+//   prepaid + refund confirmed  -> say it plainly, with a timeline
+//   prepaid + refund not confirmed (gateway error, still pending, RTO, or the
+//                                   refund already in flight from an earlier
+//                                   event) -> promise the refund, never claim
+//                                   it is already issued
+//   COD / nothing captured      -> say clearly that nothing was charged
+function refundSentence(order, refund, opts = {}) {
+  const paid = Number(order.amount_paise || 0) > 0 && !!order.razorpay_payment_id;
+  if (opts.skipRefund || !paid) {
+    return 'You were not charged for this order — there is nothing to refund.';
+  }
+  const total = moneyFromPaise(order.amount_paise);
+  const amount = total ? ` of ${total}` : '';
+  if (refund && refund.ok) {
+    return `Your refund${amount} has been issued automatically to your original payment method. `
+      + 'Banks usually take 3-7 working days to show it on your statement.';
+  }
+  // Not confirmed: pending, failed, RTO, or already under way. Never state it as done.
+  return `Your refund${amount} is being processed back to your original payment method `
+    + 'and will reach you within 3-7 working days. You do not need to do anything.';
+}
+
+// Plain-text form of the same sentence, for the WhatsApp template variable.
+function refundSentenceShort(order, refund, opts = {}) {
+  const paid = Number(order.amount_paise || 0) > 0 && !!order.razorpay_payment_id;
+  if (opts.skipRefund || !paid) return 'You were not charged, so there is nothing to refund.';
+  if (refund && refund.ok) return 'Your refund has been issued to your original payment method and takes 3-7 working days.';
+  return 'Your refund is being processed to your original payment method and takes 3-7 working days.';
+}
+
+function orderCancelledEmailHtml(order, refund, opts = {}) {
   const items = Array.isArray(order.cart_items) ? order.cart_items : [];
   const rows = items.map(i => `
     <tr>
@@ -22,18 +60,28 @@ function orderCancelledEmailHtml(order, reason) {
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:center;">${i.qty || 1}</td>
     </tr>`).join('');
   const total = moneyFromPaise(order.amount_paise);
+  // Send them back to the exact book where we can, so re-ordering is one tap.
+  // Falls back to the catalogue when the cart line carries no url.
+  const firstUrl = items.map(i => i.url || i.id || '').find(u => String(u).startsWith('/product/'));
+  const reorderUrl = firstUrl ? `https://inkandchai.in${firstUrl}` : 'https://inkandchai.in/books/';
 
   return `
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
       <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
       <p style="color:#a09080;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;">inkandchai.in</p>
-      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Order Cancelled</h2>
+      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">We're sorry — your order has been cancelled</h2>
       <p style="color:#a09080;line-height:1.8;margin:14px 0;">
-        Hi ${String(order.customer_name || 'there').split(' ')[0]}, your Ink &amp; Chai order has been cancelled.
+        Hi ${String(order.customer_name || 'there').split(' ')[0]}, your Ink &amp; Chai order has been cancelled
+        unexpectedly because the supplier/publisher had no stock. We tried to arrange the books for you
+        and were unable to. We're genuinely sorry — this is not the experience we want you to have.
       </p>
-      ${reason ? `<div style="background:#1c1916;border-left:3px solid #c9a84c;padding:14px 18px;margin:16px 0;">
-        <p style="color:#f0e8d8;margin:0;font-size:14px;">${reason}</p>
-      </div>` : ''}
+      <p style="color:#a09080;line-height:1.8;margin:14px 0;">
+        Stock does come back in. <strong style="color:#f0e8d8;">Please do place the order again</strong> —
+        we will try to arrange it for you this time.
+      </p>
+      <p style="margin:22px 0;">
+        <a href="${reorderUrl}" style="display:inline-block;background:#c9a84c;color:#0d0b08;text-decoration:none;padding:12px 26px;font-size:14px;font-weight:bold;letter-spacing:0.5px;">Order again &rarr;</a>
+      </p>
       <p style="color:#a09080;font-size:13px;">Order ID: <strong style="color:#c9a84c;">${orderId(order)}</strong></p>
       ${rows ? `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
         <thead><tr style="background:#1c1916;">
@@ -43,9 +91,12 @@ function orderCancelledEmailHtml(order, reason) {
         <tbody>${rows}</tbody>
       </table>` : ''}
       ${total ? `<p style="color:#a09080;font-size:13px;">Order total: <strong style="color:#f0e8d8;">${total}</strong></p>` : ''}
+      <div style="background:#1c1916;border-left:3px solid #6dbf6d;padding:14px 18px;margin:18px 0;">
+        <p style="color:#f0e8d8;margin:0;font-size:14px;line-height:1.7;">${refundSentence(order, refund, opts)}</p>
+      </div>
       <p style="color:#a09080;font-size:13px;line-height:1.8;margin-top:18px;">
-        If you have already paid for this order, our team will check the payment and help with the next step.
-        For support, reply to this email or message us on WhatsApp.
+        We hope to serve you better in future. If you'd like help finding the same book or a similar one,
+        just reply to this email or message us on WhatsApp — we'll look for it personally.
       </p>
       <hr style="border:none;border-top:1px solid #2a2a2a;margin:32px 0;"/>
       <p style="color:#7a6330;font-size:11px;">Ink &amp; Chai &middot; support@inkandchai.in</p>
@@ -264,17 +315,26 @@ async function notifyOrderCancelled(order, opts = {}) {
   if (!opts.skipEmail && order.customer_email) {
     const email = await sendEmail({
       to: order.customer_email,
-      subject: `Order cancelled - ${id}`,
-      html: orderCancelledEmailHtml(order, reason),
+      subject: `Sorry — order ${id} was cancelled (out of stock)`,
+      html: orderCancelledEmailHtml(order, result.refund, opts),
     });
     result.email = !!email?.ok;
   }
 
   if (!opts.skipWhatsApp && order.customer_phone) {
+    // Two templates, because the wording lives in Meta and a template's variable
+    // count is fixed once approved. The out-of-stock copy needs a third variable
+    // for the refund sentence (a COD customer must not be told a refund is
+    // coming), so it can only be used once that template exists and its name is
+    // in WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE. Until then we keep sending the
+    // already-approved two-variable template rather than failing every send.
+    const stockTemplate = process.env.WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE;
     await sendWhatsApp({
       to: order.customer_phone,
-      template: process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE || 'order_cancelled',
-      params: [firstName, id],
+      template: stockTemplate || process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE || 'order_cancelled',
+      params: stockTemplate
+        ? [firstName, id, refundSentenceShort(order, result.refund, opts)]
+        : [firstName, id],
     });
     result.whatsapp = true;
   }
@@ -303,4 +363,4 @@ async function notifyOrderCancelled(order, opts = {}) {
   return result;
 }
 
-module.exports = { notifyOrderCancelled };
+module.exports = { notifyOrderCancelled, refundSentence, refundSentenceShort };
