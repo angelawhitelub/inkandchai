@@ -33,10 +33,22 @@ test('the guard runs before the order is written', () => {
   assert.ok(guard < insert, 'the minimum is checked before any row is inserted');
 });
 
+test('every place that enables the COD button honours the minimum', () => {
+  // The bug this guards: the renderer disabled the button, then the pincode
+  // recheck and setLoading each recomputed `cod.disabled` without the minimum
+  // and turned it straight back on.
+  const enablers = checkout.match(/cod\.disabled = [^;]+;/g) || [];
+  assert.ok(enablers.length >= 2, 'expected the other COD button enablers to exist');
+  for (const line of enablers) {
+    assert.match(line, /codShortfall\(\) > 0/, `re-enables COD without the minimum: ${line}`);
+  }
+  assert.match(checkout, /function codShortfall\(cart\) \{/);
+});
+
 test('the checkout quotes the exact shortfall, not a bare refusal', () => {
   assert.match(checkout, /add ₹\$\{codShort/);
   assert.match(checkout, /to avail Cash on Delivery/);
-  assert.match(checkout, /COD_MIN_SUBTOTAL - codSub/);
+  assert.match(checkout, /COD_MIN_SUBTOTAL - cartSubtotal/);
 });
 
 // The arithmetic the page prints, checked directly.

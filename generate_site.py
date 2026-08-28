@@ -7814,6 +7814,14 @@ function partialPaymentTotals(cart) {
 function cartHasNoCod(cart) {
   return Array.isArray(cart) && cart.some(i => i && i._no_cod === true);
 }
+// How far this cart is from qualifying for COD, in rupees. 0 means it qualifies.
+// THREE places decide whether the COD button is live — this renderer, the
+// shipping-restriction recheck, and setLoading — and each recomputes the flag
+// from scratch. They must all consult this, or a pincode check or a finished
+// spinner silently re-enables a button the minimum had disabled.
+function codShortfall(cart) {
+  return Math.max(0, COD_MIN_SUBTOTAL - cartSubtotal(cart || getCart()));
+}
 function cartWithPaymentMeta(cart, meta) {
   return cart.map((item, index) => index === 0 ? { ...item, _payment: meta } : item);
 }
@@ -8083,8 +8091,7 @@ function renderSummary() {
   if (btnCOD) {
     const codTotals = orderTotals(cart, 'cod');
     const codNote = document.getElementById('codNote');
-    const codSub = cartSubtotal(cart);
-    const codShort = COD_MIN_SUBTOTAL - codSub;
+    const codShort = codShortfall(cart);
     if (codShort > 0) {
       // Below the COD minimum. Quote the exact shortfall rather than just
       // refusing — the customer is one small book away from qualifying.
@@ -8196,7 +8203,7 @@ function applyShippingRestrictionUi() {
   const cod = document.getElementById('btnCOD');
   if (pay) pay.disabled = blocked || !!_loadingMethod;
   if (partial) partial.disabled = blocked || !!_loadingMethod || !partialPaymentTotals(getCart()).eligible;
-  if (cod) cod.disabled = blocked || !!_loadingMethod || cartHasNoCod(getCart());
+  if (cod) cod.disabled = blocked || !!_loadingMethod || cartHasNoCod(getCart()) || codShortfall() > 0;
   [pay, partial, cod].filter(Boolean).forEach(button => {
     button.style.opacity = blocked ? '0.45' : '';
     button.style.cursor = blocked ? 'not-allowed' : '';
@@ -8454,7 +8461,7 @@ function setLoading(on, method = '') {
     partial.classList.toggle('is-loading', on && method === 'partial');
   }
   if (cod) {
-    cod.disabled = on || _shippingRestrictionBlocked || cartHasNoCod(getCart());
+    cod.disabled = on || _shippingRestrictionBlocked || cartHasNoCod(getCart()) || codShortfall() > 0;
     cod.classList.toggle('is-loading', on && method === 'cod');
   }
 }
