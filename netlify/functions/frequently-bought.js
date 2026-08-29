@@ -13,6 +13,89 @@ const HEADERS = {
   'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
 };
 
+// ---------------------------------------------------------------------------
+// Real purchase signals, built at deploy time by scripts/build-fbt-signals.js
+// from a year of kept orders. `pairs` is how often two books went out in the
+// same parcel; `bestsellers` is units actually sold. Read once per cold start.
+//
+// Everything below degrades cleanly when the file is missing or empty -- a
+// deploy where Supabase was unreachable still serves similarity-only results.
+// ---------------------------------------------------------------------------
+let _signals = null;
+function loadSignals() {
+  if (_signals) return _signals;
+  const candidates = [
+    path.join(process.cwd(), 'data', 'fbt-signals.json'),
+    path.join(__dirname, '..', '..', 'data', 'fbt-signals.json'),
+    path.join('/var/task', 'data', 'fbt-signals.json'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      const raw = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+      const rank = new Map();
+      (raw.bestsellers || []).forEach(([slug, sold], i) => rank.set(slug, { sold, rank: i }));
+      _signals = { pairs: raw.pairs || {}, rank, generatedAt: raw.generated_at || null };
+      return _signals;
+    } catch (err) {
+      console.warn('fbt-signals unreadable at', candidate, err.message);
+    }
+  }
+  _signals = { pairs: {}, rank: new Map(), generatedAt: null };
+  return _signals;
+}
+
+// How many times these two were actually bought together, across every alias
+// either product answers to (a book can be reachable by more than one slug).
+function coBuyCount(signals, base, candidate) {
+  const baseKeys = [base.slug, ...(base.aliases || [])];
+  const candKeys = new Set([candidate.slug, ...(candidate.aliases || [])]);
+  let best = 0;
+  for (const key of baseKeys) {
+    for (const [partner, count] of signals.pairs[key] || []) {
+      if (candKeys.has(partner) && count > best) best = count;
+    }
+  }
+  return best;
+}
+
+// Units sold, best across aliases.
+function unitsSold(signals, product) {
+  let best = 0;
+  for (const key of [product.slug, ...(product.aliases || [])]) {
+    const hit = signals.rank.get(key);
+    if (hit && hit.sold > best) best = hit.sold;
+  }
+  return best;
+}
+
+// The catalogue holds the same book under more than one slug (a re-import
+// mints a new shopify_id, and combos get hand-picked slugs). Scoring treats
+// those as separate products, so a strong recommendation would fill the whole
+// panel with one title -- "The Art of Not Overthinking" four times over.
+// Collapse on what a customer would call the same book: title + author.
+function dedupeKey(product) {
+  const norm = (v) => String(v || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0900-\u097f]+/g, ' ')
+    .trim();
+  return norm(product.title) + '|' + norm(product.author);
+}
+
+// Keep the first (highest-scoring) product for each distinct book.
+function takeDistinct(rows, limit, pick = (row) => row) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    const key = dedupeKey(pick(row));
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 function findCataloguePath() {
   const candidates = [
     path.join(process.cwd(), 'data', 'ALL_BOOKS.json'),
@@ -143,9 +226,24 @@ async function loadProducts() {
   return products;
 }
 
-function scoreCandidate(base, candidate) {
+function scoreCandidate(base, candidate, signals) {
   if (!base || !candidate || base.slug === candidate.slug) return -Infinity;
   let score = 0;
+
+  // Evidence first. A real co-purchase outranks every similarity heuristic
+  // below it, because it is the only one that is a fact rather than a guess:
+  // two customers doing the same thing already beats a shared category, and
+  // Vol 1 -> Vol 2 (117 co-buys) has to come top of its page every time.
+  // Logarithmic, so a 117 does not need 117x the weight of a 2 to win.
+  const together = signals ? coBuyCount(signals, base, candidate) : 0;
+  if (together > 0) score += 400 + Math.round(Math.log2(together) * 120);
+
+  // Then popularity. This is what pushes the long tail -- a book with no
+  // co-purchase history recommends the thing in its category that people
+  // actually buy, instead of whichever title happens to share a word.
+  const sold = signals ? unitsSold(signals, candidate) : 0;
+  if (sold > 0) score += Math.min(Math.round(Math.log2(sold + 1) * 22), 190);
+
   const baseCat = String(base.category || '').toLowerCase();
   const candCat = String(candidate.category || '').toLowerCase();
   const baseAuthor = String(base.author || '').toLowerCase();
@@ -190,25 +288,46 @@ exports.handler = async (event) => {
     if (!base) {
       // Slug not found — return popular books as fallback instead of 404
       // This prevents "Top resources not found" noise in analytics
+      // Unknown slug. Show what actually sells rather than a hash-shuffled
+      // three -- this is the response a brand-new or mistyped product gets.
+      const signals = loadSignals();
       const fallback = products
-        .filter(p => p.img && p.price > 0)
-        .sort((a, b) => deterministicHash(slug + b.slug) - deterministicHash(slug + a.slug))
-        .slice(0, 3);
-      return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ current: null, recommendations: fallback }) };
+        .filter((p) => p.img && p.price > 0)
+        .map((product) => ({ product, sold: unitsSold(signals, product) }))
+        .sort((a, b) => b.sold - a.sold
+          || deterministicHash(slug + a.product.slug) - deterministicHash(slug + b.product.slug));
+      const fallbackTop = takeDistinct(fallback, 3, (row) => row.product).map((row) => row.product);
+      return {
+        statusCode: 200,
+        headers: HEADERS,
+        body: JSON.stringify({ current: null, recommendations: fallbackTop, basis: 'bestsellers' }),
+      };
     }
 
-    const recommendations = products
-      .filter((p) => p.slug !== base.slug)
-      .map((product) => ({ product, score: scoreCandidate(base, product) }))
+    const signals = loadSignals();
+    const limit = Math.min(Math.max(Number(event.queryStringParameters?.limit) || 3, 1), 6);
+    const exclude = new Set(String(event.queryStringParameters?.exclude || '')
+      .split(',').map((v) => v.trim().toLowerCase()).filter(Boolean));
+
+    const ranked = products
+      .filter((p) => p.slug !== base.slug && !exclude.has(p.slug) && dedupeKey(p) !== dedupeKey(base))
+      .map((product) => ({ product, score: scoreCandidate(base, product, signals) }))
       .filter((row) => Number.isFinite(row.score))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3)
-      .map((row) => row.product);
+      .sort((a, b) => b.score - a.score);
+
+    const recommendations = takeDistinct(ranked, limit, (row) => row.product).map((row) => row.product);
 
     return {
       statusCode: 200,
       headers: HEADERS,
-      body: JSON.stringify({ current: base, recommendations }),
+      body: JSON.stringify({
+        current: base,
+        recommendations,
+        // Lets the storefront say "frequently bought together" honestly when the
+        // data backs it, and something softer when it is only a similar book.
+        basis: ranked.length && coBuyCount(signals, base, ranked[0].product) > 0 ? 'co_purchase' : 'similar',
+        signals_generated_at: signals.generatedAt,
+      }),
     };
   } catch (err) {
     return {

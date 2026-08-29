@@ -1,13 +1,17 @@
 [build]
   publish   = "public"
   functions = "netlify/functions"
-  command   = "npm install && python3 generate_site.py"
+  # build-fbt-signals mines a year of kept orders for real co-purchases and
+  # bestsellers (data/fbt-signals.json). It never exits non-zero: if Supabase
+  # is unreachable the recommender falls back to similarity and the deploy
+  # still goes out.
+  command   = "npm install && node scripts/build-fbt-signals.js && python3 generate_site.py"
 
 [build.environment]
   NODE_VERSION = "20"
 
 [functions]
-  included_files = ["data/ALL_BOOKS.json"]
+  included_files = ["data/ALL_BOOKS.json", "data/fbt-signals.json"]
 
 # Abandoned cart recovery — runs every hour automatically
 [functions."auto-recover-carts"]
