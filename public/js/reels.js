@@ -3,7 +3,8 @@
  *
  * Renders the horizontal social-proof strip and an Instagram-style vertical
  * reels viewer (up/down arrows + swipe/scroll-snap). Reads reel data from
- * window.__IAC_REELS__ = [{ src, poster, caption, instagram, type }].
+ * window.__IAC_REELS__ = [{ src, poster, caption, instagram, type }], where type is
+ * 'video' (an unboxing clip) or 'image' (a still — a customer message, say).
  *
  * BANDWIDTH-SAFE BY DESIGN:
  *   - The strip loads NO video bytes — only small poster images (or a CSS tile).
@@ -22,7 +23,11 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   };
+  var isImage = function (it) {
+    return (it.type || '').toLowerCase() === 'image' || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(it.src || '');
+  };
   var isVideo = function (it) {
+    if (isImage(it)) return false;
     return (it.type || '').toLowerCase() === 'video' || /\.(mp4|webm|mov)(\?|$)/i.test(it.src || '');
   };
 
@@ -51,7 +56,7 @@
       + '.iac-scroller{position:relative;height:100dvh;width:min(460px,100vw);overflow-y:scroll;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}'
       + '.iac-scroller::-webkit-scrollbar{width:0}'
       + '.iac-slide{height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;display:flex;align-items:center;justify-content:center;position:relative}'
-      + '.iac-slide video{width:100%;height:100%;object-fit:contain;background:#000;display:block}'
+      + '.iac-slide video,.iac-slide .iac-still{width:100%;height:100%;object-fit:contain;background:#000;display:block}'
       + '.iac-slide .iac-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}'
       + '.iac-slide .iac-spin{position:absolute;top:50%;left:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:iacspin .8s linear infinite}'
       + '@keyframes iacspin{to{transform:rotate(360deg)}}'
@@ -75,7 +80,7 @@
     document.head.appendChild(el);
   }
 
-  var reels = [];   // normalised video reels only
+  var reels = [];   // normalised reels: clips and stills
   var fixedReels = [];
   var viewer = null, scroller = null, upBtn = null, downBtn = null;
   var slides = [];
@@ -100,9 +105,12 @@
       var spin = '<div class="iac-spin" hidden></div>';
       var cap = it.caption ? '<div class="iac-scap">' + esc(it.caption) + '</div>' : '';
       var ig = it.instagram ? '<a class="iac-ig" href="' + esc(it.instagram) + '" target="_blank" rel="noopener">↗ View on Instagram</a>' : '';
-      slide.innerHTML = poster + spin
-        + '<video data-src="' + esc(it.src) + '" playsinline loop muted preload="none"></video>'
-        + cap + ig;
+      // A still has nothing to stream, so it is rendered as an image and the
+      // load/unload machinery below simply finds no <video> to act on.
+      var media = isImage(it)
+        ? '<img class="iac-still" src="' + esc(it.src) + '" alt="' + esc(it.caption || 'Customer message') + '" loading="lazy"/>'
+        : '<video data-src="' + esc(it.src) + '" playsinline loop muted preload="none"></video>';
+      slide.innerHTML = (isImage(it) ? '' : poster + spin) + media + cap + ig;
       slides.push(slide);
       scroller.appendChild(slide);
     });
@@ -178,17 +186,21 @@
   }
 
   function setActive(i) {
-    if (i === activeIdx && slides[i] && slides[i].querySelector('video').getAttribute('src')) return;
+    var cur = slides[i] && slides[i].querySelector('video');
+    if (i === activeIdx && cur && cur.getAttribute('src')) return;
     activeIdx = i;
     slides.forEach(function (s, j) {
+      // Null on a still. Every branch below has to tolerate that, or one
+      // screenshot in the strip breaks scrolling for every reel after it.
       var v = s.querySelector('video');
       if (j === i) {
+        if (!v) return;
         loadSlide(j);
         v.muted = muted;
         v.play().catch(function () {});
       } else if (Math.abs(j - i) > 1) {
         unloadSlide(j);       // keep immediate neighbours warm, drop the rest
-      } else {
+      } else if (v) {
         v.pause();
       }
     });
@@ -232,12 +244,17 @@
 
   // ── Strip ──────────────────────────────────────────────────────────────────
   function tileHtml(it, i) {
-    var inner = it.poster
-      ? '<img src="' + esc(it.poster) + '" alt="' + esc(it.caption || 'Customer reel') + '" loading="lazy"/>'
+    var still = isImage(it);
+    var thumb = still ? it.src : it.poster;
+    var inner = thumb
+      ? '<img src="' + esc(thumb) + '" alt="' + esc(it.caption || (still ? 'Customer message' : 'Customer reel')) + '" loading="lazy"/>'
       : '';
     var cap = it.caption ? '<div class="iac-cap">' + esc(it.caption) + '</div>' : '';
-    return '<div class="iac-tile" role="button" tabindex="0" data-idx="' + i + '" aria-label="Play reel">'
-      + inner + '<div class="iac-play">▶</div>' + cap + '</div>';
+    // A play triangle over a screenshot promises a video that never starts.
+    var badge = still ? '' : '<div class="iac-play">▶</div>';
+    return '<div class="iac-tile" role="button" tabindex="0" data-idx="' + i + '" aria-label="'
+      + (still ? 'Open message' : 'Play reel') + '">'
+      + inner + badge + cap + '</div>';
   }
 
   function mount(container) {
@@ -265,12 +282,20 @@
   }
 
   function normalise(items) {
-    return (Array.isArray(items) ? items : []).filter(function (it) { return it && it.src && isVideo(it); });
+    return (Array.isArray(items) ? items : []).filter(function (it) {
+      return it && it.src && (isVideo(it) || isImage(it));
+    });
   }
 
-  function mergeReels(extra) {
+  // Built-in reels are baked into the page, so removing one is a matter of the
+  // manifest naming its src. Applied to the fixed set only: an uploaded reel is
+  // deleted outright and never reaches here.
+  function mergeReels(extra, hidden) {
     var seen = Object.create(null);
-    return fixedReels.concat(normalise(extra)).filter(function (it) {
+    var drop = Object.create(null);
+    (Array.isArray(hidden) ? hidden : []).forEach(function (src) { drop[String(src)] = true; });
+    var kept = fixedReels.filter(function (it) { return !drop[String(it.src || '')]; });
+    return kept.concat(normalise(extra)).filter(function (it) {
       var key = String(it.src || '');
       if (!key || seen[key]) return false;
       seen[key] = true;
@@ -306,7 +331,7 @@
     return fetch('/.netlify/functions/site-reels')
       .then(function (response) { return response.ok ? response.json() : { items: [] }; })
       .then(function (data) {
-        var merged = mergeReels(data && data.items);
+        var merged = mergeReels(data && data.items, data && data.hidden);
         // Compare identity, not count: swapping one reel for another leaves the
         // length identical, and the old check treated that as "nothing changed"
         // so the new video never appeared until a hard reload.

@@ -11,7 +11,7 @@
   NODE_VERSION = "20"
 
 [functions]
-  included_files = ["data/ALL_BOOKS.json", "data/fbt-signals.json"]
+  included_files = ["data/ALL_BOOKS.json", "data/fbt-signals.json", "data/social_proof.json"]
 
 # Abandoned cart recovery — runs every hour automatically
 [functions."auto-recover-carts"]

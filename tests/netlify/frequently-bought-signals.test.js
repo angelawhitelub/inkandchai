@@ -12,7 +12,10 @@ const cartJs = fs.readFileSync(path.join(root, 'public/js/cart.js'), 'utf8');
 test('the signal file is built at deploy time and shipped to the function', () => {
   assert.match(netlifyToml, /node scripts\/build-fbt-signals\.js/);
   // Without this the function reads its own bundle and finds nothing.
-  assert.match(netlifyToml, /included_files = \["data\/ALL_BOOKS\.json", "data\/fbt-signals\.json"\]/);
+  // Asserted per file rather than as one exact list, so adding an unrelated
+  // bundled data file does not read as this one going missing.
+  assert.match(netlifyToml, /included_files = \[[^\]]*"data\/ALL_BOOKS\.json"/);
+  assert.match(netlifyToml, /included_files = \[[^\]]*"data\/fbt-signals\.json"/);
 });
 
 test('a failed signal build cannot break the deploy', () => {

@@ -1,4 +1,4 @@
-const { readSiteReels } = require('./utils/site-reels-store');
+const { readManifest } = require('./utils/site-reels-store');
 
 // public/js/reels.js calls this on EVERY page view, and reels.js is on four
 // page templates — so `no-store` meant one uncacheable function invocation per
@@ -21,7 +21,8 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
   try {
-    return { statusCode: 200, headers, body: JSON.stringify({ items: await readSiteReels() }) };
+    const { items, hidden } = await readManifest();
+    return { statusCode: 200, headers, body: JSON.stringify({ items, hidden }) };
   } catch (error) {
     console.error('[site-reels]', error.message);
     // Existing five reels must remain usable even if dynamic storage is down.
@@ -30,7 +31,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: { ...headers, 'Cache-Control': 'no-store, max-age=0', 'Netlify-CDN-Cache-Control': 'no-store' },
-      body: JSON.stringify({ items: [], warning: error.message }),
+      body: JSON.stringify({ items: [], hidden: [], warning: error.message }),
     };
   }
 };

@@ -24,7 +24,10 @@ function cleanItem(value) {
     poster: /^https:\/\//i.test(poster) ? poster : '',
     caption: String(value?.caption || '').trim().slice(0, 180),
     instagram: '',
-    type: 'video',
+    // The manifest used to hard-code 'video' here, which quietly rewrote every
+    // stored type on the way out: a still could be uploaded but never read back
+    // as one. The kind of a reel is decided at upload and preserved.
+    type: String(value?.type || '').toLowerCase() === 'image' ? 'image' : 'video',
     created_at: String(value?.created_at || ''),
     position: Math.max(1, Number(value?.position) || 1),
   };
@@ -34,40 +37,81 @@ async function ensureBucket(supabase) {
   await supabase.storage.createBucket(BUCKET, { public: true }).catch(() => {});
 }
 
-async function readSiteReels() {
-  const supabase = client();
-  const { data, error } = await supabase.storage.from(BUCKET).download(MANIFEST_KEY);
-  if (error) {
-    // The manifest does not exist until the first admin upload.
-    if (String(error.statusCode || error.status || '') === '404'
-      || /not found|does not exist/i.test(String(error.message || ''))) return [];
-    throw error;
-  }
-  let parsed;
-  try { parsed = JSON.parse(await data.text()); }
-  catch { return []; }
-  const items = Array.isArray(parsed) ? parsed : parsed?.items;
+const MAX_HIDDEN = 200;
+
+function sortItems(items) {
   return (Array.isArray(items) ? items : [])
     .map(cleanItem).filter(Boolean)
     .sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at))
     .slice(0, MAX_REELS);
 }
 
-async function writeSiteReels(items) {
+/**
+ * The built-in reels are baked into every product page at build time, so they
+ * cannot be deleted the way an uploaded one can. Hiding is by source URL, held
+ * in the same manifest: the storefront drops any built-in whose src is listed.
+ */
+function cleanHidden(list) {
+  return [...new Set((Array.isArray(list) ? list : [])
+    .map(v => String(v || '').trim())
+    .filter(v => /^https?:\/\//i.test(v) || v.startsWith('/')))].slice(0, MAX_HIDDEN);
+}
+
+const EMPTY = { items: [], hidden: [] };
+
+async function readManifest() {
+  const supabase = client();
+  const { data, error } = await supabase.storage.from(BUCKET).download(MANIFEST_KEY);
+  if (error) {
+    // The manifest does not exist until the first admin upload.
+    if (String(error.statusCode || error.status || '') === '404'
+      || /not found|does not exist/i.test(String(error.message || ''))) return { ...EMPTY };
+    throw error;
+  }
+  let parsed;
+  try { parsed = JSON.parse(await data.text()); }
+  catch { return { ...EMPTY }; }
+  const items = Array.isArray(parsed) ? parsed : parsed?.items;
+  return { items: sortItems(items), hidden: cleanHidden(parsed?.hidden) };
+}
+
+async function writeManifest({ items, hidden }) {
   const supabase = client();
   await ensureBucket(supabase);
-  const clean = (Array.isArray(items) ? items : [])
-    .map(cleanItem).filter(Boolean)
-    .sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at))
-    .slice(0, MAX_REELS);
-  const payload = Buffer.from(JSON.stringify({ version: 1, items: clean }, null, 2));
+  const clean = sortItems(items);
+  const cleanHiddenList = cleanHidden(hidden);
+  const payload = Buffer.from(JSON.stringify({ version: 1, items: clean, hidden: cleanHiddenList }, null, 2));
   const { error } = await supabase.storage.from(BUCKET).upload(MANIFEST_KEY, payload, {
     contentType: 'application/json; charset=utf-8',
     cacheControl: '0',
     upsert: true,
   });
   if (error) throw error;
-  return clean;
+  return { items: clean, hidden: cleanHiddenList };
 }
 
-module.exports = { BUCKET, MANIFEST_KEY, MAX_REELS, client, ensureBucket, readSiteReels, writeSiteReels };
+async function readSiteReels() {
+  return (await readManifest()).items;
+}
+
+async function readHiddenReels() {
+  return (await readManifest()).hidden;
+}
+
+// Both writers re-read first so that saving one half never drops the other:
+// the two live in one object, and a blind overwrite would un-hide every
+// built-in reel the moment somebody uploaded a new one.
+async function writeSiteReels(items) {
+  const current = await readManifest();
+  return (await writeManifest({ items, hidden: current.hidden })).items;
+}
+
+async function writeHiddenReels(hidden) {
+  const current = await readManifest();
+  return (await writeManifest({ items: current.items, hidden })).hidden;
+}
+
+module.exports = {
+  BUCKET, MANIFEST_KEY, MAX_REELS, client, ensureBucket,
+  readSiteReels, writeSiteReels, readHiddenReels, writeHiddenReels, readManifest,
+};

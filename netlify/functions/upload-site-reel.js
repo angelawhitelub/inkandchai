@@ -9,7 +9,12 @@ const CORS = {
 };
 const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stringify(body) });
 const VIDEO_TYPES = { 'video/mp4': 'mp4', 'video/webm': 'webm' };
+// Stills are the other half of the strip: a screenshot of what a customer
+// actually said carries the same proof as an unboxing clip, and there is no
+// clip to shoot for it.
+const IMAGE_TYPES = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' };
 const MAX_VIDEO_BYTES = 4 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 const MAX_POSTER_BYTES = 512 * 1024;
 
 function decodeBase64(value, label) {
@@ -34,7 +39,7 @@ function cleanDirectUrl(value, kind) {
   return url.href;
 }
 
-async function appendReel(current, body, videoUrl, posterUrl, extra = {}) {
+async function appendReel(current, body, videoUrl, posterUrl, extra = {}, type = 'video') {
   if (current.length >= MAX_REELS) {
     const error = new Error(`The admin reel limit of ${MAX_REELS} has been reached.`);
     error.statusCode = 409;
@@ -47,7 +52,7 @@ async function appendReel(current, body, videoUrl, posterUrl, extra = {}) {
     poster: posterUrl || '',
     caption: String(body.caption || '').trim().slice(0, 180),
     instagram: '',
-    type: 'video',
+    type,
     created_at: new Date().toISOString(),
     position: current.reduce((max, row) => Math.max(max, Number(row.position) || 0), 0) + 1,
   };
@@ -77,6 +82,43 @@ exports.handler = async (event) => {
       return json(200, await appendReel(current, body, videoUrl, posterUrl, { storage: 'r2-direct' }));
     } catch (error) {
       return json(error.statusCode || 400, { error: error.message });
+    }
+  }
+
+  // A still: one upload, no poster. The image is its own thumbnail, so the
+  // strip and the viewer both point at the same object.
+  if (body.image_base64) {
+    const imageType = String(body.image_type || '').toLowerCase().split(';')[0].trim();
+    const imageExt = IMAGE_TYPES[imageType];
+    if (!imageExt) return json(400, { error: 'Use a WebP, JPEG or PNG image.' });
+    let image;
+    try { image = decodeBase64(body.image_base64, 'image'); }
+    catch (error) { return json(400, { error: error.message }); }
+    if (image.length > MAX_IMAGE_BYTES) return json(413, { error: 'Image is over the 3 MB upload limit.' });
+    try {
+      const current = await readSiteReels();
+      if (current.length >= MAX_REELS) return json(409, { error: `The admin reel limit of ${MAX_REELS} has been reached.` });
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const key = `reels/admin/${id}.${imageExt}`;
+      let url = '';
+      let storage = 'supabase';
+      if (r2Configured()) {
+        storage = 'r2';
+        url = await r2PutObject(r2Config(), { key, body: image, contentType: imageType });
+      } else {
+        const supabase = client();
+        await ensureBucket(supabase);
+        const { error } = await supabase.storage.from(BUCKET).upload(key, image, {
+          contentType: imageType, cacheControl: '31536000', upsert: false,
+        });
+        if (error) throw error;
+        url = supabase.storage.from(BUCKET).getPublicUrl(key).data?.publicUrl || '';
+      }
+      if (!url) throw new Error('Could not create a public image URL');
+      return json(200, await appendReel(current, body, url, url, { storage, bytes: image.length }, 'image'));
+    } catch (error) {
+      console.error('[upload-site-reel] image', error.message);
+      return json(error.statusCode || 500, { error: error.message });
     }
   }
 

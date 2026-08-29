@@ -1180,25 +1180,30 @@ select,input,textarea{font-size:1rem;}
     <section class="product-panel">
       <div class="product-head">
         <div>
-          <h2>🎬 Storefront Video Reels</h2>
-          <p>Select one or more phone videos. Each upload is compressed here and appended after the existing reels on every product page, before Frequently Bought Together.</p>
+          <h2>🎬 Storefront Reels</h2>
+          <p>Select phone videos or screenshots. Each upload is compressed here and appended after the existing reels on every product page, before Frequently Bought Together.</p>
         </div>
         <div class="mini-actions"><button class="btn-outline" onclick="loadSiteReels()">↻ Refresh</button></div>
       </div>
       <div class="form-row wide">
-        <label>Select videos <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(up to 8 at once; web-ready MP4s up to 60 seconds keep original quality and sound)</span></label>
-        <input id="siteReelFiles" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*" multiple onchange="prepareSiteReels(this.files)"/>
-        <p class="hint" style="margin-top:.45rem;">Keep this tab visible while uploading: conversion runs in real time. A poster frame is generated automatically.</p>
+        <label>Select videos or screenshots <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(up to 8 at once; web-ready MP4s up to 60 seconds keep original quality and sound)</span></label>
+        <input id="siteReelFiles" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*,image/jpeg,image/png,image/webp" multiple onchange="prepareSiteReels(this.files)"/>
+        <p class="hint" style="margin-top:.45rem;">Keep this tab visible while uploading: video conversion runs in real time. A poster frame is generated automatically. Screenshots are resized here and upload straight away.</p>
+        <p class="hint" style="margin-top:.35rem;color:#c98236;">Screenshots go on every product page, so redact before you upload: the phone number, the contact name, and anything in the messages themselves &mdash; an address, an order ID, a full name.</p>
       </div>
       <div id="siteReelQueue" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.8rem;margin-top:.9rem;"></div>
       <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-top:1rem;">
-        <button class="btn-green" id="uploadSiteReelsBtn" type="button" onclick="uploadSiteReels()" style="display:none;">Upload &amp; Append Videos</button>
+        <button class="btn-green" id="uploadSiteReelsBtn" type="button" onclick="uploadSiteReels()" style="display:none;">Upload &amp; Append</button>
         <span class="hint" id="siteReelUploadStatus"></span>
       </div>
     </section>
     <section class="product-panel" style="margin-top:1rem;">
       <div class="product-head"><div><h2>Admin-added reels</h2><p>These appear after the five original reels, in the order shown below.</p></div></div>
-      <div id="siteReelsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.8rem;"><span class="hint">Open this tab to load videos.</span></div>
+      <div id="siteReelsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.8rem;"><span class="hint">Open this tab to load reels.</span></div>
+    </section>
+    <section class="product-panel" style="margin-top:1rem;">
+      <div class="product-head"><div><h2>Built-in reels</h2><p>The reels that ship with the site and show first. They cannot be deleted &mdash; they are part of every published page &mdash; but hiding one takes it off the storefront straight away, and it can be brought back.</p></div></div>
+      <div id="builtinReelsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.8rem;"><span class="hint">Open this tab to load reels.</span></div>
     </section>
   </div><!-- /tab-reels -->
 
@@ -6617,17 +6622,48 @@ function defaultReelCaption(name) {
   return String(name || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
 }
 
+const REEL_STILL_MAX_EDGE = 1440;
+
+/** True for a screenshot rather than a clip. */
+function isStillFile(file) {
+  return /^image\//i.test(file && file.type || '');
+}
+
+/**
+ * Shrink a screenshot to something a product page can carry.
+ *
+ * A phone screenshot is often 3-6 MB of PNG, which is both over the upload
+ * limit and far more than a 150px strip tile needs. Resizing here keeps the
+ * upload small and lands every still in the same format regardless of phone.
+ */
+async function stillToWebp(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, REEL_STILL_MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close && bitmap.close();
+  const dataUrl = canvas.toDataURL('image/webp', 0.86);
+  if (!/^data:image\/webp/.test(dataUrl)) {
+    // Safari before 14 has no WebP encoder and silently returns a PNG.
+    return { type: 'image/png', base64: canvas.toDataURL('image/png').replace(/^data:[^,]*,/, '') };
+  }
+  return { type: 'image/webp', base64: dataUrl.replace(/^data:[^,]*,/, '') };
+}
+
 function prepareSiteReels(fileList) {
   clearSiteReelObjectUrls();
   pendingSiteReelFiles = Array.from(fileList || []).slice(0, 8).map((file, index) => ({
     file,
     key: `${Date.now()}-${index}`,
+    still: isStillFile(file),
     caption: defaultReelCaption(file.name),
   }));
   renderSiteReelQueue();
   const status = document.getElementById('siteReelUploadStatus');
   if (status) status.textContent = pendingSiteReelFiles.length
-    ? `${pendingSiteReelFiles.length} video${pendingSiteReelFiles.length === 1 ? '' : 's'} ready. Add or edit captions, then upload.`
+    ? `${pendingSiteReelFiles.length} file${pendingSiteReelFiles.length === 1 ? '' : 's'} ready. Add or edit captions, then upload.`
     : '';
 }
 
@@ -6644,10 +6680,12 @@ function renderSiteReelQueue() {
     const url = URL.createObjectURL(entry.file);
     siteReelObjectUrls.push(url);
     return `<div style="border:1px solid var(--border);background:var(--bg3);border-radius:10px;padding:.7rem;">
-      <video src="${esc(url)}" controls muted playsinline preload="metadata" style="display:block;width:100%;height:220px;object-fit:contain;background:#080706;border-radius:7px;"></video>
+      ${entry.still
+        ? `<img src="${esc(url)}" alt="" style="display:block;width:100%;height:220px;object-fit:contain;background:#080706;border-radius:7px;"/>`
+        : `<video src="${esc(url)}" controls muted playsinline preload="metadata" style="display:block;width:100%;height:220px;object-fit:contain;background:#080706;border-radius:7px;"></video>`}
       <div style="font-size:.58rem;color:var(--cream-dim);margin:.45rem 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(entry.file.name)} · ${(entry.file.size / 1048576).toFixed(1)} MB</div>
       <label style="font-size:.55rem;">Caption</label>
-      <input value="${esc(entry.caption)}" maxlength="180" oninput="pendingSiteReelFiles[${index}].caption=this.value" placeholder="What is shown in this video?" style="width:100%;box-sizing:border-box;"/>
+      <input value="${esc(entry.caption)}" maxlength="180" oninput="pendingSiteReelFiles[${index}].caption=this.value" placeholder="${entry.still ? 'What does this message say?' : 'What is shown in this video?'}" style="width:100%;box-sizing:border-box;"/>
       <button class="btn-outline" type="button" onclick="removePendingSiteReel(${index})" style="margin-top:.55rem;padding:.35rem .7rem;font-size:.52rem;color:#d66;">Remove</button>
       <div id="siteReelProgress-${esc(entry.key)}" class="hint" style="margin-top:.45rem;"></div>
     </div>`;
@@ -6674,7 +6712,24 @@ async function uploadSiteReels() {
     const entry = pendingSiteReelFiles[index];
     const progress = document.getElementById(`siteReelProgress-${entry.key}`);
     try {
-      if (overall) overall.textContent = `Preparing video ${index + 1} of ${pendingSiteReelFiles.length}…`;
+      if (overall) overall.textContent = `Preparing ${index + 1} of ${pendingSiteReelFiles.length}…`;
+
+      if (entry.still) {
+        if (progress) progress.textContent = 'Resizing screenshot…';
+        const still = await stillToWebp(entry.file);
+        if (progress) progress.textContent = 'Uploading screenshot…';
+        const stillResponse = await adminFetch('/.netlify/functions/upload-site-reel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ caption: entry.caption, image_type: still.type, image_base64: still.base64 }),
+        });
+        const stillResult = await stillResponse.json().catch(() => ({}));
+        if (!stillResponse.ok || !stillResult.success) throw new Error(stillResult.error || `HTTP ${stillResponse.status}`);
+        uploadedCount += 1;
+        if (progress) { progress.textContent = '✓ Uploaded and appended'; progress.style.color = '#5d9b55'; }
+        continue;
+      }
+
       const codec = await videoCodecOf(entry.file).catch(() => 'unknown');
       const meta = await probeVideoFile(entry.file).catch(() => null);
       const direct = codec === 'h264' && /mp4/i.test(entry.file.type || '')
@@ -6740,8 +6795,8 @@ async function uploadSiteReels() {
   pendingSiteReelFiles = failed;
   if (overall) {
     overall.textContent = failed.length
-      ? `${uploadedCount} uploaded; ${failed.length} failed. The failed videos remain selected so you can retry.`
-      : `${uploadedCount} video${uploadedCount === 1 ? '' : 's'} uploaded. They now appear after the previous last reel.`;
+      ? `${uploadedCount} uploaded; ${failed.length} failed. The failed files remain selected so you can retry.`
+      : `${uploadedCount} file${uploadedCount === 1 ? '' : 's'} uploaded. They now appear after the previous last reel.`;
     overall.style.color = failed.length ? '#c98236' : '#5d9b55';
   }
   clearSiteReelObjectUrls();
@@ -6763,25 +6818,71 @@ async function loadSiteReels() {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     const items = Array.isArray(data.items) ? data.items : [];
+    renderBuiltinReels(data.builtin, data.hidden);
     if (!items.length) {
-      list.innerHTML = '<span class="hint">No manual reels yet. The five original reels are still shown on the storefront.</span>';
+      list.innerHTML = '<span class="hint">No manual reels yet. The built-in reels are still shown on the storefront.</span>';
       return;
     }
     list.innerHTML = items.map((item, index) => `<div style="border:1px solid var(--border);background:var(--bg3);border-radius:10px;padding:.55rem;min-width:0;">
-      ${item.poster
-        ? `<img src="${esc(item.poster)}" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:9/16;object-fit:cover;background:#080706;border-radius:7px;"/>`
+      ${item.type === 'image' || item.poster
+        ? `<img src="${esc(item.type === 'image' ? item.src : item.poster)}" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:9/16;object-fit:${item.type === 'image' ? 'contain' : 'cover'};background:#080706;border-radius:7px;"/>`
         : `<video src="${esc(item.src)}" muted playsinline preload="metadata" style="display:block;width:100%;aspect-ratio:9/16;object-fit:cover;background:#080706;border-radius:7px;"></video>`}
-      <div style="font-size:.61rem;color:var(--cream);line-height:1.4;margin:.45rem 0;min-height:2.8em;">${esc(item.caption || 'Untitled reel')}</div>
-      <div class="hint">Position ${index + 6}</div>
-      <button class="btn-outline" type="button" onclick="deleteSiteReel('${esc(item.id)}')" style="margin-top:.45rem;padding:.35rem .6rem;font-size:.5rem;color:#d66;">Remove reel</button>
+      <div style="font-size:.61rem;color:var(--cream);line-height:1.4;margin:.45rem 0;min-height:2.8em;">${esc(item.caption || (item.type === 'image' ? 'Untitled screenshot' : 'Untitled reel'))}</div>
+      <div class="hint">Position ${index + 6} · ${item.type === 'image' ? 'Screenshot' : 'Video'}</div>
+      <button class="btn-outline" type="button" onclick="deleteSiteReel('${esc(item.id)}')" style="margin-top:.45rem;padding:.35rem .6rem;font-size:.5rem;color:#d66;">Remove</button>
     </div>`).join('');
   } catch (error) {
     list.innerHTML = `<span class="hint" style="color:#c93636;">Could not load reels: ${esc(error.message)}</span>`;
   }
 }
 
+function renderBuiltinReels(builtin, hidden) {
+  const box = document.getElementById('builtinReelsList');
+  if (!box) return;
+  const rows = Array.isArray(builtin) ? builtin : [];
+  const off = new Set(Array.isArray(hidden) ? hidden : []);
+  if (!rows.length) {
+    box.innerHTML = '<span class="hint">No built-in reels are configured.</span>';
+    return;
+  }
+  box.innerHTML = rows.map(item => {
+    const isHidden = off.has(item.src);
+    const still = item.type === 'image';
+    const thumb = still ? item.src : item.poster;
+    return `<div style="border:1px solid var(--border);background:var(--bg3);border-radius:10px;padding:.55rem;min-width:0;opacity:${isHidden ? '.45' : '1'};">
+      ${thumb
+        ? `<img src="${esc(thumb)}" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:9/16;object-fit:${still ? 'contain' : 'cover'};background:#080706;border-radius:7px;"/>`
+        : `<video src="${esc(item.src)}" muted playsinline preload="metadata" style="display:block;width:100%;aspect-ratio:9/16;object-fit:cover;background:#080706;border-radius:7px;"></video>`}
+      <div style="font-size:.61rem;color:var(--cream);line-height:1.4;margin:.45rem 0;min-height:2.8em;">${esc(item.caption || (still ? 'Untitled screenshot' : 'Untitled reel'))}</div>
+      <div class="hint">${isHidden ? 'Hidden from the storefront' : 'Showing'}</div>
+      ${isHidden
+        ? `<button class="btn-outline" type="button" onclick="restoreBuiltinReel('${esc(item.src)}')" style="margin-top:.45rem;padding:.35rem .6rem;font-size:.5rem;">Show again</button>`
+        : `<button class="btn-outline" type="button" onclick="hideBuiltinReel('${esc(item.src)}')" style="margin-top:.45rem;padding:.35rem .6rem;font-size:.5rem;color:#d66;">Hide</button>`}
+    </div>`;
+  }).join('');
+}
+
+async function hideBuiltinReel(src) {
+  if (!confirm('Hide this reel from every product page? You can show it again from here.')) return;
+  const response = await adminFetch('/.netlify/functions/admin-site-reels?src=' + encodeURIComponent(src), { method: 'DELETE' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) return alert(data.error || 'Could not hide the reel');
+  loadSiteReels();
+}
+
+async function restoreBuiltinReel(src) {
+  const response = await adminFetch('/.netlify/functions/admin-site-reels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ restore: src }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) return alert(data.error || 'Could not restore the reel');
+  loadSiteReels();
+}
+
 async function deleteSiteReel(id) {
-  if (!confirm('Remove this video from the storefront reel strip?')) return;
+  if (!confirm('Remove this from the storefront reel strip?')) return;
   const response = await adminFetch('/.netlify/functions/admin-site-reels?id=' + encodeURIComponent(id), { method: 'DELETE' });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) return alert(data.error || 'Could not remove the reel');
