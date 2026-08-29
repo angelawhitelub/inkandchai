@@ -856,6 +856,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab" data-tab="bundles" onclick="switchTab('bundles')">📦 Bundles</button>
     <button class="admin-tab" data-tab="coupons" onclick="switchTab('coupons')">🏷️ Coupons</button>
     <button class="admin-tab" data-tab="npcancelled" onclick="switchTab('npcancelled')">🚫 NP Cancelled <span id="npCancelledBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <!-- The inbox lives on its own page now. Inside the SPA every 30s poll
@@ -1760,6 +1761,38 @@ select,input,textarea{font-size:1rem;}
   </div><!-- /tab-adminaccess -->
 
   <!-- ═══ NIMBUSPOST-CANCELLED TAB ═══ -->
+  <div class="admin-section" id="tab-bundles">
+    <h2 class="section-title">Create a Bundle</h2>
+    <p class="hint" style="margin:.2rem 0 1rem;">
+      Combine two or more books into one product. Over the last year an order containing a
+      bundle averaged <strong>&#8377;651</strong> against <strong>&#8377;359</strong> without one.
+    </p>
+
+    <div class="form-row">
+      <label>Find books to add</label>
+      <input id="bundleSearch" type="search" placeholder="Search by title or author&hellip;" oninput="bundleSearchDebounced()" autocomplete="off"/>
+      <div id="bundleResults" style="margin-top:.5rem;max-height:320px;overflow-y:auto;"></div>
+    </div>
+
+    <h3 style="margin-top:1.4rem;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);">In this bundle</h3>
+    <div id="bundlePicked" style="margin-top:.6rem;"></div>
+
+    <div id="bundlePricing" style="display:none;margin-top:1rem;border:1px solid var(--border);padding:.9rem;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;">
+        <div class="form-row"><label>Bundle price (&#8377;)</label><input id="bundlePrice" type="number" min="1" step="1" oninput="renderBundlePreview()"/></div>
+        <div class="form-row"><label>Or discount off the total (%)</label><input id="bundleDiscount" type="number" min="0" max="60" step="1" value="12" oninput="bundleApplyDiscount()"/></div>
+      </div>
+      <div class="form-row"><label>Title <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(leave blank to compose from the books)</span></label><input id="bundleTitle" maxlength="220" placeholder="Auto"/></div>
+      <div class="form-row"><label>URL slug <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(leave blank to generate)</span></label><input id="bundleSlug" maxlength="120" placeholder="Auto" style="text-transform:lowercase;"/></div>
+      <div id="bundleSummary" class="hint" style="margin:.6rem 0;"></div>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;">
+        <button class="btn-green" type="button" onclick="createBundle()">Create Bundle</button>
+        <button class="btn-outline" type="button" onclick="clearBundle()">Clear</button>
+      </div>
+      <p class="hint" id="bundleMsg" style="margin-top:.65rem;"></p>
+    </div>
+  </div><!-- /tab-bundles -->
+
   <div class="admin-section" id="tab-coupons">
     <h2 class="section-title">Coupons</h2>
     <p class="hint" style="margin:.2rem 0 1rem;">
@@ -5581,6 +5614,139 @@ async function saveProductCoupon() {
     selectProductCoupon(data.coupon.code);
   } catch (err) { msg.textContent = 'Could not save coupon: ' + err.message; }
 }
+// ── Bundle builder ──────────────────────────────────────────────────────────
+// A bundle is one custom_products row whose title lists its books -- the same
+// shape the 357 existing combos already have -- so anything created here
+// renders, prices, ships and appears in feeds like the rest of the catalogue.
+let bundlePicked = [];
+let bundleSearchTimer = null;
+
+function initBundleBuilder() {
+  if (!bundlePicked.length) renderBundlePicked();
+}
+
+function bundleSearchDebounced() {
+  clearTimeout(bundleSearchTimer);
+  bundleSearchTimer = setTimeout(runBundleSearch, 280);
+}
+
+async function runBundleSearch() {
+  const q = document.getElementById('bundleSearch').value.trim();
+  const box = document.getElementById('bundleResults');
+  if (q.length < 2) { box.innerHTML = ''; return; }
+  box.innerHTML = '<p class="hint">Searching…</p>';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-bundle?q=' + encodeURIComponent(q));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const picked = new Set(bundlePicked.map(p => p.slug));
+    const rows = (data.products || []).filter(p => !picked.has(p.slug));
+    box.innerHTML = rows.length ? rows.map(p =>
+      '<div style="display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:.6rem;align-items:center;padding:.45rem 0;border-top:1px solid var(--border);">'
+      + '<div style="width:34px;aspect-ratio:2/3;background:rgba(138,106,31,.08);overflow:hidden;">'
+        + (p.image ? '<img src="' + esc(p.image) + '" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\'"/>' : '')
+      + '</div>'
+      + '<div style="min-width:0;">'
+        + '<div style="font-size:.72rem;color:var(--cream);">' + esc(p.title) + '</div>'
+        + '<div style="font-size:.6rem;color:var(--cream-dim);">' + esc(p.author || '') + ' · ₹' + p.price + '</div>'
+      + '</div>'
+      + '<button class="btn-outline" type="button" onclick=\'addToBundle(' + JSON.stringify(p).replace(/'/g, "&#39;") + ')\'>Add</button>'
+      + '</div>'
+    ).join('') : '<p class="hint">No matches.</p>';
+  } catch (err) {
+    box.innerHTML = '<p class="hint">Search failed: ' + esc(err.message) + '</p>';
+  }
+}
+
+function addToBundle(p) {
+  if (bundlePicked.some(x => x.slug === p.slug)) return;
+  if (bundlePicked.length >= 6) { document.getElementById('bundleMsg').textContent = 'A bundle can hold at most 6 books.'; return; }
+  bundlePicked.push(p);
+  renderBundlePicked();
+  runBundleSearch();
+}
+
+function removeFromBundle(slug) {
+  bundlePicked = bundlePicked.filter(p => p.slug !== slug);
+  renderBundlePicked();
+  runBundleSearch();
+}
+
+function bundleSumPrice() { return bundlePicked.reduce((s, p) => s + (Number(p.price) || 0), 0); }
+
+function renderBundlePicked() {
+  const box = document.getElementById('bundlePicked');
+  const pricing = document.getElementById('bundlePricing');
+  if (!box) return;
+  box.innerHTML = bundlePicked.length ? bundlePicked.map(p =>
+    '<div style="display:flex;gap:.6rem;align-items:center;padding:.45rem 0;border-top:1px solid var(--border);">'
+    + '<div style="flex:1;min-width:0;font-size:.72rem;color:var(--cream);">' + esc(p.title) + '</div>'
+    + '<div style="font-size:.7rem;color:var(--gold);">₹' + p.price + '</div>'
+    + '<button class="btn-outline" type="button" onclick="removeFromBundle(\'' + esc(p.slug) + '\')" style="border-color:rgba(224,80,80,.35);color:#c93636;">Remove</button>'
+    + '</div>'
+  ).join('') : '<p class="hint">No books added yet. Search above and press Add.</p>';
+
+  const ready = bundlePicked.length >= 2;
+  if (pricing) pricing.style.display = ready ? 'block' : 'none';
+  if (ready) bundleApplyDiscount();
+}
+
+function bundleApplyDiscount() {
+  const pct = Math.min(60, Math.max(0, Number(document.getElementById('bundleDiscount').value) || 0));
+  document.getElementById('bundlePrice').value = Math.max(1, Math.round(bundleSumPrice() * (1 - pct / 100)));
+  renderBundlePreview();
+}
+
+function renderBundlePreview() {
+  const sum = bundleSumPrice();
+  const price = Number(document.getElementById('bundlePrice').value) || 0;
+  const el = document.getElementById('bundleSummary');
+  if (!el) return;
+  const saving = sum - price;
+  // A bundle dearer than its parts is always a typo, and the server refuses it
+  // too -- but saying so here means nobody has to submit to find out.
+  el.innerHTML = price > sum
+    ? '<span style="color:#c93636;">₹' + price + ' is more than buying the ' + bundlePicked.length + ' books separately (₹' + sum + ').</span>'
+    : bundlePicked.length + ' books · separately ₹' + sum + ' · bundle ₹' + price
+      + ' · <strong style="color:var(--gold);">customer saves ₹' + saving + (sum ? ' (' + Math.round(saving / sum * 100) + '%)' : '') + '</strong>';
+}
+
+async function createBundle() {
+  const msg = document.getElementById('bundleMsg');
+  if (bundlePicked.length < 2) { msg.textContent = 'Add at least 2 books.'; return; }
+  const price = Number(document.getElementById('bundlePrice').value) || 0;
+  if (price > bundleSumPrice()) { msg.textContent = 'Bundle price is higher than the books bought separately.'; return; }
+  msg.textContent = 'Creating…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-bundle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        components: bundlePicked.map(p => p.slug),
+        price_inr: price,
+        title: document.getElementById('bundleTitle').value.trim() || undefined,
+        slug: document.getElementById('bundleSlug').value.trim() || undefined,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    msg.innerHTML = 'Created: <a href="https://inkandchai.in' + esc(data.url) + '" target="_blank" rel="noopener" style="color:var(--gold);">'
+      + esc(data.url) + '</a> — saves ₹' + data.saving_inr + '. It appears on the site after the next deploy.';
+    bundlePicked = [];
+    renderBundlePicked();
+  } catch (err) {
+    msg.textContent = 'Could not create bundle: ' + err.message;
+  }
+}
+
+function clearBundle() {
+  bundlePicked = [];
+  document.getElementById('bundleTitle').value = '';
+  document.getElementById('bundleSlug').value = '';
+  document.getElementById('bundleMsg').textContent = '';
+  renderBundlePicked();
+}
+
 // ── Store-wide coupon manager ───────────────────────────────────────────────
 // The per-product coupon editor lives inside a product's own panel, so there
 // was no way to see every coupon at once -- which is how INTERVIEW5 sat live
@@ -9076,7 +9242,7 @@ function rptPickProduct(idx) {
   document.getElementById('rptChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-const TABS = ['orders','tools','create','products','coupons','reels','abandoned','reviews','replacements','returns','npcancelled','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','bundles','coupons','reels','abandoned','reviews','replacements','returns','npcancelled','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -9418,6 +9584,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
   if (tab === 'npcancelled' && _authed) loadNpCancelled();
   if (tab === 'coupons' && _authed) loadCouponManager();
+  if (tab === 'bundles' && _authed) initBundleBuilder();
   if (tab === 'reviews') fetchPendingReviews();
   if (tab === 'replacements' && _authed) renderReplacementRequests();
   if (tab === 'returns' && _authed) fetchReturnRequests();
