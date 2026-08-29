@@ -43,7 +43,12 @@ async function sendWhatsApp({ to, template, params = [], lang = 'en', urlButtonP
   const phone = normalizePhone(to);
   if (!phone) { console.warn('sendWhatsApp: invalid phone', to); return { ok: false, skipped: true }; }
 
-  const bodyParams = params.map(p => ({ type: 'text', text: String(p) }));
+  // Meta rejects the entire send if a body parameter contains a newline, a tab,
+  // or four-plus consecutive spaces — so one book title with a stray line break
+  // would silently cost the customer their whole notification. Collapse runs of
+  // whitespace to a single space for every template, not just the ones that
+  // happen to interpolate free text today.
+  const bodyParams = params.map(p => ({ type: 'text', text: String(p).replace(/\s+/g, ' ').trim() }));
 
   const components = [];
   if (bodyParams.length > 0) components.push({ type: 'body', parameters: bodyParams });

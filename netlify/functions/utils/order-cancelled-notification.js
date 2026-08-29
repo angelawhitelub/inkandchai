@@ -49,11 +49,50 @@ function refundSentence(order, refund, opts = {}) {
 }
 
 // Plain-text form of the same sentence, for the WhatsApp template variable.
+// Carries the amount, so the customer can reconcile it against their statement
+// without opening the email.
 function refundSentenceShort(order, refund, opts = {}) {
   const paid = Number(order.amount_paise || 0) > 0 && !!order.razorpay_payment_id;
   if (opts.skipRefund || !paid) return 'You were not charged, so there is nothing to refund.';
-  if (refund && refund.ok && refund.nextStatus === 'refunded') return 'Your refund has been issued to your original payment method and takes 3-7 working days.';
-  return 'Your refund is being processed to your original payment method and takes 3-7 working days.';
+  const total = moneyFromPaise(order.amount_paise);
+  const amount = total ? ` of ${total}` : '';
+  if (refund && refund.ok && refund.nextStatus === 'refunded') {
+    return `Your refund${amount} has been issued to your original payment method and takes 3-7 working days.`;
+  }
+  return `Your refund${amount} is being processed to your original payment method and takes 3-7 working days.`;
+}
+
+// The books, on ONE line, for a WhatsApp body variable.
+//
+// Meta rejects the whole send if a body parameter contains a newline, a tab, or
+// a run of four or more spaces, and caps a parameter at 1024 characters. A book
+// title is customer-supplied-ish data that can carry any of those, so this
+// flattens whitespace and truncates on a title boundary rather than mid-word.
+function bookListShort(order, maxChars = 220) {
+  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const titles = items
+    .map(i => {
+      const name = String(i.title || i.name || '').replace(/\s+/g, ' ').trim();
+      if (!name) return '';
+      const qty = Number(i.qty) || 1;
+      return qty > 1 ? `${name} x${qty}` : name;
+    })
+    .filter(Boolean);
+
+  if (!titles.length) return 'your order';
+
+  const kept = [];
+  let used = 0;
+  for (const t of titles) {
+    const cost = t.length + (kept.length ? 2 : 0);
+    if (kept.length && used + cost > maxChars) break;
+    kept.push(t);
+    used += cost;
+  }
+  const dropped = titles.length - kept.length;
+  // A single title longer than the budget still has to fit somehow.
+  if (kept.length === 1 && kept[0].length > maxChars) kept[0] = kept[0].slice(0, maxChars - 1).trim() + '\u2026';
+  return kept.join(', ') + (dropped > 0 ? ` +${dropped} more` : '');
 }
 
 function orderCancelledEmailHtml(order, refund, opts = {}) {
@@ -66,6 +105,9 @@ function orderCancelledEmailHtml(order, refund, opts = {}) {
   const total = moneyFromPaise(order.amount_paise);
   // Send them back to the exact book where we can, so re-ordering is one tap.
   // Falls back to the catalogue when the cart line carries no url.
+  // Same test refundSentence applies, so the big number and the sentence below
+  // it can never contradict each other.
+  const refundable = !opts.skipRefund && Number(order.amount_paise || 0) > 0 && !!order.razorpay_payment_id;
   const firstUrl = items.map(i => i.url || i.id || '').find(u => String(u).startsWith('/product/'));
   const reorderUrl = firstUrl ? `https://inkandchai.in${firstUrl}` : 'https://inkandchai.in/books/';
 
@@ -96,6 +138,7 @@ function orderCancelledEmailHtml(order, refund, opts = {}) {
       </table>` : ''}
       ${total ? `<p style="color:#a09080;font-size:13px;">Order total: <strong style="color:#f0e8d8;">${total}</strong></p>` : ''}
       <div style="background:#1c1916;border-left:3px solid #6dbf6d;padding:14px 18px;margin:18px 0;">
+        ${refundable ? `<p style="color:#6dbf6d;margin:0 0 6px;font-size:20px;font-weight:bold;">${total} refunded</p>` : ''}
         <p style="color:#f0e8d8;margin:0;font-size:14px;line-height:1.7;">${refundSentence(order, refund, opts)}</p>
       </div>
       <p style="color:#a09080;font-size:13px;line-height:1.8;margin-top:18px;">
@@ -326,18 +369,21 @@ async function notifyOrderCancelled(order, opts = {}) {
   }
 
   if (!opts.skipWhatsApp && order.customer_phone) {
-    // Two templates, because the wording lives in Meta and a template's variable
-    // count is fixed once approved. The out-of-stock copy needs a third variable
-    // for the refund sentence (a COD customer must not be told a refund is
-    // coming), so it can only be used once that template exists and its name is
-    // in WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE. Until then we keep sending the
-    // already-approved two-variable template rather than failing every send.
-    const stockTemplate = process.env.WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE;
+    // The wording lives in the Meta template, not here — we only supply the
+    // variables. The `order_cancelled` template is being edited from 2 variables
+    // (name, order id) to 4 (name, order id, books, refund line), and Meta
+    // rejects a send whose parameter count does not match the approved body.
+    //
+    // So the count is switched by env var rather than by deploy: edit the
+    // template, wait for Meta to approve it, THEN set
+    // WHATSAPP_ORDER_CANCELLED_V2=1. Either order without this flag would break
+    // every cancellation message in the gap between the two changes.
+    const v2 = /^(1|true|yes)$/i.test(String(process.env.WHATSAPP_ORDER_CANCELLED_V2 || ''));
     await sendWhatsApp({
       to: order.customer_phone,
-      template: stockTemplate || process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE || 'order_cancelled',
-      params: stockTemplate
-        ? [firstName, id, refundSentenceShort(order, result.refund, opts)]
+      template: process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE || 'order_cancelled',
+      params: v2
+        ? [firstName, id, bookListShort(order), refundSentenceShort(order, result.refund, opts)]
         : [firstName, id],
     });
     result.whatsapp = true;
@@ -367,4 +413,4 @@ async function notifyOrderCancelled(order, opts = {}) {
   return result;
 }
 
-module.exports = { notifyOrderCancelled, refundSentence, refundSentenceShort };
+module.exports = { notifyOrderCancelled, refundSentence, refundSentenceShort, bookListShort };
