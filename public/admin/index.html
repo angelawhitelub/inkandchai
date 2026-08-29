@@ -1784,6 +1784,13 @@ select,input,textarea{font-size:1rem;}
       </div>
       <div class="form-row"><label>Title <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(leave blank to compose from the books)</span></label><input id="bundleTitle" maxlength="220" placeholder="Auto"/></div>
       <div class="form-row"><label>URL slug <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(leave blank to generate)</span></label><input id="bundleSlug" maxlength="120" placeholder="Auto" style="text-transform:lowercase;"/></div>
+      <div class="form-row" style="margin-top:.4rem;">
+        <label>Combo picture <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(drawn from the covers &mdash; nothing to upload)</span></label>
+        <div style="display:flex;gap:.8rem;align-items:flex-start;flex-wrap:wrap;">
+          <canvas id="bundleCanvas" width="1254" height="1254" style="width:190px;height:190px;background:#fff;border:1px solid var(--border);"></canvas>
+          <p class="hint" id="bundleImgMsg" style="flex:1;min-width:180px;margin:0;"></p>
+        </div>
+      </div>
       <div id="bundleSummary" class="hint" style="margin:.6rem 0;"></div>
       <div style="display:flex;gap:.6rem;flex-wrap:wrap;">
         <button class="btn-green" type="button" onclick="createBundle()">Create Bundle</button>
@@ -5620,6 +5627,7 @@ async function saveProductCoupon() {
 // renders, prices, ships and appears in feeds like the rest of the catalogue.
 let bundlePicked = [];
 let bundleSearchTimer = null;
+let bundleImageDataUrl = null;
 
 function initBundleBuilder() {
   if (!bundlePicked.length) renderBundlePicked();
@@ -5689,6 +5697,7 @@ function renderBundlePicked() {
   const ready = bundlePicked.length >= 2;
   if (pricing) pricing.style.display = ready ? 'block' : 'none';
   if (ready) bundleApplyDiscount();
+  renderBundleCanvas();
 }
 
 function bundleApplyDiscount() {
@@ -5711,6 +5720,159 @@ function renderBundlePreview() {
       + ' · <strong style="color:var(--gold);">customer saves ₹' + saving + (sum ? ' (' + Math.round(saving / sum * 100) + '%)' : '') + '</strong>';
 }
 
+/**
+ * Draw the combo picture: every cover standing side by side on white.
+ *
+ * The same composition as scripts/make_combo_cover.py, which built the images
+ * for the combos created in bulk -- keep the two in step if either changes.
+ * Doing it here means a bundle never ships showing one of the books the
+ * customer is paying for, and nobody has to open Canva.
+ *
+ * Each cover is sheared a little and given a spine in its own edge colour. The
+ * spine is flat on purpose: we hold the front cover and nothing else, and
+ * invented spine artwork reads as a printing fault.
+ */
+const BUNDLE_CANVAS = 1254;
+
+function loadCoverImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    // The cover CDNs send Access-Control-Allow-Origin: *, so the canvas stays
+    // untainted and toDataURL() works. Without this it throws on export.
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('could not load ' + src));
+    img.src = src;
+  });
+}
+
+/**
+ * The cover's own bounds, ignoring the white margin scans carry.
+ *
+ * Without this a cover with a 12% border renders as a visibly shorter book
+ * beside one cropped tight, and the row looks broken rather than stylised.
+ * A crop that would eat more than half the cover is refused -- that means a
+ * mostly-white cover, where the bbox is just the title text.
+ */
+function trimCover(img) {
+  const full = { sx: 0, sy: 0, sw: img.width, sh: img.height };
+  const c = document.createElement('canvas');
+  const w = c.width = Math.min(160, img.width);
+  const h = c.height = Math.min(240, img.height);
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(img, 0, 0, w, h);
+  let data;
+  try { data = cx.getImageData(0, 0, w, h).data; } catch (err) { return full; }
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i] < 248 || data[i + 1] < 248 || data[i + 2] < 248) {
+        if (x < x0) x0 = x;
+        if (y < y0) y0 = y;
+        if (x > x1) x1 = x;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0 || (x1 - x0) < w * 0.5 || (y1 - y0) < h * 0.5) return full;
+  const kx = img.width / w;
+  const ky = img.height / h;
+  return {
+    sx: Math.max(0, (x0 - 1) * kx), sy: Math.max(0, (y0 - 1) * ky),
+    sw: Math.min(img.width, (x1 - x0 + 3) * kx), sh: Math.min(img.height, (y1 - y0 + 3) * ky),
+  };
+}
+
+/** Average colour of the cover's left edge, for the spine panel. */
+function edgeColour(img, box) {
+  const c = document.createElement('canvas');
+  c.width = 1; c.height = 1;
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(img, box.sx, box.sy, Math.max(1, box.sw * 0.04), box.sh, 0, 0, 1, 1);
+  const [r, g, b] = cx.getImageData(0, 0, 1, 1).data;
+  return [r, g, b];
+}
+
+async function renderBundleCanvas() {
+  const canvas = document.getElementById('bundleCanvas');
+  const msg = document.getElementById('bundleImgMsg');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, BUNDLE_CANVAS, BUNDLE_CANVAS);
+  bundleImageDataUrl = null;
+  const withImages = bundlePicked.filter(p => p.image);
+  if (bundlePicked.length < 2) { msg.textContent = ''; return; }
+  if (withImages.length !== bundlePicked.length) {
+    msg.textContent = 'One of these books has no cover on file, so the bundle will use a single cover instead.';
+    return;
+  }
+  msg.textContent = 'Drawing…';
+
+  let imgs;
+  try { imgs = await Promise.all(withImages.map(p => loadCoverImage(p.image))); }
+  catch (err) { msg.textContent = 'Could not draw the picture (' + err.message + '). The bundle will use a single cover.'; return; }
+
+  const n = imgs.length;
+  const gap = n <= 2 ? 44 : (n === 3 ? 26 : 14);
+  const margin = n <= 2 ? 84 : 56;
+  const avail = BUNDLE_CANVAS - 2 * margin - gap * (n - 1);
+  const height = Math.min(Math.round((avail / n) * 1.5 / 1.085), Math.round(BUNDLE_CANVAS * 0.72));
+  const cw = Math.round(height / 1.5);
+  const spineW = Math.max(6, Math.round(cw * 0.085));
+  const turn = Math.round(height * 0.030);
+  const bookW = cw + spineW;
+  const total = n * bookW + gap * (n - 1);
+  const base = Math.round((BUNDLE_CANVAS + height + turn) / 2 + BUNDLE_CANVAS * 0.02);
+
+  // One soft contact shadow for the whole row: separate shadows per book meet
+  // in dark seams where books stand close together.
+  ctx.save();
+  ctx.filter = 'blur(16px)';
+  ctx.fillStyle = 'rgba(108,110,116,0.42)';
+  let sx = Math.round((BUNDLE_CANVAS - total) / 2);
+  for (let i = 0; i < n; i++) {
+    ctx.beginPath();
+    ctx.ellipse(sx + bookW / 2, base, bookW / 2, height * 0.028, 0, 0, Math.PI * 2);
+    ctx.fill();
+    sx += bookW + gap;
+  }
+  ctx.restore();
+
+  let x = Math.round((BUNDLE_CANVAS - total) / 2);
+  for (const img of imgs) {
+    const top = base - height - turn;
+    const shear = turn / cw;           // the far edge rides up as the book turns
+    const box = trimCover(img);
+    const [r, g, b] = edgeColour(img, box);
+    // Spine first, so the cover's edge sits over it.
+    ctx.save();
+    ctx.transform(1, turn / spineW, 0, 1, x, top);
+    const grad = ctx.createLinearGradient(0, 0, spineW, 0);
+    grad.addColorStop(0, `rgb(${Math.round(r * 0.55)},${Math.round(g * 0.55)},${Math.round(b * 0.55)})`);
+    grad.addColorStop(1, `rgb(${Math.round(r * 0.85)},${Math.round(g * 0.85)},${Math.round(b * 0.85)})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, spineW, height);
+    ctx.restore();
+
+    ctx.save();
+    ctx.transform(1, -shear, 0, 1, x + spineW, top + turn);
+    ctx.drawImage(img, box.sx, box.sy, box.sw, box.sh, 0, 0, cw, height);
+    ctx.restore();
+    x += bookW + gap;
+  }
+
+  try {
+    bundleImageDataUrl = canvas.toDataURL('image/webp', 0.88);
+    msg.textContent = 'This picture is saved with the bundle.';
+  } catch (err) {
+    bundleImageDataUrl = null;
+    msg.textContent = 'The covers blocked the export, so the bundle will use a single cover.';
+  }
+}
+
 async function createBundle() {
   const msg = document.getElementById('bundleMsg');
   if (bundlePicked.length < 2) { msg.textContent = 'Add at least 2 books.'; return; }
@@ -5726,6 +5888,7 @@ async function createBundle() {
         price_inr: price,
         title: document.getElementById('bundleTitle').value.trim() || undefined,
         slug: document.getElementById('bundleSlug').value.trim() || undefined,
+        image_data_url: bundleImageDataUrl || undefined,
       }),
     });
     const data = await res.json().catch(() => ({}));

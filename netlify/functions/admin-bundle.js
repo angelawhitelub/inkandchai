@@ -20,6 +20,7 @@ const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { makeSlug } = require('./utils/pricing');
+const { r2PutObject, r2Configured, r2Config } = require('./utils/r2-put');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -29,6 +30,41 @@ const CORS = {
 const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stringify(body) });
 
 const MAX_COMPONENTS = 6;
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Store the composed combo cover and return its public URL.
+ *
+ * The admin page draws the picture -- the component covers standing side by
+ * side -- and posts it as a data URL. It goes to R2 because that is where the
+ * covers already live and Cloudflare charges no egress; a combo image on
+ * Netlify is billed bandwidth on every card impression.
+ *
+ * A failure here is not fatal. The bundle is still worth creating with a
+ * component's cover: a listing with an imperfect picture sells, a listing that
+ * refused to exist does not.
+ */
+async function storeComboImage(slug, dataUrl) {
+  const match = String(dataUrl || '').match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) return null;
+  if (!r2Configured()) {
+    console.warn('[admin-bundle] R2 is not configured; keeping the component cover');
+    return null;
+  }
+  const body = Buffer.from(match[2], 'base64');
+  if (body.length > MAX_IMAGE_BYTES) throw new Error('Combo image is too large. Keep it under 4 MB.');
+  const ext = match[1] === 'image/png' ? 'png' : match[1] === 'image/jpeg' ? 'jpg' : 'webp';
+  try {
+    return await r2PutObject(r2Config(), {
+      key: `product-images/combo/${slug}.${ext}`,
+      body,
+      contentType: match[1],
+    });
+  } catch (err) {
+    console.warn('[admin-bundle] combo image upload failed:', err.message);
+    return null;
+  }
+}
 
 function catalogue() {
   const candidates = [
@@ -197,6 +233,8 @@ exports.handler = async (event) => {
   const slug = String(body.slug || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
     || `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48)}-combo-${parts.length}`;
 
+  const composed = body.image_data_url ? await storeComboImage(slug, body.image_data_url) : null;
+
   if (body.dry_run) {
     return json(200, { preview: { slug, title, price_inr: price, original_price_inr: sumMrp, sum_price_inr: sumPrice, components: parts } });
   }
@@ -212,7 +250,7 @@ exports.handler = async (event) => {
        + `Genuine paperbacks, fast pan-India delivery, cash on delivery available at Ink & Chai.`,
     price_inr: price,
     original_price_inr: sumMrp,
-    image_url: body.image_url || parts.find((p) => p.image)?.image || '',
+    image_url: composed || body.image_url || parts.find((p) => p.image)?.image || '',
     // The component list is what makes this a bundle rather than a product with
     // a "+" in its name, so it is recorded rather than inferred from the title.
     tags: [`bundle`, `combo-${parts.length}`, ...parts.map((p) => `bundle-of:${p.slug}`)].join(', ').slice(0, 700),
@@ -234,6 +272,7 @@ exports.handler = async (event) => {
     url: `/product/${data.slug}/`,
     sum_price_inr: sumPrice,
     saving_inr: money(sumPrice - price),
+    image_composed: !!composed,
     components: parts.map((p) => ({ slug: p.slug, title: p.title, price: p.price })),
   });
 };
