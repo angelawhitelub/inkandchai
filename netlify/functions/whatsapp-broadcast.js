@@ -52,6 +52,10 @@ const CORS = {
 const BATCH_SIZE   = 20;
 const BATCH_DELAY  = 250;
 const MAX_PER_RUN  = 5000;
+// Hard ceiling on messages sent to people who have NOT recorded consent.
+// Counted from the delivery ledger for all time, not per run -- see the pilot
+// block below for why that distinction is the whole point.
+const PILOT_CAP = Math.max(0, parseInt(process.env.WHATSAPP_BROADCAST_PILOT_CAP, 10) || 100);
 const REC_COUNT    = 3;   // recommendations per customer
 const SITE_URL     = 'https://inkandchai.in';
 
@@ -463,7 +467,37 @@ exports.handler = async (event) => {
       cooldownRemoved = before - recipients.length;
     }
 
-    recipients = recipients.slice(0, limit);
+    // ── Cap on sending without recorded consent ────────────────────────────
+    // "Send to 100 first" has to mean 100 ever, not 100 per run. The cooldown
+    // above removes anyone already contacted, so an uncapped pilot would simply
+    // pick up the NEXT 100 on the following run and work through the entire
+    // 9,700-customer list within a couple of months -- the exact outcome the
+    // pilot exists to avoid. Counting from the ledger makes the cap survive
+    // redeploys, restarts and any number of repeated cron fires.
+    let pilotSentAlready = 0;
+    let effectiveLimit = limit;
+    if (!requireOptIn && !testPhone) {
+      const { count, error: pilotError } = await supabase
+        .from('whatsapp_campaign_deliveries')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'sent')
+        .contains('metadata', { pilot: true });
+      // Fail closed: if we cannot prove how many un-consented messages have
+      // already gone out, the safe move is to send none.
+      if (pilotError) throw new Error('Cannot count pilot sends; refusing to send without recorded consent. ' + pilotError.message);
+      pilotSentAlready = count || 0;
+      const remaining = Math.max(0, PILOT_CAP - pilotSentAlready);
+      if (remaining === 0) {
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({
+          success: true, sent: 0, pilot_cap: PILOT_CAP, pilot_sent_already: pilotSentAlready,
+          message: `Pilot cap reached: ${pilotSentAlready} message(s) have already gone to customers who never opted in. `
+            + 'Raise WHATSAPP_BROADCAST_PILOT_CAP deliberately, or grow whatsapp_marketing_subscribers, before sending more.',
+        }) };
+      }
+      effectiveLimit = Math.min(limit, remaining);
+    }
+
+    recipients = recipients.slice(0, effectiveLimit);
 
     if (!recipients.length) {
       return { statusCode: 200, headers: CORS, body: JSON.stringify({
@@ -548,7 +582,7 @@ exports.handler = async (event) => {
             status: value.ok ? 'sent' : 'failed',
             error: value.ok ? null : String(value.error || 'Unknown send failure').slice(0, 1000),
             product_url: recipient.recs?.[0] ? absoluteProductUrl(recipient.recs[0]) : null,
-            metadata: { bucket:recipient.bucketLabel, offer:campaignOffer, source },
+            metadata: { bucket:recipient.bucketLabel, offer:campaignOffer, source, pilot: !requireOptIn },
           };
         });
         const { error: logError } = await supabase.from('whatsapp_campaign_deliveries').upsert(rows, { onConflict:'campaign_key,customer_phone' });

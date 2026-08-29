@@ -23,6 +23,13 @@ exports.handler = async () => {
     return { statusCode:200, body:JSON.stringify({ skipped:true, reason:'automation not configured' }) };
   }
 
+  // Pilot mode sends to recent customers who have NOT recorded consent, so it
+  // is off unless switched on deliberately. The broadcast handler caps the
+  // total at WHATSAPP_BROADCAST_PILOT_CAP (100) for all time, so leaving this
+  // on does not creep through the customer list run after run -- later runs
+  // simply send nothing until the cap is raised on purpose.
+  const pilot = /^(1|true|yes)$/i.test(String(process.env.WHATSAPP_BROADCAST_PILOT || ''));
+
   const now = new Date();
   const istDate = new Intl.DateTimeFormat('en-CA', {
     timeZone:'Asia/Kolkata', year:'numeric', month:'2-digit', day:'2-digit',
@@ -41,7 +48,7 @@ exports.handler = async () => {
       personalized:true,
       segment_by:'auto',
       rich_media:true,
-      require_opt_in:true,
+      require_opt_in:!pilot,
       source:'scheduled',
       campaign_key:campaignKey,
     }),
@@ -50,5 +57,5 @@ exports.handler = async () => {
     const detail = await response.text().catch(() => '');
     throw new Error(`Unable to enqueue WhatsApp campaign (${response.status}): ${detail.slice(0, 500)}`);
   }
-  return { statusCode:200, body:JSON.stringify({ queued:true, campaign_key:campaignKey }) };
+  return { statusCode:200, body:JSON.stringify({ queued:true, campaign_key:campaignKey, pilot }) };
 };
