@@ -1,7 +1,7 @@
 {
-  "_README": "Customer photos / unboxing reels shown in the #InkAndChaiBookstagram strip on EVERY product page. VIDEOS ARE HOSTED ON SUPABASE STORAGE (public 'reels' bucket), NOT in this repo — this keeps Netlify video bandwidth at zero. To add a reel: drop the .mp4 into ./newvideos, run `node scripts/upload-reels.mjs`, then add an entry below with the printed src URL. Schema at the bottom.",
-
-  "items": [
+  "_README": "Reels shown in the #InkAndChaiBookstagram strip on EVERY product page. This list is EMPTY on purpose: the strip is managed entirely from the admin panel (Video Reels tab), which uploads clips and screenshots to storage and records them in a manifest the storefront reads at runtime. Anything added back here ships inside every published page and can only be hidden, not deleted, without a rebuild — so add reels in the admin panel instead. The five originals are kept under _retired below.",
+  "items": [],
+  "_retired": [
     {
       "type": "video",
       "src": "https://lajjjjkidxyfvmnyjboy.supabase.co/storage/v1/object/public/reels/running-1.mp4",
@@ -33,7 +33,6 @@
       "caption": "In stock now · Ink & Chai"
     }
   ],
-
   "_schema": {
     "type": "'video' | 'image'",
     "src": "Full https:// URL. Videos MUST be a Supabase Storage public URL (or any external CDN) — never a /videos/ path in this repo, or it burns Netlify bandwidth.",

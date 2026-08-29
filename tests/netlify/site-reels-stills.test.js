@@ -88,3 +88,22 @@ test('the admin function can actually read the built-in list', () => {
   assert.match(admin, /social_proof\.json/);
   assert.match(admin, /restore/);
 });
+
+test('no reel is baked into the published pages any more', () => {
+  // The strip is managed from the admin panel. A reel listed here ships inside
+  // every product page and can then only be hidden, never deleted, without a
+  // rebuild -- which is exactly the trap the five originals were in.
+  const social = JSON.parse(fs.readFileSync(path.join(root, 'data/social_proof.json'), 'utf8'));
+  assert.deepEqual(social.items, [], 'built-in reels are managed in the admin panel, not in this file');
+  // Both renderers read `.items`, so an empty list has to be safe in both.
+  const productPage = fs.readFileSync(path.join(root, 'netlify/functions/product-page.js'), 'utf8');
+  assert.match(productPage, /require\('\.\.\/\.\.\/data\/social_proof\.json'\)\.items \|\| \[\]/);
+  const gen = fs.readFileSync(path.join(root, 'generate_site.py'), 'utf8');
+  assert.match(gen, /_social\.get\("items"\) or \[\]/);
+});
+
+test('the strip says something sensible when it is empty', () => {
+  // With no built-ins, a shop that has uploaded nothing yet renders this.
+  assert.match(reelsJs, /if \(!reels\.length\) \{/);
+  assert.match(reelsJs, /collecting unboxing reels from our readers/);
+});
