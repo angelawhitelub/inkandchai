@@ -2327,11 +2327,14 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 </head>
 <body>
 
+<!--SALE:START-->
 <!-- Independence Day promo banner -->
 <div class="promo-banner" id="promoBanner">
   <strong>🇮🇳 FREEDOM SALE</strong> &nbsp;15% OFF on orders above ₹399 &nbsp;·&nbsp; Automatically applied &nbsp;·&nbsp; <code>FREEDOM</code> &nbsp;·&nbsp; Ends in: <span id="promoTimer" style="font-weight:600;color:#f0c060;letter-spacing:0.08em;"></span>
 </div>
+<!--SALE:END-->
 
+<!--SALE:START-->
 <!-- SUMMER SALE BANNER -->
 <section class="summer-sale-banner" id="summerSale">
   <div class="summer-sale-inner">
@@ -2349,6 +2352,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
     </div>
   </div>
 </section>
+<!--SALE:END-->
 
 <!-- Floating WhatsApp support button -->
 <a class="wa-float" href="https://wa.me/917678400508?text=Hi%20Ink%20%26%20Chai%2C%20I%20have%20a%20question%20about%20a%20book." target="_blank" rel="noopener" title="Chat with us on WhatsApp" aria-label="WhatsApp support">
@@ -2471,6 +2475,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 <!-- HERO PROMO CAROUSEL -->
 <div class="promo-carousel" id="promoCarousel">
 
+<!--SALE:START-->
   <!-- ── SLIDE 1: Freedom Sale ── -->
   <section class="promo-slide slide-sale active" aria-label="Freedom Sale promotion">
     <a href="/bestsellers/" class="sale-banner-link" aria-label="Freedom Sale — Shop Now" style="display:grid;place-items:center;min-height:100%;background:linear-gradient(115deg,#ff9933 0 32%,#fff8e8 32% 68%,#138808 68% 100%);text-decoration:none;color:#0b2f63;text-align:center;padding:2rem;">
@@ -2478,6 +2483,7 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
       <div class="sale-banner-code-badge">15% AUTO APPLIED</div>
     </a>
   </section>
+<!--SALE:END-->
 
   <!-- ── SLIDE 2: Off Campus Series ── -->
   <section class="hero promo-slide slide-campus" style="padding:0;" aria-label="Off Campus series promotion">
@@ -2553,7 +2559,9 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 
   <!-- Navigation dots -->
   <div class="promo-dots" aria-label="Slide navigation">
+<!--SALE:START-->
     <button class="promo-dot active" aria-label="Slide 1: Freedom Sale"></button>
+<!--SALE:END-->
     <button class="promo-dot" aria-label="Slide 2: Off Campus Series"></button>
     <button class="promo-dot" aria-label="Slide 3: Hindi Bestsellers"></button>
   </div>
@@ -4155,6 +4163,32 @@ function formatCountdown(diff) {
   return { d, h: String(h).padStart(2,'0'), m: String(m).padStart(2,'0'), s: String(s).padStart(2,'0') };
 }
 
+// Every surface that advertises the sale, removed together. The old code
+// removed only #summerSale, so when the sale ended the top bar kept promising
+// "15% OFF ... Automatically applied" with a blank countdown while checkout
+// refused the code. Anything added that mentions the sale belongs in here AND
+// in a SALE:START/SALE:END marker pair.
+function removeExpiredSaleSurfaces() {
+  document.getElementById('promoBanner')?.remove();
+  document.getElementById('summerSale')?.remove();
+  const carousel = document.getElementById('promoCarousel');
+  const slide = carousel?.querySelector('.promo-slide.slide-sale');
+  if (slide) {
+    // The dot at the same index belongs to this slide; drop it too or the
+    // carousel shows a dot that navigates to nothing.
+    const slides = [...carousel.querySelectorAll('.promo-slide')];
+    const dots = [...carousel.querySelectorAll('.promo-dot')];
+    dots[slides.indexOf(slide)]?.remove();
+    slide.remove();
+    // Whatever was showing may have just been removed; hand "active" to the
+    // first slide that survived.
+    if (!carousel.querySelector('.promo-slide.active')) {
+      carousel.querySelector('.promo-slide')?.classList.add('active');
+      carousel.querySelector('.promo-dot')?.classList.add('active');
+    }
+  }
+}
+
 function updateSaleCountdown() {
   const diff = SALE_END_DATE.getTime() - Date.now();
   const t = formatCountdown(diff);
@@ -4162,7 +4196,7 @@ function updateSaleCountdown() {
   // Big banner countdown (standalone section)
   const big = document.getElementById('saleCountdown');
   if (big) {
-    if (!t) { document.getElementById('summerSale')?.remove(); return; }
+    if (!t) { removeExpiredSaleSurfaces(); return; }
     big.innerHTML =
       `<div class="cd-block"><span class="cd-num">${t.d}</span><span class="cd-label">Days</span></div>` +
       `<span class="cd-sep">:</span>` +
@@ -4197,7 +4231,7 @@ if (Date.now() < SALE_END_DATE.getTime()) {
   updateSaleCountdown();
   setInterval(updateSaleCountdown, 1000);
 } else {
-  document.getElementById('summerSale')?.remove();
+  removeExpiredSaleSurfaces();
 }
 
 // ── PROMO CAROUSEL ────────────────────────────────────────────────────────
@@ -4207,7 +4241,15 @@ if (Date.now() < SALE_END_DATE.getTime()) {
   const slides = carousel.querySelectorAll('.promo-slide');
   const dots   = carousel.querySelectorAll('.promo-dot');
   if (!slides.length) return;
-  let cur = 0, timer;
+  // The slide marked active in the markup is the sale slide, and it is removed
+  // once the sale ends -- at build time or by the timer above. Without this the
+  // carousel would start with nothing showing.
+  let cur = Math.max(0, [...slides].findIndex(s => s.classList.contains('active')));
+  if (!carousel.querySelector('.promo-slide.active')) {
+    slides[0].classList.add('active');
+    dots[0]?.classList.add('active');
+  }
+  let timer;
 
   function goTo(n) {
     slides[cur].classList.remove('active');
@@ -4314,6 +4356,34 @@ document.querySelectorAll('.stat-num').forEach(el => {
 </body>
 </html>
 """
+
+# ── Sale surfaces expire on their own ────────────────────────────────────────
+# The Freedom Sale ended on 15 Aug 2026 and the homepage went on advertising
+# "15% OFF ... Automatically applied" for a fortnight afterwards, with a dead
+# countdown, while checkout correctly refused the code. Customers were promised
+# a discount the till would not honour.
+#
+# The cause was that only ONE of the four sale surfaces knew how to remove
+# itself. So the date now lives in exactly one place and every surface is
+# wrapped in SALE:START/SALE:END markers: when the sale is over the build ships
+# none of them, and the client-side timer strips any that a cached page still
+# carries. Adding a surface without a marker is the mistake to avoid -- the
+# marker is what makes it disappear.
+SALE_END_ISO = '2026-08-15T18:29:59Z'
+
+def sale_is_live(now=None):
+    """True while the sale in SALE_END_ISO is still running."""
+    from datetime import datetime, timezone
+    end = datetime.strptime(SALE_END_ISO, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+    return (now or datetime.now(timezone.utc)) <= end
+
+def strip_expired_sale(html, now=None):
+    """Remove every SALE:START..SALE:END region once the sale has ended."""
+    if sale_is_live(now):
+        return html
+    return re.sub(r'<!--SALE:START-->.*?<!--SALE:END-->', '', html, flags=re.S)
+
+HTML = strip_expired_sale(HTML)
 
 # ── Inject real data ─────────────────────────────────────────────────────────
 import os

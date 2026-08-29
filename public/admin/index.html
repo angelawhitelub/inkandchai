@@ -856,6 +856,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab" data-tab="coupons" onclick="switchTab('coupons')">🏷️ Coupons</button>
     <button class="admin-tab" data-tab="npcancelled" onclick="switchTab('npcancelled')">🚫 NP Cancelled <span id="npCancelledBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <!-- The inbox lives on its own page now. Inside the SPA every 30s poll
          re-rendered the whole panel, so a thread being read scrolled itself
@@ -1759,6 +1760,34 @@ select,input,textarea{font-size:1rem;}
   </div><!-- /tab-adminaccess -->
 
   <!-- ═══ NIMBUSPOST-CANCELLED TAB ═══ -->
+  <div class="admin-section" id="tab-coupons">
+    <h2 class="section-title">Coupons</h2>
+    <p class="hint" style="margin:.2rem 0 1rem;">
+      Every product coupon in the store. An expired or inactive coupon stops working at
+      checkout and its badge disappears from the product page automatically &mdash; deleting
+      here removes it permanently.
+    </p>
+
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
+      <button class="btn-outline" type="button" onclick="loadCouponManager()">&#8635; Refresh</button>
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.64rem;color:var(--cream-dim);">
+        <input type="checkbox" id="couponShowDead" onchange="renderCouponManager()" style="accent-color:var(--gold);"/>
+        Show expired and inactive
+      </label>
+      <span class="hint" id="couponCount" style="margin-left:auto;"></span>
+    </div>
+
+    <div id="couponManagerMsg" class="hint" style="margin-bottom:.7rem;"></div>
+    <div id="couponManagerList"></div>
+
+    <h3 style="margin-top:1.6rem;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);">Site-wide codes</h3>
+    <p class="hint" style="margin:.4rem 0 .8rem;">
+      These are built into the checkout and are not editable here. They are listed so the
+      full discount picture is in one place.
+    </p>
+    <div id="couponStaticList"></div>
+  </div><!-- /tab-coupons -->
+
   <div class="admin-section" id="tab-npcancelled">
   <section class="abandoned-panel" id="npCancelledSection">
     <div class="abandoned-head">
@@ -5552,6 +5581,119 @@ async function saveProductCoupon() {
     selectProductCoupon(data.coupon.code);
   } catch (err) { msg.textContent = 'Could not save coupon: ' + err.message; }
 }
+// ── Store-wide coupon manager ───────────────────────────────────────────────
+// The per-product coupon editor lives inside a product's own panel, so there
+// was no way to see every coupon at once -- which is how INTERVIEW5 sat live
+// advertising 10% while set to 5%, on a product whose price was below its own
+// minimum. This lists all of them with the status the storefront applies.
+let couponManagerRows = [];
+
+// Mirrors the COUPONS table baked into the checkout. Read-only here: listed so
+// nobody has to read the generator to answer "what discounts exist right now".
+const STATIC_COUPONS = [
+  { code:'INKLOVE10',  value:'10%', min:499,  note:'Prepaid only' },
+  { code:'499HIT',     value:'10%', min:499,  note:'Prepaid only — duplicate of INKLOVE10' },
+  { code:'SAVE12',     value:'12%', min:999,  note:'Prepaid only' },
+  { code:'SAVE15',     value:'15%', min:1499, note:'Prepaid only' },
+  { code:'CHAI10BACK', value:'10%', min:299,  note:'Prepaid only — private, used in cart-recovery messages' },
+  { code:'FREEDOM',    value:'15%', min:400,  note:'Ended 15 Aug 2026', dead:true },
+  { code:'SUMMER10',   value:'10%', min:299,  note:'Ended 19 May 2026', dead:true },
+];
+
+function couponStatus(c) {
+  const now = Date.now();
+  if (c.is_active === false) return { label:'Inactive', dead:true };
+  if (c.expires_at && new Date(c.expires_at).getTime() < now) return { label:'Expired', dead:true };
+  if (c.starts_at && new Date(c.starts_at).getTime() > now) return { label:'Scheduled', dead:false };
+  return { label:'Live', dead:false };
+}
+
+async function loadCouponManager() {
+  const msg = document.getElementById('couponManagerMsg');
+  const list = document.getElementById('couponManagerList');
+  if (!list) return;
+  list.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-product-coupons');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    couponManagerRows = data.coupons || [];
+    if (msg) msg.textContent = '';
+    renderCouponManager();
+  } catch (err) {
+    list.innerHTML = '';
+    if (msg) msg.textContent = 'Could not load coupons: ' + err.message;
+  }
+}
+
+function renderCouponManager() {
+  const list = document.getElementById('couponManagerList');
+  const staticList = document.getElementById('couponStaticList');
+  const countEl = document.getElementById('couponCount');
+  if (!list) return;
+  const showDead = document.getElementById('couponShowDead')?.checked;
+
+  const rows = couponManagerRows
+    .map(c => ({ c, st: couponStatus(c) }))
+    .filter(r => showDead || !r.st.dead);
+
+  const liveCount = couponManagerRows.filter(c => !couponStatus(c).dead).length;
+  if (countEl) countEl.textContent = liveCount + ' live · ' + couponManagerRows.length + ' total';
+
+  list.innerHTML = rows.length ? rows.map(({ c, st }) => {
+    const value = c.discount_type === 'fixed'
+      ? ('₹' + Number(c.discount_value).toLocaleString('en-IN'))
+      : (Number(c.discount_value) + '%');
+    const products = (c.product_slugs || []);
+    const colour = st.label === 'Live' ? '#4caf50' : (st.label === 'Scheduled' ? '#c9a84c' : '#c93636');
+    return '<div style="border:1px solid var(--border);padding:.75rem .85rem;margin-bottom:.6rem;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.6rem;align-items:start;">'
+      + '<div style="min-width:0;">'
+        + '<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">'
+          + '<strong style="color:var(--gold);letter-spacing:.08em;">' + esc(c.code) + '</strong>'
+          + '<span style="font-size:.6rem;padding:.1rem .4rem;border:1px solid ' + colour + ';color:' + colour + ';">' + st.label + '</span>'
+          + '<span style="font-size:.68rem;color:var(--cream);">' + value + ' off</span>'
+          + (Number(c.min_subtotal_inr) > 0 ? '<span style="font-size:.62rem;color:var(--cream-dim);">min ₹' + Number(c.min_subtotal_inr).toLocaleString('en-IN') + '</span>' : '')
+          + (c.online_only ? '<span style="font-size:.62rem;color:var(--cream-dim);">prepaid only</span>' : '')
+        + '</div>'
+        + '<div style="font-size:.64rem;color:var(--cream-dim);margin-top:.3rem;">' + esc(c.label || '') + '</div>'
+        + '<div style="font-size:.6rem;color:var(--cream-dim);margin-top:.25rem;word-break:break-all;">'
+          + products.length + ' product' + (products.length === 1 ? '' : 's') + ': ' + esc(products.slice(0, 4).join(', '))
+          + (products.length > 4 ? ' +' + (products.length - 4) + ' more' : '')
+        + '</div>'
+        + (c.expires_at ? '<div style="font-size:.6rem;color:var(--cream-dim);margin-top:.25rem;">Expires ' + new Date(c.expires_at).toLocaleString('en-IN') + '</div>' : '')
+      + '</div>'
+      + '<button class="btn-outline" type="button" onclick="deleteCouponByCode(\'' + esc(c.code) + '\')" style="border-color:rgba(224,80,80,.35);color:#c93636;white-space:nowrap;">Delete</button>'
+      + '</div>';
+  }).join('') : '<p class="hint">No coupons to show.</p>';
+
+  if (staticList) {
+    staticList.innerHTML = STATIC_COUPONS.map(c => {
+      const colour = c.dead ? '#c93636' : '#4caf50';
+      return '<div style="border:1px solid var(--border);padding:.6rem .8rem;margin-bottom:.45rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">'
+        + '<strong style="color:var(--gold);letter-spacing:.08em;">' + c.code + '</strong>'
+        + '<span style="font-size:.6rem;padding:.1rem .4rem;border:1px solid ' + colour + ';color:' + colour + ';">' + (c.dead ? 'Ended' : 'Live') + '</span>'
+        + '<span style="font-size:.68rem;color:var(--cream);">' + c.value + ' off</span>'
+        + '<span style="font-size:.62rem;color:var(--cream-dim);">min ₹' + c.min + '</span>'
+        + '<span style="font-size:.62rem;color:var(--cream-dim);">' + c.note + '</span>'
+        + '</div>';
+    }).join('');
+  }
+}
+
+async function deleteCouponByCode(code) {
+  if (!code || !confirm('Delete coupon ' + code + '? This cannot be undone.')) return;
+  const msg = document.getElementById('couponManagerMsg');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-product-coupons?code=' + encodeURIComponent(code), { method:'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (msg) msg.textContent = code + ' deleted.';
+    await loadCouponManager();
+  } catch (err) {
+    if (msg) msg.textContent = 'Could not delete ' + code + ': ' + err.message;
+  }
+}
+
 async function deleteProductCoupon() {
   const code = document.getElementById('prodCouponCode').value.trim().toUpperCase();
   if (!code || !confirm(`Delete coupon ${code}?`)) return;
@@ -8934,7 +9076,7 @@ function rptPickProduct(idx) {
   document.getElementById('rptChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-const TABS = ['orders','tools','create','products','reels','abandoned','reviews','replacements','returns','npcancelled','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','coupons','reels','abandoned','reviews','replacements','returns','npcancelled','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -9275,6 +9417,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'reels' && _authed) loadSiteReels();
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
   if (tab === 'npcancelled' && _authed) loadNpCancelled();
+  if (tab === 'coupons' && _authed) loadCouponManager();
   if (tab === 'reviews') fetchPendingReviews();
   if (tab === 'replacements' && _authed) renderReplacementRequests();
   if (tab === 'returns' && _authed) fetchReturnRequests();
