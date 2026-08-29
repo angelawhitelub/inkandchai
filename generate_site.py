@@ -7562,8 +7562,8 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
              gets a WhatsApp number's quality rating cut -- which would damage
              the order and shipping messages we depend on. -->
         <label for="ch-wa-optin" style="display:flex;gap:0.55rem;align-items:flex-start;margin-top:0.85rem;padding:0.6rem 0.7rem;border:1px solid var(--border);border-radius:6px;cursor:pointer;text-align:left;">
-          <input id="ch-wa-optin" type="checkbox" style="margin-top:0.15rem;flex:0 0 auto;width:16px;height:16px;accent-color:var(--gold);cursor:pointer;"/>
-          <span style="font-size:0.66rem;color:var(--cream-dim);line-height:1.55;">
+          <input id="ch-wa-optin" type="checkbox" style="margin-top:0.1rem;flex:0 0 auto;width:15px;height:15px;border-radius:3px;accent-color:var(--gold);cursor:pointer;"/>
+          <span style="font-size:0.7rem;color:var(--cream-dim);line-height:1.5;text-transform:none;letter-spacing:normal;font-weight:400;">
             Send me book recommendations and offers on WhatsApp. Order and delivery updates are sent either way. Reply <strong>STOP</strong> any time to opt out.
           </span>
         </label>
