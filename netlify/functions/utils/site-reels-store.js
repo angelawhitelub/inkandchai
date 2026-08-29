@@ -59,7 +59,38 @@ function cleanHidden(list) {
 
 const EMPTY = { items: [], hidden: [] };
 
+/**
+ * Read the manifest, defeating the storage CDN.
+ *
+ * supabase.storage.download() is served through a cache, and the manifest
+ * object was created with a default cacheControl that an upsert does not
+ * reset. That turned every upload into a lost update: each one read a stale
+ * list, appended its own item, and wrote the whole array back -- overwriting
+ * whatever the previous upload had just added. Uploads reported success and
+ * then vanished, which is exactly what happened to a batch of screenshots.
+ *
+ * A one-per-request cache-buster on the authenticated object endpoint is
+ * enough; there is no supported way to pass one through download(). The
+ * client is kept as the fallback so a change in that endpoint degrades to the
+ * old behaviour rather than breaking reads outright.
+ */
 async function readManifest() {
+  const base = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (base && key) {
+    try {
+      const url = `${base}/storage/v1/object/${BUCKET}/${MANIFEST_KEY}?_=${Date.now()}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${key}`, apikey: key, 'Cache-Control': 'no-cache' },
+      });
+      if (res.status === 404) return { ...EMPTY };
+      if (res.ok) return parseManifest(await res.text());
+      console.warn('[site-reels-store] fresh read failed with HTTP', res.status, '— falling back');
+    } catch (err) {
+      console.warn('[site-reels-store] fresh read failed:', err.message, '— falling back');
+    }
+  }
+
   const supabase = client();
   const { data, error } = await supabase.storage.from(BUCKET).download(MANIFEST_KEY);
   if (error) {
@@ -68,8 +99,12 @@ async function readManifest() {
       || /not found|does not exist/i.test(String(error.message || ''))) return { ...EMPTY };
     throw error;
   }
+  return parseManifest(await data.text());
+}
+
+function parseManifest(text) {
   let parsed;
-  try { parsed = JSON.parse(await data.text()); }
+  try { parsed = JSON.parse(text); }
   catch { return { ...EMPTY }; }
   const items = Array.isArray(parsed) ? parsed : parsed?.items;
   return { items: sortItems(items), hidden: cleanHidden(parsed?.hidden) };

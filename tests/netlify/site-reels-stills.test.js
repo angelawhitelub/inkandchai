@@ -107,3 +107,24 @@ test('the strip says something sensible when it is empty', () => {
   assert.match(reelsJs, /if \(!reels\.length\) \{/);
   assert.match(reelsJs, /collecting unboxing reels from our readers/);
 });
+
+test('the manifest is read past the storage cache', () => {
+  // supabase.storage.download() is served from a cache the manifest's own
+  // cacheControl does not reset on upsert. Every upload read a stale list,
+  // appended one item and wrote the whole array back -- so each upload
+  // overwrote the one before it. Uploads reported success and then vanished.
+  // A cache-buster on the authenticated object endpoint is the fix; there is
+  // no supported way to pass one through download().
+  assert.match(store, /storage\/v1\/object\/\$\{BUCKET\}\/\$\{MANIFEST_KEY\}\?_=\$\{Date\.now\(\)\}/);
+  assert.match(store, /'Cache-Control': 'no-cache'/);
+  // download() stays as the fallback, so a change at that endpoint degrades
+  // rather than breaking reads outright.
+  assert.match(store, /falling back/);
+  assert.match(store, /supabase\.storage\.from\(BUCKET\)\.download\(MANIFEST_KEY\)/);
+});
+
+test('a missing manifest still reads as empty, not as an error', () => {
+  // It does not exist until the first upload, on either read path.
+  assert.match(store, /if \(res\.status === 404\) return \{ \.\.\.EMPTY \};/);
+  assert.match(store, /not found\|does not exist/);
+});
