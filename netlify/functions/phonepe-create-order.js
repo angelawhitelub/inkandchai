@@ -19,6 +19,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { recordMarketingOptIn } = require('./utils/marketing-optin');
 const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { pincodeRejection } = require('./utils/pincode-valid');
@@ -268,6 +269,11 @@ exports.handler = async (event) => {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { error: dbErr } = await supabase.from('orders').insert(orderRow);
+    // Marketing consent, if the customer ticked the box. Never blocks the order.
+    if (customer && customer.whatsapp_optin) {
+      await recordMarketingOptIn(supabase, customer.phone, 'checkout_phonepe');
+    }
+
     if (dbErr) {
       console.error('Supabase pre-order error (non-fatal):', dbErr.message);
       await stashLostOrder(event, orderRow, { source: 'phonepe-create-order', reason: dbErr.message });

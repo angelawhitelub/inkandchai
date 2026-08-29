@@ -41,6 +41,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp, normalizePhone } = require('./utils/whatsapp');
 const { optedOutPhoneSet, phoneKey } = require('./utils/bot-optout');
 const { requireAdmin } = require('./utils/admin-auth');
+const { loadPromotions, isLive } = require('./utils/promotions');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -52,6 +53,7 @@ const BATCH_SIZE   = 20;
 const BATCH_DELAY  = 250;
 const MAX_PER_RUN  = 5000;
 const REC_COUNT    = 3;   // recommendations per customer
+const SITE_URL     = 'https://inkandchai.in';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -92,10 +94,51 @@ function guessLanguage(book) {
 }
 
 // Format a single book line for the recommendation block
+function absoluteProductUrl(book) {
+  const raw = String(book?.url || '').trim();
+  if (/^https:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('/')) return SITE_URL + raw;
+  return raw ? `${SITE_URL}/${raw.replace(/^\/+/, '')}` : SITE_URL;
+}
+
+function absoluteImageUrl(book) {
+  const raw = String(book?.image_url || '').trim();
+  if (/^https:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('/')) return SITE_URL + raw;
+  return raw ? `${SITE_URL}/${raw.replace(/^\/+/, '')}` : null;
+}
+
+function productSlug(book) {
+  return absoluteProductUrl(book).match(/\/product\/([^/?#]+)/i)?.[1] || '';
+}
+
+function markdownPercent(book) {
+  const price = Number(book?.price_inr) || 0;
+  const original = Number(book?.original_price_inr) || 0;
+  return original > price && price > 0 ? Math.round((original - price) * 100 / original) : 0;
+}
+
 function formatBookLine(book) {
   const title = (book.title || '').replace(/\s+/g, ' ').trim().slice(0, 50);
   const price = book.price_inr ? `₹${Math.round(parseFloat(book.price_inr))}` : '';
-  return `• ${title}${price ? ' · ' + price : ''}`;
+  const saving = markdownPercent(book);
+  const offer = saving ? ` · ${saving}% off MRP` : '';
+  return `• ${title}${price ? ' · ' + price : ''}${offer}\n  ${absoluteProductUrl(book)}`;
+}
+
+function promotionLabel(promotions, now = new Date()) {
+  const eligible = (promotions || [])
+    .filter(p => isLive(p, now) && p.code && p.payment_methods?.includes('prepaid'))
+    .sort((a, b) => {
+      const av = a.discount_type === 'percent' ? a.discount_value : a.discount_value / 10;
+      const bv = b.discount_type === 'percent' ? b.discount_value : b.discount_value / 10;
+      return bv - av;
+    });
+  const p = eligible[0];
+  if (!p) return 'Special prices are already live — tap below to shop.';
+  const saving = p.discount_type === 'percent' ? `${p.discount_value}% off` : `₹${p.discount_value} off`;
+  const minimum = p.min_subtotal_inr ? ` above ₹${p.min_subtotal_inr}` : '';
+  return `Use ${p.code} for ${saving} on prepaid orders${minimum}.`;
 }
 
 // ── Build segmentation maps from ALL_BOOKS.json ──────────────────────────────
@@ -264,6 +307,11 @@ exports.handler = async (event) => {
   const lang         = String(body.lang || 'en').trim();
   const personalized = !!body.personalized;
   const segmentBy    = String(body.segment_by || 'auto').toLowerCase();
+  const richMedia     = !!body.rich_media;
+  const source        = String(body.source || 'manual').toLowerCase();
+  const campaignKey   = String(body.campaign_key || '').trim().slice(0, 120);
+  const cooldownDays  = Math.max(1, Math.min(90, parseInt(body.cooldown_days) || 14));
+  const requireOptIn  = !!body.require_opt_in;
 
   if (!template) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({
@@ -317,17 +365,34 @@ exports.handler = async (event) => {
     }
 
     let recipients = [...phoneToOrders.entries()]
-      .slice(0, limit)
       .map(([phone, info]) => ({ phone, name: info.name, orders: info.orders }));
+
+    // Scheduled marketing is opt-in only. The separate subscriber table makes
+    // consent auditable instead of assuming that placing an order is consent.
+    let consentRemoved = 0;
+    if (requireOptIn) {
+      const { data: subscribers, error: subscriberError } = await supabase
+        .from('whatsapp_marketing_subscribers')
+        .select('customer_phone')
+        .eq('status', 'subscribed')
+        .limit(20000);
+      if (subscriberError) throw new Error('Marketing consent list unavailable; run sql/whatsapp_campaign_deliveries.sql before enabling automation. ' + subscriberError.message);
+      const allowed = new Set((subscribers || []).map(row => phoneKey(row.customer_phone)));
+      const before = recipients.length;
+      recipients = recipients.filter(r => allowed.has(phoneKey(r.phone)));
+      consentRemoved = before - recipients.length;
+    }
 
     if (!recipients.length) {
       return { statusCode: 200, headers: CORS, body: JSON.stringify({
-        success: true, message: 'No recipients found', total: 0,
+        success: true, message: requireOptIn ? 'No opted-in recipients found' : 'No recipients found', total: 0,
+        consent_removed: consentRemoved,
       }) };
     }
 
     // ── Personalization: build per-customer params ──────────────────────────
     let bookData = null;
+    let campaignOffer = '';
     if (personalized) {
       try { bookData = loadBookData(); }
       catch (e) {
@@ -336,6 +401,7 @@ exports.handler = async (event) => {
         }) };
       }
 
+      campaignOffer = promotionLabel(await loadPromotions(), new Date());
       for (const r of recipients) {
         const profile = buildCustomerProfile(r.orders, bookData);
         const { recs, bucketLabel } = pickRecs(profile, bookData, segmentBy);
@@ -344,6 +410,10 @@ exports.handler = async (event) => {
           bucketLabel || 'great books',
           recs.length ? recs.map(formatBookLine).join('\n') : '• New arrivals just dropped on inkandchai.in',
         ];
+        if (richMedia) r.params.push(campaignOffer);
+        r.recs = recs;
+        r.headerImageUrl = richMedia ? absoluteImageUrl(recs[0]) : null;
+        r.urlButtonParam = richMedia ? productSlug(recs[0]) : null;
         r.bucketLabel = bucketLabel;
         r.profile     = { topCategory: profile.topCategory, topAuthor: profile.topAuthor, totalBooks: profile.totalBooks };
       }
@@ -369,7 +439,36 @@ exports.handler = async (event) => {
     if (!recipients.length) {
       return { statusCode: 200, headers: CORS, body: JSON.stringify({
         success: true, sent: 0, opted_out_removed: optedOutRemoved,
+        consent_removed: consentRemoved,
         message: 'Every matching recipient has opted out — nothing was sent.',
+      }) };
+    }
+
+    // Automated campaigns are cooled down across campaign keys so the same
+    // reader cannot be repeatedly contacted by every scheduled run. Missing
+    // migration is fail-closed for automation, but does not break manual sends.
+    let cooldownRemoved = 0;
+    if (source === 'scheduled') {
+      const cutoff = new Date(Date.now() - cooldownDays * 86400000).toISOString();
+      const { data: recent, error: recentError } = await supabase
+        .from('whatsapp_campaign_deliveries')
+        .select('customer_phone')
+        .eq('status', 'sent')
+        .gte('created_at', cutoff)
+        .limit(20000);
+      if (recentError) throw new Error('Campaign log unavailable; run sql/whatsapp_campaign_deliveries.sql before enabling automation. ' + recentError.message);
+      const recentlySent = new Set((recent || []).map(row => phoneKey(row.customer_phone)));
+      const before = recipients.length;
+      recipients = recipients.filter(r => !recentlySent.has(phoneKey(r.phone)));
+      cooldownRemoved = before - recipients.length;
+    }
+
+    recipients = recipients.slice(0, limit);
+
+    if (!recipients.length) {
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({
+        success: true, sent: 0, opted_out_removed: optedOutRemoved, consent_removed: consentRemoved, cooldown_removed: cooldownRemoved,
+        message: 'No eligible recipients remain after opt-out and cooldown checks.',
       }) };
     }
 
@@ -386,7 +485,11 @@ exports.handler = async (event) => {
         success: true,
         dry_run: true,
         opted_out_removed: optedOutRemoved,
+        consent_removed: consentRemoved,
+        cooldown_removed: cooldownRemoved,
         personalized,
+        rich_media: richMedia,
+        offer: campaignOffer,
         total: recipients.length,
         segment_counts: personalized ? segmentCounts : undefined,
         sample: recipients.slice(0, 10).map(r => ({
@@ -394,6 +497,8 @@ exports.handler = async (event) => {
           name: r.name,
           bucket: r.bucketLabel,
           recs_preview: r.params?.[2]?.split('\n').slice(0,3),
+          image: r.headerImageUrl,
+          product_url: r.recs?.[0] ? absoluteProductUrl(r.recs[0]) : null,
         })),
         message: `Would send template "${template}" to ${recipients.length} recipients. Set dry_run:false to actually send.`,
       }) };
@@ -408,8 +513,16 @@ exports.handler = async (event) => {
 
       const results = await Promise.allSettled(batch.map(async r => {
         try {
-          await sendWhatsApp({ to: r.phone, template, params: r.params, lang });
-          return { phone: r.phone, ok: true };
+          const result = await sendWhatsApp({
+            to: r.phone,
+            template,
+            params: r.params,
+            lang,
+            headerImageUrl: r.headerImageUrl,
+            urlButtonParam: r.urlButtonParam,
+            marketing: true,
+          });
+          return { phone: r.phone, ok: !!result?.ok, error: result?.data?.error?.message || result?.error || (result?.skipped ? 'send skipped' : 'WhatsApp API rejected message') };
         } catch (e) {
           return { phone: r.phone, ok: false, error: e.message };
         }
@@ -424,6 +537,25 @@ exports.handler = async (event) => {
         }
       }
 
+      if (campaignKey) {
+        const rows = results.map((res, index) => {
+          const recipient = batch[index];
+          const value = res.status === 'fulfilled' ? res.value : { ok:false, error:res.reason?.message };
+          return {
+            campaign_key: campaignKey,
+            customer_phone: recipient.phone,
+            template_name: template,
+            status: value.ok ? 'sent' : 'failed',
+            error: value.ok ? null : String(value.error || 'Unknown send failure').slice(0, 1000),
+            product_url: recipient.recs?.[0] ? absoluteProductUrl(recipient.recs[0]) : null,
+            metadata: { bucket:recipient.bucketLabel, offer:campaignOffer, source },
+          };
+        });
+        const { error: logError } = await supabase.from('whatsapp_campaign_deliveries').upsert(rows, { onConflict:'campaign_key,customer_phone' });
+        if (logError && source === 'scheduled') throw new Error('Unable to record campaign deliveries: ' + logError.message);
+        if (logError) console.warn('[broadcast] campaign log skipped:', logError.message);
+      }
+
       if (i + BATCH_SIZE < recipients.length) await sleep(BATCH_DELAY);
     }
 
@@ -434,6 +566,11 @@ exports.handler = async (event) => {
         success: true,
         template,
         personalized,
+        rich_media: richMedia,
+        offer: campaignOffer,
+        opted_out_removed: optedOutRemoved,
+        consent_removed: consentRemoved,
+        cooldown_removed: cooldownRemoved,
         total: recipients.length,
         sent,
         failed,
@@ -445,4 +582,10 @@ exports.handler = async (event) => {
     console.error('[whatsapp-broadcast] error:', err.message);
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
+};
+
+exports._internal = {
+  absoluteProductUrl, absoluteImageUrl, productSlug, markdownPercent,
+  formatBookLine, promotionLabel, canonicalCategory, guessLanguage,
+  buildCustomerProfile, pickRecs,
 };

@@ -7556,6 +7556,17 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
           🚚 Cash on Delivery
         </button>
         <div class="cod-note" id="codNote" style="font-size:0.66rem;color:var(--cream-dim);line-height:1.6;margin-top:0.5rem;text-align:center;padding:0 0.2rem;"></div>
+
+        <!-- Marketing consent. Deliberately UNCHECKED: a pre-ticked box is not
+             consent, and sending marketing to people who never agreed is what
+             gets a WhatsApp number's quality rating cut -- which would damage
+             the order and shipping messages we depend on. -->
+        <label for="ch-wa-optin" style="display:flex;gap:0.55rem;align-items:flex-start;margin-top:0.85rem;padding:0.6rem 0.7rem;border:1px solid var(--border);border-radius:6px;cursor:pointer;text-align:left;">
+          <input id="ch-wa-optin" type="checkbox" style="margin-top:0.15rem;flex:0 0 auto;width:16px;height:16px;accent-color:var(--gold);cursor:pointer;"/>
+          <span style="font-size:0.66rem;color:var(--cream-dim);line-height:1.55;">
+            Send me book recommendations and offers on WhatsApp. Order and delivery updates are sent either way. Reply <strong>STOP</strong> any time to opt out.
+          </span>
+        </label>
         </div><!-- /paymentBlock -->
 
         <div class="trust-row">
@@ -8389,6 +8400,9 @@ function collectAddr() {
     // be recovered from `address` by splitting on commas — see streetOf().
     street: addr,
     pincode: pin, city, state,
+    // Consent travels with the order that captured it, so the server records
+    // it against the same phone number the customer just confirmed.
+    whatsapp_optin: !!document.getElementById('ch-wa-optin')?.checked,
   };
 }
 
@@ -8560,7 +8574,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
-        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
         payment_mode: isPartial ? 'partial_cod' : 'online',
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
@@ -8616,7 +8630,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
-        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
         payment_mode: isPartial ? 'partial_cod' : 'full',
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
@@ -8719,7 +8733,7 @@ async function doCOD(addr) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cart,
-        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address },
+        customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
         amount: totals.total, shipping: totals.shipping,
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
       }),

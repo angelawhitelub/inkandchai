@@ -5,6 +5,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { recordMarketingOptIn } = require('./utils/marketing-optin');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
@@ -230,6 +231,11 @@ exports.handler = async (event) => {
     }
 
     const { error } = await supabase.from('orders').insert(orderRow);
+    // Marketing consent, if the customer ticked the box. Never blocks the order.
+    if (customer && customer.whatsapp_optin) {
+      await recordMarketingOptIn(supabase, customer.phone, 'checkout_cod');
+    }
+
     // A rejected insert used to be logged and forgotten. On 24 Aug that lost 20
     // real orders — customers had confirmation emails and NimbusPost had the
     // shipments, but nothing had a row here. The order now goes to Netlify

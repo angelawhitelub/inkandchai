@@ -9,7 +9,8 @@
 
 const PHONE_ID = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VERSION = 'v20.0';
-const BASE_URL = `https://graph.facebook.com/${API_VERSION}/${PHONE_ID}/messages`;
+const MESSAGE_BASE_URL = `https://graph.facebook.com/${API_VERSION}/${PHONE_ID}/messages`;
+const MARKETING_BASE_URL = `https://graph.facebook.com/${API_VERSION}/${PHONE_ID}/marketing_messages`;
 
 /** Strip non-digits and ensure 91 country code for Indian numbers */
 function normalizePhone(phone) {
@@ -35,8 +36,21 @@ function normalizePhone(phone) {
  *        when the template has a URL button defined as "<base>/{{1}}"; the value
  *        is substituted for {{1}} (index 0 button). e.g. order id for a
  *        "https://inkandchai.in/track/?id={{1}}" tracking button.
+ * @param {string} [opts.headerImageUrl] - public HTTPS image used by a template
+ *        with an image header. Meta downloads the image when the message sends.
+ * @param {boolean} [opts.marketing] - route an approved Marketing template to
+ *        Meta's optimized Marketing Messages API. Transactional templates must
+ *        leave this false so they continue using the standard Cloud API.
  */
-async function sendWhatsApp({ to, template, params = [], lang = 'en', urlButtonParam = null }) {
+async function sendWhatsApp({
+  to,
+  template,
+  params = [],
+  lang = 'en',
+  urlButtonParam = null,
+  headerImageUrl = null,
+  marketing = false,
+}) {
   const token = process.env.WHATSAPP_TOKEN;
   if (!token) { console.warn('WHATSAPP_TOKEN not set — WA skipped'); return { ok: false, skipped: true }; }
 
@@ -51,6 +65,12 @@ async function sendWhatsApp({ to, template, params = [], lang = 'en', urlButtonP
   const bodyParams = params.map(p => ({ type: 'text', text: String(p).replace(/\s+/g, ' ').trim() }));
 
   const components = [];
+  if (headerImageUrl) {
+    components.push({
+      type: 'header',
+      parameters: [{ type: 'image', image: { link: String(headerImageUrl) } }],
+    });
+  }
   if (bodyParams.length > 0) components.push({ type: 'body', parameters: bodyParams });
   if (urlButtonParam != null && String(urlButtonParam) !== '') {
     components.push({
@@ -73,7 +93,8 @@ async function sendWhatsApp({ to, template, params = [], lang = 'en', urlButtonP
   };
 
   try {
-    const res = await fetch(BASE_URL, {
+    const endpoint = marketing ? MARKETING_BASE_URL : MESSAGE_BASE_URL;
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -105,7 +126,7 @@ async function sendText(to, text) {
   const phone = normalizePhone(to);
   if (!phone) { console.warn('sendText: invalid phone', to); return { ok: false, skipped: true }; }
   try {
-    const res = await fetch(BASE_URL, {
+    const res = await fetch(MESSAGE_BASE_URL, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({

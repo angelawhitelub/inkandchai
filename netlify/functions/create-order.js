@@ -15,6 +15,7 @@
 
 const Razorpay = require('razorpay');
 const { createClient } = require('@supabase/supabase-js');
+const { recordMarketingOptIn } = require('./utils/marketing-optin');
 const { resolveCartPrices } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { pincodeRejection } = require('./utils/pincode-valid');
@@ -229,6 +230,8 @@ exports.handler = async (event) => {
     // paid order. Requires sql/order_carts.sql (silently no-ops until it's run).
     try {
       const c = (customer && typeof customer === 'object') ? customer : {};
+      // Marketing consent, if the customer ticked the box. Never blocks the order.
+      if (c.whatsapp_optin) await recordMarketingOptIn(supabase, c.phone, 'checkout_razorpay');
       await supabase.from('order_carts').upsert({
         razorpay_order_id: order.id,
         cart_items:        cart,

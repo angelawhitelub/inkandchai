@@ -93,6 +93,14 @@
 [functions."bot-order-followup-background"]
   schedule = "*/2 * * * *"
 
+# Personalized customer recommendations - 7:00 PM IST every Tuesday + Friday
+# (13:30 UTC). Evening is the strongest window for consumer WhatsApp in India,
+# and it stays well clear of the 9 PM - 9 AM quiet hours for marketing sends.
+# The function skips safely until WHATSAPP_BROADCAST_TEMPLATE is configured,
+# and the send itself is opt-in only - see whatsapp_marketing_subscribers.
+[functions."whatsapp-broadcast-scheduled"]
+  schedule = "30 13 * * 2,5"
+
 # Route Supabase Storage image requests through our Netlify-cached proxy so
 # each image is fetched from Supabase at most once per 30 days per edge. Cuts
 # the "cached egress" quota drain caused by admin-created product covers.
