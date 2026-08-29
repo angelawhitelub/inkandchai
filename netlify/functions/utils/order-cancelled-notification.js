@@ -95,6 +95,62 @@ function bookListShort(order, maxChars = 220) {
   return kept.join(', ') + (dropped > 0 ? ` +${dropped} more` : '');
 }
 
+// Who cancelled, and therefore what the customer should be told. Getting this
+// wrong is worse than saying little: an out-of-stock apology sent to someone who
+// cancelled the order themselves reads as a form letter, and sending it after a
+// failed payment tells them a story that never happened.
+//
+//   customer       they asked us to cancel it
+//   store          we cancelled it -- no stock, or the courier cancelled the
+//                  shipment and we could not re-book
+//   payment_failed the payment never completed, so nothing was ever charged
+function cancellationKind(opts = {}) {
+  if (opts.paymentFailed) return 'payment_failed';
+  const kind = String(opts.kind || '').toLowerCase();
+  return ['customer', 'store', 'payment_failed'].includes(kind) ? kind : 'store';
+}
+
+// Headline + body for each. The refund box and the book table are shared, and
+// appended by orderCancelledEmailHtml after this.
+function cancellationCopy(kind, firstName) {
+  if (kind === 'customer') {
+    return {
+      heading: 'Your order has been cancelled',
+      body: `Hi ${firstName}, your Ink &amp; Chai order has been cancelled as you requested. `
+        + `Nothing further is needed from you.`,
+      cta: 'Browse books',
+      tail: `Changed your mind, or cancelled by accident? Just reply to this email `
+        + `or message us on WhatsApp and we'll help you reorder.`,
+    };
+  }
+  if (kind === 'payment_failed') {
+    return {
+      heading: 'Your payment didn\u2019t go through',
+      body: `Hi ${firstName}, your Ink &amp; Chai order was cancelled because the payment did not complete. `
+        + `This usually means the bank or UPI app declined it, or the app was closed before it finished.`,
+      cta: 'Try again',
+      tail: `The books are still there. If the payment keeps failing, reply to this email or `
+        + `message us on WhatsApp and we'll help you place the order another way.`,
+    };
+  }
+  return {
+    heading: 'We\u2019re sorry \u2014 your order has been cancelled',
+    body: `Hi ${firstName}, your Ink &amp; Chai order has been cancelled unexpectedly because the `
+      + `supplier/publisher had no stock. We tried to arrange the books for you and were unable to. `
+      + `We're genuinely sorry \u2014 this is not the experience we want you to have.`,
+    cta: 'Order again',
+    tail: `We hope to serve you better in future. If you'd like help finding the same book or a `
+      + `similar one, just reply to this email or message us on WhatsApp \u2014 we'll look for it personally.`,
+  };
+}
+
+// The subject has to match the body, or the inbox preview contradicts the mail.
+function subjectFor(kind, id) {
+  if (kind === 'customer') return `Order ${id} cancelled as requested`;
+  if (kind === 'payment_failed') return `Payment didn't go through — order ${id} cancelled`;
+  return `Sorry — order ${id} was cancelled (out of stock)`;
+}
+
 function orderCancelledEmailHtml(order, refund, opts = {}) {
   const items = Array.isArray(order.cart_items) ? order.cart_items : [];
   const rows = items.map(i => `
@@ -110,23 +166,21 @@ function orderCancelledEmailHtml(order, refund, opts = {}) {
   const refundable = !opts.skipRefund && Number(order.amount_paise || 0) > 0 && !!order.razorpay_payment_id;
   const firstUrl = items.map(i => i.url || i.id || '').find(u => String(u).startsWith('/product/'));
   const reorderUrl = firstUrl ? `https://inkandchai.in${firstUrl}` : 'https://inkandchai.in/books/';
+  const kind = cancellationKind(opts);
+  const copy = cancellationCopy(kind, String(order.customer_name || 'there').split(' ')[0]);
 
   return `
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
       <h1 style="color:#c9a84c;font-size:24px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
       <p style="color:#a09080;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;">inkandchai.in</p>
-      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">We're sorry — your order has been cancelled</h2>
-      <p style="color:#a09080;line-height:1.8;margin:14px 0;">
-        Hi ${String(order.customer_name || 'there').split(' ')[0]}, your Ink &amp; Chai order has been cancelled
-        unexpectedly because the supplier/publisher had no stock. We tried to arrange the books for you
-        and were unable to. We're genuinely sorry — this is not the experience we want you to have.
-      </p>
-      <p style="color:#a09080;line-height:1.8;margin:14px 0;">
+      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">${copy.heading}</h2>
+      <p style="color:#a09080;line-height:1.8;margin:14px 0;">${copy.body}</p>
+      ${kind === 'store' ? `<p style="color:#a09080;line-height:1.8;margin:14px 0;">
         Stock does come back in. <strong style="color:#f0e8d8;">Please do place the order again</strong> —
         we will try to arrange it for you this time.
-      </p>
+      </p>` : ''}
       <p style="margin:22px 0;">
-        <a href="${reorderUrl}" style="display:inline-block;background:#c9a84c;color:#0d0b08;text-decoration:none;padding:12px 26px;font-size:14px;font-weight:bold;letter-spacing:0.5px;">Order again &rarr;</a>
+        <a href="${reorderUrl}" style="display:inline-block;background:#c9a84c;color:#0d0b08;text-decoration:none;padding:12px 26px;font-size:14px;font-weight:bold;letter-spacing:0.5px;">${copy.cta} &rarr;</a>
       </p>
       <p style="color:#a09080;font-size:13px;">Order ID: <strong style="color:#c9a84c;">${orderId(order)}</strong></p>
       ${rows ? `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
@@ -141,10 +195,7 @@ function orderCancelledEmailHtml(order, refund, opts = {}) {
         ${refundable ? `<p style="color:#6dbf6d;margin:0 0 6px;font-size:20px;font-weight:bold;">${total} refunded</p>` : ''}
         <p style="color:#f0e8d8;margin:0;font-size:14px;line-height:1.7;">${refundSentence(order, refund, opts)}</p>
       </div>
-      <p style="color:#a09080;font-size:13px;line-height:1.8;margin-top:18px;">
-        We hope to serve you better in future. If you'd like help finding the same book or a similar one,
-        just reply to this email or message us on WhatsApp — we'll look for it personally.
-      </p>
+      <p style="color:#a09080;font-size:13px;line-height:1.8;margin-top:18px;">${copy.tail}</p>
       <hr style="border:none;border-top:1px solid #2a2a2a;margin:32px 0;"/>
       <p style="color:#7a6330;font-size:11px;">Ink &amp; Chai &middot; support@inkandchai.in</p>
     </div>`;
@@ -362,31 +413,43 @@ async function notifyOrderCancelled(order, opts = {}) {
   if (!opts.skipEmail && order.customer_email) {
     const email = await sendEmail({
       to: order.customer_email,
-      subject: `Sorry — order ${id} was cancelled (out of stock)`,
+      subject: subjectFor(cancellationKind(opts), id),
       html: orderCancelledEmailHtml(order, result.refund, opts),
     });
     result.email = !!email?.ok;
   }
 
   if (!opts.skipWhatsApp && order.customer_phone) {
-    // The wording lives in the Meta template, not here — we only supply the
-    // variables. The `order_cancelled` template is being edited from 2 variables
-    // (name, order id) to 4 (name, order id, books, refund line), and Meta
-    // rejects a send whose parameter count does not match the approved body.
+    // TWO templates, because a customer who cancelled their own order and a
+    // customer we cancelled on need different messages. The wording lives in
+    // Meta; we only supply the variables.
     //
-    // So the count is switched by env var rather than by deploy: edit the
-    // template, wait for Meta to approve it, THEN set
-    // WHATSAPP_ORDER_CANCELLED_V2=1. Either order without this flag would break
-    // every cancellation message in the gap between the two changes.
+    //   order_cancelled        — they asked us to cancel. Short, plus the refund
+    //                            line. Also used for a failed payment, where the
+    //                            refund line reads "you were not charged".
+    //   order_cancelled_stock  — we cancelled it. Carries the out-of-stock
+    //                            explanation and the "please order again" ask.
+    //
+    // Both are rolled out without a window where sends break, because Meta
+    // rejects any message whose parameter count differs from the approved body:
+    //   • the stock template is NEW, so it is used only once its name is in
+    //     WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE;
+    //   • order_cancelled is being EDITED from 2 variables to 4, so the extra
+    //     variables are sent only once WHATSAPP_ORDER_CANCELLED_V2 is set.
+    // Until each flag is set, that path keeps sending the body Meta has approved.
+    const kind = cancellationKind(opts);
+    const stockTemplate = process.env.WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE;
+    const useStock = kind === 'store' && !!stockTemplate;
     const v2 = /^(1|true|yes)$/i.test(String(process.env.WHATSAPP_ORDER_CANCELLED_V2 || ''));
     await sendWhatsApp({
       to: order.customer_phone,
-      template: process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE || 'order_cancelled',
-      params: v2
+      template: useStock ? stockTemplate : (process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE || 'order_cancelled'),
+      params: (useStock || v2)
         ? [firstName, id, bookListShort(order), refundSentenceShort(order, result.refund, opts)]
         : [firstName, id],
     });
     result.whatsapp = true;
+    result.whatsapp_template = useStock ? 'stock' : 'default';
   }
 
   // Owner notification — same pattern as the "new order" email so the store
@@ -413,4 +476,4 @@ async function notifyOrderCancelled(order, opts = {}) {
   return result;
 }
 
-module.exports = { notifyOrderCancelled, refundSentence, refundSentenceShort, bookListShort };
+module.exports = { notifyOrderCancelled, refundSentence, refundSentenceShort, bookListShort, cancellationKind, cancellationCopy };

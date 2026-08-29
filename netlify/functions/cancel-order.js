@@ -341,6 +341,7 @@ exports.handler = async (event) => {
     }
 
     await notifyOrderCancelled({ ...order, status: 'cancelled' }, {
+      kind: 'customer',   // they pressed cancel themselves
       reason: 'Your order has been cancelled as requested.'
         + (npResult && !npResult.ok
             ? ` (⚠️ NimbusPost auto-cancel failed: ${npResult.error} — please cancel ${npWhat} in the NimbusPost panel manually so it isn't shipped.)`
@@ -404,6 +405,7 @@ exports.handler = async (event) => {
     }
 
     await notifyOrderCancelled({ ...order, status: newStatus }, {
+      kind: 'customer',
       reason: refundNote || 'Your order has been cancelled as requested.',
       skipEmail: true,
     });

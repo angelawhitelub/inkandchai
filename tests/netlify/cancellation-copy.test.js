@@ -113,11 +113,84 @@ test('the WhatsApp parameter count is env-gated, not hard-switched on deploy', (
   assert.match(notifier, /bookListShort\(order\), refundSentenceShort/); // v2 4-variable body
 });
 
-test('it still edits the existing template rather than needing a new name', () => {
+test('the customer path still uses the existing approved template', () => {
+  // order_cancelled keeps its name, its send history and its quality rating —
+  // only its body is edited. The out-of-stock message is a separate template.
   assert.match(notifier, /process\.env\.WHATSAPP_ORDER_CANCELLED_TEMPLATE \|\| 'order_cancelled'/);
-  assert.doesNotMatch(notifier, /WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE/);
 });
 
 test('every WhatsApp body parameter is whitespace-flattened before sending', () => {
   assert.match(whatsapp, /params\.map\(p => \(\{ type: 'text', text: String\(p\)\.replace\(\/\\s\+\/g, ' '\)\.trim\(\) \}\)\)/);
+});
+
+const { cancellationKind, cancellationCopy } = require('../../netlify/functions/utils/order-cancelled-notification');
+
+test('the cancellation kind is derived, and defaults to our side', () => {
+  assert.equal(cancellationKind({ kind: 'customer' }), 'customer');
+  assert.equal(cancellationKind({ kind: 'store' }), 'store');
+  assert.equal(cancellationKind({ paymentFailed: true }), 'payment_failed');
+  // paymentFailed wins even if a caller also passed a kind
+  assert.equal(cancellationKind({ kind: 'customer', paymentFailed: true }), 'payment_failed');
+  // unknown or absent -> store, the safe default for an unattributed cancellation
+  assert.equal(cancellationKind({}), 'store');
+  assert.equal(cancellationKind({ kind: 'nonsense' }), 'store');
+  assert.equal(cancellationKind(), 'store');
+});
+
+test('a customer-requested cancellation is never blamed on stock', () => {
+  const c = cancellationCopy('customer', 'Asha');
+  assert.match(c.body, /as you requested/i);
+  assert.doesNotMatch(c.body, /stock/i);
+  assert.doesNotMatch(c.body, /supplier|publisher/i);
+});
+
+test('a failed payment is not blamed on stock either', () => {
+  const c = cancellationCopy('payment_failed', 'Asha');
+  assert.match(c.body, /payment did not complete/i);
+  assert.doesNotMatch(c.body, /stock|supplier|publisher/i);
+});
+
+test('our own cancellation carries the out-of-stock explanation', () => {
+  const c = cancellationCopy('store', 'Asha');
+  assert.match(c.body, /supplier\/publisher had no stock/);
+  assert.match(c.cta, /Order again/);
+});
+
+test('every kind addresses the customer by first name and offers a way back', () => {
+  for (const k of ['customer', 'store', 'payment_failed']) {
+    const c = cancellationCopy(k, 'Asha');
+    assert.match(c.body, /Hi Asha,/);
+    assert.ok(c.heading && c.cta && c.tail, `${k} is missing a field`);
+  }
+});
+
+test('the two WhatsApp templates are separately gated', () => {
+  // The stock template is new (opt in by name); order_cancelled is being edited
+  // from 2 variables to 4 (opt in by the V2 flag). Neither can break sends
+  // before its own flag is set.
+  assert.match(notifier, /WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE/);
+  assert.match(notifier, /const useStock = kind === 'store' && !!stockTemplate;/);
+  assert.match(notifier, /params: \(useStock \|\| v2\)/);
+});
+
+test('the subject line matches the body it introduces', () => {
+  // An inbox preview reading "out of stock" above a mail saying "as you
+  // requested" is worse than no subject at all.
+  const subjectFor = new Function('return ' + notifier.match(/function subjectFor[\s\S]*?\n}\n/)[0])();
+  assert.match(subjectFor('customer', 'IC-1'), /cancelled as requested/);
+  assert.doesNotMatch(subjectFor('customer', 'IC-1'), /stock/i);
+  assert.match(subjectFor('payment_failed', 'IC-1'), /Payment didn't go through/);
+  assert.doesNotMatch(subjectFor('payment_failed', 'IC-1'), /stock/i);
+  assert.match(subjectFor('store', 'IC-1'), /out of stock/);
+});
+
+test('customer and bot cancellations are tagged at the call sites', () => {
+  // Without this tag they fall through to the default and get told the
+  // supplier ran out of stock for an order they cancelled themselves.
+  for (const f of ['cancel-order.js', 'whatsapp-bot.js']) {
+    const src = fs.readFileSync(path.resolve(__dirname, '../../netlify/functions/' + f), 'utf8');
+    const calls = (src.match(/notifyOrderCancelled\(/g) || []).length;
+    const tagged = (src.match(/kind: 'customer'/g) || []).length;
+    assert.equal(tagged, calls, `${f}: ${calls} cancellation call(s) but ${tagged} tagged as customer-initiated`);
+  }
 });

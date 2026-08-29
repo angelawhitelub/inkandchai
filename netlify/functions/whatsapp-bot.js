@@ -622,6 +622,7 @@ async function handleCodConfirm(from, decision, senderPhoneId) {
     if (decision === 'cancel') {
       await db.from('orders').update({ status: 'cancelled' }).eq('id', order.id);
       await notifyOrderCancelled({ ...order, status: 'cancelled' }, {
+        kind: 'customer',   // the customer asked the bot to cancel
         reason: 'Your order has been cancelled as requested.',
         skipWhatsApp: true,
       });
@@ -1096,6 +1097,7 @@ async function cancelOrderViaBot(phone, args = {}) {
       console.error(`[WHATSAPP-CANCEL] NimbusPost cancel failed for ${displayId}: ${npResult.error}`);
     }
     await notifyOrderCancelled({ ...target, status: 'cancelled' }, {
+      kind: 'customer',
       reason: 'Your order has been cancelled as requested on WhatsApp.'
         + (!npResult.ok
           ? ` (⚠️ NimbusPost auto-cancel failed: ${npResult.error}. Cancel this order manually in NimbusPost.)`
