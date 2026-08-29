@@ -20,15 +20,57 @@ const root = path.resolve(__dirname, '../..');
 const gen = fs.readFileSync(path.join(root, 'generate_site.py'), 'utf8');
 
 test('every sale surface sits inside a strip marker', () => {
-  // Four surfaces advertised the sale: the top bar, the standalone banner
-  // section, the carousel slide, and that slide's navigation dot. A surface
-  // outside a marker pair is one that will outlive the sale.
+  // Six surfaces advertised the sale: the top bar, the standalone banner
+  // section, the carousel slide and that slide's dot on the storefront, and
+  // on checkout the FREEDOM option plus the tricolour dressing on the coupon
+  // box. A surface outside a marker pair is one that will outlive the sale.
   // The strip regex itself contains both marker strings, so exclude that line.
   const markup = gen.split('\n').filter(l => !l.includes("re.sub(r'<!--SALE:START-->")).join('\n');
   const starts = (markup.match(/<!--SALE:START-->/g) || []).length;
   const ends = (markup.match(/<!--SALE:END-->/g) || []).length;
-  assert.equal(starts, 4, 'four sale surfaces are wrapped');
+  assert.equal(starts, 6, 'six sale surfaces are wrapped');
   assert.equal(ends, starts, 'every marker is closed');
+});
+
+test('both templates are actually stripped, not just the homepage', () => {
+  // Checkout was the surface that kept offering FREEDOM in its dropdown, and
+  // wearing Independence Day colours, for a fortnight after the sale ended --
+  // while couponDiscount() correctly refused to apply it. Marking the surfaces
+  // does nothing unless the template is run through the stripper.
+  assert.match(gen, /^HTML = strip_expired_sale\(HTML\)$/m);
+  assert.match(gen, /^CHECKOUT_HTML = strip_expired_sale\(CHECKOUT_HTML\)$/m);
+  // ...and before the placeholders are filled, so nothing survives into a build.
+  const stripAt = gen.indexOf('CHECKOUT_HTML = strip_expired_sale(CHECKOUT_HTML)');
+  const fillAt = gen.indexOf('CHECKOUT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER"');
+  assert.ok(stripAt > 0 && stripAt < fillAt, 'checkout is stripped before it is filled in');
+});
+
+test('stripping the sale leaves the coupon box its shape', () => {
+  // The tricolour used to be in the same rule as the border, padding and
+  // radius. Removing the sale would have taken the box apart with it, so the
+  // dressing lives in its own class.
+  assert.match(gen, /\.coupon-box\{border-top:[^}]*border-radius:14px;\}/);
+  assert.match(gen, /\.coupon-box\.sale-dress\{background:linear-gradient/);
+  assert.match(gen, /class="coupon-box<!--SALE:START--> sale-dress<!--SALE:END-->"/);
+});
+
+test('a cached checkout takes the ended sale off itself', () => {
+  // The build strips a freshly generated page, but one served from cache still
+  // carries the FREEDOM option while the till refuses the code -- the exact
+  // mismatch that ran on the homepage for two weeks.
+  const fn = gen.slice(gen.indexOf('function removeExpiredSaleFromCheckout()'));
+  const body = fn.slice(0, fn.indexOf('\nfunction couponDiscount'));
+  assert.match(body, /if \(freedomIsLive\(\)\) return;/);
+  assert.match(body, /option\[value="FREEDOM"\]'\)\?\.remove\(\)/);
+  assert.match(body, /classList\.remove\('sale-dress'\)/);
+  // Called from the one function that always runs before the box is shown.
+  assert.match(gen, /function renderSummary\(\) \{[\s\S]{0,220}removeExpiredSaleFromCheckout\(\);/);
+});
+
+test('the coupon hint does not promise an ended sale', () => {
+  // It read "add books above ₹399 and FREEDOM will apply 15% off" regardless.
+  assert.match(gen, /couponMsg\.textContent = couponMessage \|\| defaultCouponHint\(\);/);
+  assert.match(gen, /function defaultCouponHint\(\) \{[\s\S]*?freedomIsLive\(\)/);
 });
 
 test('every sale deadline in the codebase is the same instant', () => {

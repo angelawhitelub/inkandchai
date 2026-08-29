@@ -7331,7 +7331,8 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:400;color
 .checkout-qty-num{min-width:24px;text-align:center;color:var(--cream);font-size:0.78rem;font-weight:500;}
 .checkout-remove{border:none;background:transparent;color:#c97a7a;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;margin-left:0.2rem;}
 .checkout-remove:hover{color:#e06060;}
-.coupon-box{border-top:1px solid var(--border);margin-top:1rem;padding:1rem .85rem .2rem;border-radius:14px;background:linear-gradient(135deg,rgba(255,153,51,.11),rgba(255,255,255,.04) 48%,rgba(19,136,8,.11));box-shadow:inset 3px 0 #ff9933,inset -3px 0 #138808;}
+.coupon-box{border-top:1px solid var(--border);margin-top:1rem;padding:1rem .85rem .2rem;border-radius:14px;}
+.coupon-box.sale-dress{background:linear-gradient(135deg,rgba(255,153,51,.11),rgba(255,255,255,.04) 48%,rgba(19,136,8,.11));box-shadow:inset 3px 0 #ff9933,inset -3px 0 #138808;}
 .coupon-row{display:grid;grid-template-columns:1fr auto;gap:0.55rem;align-items:stretch;}
 .coupon-select{width:100%;margin-bottom:0.55rem;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.8rem 1rem;font-family:'Inter',sans-serif;font-size:0.72rem;letter-spacing:0.08em;outline:none;}
 .coupon-input{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.12em;}
@@ -7674,11 +7675,11 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
             <a href="/" style="color:var(--gold);">Browse books →</a>
           </div>
         </div>
-        <div class="coupon-box" id="couponBox" style="display:none;">
+        <div class="coupon-box<!--SALE:START--> sale-dress<!--SALE:END-->" id="couponBox" style="display:none;">
           <label for="couponSelect">Available Coupons</label>
           <select class="coupon-select" id="couponSelect" onchange="handleCouponSelect(this.value)">
-            <option value="FREEDOM">🇮🇳 FREEDOM · 15% auto-applied above ₹399</option>
-            <option value="">Choose another prepaid offer</option>
+<!--SALE:START-->            <option value="FREEDOM">🇮🇳 FREEDOM · 15% auto-applied above ₹399</option>
+<!--SALE:END-->            <option value="">Choose another prepaid offer</option>
             <option value="INKLOVE10">INKLOVE10 · 10% off prepaid above ₹499</option>
             <option value="SAVE12">SAVE12 · 12% off prepaid above ₹999</option>
             <option value="SAVE15">SAVE15 · 15% off prepaid above ₹1499</option>
@@ -7828,6 +7829,32 @@ function normalizeCouponCode(value) {
   if (s.startsWith('SCRATCH-')) return s.replace(/[^A-Z0-9-]/g, '');
   return s.replace(/[^A-Z0-9]/g, '');
 }
+function freedomIsLive() {
+  return Date.now() <= new Date(COUPONS.FREEDOM.expiresAt).getTime();
+}
+
+/** The hint under the coupon box, which must not promise an ended sale. */
+function defaultCouponHint() {
+  return freedomIsLive()
+    ? '🇮🇳 Add books until the subtotal is above ₹399 and FREEDOM will apply 15% off automatically.'
+    : 'Prepaid orders unlock the offers above. Pick one, or enter a private code.';
+}
+
+/**
+ * Take the ended sale off a checkout that was built while it was still running.
+ *
+ * The build strips these too, but a page cached before the deadline keeps
+ * offering FREEDOM in the dropdown and wearing the tricolour, while
+ * couponDiscount() correctly refuses to apply it — the customer is shown a
+ * discount the till will not honour. That exact mismatch ran on the homepage
+ * for a fortnight, so checkout gets the same second line of defence.
+ */
+function removeExpiredSaleFromCheckout() {
+  if (freedomIsLive()) return;
+  document.querySelector('#couponSelect option[value="FREEDOM"]')?.remove();
+  document.getElementById('couponBox')?.classList.remove('sale-dress');
+}
+
 function couponDiscount(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
   const code = normalizeCouponCode(appliedCouponCode);
@@ -8079,6 +8106,9 @@ function reportInitiateCheckout(cart, total) {
 }
 
 function renderSummary() {
+  // Cheap and idempotent, and renderSummary is the one function that always
+  // runs before the coupon box is shown.
+  removeExpiredSaleFromCheckout();
   const cart = getCart();
   const container = document.getElementById('orderItems');
   const totalRow  = document.getElementById('orderTotal');
@@ -8119,7 +8149,7 @@ function renderSummary() {
     couponSelect.value = hasVisibleOption ? displayedCouponCode : '';
   }
   if (couponMsg) {
-    couponMsg.textContent = couponMessage || '🇮🇳 Add books until the subtotal is above ₹399 and FREEDOM will apply 15% off automatically.';
+    couponMsg.textContent = couponMessage || defaultCouponHint();
     couponMsg.style.color = couponCode && discount > 0 ? '#5d9b55' : (couponMessage ? '#c97a7a' : 'var(--cream-dim)');
   }
   container.innerHTML = cart.map((i, idx) => `
@@ -9672,6 +9702,10 @@ async function chkVerifyOtp() {
 </body>
 </html>"""
 
+# The homepage template is stripped where it is defined; checkout is stripped
+# here, before its placeholders are filled, so an ended sale never reaches a
+# freshly built page at all.
+CHECKOUT_HTML = strip_expired_sale(CHECKOUT_HTML)
 CHECKOUT_HTML = CHECKOUT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER", razorpay_key)
 CHECKOUT_HTML = CHECKOUT_HTML.replace("SUPABASE_URL_PLACEHOLDER",     os.environ.get("SUPABASE_URL", ""))
 CHECKOUT_HTML = CHECKOUT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER",os.environ.get("SUPABASE_ANON_KEY", ""))
