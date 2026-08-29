@@ -111,8 +111,9 @@ function updateCartUI() {
     if (shipping === 0) {
       totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.55rem;color:#6dbf6d;letter-spacing:0.15em;text-transform:uppercase;font-family:'Montserrat',sans-serif;font-weight:500;margin-top:4px;">✓ Free Shipping</div>`;
     } else {
-      const need = FREE_SHIPPING_THRESHOLD - sum;
-      totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.6rem;color:#a09080;font-family:'Montserrat',sans-serif;margin-top:4px;letter-spacing:0.05em;">Subtotal ₹${sum.toLocaleString('en-IN')} + Shipping ₹${shipping}</div><div style="font-size:0.55rem;color:#c9a84c;letter-spacing:0.15em;text-transform:uppercase;font-family:'Montserrat',sans-serif;font-weight:500;margin-top:4px;">Add ₹${need} more for free shipping</div>`;
+      // The free-shipping gap is stated once, on the progress bar above the
+      // add-on rows -- repeating it here just said the same sentence twice.
+      totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.6rem;color:#a09080;font-family:'Montserrat',sans-serif;margin-top:4px;letter-spacing:0.05em;">Subtotal ₹${sum.toLocaleString('en-IN')} + Shipping ₹${shipping}</div>`;
     }
   }
 
