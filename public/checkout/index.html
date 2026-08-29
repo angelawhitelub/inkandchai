@@ -75,6 +75,14 @@ input,textarea{-webkit-appearance:none;}
 input:focus,textarea:focus,select:focus{border-color:rgba(201,168,76,0.5);}
 input::placeholder,textarea::placeholder{color:rgba(160,144,128,0.5);}
 input:disabled{background:var(--bg2);color:var(--gold-dim);cursor:not-allowed;}
+/* The form reset above strips every input to appearance:none, width:100% and a
+   999px radius. On a checkbox that removes the tick entirely -- the customer
+   could opt in and see nothing change -- so the consent box opts back out of
+   the reset and draws its own check. */
+#ch-wa-optin{-webkit-appearance:none;appearance:none;width:16px;height:16px;min-width:16px;flex:0 0 16px;padding:0;border-radius:3px;border:1px solid var(--gold-dim);background:var(--bg3);position:relative;cursor:pointer;transition:background 0.15s,border-color 0.15s;}
+#ch-wa-optin:checked{background:var(--gold);border-color:var(--gold);}
+#ch-wa-optin:checked::after{content:'';position:absolute;left:5px;top:1px;width:4px;height:9px;border:solid var(--bg);border-width:0 2px 2px 0;transform:rotate(45deg);}
+#ch-wa-optin:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
 .pincode-row{display:grid;grid-template-columns:110px 1fr 1fr;gap:1rem;margin-bottom:0.3rem;}
 @media(max-width:700px){
   /* iOS auto-zooms any input with text smaller than 16px — bumping up

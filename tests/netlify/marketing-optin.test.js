@@ -70,6 +70,14 @@ test('re-ticking the box resubscribes instead of erroring', () => {
   assert.match(src, /onConflict: 'customer_phone'/);
 });
 
+test('the consent box actually shows when it is ticked', () => {
+  // The checkout form reset sets every input to appearance:none, which removes
+  // the native tick. Without an explicit checked state the customer opts in and
+  // sees no change at all -- unverifiable consent.
+  assert.match(gen, /#ch-wa-optin:checked\{[^}]*background:var\(--gold\)/);
+  assert.match(gen, /#ch-wa-optin:checked::after\{content:''/);
+});
+
 test('the campaign runs at 7 PM IST, outside marketing quiet hours', () => {
   const cron = toml.match(/\[functions\."whatsapp-broadcast-scheduled"\]\s*\n\s*schedule = "([^"]+)"/);
   assert.ok(cron, 'the campaign is scheduled');
