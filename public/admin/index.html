@@ -851,6 +851,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab owner-only" data-tab="profit" onclick="switchTab('profit')">💰 Profit</button>
     <button class="admin-tab" data-tab="create"    onclick="switchTab('create')">➕ Create Listing</button>
     <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
+    <button class="admin-tab owner-only" data-tab="promotions" onclick="switchTab('promotions')">🏷 Promotions</button>
     <button class="admin-tab" data-tab="reels"     onclick="switchTab('reels')">🎬 Video Reels</button>
     <button class="admin-tab" data-tab="abandoned" onclick="switchTab('abandoned')">🛒 Abandoned Carts</button>
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
@@ -1833,6 +1834,33 @@ select,input,textarea{font-size:1rem;}
     <div id="couponStaticList"></div>
   </div><!-- /tab-coupons -->
 
+  <div class="admin-section" id="tab-promotions">
+    <section class="product-panel">
+      <div class="product-head"><div><h2>Promotions &amp; coupons</h2><p>Create, schedule, pause, end, reactivate, or delete discounts. Only one promotion applies per order—the customer receives the highest eligible saving.</p></div><button class="btn-outline" onclick="loadPromotionsAdmin()">↻ Refresh</button></div>
+      <div id="promotionSummary" class="hint" style="margin-bottom:1rem;">Loading promotions…</div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;font-size:.72rem"><div class="stat-card" style="cursor:default"><div class="stat-label">Shipping</div><strong>Free at ₹499+</strong><br><span class="hint">₹40 below threshold</span></div><div class="stat-card" style="cursor:default"><div class="stat-label">COD incentive</div><strong>₹20 fee waived at ₹999+</strong></div><div class="stat-card" style="cursor:default"><div class="stat-label">Partial COD</div><strong>Pay 10% now</strong><br><span class="hint">COD fee waived</span></div><div class="stat-card" style="cursor:default"><div class="stat-label">Scratch rewards</div><strong>₹30–₹200</strong><br><span class="hint">30 days · min ₹399</span></div></div>
+      <div style="display:grid;grid-template-columns:minmax(420px,1.15fr) minmax(320px,.85fr);gap:1.2rem;align-items:start;">
+        <div class="tbl-wrap" style="box-shadow:none"><table class="mini-table"><thead><tr><th>Promotion</th><th>Offer</th><th>Scope</th><th>Status</th><th>Actions</th></tr></thead><tbody id="promotionsBody"></tbody></table></div>
+        <div class="product-editor">
+          <h3 style="font-family:'DM Serif Display',serif;font-size:1.35rem;font-weight:400;margin-bottom:.8rem;">Create / edit promotion</h3>
+          <input type="hidden" id="promoId"/>
+          <div class="form-row"><label>Internal name / storefront label</label><input id="promoName" maxlength="180" placeholder="Weekend reading sale"/></div>
+          <div class="form-row"><label>Coupon code</label><input id="promoCode" maxlength="32" placeholder="WEEKEND15" style="text-transform:uppercase"/></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem"><div class="form-row"><label>Discount type</label><select id="promoType"><option value="percent">Percentage off</option><option value="fixed">Fixed ₹ off</option></select></div><div class="form-row"><label>Discount value</label><input id="promoValue" type="number" min=".01" step=".01"/></div><div class="form-row"><label>Minimum subtotal ₹</label><input id="promoMinimum" type="number" min="0" step="1" value="0"/></div><div class="form-row"><label>Maximum discount ₹</label><input id="promoMaximum" type="number" min="0" step="1" placeholder="No cap"/></div></div>
+          <div class="form-row"><label>Products</label><select id="promoScope" onchange="document.getElementById('promoSlugsRow').style.display=this.value==='selected'?'':'none'"><option value="all">All products</option><option value="selected">Selected products</option></select></div>
+          <div class="form-row" id="promoSlugsRow" style="display:none"><label>Product slugs (comma or new line separated)</label><textarea id="promoSlugs" placeholder="musafir-cafe-divya-prakash-dubey-prerna-singh"></textarea></div>
+          <div class="form-row"><label>Allowed payment methods</label><div style="display:flex;gap:1rem;flex-wrap:wrap;font-size:.72rem"><label><input id="promoPrepaid" type="checkbox" checked/> Prepaid</label><label><input id="promoCod" type="checkbox"/> COD</label><label><input id="promoPartial" type="checkbox"/> Partial COD</label></div></div>
+          <label style="display:flex;align-items:center;gap:.5rem;font-size:.72rem;margin:.7rem 0"><input id="promoAuto" type="checkbox"/> Auto-apply (customer does not enter the code)</label>
+          <label style="display:flex;align-items:center;gap:.5rem;font-size:.72rem;margin:.7rem 0"><input id="promoPrivate" type="checkbox"/> Private code (hide from checkout dropdown)</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem"><div class="form-row"><label>Starts at</label><input id="promoStarts" type="datetime-local"/></div><div class="form-row"><label>Ends at</label><input id="promoEnds" type="datetime-local"/></div></div>
+          <div class="product-editor-actions"><button class="btn-green" onclick="savePromotionAdmin()">Save promotion</button><button class="btn-outline" onclick="clearPromotionForm()">New</button></div>
+          <p class="hint" id="promoMsg" style="margin-top:.7rem"></p>
+        </div>
+      </div>
+    </section>
+  </div><!-- /tab-promotions -->
+
+
   <div class="admin-section" id="tab-npcancelled">
   <section class="abandoned-panel" id="npCancelledSection">
     <div class="abandoned-head">
@@ -1915,6 +1943,44 @@ select,input,textarea{font-size:1rem;}
 
   <!-- ═══ REPORTS TAB ═══ -->
   <div class="admin-section" id="tab-reports">
+  <section class="abandoned-panel" id="gstReportPanel" style="margin-bottom:1.4rem;">
+    <div class="abandoned-head">
+      <div>
+        <h2>🧾 GST Sales Report</h2>
+        <p>Select one, two or three consecutive months. The report covers GSTR-1 Tables 8, 12 and 13, GSTR-3B 3.1(c), interstate/intra-state net sales and refund reconciliation.</p>
+      </div>
+      <button class="btn-outline" id="gstExportBtn" onclick="exportGstReport()" disabled>⬇ Export GST Workbook (.xlsx)</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:.7rem;align-items:flex-end;margin:1rem 0;">
+      <label class="form-row" style="margin:0;min-width:175px;"><span>FROM MONTH</span><input type="month" id="gstReportFromMonth" onchange="syncGstMonthRange('from')"/></label>
+      <label class="form-row" style="margin:0;min-width:175px;"><span>TO MONTH (MAX 3)</span><input type="month" id="gstReportToMonth" onchange="syncGstMonthRange('to')"/></label>
+      <label class="form-row" style="margin:0;min-width:175px;"><span>SUPPLIER STATE</span><input id="gstSupplierState" value="Delhi"/></label>
+      <label class="form-row" style="margin:0;width:120px;"><span>STATE CODE</span><input id="gstSupplierStateCode" value="07" maxlength="2"/></label>
+      <button class="btn-gold" id="gstGenerateBtn" onclick="generateGstReport()">Generate report</button>
+      <span id="gstReportStatus" style="font-size:.72rem;color:var(--cream-dim);"></span>
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border);padding:.8rem 1rem;margin-bottom:1rem;font-size:.72rem;line-height:1.6;">
+      Printed books under HSN 4901 are reported as <strong>Nil Rated</strong> (not Exempted). This working uses website orders only and does not file your return. Verify buyer GSTINs, place of supply, HSN exceptions, invoice/credit-note serials and any offline/marketplace sales with your CA before filing.
+    </div>
+    <div class="stats-row" style="grid-template-columns:repeat(4,minmax(150px,1fr));" id="gstReportCards"></div>
+    <div id="gstReportResults" hidden>
+      <div class="stat-label" style="margin:1.3rem 0 .5rem;">GSTR-1 TABLE 8 — NIL RATED / EXEMPT / NON-GST OUTWARD SUPPLIES</div>
+      <div class="tbl-wrap" style="overflow-x:auto;"><table><thead><tr><th>Cell</th><th>Nature of supply</th><th>Nil rated ₹</th><th>Exempted ₹</th><th>Non-GST ₹</th></tr></thead><tbody id="gstTable8Body"></tbody></table></div>
+
+      <div class="stat-label" style="margin:1.3rem 0 .5rem;">GSTR-1 TABLE 12 — HSN SUMMARY (B2B / B2C)</div>
+      <div class="tbl-wrap" style="overflow-x:auto;"><table><thead><tr><th>Section</th><th>HSN</th><th>Description</th><th>UQC</th><th>Qty</th><th>Total value ₹</th><th>Taxable value ₹</th><th>Rate</th><th>Tax ₹</th></tr></thead><tbody id="gstTable12Body"></tbody></table></div>
+
+      <div class="stat-label" style="margin:1.3rem 0 .5rem;">GSTR-1 TABLE 13 — DOCUMENTS ISSUED</div>
+      <div class="tbl-wrap" style="overflow-x:auto;"><table><thead><tr><th>Document</th><th>Serial from</th><th>Serial to</th><th>Total issued</th><th>Cancelled</th><th>Net issued</th><th>Filing status</th></tr></thead><tbody id="gstTable13Body"></tbody></table></div>
+
+      <div class="stat-label" style="margin:1.3rem 0 .5rem;">GSTR-3B REFERENCE</div>
+      <div class="tbl-wrap" style="overflow-x:auto;"><table><thead><tr><th>Cell</th><th>Description</th><th>Taxable value ₹</th><th>IGST ₹</th><th>CGST ₹</th><th>SGST ₹</th><th>Cess ₹</th></tr></thead><tbody id="gst3bBody"></tbody></table></div>
+
+      <div class="stat-label" style="margin:1.3rem 0 .5rem;">REVIEW BEFORE FILING</div>
+      <div id="gstExceptions" style="font-size:.74rem;line-height:1.6;"></div>
+    </div>
+  </section>
+
   <section class="abandoned-panel">
     <div class="abandoned-head">
       <div>
@@ -9373,7 +9439,134 @@ function rptDelta(cur, prev) {
   return `<span style="color:${col}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`;
 }
 
+let gstReportData = null;
+function gstMoney(value) {
+  return '₹' + Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function initGstReport() {
+  const from = document.getElementById('gstReportFromMonth');
+  const to = document.getElementById('gstReportToMonth');
+  if (!from || !to || (from.value && to.value)) return;
+  const now = new Date();
+  const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  from.value = from.value || current;
+  to.value = to.value || from.value;
+  syncGstMonthRange('from');
+}
+function gstMonthIndex(value) {
+  const match = /^(\d{4})-(\d{2})$/.exec(value || '');
+  return match ? Number(match[1]) * 12 + Number(match[2]) - 1 : NaN;
+}
+function gstMonthValue(index) {
+  const year = Math.floor(index / 12);
+  const month = (index % 12) + 1;
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+function syncGstMonthRange(changed) {
+  const from = document.getElementById('gstReportFromMonth');
+  const to = document.getElementById('gstReportToMonth');
+  if (!from || !to || !from.value) return;
+  const fromIndex = gstMonthIndex(from.value);
+  from.max = to.value || '';
+  to.min = from.value;
+  to.max = gstMonthValue(fromIndex + 2);
+  if (!to.value || gstMonthIndex(to.value) < fromIndex) to.value = from.value;
+  if (gstMonthIndex(to.value) > fromIndex + 2) {
+    if (changed === 'to') from.value = gstMonthValue(gstMonthIndex(to.value) - 2);
+    else to.value = gstMonthValue(fromIndex + 2);
+  }
+  from.max = to.value;
+  to.min = from.value;
+  to.max = gstMonthValue(gstMonthIndex(from.value) + 2);
+}
+async function generateGstReport() {
+  initGstReport();
+  const fromMonth = document.getElementById('gstReportFromMonth').value;
+  const toMonth = document.getElementById('gstReportToMonth').value;
+  const state = document.getElementById('gstSupplierState').value.trim() || 'Delhi';
+  const code = document.getElementById('gstSupplierStateCode').value.trim() || '07';
+  const btn = document.getElementById('gstGenerateBtn');
+  const status = document.getElementById('gstReportStatus');
+  if (!fromMonth || !toMonth) { status.textContent = 'Select both report months.'; return; }
+  const monthCount = gstMonthIndex(toMonth) - gstMonthIndex(fromMonth) + 1;
+  if (monthCount < 1 || monthCount > 3) { status.textContent = 'Select a range of 1 to 3 calendar months.'; return; }
+  btn.disabled = true; status.textContent = 'Calculating invoices, refunds and returns…';
+  try {
+    const qs = new URLSearchParams({ from_month: fromMonth, to_month: toMonth, supplier_state: state, supplier_state_code: code });
+    const res = await adminFetch('/.netlify/functions/gst-sales-report?' + qs.toString());
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.report) throw new Error(data.error || `HTTP ${res.status}`);
+    gstReportData = data.report;
+    renderGstReport(data.report);
+    status.textContent = `${data.report.meta.monthCount} month report generated ${new Date(data.report.meta.generatedAt).toLocaleString('en-IN')}`;
+    document.getElementById('gstExportBtn').disabled = false;
+  } catch (error) {
+    gstReportData = null;
+    status.textContent = 'Could not generate: ' + error.message;
+    document.getElementById('gstExportBtn').disabled = true;
+  } finally { btn.disabled = false; }
+}
+function renderGstReport(report) {
+  const s = report.summary;
+  const cards = [
+    ['Gross website sales', gstMoney(s.grossSales), `${s.invoicesIssued} invoice/order records`],
+    ['Returns & reductions', gstMoney(Number(s.cancelledOrders) + Number(s.rtoLost) + Number(s.completedRefunds)), `Cancelled ${gstMoney(s.cancelledOrders)} · RTO/lost ${gstMoney(s.rtoLost)} · refunds ${gstMoney(s.completedRefunds)}`],
+    ['Net intra-state', gstMoney(s.intraStateNet), `Supplier state: ${esc(report.meta.supplierState)} (${esc(report.meta.supplierStateCode)})`],
+    ['Net inter-state', gstMoney(s.interStateNet), `Unclassified ${gstMoney(s.unclassifiedStateNet)}`],
+  ];
+  document.getElementById('gstReportCards').innerHTML = cards.map(([label, value, note]) => `
+    <div class="stat-card" style="cursor:default"><div class="stat-label">${label}</div><div class="stat-val">${value}</div><div style="font-size:.64rem;margin-top:.35rem;color:var(--cream-dim);line-height:1.4">${note}</div></div>`).join('');
+  document.getElementById('gstTable8Body').innerHTML = report.gstr1Table8.map(r => `<tr><td><strong>${esc(r.cell)}</strong></td><td>${esc(r.description)}</td><td>${gstMoney(r.nilRated)}</td><td>${gstMoney(r.exempted)}</td><td>${gstMoney(r.nonGst)}</td></tr>`).join('');
+  document.getElementById('gstTable12Body').innerHTML = report.gstr1Table12.map(r => `<tr><td>${esc(r.section)}</td><td><strong>${esc(r.hsn)}</strong></td><td>${esc(r.description)}</td><td>${esc(r.uqc)}</td><td>${Number(r.quantity).toLocaleString('en-IN')}</td><td>${gstMoney(r.totalValue)}</td><td>${gstMoney(r.taxableValue)}</td><td>${Number(r.rate)}%</td><td>${gstMoney(Number(r.igst)+Number(r.cgst)+Number(r.sgst)+Number(r.cess))}</td></tr>`).join('') || '<tr><td colspan="9">No HSN rows for this period.</td></tr>';
+  document.getElementById('gstTable13Body').innerHTML = report.gstr1Table13.map(r => `<tr><td>${esc(r.document)}</td><td>${esc(r.serialFrom || '—')}</td><td>${esc(r.serialTo || '—')}</td><td>${r.totalIssued}</td><td>${r.cancelled}</td><td>${r.netIssued}</td><td>${esc(r.filingStatus)}</td></tr>`).join('');
+  document.getElementById('gst3bBody').innerHTML = report.gstr3b.map(r => `<tr><td><strong>${esc(r.cell)}</strong></td><td>${esc(r.description)}</td><td>${gstMoney(r.taxableValue)}</td><td>${gstMoney(r.integratedTax)}</td><td>${gstMoney(r.centralTax)}</td><td>${gstMoney(r.stateTax)}</td><td>${gstMoney(r.cess)}</td></tr>`).join('');
+  document.getElementById('gstExceptions').innerHTML = report.exceptions.length
+    ? `<div style="color:var(--red);margin-bottom:.45rem;"><strong>${report.exceptions.length} item(s) need review:</strong></div>` + report.exceptions.map(x => `<div style="padding:.55rem .7rem;border:1px solid var(--border);margin:.35rem 0;background:var(--bg3)"><strong>${esc(x.type)}</strong>${x.orderId ? ` · ${esc(x.orderId)}` : ''}<br>${esc(x.detail)}</div>`).join('')
+    : '<div style="color:#5d9b55;">✓ No automated exceptions found. Final CA review is still recommended.</div>';
+  document.getElementById('gstReportResults').hidden = false;
+}
+function exportGstReport() {
+  const r = gstReportData;
+  if (!r || typeof XLSX === 'undefined') { alert('Generate the report first.'); return; }
+  const wb = XLSX.utils.book_new();
+  const add = (name, rows) => {
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = Object.keys(rows[0] || {}).map(k => ({ wch: Math.min(60, Math.max(12, k.length + 3)) }));
+    XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+  };
+  add('Filing Summary', [
+    { Field: 'Report period', Value: r.meta.periodLabel || r.meta.month },
+    { Field: 'Months included', Value: r.meta.monthCount || 1 },
+    { Field: 'Supplier state', Value: `${r.meta.supplierState} (${r.meta.supplierStateCode})` },
+    { Field: 'Gross website sales', Value: r.summary.grossSales },
+    { Field: 'Cancelled orders deducted', Value: r.summary.cancelledOrders },
+    { Field: 'RTO / lost deducted', Value: r.summary.rtoLost },
+    { Field: 'Completed refunds deducted', Value: r.summary.completedRefunds },
+    { Field: 'Net nil-rated sales', Value: r.summary.netNilRatedSales },
+    { Field: 'Net intra-state supplies', Value: r.summary.intraStateNet },
+    { Field: 'Net inter-state supplies', Value: r.summary.interStateNet },
+    { Field: 'Unclassified place of supply', Value: r.summary.unclassifiedStateNet },
+    { Field: 'Invoices/orders included', Value: r.summary.invoicesIssued },
+    { Field: 'Potential credit notes', Value: r.summary.potentialCreditNotes },
+  ]);
+  add('GSTR1 Table 8', r.gstr1Table8.map(x => ({ Cell:x.cell, 'Nature of supply':x.description, 'Nil Rated':x.nilRated, Exempted:x.exempted, 'Non-GST':x.nonGst })));
+  add('GSTR1 Table 12', r.gstr1Table12.map(x => ({ Section:x.section, HSN:x.hsn, Description:x.description, UQC:x.uqc, Quantity:x.quantity, 'Total Value':x.totalValue, 'Taxable Value':x.taxableValue, Rate:x.rate, IGST:x.igst, CGST:x.cgst, SGST:x.sgst, Cess:x.cess })));
+  add('GSTR1 Table 13', r.gstr1Table13.map(x => ({ Document:x.document, 'Serial From':x.serialFrom, 'Serial To':x.serialTo, 'Total Issued':x.totalIssued, Cancelled:x.cancelled, 'Net Issued':x.netIssued, Status:x.filingStatus })));
+  add('GSTR3B', r.gstr3b.map(x => ({ Cell:x.cell, Description:x.description, 'Taxable Value':x.taxableValue, IGST:x.integratedTax, CGST:x.centralTax, SGST:x.stateTax, Cess:x.cess })));
+  add('Reconciliation', r.reconciliation.map(x => ({ 'Order ID':x.orderId, Event:x.event, State:x.state, 'GST Registered':x.registered ? 'Yes':'No', Amount:x.amount })));
+  add('Review Exceptions', (r.exceptions.length ? r.exceptions : [{ type:'None', detail:'No automated exceptions found.' }]).map(x => ({ 'Order ID':x.orderId || '', Type:x.type, Detail:x.detail })));
+  add('Read Me', [
+    { Note:'Prepared from Ink & Chai website order records only; it does not include marketplace/offline sales and does not file GST returns.' },
+    { Note:'Printed books default to HSN 4901 and Nil Rated. Review colouring/activity/picture books and any non-book products separately.' },
+    { Note:'Verify buyer GSTIN, place of supply, invoice and credit-note serial ranges, returns, amendments and portal-populated values with your CA.' },
+    { Note:r.meta.basis },
+  ]);
+  const periodFile = r.meta.fromMonth === r.meta.toMonth ? r.meta.fromMonth : `${r.meta.fromMonth}-to-${r.meta.toMonth}`;
+  XLSX.writeFile(wb, `inkandchai-gst-sales-report-${periodFile}.xlsx`);
+}
+
 function initReports() {
+  initGstReport();
   if (!document.getElementById('rptFrom').value) {
     rptQuickRange(document.querySelector('.rpt-range[data-days="30"]'), 30);
     return; // rptQuickRange calls renderReports
@@ -9506,7 +9699,59 @@ function rptPickProduct(idx) {
   document.getElementById('rptChart').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-const TABS = ['orders','tools','create','products','bundles','coupons','reels','abandoned','reviews','replacements','returns','npcancelled','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
+let promotionRows = [];
+let legacyProductPromotions = [];
+const promoLocalDate = value => value ? new Date(value).toISOString().slice(0,16) : '';
+const promoStatus = p => {
+  if (p.status !== 'active') return p.status;
+  const now=Date.now(); if (p.starts_at && now < new Date(p.starts_at).getTime()) return 'scheduled';
+  if (p.ends_at && now > new Date(p.ends_at).getTime()) return 'expired';
+  return 'active';
+};
+async function loadPromotionsAdmin() {
+  const body=document.getElementById('promotionsBody'); if (!body) return;
+  body.innerHTML='<tr><td colspan="5">Loading…</td></tr>';
+  try {
+    const [res,legacyRes]=await Promise.all([adminFetch('/.netlify/functions/admin-promotions'),adminFetch('/.netlify/functions/admin-product-coupons')]); const data=await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const legacyData=await legacyRes.json().catch(()=>({})); legacyProductPromotions=legacyRes.ok?(legacyData.coupons||[]):[];
+    promotionRows=data.promotions||[]; renderPromotionsAdmin();
+  } catch(e) { body.innerHTML=`<tr><td colspan="5" style="color:var(--red)">${esc(e.message)}</td></tr>`; }
+}
+function renderPromotionsAdmin() {
+  const body=document.getElementById('promotionsBody'); if (!body) return;
+  const counts=promotionRows.reduce((a,p)=>{const s=promoStatus(p);a[s]=(a[s]||0)+1;return a;},{});
+  document.getElementById('promotionSummary').textContent=`${promotionRows.length} site-wide/manual promotions · ${legacyProductPromotions.length} product-specific coupons · ${counts.active||0} active · ${counts.scheduled||0} scheduled · ${(counts.paused||0)+(counts.ended||0)+(counts.expired||0)} inactive`;
+  const managedHtml=promotionRows.map(p=>{
+    const status=promoStatus(p); const offer=p.discount_type==='percent'?`${p.discount_value}% off`:`₹${p.discount_value} off`;
+    const scope=p.scope==='selected'?`${(p.product_slugs||[]).length} products`:'All products';
+    const toggle=status==='active'?`<button class="btn-outline" onclick="promotionAction('${p.id}','pause')">Pause</button>`:`<button class="btn-outline" onclick="promotionAction('${p.id}','activate')">Activate</button>`;
+    return `<tr><td><strong>${esc(p.name)}</strong><br><code>${esc(p.code)}</code>${p.auto_apply?' · Auto':''}</td><td>${offer}<br><span class="hint">Min ₹${Number(p.min_subtotal_inr||0).toLocaleString('en-IN')}</span></td><td>${scope}<br><span class="hint">${(p.payment_methods||[]).join(', ')}</span></td><td>${status}${p.ends_at?`<br><span class="hint">Ends ${new Date(p.ends_at).toLocaleString()}</span>`:''}</td><td><div class="mini-actions"><button class="btn-outline" onclick="editPromotionAdmin('${p.id}')">Edit</button>${toggle}<button class="btn-outline" onclick="promotionAction('${p.id}','end')">End</button><button class="btn-danger" onclick="deletePromotionAdmin('${p.id}')">Delete</button></div></td></tr>`;
+  }).join('');
+  const legacyHtml=legacyProductPromotions.map(p=>`<tr><td><strong>${esc(p.label)}</strong><br><code>${esc(p.code)}</code> · Product coupon</td><td>${p.discount_type==='percent'?p.discount_value+'% off':'₹'+p.discount_value+' off'}<br><span class="hint">Min ₹${Number(p.min_subtotal_inr||0).toLocaleString('en-IN')}</span></td><td>${(p.product_slugs||[]).length} products<br><span class="hint">prepaid</span></td><td>${p.is_active?'active':'paused'}${p.expires_at?`<br><span class="hint">Ends ${new Date(p.expires_at).toLocaleString()}</span>`:''}</td><td><button class="btn-outline" onclick="switchTab('products')">Edit in Products</button></td></tr>`).join('');
+  body.innerHTML=managedHtml+legacyHtml || '<tr><td colspan="5">No promotions yet.</td></tr>';
+}
+function editPromotionAdmin(id) {
+  const p=promotionRows.find(x=>x.id===id); if (!p) return;
+  document.getElementById('promoId').value=p.id; document.getElementById('promoName').value=p.name||''; document.getElementById('promoCode').value=p.code||'';
+  document.getElementById('promoType').value=p.discount_type||'percent'; document.getElementById('promoValue').value=p.discount_value||''; document.getElementById('promoMinimum').value=p.min_subtotal_inr||0; document.getElementById('promoMaximum').value=p.max_discount_inr||'';
+  document.getElementById('promoScope').value=p.scope||'all'; document.getElementById('promoSlugsRow').style.display=p.scope==='selected'?'':'none'; document.getElementById('promoSlugs').value=(p.product_slugs||[]).join('\n');
+  document.getElementById('promoPrepaid').checked=(p.payment_methods||[]).includes('prepaid'); document.getElementById('promoCod').checked=(p.payment_methods||[]).includes('cod'); document.getElementById('promoPartial').checked=(p.payment_methods||[]).includes('partial_cod');
+  document.getElementById('promoAuto').checked=!!p.auto_apply; document.getElementById('promoPrivate').checked=!!p.private; document.getElementById('promoStarts').value=promoLocalDate(p.starts_at); document.getElementById('promoEnds').value=promoLocalDate(p.ends_at);
+  document.getElementById('promoName').scrollIntoView({behavior:'smooth',block:'center'});
+}
+function clearPromotionForm() { ['promoId','promoName','promoCode','promoValue','promoMaximum','promoSlugs','promoStarts','promoEnds'].forEach(id=>document.getElementById(id).value=''); document.getElementById('promoMinimum').value='0'; document.getElementById('promoScope').value='all'; document.getElementById('promoSlugsRow').style.display='none'; document.getElementById('promoPrepaid').checked=true; document.getElementById('promoCod').checked=false; document.getElementById('promoPartial').checked=false; document.getElementById('promoAuto').checked=false; document.getElementById('promoPrivate').checked=false; }
+async function savePromotionAdmin() {
+  const methods=[]; if(document.getElementById('promoPrepaid').checked)methods.push('prepaid');if(document.getElementById('promoCod').checked)methods.push('cod');if(document.getElementById('promoPartial').checked)methods.push('partial_cod');
+  const payload={id:document.getElementById('promoId').value||undefined,name:document.getElementById('promoName').value.trim(),code:document.getElementById('promoCode').value.trim(),discount_type:document.getElementById('promoType').value,discount_value:Number(document.getElementById('promoValue').value),min_subtotal_inr:Number(document.getElementById('promoMinimum').value)||0,max_discount_inr:Number(document.getElementById('promoMaximum').value)||null,scope:document.getElementById('promoScope').value,product_slugs:document.getElementById('promoSlugs').value.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean),payment_methods:methods,auto_apply:document.getElementById('promoAuto').checked,private:document.getElementById('promoPrivate').checked,status:'active',starts_at:document.getElementById('promoStarts').value?new Date(document.getElementById('promoStarts').value).toISOString():null,ends_at:document.getElementById('promoEnds').value?new Date(document.getElementById('promoEnds').value).toISOString():null};
+  const msg=document.getElementById('promoMsg'); msg.textContent='Saving…';
+  try { const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);promotionRows=d.promotions||[];renderPromotionsAdmin();clearPromotionForm();msg.textContent='Promotion saved and live checkout rules refreshed.'; }
+  catch(e){msg.textContent='Could not save: '+e.message;}
+}
+async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
+async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
+
+const TABS = ['orders','tools','create','products','bundles','coupons','promotions','reels','abandoned','reviews','replacements','returns','npcancelled','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -9848,6 +10093,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
   if (tab === 'npcancelled' && _authed) loadNpCancelled();
   if (tab === 'coupons' && _authed) loadCouponManager();
+  if (tab === 'promotions' && _authed && adminRole === 'owner') loadPromotionsAdmin();
   if (tab === 'bundles' && _authed) initBundleBuilder();
   if (tab === 'reviews') fetchPendingReviews();
   if (tab === 'replacements' && _authed) renderReplacementRequests();
