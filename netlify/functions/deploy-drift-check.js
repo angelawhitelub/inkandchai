@@ -18,8 +18,6 @@
  * the question is not "what did the last build think it built", it is "what is
  * being served right now".
  */
-const { sendWhatsApp } = require('./utils/whatsapp');
-
 const SITE = process.env.URL || 'https://inkandchai.in';
 const REPO = process.env.GITHUB_REPO || 'angelawhitelub/inkandchai';
 const BRANCH = process.env.DEPLOY_BRANCH || 'main';
@@ -40,6 +38,31 @@ async function mainHead() {
   if (!res.ok) throw new Error(`GitHub returned HTTP ${res.status}`);
   const data = await res.json();
   return { sha: String(data.sha || ''), committed_at: data?.commit?.committer?.date || '' };
+}
+
+/**
+ * Plain WhatsApp text to the owner, matching how nimbuspost-webhook already
+ * raises operational alerts — no template approval needed, and it reuses the
+ * number already configured for the shop.
+ */
+async function alertOwner(text) {
+  const ownerPhone = process.env.STORE_OWNER_PHONE;
+  const token = process.env.WHATSAPP_TOKEN;
+  if (!ownerPhone || !token) {
+    console.warn('[deploy-drift] no STORE_OWNER_PHONE/WHATSAPP_TOKEN — alert logged only');
+    return;
+  }
+  const phoneId = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
+  const to = ownerPhone.replace(/\D/g, '').replace(/^0/, '91').replace(/^(\d{10})$/, '91$1');
+  try {
+    await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: text.slice(0, 3500) } }),
+    });
+  } catch (err) {
+    console.error('[deploy-drift] could not send the alert:', err.message);
+  }
 }
 
 exports.handler = async () => {
@@ -71,12 +94,8 @@ exports.handler = async () => {
 
   if (!problems.length) return report(true, { live_commit: live?.commit?.slice(0, 10), head: head.sha.slice(0, 10) });
 
-  const message = `Live site does not match ${BRANCH}. ${problems.join(' ')} Re-deploy from ${BRANCH} to fix.`;
-  console.error('[deploy-drift]', message);
-  const to = process.env.ADMIN_ALERT_PHONE || process.env.ADMIN_WHATSAPP;
-  if (to) {
-    try { await sendWhatsApp(to, 'admin_alert', [message.slice(0, 900)]); }
-    catch (err) { console.error('[deploy-drift] could not send the alert:', err.message); }
-  }
+  const message = `⚠️ Live site does not match ${BRANCH}\n${problems.join('\n')}\nFix: push to ${BRANCH}, or re-run the last ${BRANCH} deploy from the Netlify dashboard.`;
+  console.error('[deploy-drift]', message.replace(/\n/g, ' '));
+  await alertOwner(message);
   return report(false, { problems, live_commit: live?.commit || null, head: head.sha });
 };

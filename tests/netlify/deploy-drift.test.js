@@ -54,3 +54,13 @@ test('a push still deploying is not reported as drift', () => {
 test('the check actually runs on a schedule', () => {
   assert.match(toml, /\[functions\."deploy-drift-check"\]\s*\n\s*schedule = "@hourly"/);
 });
+
+test('the alert reaches the owner with no new configuration', () => {
+  // STORE_OWNER_PHONE is what the shop already uses for operational alerts,
+  // and a plain text message needs no template approval — an alert that
+  // depends on setup nobody did is an alert that never arrives.
+  assert.match(fn, /process\.env\.STORE_OWNER_PHONE/);
+  assert.match(fn, /messaging_product: 'whatsapp'/);
+  // Missing credentials must not throw inside a scheduled function.
+  assert.match(fn, /alert logged only/);
+});
