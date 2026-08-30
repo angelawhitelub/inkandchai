@@ -4577,6 +4577,11 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .ship-by-date{font-size:0.95rem;font-weight:600;color:#faf7f2;font-family:'Cormorant Garamond',serif}
 .ship-by-sub{font-size:0.62rem;color:#a09080;margin-top:0.1rem}
 .ship-by-limited{font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#c9a84c;margin-top:0.15rem}
+.eta-block{margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid rgba(109,191,109,0.18)}
+.eta-head{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:#6dbf6d;margin-bottom:0.28rem}
+.eta-row{display:flex;justify-content:space-between;gap:1.2rem;font-size:0.66rem;line-height:1.75;color:#a09080}
+.eta-zone{white-space:nowrap}
+.eta-date{color:#f0e8d8;font-weight:600;white-space:nowrap}
 /* Courier partners */
 .prod-courier-row{display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap}
 .prod-courier-label{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:#a09080;flex-shrink:0}
@@ -5008,29 +5013,64 @@ BOOKS.forEach(b => { BOOK_MAP[b.slug] = b; });
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-// ── Ship-by date widget ───────────────────────────────────────────────────────
-// Threshold: midnight IST (12:00 AM). Orders before midnight → ships tomorrow.
-// After midnight (00:00–00:59 IST) → ships day after tomorrow (warehouse closed).
-// Exception: Off Campus 5-book collection → always 2 days (limited stock).
+// ── Ship-by date + delivery estimate ─────────────────────────────────────────
+// Cutoff is 03:00 IST — the nightly courier manifest closes then. An order
+// placed BEFORE 03:00 still makes that morning's dispatch (ships same day);
+// from 03:00 onwards it waits for the next one (ships next day).
+// Exception: Off Campus 5-book collection → always one extra day (limited stock).
 const SLOW_SHIP_SLUGS = new Set(['off-campus-complete-5-book-collection-elle-kennedy']);
+const SHIP_CUTOFF_HOUR_IST = 3;
+
+// Transit days from the Delhi warehouse, by distance band.
+const DELIVERY_ZONES = [
+  { label: 'Delhi NCR',      days: 1 },
+  { label: 'Nearby states',  days: 2 },
+  { label: 'Rest of India',  days: 3 },
+];
+
+function istNow() {
+  // Shift into IST so the UTC getters read as IST wall-clock values.
+  return new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+}
+
+function fmtDay(date) {
+  return new Intl.DateTimeFormat('en-IN', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC'
+  }).format(date);
+}
+
+function fmtDayShort(date) {
+  return new Intl.DateTimeFormat('en-IN', {
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC'
+  }).format(date);
+}
+
+function addDays(date, n) {
+  return new Date(date.getTime() + n * 24 * 60 * 60 * 1000);
+}
 
 function getShipByHTML(slug) {
-  // Current IST time (UTC+5:30)
-  const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-  const istHour = nowIST.getUTCHours(); // 0–23
+  const nowIST = istNow();
+  const istHour = nowIST.getUTCHours(); // 0–23, IST wall clock
 
   const isLimited = SLOW_SHIP_SLUGS.has(slug);
-  // After midnight (hour 0) warehouse is closed → add 2 days; else add 1
-  const daysToAdd = isLimited ? 2 : (istHour === 0 ? 2 : 1);
+  // Before 03:00 IST the order still catches today's manifest.
+  let daysToShip = istHour < SHIP_CUTOFF_HOUR_IST ? 0 : 1;
+  if (isLimited) daysToShip += 1;
 
-  const shipDate = new Date(nowIST.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
-  const shipStr  = new Intl.DateTimeFormat('en-IN', {
-    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata'
-  }).format(shipDate);
+  const shipDate = addDays(nowIST, daysToShip);
+  const shipStr = fmtDay(shipDate);
 
   const subText = isLimited
     ? 'Limited stock — allow extra processing time'
-    : (daysToAdd === 1 ? 'Order now to get it dispatched tomorrow' : 'Order now — dispatches day after tomorrow');
+    : (daysToShip === 0
+        ? 'Order now and it is dispatched today'
+        : 'Order now to get it dispatched tomorrow');
+
+  const zoneRows = DELIVERY_ZONES.map(z =>
+    `<div class="eta-row"><span class="eta-zone">${z.label}</span>` +
+    `<span class="eta-date">${fmtDayShort(addDays(shipDate, z.days))}</span></div>`
+  ).join('');
 
   return `
     <div class="ship-by-box">
@@ -5040,6 +5080,10 @@ function getShipByHTML(slug) {
         <div class="ship-by-date">${shipStr}</div>
         <div class="ship-by-sub">${subText}</div>
         ${isLimited ? '<div class="ship-by-limited">⚡ Limited stock</div>' : ''}
+        <div class="eta-block">
+          <div class="eta-head">Estimated delivery</div>
+          ${zoneRows}
+        </div>
       </div>
     </div>`;
 }
@@ -6515,13 +6559,15 @@ def static_product_html(book):
     # from window.__IAC_REELS__. The strip loads NO video bytes (poster tiles
     # only); a reel streams from Supabase's CDN only when opened — zero Netlify
     # video bandwidth. "<\/" guards against a caption ever closing the script.
-    bkg_html = ""
-    if social_items:
-        reels_json = json.dumps(social_items[:12], ensure_ascii=False).replace("</", "<\\/")
-        bkg_html = (
-            f'<section data-iac-reels></section>'
-            f'<script>window.__IAC_REELS__={reels_json};</script>'
-        )
+    # The section is emitted unconditionally: social_proof.json is empty by
+    # design now (the strip is curated from the admin panel) and reels.js fetches
+    # the live list at runtime. Gating the container on the build-time list left
+    # admin-uploaded reels with nowhere to mount, so nothing ever appeared.
+    reels_json = json.dumps(social_items[:12], ensure_ascii=False).replace("</", "<\\/")
+    bkg_html = (
+        f'<section data-iac-reels></section>'
+        f'<script>window.__IAC_REELS__={reels_json};</script>'
+    )
 
     # ── You May Also Like section (pre-computed at build time) ──────────────
     related_books = related_books_for(book)
@@ -6621,6 +6667,11 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 .ship-by-label{{font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:#6dbf6d}}
 .ship-by-date{{font-size:0.95rem;font-weight:600;color:#faf7f2;font-family:'Cormorant Garamond',serif}}
 .ship-by-sub{{font-size:0.62rem;color:#a09080;margin-top:0.1rem}}
+.eta-block{{margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid rgba(109,191,109,0.18)}}
+.eta-head{{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:#6dbf6d;margin-bottom:0.28rem}}
+.eta-row{{display:flex;justify-content:space-between;gap:1.2rem;font-size:0.66rem;line-height:1.75;color:#a09080}}
+.eta-zone{{white-space:nowrap}}
+.eta-date{{color:#f0e8d8;font-weight:600;white-space:nowrap}}
 .ship-by-limited{{font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#c9a84c;margin-top:0.15rem}}
 /* Trust badges. Were four full-width emoji pills with a 24px radius — the
    stadium shape and the OS-drawn emoji are what dated them. Now a 2x2 grid of
@@ -7153,30 +7204,47 @@ document.addEventListener('keydown', e => {{
   if (document.getElementById('lb').style.display === 'flex') closeLB();
   if (document.getElementById('pdfM').style.display === 'flex') closePdf();
 }});
-// ── Ship-by date widget ───────────────────────────────────────────────────────
+// ── Ship-by date + delivery estimate ─────────────────────────────────────────
+// Cutoff is 03:00 IST — the nightly courier manifest closes then. Before 03:00
+// the order still makes that morning's dispatch; from 03:00 it waits a day.
 (function() {{
   var slug = '{book["slug"]}';
   var SLOW = new Set(['off-campus-complete-5-book-collection-elle-kennedy']);
+  var CUTOFF = 3;
+  var ZONES = [
+    ['Delhi NCR', 1],
+    ['Nearby states', 2],
+    ['Rest of India', 3]
+  ];
   var nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
   var h = nowIST.getUTCHours();
-  var days = SLOW.has(slug) ? 2 : (h === 0 ? 2 : 1);
-  var shipDate = new Date(nowIST.getTime() + days * 24 * 60 * 60 * 1000);
-  var shipStr = new Intl.DateTimeFormat('en-IN', {{
-    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata'
-  }}).format(shipDate);
+  var days = h < CUTOFF ? 0 : 1;
+  if (SLOW.has(slug)) days += 1;
+  function addDays(d, n) {{ return new Date(d.getTime() + n * 86400000); }}
+  function fmt(d, w) {{
+    return new Intl.DateTimeFormat('en-IN', {{
+      weekday: w, day: 'numeric', month: w === 'long' ? 'long' : 'short', timeZone: 'UTC'
+    }}).format(d);
+  }}
+  var shipDate = addDays(nowIST, days);
   var sub = SLOW.has(slug)
     ? 'Limited stock — allow extra processing time'
-    : (days === 1 ? 'Order now to get it dispatched tomorrow' : 'Order now — dispatches day after tomorrow');
+    : (days === 0 ? 'Order now and it is dispatched today' : 'Order now to get it dispatched tomorrow');
   var limited = SLOW.has(slug) ? '<div class="ship-by-limited">⚡ Limited stock</div>' : '';
+  var rows = ZONES.map(function (z) {{
+    return '<div class="eta-row"><span class="eta-zone">' + z[0] + '</span>'
+      + '<span class="eta-date">' + fmt(addDays(shipDate, z[1]), 'short') + '</span></div>';
+  }}).join('');
   var el = document.getElementById('staticShipBy');
   if (el) el.innerHTML =
     '<div class="ship-by-box">'
     + '<div class="ship-by-icon">📦</div>'
     + '<div class="ship-by-text">'
     + '<div class="ship-by-label">Ships by</div>'
-    + '<div class="ship-by-date">' + shipStr + '</div>'
+    + '<div class="ship-by-date">' + fmt(shipDate, 'long') + '</div>'
     + '<div class="ship-by-sub">' + sub + '</div>'
     + limited
+    + '<div class="eta-block"><div class="eta-head">Estimated delivery</div>' + rows + '</div>'
     + '</div></div>';
 }}());
 applyRuntimeProductOverride().then(reportViewContent, reportViewContent);
