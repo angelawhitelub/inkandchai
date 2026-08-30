@@ -10648,6 +10648,29 @@ robots_out = Path(__file__).parent / "public" / "robots.txt"
 robots_out.write_text(robots_txt, encoding="utf-8")
 print(f"Generated: {robots_out}")
 
+# ── Build stamp ───────────────────────────────────────────────────────────────
+# Records which commit produced this deploy, so drift can be detected.
+#
+# On 30 Aug 2026 the production site was replaced by `netlify deploy` run from a
+# laptop checkout sitting on an old branch with uncommitted changes. It carried
+# no commit reference, so nothing in the dashboard said the site had rolled back
+# — the admin panel quietly lost its Coupons, Profit, NP-Cancelled and
+# print-item-list features, and checkout lost WhatsApp consent capture, for a
+# day before anyone noticed. This file is what makes that visible: a deploy from
+# CI stamps the commit it built, and a hand-made deploy either has no stamp or
+# carries a commit that is not on main.
+from datetime import timezone as _tz
+build_info = {
+    "commit": os.environ.get("COMMIT_REF", ""),
+    "branch": os.environ.get("BRANCH", ""),
+    "context": os.environ.get("CONTEXT", "local"),
+    "deploy_id": os.environ.get("DEPLOY_ID", ""),
+    "built_at": datetime.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+}
+build_info_out = Path(__file__).parent / "public" / "build-info.json"
+build_info_out.write_text(json.dumps(build_info, indent=2), encoding="utf-8")
+print(f"Generated: {build_info_out}  (commit {build_info['commit'][:10] or 'local'})")
+
 # Server-side lookup for proxied legacy CDN images. Public pages only expose
 # opaque image IDs, while the source URLs stay inside the Netlify function.
 image_map_out = Path(__file__).parent / "netlify" / "functions" / "image-map.json"

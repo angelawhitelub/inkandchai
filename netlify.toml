@@ -101,6 +101,14 @@
 [functions."whatsapp-broadcast-scheduled"]
   schedule = "30 13 * * 2,5"
 
+# Shout if the live site stops matching main. A production deploy made by hand
+# carries no commit reference, so the dashboard shows a normal green deploy
+# while the site has silently rolled back — which is exactly how a day's worth
+# of admin features went missing on 30 Aug 2026. Hourly is soon enough to catch
+# it before work is written against code the site is not running.
+[functions."deploy-drift-check"]
+  schedule = "@hourly"
+
 # Route Supabase Storage image requests through our Netlify-cached proxy so
 # each image is fetched from Supabase at most once per 30 days per edge. Cuts
 # the "cached egress" quota drain caused by admin-created product covers.
