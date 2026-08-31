@@ -330,7 +330,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 /* Video "quality proof" slide — the real book on camera, not a cover render. */
 .gallery-slide-video{position:relative}
 .gallery-slide-video video{max-width:100%;max-height:600px;border-radius:16px;background:#000;box-shadow:0 24px 64px rgba(0,0,0,.35)}
-.vid-badge{position:absolute;top:10px;left:10px;z-index:2;pointer-events:none;font-size:.56rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-light);background:rgba(13,11,8,.72);border:1px solid var(--glass-border);border-radius:999px;padding:.32rem .6rem;backdrop-filter:blur(8px)}
+.ship-by-box{display:flex;align-items:flex-start;gap:.65rem;padding:.75rem 1rem;margin:1.2rem 0 0;background:rgba(109,191,109,.07);border:1px solid rgba(109,191,109,.22);border-radius:14px}.ship-by-icon{font-size:1.15rem;line-height:1;flex-shrink:0;margin-top:.1rem}.ship-by-text{display:flex;flex-direction:column;gap:.18rem}.ship-by-label{font-size:.58rem;letter-spacing:.2em;text-transform:uppercase;color:#6dbf6d}.ship-by-date{font-size:.95rem;font-weight:600;color:var(--cream)}.ship-by-sub{font-size:.62rem;color:var(--cream-dim,#a09080);margin-top:.1rem}.eta-block{margin-top:.5rem;padding-top:.5rem;border-top:1px solid rgba(109,191,109,.18)}.eta-head{font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;color:#6dbf6d;margin-bottom:.28rem}.eta-row{display:flex;justify-content:space-between;gap:1.2rem;font-size:.66rem;line-height:1.75;color:var(--cream-dim,#a09080)}.eta-zone{white-space:nowrap}.eta-date{color:var(--cream);font-weight:600;white-space:nowrap}.vid-badge{position:absolute;top:10px;left:10px;z-index:2;pointer-events:none;font-size:.56rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-light);background:rgba(13,11,8,.72);border:1px solid var(--glass-border);border-radius:999px;padding:.32rem .6rem;backdrop-filter:blur(8px)}
 @media(max-width:760px){.gal-arrow{display:none}}
 /* Nav search — hands the query to the homepage full-catalogue search (/?q=) */
 .nav-search{display:flex;align-items:center;gap:.4rem;flex:1;max-width:420px;margin:0 1rem;background:rgba(214,184,94,.07);border:1px solid var(--glass-border);border-radius:999px;padding:.28rem .28rem .28rem .9rem}
@@ -361,6 +361,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     <div class="author">by ${author}</div>
     <div class="product-price-row" data-sale-anchor><span class="price" data-product-price="${saleNum}">${esc(price)}</span>${mrp ? `<span class="orig" data-product-original-price="${mrpNum}">${esc(mrp)}</span>` : ''}${savePct ? `<span class="save-badge" data-save-badge>${savePct}% off</span>` : '<span class="save-badge" data-save-badge hidden></span>'}</div>
     <span class="stock">In Stock</span>
+    <div id="shipBy"></div>
     <div class="trust">${trustBadge(ICON.truck, 'Delivery in 2-5 days', 'Shipped across India')}${noCod
       ? trustBadge(ICON.cash, 'Partial COD', 'Pay 10% now, rest on delivery')
       : trustBadge(ICON.cash, 'Cash on delivery', 'Pay when it arrives')}${trustBadge(ICON.card, 'UPI, cards, net banking', 'Secure checkout')}${trustBadge(ICON.shield, '7-day replacement', 'Damaged or wrong book')}</div>
@@ -398,6 +399,35 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 <section id="bookstagramContent"></section>
 <script>window.__IAC_REELS__=${JSON.stringify(SOCIAL_PROOF).replace(/</g, '\\u003c')};</script>
 <script src="/js/reels.js" defer></script>
+<script>
+(function () {
+  var CUTOFF = 3;                                   // 03:00 IST manifest cutoff
+  var ZONES = [['Delhi NCR', 1], ['Nearby states', 2], ['Rest of India', 3]];
+  function addDays(d, n) { return new Date(d.getTime() + n * 86400000); }
+  function fmt(d, w) {
+    return new Intl.DateTimeFormat('en-IN', {
+      weekday: w, day: 'numeric', month: w === 'long' ? 'long' : 'short', timeZone: 'UTC'
+    }).format(d);
+  }
+  var nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  var days = nowIST.getUTCHours() < CUTOFF ? 0 : 1;
+  var shipDate = addDays(nowIST, days);
+  var rows = ZONES.map(function (z) {
+    return '<div class="eta-row"><span class="eta-zone">' + z[0] + '</span>'
+      + '<span class="eta-date">' + fmt(addDays(shipDate, z[1]), 'short') + '</span></div>';
+  }).join('');
+  var el = document.getElementById('shipBy');
+  if (el) el.innerHTML =
+    '<div class="ship-by-box"><div class="ship-by-icon">\uD83D\uDCE6</div><div class="ship-by-text">'
+    + '<div class="ship-by-label">Ships by</div>'
+    + '<div class="ship-by-date">' + fmt(shipDate, 'long') + '</div>'
+    + '<div class="ship-by-sub">'
+    + (days === 0 ? 'Order now and it is dispatched today' : 'Order now to get it dispatched tomorrow')
+    + '</div>'
+    + '<div class="eta-block"><div class="eta-head">Estimated delivery</div>' + rows + '</div>'
+    + '</div></div>';
+}());
+</script>
 <script src="/js/cart.js"></script>
 <!-- Google automated discounts: this page is rendered live, not prerendered by
      generate_site.py, so it needs the include of its own. -->
