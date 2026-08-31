@@ -136,6 +136,12 @@ exports.handler = async (event) => {
   catch { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
   const updates = Array.isArray(body.updates) ? body.updates.slice(0, 500) : [];
+  // The admin panel cancels one order per request on purpose (each one calls a
+  // payment gateway and sends two messages). That meant one owner email per
+  // order -- closing a 106-order NimbusPost backlog buried the inbox. With this
+  // set, the caller takes responsibility for sending a single digest instead;
+  // the CUSTOMER notifications are untouched and still go out per order.
+  const skipOwnerEmail = body.skip_owner_email === true;
   if (!updates.length) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide updates[]' }) };
   }
@@ -271,6 +277,7 @@ exports.handler = async (event) => {
       if (status === 'cancelled' && order.status !== 'cancelled' && saved) {
         await notifyOrderCancelled(saved, {
           reason: 'Your order status was updated to cancelled.',
+          skipOwnerEmail,
         });
         cancellationsNotified++;
       }

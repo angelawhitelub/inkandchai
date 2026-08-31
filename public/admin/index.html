@@ -7903,13 +7903,31 @@ async function cancelSelectedNpOrders(btn) {
       const res = await adminFetch('/.netlify/functions/bulk-update-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updates: [{ order_id: ids[i], status: 'cancelled' }] }),
+        // Owner copy suppressed for a batch — one digest goes out below
+        // instead of one email per order. Customer email/WhatsApp unaffected.
+        body: JSON.stringify({ updates: [{ order_id: ids[i], status: 'cancelled' }], skip_owner_email: ids.length > 1 }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.updated === 1) done.push(ids[i]);
       else failed.push(ids[i] + ': ' + (data.error || data.results?.[0]?.error || ('HTTP ' + res.status)));
     } catch (e) {
       failed.push(ids[i] + ': ' + e.message);
+    }
+  }
+
+  // One summary email for the batch, in place of the per-order owner copies
+  // that were suppressed above. Best-effort: the cancellations themselves have
+  // already happened and must not be reported as failed over a missing email.
+  if (done.length > 1) {
+    btn.textContent = 'Sending summary…';
+    try {
+      await adminFetch('/.netlify/functions/admin-cancellation-digest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_ids: done, reason: 'Cancelled at NimbusPost — closed from the admin panel.' }),
+      });
+    } catch (e) {
+      console.warn('[np-cancelled] digest email failed:', e.message);
     }
   }
 

@@ -29,6 +29,26 @@ const MIN_ABANDON_HOURS = 1;   // don't message sooner than 1 hour
 const MAX_ABANDON_HOURS = 48;  // ignore leads older than 48 hours
 const MAX_PER_RUN       = 30;  // safety cap — avoid blasting on first deploy
 
+// Don't spend a MARKETING-rate WhatsApp on a cart too small to pay for it.
+// Measured over August 2026: the reminder converts at 1.4-1.7% below ₹400 and
+// 2.2-3.2% above it, so the two cheapest bands burned 65% of the spend
+// (₹1,435 of ₹2,202) to return 26% of the recovered value. On book margins,
+// with the 10% CHAI10BACK coupon on top, the sub-₹200 band was break-even.
+// Override with WHATSAPP_RECOVERY_MIN_PAISE; set it to 0 to message everyone.
+const MIN_CART_PAISE = process.env.WHATSAPP_RECOVERY_MIN_PAISE !== undefined
+  ? Math.max(0, Number(process.env.WHATSAPP_RECOVERY_MIN_PAISE) || 0)
+  : 40000;   // ₹400
+
+// Meta rejects an unapproved or param-mismatched template before anything is
+// sent or charged, so falling back to the older template is free. 132xxx are
+// the template errors.
+function isTemplateRejection(r) {
+  const code = Number(r?.error?.code ?? r?.code ?? 0);
+  const msg = String(r?.error?.message || r?.error || '').toLowerCase();
+  if (code >= 132000 && code <= 132999) return true;
+  return /template/.test(msg) && /(not exist|not found|does not|not approved|param)/.test(msg);
+}
+
 // Build a WhatsApp-safe book label from cart items: the first title, plus a
 // "& N more book(s)" tail for multi-item carts. Strips newlines/tabs (Meta
 // rejects template params containing them) and caps length.
@@ -95,6 +115,7 @@ exports.handler = async () => {
     .gt('last_seen_at', maxAgo)          // not older than 48 hours
     .is('followup_whatsapp_clicked_at', null) // not already messaged via WA
     .is('followup_email_sent_at', null)       // not already emailed
+    .gte('amount_paise', MIN_CART_PAISE)      // worth a marketing-rate message
     .limit(MAX_PER_RUN);
 
   if (error) {
@@ -146,7 +167,10 @@ exports.handler = async () => {
         // zero-downtime swap before/after Meta approval.
         const p = [firstName, bookLabel, amtRaw];
         let r = await sendWhatsApp({ to: lead.customer_phone, template: 'cart_reminder_ig', params: p });
-        if (!r || !r.ok) {
+        // Retry ONLY on a template-level rejection. Any other failure (network
+        // blip, timeout, 5xx) may well have delivered, and a blind resend pays
+        // the marketing rate twice AND messages the customer twice.
+        if (!r || (!r.ok && isTemplateRejection(r))) {
           r = await sendWhatsApp({ to: lead.customer_phone, template: 'cart_reminder', params: p });
         }
         if (r && r.ok) {
