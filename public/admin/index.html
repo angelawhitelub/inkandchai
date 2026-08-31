@@ -1871,10 +1871,10 @@ select,input,textarea{font-size:1rem;}
       <div class="mini-actions">
         <label class="hint" style="display:flex;align-items:center;gap:.35rem;">Scan
           <select id="npCancelledPages" style="padding:.3rem;">
-            <option value="3">300 newest</option>
-            <option value="5" selected>500 newest</option>
-            <option value="10">1000 newest</option>
-            <option value="15">1500 newest</option>
+            <option value="5">500 open shipments</option>
+            <option value="10">1000 open shipments</option>
+            <option value="20" selected>2000 open shipments (all)</option>
+            <option value="25">2500 open shipments</option>
           </select>
         </label>
         <button class="btn-outline" onclick="loadNpCancelled()">↻ Scan NimbusPost</button>
@@ -7737,9 +7737,8 @@ async function loadNpCancelled() {
 
     npCancelledRows = data.orders || [];
     const t = data.totals || {};
-    meta.innerHTML = `Scanned <strong>${data.scanned}</strong> NimbusPost rows · `
-      + `<strong>${data.cancelled_at_nimbus}</strong> cancelled there · `
-      + `<strong style="color:${npCancelledRows.length ? '#e07020' : '#5d9b55'};">${npCancelledRows.length}</strong> still open here.`;
+    meta.innerHTML = `Checked <strong>${data.scanned}</strong> shipments still open here · `
+      + `<strong style="color:${npCancelledRows.length ? '#e07020' : '#5d9b55'};">${npCancelledRows.length}</strong> cancelled at NimbusPost.`;
 
     const badge = document.getElementById('npCancelledBadge');
     if (badge) {

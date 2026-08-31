@@ -21,10 +21,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const {
-  listNimbusOrders, rowIsCancelled, shipmentStatusFromRow,
-  orderNumberFromRow, awbFromRow,
-} = require('./utils/nimbuspost-cancel');
+const { trackNimbusShipments } = require('./utils/nimbuspost-cancel');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -35,7 +32,22 @@ const CORS = {
 // Already dealt with — cancelled, or somewhere in the refund pipeline. Listing
 // these again would invite a second cancellation on an order that already has
 // a refund in flight.
-const SETTLED = ['cancelled', 'refunded', 'refund_pending', 'partially_refunded'];
+const SETTLED = [
+  'cancelled', 'refunded', 'refund_pending', 'partially_refunded', 'refund_failed',
+];
+
+// Reached the customer (or the courier is still trying), so a NimbusPost
+// "cancelled" against one of these is not an unreconciled auto-cancel.
+const TERMINAL = ['delivered', 'returned', 'rto'];
+
+// NimbusPost's own word for the shipment. Narrow on purpose: this drives a
+// money action, so "cancellation requested" (a request) must not match.
+function npSaysCancelled(status) {
+  const s = String(status || '').trim();
+  if (!s) return false;
+  if (/cancellation\s+requested/i.test(s)) return false;
+  return /\b(cancell?ed)\b/i.test(s);
+}
 
 function cartOf(order) {
   let cart = order.cart_items;
@@ -54,70 +66,83 @@ exports.handler = async (event) => {
   const denied = requireAdmin(event, CORS);
   if (denied) return denied;
 
-  const key = process.env.NIMBUSPOST_API_KEY;
-  if (!key) {
-    return { statusCode: 503, headers: CORS, body: JSON.stringify({ error: 'NIMBUSPOST_API_KEY not configured' }) };
+  if (!process.env.NIMBUSPOST_EMAIL || !process.env.NIMBUSPOST_PASSWORD) {
+    return { statusCode: 503, headers: CORS, body: JSON.stringify({ error: 'NIMBUSPOST_EMAIL / NIMBUSPOST_PASSWORD not configured' }) };
   }
 
-  // 100 rows a page. 5 pages is roughly a fortnight of volume and comfortably
-  // inside the function timeout; the panel can ask for more when reconciling
-  // further back.
-  const pages = Math.min(Math.max(Number(event.queryStringParameters?.pages) || 5, 1), 15);
-
-  let rows;
-  try {
-    rows = await listNimbusOrders(key, pages);
-  } catch (e) {
-    return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: `NimbusPost: ${e.message}` }) };
-  }
-
-  const cancelled = rows.filter(rowIsCancelled);
-  if (!cancelled.length) {
-    return {
-      statusCode: 200,
-      headers: CORS,
-      body: JSON.stringify({ ok: true, scanned: rows.length, pages, cancelled_at_nimbus: 0, orders: [], totals: emptyTotals() }),
-    };
-  }
-
-  // Match on our own order id first (we send it as order_number on push, so it
-  // is the reliable key) and fall back to the AWB for anything pushed before
-  // that, or created directly in the panel.
-  const byOrderNumber = new Map();
-  const byAwb = new Map();
-  for (const row of cancelled) {
-    const num = orderNumberFromRow(row);
-    const awb = awbFromRow(row);
-    if (num) byOrderNumber.set(num, row);
-    if (awb) byAwb.set(awb, row);
-  }
+  // How many of our own open shipments to check, newest AWB first. This used to
+  // page NimbusPost's panel newest-CREATED-first and look for cancelled rows,
+  // which could not work: NimbusPost auto-cancels shipments nobody picked up,
+  // so the ones we need are the OLDEST, hundreds of rows past any such window.
+  // A sweep that reported "0 still open" while 37 auto-cancelled orders sat at
+  // `shipped` is what that cost. Now the question runs the other way -- we hand
+  // NimbusPost the AWBs of everything still open on our side and ask what it
+  // thinks -- so age is irrelevant and only our open-order count bounds it.
+  const pages = Math.min(Math.max(Number(event.queryStringParameters?.pages) || 5, 1), 25);
+  const limit = pages * 100;
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const cols = 'id,razorpay_order_id,razorpay_payment_id,tracking_id,courier_name,status,amount_paise,'
     + 'advance_paid_paise,customer_name,customer_phone,customer_email,cart_items,created_at,source,'
     + 'shipped_at,refund_state';
 
-  const [byId, byTrk] = await Promise.all([
-    byOrderNumber.size
-      ? supabase.from('orders').select(cols).in('razorpay_order_id', [...byOrderNumber.keys()])
-      : Promise.resolve({ data: [] }),
-    byAwb.size
-      ? supabase.from('orders').select(cols).in('tracking_id', [...byAwb.keys()])
-      : Promise.resolve({ data: [] }),
-  ]);
-  if (byId.error || byTrk.error) {
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: (byId.error || byTrk.error).message }) };
+  // PostgREST caps a single response at 1000 rows regardless of .limit(), so
+  // pull in pages -- asking for 1600 and silently getting 1000 would leave the
+  // oldest open shipments unchecked, which are exactly the ones NimbusPost
+  // auto-cancels.
+  const PAGE = 1000;
+  const candidates = [];
+  for (let from = 0; from < limit; from += PAGE) {
+    const to = Math.min(from + PAGE, limit) - 1;
+    const { data, error } = await supabase
+      .from('orders')
+      .select(cols)
+      .not('tracking_id', 'is', null)
+      .neq('tracking_id', '')
+      .not('status', 'in', `(${[...SETTLED, ...TERMINAL].join(',')})`)
+      .order('awb_assigned_at', { ascending: false, nullsFirst: false })
+      .range(from, to);
+    if (error) {
+      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: error.message }) };
+    }
+    candidates.push(...(data || []));
+    if (!data || data.length < to - from + 1) break;   // ran out of rows
+  }
+  if (!candidates.length) {
+    return {
+      statusCode: 200,
+      headers: CORS,
+      body: JSON.stringify({ ok: true, scanned: 0, pages, cancelled_at_nimbus: 0, matched: 0, orders: [], totals: emptyTotals() }),
+    };
+  }
+
+  let tracked;
+  try {
+    tracked = await trackNimbusShipments(candidates.map(o => o.tracking_id));
+  } catch (e) {
+    return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: `NimbusPost: ${e.message}` }) };
+  }
+
+  // Index the tracking rows both ways. order_number is our own IC-… id and is
+  // the reliable key; the AWB covers anything pushed before we sent it.
+  const npByOrder = new Map();
+  const npByAwb = new Map();
+  for (const row of tracked) {
+    if (!npSaysCancelled(row?.status)) continue;
+    const num = String(row?.order_number || '').trim().toUpperCase();
+    const awb = String(row?.awb_number || '').trim();
+    if (num) npByOrder.set(num, row);
+    if (awb) npByAwb.set(awb, row);
   }
 
   const seen = new Set();
   const orders = [];
-  for (const o of [...(byId.data || []), ...(byTrk.data || [])]) {
+  for (const o of candidates) {
+    const row = npByOrder.get(String(o.razorpay_order_id || '').trim().toUpperCase())
+      || npByAwb.get(String(o.tracking_id || '').trim());
+    if (!row) continue;                       // NimbusPost does not call it cancelled
     if (seen.has(o.id)) continue;
     seen.add(o.id);
-    if (SETTLED.includes(String(o.status || '').toLowerCase())) continue;
-
-    const row = byOrderNumber.get(String(o.razorpay_order_id || '').toUpperCase())
-      || byAwb.get(String(o.tracking_id || ''));
     const repl = isReplacement(o);
     const prepaid = !!o.razorpay_payment_id;
     const amount = Number(o.amount_paise || 0) / 100;
@@ -130,10 +155,11 @@ exports.handler = async (event) => {
     orders.push({
       id: o.id,
       order_id: o.razorpay_order_id,
-      awb: o.tracking_id || awbFromRow(row) || '',
-      courier: o.courier_name || '',
+      awb: o.tracking_id || row.awb_number || '',
+      courier: o.courier_name || row.courier_name || '',
       status: o.status,
-      nimbus_status: shipmentStatusFromRow(row) || 'Cancelled',
+      nimbus_status: String(row.status || 'cancelled'),
+      nimbus_event_time: row.event_time || '',
       customer_name: o.customer_name || '',
       customer_phone: o.customer_phone || '',
       customer_email: o.customer_email || '',
@@ -166,8 +192,8 @@ exports.handler = async (event) => {
     body: JSON.stringify({
       ok: true,
       pages,
-      scanned: rows.length,
-      cancelled_at_nimbus: cancelled.length,
+      scanned: candidates.length,
+      cancelled_at_nimbus: seen.size,
       matched: seen.size,
       orders,
       totals,

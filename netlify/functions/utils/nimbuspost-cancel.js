@@ -306,8 +306,69 @@ function rowIsCancelled(row) {
   return NP_CANCELLED_RE.test(status);
 }
 
+/**
+ * Bulk-track shipments by AWB.
+ *
+ * POST /v1/shipments/track/bulk  { awb: [...] }  -- 25 AWBs a call.
+ *
+ * This is what the cancelled-orders sweep runs on, and it exists because
+ * listNimbusOrders cannot answer the question the sweep is actually asking.
+ * That one pages the seller panel sorted by id DESC, i.e. newest-CREATED first
+ * -- but NimbusPost's nightly job auto-cancels shipments that were never picked
+ * up, which are by definition the OLD ones. A shipment booked ten days ago and
+ * cancelled last night sits hundreds of rows deep, so a newest-first window
+ * structurally cannot see it. Asking about a known list of AWBs has no window
+ * at all.
+ *
+ * Rows come back with awb_number, order_number, status, event_time,
+ * courier_name and payment_type. Never throws for a single bad chunk -- a
+ * failed chunk yields no rows rather than losing the whole sweep.
+ *
+ * @param {string[]} awbs
+ * @returns {Promise<Array<object>>}
+ */
+const NP_TRACK_CHUNK = 25;
+const NP_TRACK_CONCURRENCY = 8;
+
+async function trackNimbusShipments(awbs) {
+  const list = [...new Set((awbs || []).map(a => String(a || '').trim()).filter(Boolean))];
+  if (!list.length) return [];
+
+  const token = await npAuthenticate();
+  const chunks = [];
+  for (let i = 0; i < list.length; i += NP_TRACK_CHUNK) chunks.push(list.slice(i, i + NP_TRACK_CHUNK));
+
+  const fetchChunk = async (chunk) => {
+    try {
+      const res = await fetch(`${NP_BASE}/shipments/track/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ awb: chunk }),
+      });
+      let data; try { data = await res.json(); } catch { data = {}; }
+      if (!res.ok || data.status === false) return [];
+      const rows = data.data;
+      if (Array.isArray(rows)) return rows;
+      if (rows && typeof rows === 'object') return Object.values(rows);
+      return [];
+    } catch (_) {
+      return [];
+    }
+  };
+
+  // Bounded concurrency: 60-odd chunks all at once gets throttled, and serial
+  // paging would not finish inside the function budget.
+  const out = [];
+  for (let i = 0; i < chunks.length; i += NP_TRACK_CONCURRENCY) {
+    const wave = chunks.slice(i, i + NP_TRACK_CONCURRENCY);
+    const settled = await Promise.all(wave.map(fetchChunk));
+    out.push(...settled.flat());
+  }
+  return out;
+}
+
 module.exports = {
   cancelNimbusShipment, cancelNimbusOrder, inspectNimbusOrder,
-  listNimbusOrders, rowIsCancelled, shipmentStatusFromRow,
+  listNimbusOrders, rowIsCancelled, shipmentStatusFromRow, trackNimbusShipments,
   orderNumberFromRow, awbFromRow, orderIdFromRow,
 };
