@@ -1031,7 +1031,7 @@ select,input,textarea{font-size:1rem;}
     <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
     <span class="date-sep">→</span>
     <input type="date" id="dateTo" onchange="applyFilters()" title="To date"/>
-    <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID" oninput="applyFilters()"/>
+    <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID · Book · AWB" oninput="applyFilters()"/>
   </div>
 
   <!-- ── Cancelled sub-filters (shown only when the Cancelled tab is active) ── -->
@@ -3562,6 +3562,42 @@ function sortBy(field) {
   applyFilters();
 }
 
+// Everything one order can be found by. Book titles are in here because
+// "who ordered Atomic Habits?" is a question the orders list is asked
+// constantly, and AWB/courier because a courier query starts from the AWB.
+function orderSearchHaystack(o) {
+  const items = Array.isArray(o?.cart_items) ? o.cart_items : [];
+  const productNames = items.flatMap(item => [
+    item?.title, item?.name, item?.product_name, item?.product_title,
+    item?.slug, item?.isbn,
+  ]);
+
+  return [
+    o?.razorpay_order_id,
+    o?.id,
+    o?.customer_name,
+    o?.customer_phone,
+    o?.customer_email,
+    o?.customer_address,
+    // AWBs live in tracking_id today; the aliases keep older imported rows
+    // searchable by the field name NimbusPost itself used.
+    o?.tracking_id,
+    o?.awb,
+    o?.awb_number,
+    o?.awb_no,
+    o?.tracking_number,
+    o?.courier_name,
+    // Searching an original order id must also surface its replacement row,
+    // and searching a replacement id must surface the original — otherwise
+    // half of what happened to that customer stays hidden.
+    replacementOriginalId(o),
+    ...linkedRecordsFor(o).map(link => link.id),
+    ...productNames,
+  ].filter(value => value !== null && value !== undefined)
+    .join(' ')
+    .toLowerCase();
+}
+
 function applyFilters() {
   tablePage = 1;
   const q       = (document.getElementById('searchBox')?.value || '').toLowerCase().trim();
@@ -3586,14 +3622,7 @@ function applyFilters() {
     }
     // Search
     if (q) {
-      // Searching an original order id must also surface its replacement row,
-      // and searching a replacement id must surface the original — otherwise
-      // half of what happened to that customer stays hidden.
-      const linked = linkedRecordsFor(o).map(l => l.id);
-      const hay = [o.razorpay_order_id, o.customer_name, o.customer_phone,
-                   o.customer_email, o.customer_address,
-                   replacementOriginalId(o), ...linked].join(' ').toLowerCase();
-      if (!hay.includes(q)) return false;
+      if (!orderSearchHaystack(o).includes(q)) return false;
     }
     // Date range
     if (dateFrom && new Date(o.created_at) < new Date(dateFrom)) return false;
