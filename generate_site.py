@@ -8189,6 +8189,13 @@ async function loadManagedPromotions() {
     if (select) select.querySelectorAll('[data-managed-promo]').forEach(o => o.remove());
     MANAGED_PROMOTIONS.filter(p => p.is_live).forEach(p => {
       registerManagedPromotion(p);
+      // The static markup lists the default rates. Once the panel overrides a
+      // code, its hardcoded option would advertise the OLD rate next to the new
+      // one — two INKLOVE10 rows, "10% off" and "7% off", both applying 7%.
+      if (select) {
+        select.querySelectorAll(`option[value="${p.code}"]:not([data-managed-promo])`)
+          .forEach(o => o.remove());
+      }
       if (!p.auto_apply && select) {
         const o = document.createElement('option');
         o.value = p.code;
