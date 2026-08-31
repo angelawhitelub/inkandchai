@@ -8102,7 +8102,8 @@ async function applyCoupon() {
   // dropdown. Payment functions independently verify the product and price.
   if (!COUPONS[code]) {
     if (msg) { msg.textContent = 'Checking coupon…'; msg.style.color = 'var(--cream-dim)'; }
-    await loadProductCoupons(getCart(), code);
+    await loadManagedPromotionCode(code);
+    if (!COUPONS[code]) await loadProductCoupons(getCart(), code);
     if (!COUPONS[code]) {
       if (msg) { msg.textContent = 'This coupon code is not valid for the products in your cart.'; msg.style.color = '#c97a7a'; }
       return;
@@ -8153,6 +8154,64 @@ async function loadProductCoupons(cart, requestedCode = '') {
     loadedProductCouponCartKey = key;
   } catch (err) {
     console.warn('Product coupons unavailable:', err.message);
+  }
+}
+
+// ── Managed promotions (admin Promotions tab) ───────────────────────────────
+// These live in R2 and are edited from the admin panel. Until this loader
+// existed the checkout only knew the hardcoded COUPONS table above, so a rate
+// changed in the panel never reached a customer. Managed rules are applied on
+// top of the defaults, which makes the panel the source of truth for any code
+// it defines; codes it does not define keep their hardcoded behaviour.
+let MANAGED_PROMOTIONS = [];
+
+function registerManagedPromotion(p) {
+  COUPONS[p.code] = {
+    type: p.discount_type,
+    value: Number(p.discount_value) || 0,
+    minSubtotal: Number(p.min_subtotal_inr) || 0,
+    maxDiscount: Number(p.max_discount_inr) || 0,
+    label: p.name,
+    productSlugs: p.scope === 'selected' ? (p.product_slugs || []) : null,
+    paymentMethods: p.payment_methods || ['prepaid'],
+    onlineOnly: false,
+    expiresAt: p.ends_at || null,
+  };
+}
+
+async function loadManagedPromotions() {
+  try {
+    const res = await fetch('/.netlify/functions/promotions', { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+    MANAGED_PROMOTIONS = data.promotions || [];
+    const select = document.getElementById('couponSelect');
+    if (select) select.querySelectorAll('[data-managed-promo]').forEach(o => o.remove());
+    MANAGED_PROMOTIONS.filter(p => p.is_live).forEach(p => {
+      registerManagedPromotion(p);
+      if (!p.auto_apply && select) {
+        const o = document.createElement('option');
+        o.value = p.code;
+        o.dataset.managedPromo = '1';
+        const offer = p.discount_type === 'percent' ? `${p.discount_value}% off` : `₹${p.discount_value} off`;
+        o.textContent = `${p.code} · ${offer} · ${p.name}`;
+        select.appendChild(o);
+      }
+    });
+  } catch (err) {
+    console.warn('Managed promotions unavailable:', err.message);
+  }
+}
+
+// A private/unlisted code is not in the public list, so look it up by code.
+async function loadManagedPromotionCode(code) {
+  try {
+    const res = await fetch('/.netlify/functions/promotions?code=' + encodeURIComponent(code), { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+    (data.promotions || []).filter(p => p.is_live).forEach(registerManagedPromotion);
+  } catch (err) {
+    console.warn('Managed promotion lookup failed:', err.message);
   }
 }
 
@@ -9542,7 +9601,7 @@ window.addrShowNewForm = function() {
 };
 
 // ── Init ───────────────────────────────────────────────────────────────────
-loadProductCoupons(getCart()).then(renderSummary);
+loadManagedPromotions().then(() => loadProductCoupons(getCart())).then(renderSummary);
 renderSummary();
 
 // When returning to checkout — including bfcache back/forward from a payment
