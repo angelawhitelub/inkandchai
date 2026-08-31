@@ -37,6 +37,32 @@ function extensionFromMime(mime) {
   return 'jpg';
 }
 
+function slugWithSuffix(baseSlug, sequence) {
+  if (sequence <= 1) return baseSlug.slice(0, 80);
+  const suffix = `-${sequence}`;
+  return `${baseSlug.slice(0, 80 - suffix.length).replace(/-+$/g, '')}${suffix}`;
+}
+
+// Creating two listings whose titles slug the same used to silently overwrite
+// the first one — the upsert below keys on slug, so the second save replaced
+// the price, description and images of a live product. Creation now takes the
+// next free -2/-3 slug instead; edits still address their listing directly.
+async function nextAvailableSlug(supabase, baseSlug) {
+  const { data, error } = await supabase
+    .from('custom_products')
+    .select('slug')
+    .like('slug', `${baseSlug}%`)
+    .limit(1000);
+  if (error) throw error;
+
+  const occupied = new Set((data || []).map(row => String(row.slug || '').toLowerCase()));
+  for (let sequence = 1; sequence <= 1001; sequence += 1) {
+    const candidate = slugWithSuffix(baseSlug, sequence);
+    if (!occupied.has(candidate)) return candidate;
+  }
+  throw new Error('Could not allocate a unique product URL. Please use a more specific title.');
+}
+
 async function uploadImageIfPossible(supabase, slug, imageDataUrl) {
   const image = String(imageDataUrl || '');
   if (!image.startsWith('data:image/')) return cleanText(image, 4000);
@@ -87,11 +113,13 @@ exports.handler = async (event) => {
   try {
     const title = cleanText(body.title, 220);
     if (!title) throw new Error('Product title is required.');
-    const baseSlug = slugify(body.slug || title);
+    const createOnly = body.mode === 'create';
+    const baseSlug = slugify(createOnly ? title : (body.slug || title));
     if (!baseSlug) throw new Error('Could not create a product URL slug.');
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const imageUrl = await uploadImageIfPossible(supabase, baseSlug, body.image_data_url || body.image_url);
+    const productSlug = createOnly ? await nextAvailableSlug(supabase, baseSlug) : baseSlug;
+    const imageUrl = await uploadImageIfPossible(supabase, productSlug, body.image_data_url || body.image_url);
 
     // Extra product images (back cover, spreads…) → gallery_images (array of URLs).
     // Accept an array, upload any data URLs, keep plain URLs as-is. Cap at 8.
@@ -99,13 +127,13 @@ exports.handler = async (event) => {
     if (Array.isArray(body.gallery_images)) {
       galleryImages = [];
       for (const g of body.gallery_images.slice(0, 8)) {
-        const u = await uploadImageIfPossible(supabase, `${baseSlug}-g`, g);
+        const u = await uploadImageIfPossible(supabase, `${productSlug}-g`, g);
         if (u) galleryImages.push(u);
       }
     }
 
     const payload = {
-      slug: baseSlug,
+      slug: productSlug,
       title,
       author: cleanText(body.author, 140),
       category: cleanText(body.category, 140) || 'Books',

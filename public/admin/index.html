@@ -5086,6 +5086,10 @@ async function createProductListing() {
   if (msg) msg.textContent = 'Creating SEO product page…';
 
   const payload = {
+    // Tells create-product-listing this is a NEW listing, so it allocates the
+    // next free slug instead of upserting over an existing one with the same
+    // title. The edit paths deliberately omit it and address their slug.
+    mode: 'create',
     title,
     slug: productSlugFromTitle(title),
     // Formatted here too, not just on blur: pasting a name and going straight to
