@@ -3141,6 +3141,10 @@ function customProductToBook(product) {
     // publisher" banner on the product page. Cheap string contains so any
     // future tag-driven banners can follow the same pattern.
     publisher_sourced: /publisher-sourced-bestseller/i.test(String(product.tags || '')),
+    // Crossword/99bookstores imports are prepaid-only. This has to ride along
+    // on the book object or a homepage card can add a no-COD title to the cart
+    // without the flag, and checkout will happily offer Cash on Delivery.
+    no_cod: /(?:^|,)\s*no-cod\s*(?:,|$)/i.test(String(product.tags || '')),
   };
 }
 
@@ -3490,6 +3494,8 @@ function renderBooks() {
         data-price="${priceNum}"
         data-img="${escHtml(b.img)}"
         data-stock="${b.stock ?? ''}"
+        data-no-cod="${b.no_cod ? '1' : ''}"
+        data-pub-sourced="${b.publisher_sourced ? '1' : ''}"
         data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>`}
     </a>`;
   }).join('');
@@ -3634,6 +3640,11 @@ function addToCartById(btn) {
     img:    btn.dataset.img,
     url:    btn.dataset.url,
     sku:    btn.dataset.sku || '',
+    // Matches what /books and the product page put on these items. _no_cod is
+    // the one checkout reads to disable Cash on Delivery, so losing it here
+    // would let a prepaid-only title be ordered COD.
+    ...(btn.dataset.noCod ? { _no_cod: true } : {}),
+    ...(btn.dataset.pubSourced ? { _publisher_sourced: true } : {}),
   });
   // Quick visual confirmation on the button itself
   if (btn && !btn._iacBusy) {
@@ -3721,8 +3732,62 @@ function _reRenderSearchAfterLoad() {
   if (currentQuery) renderBooks();
 }
 
+// ── REMOTE CATALOGUE FALLBACK ─────────────────────────────────────────────
+// BOOKS only ever holds the ~980 custom products get-product-overrides is
+// allowed to ship; the ~19.7k crossword.in + 99bookstores imports are kept out
+// of that per-pageview feed on purpose (egress). They were therefore
+// unfindable from this search box even though their product pages are live and
+// people buy from them. Ask catalog-search for anything the local index can't
+// answer and merge the hits into BOOKS, so one search covers the whole shop.
+let _catFetchTimer = null;
+const _catFetched = new Map();   // normalised query -> true (also caches misses)
+
+function catalogFallbackSearch(rawQuery) {
+  const q = String(rawQuery || '').trim();
+  if (q.length < 3) return;
+  const key = q.toLowerCase();
+  if (_catFetched.has(key)) return;
+  clearTimeout(_catFetchTimer);
+  _catFetchTimer = setTimeout(async () => {
+    if (_catFetched.has(key)) return;
+    _catFetched.set(key, true);
+    try {
+      const res = await fetch('/.netlify/functions/catalog-search?per_page=24&q=' + encodeURIComponent(q));
+      if (!res.ok) return;
+      const data = await res.json();
+      const seen = new Set(BOOKS.map(b => String(b.slug || '').toLowerCase()));
+      let added = 0;
+      for (const r of (data.books || [])) {
+        const slug = String(r.slug || '').toLowerCase();
+        if (!slug || seen.has(slug)) continue;
+        // Re-shape into the custom_products row customProductToBook expects, so
+        // there is exactly one book-building path rather than two that drift.
+        const book = customProductToBook({
+          slug: r.slug,
+          title: r.title,
+          price_inr: r.price,
+          original_price_inr: r.original_price,
+          image_url: r.img,
+          // catalog-search only serves the publisher-sourced import catalogues,
+          // and collapses their tags down to the one no_cod boolean.
+          tags: 'publisher-sourced-bestseller' + (r.no_cod ? ',no-cod' : ''),
+        });
+        if (!book) continue;
+        book.ts = '';           // no created_at over the wire; never flag these NEW
+        book.n = 0;
+        BOOKS.push(book); BOOK_MAP[book.slug] = book; seen.add(slug); added++;
+        if (window._overrideBySlug) applyProductOverride(book, window._overrideBySlug.get(slug));
+      }
+      if (added) _reRenderSearchAfterLoad();
+    } catch (err) {
+      _catFetched.delete(key);   // transient failure — let the next keystroke retry
+    }
+  }, 350);
+}
+
 function onSearch() {
   ensureFullCatalogue(_reRenderSearchAfterLoad);
+  catalogFallbackSearch(document.getElementById('searchInput')?.value || '');
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     currentQuery = document.getElementById('searchInput').value;
@@ -3841,6 +3906,7 @@ let _srchSel = -1;
 function srchType() {
   ensureFullCatalogue(_reRenderSearchAfterLoad);  // upgrade to full catalogue as they type
   const val = document.getElementById('srchInput')?.value || '';
+  catalogFallbackSearch(val);
   const mainInput = document.getElementById('searchInput');
   if (mainInput) mainInput.value = val;
   currentQuery = val;

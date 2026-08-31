@@ -5534,10 +5534,15 @@ function renderProductList() {
     if (!q) return true;
     return [p.title, p.author, p.category, p.publisher, p.isbn, p.slug, p.shopify_id].join(' ').toLowerCase().includes(q);
   }).slice(0, 80);
-  // Few/no local hits — the product may be outside the 1000 newest custom
-  // rows the initial load carries. Ask the server too (debounced).
+  // The initial load only carries the 1000 newest custom rows, so the product
+  // wanted may not be local. Ask the server for EVERY query >=3 chars, not just
+  // when local hits are scarce: a common phrase ("letting go") matches five or
+  // more local titles while the book actually being looked for sits in the
+  // ~19.7k imported rows — the old `rows.length < 5` gate meant the server was
+  // never asked in exactly that case. Debounced and de-duped, so a settled
+  // query costs one request.
+  if (q.length >= 3) scheduleProductServerSearch(q);
   const serverSearching = q.length >= 3 && rows.length < 5;
-  if (serverSearching) scheduleProductServerSearch(q);
   if (!rows.length) {
     list.innerHTML = serverSearching
       ? '<div class="lead-empty">Searching the full catalogue…</div>'
