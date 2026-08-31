@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Loading… — Ink &amp; Chai</title>
-<link rel="preload" as="script" href="/js/books-full-21ba73b1.js"/>
+<link rel="preload" as="script" href="/js/books-full-adc49d90.js"/>
 <meta name="description" content="Buy books online at Ink &amp; Chai — fast pan-India delivery."/>
 <meta name="robots" content="index,follow"/>
 <meta name="keywords" content="buy books online india, hindi books, self help books hindi, fiction books online, motivational books, ink and chai"/>
@@ -30,7 +30,7 @@
 <script type="application/ld+json" id="ldjson">{}</script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&family=Cormorant+Garamond:wght@400;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <script>
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){ /* dark default */ } })();
+  (function(){ var d = document.documentElement; try { if (localStorage.getItem('iac_theme') !== 'dark') d.setAttribute('data-theme','light'); } catch(e){ d.setAttribute('data-theme','light'); /* light default */ } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
     var next = cur === 'light' ? 'dark' : 'light';
@@ -41,7 +41,7 @@
 </script>
 <style>
 :root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
-html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#8a6a1f;--gold-light:#b8902c;--gold-dim:#6a4f10;--cream:#2a2018;--cream-dim:#5a4a38;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
+html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#7a5a12;--gold-light:#5f4610;--gold-dim:#6a4f10;--cream:#241c14;--cream-dim:#4e4032;--muted:#4e4032;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
 html[data-theme="light"] nav{background:rgba(250,247,242,0.97)!important}
 html[data-theme="light"] .prod-cover{background:#f0e8d4}
 html[data-theme="light"] .prod-cover img{box-shadow:0 12px 32px rgba(60,40,10,0.2)}
@@ -175,7 +175,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 /* Delivery guarantee */
 .prod-refund-guarantee{font-size:0.72rem;line-height:1.6;color:#f0e8d8;padding:0.65rem 0.9rem;background:rgba(109,191,109,0.06);border-left:3px solid #6dbf6d}
 .prod-desc-title{font-size:0.6rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem}
-.prod-desc{font-size:0.82rem;color:var(--cream-dim);line-height:1.9;letter-spacing:0.03em}
+.prod-desc{font-size:0.95rem;color:var(--cream);line-height:1.85;letter-spacing:0.01em;font-family:var(--font-serif)}
 .prod-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem 2rem}
 .prod-meta-item{}
 .prod-meta-label{font-size:0.55rem;letter-spacing:0.25em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:0.2rem}
@@ -784,7 +784,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-full-21ba73b1.js"></script>
+<script src="/js/books-full-adc49d90.js"></script>
 <script>
 const BOOKS = window.BOOKS_PRELOAD||[];
 const SOCIAL_PROOF = [];

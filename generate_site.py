@@ -1109,7 +1109,7 @@ HTML = r"""<!DOCTYPE html>
 </script>
 <script>
   // Apply saved theme BEFORE paint; dark is the default storefront theme.
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); else document.documentElement.removeAttribute('data-theme'); } catch(e){ /* dark default */ } })();
+  (function(){ var d = document.documentElement; try { if (localStorage.getItem('iac_theme') === 'dark') d.removeAttribute('data-theme'); else d.setAttribute('data-theme','light'); } catch(e){ d.setAttribute('data-theme','light'); /* light default */ } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
     var next = cur === 'light' ? 'dark' : 'light';
@@ -1133,8 +1133,8 @@ HTML = r"""<!DOCTYPE html>
   /* LIGHT MODE */
   html[data-theme="light"] {
     --bg: #faf7f2; --bg2: #f3ece0; --bg3: #ffffff;
-    --gold: #8a6a1f; --gold-light: #b8902c; --gold-dim: #6a4f10;
-    --cream: #2a2018; --cream-dim: #5a4a38; --white: #0d0b08;
+    --gold: #7a5a12; --gold-light: #5f4610; --gold-dim: #6a4f10;
+    --cream: #241c14; --cream-dim: #4e4032; --white: #0d0b08;
     --border: rgba(138,106,31,0.28);
     --shadow-color: rgba(60,40,10,0.12);
   }
@@ -1147,9 +1147,20 @@ HTML = r"""<!DOCTYPE html>
   html[data-theme="light"] .book-cover { background: #f0e8d4; }
   html[data-theme="light"] .coll-overlay { background: linear-gradient(to top, rgba(255,255,255,0.65) 0%, transparent 60%); }
   html[data-theme="light"] .coll-name, html[data-theme="light"] .section-title, html[data-theme="light"] .hero-title { color: #1a1208; }
+  /* .slide-campus paints its own dark panel, so it keeps pale ink in both
+     themes. Its own rules are out-specified by the light overrides above
+     (0,2,1 beats 0,2,0), so they have to be restated at light specificity. */
+  html[data-theme="light"] .slide-campus .hero-title { color:#f0ebff; }
+  html[data-theme="light"] .slide-campus .hero-sub { color:rgba(200,190,240,0.78); }
+  html[data-theme="light"] .slide-campus .btn-ghost { color:rgba(200,190,240,0.82); }
+  html[data-theme="light"] .slide-campus .stat-label { color:rgba(200,190,240,0.75); }
   html[data-theme="light"] .coll-desc { color: #4a3a25; }
   html[data-theme="light"] .footer { background: #1a1410; color: #e8dcc4; }
   html[data-theme="light"] .editorial-quote { color: #1a1208; }
+  /* .editorial-visual is another dark gradient panel; the pull-quote and its
+     attribution sit on top of it and keep pale ink in both themes. */
+  html[data-theme="light"] .editorial-visual .editorial-quote { color:#f4ecdc; }
+  html[data-theme="light"] .editorial-visual .editorial-attr { color:#d9bb6b; }
   html[data-theme="light"] .cart-sidebar, html[data-theme="light"] .modal-content { color: var(--cream); }
 
   /* Theme toggle button */
@@ -1360,8 +1371,11 @@ HTML = r"""<!DOCTYPE html>
   /* MARQUEE */
   .marquee-bar { background: var(--gold); padding: 0.75rem 0; overflow: hidden; white-space: nowrap; }
   .marquee-track { display: inline-flex; animation: marquee 30s linear infinite; }
-  .marquee-item { font-size: 0.6rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--bg); font-weight: 500; padding: 0 2.5rem; }
-  .marquee-dot { color: rgba(13,11,8,0.4); }
+  .marquee-item { font-size: 0.6rem; letter-spacing: 0.3em; text-transform: uppercase; color: #f4ecdc; font-weight: 500; padding: 0 2.5rem; }
+  /* Was a hardcoded dark ink, which only worked against the pale gold bar of
+     the dark theme. Inheriting the item colour keeps it subordinate to the
+     text in both themes instead of vanishing into the bar in light. */
+  .marquee-dot { color: inherit; opacity: 0.62; }
   @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
   /* HERO BANNER CAROUSEL */
@@ -1451,16 +1465,16 @@ HTML = r"""<!DOCTYPE html>
     padding:clamp(20px,3vw,40px) clamp(24px,3vw,40px) clamp(20px,3vw,40px) clamp(28px,4vw,50px);
     z-index:2;
   }
-  .kog-store-label { font-family:'Cinzel',serif; font-size:clamp(7px,0.65vw,10px); letter-spacing:5px; color:rgba(212,175,55,0.6); text-transform:uppercase; margin-bottom:clamp(8px,1.2vw,16px); animation:kogFadeUp 0.8s ease both; }
+  .kog-store-label { font-family:'Cinzel',serif; font-size:clamp(7px,0.65vw,10px); letter-spacing:5px; color:rgba(212,175,55,0.85); text-transform:uppercase; margin-bottom:clamp(8px,1.2vw,16px); animation:kogFadeUp 0.8s ease both; }
   .kog-series { display:inline-flex; align-items:center; gap:8px; margin-bottom:clamp(6px,1vw,12px); animation:kogFadeUp 0.9s ease both; }
   .kog-series-line { width:20px; height:1px; background:rgba(212,175,55,0.5); }
-  .kog-series-text { font-family:'Cormorant Garamond',serif; font-size:clamp(8px,0.85vw,11px); letter-spacing:3px; color:rgba(212,175,55,0.7); text-transform:uppercase; font-style:italic; }
+  .kog-series-text { font-family:'Cormorant Garamond',serif; font-size:clamp(8px,0.85vw,11px); letter-spacing:3px; color:rgba(212,175,55,0.88); text-transform:uppercase; font-style:italic; }
   .kog-title { font-family:'Cinzel',serif; font-weight:900; font-size:clamp(20px,4vw,44px); line-height:1; color:transparent; background:linear-gradient(180deg,#f0d060 0%,#c9a227 40%,#a07818 100%); -webkit-background-clip:text; background-clip:text; letter-spacing:2px; margin-bottom:6px; animation:kogFadeUp 1s ease both; }
-  .kog-subtitle { font-family:'Cormorant Garamond',serif; font-size:clamp(8px,0.95vw,13px); letter-spacing:4px; color:rgba(212,175,55,0.5); text-transform:uppercase; margin-bottom:clamp(8px,1.4vw,18px); animation:kogFadeUp 1.1s ease both; }
+  .kog-subtitle { font-family:'Cormorant Garamond',serif; font-size:clamp(8px,0.95vw,13px); letter-spacing:4px; color:rgba(212,175,55,0.82); text-transform:uppercase; margin-bottom:clamp(8px,1.4vw,18px); animation:kogFadeUp 1.1s ease both; }
   .kog-divider { width:50px; height:1px; background:linear-gradient(90deg,rgba(212,175,55,0.6),transparent); margin-bottom:clamp(8px,1.2vw,16px); animation:kogFadeUp 1.2s ease both; }
   .kog-author { font-family:'Cormorant Garamond',serif; font-size:clamp(9px,1vw,15px); letter-spacing:2px; color:rgba(255,255,255,0.5); margin-bottom:2px; animation:kogFadeUp 1.3s ease both; }
   .kog-author strong { color:rgba(255,255,255,0.82); font-weight:600; }
-  .kog-bestseller { font-family:'Cormorant Garamond',serif; font-size:clamp(7px,0.8vw,11px); letter-spacing:3px; color:rgba(212,175,55,0.5); font-style:italic; text-transform:uppercase; margin-bottom:clamp(10px,1.6vw,22px); animation:kogFadeUp 1.35s ease both; }
+  .kog-bestseller { font-family:'Cormorant Garamond',serif; font-size:clamp(7px,0.8vw,11px); letter-spacing:3px; color:rgba(212,175,55,0.82); font-style:italic; text-transform:uppercase; margin-bottom:clamp(10px,1.6vw,22px); animation:kogFadeUp 1.35s ease both; }
   .kog-cta {
     display:inline-flex; align-items:center; gap:8px;
     border:1px solid rgba(212,175,55,0.5); color:rgba(212,175,55,0.9);
@@ -1484,7 +1498,7 @@ HTML = r"""<!DOCTYPE html>
   @keyframes kogSpark2 { 0%,100%{opacity:0;transform:translate(0,0) scale(1)} 40%{opacity:.6} 100%{transform:translate(4px,-18px) scale(0);opacity:0} }
   @keyframes kogSpark3 { 0%,100%{opacity:0;transform:translate(0,0) scale(1)} 35%{opacity:.7} 100%{transform:translate(-3px,-22px) scale(0);opacity:0} }
   @keyframes kogFadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-  .kog-crown { position:absolute; top:clamp(10px,2vw,28px); left:clamp(16px,3vw,50px); font-size:clamp(12px,1.5vw,18px); opacity:0.4; z-index:2; animation:kogFadeUp 0.7s ease both; }
+  .kog-crown { color:rgba(212,175,55,0.9); position:absolute; top:clamp(10px,2vw,28px); left:clamp(16px,3vw,50px); font-size:clamp(12px,1.5vw,18px); opacity:0.4; z-index:2; animation:kogFadeUp 0.7s ease both; }
   /* Mobile adjustments */
   @media(max-width:600px){
     .kog-banner { aspect-ratio:unset; min-height:unset; display:flex; flex-direction:row; align-items:center; padding:0; }
@@ -1600,7 +1614,7 @@ HTML = r"""<!DOCTYPE html>
   html[data-theme="light"] .btn-add-card:hover { background: var(--gold); color: #fff; }
 
   /* "NEW" arrival ribbon */
-  .new-badge { position: absolute; top: 8px; left: 8px; z-index: 5; background: linear-gradient(135deg, #d4584c, #b94236); color: #fff; font-size: 0.55rem; letter-spacing: 0.2em; font-weight: 600; padding: 0.3rem 0.6rem; font-family: 'Inter', sans-serif; box-shadow: 0 4px 10px rgba(185,66,54,0.45); animation: newPulse 2.4s ease-in-out infinite; }
+  .new-badge { position: absolute; top: 8px; left: 8px; z-index: 5; background: linear-gradient(135deg, #c04336, #a2352a); color: #fff; font-size: 0.55rem; letter-spacing: 0.2em; font-weight: 600; padding: 0.3rem 0.6rem; font-family: 'Inter', sans-serif; box-shadow: 0 4px 10px rgba(185,66,54,0.45); animation: newPulse 2.4s ease-in-out infinite; }
   @keyframes newPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
   .book-name { font-family: 'Cormorant Garamond', serif; font-size: 1.04rem; font-weight: 600; color: var(--white); margin-bottom: 0.25rem; line-height: 1.22; letter-spacing: 0.005em; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:2.3em; }
   .book-author { font-size: 0.64rem; font-weight: 500; color: var(--gold-dim); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 0.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1833,7 +1847,7 @@ HTML = r"""<!DOCTYPE html>
   .prod-price { font-family:'Cormorant Garamond',serif; font-size:2rem; color:var(--gold); font-weight:600; }
   .prod-orig { font-size:0.9rem; color:var(--cream-dim); text-decoration:line-through; }
   .prod-saving { font-size:0.65rem; letter-spacing:0.1em; color:#6dbf6d; background:rgba(109,191,109,0.1); padding:0.25rem 0.6rem; }
-  .prod-desc { font-size:0.78rem; color:var(--cream-dim); line-height:1.9; letter-spacing:0.03em; border-top:1px solid var(--border); padding-top:1rem; }
+  .prod-desc { font-size:0.95rem; color:var(--cream); line-height:1.85; letter-spacing:0.01em; font-family:var(--font-serif); border-top:1px solid var(--border); padding-top:1rem; }
   .prod-actions { display:flex; gap:0.8rem; margin-top:auto; padding-top:1rem; border-top:1px solid var(--border); }
   .prod-btn-cart { flex:1; font-family:'Inter',sans-serif; font-size:0.62rem; letter-spacing:0.22em; text-transform:uppercase; padding:0.9rem 1rem; background:var(--gold); color:var(--bg); border:none; cursor:pointer; font-weight:500; transition:background 0.3s; }
   .prod-btn-cart:hover { background:var(--gold-light); }
@@ -1982,6 +1996,19 @@ HTML = r"""<!DOCTYPE html>
     body{padding-bottom:64px}
   }
   html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-color:rgba(138,106,31,0.3)}
+
+  /* ── Light-theme notes ──────────────────────────────────────────
+     Almost every component already colours itself from the theme vars, so
+     flipping the palette is enough. The one thing that was genuinely missing
+     was a light value for the --glass-* tokens (see the light :root above):
+     `.search-box,.srch-results,.cart-sidebar{background:var(--glass-bg)!important}`
+     was painting the cart panel near-black under near-black text (1.03:1).
+
+     Deliberately NOT overridden: .kog-*, .slide-campus, .new-badge and
+     .iac-cap. Those sit on their own dark gradient panels or scrims, so their
+     pale ink is correct in both themes — a contrast audit that walks up for a
+     background-color misses `background-image` and reports them as failures. */
+
   .mob-nav a,.mob-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0.45rem 0;background:transparent;border:none;color:var(--cream-dim);font-family:'Inter',sans-serif;font-size:0.55rem;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:color 0.2s;position:relative}
   .mob-nav a:hover,.mob-nav button:hover,.mob-nav a:active,.mob-nav button:active{color:var(--gold)}
   .mob-nav .mn-icon{font-size:1.25rem;line-height:1}
@@ -2059,7 +2086,7 @@ HTML = r"""<!DOCTYPE html>
   --bg3:#1b1713;
   --gold:#d6b85e;
   --gold-light:#f0d889;
-  --gold-dim:#806a36;
+  --gold-dim:#9c8244;
   --cream:#f4ecdc;
   --cream-dim:#b9ab96;
   --border:rgba(214,184,94,.22);
@@ -2074,8 +2101,32 @@ HTML = r"""<!DOCTYPE html>
   --glass-shadow:0 18px 60px rgba(0,0,0,.46);
   --glass-highlight:inset 0 1px rgba(255,255,255,.1);
 }
+/* The glass surfaces (cart sidebar, search box, search results) had no light
+   values, and they are painted with `background: var(--glass-bg) !important`.
+   So on a pale page the cart kept its near-black panel while its text turned
+   near-black too — 1.03:1, the worst contrast on the site. The checkout
+   template already defined these; the shared one never did. */
+html[data-theme="light"]{
+  /* Injected widgets (cart recommendations in public/js/cart.js) read
+     var(--muted,...) with a dark-theme fallback; the shared palette only ever
+     defined --cream-dim, so they kept the dark grey on a pale panel. */
+  --muted:#4e4032;
+  --copper:#7d4f2c;
+  --glass-bg:rgba(255,253,250,.86);
+  --glass-ink:rgba(255,253,250,.78);
+  --glass-border:rgba(138,106,31,.26);
+  --glass-shadow:0 18px 60px rgba(70,52,24,.14);
+  --glass-highlight:inset 0 1px rgba(255,255,255,.72);
+}
+/* Shared with public/js/cart.js, which injects the free-shipping
+   confirmations inline and so cannot use a theme-scoped selector. */
+html{--ship-free:#2f6e37}
+html:not([data-theme="light"]){--ship-free:#6dbf6d}
 html:not([data-theme="light"]){
   color-scheme:dark;
+}
+html[data-theme="light"]{
+  color-scheme:light;
 }
 body{
   background:
@@ -2231,6 +2282,13 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
   background:linear-gradient(135deg,var(--gold),var(--copper));
   color:#100c08;
   border-color:rgba(240,216,137,.58);
+}
+/* The gradient is built from --gold/--copper, which are dark on a pale page, so
+   the near-black ink above only works in the dark theme. (.btn-checkout is
+   separately repainted with a pale gradient !important, so it keeps dark ink.) */
+html[data-theme="light"] .btn-primary{
+  color:#fff;
+  border-color:rgba(122,90,18,.5);
 }
 .btn-nav:hover,.btn-add-card:hover,.shelf-card-btn:hover,.btn-load-more:hover,.pincode-btn:hover{
   background:linear-gradient(135deg,rgba(214,184,94,.28),rgba(184,117,76,.2));
@@ -2659,16 +2717,16 @@ html[data-theme="light"] .cart-footer{background:rgba(255,255,255,.42)}
 <!-- MARQUEE -->
 <div class="marquee-bar">
   <div class="marquee-track">
-    <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Prepaid offers: 10% on ₹499+, 12% on ₹999+, 15% on ₹1499+ <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Cash on delivery available <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">7-day replacement support <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Prepaid offers: 10% on ₹499+, 12% on ₹999+, 15% on ₹1499+ <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">Cash on delivery available <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot">◆</span></span>
-    <span class="marquee-item">7-day replacement support <span class="marquee-dot">◆</span></span>
+    <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">Prepaid offers: 10% on ₹499+, 12% on ₹999+, 15% on ₹1499+ <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">Cash on delivery available <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">7-day replacement support <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">Prepaid offers: 10% on ₹499+, 12% on ₹999+, 15% on ₹1499+ <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">Cash on delivery available <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">7-day replacement support <span class="marquee-dot" aria-hidden="true">◆</span></span>
   </div>
 </div>
 
@@ -4449,7 +4507,7 @@ PRODUCT_HTML = """<!DOCTYPE html>
 <script type="application/ld+json" id="ldjson">{}</script>
 <link href="FONT_GOOGLE_URL_SIMPLE_PLACEHOLDER" rel="stylesheet"/>
 <script>
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){ /* dark default */ } })();
+  (function(){ var d = document.documentElement; try { if (localStorage.getItem('iac_theme') !== 'dark') d.setAttribute('data-theme','light'); } catch(e){ d.setAttribute('data-theme','light'); /* light default */ } })();
   function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme');
     var next = cur === 'light' ? 'dark' : 'light';
@@ -4460,7 +4518,7 @@ PRODUCT_HTML = """<!DOCTYPE html>
 </script>
 <style>
 :root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
-html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#8a6a1f;--gold-light:#b8902c;--gold-dim:#6a4f10;--cream:#2a2018;--cream-dim:#5a4a38;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
+html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#7a5a12;--gold-light:#5f4610;--gold-dim:#6a4f10;--cream:#241c14;--cream-dim:#4e4032;--muted:#4e4032;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
 html[data-theme="light"] nav{background:rgba(250,247,242,0.97)!important}
 html[data-theme="light"] .prod-cover{background:#f0e8d4}
 html[data-theme="light"] .prod-cover img{box-shadow:0 12px 32px rgba(60,40,10,0.2)}
@@ -4594,7 +4652,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 /* Delivery guarantee */
 .prod-refund-guarantee{font-size:0.72rem;line-height:1.6;color:#f0e8d8;padding:0.65rem 0.9rem;background:rgba(109,191,109,0.06);border-left:3px solid #6dbf6d}
 .prod-desc-title{font-size:0.6rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:0.6rem}
-.prod-desc{font-size:0.82rem;color:var(--cream-dim);line-height:1.9;letter-spacing:0.03em}
+.prod-desc{font-size:0.95rem;color:var(--cream);line-height:1.85;letter-spacing:0.01em;font-family:var(--font-serif)}
 .prod-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem 2rem}
 .prod-meta-item{}
 .prod-meta-label{font-size:0.55rem;letter-spacing:0.25em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:0.2rem}
@@ -6645,10 +6703,10 @@ def static_product_html(book):
 <script type="application/ld+json">{product_faq_json_ld(book)}</script>
 <script type="application/ld+json">{breadcrumb_json_ld(book)}</script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;500&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet"/>
-<script>(function(){{try{{var t=localStorage.getItem('iac_theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}}catch(e){{}}}})();</script>
+<script>(function(){{var d=document.documentElement;try{{if(localStorage.getItem('iac_theme')!=='dark')d.setAttribute('data-theme','light')}}catch(e){{d.setAttribute('data-theme','light')}}}})();</script>
 <style>
 :root{{--bg:#0d0b08;--panel:#1c1916;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.18);--white:#faf7f2}}
-html[data-theme="light"]{{--bg:#faf7f2;--panel:#fff;--gold:#8a6a1f;--cream:#2a2018;--muted:#5a4a38;--border:rgba(138,106,31,.28);--white:#0d0b08}}
+html[data-theme="light"]{{--bg:#faf7f2;--panel:#fff;--gold:#7a5a12;--cream:#241c14;--muted:#4e4032;--border:rgba(138,106,31,.28);--white:#0d0b08}}
 html{{overflow-x:hidden}} *{{box-sizing:border-box;min-width:0}} body{{margin:0;overflow-x:hidden;background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif;font-weight:400}} a{{color:inherit}}
 .promo{{padding:.62rem 1rem;text-align:center;border-bottom:1px solid var(--border);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}} .promo strong{{color:var(--gold)}}
 nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(13,11,8,.97);position:sticky;top:0;z-index:5;backdrop-filter:blur(12px)}} html[data-theme="light"] nav{{background:rgba(250,247,242,.97)!important}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
@@ -7361,10 +7419,10 @@ CHECKOUT_HTML = """<!DOCTYPE html>
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <link href="FONT_GOOGLE_URL_SIMPLE_PLACEHOLDER" rel="stylesheet"/>
-<script>(function(){try{var t=localStorage.getItem('iac_theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}})()</script>
+<script>(function(){var d=document.documentElement;try{if(localStorage.getItem('iac_theme')!=='dark')d.setAttribute('data-theme','light')}catch(e){d.setAttribute('data-theme','light')}})()</script>
 <style>
 :root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
-html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#8a6a1f;--gold-dim:#6a4f10;--cream:#2a2018;--cream-dim:#5a4a38;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
+html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#7a5a12;--gold-dim:#6a4f10;--cream:#241c14;--cream-dim:#4e4032;--muted:#4e4032;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{max-width:100%;overflow-x:hidden;}
 body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif;font-weight:400;min-height:100vh}
@@ -9867,12 +9925,12 @@ COLLECTION_HTML = r"""<!DOCTYPE html>
 <link rel="manifest" href="/manifest.json"/>
 <link href="FONT_GOOGLE_URL_SIMPLE_PLACEHOLDER" rel="stylesheet"/>
 <script>
-  (function(){ try { var t = localStorage.getItem('iac_theme'); if (t === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){ /* dark default */ } })();
+  (function(){ var d = document.documentElement; try { if (localStorage.getItem('iac_theme') !== 'dark') d.setAttribute('data-theme','light'); } catch(e){ d.setAttribute('data-theme','light'); /* light default */ } })();
   function toggleTheme(){ var c = document.documentElement.getAttribute('data-theme'); var n = c === 'light' ? 'dark' : 'light'; if(n) document.documentElement.setAttribute('data-theme', n); else document.documentElement.removeAttribute('data-theme'); try { localStorage.setItem('iac_theme', n); } catch(e){} }
 </script>
 <style>
 :root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
-html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#8a6a1f;--gold-light:#b8902c;--gold-dim:#6a4f10;--cream:#2a2018;--cream-dim:#5a4a38;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
+html[data-theme="light"]{--bg:#faf7f2;--bg2:#f3ece0;--bg3:#ffffff;--gold:#7a5a12;--gold-light:#5f4610;--gold-dim:#6a4f10;--cream:#241c14;--cream-dim:#4e4032;--muted:#4e4032;--white:#0d0b08;--border:rgba(138,106,31,0.28)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif;font-weight:300;min-height:100vh}
 nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1.2rem 4rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}

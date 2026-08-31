@@ -109,11 +109,11 @@ function updateCartUI() {
   if (footerEl) footerEl.style.display = 'flex';
   if (totalEl) {
     if (shipping === 0) {
-      totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.55rem;color:#6dbf6d;letter-spacing:0.15em;text-transform:uppercase;font-family:'Montserrat',sans-serif;font-weight:500;margin-top:4px;">✓ Free Shipping</div>`;
+      totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.55rem;color:var(--ship-free,#2f6e37);letter-spacing:0.15em;text-transform:uppercase;font-family:'Montserrat',sans-serif;font-weight:500;margin-top:4px;">✓ Free Shipping</div>`;
     } else {
       // The free-shipping gap is stated once, on the progress bar above the
       // add-on rows -- repeating it here just said the same sentence twice.
-      totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.6rem;color:#a09080;font-family:'Montserrat',sans-serif;margin-top:4px;letter-spacing:0.05em;">Subtotal ₹${sum.toLocaleString('en-IN')} + Shipping ₹${shipping}</div>`;
+      totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.6rem;color:var(--muted,#a09080);font-family:'Montserrat',sans-serif;margin-top:4px;letter-spacing:0.05em;">Subtotal ₹${sum.toLocaleString('en-IN')} + Shipping ₹${shipping}</div>`;
     }
   }
 
@@ -168,7 +168,7 @@ function injectCartRecStyles() {
     .iac-ship-nudge{margin:1rem 0 .2rem;padding:.75rem .85rem;border:1px solid rgba(201,168,76,.28);background:rgba(201,168,76,.07)}
     .iac-ship-nudge.is-free{border-color:rgba(109,191,109,.4);background:rgba(109,191,109,.08)}
     .iac-ship-text{font:600 .58rem Montserrat,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:var(--gold,#c9a84c)}
-    .iac-ship-nudge.is-free .iac-ship-text{color:#6dbf6d}
+    .iac-ship-nudge.is-free .iac-ship-text{color:#2f6e37}html:not([data-theme="light"]) .iac-ship-nudge.is-free .iac-ship-text{color:#6dbf6d}
     .iac-ship-bar{height:4px;margin-top:.5rem;background:rgba(138,106,31,.18);overflow:hidden}
     .iac-ship-fill{height:100%;background:var(--gold,#c9a84c);transition:width .35s ease}
     .iac-ship-nudge.is-free .iac-ship-fill{background:#6dbf6d}
