@@ -6,7 +6,7 @@
  * email + WhatsApp regardless of which path detects the transition.
  *
  * Three stages:
- *   in transit        → sendInTransitNotifications  (WA needs "order_in_transit" template)
+ *   in transit        → sendInTransitNotifications  (OFF by default, see below)
  *   out for delivery  → sendOFDNotification
  *   delivered         → sendDeliveredNotification
  *
@@ -35,8 +35,23 @@ function emailBase(content) {
     </div>`;
 }
 
+// The in-transit ping is the least actionable of the three stages: the customer
+// has already had "shipped", and "out for delivery" is the one they act on. At
+// ~5,000 orders a month it was a whole utility-rate WhatsApp per order (roughly
+// ₹574/month) to say the parcel is still moving. Off unless
+// WHATSAPP_IN_TRANSIT_ENABLED is set to 1/true/yes.
+const IN_TRANSIT_ENABLED = /^(1|true|yes)$/i.test(String(process.env.WHATSAPP_IN_TRANSIT_ENABLED || ''));
+
 // ── In transit ──────────────────────────────────────────────────────────────
 async function sendInTransitNotifications(order, awb) {
+  // Reported as ok:true on purpose. Both callers release their
+  // in_transit_notified_at claim whenever the result is not ok, so returning a
+  // failure here would re-enter this branch on every courier hub scan forever.
+  // Nothing was sent, and the stage is marked done.
+  if (!IN_TRANSIT_ENABLED) {
+    return { whatsapp: { ok: true, skipped: true, reason: 'in_transit_disabled' } };
+  }
+
   // WhatsApp-only: the in-transit EMAIL was dropped to conserve email-provider
   // quota (WhatsApp covers this stage). See sendDeliveredNotification for a stage
   // that still emails. `awb` is kept in the signature for call-site compatibility.
