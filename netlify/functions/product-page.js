@@ -182,7 +182,7 @@ function applyOverride(product, override) {
   };
 }
 
-function productHtml(product) {
+function productHtml(product, aplusContent = null) {
   const slug = esc(product.slug);
   const title = esc(product.title);
   const author = esc(product.author || 'Ink & Chai');
@@ -396,6 +396,8 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
   </section>
 </main>
 <section data-iac-aplus hidden></section>
+<script>window.__IAC_APLUS__=${JSON.stringify(aplusContent).replace(/</g, '\\u003c')};</script>
+<script id="iac-aplus-js" src="/js/aplus-content.js" defer></script>
 <section id="bookstagramContent"></section>
 <script>window.__IAC_REELS__=${JSON.stringify(SOCIAL_PROOF).replace(/</g, '\\u003c')};</script>
 <script src="/js/reels.js" defer></script>
@@ -621,11 +623,21 @@ exports.handler = async (event) => {
     if (error && error.code !== 'PGRST116') throw new DatabaseDown(error.message || 'lookup failed');
     if (!data) return notFound();
 
-    const { data: override } = await supabase
-      .from('product_overrides')
-      .select('title,author,category,price_inr,original_price_inr,is_active')
-      .eq('slug', slug)
-      .maybeSingle();
+    const [{ data: override }, { data: aplusContent, error: aplusError }] = await Promise.all([
+      supabase
+        .from('product_overrides')
+        .select('title,author,category,price_inr,original_price_inr,is_active')
+        .eq('slug', slug)
+        .maybeSingle(),
+      supabase
+        .from('product_aplus_content')
+        .select('slug,heading,intro,blocks,is_active,updated_at')
+        .eq('slug', slug)
+        .eq('is_active', true)
+        .maybeSingle(),
+    ]);
+    // A+ is decorative — a failure here must not take the product page down.
+    if (aplusError) console.warn('A+ content unavailable while rendering product page:', aplusError.message);
     const product = applyOverride(data, override);
 
     return {
@@ -638,7 +650,7 @@ exports.handler = async (event) => {
         'Cache-Control': 'public, max-age=0, must-revalidate',
         'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=300',
       },
-      body: productHtml(product),
+      body: productHtml(product, aplusContent || null),
     };
   } catch (err) {
     if (err instanceof DatabaseDown || err?.name === 'DatabaseDown') {
