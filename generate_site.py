@@ -1185,7 +1185,7 @@ HTML = r"""<!DOCTYPE html>
   }
 
   /* NAV */
-  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; flex-wrap: wrap; row-gap: 0.7rem; align-items: center; justify-content: space-between; padding: 1.4rem 4rem; background: linear-gradient(to bottom, rgba(13,11,8,0.97) 0%, transparent 100%); border-bottom: 1px solid var(--border); backdrop-filter: blur(12px); }
+  nav { position: static; z-index: 100; display: flex; flex-wrap: wrap; row-gap: 0.7rem; align-items: center; justify-content: space-between; padding: 1.4rem 4rem; background: linear-gradient(to bottom, rgba(13,11,8,0.97) 0%, transparent 100%); border-bottom: 1px solid var(--border); backdrop-filter: blur(12px); }
   .nav-logo { display: inline-flex; align-items: center; gap: 0.5rem; font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; font-weight: 600; letter-spacing: 0.08em; color: var(--gold); text-decoration: none; }
   .nav-logo .logo-img { height: 38px; width: auto; display: block; }
   .nav-logo .logo-light { display: none; }
@@ -2140,8 +2140,7 @@ body{
    floating nav pill below it (previously a centered pill at the same y as the
    nav, which hid the nav buttons). */
 .promo-banner{
-  position:fixed;
-  top:0;left:0;right:0;
+  position:static;
   width:100%;
   margin:0;
   border:none;
@@ -2154,10 +2153,9 @@ body{
 }
 nav:not(.mob-nav){
   width:min(1540px,calc(100% - 28px));
-  left:50%;
-  right:auto;
-  top:2.7rem;            /* sit just below the fixed promo strip */
-  transform:translateX(-50%);
+  /* In normal flow now, so it centres with auto margins rather than the
+     left:50% + translateX(-50%) pair it used while it was pinned. */
+  margin:.7rem auto 0;
   border:1px solid var(--glass-border);
   border-radius:var(--pill);
   background:var(--glass-bg)!important;
@@ -2165,7 +2163,6 @@ nav:not(.mob-nav){
   backdrop-filter:blur(24px) saturate(1.25);
   padding:.72rem 1rem .72rem 1.1rem;
 }
-body.no-promo nav:not(.mob-nav){top:12px}   /* if promo dismissed/absent */
 .nav-links a,.btn-nav,.theme-toggle,.nav-search-btn,.search-chip,.tab,.btn-primary,.btn-add-card,.shelf-card-btn,.btn-load-more,.pincode-btn,.btn-checkout,.qty-btn{
   border-radius:var(--pill);
 }
@@ -2182,7 +2179,7 @@ body.no-promo nav:not(.mob-nav){top:12px}   /* if promo dismissed/absent */
   box-shadow:var(--glass-highlight);
   backdrop-filter:blur(14px);
 }
-.hero{padding-top:clamp(7rem,9vw,9.5rem)}
+.hero{padding-top:clamp(1.5rem,3vw,3rem)}
 .hero-left{padding-left:clamp(1.25rem,5vw,6rem)}
 .hero-title{letter-spacing:-.025em}
 .hero-card::before,.hero-card::after{border-radius:26px}
@@ -2234,6 +2231,11 @@ html[data-theme="light"] .coll-card{
   backdrop-filter:blur(24px) saturate(1.25);
 }
 .cart-overlay{background:rgba(13,11,8,.38);backdrop-filter:blur(8px)}
+/* The cart is a full-height reading surface, not a floating accent, so it stays
+   fully opaque. At --glass-bg's 0.86 alpha the dark hero showed through behind
+   the item titles, and iOS "Reduce Transparency" drops the blur altogether. */
+html[data-theme="light"] .cart-sidebar{background:#fffdfa!important}
+html:not([data-theme="light"]) .cart-sidebar{background:#15120f!important}
 .cart-sidebar{
   top:14px;
   right:14px;
@@ -2305,10 +2307,9 @@ html[data-theme="light"] .btn-primary{
 .shelf-row,.author-row,.tabs,.search-hints,.nav-links{max-width:100%;overscroll-behavior-x:contain}
 @media(max-width:780px){
   .promo-banner{
-    /* Mobile: full-width fixed strip pinned to the very top; the nav card
-       sits below it (top:2.9rem) so they never overlap. */
-    position:fixed;
-    top:0;left:0;right:0;
+    /* The strip and the nav below it both sit in normal flow and scroll away
+       with the page; only .mob-nav (the bottom bar) stays pinned. */
+    position:static;
     width:100%;
     margin:0;
     border-radius:0;
@@ -2318,21 +2319,12 @@ html[data-theme="light"] .btn-primary{
     z-index:96;
   }
   nav:not(.mob-nav){
-    top:2.9rem;
     width:calc(100% - 18px);
     border-radius:28px;
     padding:.6rem .72rem;
     transition:padding .22s ease;
   }
-  /* While scrolling the top bar collapses to just the search field so it stays
-     reachable without covering the page. It re-expands at the top of the page. */
-  body.nav-min nav:not(.mob-nav){padding:.4rem .55rem}
-  body.nav-min nav:not(.mob-nav) .nav-logo,
-  body.nav-min nav:not(.mob-nav) .nav-links,
-  body.nav-min nav:not(.mob-nav) .nav-actions,
-  body.nav-min nav:not(.mob-nav) .nav-break{display:none!important}
-  body.nav-min nav:not(.mob-nav) .nav-search{margin:0!important;width:100%;order:0}
-  .hero{padding-top:7.8rem}
+  .hero{padding-top:1.2rem}
   .hero-title{font-size:clamp(2.65rem,13vw,4rem);line-height:.96;letter-spacing:0}
   .hero-desc{font-size:.94rem;line-height:1.72}
   .section-title{font-size:clamp(2rem,10vw,2.7rem);letter-spacing:0}
@@ -2466,22 +2458,6 @@ html[data-theme="light"] .btn-primary{
     </div>
   </div>
 </nav>
-<script>
-/* Mobile: collapse the top bar to just the search field once the page is
-   scrolled, so it stays reachable without eating screen space. Desktop is
-   untouched. */
-(function(){
-  var min=false;
-  function upd(){
-    if(window.innerWidth>780){ if(min){document.body.classList.remove('nav-min');min=false;} return; }
-    var want = (window.pageYOffset||document.documentElement.scrollTop||0) > 90;
-    if(want!==min){ document.body.classList.toggle('nav-min', want); min=want; }
-  }
-  window.addEventListener('scroll', upd, {passive:true});
-  window.addEventListener('resize', upd, {passive:true});
-  if(document.readyState!=='loading') upd(); else document.addEventListener('DOMContentLoaded', upd);
-})();
-</script>
 
 <!-- SEARCH OVERLAY -->
 <div class="srch-overlay" id="srchOverlay" role="dialog" aria-label="Search">
@@ -3067,20 +3043,7 @@ html[data-theme="light"] .btn-primary{
   </div>
 </footer>
 
-<!-- Floating WhatsApp Button -->
-<a href="https://wa.me/917678400508" target="_blank" rel="noopener"
-   style="position:fixed;bottom:2rem;right:2rem;z-index:9000;
-          width:56px;height:56px;border-radius:50%;
-          background:#25D366;display:flex;align-items:center;justify-content:center;
-          box-shadow:0 4px 20px rgba(37,211,102,0.4);
-          transition:transform 0.2s,box-shadow 0.2s;text-decoration:none;"
-   onmouseover="this.style.transform='scale(1.1)';this.style.boxShadow='0 6px 28px rgba(37,211,102,0.6)'"
-   onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 20px rgba(37,211,102,0.4)'"
-   title="Chat with us on WhatsApp">
-  <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="white">
-    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-  </svg>
-</a>
+<!-- (single floating WhatsApp button is .wa-float, rendered above) -->
 
 <!-- Supabase JS (for user accounts) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -4564,6 +4527,9 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
   .prod-badges{margin-top:0.5rem}
   .prod-actions{display:none}
   .prod-bottom-bar{display:flex!important}
+  /* The bar is fixed, so without this the last thing on the page sits under it
+     -- which was the bundle's "+ Add Bundle to Cart" button, unreachable. */
+  body{padding-bottom:calc(5.75rem + env(safe-area-inset-bottom,0px))!important}
   .mob-nav{display:none!important}
   #authNavBtnProd{display:inline-flex!important}
   .prod-info{gap:1rem}
@@ -6709,7 +6675,7 @@ def static_product_html(book):
 html[data-theme="light"]{{--bg:#faf7f2;--panel:#fff;--gold:#7a5a12;--cream:#241c14;--muted:#4e4032;--border:rgba(138,106,31,.28);--white:#0d0b08}}
 html{{overflow-x:hidden}} *{{box-sizing:border-box;min-width:0}} body{{margin:0;overflow-x:hidden;background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif;font-weight:400}} a{{color:inherit}}
 .promo{{padding:.62rem 1rem;text-align:center;border-bottom:1px solid var(--border);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}} .promo strong{{color:var(--gold)}}
-nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(13,11,8,.97);position:sticky;top:0;z-index:5;backdrop-filter:blur(12px)}} html[data-theme="light"] nav{{background:rgba(250,247,242,.97)!important}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
+nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(13,11,8,.97);position:static;z-index:5;backdrop-filter:blur(12px)}} html[data-theme="light"] nav{{background:rgba(250,247,242,.97)!important}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
 .theme-btn{{background:transparent;border:1px solid var(--border);color:var(--gold);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:.8rem;display:inline-flex;align-items:center;justify-content:center}}
 .pdp-search{{display:flex;align-items:center;gap:.4rem;flex:1;max-width:400px;margin:0 1rem;background:rgba(201,168,76,.08);border:1px solid var(--border);border-radius:999px;padding:.26rem .26rem .26rem .9rem}}
 .pdp-search input{{flex:1;background:transparent;border:0;color:var(--cream);font:inherit;font-size:.82rem;outline:none;min-width:0}}
@@ -6839,7 +6805,7 @@ html[data-theme="light"] .cover{{background:rgba(255,255,255,.58);box-shadow:0 2
   backdrop-filter:blur(24px) saturate(1.25);
   overflow:hidden;
 }}
-html[data-theme="light"] .cart-sidebar{{background:rgba(250,247,242,.76);box-shadow:0 24px 70px rgba(70,52,24,.14),inset 0 1px rgba(255,255,255,.62)}}
+html[data-theme="light"] .cart-sidebar{{background:#fffdfa;box-shadow:0 24px 70px rgba(70,52,24,.14),inset 0 1px rgba(255,255,255,.62)}}
 .cart-header,.cart-footer{{background:rgba(255,255,255,.06);backdrop-filter:blur(14px)}}
 html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{background:rgba(255,255,255,.42)}}
 @media(max-width:760px){{

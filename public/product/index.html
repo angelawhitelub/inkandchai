@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Loading… — Ink &amp; Chai</title>
-<link rel="preload" as="script" href="/js/books-full-adc49d90.js"/>
+<link rel="preload" as="script" href="/js/books-full-a6306f74.js"/>
 <meta name="description" content="Buy books online at Ink &amp; Chai — fast pan-India delivery."/>
 <meta name="robots" content="index,follow"/>
 <meta name="keywords" content="buy books online india, hindi books, self help books hindi, fiction books online, motivational books, ink and chai"/>
@@ -87,6 +87,9 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
   .prod-badges{margin-top:0.5rem}
   .prod-actions{display:none}
   .prod-bottom-bar{display:flex!important}
+  /* The bar is fixed, so without this the last thing on the page sits under it
+     -- which was the bundle's "+ Add Bundle to Cart" button, unreachable. */
+  body{padding-bottom:calc(5.75rem + env(safe-area-inset-bottom,0px))!important}
   .mob-nav{display:none!important}
   #authNavBtnProd{display:inline-flex!important}
   .prod-info{gap:1rem}
@@ -784,7 +787,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-full-adc49d90.js"></script>
+<script src="/js/books-full-a6306f74.js"></script>
 <script>
 const BOOKS = window.BOOKS_PRELOAD||[];
 const SOCIAL_PROOF = [];
