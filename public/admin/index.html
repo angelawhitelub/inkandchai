@@ -7715,6 +7715,22 @@ function printSelectedPicklists() {
 // reconciliation. The scan is read-only; cancelling routes through
 // bulk-update-orders, the one chokepoint that also refunds and notifies.
 let npCancelledRows = [];
+let npScannedCount = 0;
+
+// Totals are recomputed here rather than taken from the response, so that
+// dropping a row after it is cancelled updates the cards without another scan.
+function npTotals() {
+  const rows = npCancelledRows;
+  const sum = (f) => rows.reduce((s, o) => s + Number(f(o) || 0), 0);
+  return {
+    orders: rows.length,
+    order_value_inr: Math.round(sum(o => o.amount_inr) * 100) / 100,
+    refund_due_inr: Math.round(sum(o => o.refund_due_inr) * 100) / 100,
+    prepaid_orders: rows.filter(o => o.prepaid && !o.is_replacement).length,
+    cod_orders: rows.filter(o => !o.prepaid && !o.is_replacement).length,
+    replacements: rows.filter(o => o.is_replacement).length,
+  };
+}
 
 function npFmt(n) {
   return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -7736,8 +7752,25 @@ async function loadNpCancelled() {
     if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
 
     npCancelledRows = data.orders || [];
-    const t = data.totals || {};
-    meta.innerHTML = `Checked <strong>${data.scanned}</strong> shipments still open here · `
+    npScannedCount = data.scanned || 0;
+    renderNpCancelled();
+  } catch (e) {
+    meta.innerHTML = '<span style="color:#c93636;">Scan failed: ' + esc(e.message) + '</span>';
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c93636;padding:1.4rem;">' + esc(e.message) + '</td></tr>';
+  }
+}
+
+// Paints whatever is in npCancelledRows. Kept separate from the scan so that
+// cancelling an order can drop its row and repaint immediately -- re-scanning
+// costs a full NimbusPost sweep (~9s), which made closing them one at a time
+// unusable.
+function renderNpCancelled() {
+  const meta = document.getElementById('npCancelledMeta');
+  const body = document.getElementById('npCancelledBody');
+  if (!meta || !body) return;
+  try {
+    const t = npTotals();
+    meta.innerHTML = `Checked <strong>${npScannedCount}</strong> shipments still open here · `
       + `<strong style="color:${npCancelledRows.length ? '#e07020' : '#5d9b55'};">${npCancelledRows.length}</strong> cancelled at NimbusPost.`;
 
     const badge = document.getElementById('npCancelledBadge');
@@ -7748,6 +7781,10 @@ async function loadNpCancelled() {
 
     if (!npCancelledRows.length) {
       body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#5d9b55;padding:1.4rem;">Nothing to reconcile — every NimbusPost cancellation is already closed here.</td></tr>';
+      // Reached by closing the last row, not just by a clean scan, so the
+      // summary cards and the cancel bar have to be put away here too.
+      document.getElementById('npCancelledTotals').style.display = 'none';
+      document.getElementById('npCancelledActions').style.display = 'none';
       return;
     }
 
@@ -7781,7 +7818,6 @@ async function loadNpCancelled() {
     }).join('');
     npUpdateSelection();
   } catch (e) {
-    meta.innerHTML = '<span style="color:#c93636;">Scan failed: ' + esc(e.message) + '</span>';
     body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c93636;padding:1.4rem;">' + esc(e.message) + '</td></tr>';
   }
 }
@@ -7884,7 +7920,16 @@ async function cancelSelectedNpOrders(btn) {
     + `Prepaid refunds are issued automatically. PhonePe refunds settle over a few hours — `
     + `the hourly reconcile marks them refunded and mails the customer once the gateway confirms.`
   );
-  loadNpCancelled();
+
+  // Drop what actually closed and repaint from memory. Anything that failed
+  // stays on the list so it is still visible to retry. A fresh sweep is a
+  // ~9s NimbusPost scan and would say the same thing, so it stays manual.
+  if (done.length) {
+    const closed = new Set(done);
+    npCancelledRows = npCancelledRows.filter(o => !closed.has(o.order_id));
+    renderNpCancelled();
+  }
+  btn.disabled = false;
 }
 
 // ── Quick date-range filter (Today / Yesterday / 7 / 30 / 90 / all) ────────
