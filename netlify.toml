@@ -106,6 +106,14 @@
 # while the site has silently rolled back — which is exactly how a day's worth
 # of admin features went missing on 30 Aug 2026. Hourly is soon enough to catch
 # it before work is written against code the site is not running.
+# Ask recently-delivered customers for a product review, once a day at 10:00 AM
+# IST (cron is UTC; IST = UTC+5:30). This was never scheduled before, which is
+# the main reason product_reviews held exactly one row -- an admin-entered one.
+# Deliberately daily and capped rather than hourly: these are utility-template
+# WhatsApps to real customers, and one badly-timed burst costs us the number.
+[functions."request-reviews-scheduled"]
+  schedule = "30 4 * * *"
+
 [functions."deploy-drift-check"]
   schedule = "@hourly"
 

@@ -31,6 +31,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp, normalizePhone } = require('./utils/whatsapp');
 const { isValidIndianMobile } = require('./utils/spam-filter');
 const { requireAdmin } = require('./utils/admin-auth');
+const { signReviewToken } = require('./utils/review-token');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -134,7 +135,14 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, message: 'No eligible delivered customers found', total: 0 }) };
     }
 
-    const reviewLink = oid => `https://inkandchai.in/review/?order=${encodeURIComponent(oid)}`;
+    // The `t` token is what lets a guest buyer submit without an account --
+    // submit-review takes it as proof we sent this link. Without it every
+    // submission 401s, which is how this table stayed empty.
+    const reviewLink = (oid) => {
+      const t = signReviewToken(oid);
+      return `https://inkandchai.in/review/?order=${encodeURIComponent(oid)}`
+        + (t ? `&t=${encodeURIComponent(t)}` : '');
+    };
 
     // ── Dry run ─────────────────────────────────────────────────────────────
     if (dryRun) {

@@ -300,7 +300,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 .wrap{max-width:1260px;margin:0 auto;padding:clamp(1.2rem,4vw,4rem) 1rem 4rem;display:grid;grid-template-columns:minmax(320px,.95fr) 1.05fr;gap:clamp(1.4rem,4vw,4rem);align-items:start}.cover{background:rgba(255,255,255,.055);border:1px solid var(--glass-border);border-radius:28px;padding:clamp(1rem,2.5vw,1.8rem);display:flex;align-items:center;justify-content:center;box-shadow:0 24px 70px rgba(0,0,0,.3),var(--glass-highlight);backdrop-filter:blur(18px) saturate(1.12)}html[data-theme="light"] .cover{background:rgba(255,255,255,.58);box-shadow:0 24px 70px rgba(70,52,24,.1),var(--glass-highlight)}.cover img{max-width:100%;max-height:600px;object-fit:contain;box-shadow:0 24px 64px rgba(0,0,0,.35)}
 .crumb{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}h1{font-family:"Cormorant Garamond",serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:400;line-height:1.05;margin:.2rem 0 .6rem}.author{color:var(--muted);letter-spacing:.08em;margin-bottom:1rem}.price{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold);font-weight:600}.orig{color:var(--muted);text-decoration:line-through;margin-left:.8rem}.product-price-row{display:flex;align-items:baseline;flex-wrap:wrap;gap:.55rem}.product-price-row .orig{margin-left:0}.save-badge{font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:#237a3b;background:rgba(35,122,59,.1);border:1px solid rgba(35,122,59,.28);padding:.28rem .6rem;white-space:nowrap}.save-badge[hidden]{display:none}.stock{display:inline-block;margin:1rem 0;color:#237a3b;border:1px solid rgba(35,122,59,.25);padding:.35rem .65rem;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase}
 .trust{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem;margin:1.2rem 0}.trust>span{display:flex;align-items:center;gap:.65rem;border:1px solid var(--border);border-radius:14px;background:linear-gradient(180deg,rgba(214,184,94,.09),rgba(214,184,94,.03));padding:.7rem .8rem;color:var(--cream);font-size:.78rem;box-shadow:var(--glass-highlight);transition:border-color .2s ease,transform .2s ease}.trust>span:hover{border-color:rgba(214,184,94,.45);transform:translateY(-1px)}.trust .ti{flex:0 0 auto;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:rgba(214,184,94,.14);color:var(--gold)}.trust .ti svg{width:17px;height:17px;display:block}.trust .tt{min-width:0;display:flex;flex-direction:column;gap:.1rem;line-height:1.25}.trust .tt b{font-weight:600;font-size:.8rem;color:var(--cream)}.trust .tt i{font-style:normal;font-size:.68rem;color:var(--muted)}html[data-theme="light"] .trust>span{background:linear-gradient(180deg,rgba(255,255,255,.7),rgba(255,255,255,.35));box-shadow:inset 0 1px rgba(255,255,255,.5)}.actions{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1.3rem 0}button{font:700 .68rem Montserrat,sans-serif;letter-spacing:.2em;text-transform:uppercase;padding:1rem;border:1px solid var(--gold);border-radius:999px;cursor:pointer;min-height:52px;transition:transform .2s ease,filter .2s ease,box-shadow .2s ease}button:hover{transform:translateY(-1px);filter:brightness(1.05)}.primary{background:linear-gradient(135deg,var(--gold),var(--copper));color:#100c08;box-shadow:0 14px 30px rgba(214,184,94,.18),var(--glass-highlight)}html[data-theme="light"] .primary{color:#fff;box-shadow:0 14px 30px rgba(70,52,24,.16),var(--glass-highlight)}.secondary{background:rgba(214,184,94,.075);color:var(--gold-light)}
-.desc,.details{border-top:1px solid var(--border);border-radius:24px;padding-top:1.2rem;margin-top:1.2rem;color:var(--cream);font-size:1rem;line-height:1.8;white-space:pre-line}.desc.rich{font-family:Lora,Georgia,serif}.label{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}.details dl{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}.details dt{color:var(--gold)}.details dd{margin:0;color:var(--cream)}
+.desc,.details{border-top:1px solid var(--border);border-radius:24px;padding-top:1.2rem;margin-top:1.2rem;color:var(--cream);font-size:1rem;line-height:1.8;white-space:pre-line}.desc.rich{font-family:Lora,Georgia,serif}.label{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.5rem}.details dl{display:grid;grid-template-columns:120px 1fr;gap:.5rem 1rem}.details dt{color:var(--gold)}.details dd{margin:0;color:var(--cream)}.reviews{max-width:1260px;margin:0 auto;padding:0 1rem 3rem;color:var(--cream)}.review-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;border-top:1px solid var(--border);padding-top:1.2rem}.review-head h2{font-family:'Cormorant Garamond',Georgia,serif;font-weight:400;font-size:1.45rem;margin:0}.score{text-align:right;flex-shrink:0}.score strong{display:block;font-family:'Cormorant Garamond',Georgia,serif;font-size:2.2rem;color:var(--gold);line-height:.9}.score span{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 /* Rich admin copy. pre-line is turned OFF here because richText() emits real
    <p>/<br> blocks — leaving it on would double every line break. */
 .rich{white-space:normal}
@@ -396,6 +396,48 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     <div class="details"><div class="label">Details</div><dl><dt>Format</dt><dd>Paperback</dd><dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
+<!-- Approved customer reviews. Admin-created products are served only by this
+     Lambda, so without this block a review left on one of them would never be
+     visible anywhere on the site. Uses string concatenation, not template
+     literals, because this is itself inside one. -->
+<section class="reviews" id="liveReviews" style="display:none">
+  <div class="review-head"><h2>Customer Reviews</h2>
+    <div class="score"><strong id="lrAvg"></strong><span id="lrCount"></span></div></div>
+  <div id="lrList"></div>
+</section>
+<script>
+(function(){
+  var S = ${JSON.stringify(product.slug || '')};
+  if (!S) return;
+  fetch('/.netlify/functions/get-reviews?slug=' + encodeURIComponent(S))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      var rv = (d && d.reviews) || [];
+      var sec = document.getElementById('liveReviews');
+      if (!rv.length || !sec) return;
+      var avg = (rv.reduce(function(a, r){ return a + (r.rating || 0); }, 0) / rv.length).toFixed(1);
+      document.getElementById('lrAvg').textContent = avg + ' \u2605';
+      document.getElementById('lrCount').textContent = rv.length + (rv.length > 1 ? ' reviews' : ' review');
+      var e2 = function(t){ var e = document.createElement('div'); e.textContent = t == null ? '' : t; return e.innerHTML; };
+      document.getElementById('lrList').innerHTML = rv.map(function(r){
+        var n = Math.max(0, Math.min(5, r.rating || 0));
+        var stars = '\u2605'.repeat(n) + '\u2606'.repeat(5 - n);
+        var date = new Date(r.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+        return '<div style="border-top:1px solid var(--border);padding:.9rem 0">'
+          + '<div style="display:flex;justify-content:space-between;gap:1rem;font-size:.72rem">'
+          + '<span style="color:var(--gold)">' + stars + '</span>'
+          + '<span style="color:var(--muted)">' + date + '</span></div>'
+          + '<div style="margin-top:.35rem;font-size:.78rem">' + e2(r.customer_name || 'Verified Buyer')
+          + (r.verified_buyer ? ' <span style="color:#2f6e37;font-size:.6rem;letter-spacing:.1em">\u2713 VERIFIED PURCHASE</span>' : '')
+          + '</div>'
+          + (r.comment ? '<div style="margin-top:.4rem;line-height:1.7">' + e2(r.comment) + '</div>' : '')
+          + '</div>';
+      }).join('');
+      sec.style.display = 'block';
+    })
+    .catch(function(){});
+})();
+</script>
 <section data-iac-aplus hidden></section>
 <script>window.__IAC_APLUS__=${JSON.stringify(aplusContent).replace(/</g, '\\u003c')};</script>
 <script id="iac-aplus-js" src="/js/aplus-content.js" defer></script>

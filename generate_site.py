@@ -6500,6 +6500,56 @@ def related_books_for(book, count=10):
     return filtered[:count]
 
 
+# ── Live customer reviews (static product pages) ───────────────────────────
+# The dynamic /product/ page has fetched approved product_reviews for a while,
+# but the 2,739 crawlable per-book pages never did -- so even once reviews start
+# arriving they would be invisible on the pages people actually land on. Built
+# as a function rather than inline template text so the JS can use normal
+# braces; static_product_html is an f-string.
+def live_reviews_block(slug: str) -> str:
+    if not slug:
+        return ""
+    return """<section class="reviews" id="liveReviews" style="display:none">
+  <div class="review-head">
+    <h2>Customer Reviews</h2>
+    <div class="score"><strong id="lrAvg"></strong><span id="lrCount"></span></div>
+  </div>
+  <div id="lrList"></div>
+</section>
+<script>
+(function(){
+  var S = """ + json.dumps(slug) + """;
+  fetch('/.netlify/functions/get-reviews?slug=' + encodeURIComponent(S))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      var rv = (d && d.reviews) || [];
+      var sec = document.getElementById('liveReviews');
+      if (!rv.length || !sec) return;
+      var avg = (rv.reduce(function(a, r){ return a + (r.rating || 0); }, 0) / rv.length).toFixed(1);
+      document.getElementById('lrAvg').textContent = avg + ' \u2605';
+      document.getElementById('lrCount').textContent = rv.length + (rv.length > 1 ? ' reviews' : ' review');
+      // textContent round-trip: comment and name are customer-authored.
+      var esc = function(t){ var e = document.createElement('div'); e.textContent = t == null ? '' : t; return e.innerHTML; };
+      document.getElementById('lrList').innerHTML = rv.map(function(r){
+        var n = Math.max(0, Math.min(5, r.rating || 0));
+        var stars = '\u2605'.repeat(n) + '\u2606'.repeat(5 - n);
+        var date = new Date(r.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+        return '<div style="border-top:1px solid var(--border);padding:.9rem 0">'
+          + '<div style="display:flex;justify-content:space-between;gap:1rem;font-size:.72rem">'
+          + '<span class="stars">' + stars + '</span>'
+          + '<span style="color:var(--muted)">' + date + '</span></div>'
+          + '<div style="margin-top:.35rem;font-size:.78rem">' + esc(r.customer_name || 'Verified Buyer')
+          + (r.verified_buyer ? ' <span style="color:#2f6e37;font-size:.6rem;letter-spacing:.1em">\u2713 VERIFIED PURCHASE</span>' : '')
+          + '</div>'
+          + (r.comment ? '<div style="margin-top:.4rem;line-height:1.7">' + esc(r.comment) + '</div>' : '')
+          + '</div>';
+      }).join('');
+      sec.style.display = 'block';
+    })
+    .catch(function(){});
+})();
+</script>"""
+
 def static_product_html(book):
     title = html_escape(book.get("t", "Book"))
     author = html_escape(book.get("a") or "Various")
@@ -6986,6 +7036,7 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
   </section>
 </main>
 {reviews_html}
+{live_reviews_block(book.get('slug') or '')}
 {bkg_html}
 {also_like_html}
 

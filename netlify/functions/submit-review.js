@@ -9,6 +9,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { verifyReviewToken } = require('./utils/review-token');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -26,25 +27,27 @@ exports.handler = async (event) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // ── Require a logged-in customer (JWT) ───────────────────────────────────
-  // Previously any HTTP client with a leaked order_id could post a 5★
-  // "Verified Buyer" review for any product, with any author name. Now the
-  // caller must be authenticated AND own the order.
+  // ── Prove the caller was actually sent here ──────────────────────────────
+  // Two accepted proofs. A signed-in customer's JWT (checked against the order
+  // below), or the HMAC token we minted into the review link we messaged them.
+  // Requiring the JWT alone is what kept this table empty: /review/ has no
+  // sign-in, so every real submission 401'd. Accepting neither would put back
+  // the original hole, where a leaked order id bought you a 5★ "Verified
+  // Buyer" review on any product.
   const authHeader = event.headers.authorization || event.headers.Authorization || '';
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-  if (!token) {
-    return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Sign in to leave a review' }) };
-  }
+  const jwt = authHeader.replace(/^Bearer\s+/i, '').trim();
   let user = null;
-  try {
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data?.user) throw error || new Error('no_user');
-    user = data.user;
-  } catch {
-    return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Invalid session — please sign in again' }) };
+  if (jwt) {
+    try {
+      const { data, error } = await supabase.auth.getUser(jwt);
+      if (error || !data?.user) throw error || new Error('no_user');
+      user = data.user;
+    } catch {
+      return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Invalid session — please sign in again' }) };
+    }
   }
-  const userEmail = (user.email || '').toLowerCase();
-  const userPhone10 = last10(user.user_metadata?.phone || user.phone || '');
+  const userEmail = (user?.email || '').toLowerCase();
+  const userPhone10 = last10(user?.user_metadata?.phone || user?.phone || '');
 
   let body;
   try { body = JSON.parse(event.body); } catch {
@@ -91,13 +94,26 @@ exports.handler = async (event) => {
     return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found' }) };
   }
 
-  // Ownership: the JWT user must match the order's email OR phone.
+  // Ownership: either the signed-in user matches the order's email/phone, or
+  // the request carries the link token we signed for this exact order id.
   const orderEmail = (order.customer_email || '').toLowerCase();
   const orderPhone10 = last10(order.customer_phone);
   const ownsByEmail = userEmail && orderEmail && userEmail === orderEmail;
   const ownsByPhone = userPhone10 && orderPhone10 && userPhone10 === orderPhone10;
-  if (!ownsByEmail && !ownsByPhone) {
-    return { statusCode: 403, headers: CORS, body: JSON.stringify({ error: 'This order is not yours' }) };
+  const ownsByToken = verifyReviewToken(order.razorpay_order_id || cleanId, (body || {}).t);
+  if (!ownsByEmail && !ownsByPhone && !ownsByToken) {
+    return {
+      statusCode: user ? 403 : 401,
+      headers: CORS,
+      body: JSON.stringify({ error: user ? 'This order is not yours' : 'This review link is not valid — please use the link we sent you' }),
+    };
+  }
+
+  // Only a delivered order can be reviewed. Without this a token holder could
+  // review something still in transit (or cancelled), which is exactly the
+  // "verified buyer" claim the badge is making.
+  if (String(order.status || '').toLowerCase() !== 'delivered') {
+    return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'You can review this once it has been delivered' }) };
   }
 
   // Check for duplicate review (one review per order per product)

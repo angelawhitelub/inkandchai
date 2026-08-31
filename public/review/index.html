@@ -113,6 +113,9 @@ textarea{resize:vertical;min-height:100px}
   const params = new URLSearchParams(location.search);
   const orderId   = params.get('order') || '';
   const prefSlug  = params.get('product') || '';
+  // HMAC minted by request-reviews. It is what proves to submit-review that we
+  // sent this link, so a guest buyer never has to create an account to review.
+  const linkToken = params.get('t') || '';
 
   const loading   = document.getElementById('loadingState');
   const formDiv   = document.getElementById('reviewForm');
@@ -247,6 +250,7 @@ textarea{resize:vertical;min-height:100px}
           rating:        selectedRating,
           comment:       document.getElementById('reviewComment').value.trim(),
           customer_name: document.getElementById('reviewName').value.trim(),
+          t:             linkToken,
         }),
       });
       const data = await res.json();
