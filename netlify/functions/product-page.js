@@ -2,6 +2,20 @@ const { createClient } = require('@supabase/supabase-js');
 const SOCIAL_PROOF = require('../../data/social_proof.json').items || [];
 const { richText, plainText } = require('./utils/rich-text');
 
+// The badge used to claim "flat 22.5% off" for every publisher-sourced title.
+// That held for the bulk import and stopped holding the moment the badge could
+// be applied by hand -- the Madonna listing showed 22.5% while actually selling
+// at 54.5% off. Quote this listing's real discount, or say nothing about price.
+function publisherSourcedDiscount(product) {
+  const num = v => Number(String(v == null ? '' : v).replace(/[^0-9.]/g, '')) || 0;
+  const price = num(product && product.price_inr);
+  const mrp = num(product && product.original_price_inr);
+  if (!(price > 0 && mrp > price)) return '';
+  const off = Math.round((1 - price / mrp) * 1000) / 10;
+  if (off < 1) return '';
+  return `, at ${off % 1 === 0 ? off.toFixed(0) : off.toFixed(1)}% off`;
+}
+
 function esc(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -376,7 +390,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
       <div style="font-size:1.5rem;line-height:1;">📚</div>
       <div>
         <div style="font-size:0.58rem;letter-spacing:0.26em;text-transform:uppercase;color:#6daa6d;margin-bottom:0.4rem;font-weight:700;">Genuine — Publisher Sourced</div>
-        <div style="font-size:0.78rem;color:var(--cream);line-height:1.65;">Original copy sourced <strong>directly from the publisher's authorised channel</strong>. MRP printed on the back, flat 22.5% off — no piracy, no third-party resellers.</div>
+        <div style="font-size:0.78rem;color:var(--cream);line-height:1.65;">Original copy sourced <strong>directly from the publisher's authorised channel</strong>. MRP printed on the back${publisherSourcedDiscount(product)} — no piracy, no third-party resellers.</div>
         <div style="font-size:0.72rem;color:var(--muted);line-height:1.65;margin-top:0.45rem;"><strong style="color:var(--gold-light);">🧾 GST invoice available</strong> on request — reply to your order confirmation email with your GSTIN.</div>
       </div>
     </div>` : ''}

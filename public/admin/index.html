@@ -1289,6 +1289,10 @@ select,input,textarea{font-size:1rem;}
       <div class="form-row wide">
         <label>SEO keywords / tags</label>
         <input id="newProdTags" placeholder="hindi books, self help, motivation, paperback"/>
+        <label style="display:flex;align-items:center;gap:.45rem;font-size:.64rem;color:#6daa6d;margin-top:.6rem;">
+          <input type="checkbox" id="newProdPublisherSourced" style="accent-color:#6daa6d;"/> 📚 Genuine — Publisher Sourced badge
+        </label>
+        <p class="hint" style="margin-top:.35rem;">Shows the green panel on the product page. It quotes the real MRP-to-price discount, so fill MRP in above first. Orders containing this book also switch to the <code>IC-CW-</code> order-ID prefix.</p>
       </div>
       <div class="form-row wide">
         <label>SEO title <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(recommended: 50–60 characters)</span></label>
@@ -1557,6 +1561,9 @@ select,input,textarea{font-size:1rem;}
             </label>
             <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:#f07060;" title="Shows a pulsing red badge: 🔥 Hurry! Only 4 left — stock is always pinned at 4, never runs out">
               <input type="checkbox" id="prodScarcity" style="accent-color:#e05040;"/> 🔥 Scarcity badge (Only 4 left)
+            </label>
+            <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:#6daa6d;" title="Shows the green &quot;Genuine — Publisher Sourced&quot; panel on the product page. Also switches this book's orders to the IC-CW- order-ID prefix. The discount line quotes the real MRP-to-price gap, so set the MRP correctly first.">
+              <input type="checkbox" id="prodPublisherSourced" style="accent-color:#6daa6d;"/> 📚 Genuine — Publisher Sourced badge
             </label>
           </div>
           <div class="product-editor-actions">
@@ -4869,6 +4876,8 @@ async function run99Import(btn) {
 function clearCreateProductForm() {
   ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdDescription','newProdAuthorBio','newProdTags','newProdSeoTitle','newProdMetaDescription','newProdImageUrl','newProdGalleryUrls']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const psNew = document.getElementById('newProdPublisherSourced');
+  if (psNew) psNew.checked = false;
   const file = document.getElementById('newProdImage');
   if (file) file.value = '';
   const preview = document.getElementById('newProdImagePreview');
@@ -5147,7 +5156,12 @@ async function createProductListing() {
     isbn: document.getElementById('newProdIsbn').value,
     description,
     author_bio: document.getElementById('newProdAuthorBio').value,
-    tags: document.getElementById('newProdTags').value,
+    // Checkbox, not free text, so the create form and the editor agree on what
+    // turns the badge on.
+    tags: [
+      ...(document.getElementById('newProdPublisherSourced')?.checked ? ['publisher-sourced-bestseller'] : []),
+      ...String(document.getElementById('newProdTags').value || '').split(',').map(t => t.trim()).filter(Boolean),
+    ].filter((t, i, a) => a.indexOf(t) === i).join(', '),
     seo_title: document.getElementById('newProdSeoTitle').value,
     meta_description: document.getElementById('newProdMetaDescription').value,
     image_data_url: newProductImageDataUrl || document.getElementById('newProdImageUrl').value.trim(),
@@ -5230,6 +5244,10 @@ function productShippingTagParts(tags) {
   const states = [];
   const pins = [];
   const publicTags = [];
+  // The badge is driven by a tag, but it is now edited with a checkbox. Pull it
+  // out of the free-text box so the two can never disagree -- an admin deleting
+  // the raw tag while the box stays ticked would silently put it back on save.
+  let publisherSourced = false;
   String(tags || '').split(',').map(tag => tag.trim()).filter(Boolean).forEach(tag => {
     const lower = tag.toLowerCase();
     if (lower.startsWith('shipping-exclude-state:')) {
@@ -5238,16 +5256,23 @@ function productShippingTagParts(tags) {
     } else if (lower.startsWith('shipping-exclude-pin:')) {
       const value = tag.slice('shipping-exclude-pin:'.length).trim();
       if (value) pins.push(value);
+    } else if (lower === 'publisher-sourced-bestseller') {
+      publisherSourced = true;
     } else {
       publicTags.push(tag);
     }
   });
-  return { states, pins, publicTags };
+  return { states, pins, publicTags, publisherSourced };
 }
 
 function productTagsWithShippingRules() {
-  return [...new Set(String(document.getElementById('prodTags')?.value || '')
-    .split(',').map(tag => tag.trim()).filter(Boolean))].join(', ');
+  const typed = String(document.getElementById('prodTags')?.value || '')
+    .split(',').map(tag => tag.trim()).filter(Boolean);
+  // Checkbox is the source of truth for the badge tag; unticking it removes the
+  // tag, which is what takes the badge off the product page.
+  const badge = document.getElementById('prodPublisherSourced')?.checked
+    ? ['publisher-sourced-bestseller'] : [];
+  return [...new Set([...badge, ...typed])].join(', ');
 }
 
 function productShippingRulePayload() {
@@ -5605,6 +5630,8 @@ function selectProduct(slug) {
   document.getElementById('prodMetaDescription').value = p.meta_description;
   const shippingTagParts = productShippingTagParts(p.tags);
   document.getElementById('prodTags').value = shippingTagParts.publicTags.join(', ');
+  const psEl = document.getElementById('prodPublisherSourced');
+  if (psEl) psEl.checked = !!shippingTagParts.publisherSourced;
   const shippingRule = row.shippingRule || {};
   document.getElementById('prodExcludedStates').value = (shippingRule.excluded_states || shippingTagParts.states).join(', ');
   document.getElementById('prodExcludedPincodes').value = (shippingRule.excluded_pincodes || shippingTagParts.pins).join(', ');
@@ -5635,7 +5662,7 @@ function selectProduct(slug) {
   // prodBrief and prodAiBtn ride along: the AI fills exactly these fields, and
   // none of them is saved for a catalogue book, so offering the button there
   // would produce copy that silently goes nowhere.
-  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn'];
+  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn', 'prodPublisherSourced'];
   metadataFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
   const aiBtn = document.getElementById('prodAiBtn');
   if (aiBtn) { aiBtn.style.opacity = isCustom ? '' : '.4'; aiBtn.style.cursor = isCustom ? 'pointer' : 'not-allowed'; }

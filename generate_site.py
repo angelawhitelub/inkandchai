@@ -5573,7 +5573,17 @@ function renderProduct(b) {
           <div style="font-size:1.4rem;line-height:1;">📚</div>
           <div>
             <div style="font-size:0.56rem;letter-spacing:0.28em;text-transform:uppercase;color:#6daa6d;margin-bottom:0.35rem;font-weight:600;">Genuine — Publisher Sourced</div>
-            <div style="font-size:0.76rem;color:var(--cream);line-height:1.65;">This title is sourced <strong>directly from the publisher</strong> — no third-party resellers, no piracy. Original copy, MRP printed on the back, with a flat 22.5% discount.</div>
+            <div style="font-size:0.76rem;color:var(--cream);line-height:1.65;">This title is sourced <strong>directly from the publisher</strong> — no third-party resellers, no piracy. Original copy, MRP printed on the back${(() => {
+              // The discount used to be hardcoded at 22.5%, which was true of the
+              // bulk import and false the moment the badge was applied anywhere
+              // else. State the discount this listing actually offers, or say
+              // nothing about price at all.
+              const num = v => Number(String(v || '').replace(/[^0-9.]/g, '')) || 0;
+              const price = num(b.p), mrp = num(b.op);
+              if (!(price > 0 && mrp > price)) return '';
+              const off = Math.round((1 - price / mrp) * 1000) / 10;
+              return off >= 1 ? `, at ${off % 1 === 0 ? off.toFixed(0) : off.toFixed(1)}% off` : '';
+            })()}.</div>
             <div style="font-size:0.72rem;color:var(--cream-dim);line-height:1.65;margin-top:0.45rem;"><strong style="color:var(--gold);">🧾 GST invoice available</strong> on request — reply to your order confirmation email with your GSTIN.</div>
           </div>
         </div>` : ''}
