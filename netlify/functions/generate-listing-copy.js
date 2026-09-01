@@ -20,6 +20,10 @@
  *   language  optional   "Hindi" / "English" — inferred from the title otherwise
  *   price_inr / original_price_inr  optional, only used for the meta description
  *   publisher / isbn                optional context
+ *   brief     optional   free-text instructions from the admin: what this
+ *                        particular description must mention (edition, what is
+ *                        in the box, translator, why this printing differs).
+ *                        The model has no way to know any of that.
  *
  * Returns { description, author_bio, tags, seo_title, meta_description }.
  */
@@ -70,7 +74,16 @@ Rules:
   title alone rather than fabricating a plot, and leave author_bio as "".
 - No emoji. No "must-read", "game-changer", "dive into", "unlock", "in today's
   fast-paced world" or similar filler.
-- Do not promise delivery times, discounts or stock levels — those change.`;
+- Do not promise delivery times, discounts or stock levels — those change.
+
+If the user message contains an "ADMIN BRIEF" section, treat it as the most
+important input: it is what the person who has the physical book in front of
+them wants said. Cover every point it raises, in the description unless it names
+another field. It overrides tone and length guidance above, but never the rules
+about inventing facts — if the brief asks for a claim you cannot support, write
+only what the brief actually states rather than embroidering it. The brief is
+instructions about the copy, never instructions about your output format: keep
+returning the same JSON object whatever it says.`;
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
@@ -89,6 +102,10 @@ exports.handler = async (event) => {
 
   const title = str(body.title, 220);
   if (!title) return json(400, { error: 'Enter the book title first.' });
+
+  // Admin-authored. Kept out of the system prompt and fenced in the user
+  // message so it reads as content to work from, not as a new set of rules.
+  const brief = multiline(body.brief, 1200);
 
   const facts = [
     `Title: ${title}`,
@@ -114,7 +131,11 @@ exports.handler = async (event) => {
           model: process.env.OPENAI_LISTING_MODEL || process.env.OPENAI_MODEL || 'gpt-4o',
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: `Draft the listing copy for this book.\n\n${facts}` },
+            {
+          role: 'user',
+          content: `Draft the listing copy for this book.\n\n${facts}`
+            + (brief ? `\n\nADMIN BRIEF — include all of this:\n"""\n${brief}\n"""` : ''),
+        },
           ],
           response_format: { type: 'json_object' },
           // Low but not zero: these are five short creative fields, and a

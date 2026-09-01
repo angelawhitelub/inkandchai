@@ -1276,6 +1276,9 @@ select,input,textarea{font-size:1rem;}
           </button>
           <span id="newProdAiMsg" style="font-weight:400;font-size:.58rem;color:var(--cream-dim);text-transform:none;letter-spacing:0;"></span>
         </label>
+        <textarea id="newProdBrief" rows="2" placeholder="Optional — tell the AI what this description must mention. E.g. &quot;Tamil translation, not the English original. Mention it is the 2024 reprint and the box has all 3 volumes.&quot;"
+          style="margin-bottom:.5rem;"></textarea>
+        <p class="hint" style="margin:-.2rem 0 .6rem;">The model only knows the title and author. Anything specific to <em>this</em> copy — edition, translator, what is in the set — has to come from you.</p>
         <textarea id="newProdDescription" placeholder="Write the book description customers should see on the product detail page."></textarea>
         <p class="hint" style="margin-top:.4rem;">Formatting: <code>**bold**</code> · <code>*italic*</code> · <code>## Heading</code> · <code>- bullet</code> · blank line = new paragraph.</p>
       </div>
@@ -1422,7 +1425,19 @@ select,input,textarea{font-size:1rem;}
               </div>
             </div>
             <div class="form-row">
-              <label>Product description</label>
+              <label style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+                Product description
+                <button type="button" id="prodAiBtn" onclick="generateProductCopy()"
+                  style="font-family:'Manrope',sans-serif;font-size:.52rem;letter-spacing:.16em;text-transform:uppercase;
+                         padding:.4rem .75rem;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.5);
+                         color:var(--gold);cursor:pointer;border-radius:3px;">
+                  ✨ Draft with AI
+                </button>
+                <span id="prodAiMsg" style="font-weight:400;font-size:.58rem;color:var(--cream-dim);text-transform:none;letter-spacing:0;"></span>
+              </label>
+              <textarea id="prodBrief" rows="2" placeholder="Optional — tell the AI what this description must mention. E.g. &quot;Tamil translation, not the English original. Mention it is the 2024 reprint.&quot;"
+                style="margin-bottom:.5rem;"></textarea>
+              <p class="hint" style="margin:-.2rem 0 .6rem;">Fills description, author bio, tags and both SEO fields from the title and author above. Nothing is saved until you press Save.</p>
               <textarea id="prodDescription" maxlength="5000" placeholder="Detailed description shown under About this book."></textarea>
               <p class="hint" style="margin-top:.4rem;">Formatting: <code>**bold**</code> · <code>*italic*</code> · <code>## Heading</code> · <code>- bullet</code> · blank line = new paragraph. Everything else stays plain text.</p>
             </div>
@@ -4898,6 +4913,7 @@ async function generateListingCopy() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title,
+        brief: val('newProdBrief'),
         author: val('newProdAuthor'),
         category: val('newProdCategory'),
         publisher: val('newProdPublisher'),
@@ -5616,8 +5632,15 @@ function selectProduct(slug) {
   // Delete is only possible for custom products (DB-backed dynamic pages).
   // Catalogue books are baked static files — deleting them needs a redirect.
   const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
-  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags'];
+  // prodBrief and prodAiBtn ride along: the AI fills exactly these fields, and
+  // none of them is saved for a catalogue book, so offering the button there
+  // would produce copy that silently goes nowhere.
+  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn'];
   metadataFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
+  const aiBtn = document.getElementById('prodAiBtn');
+  if (aiBtn) { aiBtn.style.opacity = isCustom ? '' : '.4'; aiBtn.style.cursor = isCustom ? 'pointer' : 'not-allowed'; }
+  const aiMsg = document.getElementById('prodAiMsg'); if (aiMsg) aiMsg.textContent = '';
+  const briefEl = document.getElementById('prodBrief'); if (briefEl) briefEl.value = '';
   const metadataHint = document.getElementById('prodMetadataHint');
   if (metadataHint) metadataHint.textContent = isCustom
     ? 'Edit the product details used on the product page, search engines, and Merchant Center.'
@@ -7183,6 +7206,67 @@ async function deleteProductPage() {
   } catch (e) {
     alert('Could not delete: ' + e.message);
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// ── AI draft for an EXISTING listing (Products & Prices) ─────────────────────
+// Same endpoint as the Create Listing button, pointed at the editor's fields.
+// Only offered for custom listings: for a catalogue book none of these fields
+// is persisted by saveProductOverride, so the draft would go nowhere.
+async function generateProductCopy() {
+  if (!selectedProduct) return;
+  const btn = document.getElementById('prodAiBtn');
+  const msg = document.getElementById('prodAiMsg');
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const say = (text, color = 'var(--cream-dim)') => { if (msg) { msg.textContent = text; msg.style.color = color; } };
+
+  if (!String(selectedProduct.shopify_id || '').startsWith('CUSTOM:')) {
+    say('Only admin-created listings can be edited here.', '#e8a030');
+    return;
+  }
+  const title = val('prodTitle');
+  if (!title) { say('This listing has no title to work from.', '#e8a030'); return; }
+
+  const targets = ['prodDescription', 'prodAuthorBio', 'prodTags', 'prodSeoTitle', 'prodMetaDescription'];
+  const filled = targets.filter(id => val(id));
+  if (filled.length && !confirm(`This will replace ${filled.length} field${filled.length > 1 ? 's' : ''} that already has text.\n\nOverwrite? Nothing is saved until you press Save.`)) return;
+
+  const old = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = '✨ Drafting…'; }
+  say('Asking the model — this takes a few seconds.');
+  try {
+    const res = await adminFetch('/.netlify/functions/generate-listing-copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        brief: val('prodBrief'),
+        author: val('prodAuthor'),
+        category: val('prodCategory'),
+        publisher: val('prodPublisher'),
+        isbn: val('prodIsbn'),
+        price_inr: val('prodPrice'),
+        original_price_inr: val('prodOriginalPrice'),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    const set = (id, value) => { const el = document.getElementById(id); if (el && value) el.value = value; };
+    set('prodDescription', data.description);
+    set('prodAuthorBio', data.author_bio);
+    set('prodTags', data.tags);
+    set('prodSeoTitle', data.seo_title);
+    set('prodMetaDescription', data.meta_description);
+
+    // Same counts the Create form shows: these are the two Google truncates,
+    // and the model treats the limits as a suggestion.
+    const t = (data.seo_title || '').length, m = (data.meta_description || '').length;
+    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.`, '#6dbf6d');
+  } catch (err) {
+    say(err.message || 'Drafting failed.', '#c96a6a');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = old || '✨ Draft with AI'; }
   }
 }
 
