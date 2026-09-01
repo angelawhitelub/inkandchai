@@ -64,6 +64,11 @@ exports.handler = async (event) => {
   const dryRun    = !!body.dry_run;
   const limit     = body.limit ? Math.max(1, parseInt(body.limit)) : MAX_PER_RUN;
   const testPhone = body.test_phone ? normalizePhone(body.test_phone) : null;
+  // Set by the scheduler. Without orders.review_requested_at the dedup stamp
+  // silently no-ops, so an unattended daily run would re-message the same most
+  // recent customers forever. A human pressing the admin button can still send
+  // without it; a cron job must not.
+  const requireDedup = !!body.require_dedup;
   const lang      = String(body.lang || 'en').trim();
 
   try {
@@ -129,6 +134,14 @@ exports.handler = async (event) => {
         });
       }
       recipients = Array.from(seen.values()).slice(0, limit);
+
+      if (requireDedup && !hasReqCol) {
+        console.warn('[request-reviews] orders.review_requested_at is missing — refusing to send unattended');
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({
+          success: false, skipped: true, total: 0,
+          reason: 'orders.review_requested_at is missing; run the migration before enabling the schedule',
+        }) };
+      }
     }
 
     if (!recipients.length) {

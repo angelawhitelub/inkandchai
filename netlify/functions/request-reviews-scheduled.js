@@ -33,7 +33,7 @@ exports.handler = async () => {
     const response = await fetch(`${site}/.netlify/functions/request-reviews`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Key': secret },
-      body: JSON.stringify({ days_back: 21, limit: 300 }),
+      body: JSON.stringify({ days_back: 21, limit: 300, require_dedup: true }),
     });
     const detail = await response.text().catch(() => '');
     if (!response.ok) throw new Error(`request-reviews returned ${response.status}: ${detail.slice(0, 300)}`);
