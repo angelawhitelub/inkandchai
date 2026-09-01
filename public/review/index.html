@@ -151,13 +151,18 @@ textarea{resize:vertical;min-height:100px}
   // ── Load order ───────────────────────────────────────────────────────────
   if (!orderId) { loading.style.display = 'none'; errorScr.style.display = 'block'; return; }
 
+  // review-order, not track-order: track-order requires order id AND
+  // email/phone, so passing only the id (all the link carries) returned 400
+  // every time and this page always showed its error screen. review-order takes
+  // the signed link token instead and returns just the name and the books.
   let order = null;
   try {
-    const res = await fetch('/.netlify/functions/track-order?id=' + encodeURIComponent(orderId));
+    const res = await fetch('/.netlify/functions/review-order?order=' + encodeURIComponent(orderId)
+      + '&t=' + encodeURIComponent(linkToken));
     if (res.ok) order = await res.json();
   } catch(e) {}
 
-  if (!order || !order.id) {
+  if (!order || !order.order_id) {
     loading.style.display = 'none';
     errorScr.style.display = 'block';
     return;
@@ -166,10 +171,23 @@ textarea{resize:vertical;min-height:100px}
 
   // Pre-fill name
   const nameEl = document.getElementById('reviewName');
-  if (order.customer_name) nameEl.value = order.customer_name.split(' ')[0];
+  if (order.first_name) nameEl.value = order.first_name;
 
-  // Build book list
-  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  // Already reviewed every book on this order — say so instead of showing a
+  // form whose only outcome is a 409 on submit.
+  if (order.all_reviewed) {
+    loading.style.display = 'none';
+    const sub = successScr.querySelector('.success-sub');
+    if (sub) sub.innerHTML = 'You have already reviewed this order.<br/>Thank you again for taking the time.';
+    successScr.style.display = 'block';
+    return;
+  }
+
+  // Book list. These slugs are bare ("atomic-habits"), which is what
+  // product_reviews.product_slug and get-reviews match on — the old code took
+  // item.id/item.url and stored "/product/atomic-habits/", so a review would
+  // never have shown up on the product page even once it saved.
+  const items = Array.isArray(order.items) ? order.items : [];
 
   loading.style.display = 'none';
   formDiv.style.display  = 'block';
@@ -191,7 +209,7 @@ textarea{resize:vertical;min-height:100px}
   } else if (items.length === 1) {
     // Single book — auto-select
     const item = items[0];
-    selectedSlug = item.id || item.url || item.slug || prefSlug;
+    selectedSlug = item.slug || prefSlug;
     bookArea.innerHTML = `
       <div class="book-card">
         ${item.image ? `<img class="book-cover" src="${item.image}" alt="${item.title || ''}" loading="lazy"/>` : ''}
@@ -207,7 +225,7 @@ textarea{resize:vertical;min-height:100px}
     bookArea.innerHTML = `<p style="font-size:.65rem;color:var(--cream-dim);letter-spacing:.08em;margin-bottom:.75rem;text-transform:uppercase">Select the book you want to review</p>
       <div class="books-list" id="booksList">
         ${items.map(item => {
-          const slug = item.id || item.url || item.slug || '';
+          const slug = item.slug || '';
           return `<div class="book-select-item" data-slug="${slug}">
             ${item.image ? `<img class="book-select-cover" src="${item.image}" alt="" loading="lazy"/>` : ''}
             <span class="book-select-title">${item.title || 'Book'}</span>
