@@ -2162,6 +2162,11 @@ nav:not(.mob-nav){
   box-shadow:var(--glass-shadow),var(--glass-highlight);
   backdrop-filter:blur(24px) saturate(1.25);
   padding:.72rem 1rem .72rem 1.1rem;
+  /* backdrop-filter makes this a stacking context, so the search dropdown
+     inside it can never escape. Positioned + ranked above page content (but
+     below the quick-view modal at 600) so the dropdown paints over the grid. */
+  position:relative;
+  z-index:300;
 }
 .nav-links a,.btn-nav,.theme-toggle,.nav-search-btn,.search-chip,.tab,.btn-primary,.btn-add-card,.shelf-card-btn,.btn-load-more,.pincode-btn,.btn-checkout,.qty-btn{
   border-radius:var(--pill);
@@ -6801,7 +6806,7 @@ def static_product_html(book):
 html[data-theme="light"]{{--bg:#faf7f2;--panel:#fff;--gold:#7a5a12;--cream:#241c14;--muted:#4e4032;--border:rgba(138,106,31,.28);--white:#0d0b08}}
 html{{overflow-x:hidden}} *{{box-sizing:border-box;min-width:0}} body{{margin:0;overflow-x:hidden;background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif;font-weight:400}} a{{color:inherit}}
 .promo{{padding:.62rem 1rem;text-align:center;border-bottom:1px solid var(--border);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}} .promo strong{{color:var(--gold)}}
-nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(13,11,8,.97);position:static;z-index:5;backdrop-filter:blur(12px)}} html[data-theme="light"] nav{{background:rgba(250,247,242,.97)!important}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
+nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);background:rgba(13,11,8,.97);position:relative;z-index:5;backdrop-filter:blur(12px)}} html[data-theme="light"] nav{{background:rgba(250,247,242,.97)!important}} .logo{{font-family:"Cormorant Garamond",serif;font-size:1.5rem;color:var(--gold);text-decoration:none}} .back{{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}}
 .theme-btn{{background:transparent;border:1px solid var(--border);color:var(--gold);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:.8rem;display:inline-flex;align-items:center;justify-content:center}}
 .pdp-search{{display:flex;align-items:center;gap:.4rem;flex:1;max-width:400px;margin:0 1rem;background:rgba(201,168,76,.08);border:1px solid var(--border);border-radius:999px;padding:.26rem .26rem .26rem .9rem}}
 .pdp-search input{{flex:1;background:transparent;border:0;color:var(--cream);font:inherit;font-size:.82rem;outline:none;min-width:0}}
