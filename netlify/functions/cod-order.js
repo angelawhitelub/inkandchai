@@ -174,11 +174,12 @@ exports.handler = async (event) => {
 
   // ── 1. Save to Supabase (non-fatal — emails still send even if DB is down) ──
   const amountPaiseVal = Math.round(total * 100);
-  // High-value COD (> ₹999) must be confirmed by the customer over WhatsApp
-  // before we ship it — cuts RTO losses. It stays "awaiting confirmation" until
-  // they tap Confirm/Cancel on the WhatsApp template.
-  const needsConfirm = total > 999;
-  const initialStatus = needsConfirm ? 'cod_awaiting_confirmation' : 'cod_pending';
+  // High-value COD used to be parked in 'cod_awaiting_confirmation' until the
+  // customer tapped Confirm on a WhatsApp template, to cut RTO losses. That
+  // duplicates NimbusPost's own IVR confirmation, which now does the job on
+  // every COD shipment, so orders go straight to cod_pending and ship without
+  // waiting on a tap that a customer may never give.
+  const initialStatus = 'cod_pending';
 
   // Built before the try so the catch below can still stash it: when Supabase is
   // unreachable the duplicate-check query throws before the insert is reached,
@@ -249,8 +250,7 @@ exports.handler = async (event) => {
     }
 
     // ── Auto-push to Shiprocket panel ─────────────────────────────────────
-    // Skip for orders awaiting WhatsApp confirmation — don't ship until confirmed.
-    if (!needsConfirm) pushOrderToShiprocket({
+    pushOrderToShiprocket({
       inkOrderId:      orderId,
       customerName:    customer.name    || '',
       customerEmail:   customer.email   || '',
@@ -264,7 +264,7 @@ exports.handler = async (event) => {
 
     // ── Auto-push to NimbusPost panel (no AWB) ─────────────────────────────
     // Fire-and-forget; admin still has a manual bulk "Push to NimbusPost Panel".
-    if (!needsConfirm) pushOrderToNimbusPost({
+    pushOrderToNimbusPost({
       razorpay_order_id: orderId,
       status: 'cod_pending',
       customer_name: customer.name || '',
@@ -346,23 +346,15 @@ exports.handler = async (event) => {
     const bookList = Array.isArray(cart) && cart.length
       ? cart.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200)
       : 'your books';
-    if (total > 999) {
-      // High-value COD — send the Confirm/Cancel button template. The order is
-      // held as 'cod_awaiting_confirmation' until they tap a button (handled in
-      // whatsapp-bot.js). Template params: name, amount, order id, book(s).
-      await sendWhatsApp({
-        to: customer.phone,
-        template: 'cod_confirm',
-        params: [firstName, `₹${total.toLocaleString('en-IN')}`, orderId, bookList],
-      });
-    } else {
-      const addrShort = (customer.address || '').slice(0, 80);
-      await sendWhatsApp({
-        to: customer.phone,
-        template: 'order_confirmed',
-        params: [firstName, orderId, `₹${total.toLocaleString('en-IN')} (COD)`, addrShort, bookList],
-      });
-    }
+    // Every COD order gets the same confirmation now. High-value ones used to
+    // get the 'cod_confirm' Confirm/Cancel template instead, which meant the
+    // customer never actually received an order confirmation.
+    const addrShort = (customer.address || '').slice(0, 80);
+    await sendWhatsApp({
+      to: customer.phone,
+      template: 'order_confirmed',
+      params: [firstName, orderId, `₹${total.toLocaleString('en-IN')} (COD)`, addrShort, bookList],
+    });
   }
 
   return {
