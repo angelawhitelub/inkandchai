@@ -1265,6 +1265,14 @@ select,input,textarea{font-size:1rem;}
         <label>ISBN</label>
         <input id="newProdIsbn" placeholder="Optional"/>
       </div>
+      <div class="form-row">
+        <label>Format</label>
+        <input id="newProdFormat" list="bookFormatOptions" maxlength="60" placeholder="Paperback"/>
+      </div>
+      <div class="form-row">
+        <label>Language</label>
+        <input id="newProdLanguage" list="bookLanguageOptions" maxlength="60" placeholder="English"/>
+      </div>
       <div class="form-row wide">
         <label style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
           Product description *
@@ -1421,12 +1429,14 @@ select,input,textarea{font-size:1rem;}
               </div>
               <div class="form-row">
                 <label>Format</label>
-                <input value="Paperback" readonly title="Ink &amp; Chai product listings currently use Paperback as the store-wide book format."/>
+                <input id="prodFormat" list="bookFormatOptions" maxlength="60" placeholder="Paperback" title="Binding shown on the product page. Blank = Paperback."/>
               </div>
               <div class="form-row">
                 <label>Language</label>
-                <input value="English" readonly title="The current product-page template uses English for these listings."/>
+                <input id="prodLanguage" list="bookLanguageOptions" maxlength="60" placeholder="English" title="Language shown on the product page. Blank = English."/>
               </div>
+<datalist id="bookFormatOptions"><option>Paperback</option><option>Hardcover</option><option>Boxed Set</option><option>Board Book</option></datalist>
+<datalist id="bookLanguageOptions"><option>English</option><option>Hindi</option><option>Marathi</option><option>Bengali</option><option>Tamil</option><option>Telugu</option><option>Kannada</option><option>Malayalam</option><option>Gujarati</option><option>Punjabi</option><option>Urdu</option></datalist>
             </div>
             <div class="form-row">
               <label style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
@@ -4874,7 +4884,7 @@ async function run99Import(btn) {
 }
 
 function clearCreateProductForm() {
-  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdDescription','newProdAuthorBio','newProdTags','newProdSeoTitle','newProdMetaDescription','newProdImageUrl','newProdGalleryUrls']
+  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdFormat','newProdLanguage','newProdDescription','newProdAuthorBio','newProdTags','newProdSeoTitle','newProdMetaDescription','newProdImageUrl','newProdGalleryUrls']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const psNew = document.getElementById('newProdPublisherSourced');
   if (psNew) psNew.checked = false;
@@ -5154,6 +5164,8 @@ async function createProductListing() {
     original_price_inr: document.getElementById('newProdOriginalPrice').value,
     publisher: document.getElementById('newProdPublisher').value,
     isbn: document.getElementById('newProdIsbn').value,
+    format: document.getElementById('newProdFormat').value,
+    language: document.getElementById('newProdLanguage').value,
     description,
     author_bio: document.getElementById('newProdAuthorBio').value,
     // Checkbox, not free text, so the create form and the editor agree on what
@@ -5232,6 +5244,8 @@ function mergedProduct(row) {
     gallery_images: Array.isArray(o.gallery_images) ? o.gallery_images : (Array.isArray(row.gallery_images) ? row.gallery_images : []),
     publisher: row.publisher || '',
     isbn: row.isbn || '',
+    format: row.format || '',
+    language: row.language || '',
     description: row.description || '',
     seo_title: row.seo_title || '',
     meta_description: row.meta_description || '',
@@ -5624,6 +5638,10 @@ function selectProduct(slug) {
   document.getElementById('prodOriginalPrice').value = p.original_price_inr;
   document.getElementById('prodPublisher').value = p.publisher;
   document.getElementById('prodIsbn').value = p.isbn;
+  // Blank is meaningful: the product page falls back to Paperback/English, so
+  // an untouched listing keeps the store default instead of being pinned to it.
+  document.getElementById('prodFormat').value = p.format || '';
+  document.getElementById('prodLanguage').value = p.language || '';
   document.getElementById('prodDescription').value = p.description;
   document.getElementById('prodAuthorBio').value = p.author_bio || '';
   document.getElementById('prodSeoTitle').value = p.seo_title;
@@ -5662,7 +5680,7 @@ function selectProduct(slug) {
   // prodBrief and prodAiBtn ride along: the AI fills exactly these fields, and
   // none of them is saved for a catalogue book, so offering the button there
   // would produce copy that silently goes nowhere.
-  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn', 'prodPublisherSourced'];
+  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodFormat', 'prodLanguage', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn', 'prodPublisherSourced'];
   metadataFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
   const aiBtn = document.getElementById('prodAiBtn');
   if (aiBtn) { aiBtn.style.opacity = isCustom ? '' : '.4'; aiBtn.style.cursor = isCustom ? 'pointer' : 'not-allowed'; }
@@ -5671,7 +5689,7 @@ function selectProduct(slug) {
   const metadataHint = document.getElementById('prodMetadataHint');
   if (metadataHint) metadataHint.textContent = isCustom
     ? 'Edit the product details used on the product page, search engines, and Merchant Center.'
-    : 'Publisher, ISBN, description, and SEO metadata are editable for admin-created listings. This catalogue product is generated from the source feed.';
+    : 'Publisher, ISBN, binding, language, description, and SEO metadata are editable for admin-created listings. This catalogue product is generated from the source feed.';
   const delBtn = document.getElementById('prodDeleteBtn');
   if (delBtn) delBtn.style.display = isCustom ? '' : 'none';
   const galleryRow = document.getElementById('prodGalleryUploadRow');
@@ -7331,6 +7349,8 @@ async function saveProductOverride(activeOverride = true) {
         is_active: selectedProduct.is_active !== false,
         publisher: document.getElementById('prodPublisher').value,
         isbn: document.getElementById('prodIsbn').value,
+        format: document.getElementById('prodFormat').value,
+        language: document.getElementById('prodLanguage').value,
         description: document.getElementById('prodDescription').value,
         author_bio: document.getElementById('prodAuthorBio').value,
         seo_title: document.getElementById('prodSeoTitle').value,

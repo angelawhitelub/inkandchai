@@ -152,6 +152,12 @@ exports.handler = async (event) => {
     // "About the author" copy. Omitted (undefined) preserves whatever is
     // stored; an explicit empty string clears the section.
     if (body.author_bio !== undefined) payload.author_bio = cleanText(body.author_bio, 5000);
+    // Binding and language. Both were hard-coded as Paperback/English on the
+    // product page, which is wrong for the Hindi editions and for the handful
+    // of hardbacks. Omitted preserves what is stored; empty falls back to the
+    // store default at render time rather than printing a blank row.
+    if (body.format !== undefined) payload.format = cleanText(body.format, 60);
+    if (body.language !== undefined) payload.language = cleanText(body.language, 60);
     // Preserve an existing gallery when this update only changes listing data.
     // Supplying an explicit array (including []) still replaces/clears it.
     if (galleryImages !== undefined) payload.gallery_images = galleryImages;
@@ -161,30 +167,44 @@ exports.handler = async (event) => {
       .upsert(payload, { onConflict: 'slug' })
       .select()
       .single();
-    // Resilience: if sql/custom_products_author_bio.sql hasn't been run yet the
-    // column won't exist. Rather than fail the whole save — losing the price and
-    // description edits with it — retry once without it, and say so.
-    if (error && /author_bio/i.test(error.message || '')) {
-      const { author_bio, ...withoutBio } = payload;
+    // Resilience: these columns were added after the table shipped, so a
+    // database that hasn't had the migration run yet rejects the whole upsert.
+    // Rather than fail the save — losing the price and description edits with
+    // it — drop whichever column the error names and retry, then say so.
+    const OPTIONAL_COLUMNS = [
+      { key: 'author_bio', fix: 'run sql/custom_products_author_bio.sql' },
+      { key: 'format', fix: 'run sql/custom_products_format_language.sql' },
+      { key: 'language', fix: 'run sql/custom_products_format_language.sql' },
+    ];
+    const dropped = [];
+    let retryPayload = payload;
+    for (let attempt = 0; attempt < OPTIONAL_COLUMNS.length && error; attempt++) {
+      const missing = OPTIONAL_COLUMNS.find(c => c.key in retryPayload
+        && new RegExp(`\\b${c.key}\\b`, 'i').test(error.message || ''));
+      if (!missing) break;
+      const { [missing.key]: _drop, ...without } = retryPayload;
+      retryPayload = without;
+      dropped.push(missing);
       ({ data, error } = await supabase
         .from('custom_products')
-        .upsert(withoutBio, { onConflict: 'slug' })
+        .upsert(retryPayload, { onConflict: 'slug' })
         .select()
         .single());
-      if (!error) {
-        return {
-          statusCode: 200,
-          headers: CORS,
-          body: JSON.stringify({
-            success: true,
-            product: data,
-            url: `/product/${data.slug}/`,
-            warning: 'Saved, but the author bio was ignored — run sql/custom_products_author_bio.sql to enable it.',
-          }),
-        };
-      }
     }
     if (error) throw error;
+    if (dropped.length) {
+      const fixes = [...new Set(dropped.map(d => d.fix))].join(' and ');
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({
+          success: true,
+          product: data,
+          url: `/product/${data.slug}/`,
+          warning: `Saved, but ${dropped.map(d => d.key).join(', ')} ${dropped.length > 1 ? 'were' : 'was'} ignored — ${fixes} to enable ${dropped.length > 1 ? 'them' : 'it'}.`,
+        }),
+      };
+    }
 
     return {
       statusCode: 200,

@@ -6,6 +6,37 @@ const { richText, plainText } = require('./utils/rich-text');
 // That held for the bulk import and stopped holding the moment the badge could
 // be applied by hand -- the Madonna listing showed 22.5% while actually selling
 // at 54.5% off. Quote this listing's real discount, or say nothing about price.
+// Binding and language are per-product now (custom_products.format /
+// .language). Both were hard-coded here, which printed "Paperback" on
+// hardbacks and "English" on the Hindi editions. Blank falls back to the
+// store default rather than showing an empty row.
+function bookFormat(product) {
+  return String((product && product.format) || '').trim() || 'Paperback';
+}
+
+function bookLanguage(product) {
+  return String((product && product.language) || '').trim() || 'English';
+}
+
+// schema.org has a fixed vocabulary of bookFormat values; anything outside it
+// is invalid structured data, so an unrecognised binding is simply omitted.
+const SCHEMA_BOOK_FORMATS = {
+  paperback: 'https://schema.org/Paperback',
+  hardcover: 'https://schema.org/Hardcover',
+  hardback: 'https://schema.org/Hardcover',
+  ebook: 'https://schema.org/EBook',
+  audiobook: 'https://schema.org/AudiobookFormat',
+  'graphic novel': 'https://schema.org/GraphicNovel',
+};
+
+// BCP-47 for the languages we actually stock; unknown values are omitted
+// rather than guessed at.
+const SCHEMA_LANGUAGES = {
+  english: 'en', hindi: 'hi', marathi: 'mr', bengali: 'bn', tamil: 'ta',
+  telugu: 'te', kannada: 'kn', malayalam: 'ml', gujarati: 'gu',
+  punjabi: 'pa', urdu: 'ur', odia: 'or', assamese: 'as', sanskrit: 'sa',
+};
+
 function publisherSourcedDiscount(product) {
   const num = v => Number(String(v == null ? '' : v).replace(/[^0-9.]/g, '')) || 0;
   const price = num(product && product.price_inr);
@@ -265,7 +296,8 @@ function productHtml(product, aplusContent = null) {
     description: plainDesc,
     isbn: product.isbn || undefined,
     publisher: product.publisher || 'Ink & Chai',
-    bookFormat: 'https://schema.org/Paperback',
+    bookFormat: SCHEMA_BOOK_FORMATS[bookFormat(product).toLowerCase()] || undefined,
+    inLanguage: SCHEMA_LANGUAGES[bookLanguage(product).toLowerCase()] || undefined,
     url: canonical,
     // Only expose an Offer (the shopping signal Google Merchant ingests) for
     // real, advertise-able products — never for browse-only catalogue imports.
@@ -407,7 +439,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     </div>
     <div class="desc rich"><div class="label">About this book</div>${desc}</div>
     ${authorBio ? `<div class="desc rich authorbio"><div class="label">About the author</div>${authorBio}</div>` : ''}
-    <div class="details"><div class="label">Details</div><dl><dt>Format</dt><dd>Paperback</dd><dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
+    <div class="details"><div class="label">Details</div><dl><dt>Format</dt><dd>${esc(bookFormat(product))}</dd><dt>Language</dt><dd>${esc(bookLanguage(product))}</dd><dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
 <!-- Approved customer reviews. Admin-created products are served only by this
