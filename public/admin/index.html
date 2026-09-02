@@ -857,6 +857,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab owner-only" data-tab="rtorefunds" onclick="switchTab('rtorefunds')">↩️ RTO Refunds <span id="rtoRefundBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="bundles" onclick="switchTab('bundles')">📦 Bundles</button>
     <button class="admin-tab" data-tab="coupons" onclick="switchTab('coupons')">🏷️ Coupons</button>
     <button class="admin-tab" data-tab="npcancelled" onclick="switchTab('npcancelled')">🚫 NP Cancelled <span id="npCancelledBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
@@ -1892,6 +1893,49 @@ select,input,textarea{font-size:1rem;}
     </section>
   </div><!-- /tab-promotions -->
 
+
+  <div class="admin-section" id="tab-rtorefunds">
+  <section class="abandoned-panel" id="rtoRefundSection">
+    <div class="abandoned-head">
+      <div>
+        <h2>↩️ Prepaid RTO — partial refunds</h2>
+        <p>Prepaid orders that came back undelivered. The customer is refunded what they paid <strong>minus the two courier legs</strong> (₹62 out + ₹62 back = ₹124), as stated in the refund policy. Nothing here is automatic: each refund is issued one at a time, by you, from the button on its row. COD orders never appear — there is no money of theirs to return.</p>
+      </div>
+      <div class="mini-actions">
+        <label class="hint" style="display:flex;align-items:center;gap:.35rem;">Window
+          <select id="rtoRefundDays" onchange="loadRtoRefunds()" style="padding:.3rem;">
+            <option value="30">Last 30 days</option>
+            <option value="90" selected>Last 90 days</option>
+            <option value="180">Last 180 days</option>
+            <option value="365">Last 365 days</option>
+          </select>
+        </label>
+        <button class="btn-outline" onclick="loadRtoRefunds()">↻ Rescan</button>
+      </div>
+    </div>
+
+    <div class="hint" id="rtoRefundMeta" style="margin-bottom:.8rem;">Loading…</div>
+    <div id="rtoRefundTotals" style="display:none;flex-wrap:wrap;gap:.7rem;margin-bottom:.9rem;"></div>
+
+    <div class="tbl-wrap" style="box-shadow:none;margin-top:0;">
+      <table class="mini-table" id="rtoRefundTable">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>RTO on</th>
+            <th style="text-align:right;">Paid</th>
+            <th style="text-align:right;">Less shipping</th>
+            <th style="text-align:right;">Refund</th>
+            <th>Gateway</th>
+            <th style="width:180px;"></th>
+          </tr>
+        </thead>
+        <tbody id="rtoRefundBody"></tbody>
+      </table>
+    </div>
+  </section>
+  </div>
 
   <div class="admin-section" id="tab-npcancelled">
   <section class="abandoned-panel" id="npCancelledSection">
@@ -9982,7 +10026,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','bundles','coupons','promotions','reels','abandoned','reviews','replacements','returns','npcancelled','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','bundles','coupons','promotions','reels','abandoned','reviews','replacements','returns','npcancelled','rtorefunds','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -10323,6 +10367,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'reels' && _authed) loadSiteReels();
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
   if (tab === 'npcancelled' && _authed) loadNpCancelled();
+  if (tab === 'rtorefunds' && _authed && adminRole === 'owner') loadRtoRefunds();
   if (tab === 'coupons' && _authed) loadCouponManager();
   if (tab === 'promotions' && _authed && adminRole === 'owner') loadPromotionsAdmin();
   if (tab === 'bundles' && _authed) initBundleBuilder();
@@ -10345,6 +10390,119 @@ function switchTab(tab, pushState = true) {
 
   // Scroll to top of content
   document.getElementById('dashboard')?.scrollIntoView({ block: 'start', behavior: 'instant' });
+}
+
+
+// ═══════════════ RTO PARTIAL REFUNDS ═══════════════
+// Prepaid orders that came back undelivered. The customer gets what they paid
+// minus both courier legs (₹62 + ₹62). Listing is automatic; PAYING is not —
+// an RTO status can arrive from a courier webhook, and a webhook that fires
+// wrongly must never be able to move money on its own. Every refund here is one
+// order, one button, one confirmation.
+let rtoRefundRows = [];
+
+async function loadRtoRefunds() {
+  const meta = document.getElementById('rtoRefundMeta');
+  const body = document.getElementById('rtoRefundBody');
+  const totals = document.getElementById('rtoRefundTotals');
+  if (!meta || !body) return;
+  const days = document.getElementById('rtoRefundDays')?.value || '90';
+  meta.textContent = 'Scanning prepaid RTO orders…';
+  body.innerHTML = '';
+  try {
+    const res = await adminFetch('/.netlify/functions/rto-refund-candidates?days=' + encodeURIComponent(days));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    rtoRefundRows = data.candidates || [];
+    meta.textContent = `${data.rto_scanned} RTO orders in the last ${data.window_days} days · `
+      + `${rtoRefundRows.length} prepaid · ${data.cod_skipped} COD skipped (nothing to return) · `
+      + `deduction ₹${(data.deduction_paise / 100).toFixed(0)} per order.`;
+    if (totals) {
+      totals.style.display = 'flex';
+      totals.innerHTML = `<div class="stat-card" style="cursor:default"><div class="stat-num">${data.payable_count}</div><div class="stat-lbl">awaiting refund</div></div>`
+        + `<div class="stat-card" style="cursor:default"><div class="stat-num">₹${money(data.payable_paise / 100)}</div><div class="stat-lbl">total to refund</div></div>`;
+    }
+    const badge = document.getElementById('rtoRefundBadge');
+    if (badge) {
+      badge.style.display = data.payable_count ? '' : 'none';
+      badge.textContent = data.payable_count || '';
+    }
+    renderRtoRefunds();
+  } catch (err) {
+    meta.textContent = 'Could not load: ' + err.message;
+  }
+}
+
+function renderRtoRefunds() {
+  const body = document.getElementById('rtoRefundBody');
+  if (!body) return;
+  if (!rtoRefundRows.length) {
+    body.innerHTML = '<tr><td colspan="8" class="lead-empty">No prepaid RTO orders in this window.</td></tr>';
+    return;
+  }
+  body.innerHTML = rtoRefundRows.map(row => {
+    const when = row.created_at
+      ? new Date(row.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: '2-digit' })
+      : '';
+    // Three reasons a row cannot be paid from here, each said plainly rather
+    // than leaving a dead button.
+    let action;
+    if (row.nothing_to_refund) {
+      action = `<span class="hint" style="margin:0;" title="₹${money(row.amount_paise / 100)} paid is not more than the ₹${money(row.deduction_paise / 100)} shipping cost.">Nothing left after shipping</span>`;
+    } else if (row.refund_started) {
+      action = `<span class="hint" style="margin:0;">Refund already started${row.refund_state ? ' · ' + esc(row.refund_state) : ''}</span>`;
+    } else {
+      action = `<button class="btn-gold owner-only" style="padding:.4rem .7rem;font-size:.58rem;"
+        onclick="issueRtoRefund(this, '${esc(row.order_id)}', ${row.refund_paise}, '${row.gateway}')">Refund ₹${money(row.refund_paise / 100)}</button>`;
+    }
+    const books = row.books.length ? `<div class="hint" style="margin:.15rem 0 0;">${esc(row.books.join(' · '))}</div>` : '';
+    return `<tr data-rto-order="${esc(row.order_id)}">
+      <td><strong>${esc(row.order_id)}</strong>${books}</td>
+      <td>${esc(row.customer_name)}<div class="hint" style="margin:.15rem 0 0;">${esc(row.customer_phone)}</div></td>
+      <td>${when}</td>
+      <td style="text-align:right;">₹${money(row.amount_paise / 100)}</td>
+      <td style="text-align:right;color:#c96a6a;">−₹${money(row.deduction_paise / 100)}</td>
+      <td style="text-align:right;"><strong>₹${money(row.refund_paise / 100)}</strong></td>
+      <td>${row.gateway === 'razorpay' ? 'Razorpay' : 'PhonePe'}</td>
+      <td style="text-align:right;">${action}</td>
+    </tr>`;
+  }).join('');
+  applyRoleVisibility();
+}
+
+async function issueRtoRefund(btn, orderId, refundPaise, gateway) {
+  const rupeesOut = money(refundPaise / 100);
+  // Spelled out in full, because this is the last step before money leaves.
+  if (!confirm(`Refund ₹${rupeesOut} to ${orderId}?\n\n`
+    + `This sends the money back through ${gateway === 'razorpay' ? 'Razorpay' : 'PhonePe'} now. `
+    + `It cannot be undone from here.`)) return;
+
+  const endpoint = gateway === 'razorpay'
+    ? '/.netlify/functions/razorpay-refund'
+    : '/.netlify/functions/phonepe-refund';
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Refunding…';
+  try {
+    const res = await adminFetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: orderId, amount_paise: refundPaise }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    // The gateway is the authority on whether this completed. Report what it
+    // said rather than assuming success — a PhonePe partial often comes back
+    // PENDING and is confirmed later by the reconcile job.
+    const cell = btn.closest('td');
+    if (cell) cell.innerHTML = `<span class="hint" style="margin:0;color:#6dbf6d;">${esc(data.message || ('₹' + rupeesOut + ' refunded'))}</span>`;
+    const row = rtoRefundRows.find(r => r.order_id === orderId);
+    if (row) { row.refund_started = true; row.refund_state = data.refund_state || 'REQUESTED'; }
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerHTML = original;
+    alert('Refund failed for ' + orderId + ':\n\n' + err.message);
+  }
 }
 
 // ═══════════════ PROFIT TAB ═══════════════
