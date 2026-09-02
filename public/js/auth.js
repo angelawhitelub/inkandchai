@@ -1280,6 +1280,87 @@
     return /^(?:picked|pickup done|shipped|dispatched|out[ _-]?for[ _-]?delivery|ofd|delivered|rto|return to origin|undelivered|ndr|delivery (?:failed|attempt failed|exception)|lost)/.test(raw);
   }
 
+  /**
+   * "I ordered but nothing is here."
+   *
+   * Orders are matched on the email or phone given at CHECKOUT, and customers
+   * regularly sign in afterwards with a different address — a Google account, a
+   * work address — so a delivered order shows up as no orders at all. This lets
+   * them claim it themselves, proving ownership exactly the way /track/ does:
+   * the order ID plus the email or phone that is on the order.
+   */
+  function linkOrderFormHtml(open) {
+    return `
+      <div style="margin-top:1.5rem;border-top:1px solid rgba(201,168,76,0.15);padding-top:1.2rem;">
+        <button type="button" id="link-order-toggle"
+          style="background:none;border:0;color:#c9a84c;font-size:0.7rem;letter-spacing:0.06em;
+                 cursor:pointer;padding:0;text-decoration:underline;">
+          Ordered with a different email or phone?
+        </button>
+        <div id="link-order-panel" style="display:${open ? 'block' : 'none'};margin-top:0.9rem;text-align:left;
+                    max-width:320px;margin-left:auto;margin-right:auto;">
+          <p style="color:#7d6d5b;font-size:0.68rem;line-height:1.7;margin:0 0 0.7rem;">
+            Enter the order ID and the email or phone you used at checkout, and we'll add it to this account.
+          </p>
+          <input id="link-order-id" type="text" placeholder="Order ID (IC-…)" autocomplete="off"
+            style="width:100%;box-sizing:border-box;padding:0.55rem 0.7rem;margin-bottom:0.5rem;background:rgba(0,0,0,0.25);
+                   border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;font-size:0.75rem;" />
+          <input id="link-order-proof" type="text" placeholder="Email or phone used at checkout" autocomplete="off"
+            style="width:100%;box-sizing:border-box;padding:0.55rem 0.7rem;margin-bottom:0.6rem;background:rgba(0,0,0,0.25);
+                   border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;font-size:0.75rem;" />
+          <button type="button" id="link-order-submit"
+            style="width:100%;padding:0.55rem;background:#c9a84c;border:0;color:#1a1208;font-size:0.72rem;
+                   letter-spacing:0.08em;cursor:pointer;">LINK THIS ORDER</button>
+          <p id="link-order-msg" style="font-size:0.68rem;line-height:1.6;margin:0.6rem 0 0;"></p>
+        </div>
+      </div>`;
+  }
+
+  function wireLinkOrderForm(container) {
+    const toggle = container.querySelector('#link-order-toggle');
+    const panel  = container.querySelector('#link-order-panel');
+    const submit = container.querySelector('#link-order-submit');
+    if (!toggle || !panel || !submit) return;
+
+    toggle.addEventListener('click', () => {
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      if (panel.style.display === 'block') container.querySelector('#link-order-id')?.focus();
+    });
+
+    submit.addEventListener('click', async () => {
+      const msg     = container.querySelector('#link-order-msg');
+      const orderId = (container.querySelector('#link-order-id')?.value || '').trim();
+      const proof   = (container.querySelector('#link-order-proof')?.value || '').trim();
+      const say = (text, ok) => { if (msg) { msg.textContent = text; msg.style.color = ok ? '#8fbf7a' : '#e06060'; } };
+
+      if (!orderId || !proof) return say('Both the order ID and your email or phone are needed.', false);
+
+      submit.disabled = true;
+      const original = submit.textContent;
+      submit.textContent = 'LINKING…';
+      try {
+        const sb = getSB();
+        const { data: { session } } = await sb.auth.getSession();
+        const res = await fetch('/.netlify/functions/link-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+          body: JSON.stringify({ order_id: orderId, proof }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { say(data.error || `Could not link that order (HTTP ${res.status}).`, false); return; }
+        say(data.already_linked ? 'That order is already on this account.' : (data.message || 'Order linked.'), true);
+        // The cached list is now stale by definition.
+        try { sessionStorage.removeItem(ORDERS_CACHE_KEY); } catch (e) {}
+        setTimeout(loadMyOrders, 900);
+      } catch (err) {
+        say(err.message || 'Could not reach the server. Try again.', false);
+      } finally {
+        submit.disabled = false;
+        submit.textContent = original;
+      }
+    });
+  }
+
   function renderOrders(container, data) {
     if (!data?.length) {
       // Empty here does NOT mean the customer has never ordered. Orders are
@@ -1296,10 +1377,12 @@
             <a href="/" style="color:#c9a84c;">Browse books →</a>
           </p>
           <p style="color:#7d6d5b;font-size:0.7rem;line-height:1.7;margin-top:1.5rem;max-width:300px;margin-left:auto;margin-right:auto;">
-            Ordered with a different email or phone? Your order is still safe — look it up with your
-            order ID at <a href="/track/" style="color:#c9a84c;">Track Order</a>.
+            Your order is still safe — you can also look it up with your order ID at
+            <a href="/track/" style="color:#c9a84c;">Track Order</a>.
           </p>
+          ${linkOrderFormHtml(true)}
         </div>`;
+      wireLinkOrderForm(container);
       return;
     }
 
@@ -1407,6 +1490,12 @@
           ${invoiceDownloadBlock(o)}
         </div>`;
     }).join('');
+
+    // Having some orders does not mean having all of them — a customer who
+    // checked out under two different emails sees only one set. Keep the claim
+    // form reachable, collapsed, at the bottom of the list.
+    container.insertAdjacentHTML('beforeend', linkOrderFormHtml(false));
+    wireLinkOrderForm(container);
   }
 
   // ── Saved address banner in checkout ──────────────────────────────────────

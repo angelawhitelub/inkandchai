@@ -36,6 +36,9 @@ exports.handler = async (event) => {
 
   let lookupEmail = null;
   let lookupPhone10 = null;
+  // Orders claimed through link-order. Checkout records one email, people sign
+  // in with another, and this is the only thread tying the two together.
+  let lookupUserId = null;
 
   // ── Strategy 1: JWT in Authorization header ──────────────────────────────
   const authHeader = event.headers.authorization || event.headers.Authorization || '';
@@ -45,6 +48,7 @@ exports.handler = async (event) => {
     try {
       const { data: { user }, error } = await supabase.auth.getUser(token);
       if (!error && user) {
+        lookupUserId = user.id;
         if (user.email) lookupEmail = user.email.toLowerCase();
         // Pull the phone the customer registered via their profile (auth.users
         // doesn't always have it for email-based signups).
@@ -62,7 +66,7 @@ exports.handler = async (event) => {
   // Guests must use /track-order (id + email/phone proof). Allowing ?email= or
   // ?phone= here let anyone scrape another customer's full order history by
   // enumerating 10-digit phone numbers — a customer-database leak.
-  if (!lookupEmail && !lookupPhone10) {
+  if (!lookupEmail && !lookupPhone10 && !lookupUserId) {
     return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Not authenticated' }) };
   }
 
@@ -71,13 +75,24 @@ exports.handler = async (event) => {
     // 10-digit, +91…, '87994 81113' (with a space), etc. — so we widen the SQL
     // search and then normalise to digits in JS for the phone match.
     let orders = [];
+    // Explicitly linked orders first — these were claimed with the same proof
+    // /track/ demands, so they belong here whatever address checkout recorded.
+    if (lookupUserId) {
+      const { data, error } = await supabase
+        .from('orders').select('*')
+        .eq('user_id', lookupUserId)
+        .order('created_at', { ascending: false }).limit(60);
+      if (error) throw error;
+      orders = data || [];
+    }
     if (lookupEmail) {
       const { data, error } = await supabase
         .from('orders').select('*')
         .ilike('customer_email', lookupEmail)
         .order('created_at', { ascending: false }).limit(60);
       if (error) throw error;
-      orders = data || [];
+      const seen = new Set(orders.map(o => o.id));
+      for (const o of data || []) if (!seen.has(o.id)) { orders.push(o); seen.add(o.id); }
     }
     if (lookupPhone10) {
       // Two passes for safety: contiguous (cheap, indexable) + last-4-digit prefilter
@@ -94,9 +109,11 @@ exports.handler = async (event) => {
       // Merge, dedupe by id, sort newest-first.
       const seen = new Set(orders.map(o => o.id));
       for (const o of matched) if (!seen.has(o.id)) { orders.push(o); seen.add(o.id); }
-      orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      orders = orders.slice(0, 30);
     }
+    // Sort and cap once, for every strategy. This used to live inside the phone
+    // branch, so a customer with no phone on file got an unsorted list.
+    orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    orders = orders.slice(0, 30);
 
     // Fetch return requests in parallel; replacements are already in `orders`
     // (same user) so we just scan them.
