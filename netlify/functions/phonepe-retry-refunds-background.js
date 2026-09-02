@@ -8,6 +8,10 @@
  *   - PENDING    → leaves it (PhonePe still processing)
  *   - FAILED/none→ RE-ISSUES the refund with a fresh merchantRefundId
  *
+ * EXCEPT for RTO orders, which are reconciled but never re-issued: a returned
+ * parcel is refunded minus both courier legs, by hand, from the RTO Refunds
+ * panel. See the guard in processOrder.
+ *
  * Why: PhonePe fails a refund if, on a given settlement date, the refund amount
  * exceeds the payments the merchant received that day (balance policy). The
  * nightly batch of auto-cancelled (10-day-no-pickup) orders trips this. Once new
@@ -42,8 +46,18 @@ const CORS = {
 };
 
 // Order states that mean "PhonePe money is still with us and a refund is owed".
+// 'rto' stays in the scan so refunds already in flight are reconciled, but it is
+// never ISSUED against automatically -- see the guard in processOrder.
 const OWED_STATUSES = ['refund_pending', 'refund_failed', 'cancelled', 'rto', 'undelivered', 'lost'];
 const MAX_ATTEMPTS = 10;   // stop hammering a genuinely un-refundable order
+
+/**
+ * States this job may reconcile but must never issue a refund against.
+ * RTO is refunded minus both courier legs, by hand, from the RTO Refunds panel.
+ */
+function isManualRefundOnly(order) {
+  return String((order && order.status) || '').toLowerCase() === 'rto';
+}
 
 function isPhonePePayment(pid) {
   const p = String(pid || '');
@@ -140,6 +154,22 @@ async function processOrder(supabase, order, force = false, reconcileOnly = fals
   // PhonePe's balance policy makes off-window attempts fail, and every attempt
   // burns the MAX_ATTEMPTS cap.
   if (reconcileOnly) return { order: displayId, result: 'reconcile_only' };
+
+  // ── RTO is never auto-refunded ────────────────────────────────────────────
+  // A returned parcel costs us both courier legs, so the customer is owed what
+  // they paid MINUS that cost, and the figure is issued by hand from the RTO
+  // Refunds panel (rto-refund-candidates). Re-issuing here pays the FULL amount,
+  // unattended, on an hourly cron: that is how 66 RTO orders went back at 100%
+  // and absorbed roughly 8,200 of shipping we had already spent.
+  //
+  // Only the ISSUE step is blocked. Everything above still runs, so a refund
+  // already in flight is reconciled, completed and notified as before -- money
+  // that is already moving must not be stranded. `force` deliberately does NOT
+  // lift this: a full refund on an RTO order is a decision, and it has its own
+  // button on the order itself.
+  if (isManualRefundOnly(order)) {
+    return { order: displayId, result: 'rto_manual_only' };
+  }
 
   const attempts = Number(order.refund_attempts) || 0;
   if (!force && attempts >= MAX_ATTEMPTS) return { order: displayId, result: 'max_attempts' };
@@ -328,7 +358,7 @@ exports.handler = async (event) => {
       .filter(o => isPhonePePayment(o.razorpay_payment_id))
       .filter(o => !neverCapturedPayment(o));
 
-      const summary = { scanned: candidates.length, skipped_never_captured: (rows || []).filter(o => isPhonePePayment(o.razorpay_payment_id) && neverCapturedPayment(o)).length, reconciled_completed: 0, retried_completed: 0, retried_pending: 0, retry_failed: 0, retry_error: 0, still_pending: 0, max_attempts: 0, skip_no_amount: 0, reconcile_only: 0, never_captured: 0 };
+      const summary = { scanned: candidates.length, skipped_never_captured: (rows || []).filter(o => isPhonePePayment(o.razorpay_payment_id) && neverCapturedPayment(o)).length, reconciled_completed: 0, retried_completed: 0, retried_pending: 0, retry_failed: 0, retry_error: 0, still_pending: 0, max_attempts: 0, skip_no_amount: 0, reconcile_only: 0, rto_manual_only: 0, never_captured: 0 };
     const details = [];
     for (const order of candidates) {
       let r;
@@ -346,3 +376,5 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
 };
+
+exports._test = { isManualRefundOnly, OWED_STATUSES };
