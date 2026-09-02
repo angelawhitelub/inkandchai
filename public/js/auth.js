@@ -1282,11 +1282,22 @@
 
   function renderOrders(container, data) {
     if (!data?.length) {
+      // Empty here does NOT mean the customer has never ordered. Orders are
+      // matched on the email or phone given at CHECKOUT, and plenty of people
+      // sign in later with a different address — a Google account, a work
+      // address — which leaves them staring at "No orders yet" for an order
+      // that was delivered. Say so, and point at the lookup that does work.
+      const email = (currentUser && currentUser.email) ? currentUser.email : '';
       container.innerHTML = `
         <div style="text-align:center;padding:3rem 1rem;">
           <div style="font-size:2.5rem;margin-bottom:1rem;opacity:0.4;">📚</div>
-          <p style="color:#a09080;font-size:0.78rem;line-height:1.8;">No orders yet.<br/>
+          <p style="color:#a09080;font-size:0.78rem;line-height:1.8;">No orders under
+            ${email ? `<strong style="color:#c9a84c;">${escAcct(email)}</strong>` : 'this account'} yet.<br/>
             <a href="/" style="color:#c9a84c;">Browse books →</a>
+          </p>
+          <p style="color:#7d6d5b;font-size:0.7rem;line-height:1.7;margin-top:1.5rem;max-width:300px;margin-left:auto;margin-right:auto;">
+            Ordered with a different email or phone? Your order is still safe — look it up with your
+            order ID at <a href="/track/" style="color:#c9a84c;">Track Order</a>.
           </p>
         </div>`;
       return;
