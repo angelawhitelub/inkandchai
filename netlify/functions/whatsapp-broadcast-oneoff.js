@@ -18,7 +18,7 @@
 
 const HEADERS = { 'Content-Type': 'application/json' };
 
-exports.handler = async () => {
+exports.handler = async (event) => {
   const template = String(process.env.WHATSAPP_BROADCAST_TEMPLATE || '').trim();
   const adminSecret = String(process.env.ADMIN_SECRET || '').trim();
   const siteUrl = String(process.env.URL || 'https://inkandchai.in').replace(/\/+$/, '');
@@ -27,6 +27,25 @@ exports.handler = async () => {
   const istDate = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
+
+  // A GET is a human checking that this is deployed and armed. Netlify invokes
+  // scheduled functions with POST, so answering GET read-only is the only way
+  // to confirm the wiring without firing the campaign an hour early.
+  if (String(event?.httpMethod || 'POST').toUpperCase() === 'GET') {
+    return {
+      statusCode: 200,
+      headers: HEADERS,
+      body: JSON.stringify({
+        deployed: true,
+        armed_for: armedFor || null,
+        ist_date: istDate,
+        armed_today: armedFor === istDate,
+        template: template || null,
+        fires_at: '20:00 IST (30 14 * * * UTC)',
+        note: 'GET never sends. The scheduler POSTs.',
+      }),
+    };
+  }
 
   if (armedFor !== istDate) {
     console.log(`[broadcast-oneoff] not armed for today (armed=${armedFor || 'unset'}, today=${istDate}) — sending nothing`);
