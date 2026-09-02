@@ -101,6 +101,12 @@
 [functions."whatsapp-broadcast-scheduled"]
   schedule = "30 13 * * 2,5"
 
+# One-off evening campaign, 20:00 IST. Registered daily because Netlify cron has
+# no one-shot form; the function itself sends nothing unless
+# WHATSAPP_BROADCAST_ONEOFF_DATE equals today's IST date.
+[functions."whatsapp-broadcast-oneoff"]
+  schedule = "30 14 * * *"
+
 # Shout if the live site stops matching main. A production deploy made by hand
 # carries no commit reference, so the dashboard shows a normal green deploy
 # while the site has silently rolled back — which is exactly how a day's worth

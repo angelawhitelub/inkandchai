@@ -112,8 +112,33 @@ function absoluteImageUrl(book) {
   return raw ? `${SITE_URL}/${raw.replace(/^\/+/, '')}` : null;
 }
 
+/**
+ * The slug for the template's URL button, or '' when we cannot link this book.
+ *
+ * The button appends this to https://inkandchai.in/product/, so it has to be a
+ * slug for a page on OUR site. Two stored shapes qualify:
+ *   /product/<slug>/      -- canonical
+ *   /product/?id=<slug>   -- legacy query form (6 sends failed on this)
+ * A source-catalogue URL (99bookstores /products/<slug>) does NOT: that slug
+ * does not exist here, so linking it would land the customer on a 404. It is
+ * rejected rather than salvaged (10 sends failed on this).
+ *
+ * An empty parameter is what Meta rejects with "(#131008) Required parameter
+ * is missing", killing the whole message -- so callers must pick another book
+ * rather than send this through.
+ */
 function productSlug(book) {
-  return absoluteProductUrl(book).match(/\/product\/([^/?#]+)/i)?.[1] || '';
+  const url = absoluteProductUrl(book);
+  if (!/^https:\/\/(?:[a-z0-9-]+\.)?inkandchai\.in\//i.test(url)) return '';
+  const direct = url.match(/\/product\/([^/?#]+)/i)?.[1];
+  if (direct) return direct;
+  const byQuery = url.match(/\/product\/\?[^#]*\bid=([^&#]+)/i)?.[1];
+  return byQuery ? decodeURIComponent(byQuery) : '';
+}
+
+/** First recommendation we can actually link to, or null if none can be. */
+function heroRec(recs) {
+  return (recs || []).find(book => productSlug(book)) || null;
 }
 
 function markdownPercent(book) {
@@ -316,6 +341,13 @@ exports.handler = async (event) => {
   const campaignKey   = String(body.campaign_key || '').trim().slice(0, 120);
   const cooldownDays  = Math.max(1, Math.min(90, parseInt(body.cooldown_days) || 14));
   const requireOptIn  = !!body.require_opt_in;
+  // Which order states count as "a customer". Defaults to the full buying
+  // history; a caller can narrow it (e.g. ['delivered']) for a campaign that
+  // only makes sense once the books are actually in someone's hands.
+  const statuses = Array.isArray(body.statuses) && body.statuses.length
+    ? [...new Set(body.statuses.map(v => String(v).trim().toLowerCase()).filter(Boolean))].slice(0, 12)
+    : ['paid', 'delivered', 'shipped', 'out_for_delivery',
+       'cod_pending', 'partial_cod_pending', 'confirmed'];
 
   if (!template) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({
@@ -347,8 +379,7 @@ exports.handler = async (event) => {
       const { data, error } = await supabase
         .from('orders')
         .select('customer_phone, customer_name, cart_items, status, created_at')
-        .in('status', ['paid', 'delivered', 'shipped', 'out_for_delivery',
-                       'cod_pending', 'partial_cod_pending', 'confirmed'])
+        .in('status', statuses)
         .gte('created_at', since)
         .order('created_at', { ascending: false })
         .limit(20000);
@@ -416,13 +447,25 @@ exports.handler = async (event) => {
         ];
         if (richMedia) r.params.push(campaignOffer);
         r.recs = recs;
-        r.headerImageUrl = richMedia ? absoluteImageUrl(recs[0]) : null;
-        r.urlButtonParam = richMedia ? productSlug(recs[0]) : null;
+        const hero = richMedia ? heroRec(recs) : null;
+        r.hero = hero;
+        r.headerImageUrl = hero ? absoluteImageUrl(hero) : null;
+        r.urlButtonParam = hero ? productSlug(hero) : null;
         r.bucketLabel = bucketLabel;
         r.profile     = { topCategory: profile.topCategory, topAuthor: profile.topAuthor, totalBooks: profile.totalBooks };
       }
     } else {
       for (const r of recipients) r.params = [r.name];
+    }
+
+    // A rich-media send with no linkable book is a guaranteed Meta rejection,
+    // and a rejected recipient still burns a slot in the run. Drop them here,
+    // before the limit slice, so the next eligible customer takes the place.
+    let unlinkableRemoved = 0;
+    if (personalized && richMedia) {
+      const before = recipients.length;
+      recipients = recipients.filter(r => r.urlButtonParam);
+      unlinkableRemoved = before - recipients.length;
     }
 
     // ── Drop anyone who sent STOP ───────────────────────────────────────────
@@ -532,7 +575,7 @@ exports.handler = async (event) => {
           bucket: r.bucketLabel,
           recs_preview: r.params?.[2]?.split('\n').slice(0,3),
           image: r.headerImageUrl,
-          product_url: r.recs?.[0] ? absoluteProductUrl(r.recs[0]) : null,
+          product_url: r.hero ? absoluteProductUrl(r.hero) : null,
         })),
         message: `Would send template "${template}" to ${recipients.length} recipients. Set dry_run:false to actually send.`,
       }) };
@@ -581,7 +624,7 @@ exports.handler = async (event) => {
             template_name: template,
             status: value.ok ? 'sent' : 'failed',
             error: value.ok ? null : String(value.error || 'Unknown send failure').slice(0, 1000),
-            product_url: recipient.recs?.[0] ? absoluteProductUrl(recipient.recs[0]) : null,
+            product_url: recipient.hero ? absoluteProductUrl(recipient.hero) : null,
             metadata: { bucket:recipient.bucketLabel, offer:campaignOffer, source, pilot: !requireOptIn },
           };
         });
@@ -605,6 +648,7 @@ exports.handler = async (event) => {
         opted_out_removed: optedOutRemoved,
         consent_removed: consentRemoved,
         cooldown_removed: cooldownRemoved,
+        unlinkable_removed: unlinkableRemoved,
         total: recipients.length,
         sent,
         failed,
@@ -619,7 +663,7 @@ exports.handler = async (event) => {
 };
 
 exports._internal = {
-  absoluteProductUrl, absoluteImageUrl, productSlug, markdownPercent,
+  absoluteProductUrl, absoluteImageUrl, productSlug, heroRec, markdownPercent,
   formatBookLine, promotionLabel, canonicalCategory, guessLanguage,
   buildCustomerProfile, pickRecs,
 };
