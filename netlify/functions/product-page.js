@@ -188,6 +188,20 @@ src="https://www.facebook.com/tr?id=1639520197322862&ev=PageView&noscript=1"
 /></noscript>
 <!-- End Meta Pixel Code -->`;
 
+// Google Analytics 4. Admin-created product pages are rendered here rather than
+// by generate_site.py, so they need the tag added separately or they would be
+// the one hole in site-wide analytics. Unset env = no tag, same as the build.
+const GA4_MEASUREMENT_ID = String(process.env.GA4_MEASUREMENT_ID || 'G-ZPZDFWMDP6').trim();
+const GA4_TAG = GA4_MEASUREMENT_ID ? `<!-- Google Analytics 4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=${GA4_MEASUREMENT_ID}"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${GA4_MEASUREMENT_ID}');
+</script>
+<!-- End Google Analytics 4 -->` : '';
+
 const GOOGLE_ADS_TAG = `<!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18119332653"></script>
 <script>
@@ -322,6 +336,7 @@ function productHtml(product, aplusContent = null) {
 <meta charset="utf-8"/>
 ${META_PIXEL_CODE}
 ${GOOGLE_ADS_TAG}
+${GA4_TAG}
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${esc(product.seo_title || `${product.title} | Buy Online in India | Ink & Chai`)}</title>
 <meta name="description" content="${metaDesc}"/>

@@ -631,6 +631,27 @@ src="https://www.facebook.com/tr?id=1639520197322862&ev=PageView&noscript=1"
 # Purchase — now reports to both pixels automatically, for the same reason.
 # Nothing else needs changing to give the new pixel full conversion data.
 
+# Google Analytics 4.
+#
+# The site had no GA4 tag at all — only the two AW- Ads tags — which is why the
+# GA4-sourced "inkandchai.in (web) purchase" conversion action sat on "Awaiting
+# conversions" forever and put the Purchase goal in "Needs attention".
+#
+# A measurement ID is public — it ships in every page's source — so it lives
+# here beside the AW- ids rather than in an env var a build could silently be
+# missing. The env var stays as an override for a staging property.
+GA4_MEASUREMENT_ID = os.environ.get("GA4_MEASUREMENT_ID", "G-ZPZDFWMDP6").strip()
+
+GA4_TAG = ("""<!-- Google Analytics 4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=%s"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '%s');
+</script>
+<!-- End Google Analytics 4 -->""" % (GA4_MEASUREMENT_ID, GA4_MEASUREMENT_ID)) if GA4_MEASUREMENT_ID else ""
+
 GOOGLE_ADS_TAG = """<!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18119332653"></script>
 <script>
@@ -9191,6 +9212,40 @@ function trackGoogleAdsPurchase(orderId, value) {
   localStorage.setItem(key, '1');
 }
 
+// GA4 ecommerce purchase. Separate from the Ads conversion above on purpose:
+// send_to pins it to the GA4 property, because an event with no send_to goes to
+// EVERY configured target — which would post a stray "purchase" into both Ads
+// accounts as well.
+//
+// transaction_id is what GA4 de-dupes on, so a refresh of the success screen
+// cannot count the sale twice; the localStorage key guards the same thing
+// within a session.
+const GA4_ID = 'GA4_MEASUREMENT_ID_PLACEHOLDER';
+function trackGa4Purchase(orderId, value) {
+  if (!GA4_ID || !orderId || typeof gtag !== 'function') return;
+  const key = 'iac_ga4_purchase_' + orderId;
+  try { if (localStorage.getItem(key)) return; } catch (e) {}
+  const params = {
+    send_to: GA4_ID,
+    transaction_id: String(orderId),
+    currency: 'INR',
+    value: Number(value) || 0,
+  };
+  try {
+    const stash = JSON.parse(localStorage.getItem('iac_last_purchase_items') || '{}');
+    if (stash && Array.isArray(stash.cart_data) && stash.cart_data.length) {
+      params.items = stash.cart_data.map(function (i) {
+        return { item_id: String(i.id), price: Number(i.price) || 0, quantity: Number(i.quantity) || 1 };
+      });
+      // GA4 wants the coupon amount as a positive number on the transaction.
+      const d = Number(stash.discount) || 0;
+      if (d > 0) params.discount = d;
+    }
+  } catch (e) {}
+  gtag('event', 'purchase', params);
+  try { localStorage.setItem(key, '1'); } catch (e) {}
+}
+
 // Meta Purchase. Fires for BOTH pixels in one call, next to the Ads conversion
 // so the two platforms can never disagree about what counted as a sale.
 //
@@ -9252,6 +9307,8 @@ function cartDataItems(cart) {
 function showSuccess(type, orderId, addr, value, surveyOrderId = orderId) {
   hideProcessing();
   trackGoogleAdsPurchase(orderId, value);
+  // Before trackMetaPurchase — that one clears the item stash both of these read.
+  trackGa4Purchase(orderId, value);
   trackMetaPurchase(orderId, value);
   document.getElementById('checkoutScreen').style.display = 'none';
   const s = document.getElementById('successScreen');
@@ -9999,6 +10056,7 @@ CHECKOUT_HTML = strip_expired_sale(CHECKOUT_HTML)
 CHECKOUT_HTML = CHECKOUT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER", razorpay_key)
 CHECKOUT_HTML = CHECKOUT_HTML.replace("SUPABASE_URL_PLACEHOLDER",     os.environ.get("SUPABASE_URL", ""))
 CHECKOUT_HTML = CHECKOUT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER",os.environ.get("SUPABASE_ANON_KEY", ""))
+CHECKOUT_HTML = CHECKOUT_HTML.replace("GA4_MEASUREMENT_ID_PLACEHOLDER", GA4_MEASUREMENT_ID)
 
 checkout_out = Path(__file__).parent / "public" / "checkout" / "index.html"
 checkout_out.parent.mkdir(parents=True, exist_ok=True)
@@ -10967,3 +11025,32 @@ image_map_out = Path(__file__).parent / "netlify" / "functions" / "image-map.jso
 image_map_out.parent.mkdir(parents=True, exist_ok=True)
 image_map_out.write_text(json.dumps(IMAGE_PROXY_MAP, ensure_ascii=False, sort_keys=True), encoding="utf-8")
 print(f"Generated: {image_map_out}  ({len(IMAGE_PROXY_MAP)} proxied images)")
+
+# ── Google Analytics 4, everywhere ────────────────────────────────────────────
+#
+# Run last, over the finished public/ tree, rather than folding GA4 into
+# GOOGLE_ADS_TAG. The hand-written pages — about, contact, the two policy pages,
+# review — never go through with_meta_pixel() and carry no Google tag at all, so
+# a tag bolted onto the generated pages alone would silently miss them and
+# undercount sessions. This pass reaches every page the site actually serves,
+# including ones added later.
+#
+# public/admin/ is excluded on purpose: the shop's own staff traffic should not
+# land in the analytics that Ads reads.
+if GA4_MEASUREMENT_ID:
+    _public = Path(__file__).parent / "public"
+    _tagged = 0
+    for _page in sorted(_public.rglob("*.html")):
+        if "admin" in _page.relative_to(_public).parts:
+            continue
+        _html = _page.read_text(encoding="utf-8")
+        # Match the loader, not the bare id: checkout carries the id in a JS
+        # constant for the purchase event, and testing for the id alone made
+        # this pass think checkout was already tagged and skip it.
+        if f"gtag/js?id={GA4_MEASUREMENT_ID}" in _html or "</head>" not in _html:
+            continue
+        _page.write_text(_html.replace("</head>", GA4_TAG + "\n</head>", 1), encoding="utf-8")
+        _tagged += 1
+    print(f"Generated: GA4 tag {GA4_MEASUREMENT_ID} on {_tagged} pages")
+else:
+    print("Skipped: GA4 tag (set GA4_MEASUREMENT_ID to enable)")
