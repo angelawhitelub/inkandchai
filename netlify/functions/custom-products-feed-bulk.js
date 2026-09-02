@@ -25,6 +25,7 @@ const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const { skipFromFeed } = require('./utils/feed-image-filter');
 const { identifierXml } = require('./utils/gtin');
+const { feedId } = require('./utils/feed-id');
 
 const SITE = 'https://inkandchai.in';
 const BRAND = 'Ink & Chai';
@@ -34,11 +35,6 @@ const DESC_MAX = 600;            // Merchant only needs a short description
 // Same tags custom-products-feed.js excludes — this feed serves exactly those.
 const BULK_TAGS = ['crossword-catalog', '99bookstores-catalog', 'imported-bookstohome'];
 
-function feedId(slug) {
-  const id = `cp-${slug}`;
-  if (id.length <= 50) return id;
-  return `cp-${crypto.createHash('sha1').update(String(slug)).digest('hex').slice(0, 20)}`;
-}
 
 function xmlEscape(s) {
   return String(s == null ? '' : s)

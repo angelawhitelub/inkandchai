@@ -32,6 +32,7 @@
  */
 
 const crypto = require('crypto');
+const { feedId, legacyFeedId } = require('./feed-id');
 
 // Published by Google and documented as non-expiring. Overridable so the tests
 // can drive the identical code path with a throwaway key pair.
@@ -63,8 +64,10 @@ const b64urlEncode = (buf) => Buffer.from(buf).toString('base64').replace(/\+/g,
 function offerIdsForSlug(slug) {
   const s = String(slug || '').trim().toLowerCase();
   if (!s) return [];
-  const hashed = 'cp-' + crypto.createHash('sha1').update(s).digest('hex').slice(0, 20);
-  return [s, `cp-${s}`, hashed];
+  // Both the current id and the opaque one long slugs used to carry: Merchant
+  // Center keeps serving the old id until it re-ingests the feed, and cart data
+  // for clicks that happened before then still quotes it.
+  return [...new Set([s, `cp-${s}`, feedId(s), legacyFeedId(s)])];
 }
 
 function offerMatchesSlug(offerId, slug) {
@@ -182,16 +185,14 @@ function grantMap(grants, { now = Date.now() } = {}) {
 /**
  * The id this product actually carries in whichever feed lists it — the value
  * Google Ads cart data must match EXACTLY. Custom/bulk products go out under
- * `cp-<slug>` (hashed past Google's 50-char id cap); the static catalogue uses
- * the bare slug. Mirrors feedId() in custom-products-feed.js.
+ * `cp-<slug>`, shortened to a readable slug-plus-hash past Google's 50-char id
+ * cap; the static catalogue uses the bare slug. Delegates to utils/feed-id so
+ * this can never drift from what the feeds actually emit.
  */
 function feedOfferId(slug, { custom = false } = {}) {
   const s = String(slug || '').trim();
   if (!s) return '';
-  if (!custom) return s;
-  const id = `cp-${s}`;
-  if (id.length <= 50) return id;
-  return 'cp-' + crypto.createHash('sha1').update(s).digest('hex').slice(0, 20);
+  return custom ? feedId(s) : s;
 }
 
 module.exports = {

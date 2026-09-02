@@ -15,17 +15,11 @@ const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const { skipFromFeed } = require('./utils/feed-image-filter');
 const { identifierXml } = require('./utils/gtin');
+const { feedId } = require('./utils/feed-id');
 
 const SITE = 'https://inkandchai.in';
 const BRAND = 'Ink & Chai';
 
-// Google Merchant caps g:id at 50 chars. Keep the readable "cp-<slug>" when it
-// fits; otherwise fall back to a stable short hash so it stays unique and <= 50.
-function feedId(slug) {
-  const id = `cp-${slug}`;
-  if (id.length <= 50) return id;
-  return `cp-${crypto.createHash('sha1').update(String(slug)).digest('hex').slice(0, 20)}`;
-}
 
 function xmlEscape(s) {
   return String(s == null ? '' : s)
