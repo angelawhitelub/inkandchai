@@ -123,6 +123,22 @@
 [functions."deploy-drift-check"]
   schedule = "@hourly"
 
+# The Netlify subdomain serves the production site verbatim, on a second
+# hostname nobody should be landing on. It turned up as a "suggested domain" in
+# GA4's cross-domain setup because the tag was detected there, and every hit to
+# it is a session recorded against a host that is not the shop.
+#
+# First rule in the file so it wins before any path-based redirect below.
+#
+# Only the bare alias matches. Deploy permalinks are served on
+# <deploy-id>--dazzling-swan-f25721.netlify.app, a different host, so they stay
+# reachable for verifying a rollback — which is the point of them.
+[[redirects]]
+  from   = "https://dazzling-swan-f25721.netlify.app/*"
+  to     = "https://inkandchai.in/:splat"
+  status = 301
+  force  = true
+
 # Route Supabase Storage image requests through our Netlify-cached proxy so
 # each image is fetched from Supabase at most once per 30 days per edge. Cuts
 # the "cached egress" quota drain caused by admin-created product covers.
