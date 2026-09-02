@@ -190,6 +190,82 @@ async function notifyPickupScheduled(ret, awb, courier) {
   return result;
 }
 
+/**
+ * Update a return request without caring whether the optional bookkeeping
+ * columns have been added yet. PostgREST names the offending column when it
+ * does not exist, so drop that key and retry rather than losing the whole
+ * write — a courier push that failed must still be recorded even on a database
+ * that has not run sql/return_requests_push_error.sql.
+ */
+async function softUpdate(supabase, id, patch) {
+  const fields = { ...patch };
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { error } = await supabase.from('return_requests').update(fields).eq('id', id);
+    if (!error) return { ok: true, dropped: Object.keys(patch).filter(k => !(k in fields)) };
+    // Longest match wins: "last_push_error" is a prefix of "last_push_error_at",
+    // so a plain find() would drop the wrong column and never converge.
+    const msg = error.message || '';
+    const missing = Object.keys(fields)
+      .filter(k => msg.includes(k))
+      .sort((a, b) => b.length - a.length)[0];
+    if (!missing) return { ok: false, error: error.message };
+    delete fields[missing];
+    if (!Object.keys(fields).length) return { ok: false, error: error.message };
+  }
+  return { ok: false, error: 'too many unknown columns' };
+}
+
+/**
+ * Tell the customer their return is approved, at most once.
+ *
+ * The approved email/WhatsApp promises a follow-up with the courier and
+ * tracking ID, which notifyPickupScheduled sends later — so this is honest even
+ * when the courier push has just failed and a human has to retry it.
+ */
+async function notifyApprovedOnce(supabase, ret) {
+  if (ret.approved_notified_at) return { sent: false, reason: 'already notified' };
+  await notifyApproved(ret);
+  const stamped = await softUpdate(supabase, ret.id, { approved_notified_at: new Date().toISOString() });
+  // No column yet = we cannot remember, so say so rather than implying we can.
+  return { sent: true, deduped: stamped.ok };
+}
+
+/**
+ * NimbusPost would not take the reverse order — a low wallet balance, no
+ * reverse-capable courier for the pincode, an API outage.
+ *
+ * This is NOT a failure of the return. The request is already in the Returns
+ * panel as "approved"; the only thing missing is the courier booking, which a
+ * human can retry once the cause is fixed. Previously this threw, the admin saw
+ * "Could not create return", and nothing recorded why — while the customer, who
+ * had asked for a return and been approved, heard nothing at all.
+ *
+ * So: keep the request, record why the push failed, tell the customer their
+ * return is approved and a pickup is being arranged, and answer 200 with the
+ * gateway's own words so the admin knows exactly what to fix.
+ */
+async function pushFailed(supabase, ret, reason) {
+  const detail = String(reason || 'unknown error').slice(0, 500);
+  await softUpdate(supabase, ret.id, {
+    last_push_error:    detail,
+    last_push_error_at: new Date().toISOString(),
+  });
+  const notify = await notifyApprovedOnce(supabase, ret);
+  console.error(`[process-return] push failed for ${ret.order_display_id || ret.id}: ${detail}`);
+  return { statusCode: 200, headers: CORS, body: JSON.stringify({
+    success:  true,
+    pushed:   false,
+    status:   ret.status || 'approved',
+    return_request_id: ret.id,
+    np_error: detail,
+    notified: notify.sent,
+    message:  'Return saved in the Returns panel as approved'
+      + (notify.sent ? ' and the customer has been told a pickup is being arranged.' : '.')
+      + ' The courier booking did NOT go through: ' + detail
+      + ' Fix that, then push this return again from the Returns tab.',
+  }) };
+}
+
 // ── Handler ────────────────────────────────────────────────────────────────
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
@@ -269,8 +345,8 @@ exports.handler = async (event) => {
 
     if (action === 'approve') {
       await supabase.from('return_requests').update({ status: 'approved' }).eq('id', return_request_id);
-      await notifyApproved(ret);
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, status: 'approved', notified: true }) };
+      const n = await notifyApprovedOnce(supabase, ret);
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, status: 'approved', notified: n.sent }) };
     }
 
     // Owner marks a MANUAL refund (COD-UPI payout, or a PhonePe/other refund done
@@ -380,12 +456,11 @@ exports.handler = async (event) => {
     const reverseCourierId = chosen ? (chosen.courier_id ?? chosen.id ?? null) : null;
 
     if (!svcOk || !reverseCourierId) {
-      throw new Error(
-        `No reverse-capable courier services pickup from pincode ${pincode}. `
-        + `NimbusPost only offers forward couriers here, which decline reverse pickup. `
-        + `Create this return manually in the NimbusPost panel (clone the original order as reverse). `
-        + `(NP serviceability: ${JSON.stringify(svcData).slice(0, 300)})`
-      );
+      return pushFailed(supabase, ret,
+        `no reverse-capable courier services pickup from pincode ${pincode} `
+        + `(NimbusPost offers only forward couriers there, which decline reverse pickup). `
+        + `Clone the original order as reverse in the NimbusPost panel, then add the AWB here. `
+        + `NP serviceability: ${JSON.stringify(svcData).slice(0, 300)}`);
     }
     console.log(`[process-return] pincode=${pincode} → reverse courier ${chosen.courier_name || chosen.name} (id=${reverseCourierId})`);
 
@@ -409,7 +484,7 @@ exports.handler = async (event) => {
 
     const { ok, data: npData } = await npFetch('/shipments', { method: 'POST', token, body: payload });
     if (!ok || npData.status === false) {
-      throw new Error(`NimbusPost reverse order create failed: ${JSON.stringify(npData)}`);
+      return pushFailed(supabase, ret, `NimbusPost rejected the reverse order — ${npData && npData.message ? npData.message : JSON.stringify(npData)}`);
     }
 
     const shipment = npData.data && typeof npData.data === 'object' ? npData.data : npData;
@@ -446,3 +521,7 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
 };
+
+// Exposed for tests: the two behaviours that keep a failed courier push from
+// losing the return request or spamming the customer.
+exports._test = { softUpdate, notifyApprovedOnce };

@@ -4164,9 +4164,15 @@ async function createReturnOrder(orderId, btn) {
     if (!res.ok || data.error) throw new Error(data.error || 'HTTP ' + res.status);
     const parts = [data.message || 'Return created in NimbusPost.'];
     if (data.awb) parts.push(`AWB: ${data.awb}${data.courier_name ? ' · ' + data.courier_name : ''}`);
-    if (data.notified) parts.push('Customer notified about the pickup.');
-    alert('↩ ' + parts.join('\n'));
-    if (btn) btn.innerHTML = data.awb ? '✅ Pickup scheduled' : '✅ Return created';
+    if (data.notified) parts.push(data.pushed === false
+      ? 'Customer told the return is approved and a pickup is being arranged.'
+      : 'Customer notified about the pickup.');
+    // pushed === false means the return IS saved and the customer IS informed,
+    // but NimbusPost refused the courier booking. Don't dress that as a success:
+    // someone has to fix the cause and push again.
+    alert((data.pushed === false ? '⚠️ ' : '↩ ') + parts.join('\n'));
+    if (btn) btn.innerHTML = data.pushed === false ? '⚠️ Saved — courier failed'
+                           : data.awb ? '✅ Pickup scheduled' : '✅ Return created';
   } catch (err) {
     alert('Could not create return: ' + err.message);
     if (btn) { btn.disabled = false; btn.innerHTML = origText; }
