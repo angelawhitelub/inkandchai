@@ -115,25 +115,28 @@ function absoluteImageUrl(book) {
 /**
  * The slug for the template's URL button, or '' when we cannot link this book.
  *
- * The button appends this to https://inkandchai.in/product/, so it has to be a
- * slug for a page on OUR site. Two stored shapes qualify:
- *   /product/<slug>/      -- canonical
- *   /product/?id=<slug>   -- legacy query form (6 sends failed on this)
- * A source-catalogue URL (99bookstores /products/<slug>) does NOT: that slug
- * does not exist here, so linking it would land the customer on a 404. It is
- * rejected rather than salvaged (10 sends failed on this).
+ * The button appends this to https://inkandchai.in/product/, so the ONLY shape
+ * that can be used is one that already lives at /product/<slug>/:
  *
- * An empty parameter is what Meta rejects with "(#131008) Required parameter
- * is missing", killing the whole message -- so callers must pick another book
- * rather than send this through.
+ *   /product/<slug>/     -- a real static page. Usable.
+ *   /product/?id=<slug>  -- NOT usable. These books have no page of their own;
+ *                           the dynamic route looks them up client-side, and
+ *                           /product/<slug>/ returns "Product not found". An
+ *                           earlier version of this function extracted the id
+ *                           and sent it anyway, which put a 404 button in front
+ *                           of 9 customers on 2 Sept.
+ *   99bookstores /products/<slug> -- NOT usable. Off-site slug, does not exist
+ *                           here either.
+ *
+ * Everything but the first returns '', and the caller picks another book. An
+ * empty parameter is what Meta rejects as "(#131008) Required parameter is
+ * missing", so a book that reaches the send with '' would kill the message --
+ * a dropped recommendation is the better failure than a dead link.
  */
 function productSlug(book) {
   const url = absoluteProductUrl(book);
   if (!/^https:\/\/(?:[a-z0-9-]+\.)?inkandchai\.in\//i.test(url)) return '';
-  const direct = url.match(/\/product\/([^/?#]+)/i)?.[1];
-  if (direct) return direct;
-  const byQuery = url.match(/\/product\/\?[^#]*\bid=([^&#]+)/i)?.[1];
-  return byQuery ? decodeURIComponent(byQuery) : '';
+  return url.match(/\/product\/([^/?#]+)/i)?.[1] || '';
 }
 
 /** First recommendation we can actually link to, or null if none can be. */
