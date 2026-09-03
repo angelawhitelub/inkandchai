@@ -1573,8 +1573,8 @@ select,input,textarea{font-size:1rem;}
             <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:#f07060;" title="Shows a pulsing red badge: 🔥 Hurry! Only 4 left — stock is always pinned at 4, never runs out">
               <input type="checkbox" id="prodScarcity" style="accent-color:#e05040;"/> 🔥 Scarcity badge (Only 4 left)
             </label>
-            <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:#6daa6d;" title="Shows the green &quot;Genuine — Publisher Sourced&quot; panel on the product page. Also switches this book's orders to the IC-CW- order-ID prefix. The discount line quotes the real MRP-to-price gap, so set the MRP correctly first.">
-              <input type="checkbox" id="prodPublisherSourced" style="accent-color:#6daa6d;"/> 📚 Genuine — Publisher Sourced badge
+            <label id="prodPublisherSourcedLabel" style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:#6daa6d;" title="Shows the green &quot;Genuine — Publisher Sourced&quot; panel on the product page. Also switches this book's orders to the IC-CW- order-ID prefix. The discount line quotes the real MRP-to-price gap, so set the MRP correctly first.">
+              <input type="checkbox" id="prodPublisherSourced" style="accent-color:#6daa6d;"/> 📚 Genuine — Publisher Sourced badge<span id="prodPublisherSourcedHint" style="color:var(--cream-dim);"></span>
             </label>
           </div>
           <div class="product-editor-actions">
@@ -5756,6 +5756,22 @@ function selectProduct(slug) {
   // would produce copy that silently goes nowhere.
   const metadataFields = ['prodPublisher', 'prodIsbn', 'prodFormat', 'prodLanguage', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn', 'prodPublisherSourced'];
   metadataFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
+  // The badge is stored as a `publisher-sourced-bestseller` tag on the
+  // custom_products row, and saveProductOverride only writes tags inside the
+  // isCustom branch — a catalogue book has nowhere to keep it. It stays
+  // disabled there, but say so next to the box: an unexplained dead checkbox
+  // reads as a bug rather than as a rule.
+  const psLabel = document.getElementById('prodPublisherSourcedLabel');
+  const psHint = document.getElementById('prodPublisherSourcedHint');
+  if (psLabel) {
+    psLabel.style.opacity = isCustom ? '' : '.55';
+    psLabel.style.cursor = isCustom ? '' : 'not-allowed';
+    if (!psLabel.dataset.baseTitle) psLabel.dataset.baseTitle = psLabel.title || '';
+    psLabel.title = isCustom
+      ? psLabel.dataset.baseTitle
+      : 'Catalogue books cannot carry this badge — it is stored on admin-created listings only.';
+  }
+  if (psHint) psHint.textContent = isCustom ? '' : ' — custom listings only';
   const aiBtn = document.getElementById('prodAiBtn');
   if (aiBtn) { aiBtn.style.opacity = isCustom ? '' : '.4'; aiBtn.style.cursor = isCustom ? 'pointer' : 'not-allowed'; }
   const aiMsg = document.getElementById('prodAiMsg'); if (aiMsg) aiMsg.textContent = '';
