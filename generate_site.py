@@ -4696,6 +4696,7 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .eta-block{margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid rgba(109,191,109,0.18)}
 .eta-head{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:#6dbf6d;margin-bottom:0.28rem}
 .eta-row{display:flex;justify-content:space-between;gap:1.2rem;font-size:0.66rem;line-height:1.75;color:#a09080}
+.eta-pin-row{display:flex;gap:0.4rem;margin:0.35rem 0 0.25rem}.eta-pin-input{flex:1;min-width:0;padding:0.4rem 0.55rem;font-size:0.72rem;letter-spacing:0.06em;color:#f0e8d8;background:rgba(0,0,0,0.18);border:1px solid rgba(109,191,109,0.28);border-radius:8px}.eta-pin-input:focus{outline:none;border-color:#6dbf6d}.eta-pin-btn{padding:0.4rem 0.7rem;font-size:0.6rem;letter-spacing:0.14em;color:#0d0b08;background:#6dbf6d;border:0;border-radius:8px;cursor:pointer}.eta-pin-btn:hover{opacity:0.88}.eta-pin-result{font-size:0.7rem;line-height:1.65;color:#a09080;min-height:1rem}.eta-pin-date strong{color:#f0e8d8;font-weight:600}.eta-pin-place{opacity:0.8}.eta-pin-cod{margin-top:0.1rem;opacity:0.85}.eta-pin-error{color:#e0a060}.eta-pin-loading{opacity:0.7}
 .eta-zone{white-space:nowrap}
 .eta-date{color:#f0e8d8;font-weight:600;white-space:nowrap}
 /* Courier partners */
@@ -5114,6 +5115,7 @@ document.addEventListener('keydown', e => {
 </script>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>window.RAZORPAY_KEY_ID = "RAZORPAY_PUB_KEY_PLACEHOLDER";</script>
+<script src="/js/delivery-estimate.js" defer></script>
 <script src="/js/cart.js"></script>
 <script src="/js/google-discount.js"></script>
 <script src="/js/google-customer-reviews.js"></script>
@@ -5196,7 +5198,7 @@ function getShipByHTML(slug) {
         <div class="ship-by-date">${shipStr}</div>
         <div class="ship-by-sub">${subText}</div>
         ${isLimited ? '<div class="ship-by-limited">⚡ Limited stock</div>' : ''}
-        <div class="eta-block">
+        <div class="eta-block" data-delivery-eta${isLimited ? ' data-extra-days="1"' : ''}>
           <div class="eta-head">Estimated delivery</div>
           ${zoneRows}
         </div>
@@ -5665,6 +5667,8 @@ function renderProduct(b) {
       </button>`}
     </div>
   `;
+  // The pincode delivery estimate lives in markup that was just replaced.
+  if (window.iacDeliveryEtaInit) window.iacDeliveryEtaInit();
   // Set initial wishlist state
   setTimeout(updateProdWishBtn, 100);
   // Load live reviews
@@ -6846,6 +6850,7 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding:1rem 
 .eta-block{{margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid rgba(109,191,109,0.18)}}
 .eta-head{{font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:#6dbf6d;margin-bottom:0.28rem}}
 .eta-row{{display:flex;justify-content:space-between;gap:1.2rem;font-size:0.66rem;line-height:1.75;color:#a09080}}
+.eta-pin-row{{display:flex;gap:0.4rem;margin:0.35rem 0 0.25rem}}.eta-pin-input{{flex:1;min-width:0;padding:0.4rem 0.55rem;font-size:0.72rem;letter-spacing:0.06em;color:#f0e8d8;background:rgba(0,0,0,0.18);border:1px solid rgba(109,191,109,0.28);border-radius:8px}}.eta-pin-input:focus{{outline:none;border-color:#6dbf6d}}.eta-pin-btn{{padding:0.4rem 0.7rem;font-size:0.6rem;letter-spacing:0.14em;color:#0d0b08;background:#6dbf6d;border:0;border-radius:8px;cursor:pointer}}.eta-pin-btn:hover{{opacity:0.88}}.eta-pin-result{{font-size:0.7rem;line-height:1.65;color:#a09080;min-height:1rem}}.eta-pin-date strong{{color:#f0e8d8;font-weight:600}}.eta-pin-place{{opacity:0.8}}.eta-pin-cod{{margin-top:0.1rem;opacity:0.85}}.eta-pin-error{{color:#e0a060}}.eta-pin-loading{{opacity:0.7}}
 .eta-zone{{white-space:nowrap}}
 .eta-date{{color:#f0e8d8;font-weight:600;white-space:nowrap}}
 .ship-by-limited{{font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#c9a84c;margin-top:0.15rem}}
@@ -7421,12 +7426,15 @@ document.addEventListener('keydown', e => {{
     + '<div class="ship-by-date">' + fmt(shipDate, 'long') + '</div>'
     + '<div class="ship-by-sub">' + sub + '</div>'
     + limited
-    + '<div class="eta-block"><div class="eta-head">Estimated delivery</div>' + rows + '</div>'
+    + '<div class="eta-block" data-delivery-eta' + (SLOW.has(slug) ? ' data-extra-days="1"' : '')
+    + '><div class="eta-head">Estimated delivery</div>' + rows + '</div>'
     + '</div></div>';
+  if (window.iacDeliveryEtaInit) window.iacDeliveryEtaInit();
 }}());
 applyRuntimeProductOverride().then(reportViewContent, reportViewContent);
 setTimeout(reportViewContent, 3000);
 </script>
+<script src="/js/delivery-estimate.js" defer></script>
 <!-- #InkAndChaiBookstagram reels: light poster strip + Instagram-style viewer.
      Loads video only when a reel is opened, and only the active one. -->
 <script src="/js/reels.js" defer></script>
