@@ -27,6 +27,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 
 const { sendEmail } = require('./utils/email');
+const { claimPaidNotify } = require('./utils/paid-notify-once');
 const { generateCardForOrder } = require('./utils/scratch-cards');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { sendRefundInitiated } = require('./utils/refund-notifications');
@@ -344,6 +345,14 @@ exports.handler = async (event) => {
       if (amount) update.amount_paise = amount;
     }
 
+    // Payment-success events race phonepe-verify-status, which confirms the
+    // same payment from the customer's returning browser. Claim the right to
+    // notify before touching the row: one conditional UPDATE, one winner.
+    const isPaymentSuccess = dbStatus === 'paid' || dbStatus === 'partial_cod_pending';
+    const paidClaim = isPaymentSuccess
+      ? await claimPaidNotify(supabase, existing.id, dbStatus)
+      : { won: false, via: 'not-a-payment' };
+
     const { data: rows, error } = await supabase
       .from('orders')
       .update(update)
@@ -376,8 +385,12 @@ exports.handler = async (event) => {
       });
     }
 
-    // Send notifications for both full payment and partial COD booking payment
-    const isNotified = dbStatus === 'paid' || dbStatus === 'partial_cod_pending';
+    // Send notifications for both full payment and partial COD booking payment,
+    // but only when this call is the one that claimed them.
+    const isNotified = isPaymentSuccess && paidClaim.won;
+    if (isPaymentSuccess && !paidClaim.won) {
+      console.log(`[PHONEPE] ${orderId}: notifications already claimed (${paidClaim.via}) — staying quiet`);
+    }
     const isPartialNotif = dbStatus === 'partial_cod_pending';
     const paidAmt = order.amount_paise ? (order.amount_paise / 100) : 0;
     const items   = Array.isArray(order.cart_items) ? order.cart_items : [];
@@ -391,7 +404,11 @@ exports.handler = async (event) => {
     // from an in-app browser, the paid order reached no panel until someone
     // pushed it by hand hours later. Claim-guarded, so whichever of the two
     // arrives first pushes and the other stands down.
-    if (isNotified) {
+    //
+    // Gated on the payment, NOT on the notification claim: pushToNimbusOnce has
+    // its own claim, and losing the race to send an email is no reason to leave
+    // a paid order out of the courier panel.
+    if (isPaymentSuccess) {
       await pushToNimbusOnce(supabase, order)
         .catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
     }

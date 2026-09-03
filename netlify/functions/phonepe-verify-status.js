@@ -20,6 +20,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail }     = require('./utils/email');
+const { claimPaidNotify } = require('./utils/paid-notify-once');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
@@ -193,6 +194,12 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
     if (phonepeTxnId) update.razorpay_payment_id = phonepeTxnId;
     if (amount) update.amount_paise = amount;
 
+    // Claim the notification BEFORE writing the status. The webhook is doing
+    // the same thing at the same moment; whichever wins this single conditional
+    // UPDATE is the one that emails. The status check above is only a cheap
+    // short-circuit — it cannot decide a race.
+    const claim = await claimPaidNotify(supabase, existing.id, update.status);
+
     const { data: rows, error } = await supabase
       .from('orders')
       .update(update)
@@ -202,6 +209,9 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
     if (error) { console.error('reconcile update error:', error); return; }
     const order = rows?.[0];
     if (!order) return;
+    if (!claim.won) {
+      console.log(`[phonepe-verify-status] ${orderId}: notifications already claimed (${claim.via}) — staying quiet`);
+    }
 
     // ── Auto-push to Shiprocket panel ─────────────────────────────────────
     pushOrderToShiprocket({
@@ -238,8 +248,8 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
       }
     }
 
-    // Send customer + owner confirmations (only because we just transitioned
-    // — webhook will skip when it eventually arrives, dedupe works both ways)
+    // Send customer + owner confirmations — only if we won the claim above.
+    if (!claim.won) return;
     const isPartialFinal = order.status === 'partial_cod_pending';
     const paidAmt   = order.amount_paise ? (order.amount_paise / 100) : 0;
     const itemsFinal = Array.isArray(order.cart_items) ? order.cart_items : [];
