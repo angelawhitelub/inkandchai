@@ -17,6 +17,7 @@
 
   var STORE_KEY = 'iac_delivery_pincode';
   var ENDPOINT = '/.netlify/functions/delivery-estimate';
+  var GEO_ENDPOINT = '/.netlify/functions/reverse-pincode';
 
   function readPin() {
     try { return (localStorage.getItem(STORE_KEY) || '').replace(/\D/g, '').slice(0, 6); }
@@ -48,6 +49,11 @@
       +     'placeholder="Enter pincode" aria-label="Delivery pincode" value="' + esc(pin) + '" />'
       +   '<button type="button" class="eta-pin-btn">CHECK</button>'
       + '</div>'
+      // Shown only where the browser actually has geolocation. Typing six
+      // digits is not hard, so this is a shortcut, never the only way in.
+      + (navigator.geolocation
+          ? '<button type="button" class="eta-pin-geo">\uD83D\uDCCD Use my location</button>'
+          : '')
       + '<div class="eta-pin-result" role="status" aria-live="polite"></div>';
   }
 
@@ -56,7 +62,7 @@
     if (!out) return;
     if (state.loading) {
       out.className = 'eta-pin-result eta-pin-loading';
-      out.textContent = 'Checking couriers…';
+      out.textContent = state.message || 'Checking couriers…';
       return;
     }
     if (state.error) {
@@ -143,6 +149,44 @@
         restoreFallback();
       });
     }
+
+    // Geolocation → pincode → the same check the typed path runs. The browser
+    // asks for permission on the click; nothing happens until it is granted.
+    var geoBtn = box.querySelector('.eta-pin-geo');
+    if (geoBtn) geoBtn.addEventListener('click', function () {
+      if (!navigator.geolocation) return;
+      geoBtn.disabled = true;
+      render(box, { loading: true, message: 'Finding your location…' });
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        // Rounded before it leaves the page: a pincode needs a neighbourhood,
+        // not a doorstep, and the coarser value caches at the edge.
+        var lat = Math.round(pos.coords.latitude * 1000) / 1000;
+        var lon = Math.round(pos.coords.longitude * 1000) / 1000;
+        fetch(GEO_ENDPOINT + '?lat=' + lat + '&lon=' + lon)
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            geoBtn.disabled = false;
+            var pin = String((data && data.pincode) || '').replace(/\D/g, '');
+            if (!/^\d{6}$/.test(pin)) {
+              render(box, { error: (data && data.message) || 'Could not find your pincode. Please type it in.' });
+              return;
+            }
+            if (input) input.value = pin;
+            check(pin);
+          })
+          .catch(function () {
+            geoBtn.disabled = false;
+            render(box, { error: 'Could not read your location. Please type your pincode.' });
+          });
+      }, function (err) {
+        geoBtn.disabled = false;
+        render(box, {
+          error: err && err.code === 1
+            ? 'Location permission was declined — type your pincode instead.'
+            : 'Could not read your location. Please type your pincode.',
+        });
+      }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+    });
 
     if (btn) btn.addEventListener('click', function () { check((input.value || '').replace(/\D/g, '')); });
     if (input) {
