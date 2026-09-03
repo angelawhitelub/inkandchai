@@ -1573,8 +1573,8 @@ select,input,textarea{font-size:1rem;}
             <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:#f07060;" title="Shows a pulsing red badge: 🔥 Hurry! Only 4 left — stock is always pinned at 4, never runs out">
               <input type="checkbox" id="prodScarcity" style="accent-color:#e05040;"/> 🔥 Scarcity badge (Only 4 left)
             </label>
-            <label id="prodPublisherSourcedLabel" style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:#6daa6d;" title="Shows the green &quot;Genuine — Publisher Sourced&quot; panel on the product page. Also switches this book's orders to the IC-CW- order-ID prefix. The discount line quotes the real MRP-to-price gap, so set the MRP correctly first.">
-              <input type="checkbox" id="prodPublisherSourced" style="accent-color:#6daa6d;"/> 📚 Genuine — Publisher Sourced badge<span id="prodPublisherSourcedHint" style="color:var(--cream-dim);"></span>
+            <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:#6daa6d;" title="Shows the green &quot;Genuine — Publisher Sourced&quot; panel on the product page. Also switches this book's orders to the IC-CW- order-ID prefix. The discount line quotes the real MRP-to-price gap, so set the MRP correctly first.">
+              <input type="checkbox" id="prodPublisherSourced" style="accent-color:#6daa6d;"/> 📚 Genuine — Publisher Sourced badge
             </label>
           </div>
           <div class="product-editor-actions">
@@ -5723,7 +5723,12 @@ function selectProduct(slug) {
   const shippingTagParts = productShippingTagParts(p.tags);
   document.getElementById('prodTags').value = shippingTagParts.publicTags.join(', ');
   const psEl = document.getElementById('prodPublisherSourced');
-  if (psEl) psEl.checked = !!shippingTagParts.publisherSourced;
+  // product_overrides.publisher_sourced is the toggle's home for EVERY product;
+  // the custom_products tag is only the fallback for rows saved before it moved.
+  const psOverride = row.override ? row.override.publisher_sourced : undefined;
+  if (psEl) psEl.checked = (psOverride === true || psOverride === false)
+    ? psOverride
+    : !!shippingTagParts.publisherSourced;
   const shippingRule = row.shippingRule || {};
   document.getElementById('prodExcludedStates').value = (shippingRule.excluded_states || shippingTagParts.states).join(', ');
   document.getElementById('prodExcludedPincodes').value = (shippingRule.excluded_pincodes || shippingTagParts.pins).join(', ');
@@ -5754,24 +5759,8 @@ function selectProduct(slug) {
   // prodBrief and prodAiBtn ride along: the AI fills exactly these fields, and
   // none of them is saved for a catalogue book, so offering the button there
   // would produce copy that silently goes nowhere.
-  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodFormat', 'prodLanguage', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn', 'prodPublisherSourced'];
+  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodFormat', 'prodLanguage', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn'];
   metadataFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
-  // The badge is stored as a `publisher-sourced-bestseller` tag on the
-  // custom_products row, and saveProductOverride only writes tags inside the
-  // isCustom branch — a catalogue book has nowhere to keep it. It stays
-  // disabled there, but say so next to the box: an unexplained dead checkbox
-  // reads as a bug rather than as a rule.
-  const psLabel = document.getElementById('prodPublisherSourcedLabel');
-  const psHint = document.getElementById('prodPublisherSourcedHint');
-  if (psLabel) {
-    psLabel.style.opacity = isCustom ? '' : '.55';
-    psLabel.style.cursor = isCustom ? '' : 'not-allowed';
-    if (!psLabel.dataset.baseTitle) psLabel.dataset.baseTitle = psLabel.title || '';
-    psLabel.title = isCustom
-      ? psLabel.dataset.baseTitle
-      : 'Catalogue books cannot carry this badge — it is stored on admin-created listings only.';
-  }
-  if (psHint) psHint.textContent = isCustom ? '' : ' — custom listings only';
   const aiBtn = document.getElementById('prodAiBtn');
   if (aiBtn) { aiBtn.style.opacity = isCustom ? '' : '.4'; aiBtn.style.cursor = isCustom ? 'pointer' : 'not-allowed'; }
   const aiMsg = document.getElementById('prodAiMsg'); if (aiMsg) aiMsg.textContent = '';
@@ -7421,6 +7410,11 @@ async function saveProductOverride(activeOverride = true) {
     // Manual stock. Blank → null (in stock / unlimited); 0 → sold out ("Coming Soon").
     stock_qty: (document.getElementById('prodStock')?.value ?? '').trim() === '' ? null : document.getElementById('prodStock').value,
     image_url: document.getElementById('prodImageUrl')?.value.trim() || '',
+    // Works for catalogue books too: the flag lives on the override row, which
+    // exists for any slug, while the legacy tag only exists on custom listings.
+    // Custom listings keep writing the tag as well (see customPayload) so the
+    // feeds and importers that read tags stay correct.
+    publisher_sourced: !!document.getElementById('prodPublisherSourced')?.checked,
   };
   msg.textContent = 'Saving…';
   try {

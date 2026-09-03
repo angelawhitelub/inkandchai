@@ -13,6 +13,7 @@ const path = require('path');
 const fs   = require('fs');
 const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipping-restrictions');
 const { grantMap, feedOfferId } = require('./google-discount');
+const { selectTolerant } = require('./publisher-sourced');
 
 // Hardcoded slug overrides — MUST stay in sync with `make_slug` in generate_site.py.
 // (Combo packs ship under hand-picked slugs that don't follow the auto-slug rule.)
@@ -130,6 +131,16 @@ function extractSlug(item) {
  * @param {object} supabase - Supabase client (service key) — used for custom_products lookup
  * @returns {Promise<{ cart: Array, subtotal: number, dropped: Array }>}
  */
+/**
+ * The admin badge toggle is authoritative over both the custom_products tag and
+ * anything the browser put on the cart item. `undefined` means no admin opinion,
+ * so whatever the tag decided stands.
+ */
+function applyBadgeOverride(item, flag) {
+  if (flag === true) item._publisher_sourced = true;
+  else if (flag === false) delete item._publisher_sourced;
+}
+
 async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   if (!Array.isArray(cart) || cart.length === 0) {
     return { cart: [], subtotal: 0, dropped: [] };
@@ -191,14 +202,22 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   // admin price change showed on the page (e.g. ₹299) while the ORDER still
   // charged the stale baked price (₹349 → ₹409 COD). Consult it here too.
   const overrideMap = {};
+  // The badge flag is kept in its own map: an override row with no price (or a
+  // disabled one) is skipped for pricing, but the admin may still have set the
+  // badge on it, and the badge is what decides the IC-CW- order-ID prefix.
+  const overrideBadgeMap = {};
   if (items.length && supabase) {
-    const { data, error } = await supabase
+    const { data, error } = await selectTolerant(cols => supabase
       .from('product_overrides')
-      .select('slug,title,price_inr,is_active,updated_at')
-      .or(orFilter);
+      .select(cols)
+      .or(orFilter),
+      'slug,title,price_inr,is_active,updated_at');
     if (error) console.error('[pricing] product_overrides lookup:', error.message);
     for (const row of (data || [])) {
       if (row.is_active === false) continue;
+      if (row.publisher_sourced === true || row.publisher_sourced === false) {
+        overrideBadgeMap[String(row.slug).toLowerCase()] = row.publisher_sourced;
+      }
       const price = Number.parseFloat(row.price_inr || 0) || 0;
       if (price <= 0) continue;
       overrideMap[String(row.slug).toLowerCase()] = { title: row.title || '', price, updatedAt: ts(row.updated_at) };
@@ -240,6 +259,7 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
       if (shippingRestrictions?.states?.length || shippingRestrictions?.pins?.length) {
         item._shipping_restrictions = shippingRestrictions;
       }
+      applyBadgeOverride(item, overrideBadgeMap[slug]);
       resolved.push(item);
     } else if (staticHit) {
       const item = { ...raw, slug, qty, title: staticHit.title, price: staticHit.price };
@@ -247,6 +267,7 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
       if (shippingRestrictions?.states?.length || shippingRestrictions?.pins?.length) {
         item._shipping_restrictions = shippingRestrictions;
       }
+      applyBadgeOverride(item, overrideBadgeMap[slug]);
       resolved.push(item);
     } else {
       dropped.push({ reason: 'not_in_catalogue', slug, item: raw });
@@ -312,11 +333,23 @@ async function makeOrderId(prefixBase, cart, supabase) {
     const slugs = cart.map(extractSlug).filter(Boolean);
     if (slugs.length) {
       try {
-        const { data } = await supabase
-          .from('custom_products')
-          .select('slug,tags')
-          .in('slug', slugs);
-        hasCW = (data || []).some(r => /publisher-sourced-bestseller/i.test(String(r.tags || '')));
+        // The admin badge toggle (product_overrides) outranks the importer tag,
+        // in both directions: it can put the badge on a catalogue book that has
+        // no custom_products row, and it can take it off one that still carries
+        // the legacy tag. Only slugs with no explicit override fall back to it.
+        const [{ data: rows }, { data: overrides }] = await Promise.all([
+          supabase.from('custom_products').select('slug,tags').in('slug', slugs),
+          selectTolerant(cols => supabase.from('product_overrides').select(cols).in('slug', slugs), 'slug'),
+        ]);
+        const flagBySlug = {};
+        for (const r of (overrides || [])) {
+          if (r.publisher_sourced === true || r.publisher_sourced === false) {
+            flagBySlug[String(r.slug).toLowerCase()] = r.publisher_sourced;
+          }
+        }
+        hasCW = Object.values(flagBySlug).some(v => v === true)
+          || (rows || []).some(r => flagBySlug[String(r.slug).toLowerCase()] === undefined
+            && /publisher-sourced-bestseller/i.test(String(r.tags || '')));
       } catch (e) { /* non-fatal — fall back to standard prefix */ }
     }
   }

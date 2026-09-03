@@ -1,6 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const SOCIAL_PROOF = require('../../data/social_proof.json').items || [];
 const { richText, plainText } = require('./utils/rich-text');
+const { withBadgeTag, selectTolerant } = require('./utils/publisher-sourced');
 
 // The badge used to claim "flat 22.5% off" for every publisher-sourced title.
 // That held for the bulk import and stopped holding the moment the badge could
@@ -238,6 +239,12 @@ function applyOverride(product, override) {
     category: override.category || product.category,
     price_inr: override.price_inr ?? product.price_inr,
     original_price_inr: override.original_price_inr ?? product.original_price_inr,
+    // The badge toggle is written straight into the tag string the rest of this
+    // file already reads, so the banner, the no-COD check and the cart flag all
+    // stay driven by one expression instead of three parallel conditions.
+    tags: override.publisher_sourced === true || override.publisher_sourced === false
+      ? withBadgeTag(product.tags, override.publisher_sourced)
+      : product.tags,
   };
 }
 
@@ -730,11 +737,12 @@ exports.handler = async (event) => {
     if (!data) return notFound();
 
     const [{ data: override }, { data: aplusContent, error: aplusError }] = await Promise.all([
-      supabase
+      selectTolerant(cols => supabase
         .from('product_overrides')
-        .select('title,author,category,price_inr,original_price_inr,is_active')
+        .select(cols)
         .eq('slug', slug)
         .maybeSingle(),
+        'title,author,category,price_inr,original_price_inr,is_active'),
       supabase
         .from('product_aplus_content')
         .select('slug,heading,intro,blocks,is_active,updated_at')

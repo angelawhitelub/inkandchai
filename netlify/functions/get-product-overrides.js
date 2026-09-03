@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
+const { selectTolerant } = require('./utils/publisher-sourced');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -19,12 +20,16 @@ exports.handler = async (event) => {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const requestedSlug = String(event.queryStringParameters?.slug || '').trim().toLowerCase().slice(0, 180);
     if (requestedSlug) {
-      const { data: single, error: singleError } = await supabase
+      // selectTolerant appends publisher_sourced and, if that migration has not
+      // been applied yet, replays the query without it. Failing outright would
+      // drop every price/stock override on the page, not just the badge.
+      const { data: single, error: singleError } = await selectTolerant(cols => supabase
         .from('product_overrides')
-        .select('slug,title,author,category,price_inr,original_price_inr,image_url,gallery_images,scarcity,stock_qty,is_active,updated_at')
+        .select(cols)
         .eq('slug', requestedSlug)
         .eq('is_active', true)
-        .maybeSingle();
+        .maybeSingle(),
+        'slug,title,author,category,price_inr,original_price_inr,image_url,gallery_images,scarcity,stock_qty,is_active,updated_at');
       if (singleError) throw singleError;
       const override = single ? {
         ...single,
@@ -49,10 +54,11 @@ exports.handler = async (event) => {
         body: JSON.stringify({ overrides: override ? [override] : [] }),
       };
     }
-    const { data, error } = await supabase
+    const { data, error } = await selectTolerant(cols => supabase
       .from('product_overrides')
-      .select('slug,title,author,category,price_inr,original_price_inr,image_url,scarcity,stock_qty,is_active,updated_at')
-      .eq('is_active', true);
+      .select(cols)
+      .eq('is_active', true),
+      'slug,title,author,category,price_inr,original_price_inr,image_url,scarcity,stock_qty,is_active,updated_at');
 
     if (error) {
       console.warn('product_overrides unavailable:', error.message);

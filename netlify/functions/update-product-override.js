@@ -99,33 +99,49 @@ exports.handler = async (event) => {
     // stock_qty: manual inventory. null (field omitted/blank) = in stock / unlimited;
     // 0 or less = sold out → storefront shows "Coming Soon". Clamped to a sane int.
     stock_qty: stockQty(body.stock_qty),
+    // publisher_sourced: the "Genuine — Publisher Sourced" badge, for catalogue
+    // books as well as admin-created listings. Tri-state: omit the key entirely
+    // and the stored value is left alone, so a caller that predates this field
+    // cannot silently clear a badge someone set.
+    ...(body.publisher_sourced === undefined || body.publisher_sourced === null
+      ? {}
+      : { publisher_sourced: body.publisher_sourced === true || body.publisher_sourced === 'true' }),
     is_active: body.is_active !== false,
     image_url: imageUrl,
     updated_at: new Date().toISOString(),
     };
     // Omitted means preserve the current gallery; [] explicitly clears it.
     if (galleryImages !== undefined) payload.gallery_images = galleryImages;
-    let { data, error } = await supabase
-      .from('product_overrides')
-      .upsert(payload, { onConflict: 'slug' })
-      .select()
-      .single();
-    // Resilience: if sql/product_stock.sql hasn't been run yet, the stock_qty
-    // column won't exist. Rather than fail the whole save, retry once without it
-    // (stock simply won't persist until the migration is applied).
-    if (error && /stock_qty/i.test(error.message || '')) {
-      const { stock_qty, ...withoutStock } = payload;
+    // Resilience: these columns come from optional migrations. Rather than fail
+    // the whole save when one hasn't been run, drop the offending key and retry
+    // — that field simply won't persist until the migration is applied. The
+    // longest matching name wins so an error naming `publisher_sourced` is not
+    // attributed to some shorter column whose name is a prefix of it.
+    const OPTIONAL_COLUMNS = {
+      stock_qty: 'stock quantity was ignored — run sql/product_stock.sql to enable it',
+      publisher_sourced: 'the Publisher Sourced badge was ignored — run sql/product_overrides_publisher_sourced.sql to enable it',
+    };
+    const attempt = { ...payload };
+    const skipped = [];
+    let data = null, error = null;
+    for (let i = 0; i <= Object.keys(OPTIONAL_COLUMNS).length; i++) {
       ({ data, error } = await supabase
         .from('product_overrides')
-        .upsert(withoutStock, { onConflict: 'slug' })
+        .upsert(attempt, { onConflict: 'slug' })
         .select()
         .single());
-      if (!error) {
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, override: data, warning: 'Saved, but stock quantity was ignored — run sql/product_stock.sql to enable it.' }) };
-      }
+      if (!error) break;
+      const msg = String(error.message || '');
+      const missing = Object.keys(OPTIONAL_COLUMNS)
+        .filter(col => col in attempt && msg.includes(col))
+        .sort((a, b) => b.length - a.length)[0];
+      if (!missing) break;
+      delete attempt[missing];
+      skipped.push(OPTIONAL_COLUMNS[missing]);
     }
     if (error) throw error;
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, override: data }) };
+    const warning = skipped.length ? `Saved, but ${skipped.join('; ')}.` : undefined;
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, override: data, ...(warning ? { warning } : {}) }) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }

@@ -3125,6 +3125,10 @@ function applyProductOverride(book, override) {
   // Manual stock: null/absent = in stock; <=0 = sold out ("Coming Soon").
   if (override.stock_qty !== null && override.stock_qty !== undefined) book.stock = override.stock_qty;
   if (override.image_url) book.img = override.image_url;  // cover image override
+  // The "Genuine — Publisher Sourced" badge is an admin toggle for every
+  // product, not just tag-carrying imports, so a non-null override wins over
+  // whatever the tag said. Null = no admin opinion; keep the tag's answer.
+  if (override.publisher_sourced != null) book.publisher_sourced = !!override.publisher_sourced;
 }
 // A book is sold out only when an explicit stock override brought it to 0 or
 // below. No override / undefined stock = in stock (the 999 default).
@@ -5228,6 +5232,10 @@ function applyProductOverride(book, override) {
   // Manual stock: null/absent = in stock; <=0 = sold out ("Coming Soon").
   if (override.stock_qty !== null && override.stock_qty !== undefined) next.stock = override.stock_qty;
   if (override.image_url) next.img = override.image_url;  // cover image override
+  // The "Genuine — Publisher Sourced" badge is an admin toggle for every
+  // product, not just tag-carrying imports, so a non-null override wins over
+  // whatever the tag said. Null = no admin opinion; keep the tag's answer.
+  if (override.publisher_sourced != null) next.publisher_sourced = !!override.publisher_sourced;
   return next;
 }
 function isSoldOut(book) {
@@ -7161,6 +7169,34 @@ function revealPrice() {{
     el.style.opacity = '1';
   }});
 }}
+// Builds (or removes) the green publisher-sourced panel on a static catalogue
+// page. The discount line quotes the live price against the live MRP, so it
+// stays honest after a price override rather than repeating a baked number.
+function applyPublisherSourcedBadge(on) {{
+  const existing = document.querySelector('.publisher-sourced-box');
+  if (on) currentItem._publisher_sourced = true;
+  else delete currentItem._publisher_sourced;
+  if (!on) {{ if (existing) existing.remove(); return; }}
+  const anchor = document.querySelector('main .desc');
+  if (!anchor || !anchor.parentNode) return;
+  const price = priceValue('[data-product-price]');
+  const mrp = priceValue('[data-product-original-price]');
+  let offText = '';
+  if (price > 0 && mrp > price) {{
+    const off = Math.round((1 - price / mrp) * 1000) / 10;
+    if (off >= 1) offText = ', at ' + (off % 1 === 0 ? off.toFixed(0) : off.toFixed(1)) + '% off';
+  }}
+  const box = existing || document.createElement('div');
+  box.className = 'publisher-sourced-box';
+  box.setAttribute('style', 'border:1px solid rgba(110,170,110,0.35);background:linear-gradient(135deg,rgba(110,170,110,0.10),rgba(201,168,76,0.05));padding:1rem 1.2rem;border-radius:2px;margin-bottom:0.9rem;display:flex;gap:0.85rem;align-items:flex-start;');
+  box.innerHTML = '<div style="font-size:1.4rem;line-height:1;">📚</div><div>'
+    + '<div style="font-size:0.56rem;letter-spacing:0.28em;text-transform:uppercase;color:#6daa6d;margin-bottom:0.35rem;font-weight:600;">Genuine — Publisher Sourced</div>'
+    + '<div style="font-size:0.76rem;color:var(--cream);line-height:1.65;">This title is sourced <strong>directly from the publisher</strong> — no third-party resellers, no piracy. Original copy, MRP printed on the back'
+    + offText + '.</div>'
+    + '<div style="font-size:0.72rem;color:var(--cream-dim);line-height:1.65;margin-top:0.45rem;"><strong style="color:var(--gold);">🧾 GST invoice available</strong> on request — reply to your order confirmation email with your GSTIN.</div>'
+    + '</div>';
+  if (!existing) anchor.parentNode.insertBefore(box, anchor);
+}}
 async function applyRuntimeProductOverride() {{
   try {{
     const slug = location.pathname.split('/').filter(Boolean)[1] || '';
@@ -7214,6 +7250,11 @@ async function applyRuntimeProductOverride() {{
         el.setAttribute('data-live-override', 'original-price');
       }});
     }}
+    // "Genuine — Publisher Sourced" badge. Catalogue pages are baked without it,
+    // so when the admin turns it on the box has to be built here; turning it off
+    // removes whatever a previous run inserted. Idempotent — repeated calls (the
+    // page revalidates overrides) neither duplicate nor flicker the box.
+    applyPublisherSourcedBadge(override.publisher_sourced === true);
     // Manual stock: <=0 means sold out → replace Buy with a "Coming Soon" box and
     // flag the buy handlers so nothing can be added to cart. null/absent = in stock.
     if (override.stock_qty !== null && override.stock_qty !== undefined && Number(override.stock_qty) <= 0) {{
