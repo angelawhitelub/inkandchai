@@ -36,6 +36,33 @@ const CORS = {
 // Orders eligible to be flipped to "shipped" once an AWB appears.
 const UNSHIPPED_STATUSES = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending'];
 
+// Orders whose AWB may legitimately be REPLACED by a newer one.
+//
+// 'cancelled' is the case this exists for: the courier cancels a shipment, the
+// order is re-shipped by hand in the NimbusPost panel, and a second AWB is
+// created. Nothing told us — the webhook finds orders by tracking_id, and the
+// tracking_id we hold is the dead one — so the customer kept a tracking link
+// that goes nowhere.
+//
+// A newer AWB in the panel is itself the authorisation: nobody creates a
+// shipment for an order they did not mean to re-ship.
+const RESHIPPABLE_STATUSES = [
+  'cancelled', 'shipped', 'paid', 'confirmed',
+  'cod_pending', 'partial_cod_pending', 'replacement_pending',
+];
+
+// A new AWB against one of these is never acted on automatically.
+//
+// The money ones are the point: 34 of the 53 courier-cancelled orders in the
+// last 60 days had ALREADY been refunded. Re-shipping one of those means
+// sending books we have been paid nothing for, and telling the customer their
+// refunded order is on its way. 'delivered' and 'rto' are here because a new
+// AWB on a finished shipment is a return leg, not a re-ship.
+const REVIEW_ONLY_STATUSES = [
+  'refunded', 'partially_refunded', 'refund_pending', 'refund_failed',
+  'delivered', 'rto', 'lost', 'undelivered',
+];
+
 const NP_MAX_PAGE   = 50;   // NimbusPost rejects page > 50
 const NP_PAGE_SIZE  = 200;  // accepted by /api/shipments; 500 is rejected
 const NOTIFY_LIMIT  = 60;   // cap synced orders + notifications per run (safety)
@@ -146,15 +173,32 @@ function buildListUrl(endpoint, page) {
   return url;
 }
 
+/** 'YYYY-MM-DD' the shipment was created in the panel, or '' if absent. */
+function rowCreated(row) {
+  const v = String(row?.created || row?.created_at || '').trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+}
+
+/** NimbusPost's own row id, used only to tell newer shipments from older ones. */
+function rowSeq(row) {
+  const n = Number(row?.id ?? row?.shipment_id ?? row?.shipment?.id ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function collectRows(payload, map) {
   let added = 0;
   for (const row of orderRowsFromResponse(payload)) {
     const num = orderNumberFromRow(row);
     const awb = awbFromRow(row);
-    if (num && awb) {
-      if (!map.has(num)) map.set(num, { awb, courier: courierFromRow(row) });
-      added++;
-    }
+    if (!num || !awb) continue;
+    added++;
+    const seq = rowSeq(row);
+    const prev = map.get(num);
+    // An order can have SEVERAL shipments: the courier cancels one, it gets
+    // re-shipped in the panel, and both rows come back. The newest is the live
+    // one. This used to keep whichever row arrived first and rely on the feed
+    // being sorted, which is not a guarantee worth a customer's tracking link.
+    if (!prev || seq > prev.seq) map.set(num, { awb, courier: courierFromRow(row), seq, created: rowCreated(row) });
   }
   return added;
 }
@@ -201,6 +245,153 @@ async function fetchNimbusAwbMap(apiKey) {
   }
 
   return { map, diag };
+}
+
+/**
+ * Write an order update, dropping optional bookkeeping columns the database
+ * does not have yet. PostgREST names the offending column, so the rest of the
+ * write still lands — a re-ship must not fail to record because
+ * sql/orders_previous_awbs.sql has not been run.
+ */
+async function updateOrderTolerant(supabase, orderId, patch) {
+  const fields = { ...patch };
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { data, error } = await supabase.from('orders').update(fields).eq('id', orderId).select('id');
+    if (!error) {
+      if (!data || !data.length) return { ok: false, error: 'update matched no order row' };
+      return { ok: true, applied: fields };
+    }
+    const msg = error.message || '';
+    // Longest match first: several column names share a prefix.
+    const missing = Object.keys(fields).filter(k => msg.includes(k)).sort((a, b) => b.length - a.length)[0];
+    if (!missing) return { ok: false, error: msg };
+    delete fields[missing];
+    if (!Object.keys(fields).length) return { ok: false, error: msg };
+  }
+  return { ok: false, error: 'too many unknown columns' };
+}
+
+/** Append an AWB to the audit trail of AWBs this order has already carried. */
+function appendPreviousAwb(existing, awb) {
+  const seen = String(existing || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (awb && !seen.includes(awb)) seen.push(awb);
+  return seen.join(',').slice(0, 500);
+}
+
+/**
+ * The order was re-shipped in the NimbusPost panel and now carries a different
+ * AWB. Move our record onto it, and reset everything that described the DEAD
+ * shipment — the last courier status, the movement stamps, the cancellation.
+ *
+ * Leaving those behind is not cosmetic: auto-cancel-stale-cod and the in-transit
+ * notifier both read them, and a fresh shipment wearing the old shipment's
+ * "cancelled" status would be cancelled all over again.
+ */
+function reshipPatch(order, hit, now) {
+  return {
+    status:       'shipped',
+    tracking_id:  hit.awb,
+    tracking_url: npTrackUrl(hit.awb),
+    courier_name: hit.courier || order.courier_name || null,
+    shipped_at:   now,
+    awb_assigned_at: now,
+    // Stamps that belonged to the AWB we just replaced.
+    last_nimbuspost_status:    null,
+    last_nimbuspost_event_at:  null,
+    shipment_moved_at:         null,
+    in_transit_notified_at:    null,
+    // It is not cancelled any more.
+    cancelled_at:              null,
+    cancellation_source:       null,
+    cancellation_reason:       null,
+    nimbuspost_auto_cancelled: false,
+    auto_cancelled_at:         null,
+    auto_cancel_claimed_at:    null,
+    previous_tracking_ids: appendPreviousAwb(order.previous_tracking_ids, order.tracking_id),
+  };
+}
+
+// A re-ship older than this gets its tracking corrected silently. Telling
+// someone their order "has shipped" weeks after they received it reads as a
+// broken system, and the tracking link is what actually needed fixing.
+const RESHIP_NOTIFY_MAX_AGE_DAYS = 7;
+
+function reshipIsRecent(created, now = Date.now()) {
+  if (!created) return true;   // no date from the panel: assume it is current
+  const t = Date.parse(created + 'T00:00:00Z');
+  if (!Number.isFinite(t)) return true;
+  return (now - t) <= RESHIP_NOTIFY_MAX_AGE_DAYS * 86400000;
+}
+
+/**
+ * Second pass: orders that ALREADY have an AWB, for which NimbusPost now holds
+ * a different one.
+ *
+ * The first pass can never see these — it filters on tracking_id IS NULL — so
+ * before this a re-shipped order kept its dead tracking link for good.
+ */
+async function syncReassignedAwbs(supabase, awbMap, summary) {
+  const since = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString();
+  // PostgREST caps a single response at 1000 rows whatever .limit() says, and
+  // 'delivered' alone is over 500 in two months — so page, or the oldest
+  // re-shipped orders are simply never looked at.
+  const orders = [];
+  for (let from = 0; from < 6000; from += 1000) {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .in('status', [...RESHIPPABLE_STATUSES, ...REVIEW_ONLY_STATUSES])
+      .not('tracking_id', 'is', null)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .range(from, from + 999);
+    if (error) throw error;
+    orders.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+
+  for (const order of orders) {
+    const key = normalizeOrderNumber(order.razorpay_order_id || order.id);
+    const hit = awbMap.get(key);
+    if (!hit || !hit.awb) continue;
+    if (String(hit.awb).trim() === String(order.tracking_id || '').trim()) continue;
+
+    summary.reawb_found++;
+
+    // Never act on an order whose money or delivery is already settled. Report
+    // it so a human decides — silence here is how a refunded order gets shipped.
+    if (REVIEW_ONLY_STATUSES.includes(order.status)) {
+      summary.reawb_needs_review.push({
+        order: order.razorpay_order_id || order.id,
+        status: order.status,
+        old_awb: order.tracking_id,
+        new_awb: hit.awb,
+      });
+      continue;
+    }
+
+    if (summary.reawb_updated >= NOTIFY_LIMIT) { summary.deferred++; continue; }
+
+    try {
+      const now = new Date().toISOString();
+      const patch = reshipPatch(order, hit, now);
+      const saved = await updateOrderTolerant(supabase, order.id, patch);
+      if (!saved.ok) throw new Error(saved.error);
+      summary.reawb_updated++;
+      const oldAwb = order.tracking_id;
+      Object.assign(order, saved.applied);
+
+      if (reshipIsRecent(hit.created)) {
+        await notifyShipped(order, hit.awb, hit.courier);
+        summary.reawb_notified++;
+      } else {
+        summary.reawb_silent++;
+      }
+      console.log(`[awb-sync] re-shipped ${key}: ${oldAwb} → ${hit.awb} (panel ${hit.created || 'date unknown'})`);
+    } catch (err) {
+      summary.errors.push(`re-awb ${order.razorpay_order_id || order.id}: ${String(err.message || err).slice(0, 180)}`);
+    }
+  }
 }
 
 // ── Shipped notification (mirrors nimbuspost-webhook.js) ─────────────────────
@@ -256,7 +447,9 @@ async function runSync() {
   });
 
   const { map: awbMap, diag } = await fetchNimbusAwbMap(apiKey);
-  const summary = { scanned: awbMap.size, matched: 0, synced: 0, notified: 0, deferred: 0, errors: [], diag };
+  const summary = { scanned: awbMap.size, matched: 0, synced: 0, notified: 0, deferred: 0,
+                    reawb_found: 0, reawb_updated: 0, reawb_notified: 0, reawb_silent: 0, reawb_needs_review: [],
+                    errors: [], diag };
   if (!awbMap.size) return summary;
 
   // Our orders that are still unshipped and have no AWB yet (last 120 days).
@@ -312,6 +505,13 @@ async function runSync() {
     }
   }
 
+  // Second pass: orders that already have an AWB and have been re-shipped.
+  try {
+    await syncReassignedAwbs(supabase, awbMap, summary);
+  } catch (err) {
+    summary.errors.push(`re-awb pass: ${String(err.message || err).slice(0, 180)}`);
+  }
+
   console.log('[awb-sync]', JSON.stringify(summary));
   return summary;
 }
@@ -336,5 +536,7 @@ exports.handler = async (event) => {
 exports._test = {
   normalizeOrderNumber, orderRowsFromResponse, paginationFromResponse,
   awbFromRow, orderNumberFromRow, collectRows, buildListUrl,
-  fetchNimbusAwbMap,
+  fetchNimbusAwbMap, rowSeq, rowCreated, reshipPatch, appendPreviousAwb, updateOrderTolerant,
+  reshipIsRecent,
+  RESHIPPABLE_STATUSES, REVIEW_ONLY_STATUSES,
 };

@@ -16,8 +16,10 @@ test('reads the live NimbusPost shipment response shape', () => {
   assert.equal(awbFromRow(row), '40441745275542');
   const map = new Map();
   assert.equal(collectRows({ status: true, count: 1430, data: [row] }, map), 1);
+  // seq and created were added so a re-shipped order's NEWEST shipment wins
+  // and a stale re-ship can skip the customer notification.
   assert.deepEqual(map.get('IC-20260812-FT7ER'), {
-    awb: '40441745275542', courier: 'Xpressbees',
+    awb: '40441745275542', courier: 'Xpressbees', seq: 0, created: '',
   });
 });
 

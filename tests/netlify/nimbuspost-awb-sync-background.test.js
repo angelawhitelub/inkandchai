@@ -28,6 +28,7 @@ test('collectRows builds an order-to-AWB map and ignores rows without AWBs', () 
     { order_number: 'IC-TWO', status: 'new' },
   ] }, map);
   assert.equal(added, 1);
-  assert.deepEqual(map.get(normalizeOrderNumber('ic-one')), { awb: '111', courier: 'Delhivery' });
+  assert.deepEqual(map.get(normalizeOrderNumber('ic-one')),
+    { awb: '111', courier: 'Delhivery', seq: 0, created: '' });
   assert.equal(map.has('IC-TWO'), false);
 });
