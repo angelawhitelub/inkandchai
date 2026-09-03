@@ -2,6 +2,7 @@ const { createClient } = require('@supabase/supabase-js');
 const SOCIAL_PROOF = require('../../data/social_proof.json').items || [];
 const { richText, plainText } = require('./utils/rich-text');
 const { withBadgeTag, selectTolerant } = require('./utils/publisher-sourced');
+const { fetchSettings } = require('./utils/product-settings');
 
 // The badge used to claim "flat 22.5% off" for every publisher-sourced title.
 // That held for the bulk import and stopped holding the moment the badge could
@@ -248,6 +249,16 @@ function applyOverride(product, override) {
   };
 }
 
+function applySettings(product, settings) {
+  if (!product || !settings) return product;
+  return {
+    ...product,
+    ...(settings.price_inr !== null ? { price_inr: settings.price_inr } : {}),
+    ...(settings.original_price_inr !== null ? { original_price_inr: settings.original_price_inr } : {}),
+    ...(settings.handling_days !== null ? { handling_days: settings.handling_days } : {}),
+  };
+}
+
 function productHtml(product, aplusContent = null) {
   const slug = esc(product.slug);
   const title = esc(product.title);
@@ -266,6 +277,9 @@ function productHtml(product, aplusContent = null) {
   // Full crossword.in catalogue import: COD disabled, partial COD (pay 10%)
   // recommended. The flag rides along on the cart item so checkout enforces it.
   const noCod = /(?:^|,)\s*no-cod\s*(?:,|$)/i.test(String(product.tags || ''));
+  // Extra dispatch days for this title (product_settings.handling_days). Clamped
+  // and integer-ised here because it is interpolated straight into page script.
+  const handlingExtraDays = Math.max(0, Math.min(30, Math.round(Number(product.handling_days) || 0)));
   const metaDesc = esc(shortDescription(product));
   const canonical = `https://inkandchai.in/product/${slug}/`;
   const image = absoluteImage(product.image_url);
@@ -523,7 +537,10 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     }).format(d);
   }
   var nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-  var days = nowIST.getUTCHours() < CUTOFF ? 0 : 1;
+  // Per-product handling time: extra days on top of the default same-day
+  // (before the cutoff) / next-day dispatch. 0 = the store default.
+  var HANDLING = ${handlingExtraDays};
+  var days = (nowIST.getUTCHours() < CUTOFF ? 0 : 1) + HANDLING;
   var shipDate = addDays(nowIST, days);
   var rows = ZONES.map(function (z) {
     return '<div class="eta-row"><span class="eta-zone">' + z[0] + '</span>'
@@ -535,9 +552,12 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     + '<div class="ship-by-label">Ships by</div>'
     + '<div class="ship-by-date">' + fmt(shipDate, 'long') + '</div>'
     + '<div class="ship-by-sub">'
-    + (days === 0 ? 'Order now and it is dispatched today' : 'Order now to get it dispatched tomorrow')
+    + (HANDLING > 0
+        ? 'Allow ' + HANDLING + ' extra ' + (HANDLING === 1 ? 'day' : 'days') + ' before dispatch'
+        : (days === 0 ? 'Order now and it is dispatched today' : 'Order now to get it dispatched tomorrow'))
     + '</div>'
-    + '<div class="eta-block" data-delivery-eta><div class="eta-head">Estimated delivery</div>' + rows + '</div>'
+    + '<div class="eta-block" data-delivery-eta' + (HANDLING > 0 ? ' data-extra-days="' + HANDLING + '"' : '')
+    + '><div class="eta-head">Estimated delivery</div>' + rows + '</div>'
     + '</div></div>';
   if (window.iacDeliveryEtaInit) window.iacDeliveryEtaInit();
 }());
@@ -752,7 +772,10 @@ exports.handler = async (event) => {
     ]);
     // A+ is decorative — a failure here must not take the product page down.
     if (aplusError) console.warn('A+ content unavailable while rendering product page:', aplusError.message);
-    const product = applyOverride(data, override);
+    // product_settings is the always-live price + handling time; it outranks the
+    // override row and is unaffected by "Disable Override".
+    const settings = (await fetchSettings(supabase, [slug]))[String(slug).toLowerCase()] || null;
+    const product = applySettings(applyOverride(data, override), settings);
 
     return {
       statusCode: 200,

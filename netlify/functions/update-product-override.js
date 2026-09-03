@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { handlingDays, isMissingTable } = require('./utils/product-settings');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -140,6 +141,33 @@ exports.handler = async (event) => {
       skipped.push(OPTIONAL_COLUMNS[missing]);
     }
     if (error) throw error;
+
+    // Price, MRP and handling time are written to product_settings as well, and
+    // that copy is what every reader prefers. It is deliberately NOT governed by
+    // is_active: "Disable Override" hands presentation back to the catalogue but
+    // must not silently undo a price the admin set. Saving the price box empty
+    // clears it here, which is how a product goes back to the catalogue price.
+    const settingsRow = {
+      slug,
+      price_inr: payload.price_inr,
+      original_price_inr: payload.original_price_inr,
+      handling_days: handlingDays(body.handling_days),
+      updated_at: payload.updated_at,
+    };
+    const hasSetting = settingsRow.price_inr !== null
+      || settingsRow.original_price_inr !== null
+      || settingsRow.handling_days !== null;
+    const settingsResult = hasSetting
+      ? await supabase.from('product_settings').upsert(settingsRow, { onConflict: 'slug' })
+      : await supabase.from('product_settings').delete().eq('slug', slug);
+    if (settingsResult.error) {
+      if (isMissingTable(settingsResult.error)) {
+        skipped.push('the live price and handling time were only stored on the override — run sql/product_settings.sql so they survive "Disable Override"');
+      } else {
+        skipped.push(`the live price/handling copy failed (${settingsResult.error.message})`);
+      }
+    }
+
     const warning = skipped.length ? `Saved, but ${skipped.join('; ')}.` : undefined;
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, override: data, ...(warning ? { warning } : {}) }) };
   } catch (err) {

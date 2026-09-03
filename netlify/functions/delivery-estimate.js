@@ -76,7 +76,10 @@ exports.handler = async (event) => {
   const pincode = String(params.pincode || params.pin || '').replace(/\D/g, '');
   const orderAmount = Math.max(1, Math.round(Number(params.value) || DEFAULT_ORDER_VALUE));
   // Limited-stock titles ship a day later; the product page knows which.
-  const extraShipDays = Math.min(5, Math.max(0, parseInt(params.extra_days, 10) || 0));
+  // Was capped at 5 when the only source was a hardcoded slow-shipping list.
+  // Handling time is now per product (product_settings.handling_days, max 30),
+  // so the cap has to match or a long handling time would quote too early.
+  const extraShipDays = Math.min(30, Math.max(0, parseInt(params.extra_days, 10) || 0));
 
   if (pincode.length !== 6 || isFakePincode(pincode)) {
     return noStore(400, { error: 'Enter a valid 6-digit pincode.' });

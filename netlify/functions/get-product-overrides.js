@@ -1,12 +1,31 @@
 const { createClient } = require('@supabase/supabase-js');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 const { selectTolerant } = require('./utils/publisher-sourced');
+const { fetchSettings } = require('./utils/product-settings');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
   'Content-Type': 'application/json',
 };
+
+/**
+ * Fold an always-live product_settings row onto an override entry. Price, MRP
+ * and handling time win over whatever the override row said, and a settings row
+ * on its own is enough to produce an entry (is_active: true — a settings row is
+ * never "disabled"; clearing the field in the admin is how you turn it off).
+ */
+function mergeSettings(override, settings, slug) {
+  if (!settings) return override;
+  const base = override || { slug, is_active: true };
+  return {
+    ...base,
+    ...(settings.price_inr !== null ? { price_inr: settings.price_inr } : {}),
+    ...(settings.original_price_inr !== null ? { original_price_inr: settings.original_price_inr } : {}),
+    ...(settings.handling_days !== null ? { handling_days: settings.handling_days } : {}),
+    is_active: true,
+  };
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
@@ -31,12 +50,16 @@ exports.handler = async (event) => {
         .maybeSingle(),
         'slug,title,author,category,price_inr,original_price_inr,image_url,gallery_images,scarcity,stock_qty,is_active,updated_at');
       if (singleError) throw singleError;
-      const override = single ? {
+      // Price and handling time live in product_settings and are ALWAYS live —
+      // they survive "Disable Override", which is why they can produce an entry
+      // even when there is no active override row for the slug.
+      const settings = await fetchSettings(supabase, [requestedSlug]);
+      const override = mergeSettings(single ? {
         ...single,
         image_url: proxifySupabaseImage(single.image_url),
         gallery_images: (Array.isArray(single.gallery_images) ? single.gallery_images : [])
           .map(proxifySupabaseImage).filter(Boolean),
-      } : null;
+      } : null, settings[requestedSlug], requestedSlug);
       // Fetched on EVERY product-page view. This was `no-store`, so it cost a
       // function invocation + full transfer on every single PDP hit — the most
       // frequent uncached call on the site. The whole-catalog branch below
@@ -59,6 +82,7 @@ exports.handler = async (event) => {
       .select(cols)
       .eq('is_active', true),
       'slug,title,author,category,price_inr,original_price_inr,image_url,scarcity,stock_qty,is_active,updated_at');
+    const settings = await fetchSettings(supabase);
 
     if (error) {
       console.warn('product_overrides unavailable:', error.message);
@@ -126,7 +150,15 @@ exports.handler = async (event) => {
       'Cache-Control': 'public, max-age=3600, stale-while-revalidate=3600',
       'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
     };
-    const overrides = (data || []).map(o => ({ ...o, image_url: proxifySupabaseImage(o.image_url) }));
+    const overrideBySlug = new Map((data || [])
+      .map(o => [String(o.slug || '').toLowerCase(), { ...o, image_url: proxifySupabaseImage(o.image_url) }]));
+    // Fold the always-live settings in, and emit an entry for any slug that has
+    // settings but no ACTIVE override row — that is the whole point of the
+    // table: a price the admin set stays live after "Disable Override".
+    for (const [slug, row] of Object.entries(settings)) {
+      overrideBySlug.set(slug, mergeSettings(overrideBySlug.get(slug) || null, row, slug));
+    }
+    const overrides = [...overrideBySlug.values()].filter(Boolean);
     return { statusCode: 200, headers: cacheHeaders, body: JSON.stringify({ overrides, custom_products: customProducts }) };
   } catch (err) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: [], warning: err.message }) };

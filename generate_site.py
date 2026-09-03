@@ -3129,6 +3129,8 @@ function applyProductOverride(book, override) {
   // product, not just tag-carrying imports, so a non-null override wins over
   // whatever the tag said. Null = no admin opinion; keep the tag's answer.
   if (override.publisher_sourced != null) book.publisher_sourced = !!override.publisher_sourced;
+  // Per-product handling time: extra days before dispatch. Absent = store default.
+  if (override.handling_days != null) book.handling_days = override.handling_days;
 }
 // A book is sold out only when an explicit stock override brought it to 0 or
 // below. No override / undefined stock = in stock (the 999 default).
@@ -5171,20 +5173,30 @@ function addDays(date, n) {
   return new Date(date.getTime() + n * 24 * 60 * 60 * 1000);
 }
 
-function getShipByHTML(slug) {
+function handlingDaysFor(book, slug) {
+  // Admin-set handling time wins. SLOW_SHIP_SLUGS is the old hardcoded list and
+  // stays as the fallback so titles on it keep their extra day until someone
+  // sets a value in the panel.
+  const set = Number(book && book.handling_days);
+  if (Number.isFinite(set) && set > 0) return Math.min(30, Math.round(set));
+  return SLOW_SHIP_SLUGS.has(slug) ? 1 : 0;
+}
+
+function getShipByHTML(book) {
+  const slug = (book && book.slug) || '';
   const nowIST = istNow();
   const istHour = nowIST.getUTCHours(); // 0–23, IST wall clock
 
-  const isLimited = SLOW_SHIP_SLUGS.has(slug);
+  const handling = handlingDaysFor(book, slug);
+  const isLimited = handling > 0;
   // Before 03:00 IST the order still catches today's manifest.
-  let daysToShip = istHour < SHIP_CUTOFF_HOUR_IST ? 0 : 1;
-  if (isLimited) daysToShip += 1;
+  let daysToShip = (istHour < SHIP_CUTOFF_HOUR_IST ? 0 : 1) + handling;
 
   const shipDate = addDays(nowIST, daysToShip);
   const shipStr = fmtDay(shipDate);
 
   const subText = isLimited
-    ? 'Limited stock — allow extra processing time'
+    ? `Allow ${handling} extra ${handling === 1 ? 'day' : 'days'} before dispatch`
     : (daysToShip === 0
         ? 'Order now and it is dispatched today'
         : 'Order now to get it dispatched tomorrow');
@@ -5202,7 +5214,7 @@ function getShipByHTML(slug) {
         <div class="ship-by-date">${shipStr}</div>
         <div class="ship-by-sub">${subText}</div>
         ${isLimited ? '<div class="ship-by-limited">⚡ Limited stock</div>' : ''}
-        <div class="eta-block" data-delivery-eta${isLimited ? ' data-extra-days="1"' : ''}>
+        <div class="eta-block" data-delivery-eta${isLimited ? ` data-extra-days="${handling}"` : ''}>
           <div class="eta-head">Estimated delivery</div>
           ${zoneRows}
         </div>
@@ -5236,6 +5248,8 @@ function applyProductOverride(book, override) {
   // product, not just tag-carrying imports, so a non-null override wins over
   // whatever the tag said. Null = no admin opinion; keep the tag's answer.
   if (override.publisher_sourced != null) next.publisher_sourced = !!override.publisher_sourced;
+  // Per-product handling time: extra days before dispatch. Absent = store default.
+  if (override.handling_days != null) next.handling_days = override.handling_days;
   return next;
 }
 function isSoldOut(book) {
@@ -5515,7 +5529,7 @@ function renderProduct(b) {
           <span>🔥 Hurry! Only <strong>4 left</strong> in stock</span>
         </div>` : ''}
 
-        ${getShipByHTML(b.slug)}
+        ${getShipByHTML(b)}
 
         <div class="prod-courier-row">
           <span class="prod-courier-label">Shipped via</span>
@@ -6598,7 +6612,14 @@ def live_reviews_block(slug: str) -> str:
 })();
 </script>"""
 
+# Legacy hardcoded slow-shipping list. Handling time is now per product in
+# product_settings; this only seeds the baked page for titles nobody has set a
+# value for yet, and the runtime override replaces it when one exists.
+SLOW_SHIP_SLUGS_PY = {"off-campus-complete-5-book-collection-elle-kennedy"}
+
+
 def static_product_html(book):
+    handling_days = 1 if (book.get("slug") or "") in SLOW_SHIP_SLUGS_PY else 0
     title = html_escape(book.get("t", "Book"))
     author = html_escape(book.get("a") or "Various")
     cat = html_escape(book.get("cat") or "Books")
@@ -7255,6 +7276,16 @@ async function applyRuntimeProductOverride() {{
     // removes whatever a previous run inserted. Idempotent — repeated calls (the
     // page revalidates overrides) neither duplicate nor flicker the box.
     applyPublisherSourcedBadge(override.publisher_sourced === true);
+    // Per-product handling time. The box was already painted with the baked
+    // value; repaint only when the admin set something different, so the common
+    // case costs nothing and the dates never flicker.
+    if (override.handling_days !== null && override.handling_days !== undefined) {{
+      var handling = Math.max(0, Math.min(30, parseInt(override.handling_days, 10) || 0));
+      if (handling !== window.__iacHandlingDays) {{
+        window.__iacHandlingDays = handling;
+        renderStaticShipBy(handling);
+      }}
+    }}
     // Manual stock: <=0 means sold out → replace Buy with a "Coming Soon" box and
     // flag the buy handlers so nothing can be added to cart. null/absent = in stock.
     if (override.stock_qty !== null && override.stock_qty !== undefined && Number(override.stock_qty) <= 0) {{
@@ -7430,9 +7461,12 @@ document.addEventListener('keydown', e => {{
 // ── Ship-by date + delivery estimate ─────────────────────────────────────────
 // Cutoff is 03:00 IST — the nightly courier manifest closes then. Before 03:00
 // the order still makes that morning's dispatch; from 03:00 it waits a day.
-(function() {{
-  var slug = '{book["slug"]}';
-  var SLOW = new Set(['off-campus-complete-5-book-collection-elle-kennedy']);
+// Handling time is per product. The baked value below is the fallback for the
+// old hardcoded slow-shipping list; applyRuntimeProductOverride re-renders this
+// box when product_settings.handling_days says something different.
+window.__iacHandlingDays = {handling_days};
+function renderStaticShipBy(handling) {{
+  handling = Math.max(0, Math.min(30, parseInt(handling, 10) || 0));
   var CUTOFF = 3;
   var ZONES = [
     ['Delhi NCR', 1],
@@ -7441,8 +7475,7 @@ document.addEventListener('keydown', e => {{
   ];
   var nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
   var h = nowIST.getUTCHours();
-  var days = h < CUTOFF ? 0 : 1;
-  if (SLOW.has(slug)) days += 1;
+  var days = (h < CUTOFF ? 0 : 1) + handling;
   function addDays(d, n) {{ return new Date(d.getTime() + n * 86400000); }}
   function fmt(d, w) {{
     return new Intl.DateTimeFormat('en-IN', {{
@@ -7450,10 +7483,10 @@ document.addEventListener('keydown', e => {{
     }}).format(d);
   }}
   var shipDate = addDays(nowIST, days);
-  var sub = SLOW.has(slug)
-    ? 'Limited stock — allow extra processing time'
+  var sub = handling > 0
+    ? 'Allow ' + handling + ' extra ' + (handling === 1 ? 'day' : 'days') + ' before dispatch'
     : (days === 0 ? 'Order now and it is dispatched today' : 'Order now to get it dispatched tomorrow');
-  var limited = SLOW.has(slug) ? '<div class="ship-by-limited">⚡ Limited stock</div>' : '';
+  var limited = handling > 0 ? '<div class="ship-by-limited">⚡ Limited stock</div>' : '';
   var rows = ZONES.map(function (z) {{
     return '<div class="eta-row"><span class="eta-zone">' + z[0] + '</span>'
       + '<span class="eta-date">' + fmt(addDays(shipDate, z[1]), 'short') + '</span></div>';
@@ -7467,11 +7500,12 @@ document.addEventListener('keydown', e => {{
     + '<div class="ship-by-date">' + fmt(shipDate, 'long') + '</div>'
     + '<div class="ship-by-sub">' + sub + '</div>'
     + limited
-    + '<div class="eta-block" data-delivery-eta' + (SLOW.has(slug) ? ' data-extra-days="1"' : '')
+    + '<div class="eta-block" data-delivery-eta' + (handling > 0 ? ' data-extra-days="' + handling + '"' : '')
     + '><div class="eta-head">Estimated delivery</div>' + rows + '</div>'
     + '</div></div>';
   if (window.iacDeliveryEtaInit) window.iacDeliveryEtaInit();
-}}());
+}}
+renderStaticShipBy(window.__iacHandlingDays);
 applyRuntimeProductOverride().then(reportViewContent, reportViewContent);
 setTimeout(reportViewContent, 3000);
 </script>

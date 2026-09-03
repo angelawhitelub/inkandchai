@@ -14,6 +14,7 @@ const fs   = require('fs');
 const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipping-restrictions');
 const { grantMap, feedOfferId } = require('./google-discount');
 const { selectTolerant } = require('./publisher-sourced');
+const { fetchSettings } = require('./product-settings');
 
 // Hardcoded slug overrides — MUST stay in sync with `make_slug` in generate_site.py.
 // (Combo packs ship under hand-picked slugs that don't follow the auto-slug rule.)
@@ -141,6 +142,11 @@ function applyBadgeOverride(item, flag) {
   else if (flag === false) delete item._publisher_sourced;
 }
 
+/** The always-live admin price (product_settings) outranks every other source. */
+function applyPriceSetting(item, settings) {
+  if (settings && settings.price_inr !== null) item.price = settings.price_inr;
+}
+
 async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   if (!Array.isArray(cart) || cart.length === 0) {
     return { cart: [], subtotal: 0, dropped: [] };
@@ -227,6 +233,11 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   // Delivery rules live in their own table so ordinary product metadata saves
   // cannot silently erase them. Product-tag rules remain only as a backwards-
   // compatible fallback for listings that have not yet been migrated.
+  // Always-live price/handling (sql/product_settings.sql). This is the admin's
+  // deliberate price, not an override of anything, so it beats BOTH the override
+  // row and the custom_products price and is unaffected by is_active.
+  const settingsMap = items.length && supabase ? await fetchSettings(supabase, slugs) : {};
+
   const shippingRuleMap = {};
   if (items.length && supabase) {
     const { data, error } = await supabase
@@ -260,6 +271,7 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
         item._shipping_restrictions = shippingRestrictions;
       }
       applyBadgeOverride(item, overrideBadgeMap[slug]);
+      applyPriceSetting(item, settingsMap[slug]);
       resolved.push(item);
     } else if (staticHit) {
       const item = { ...raw, slug, qty, title: staticHit.title, price: staticHit.price };
@@ -268,6 +280,7 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
         item._shipping_restrictions = shippingRestrictions;
       }
       applyBadgeOverride(item, overrideBadgeMap[slug]);
+      applyPriceSetting(item, settingsMap[slug]);
       resolved.push(item);
     } else {
       dropped.push({ reason: 'not_in_catalogue', slug, item: raw });

@@ -1412,9 +1412,16 @@ select,input,textarea{font-size:1rem;}
               <input id="prodOriginalPrice" inputmode="decimal" placeholder="499"/>
             </div>
           </div>
-          <div class="form-row" style="margin-top:0.6rem;">
-            <label>Stock quantity <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— set 0 to show “Coming Soon”. Default 999.</span></label>
-            <input id="prodStock" type="number" min="0" step="1" inputmode="numeric" placeholder="999" style="max-width:180px;"/>
+          <p class="hint" style="margin:.45rem 0 0;">Sale price, MRP and handling time stay live even if you disable the override — they are what the product costs, not a temporary override. To hand a product back to its catalogue price, clear the price box and save.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;margin-top:0.6rem;">
+            <div class="form-row">
+              <label>Stock quantity <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— 0 shows “Coming Soon”. Default 999.</span></label>
+              <input id="prodStock" type="number" min="0" step="1" inputmode="numeric" placeholder="999"/>
+            </div>
+            <div class="form-row">
+              <label>Handling time <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— extra days before dispatch. Blank or 0 = store default.</span></label>
+              <input id="prodHandlingDays" type="number" min="0" max="30" step="1" inputmode="numeric" placeholder="0"/>
+            </div>
           </div>
           <details id="prodMetadataEditor" open style="margin-top:.8rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(201,168,76,.035);">
             <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">Book details &amp; SEO</summary>
@@ -5738,6 +5745,11 @@ function selectProduct(slug) {
   {
     const sq = row.override && row.override.stock_qty;
     document.getElementById('prodStock').value = (sq === null || sq === undefined) ? 999 : sq;
+    // Handling time rides in on the same feed (product_settings, merged into the
+    // override entry). Blank means "store default", so 0 renders as blank.
+    const hd = row.override && row.override.handling_days;
+    const hdEl = document.getElementById('prodHandlingDays');
+    if (hdEl) hdEl.value = (hd === null || hd === undefined || Number(hd) === 0) ? '' : hd;
   }
   // Image URL — use override if set, else current image
   const imgUrl = p.image_url || row.image_url || '';
@@ -7415,6 +7427,9 @@ async function saveProductOverride(activeOverride = true) {
     // Custom listings keep writing the tag as well (see customPayload) so the
     // feeds and importers that read tags stay correct.
     publisher_sourced: !!document.getElementById('prodPublisherSourced')?.checked,
+    // Extra days before dispatch, stored alongside the live price in
+    // product_settings so it is not undone by "Disable Override".
+    handling_days: (document.getElementById('prodHandlingDays')?.value ?? '').trim(),
   };
   msg.textContent = 'Saving…';
   try {
