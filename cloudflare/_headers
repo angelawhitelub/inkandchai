@@ -1,0 +1,18 @@
+# Content-addressed and rarely-changing assets.
+/images/*
+  Cache-Control: public, max-age=31536000, immutable
+/js/books-full-*.js
+  Cache-Control: public, max-age=31536000, immutable
+/js/books-lite-*.js
+  Cache-Control: public, max-age=31536000, immutable
+/js/*
+  Cache-Control: public, max-age=3600
+
+# HTML must revalidate so storefront changes go live immediately.
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/build-info.json
+  Cache-Control: no-store

@@ -1,0 +1,36 @@
+; DNS zone for inkandchai.in, exported from Netlify DNS (zone 69e917b03d77c23986d34c24)
+; Import into Cloudflare: DNS > Records > Import and Export > Import.
+;
+; NOT included, because they are Netlify-proprietary and have no meaning
+; elsewhere: the two NETLIFY records for the apex and www. Recreate those in
+; Cloudflare as the record type your new host needs (a CNAME to the Pages
+; project, or A/AAAA), and leave them proxied so the CDN is in front.
+;
+$ORIGIN inkandchai.in.
+$TTL 3600
+
+4jafl7ngecpqnsyeqtzlehmqdt47do7w._domainkey.inkandchai.in.	3600	IN	CNAME	4jafl7ngecpqnsyeqtzlehmqdt47do7w.dkim.amazonses.com.
+brevo1._domainkey.inkandchai.in.	3600	IN	CNAME	b1.inkandchai-in.dkim.brevo.com.
+brevo2._domainkey.inkandchai.in.	3600	IN	CNAME	b2.inkandchai-in.dkim.brevo.com.
+email.inkandchai.in.	3600	IN	CNAME	email.secureserver.net.
+enm46vxlpcyidafdbefanmbfqehps5cn._domainkey.inkandchai.in.	3600	IN	CNAME	enm46vxlpcyidafdbefanmbfqehps5cn.dkim.amazonses.com.
+mtwqw5fznng55us52mrgds5i6e6ayhzp._domainkey.inkandchai.in.	3600	IN	CNAME	mtwqw5fznng55us52mrgds5i6e6ayhzp.dkim.amazonses.com.
+secureserver1._domainkey.inkandchai.in.	3600	IN	CNAME	s1.dkim.inkandchai_in.3f7.onsecureserver.net.
+secureserver2._domainkey.inkandchai.in.	3600	IN	CNAME	s2.dkim.inkandchai_in.3f7.onsecureserver.net.
+inkandchai.in.	3600	IN	MX	1 SMTP.GOOGLE.COM.
+send.inkandchai.in.	3600	IN	MX	10 feedback-smtp.ap-northeast-1.amazonses.com.
+support.inkandchai.in.	3600	IN	MX	10 feedback-smtp.ap-south-1.amazonses.com.
+_autodiscover._tcp.inkandchai.in.	3600	IN	SRV	100 1 443 autodiscover.secureserver.net.
+_dmarc.inkandchai.in.	3600	IN	TXT	"v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com"
+google._domainkey.inkandchai.in.	3600	IN	TXT	"v=DKIM1;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxpWCEgdrDxpcJa6JBr2V2bhh3YvQS6YQzqvSEa7+oSAA0gsxALcTXv6GgYU3wclVbmIUJEAdljOsjWb96wcHW7PQS3aENA+R5di8mt14mHIn3Ohw24KRMgltCD8bzpGR+1et3EFuew9OsZ8NeKDhaKD2C8d84KhLdASVfleUmYnOtpNqke1mvo6JLx7uSShhmTG" "0vaWiO5yJ4p3if9CJEOr6wYWFSDRoAgGdILDfpGNoO9ui9aBNciIJi0P9b9/sl0e9WMRVozKS5hKKvKiTIwk7m6OjLxZNsSlmEXMfIIHgK3kPqFs+nt58XIxpYN0ZNU3mAmvpPyE4h7+ibP98MwIDAQAB"
+inkandchai.in.	3600	IN	TXT	"T9496849"
+inkandchai.in.	3600	IN	TXT	"google-site-verification=Lmq_LmTaAOlruOaquBfDjBQDMUADjGSXdwX-FTUKrRc"
+inkandchai.in.	3600	IN	TXT	"brevo-code:1bd0e6d5e03fc62b1a3d49592fc0131f"
+inkandchai.in.	3600	IN	TXT	"google-site-verification=uPR44Oeh41pJm23eci_hDhjWqlyP4XaW7wze5kEODbY"
+inkandchai.in.	3600	IN	TXT	"v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDUOq6lYBu1VwSJVjOqytQTaGzlXOXQMffEig3VZ2HqOZEvzLds8y78o0J+E9PywyI4KIO0Lj+C/PaRsh1gGQhqytVCnOGLIuEci9izDKfzHDJ90IQysUn1fd835ehZEFKgY3CwRaDUBLjHv2ikPnrTFAi0v8CZWEekhUBWyCKNLwIDAQAB"
+inkandchai.in.	3600	IN	TXT	"k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC2WziRpyeJP7bdYFhFv6Z7945a4zJ12k2GVvhltC6vWzMCY+Bi99VSun6AKeISXLOSJW2f65Ss7OUR2wu9pJPXNw6aAgQhOBj58hdu0HiXp9DCXP8kbu3+jJQagM3ssuFokK/9dVNYpuOd2vnHBVBo9cpd05oV8bLwTN3ZYV9I6wIDAQAB"
+inkandchai.in.	3600	IN	TXT	"v=spf1 include:_spf.google.com include:spf.brevo.com include:spf.mailjet.com include:amazonses.com ~all"
+mailjet._bcd1fc0f.inkandchai.in.	3600	IN	TXT	"bcd1fc0fc6ef6ff8dee9a3aff1b38d6f"
+mailjet._domainkey.inkandchai.in.	3600	IN	TXT	"k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtfQvJtAgoGk/wuZAkUYphX4WS5LgrIvWpO3KohHgjgqmsFJIu10gqbWyPUAS1A84lIuUKUpLCNT/alQqkLFemaWyXk/NLXU5Rqmr2+TdSH4owvtOrw3MyvisYf8L12yfQJSTP8WpIj1TMmWrG0txrxBKAQs3UzcF78/9kVTfxE16TKEWpIyHhzgc/fh90lKOaeNdX4/99G" "T9jsWzLaRV6f9qO7RA8gJ5vphQq72lmAOOXvja6Vwo/0BUVE7E3WS/NrA6QtAzUaF6FcNxZmbwZZ+dKuHcmeDJknvAuM4ApusH0p+lGT5XQFFNxfq024+UL9CffxhQ/CqEv2I5pzX8DwIDAQAB"
+resend._domainkey.inkandchai.in.	3600	IN	TXT	"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDoKlV0mpSq1B331NpSCG9o7MX+iQ1/74LV80xknRFWKXzNIUkma5iMrFmRMpJA1E4elk0bwDnrE4+iEy4ZgXyJ0UdstKIYgQpv1TgdSxZdGqyRK64bcNmUHd4nkh/lPVKLve42YZlo34ewCHyv0jXtyZokF6gYE5MhxwyqE2irKQIDAQAB"
+support.inkandchai.in.	3600	IN	TXT	"v=spf1 include:amazonses.com ~all"

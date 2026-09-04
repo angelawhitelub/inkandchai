@@ -1,0 +1,43 @@
+# Cloudflare Pages redirects, ported from netlify.toml.
+# First match wins. Static assets are served before these rules are consulted.
+
+# Legacy slug fixes (kept verbatim from Netlify)
+/product/david-goggins-combo-hindi-can-t-hurt-me-never-finished--BO-HI/  /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
+/product/david-goggins-combo-hindi-can-t-hurt-me-never-finished--bo-hi/  /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
+/product/cant-hurt-me-never-finished-combo-hindi-goggins/  /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
+/product/cant-hurt-me-never-finished-combo-hindi-goggins   /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
+/product/stop-letting-everything-affect-you-hindi-edition/  /product/stop-letting-everything-affect-you-hindi-edition-ou-hi/  301
+/product/stop-letting-everything-affect-you-hindi-edition   /product/stop-letting-everything-affect-you-hindi-edition-ou-hi/  301
+/product/5-hindi-bestsellers-combo-set-of-5-books/  /product/5-hindi-bestsellers-combo-set-of-5-books-mbo-5/  301
+/product/5-hindi-bestsellers-combo-set-of-5-books   /product/5-hindi-bestsellers-combo-set-of-5-books-mbo-5/  301
+/product/cant-hurt-me-hindi-goggins/  /product/can-t-hurt-me-hindi-me-hi/  301
+/product/cant-hurt-me-hindi-goggins   /product/can-t-hurt-me-hindi-me-hi/  301
+/product/hard-thing-about-hard-things-hindi-horowitz/  /product/the-hard-thing-about-hard-things-hindi-ng-hi/  301
+/product/hard-thing-about-hard-things-hindi-horowitz   /product/the-hard-thing-about-hard-things-hindi-ng-hi/  301
+/product/never-finished-hindi-goggins/  /product/never-finished-hindi-ed-hi/  301
+/product/never-finished-hindi-goggins   /product/never-finished-hindi-ed-hi/  301
+/product/thinking-fast-slow-hindi-kahneman/  /product/thinking-fast-and-slow-hindi-ow-hi/  301
+/product/thinking-fast-slow-hindi-kahneman   /product/thinking-fast-and-slow-hindi-ow-hi/  301
+/product/king-of-gluttony-ana-huang-OF-AH/  /product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-ny-ah/  301
+/product/king-of-gluttony-ana-huang-OF-AH   /product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-ny-ah/  301
+/product/we-are-there-for-each-other-hindi-edition-by-sagar-chud-RE-HI/  /404.html  404
+/product/we-are-there-for-each-other-hindi-edition-by-sagar-chud-re-hi/  /404.html  404
+
+/favicon.ico  /images/favicon-96.png  301
+
+# Noise / probes
+/js/*.js.map  /404.html  404
+/api          /404.html  404
+/index.php    /404.html  404
+
+# Client-rendered listing pages
+/category/*    /category/index.html    200
+/collection/*  /collection/index.html  200
+
+# Custom (admin-created) product pages were rendered by a Lambda that does not
+# exist yet on Cloudflare. Serve the 404 page rather than the homepage so these
+# do not get indexed as soft-200 duplicates while the Worker is being ported.
+/product/*  /404.html  404
+
+# Everything else falls back to the shell, as it did on Netlify.
+/*  /index.html  200
