@@ -186,6 +186,44 @@ globalThis.fetch = async function patchedFetch(input, init) {
   return runHandler(name, new Request(url.toString(), init || input), currentEnv, currentCtx);
 };
 
+
+// Netlify's Image CDN (/.netlify/images?url=…&w=…&fm=webp&q=…). product-page.js
+// rewrites every /images/ and /spimg/ src through it, and cart.js, auth.js and
+// /books/ do the same client-side -- so without this every custom-product image,
+// cart thumbnail and og:image (WhatsApp/social previews) 404s on Cloudflare.
+//
+// Resolve the underlying asset internally and serve it. Resizing is dropped:
+// Cloudflare image resizing is a separate paid product, and serving the real
+// image is strictly better than serving nothing. The width is still accepted so
+// existing URLs keep working and stay cache-distinct.
+async function runImageCdn(request, env, ctx) {
+  const src = new URL(request.url).searchParams.get('url');
+  if (!src) return new Response('Missing url', { status: 400 });
+
+  let path;
+  try {
+    path = new URL(src, 'https://inkandchai.in').pathname;
+  } catch {
+    return new Response('Bad url', { status: 400 });
+  }
+
+  // Only ever serve our own assets -- never proxy an arbitrary origin.
+  if (!path.startsWith('/images/') && !path.startsWith('/spimg/')) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const target = new Request(new URL(path, request.url).toString(), { headers: request.headers });
+  const upstream = path.startsWith('/spimg/')
+    ? await runHandler('img-proxy', target, env, ctx)
+    : await env.ASSETS.fetch(target);
+
+  const out = new Response(upstream.body, upstream);
+  if (upstream.status === 200) {
+    out.headers.set('Cache-Control', 'public, max-age=604800');
+  }
+  return out;
+}
+
 async function runHandler(name, request, env, ctx) {
   const mod = routes[name];
   if (!mod || typeof mod.handler !== 'function') {
@@ -231,6 +269,9 @@ export default {
     blobs.bindEnv(env);
 
     const url = new URL(request.url);
+    if (url.pathname === '/.netlify/images') {
+      return runImageCdn(request, env, ctx);
+    }
     if (url.pathname.startsWith(FN_PREFIX)) {
       const name = url.pathname.slice(FN_PREFIX.length).replace(/\/+$/, '').split('/')[0];
       return runHandler(name, request, env, ctx);

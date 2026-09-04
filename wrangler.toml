@@ -23,6 +23,7 @@ html_handling = "auto-trailing-slash"
 # internally, so the ~2,740 prebuilt product pages keep winning.
 run_worker_first = [
   "/product/*",
+  "/.netlify/images",
   "/spimg/*",
   "/custom-feed.xml",
   "/custom-feed-bulk/*",
