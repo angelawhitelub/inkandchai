@@ -14,6 +14,36 @@
  */
 const PURGE_URL = 'https://api.netlify.com/api/v1/purge';
 
+/**
+ * The cache tags the storefront's cached reads are labelled with. An admin write
+ * purges the tags it can invalidate; a read carries every tag that could make it
+ * wrong. Keep both sides in this file so they cannot drift apart.
+ *
+ *   PRODUCTS — product data: prices, overrides, custom listings, shipping rules,
+ *              gallery/video, deletions. Read by the override feed, the Lambda
+ *              product page, search, and the Merchant feeds.
+ *   APLUS    — A+ modules. Read by get-aplus-content and embedded in the Lambda
+ *              product page, so an A+ save purges PRODUCTS too.
+ *   REVIEWS  — customer reviews.
+ *   REELS    — the Bookstagram strip.
+ *
+ * `product-overrides` is the tag the first version shipped with. Responses that
+ * were cached under it are still out there, so PRODUCTS purges include it.
+ */
+const TAGS = {
+  PRODUCTS: 'products',
+  APLUS: 'aplus',
+  REVIEWS: 'reviews',
+  REELS: 'reels',
+};
+
+const PRODUCT_TAGS = [TAGS.PRODUCTS, 'product-overrides'];
+
+/** Product data changed: prices, listings, media, availability. */
+const purgeProducts = () => purgeCacheTags(PRODUCT_TAGS);
+/** A+ modules changed. The Lambda product page embeds them, so purge both. */
+const purgeAplus = () => purgeCacheTags([TAGS.APLUS, ...PRODUCT_TAGS]);
+
 async function purgeCacheTags(tags) {
   const cacheTags = (Array.isArray(tags) ? tags : [tags]).filter(Boolean);
   if (!cacheTags.length) return { purged: false, reason: 'no-tags' };
@@ -35,4 +65,4 @@ async function purgeCacheTags(tags) {
   }
 }
 
-module.exports = { purgeCacheTags };
+module.exports = { purgeCacheTags, purgeProducts, purgeAplus, TAGS, PRODUCT_TAGS };

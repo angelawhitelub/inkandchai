@@ -36,6 +36,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { purgeProducts } = require('./utils/purge-cache');
 const { requireAdmin } = require('./utils/admin-auth');
 const { r2PutObject, r2Configured, r2Config } = require('./utils/r2-put');
 
@@ -159,6 +160,7 @@ exports.handler = async (event) => {
 
     console.log(`[upload-product-video] ${slug}: ${(video.length / 1024).toFixed(0)} KB ${ext}`
       + `${posterUrl ? ' + poster' : ' (no poster)'} → ${useR2 ? 'R2' : 'Supabase Storage'}`);
+    await purgeProducts();
     return json(200, {
       success: true,
       video_url: videoUrl,

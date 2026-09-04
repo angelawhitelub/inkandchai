@@ -1,4 +1,5 @@
 const fs = require('fs');
+const { purgeProducts } = require('./utils/purge-cache');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
@@ -153,6 +154,7 @@ exports.handler = async event => {
       return !actual || actual.is_active === false || Math.abs(Number(actual.price_inr) - Number(row.price_inr)) > 0.009;
     });
     if (failures.length) throw new Error(`Price verification failed for ${failures.length} product(s)`);
+    await purgeProducts();
 
     return {
       statusCode: 200,

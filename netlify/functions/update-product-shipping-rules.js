@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { purgeProducts } = require('./utils/purge-cache');
 const { requireAdmin } = require('./utils/admin-auth');
 const { normalizeShippingRule } = require('./utils/shipping-restrictions');
 
@@ -33,6 +34,7 @@ exports.handler = async (event) => {
     if (!rule.states.length && !rule.pins.length) {
       const { error } = await supabase.from('product_shipping_rules').delete().eq('slug', slug);
       if (error) throw error;
+      await purgeProducts();
       return json(200, { success: true, rule: null });
     }
     const payload = {
@@ -47,6 +49,7 @@ exports.handler = async (event) => {
       .select()
       .single();
     if (error) throw error;
+    await purgeProducts();
     return json(200, { success: true, rule: data });
   } catch (err) {
     return json(500, { error: err.message });

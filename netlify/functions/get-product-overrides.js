@@ -75,11 +75,16 @@ exports.handler = async (event) => {
         statusCode: 200,
         headers: {
           ...CORS,
-          'Cache-Control': 'public, max-age=300, stale-while-revalidate=600',
+          // max-age=0: this branch is a few hundred bytes, so making the browser
+          // revalidate costs almost nothing, and it means an admin save is on
+          // the page at the next reload rather than up to five minutes later.
+          // The edge still absorbs the traffic (s-maxage below) and a save
+          // purges it, so the revalidation is answered from cache, not Supabase.
+          'Cache-Control': 'public, max-age=0, must-revalidate',
           'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=300, stale-while-revalidate=3600',
-          // Saving a product purges this tag, so an admin price edit does not
+          // Saving a product purges these tags, so an admin price edit does not
           // wait out the TTL at the edge. See utils/purge-cache.js.
-          'Netlify-Cache-Tag': 'product-overrides',
+          'Netlify-Cache-Tag': 'products,product-overrides',
         },
         body: JSON.stringify({ overrides: override ? [override] : [] }),
       };
@@ -156,7 +161,7 @@ exports.handler = async (event) => {
       ...CORS,
       'Cache-Control': 'public, max-age=3600, stale-while-revalidate=3600',
       'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
-      'Netlify-Cache-Tag': 'product-overrides',
+      'Netlify-Cache-Tag': 'products,product-overrides',
     };
     const overrideBySlug = new Map((data || [])
       .map(o => [String(o.slug || '').toLowerCase(), { ...o, image_url: proxifySupabaseImage(o.image_url) }]));

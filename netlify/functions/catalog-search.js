@@ -85,6 +85,8 @@ exports.handler = async (event) => {
         // per page/query) are fetched from Supabase at most ~once/hour each,
         // rather than on every crawler request across 4.5k pages.
         'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+        // Purged the moment an admin save changes this (utils/purge-cache.js).
+        'Netlify-Cache-Tag': 'products',
       },
       body: JSON.stringify({ books, total, page, per_page: perPage, pages: Math.ceil(total / perPage) }),
     };

@@ -110,6 +110,8 @@ exports.handler = async (event) => {
       ...CORS,
       'Cache-Control': 'public, max-age=300, stale-while-revalidate=300',
       'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=900, stale-while-revalidate=3600',
+      // Purged the moment an admin save changes this (utils/purge-cache.js).
+      'Netlify-Cache-Tag': 'products',
     };
     return {
       statusCode: 200,

@@ -73,6 +73,8 @@ exports.handler = async (event) => {
     // Was s-maxage=21600 + SWR=86400: a bulk price change could take 30 hours to
     // reach Google. Each page rebuilds in ~1.5s, so this is affordable.
     'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=900, stale-while-revalidate=1800',
+    // Purged the moment an admin save changes this (utils/purge-cache.js).
+    'Netlify-Cache-Tag': 'products',
   };
   // Netlify rewrites don't reliably forward the ?page= from the redirect rule
   // to the function, so read the page number from the pretty URL itself

@@ -69,6 +69,8 @@ exports.handler = async (event) => {
     headers: {
       ...CORS,
       'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+      // Purged the moment an admin save changes this (utils/purge-cache.js).
+      'Netlify-Cache-Tag': 'reviews',
       'Cache-Control': 'public, max-age=300',
     },
     body: JSON.stringify({ reviews: data || [] }),

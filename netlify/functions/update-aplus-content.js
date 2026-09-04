@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { purgeAplus } = require('./utils/purge-cache');
 const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
@@ -87,6 +88,9 @@ exports.handler = async (event) => {
       .select()
       .single();
     if (error) throw error;
+    // A+ modules are read through a cached endpoint AND embedded in the Lambda
+    // product page, so both have to be invalidated or the save is invisible.
+    await purgeAplus();
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, content: data }) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };

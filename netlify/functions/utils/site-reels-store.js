@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { purgeCacheTags, TAGS } = require('./purge-cache');
 
 // Reel metadata lives beside product media instead of in a database table.
 // That keeps this admin feature migration-free while still allowing every
@@ -138,12 +139,18 @@ async function readHiddenReels() {
 // built-in reel the moment somebody uploaded a new one.
 async function writeSiteReels(items) {
   const current = await readManifest();
-  return (await writeManifest({ items, hidden: current.hidden })).items;
+  const saved = (await writeManifest({ items, hidden: current.hidden })).items;
+  // site-reels is edge-cached, so purge here rather than in each of the two
+  // admin entry points — a writer that forgets is a reel that never appears.
+  await purgeCacheTags([TAGS.REELS]);
+  return saved;
 }
 
 async function writeHiddenReels(hidden) {
   const current = await readManifest();
-  return (await writeManifest({ items: current.items, hidden })).hidden;
+  const saved = (await writeManifest({ items: current.items, hidden })).hidden;
+  await purgeCacheTags([TAGS.REELS]);
+  return saved;
 }
 
 module.exports = {

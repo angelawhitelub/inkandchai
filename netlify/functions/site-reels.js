@@ -14,6 +14,8 @@ const headers = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'public, max-age=60',
   'Netlify-CDN-Cache-Control': 'public, s-maxage=300, stale-while-revalidate=86400',
+  // Purged the moment an admin save changes this (utils/purge-cache.js).
+  'Netlify-Cache-Tag': 'reels',
 };
 
 exports.handler = async (event) => {

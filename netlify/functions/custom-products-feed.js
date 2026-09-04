@@ -57,6 +57,8 @@ exports.handler = async () => {
     // showing the old price in Merchant Center. Minutes, not hours.
     'Cache-Control': 'public, max-age=300',
     'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=300, stale-while-revalidate=600',
+    // Purged the moment an admin save changes this (utils/purge-cache.js).
+    'Netlify-Cache-Tag': 'products',
   };
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     return feedUnavailable('supabase env vars missing');

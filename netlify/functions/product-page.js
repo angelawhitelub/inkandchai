@@ -786,6 +786,8 @@ exports.handler = async (event) => {
         // page for five minutes to protect Supabase from crawler egress.
         'Cache-Control': 'public, max-age=0, must-revalidate',
         'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=300',
+        // Purged the moment an admin save changes this (utils/purge-cache.js).
+        'Netlify-Cache-Tag': 'products,aplus',
       },
       body: productHtml(product, aplusContent || null),
     };

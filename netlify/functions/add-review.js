@@ -18,6 +18,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { purgeCacheTags, TAGS } = require('./utils/purge-cache');
 const { requireAdmin } = require('./utils/admin-auth');
 const { orderIdFilter } = require('./utils/order-id-filter');
 
@@ -112,6 +113,7 @@ exports.handler = async (event) => {
       .single();
 
     if (error) throw error;
+    await purgeCacheTags([TAGS.REVIEWS]);
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, review_id: data.id }) };
   } catch (err) {
     console.error('[add-review] error:', err.message);

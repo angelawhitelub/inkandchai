@@ -94,6 +94,8 @@ exports.handler = async (event) => {
     'Cache-Control': 'public, max-age=300',
     // Durable edge cache — a given query hits Supabase at most ~once/hour.
     'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+    // Purged the moment an admin save changes this (utils/purge-cache.js).
+    'Netlify-Cache-Tag': 'products',
   };
 
   try {

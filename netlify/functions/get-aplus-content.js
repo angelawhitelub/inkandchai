@@ -5,6 +5,8 @@ const HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'public, max-age=0, must-revalidate',
   'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=300, stale-while-revalidate=86400',
+  // Purged the moment an admin save changes this (utils/purge-cache.js).
+  'Netlify-Cache-Tag': 'aplus,products',
 };
 
 function cleanSlug(value) {

@@ -30,6 +30,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { purgeProducts } = require('./utils/purge-cache');
 const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
@@ -116,12 +117,13 @@ exports.handler = async (event) => {
       });
     }
 
+    // Purge first, then report: the edge cache used to hold the old state for
+    // up to an hour, which is why this message had to warn about it.
+    const purge = await purgeProducts();
     return json(200, {
       success: true, slug, action, changed,
-      // The storefront caches this payload for an hour at the edge and again in
-      // each visitor's browser, so the change is not instant. Saying so here
-      // keeps the admin from assuming the restore silently failed.
-      message: `${restoring ? 'Restored' : 'Removed'} — ${changed.join(' and ')}. Live within the hour (storefront cache).`,
+      message: `${restoring ? 'Restored' : 'Removed'} — ${changed.join(' and ')}.`
+        + (purge.purged ? ' Live now.' : ' Live within the hour (storefront cache could not be purged).'),
     });
   } catch (err) {
     return json(500, { error: err.message });

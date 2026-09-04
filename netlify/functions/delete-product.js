@@ -16,6 +16,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { purgeProducts } = require('./utils/purge-cache');
 const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
@@ -71,6 +72,8 @@ exports.handler = async (event) => {
     if (del.error) throw del.error;
     // Best-effort: drop any override row so a stale price/title can't linger.
     try { await supabase.from('product_overrides').delete().eq('slug', realSlug); } catch (e) { /* non-fatal */ }
+    // Otherwise a deleted listing keeps being served from the edge cache.
+    await purgeProducts();
 
     return {
       statusCode: 200,
