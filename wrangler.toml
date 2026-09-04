@@ -64,3 +64,10 @@ crons = [
 [define]
 __dirname = "'/var/task/netlify/functions'"
 __filename = "'/var/task/netlify/functions/handler.js'"
+
+[vars]
+# Workers Free allows 50 subrequests per invocation; the sweep defaults to 400
+# checks and burned through the budget, failing every order. ~2 subrequests per
+# order, and replay-lost-orders shares this invocation, so keep the batch small.
+# 15 per run x 12 runs/hour = 180/hour, which clears the backlog steadily.
+PHONEPE_SWEEP_MAX = "15"
