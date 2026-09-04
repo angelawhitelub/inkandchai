@@ -49,7 +49,14 @@ id = "e0e7661b15fd47548524833af974deab"
 # until their backlog has been reviewed by hand — they have not run since the
 # Netlify suspension and would act on months of stale order state.
 [triggers]
-crons = ["*/3 * * * *", "0 * * * *", "30 15 * * *"]
+crons = [
+  "*/3 * * * *",   # nimbuspost-awb-sync-scheduled
+  "*/5 * * * *",   # replay-lost-orders, phonepe-payment-sweep-scheduled
+  "15 * * * *",    # auto-cancel-stale-cod (phonepe-reconcile-refunds shares this
+                   # trigger and is held off by ENABLED_JOBS in worker/index.js)
+  "0 * * * *",     # auto-recover-carts, deploy-drift-check
+  "30 15 * * *",   # daily-unshipped-report
+]
 
 # The handlers build data-file paths with path.join(__dirname, ...), which does
 # not exist in an ESM bundle. Defining it keeps those expressions working; the

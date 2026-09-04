@@ -15,7 +15,16 @@
 import routeTable from './routes.generated.js';
 import * as blobsNs from './shims/netlify-blobs.js';
 
-const { routes, schedules } = routeTable;
+const { routes, schedules: declaredSchedules } = routeTable;
+
+// The Workers Free plan allows 5 cron triggers per ACCOUNT, so jobs have to
+// share expressions. phonepe-payment-sweep is declared */10 in netlify.toml;
+// folding it onto the */5 trigger that replay-lost-orders already uses keeps us
+// at 5 triggers and runs the sweep more often, not less.
+const CRON_OVERRIDES = {
+  'phonepe-payment-sweep-scheduled': '*/5 * * * *',
+};
+const schedules = { ...declaredSchedules, ...CRON_OVERRIDES };
 const blobs = blobsNs.default || blobsNs;
 
 const FN_PREFIX = '/.netlify/functions/';
@@ -112,6 +121,24 @@ function toResponse(result) {
 
 // Re-issue a request with extra query parameters, so a handler that expects
 // ?slug=/?page= still sees them when the value came from the path.
+// Which scheduled handlers may actually run. A cron expression fans out to
+// every handler registered against it, and several money-critical jobs share a
+// trigger (auto-cancel-stale-cod and phonepe-reconcile-refunds-scheduled are
+// both "15 * * * *"). Listing jobs explicitly means adding a trigger can never
+// silently start a job nobody asked for. To enable a job: add its name here AND
+// its cron to [triggers] in wrangler.toml.
+const ENABLED_JOBS = new Set([
+  // sync / reporting
+  'nimbuspost-awb-sync-scheduled',
+  'auto-recover-carts',
+  'daily-unshipped-report',
+  'deploy-drift-check',
+  // money safety nets
+  'phonepe-payment-sweep-scheduled',
+  'replay-lost-orders',
+  'auto-cancel-stale-cod',
+]);
+
 function noStore(response) {
   const r = new Response(response.body, response);
   r.headers.set('Cache-Control', 'no-store');
@@ -124,6 +151,40 @@ function withQuery(request, params) {
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return new Request(url.toString(), request);
 }
+
+
+// --- self-call interception -------------------------------------------------
+// Twelve handlers enqueue their long-running sibling by fetching the site's own
+// URL (`${SITE_URL}/.netlify/functions/x-background`). On Netlify that request
+// left the building and came back in. A Worker fetching its own hostname loops
+// at the edge instead and times out -- the live symptom was
+// "[awb-sync-scheduler] failed: worker enqueue returned 522".
+//
+// Dispatch those in-process instead. Nothing external serves /.netlify/
+// functions/, so matching on the path alone is safe and covers every caller
+// without touching the twelve handler files.
+let currentEnv = null;
+let currentCtx = null;
+
+const upstreamFetch = globalThis.fetch.bind(globalThis);
+globalThis.fetch = async function patchedFetch(input, init) {
+  let url;
+  try {
+    url = new URL(typeof input === 'string' ? input : input.url);
+  } catch {
+    return upstreamFetch(input, init);
+  }
+
+  if (!url.pathname.startsWith(FN_PREFIX) || !currentEnv) {
+    return upstreamFetch(input, init);
+  }
+
+  const name = url.pathname.slice(FN_PREFIX.length).replace(/\/+$/, '').split('/')[0];
+  if (!routes[name]) return upstreamFetch(input, init);
+
+  console.log(`[self-call] ${name} dispatched in-process`);
+  return runHandler(name, new Request(url.toString(), init || input), currentEnv, currentCtx);
+};
 
 async function runHandler(name, request, env, ctx) {
   const mod = routes[name];
@@ -163,6 +224,7 @@ async function runHandler(name, request, env, ctx) {
 
 export default {
   async fetch(request, env, ctx) {
+    currentEnv = env; currentCtx = ctx;
     // process.env is populated from bindings by the runtime under
     // nodejs_compat, so the 161 files reading it need no change. The KV
     // binding is not on process.env, so hand it to the blobs shim per request.
@@ -214,11 +276,17 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
+    currentEnv = env; currentCtx = ctx;
     blobs.bindEnv(env);
 
-    const due = Object.entries(schedules)
+    const registered = Object.entries(schedules)
       .filter(([, cron]) => cron === event.cron)
       .map(([name]) => name);
+
+    const due = registered.filter((name) => ENABLED_JOBS.has(name));
+    for (const name of registered) {
+      if (!ENABLED_JOBS.has(name)) console.log(`[cron] skipping disabled job ${name}`);
+    }
 
     if (!due.length) {
       console.warn(`[cron] no handler registered for "${event.cron}"`);
