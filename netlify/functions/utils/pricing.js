@@ -9,8 +9,6 @@
  * Items that resolve to no price are dropped and surfaced in `dropped[]`.
  */
 
-const path = require('path');
-const fs   = require('fs');
 const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipping-restrictions');
 const { grantMap, feedOfferId } = require('./google-discount');
 const { selectTolerant } = require('./publisher-sourced');
@@ -57,58 +55,28 @@ function makeSlug(title, shopifyId) {
 
 let _catalogIndex = null;
 let _catalogLoadError = null;
+
+/**
+ * The checkout price index, precomputed by scripts/build-catalog-index.js.
+ *
+ * This used to read data/ALL_BOOKS.json (5.7 MB) off disk and index 5,096 books
+ * on every cold start. That cannot work on Cloudflare Workers — no filesystem,
+ * and no bundle large enough — and it was never a good idea on Lambda either.
+ * A plain require() of the prebuilt index is inlined by every bundler, so the
+ * same code runs on both platforms and the checkout path does no file IO.
+ *
+ * The index is regenerated at build time, so it cannot drift from ALL_BOOKS.
+ */
 function getCatalogIndex() {
   if (_catalogIndex) return _catalogIndex;
-  // Netlify's function bundler can flatten directory structure, so the
-  // relative path that works in development doesn't always work in
-  // production. Try the known candidates in order and use the first one
-  // that loads. get-book.js uses `../../data/ALL_BOOKS.json` from
-  // netlify/functions/ — replicate that, plus a few fallbacks.
-  const candidates = [
-    path.join(__dirname, '..', '..', '..', 'data', 'ALL_BOOKS.json'), // dev: from utils/
-    path.join(__dirname, '..', '..', 'data', 'ALL_BOOKS.json'),       // bundled flat
-    path.join(process.cwd(), 'data', 'ALL_BOOKS.json'),               // function cwd
-    path.join('/var/task', 'data', 'ALL_BOOKS.json'),                 // AWS Lambda layout
-    'data/ALL_BOOKS.json',                                            // last resort
-  ];
-  let raw = null;
-  const tried = [];
-  for (const p of candidates) {
-    try {
-      raw = JSON.parse(fs.readFileSync(p, 'utf8'));
-      console.log('[pricing] catalogue loaded from', p);
-      break;
-    } catch (e) {
-      tried.push(`${p}: ${e.code || e.message}`);
-    }
-  }
-  if (!raw) {
-    _catalogLoadError = `ALL_BOOKS.json not found. Tried:\n  ${tried.join('\n  ')}`;
+  try {
+    // eslint-disable-next-line global-require
+    _catalogIndex = require('../../../data/catalog-index.json');
+  } catch (err) {
+    _catalogLoadError = `catalog-index.json not loadable: ${err.message}`;
     console.error('[pricing]', _catalogLoadError);
     return null;
   }
-  _catalogIndex = {};
-  for (const b of raw) {
-    const price = Number.parseFloat(b.price_inr || 0) || 0;
-    if (price <= 0) continue;
-    const title = String(b.title || '').slice(0, 240);
-    const entry = {
-      slug: '', title, price,
-      shippingRestrictions: parseShippingRestrictionTags(b.tags),
-    };
-    // Index under BOTH the computed make_slug (matches /product/ pages generated
-    // by generate_site.py) AND the slug embedded in the raw `url` field if it
-    // points at our domain (matches manually-curated CUSTOM listings).
-    const computed = makeSlug(b.title || '', b.shopify_id || '').toLowerCase();
-    if (computed) {
-      _catalogIndex[computed] = { ...entry, slug: computed };
-    }
-    const urlSlug = slugFromUrl(b.url || '');
-    if (urlSlug && urlSlug !== computed && !_catalogIndex[urlSlug]) {
-      _catalogIndex[urlSlug] = { ...entry, slug: urlSlug };
-    }
-  }
-  console.log(`[pricing] indexed ${Object.keys(_catalogIndex).length} books`);
   return _catalogIndex;
 }
 
