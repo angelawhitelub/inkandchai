@@ -29,10 +29,12 @@ html_handling = "auto-trailing-slash"
 binding = "ORDER_FALLBACK"
 id = "e0e7661b15fd47548524833af974deab"
 
-# ENABLED ONLY AFTER SECRETS ARE SET AND VERIFIED — these run refund retries
-# and COD auto-cancellation.
-# [triggers]
-# crons = ["*/10 * * * *", "*/15 * * * *", "*/2 * * * *", "*/3 * * * *", "*/5 * * * *", "0 * * * *", "0 4 * * *", "15 * * * *", "30 13 * * 2,5", "30 14 * * *", "30 15 * * *", "30 4 * * *", "30 7-12 * * *"]
+# Wave 1: sync and reporting only. The money jobs (auto-cancel-stale-cod,
+# phonepe-retry-refunds, auto-mark-delivered, the WhatsApp broadcasts) stay off
+# until their backlog has been reviewed by hand — they have not run since the
+# Netlify suspension and would act on months of stale order state.
+[triggers]
+crons = ["*/3 * * * *", "0 * * * *", "30 15 * * *"]
 
 # The handlers build data-file paths with path.join(__dirname, ...), which does
 # not exist in an ESM bundle. Defining it keeps those expressions working; the

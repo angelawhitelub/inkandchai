@@ -109,6 +109,15 @@ function toResponse(result) {
   return new Response(body, { status, headers });
 }
 
+
+// Re-issue a request with extra query parameters, so a handler that expects
+// ?slug=/?page= still sees them when the value came from the path.
+function withQuery(request, params) {
+  const url = new URL(request.url);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  return new Request(url.toString(), request);
+}
+
 async function runHandler(name, request, env, ctx) {
   const mod = routes[name];
   if (!mod || typeof mod.handler !== 'function') {
@@ -158,7 +167,37 @@ export default {
       return runHandler(name, request, env, ctx);
     }
 
-    return env.ASSETS.fetch(request);
+    // Routes netlify.toml served from a function via a 200 rewrite. Static
+    // assets cannot express these, so they are handled here.
+    if (url.pathname.startsWith('/spimg/')) {
+      // img-proxy reads event.path and matches /spimg/(.+), so pass it through
+      // unchanged. This is how every custom-product image is served.
+      return runHandler('img-proxy', request, env, ctx);
+    }
+    if (url.pathname === '/custom-feed.xml') {
+      return runHandler('custom-products-feed', request, env, ctx);
+    }
+    const bulk = url.pathname.match(/^\/custom-feed-bulk\/([^/]+)\/?$/);
+    if (bulk) {
+      return runHandler('custom-products-feed-bulk', withQuery(request, { page: bulk[1] }), env, ctx);
+    }
+
+    const assetResponse = await env.ASSETS.fetch(request);
+
+    // Admin-created products have no generated page: the catalogue books are
+    // static files, everything else is rendered by product-page. Try the static
+    // asset first so the ~2,740 generated pages keep winning, and only fall
+    // back for a slug that has no file.
+    if (assetResponse.status === 404) {
+      const product = url.pathname.match(/^\/product\/([^/]+)\/?$/);
+      if (product) {
+        const slug = decodeURIComponent(product[1]);
+        const rendered = await runHandler('product-page', withQuery(request, { slug }), env, ctx);
+        if (rendered.status !== 404) return rendered;
+      }
+    }
+
+    return assetResponse;
   },
 
   async scheduled(event, env, ctx) {
