@@ -31,8 +31,8 @@
 /index.php    /404.html  404
 
 # Client-rendered listing pages
-/category/*    /category/index.html    200
-/collection/*  /collection/index.html  200
+/category/*    /category/    200
+/collection/*  /collection/  200
 
 # Custom (admin-created) product pages were rendered by a Lambda that does not
 # exist yet on Cloudflare. Serve the 404 page rather than the homepage so these
@@ -40,4 +40,4 @@
 /product/*  /404.html  404
 
 # Everything else falls back to the shell, as it did on Netlify.
-/*  /index.html  200
+/*  /  200

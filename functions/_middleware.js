@@ -33,5 +33,14 @@ export async function onRequest(context) {
   const type = response.headers.get('content-type') || '';
   if (!type.includes('text/html')) return response;
 
-  return new HTMLRewriter().on('body', new BannerInjector()).transform(response);
+  const out = new HTMLRewriter().on('body', new BannerInjector()).transform(response);
+
+  // *.pages.dev is world-readable and would be indexed as a duplicate of the
+  // real storefront. Keep crawlers on the custom domain only.
+  if (url.hostname.endsWith('.pages.dev')) {
+    const headers = new Headers(out.headers);
+    headers.set('x-robots-tag', 'noindex, nofollow');
+    return new Response(out.body, { status: out.status, headers });
+  }
+  return out;
 }
