@@ -20,20 +20,12 @@
 /product/thinking-fast-slow-hindi-kahneman   /product/thinking-fast-and-slow-hindi-ow-hi/  301
 /product/king-of-gluttony-ana-huang-OF-AH/  /product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-ny-ah/  301
 /product/king-of-gluttony-ana-huang-OF-AH   /product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-ny-ah/  301
-/product/we-are-there-for-each-other-hindi-edition-by-sagar-chud-RE-HI/  /404.html  404
-/product/we-are-there-for-each-other-hindi-edition-by-sagar-chud-re-hi/  /404.html  404
 
 /favicon.ico  /images/favicon-96.png  301
 
-# Noise / probes
-/js/*.js.map  /404.html  404
-/api          /404.html  404
-/index.php    /404.html  404
-
 # Client-rendered listing pages
-/category/*    /category/index.html    200
-/collection/*  /collection/index.html  200
-
+/category/*    /category/    200
+/collection/*  /collection/  200
 
 
 # No catch-all: Pages serves the generated 404.html for anything unmatched.

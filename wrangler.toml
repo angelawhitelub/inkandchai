@@ -1,0 +1,42 @@
+name = "inkandchai"
+main = "worker/index.js"
+compatibility_date = "2026-09-04"
+compatibility_flags = ["nodejs_compat"]
+
+# The generated static site. Requests that are not /.netlify/functions/* fall
+# through to these assets, which keeps _redirects and _headers working exactly
+# as they did on Pages.
+[assets]
+directory = "public"
+binding = "ASSETS"
+# Serve the generated 404 page for anything unmatched, and let /x resolve to
+# /x/index.html the way Netlify and Pages both did.
+not_found_handling = "404-page"
+html_handling = "auto-trailing-slash"
+
+# Workers has no filesystem, no Netlify Blobs, and the Razorpay SDK is built on
+# node:http. Aliasing at bundle time means none of the 149 handlers had to
+# change. See worker/shims/ for what each one implements.
+[alias]
+"fs" = "./worker/shims/fs.js"
+"node:fs" = "./worker/shims/fs.js"
+"@netlify/blobs" = "./worker/shims/netlify-blobs.js"
+"razorpay" = "./worker/shims/razorpay.js"
+
+# Lost-orders pen: orders parked here when Supabase is unreachable at checkout,
+# replayed by replay-lost-orders.
+[[kv_namespaces]]
+binding = "ORDER_FALLBACK"
+id = "e0e7661b15fd47548524833af974deab"
+
+# ENABLED ONLY AFTER SECRETS ARE SET AND VERIFIED — these run refund retries
+# and COD auto-cancellation.
+# [triggers]
+# crons = ["*/10 * * * *", "*/15 * * * *", "*/2 * * * *", "*/3 * * * *", "*/5 * * * *", "0 * * * *", "0 4 * * *", "15 * * * *", "30 13 * * 2,5", "30 14 * * *", "30 15 * * *", "30 4 * * *", "30 7-12 * * *"]
+
+# The handlers build data-file paths with path.join(__dirname, ...), which does
+# not exist in an ESM bundle. Defining it keeps those expressions working; the
+# fs shim resolves by basename, so the directory part is only a placeholder.
+[define]
+__dirname = "'/var/task/netlify/functions'"
+__filename = "'/var/task/netlify/functions/handler.js'"
