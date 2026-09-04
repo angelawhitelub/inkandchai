@@ -66,8 +66,9 @@ __dirname = "'/var/task/netlify/functions'"
 __filename = "'/var/task/netlify/functions/handler.js'"
 
 [vars]
-# Workers Free allows 50 subrequests per invocation; the sweep defaults to 400
-# checks and burned through the budget, failing every order. ~2 subrequests per
-# order, and replay-lost-orders shares this invocation, so keep the batch small.
-# 15 per run x 12 runs/hour = 180/hour, which clears the backlog steadily.
-PHONEPE_SWEEP_MAX = "15"
+# Workers Paid allows 1000 subrequests per invocation. The sweep spends ~2 per
+# order (PhonePe status + a Supabase write), plus Supabase paging, and
+# replay-lost-orders shares the invocation -- so 300 leaves comfortable margin
+# under 1000 while clearing the backlog in a few runs. The handler's own default
+# is 400; raise this toward that only if the margin proves unnecessary.
+PHONEPE_SWEEP_MAX = "300"
