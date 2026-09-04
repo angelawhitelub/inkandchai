@@ -31,13 +31,11 @@
 /index.php    /404.html  404
 
 # Client-rendered listing pages
-/category/*    /category/    200
-/collection/*  /collection/  200
+/category/*    /category/index.html    200
+/collection/*  /collection/index.html  200
 
-# Custom (admin-created) product pages were rendered by a Lambda that does not
-# exist yet on Cloudflare. Serve the 404 page rather than the homepage so these
-# do not get indexed as soft-200 duplicates while the Worker is being ported.
-/product/*  /404.html  404
 
-# Everything else falls back to the shell, as it did on Netlify.
-/*  /  200
+
+# No catch-all: Pages serves the generated 404.html for anything unmatched.
+# That keeps admin-created product pages (whose Lambda is not ported yet) out
+# of the index as real 404s instead of soft-200 duplicate homepages.
