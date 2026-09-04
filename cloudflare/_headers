@@ -3,8 +3,11 @@
 # self-contradicting header. Pages already defaults HTML to
 # "public, max-age=0, must-revalidate", so /* carries security headers only.
 
+# Image filenames are NOT content-hashed, so "immutable" would make a replaced
+# cover impossible to push out — and turns any bad response into a year-long
+# cache entry. A week is long enough to be cheap and short enough to recover.
 /images/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=604800
 /js/books-full-*.js
   Cache-Control: public, max-age=31536000, immutable
 /js/books-lite-*.js
