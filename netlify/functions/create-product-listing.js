@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { purgeCacheTags } = require('./utils/purge-cache');
 const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
@@ -192,6 +193,10 @@ exports.handler = async (event) => {
         .single());
     }
     if (error) throw error;
+    // A custom listing is part of the same edge-cached storefront feed, so its
+    // saves have to invalidate it too — otherwise the panel shows the new price
+    // and the shop shows the old one.
+    await purgeCacheTags(['product-overrides']);
     if (dropped.length) {
       const fixes = [...new Set(dropped.map(d => d.fix))].join(' and ');
       return {

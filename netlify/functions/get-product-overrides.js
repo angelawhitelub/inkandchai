@@ -45,7 +45,11 @@ exports.handler = async (event) => {
       const { data: single, error: singleError } = await selectTolerant(cols => supabase
         .from('product_overrides')
         .select(cols)
-        .eq('slug', requestedSlug)
+        // ilike with no wildcards is a case-insensitive equality match. A plain
+        // .eq() against the lowercased input silently missed every row whose
+        // stored slug carries uppercase (e.g. "...-OU-HI"), so those overrides
+        // were invisible here. Slugs are [a-z0-9-] so there are no metacharacters.
+        .ilike('slug', requestedSlug)
         .eq('is_active', true)
         .maybeSingle(),
         'slug,title,author,category,price_inr,original_price_inr,image_url,gallery_images,scarcity,stock_qty,is_active,updated_at');
@@ -73,6 +77,9 @@ exports.handler = async (event) => {
           ...CORS,
           'Cache-Control': 'public, max-age=300, stale-while-revalidate=600',
           'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=300, stale-while-revalidate=3600',
+          // Saving a product purges this tag, so an admin price edit does not
+          // wait out the TTL at the edge. See utils/purge-cache.js.
+          'Netlify-Cache-Tag': 'product-overrides',
         },
         body: JSON.stringify({ overrides: override ? [override] : [] }),
       };
@@ -149,6 +156,7 @@ exports.handler = async (event) => {
       ...CORS,
       'Cache-Control': 'public, max-age=3600, stale-while-revalidate=3600',
       'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=3600, stale-while-revalidate=86400',
+      'Netlify-Cache-Tag': 'product-overrides',
     };
     const overrideBySlug = new Map((data || [])
       .map(o => [String(o.slug || '').toLowerCase(), { ...o, image_url: proxifySupabaseImage(o.image_url) }]));

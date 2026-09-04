@@ -7221,10 +7221,14 @@ function applyPublisherSourcedBadge(on) {{
 async function applyRuntimeProductOverride() {{
   try {{
     const slug = location.pathname.split('/').filter(Boolean)[1] || '';
-    const res = await fetch('/.netlify/functions/get-product-overrides', {{ cache: 'default' }});
+    // Ask for THIS slug only. The whole-catalogue feed is ~250 KB and cached for
+    // an hour, so a product page was both downloading the entire catalogue to
+    // read one row and showing an hour-old price after an admin edit. The
+    // single-slug branch is a few hundred bytes and carries a 5-minute TTL.
+    const key = String(slug || '').toLowerCase();
+    const res = await fetch('/.netlify/functions/get-product-overrides?slug=' + encodeURIComponent(key), {{ cache: 'default' }});
     if (!res.ok) {{ revealPrice(); return; }}
     const data = await res.json();
-    const key = String(slug || '').toLowerCase();
     const override = (data.overrides || []).find(o => String(o.slug || '').toLowerCase() === key);
     if (!override) {{ revealPrice(); return; }}
     if (override.title) {{

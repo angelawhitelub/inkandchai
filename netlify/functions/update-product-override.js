@@ -1,6 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { handlingDays, isMissingTable } = require('./utils/product-settings');
+const { purgeCacheTags } = require('./utils/purge-cache');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -168,8 +169,18 @@ exports.handler = async (event) => {
       }
     }
 
+    // The storefront feed is edge-cached for up to an hour. Without this the
+    // admin saves a price, reloads the product page, and still sees the old one
+    // until the TTL expires — which is exactly what it looks like when a save
+    // has silently failed.
+    const purge = await purgeCacheTags(['product-overrides']);
+
     const warning = skipped.length ? `Saved, but ${skipped.join('; ')}.` : undefined;
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, override: data, ...(warning ? { warning } : {}) }) };
+    return {
+      statusCode: 200,
+      headers: CORS,
+      body: JSON.stringify({ success: true, override: data, cache_purged: purge.purged, ...(warning ? { warning } : {}) }),
+    };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
