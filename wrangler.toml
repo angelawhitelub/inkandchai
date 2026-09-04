@@ -13,6 +13,21 @@ binding = "ASSETS"
 # /x/index.html the way Netlify and Pages both did.
 not_found_handling = "404-page"
 html_handling = "auto-trailing-slash"
+# The asset router runs BEFORE the Worker, and with not_found_handling
+# = "404-page" the 404 page counts as a match -- so on a browser
+# navigation (Sec-Fetch-Mode: navigate) any path without a prebuilt
+# file was answered with 404.html and the Worker never ran. That hid
+# every function-backed route from real browsers while curl and fetch
+# (which do not send that header) saw correct 200s. Force the Worker
+# to run first on the routes it owns; it still calls ASSETS.fetch()
+# internally, so the ~2,740 prebuilt product pages keep winning.
+run_worker_first = [
+  "/product/*",
+  "/spimg/*",
+  "/custom-feed.xml",
+  "/custom-feed-bulk/*",
+  "/.netlify/functions/*",
+]
 
 # Workers has no filesystem, no Netlify Blobs, and the Razorpay SDK is built on
 # node:http. Aliasing at bundle time means none of the 149 handlers had to
