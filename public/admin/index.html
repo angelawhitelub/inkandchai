@@ -6491,9 +6491,14 @@ async function saveAplusContent(isActive) {
     selectedProduct.aplus = data.content;
     aplusEditorBlocks = Array.isArray(data.content?.blocks) ? data.content.blocks.map(block => ({ ...block })) : [];
     renderAplusBlocks();
-    if (msg) msg.textContent = isActive
+    // Same self-check as the product save: a correct write behind an unpurged
+    // cache looks exactly like a write that never happened.
+    const stale = data.cache_purged === false
+      ? ' (storefront cache could not be purged — it may take up to an hour to appear)'
+      : '';
+    if (msg) msg.textContent = (isActive
       ? `A+ content is live with ${aplusEditorBlocks.length} module${aplusEditorBlocks.length === 1 ? '' : 's'}.`
-      : 'A+ content disabled. Saved modules are retained for later.';
+      : 'A+ content disabled. Saved modules are retained for later.') + stale;
   } catch (err) {
     if (msg) msg.textContent = 'Could not save A+ content: ' + err.message;
   } finally {
@@ -7487,7 +7492,15 @@ async function saveProductOverride(activeOverride = true) {
     selectedProduct.shippingRule = shippingData.rule || null;
     const idx = productRows.findIndex(p => p.slug === selectedProduct.slug);
     if (idx >= 0) productRows[idx] = selectedProduct;
-    msg.textContent = data.override?.is_active === false ? 'Override disabled. Storefront will use generated catalogue values.' : 'Saved. Refresh the storefront product page to see the update.';
+    // cache_purged tells us whether the storefront's edge cache was actually
+    // invalidated. If it silently was not, the save is correct but invisible —
+    // which is indistinguishable from a failed save, so say it out loud.
+    const stale = data.cache_purged === false
+      ? ' (storefront cache could not be purged — the change may take up to an hour to appear)'
+      : '';
+    msg.textContent = (data.override?.is_active === false
+      ? 'Override disabled. Storefront will use generated catalogue values.'
+      : 'Saved and live — reload the product page.') + stale;
     renderProductList();
   } catch (err) {
     msg.textContent = 'Could not save: ' + err.message;

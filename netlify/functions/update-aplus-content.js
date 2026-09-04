@@ -90,8 +90,8 @@ exports.handler = async (event) => {
     if (error) throw error;
     // A+ modules are read through a cached endpoint AND embedded in the Lambda
     // product page, so both have to be invalidated or the save is invisible.
-    await purgeAplus();
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, content: data }) };
+    const purge = await purgeAplus();
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, content: data, cache_purged: purge.purged }) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
