@@ -112,6 +112,13 @@ function toResponse(result) {
 
 // Re-issue a request with extra query parameters, so a handler that expects
 // ?slug=/?page= still sees them when the value came from the path.
+function noStore(response) {
+  const r = new Response(response.body, response);
+  r.headers.set('Cache-Control', 'no-store');
+  r.headers.set('CDN-Cache-Control', 'no-store');
+  return r;
+}
+
 function withQuery(request, params) {
   const url = new URL(request.url);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
@@ -195,6 +202,12 @@ export default {
         const rendered = await runHandler('product-page', withQuery(request, { slug }), env, ctx);
         if (rendered.status !== 404) return rendered;
       }
+      // A 404 must never be stored at the edge. Cloudflare caches them per
+      // colo, so one transient miss during a deploy or an origin blip pins a
+      // "Page not found" on a live product in one region while every other
+      // region serves it fine -- exactly what happened during the Netlify
+      // cutover. 200s keep caching normally.
+      return noStore(assetResponse);
     }
 
     return assetResponse;
