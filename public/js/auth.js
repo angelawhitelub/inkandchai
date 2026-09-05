@@ -1361,6 +1361,58 @@
     });
   }
 
+  // ── "Good to know" — why an order can take a few days ─────────────────────
+  //
+  // A copy of orderFactsHtml() in public/js/checkout.js. checkout.js is global
+  // and this file is inside an IIFE, so the two names never collide — but the
+  // WORDS have to stay in step, along with the WhatsApp bot's HOW WE SOURCE
+  // BOOKS block and /refund-policy/. Four places tell a customer the same
+  // things about sourcing; if they disagree, one of them is lying.
+  //
+  // The confirmation screen catches them at the happy moment. This one catches
+  // them five days later, which is when they are actually anxious and when
+  // "you're a scam" gets typed — so it is shown only while something is still
+  // on its way, never under a list of delivered orders.
+  const FACTS_LIVE_EXCLUDED = ['delivered', 'cancelled', 'refunded', 'partially_refunded',
+                               'refund_pending', 'refund_failed', 'rto', 'lost'];
+
+  function ordersStillInFlight(orders) {
+    return (orders || []).some(o => !FACTS_LIVE_EXCLUDED.includes(String(o.status || '').toLowerCase()));
+  }
+
+  function orderFactsHtml() {
+    const item = 'font-size:0.66rem;color:#a09080;line-height:1.8;margin:0 0 0.55rem;';
+    return `
+      <div style="background:#141210;border:1px solid rgba(201,168,76,0.16);
+                  padding:1.1rem 1.4rem;margin:1.6rem 0 0;text-align:left;">
+        <p style="font-size:0.58rem;color:#7a6330;letter-spacing:0.18em;text-transform:uppercase;margin:0 0 0.8rem;">
+          Good to know
+        </p>
+        <p style="${item}">
+          📚 Many of our titles are arranged from publishers <strong style="color:#c9a84c;">on demand</strong>,
+          so a book sometimes has to reach our shelf before it can ship. We'll message you the moment it's dispatched.
+        </p>
+        <p style="${item}">
+          ⏳ If a title is slow to source we try several suppliers — that can add
+          <strong style="color:#f0e8d8;">up to about 7 days</strong> before dispatch.
+        </p>
+        <p style="${item}">
+          💚 You can't lose money here. If we still can't arrange it, your order is cancelled
+          <strong style="color:#f0e8d8;">automatically within 10 days</strong> and a prepaid order is refunded
+          <strong style="color:#f0e8d8;">in full, automatically</strong>, to the same account you paid from.
+          Nothing to email, nothing to chase.
+        </p>
+        <p style="${item}">
+          📦 Damaged or wrong book? We replace it. A book missing from your parcel? We send it in the next
+          shipment — and if we can't get it, we refund that book.
+        </p>
+        <p style="font-size:0.66rem;color:#8a7d68;line-height:1.8;margin:0.8rem 0 0;">
+          We're a small independent bookshop, not a giant warehouse. Thank you for your patience — and for
+          reading with us 💛
+        </p>
+      </div>`;
+  }
+
   function renderOrders(container, data) {
     if (!data?.length) {
       // Empty here does NOT mean the customer has never ordered. Orders are
@@ -1490,6 +1542,10 @@
           ${invoiceDownloadBlock(o)}
         </div>`;
     }).join('');
+
+    // Only while something is actually still coming — a list of delivered
+    // orders does not need explaining, and the card would just be noise.
+    if (ordersStillInFlight(data)) container.insertAdjacentHTML('beforeend', orderFactsHtml());
 
     // Having some orders does not mean having all of them — a customer who
     // checked out under two different emails sees only one set. Keep the claim
