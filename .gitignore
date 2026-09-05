@@ -1,5 +1,14 @@
-node_modules/
+# A bare name, not "node_modules/" — the deploy worktree symlinks it, and a
+# trailing slash only matches a real directory, so the symlink showed up as an
+# untracked file in every git status.
+node_modules
 .env
 .env.local
 .netlify/
 public/index.html
+
+# Written by scripts/stamp-build-info.js at deploy time. Never commit it: a
+# stamp cannot name the commit it is committed in, so a tracked copy is stale
+# the moment it is written — which is exactly how the live stamp froze at
+# 4 Sep and left deploy-drift-check comparing a fossil to a moving branch.
+public/build-info.json

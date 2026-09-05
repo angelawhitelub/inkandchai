@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "netlify dev",
     "build": "python3 generate_site.py",
-    "deploy": "netlify deploy --prod"
+    "routes": "node scripts/build-worker-routes.js",
+    "stamp": "node scripts/stamp-build-info.js",
+    "deploy": "npm run routes && npm run stamp && wrangler deploy",
+    "test": "node --test netlify/functions/utils/*.test.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

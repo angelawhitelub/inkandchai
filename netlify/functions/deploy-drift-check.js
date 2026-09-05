@@ -14,9 +14,16 @@
  * running. This compares what is actually served against GitHub's main and says
  * so out loud.
  *
- * It reads the live /build-info.json rather than the Netlify API on purpose:
+ * It reads the live /build-info.json rather than asking the host on purpose:
  * the question is not "what did the last build think it built", it is "what is
  * being served right now".
+ *
+ * That stamp is written by scripts/stamp-build-info.js, which `npm run deploy`
+ * runs immediately before wrangler uploads. Netlify used to write it; after the
+ * Cloudflare migration nothing did, so the live stamp froze at 4 Sep and this
+ * check spent every hour comparing a fossil to a moving branch. A deploy that
+ * skips the stamp now serves no build-info.json at all, which lands on the
+ * "no build stamp" branch below -- loud, not silent.
  */
 const SITE = process.env.URL || 'https://inkandchai.in';
 const REPO = process.env.GITHUB_REPO || 'angelawhitelub/inkandchai';
@@ -79,10 +86,19 @@ exports.handler = async () => {
 
   const problems = [];
   if (!live) {
-    problems.push('The live site is serving a deploy with no build stamp, which means it was not built from this repository.');
+    problems.push('The live site is serving a deploy with no build stamp — it was deployed without `npm run deploy`, so nothing records what is actually running.');
   } else {
     if (live.branch && live.branch !== BRANCH) problems.push(`Live was built from branch "${live.branch}", not ${BRANCH}.`);
     if (!live.commit) problems.push('Live carries a build stamp with no commit — a hand-made deploy.');
+    // The 30 Aug incident in one field. The commit can match main perfectly and
+    // the site still be running code that exists on nobody's machine but the
+    // deployer's, because the working tree was dirty when it went up.
+    if (live.dirty) {
+      const files = Array.isArray(live.dirty_files) ? live.dirty_files : [];
+      problems.push(`Live was deployed from a working tree with uncommitted changes`
+        + (files.length ? ` (${files.length}: ${files.slice(0, 5).join(', ')}${files.length > 5 ? ' …' : ''})` : '')
+        + ' — the site is running code that is not in the repository.');
+    }
     else if (live.commit !== head.sha) {
       // Only complain once the push has had time to deploy.
       const pushedAgo = (Date.now() - new Date(head.committed_at || Date.now()).getTime()) / 60000;
@@ -92,10 +108,22 @@ exports.handler = async () => {
     }
   }
 
-  if (!problems.length) return report(true, { live_commit: live?.commit?.slice(0, 10), head: head.sha.slice(0, 10) });
+  if (!problems.length) {
+    return report(true, {
+      live_commit: live?.commit?.slice(0, 10),
+      head: head.sha.slice(0, 10),
+      built_at: live?.built_at || null,
+    });
+  }
 
-  const message = `⚠️ Live site does not match ${BRANCH}\n${problems.join('\n')}\nFix: push to ${BRANCH}, or re-run the last ${BRANCH} deploy from the Netlify dashboard.`;
+  const message = `⚠️ Live site does not match ${BRANCH}\n${problems.join('\n')}\n`
+    + `Fix: commit and push to ${BRANCH}, then run \`npm run deploy\` from a clean checkout of ${BRANCH}.`;
   console.error('[deploy-drift]', message.replace(/\n/g, ' '));
   await alertOwner(message);
-  return report(false, { problems, live_commit: live?.commit || null, head: head.sha });
+  return report(false, {
+    problems,
+    live_commit: live?.commit || null,
+    live_dirty: live?.dirty ?? null,
+    head: head.sha,
+  });
 };
