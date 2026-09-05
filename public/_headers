@@ -1,80 +1,18 @@
-# ── Cache rules — read top to bottom; first match wins per path ────────────
+# Cloudflare Pages merges every matching rule into one header value, so a
+# Cache-Control on /* would be appended to the asset rules below and produce a
+# self-contradicting header. Pages already defaults HTML to
+# "public, max-age=0, must-revalidate", so /* carries security headers only.
 
-# 1. Never cache any HTML (browser must revalidate every time → instant updates)
-/*.html
-  Cache-Control: public, max-age=0, must-revalidate
-
-# 2. Pretty URLs (no .html) — same rule, browser always checks for updates
-/
-  Cache-Control: public, max-age=0, must-revalidate
-/product/*
-  Cache-Control: public, max-age=0, must-revalidate
-/checkout/*
-  Cache-Control: public, max-age=0, must-revalidate
-/collection/*
-  Cache-Control: public, max-age=0, must-revalidate
-/category/*
-  Cache-Control: public, max-age=0, must-revalidate
-/admin/*
-  Cache-Control: no-store, max-age=0
-/terms/*
-  Cache-Control: public, max-age=0, must-revalidate
-/privacy-policy/*
-  Cache-Control: public, max-age=0, must-revalidate
-/refund-policy/*
-  Cache-Control: public, max-age=0, must-revalidate
-/return-policy/*
-  Cache-Control: public, max-age=0, must-revalidate
-/shipping-policy/*
-  Cache-Control: public, max-age=0, must-revalidate
-
-# 3. Versioned books-data JS — cache 1 year (content hash in filename changes each deploy)
+# Image filenames are NOT content-hashed, so "immutable" would make a replaced
+# cover impossible to push out — and turns any bad response into a year-long
+# cache entry. A week is long enough to be cheap and short enough to recover.
+/images/*
+  Cache-Control: public, max-age=604800
 /js/books-full-*.js
   Cache-Control: public, max-age=31536000, immutable
 /js/books-lite-*.js
   Cache-Control: public, max-age=31536000, immutable
 
-# 4a. Named static JS files — 24-hour cache (don't change every deploy; infrequent edits)
-/js/auth.js
-  Cache-Control: public, max-age=86400, must-revalidate
-/js/cart.js
-  Cache-Control: public, max-age=86400, must-revalidate
-/js/checkout.js
-  Cache-Control: public, max-age=86400, must-revalidate
-/js/summer-sale.js
-  Cache-Control: public, max-age=86400, must-revalidate
-
-# 4b. Other JS — short cache + must-revalidate (catch-all fallback)
-/*.js
-  Cache-Control: public, max-age=300, must-revalidate
-/js/*
-  Cache-Control: public, max-age=300, must-revalidate
-
-# 4c. CSS — 24-hour cache (same reasoning as named JS above)
-/*.css
-  Cache-Control: public, max-age=86400, must-revalidate
-
-# 5. Images & fonts — cache hard for 1 year (filenames don't change)
-/images/*
-  Cache-Control: public, max-age=31536000, immutable
-/*.jpg
-  Cache-Control: public, max-age=31536000, immutable
-/*.jpeg
-  Cache-Control: public, max-age=31536000, immutable
-/*.png
-  Cache-Control: public, max-age=31536000, immutable
-/*.webp
-  Cache-Control: public, max-age=31536000, immutable
-/*.svg
-  Cache-Control: public, max-age=31536000, immutable
-/*.woff
-  Cache-Control: public, max-age=31536000, immutable
-/*.woff2
-  Cache-Control: public, max-age=31536000, immutable
-
-# 6. Feed.xml — 1 hour cache (Google crawls ~daily; 10-min was causing ~13 GB/month)
-/feed.xml
-  Cache-Control: public, max-age=3600
-
-/robots.txt
-  Cache-Control: public, max-age=0, must-revalidate
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

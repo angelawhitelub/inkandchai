@@ -410,6 +410,15 @@ html:not([data-theme="light"]) body{ --cream-dim:#b5a595; }
 /* Inputs: softer premium focus ring in brand gold */
 input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0 0 2px rgba(201,168,76,.45) !important; }
 </style>
+<!-- Google Analytics 4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-ZPZDFWMDP6"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-ZPZDFWMDP6');
+</script>
+<!-- End Google Analytics 4 -->
 </head>
 <body>
 <nav>
@@ -609,11 +618,11 @@ input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-window.SUPABASE_URL      = "";
-window.SUPABASE_ANON_KEY = "";
+window.SUPABASE_URL      = "https://lajjjjkidxyfvmnyjboy.supabase.co";
+window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhampqamtpZHh5ZnZtbnlqYm95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIwMzgsImV4cCI6MjA5MjQyODAzOH0.rAVgue6qljChwHMWouemM74Ud73sSHX9Sh1ZaRm2Ax0";
 </script>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script>window.RAZORPAY_KEY_ID = "rzp_test_CHANGE_ME";</script>
+<script>window.RAZORPAY_KEY_ID = "rzp_live_SjIBMzPKhttiUh";</script>
 <script src="/js/google-customer-reviews.js"></script>
 <!-- Google automated discounts. Must load HERE too, not only on product pages:
      every checkout request reads window.iacDiscountGrants() to replay the grant
@@ -1869,6 +1878,40 @@ function trackGoogleAdsPurchase(orderId, value) {
   localStorage.setItem(key, '1');
 }
 
+// GA4 ecommerce purchase. Separate from the Ads conversion above on purpose:
+// send_to pins it to the GA4 property, because an event with no send_to goes to
+// EVERY configured target — which would post a stray "purchase" into both Ads
+// accounts as well.
+//
+// transaction_id is what GA4 de-dupes on, so a refresh of the success screen
+// cannot count the sale twice; the localStorage key guards the same thing
+// within a session.
+const GA4_ID = 'G-ZPZDFWMDP6';
+function trackGa4Purchase(orderId, value) {
+  if (!GA4_ID || !orderId || typeof gtag !== 'function') return;
+  const key = 'iac_ga4_purchase_' + orderId;
+  try { if (localStorage.getItem(key)) return; } catch (e) {}
+  const params = {
+    send_to: GA4_ID,
+    transaction_id: String(orderId),
+    currency: 'INR',
+    value: Number(value) || 0,
+  };
+  try {
+    const stash = JSON.parse(localStorage.getItem('iac_last_purchase_items') || '{}');
+    if (stash && Array.isArray(stash.cart_data) && stash.cart_data.length) {
+      params.items = stash.cart_data.map(function (i) {
+        return { item_id: String(i.id), price: Number(i.price) || 0, quantity: Number(i.quantity) || 1 };
+      });
+      // GA4 wants the coupon amount as a positive number on the transaction.
+      const d = Number(stash.discount) || 0;
+      if (d > 0) params.discount = d;
+    }
+  } catch (e) {}
+  gtag('event', 'purchase', params);
+  try { localStorage.setItem(key, '1'); } catch (e) {}
+}
+
 // Meta Purchase. Fires for BOTH pixels in one call, next to the Ads conversion
 // so the two platforms can never disagree about what counted as a sale.
 //
@@ -1930,6 +1973,8 @@ function cartDataItems(cart) {
 function showSuccess(type, orderId, addr, value, surveyOrderId = orderId) {
   hideProcessing();
   trackGoogleAdsPurchase(orderId, value);
+  // Before trackMetaPurchase — that one clears the item stash both of these read.
+  trackGa4Purchase(orderId, value);
   trackMetaPurchase(orderId, value);
   document.getElementById('checkoutScreen').style.display = 'none';
   const s = document.getElementById('successScreen');

@@ -1,0 +1,33 @@
+# Cloudflare Pages redirects, ported from netlify.toml.
+# First match wins. Static assets are served before these rules are consulted.
+
+# Legacy slug fixes (kept verbatim from Netlify)
+/product/david-goggins-combo-hindi-can-t-hurt-me-never-finished--BO-HI/  /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
+/product/david-goggins-combo-hindi-can-t-hurt-me-never-finished--bo-hi/  /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
+/product/cant-hurt-me-never-finished-combo-hindi-goggins/  /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
+/product/cant-hurt-me-never-finished-combo-hindi-goggins   /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
+/product/stop-letting-everything-affect-you-hindi-edition/  /product/stop-letting-everything-affect-you-hindi-edition-ou-hi/  301
+/product/stop-letting-everything-affect-you-hindi-edition   /product/stop-letting-everything-affect-you-hindi-edition-ou-hi/  301
+/product/5-hindi-bestsellers-combo-set-of-5-books/  /product/5-hindi-bestsellers-combo-set-of-5-books-mbo-5/  301
+/product/5-hindi-bestsellers-combo-set-of-5-books   /product/5-hindi-bestsellers-combo-set-of-5-books-mbo-5/  301
+/product/cant-hurt-me-hindi-goggins/  /product/can-t-hurt-me-hindi-me-hi/  301
+/product/cant-hurt-me-hindi-goggins   /product/can-t-hurt-me-hindi-me-hi/  301
+/product/hard-thing-about-hard-things-hindi-horowitz/  /product/the-hard-thing-about-hard-things-hindi-ng-hi/  301
+/product/hard-thing-about-hard-things-hindi-horowitz   /product/the-hard-thing-about-hard-things-hindi-ng-hi/  301
+/product/never-finished-hindi-goggins/  /product/never-finished-hindi-ed-hi/  301
+/product/never-finished-hindi-goggins   /product/never-finished-hindi-ed-hi/  301
+/product/thinking-fast-slow-hindi-kahneman/  /product/thinking-fast-and-slow-hindi-ow-hi/  301
+/product/thinking-fast-slow-hindi-kahneman   /product/thinking-fast-and-slow-hindi-ow-hi/  301
+/product/king-of-gluttony-ana-huang-OF-AH/  /product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-ny-ah/  301
+/product/king-of-gluttony-ana-huang-OF-AH   /product/king-of-gluttony-kings-of-sin-book-6-by-ana-huang-ny-ah/  301
+
+/favicon.ico  /images/favicon-96.png  301
+
+# Client-rendered listing pages
+/category/*    /category/    200
+/collection/*  /collection/  200
+
+
+# No catch-all: Pages serves the generated 404.html for anything unmatched.
+# That keeps admin-created product pages (whose Lambda is not ported yet) out
+# of the index as real 404s instead of soft-200 duplicate homepages.
