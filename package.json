@@ -7,7 +7,7 @@
     "build": "python3 generate_site.py",
     "routes": "node scripts/build-worker-routes.js",
     "stamp": "node scripts/stamp-build-info.js",
-    "deploy": "npm run routes && npm run stamp && wrangler deploy",
+    "deploy": "npm run routes && npm run stamp && npx wrangler deploy",
     "test": "node --test netlify/functions/utils/*.test.js"
   },
   "dependencies": {
