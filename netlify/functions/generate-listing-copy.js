@@ -93,7 +93,7 @@ exports.handler = async (event) => {
   if (block) return block;
 
   if (!process.env.OPENAI_API_KEY) {
-    return json(503, { error: 'OPENAI_API_KEY is not set on this deploy, so AI drafting is unavailable. Add it in Netlify → Site settings → Environment variables.' });
+    return json(503, { error: 'OPENAI_API_KEY is not readable on this deploy, so AI drafting is unavailable. Set it with: npx wrangler secret put OPENAI_API_KEY' });
   }
 
   let body;
