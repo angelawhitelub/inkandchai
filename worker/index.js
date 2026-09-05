@@ -175,6 +175,22 @@ function withQuery(request, params) {
 // without touching the twelve handler files.
 let currentEnv = null;
 let currentCtx = null;
+let currentHost = null;   // set per request; scheduled() has none, so env.URL stands in
+
+// The same loop bites STATIC files, not just functions. deploy-drift-check.js
+// asks the live site for its own /build-info.json to answer "what is actually
+// being served right now" -- and got 522 every hour, so the deploy alarm has
+// been reporting "skipped" instead of an answer. Serve those from the asset
+// binding, which is the same bytes the edge would have returned, without
+// leaving the Worker.
+function isOwnHost(url) {
+  if (currentHost && url.host === currentHost) return true;
+  for (const candidate of [currentEnv?.URL, currentEnv?.SITE_URL]) {
+    if (!candidate) continue;
+    try { if (new URL(candidate).host === url.host) return true; } catch { /* not a URL */ }
+  }
+  return false;
+}
 
 const upstreamFetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = async function patchedFetch(input, init) {
@@ -185,15 +201,26 @@ globalThis.fetch = async function patchedFetch(input, init) {
     return upstreamFetch(input, init);
   }
 
-  if (!url.pathname.startsWith(FN_PREFIX) || !currentEnv) {
-    return upstreamFetch(input, init);
+  if (!currentEnv) return upstreamFetch(input, init);
+
+  if (url.pathname.startsWith(FN_PREFIX)) {
+    const name = url.pathname.slice(FN_PREFIX.length).replace(/\/+$/, '').split('/')[0];
+    if (!routes[name]) return upstreamFetch(input, init);
+    console.log(`[self-call] ${name} dispatched in-process`);
+    return runHandler(name, new Request(url.toString(), init || input), currentEnv, currentCtx);
   }
 
-  const name = url.pathname.slice(FN_PREFIX.length).replace(/\/+$/, '').split('/')[0];
-  if (!routes[name]) return upstreamFetch(input, init);
+  if (currentEnv.ASSETS && isOwnHost(url)) {
+    // Reads only. The asset binding has nothing to do with a POST, and quietly
+    // swallowing one would be worse than the 522 it replaces.
+    const method = String((init && init.method) || (typeof input === 'object' && input.method) || 'GET').toUpperCase();
+    if (method === 'GET' || method === 'HEAD') {
+      console.log(`[self-call] asset ${url.pathname} served from the ASSETS binding`);
+      return currentEnv.ASSETS.fetch(new Request(url.toString(), init || input));
+    }
+  }
 
-  console.log(`[self-call] ${name} dispatched in-process`);
-  return runHandler(name, new Request(url.toString(), init || input), currentEnv, currentCtx);
+  return upstreamFetch(input, init);
 };
 
 
@@ -273,6 +300,7 @@ async function runHandler(name, request, env, ctx) {
 export default {
   async fetch(request, env, ctx) {
     currentEnv = env; currentCtx = ctx;
+    try { currentHost = new URL(request.url).host; } catch { currentHost = null; }
     // process.env is populated from bindings by the runtime under
     // nodejs_compat, so the 161 files reading it need no change. The KV
     // binding is not on process.env, so hand it to the blobs shim per request.
