@@ -414,14 +414,63 @@ function orderSummaryHtml(cart, amountRs, addr, amountLabel) {
     </div>`;
 }
 
+/**
+ * What we owe the customer at the moment they order: the truth about how long a
+ * book can take and what happens if we can't get it.
+ *
+ * This is the only screen every customer definitely reads. Saying it here costs
+ * one paragraph; NOT saying it is where the angry "where is my order / you're a
+ * scam" messages come from a week later, because nothing ever told them a
+ * listed book is arranged from a publisher rather than pulled off our shelf.
+ * The same facts back the WhatsApp bot (SYSTEM_PROMPT → HOW WE SOURCE BOOKS)
+ * and the refund policy page — keep the three in step.
+ *
+ * Deliberately not a scare box: no red, no warning icon, small type, sitting
+ * under the order summary rather than above it. It reassures more than it
+ * warns, because the headline fact is that nobody can lose money here.
+ */
+function orderFactsHtml() {
+  const item = 'font-size:0.63rem;color:#a09080;line-height:1.75;margin:0 0 0.5rem;';
+  return `
+    <div style="background:#141210;border:1px solid rgba(201,168,76,0.16);
+                padding:1rem 1.3rem;margin-bottom:1.6rem;text-align:left;">
+      <p style="font-size:0.58rem;color:#7a6330;letter-spacing:0.18em;text-transform:uppercase;margin:0 0 0.75rem;">
+        Good to know
+      </p>
+      <p style="${item}">
+        📚 Many of our titles are arranged from publishers <strong style="color:#c9a84c;">on demand</strong>,
+        so a book sometimes has to reach our shelf before it can ship. We'll message you the moment it's dispatched.
+      </p>
+      <p style="${item}">
+        ⏳ If a title is slow to source we try several suppliers — that can add
+        <strong style="color:#f0e8d8;">up to about 7 days</strong> before dispatch.
+      </p>
+      <p style="${item}">
+        💚 You can't lose money here. If we still can't arrange it, your order is cancelled
+        <strong style="color:#f0e8d8;">automatically within 10 days</strong> and a prepaid order is refunded
+        <strong style="color:#f0e8d8;">in full, automatically</strong>, to the same account you paid from.
+        Nothing to email, nothing to chase.
+      </p>
+      <p style="${item}">
+        📦 Damaged or wrong book? We replace it. A book missing from your parcel? We send it in the next
+        shipment — and if we can't get it, we refund that book.
+      </p>
+      <p style="font-size:0.63rem;color:#8a7d68;line-height:1.75;margin:0.75rem 0 0;">
+        We're a small independent bookshop, not a giant warehouse. Thank you for your patience — and for
+        reading with us 💛
+      </p>
+    </div>`;
+}
+
 function showOrderSuccess(paymentId, email, cart, amountRs, addr, surveyOrderId) {
   const modal = document.createElement('div');
   modal.style.cssText = `
     position:fixed; inset:0; background:rgba(13,11,8,0.97);
-    display:flex; align-items:center; justify-content:center; z-index:10000; padding:1.5rem;
+    display:flex; align-items:flex-start; justify-content:center; z-index:10000; padding:1.5rem;
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
   `;
   modal.innerHTML = `
-    <div style="text-align:center; padding:3rem; max-width:500px;">
+    <div style="text-align:center; padding:3rem 2rem; max-width:500px; margin:auto;">
       <div style="font-size:3rem; margin-bottom:1.5rem;">✦</div>
       <h2 style="font-family:'Cormorant Garamond',serif; font-size:2.4rem;
                  color:#f0e8d8; font-weight:300; margin-bottom:1rem;">Order Confirmed!</h2>
@@ -443,6 +492,7 @@ function showOrderSuccess(paymentId, email, cart, amountRs, addr, surveyOrderId)
           to track your orders anytime from <strong style="color:#f0e8d8;">My Orders</strong>.
         </p>
       </div>` : ''}
+      ${orderFactsHtml()}
       <button onclick="this.closest('div[style*=inset]').remove()"
         style="font-family:'Montserrat',sans-serif; font-size:0.62rem; letter-spacing:0.22em;
                text-transform:uppercase; padding:0.9rem 2rem; background:#c9a84c;
@@ -459,10 +509,11 @@ function showCODSuccess(orderId, name, email, cart, amountRs, addr) {
   const modal = document.createElement('div');
   modal.style.cssText = `
     position:fixed; inset:0; background:rgba(13,11,8,0.97);
-    display:flex; align-items:center; justify-content:center; z-index:10000; padding:1.5rem;
+    display:flex; align-items:flex-start; justify-content:center; z-index:10000; padding:1.5rem;
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
   `;
   modal.innerHTML = `
-    <div style="text-align:center; padding:3rem; max-width:500px;">
+    <div style="text-align:center; padding:3rem 2rem; max-width:500px; margin:auto;">
       <div style="font-size:3rem; margin-bottom:1.5rem;">🚚</div>
       <h2 style="font-family:'Cormorant Garamond',serif; font-size:2.4rem;
                  color:#f0e8d8; font-weight:300; margin-bottom:1rem;">Order Placed!</h2>
@@ -485,6 +536,7 @@ function showCODSuccess(orderId, name, email, cart, amountRs, addr) {
           to track your orders anytime from <strong style="color:#f0e8d8;">My Orders</strong>.
         </p>
       </div>` : ''}
+      ${orderFactsHtml()}
       <button onclick="this.closest('div[style*=inset]').remove()"
         style="font-family:'Montserrat',sans-serif; font-size:0.62rem; letter-spacing:0.22em;
                text-transform:uppercase; padding:0.9rem 2rem; background:#c9a84c;
