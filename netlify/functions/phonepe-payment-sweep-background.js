@@ -36,6 +36,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { getStore } = require('@netlify/blobs');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -179,6 +180,19 @@ exports.handler = async (event) => {
     return !SETTLED.has(String(o.status || ''));
   });
 
+  // An order that is still genuinely pending is never updated, so it stays a
+  // candidate forever. Without a cursor the sweep re-checks the same newest
+  // MAX_CHECKS every run and never reaches the rest of the backlog -- with 1172
+  // candidates and a cap of 300, 872 of them would never be looked at. Rotate the
+  // list by a persisted offset so consecutive runs walk the whole set.
+  const cursorStore = getStore('phonepe-sweep');
+  let cursor = 0;
+  try { cursor = Number(await cursorStore.get('cursor')) || 0; } catch { cursor = 0; }
+  if (candidates.length) {
+    cursor = ((cursor % candidates.length) + candidates.length) % candidates.length;
+    candidates.push(...candidates.splice(0, cursor));
+  }
+
   const token = await accessToken();
   const found = [], atRisk = [];
   let checked = 0, failed = 0;
@@ -267,7 +281,12 @@ exports.handler = async (event) => {
     } catch (e) { console.error('[phonepe-sweep] digest email failed:', e.message); }
   }
 
-  const summary = { checked, candidates: candidates.length, recovered: found.length, live_cod_at_risk: atRisk.length, failed };
+  try {
+    const next = candidates.length ? (cursor + checked) % candidates.length : 0;
+    await cursorStore.set('cursor', String(next));
+  } catch (e) { console.warn('[phonepe-sweep] cursor save failed:', e.message); }
+
+  const summary = { checked, candidates: candidates.length, cursor_from: cursor, recovered: found.length, live_cod_at_risk: atRisk.length, failed };
   console.log('[phonepe-sweep]', JSON.stringify(summary));
   return { statusCode: 200, headers: CORS, body: JSON.stringify(summary) };
 };

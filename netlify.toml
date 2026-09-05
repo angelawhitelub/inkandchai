@@ -24,10 +24,10 @@
 [functions."daily-unshipped-report"]
   schedule = "30 15 * * *"
 
-# Auto-mark stale shipped/OFD orders as delivered — runs daily at 4 AM UTC (9:30 AM IST)
-# Solves the "stuck in OFD" problem caused by NimbusPost not firing delivered events.
-[functions."auto-mark-delivered"]
-  schedule = "0 4 * * *"
+# auto-mark-delivered is NOT scheduled. Delivered status comes from the
+# NimbusPost webhook (nimbuspost-webhook.js maps 14 "delivered" spellings).
+# The handler is kept and can still be run manually with an X-Admin-Key POST if
+# orders are ever found stuck in out_for_delivery.
 
 # Drain the lost-orders blob pen: orders the database refused while it was
 # unreachable (paused project, outage) are parked in Netlify Blobs by the

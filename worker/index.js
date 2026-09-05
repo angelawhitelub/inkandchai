@@ -137,6 +137,16 @@ const ENABLED_JOBS = new Set([
   'phonepe-payment-sweep-scheduled',
   'replay-lost-orders',
   'auto-cancel-stale-cod',
+  'phonepe-retry-refunds-scheduled',
+  'phonepe-reconcile-refunds-scheduled',
+  'auto-push-replacements-scheduled',
+  // customer messaging
+  'request-reviews-scheduled',
+  'bot-order-followup-background',
+  'whatsapp-broadcast-scheduled',
+  'whatsapp-broadcast-oneoff',
+  // auto-mark-delivered is deliberately absent: delivered now comes from the
+  // NimbusPost webhook. Run it by hand if orders stick in out_for_delivery.
 ]);
 
 function noStore(response) {
