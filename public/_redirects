@@ -1,6 +1,12 @@
 # Cloudflare Pages redirects, ported from netlify.toml.
 # First match wins. Static assets are served before these rules are consulted.
 
+# NOTE ON CASE. Cloudflare serves assets case-SENSITIVELY; Netlify did not.
+# make_slug() lowercases the shopify_id suffix, but this one slug is a hardcoded
+# override in generate_site.py that keeps "MBO-5" uppercase, and the feed,
+# sitemap and catalogue JS all agree on the uppercase spelling. So the target
+# below must stay uppercase or it 404s. Every other product slug is lowercase.
+
 # Legacy slug fixes (kept verbatim from Netlify)
 /product/david-goggins-combo-hindi-can-t-hurt-me-never-finished--BO-HI/  /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
 /product/david-goggins-combo-hindi-can-t-hurt-me-never-finished--bo-hi/  /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
@@ -8,8 +14,8 @@
 /product/cant-hurt-me-never-finished-combo-hindi-goggins   /product/david-goggins-combo-hindi-cant-hurt-me-never-finished/  301
 /product/stop-letting-everything-affect-you-hindi-edition/  /product/stop-letting-everything-affect-you-hindi-edition-ou-hi/  301
 /product/stop-letting-everything-affect-you-hindi-edition   /product/stop-letting-everything-affect-you-hindi-edition-ou-hi/  301
-/product/5-hindi-bestsellers-combo-set-of-5-books/  /product/5-hindi-bestsellers-combo-set-of-5-books-mbo-5/  301
-/product/5-hindi-bestsellers-combo-set-of-5-books   /product/5-hindi-bestsellers-combo-set-of-5-books-mbo-5/  301
+/product/5-hindi-bestsellers-combo-set-of-5-books/  /product/5-hindi-bestsellers-combo-set-of-5-books-MBO-5/  301
+/product/5-hindi-bestsellers-combo-set-of-5-books   /product/5-hindi-bestsellers-combo-set-of-5-books-MBO-5/  301
 /product/cant-hurt-me-hindi-goggins/  /product/can-t-hurt-me-hindi-me-hi/  301
 /product/cant-hurt-me-hindi-goggins   /product/can-t-hurt-me-hindi-me-hi/  301
 /product/hard-thing-about-hard-things-hindi-horowitz/  /product/the-hard-thing-about-hard-things-hindi-ng-hi/  301
