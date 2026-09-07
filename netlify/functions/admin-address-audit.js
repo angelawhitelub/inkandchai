@@ -297,7 +297,7 @@ exports.handler = async (event) => {
   });
 
   let query = supabase.from('orders')
-    .select('id, razorpay_order_id, status, customer_name, customer_phone, customer_address, created_at, awb, nimbus_pushed_at, cart_items')
+    .select('id, razorpay_order_id, status, customer_name, customer_phone, customer_address, created_at, tracking_id, nimbus_pushed_at, cart_items')
     .or('source.is.null,source.neq.paperbound');
 
   if (Array.isArray(body.order_ids) && body.order_ids.length) {
@@ -311,7 +311,9 @@ exports.handler = async (event) => {
 
   // An order with an AWB is already on its way; its address is the courier's
   // problem now, and flagging it would only add noise to a list meant for action.
-  const orders = (rows || []).filter(o => !o.awb);
+  // The AWB lives in `tracking_id` -- there is no `orders.awb` column; `awb` is
+  // only a local variable inside nimbuspost-ship.js.
+  const orders = (rows || []).filter(o => !o.tracking_id);
 
   /* 1 -- shape checks, no network */
   const scanned = orders.map(o => {
