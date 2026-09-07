@@ -590,6 +590,36 @@ td{color:var(--cream);padding-top:1rem;padding-bottom:1rem;}
 .btn-gold,.btn-outline,.btn-green,.load-more-btn{font-size:0.78rem;}
 select,input,textarea{font-size:1rem;}
 /* Collapsed tools drawer */
+/* ── Banner Studio ────────────────────────────────────────────────────────
+   The preview mirrors the storefront hero closely enough to judge the copy:
+   same Cormorant headline, same gold italic accent, same eyebrow and stat row.
+   It is an approximation, not the live stylesheet -- the real hero CSS lives
+   inline in the generated homepage and cannot be linked from here. Line breaks
+   and relative sizes match, so what fits here fits there. */
+.bnr-f{width:100%;margin-top:.2rem;padding:.4rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);font-family:'Manrope',sans-serif;font-size:.64rem;outline:none;}
+.bnr-preview{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#241a3d;min-height:230px;display:flex;}
+.bnr-empty{margin:auto;color:var(--cream-dim);font-size:.64rem;padding:2rem;text-align:center;}
+.bnr-stage{display:grid;grid-template-columns:1.05fr .95fr;gap:1rem;width:100%;padding:1.6rem 1.5rem;align-items:center;}
+.bnr-eyebrow{font-size:.55rem;letter-spacing:.3em;text-transform:uppercase;color:#c9a84c;display:flex;align-items:center;gap:.7rem;margin-bottom:.9rem;}
+.bnr-eyebrow::before{content:'';width:34px;height:1px;background:#c9a84c;display:inline-block;}
+.bnr-title{font-family:'Cormorant Garamond','DM Serif Display',serif;font-size:clamp(1.5rem,3.1vw,2.5rem);line-height:1.07;color:#f0ebff;margin:0 0 .8rem;font-weight:400;}
+.bnr-title em{font-style:italic;color:#d9bd6a;}
+.bnr-sub{font-size:.63rem;line-height:1.65;color:rgba(240,235,255,.72);margin:0 0 1rem;max-width:44ch;}
+.bnr-ctas{display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;margin-bottom:1.1rem;}
+.bnr-btn{background:#c9a84c;color:#1a1208;padding:.5rem 1rem;font-size:.55rem;letter-spacing:.16em;text-transform:uppercase;font-weight:600;border-radius:2px;}
+.bnr-ghost{color:rgba(240,235,255,.8);font-size:.55rem;letter-spacing:.16em;text-transform:uppercase;}
+.bnr-stats{display:flex;gap:1.6rem;flex-wrap:wrap;border-top:1px solid rgba(240,235,255,.16);padding-top:.8rem;}
+.bnr-stats .n{font-family:'Cormorant Garamond',serif;font-size:1.05rem;color:#f0ebff;line-height:1.2;}
+.bnr-stats .l{font-size:.5rem;letter-spacing:.16em;text-transform:uppercase;color:rgba(240,235,255,.55);margin-top:.15rem;}
+.bnr-covers{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;}
+.bnr-covers img{width:78px;height:auto;border-radius:3px;box-shadow:0 10px 26px rgba(0,0,0,.45);background:#2f2550;}
+.bnr-covers img.feat{width:104px;}
+.bnr-chip{display:inline-flex;align-items:center;gap:.4rem;background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:.22rem .5rem .22rem .3rem;margin:.15rem;font-size:.58rem;}
+.bnr-chip img{width:22px;height:30px;object-fit:cover;border-radius:2px;}
+.bnr-chip button{background:none;border:none;color:#c96a6a;cursor:pointer;font-size:.75rem;line-height:1;padding:0 .1rem;}
+.bnr-hit{display:flex;gap:.5rem;align-items:center;padding:.35rem;border-radius:5px;cursor:pointer;}
+.bnr-hit:hover{background:var(--bg2);}
+.bnr-hit img{width:26px;height:36px;object-fit:cover;border-radius:2px;}
 #tab-tools .export-bar{display:flex!important;flex-wrap:wrap;gap:0.6rem;align-items:center;padding:1.2rem;background:var(--bg2);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);}
 #tab-tools h1{margin-bottom:0.3rem;}
 #tab-tools .subtitle{margin-bottom:1.2rem;max-width:70ch;}
@@ -853,6 +883,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
     <button class="admin-tab owner-only" data-tab="promotions" onclick="switchTab('promotions')">🏷 Promotions</button>
     <button class="admin-tab" data-tab="reels"     onclick="switchTab('reels')">🎬 Video Reels</button>
+    <button class="admin-tab owner-only" data-tab="banners" onclick="switchTab('banners')">🎨 Banner Studio</button>
     <button class="admin-tab" data-tab="abandoned" onclick="switchTab('abandoned')">🛒 Abandoned Carts</button>
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
@@ -1200,6 +1231,77 @@ select,input,textarea{font-size:1rem;}
     <div id="addressAuditSummary" style="margin-top:1rem;font-size:0.62rem;color:var(--cream-dim);"></div>
     <div id="addressAuditResults" style="margin-top:0.8rem;"></div>
   </section>
+  </div>
+
+  <!-- ═══ BANNER STUDIO TAB ═══ -->
+  <div class="admin-section" id="tab-banners">
+    <section class="abandoned-panel">
+      <div class="abandoned-head">
+        <div>
+          <h2>🎨 Banner Studio</h2>
+          <p>Pick the book or books, and the model drafts a homepage hero slide for them — eyebrow, headline, sub-line, buttons and the three stats. <strong>Prices, links and covers come from the database, never from the model</strong>, so a banner can't quote a price that isn't real or link to a book that doesn't exist. Edit anything, watch the preview update, then copy the finished slide.</p>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:1.2rem;align-items:start;">
+        <!-- ── picker ── -->
+        <div>
+          <input id="bnrSearch" type="search" placeholder="🔍 Search books by title" autocomplete="off"
+            oninput="bnrSearchDebounced()"
+            style="width:100%;padding:.5rem .6rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);font-family:'Manrope',sans-serif;font-size:.64rem;outline:none;border-radius:6px;"/>
+          <div id="bnrResults" style="max-height:230px;overflow:auto;margin-top:.5rem;"></div>
+
+          <div class="hint" style="margin:.9rem 0 .3rem;">Selected — drag order decides the covers; the first is featured.</div>
+          <div id="bnrSelected" style="min-height:44px;border:1px dashed var(--border);border-radius:6px;padding:.4rem;"></div>
+
+          <label class="hint" style="display:block;margin:.8rem 0 .25rem;">Lead on</label>
+          <select id="bnrAngle" style="width:100%;padding:.4rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);font-size:.62rem;">
+            <option value="">Let the model decide</option>
+            <option value="value">Value — the set costs less together</option>
+            <option value="series">Series — read them in order</option>
+            <option value="new">New arrival</option>
+            <option value="hindi">Hindi edition</option>
+            <option value="gifting">Gifting</option>
+          </select>
+
+          <label class="hint" style="display:block;margin:.8rem 0 .25rem;">Brief (optional) — anything the model can't know</label>
+          <textarea id="bnrBrief" rows="3" placeholder="e.g. Diwali week, this is the only Hindi edition in print"
+            style="width:100%;padding:.45rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);font-family:'Manrope',sans-serif;font-size:.62rem;outline:none;"></textarea>
+
+          <button class="btn-green" id="bnrGenBtn" onclick="generateBanner(this)" style="width:100%;margin-top:.7rem;padding:.55rem;font-size:.6rem;">✨ Draft the banner</button>
+          <div class="hint" id="bnrStatus" style="margin-top:.5rem;"></div>
+        </div>
+
+        <!-- ── editor + preview ── -->
+        <div>
+          <div id="bnrEditor" style="display:none;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.55rem;">
+              <label class="hint">Eyebrow<input id="bnrEyebrow" class="bnr-f" oninput="renderBannerPreview()"/></label>
+              <label class="hint">Headline line 1<input id="bnrL1" class="bnr-f" oninput="renderBannerPreview()"/></label>
+              <label class="hint">Accent line (gold italic)<input id="bnrAccent" class="bnr-f" oninput="renderBannerPreview()"/></label>
+              <label class="hint">Headline line 3<input id="bnrL3" class="bnr-f" oninput="renderBannerPreview()"/></label>
+              <label class="hint">Button<input id="bnrCta" class="bnr-f" oninput="renderBannerPreview()"/></label>
+              <label class="hint">Second link<input id="bnrCta2" class="bnr-f" oninput="renderBannerPreview()"/></label>
+            </div>
+            <label class="hint" style="display:block;margin-top:.55rem;">Sub-line
+              <textarea id="bnrSub" class="bnr-f" rows="2" oninput="renderBannerPreview()"></textarea></label>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;margin-top:.55rem;">
+              <label class="hint">Stat 1<input id="bnrS0n" class="bnr-f" oninput="renderBannerPreview()"/><input id="bnrS0l" class="bnr-f" oninput="renderBannerPreview()"/></label>
+              <label class="hint">Stat 2<input id="bnrS1n" class="bnr-f" oninput="renderBannerPreview()"/><input id="bnrS1l" class="bnr-f" oninput="renderBannerPreview()"/></label>
+              <label class="hint">Stat 3<input id="bnrS2n" class="bnr-f" oninput="renderBannerPreview()"/><input id="bnrS2l" class="bnr-f" oninput="renderBannerPreview()"/></label>
+            </div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;">
+              <button class="btn-outline" onclick="generateBanner(this)" style="padding:.42rem .9rem;font-size:.58rem;">↻ Redraft</button>
+              <button class="btn-green" onclick="copyBannerHtml(this)" style="padding:.42rem .9rem;font-size:.58rem;">📋 Copy slide HTML</button>
+              <span class="hint" style="margin:0;align-self:center;">Paste into <code>generate_site.py</code> beside the other <code>promo-slide</code> sections.</span>
+            </div>
+          </div>
+
+          <div class="hint" style="margin:.9rem 0 .35rem;">Preview</div>
+          <div id="bnrPreview" class="bnr-preview"><div class="bnr-empty">Pick a book and draft a banner to see it here.</div></div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <!-- ═══ VIDEO REELS TAB ═══ -->
@@ -9752,6 +9854,188 @@ function copyAddressAuditList() {
     .catch(() => alert('Could not copy. Your browser blocked clipboard access.'));
 }
 
+/* ── Banner Studio ─────────────────────────────────────────────────────────
+ * Select books, have the model draft a homepage hero slide for them, edit it,
+ * and copy the finished markup. The model only ever fills text fields; the
+ * server assembles the slide and fills prices, links and covers from the
+ * database, so nothing it writes can invent a price or a URL.
+ * ------------------------------------------------------------------------ */
+let bnrPicked = [];       // [{slug,title,img,price}]
+let bnrLastHtml = '';
+let bnrSearchTimer = null;
+
+function bnrSearchDebounced() {
+  clearTimeout(bnrSearchTimer);
+  bnrSearchTimer = setTimeout(bnrSearch, 260);   // one request per pause, not per keystroke
+}
+
+async function bnrSearch() {
+  const q = (document.getElementById('bnrSearch')?.value || '').trim();
+  const box = document.getElementById('bnrResults');
+  if (!box) return;
+  if (q.length < 2) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="hint">Searching…</div>';
+  try {
+    const res = await fetch('/.netlify/functions/catalog-search?per_page=12&q=' + encodeURIComponent(q));
+    const data = await res.json();
+    const books = data.books || [];
+    if (!books.length) { box.innerHTML = '<div class="hint">Nothing matches that.</div>'; return; }
+    box.innerHTML = books.map(b => `
+      <div class="bnr-hit" onclick="bnrPick('${encodeURIComponent(JSON.stringify(b))}')">
+        <img src="${esc(b.img)}" alt="" loading="lazy"/>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.6rem;line-height:1.35;">${esc(b.title)}</div>
+          <div class="hint" style="margin:0;">₹${esc(b.price)}</div>
+        </div>
+      </div>`).join('');
+  } catch (err) {
+    box.innerHTML = '<div class="hint">Search failed: ' + esc(err.message) + '</div>';
+  }
+}
+
+function bnrPick(encoded) {
+  let b; try { b = JSON.parse(decodeURIComponent(encoded)); } catch { return; }
+  if (!b || !b.slug) return;
+  if (bnrPicked.some(x => x.slug === b.slug)) return;          // no duplicates
+  if (bnrPicked.length >= 6) { alert('Six books is the most a banner can show.'); return; }
+  bnrPicked.push({ slug: b.slug, title: b.title, img: b.img, price: b.price });
+  bnrRenderPicked();
+}
+
+function bnrRemove(slug) {
+  bnrPicked = bnrPicked.filter(b => b.slug !== slug);
+  bnrRenderPicked();
+  renderBannerPreview();
+}
+
+function bnrRenderPicked() {
+  const box = document.getElementById('bnrSelected');
+  if (!box) return;
+  box.innerHTML = bnrPicked.length
+    ? bnrPicked.map((b, i) => `<span class="bnr-chip" title="${esc(b.title)}">
+        <img src="${esc(b.img)}" alt=""/>
+        <span>${i === 0 ? '★ ' : ''}${esc(b.title.slice(0, 26))}${b.title.length > 26 ? '…' : ''}</span>
+        <button onclick="bnrRemove('${esc(b.slug)}')" title="Remove">×</button></span>`).join('')
+    : '<div class="hint" style="margin:.3rem;">No books picked yet.</div>';
+}
+
+async function generateBanner(btn) {
+  if (!bnrPicked.length) { alert('Pick at least one book first.'); return; }
+  const status = document.getElementById('bnrStatus');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Drafting…'; }
+  if (status) status.textContent = '';
+  try {
+    const res = await adminFetch('/.netlify/functions/generate-banner-copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slugs: bnrPicked.map(b => b.slug),
+        angle: document.getElementById('bnrAngle')?.value || '',
+        brief: document.getElementById('bnrBrief')?.value || '',
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    bnrFill(data);
+    if (status && data.warnings?.length) status.innerHTML = '⚠️ ' + data.warnings.map(esc).join('<br>⚠️ ');
+  } catch (err) {
+    if (status) status.textContent = 'Could not draft: ' + err.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+function bnrFill(data) {
+  const f = data.fields || {};
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : v; };
+  set('bnrEyebrow', f.eyebrow); set('bnrL1', f.title_line1);
+  set('bnrAccent', f.title_accent); set('bnrL3', f.title_line3);
+  set('bnrSub', f.subtitle); set('bnrCta', f.cta_label); set('bnrCta2', f.cta_secondary);
+  (f.stats || []).slice(0, 3).forEach((s, i) => { set(`bnrS${i}n`, s.num); set(`bnrS${i}l`, s.label); });
+  // Covers and money come from the server's DB lookup, so trust those over the
+  // picker, which only holds what the search happened to return.
+  if (Array.isArray(data.books) && data.books.length) {
+    bnrPicked = data.books.map(b => ({ slug: b.slug, title: b.title, img: b.img, price: b.price }));
+    bnrRenderPicked();
+  }
+  const ed = document.getElementById('bnrEditor');
+  if (ed) ed.style.display = '';
+  bnrLastHtml = data.html || '';
+  renderBannerPreview();
+}
+
+function renderBannerPreview() {
+  const box = document.getElementById('bnrPreview');
+  if (!box) return;
+  const val = (id) => document.getElementById(id)?.value || '';
+  if (!bnrPicked.length && !val('bnrEyebrow')) {
+    box.innerHTML = '<div class="bnr-empty">Pick a book and draft a banner to see it here.</div>';
+    return;
+  }
+  const stats = [0, 1, 2].map(i => ({ num: val(`bnrS${i}n`), label: val(`bnrS${i}l`) })).filter(s => s.num || s.label);
+  const total = bnrPicked.reduce((sum, b) => sum + (Number(b.price) || 0), 0);
+  box.innerHTML = `<div class="bnr-stage">
+    <div>
+      <div class="bnr-eyebrow">${esc(val('bnrEyebrow'))}</div>
+      <h3 class="bnr-title">${esc(val('bnrL1'))}<br/><em>${esc(val('bnrAccent'))}</em><br/>${esc(val('bnrL3'))}</h3>
+      <p class="bnr-sub">${esc(val('bnrSub'))}</p>
+      <div class="bnr-ctas">
+        <span class="bnr-btn">${esc(val('bnrCta'))}${total ? ' — ₹' + total.toLocaleString('en-IN') : ''}</span>
+        <span class="bnr-ghost">${esc(val('bnrCta2'))} →</span>
+      </div>
+      <div class="bnr-stats">${stats.map(s =>
+        `<div><div class="n">${esc(s.num)}</div><div class="l">${esc(s.label)}</div></div>`).join('')}</div>
+    </div>
+    <div class="bnr-covers">${bnrPicked.map((b, i) =>
+      `<img class="${i === 0 ? 'feat' : ''}" src="${esc(b.img)}" alt="${esc(b.title)}" loading="lazy"/>`).join('')}</div>
+  </div>`;
+
+  // The copy button must hand over what is on screen now, not the original
+  // draft, so re-assemble the markup from the live field values.
+  bnrLastHtml = bnrSlideHtml(stats, total);
+}
+
+// Mirrors renderSlide() in netlify/functions/generate-banner-copy.js. Kept in
+// step with it by tests/netlify/banner-copy.test.js on the server side; if the
+// two ever drift, the server's version is the one that ships.
+function bnrSlideHtml(stats, total) {
+  const val = (id) => document.getElementById(id)?.value || '';
+  const covers = bnrPicked.map((b, i) => `
+          <a class="hero-cover-card${i === 0 ? ' featured' : ''}" href="/product/${encodeURIComponent(b.slug)}/" data-label="${esc(b.title.slice(0, 40))}">
+            <picture><img src="${esc(b.img)}" alt="${esc(b.title)}" loading="lazy"/></picture>
+          </a>`).join('');
+  const statHtml = stats.map(s => `
+        <div><div class="stat-num">${esc(s.num)}</div><div class="stat-label">${esc(s.label)}</div></div>`).join('');
+  const href = bnrPicked.length === 1 ? `/product/${encodeURIComponent(bnrPicked[0].slug)}/` : '/book-combos/';
+  return `  <!-- Banner: ${esc(val('bnrEyebrow'))} -->
+  <section class="hero promo-slide" style="padding:0;" aria-label="${esc(val('bnrEyebrow'))}">
+    <div class="hero-left">
+      <div class="hero-eyebrow">${esc(val('bnrEyebrow'))}</div>
+      <h2 class="hero-title">${esc(val('bnrL1'))}<br/><em>${esc(val('bnrAccent'))}</em><br/>${esc(val('bnrL3'))}</h2>
+      <p class="hero-sub hero-sub-desktop">${esc(val('bnrSub'))}</p>
+      <div class="hero-ctas">
+        <a href="${esc(href)}" class="btn-primary">${esc(val('bnrCta'))}${total ? ' — ₹' + total.toLocaleString('en-IN') : ''}</a>
+        <a href="/bestsellers/" class="btn-ghost">${esc(val('bnrCta2'))}</a>
+      </div>
+      <div class="hero-stats">${statHtml}
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="hero-cover-wall" aria-label="${esc(val('bnrEyebrow'))} featured books">${covers}
+      </div>
+    </div>
+  </section>`;
+}
+
+function copyBannerHtml(btn) {
+  if (!bnrLastHtml) { alert('Draft a banner first.'); return; }
+  navigator.clipboard.writeText(bnrLastHtml).then(() => {
+    const o = btn.innerHTML; btn.innerHTML = '✓ Copied';
+    setTimeout(() => { btn.innerHTML = o; }, 1600);
+  }).catch(() => alert('Could not copy — your browser blocked clipboard access.'));
+}
+
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -10309,7 +10593,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','bundles','coupons','promotions','reels','abandoned','reviews','replacements','returns','npcancelled','rtorefunds','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','returns','npcancelled','rtorefunds','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
