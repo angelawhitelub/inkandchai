@@ -3946,6 +3946,12 @@ function _drawTable() {
           onmouseover="this.style.background='rgba(201,168,76,0.18)';"
           onmouseout="this.style.background='rgba(201,168,76,0.08)';">
           🚀 Ship via NimbusPost
+        </button>
+        <button onclick="npPushOrderToPanel('${esc(o.razorpay_order_id||o.id)}', this)" title="Put this one order into the NimbusPost Orders panel WITHOUT picking a courier or generating an AWB. Use it when you want the order waiting in the panel to ship later, or by hand."
+          style="display:block;margin-top:0.4rem;background:rgba(77,184,255,0.08);border:1px solid rgba(77,184,255,0.4);color:#4db8ff;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;width:100%;"
+          onmouseover="this.style.background='rgba(77,184,255,0.18)';"
+          onmouseout="this.style.background='rgba(77,184,255,0.08)';">
+          📥 Push to panel (no AWB)
         </button>` : ''}
         ${['delivered','shipped','out_for_delivery','rto','undelivered'].includes(String(o.status||'').toLowerCase()) ? `<button onclick="createReturnOrder('${esc(o.razorpay_order_id||o.id)}', this)" title="Create a reverse pickup (return order) for this order on NimbusPost — picks up from the customer, delivers to your warehouse"
           style="display:block;margin-top:0.4rem;background:rgba(232,160,48,0.08);border:1px solid rgba(232,160,48,0.45);color:var(--orange);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;width:100%;"
@@ -9289,6 +9295,55 @@ async function pushAllToNimbusPanel(btn) {
     nimbusPanelPushActive = false;
     allNimbusPushButtons.forEach(button => { button.disabled = false; });
     if (btn) btn.innerHTML = orig;
+  }
+}
+
+// ── NimbusPost: push ONE order to the panel, no courier, no AWB ─────────────
+//
+// Same endpoint as pushAllToNimbusPanel above — nimbuspost-order-push already
+// takes an order_ids array; it was only ever wired to the bulk button. Per
+// order it is the "I want this waiting in the panel, I'll ship it myself"
+// option, as opposed to npShipOrder which books a courier and mints an AWB.
+//
+// Dedup is the endpoint's, not ours: it skips anything already carrying
+// nimbus_pushed_at or already present in the panel, so pressing this twice
+// cannot create a second shipment.
+async function npPushOrderToPanel(orderId, btn) {
+  if (!confirm(`Push ${orderId} to the NimbusPost Orders panel?\n\nNo courier is selected and NO AWB is generated — the order just appears in the panel, ready to ship whenever you want.`)) return;
+
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Pushing…'; }
+
+  try {
+    const res = await fetch('/.netlify/functions/nimbuspost-order-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ order_ids: [orderId] }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+    const s = data.summary || {};
+    if (s.pushed) {
+      alert(`✅ ${orderId} is now in the NimbusPost Orders panel.\n\nNo AWB was generated. Open NimbusPost → Orders to assign a courier when you're ready.`
+        + (data.warning ? `\n\n⚠️ ${data.warning}` : ''));
+    } else if (s.skipped) {
+      // Not an error: either we stamped it before, or the panel already has it.
+      alert(`⏭ ${orderId} is already in the NimbusPost panel — nothing was pushed, so there's no duplicate.`);
+    } else {
+      // Say what NimbusPost actually objected to. A bare "failed" here is the
+      // difference between a two-second fix and a support ticket.
+      throw new Error((data.errors && data.errors[0]) || 'NimbusPost did not accept the order and gave no reason.');
+    }
+    // Nothing on the row changes -- no status, no AWB -- so a full reload would
+    // only cost a refetch and a scroll jump. Stamp the local cache instead, the
+    // way npShipOrder does, so the panel state is right without one.
+    const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+    if (ord && !ord.nimbus_pushed_at) ord.nimbus_pushed_at = new Date().toISOString();
+  } catch (err) {
+    alert(`Could not push ${orderId} to the panel:\n\n${err.message}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
 }
 
