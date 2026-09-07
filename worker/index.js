@@ -140,6 +140,7 @@ const ENABLED_JOBS = new Set([
   'phonepe-retry-refunds-scheduled',
   'phonepe-reconcile-refunds-scheduled',
   'auto-push-replacements-scheduled',
+  'nimbuspost-push-sweep-scheduled',
   // customer messaging
   'request-reviews-scheduled',
   'bot-order-followup-background',

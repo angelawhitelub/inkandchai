@@ -71,6 +71,15 @@
 # Every 15 minutes, and only for replacements older than the grace window
 # (REPLACEMENT_PUSH_GRACE_MINUTES, default 120) so the owner can still edit the
 # books — editing is locked once an order is pushed.
+# Shares the */15 trigger with auto-push-replacements rather than taking a cron
+# slot of its own. Retries orders whose inline panel push never ran -- a
+# cancelled floating promise, or an order inserted by replay-lost-orders, which
+# pushes nothing. Draft orders only: no AWB, no shipment, no charge.
+# NOTE: build-worker-routes reads `schedule` on the line directly after the
+# header, so nothing may come between them.
+[functions."nimbuspost-push-sweep-scheduled"]
+  schedule = "*/15 * * * *"
+
 [functions."auto-push-replacements-scheduled"]
   schedule = "*/15 * * * *"
 

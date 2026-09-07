@@ -15,6 +15,7 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
+const { afterResponse } = require('./utils/after-response');
 const { sendEmail }    = require('./utils/email');
 const { generateCardForOrder } = require('./utils/scratch-cards');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
@@ -61,7 +62,7 @@ function emailBase(content) {
   </div>`;
 }
 
-exports.handler = async (event) => {
+exports.handler = async (event, context) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
 
@@ -318,7 +319,7 @@ exports.handler = async (event) => {
   // Claim-guarded: verify-payment pushes the same order from the browser
   // callback. The stamp is the lock, so only one of the two reaches the panel
   // and a failed push releases it for the other to retry.
-  pushToNimbusOnce(supabase, {
+  afterResponse(context, pushToNimbusOnce(supabase, {
     razorpay_order_id: inkOrderId,
     status: isPartial ? 'partial_cod_pending' : 'paid',
     razorpay_payment_id,
@@ -327,7 +328,7 @@ exports.handler = async (event) => {
     customer_address: address || '',
     amount_paise: amount_paise,
     cart_items: cartItems,
-  }).catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
+  }), 'NimbusPost razorpay-webhook auto-push');
 
   // ── Scratch card reward (non-fatal) ──────────────────────────────────────
   // Full prepaid only — matches verify-payment. A partial-COD customer has paid

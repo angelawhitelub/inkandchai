@@ -21,6 +21,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail }     = require('./utils/email');
 const { claimPaidNotify } = require('./utils/paid-notify-once');
+const { afterResponse } = require('./utils/after-response');
 const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
@@ -229,8 +230,8 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
     // ── Auto-push to NimbusPost panel (no AWB) ─────────────────────────────
     // Claim-guarded: the webhook pushes too, and either may arrive first or
     // not at all. Whichever wins the claim does the push.
-    pushToNimbusOnce(supabase, { ...order, status: update.status })
-      .catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
+    afterResponse(context, pushToNimbusOnce(supabase, { ...order, status: update.status }),
+      'NimbusPost phonepe-verify-status auto-push');
 
     // ── Scratch card reward — only for full prepaid orders (not partial COD) ─
     if (update.status === 'paid') {
@@ -305,7 +306,7 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
   }
 }
 
-exports.handler = async (event) => {
+exports.handler = async (event, context) => {
   const id = event.queryStringParameters?.id;
   const siteUrl = process.env.SITE_URL || 'https://inkandchai.in';
   const host = process.env.PHONEPE_HOST || 'https://api.phonepe.com/apis';

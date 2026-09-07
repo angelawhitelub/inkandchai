@@ -6,6 +6,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { recordMarketingOptIn } = require('./utils/marketing-optin');
+const { afterResponse } = require('./utils/after-response');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
@@ -84,7 +85,7 @@ function emailBase(content) {
     </div>`;
 }
 
-exports.handler = async (event) => {
+exports.handler = async (event, context) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST')    return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
 
@@ -263,8 +264,11 @@ exports.handler = async (event) => {
     }).catch(e => console.error('[Shiprocket] push failed (non-fatal):', e.message));
 
     // ── Auto-push to NimbusPost panel (no AWB) ─────────────────────────────
-    // Fire-and-forget; admin still has a manual bulk "Push to NimbusPost Panel".
-    pushOrderToNimbusPost({
+    // Runs AFTER the response so checkout is not held open for the courier
+    // API, but registered with waitUntil so Workers does not cancel it the
+    // moment the response is sent -- which is how COD orders were silently
+    // going unpushed. nimbuspost-push-sweep-scheduled is the net under this.
+    afterResponse(context, pushOrderToNimbusPost({
       razorpay_order_id: orderId,
       status: 'cod_pending',
       customer_name: customer.name || '',
@@ -280,8 +284,8 @@ exports.handler = async (event) => {
     })
       // Stamp the row so a later manual bulk push never re-pushes this order
       // (best-effort; needs orders_nimbus_pushed_at.sql).
-      .then(() => supabase.from('orders').update({ nimbus_pushed_at: new Date().toISOString() }).eq('razorpay_order_id', orderId))
-      .catch(e => console.error('[NimbusPost] auto-push failed (non-fatal):', e.message));
+      .then(() => supabase.from('orders').update({ nimbus_pushed_at: new Date().toISOString() }).eq('razorpay_order_id', orderId)),
+      'NimbusPost cod-order auto-push');
 
   } catch (err) {
     console.error('Supabase error (non-fatal):', err.message);
