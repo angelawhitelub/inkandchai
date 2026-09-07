@@ -56,6 +56,24 @@ const SWEEPABLE_STATUSES = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pen
 // broken and should be looked at rather than quietly drained.
 const MAX_PER_RUN = 25;
 
+/**
+ * Past this, stop retrying.
+ *
+ * An order that has not pushed in a week is not going to start on its own --
+ * the very first sweep found IC-W-20260813-C6CTU, whose address has no pincode
+ * at all, so NimbusPost rejects it every single time. Without a ceiling that is
+ * a failing API call every 15 minutes forever. These orders need a person, and
+ * the unshipped report and the address audit are already where they surface.
+ */
+const MAX_AGE_DAYS = 7;
+
+/**
+ * NimbusPost cannot accept a shipment without a pincode, so an address that has
+ * no six-digit number in it can never push. Checking here turns a guaranteed
+ * failure into a named one, instead of burning a retry on it every quarter hour.
+ */
+const hasPincode = (address) => /\b\d{6}\b/.test(String(address || ''));
+
 exports.handler = async () => {
   const secret = process.env.ADMIN_SECRET;
   const site = String(process.env.SITE_URL || process.env.URL || 'https://inkandchai.in').replace(/\/$/, '');
@@ -73,6 +91,7 @@ exports.handler = async () => {
   });
 
   const cutoff = new Date(Date.now() - MIN_AGE_MINUTES * 60000).toISOString();
+  const floor = new Date(Date.now() - MAX_AGE_DAYS * 86400000).toISOString();
 
   // Find the gap first and push only those ids. Handing the bulk endpoint
   // `all_unshipped` instead would make it page the entire NimbusPost order list
@@ -81,12 +100,13 @@ exports.handler = async () => {
   try {
     const { data, error } = await supabase
       .from('orders')
-      .select('razorpay_order_id,status,created_at')
+      .select('razorpay_order_id,status,created_at,customer_address')
       .is('nimbus_pushed_at', null)
       .is('tracking_id', null)
       .is('cancelled_at', null)
       .in('status', SWEEPABLE_STATUSES)
       .lt('created_at', cutoff)
+      .gt('created_at', floor)
       .or('source.is.null,source.neq.paperbound')
       .order('created_at', { ascending: true })
       .limit(MAX_PER_RUN);
@@ -97,10 +117,22 @@ exports.handler = async () => {
     return { statusCode: 500, headers: HEADERS, body: JSON.stringify({ error: e.message }) };
   }
 
-  if (!stuck.length) return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ swept: 0 }) };
+  // Named and skipped rather than retried into the void.
+  const unpushable = stuck.filter(o => !hasPincode(o.customer_address));
+  if (unpushable.length) {
+    console.warn('[np-push-sweep] no pincode, cannot ever push (needs Edit details): '
+      + unpushable.map(o => o.razorpay_order_id).join(', '));
+  }
+  const pushable = stuck.filter(o => hasPincode(o.customer_address));
 
-  const ids = stuck.map(o => o.razorpay_order_id);
-  const oldestHours = ((Date.now() - new Date(stuck[0].created_at)) / 3600000).toFixed(1);
+  if (!pushable.length) {
+    return { statusCode: 200, headers: HEADERS, body: JSON.stringify({
+      swept: 0, skipped_no_pincode: unpushable.map(o => o.razorpay_order_id),
+    }) };
+  }
+
+  const ids = pushable.map(o => o.razorpay_order_id);
+  const oldestHours = ((Date.now() - new Date(pushable[0].created_at)) / 3600000).toFixed(1);
   console.log(`[np-push-sweep] ${ids.length} unpushed order(s), oldest ${oldestHours}h: ${ids.join(', ')}`);
 
   try {
@@ -112,7 +144,9 @@ exports.handler = async () => {
     const detail = await response.text().catch(() => '');
     if (!response.ok) throw new Error(`push returned ${response.status}: ${detail.slice(0, 300)}`);
     console.log(`[np-push-sweep] pushed ${ids.length}: ${detail.slice(0, 300)}`);
-    return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ swept: ids.length, order_ids: ids }) };
+    return { statusCode: 200, headers: HEADERS, body: JSON.stringify({
+      swept: ids.length, order_ids: ids, skipped_no_pincode: unpushable.map(o => o.razorpay_order_id),
+    }) };
   } catch (error) {
     // Left unstamped on purpose: the next run retries rather than the order
     // being quietly written off.
