@@ -89,3 +89,33 @@ test('product slugs are lowercase, apart from the known hardcoded override', () 
   assert.deepStrictEqual(unexpected.sort(), [],
     `generated product directories must be lowercase: ${unexpected.join(', ')}`);
 });
+
+test('no generated page links to a product slug with the wrong case', () => {
+  // The slug-case fix renamed 18 directories, and the homepage hero was still
+  // hardcoded to four of the OLD uppercase spellings -- so fixing the feed
+  // broke the hero. Feed and sitemap checks did not cover it because these are
+  // internal links, not catalogue entries. Sweep the real HTML instead.
+  const fs2 = require('node:fs');
+  const files = [];
+  (function walk(dir) {
+    for (const e of fs2.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { if (e.name !== 'product') walk(full); }
+      else if (/\.(html|js)$/.test(e.name)) files.push(full);
+    }
+  })(path.join(ROOT, 'public'));
+
+  const bad = [];
+  for (const f of files) {
+    const text = fs2.readFileSync(f, 'utf8');
+    for (const m of text.matchAll(/\/product\/([A-Za-z0-9_.~-]+)\//g)) {
+      const slug = m[1];
+      if (actualSlugs.has(slug)) continue;
+      if (actualSlugs.has(slug.toLowerCase()) || [...actualSlugs].some(a => a.toLowerCase() === slug.toLowerCase())) {
+        bad.push(`${path.relative(ROOT, f)} -> ${slug}`);
+      }
+    }
+  }
+  assert.deepStrictEqual([...new Set(bad)], [],
+    `these links use the wrong case and 404 on Cloudflare:\n  ${[...new Set(bad)].join('\n  ')}`);
+});

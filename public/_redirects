@@ -29,6 +29,15 @@
 
 /favicon.ico  /images/favicon-96.png  301
 
+# The homepage hero linked these four with the OLD uppercase suffix until the
+# slug-case fix. Anything Google indexed, or a bookmark, still asks for that
+# spelling and Cloudflare matches case-sensitively, so redirect rather than 404.
+/product/can-t-hurt-me-hindi-ME-HI/                    /product/can-t-hurt-me-hindi-me-hi/  301
+/product/never-finished-hindi-ED-HI/                   /product/never-finished-hindi-ed-hi/  301
+/product/the-hard-thing-about-hard-things-hindi-NG-HI/ /product/the-hard-thing-about-hard-things-hindi-ng-hi/  301
+/product/thinking-fast-and-slow-hindi-OW-HI/           /product/thinking-fast-and-slow-hindi-ow-hi/  301
+
+
 # Google Ads sitelink "Bestselling Books" was built against /best-sellers, but
 # the generated landing page is /bestsellers/ (no hyphen). The asset was
 # disapproved "Destination not working — HTTP 404" and stopped serving. Google
