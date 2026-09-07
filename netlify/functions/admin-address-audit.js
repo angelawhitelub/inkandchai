@@ -182,9 +182,12 @@ function addressShapeIssues(addressText, pincode) {
   if (!/\d/.test(body)) {
     issues.push({ code: 'no_house_number', severity: 'warn', label: 'No house or flat number', detail: 'Nothing numeric in the address apart from the pincode.' });
   }
-  // A line that stops on a separator is the signature of a truncated field.
-  if (/[,\-/]$/.test(body.trim())) {
-    issues.push({ code: 'address_truncated', severity: 'warn', label: 'Address looks cut off', detail: 'Ends on a comma, dash or slash.' });
+  // A line that stops on a separator is the signature of a truncated field --
+  // but it must be judged on the RAW address. Stripping the pincode off
+  // "..., Amreli, Gujarat, 365620" leaves a trailing comma, and testing the
+  // stripped body flagged 119 of 129 live orders. Zero of them were truncated.
+  if (/[,\-/]\s*$/.test(String(addressText || ''))) {
+    issues.push({ code: 'address_truncated', severity: 'warn', label: 'Address looks cut off', detail: 'The stored address ends on a comma, dash or slash.' });
   }
   return issues;
 }
@@ -231,8 +234,30 @@ Do NOT flag an address for:
 
 The default answer is "ok". Only return "suspect" when you can name the concrete reason a courier would fail.
 
-Return ONLY JSON: {"results":[{"i":<number>,"verdict":"ok"|"suspect","reason":"<max 15 words>"}]}
+Some rows say the pincode's true location is unknown. That is OUR gap, never a fault in the address. Judge those rows on the address text alone and return "ok" unless the text itself is faulty.
+
+Every "suspect" must carry a "problem" field from exactly this list:
+  no_number     nothing to knock on: no house/flat/plot/door number and no building name
+  truncated     the text stops mid-word or mid-phrase
+  placeholder   placeholder, nonsense or repeated filler text
+  landmark_only only a landmark or locality, no street, building or number
+  wrong_city    the address plainly names a different city or district from the true city given
+
+Return ONLY JSON: {"results":[{"i":<number>,"verdict":"ok"|"suspect","problem":"<one of the five>","reason":"<max 15 words about THIS address>"}]}
 Include an entry for every i you were given.`;
+
+// Only these five verdicts are accepted back. The model demonstrably invents
+// others when it has nothing to say -- on the first live run 3 of its 4 flags
+// were "true location unknown for pincode NNNNNN", which is not a fault in the
+// address at all, and one of those quoted a pincode belonging to another row.
+// Constraining the output space is a harder guarantee than asking nicely.
+const AI_PROBLEMS = {
+  no_number:     'No house, flat or building number the courier could knock on',
+  truncated:     'Address text stops mid-word',
+  placeholder:   'Placeholder or nonsense text',
+  landmark_only: 'Only a landmark or locality, no street or number',
+  wrong_city:    'Address names a different city from the pincode',
+};
 
 async function aiBatch(batch, model, timeoutMs = 45000) {
   const lines = batch.map(o => {
@@ -425,16 +450,25 @@ exports.handler = async (event) => {
         });
 
         const byIndex = new Map(candidates.map(o => [o._i, o]));
+        let discarded = 0;
         for (const row of results.flat()) {
           const target = byIndex.get(Number(row && row.i));
           if (!target || String(row && row.verdict).toLowerCase() !== 'suspect') continue;
+          const problem = String((row && row.problem) || '').toLowerCase();
+          // An unrecognised problem, or "wrong city" claimed when we never told
+          // it the true city, is the model filling silence. Drop it.
+          if (!AI_PROBLEMS[problem] || (problem === 'wrong_city' && !target.pin_city)) {
+            discarded++;
+            continue;
+          }
           target.issues.push({
             code: 'ai_suspect', severity: 'warn', source: 'ai',
-            label: 'AI thinks this address may not be deliverable',
+            label: AI_PROBLEMS[problem],
             detail: clean(row.reason, 160) || 'No reason given.',
           });
           ai.flagged++;
         }
+        ai.discarded = discarded;
         ai.used = errors.length < batches.length;
         if (errors.length) {
           ai.error = `${errors.length} of ${batches.length} AI batches failed: ${clean(errors[0], 200)}`;
@@ -475,4 +509,4 @@ exports.handler = async (event) => {
 
 // Exported for tests. The handler is the product; these are the parts worth
 // pinning down independently.
-module.exports._internals = { statesMentioned, canonicalState, addressShapeIssues, phoneIssues, lookupPincode, mapLimit };
+module.exports._internals = { statesMentioned, canonicalState, addressShapeIssues, phoneIssues, lookupPincode, mapLimit, AI_PROBLEMS };

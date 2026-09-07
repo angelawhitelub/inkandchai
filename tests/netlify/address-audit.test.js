@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { statesMentioned, canonicalState, addressShapeIssues, phoneIssues, lookupPincode, mapLimit } =
+const { statesMentioned, canonicalState, addressShapeIssues, phoneIssues, lookupPincode, mapLimit, AI_PROBLEMS } =
   require('../../netlify/functions/admin-address-audit')._internals;
 
 const codes = list => list.map(i => i.code).sort();
@@ -74,6 +74,27 @@ test('an address ending on a separator is flagged as cut off', () => {
 test('a Hindi address with a house number is not flagged', () => {
   const issues = addressShapeIssues('मकान नंबर 27, गली नंबर 4, शास्त्री नगर, मेरठ 250004', '250004');
   assert.deepStrictEqual(issues, []);
+});
+
+test('an address ending in its pincode is NOT reported as cut off', () => {
+  // Regression: the rule used to run on the pincode-STRIPPED body, so
+  // "..., Gujarat, 365620" became "..., Gujarat," and looked truncated. On the
+  // first live scan that flagged 119 of 129 orders and none of them were cut off.
+  const issues = addressShapeIssues('Gajera plot main road, Bodar Parivar, Amreli, Gujarat, 365620', '365620');
+  assert.ok(!issues.some(i => i.code === 'address_truncated'), JSON.stringify(issues));
+});
+
+/* -- AI verdict vocabulary ----------------------------------------------- */
+
+test('the accepted AI problems are a closed list', () => {
+  // The handler drops any suspect verdict whose problem is not one of these.
+  // On the first live run 3 of the model's 4 flags were "true location unknown",
+  // which is our missing data, not a fault in the address.
+  assert.deepStrictEqual(
+    Object.keys(AI_PROBLEMS).sort(),
+    ['landmark_only', 'no_number', 'placeholder', 'truncated', 'wrong_city']);
+  assert.ok(!('unknown' in AI_PROBLEMS));
+  for (const label of Object.values(AI_PROBLEMS)) assert.ok(label.length > 10);
 });
 
 /* -- phone --------------------------------------------------------------- */
