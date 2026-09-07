@@ -1175,6 +1175,31 @@ select,input,textarea{font-size:1rem;}
     </button>
     <span id="autoRecheckBadge" style="font-size:0.52rem;color:#a275d6;margin-left:0.6rem;opacity:0.75;cursor:default;"></span>
   </div>
+
+  <!-- Address audit: rule checks + an AI pass over unshipped delivery addresses -->
+  <section class="product-panel" id="addressAuditPanel" style="margin-top:1.4rem;padding:1.2rem;background:var(--bg2);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);">
+    <h2 style="font-family:'DM Serif Display',serif;font-size:1.1rem;margin:0 0 0.3rem;">🔎 Address Audit</h2>
+    <p class="subtitle" style="max-width:78ch;margin:0 0 0.9rem;font-size:0.62rem;line-height:1.7;">
+      Checks the delivery address of every unshipped order before you buy a label: missing or fake pincodes,
+      pincodes no courier serves, a pincode whose real state contradicts the address, unusable phone numbers,
+      and (via AI) addresses a courier would struggle to find. Read-only — nothing is edited, cancelled or messaged.
+    </p>
+    <div style="display:flex;flex-wrap:wrap;gap:0.6rem;align-items:center;">
+      <button class="btn-green" id="addressAuditBtn" onclick="runAddressAudit(this)" style="padding:0.45rem 1rem;font-size:0.58rem;">
+        🔎 Scan Unshipped Addresses
+      </button>
+      <label style="font-size:0.55rem;color:var(--cream-dim);display:flex;align-items:center;gap:0.35rem;cursor:pointer;">
+        <input type="checkbox" id="addressAuditUseAi" checked style="accent-color:var(--green);"/>
+        Include the AI pass
+      </label>
+      <span style="font-size:0.55rem;color:var(--cream-dim);">Scan latest</span>
+      <input type="number" id="addressAuditLimit" value="250" min="1" max="500"
+        style="width:74px;background:var(--bg);border:1px solid var(--border);color:var(--cream);padding:0.35rem 0.4rem;font-family:'Manrope',sans-serif;font-size:0.6rem;text-align:center;outline:none;"/>
+      <button class="btn-outline" onclick="copyAddressAuditList()" style="padding:0.45rem 1rem;font-size:0.58rem;">📋 Copy List</button>
+    </div>
+    <div id="addressAuditSummary" style="margin-top:1rem;font-size:0.62rem;color:var(--cream-dim);"></div>
+    <div id="addressAuditResults" style="margin-top:0.8rem;"></div>
+  </section>
   </div>
 
   <!-- ═══ VIDEO REELS TAB ═══ -->
@@ -9592,6 +9617,125 @@ function copyAllAddresses() {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+/* ── Address Audit ─────────────────────────────────────────────────────────
+ * Flags unshipped orders whose address will probably fail delivery. The server
+ * does the judging (rules first, AI second); this only renders the verdict and
+ * gets the admin to the Edit-details modal in one click.
+ * ------------------------------------------------------------------------ */
+let addressAuditData = null;
+
+async function runAddressAudit(btn) {
+  const orig = btn ? btn.innerHTML : '';
+  const summary = document.getElementById('addressAuditSummary');
+  const results = document.getElementById('addressAuditResults');
+  const useAi = !!document.getElementById('addressAuditUseAi')?.checked;
+  const limit = Math.min(500, Math.max(1, parseInt(document.getElementById('addressAuditLimit')?.value, 10) || 250));
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Scanning…'; }
+  summary.innerHTML = 'Checking pincodes against India Post and NimbusPost' + (useAi ? ', then running the AI pass' : '') + '. This can take a minute.';
+  results.innerHTML = '';
+
+  try {
+    const res = await fetch('/.netlify/functions/admin-address-audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' },
+      body: JSON.stringify({ limit, use_ai: useAi }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    addressAuditData = data;
+    renderAddressAudit(data);
+  } catch (err) {
+    summary.innerHTML = '';
+    results.innerHTML = '<div style="padding:0.9rem;border:1px solid rgba(224,80,80,0.45);background:rgba(224,80,80,0.08);color:#e05050;font-size:0.62rem;">'
+      + 'Scan failed: ' + esc(err.message) + '</div>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+function renderAddressAudit(data) {
+  const summary = document.getElementById('addressAuditSummary');
+  const results = document.getElementById('addressAuditResults');
+
+  const notes = [];
+  // Say plainly when a check could not run. A scan that silently skipped the
+  // courier lookup looks identical to a clean scan, and that is exactly the
+  // failure that lets a bad pincode through.
+  if (data.pincode_lookups_unreachable) {
+    notes.push('⚠️ ' + data.pincode_lookups_unreachable + ' pincode lookup(s) were unreachable, so those pincodes were not verified either way.');
+  }
+  if (data.ai?.error) notes.push('⚠️ ' + esc(data.ai.error));
+  else if (data.ai?.used) notes.push('AI reviewed ' + data.ai.considered + ' address(es) using ' + esc(data.ai.model || 'the configured model') + ' and flagged ' + data.ai.flagged + '.');
+
+  summary.innerHTML =
+    '<strong style="color:var(--cream);">' + data.scanned + '</strong> unshipped orders scanned · '
+    + '<strong style="color:' + (data.critical_count ? '#e05050' : 'var(--green)') + ';">' + data.critical_count + '</strong> blocking · '
+    + '<strong style="color:#e0904a;">' + (data.flagged_count - data.critical_count) + '</strong> worth a look · '
+    + '<strong style="color:var(--green);">' + data.clean_count + '</strong> clean · '
+    + data.pincodes_checked + ' distinct pincodes checked'
+    + (notes.length ? '<div style="margin-top:0.5rem;line-height:1.7;">' + notes.join('<br>') + '</div>' : '');
+
+  if (!data.flagged.length) {
+    results.innerHTML = '<div style="padding:0.9rem;border:1px solid rgba(109,191,109,0.4);background:rgba(109,191,109,0.07);color:#6dbf6d;font-size:0.62rem;">'
+      + 'No address problems found in the orders scanned.</div>';
+    return;
+  }
+
+  results.innerHTML = data.flagged.map(o => {
+    const blocking = o.issues.some(i => i.severity === 'critical');
+    const accent = blocking ? '#e05050' : '#e0904a';
+    const age = o.age_days === null ? '' : (o.age_days + ' day' + (o.age_days === 1 ? '' : 's') + ' old');
+    const truth = (o.pin_city || o.pin_state) ? [o.pin_city, o.pin_state].filter(Boolean).join(', ') : '';
+    const issues = o.issues.map(i =>
+      '<li style="margin:0.25rem 0;color:' + (i.severity === 'critical' ? '#e05050' : '#e0904a') + ';">'
+      + (i.source === 'ai' ? '🤖 ' : '') + '<strong>' + esc(i.label) + '</strong>'
+      + '<span style="color:var(--cream-dim);display:block;font-size:0.56rem;line-height:1.6;">' + esc(i.detail) + '</span></li>'
+    ).join('');
+
+    return '<div style="border:1px solid ' + accent + '55;border-left:3px solid ' + accent + ';background:var(--bg);padding:0.8rem 0.9rem;margin-bottom:0.6rem;border-radius:8px;">'
+      + '<div style="display:flex;flex-wrap:wrap;gap:0.6rem;align-items:baseline;justify-content:space-between;">'
+      +   '<div style="font-size:0.66rem;color:var(--cream);"><strong>' + esc(o.id) + '</strong>'
+      +     '<span style="color:var(--cream-dim);"> · ' + esc(o.name || 'No name') + ' · ' + esc(o.status) + (age ? ' · ' + age : '') + '</span></div>'
+      +   '<div style="display:flex;gap:0.4rem;">'
+      +     '<button class="btn-outline" onclick="openAuditedOrder(' + JSON.stringify(o.db_id) + ',' + JSON.stringify(o.id) + ')" style="padding:0.3rem 0.7rem;font-size:0.53rem;">✏️ Edit details</button>'
+      +   '</div>'
+      + '</div>'
+      + '<div style="margin-top:0.45rem;font-size:0.6rem;color:var(--cream-dim);line-height:1.7;">'
+      +   esc(o.address || '(no address on the order)')
+      +   (o.phone ? '<br>📞 ' + esc(o.phone) : '')
+      +   (truth ? '<br><span style="color:#4db8ff;">Pincode ' + esc(o.pincode) + ' is really ' + esc(truth) + '</span>' : '')
+      + '</div>'
+      + '<ul style="margin:0.55rem 0 0;padding-left:1.1rem;font-size:0.6rem;">' + issues + '</ul>'
+      + '</div>';
+  }).join('');
+}
+
+// The Edit-details modal reads from allOrders, which holds only what the Orders
+// tab has loaded. When the flagged order isn't in it, send the admin there with
+// the id already in the search box rather than showing "order not found".
+function openAuditedOrder(dbId, displayId) {
+  if (dbId && allOrders.some(o => String(o.id) === String(dbId))) { openEditOrderModal(dbId); return; }
+  switchTab('orders');
+  const box = document.getElementById('searchBox');
+  if (box) { box.value = displayId; applyFilters(); box.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  alert('Opened the Orders tab filtered to ' + displayId + '. Use "Edit details" on that row.\n\nIf nothing shows, widen the status/date filters — the audit scans further back than the default view.');
+}
+
+function copyAddressAuditList() {
+  if (!addressAuditData || !addressAuditData.flagged.length) { alert('Run a scan first.'); return; }
+  const text = addressAuditData.flagged.map(o => {
+    const lines = o.issues.map(i => '   - [' + i.severity + '] ' + i.label + ' — ' + i.detail);
+    return o.id + ' | ' + (o.name || 'No name') + ' | ' + o.status + ' | ' + (o.age_days === null ? '?' : o.age_days + 'd')
+      + '\n   ' + (o.address || '(no address)')
+      + '\n   phone: ' + (o.phone || '(none)')
+      + '\n' + lines.join('\n');
+  }).join('\n\n');
+  navigator.clipboard.writeText(text)
+    .then(() => alert('Copied ' + addressAuditData.flagged.length + ' flagged orders to the clipboard.'))
+    .catch(() => alert('Could not copy. Your browser blocked clipboard access.'));
+}
+
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
