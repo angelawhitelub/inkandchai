@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const root = path.resolve(__dirname, '../..');
 const gen = fs.readFileSync(path.join(root, 'generate_site.py'), 'utf8');
-const toml = fs.readFileSync(path.join(root, 'netlify.toml'), 'utf8');
+const toml = fs.readFileSync(path.join(root, 'jobs.toml'), 'utf8');
 const optin = require(path.join(root, 'netlify/functions/utils/marketing-optin.js'));
 
 test('the consent box is not pre-ticked', () => {

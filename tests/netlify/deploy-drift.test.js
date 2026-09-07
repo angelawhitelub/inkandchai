@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
 
 const root = path.resolve(__dirname, '../..');
 const gen = fs.readFileSync(path.join(root, 'generate_site.py'), 'utf8');
-const toml = fs.readFileSync(path.join(root, 'netlify.toml'), 'utf8');
+const toml = fs.readFileSync(path.join(root, 'jobs.toml'), 'utf8');
 const fn = fs.readFileSync(path.join(root, 'netlify/functions/deploy-drift-check.js'), 'utf8');
 
 test('every build stamps the commit it was built from', () => {

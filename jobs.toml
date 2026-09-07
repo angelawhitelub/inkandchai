@@ -1,3 +1,14 @@
+# Scheduled jobs for the Cloudflare Worker.
+#
+# This was netlify.toml. Nothing here is served by Netlify any more: the only
+# section still read is [functions."name"] schedule = "...", which
+# scripts/build-worker-routes.js compiles into worker/crons.generated.json so
+# the schedules stay defined in exactly one place.
+#
+# The [build] and [[redirects]] blocks below are INERT. Static redirects live
+# in public/_redirects and the function rewrites are hardcoded in
+# worker/index.js. They are kept only as the record of what each rule was for.
+
 [build]
   publish   = "public"
   functions = "netlify/functions"

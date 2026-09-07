@@ -12,7 +12,7 @@ const root = path.resolve(__dirname, '../..');
 const reelsJs = fs.readFileSync(path.join(root, 'public/js/reels.js'), 'utf8');
 const store = fs.readFileSync(path.join(root, 'netlify/functions/utils/site-reels-store.js'), 'utf8');
 const upload = fs.readFileSync(path.join(root, 'netlify/functions/upload-site-reel.js'), 'utf8');
-const toml = fs.readFileSync(path.join(root, 'netlify.toml'), 'utf8');
+const toml = fs.readFileSync(path.join(root, 'jobs.toml'), 'utf8');
 
 test('the manifest keeps the kind it was given', () => {
   // It used to hard-code 'video' on read, which silently rewrote every stored

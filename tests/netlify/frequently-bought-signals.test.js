@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../..');
 const fbt = fs.readFileSync(path.join(root, 'netlify/functions/frequently-bought.js'), 'utf8');
 const builder = fs.readFileSync(path.join(root, 'scripts/build-fbt-signals.js'), 'utf8');
-const netlifyToml = fs.readFileSync(path.join(root, 'netlify.toml'), 'utf8');
+const netlifyToml = fs.readFileSync(path.join(root, 'jobs.toml'), 'utf8');
 const cartJs = fs.readFileSync(path.join(root, 'public/js/cart.js'), 'utf8');
 
 test('the signal file is built at deploy time and shipped to the function', () => {

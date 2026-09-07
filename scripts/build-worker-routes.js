@@ -4,7 +4,7 @@
  * handler. Workers cannot require() a dynamic path, so the route table has to
  * be materialised at build time rather than resolved per request.
  *
- * Also emits the scheduled-job table by parsing netlify.toml, so the cron
+ * Also emits the scheduled-job table by parsing jobs.toml, so the cron
  * schedules stay defined in exactly one place.
  */
 const fs = require('fs');
@@ -30,7 +30,7 @@ const CRON_ALIASES = {
   '@annually': '0 0 1 1 *',
 };
 
-const toml = fs.readFileSync(path.join(ROOT, 'netlify.toml'), 'utf8');
+const toml = fs.readFileSync(path.join(ROOT, 'jobs.toml'), 'utf8');
 const schedules = {};
 const re = /\[functions\."([^"]+)"\]\s*\n\s*schedule\s*=\s*"([^"]+)"/g;
 let m;
