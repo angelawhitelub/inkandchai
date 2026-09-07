@@ -23,6 +23,20 @@
 
 /favicon.ico  /images/favicon-96.png  301
 
+# Google Ads sitelink "Bestselling Books" was built against /best-sellers, but
+# the generated landing page is /bestsellers/ (no hyphen). The asset was
+# disapproved "Destination not working — HTTP 404" and stopped serving. Google
+# re-checks automatically, so redirecting is a faster and more durable fix than
+# editing the asset: any future ad, email or partner link using the hyphenated
+# spelling lands correctly too.
+/best-sellers/   /bestsellers/  301
+/best-sellers    /bestsellers/  301
+/best-seller/    /bestsellers/  301
+/best-seller     /bestsellers/  301
+/bestseller/     /bestsellers/  301
+/bestseller      /bestsellers/  301
+
+
 # Client-rendered listing pages
 /category/*    /category/    200
 /collection/*  /collection/  200
