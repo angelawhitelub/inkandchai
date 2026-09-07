@@ -150,3 +150,67 @@ test('grace 0 pushes a fresh customer-raised replacement immediately', async () 
   delete process.env.REPLACEMENT_PUSH_GRACE_MINUTES;
   assert.deepStrictEqual(out.pushed, ['IC-R-20260825-AAAAA']);
 });
+
+// ── What the sweep says out loud ─────────────────────────────────────────────
+//
+// Regression origin: IC-R-20260907-BAWW2. The sweep logged
+// "considered 4 · pushed 0 · skipped 4 · failed 0" and nothing else, so
+// answering "why has this not shipped?" meant reading the source and doing the
+// arithmetic by hand. Counts cannot separate a replacement that is waiting out
+// its edit window from one that fails shippable() and will therefore be skipped
+// on every run forever, silently, while it sits in the Replacements tab looking
+// pending.
+
+function captureLogs(fn) {
+  const out = { log: [], warn: [], error: [] };
+  const orig = { log: console.log, warn: console.warn, error: console.error };
+  console.log = (...a) => out.log.push(a.join(' '));
+  console.warn = (...a) => out.warn.push(a.join(' '));
+  console.error = (...a) => out.error.push(a.join(' '));
+  return Promise.resolve(fn()).finally(() => Object.assign(console, orig)).then(() => out);
+}
+
+test('the summary line breaks the skips down by reason', async () => {
+  const { _runSweep } = loadWithPushStub([]);
+  const logs = await captureLogs(() => _runSweep(fakeDb([
+    repl({ razorpay_order_id: 'IC-R-1', customer_address: 'Aundh, Pune' }),
+    repl({ razorpay_order_id: 'IC-R-2', cart_items: [] }),
+  ])));
+  const summary = logs.log.find(l => l.includes('considered'));
+  assert.match(summary, /skipped 2/);
+  assert.match(summary, /skips:/);
+  assert.match(summary, /pincode/);
+  assert.match(summary, /no books/);
+});
+
+test('a replacement that can never push is named, with its age', async () => {
+  const { _runSweep } = loadWithPushStub([]);
+  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+  const logs = await captureLogs(() => _runSweep(fakeDb([
+    repl({ razorpay_order_id: 'IC-R-STUCK', customer_address: '  ', created_at: twoDaysAgo }),
+  ])));
+  const warned = logs.warn.join('\n');
+  assert.match(warned, /IC-R-STUCK/);
+  assert.match(warned, /will NOT push on its own/);
+  assert.match(warned, /2880 min old/);
+  assert.match(warned, /no delivery address/);
+});
+
+test('waiting out the edit window is not shouted about — it resolves itself', async () => {
+  process.env.REPLACEMENT_PUSH_GRACE_MINUTES = '120';
+  const { _runSweep } = loadWithPushStub([]);
+  const logs = await captureLogs(() => _runSweep(fakeDb([
+    repl({ razorpay_order_id: 'IC-R-WAITING', created_at: new Date().toISOString() }),
+  ])));
+  delete process.env.REPLACEMENT_PUSH_GRACE_MINUTES;
+  assert.strictEqual(logs.warn.length, 0, 'a replacement inside its window needs no human');
+  assert.match(logs.log.join('\n'), /1× still inside the edit window/);
+});
+
+test('the skip carries the age in the response too, for the dry run', async () => {
+  const { _runSweep } = loadWithPushStub([]);
+  const out = await _runSweep(fakeDb([
+    repl({ customer_address: 'no pincode here', created_at: new Date(Date.now() - 90 * 60000).toISOString() }),
+  ]));
+  assert.strictEqual(out.skipped[0].age_minutes, 90);
+});

@@ -43,6 +43,15 @@ const CORS = { 'Content-Type': 'application/json' };
 const DEFAULT_GRACE_MINUTES = 120;
 const MAX_PER_RUN = 40;
 
+// Skip reasons that resolve themselves: the first clears when the edit window
+// closes, the second means the work is already done. Everything else is a
+// replacement that will be skipped again on every future run, forever, which is
+// the thing worth shouting about. Named, so the summary below cannot drift from
+// the strings actually pushed.
+const SKIP_WAITING = 'still inside the edit window';
+const SKIP_DONE = 'already pushed';
+const SELF_RESOLVING = new Set([SKIP_WAITING, SKIP_DONE]);
+
 function graceMinutes() {
   const raw = process.env.REPLACEMENT_PUSH_GRACE_MINUTES;
   if (raw === undefined || raw === '') return DEFAULT_GRACE_MINUTES;
@@ -87,21 +96,50 @@ async function runSweep(supabase, { dryRun = false } = {}) {
 
   for (const order of data || []) {
     const id = order.razorpay_order_id || order.id;
+    // How long it has been sitting. The difference between "45 minutes old, of
+    // course it hasn't gone" and "three days old and still skipped" is the
+    // whole diagnosis, and it is not recoverable from a count.
+    const created = order.created_at ? new Date(order.created_at).getTime() : NaN;
+    const ageMinutes = Number.isFinite(created) ? Math.round((Date.now() - created) / 60000) : null;
+
     const why = shippable(order);
-    if (why) { out.skipped.push({ id, reason: why }); continue; }
+    if (why) { out.skipped.push({ id, reason: why, age_minutes: ageMinutes }); continue; }
     if (!isOwnerCreated(order) && String(order.created_at || '') > cutoff) {
-      out.skipped.push({ id, reason: 'still inside the edit window' });
+      out.skipped.push({ id, reason: SKIP_WAITING, age_minutes: ageMinutes });
       continue;
     }
     if (dryRun) { out.pushed.push(id); continue; }
 
     const res = await pushToNimbusOnce(supabase, order);
     if (res.pushed) out.pushed.push(id);
-    else if (res.reason === 'already_pushed') out.skipped.push({ id, reason: 'already pushed' });
-    else out.failed.push({ id, reason: res.error || res.reason });
+    else if (res.reason === 'already_pushed') out.skipped.push({ id, reason: SKIP_DONE, age_minutes: ageMinutes });
+    else out.failed.push({ id, reason: res.error || res.reason, age_minutes: ageMinutes });
   }
 
-  console.log(`[replacement-push] considered ${out.considered} · pushed ${out.pushed.length} · skipped ${out.skipped.length} · failed ${out.failed.length}`);
+  // The counts alone cannot tell "waiting, will go by itself" from "stuck, will
+  // never go", and only one of those needs a human. A replacement that fails
+  // shippable() is skipped silently on every run with nothing anywhere saying
+  // why -- it just sits in the Replacements tab looking pending. So: group the
+  // reasons onto the summary line, then name the stuck ones individually.
+  const byReason = new Map();
+  for (const s of out.skipped) byReason.set(s.reason, (byReason.get(s.reason) || 0) + 1);
+  const grouped = [...byReason].map(([reason, n]) => `${n}× ${reason}`).join(', ');
+
+  console.log(`[replacement-push] considered ${out.considered} · pushed ${out.pushed.length}`
+    + ` · skipped ${out.skipped.length} · failed ${out.failed.length}`
+    + (grouped ? ` — skips: ${grouped}` : ''));
+
+  for (const s of out.skipped) {
+    if (SELF_RESOLVING.has(s.reason)) continue;
+    console.warn(`[replacement-push] ${s.id} will NOT push on its own`
+      + `${s.age_minutes === null ? '' : ` (${s.age_minutes} min old)`}: ${s.reason}`);
+  }
+  // Failures already log the courier's own message from pushToNimbusOnce; this
+  // repeats only the id under this prefix so one grep gets the whole run.
+  for (const f of out.failed) {
+    console.error(`[replacement-push] ${f.id} push failed: ${f.reason}`);
+  }
+
   return out;
 }
 
