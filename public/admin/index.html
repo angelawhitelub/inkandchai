@@ -1931,7 +1931,7 @@ select,input,textarea{font-size:1rem;}
     <div class="abandoned-head">
       <div>
         <h2>↩️ Prepaid RTO — partial refunds</h2>
-        <p>Prepaid orders that came back undelivered. The customer is refunded what they paid <strong>minus the two courier legs</strong> (₹62 out + ₹62 back = ₹124), as stated in the refund policy. Nothing here is automatic: each refund is issued one at a time, by you, from the button on its row. COD orders never appear — there is no money of theirs to return.</p>
+        <p>Prepaid orders that came back undelivered. The customer is refunded what they paid <strong>minus the two courier legs</strong>, as stated in the refund policy. A single book bills in the base slab; a bundle (<em>“A + B”</em>, <em>set of</em>, <em>combo of</em>) is heavier and costs more each way, so it is deducted at the heavier rate — the reason is shown on every row. Nothing here is automatic: each refund is issued one at a time, by you, from the button on its row, and every amount can be edited before you send it. COD orders never appear — there is no money of theirs to return.</p>
       </div>
       <div class="mini-actions">
         <label class="hint" style="display:flex;align-items:center;gap:.35rem;">Window
@@ -1946,6 +1946,21 @@ select,input,textarea{font-size:1rem;}
       </div>
     </div>
 
+    <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:.7rem;">
+      <input id="rtoRefundSearch" type="search" placeholder="🔍 Order ID · name · phone · book title"
+        oninput="renderRtoRefunds()" autocomplete="off"
+        style="flex:1 1 280px;min-width:220px;padding:.45rem .6rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);font-family:'Manrope',sans-serif;font-size:.62rem;outline:none;border-radius:6px;"/>
+      <label class="hint" style="display:flex;align-items:center;gap:.3rem;margin:0;">Single ₹/leg
+        <input id="rtoRateStd" type="number" min="0" value="62" onchange="loadRtoRefunds()"
+          style="width:62px;padding:.3rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);text-align:center;font-size:.62rem;"/>
+      </label>
+      <label class="hint" style="display:flex;align-items:center;gap:.3rem;margin:0;" title="Applied to bundles: “A + B”, set of, combo of, or several books in one parcel.">Bundle ₹/leg
+        <input id="rtoRateHeavy" type="number" min="0" value="124" onchange="loadRtoRefunds()"
+          style="width:62px;padding:.3rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);text-align:center;font-size:.62rem;"/>
+      </label>
+      <span class="hint" style="margin:0;opacity:.75;">Set these to your NimbusPost slab rates.</span>
+    </div>
+
     <div class="hint" id="rtoRefundMeta" style="margin-bottom:.8rem;">Loading…</div>
     <div id="rtoRefundTotals" style="display:none;flex-wrap:wrap;gap:.7rem;margin-bottom:.9rem;"></div>
 
@@ -1956,9 +1971,10 @@ select,input,textarea{font-size:1rem;}
             <th>Order</th>
             <th>Customer</th>
             <th>RTO on</th>
+            <th>Parcel</th>
             <th style="text-align:right;">Paid</th>
             <th style="text-align:right;">Less shipping</th>
-            <th style="text-align:right;">Refund</th>
+            <th style="text-align:right;width:120px;">Refund</th>
             <th>Gateway</th>
             <th style="width:180px;"></th>
           </tr>
@@ -10674,16 +10690,25 @@ async function loadRtoRefunds() {
   const totals = document.getElementById('rtoRefundTotals');
   if (!meta || !body) return;
   const days = document.getElementById('rtoRefundDays')?.value || '90';
+  // Rates are sent per scan so the owner can dial in their real NimbusPost slab
+  // prices without a redeploy. The server clamps anything absurd.
+  const rateStd = document.getElementById('rtoRateStd')?.value;
+  const rateHvy = document.getElementById('rtoRateHeavy')?.value;
+  const qs = new URLSearchParams({ days });
+  if (rateStd !== '' && rateStd != null) { qs.set('fwd', Math.round(rateStd * 100)); qs.set('ret', Math.round(rateStd * 100)); }
+  if (rateHvy !== '' && rateHvy != null) { qs.set('hfwd', Math.round(rateHvy * 100)); qs.set('hret', Math.round(rateHvy * 100)); }
   meta.textContent = 'Scanning prepaid RTO orders…';
   body.innerHTML = '';
   try {
-    const res = await adminFetch('/.netlify/functions/rto-refund-candidates?days=' + encodeURIComponent(days));
+    const res = await adminFetch('/.netlify/functions/rto-refund-candidates?' + qs.toString());
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     rtoRefundRows = data.candidates || [];
     meta.textContent = `${data.rto_scanned} RTO orders in the last ${data.window_days} days · `
       + `${rtoRefundRows.length} prepaid · ${data.cod_skipped} COD skipped (nothing to return) · `
-      + `deduction ₹${(data.deduction_paise / 100).toFixed(0)} per order.`;
+      + `${data.heavy_count || 0} bundle parcel${data.heavy_count === 1 ? '' : 's'} · `
+      + `deduction ₹${(data.deduction_paise / 100).toFixed(0)} single / `
+      + `₹${(data.heavy_deduction_paise / 100).toFixed(0)} bundle.`;
     if (totals) {
       totals.style.display = 'flex';
       totals.innerHTML = `<div class="stat-card" style="cursor:default"><div class="stat-num">${data.payable_count}</div><div class="stat-lbl">awaiting refund</div></div>`
@@ -10700,14 +10725,29 @@ async function loadRtoRefunds() {
   }
 }
 
+// Free-text match across everything on the row the owner might search by.
+function rtoRowMatches(row, needle) {
+  if (!needle) return true;
+  const hay = [row.order_id, row.customer_name, row.customer_phone, row.gateway,
+               row.parcel_reason, ...(row.books || [])].join(' ').toLowerCase();
+  // Every word must appear somewhere, so "ajay 239" narrows rather than widens.
+  return needle.split(/\s+/).filter(Boolean).every(t => hay.includes(t));
+}
+
 function renderRtoRefunds() {
   const body = document.getElementById('rtoRefundBody');
   if (!body) return;
   if (!rtoRefundRows.length) {
-    body.innerHTML = '<tr><td colspan="8" class="lead-empty">No prepaid RTO orders in this window.</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="lead-empty">No prepaid RTO orders in this window.</td></tr>';
     return;
   }
-  body.innerHTML = rtoRefundRows.map(row => {
+  const needle = (document.getElementById('rtoRefundSearch')?.value || '').trim().toLowerCase();
+  const shown = rtoRefundRows.filter(r => rtoRowMatches(r, needle));
+  if (!shown.length) {
+    body.innerHTML = `<tr><td colspan="9" class="lead-empty">No RTO order matches “${esc(needle)}”.</td></tr>`;
+    return;
+  }
+  body.innerHTML = shown.map(row => {
     const when = row.created_at
       ? new Date(row.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: '2-digit' })
       : '';
@@ -10719,17 +10759,34 @@ function renderRtoRefunds() {
     } else if (row.refund_started) {
       action = `<span class="hint" style="margin:0;">Refund already started${row.refund_state ? ' · ' + esc(row.refund_state) : ''}</span>`;
     } else {
+      // The amount is read from the input at click time, never from this
+      // closure, so an edited figure is the one that gets sent. The server
+      // still refuses anything above what the customer actually paid.
       action = `<button class="btn-gold owner-only" style="padding:.4rem .7rem;font-size:.58rem;"
-        onclick="issueRtoRefund(this, '${esc(row.order_id)}', ${row.refund_paise}, '${row.gateway}')">Refund ₹${money(row.refund_paise / 100)}</button>`;
+        onclick="issueRtoRefund(this, '${esc(row.order_id)}', '${row.gateway}')">Refund</button>`;
     }
     const books = row.books.length ? `<div class="hint" style="margin:.15rem 0 0;">${esc(row.books.join(' · '))}</div>` : '';
+    const heavy = row.parcel_tier === 'heavy';
+    const parcel = `<span style="color:${heavy ? '#c98a36' : 'var(--cream-dim)'};font-size:.58rem;">`
+      + `${heavy ? '📦 Bundle' : '📗 Single'}${row.parcel_books ? ` · ${row.parcel_books} book${row.parcel_books === 1 ? '' : 's'}` : ''}</span>`
+      + (row.parcel_reason ? `<div class="hint" style="margin:.15rem 0 0;">${esc(row.parcel_reason)}</div>` : '');
+    // Editable, because the tier is a guess from the title and the owner knows
+    // what the courier actually charged. Capped at what was paid so the field
+    // cannot be used to over-refund; the server enforces the same limit.
+    const amountCell = (row.nothing_to_refund || row.refund_started)
+      ? `<strong>₹${money(row.refund_paise / 100)}</strong>`
+      : `<input type="number" class="rto-amt" data-rto-amt="${esc(row.order_id)}"
+           value="${(row.refund_paise / 100).toFixed(2)}" min="0.01" max="${(row.amount_paise / 100).toFixed(2)}" step="0.01"
+           title="Editable. Cannot exceed the ₹${money(row.amount_paise / 100)} the customer paid."
+           style="width:96px;padding:.3rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);text-align:right;font-size:.62rem;"/>`;
     return `<tr data-rto-order="${esc(row.order_id)}">
       <td><strong>${esc(row.order_id)}</strong>${books}</td>
       <td>${esc(row.customer_name)}<div class="hint" style="margin:.15rem 0 0;">${esc(row.customer_phone)}</div></td>
       <td>${when}</td>
+      <td>${parcel}</td>
       <td style="text-align:right;">₹${money(row.amount_paise / 100)}</td>
       <td style="text-align:right;color:#c96a6a;">−₹${money(row.deduction_paise / 100)}</td>
-      <td style="text-align:right;"><strong>₹${money(row.refund_paise / 100)}</strong></td>
+      <td style="text-align:right;">${amountCell}</td>
       <td>${row.gateway === 'razorpay' ? 'Razorpay' : 'PhonePe'}</td>
       <td style="text-align:right;">${action}</td>
     </tr>`;
@@ -10737,10 +10794,33 @@ function renderRtoRefunds() {
   applyRoleVisibility();
 }
 
-async function issueRtoRefund(btn, orderId, refundPaise, gateway) {
+async function issueRtoRefund(btn, orderId, gateway) {
+  const row = rtoRefundRows.find(r => r.order_id === orderId);
+  const input = document.querySelector(`[data-rto-amt="${CSS.escape(orderId)}"]`);
+  if (!row || !input) { alert('Could not read the refund amount for ' + orderId + '. Rescan and try again.'); return; }
+
+  // Read at click time so an edited figure is what gets sent. Validate here for
+  // a clear message; the gateway endpoints enforce the same ceiling regardless,
+  // so a tampered field cannot over-refund.
+  const rupees = Number(input.value);
+  if (!Number.isFinite(rupees) || rupees <= 0) {
+    alert('Enter a refund amount greater than zero.'); input.focus(); return;
+  }
+  const refundPaise = Math.round(rupees * 100);
+  if (refundPaise > row.amount_paise) {
+    alert(`₹${money(rupees)} is more than the ₹${money(row.amount_paise / 100)} this customer paid.\n\n`
+      + 'The gateway would reject it. Lower the amount and try again.');
+    input.focus(); return;
+  }
+
   const rupeesOut = money(refundPaise / 100);
+  const suggested = row.refund_paise;
   // Spelled out in full, because this is the last step before money leaves.
   if (!confirm(`Refund ₹${rupeesOut} to ${orderId}?\n\n`
+    + (refundPaise !== suggested
+        ? `You changed this from the calculated ₹${money(suggested / 100)}.\n\n`
+        : '')
+    + `Customer paid ₹${money(row.amount_paise / 100)}. `
     + `This sends the money back through ${gateway === 'razorpay' ? 'Razorpay' : 'PhonePe'} now. `
     + `It cannot be undone from here.`)) return;
 
@@ -10763,8 +10843,12 @@ async function issueRtoRefund(btn, orderId, refundPaise, gateway) {
     // PENDING and is confirmed later by the reconcile job.
     const cell = btn.closest('td');
     if (cell) cell.innerHTML = `<span class="hint" style="margin:0;color:#6dbf6d;">${esc(data.message || ('₹' + rupeesOut + ' refunded'))}</span>`;
-    const row = rtoRefundRows.find(r => r.order_id === orderId);
-    if (row) { row.refund_started = true; row.refund_state = data.refund_state || 'REQUESTED'; }
+    input.disabled = true;
+    row.refund_started = true;
+    row.refund_state = data.refund_state || 'REQUESTED';
+    // Keep what was actually sent, not the original suggestion, so a re-render
+    // shows the real figure.
+    row.refund_paise = refundPaise;
   } catch (err) {
     btn.disabled = false;
     btn.innerHTML = original;
