@@ -9876,7 +9876,9 @@ async function bnrSearch() {
   if (q.length < 2) { box.innerHTML = ''; return; }
   box.innerHTML = '<div class="hint">Searching…</div>';
   try {
-    const res = await fetch('/.netlify/functions/catalog-search?per_page=12&q=' + encodeURIComponent(q));
+    // NOT catalog-search: that one is scoped to the crossword/99bookstores
+    // browse catalogues and cannot see publisher-sourced titles at all.
+    const res = await adminFetch('/.netlify/functions/admin-product-search?limit=12&q=' + encodeURIComponent(q));
     const data = await res.json();
     const books = data.books || [];
     if (!books.length) { box.innerHTML = '<div class="hint">Nothing matches that.</div>'; return; }
@@ -9885,7 +9887,7 @@ async function bnrSearch() {
         <img src="${esc(b.img)}" alt="" loading="lazy"/>
         <div style="flex:1;min-width:0;">
           <div style="font-size:.6rem;line-height:1.35;">${esc(b.title)}</div>
-          <div class="hint" style="margin:0;">₹${esc(b.price)}</div>
+          <div class="hint" style="margin:0;">${b.author ? esc(b.author) + ' · ' : ''}₹${esc(b.price)}</div>
         </div>
       </div>`).join('');
   } catch (err) {
