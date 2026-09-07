@@ -46,6 +46,24 @@ const esc = (s) => String(s == null ? '' : s)
 
 const rupees = (n) => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
 
+/**
+ * The only shop promises that may appear on a banner, worded exactly as the
+ * rest of the site words them.
+ *
+ * Left to write these freely the model produced "free delivery / on all
+ * orders" on its first real run. Delivery is free over Rs 499, not on all
+ * orders, and a false shipping promise on the homepage is a consumer-law
+ * problem, not a copy nit. So the model picks an ID from this list and the
+ * server supplies the wording -- it cannot invent a term we do not offer.
+ */
+const PROMISES = {
+  free_shipping: { num: '₹499+',   label: 'free delivery' },
+  cod:           { num: 'COD',     label: 'UPI available' },
+  replacement:   { num: '7-day',   label: 'replacement support' },
+  payments:      { num: 'UPI',     label: 'cards · net banking' },
+  pan_india:     { num: 'Pan-India', label: 'delivery' },
+};
+
 const SYSTEM_PROMPT = `You write homepage banner copy for Ink & Chai, an Indian online bookstore.
 
 The banner is a wide hero with a headline on the left and book covers on the right. You are filling short text fields, not writing HTML.
@@ -58,11 +76,14 @@ Return ONLY a JSON object with exactly these keys:
   subtitle     15-30 words. What the books are and who they are for. Plain, specific, no hype.
   cta_label    2-4 words. The main button. An action, e.g. "Shop the set".
   cta_secondary 2-3 words for a quieter second link, e.g. "More romance".
-  stats        EXACTLY 3 objects, each { "num": "...", "label": "..." }.
-               num is 1-2 words or a figure. label is 2-4 words, lowercase.
-               The first should describe the books, the other two are for the
-               shop's promises. Do NOT invent a price, a discount or a count --
-               those are filled in for you afterwards.
+  stat         ONE object { "num": "...", "label": "..." } describing THE BOOKS
+               themselves -- e.g. { "num": "5", "label": "books in one box" }.
+               num is 1-2 words or a figure, label is 2-4 words, lowercase.
+               Do NOT put a price or a discount here.
+  promises     EXACTLY 2 ids from this list, whichever suit the banner:
+               "free_shipping", "cod", "replacement", "payments", "pan_india"
+               The wording is filled in for you. Never write a shipping,
+               payment or returns promise yourself -- you do not know our terms.
 
 Read together, title_line1 + title_accent + title_line3 must form one natural sentence or phrase. Example: "Off Campus" / "all 5 books" / "one order."
 
@@ -201,18 +222,26 @@ exports.handler = async (event) => {
     cta_secondary: one(out.cta_secondary, 40) || 'Browse all books',
     cta_secondary_href: '/bestsellers/',
     price_label: rupees(total),
-    stats: Array.isArray(out.stats)
-      ? out.stats.slice(0, 3).map(s => ({ num: one(s?.num, 24), label: one(s?.label, 40) }))
-      : [],
+    stats: [],
   };
-  // Guarantee three stats even if the model returned fewer, so the row never
-  // renders half-empty on the live homepage.
-  const fallback = [
-    { num: String(books.length), label: books.length === 1 ? 'book' : 'books in one box' },
-    { num: rupees(total), label: single ? 'this edition' : 'complete set' },
-    { num: 'COD', label: 'UPI available' },
-  ];
-  while (fields.stats.length < 3) fields.stats.push(fallback[fields.stats.length]);
+
+  // Stat 1 is the model's, about the books. Stats 2 and 3 are ours, chosen by
+  // id from PROMISES -- an id we do not recognise is dropped rather than
+  // guessed at, and the gaps are filled from the front of the list.
+  const bookStat = out.stat && (out.stat.num || out.stat.label)
+    ? { num: one(out.stat.num, 24), label: one(out.stat.label, 40) }
+    : { num: String(books.length), label: books.length === 1 ? 'book' : 'books in one box' };
+  fields.stats.push(bookStat);
+
+  const picked = (Array.isArray(out.promises) ? out.promises : [])
+    .map(id => PROMISES[String(id || '').toLowerCase()])
+    .filter(Boolean);
+  for (const p of ['free_shipping', 'cod', 'replacement']) {
+    if (picked.length >= 2) break;
+    const fill = PROMISES[p];
+    if (!picked.some(x => x.num === fill.num)) picked.push(fill);
+  }
+  fields.stats.push(...picked.slice(0, 2).map(p => ({ ...p })));
 
   const inactive = books.filter(b => !b.is_active).map(b => b.slug);
   return json(200, {
@@ -228,4 +257,4 @@ exports.handler = async (event) => {
 };
 
 module.exports.renderSlide = renderSlide;
-module.exports._internals = { renderSlide, esc };
+module.exports._internals = { renderSlide, esc, PROMISES };

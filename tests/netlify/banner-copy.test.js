@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { renderSlide, esc } = require('../../netlify/functions/generate-banner-copy')._internals;
+const { renderSlide, esc, PROMISES } = require('../../netlify/functions/generate-banner-copy')._internals;
 
 const BOOKS = [
   { slug: 'the-deal-pus-1', title: 'The Deal', img: 'https://cdn.example/deal.jpg' },
@@ -92,4 +92,33 @@ test('esc handles null and non-strings without throwing', () => {
   assert.strictEqual(esc(null), '');
   assert.strictEqual(esc(undefined), '');
   assert.strictEqual(esc(42), '42');
+});
+
+/* -- shop promises are ours, never the model's --------------------------- */
+
+test('every promise on the allowlist matches a term the site actually offers', () => {
+  // On its first live run the model wrote "free delivery / on all orders".
+  // Delivery is free over Rs 499. Whatever ends up on the homepage has to be
+  // something we really do, so the wording lives here and not in the prompt.
+  assert.deepStrictEqual(PROMISES.free_shipping, { num: '₹499+', label: 'free delivery' });
+  for (const [id, p] of Object.entries(PROMISES)) {
+    assert.ok(p.num && p.label, `${id} needs both a num and a label`);
+    assert.ok(!/all orders|every order|always free|same day|next day|24 hours|guarantee/i.test(`${p.num} ${p.label}`),
+      `${id} promises something we do not offer: ${p.num} ${p.label}`);
+  }
+});
+
+test('an invented promise cannot reach the slide', () => {
+  // The model returns ids, so free text has nowhere to go. Even if it echoed
+  // the words back, nothing maps them into a stat.
+  const picked = ['free delivery on all orders', 'free_shipping', 'unicorn']
+    .map(id => PROMISES[String(id || '').toLowerCase()])
+    .filter(Boolean);
+  assert.deepStrictEqual(picked, [PROMISES.free_shipping]);
+});
+
+test('the shipping stat renders with the ₹499 condition attached', () => {
+  const html = renderSlide({ ...FIELDS, stats: [FIELDS.stats[0], PROMISES.free_shipping, PROMISES.cod] }, BOOKS);
+  assert.ok(html.includes('₹499+'), 'the threshold must be visible, not implied');
+  assert.ok(html.includes('free delivery'));
 });
