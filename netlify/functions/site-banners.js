@@ -26,9 +26,11 @@ const { renderSlide } = require('./utils/banner-slide');
 const HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Content-Type': 'application/json',
-  // Short enough that publishing feels immediate, long enough that the homepage
-  // is not making a database call for every visitor.
-  'Cache-Control': 'public, max-age=30, s-maxage=30',
+  // The homepage calls this on every load, so it must be edge-cached. Publishing
+  // or hiding a banner purges this exact URL (admin-banners does it), so the
+  // edge TTL can be long without a change taking minutes to show up.
+  'Cache-Control': 'public, max-age=30',
+  'Netlify-CDN-Cache-Control': 'public, s-maxage=600',
 };
 
 const empty = () => ({ statusCode: 200, headers: HEADERS, body: JSON.stringify({ hidden: [], slides: [] }) });

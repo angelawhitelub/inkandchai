@@ -14,7 +14,7 @@
 // Worker as module format — Service Worker format has no Node builtins.
 import routeTable from './routes.generated.js';
 import * as blobsNs from './shims/netlify-blobs.js';
-import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, edgeCacheKey, isStorable } from './cache-policy.mjs';
+import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable } from './cache-policy.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
 
@@ -297,9 +297,10 @@ function toEdgeCache(response, key, ctx) {
   }
 
   // Clone BEFORE anything reads the body; the stream is only good once.
+  const ttl = effectiveTtl(policy, key.url);
   const stored = out.clone();
   stored.headers.set(CLIENT_CC_HEADER, out.headers.get('Cache-Control') || '');
-  stored.headers.set('Cache-Control', `public, max-age=${policy.ttl}`);
+  stored.headers.set('Cache-Control', `public, max-age=${ttl}`);
   ctx.waitUntil(caches.default.put(key, stored).catch((e) => {
     console.warn('[edge-cache] put failed:', e && e.message || e);
   }));

@@ -25,6 +25,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { BUILTIN_SLOTS, isBuiltin } = require('./utils/banner-slots');
+const { purgeUrls } = require('./utils/purge-cache');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -32,6 +33,13 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stringify(body) });
+
+// Every write here changes what site-banners serves, and that response is now
+// edge-cached -- so without this a published or hidden banner would sit behind
+// a stale cache entry and look like it had not worked.
+const SITE = (process.env.SITE_URL || 'https://inkandchai.in').replace(/\/+$/, '');
+const purgeBanners = () => purgeUrls([`${SITE}/.netlify/functions/site-banners`, `${SITE}/`])
+  .catch(e => { console.warn('[admin-banners] purge failed:', e.message); return { purged: false }; });
 
 const one = (v, max = 200) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -128,7 +136,8 @@ exports.handler = async (event) => {
         fields, book_slugs: slugs,
       });
       if (error) throw error;
-      return json(200, { published: true, slot });
+      const purge = await purgeBanners();
+      return json(200, { published: true, slot, cache_purged: purge.purged === true });
     }
 
     if (action === 'set_active') {
@@ -142,12 +151,14 @@ exports.handler = async (event) => {
           .upsert({ slot, kind: 'builtin', is_active: isActive, label: slot, updated_at: new Date().toISOString() },
                   { onConflict: 'slot' });
         if (error) throw error;
-        return json(200, { slot, is_active: isActive });
+        const purge = await purgeBanners();
+        return json(200, { slot, is_active: isActive, cache_purged: purge.purged === true });
       }
       const { error } = await supabase.from('site_banners')
         .update({ is_active: isActive, updated_at: new Date().toISOString() }).eq('slot', slot);
       if (error) throw error;
-      return json(200, { slot, is_active: isActive });
+      const purged = await purgeBanners();
+      return json(200, { slot, is_active: isActive, cache_purged: purged.purged === true });
     }
 
     if (action === 'delete') {
@@ -160,7 +171,8 @@ exports.handler = async (event) => {
       }
       const { error } = await supabase.from('site_banners').delete().eq('slot', slot).eq('kind', 'custom');
       if (error) throw error;
-      return json(200, { deleted: slot });
+      const purge = await purgeBanners();
+      return json(200, { deleted: slot, cache_purged: purge.purged === true });
     }
 
     if (action === 'reorder') {
@@ -176,7 +188,8 @@ exports.handler = async (event) => {
           await supabase.from('site_banners').update(patch).eq('slot', slot);
         }
       }
-      return json(200, { reordered: slots.length });
+      const purge = await purgeBanners();
+      return json(200, { reordered: slots.length, cache_purged: purge.purged === true });
     }
 
     return json(400, { error: `Unknown action "${action}".` });

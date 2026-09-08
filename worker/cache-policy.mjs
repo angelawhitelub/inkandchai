@@ -26,6 +26,22 @@ export const EDGE_HEADER = 'Netlify-CDN-Cache-Control';
 export const CLIENT_CC_HEADER = 'X-Client-Cache-Control';
 
 /**
+ * The longest a response with a query string is held at the edge.
+ *
+ * Cloudflare's tag purge is Enterprise-only, so utils/purge-cache purges by
+ * URL. That works for a clean path -- /custom-feed.xml, /product/<slug>/,
+ * /spimg/<key> -- and cannot work for /...?q=whatever, because there is no way
+ * to enumerate every query a visitor has ever sent.
+ *
+ * An unpurgeable entry held for the declared hour is how an admin price edit
+ * ends up invisible for an hour, which is a failure this shop has already been
+ * bitten by on Netlify's durable cache. Five minutes still collapses virtually
+ * all repeat traffic -- the egress win is in the volume of requests, not the
+ * length of the TTL -- while bounding how long a save can hide.
+ */
+export const UNPURGEABLE_MAX_TTL = 300;
+
+/**
  * What the shared cache should do with a response, read off its declared policy.
  * @returns {{cacheable: boolean, ttl: number, reason: string}}
  */
@@ -49,6 +65,13 @@ export function edgePolicy(headerValue) {
   if (!Number.isFinite(ttl) || ttl <= 0) return { cacheable: false, ttl: 0, reason: 'no positive ttl' };
 
   return { cacheable: true, ttl, reason: s ? 's-maxage' : 'max-age' };
+}
+
+/** The TTL to actually use for a given URL, after the purgeability cap. */
+export function effectiveTtl(policy, url) {
+  if (!policy.cacheable) return 0;
+  const hasQuery = new URL(url).search.length > 0;
+  return hasQuery ? Math.min(policy.ttl, UNPURGEABLE_MAX_TTL) : policy.ttl;
 }
 
 /**

@@ -5,11 +5,16 @@
  * feature, so this purges by URL instead and maps each logical tag to the URLs
  * that actually serve it.
  *
- * Note the shape of the problem changed with the platform. Cloudflare does not
- * edge-cache /.netlify/functions/* responses unless a Cache Rule says to, and
- * the old Netlify-CDN-Cache-Control headers the handlers still send are simply
- * ignored. So admin writes are already immediately visible and this is a
- * belt-and-braces pass over the *static* pages that embed the same data.
+ * This used to say function responses were never edge-cached, so an admin write
+ * was visible immediately and purging was only a belt-and-braces pass over the
+ * static pages. That stopped being true when the Worker started honouring the
+ * handlers' declared policies (worker/cache-policy.mjs) -- a cached function
+ * response can now hide a save, which is exactly the failure this shop hit on
+ * Netlify's durable cache. So the function URLs are purged too.
+ *
+ * Only clean URLs can be purged; a query string cannot be enumerated. That is
+ * why the Worker caps the TTL on anything carrying one -- see
+ * UNPURGEABLE_MAX_TTL.
  *
  * Requires CF_ZONE_ID and CF_PURGE_TOKEN (a zone-scoped token with
  * Cache Purge: Edit). Without them this degrades to a no-op that reports
@@ -28,11 +33,12 @@ const PRODUCT_TAGS = [TAGS.PRODUCTS, 'product-overrides'];
 // A tag maps to the static URLs whose content can change when it is purged.
 // Per-product pages are added by the caller-supplied slugs where known.
 const TAG_URLS = {
-  [TAGS.PRODUCTS]: ['/', '/feed.xml', '/sitemap.xml', '/category/', '/collection/'],
-  'product-overrides': ['/', '/feed.xml'],
+  [TAGS.PRODUCTS]: ['/', '/feed.xml', '/sitemap.xml', '/category/', '/collection/',
+                    '/custom-feed.xml'],
+  'product-overrides': ['/', '/feed.xml', '/custom-feed.xml'],
   [TAGS.APLUS]: ['/'],
   [TAGS.REVIEWS]: ['/'],
-  [TAGS.REELS]: ['/'],
+  [TAGS.REELS]: ['/', '/.netlify/functions/site-reels'],
 };
 
 function urlsForTags(tags) {

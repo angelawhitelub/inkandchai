@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { edgePolicy, edgeCacheKey, isStorable, EDGE_HEADER } from '../../worker/cache-policy.mjs';
+import { edgePolicy, effectiveTtl, edgeCacheKey, isStorable, EDGE_HEADER, UNPURGEABLE_MAX_TTL } from '../../worker/cache-policy.mjs';
 
 /* The expensive mistake here is caching something that belongs to one visitor
    and serving it to the next, so most of these are about refusing to cache. */
@@ -69,4 +69,21 @@ test('a response that could leak a session is not storable', () => {
 
 test('the header name matches what the handlers actually send', () => {
   assert.strictEqual(EDGE_HEADER, 'Netlify-CDN-Cache-Control');
+});
+
+test('a URL with a query is capped, because it can never be purged', () => {
+  // Cloudflare tag purge is Enterprise-only, so purge-cache purges by URL and
+  // cannot enumerate every ?q= a visitor has sent. Holding one of those for the
+  // declared hour is how an admin price edit stays invisible for an hour.
+  const hour = edgePolicy('public, durable, s-maxage=3600, stale-while-revalidate=86400');
+  assert.strictEqual(effectiveTtl(hour, 'https://x.test/.netlify/functions/catalog-search?q=atomic'),
+    UNPURGEABLE_MAX_TTL);
+  // A clean path is purgeable by URL, so it keeps the TTL it asked for.
+  assert.strictEqual(effectiveTtl(hour, 'https://x.test/custom-feed.xml'), 3600);
+  assert.strictEqual(
+    effectiveTtl(edgePolicy('public, durable, s-maxage=2592000, immutable'), 'https://x.test/spimg/a/b.jpg'),
+    2592000);
+  // A short declared TTL is never lengthened by the cap.
+  assert.strictEqual(effectiveTtl(edgePolicy('public, s-maxage=60'), 'https://x.test/f?a=1'), 60);
+  assert.strictEqual(effectiveTtl({ cacheable: false, ttl: 0 }, 'https://x.test/f'), 0);
 });
