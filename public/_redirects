@@ -52,9 +52,21 @@
 /bestseller      /bestsellers/  301
 
 
-# Client-rendered listing pages
-/category/*    /category/    200
-/collection/*  /collection/  200
+# NO /category/* or /collection/* splat.
+#
+# These two rules used to rewrite every category and collection URL to a single
+# client-rendered document. _redirects is consulted BEFORE a matching static
+# asset is served (the reverse of what the note at the top of this file assumed
+# and what the Cloudflare docs imply), so the splat also shadowed real files:
+# with /category/fiction/index.html on disk, /category/fiction/ still returned
+# the generic client-rendered page. Every /category/<slug>/ and
+# /collection/<slug>/ is a generated page now, so nothing needs the rewrite —
+# and with it gone an unbuilt slug correctly 404s instead of answering 200 with
+# an empty duplicate. generate_site.py writes a page for EVERY category any
+# link names, so no internal link relies on the fallback.
+#
+# /category/?name=<X> and /collection/?id=<X> still work: their path is
+# /category/ and /collection/, which are real files.
 
 
 # No catch-all: Pages serves the generated 404.html for anything unmatched.

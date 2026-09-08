@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Loading… — Ink &amp; Chai</title>
-<link rel="preload" as="script" href="/js/books-full-9ac4ed6f.js"/>
+<link rel="preload" as="script" href="/js/books-full-700973de.js"/>
 <meta name="description" content="Buy books online at Ink &amp; Chai — fast pan-India delivery."/>
 <meta name="robots" content="index,follow"/>
 <meta name="keywords" content="buy books online india, hindi books, self help books hindi, fiction books online, motivational books, ink and chai"/>
@@ -798,7 +798,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/books-full-9ac4ed6f.js"></script>
+<script src="/js/books-full-700973de.js"></script>
 <script>
 const BOOKS = window.BOOKS_PRELOAD||[];
 const SOCIAL_PROOF = [];
@@ -1072,6 +1072,15 @@ function renderProduct(b) {
   setMeta('twImg',   imgAbs);
   const canon = document.getElementById('canonLink'); if (canon) canon.href = canonical;
 
+  // Breadcrumb link for a category. This renderer also serves custom products,
+  // whose category may have no page of its own — fall back to the ?name= view
+  // rather than putting a 404 in the breadcrumb.
+  const CAT_PAGE_SLUGS = new Set(["akshat-gupta-books", "ali-hazelwood-special", "all-fiction", "all-romance", "all-romance-books", "all-self-help", "amish-tripathi-books", "ana-huang-books", "bengali-books", "best-of-spirituality-and-mythology", "best-self-help-books-from-publishers", "biography", "biography-and-autobiography", "board-books", "boxsets", "business--finance", "business-and-finance", "children-books", "classics", "colleen-hoover-special", "coloring-books", "comics", "fiction", "fiction--romance-combos", "freida-mcfadden-special", "hardcover-store", "health--fitness", "hindi-books", "independence-day-special", "indian-mythology", "kids-book", "kids-book-age-12", "kids-book-age-3-5", "language--education", "lauren-asher-special", "malayalam-books", "manga", "marathi-books", "mythology", "napoleon-hill-books", "new-arrivals", "new-books-at-99", "non-fiction", "non-fictions", "other-languages", "poetry", "preloved-books", "preloved-fiction", "rhonda-byrne-books", "romance-on-sale", "science", "self-help", "self-help--finance-combos", "self-help-on-sale", "sudha-murti-special", "sunday-sale", "thriller--mystery", "trading-books"]);
+  function categoryHref(cat) {
+    const s = String(cat || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/^-+|-+$/g, '').replace(/--/g, '-');
+    return CAT_PAGE_SLUGS.has(s) ? '/category/' + s + '/' : '/category/?name=' + encodeURIComponent(cat || '');
+  }
+
   // JSON-LD structured data — Google rich-snippet for Product + Breadcrumbs
   const _sale = parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0);
   const _orig = parseFloat((b.op||'').replace(/[^0-9.]/g,'')||0);
@@ -1118,7 +1127,7 @@ function renderProduct(b) {
         "@type": "BreadcrumbList",
         "itemListElement": [
           { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://inkandchai.in/" },
-          { "@type": "ListItem", "position": 2, "name": b.cat || "Books", "item": "https://inkandchai.in/category/?name=" + encodeURIComponent(b.cat || "") },
+          { "@type": "ListItem", "position": 2, "name": b.cat || "Books", "item": "https://inkandchai.in" + categoryHref(b.cat) },
           { "@type": "ListItem", "position": 3, "name": b.t, "item": canonical }
         ]
       }

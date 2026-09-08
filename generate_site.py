@@ -568,6 +568,21 @@ all_cats = [
     if count >= 2 and cat.lower() not in SKIP_CATS
 ]
 all_cats_js = json.dumps(all_cats, ensure_ascii=False)
+
+# Every category slug that gets a real /category/<slug>/ page later in this
+# build. Product breadcrumbs and the homepage cards resolve links against this
+# so they can never point at a URL that was never written — which is exactly
+# what the old /category/?name=<X> links did.
+CATEGORY_PAGE_SLUGS = sorted({
+    slugify(b["cat"]) for b in slim
+    if (b.get("cat") or "").strip() and slugify(b["cat"])
+})
+CATEGORY_PAGE_SLUGS_JS = json.dumps(CATEGORY_PAGE_SLUGS)
+
+def category_page_url(cat):
+    """Link to a category's own page, or None when it has no page."""
+    s = slugify(str(cat or ""))
+    return f"/category/{s}/" if s in set(CATEGORY_PAGE_SLUGS) else None
 nav_categories_html = "\n        ".join(
     f'<a href="/category/{slugify(cat["name"])}/" role="menuitem">'
     f'<span>{html_escape(cat["name"])}</span><span class="nav-cat-count">{int(cat["count"])} books</span></a>'
@@ -3696,9 +3711,7 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function slugifyName(s) {
-  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-');
-}
+function slugifyName(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/^-+|-+$/g,'').replace(/--/g,'-')}
 
 // ── CONTROLS ──────────────────────────────────────────────────────────────
 function setTab(el) {
@@ -5482,6 +5495,15 @@ function renderProduct(b) {
   setMeta('twImg',   imgAbs);
   const canon = document.getElementById('canonLink'); if (canon) canon.href = canonical;
 
+  // Breadcrumb link for a category. This renderer also serves custom products,
+  // whose category may have no page of its own — fall back to the ?name= view
+  // rather than putting a 404 in the breadcrumb.
+  const CAT_PAGE_SLUGS = new Set(CATEGORY_SLUGS_PLACEHOLDER);
+  function categoryHref(cat) {
+    const s = String(cat || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/^-+|-+$/g, '').replace(/--/g, '-');
+    return CAT_PAGE_SLUGS.has(s) ? '/category/' + s + '/' : '/category/?name=' + encodeURIComponent(cat || '');
+  }
+
   // JSON-LD structured data — Google rich-snippet for Product + Breadcrumbs
   const _sale = parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0);
   const _orig = parseFloat((b.op||'').replace(/[^0-9.]/g,'')||0);
@@ -5528,7 +5550,7 @@ function renderProduct(b) {
         "@type": "BreadcrumbList",
         "itemListElement": [
           { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://inkandchai.in/" },
-          { "@type": "ListItem", "position": 2, "name": b.cat || "Books", "item": "https://inkandchai.in/category/?name=" + encodeURIComponent(b.cat || "") },
+          { "@type": "ListItem", "position": 2, "name": b.cat || "Books", "item": "https://inkandchai.in" + categoryHref(b.cat) },
           { "@type": "ListItem", "position": 3, "name": b.t, "item": canonical }
         ]
       }
@@ -6310,6 +6332,7 @@ PRODUCT_HTML = PRODUCT_HTML.replace("BOOKS_DATA_PLACEHOLDER",        "window.BOO
 PRODUCT_HTML = PRODUCT_HTML.replace('<script src="/js/auth.js"></script>\n<script>\nconst BOOKS = window.BOOKS_PRELOAD||[];',
                                     f'<script src="/js/auth.js"></script>\n{BOOKS_FULL_TAG}\n<script>\nconst BOOKS = window.BOOKS_PRELOAD||[];')
 PRODUCT_HTML = PRODUCT_HTML.replace("SOCIAL_PROOF_PLACEHOLDER",      json.dumps(social_items, ensure_ascii=False))
+PRODUCT_HTML = PRODUCT_HTML.replace("CATEGORY_SLUGS_PLACEHOLDER",   CATEGORY_PAGE_SLUGS_JS)
 PRODUCT_HTML = PRODUCT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",  razorpay_key)
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_URL_PLACEHOLDER",      os.environ.get("SUPABASE_URL", ""))
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER", os.environ.get("SUPABASE_ANON_KEY", ""))
@@ -6496,7 +6519,7 @@ def breadcrumb_json_ld(book):
     title = book.get("t", "")
     items = [
         {"@type": "ListItem", "position": 1, "name": "Home",     "item": SITE},
-        {"@type": "ListItem", "position": 2, "name": cat,        "item": f"{SITE}/category/?name={quote(cat)}"},
+        {"@type": "ListItem", "position": 2, "name": cat,        "item": SITE + (category_page_url(cat) or f"/category/?name={quote(cat)}")},
         {"@type": "ListItem", "position": 3, "name": title,      "item": product_abs_url(book["slug"])},
     ]
     ld = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": items}
@@ -10244,6 +10267,14 @@ COLLECTION_HTML = r"""<!DOCTYPE html>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Collection — Ink &amp; Chai</title>
+<!-- This one document answers every /category/* and /collection/* URL that has
+     no generated page of its own (?name=/?id= links, and categories under
+     CAT_MIN_BOOKS). It cannot know which one it is until JS runs, so it has no
+     title, description or canonical of its own to give. Indexing it is what
+     made 38 sitemap URLs look like 38 copies of the same empty page; the real
+     pages under /category/<slug>/ carry the metadata now. "follow" so the
+     links on it are still crawled. -->
+<meta name="robots" content="noindex,follow"/>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>
 <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
@@ -10351,7 +10382,7 @@ html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-c
 const BOOKS = BOOKS_DATA_PLACEHOLDER;
 const COLLECTIONS = COLLECTIONS_DATA_PLACEHOLDER;
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-function slugifyName(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').replace(/-+/g,'-')}
+function slugifyName(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/^-+|-+$/g,'').replace(/--/g,'-')}
 
 const params = new URLSearchParams(location.search);
 const pathParts = location.pathname.split('/').filter(Boolean);
@@ -11073,6 +11104,359 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
 print(f"Generated: {_LANDING_DIR}/[landing-page]/  ({_landing_count} genre landing pages)")
 
 
+# ── Category & collection landing pages ──────────────────────────────────────
+# /category/<slug>/ and /collection/<slug>/ were both rewritten by _redirects to
+# ONE client-rendered document. All 38 of these URLs in the sitemap therefore
+# served byte-identical HTML: the same generic "Collection — Ink & Chai" title,
+# no canonical, no description, and zero product links until JavaScript ran.
+# To a crawler that is 38 copies of one empty page competing with each other.
+#
+# These are the same URLs rendered for real at build time: unique title,
+# description and canonical, and an <a href> grid so the catalogue is reachable
+# without executing JavaScript.
+#
+# A page is written for EVERY category that anything links to — the nav menu
+# lists 45, product breadcrumbs can name any of the 59 — because dropping the
+# /category/* splat from _redirects means an unbuilt slug now 404s instead of
+# quietly falling back to the client-rendered page. Only categories with at
+# least CAT_MIN_BOOKS titles are indexable and listed in the sitemap; the rest
+# exist so their links resolve, and say noindex.
+CAT_MIN_BOOKS = 5   # same threshold the sitemap already used for /category/
+CAT_PAGE_SIZE = 60  # 474 cards in one document is a 120 KB page on 4G
+
+_cat_emoji_re = re.compile("[\U0001F300-\U0001FAFF☀-➿️]")
+
+def _cat_label(name):
+    """Display name. Slugs keep using slugify(name) so no URL moves."""
+    label = _cat_emoji_re.sub("", str(name or "")).strip()
+    # A few categories are stored shouting ("OTHER LANGUAGES"); a page title is
+    # not the place for it.
+    if label.isupper() and len(label) > 3:
+        label = label.title()
+    return re.sub(r"\s+", " ", label)
+
+# Group by SLUG, not by name: "Non Fiction" and "Non-Fiction" are two spellings
+# that slugify to non-fiction, and keying on the name would have written one
+# page over the other and lost half the books.
+_cat_groups = {}
+for _b in slim:
+    _cname = _b.get("cat") or ""
+    if not _cname:
+        continue
+    _cslug = slugify(_cname)
+    if not _cslug:
+        continue
+    _grp = _cat_groups.setdefault(_cslug, {"names": Counter(), "books": []})
+    _grp["names"][_cname] += 1
+    _grp["books"].append(_b)
+for _cslug, _grp in _cat_groups.items():
+    _grp["label"] = _cat_label(_grp["names"].most_common(1)[0][0])
+    _grp["books"].sort(key=landing_rank)
+    # SKIP_CATS are the duplicate-ish buckets deliberately kept out of the nav;
+    # they still get a page so links resolve, but never an indexable one.
+    _grp["indexable"] = (len(_grp["books"]) >= CAT_MIN_BOOKS
+                         and not any(n.lower() in SKIP_CATS for n in _grp["names"]))
+
+def _cat_price_range(books):
+    nums = [int(round(price_number(b))) for b in books]
+    nums = [n for n in nums if n]
+    return (min(nums), max(nums)) if nums else (0, 0)
+
+def _cat_top_authors(books, n=3):
+    """Authors worth naming — skips blanks and one-off appearances."""
+    counts = Counter(b.get("a", "").strip() for b in books if b.get("a", "").strip())
+    return [a for a, c in counts.most_common(n) if c >= 2]
+
+def _cat_description(label, books):
+    """Unique, factual meta description. No promise the shop does not make."""
+    lo, hi = _cat_price_range(books)
+    bits = [f"Shop {len(books)} titles in {label} at Ink & Chai"]
+    if lo and hi and hi > lo:
+        bits.append(f"from Rs.{lo} to Rs.{hi}")
+    elif lo:
+        bits.append(f"from Rs.{lo}")
+    authors = _cat_top_authors(books, 2)
+    if authors:
+        bits.append("including " + " and ".join(authors))
+    tail = " Free delivery above Rs.499, cash on delivery, 7-day replacement."
+    # Drop optional clauses whole rather than truncating mid-sentence — cutting
+    # "including Elle Kennedy and Colleen Hoover" at a word boundary leaves
+    # "including Elle Kennedy and." in the SERP snippet.
+    while len(", ".join(bits)) + 1 + len(tail) > 155 and len(bits) > 1:
+        bits.pop()
+    return ", ".join(bits) + "." + tail
+
+_CAT_CSS = """
+:root{--bg:#0d0b08;--panel:#1c1916;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.18);--white:#faf7f2}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif;font-weight:400;line-height:1.6}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;border-bottom:1px solid var(--border);background:rgba(13,11,8,.97);position:sticky;top:0;z-index:5}
+.logo{font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:var(--gold);text-decoration:none}
+.logo span{color:var(--cream);font-weight:300;font-style:italic}
+.back{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none}
+main{max-width:1240px;margin:0 auto;padding:3rem 1.5rem 5rem}
+.crumb{font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}
+.crumb a{color:var(--muted);text-decoration:none}
+h1{font-family:'Cormorant Garamond',serif;font-size:clamp(2rem,5vw,3.6rem);font-weight:400;color:var(--white);margin-bottom:.7rem;line-height:1.05}
+.intro{font-size:1rem;color:var(--muted);max-width:780px;margin-bottom:2rem;line-height:1.7}
+.trust{display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:2.5rem;font-size:.66rem;color:var(--gold);letter-spacing:.06em}
+.lp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1.4rem;margin-bottom:2rem}
+.ah-card{text-decoration:none;color:inherit;display:flex;flex-direction:column}
+.ah-cover{aspect-ratio:2/3;background:#1a1208;border:1px solid var(--border);overflow:hidden;margin-bottom:.6rem;transition:border-color .2s}
+.ah-card:hover .ah-cover{border-color:var(--gold)}
+.ah-cover img{width:100%;height:100%;object-fit:contain;display:block;background:#1a1208}
+.ah-title{font-family:'Cormorant Garamond',serif;font-size:.95rem;color:var(--cream);line-height:1.3;margin-bottom:.2rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ah-price{font-size:.82rem;color:var(--gold);font-weight:600}
+.pager{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:2rem 0 1rem;font-size:.78rem}
+.pager a,.pager span{padding:.45rem .8rem;border:1px solid var(--border);color:var(--muted);text-decoration:none}
+.pager a:hover{border-color:var(--gold);color:var(--gold)}
+.pager .cur{border-color:var(--gold);color:var(--gold);font-weight:600}
+.related{margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border)}
+.related h2{font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;color:var(--white);margin-bottom:1rem}
+.chips{display:flex;flex-wrap:wrap;gap:.5rem}
+.chips a{font-size:.75rem;padding:.4rem .85rem;border:1px solid var(--border);color:var(--muted);text-decoration:none}
+.chips a:hover{border-color:var(--gold);color:var(--gold)}
+footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-size:.65rem;color:var(--muted);letter-spacing:.08em;margin-top:3rem}
+@media(max-width:600px){ nav{padding:1rem} .lp-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:1rem} }
+"""
+
+_CAT_TRUST = """  <div class="trust">
+    <span>&#128666; Delivery in 2-5 days</span>
+    <span>&#128181; Cash on delivery</span>
+    <span>&#128179; UPI &middot; Cards &middot; Net banking</span>
+    <span>&#128737; <a href="/return-policy/" style="color:inherit">7-day easy returns</a></span>
+  </div>"""
+
+def _cat_page_html(*, title, description, canonical, h1, intro, grid,
+                   ld_json, crumb_html, pager_html="", related_html="",
+                   og_image="", robots="index,follow,max-image-preview:large"):
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{html_escape(title)}</title>
+<meta name="description" content="{html_escape(description)}"/>
+<meta name="robots" content="{robots}"/>
+<link rel="canonical" href="{canonical}"/>
+<meta property="og:title" content="{html_escape(title)}"/>
+<meta property="og:description" content="{html_escape(description)}"/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="{canonical}"/>
+<meta property="og:image" content="{og_image}"/>
+<script type="application/ld+json">{json.dumps(ld_json, ensure_ascii=False)}</script>
+<link href="FONT_GOOGLE_URL_SIMPLE_PLACEHOLDER" rel="stylesheet"/>
+<style>{_CAT_CSS}</style>
+</head>
+<body>
+<nav>
+  <a class="logo" href="/">Ink &amp;<span> Chai</span></a>
+  <a class="back" href="/">&larr; Back to Store</a>
+</nav>
+<main>
+  <div class="crumb">{crumb_html}</div>
+  <h1>{html_escape(h1)}</h1>
+  <p class="intro">{html_escape(intro)}</p>
+{_CAT_TRUST}
+  <div class="lp-grid">{grid}</div>
+{pager_html}
+{related_html}
+</main>
+<footer>&copy; 2026 Ink &amp; Chai &middot; inkandchai.in &middot; <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+</body>
+</html>"""
+
+# Which collection (if any) each category belongs to — drives the breadcrumb
+# and the hub/spoke links that give these pages a reason to link to each other.
+_coll_of_slug = {}
+for _c in coll_data:
+    for _member in _c.get("cats", []):
+        _coll_of_slug[slugify(str(_member))] = _c
+
+_cat_pages = []   # (url, priority) — the sitemap is built from this, so it can
+                  # only ever advertise pages that were actually written
+_CAT_DIR = Path(__file__).parent / "public" / "category"
+_indexable_slugs = [s for s, gp in _cat_groups.items() if gp["indexable"]]
+
+for _slug, _grp in sorted(_cat_groups.items()):
+    _label  = _grp["label"]
+    _books  = _grp["books"]
+    _total  = len(_books)
+    _index  = _grp["indexable"]
+    _npages = max(1, (_total + CAT_PAGE_SIZE - 1) // CAT_PAGE_SIZE) if _index else 1
+    _desc   = _cat_description(_label, _books)
+    _parent = _coll_of_slug.get(_slug)
+
+    # Siblings from the same collection where there is one, else the biggest
+    # indexable categories — a thin page still deserves a way out.
+    _sibs = [(s, _cat_groups[s]["label"]) for s in _indexable_slugs
+             if s != _slug and (_coll_of_slug.get(s) is _parent if _parent else True)]
+    _sibs.sort(key=lambda sl: -len(_cat_groups[sl[0]]["books"]))
+    _related = (
+        '  <div class="related"><h2>Browse related</h2><div class="chips">'
+        + "".join(f'<a href="/category/{s}/">{html_escape(l)}</a>' for s, l in _sibs[:8])
+        + (f'<a href="/collection/{_parent["slug"]}/">{html_escape(_cat_label(_parent["name"]))}</a>'
+           if _parent else "")
+        + "</div></div>"
+    )
+
+    for _pg in range(1, _npages + 1):
+        _chunk = _books[(_pg - 1) * CAT_PAGE_SIZE: _pg * CAT_PAGE_SIZE] if _index else _books[:CAT_PAGE_SIZE]
+        _path  = f"/category/{_slug}/" if _pg == 1 else f"/category/{_slug}/page/{_pg}/"
+        _canon = SITE + _path
+        _title = (f"{_label} — {_total} Books Online | Ink & Chai" if _pg == 1
+                  else f"{_label} — Page {_pg} of {_npages} | Ink & Chai")
+        _intro = (
+            f"Every title we stock in {_label} — {_total} in all. "
+            "Brand-new paperbacks sourced directly from publishers and shipped across India."
+            if _pg == 1 else
+            f"{_label} — page {_pg} of {_npages}, showing books "
+            f"{(_pg - 1) * CAT_PAGE_SIZE + 1}-{(_pg - 1) * CAT_PAGE_SIZE + len(_chunk)} of {_total}."
+        )
+
+        _crumbs = [{"@type": "ListItem", "position": 1, "name": "Home", "item": SITE}]
+        if _parent:
+            _crumbs.append({"@type": "ListItem", "position": 2,
+                            "name": _cat_label(_parent["name"]),
+                            "item": f"{SITE}/collection/{_parent['slug']}/"})
+        _crumbs.append({"@type": "ListItem", "position": len(_crumbs) + 1,
+                        "name": _label, "item": f"{SITE}/category/{_slug}/"})
+
+        _ld = {"@context": "https://schema.org", "@graph": [
+            {"@type": "CollectionPage", "name": _title, "url": _canon, "description": _desc,
+             "isPartOf": {"@type": "WebSite", "name": "Ink & Chai", "url": SITE}},
+            {"@type": "ItemList", "name": _label, "numberOfItems": len(_chunk),
+             "itemListElement": [
+                 {"@type": "ListItem", "position": i + 1, "url": SITE + b["url"], "name": b["t"]}
+                 for i, b in enumerate(_chunk)]},
+            {"@type": "BreadcrumbList", "itemListElement": _crumbs},
+        ]}
+
+        _crumb_html = '<a href="/">Home</a> / '
+        if _parent:
+            _crumb_html += (f'<a href="/collection/{_parent["slug"]}/">'
+                            f'{html_escape(_cat_label(_parent["name"]))}</a> / ')
+        _crumb_html += html_escape(_label) + (f" / Page {_pg}" if _pg > 1 else "")
+
+        _pager = ""
+        if _npages > 1:
+            _links = []
+            for _n in range(1, _npages + 1):
+                _href = f"/category/{_slug}/" if _n == 1 else f"/category/{_slug}/page/{_n}/"
+                _links.append(f'<span class="cur">{_n}</span>' if _n == _pg
+                              else f'<a href="{_href}">{_n}</a>')
+            _pager = '  <nav class="pager" aria-label="Pagination">' + "".join(_links) + "</nav>"
+
+        # Page 2+ inherits the category description otherwise, which makes
+        # every page of a long category look identical to a crawler.
+        _pgdesc = _desc if _pg == 1 else (
+            f"Page {_pg} of {_npages}: {_label} books "
+            f"{(_pg - 1) * CAT_PAGE_SIZE + 1}-{(_pg - 1) * CAT_PAGE_SIZE + len(_chunk)} "
+            f"of {_total} at Ink & Chai. Free delivery above Rs.499, cash on delivery."
+        )
+
+        _html = _cat_page_html(
+            title=_title, description=_pgdesc, canonical=_canon,
+            h1=_label if _pg == 1 else f"{_label} — page {_pg}",
+            intro=_intro, grid="".join(_author_book_card(b) for b in _chunk),
+            ld_json=_ld, crumb_html=_crumb_html, pager_html=_pager,
+            related_html=_related if _pg == 1 else "",
+            og_image=(_chunk[0].get("img", "") if _chunk else ""),
+            robots=("index,follow,max-image-preview:large" if _index else "noindex,follow"),
+        )
+
+        _dir = _CAT_DIR / _slug if _pg == 1 else _CAT_DIR / _slug / "page" / str(_pg)
+        _dir.mkdir(parents=True, exist_ok=True)
+        (_dir / "index.html").write_text(with_page_loader(_html), encoding="utf-8")
+        if _index:
+            _cat_pages.append((_canon, "0.6" if _pg == 1 else "0.4"))
+
+print(f"Generated: {_CAT_DIR}/[category]/  ({len(_cat_groups)} categories, "
+      f"{len(_indexable_slugs)} indexable, {len(_cat_pages)} sitemap pages)")
+
+# Collection hubs — one page per collection, linking down to its categories.
+# The sitemap used to point at /collection/?id=<slug>: a query string on a page
+# that could not read it server-side. These are the same collections at a real
+# crawlable path.
+_coll_pages = []
+_COLL_DIR = Path(__file__).parent / "public" / "collection"
+for _c in coll_data:
+    _mslugs = [slugify(str(m)) for m in _c.get("cats", [])]
+    _members = [(s, _cat_groups[s]["label"], len(_cat_groups[s]["books"]))
+                for s in _mslugs if s in _cat_groups]
+    _cbooks = sorted({b["slug"]: b for s in _mslugs
+                      for b in _cat_groups.get(s, {}).get("books", [])}.values(),
+                     key=landing_rank)
+    if len(_cbooks) < CAT_MIN_BOOKS:
+        continue
+    _cslug  = _c["slug"]
+    _cname  = _cat_label(_c["name"])
+    _ccanon = f"{SITE}/collection/{_cslug}/"
+    _cdesc  = _cat_description(_cname, _cbooks)
+    _ctitle = f"{_cname} Books — {len(_cbooks)} Titles | Ink & Chai"
+    _cchunk = _cbooks[:CAT_PAGE_SIZE]
+
+    _cld = {"@context": "https://schema.org", "@graph": [
+        {"@type": "CollectionPage", "name": _ctitle, "url": _ccanon, "description": _cdesc,
+         "isPartOf": {"@type": "WebSite", "name": "Ink & Chai", "url": SITE}},
+        {"@type": "ItemList", "name": _cname, "numberOfItems": len(_cchunk),
+         "itemListElement": [
+             {"@type": "ListItem", "position": i + 1, "url": SITE + b["url"], "name": b["t"]}
+             for i, b in enumerate(_cchunk)]},
+        {"@type": "BreadcrumbList", "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "Home", "item": SITE},
+            {"@type": "ListItem", "position": 2, "name": _cname, "item": _ccanon},
+        ]},
+    ]}
+
+    _crel = ""
+    if _members:
+        _crel = ('  <div class="related"><h2>Categories in this collection</h2><div class="chips">'
+                 + "".join(f'<a href="/category/{s}/">{html_escape(l)} ({n})</a>'
+                           for s, l, n in _members)
+                 + "</div></div>")
+
+    _chtml = _cat_page_html(
+        title=_ctitle, description=_cdesc, canonical=_ccanon, h1=_cname,
+        intro=(f"{len(_cbooks)} titles in stock across {_cname}, "
+               "sourced from publishers and shipped across India."),
+        grid="".join(_author_book_card(b) for b in _cchunk),
+        ld_json=_cld,
+        crumb_html='<a href="/">Home</a> / ' + html_escape(_cname),
+        related_html=_crel,
+        og_image=(_cchunk[0].get("img", "") if _cchunk else ""),
+    )
+    _cdir = _COLL_DIR / _cslug
+    _cdir.mkdir(parents=True, exist_ok=True)
+    (_cdir / "index.html").write_text(with_page_loader(_chtml), encoding="utf-8")
+    _coll_pages.append(_ccanon)
+
+print(f"Generated: {_COLL_DIR}/[collection]/  ({len(_coll_pages)} collection hubs)")
+
+# Point every /category/?name=<X> link at the page just built for it. These are
+# the homepage shelf/author cards and the breadcrumb on all ~2,740 product
+# pages, and they were the only internal links these categories had — all of
+# them aimed at the one client-rendered document rather than at a real page.
+_qs_link_re = re.compile(r'href="/category/\?name=([^"&]*)"')
+
+def _repoint_category_link(m):
+    from urllib.parse import unquote
+    _s = slugify(unquote(m.group(1)))
+    return f'href="/category/{_s}/"' if _s in _cat_groups else m.group(0)
+
+_repointed = 0
+for _page in sorted((Path(__file__).parent / "public").rglob("*.html")):
+    if "admin" in _page.relative_to(Path(__file__).parent / "public").parts:
+        continue
+    _h = _page.read_text(encoding="utf-8")
+    if "/category/?name=" not in _h:
+        continue
+    _new = _qs_link_re.sub(_repoint_category_link, _h)
+    if _new != _h:
+        _page.write_text(_new, encoding="utf-8")
+        _repointed += 1
+print(f"Repointed ?name= category links to real pages on {_repointed} pages")
+
 # ── SEO: sitemap.xml + robots.txt ─────────────────────────────────────────────
 from datetime import datetime
 SITE = "https://inkandchai.in"
@@ -11114,16 +11498,16 @@ for b in slim:
         img_xml = f"<image:image><image:loc>{img_abs.replace('&','&amp;')}</image:loc><image:title>{image_title.replace('&','&amp;').replace('<','&lt;')[:200]}</image:title></image:image>"
     url_entries.append(f"  <url><loc>{purl.replace('&','&amp;')}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority>{img_xml}</url>")
 
-# Collection URLs
-for c in coll_data:
-    curl = f"{SITE}/collection/?id={c['slug']}"
+# Collection hubs — real pages now, so the sitemap points at the crawlable
+# path instead of /collection/?id=<slug>, which no server could resolve.
+for curl in _coll_pages:
     url_entries.append(f"  <url><loc>{curl}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>")
 
-# Category URLs (top categories with >= 5 books)
-for c in all_cats:
-    if c['count'] < 5: continue
-    caturl = f"{SITE}/category/{slugify(c['name'])}/"
-    url_entries.append(f"  <url><loc>{caturl}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>")
+# Category URLs — exactly the pages just written, pagination included. Deriving
+# this list from the generator's own output is what keeps the sitemap from
+# advertising URLs that were never built.
+for caturl, cprio in _cat_pages:
+    url_entries.append(f"  <url><loc>{caturl}</loc><lastmod>{TODAY}</lastmod><changefreq>weekly</changefreq><priority>{cprio}</priority></url>")
 
 # Author hub URLs (one per author with 2+ books)
 for _slug in _author_url_by_slug:

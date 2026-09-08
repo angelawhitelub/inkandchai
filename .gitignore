@@ -12,3 +12,6 @@ public/index.html
 # the moment it is written — which is exactly how the live stamp froze at
 # 4 Sep and left deploy-drift-check comparing a fossil to a moving branch.
 public/build-info.json
+
+# wrangler dev local state
+.wrangler/
