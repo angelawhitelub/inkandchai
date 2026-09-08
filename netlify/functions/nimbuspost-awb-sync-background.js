@@ -335,11 +335,21 @@ async function syncReassignedAwbs(supabase, awbMap, summary) {
   // PostgREST caps a single response at 1000 rows whatever .limit() says, and
   // 'delivered' alone is over 500 in two months — so page, or the oldest
   // re-shipped orders are simply never looked at.
+  // Only the four columns the comparison below actually reads.
+  //
+  // This was select('*'), which meant every run dragged up to 6,000 whole
+  // order rows -- cart_items JSON, addresses, the lot -- out of the database
+  // purely to compare one AWB string per row. Measured at 13.3 MB a run, and
+  // this job runs every 3 minutes: 6.29 GB of Supabase egress a day, against a
+  // 5 GB monthly allowance. It was essentially the entire overage.
+  //
+  // Matches are rare, so the full row is fetched per match instead, below.
+  const SCAN_COLS = 'id,razorpay_order_id,tracking_id,status';
   const orders = [];
   for (let from = 0; from < 6000; from += 1000) {
     const { data, error } = await supabase
       .from('orders')
-      .select('*')
+      .select(SCAN_COLS)
       .in('status', [...RESHIPPABLE_STATUSES, ...REVIEW_ONLY_STATUSES])
       .not('tracking_id', 'is', null)
       .gte('created_at', since)
@@ -350,7 +360,8 @@ async function syncReassignedAwbs(supabase, awbMap, summary) {
     if (!data || data.length < 1000) break;
   }
 
-  for (const order of orders) {
+  for (const scanned of orders) {
+    let order = scanned;
     const key = normalizeOrderNumber(order.razorpay_order_id || order.id);
     const hit = awbMap.get(key);
     if (!hit || !hit.awb) continue;
@@ -371,6 +382,21 @@ async function syncReassignedAwbs(supabase, awbMap, summary) {
     }
 
     if (summary.reawb_updated >= NOTIFY_LIMIT) { summary.deferred++; continue; }
+
+    // Past every filter, so this one is really being re-shipped. reshipPatch
+    // needs previous_tracking_ids and courier_name, and notifyShipped needs the
+    // customer and the cart -- none of which the scan carries. One row, only
+    // for orders that got this far.
+    try {
+      const { data: full, error: fullErr } = await supabase
+        .from('orders').select('*').eq('id', order.id).maybeSingle();
+      if (fullErr) throw fullErr;
+      if (!full) throw new Error('order disappeared between scan and update');
+      order = full;
+    } catch (err) {
+      summary.errors.push(`re-awb load ${order.razorpay_order_id || order.id}: ${String(err.message || err).slice(0, 180)}`);
+      continue;
+    }
 
     try {
       const now = new Date().toISOString();
@@ -438,7 +464,7 @@ async function notifyShipped(order, awb, courier) {
 }
 
 // ── Core ─────────────────────────────────────────────────────────────────────
-async function runSync() {
+async function runSync(force = false) {
   const apiKey = process.env.NIMBUSPOST_API_KEY;
   if (!apiKey) throw new Error('NIMBUSPOST_API_KEY is not configured in Netlify.');
 
@@ -506,10 +532,23 @@ async function runSync() {
   }
 
   // Second pass: orders that already have an AWB and have been re-shipped.
-  try {
-    await syncReassignedAwbs(supabase, awbMap, summary);
-  } catch (err) {
-    summary.errors.push(`re-awb pass: ${String(err.message || err).slice(0, 180)}`);
+  //
+  // Hourly, not every 3 minutes like the pass above. The first pass is the
+  // time-sensitive one -- a customer waiting on a tracking link -- and it reads
+  // ~70 rows. This one sweeps 6,000 rows of 120-day history looking for a
+  // courier having quietly swapped an AWB, which is rare and never urgent.
+  // Running it 480 times a day instead of 24 was costing 20x the egress for no
+  // extra freshness a customer could perceive. `force` is for the manual run.
+  const minute = new Date().getUTCMinutes();
+  const doReawb = force || minute < 3;
+  if (doReawb) {
+    try {
+      await syncReassignedAwbs(supabase, awbMap, summary);
+    } catch (err) {
+      summary.errors.push(`re-awb pass: ${String(err.message || err).slice(0, 180)}`);
+    }
+  } else {
+    summary.reawb_skipped = 'runs hourly; use ?force=1 to run it now';
   }
 
   console.log('[awb-sync]', JSON.stringify(summary));
@@ -525,7 +564,12 @@ exports.handler = async (event) => {
   const adminBlock = requireAdmin(event, CORS); if (adminBlock) return adminBlock;
 
   try {
-    const summary = await runSync();
+    // ?force=1 (or {force:true}) runs the hourly re-AWB sweep now, for when
+    // someone is chasing a specific order rather than waiting for the hour.
+    const qp = event.queryStringParameters || {};
+    let bodyForce = false;
+    try { bodyForce = JSON.parse(event.body || '{}').force === true; } catch { /* not JSON */ }
+    const summary = await runSync(qp.force === '1' || bodyForce);
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, summary }) };
   } catch (err) {
     console.error('[awb-sync] worker failed:', err.message);
