@@ -42,6 +42,19 @@ export const CLIENT_CC_HEADER = 'X-Client-Cache-Control';
 export const UNPURGEABLE_MAX_TTL = 300;
 
 /**
+ * The cap applied even to URLs we CAN purge.
+ *
+ * Purging is only a safety net if it actually fires, and on the first live test
+ * admin-banners reported cache_purged:false. Until a purge is proven to work
+ * end to end, holding anything for the declared hour -- or the image proxy's
+ * declared month -- means a stale response with no way to clear it. Five
+ * minutes still collapses effectively all repeat traffic.
+ *
+ * Raise it with the EDGE_MAX_TTL binding once purging is confirmed.
+ */
+export const DEFAULT_MAX_TTL = 300;
+
+/**
  * What the shared cache should do with a response, read off its declared policy.
  * @returns {{cacheable: boolean, ttl: number, reason: string}}
  */
@@ -68,10 +81,11 @@ export function edgePolicy(headerValue) {
 }
 
 /** The TTL to actually use for a given URL, after the purgeability cap. */
-export function effectiveTtl(policy, url) {
+export function effectiveTtl(policy, url, purgeableMaxTtl = DEFAULT_MAX_TTL) {
   if (!policy.cacheable) return 0;
   const hasQuery = new URL(url).search.length > 0;
-  return hasQuery ? Math.min(policy.ttl, UNPURGEABLE_MAX_TTL) : policy.ttl;
+  const cap = hasQuery ? UNPURGEABLE_MAX_TTL : (Number(purgeableMaxTtl) || DEFAULT_MAX_TTL);
+  return Math.min(policy.ttl, cap);
 }
 
 /**

@@ -285,7 +285,7 @@ function fromEdgeCache(hit, state) {
   return out;
 }
 
-function toEdgeCache(response, key, ctx) {
+function toEdgeCache(response, key, ctx, env) {
   const policy = edgePolicy(response.headers.get(EDGE_HEADER));
 
   const out = new Response(response.body, response);
@@ -297,7 +297,7 @@ function toEdgeCache(response, key, ctx) {
   }
 
   // Clone BEFORE anything reads the body; the stream is only good once.
-  const ttl = effectiveTtl(policy, key.url);
+  const ttl = effectiveTtl(policy, key.url, env && env.EDGE_MAX_TTL);
   const stored = out.clone();
   stored.headers.set(CLIENT_CC_HEADER, out.headers.get('Cache-Control') || '');
   stored.headers.set('Cache-Control', `public, max-age=${ttl}`);
@@ -342,7 +342,7 @@ async function runHandler(name, request, env, ctx) {
   }
 
   try {
-    return toEdgeCache(toResponse(await mod.handler(event, context)), cacheKey, ctx);
+    return toEdgeCache(toResponse(await mod.handler(event, context)), cacheKey, ctx, env);
   } catch (err) {
     console.error(`[fn:${name}]`, err && err.stack || err);
     return new Response(JSON.stringify({ error: 'function_error', message: String(err && err.message || err) }), {

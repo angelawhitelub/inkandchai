@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { edgePolicy, effectiveTtl, edgeCacheKey, isStorable, EDGE_HEADER, UNPURGEABLE_MAX_TTL } from '../../worker/cache-policy.mjs';
+import { edgePolicy, effectiveTtl, edgeCacheKey, isStorable, EDGE_HEADER, UNPURGEABLE_MAX_TTL, DEFAULT_MAX_TTL } from '../../worker/cache-policy.mjs';
 
 /* The expensive mistake here is caching something that belongs to one visitor
    and serving it to the next, so most of these are about refusing to cache. */
@@ -78,11 +78,17 @@ test('a URL with a query is capped, because it can never be purged', () => {
   const hour = edgePolicy('public, durable, s-maxage=3600, stale-while-revalidate=86400');
   assert.strictEqual(effectiveTtl(hour, 'https://x.test/.netlify/functions/catalog-search?q=atomic'),
     UNPURGEABLE_MAX_TTL);
-  // A clean path is purgeable by URL, so it keeps the TTL it asked for.
-  assert.strictEqual(effectiveTtl(hour, 'https://x.test/custom-feed.xml'), 3600);
-  assert.strictEqual(
-    effectiveTtl(edgePolicy('public, durable, s-maxage=2592000, immutable'), 'https://x.test/spimg/a/b.jpg'),
-    2592000);
+  // A clean path is purgeable, but purging has to actually fire before we
+  // trust it -- so by default it is capped too, and only the explicit
+  // EDGE_MAX_TTL raises it.
+  assert.strictEqual(effectiveTtl(hour, 'https://x.test/custom-feed.xml'), DEFAULT_MAX_TTL);
+  assert.strictEqual(effectiveTtl(hour, 'https://x.test/custom-feed.xml', 3600), 3600);
+  const month = edgePolicy('public, durable, s-maxage=2592000, immutable');
+  assert.strictEqual(effectiveTtl(month, 'https://x.test/spimg/a/b.jpg'), DEFAULT_MAX_TTL);
+  assert.strictEqual(effectiveTtl(month, 'https://x.test/spimg/a/b.jpg', 86400), 86400);
+  // A query string is capped regardless of what EDGE_MAX_TTL says, because no
+  // purge can ever reach it.
+  assert.strictEqual(effectiveTtl(hour, 'https://x.test/f?a=1', 86400), UNPURGEABLE_MAX_TTL);
   // A short declared TTL is never lengthened by the cap.
   assert.strictEqual(effectiveTtl(edgePolicy('public, s-maxage=60'), 'https://x.test/f?a=1'), 60);
   assert.strictEqual(effectiveTtl({ cacheable: false, ttl: 0 }, 'https://x.test/f'), 0);

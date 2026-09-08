@@ -38,8 +38,15 @@ const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stri
 // edge-cached -- so without this a published or hidden banner would sit behind
 // a stale cache entry and look like it had not worked.
 const SITE = (process.env.SITE_URL || 'https://inkandchai.in').replace(/\/+$/, '');
-const purgeBanners = () => purgeUrls([`${SITE}/.netlify/functions/site-banners`, `${SITE}/`])
-  .catch(e => { console.warn('[admin-banners] purge failed:', e.message); return { purged: false }; });
+const purgeBanners = async () => {
+  const r = await purgeUrls([`${SITE}/.netlify/functions/site-banners`, `${SITE}/`])
+    .catch(e => ({ purged: false, reason: e.message }));
+  // The reason travels with it. A bare `false` is undiagnosable, and this is
+  // the difference between "published, live now" and "published, live in ten
+  // minutes" -- which the admin needs to be told.
+  if (!r.purged) console.warn('[admin-banners] cache not purged:', r.reason);
+  return r;
+};
 
 const one = (v, max = 200) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -137,7 +144,7 @@ exports.handler = async (event) => {
       });
       if (error) throw error;
       const purge = await purgeBanners();
-      return json(200, { published: true, slot, cache_purged: purge.purged === true });
+      return json(200, { published: true, slot, cache_purged: purge.purged === true, cache_purge_reason: purge.reason || null });
     }
 
     if (action === 'set_active') {
@@ -152,13 +159,13 @@ exports.handler = async (event) => {
                   { onConflict: 'slot' });
         if (error) throw error;
         const purge = await purgeBanners();
-        return json(200, { slot, is_active: isActive, cache_purged: purge.purged === true });
+        return json(200, { slot, is_active: isActive, cache_purged: purge.purged === true, cache_purge_reason: purge.reason || null });
       }
       const { error } = await supabase.from('site_banners')
         .update({ is_active: isActive, updated_at: new Date().toISOString() }).eq('slot', slot);
       if (error) throw error;
       const purged = await purgeBanners();
-      return json(200, { slot, is_active: isActive, cache_purged: purged.purged === true });
+      return json(200, { slot, is_active: isActive, cache_purged: purged.purged === true, cache_purge_reason: purged.reason || null });
     }
 
     if (action === 'delete') {
@@ -172,7 +179,7 @@ exports.handler = async (event) => {
       const { error } = await supabase.from('site_banners').delete().eq('slot', slot).eq('kind', 'custom');
       if (error) throw error;
       const purge = await purgeBanners();
-      return json(200, { deleted: slot, cache_purged: purge.purged === true });
+      return json(200, { deleted: slot, cache_purged: purge.purged === true, cache_purge_reason: purge.reason || null });
     }
 
     if (action === 'reorder') {
@@ -189,7 +196,7 @@ exports.handler = async (event) => {
         }
       }
       const purge = await purgeBanners();
-      return json(200, { reordered: slots.length, cache_purged: purge.purged === true });
+      return json(200, { reordered: slots.length, cache_purged: purge.purged === true, cache_purge_reason: purge.reason || null });
     }
 
     return json(400, { error: `Unknown action "${action}".` });
