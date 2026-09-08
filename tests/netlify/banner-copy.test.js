@@ -2,7 +2,8 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { renderSlide, esc, PROMISES } = require('../../netlify/functions/generate-banner-copy')._internals;
+const { renderSlide, esc } = require('../../netlify/functions/utils/banner-slide');
+const { PROMISES } = require('../../netlify/functions/generate-banner-copy')._internals;
 
 const BOOKS = [
   { slug: 'the-deal-pus-1', title: 'The Deal', img: 'https://cdn.example/deal.jpg' },

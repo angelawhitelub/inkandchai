@@ -150,10 +150,16 @@ if (fs.existsSync(indexPath)) {
     assert.equal((html.match(/<section class="summer-sale-banner"/g) || []).length, 0);
   });
 
-  test('the built carousel has as many dots as slides', () => {
-    // Removing a slide without its dot leaves a control that navigates nowhere.
-    const slides = (html.match(/<section class="[^"]*promo-slide[^"]*"/g) || []).length;
-    const dots = (html.match(/<button class="promo-dot[^"]*"/g) || []).length;
-    assert.equal(dots, slides, `${slides} slides but ${dots} dots`);
+  test('the carousel dots are generated from the slides, not hand-maintained', () => {
+    // This used to compare the static dot count against the static slide count,
+    // because removing a slide without its dot leaves a control that navigates
+    // nowhere. Banner Studio can now publish and hide slides at runtime, so a
+    // count baked into the markup cannot be the guarantee any more -- instead
+    // setupCarousel rebuilds the dots from whatever slides are present, every
+    // time the list changes. Assert the mechanism rather than the snapshot.
+    assert.match(html, /dotsBox\.innerHTML = slides\.map/,
+      'dots must be rebuilt from the slides');
+    assert.match(html, /function setupCarousel/,
+      'the rebuild has to be callable again after a banner is injected');
   });
 }

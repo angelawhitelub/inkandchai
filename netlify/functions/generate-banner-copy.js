@@ -28,6 +28,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { renderSlide, esc } = require('./utils/banner-slide');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -37,12 +38,6 @@ const CORS = {
 const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stringify(body) });
 
 const one = (v, max = 120) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
-
-// Everything the model produces is inserted as TEXT. Escaping here rather than
-// trusting the model is the whole reason this can be dropped into the homepage.
-const esc = (s) => String(s == null ? '' : s)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 const rupees = (n) => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
 
@@ -123,35 +118,6 @@ async function draft(books, { angle, brief }, model) {
   }
 }
 
-/** Assemble the slide. Every value here is either escaped model text or DB data. */
-function renderSlide(f, books) {
-  const covers = books.map((b, i) => `
-          <a class="hero-cover-card${i === 0 ? ' featured' : ''}" href="/product/${encodeURIComponent(b.slug)}/" data-label="${esc(b.title.slice(0, 40))}">
-            <picture><img src="${esc(b.img)}" alt="${esc(b.title)}" loading="lazy"/></picture>
-          </a>`).join('');
-
-  const stats = (f.stats || []).slice(0, 3).map(s => `
-        <div><div class="stat-num">${esc(s.num)}</div><div class="stat-label">${esc(s.label)}</div></div>`).join('');
-
-  return `  <!-- Banner: ${esc(f.eyebrow)} -->
-  <section class="hero promo-slide" style="padding:0;" aria-label="${esc(f.eyebrow)}">
-    <div class="hero-left">
-      <div class="hero-eyebrow">${esc(f.eyebrow)}</div>
-      <h2 class="hero-title">${esc(f.title_line1)}<br/><em>${esc(f.title_accent)}</em><br/>${esc(f.title_line3)}</h2>
-      <p class="hero-sub hero-sub-desktop">${esc(f.subtitle)}</p>
-      <div class="hero-ctas">
-        <a href="${esc(f.cta_href)}" class="btn-primary">${esc(f.cta_label)}${f.price_label ? ` — ${esc(f.price_label)}` : ''}</a>
-        <a href="${esc(f.cta_secondary_href)}" class="btn-ghost">${esc(f.cta_secondary)}</a>
-      </div>
-      <div class="hero-stats">${stats}
-      </div>
-    </div>
-    <div class="hero-right">
-      <div class="hero-cover-wall" aria-label="${esc(f.eyebrow)} featured books">${covers}
-      </div>
-    </div>
-  </section>`;
-}
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };

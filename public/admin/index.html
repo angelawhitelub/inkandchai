@@ -1292,13 +1292,20 @@ select,input,textarea{font-size:1rem;}
             </div>
             <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem;">
               <button class="btn-outline" onclick="generateBanner(this)" style="padding:.42rem .9rem;font-size:.58rem;">↻ Redraft</button>
-              <button class="btn-green" onclick="copyBannerHtml(this)" style="padding:.42rem .9rem;font-size:.58rem;">📋 Copy slide HTML</button>
-              <span class="hint" style="margin:0;align-self:center;">Paste into <code>generate_site.py</code> beside the other <code>promo-slide</code> sections.</span>
+              <button class="btn-green" onclick="publishBanner(this)" style="padding:.42rem .9rem;font-size:.58rem;">🚀 Publish to homepage</button>
+              <button class="btn-outline" onclick="copyBannerHtml(this)" style="padding:.42rem .9rem;font-size:.58rem;">📋 Copy HTML</button>
+              <span class="hint" style="margin:0;align-self:center;">Publishing puts it live now — no deploy. Copy HTML is only for baking one into the build.</span>
             </div>
           </div>
 
           <div class="hint" style="margin:.9rem 0 .35rem;">Preview</div>
           <div id="bnrPreview" class="bnr-preview"><div class="bnr-empty">Pick a book and draft a banner to see it here.</div></div>
+
+          <div style="display:flex;align-items:baseline;gap:.6rem;margin:1.4rem 0 .35rem;">
+            <div class="hint" style="margin:0;">On the homepage right now</div>
+            <button class="btn-outline" onclick="loadLiveBanners(this)" style="padding:.22rem .6rem;font-size:.54rem;">↻ Refresh</button>
+          </div>
+          <div id="bnrLive"><div class="hint">Loading…</div></div>
         </div>
       </div>
     </section>
@@ -10030,6 +10037,132 @@ function bnrSlideHtml(stats, total) {
   </section>`;
 }
 
+/* ── Publishing ───────────────────────────────────────────────────────────
+   A published banner is stored as FIELDS plus the book slugs, never as
+   markup. The homepage re-renders it server-side on read, so what goes into
+   the database is inert text and a book whose cover changed shows the new one
+   without republishing.                                                     */
+
+function bnrFields() {
+  const val = (id) => document.getElementById(id)?.value || '';
+  const total = bnrPicked.reduce((sum, b) => sum + (Number(b.price) || 0), 0);
+  return {
+    eyebrow: val('bnrEyebrow'),
+    title_line1: val('bnrL1'),
+    title_accent: val('bnrAccent'),
+    title_line3: val('bnrL3'),
+    subtitle: val('bnrSub'),
+    cta_label: val('bnrCta'),
+    // Matches bnrSlideHtml: one book links to the book, a set to the combos page.
+    cta_href: bnrPicked.length === 1 ? '/product/' + bnrPicked[0].slug + '/' : '/book-combos/',
+    cta_secondary: val('bnrCta2'),
+    cta_secondary_href: '/bestsellers/',
+    price_label: total ? '₹' + total.toLocaleString('en-IN') : '',
+    stats: [0, 1, 2].map(i => ({ num: val('bnrS' + i + 'n'), label: val('bnrS' + i + 'l') }))
+                    .filter(st => st.num || st.label),
+  };
+}
+
+async function publishBanner(btn) {
+  if (!bnrPicked.length) { alert('Pick at least one book first.'); return; }
+  const fields = bnrFields();
+  if (!fields.title_line1 && !fields.title_accent) { alert('Draft the copy first — the headline is empty.'); return; }
+  if (!confirm('Put this banner on the homepage now?')) return;
+
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = 'Publishing…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-banners', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'publish', fields,
+        book_slugs: bnrPicked.map(b => b.slug),
+        label: fields.eyebrow || bnrPicked[0].title,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.needs_migration
+      ? 'The site_banners table does not exist yet — run the migration first.'
+      : (data.error || 'Publish failed'));
+    btn.innerHTML = '✓ Live';
+    loadLiveBanners();
+    setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 2200);
+  } catch (err) {
+    alert('Could not publish: ' + err.message);
+    btn.innerHTML = old; btn.disabled = false;
+  }
+}
+
+async function loadLiveBanners(btn) {
+  const box = document.getElementById('bnrLive');
+  if (!box) return;
+  if (btn) { btn.disabled = true; }
+  box.innerHTML = '<div class="hint">Loading…</div>';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-banners');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.needs_migration
+      ? 'The site_banners table does not exist yet — run the migration, then refresh.'
+      : (data.error || 'Could not load banners'));
+
+    const row = (b) => {
+      const off = !b.is_active;
+      return '<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .55rem;border:1px solid var(--border);border-radius:6px;margin-bottom:.35rem;'
+        + (off ? 'opacity:.5;' : '') + '">'
+        + '<span style="flex:1;min-width:0;font-size:.6rem;">' + esc(b.label)
+        + (b.kind === 'builtin' ? ' <span class="hint" style="margin:0;">· built in</span>' : '')
+        + (off ? ' <span class="hint" style="margin:0;">· hidden</span>' : '')
+        + (b.note ? '<div class="hint" style="margin:.1rem 0 0;">' + esc(b.note) + '</div>' : '')
+        + '</span>'
+        + '<button class="btn-outline" style="padding:.2rem .55rem;font-size:.53rem;" onclick="setBannerActive(this,\'' + esc(b.slot) + '\',' + (off ? 'true' : 'false') + ')">'
+        + (off ? 'Show' : 'Hide') + '</button>'
+        + (b.kind === 'custom'
+            ? '<button class="btn-outline" style="padding:.2rem .55rem;font-size:.53rem;color:#c0392b;" onclick="deleteBanner(this,\'' + esc(b.slot) + '\',\'' + esc(b.label).replace(/'/g, "") + '\')">Delete</button>'
+            : '')
+        + '</div>';
+    };
+
+    const pub = (data.published || []).map(row).join('');
+    const built = (data.builtins || []).map(row).join('');
+    box.innerHTML =
+      (pub ? '<div class="hint" style="margin:0 0 .3rem;">Published from here</div>' + pub
+           : '<div class="hint" style="margin:0 0 .6rem;">Nothing published yet.</div>')
+      + '<div class="hint" style="margin:.7rem 0 .3rem;">Built into the site</div>' + built
+      + '<div class="hint" style="margin:.5rem 0 0;">Built-in slides can be hidden but not deleted — their markup is in the build and would come back on the next deploy.</div>';
+  } catch (err) {
+    box.innerHTML = '<div class="hint">' + esc(err.message) + '</div>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function setBannerActive(btn, slot, makeActive) {
+  btn.disabled = true;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-banners', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_active', slot, is_active: makeActive }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    loadLiveBanners();
+  } catch (err) { alert(err.message); btn.disabled = false; }
+}
+
+async function deleteBanner(btn, slot, label) {
+  if (!confirm('Delete "' + label + '" from the homepage? This cannot be undone.')) return;
+  btn.disabled = true;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-banners', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', slot }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    loadLiveBanners();
+  } catch (err) { alert(err.message); btn.disabled = false; }
+}
+
 function copyBannerHtml(btn) {
   if (!bnrLastHtml) { alert('Draft a banner first.'); return; }
   navigator.clipboard.writeText(bnrLastHtml).then(() => {
@@ -10934,6 +11067,7 @@ function switchTab(tab, pushState = true) {
   const _authed = adminToken || adminKey || adminCookieSession;
   if (tab === 'products' && _authed) { fetchProducts(); fetchRemovedListings(); }
   if (tab === 'reels' && _authed) loadSiteReels();
+  if (tab === 'banners' && _authed) loadLiveBanners();
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();
   if (tab === 'npcancelled' && _authed) loadNpCancelled();
   if (tab === 'rtorefunds' && _authed && adminRole === 'owner') loadRtoRefunds();

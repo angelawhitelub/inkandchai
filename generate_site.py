@@ -2537,7 +2537,7 @@ html[data-theme="light"] .btn-primary{
 
 <!--SALE:START-->
   <!-- ── SLIDE 1: Freedom Sale ── -->
-  <section class="promo-slide slide-sale active" aria-label="Freedom Sale promotion">
+  <section class="promo-slide slide-sale active" data-banner-slot="builtin:sale" aria-label="Freedom Sale promotion">
     <a href="/bestsellers/" class="sale-banner-link" aria-label="Freedom Sale — Shop Now" style="display:grid;place-items:center;min-height:100%;background:linear-gradient(115deg,#ff9933 0 32%,#fff8e8 32% 68%,#138808 68% 100%);text-decoration:none;color:#0b2f63;text-align:center;padding:2rem;">
       <div><div style="font-size:clamp(.7rem,1.4vw,1rem);letter-spacing:.25em;text-transform:uppercase;font-weight:800;">Ink &amp; Chai celebrates India</div><div style="font-family:'Cormorant Garamond',serif;font-size:clamp(2.2rem,6vw,5.5rem);line-height:.9;margin:.6rem 0;font-weight:700;">Freedom Sale</div><div style="font-size:clamp(1rem,2.5vw,1.8rem);font-weight:800;">15% OFF · ORDERS ABOVE ₹399</div><div style="margin-top:.8rem;font-size:.75rem;letter-spacing:.14em;">AUTO-APPLIED AT CHECKOUT · FREEDOM</div></div>
       <div class="sale-banner-code-badge">15% AUTO APPLIED</div>
@@ -2546,7 +2546,7 @@ html[data-theme="light"] .btn-primary{
 <!--SALE:END-->
 
   <!-- ── SLIDE 2: Off Campus Series ── -->
-  <section class="hero promo-slide slide-campus" style="padding:0;" aria-label="Off Campus series promotion">
+  <section class="hero promo-slide slide-campus" style="padding:0;" data-banner-slot="builtin:campus" aria-label="Off Campus series promotion">
     <div class="hero-left">
       <div class="hero-eyebrow">Elle Kennedy · Complete Series</div>
       <h2 class="hero-title">Off Campus<br/><em>all 5 books</em><br/>one order.</h2>
@@ -2574,7 +2574,7 @@ html[data-theme="light"] .btn-primary{
   </section>
 
   <!-- ── SLIDE 3: Hindi Self-Help Bestsellers ── -->
-  <section class="hero promo-slide" style="padding:0;" aria-label="Hindi self-help bestsellers">
+  <section class="hero promo-slide" style="padding:0;" data-banner-slot="builtin:hindi" aria-label="Hindi self-help bestsellers">
     <div class="hero-left">
       <div class="hero-eyebrow">Hindi self-help bestsellers</div>
       <h2 class="hero-title">Self-help<br/><em>bestsellers</em><br/>in Hindi.</h2>
@@ -4354,46 +4354,128 @@ if (Date.now() < SALE_END_DATE.getTime()) {
 }
 
 // ── PROMO CAROUSEL ────────────────────────────────────────────────────────
-(function() {
+// The slide list is NOT fixed at load. Banner Studio can publish a slide and
+// hide a built-in one without a rebuild, so this captures nothing: state lives
+// outside, the dots are generated from whatever slides are present, and the
+// listeners are delegated and bound once. setupCarousel() is safe to call again
+// every time the slides change.
+let promo = { slides: [], dots: [], cur: 0 };
+let promoTimer = null;
+let promoBound = false;
+
+function promoGoTo(n) {
+  const { slides, dots } = promo;
+  if (!slides.length) return;
+  slides[promo.cur]?.classList.remove('active');
+  dots[promo.cur]?.classList.remove('active');
+  promo.cur = ((n % slides.length) + slides.length) % slides.length;
+  slides[promo.cur].classList.add('active');
+  dots[promo.cur]?.classList.add('active');
+}
+
+function promoResetTimer() {
+  clearInterval(promoTimer);
+  // One slide does not rotate; a timer on it just fights the reader.
+  if (promo.slides.length > 1) promoTimer = setInterval(() => promoGoTo(promo.cur + 1), 6000);
+}
+
+function setupCarousel() {
   const carousel = document.getElementById('promoCarousel');
   if (!carousel) return;
-  const slides = carousel.querySelectorAll('.promo-slide');
-  const dots   = carousel.querySelectorAll('.promo-dot');
-  if (!slides.length) return;
-  // The slide marked active in the markup is the sale slide, and it is removed
-  // once the sale ends -- at build time or by the timer above. Without this the
-  // carousel would start with nothing showing.
-  let cur = Math.max(0, [...slides].findIndex(s => s.classList.contains('active')));
-  if (!carousel.querySelector('.promo-slide.active')) {
-    slides[0].classList.add('active');
-    dots[0]?.classList.add('active');
+  const slides = [...carousel.querySelectorAll('.promo-slide')];
+  const dotsBox = carousel.querySelector('.promo-dots');
+
+  if (!slides.length) {
+    clearInterval(promoTimer);
+    promo = { slides: [], dots: [], cur: 0 };
+    if (dotsBox) dotsBox.innerHTML = '';
+    carousel.style.display = 'none';
+    return;
   }
-  let timer;
+  carousel.style.removeProperty('display');
 
-  function goTo(n) {
-    slides[cur].classList.remove('active');
-    dots[cur].classList.remove('active');
-    cur = ((n % slides.length) + slides.length) % slides.length;
-    slides[cur].classList.add('active');
-    dots[cur].classList.add('active');
+  // Dots are rebuilt from the slides rather than hand-maintained in the markup.
+  // Hiding or publishing a banner changes the count, and a dot left over from a
+  // slide that no longer exists navigates to nothing.
+  if (dotsBox) {
+    dotsBox.innerHTML = slides.map((s, i) => {
+      const name = (s.getAttribute('aria-label') || ('Slide ' + (i + 1))).replace(/["<>]/g, '');
+      return '<button class="promo-dot" data-promo-i="' + i + '" aria-label="' + name + '"></button>';
+    }).join('');
   }
-  function startTimer() { timer = setInterval(() => goTo(cur + 1), 6000); }
-  function resetTimer() { clearInterval(timer); startTimer(); }
+  const dots = dotsBox ? [...dotsBox.querySelectorAll('.promo-dot')] : [];
 
-  carousel.querySelector('.promo-arrow.prev')?.addEventListener('click', () => { goTo(cur - 1); resetTimer(); });
-  carousel.querySelector('.promo-arrow.next')?.addEventListener('click', () => { goTo(cur + 1); resetTimer(); });
-  dots.forEach((d, i) => d.addEventListener('click', () => { goTo(i); resetTimer(); }));
+  // Keep whatever was on screen showing rather than snapping back to the first
+  // slide, or a banner arriving mid-rotation would yank the hero out from under
+  // the reader.
+  let cur = slides.findIndex(s => s.classList.contains('active'));
+  if (cur < 0) cur = 0;
+  slides.forEach((s, i) => s.classList.toggle('active', i === cur));
+  dots.forEach((d, i) => d.classList.toggle('active', i === cur));
+  promo = { slides, dots, cur };
 
-  // Touch/swipe support
-  let tx = 0;
-  carousel.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, {passive:true});
-  carousel.addEventListener('touchend',   e => {
-    const dx = e.changedTouches[0].clientX - tx;
-    if (Math.abs(dx) > 40) { goTo(dx < 0 ? cur + 1 : cur - 1); resetTimer(); }
-  }, {passive:true});
+  if (!promoBound) {
+    promoBound = true;
+    carousel.addEventListener('click', (e) => {
+      const dot = e.target.closest('.promo-dot');
+      if (dot) { promoGoTo(parseInt(dot.dataset.promoI, 10) || 0); promoResetTimer(); return; }
+      const arrow = e.target.closest('.promo-arrow');
+      if (arrow) { promoGoTo(promo.cur + (arrow.classList.contains('prev') ? -1 : 1)); promoResetTimer(); }
+    });
+    let tx = 0;
+    carousel.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+    carousel.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - tx;
+      if (Math.abs(dx) > 40) { promoGoTo(promo.cur + (dx < 0 ? 1 : -1)); promoResetTimer(); }
+    }, { passive: true });
+  }
 
-  startTimer();
-})();
+  promoResetTimer();
+}
+
+setupCarousel();
+
+// Published banners live in the database so a banner can go up without a
+// rebuild and a deploy. Deliberately NOT blocking: the built-in slides are in
+// the static HTML and render immediately, and anything published is folded in
+// when the request lands, so a slow or failed call costs nothing visible.
+async function loadPublishedBanners() {
+  const carousel = document.getElementById('promoCarousel');
+  if (!carousel) return;
+
+  let data;
+  try {
+    const res = await fetch('/.netlify/functions/site-banners');
+    if (!res.ok) return;
+    data = await res.json();
+  } catch { return; }
+  if (!data || typeof data !== 'object') return;
+
+  const bySlot = (slot) => carousel.querySelector('.promo-slide[data-banner-slot="' + CSS.escape(String(slot)) + '"]');
+  let changed = false;
+
+  for (const slot of (Array.isArray(data.hidden) ? data.hidden : [])) {
+    const el = bySlot(slot);
+    if (el) { el.remove(); changed = true; }
+  }
+
+  const anchor = carousel.querySelector('.promo-dots');
+  for (const slide of (Array.isArray(data.slides) ? data.slides : [])) {
+    if (!slide || !slide.slot || !slide.html) continue;
+    if (bySlot(slide.slot)) continue;                       // already on the page
+    const holder = document.createElement('div');
+    holder.innerHTML = slide.html;
+    const el = holder.querySelector('.promo-slide');
+    if (!el) continue;
+    el.setAttribute('data-banner-slot', slide.slot);
+    el.classList.remove('active');                          // never steal the current slide
+    carousel.insertBefore(el, anchor);
+    changed = true;
+  }
+
+  if (changed) setupCarousel();
+}
+loadPublishedBanners();
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 const totalStat = document.getElementById('stat-total');
