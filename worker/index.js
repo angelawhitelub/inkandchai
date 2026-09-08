@@ -14,6 +14,7 @@
 // Worker as module format — Service Worker format has no Node builtins.
 import routeTable from './routes.generated.js';
 import * as blobsNs from './shims/netlify-blobs.js';
+import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, edgeCacheKey, isStorable } from './cache-policy.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
 
@@ -262,6 +263,51 @@ async function runImageCdn(request, env, ctx) {
   return out;
 }
 
+/**
+ * Serve a function response from the zone cache, and put it there on a miss.
+ *
+ * The handlers declare their shared-cache policy in `Netlify-CDN-Cache-Control`
+ * -- a header Cloudflare ignores -- so since the migration none of them were
+ * cached and every request reached the function and the database. A Worker's
+ * response is never edge-cached on its own, so this does it explicitly.
+ *
+ * Browser TTL and edge TTL are different numbers, so the copy in the cache
+ * carries the edge one and remembers the browser one in a side header, which is
+ * put back on the way out.
+ */
+function fromEdgeCache(hit, state) {
+  const out = new Response(hit.body, hit);
+  const client = out.headers.get(CLIENT_CC_HEADER);
+  if (client) out.headers.set('Cache-Control', client);
+  else out.headers.delete('Cache-Control');
+  out.headers.delete(CLIENT_CC_HEADER);
+  out.headers.set('X-Edge-Cache', state);
+  return out;
+}
+
+function toEdgeCache(response, key, ctx) {
+  const policy = edgePolicy(response.headers.get(EDGE_HEADER));
+
+  const out = new Response(response.body, response);
+  out.headers.delete(EDGE_HEADER);   // Netlify's name never reaches a client
+
+  if (!key || !policy.cacheable || !isStorable(out)) {
+    out.headers.set('X-Edge-Cache', 'BYPASS');
+    return out;
+  }
+
+  // Clone BEFORE anything reads the body; the stream is only good once.
+  const stored = out.clone();
+  stored.headers.set(CLIENT_CC_HEADER, out.headers.get('Cache-Control') || '');
+  stored.headers.set('Cache-Control', `public, max-age=${policy.ttl}`);
+  ctx.waitUntil(caches.default.put(key, stored).catch((e) => {
+    console.warn('[edge-cache] put failed:', e && e.message || e);
+  }));
+
+  out.headers.set('X-Edge-Cache', 'MISS');
+  return out;
+}
+
 async function runHandler(name, request, env, ctx) {
   const mod = routes[name];
   if (!mod || typeof mod.handler !== 'function') {
@@ -269,6 +315,13 @@ async function runHandler(name, request, env, ctx) {
       status: 404,
       headers: { 'content-type': 'application/json; charset=utf-8' },
     });
+  }
+
+  // Look before doing any work: a hit costs one cache read and no database.
+  const cacheKey = isBackground(name) ? null : edgeCacheKey(request);
+  if (cacheKey) {
+    const hit = await caches.default.match(cacheKey).catch(() => null);
+    if (hit) return fromEdgeCache(hit, 'HIT');
   }
 
   const event = await toNetlifyEvent(request, name);
@@ -288,7 +341,7 @@ async function runHandler(name, request, env, ctx) {
   }
 
   try {
-    return toResponse(await mod.handler(event, context));
+    return toEdgeCache(toResponse(await mod.handler(event, context)), cacheKey, ctx);
   } catch (err) {
     console.error(`[fn:${name}]`, err && err.stack || err);
     return new Response(JSON.stringify({ error: 'function_error', message: String(err && err.message || err) }), {
