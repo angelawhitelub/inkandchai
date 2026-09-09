@@ -1891,6 +1891,9 @@ select,input,textarea{font-size:1rem;}
         <button class="btn-gold" onclick="pushApprovedReturnsToNimbus(this)" title="Create NimbusPost reverse shipments and AWBs for every approved return that has not already been pushed.">Push Returns + Auto AWB</button>
       </div>
     </div>
+    <input class="search-box" id="returnSearch" style="margin-bottom:0.6rem;"
+           placeholder="🔍  Order ID · AWB · Name · Phone · Email · Book · Reason"
+           oninput="renderReturns()"/>
     <div class="hint" id="returnsMeta" style="margin-bottom:0.8rem;">Loading return requests…</div>
     <div class="tbl-wrap" id="returnsTableSection" style="box-shadow:none;">
       <table class="mini-table">
@@ -11637,7 +11640,7 @@ async function fetchReturnRequests() {
       badge.textContent = pending;
       badge.style.display = pending > 0 ? 'inline' : 'none';
     }
-    if (meta) meta.textContent = `${allReturnRequests.length} return request${allReturnRequests.length !== 1 ? 's' : ''}`;
+    // renderReturns() owns this line now — it has to account for the search.
     renderReturns();
   } catch (e) {
     if (meta) meta.textContent = 'Error: ' + e.message;
@@ -11651,19 +11654,75 @@ const RETURN_STATUS_COLORS = {
   pickup_scheduled: 'border-color:rgba(201,168,76,0.5);color:#8a6a1f;',
 };
 
+function returnHaystack(r) {
+  const items = Array.isArray(r.items) ? r.items : [];
+  return [
+    r.order_display_id, r.order_id, r.id,
+    r.customer_name, r.customer_phone, r.customer_email,
+    r.awb, r.courier_name, r.status, r.reason,
+    r.upi_id, r.wallet_code,
+    ...items.map(i => i?.title || i?.name || ''),
+  ].join(' ').toLowerCase();
+}
+
+// Phones and AWBs are stored inconsistently — "919663990415", "8999826627",
+// "+91 89998 26627" — so a digits-only pass lets any of those spellings find
+// the row. Four digits minimum, or every short numeric query matches half the
+// queue via order IDs.
+function returnDigitsHaystack(r) {
+  const out = [];
+  for (const v of [r.customer_phone, r.awb, r.order_display_id, r.order_id]) {
+    const d = String(v || '').replace(/\D+/g, '');
+    if (!d) continue;
+    out.push(d);
+    // Some phones are stored with the 91 country code and some without, and
+    // the admin may type it either way. Indexing the last 10 digits as well
+    // makes "+91 89998 26627", "918999826627" and "8999826627" all find the
+    // same row. Only for values long enough to have a prefix, so short AWBs
+    // are not turned into loose numeric matches.
+    if (d.length > 10) out.push(d.slice(-10));
+  }
+  return out.join(' ');
+}
+
+function returnMatches(r, q, qDigits) {
+  if (returnHaystack(r).includes(q)) return true;
+  if (qDigits.length < 4) return false;
+  const hay = returnDigitsHaystack(r);
+  return hay.includes(qDigits) || (qDigits.length > 10 && hay.includes(qDigits.slice(-10)));
+}
+
 function renderReturns() {
   const tbody = document.getElementById('returnsBody');
   const empty = document.getElementById('returnsEmpty');
+  const meta  = document.getElementById('returnsMeta');
   if (!tbody) return;
 
   if (!allReturnRequests.length) {
     tbody.innerHTML = '';
-    if (empty) empty.style.display = '';
+    if (empty) { empty.textContent = 'No return requests found.'; empty.style.display = ''; }
     return;
   }
-  if (empty) empty.style.display = 'none';
 
-  tbody.innerHTML = allReturnRequests.map(r => {
+  const raw = (document.getElementById('returnSearch')?.value || '').trim();
+  const q = raw.toLowerCase();
+  const qDigits = q.replace(/\D+/g, '');
+  const rows = q ? allReturnRequests.filter(r => returnMatches(r, q, qDigits)) : allReturnRequests;
+
+  // The count describes the whole queue when nothing is typed; a filtered
+  // total shown as the queue size would read as returns having disappeared.
+  if (meta) {
+    const total = allReturnRequests.length;
+    meta.textContent = q
+      ? `${rows.length} of ${total} return request${total !== 1 ? 's' : ''} match “${raw}”`
+      : `${total} return request${total !== 1 ? 's' : ''}`;
+  }
+  if (empty) {
+    empty.textContent = q ? 'No return requests match that search.' : 'No return requests found.';
+    empty.style.display = rows.length ? 'none' : '';
+  }
+
+  tbody.innerHTML = rows.map(r => {
     const date = r.created_at ? new Date(r.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
     const items = Array.isArray(r.items) ? r.items.map(i => `${i.title||'Book'} ×${i.qty||1}`).join('<br>') : '—';
     const statusStyle = RETURN_STATUS_COLORS[r.status] || 'border-color:rgba(160,144,128,0.4);color:#6f6255;';
