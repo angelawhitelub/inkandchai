@@ -7488,11 +7488,16 @@ async function deleteProductPage() {
   const btn = document.getElementById('prodDeleteBtn');
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Deleting…'; }
+  // Without a deadline a request that never settles leaves the button stuck on
+  // "Deleting…" forever with nothing said — which is what it used to do.
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 25000);
   try {
     const res = await adminFetch('/.netlify/functions/delete-product', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slug: row.slug }),
+      signal: ctl.signal,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
@@ -7504,7 +7509,13 @@ async function deleteProductPage() {
     renderProductList();
     alert(`Deleted "${data.title || p.title}". The product page will now 404 (search/feeds clear within ~1 hour of cache).`);
   } catch (e) {
-    alert('Could not delete: ' + e.message);
+    // A timeout is not a failed delete — the row may already be gone and only
+    // the answer lost, so say that rather than implying nothing happened.
+    alert(ctl.signal.aborted
+      ? 'The delete request timed out. It may still have gone through — reload Products and check whether "' + p.title + '" is still listed before trying again.'
+      : ('Could not delete: ' + e.message));
+  } finally {
+    clearTimeout(timer);
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
 }

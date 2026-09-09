@@ -22,6 +22,9 @@
  */
 const SITE = (process.env.SITE_URL || 'https://inkandchai.in').replace(/\/+$/, '');
 
+// A purge is never worth making an admin wait; the write it follows is done.
+const PURGE_TIMEOUT_MS = Number(process.env.PURGE_TIMEOUT_MS || 5000);
+
 const TAGS = {
   PRODUCTS: 'products',
   APLUS: 'aplus',
@@ -56,11 +59,26 @@ async function purgeUrls(urls) {
   try {
     // Cloudflare caps a single purge-by-URL call at 30 entries.
     for (let i = 0; i < urls.length; i += 30) {
-      const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zone}/purge_cache`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ files: urls.slice(i, i + 30) }),
-      });
+      // Every caller awaits this before answering the admin, so a purge that
+      // hangs hangs the write it belongs to -- which is how "Delete Product
+      // Page" could sit on "Deleting..." forever with no error, after the row
+      // was already gone. Purging is best-effort by design (it reports itself
+      // through `purged`/`reason`), so it gets a deadline and gives up.
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), PURGE_TIMEOUT_MS);
+      let res;
+      try {
+        res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zone}/purge_cache`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ files: urls.slice(i, i + 30) }),
+          signal: ctl.signal,
+        });
+      } catch (err) {
+        return { purged: false, reason: ctl.signal.aborted ? 'timeout' : (err.message || 'fetch-failed') };
+      } finally {
+        clearTimeout(timer);
+      }
       if (!res.ok) return { purged: false, reason: `http-${res.status}` };
     }
     return { purged: true, urls: urls.length };
