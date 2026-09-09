@@ -37,8 +37,40 @@ gtag('js', new Date());
 gtag('config', 'G-ZPZDFWMDP6');
 </script>
 <!-- End Google Analytics 4 -->
+<!--IAC-SHELL--><style id="iac-mob-nav">
+.mob-nav{display:none}
+@media(max-width:780px){
+  /* This one rule is dropped into ~137 pages built from six different
+     templates, each with its own `nav{...}`, and `nav` matches this element
+     too. So every property a host page might set on a bar it knows nothing
+     about is restated here rather than left to inherit:
+       - top:auto, or a `nav{top:0}` plus bottom:0 stretches it to full height;
+       - flex-direction, or the landing template's
+         `@media(max-width:560px){nav{flex-direction:column}}` stacks the four
+         tabs down the right-hand side of the screen;
+       - align-items / justify-content / gap / margin / border-bottom, all of
+         which some template sets on its own header nav. */
+  .mob-nav{display:flex;flex-direction:row;align-items:stretch;justify-content:space-between;gap:0;margin:0;width:auto;max-width:none;box-sizing:border-box;border-bottom:none;position:fixed;top:auto!important;bottom:0;left:0;right:0;height:auto;z-index:9998;background:rgba(13,11,8,0.97);border-top:1px solid rgba(201,168,76,0.25);padding:0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom,0px));backdrop-filter:blur(14px);box-shadow:0 -4px 20px rgba(0,0,0,0.4)}
+  body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+}
+.mob-nav a,.mob-nav button{flex:1 1 0;min-width:0;margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0.45rem 0;background:transparent;border:none;border-radius:0;color:var(--cream-dim,#a09080);font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:400;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:color 0.2s;position:relative}
+.mob-nav a:hover,.mob-nav button:hover,.mob-nav a:active,.mob-nav button:active{color:var(--gold,#c9a84c)}
+.mob-nav .mn-icon{display:flex;align-items:center;justify-content:center;height:22px}
+.mob-nav .mn-icon svg{width:22px;height:22px;display:block}
+.mob-nav .mn-active{color:var(--gold,#c9a84c)}
+.mob-nav .mn-active .mn-icon svg{stroke-width:2}
+.mob-nav .mn-badge{position:absolute;top:0;right:calc(50% - 18px);background:var(--gold,#c9a84c);color:var(--bg,#0d0b08);border-radius:50%;width:16px;height:16px;font-size:0.55rem;font-weight:600;display:flex;align-items:center;justify-content:center;letter-spacing:0}
+</style><!--/IAC-SHELL-->
+<!--IAC-SHELL--><link rel="stylesheet" href="/css/app-shell-1ab7a601.css"/><!--/IAC-SHELL-->
 </head>
 <body>
+<!--IAC-SHELL--><!-- Mobile bottom nav — injected site-wide by the app-shell pass in generate_site.py. Edit it there, not here. -->
+<nav class="mob-nav" aria-label="Mobile navigation">
+  <a href="/" data-mn="home" title="Home"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg></span><span>Home</span></a>
+  <a href="/?account=1" data-mn="account" title="Account"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20.4a7.2 7.2 0 0 1 14.4 0"/></svg></span><span>Account</span></a>
+  <a href="/?orders=1" data-mn="orders" title="My Orders"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg></span><span>Orders</span></a>
+  <a href="/cart/" data-mn="cart" title="Cart"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg></span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></a>
+</nav><!--/IAC-SHELL-->
 <nav>
   <a class="logo" href="/">Ink &amp;<span> Chai</span></a>
   <a class="nav-back" href="/">← Back to Store</a>
@@ -91,5 +123,29 @@ gtag('config', 'G-ZPZDFWMDP6');
   </div>
 </main>
 <footer>© 2026 Ink &amp; Chai &nbsp;·&nbsp; inkandchai.in &nbsp;·&nbsp; support@inkandchai.in</footer>
+<!--IAC-SHELL--><!-- Cart drawer — injected by the app-shell pass; rendered by /js/cart.js -->
+<div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
+<div class="cart-sidebar" id="cartSidebar">
+  <div class="cart-header">
+    <span class="cart-title">Your Cart</span>
+    <button class="cart-close" onclick="closeCart()" aria-label="Close cart">&#10005;</button>
+  </div>
+  <div class="cart-body">
+    <div class="cart-empty" id="cartEmpty">
+      <div class="cart-empty-icon">&#128218;</div>
+      <div>Your cart is empty.</div>
+    </div>
+    <div id="cartItems"></div>
+  </div>
+  <div class="cart-footer" id="cartFooter" style="display:none;">
+    <div class="cart-total-row">
+      <span class="cart-total-label">Total</span>
+      <span class="cart-total-amount" id="cartTotal">&#8377; 0</span>
+    </div>
+    <button class="btn-checkout" onclick="window.location.href='/checkout/'">Checkout &rarr;</button>
+  </div>
+</div>
+<script src="/js/cart.js"></script><!--/IAC-SHELL-->
+<!--IAC-SHELL--><script src="/js/app-shell-228cb1b7.js" defer></script><!--/IAC-SHELL-->
 </body>
 </html>

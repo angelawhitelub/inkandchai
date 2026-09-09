@@ -3,16 +3,10 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Business &amp; Finance — 2 Books Online | Ink &amp; Chai</title>
-<meta name="description" content="Shop 2 titles in Business &amp; Finance at Ink &amp; Chai, from Rs.199 to Rs.349. Free delivery above Rs.499, cash on delivery, 7-day replacement."/>
+<title>Your Cart &mdash; Ink &amp; Chai</title>
+<meta name="description" content="Review the books in your Ink &amp; Chai cart before checkout."/>
 <meta name="robots" content="noindex,follow"/>
-<link rel="canonical" href="https://inkandchai.in/category/business--finance/"/>
-<meta property="og:title" content="Business &amp; Finance — 2 Books Online | Ink &amp; Chai"/>
-<meta property="og:description" content="Shop 2 titles in Business &amp; Finance at Ink &amp; Chai, from Rs.199 to Rs.349. Free delivery above Rs.499, cash on delivery, 7-day replacement."/>
-<meta property="og:type" content="website"/>
-<meta property="og:url" content="https://inkandchai.in/category/business--finance/"/>
-<meta property="og:image" content="/images/mark-douglas-trading-duo.webp"/>
-<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "CollectionPage", "name": "Business & Finance — 2 Books Online | Ink & Chai", "url": "https://inkandchai.in/category/business--finance/", "description": "Shop 2 titles in Business & Finance at Ink & Chai, from Rs.199 to Rs.349. Free delivery above Rs.499, cash on delivery, 7-day replacement.", "isPartOf": {"@type": "WebSite", "name": "Ink & Chai", "url": "https://inkandchai.in"}}, {"@type": "ItemList", "name": "Business & Finance", "numberOfItems": 2, "itemListElement": [{"@type": "ListItem", "position": 1, "url": "https://inkandchai.in/product/mark-douglas-trading-duo-zone-disciplined-trader/", "name": "Mark Douglas Trading Duo | Trading in the Zone + The Disciplined Trader"}, {"@type": "ListItem", "position": 2, "url": "https://inkandchai.in/product/the-disciplined-trader-50013/", "name": "The Disciplined Trader"}]}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://inkandchai.in"}, {"@type": "ListItem", "position": 2, "name": "Business & Finance", "item": "https://inkandchai.in/category/business--finance/"}]}]}</script>
+<link rel="canonical" href="https://inkandchai.in/cart/"/>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&family=Cormorant+Garamond:wght@400;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#0d0b08;--panel:#1c1916;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.18);--white:#faf7f2}
@@ -47,6 +41,40 @@ h1{font-family:'Cormorant Garamond',serif;font-size:clamp(2rem,5vw,3.6rem);font-
 footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-size:.65rem;color:var(--muted);letter-spacing:.08em;margin-top:3rem}
 @media(max-width:600px){ nav{padding:1rem} .lp-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:1rem} }
 
+main{max-width:760px;padding-top:2.2rem}
+.cart-lede{font-size:.78rem;color:var(--muted);letter-spacing:.04em;margin-bottom:1.6rem}
+.cart-empty{text-align:center;padding:4rem 1rem;color:var(--muted,#a09080);font-size:.78rem;letter-spacing:.08em}
+.cart-empty-icon{font-size:2.5rem;margin-bottom:1rem;opacity:.3}
+.cart-item{display:flex;gap:1rem;padding:1.2rem 0;border-bottom:1px solid var(--border,rgba(201,168,76,.18))}
+.cart-item-img{width:64px;flex-shrink:0;aspect-ratio:2/3;background:var(--bg,#0d0b08);overflow:hidden}
+.cart-item-img img{width:100%;height:100%;object-fit:cover}
+.cart-item-img-placeholder{width:100%;height:100%;background:linear-gradient(135deg,#1a0a00,#3a1500)}
+.cart-item-info{flex:1;min-width:0}
+.cart-item-title{font-family:'Cormorant Garamond',serif;font-size:.95rem;color:var(--cream,#f0e8d8);line-height:1.3;margin-bottom:.2rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.cart-item-author{font-size:.6rem;color:var(--muted,#a09080);letter-spacing:.08em;margin-bottom:.4rem}
+.cart-item-price{font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--gold,#c9a84c);margin-bottom:.5rem}
+.cart-item-controls{display:flex;align-items:center;gap:.5rem}
+/* 24px was under the 44px minimum touch target on a phone and these two sit
+   8px apart, so a mis-tap changed the quantity instead of removing the line. */
+.qty-btn{background:var(--bg,#0d0b08);border:1px solid var(--border,rgba(201,168,76,.18));color:var(--cream,#f0e8d8);width:32px;height:32px;border-radius:999px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all .2s;padding:0}
+.qty-btn:hover{background:var(--gold,#c9a84c);color:var(--bg,#0d0b08);border-color:var(--gold,#c9a84c)}
+.qty-num{font-size:.82rem;color:var(--cream,#f0e8d8);min-width:24px;text-align:center}
+.cart-remove{background:none;border:none;color:var(--muted,#a09080);font-size:.6rem;letter-spacing:.12em;cursor:pointer;text-transform:uppercase;margin-left:.5rem;padding:.5rem;transition:color .2s}
+.cart-remove:hover{color:#e05a5a}
+.cart-footer{padding:1.4rem 1.8rem;border-top:1px solid var(--border,rgba(201,168,76,.18));display:flex;flex-direction:column;gap:.8rem}
+.cart-total-row{display:flex;justify-content:space-between;align-items:baseline}
+.cart-total-label{font-size:.6rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted,#a09080)}
+.cart-total-amount{font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:var(--gold,#c9a84c);font-weight:600}
+.btn-checkout{width:100%;font-family:'Inter',sans-serif;font-size:.65rem;letter-spacing:.25em;text-transform:uppercase;padding:1rem;background:var(--gold,#c9a84c);color:var(--bg,#0d0b08);border:none;border-radius:999px;cursor:pointer;font-weight:500;transition:all .3s}
+.btn-checkout:hover{filter:brightness(1.08)}
+.cart-empty{padding:3rem 1rem}
+/* Sticky so the total and the checkout button stay reachable however long the
+   basket is, clearing the tab bar on a phone. */
+.cart-footer{position:sticky;bottom:0;background:var(--bg);padding:1.2rem 0 1.4rem;margin-top:1rem}
+@media(max-width:780px){.cart-footer{bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
+.cart-continue{display:inline-block;margin-top:1.2rem;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none;border-bottom:1px solid var(--border);padding-bottom:.2rem}
+.cart-continue:hover{color:var(--gold);border-color:var(--gold)}
+
 /* Book page-transition loader */
 #iacPageLoader{position:fixed;inset:0;z-index:100000;background:rgba(13,11,8,0.93);backdrop-filter:blur(6px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.3rem;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .28s ease,visibility .28s ease}
 html[data-theme="light"] #iacPageLoader{background:rgba(250,247,242,0.93)}
@@ -64,6 +92,172 @@ html[data-theme="light"] .iac-bookload-text{color:#8a6a1f}
 @keyframes iacBookPulse{0%,100%{opacity:.55}50%{opacity:1}}
 @media(prefers-reduced-motion:reduce){.iac-bookload-page{animation:none;transform:rotateY(-30deg)}.iac-bookload-text{animation:none}}
 
+</style>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1702042431242274');
+fbq('init', '1639520197322862');
+fbq('track', 'PageView');
+
+// Standard-event helper. Lives here because it is the only code guaranteed on
+// every page — checkout has its own cart implementation and does not load
+// cart.js, so a helper defined there would not exist where Purchase fires.
+// fbq('track') reports to every initialised pixel, so one call feeds both.
+// dedupKey (optional) makes an event fire once per order however many times the
+// success screen is re-rendered or reloaded.
+window.iacMeta = function(event, params, dedupKey) {
+  if (typeof fbq !== 'function') return;
+  if (dedupKey) {
+    try { if (localStorage.getItem(dedupKey)) return; } catch (e) {}
+  }
+  try {
+    fbq('track', event, params || {});
+    if (dedupKey) localStorage.setItem(dedupKey, '1');
+  } catch (e) {}
+};
+// content_ids for a cart, in the shape Meta matches catalogue items on.
+window.iacMetaIds = function(cart) {
+  try {
+    return (cart || []).map(function(i) {
+      return String(i.id || i.url || i.slug || '');
+    }).filter(Boolean);
+  } catch (e) { return []; }
+};
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
+/></noscript>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1639520197322862&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-18119332653"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'AW-18119332653');
+gtag('config', 'AW-18139908537');
+</script>
+<!-- End Google tag -->
+<!-- Google Merchant Reviews Badge -->
+<script id='merchantWidgetScript' src="https://www.gstatic.com/shopping/merchant/merchantwidget.js" defer></script>
+<script>
+(function(){
+  function initMerchantBadge(){
+    if(typeof merchantwidget === 'undefined') return;
+    merchantwidget.start({
+      merchant_id: 5511019734,
+      position: 'BOTTOM_RIGHT',
+      region: 'IN',
+    });
+    // Raise the badge above mobile bottom bar after it renders
+    setTimeout(function raiseBadge(){
+      var found = false;
+      document.querySelectorAll('body > div').forEach(function(el){
+        var s = el.style;
+        if(s.position==='fixed' && (s.right==='20px'||s.right==='16px'||s.right==='0px')){
+          s.bottom = '80px';
+          found = true;
+        }
+      });
+      if(!found) setTimeout(raiseBadge, 500);
+    }, 800);
+  }
+  var s = document.getElementById('merchantWidgetScript');
+  if(s) s.addEventListener('load', initMerchantBadge);
+})();
+</script>
+<!-- End Google Merchant Reviews Badge -->
+<style id="premium-refinement-layer">
+/* Typography system — bookshop-grade.
+   --font-display: Fraunces — for hero titles, book names, section headings.
+                   Variable opsz means a single file works for huge & small.
+   --font-serif:   Lora — for long-form reading (descriptions, articles).
+                   Cormorant kept as inner fallback in case any inline rule
+                   still names it directly.
+   --font-sans:    Inter — UI labels, buttons, captions. Crisper than Source
+                   Sans 3 at small sizes. */
+:root{
+  --font-display:'Fraunces','Cormorant Garamond','Noto Serif Devanagari',Georgia,'Times New Roman',serif;
+  --font-serif:'Lora','Cormorant Garamond','Noto Serif Devanagari',Georgia,'Times New Roman',serif;
+  --font-sans:'Inter','Noto Sans Devanagari',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+body{
+  font-family:var(--font-sans);
+  font-size:15px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+  font-feature-settings:"kern" 1, "liga" 1, "calt" 1;
+}
+h1,h2,h3,.section-title,.hero-title,.coll-name,.book-name,.prod-title,.ah-title,.editorial-quote,.nav-logo{
+  font-family:var(--font-display);
+  font-optical-sizing:auto;
+  /* Slight optical-size hint where Fraunces variable supports it. */
+  font-variation-settings:"opsz" 72;
+}
+h1,h2,h3,.section-title,.hero-title,.coll-name{ letter-spacing:-.005em; }
+.hero-title,.section-title{ font-weight:600; }
+/* Long-form reading surfaces feel like a book page. */
+.prod-desc,.prod-description,.description,.article-body,.about-copy,.editorial-quote,.book-summary{
+  font-family:var(--font-serif);
+  font-size:1.02rem;
+  line-height:1.75;
+}
+/* UI labels: less stretched tracking, slightly larger for legibility */
+.nav-links a,.btn-nav,.btn-primary,.btn-ghost,.tab,.btn-add,.btn-add-card,.btn-checkout,
+.btn-load-more,.btn-subscribe,.promo-banner,.mob-nav a,.mob-nav button,.nav-dropdown a,
+.btn-cart,.btn-cod,.pbb-cart,.pbb-buy,.fbt-cta,.back,.nav-back,.crumb{
+  letter-spacing:.1em !important;
+}
+.nav-links a{ font-size:.82rem !important; color:var(--cream) !important; font-weight:500; }
+html[data-theme="light"] .nav-links a{ color:#3a2e18 !important; }
+.btn-nav,.btn-primary,.tab,.btn-cart,.btn-cod{ font-size:.72rem !important; }
+.btn-add-card,.shelf-card-btn{ font-size:.6rem !important; min-height:2.2rem; }
+.hero-sub,.subtitle,.intro,.body-copy{ font-size:.875rem !important; line-height:1.75 !important; letter-spacing:.015em !important; }
+.book-name{ font-size:1.08rem !important; line-height:1.28 !important; }
+.book-author,.book-meta{ font-size:.78rem !important; letter-spacing:.04em !important; }
+/* Brighter muted text for contrast on dark backgrounds */
+html:not([data-theme="light"]) body{ --cream-dim:#b5a595; }
+
+/* Solid gold buttons — metallic gradient, depth, springy hover lift */
+.btn-add,.btn-pay,.primary,.btn-checkout{
+  background-image:linear-gradient(135deg,#eccd80 0%,#cda94f 46%,#b9832f 100%) !important;
+  color:#1a1209 !important; border:none !important;
+  box-shadow:0 6px 18px rgba(138,106,31,.28), inset 0 1px 0 rgba(255,255,255,.38) !important;
+  transition:transform .28s cubic-bezier(.34,1.56,.64,1), box-shadow .28s ease, filter .28s ease !important;
+}
+.btn-add:hover,.btn-pay:hover,.primary:hover,.btn-checkout:hover{
+  transform:translateY(-2px) !important; filter:brightness(1.04) !important;
+  box-shadow:0 12px 28px rgba(201,168,76,.42), inset 0 1px 0 rgba(255,255,255,.5) !important;
+}
+.btn-add:active,.btn-pay:active,.primary:active,.btn-checkout:active{
+  transform:translateY(0) scale(.99) !important; box-shadow:0 4px 12px rgba(138,106,31,.3) !important;
+}
+
+/* Outline buttons (card "Add to Cart", COD, CTA) — refined hover fill */
+.btn-add-card,.btn-cod,.cta,.shelf-card-btn,.btn-partial{
+  transition:background .25s ease,color .25s ease,border-color .25s ease,box-shadow .25s ease,transform .15s ease !important;
+}
+.btn-add-card:hover,.btn-cod:hover,.cta:hover,.shelf-card-btn:hover{
+  background-image:linear-gradient(135deg,#eccd80,#c9a84c) !important; color:#1a1209 !important;
+  border-color:transparent !important; box-shadow:0 6px 16px rgba(138,106,31,.24) !important;
+}
+.btn-add-card:active,.btn-cod:active,.cta:active,.shelf-card-btn:active{ transform:scale(.98) !important; }
+
+/* Inputs: softer premium focus ring in brand gold */
+input:focus,textarea:focus,select:focus{ outline:none !important; box-shadow:0 0 0 2px rgba(201,168,76,.45) !important; }
 </style>
 <!--IAC-SHELL--><style id="iac-mob-nav">
 .mob-nav{display:none}
@@ -89,7 +283,6 @@ html[data-theme="light"] .iac-bookload-text{color:#8a6a1f}
 .mob-nav .mn-active .mn-icon svg{stroke-width:2}
 .mob-nav .mn-badge{position:absolute;top:0;right:calc(50% - 18px);background:var(--gold,#c9a84c);color:var(--bg,#0d0b08);border-radius:50%;width:16px;height:16px;font-size:0.55rem;font-weight:600;display:flex;align-items:center;justify-content:center;letter-spacing:0}
 </style><!--/IAC-SHELL-->
-<!--IAC-SHELL--><link rel="stylesheet" href="/css/app-shell-1ab7a601.css"/><!--/IAC-SHELL-->
 <!-- Google Analytics 4 -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZPZDFWMDP6"></script>
 <script>
@@ -110,44 +303,27 @@ gtag('config', 'G-ZPZDFWMDP6');
 </nav><!--/IAC-SHELL-->
 <nav>
   <a class="logo" href="/">Ink &amp;<span> Chai</span></a>
-  <a class="back" href="/">&larr; Back to Store</a>
+  <a class="back" href="/books/">&larr; Continue shopping</a>
 </nav>
 <main>
-  <div class="crumb"><a href="/">Home</a> / Business &amp; Finance</div>
-  <h1>Business &amp; Finance</h1>
-  <p class="intro">Every title we stock in Business &amp; Finance — 2 in all. Brand-new paperbacks sourced directly from publishers and shipped across India.</p>
-  <div class="trust">
-    <span>&#128666; Delivery in 2-5 days</span>
-    <span>&#128181; Cash on delivery</span>
-    <span>&#128179; UPI &middot; Cards &middot; Net banking</span>
-    <span>&#128737; <a href="/return-policy/" style="color:inherit">7-day easy returns</a></span>
+  <h1>Your Cart</h1>
+  <p class="cart-lede">Free delivery on orders over &#8377;499 &middot; Cash on delivery available</p>
+  <div class="cart-empty" id="cartEmpty">
+    <div class="cart-empty-icon">&#128218;</div>
+    <div>Your cart is empty.<br/>Add some books to get started.</div>
+    <a class="cart-continue" href="/books/">Browse the catalogue</a>
   </div>
-  <div class="lp-grid"><a href="/product/mark-douglas-trading-duo-zone-disciplined-trader/" class="ah-card"><div class="ah-cover"><img src="/images/mark-douglas-trading-duo.webp" alt="Mark Douglas Trading Duo | Trading in the Zone + The Disciplined Trader" loading="lazy" onerror="this.style.display='none'"/></div><div class="ah-title">Mark Douglas Trading Duo | Trading in the Zone + The Disciplined Trader</div><div class="ah-price">₹ 349</div></a><a href="/product/the-disciplined-trader-50013/" class="ah-card"><div class="ah-cover"><img src="https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/e1be155bbd1ea8533dd7f394-400.webp" alt="The Disciplined Trader" loading="lazy" onerror="this.style.display='none'"/></div><div class="ah-title">The Disciplined Trader</div><div class="ah-price">₹ 199</div></a></div>
-
-  <div class="related"><h2>Browse related</h2><div class="chips"><a href="/category/preloved-books/">Preloved Books</a><a href="/category/all-self-help/">All Self Help</a><a href="/category/fiction/">Fiction</a><a href="/category/all-romance-books/">All Romance Books</a><a href="/category/kids-book/">Kids Book</a><a href="/category/hindi-books/">Hindi Books</a><a href="/category/self-help-on-sale/">Self-help (On Sale)</a><a href="/category/romance-on-sale/">Romance (On Sale)</a></div></div>
+  <div id="cartItems"></div>
+  <div class="cart-footer" id="cartFooter" style="display:none;">
+    <div class="cart-total-row">
+      <span class="cart-total-label">Total</span>
+      <span class="cart-total-amount" id="cartTotal">&#8377; 0</span>
+    </div>
+    <button class="btn-checkout" onclick="window.location.href='/checkout/'">Proceed to checkout &rarr;</button>
+  </div>
 </main>
 <footer>&copy; 2026 Ink &amp; Chai &middot; inkandchai.in &middot; <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
-<script>
-(function(){
-  if (!window.fetch) return;
-  fetch('/deleted-products.json').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
-    var slugs = (d && d.slugs) || [];
-    if (!slugs.length) return;
-    var gone = {};
-    slugs.forEach(function(s){ gone[String(s).toLowerCase()] = 1; });
-    var links = document.querySelectorAll('a[href^="/product/"]');
-    for (var i = 0; i < links.length; i++) {
-      var m = (links[i].getAttribute('href') || '').match(/^\/product\/([^\/?#]+)/);
-      if (!m) continue;
-      var slug = m[1];
-      try { slug = decodeURIComponent(slug); } catch (e) {}
-      if (!gone[slug.toLowerCase()]) continue;
-      var card = links[i].closest ? (links[i].closest('.ah-card, .card') || links[i]) : links[i];
-      if (card.parentNode) card.parentNode.removeChild(card);
-    }
-  }).catch(function(){});
-})();
-</script>
+<script src="/js/cart.js"></script>
 
 <div id="iacPageLoader" aria-hidden="true">
   <div class="iac-bookload">
@@ -194,29 +370,6 @@ gtag('config', 'G-ZPZDFWMDP6');
 })();
 </script>
 
-<!--IAC-SHELL--><!-- Cart drawer — injected by the app-shell pass; rendered by /js/cart.js -->
-<div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
-<div class="cart-sidebar" id="cartSidebar">
-  <div class="cart-header">
-    <span class="cart-title">Your Cart</span>
-    <button class="cart-close" onclick="closeCart()" aria-label="Close cart">&#10005;</button>
-  </div>
-  <div class="cart-body">
-    <div class="cart-empty" id="cartEmpty">
-      <div class="cart-empty-icon">&#128218;</div>
-      <div>Your cart is empty.</div>
-    </div>
-    <div id="cartItems"></div>
-  </div>
-  <div class="cart-footer" id="cartFooter" style="display:none;">
-    <div class="cart-total-row">
-      <span class="cart-total-label">Total</span>
-      <span class="cart-total-amount" id="cartTotal">&#8377; 0</span>
-    </div>
-    <button class="btn-checkout" onclick="window.location.href='/checkout/'">Checkout &rarr;</button>
-  </div>
-</div>
-<script src="/js/cart.js"></script><!--/IAC-SHELL-->
 <!--IAC-SHELL--><script src="/js/app-shell-228cb1b7.js" defer></script><!--/IAC-SHELL-->
 </body>
 </html>

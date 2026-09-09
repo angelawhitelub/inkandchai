@@ -2538,24 +2538,8 @@ html[data-theme="light"] .btn-primary{
 })();
 </script>
 
-<!-- Mobile bottom nav (mobile only via CSS) -->
-<nav class="mob-nav" aria-label="Mobile navigation">
-  <a href="/" title="Home"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg></span><span>Home</span></a>
-  <button onclick="window.IAC ? (IAC.getUser() ? IAC.openAccountModal() : IAC.openAuthModal()) : null" title="Account"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20.4a7.2 7.2 0 0 1 14.4 0"/></svg></span><span>Account</span></button>
-  <button onclick="window.IAC ? IAC.openMyOrders() : null" title="My Orders"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg></span><span>Orders</span></button>
-  <button onclick="openCart()" title="Cart"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg></span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></button>
-</nav>
-<script>
-(function(){
-  // Home is the only tab that is a real URL -- the other three open overlays --
-  // so this is all the "you are here" the bar can honestly show.
-  var nav = document.querySelector('nav.mob-nav');
-  if (!nav) return;
-  if ((location.pathname.replace(/\/+$/, '') || '/') !== '/') return;
-  var home = nav.querySelector('a[href="/"]');
-  if (home) { home.classList.add('mn-active'); home.setAttribute('aria-current', 'page'); }
-})();
-</script>
+<!-- Mobile bottom nav: injected on every page by the app-shell pass
+     near the end of generate_site.py. Edit it there. -->
 
 <nav>
   <a class="nav-logo" href="/" aria-label="Ink and Chai — home">
@@ -5183,23 +5167,8 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 })();
 </script>
 
-<!-- Mobile bottom nav (mobile only) -->
-<nav class="mob-nav" aria-label="Mobile navigation">
-  <a href="/" title="Home"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg></span><span>Home</span></a>
-  <button onclick="window.IAC ? IAC.openMyOrders() : null" title="My Orders"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg></span><span>Orders</span></button>
-  <button onclick="openCart()" title="Cart"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg></span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></button>
-</nav>
-<script>
-(function(){
-  // Home is the only tab that is a real URL -- the other three open overlays --
-  // so this is all the "you are here" the bar can honestly show.
-  var nav = document.querySelector('nav.mob-nav');
-  if (!nav) return;
-  if ((location.pathname.replace(/\/+$/, '') || '/') !== '/') return;
-  var home = nav.querySelector('a[href="/"]');
-  if (home) { home.classList.add('mn-active'); home.setAttribute('aria-current', 'page'); }
-})();
-</script>
+<!-- Mobile bottom nav: injected on every page by the app-shell pass
+     near the end of generate_site.py. Edit it there. -->
 
 <!-- POLICY BAR -->
 <div style="background:#1a1612;border-bottom:1px solid rgba(201,168,76,0.12);padding:0.4rem 4rem;display:flex;gap:2rem;justify-content:flex-end;flex-wrap:wrap;">
@@ -10510,35 +10479,18 @@ html[data-theme="light"] .promo-banner code{background:rgba(138,106,31,0.12);col
   .wa-float{transition:transform .2s,box-shadow .2s,opacity .22s}
   .wa-float.wa-scrolling{opacity:0;pointer-events:none}
 
-.mob-nav{display:none}
-@media(max-width:780px){
-  .mob-nav{display:flex;position:fixed;top:auto!important;bottom:0;left:0;right:0;height:auto;z-index:9998;background:rgba(13,11,8,0.97);border-top:1px solid rgba(201,168,76,0.25);padding:0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom,0px));backdrop-filter:blur(14px);box-shadow:0 -4px 20px rgba(0,0,0,0.4)}
-  body{padding-bottom:64px}
-}
-html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-color:rgba(138,106,31,0.3)}
-.mob-nav a,.mob-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0.45rem 0;background:transparent;border:none;color:var(--cream-dim);font-family:'Inter',sans-serif;font-size:0.55rem;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:color 0.2s}
-.mob-nav a:active,.mob-nav button:active{color:var(--gold)}
-.mob-nav .mn-icon{font-size:1.25rem;line-height:1}
+/* No .mob-nav rules here: the app-shell pass injects the canonical ones. This
+   copy was left behind at the emoji stage -- `.mn-icon{font-size:1.25rem}`
+   sizes a glyph, not an <svg>, so once the icons became SVG the unsized ones
+   rendered at their intrinsic size and made the bar 87px tall against 70px
+   everywhere else. Three hand-maintained copies of one bar is the whole reason
+   this pass exists. */
 </style>
 </head>
 <body>
 <div class="promo-banner"><strong>✦ PREPAID OFFERS</strong> 10% ₹499+ &nbsp;·&nbsp; 12% ₹999+ &nbsp;·&nbsp; 15% ₹1499+</div>
-<nav class="mob-nav" aria-label="Mobile navigation">
-  <a href="/" title="Home"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg></span><span>Home</span></a>
-  <a href="/" title="My Orders"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg></span><span>Orders</span></a>
-  <a href="/" title="Cart"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg></span><span>Cart</span></a>
-</nav>
-<script>
-(function(){
-  // Home is the only tab that is a real URL -- the other three open overlays --
-  // so this is all the "you are here" the bar can honestly show.
-  var nav = document.querySelector('nav.mob-nav');
-  if (!nav) return;
-  if ((location.pathname.replace(/\/+$/, '') || '/') !== '/') return;
-  var home = nav.querySelector('a[href="/"]');
-  if (home) { home.classList.add('mn-active'); home.setAttribute('aria-current', 'page'); }
-})();
-</script>
+<!-- Mobile bottom nav: injected on every page by the app-shell pass
+     near the end of generate_site.py. Edit it there. -->
 <a class="wa-float" href="https://wa.me/917678400508" target="_blank" rel="noopener" title="Chat on WhatsApp"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
 <script>
 /* Mobile only: the float is unreachable-by-accident while the grid moves. */
@@ -11646,6 +11598,382 @@ for _page in sorted((Path(__file__).parent / "public").rglob("*.html")):
         _page.write_text(_new, encoding="utf-8")
         _repointed += 1
 print(f"Repointed ?name= category links to real pages on {_repointed} pages")
+
+# ── APP SHELL: one tab bar and one cart drawer, on every browse page ──────────
+# The bar shipped on 4 pages out of ~2,880 — the homepage and the three
+# client-rendered index documents. Tap a category from the home screen and the
+# navigation vanished; in a TWA there is no browser chrome to fall back on, so
+# that is the exact moment the app stops feeling like an app.
+#
+# It is injected here rather than written into each template because there are
+# six templates plus a dozen hand-written pages (/books/, about, contact, the
+# policy pages, track, review), and three divergent copies of this bar is what
+# produced the gap in the first place. One definition, one pass, every page.
+#
+# Deliberately NOT on product detail: the Add to cart / Buy now bar owns the
+# bottom there — PRODUCT_HTML hides .mob-nav on mobile for exactly that reason
+# — and the design brief agrees. Nor on /checkout/: nothing should invite you
+# out of a payment flow.
+
+_MN_ICON = {
+    "home": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg>',
+    "account": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20.4a7.2 7.2 0 0 1 14.4 0"/></svg>',
+    "orders": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg>',
+    "cart": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg>',
+}
+
+# Every tab is a real URL. The bar used to be three <button>s wired to modal
+# openers plus one dead <a href="/"> copy on the collection pages, which meant
+# that off the homepage the Cart tab went to the homepage and called itself
+# "Cart". A tab that does not navigate is not a tab.
+#
+# /?account=1 and /?orders=1 are honoured on arrival by the app-shell script
+# below — those two screens genuinely only exist as modals on the homepage, and
+# auth.js is 152 KB, far too much to ship to every category page just so a tab
+# can open in place.
+_MOB_NAV_HTML = """<!-- Mobile bottom nav — injected site-wide by the app-shell pass in generate_site.py. Edit it there, not here. -->
+<nav class="mob-nav" aria-label="Mobile navigation">
+  <a href="/" data-mn="home" title="Home"><span class="mn-icon">{home}</span><span>Home</span></a>
+  <a href="/?account=1" data-mn="account" title="Account"><span class="mn-icon">{account}</span><span>Account</span></a>
+  <a href="/?orders=1" data-mn="orders" title="My Orders"><span class="mn-icon">{orders}</span><span>Orders</span></a>
+  <a href="/cart/" data-mn="cart" title="Cart"><span class="mn-icon">{cart}</span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></a>
+</nav>""".format(**_MN_ICON)
+
+# Fallback values in every var(): the hand-written pages never defined the
+# palette tokens and _CAT_CSS defines --muted but not --cream-dim, so a bare
+# var() resolved to nothing there — invisible labels on a transparent bar.
+_MOB_NAV_CSS = """<style id="iac-mob-nav">
+.mob-nav{display:none}
+@media(max-width:780px){
+  /* This one rule is dropped into ~137 pages built from six different
+     templates, each with its own `nav{...}`, and `nav` matches this element
+     too. So every property a host page might set on a bar it knows nothing
+     about is restated here rather than left to inherit:
+       - top:auto, or a `nav{top:0}` plus bottom:0 stretches it to full height;
+       - flex-direction, or the landing template's
+         `@media(max-width:560px){nav{flex-direction:column}}` stacks the four
+         tabs down the right-hand side of the screen;
+       - align-items / justify-content / gap / margin / border-bottom, all of
+         which some template sets on its own header nav. */
+  .mob-nav{display:flex;flex-direction:row;align-items:stretch;justify-content:space-between;gap:0;margin:0;width:auto;max-width:none;box-sizing:border-box;border-bottom:none;position:fixed;top:auto!important;bottom:0;left:0;right:0;height:auto;z-index:9998;background:rgba(13,11,8,0.97);border-top:1px solid rgba(201,168,76,0.25);padding:0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom,0px));backdrop-filter:blur(14px);box-shadow:0 -4px 20px rgba(0,0,0,0.4)}
+  body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+}
+.mob-nav a,.mob-nav button{flex:1 1 0;min-width:0;margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0.45rem 0;background:transparent;border:none;border-radius:0;color:var(--cream-dim,#a09080);font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:400;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:color 0.2s;position:relative}
+.mob-nav a:hover,.mob-nav button:hover,.mob-nav a:active,.mob-nav button:active{color:var(--gold,#c9a84c)}
+.mob-nav .mn-icon{display:flex;align-items:center;justify-content:center;height:22px}
+.mob-nav .mn-icon svg{width:22px;height:22px;display:block}
+.mob-nav .mn-active{color:var(--gold,#c9a84c)}
+.mob-nav .mn-active .mn-icon svg{stroke-width:2}
+.mob-nav .mn-badge{position:absolute;top:0;right:calc(50% - 18px);background:var(--gold,#c9a84c);color:var(--bg,#0d0b08);border-radius:50%;width:16px;height:16px;font-size:0.55rem;font-weight:600;display:flex;align-items:center;justify-content:center;letter-spacing:0}
+</style>"""
+
+# Injected only into pages that actually define a light palette. 135 of the 137
+# pages this CSS reaches are dark-only — _CAT_CSS declares one :root and no
+# [data-theme] at all — so shipping them a light rule meant that the moment
+# anything set data-theme="light" (a stored preference, a theme toggle added
+# later) they got a cream bar pinned under a near-black page.
+_MOB_NAV_LIGHT_CSS = 'html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-color:rgba(138,106,31,0.3)}\n'
+
+# The drawer markup cart.js expects. It renders into these four ids and nothing
+# else, which is why /cart/ below can reuse the same renderer as a full page:
+# there is exactly one cart implementation and it cannot drift from itself.
+_CART_DRAWER_HTML = """<!-- Cart drawer — injected by the app-shell pass; rendered by /js/cart.js -->
+<div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
+<div class="cart-sidebar" id="cartSidebar">
+  <div class="cart-header">
+    <span class="cart-title">Your Cart</span>
+    <button class="cart-close" onclick="closeCart()" aria-label="Close cart">&#10005;</button>
+  </div>
+  <div class="cart-body">
+    <div class="cart-empty" id="cartEmpty">
+      <div class="cart-empty-icon">&#128218;</div>
+      <div>Your cart is empty.</div>
+    </div>
+    <div id="cartItems"></div>
+  </div>
+  <div class="cart-footer" id="cartFooter" style="display:none;">
+    <div class="cart-total-row">
+      <span class="cart-total-label">Total</span>
+      <span class="cart-total-amount" id="cartTotal">&#8377; 0</span>
+    </div>
+    <button class="btn-checkout" onclick="window.location.href='/checkout/'">Checkout &rarr;</button>
+  </div>
+</div>
+<script src="/js/cart.js"></script>"""
+
+_CART_DRAWER_CSS = """.cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9990;opacity:0;pointer-events:none;transition:opacity .35s}
+.cart-overlay.show{opacity:1;pointer-events:all}
+.cart-sidebar{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);background:var(--panel,#1c1916);border-left:1px solid var(--border,rgba(201,168,76,.18));z-index:10001;transform:translateX(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
+.cart-sidebar.open{transform:translateX(0)}
+/* The drawer is full-height, but on a phone the tab bar is pinned over its
+   last 64px — which is where the Checkout button lives. */
+@media(max-width:780px){.cart-sidebar{bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
+.cart-header{display:flex;justify-content:space-between;align-items:center;padding:1.6rem 1.8rem;border-bottom:1px solid var(--border,rgba(201,168,76,.18))}
+.cart-title{font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;color:var(--white,#faf7f2)}
+.cart-close{background:none;border:none;color:var(--muted,#a09080);font-size:1.3rem;cursor:pointer;padding:.2rem .4rem;transition:color .2s}
+.cart-close:hover{color:var(--gold,#c9a84c)}
+.cart-body{flex:1;overflow-y:auto;padding:1.2rem 1.8rem}"""
+
+# Shared by the drawer and by /cart/ — cart.js emits exactly these classes.
+_CART_ITEM_CSS = """.cart-empty{text-align:center;padding:4rem 1rem;color:var(--muted,#a09080);font-size:.78rem;letter-spacing:.08em}
+.cart-empty-icon{font-size:2.5rem;margin-bottom:1rem;opacity:.3}
+.cart-item{display:flex;gap:1rem;padding:1.2rem 0;border-bottom:1px solid var(--border,rgba(201,168,76,.18))}
+.cart-item-img{width:64px;flex-shrink:0;aspect-ratio:2/3;background:var(--bg,#0d0b08);overflow:hidden}
+.cart-item-img img{width:100%;height:100%;object-fit:cover}
+.cart-item-img-placeholder{width:100%;height:100%;background:linear-gradient(135deg,#1a0a00,#3a1500)}
+.cart-item-info{flex:1;min-width:0}
+.cart-item-title{font-family:'Cormorant Garamond',serif;font-size:.95rem;color:var(--cream,#f0e8d8);line-height:1.3;margin-bottom:.2rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.cart-item-author{font-size:.6rem;color:var(--muted,#a09080);letter-spacing:.08em;margin-bottom:.4rem}
+.cart-item-price{font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--gold,#c9a84c);margin-bottom:.5rem}
+.cart-item-controls{display:flex;align-items:center;gap:.5rem}
+/* 24px was under the 44px minimum touch target on a phone and these two sit
+   8px apart, so a mis-tap changed the quantity instead of removing the line. */
+.qty-btn{background:var(--bg,#0d0b08);border:1px solid var(--border,rgba(201,168,76,.18));color:var(--cream,#f0e8d8);width:32px;height:32px;border-radius:999px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all .2s;padding:0}
+.qty-btn:hover{background:var(--gold,#c9a84c);color:var(--bg,#0d0b08);border-color:var(--gold,#c9a84c)}
+.qty-num{font-size:.82rem;color:var(--cream,#f0e8d8);min-width:24px;text-align:center}
+.cart-remove{background:none;border:none;color:var(--muted,#a09080);font-size:.6rem;letter-spacing:.12em;cursor:pointer;text-transform:uppercase;margin-left:.5rem;padding:.5rem;transition:color .2s}
+.cart-remove:hover{color:#e05a5a}
+.cart-footer{padding:1.4rem 1.8rem;border-top:1px solid var(--border,rgba(201,168,76,.18));display:flex;flex-direction:column;gap:.8rem}
+.cart-total-row{display:flex;justify-content:space-between;align-items:baseline}
+.cart-total-label{font-size:.6rem;letter-spacing:.22em;text-transform:uppercase;color:var(--muted,#a09080)}
+.cart-total-amount{font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:var(--gold,#c9a84c);font-weight:600}
+.btn-checkout{width:100%;font-family:'Inter',sans-serif;font-size:.65rem;letter-spacing:.25em;text-transform:uppercase;padding:1rem;background:var(--gold,#c9a84c);color:var(--bg,#0d0b08);border:none;border-radius:999px;cursor:pointer;font-weight:500;transition:all .3s}
+.btn-checkout:hover{filter:brightness(1.08)}"""
+
+_APP_SHELL_JS = r"""(function(){
+  var nav = document.querySelector('nav.mob-nav');
+  var path = (location.pathname.replace(/\/+$/, '') || '/');
+  var here = path === '/' ? 'home' : (path === '/cart' ? 'cart' : '');
+
+  if (nav) {
+    if (here) {
+      var tab = nav.querySelector('[data-mn="' + here + '"]');
+      if (tab) { tab.classList.add('mn-active'); tab.setAttribute('aria-current', 'page'); }
+    }
+
+    // Progressive enhancement, in that order: the href is the behaviour, and
+    // where this page already carries the overlay that tab would open, the
+    // click opens it in place instead. So the bar behaves exactly like the
+    // homepage's where it can, still goes somewhere real where it cannot, and
+    // survives a JS failure either way.
+    // The page loader listens for link clicks on document in the CAPTURE phase,
+    // so it has already shown its overlay by the time this bubble-phase handler
+    // cancels the navigation -- and with no navigation to arrive, "Fetching your
+    // next read..." then sat over the drawer for the full 8s failsafe. Cancelling
+    // the navigation means cancelling the loader that was announcing it.
+    var stopLoader = function(){
+      var l = document.getElementById('iacPageLoader');
+      if (l) l.classList.remove('show');
+    };
+    var upgrade = function(name, ready, open){
+      if (name === here) return;              // already here; let it be a no-op reload
+      var a = nav.querySelector('[data-mn="' + name + '"]');
+      if (!a) return;
+      a.addEventListener('click', function(e){
+        if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+        if (!ready()) return;                 // no overlay here — follow the href
+        e.preventDefault();
+        stopLoader();
+        open();
+      });
+    };
+    upgrade('cart', function(){ return typeof window.openCart === 'function'; },
+                    function(){ window.openCart(); });
+    upgrade('orders', function(){ return !!(window.IAC && typeof IAC.openMyOrders === 'function'); },
+                      function(){ IAC.openMyOrders(); });
+    upgrade('account', function(){ return !!(window.IAC && typeof IAC.openAuthModal === 'function'); },
+                       function(){ IAC.getUser() ? IAC.openAccountModal() : IAC.openAuthModal(); });
+
+    // cart.js owns this badge, but it is not on every page carrying the bar:
+    // /books/ has its own inline mini-cart and the policy pages have no cart
+    // code at all. Reading a count is not cart logic — nothing here writes.
+    if (typeof window.updateCartUI !== 'function') {
+      var badge = document.getElementById('cartBadgeMobile');
+      if (badge) {
+        var n = 0;
+        try {
+          (JSON.parse(localStorage.getItem('akshar_cart') || '[]') || []).forEach(function(i){
+            n += Number(i && i.qty) || 0;
+          });
+        } catch (e) { n = 0; }
+        if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); badge.style.display = 'flex'; }
+      }
+    }
+  }
+
+  // Account and Orders exist only as modals, and only on the homepage. Tabs on
+  // every other page link here with the intent in the query string; this
+  // honours it on arrival. auth.js defines IAC asynchronously, hence the poll.
+  var q = new URLSearchParams(location.search);
+  var intent = q.get('account') === '1' ? 'account' : (q.get('orders') === '1' ? 'orders' : '');
+  if (intent && path === '/') {
+    var tries = 0;
+    var timer = setInterval(function(){
+      if (window.IAC && typeof IAC.openMyOrders === 'function') {
+        clearInterval(timer);
+        if (intent === 'orders') { IAC.openMyOrders(); }
+        else { IAC.getUser() ? IAC.openAccountModal() : IAC.openAuthModal(); }
+        // Drop the intent from the URL: without this a refresh, a back button
+        // or a shared link reopens the modal every time.
+        try { history.replaceState(null, '', location.pathname); } catch (e) {}
+      } else if (++tries > 40) {
+        clearInterval(timer);   // 8s — auth.js is not coming
+      }
+    }, 200);
+  }
+})();"""
+
+# ── /cart/ — the cart as a real page ─────────────────────────────────────────
+# The cart was an overlay and nothing else, so it had no URL: it could not be
+# linked, shared, bookmarked, backed out of, or reached at all from the ~2,800
+# pages that do not load cart.js. In a TWA, with no address bar, that is a dead
+# end rather than an inconvenience.
+#
+# It renders through cart.js — the same getCart/updateQty/removeFromCart and
+# the same calcShipping the drawer and the server-side order handlers agree on.
+# The page supplies the four element ids that renderer writes into and nothing
+# more, so there is still exactly one cart implementation on this site and no
+# second copy of the money arithmetic to drift out of sync.
+CART_PAGE_HTML = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Your Cart &mdash; Ink &amp; Chai</title>
+<meta name="description" content="Review the books in your Ink &amp; Chai cart before checkout."/>
+<meta name="robots" content="noindex,follow"/>
+<link rel="canonical" href="https://inkandchai.in/cart/"/>
+<link href="FONT_GOOGLE_URL_SIMPLE_PLACEHOLDER" rel="stylesheet"/>
+<style>{_CAT_CSS}
+main{{max-width:760px;padding-top:2.2rem}}
+.cart-lede{{font-size:.78rem;color:var(--muted);letter-spacing:.04em;margin-bottom:1.6rem}}
+{_CART_ITEM_CSS}
+.cart-empty{{padding:3rem 1rem}}
+/* Sticky so the total and the checkout button stay reachable however long the
+   basket is, clearing the tab bar on a phone. */
+.cart-footer{{position:sticky;bottom:0;background:var(--bg);padding:1.2rem 0 1.4rem;margin-top:1rem}}
+@media(max-width:780px){{.cart-footer{{bottom:calc(64px + env(safe-area-inset-bottom,0px))}}}}
+.cart-continue{{display:inline-block;margin-top:1.2rem;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-decoration:none;border-bottom:1px solid var(--border);padding-bottom:.2rem}}
+.cart-continue:hover{{color:var(--gold);border-color:var(--gold)}}
+</style>
+</head>
+<body>
+<nav>
+  <a class="logo" href="/">Ink &amp;<span> Chai</span></a>
+  <a class="back" href="/books/">&larr; Continue shopping</a>
+</nav>
+<main>
+  <h1>Your Cart</h1>
+  <p class="cart-lede">Free delivery on orders over &#8377;499 &middot; Cash on delivery available</p>
+  <div class="cart-empty" id="cartEmpty">
+    <div class="cart-empty-icon">&#128218;</div>
+    <div>Your cart is empty.<br/>Add some books to get started.</div>
+    <a class="cart-continue" href="/books/">Browse the catalogue</a>
+  </div>
+  <div id="cartItems"></div>
+  <div class="cart-footer" id="cartFooter" style="display:none;">
+    <div class="cart-total-row">
+      <span class="cart-total-label">Total</span>
+      <span class="cart-total-amount" id="cartTotal">&#8377; 0</span>
+    </div>
+    <button class="btn-checkout" onclick="window.location.href='/checkout/'">Proceed to checkout &rarr;</button>
+  </div>
+</main>
+<footer>&copy; 2026 Ink &amp; Chai &middot; inkandchai.in &middot; <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+<script src="/js/cart.js"></script>
+</body>
+</html>"""
+
+_cart_out = Path(__file__).parent / "public" / "cart" / "index.html"
+_cart_out.parent.mkdir(parents=True, exist_ok=True)
+_cart_out.write_text(with_meta_pixel(with_page_loader(CART_PAGE_HTML)), encoding="utf-8")
+print(f"Generated: {_cart_out}")
+
+# The pass itself. It runs last so it sees every page this script wrote plus
+# the hand-written ones it never touches, and it is idempotent: each piece is
+# skipped where the page already carries its own.
+_SHELL_SKIP_DIRS = {"admin", "product", "checkout"}
+_body_open_re = re.compile(r"<body[^>]*>", re.I)
+
+# Inlining the whole shell put 12.5 KB (4.2 KB gzipped) on every page — a 44%
+# increase on a category page, and the same bytes again on the next category
+# page. The drawer's stylesheet and the shell's script are identical everywhere,
+# so they are served as content-hashed files the browser fetches once per
+# release and reuses for the rest of the session. Only the markup and the bar's
+# own CSS stay inline, because those two decide first paint.
+_shell_css_payload = _CART_DRAWER_CSS + "\n" + _CART_ITEM_CSS
+_shell_css_file = f"app-shell-{hashlib.md5(_shell_css_payload.encode()).hexdigest()[:8]}.css"
+_shell_js_file = f"app-shell-{hashlib.md5(_APP_SHELL_JS.encode()).hexdigest()[:8]}.js"
+_css_dir = Path(__file__).parent / "public" / "css"
+_css_dir.mkdir(parents=True, exist_ok=True)
+for _old in _css_dir.glob("app-shell-*.css"):
+    if _old.name != _shell_css_file:
+        _old.unlink(missing_ok=True)
+for _old in _js_dir.glob("app-shell-*.js"):
+    if _old.name != _shell_js_file:
+        _old.unlink(missing_ok=True)
+(_css_dir / _shell_css_file).write_text(_shell_css_payload, encoding="utf-8")
+(_js_dir / _shell_js_file).write_text(_APP_SHELL_JS, encoding="utf-8")
+
+_CART_SHELL_CSS = f'<link rel="stylesheet" href="/css/{_shell_css_file}"/>'
+_APP_SHELL_TAG = f'<script src="/js/{_shell_js_file}" defer></script>'
+print(f"Generated: /css/{_shell_css_file} + /js/{_shell_js_file}")
+
+# Every fragment this pass writes is fenced, and every fence is stripped before
+# anything is written back. Without that the pass could only ever ADD: the
+# hand-written pages (/books/, about, contact, the policy pages, track, review,
+# 404) are not regenerated from a template, so on the second run they still
+# carried the first run's copy, the "already has it" tests all passed, and a fix
+# to the shell reached the 129 generated pages and silently missed the other 11.
+_SHELL_OPEN, _SHELL_CLOSE = "<!--IAC-SHELL-->", "<!--/IAC-SHELL-->"
+_shell_strip_re = re.compile(re.escape(_SHELL_OPEN) + r".*?" + re.escape(_SHELL_CLOSE) + r"\n?", re.S)
+
+def _fenced(fragment):
+    return _SHELL_OPEN + fragment + _SHELL_CLOSE
+
+_shell_public = Path(__file__).parent / "public"
+_shell_nav = _shell_cart = 0
+for _page in sorted(_shell_public.rglob("*.html")):
+    _parts = _page.relative_to(_shell_public).parts
+    if _parts[0] in _SHELL_SKIP_DIRS:
+        continue
+    _h = _page.read_text(encoding="utf-8")
+    if "</head>" not in _h or "</body>" not in _h:
+        continue
+    _orig = _h
+    _h = _shell_strip_re.sub("", _h)
+
+    if 'class="mob-nav"' not in _h:
+        _m = _body_open_re.search(_h)
+        if not _m:
+            continue
+        _h = _h[:_m.end()] + "\n" + _fenced(_MOB_NAV_HTML) + _h[_m.end():]
+        _shell_nav += 1
+    if ".mob-nav{" not in _h and ".mob-nav {" not in _h:
+        _nav_css = _MOB_NAV_CSS
+        if '[data-theme="light"]{--' in _h:
+            _nav_css = _nav_css.replace("</style>", _MOB_NAV_LIGHT_CSS + "</style>", 1)
+        _h = _h.replace("</head>", _fenced(_nav_css) + "\n</head>", 1)
+
+    # The cart drawer goes wherever there is not already a cart. /books/ is the
+    # exception that has to be tested for by name of its globals rather than by
+    # id: it carries its own inline mini-cart writing to the same localStorage
+    # key, and it declares `const CART_KEY`, so loading cart.js there would
+    # redeclare it and take the whole script down with a SyntaxError. That page
+    # keeps its own cart and its Cart tab navigates to /cart/ instead.
+    _has_cart = ('id="cartItems"' in _h or "CART_KEY" in _h or "/js/cart.js" in _h)
+    if not _has_cart:
+        _h = _h.replace("</head>", _fenced(_CART_SHELL_CSS) + "\n</head>", 1)
+        _h = _h.replace("</body>", _fenced(_CART_DRAWER_HTML) + "\n</body>", 1)
+        _shell_cart += 1
+
+    if _shell_js_file not in _h:
+        _h = _h.replace("</body>", _fenced(_APP_SHELL_TAG) + "\n</body>", 1)
+
+    if _h != _orig:
+        _page.write_text(_h, encoding="utf-8")
+
+print(f"Generated: app shell — tab bar added to {_shell_nav} pages, cart drawer to {_shell_cart}")
 
 # ── SEO: sitemap.xml + robots.txt ─────────────────────────────────────────────
 from datetime import datetime

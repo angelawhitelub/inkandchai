@@ -1590,6 +1590,13 @@ gtag('config', 'G-ZPZDFWMDP6');
 <!-- End Google Analytics 4 -->
 </head>
 <body>
+<!--IAC-SHELL--><!-- Mobile bottom nav — injected site-wide by the app-shell pass in generate_site.py. Edit it there, not here. -->
+<nav class="mob-nav" aria-label="Mobile navigation">
+  <a href="/" data-mn="home" title="Home"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg></span><span>Home</span></a>
+  <a href="/?account=1" data-mn="account" title="Account"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20.4a7.2 7.2 0 0 1 14.4 0"/></svg></span><span>Account</span></a>
+  <a href="/?orders=1" data-mn="orders" title="My Orders"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg></span><span>Orders</span></a>
+  <a href="/cart/" data-mn="cart" title="Cart"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg></span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></a>
+</nav><!--/IAC-SHELL-->
 
 
 
@@ -1613,24 +1620,8 @@ gtag('config', 'G-ZPZDFWMDP6');
 })();
 </script>
 
-<!-- Mobile bottom nav (mobile only via CSS) -->
-<nav class="mob-nav" aria-label="Mobile navigation">
-  <a href="/" title="Home"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg></span><span>Home</span></a>
-  <button onclick="window.IAC ? (IAC.getUser() ? IAC.openAccountModal() : IAC.openAuthModal()) : null" title="Account"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20.4a7.2 7.2 0 0 1 14.4 0"/></svg></span><span>Account</span></button>
-  <button onclick="window.IAC ? IAC.openMyOrders() : null" title="My Orders"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg></span><span>Orders</span></button>
-  <button onclick="openCart()" title="Cart"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg></span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></button>
-</nav>
-<script>
-(function(){
-  // Home is the only tab that is a real URL -- the other three open overlays --
-  // so this is all the "you are here" the bar can honestly show.
-  var nav = document.querySelector('nav.mob-nav');
-  if (!nav) return;
-  if ((location.pathname.replace(/\/+$/, '') || '/') !== '/') return;
-  var home = nav.querySelector('a[href="/"]');
-  if (home) { home.classList.add('mn-active'); home.setAttribute('aria-current', 'page'); }
-})();
-</script>
+<!-- Mobile bottom nav: injected on every page by the app-shell pass
+     near the end of generate_site.py. Edit it there. -->
 
 <nav>
   <a class="nav-logo" href="/" aria-label="Ink and Chai — home">
@@ -2324,7 +2315,7 @@ gtag('config', 'G-ZPZDFWMDP6');
 <script src="/js/search-suggest.js" defer></script>
 
 <script src="/js/books-lite-7063487c.js"></script>
-<script>window.BOOKS_FULL_URL="/js/books-full-89165e49.js";</script>
+<script>window.BOOKS_FULL_URL="/js/books-full-2ad36a19.js";</script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -3985,5 +3976,6 @@ document.querySelectorAll('.stat-num').forEach(el => {
 })();
 </script>
 
+<!--IAC-SHELL--><script src="/js/app-shell-228cb1b7.js" defer></script><!--/IAC-SHELL-->
 </body>
 </html>

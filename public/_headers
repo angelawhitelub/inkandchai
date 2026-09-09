@@ -13,6 +13,15 @@
 /js/books-lite-*.js
   Cache-Control: public, max-age=31536000, immutable
 
+# The app shell (bottom tab bar + cart drawer) is identical on all ~140 browse
+# pages, so it is served content-hashed and cached for good: a browse session
+# fetches it once instead of re-downloading it inline with every page. The hash
+# in the filename is what makes a change reach people.
+/css/app-shell-*.css
+  Cache-Control: public, max-age=31536000, immutable
+/js/app-shell-*.js
+  Cache-Control: public, max-age=31536000, immutable
+
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
