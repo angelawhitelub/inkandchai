@@ -1323,7 +1323,7 @@ select,input,textarea{font-size:1rem;}
       </div>
       <div class="form-row wide">
         <label>Select videos or screenshots <span style="font-weight:400;color:var(--cream-dim);font-size:.58rem;">(up to 8 at once; web-ready MP4s up to 60 seconds keep original quality and sound)</span></label>
-        <input id="siteReelFiles" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*,image/jpeg,image/png,image/webp" multiple onchange="prepareSiteReels(this.files)"/>
+        <input id="siteReelFiles" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*,image/jpeg,image/png,image/webp,image/avif,.avif" multiple onchange="prepareSiteReels(this.files)"/>
         <p class="hint" style="margin-top:.45rem;">Keep this tab visible while uploading: video conversion runs in real time. A poster frame is generated automatically. Screenshots are resized here and upload straight away.</p>
         <p class="hint" style="margin-top:.35rem;color:#c98236;">Screenshots go on every product page, so redact before you upload: the phone number, the contact name, and anything in the messages themselves &mdash; an address, an order ID, a full name.</p>
       </div>
@@ -1451,7 +1451,7 @@ select,input,textarea{font-size:1rem;}
       </div>
       <div class="form-row wide">
         <label>Book images (optional)</label>
-        <input id="newProdImage" type="file" accept="image/png,image/jpeg,image/webp" multiple onchange="previewCreateProductImages(this.files)"/>
+        <input id="newProdImage" type="file" accept="image/png,image/jpeg,image/webp,image/avif,.avif" multiple onchange="previewCreateProductImages(this.files)"/>
         <p class="hint" style="margin-top:.4rem;">Choose up to 9 images. The first becomes the main cover; the rest appear in the product gallery.</p>
         <div class="image-preview" id="newProdImagePreview" style="display:none;">
           <div id="newProdImagePreviewGrid" style="display:flex;gap:.65rem;flex-wrap:wrap;"></div>
@@ -1689,7 +1689,7 @@ select,input,textarea{font-size:1rem;}
             </select>
             <div id="prodCurrentImages" style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:.6rem;"></div>
             <label style="margin-top:.65rem;">Choose replacement image(s)</label>
-            <input id="prodGalleryImages" type="file" accept="image/png,image/jpeg,image/webp" multiple onchange="previewEditProductImages(this.files)"/>
+            <input id="prodGalleryImages" type="file" accept="image/png,image/jpeg,image/webp,image/avif,.avif" multiple onchange="previewEditProductImages(this.files)"/>
             <p class="hint" id="prodGalleryActionHint" style="margin-top:.4rem;">Choose one image to replace only the main cover. Existing gallery images stay unchanged.</p>
             <div id="prodGalleryPreview" style="display:flex;gap:.65rem;flex-wrap:wrap;margin-top:.6rem;"></div>
             <button class="btn-green" id="prodGallerySaveBtn" type="button" onclick="saveCustomProductImages()" style="display:none;margin-top:.7rem;">Upload / Replace Images</button>
@@ -4762,9 +4762,15 @@ function productSlugFromTitle(title) {
 // data URL, entirely client-side via canvas. Every uploaded cover/gallery image
 // is stored as .webp because create-product-listing derives the file extension
 // and content-type from the data URL's MIME. Returns the input unchanged when it
-// is already WebP, isn't a JPG/PNG (e.g. a plain http link), or the browser
-// can't encode WebP. Never throws. Exposed globally so any image-upload UI
-// (including the multi-image gallery uploader) can route images through it.
+// is already WebP, isn't a source format we transcode (e.g. a plain http link),
+// or the browser can't encode WebP. Never throws. Exposed globally so any
+// image-upload UI (including the multi-image gallery uploader) can route images
+// through it.
+//
+// AVIF goes through here too. Browsers decode AVIF but none of them ENCODE it
+// from canvas, so the output is WebP either way -- which is what we want:
+// Google Merchant Center accepts WebP and rejects AVIF, and every cover here
+// ends up in the product feed.
 window.iacImageToWebp = async function (input, quality = 0.85) {
   let dataUrl = '';
   try {
@@ -4778,8 +4784,10 @@ window.iacImageToWebp = async function (input, quality = 0.85) {
     } else {
       dataUrl = String(input || '');
     }
-    // Only convert JPG/PNG data URLs; leave WebP, other types, and plain URLs as-is.
-    if (!/^data:image\/(jpe?g|png)/i.test(dataUrl)) return dataUrl;
+    // Convert JPG/PNG/AVIF data URLs; leave WebP, other types, and plain URLs
+    // as-is.
+    if (!/^data:image\/(jpe?g|png|avif)/i.test(dataUrl)) return dataUrl;
+    const isAvif = /^data:image\/avif/i.test(dataUrl);
     const img = await new Promise((res, rej) => {
       const i = new Image();
       i.onload = () => res(i);
@@ -4792,12 +4800,28 @@ window.iacImageToWebp = async function (input, quality = 0.85) {
     if (!canvas.width || !canvas.height) return dataUrl;
     canvas.getContext('2d').drawImage(img, 0, 0);
     const webp = canvas.toDataURL('image/webp', quality);
-    return webp.startsWith('data:image/webp') ? webp : dataUrl;   // fallback if unsupported
+    if (webp.startsWith('data:image/webp')) return webp;
+    if (isAvif) iacWarnAvifPassthrough();
+    return dataUrl;   // fallback if unsupported
   } catch (e) {
     console.warn('[iacImageToWebp] conversion skipped:', e && e.message);
+    if (/^data:image\/avif/i.test(dataUrl)) iacWarnAvifPassthrough();
     return dataUrl;
   }
 };
+
+// Falling back to the original is harmless for a JPG or PNG -- both are valid
+// everywhere the image ends up. An AVIF is not: Google Merchant Center rejects
+// it, so a cover that quietly stayed AVIF would disapprove the product days
+// later with nothing here to connect it to. Say so at the moment it happens.
+// Once per page: a gallery upload runs this per file.
+let _avifWarned = false;
+function iacWarnAvifPassthrough() {
+  if (_avifWarned) return;
+  _avifWarned = true;
+  console.warn('[iacImageToWebp] AVIF could not be converted to WebP');
+  alert('This browser could not convert the AVIF image to WebP.\n\nThe image will upload as AVIF, which Google Merchant Center rejects — the product can be disapproved in the feed. Convert it to JPG, PNG or WebP first, or use an up-to-date Chrome, Edge, Firefox or Safari.');
+}
 
 // ── Product video: browser-side transcode ───────────────────────────────────
 // A phone clip is unusable as-is. An iPhone .MOV is HEVC, which Chrome and
@@ -6623,7 +6647,7 @@ function renderAplusBlocks() {
       <div class="form-row"><label>Module heading</label><input maxlength="180" value="${esc(block.heading)}" oninput="updateAplusBlock(${index},'heading',this.value)" placeholder="What makes this edition special"/></div>
       <div class="form-row"><label>Module text</label><textarea maxlength="1500" oninput="updateAplusBlock(${index},'body',this.value)" placeholder="Supporting copy for this visual.">${esc(block.body)}</textarea></div>
       <div class="form-row"><label>Image URL</label><input type="url" value="${esc(block.image_url)}" oninput="updateAplusBlock(${index},'image_url',this.value);renderAplusImagePreview(${index})" placeholder="https://..."/></div>
-      <div class="form-row"><label>Or upload an image</label><input type="file" accept="image/png,image/jpeg,image/webp" onchange="previewAplusBlockImage(${index},this.files)"/></div>
+      <div class="form-row"><label>Or upload an image</label><input type="file" accept="image/png,image/jpeg,image/webp,image/avif,.avif" onchange="previewAplusBlockImage(${index},this.files)"/></div>
       <div class="form-row"><label>SEO image alt text</label><input maxlength="220" value="${esc(block.image_alt)}" oninput="updateAplusBlock(${index},'image_alt',this.value)" placeholder="Describe the image for accessibility and search"/></div>
       <div id="prodAplusPreview${index}" style="margin-top:.55rem;${block.image_url ? '' : 'display:none;'}"><img src="${esc(block.image_url)}" alt="" style="display:block;width:100%;height:auto;border:1px solid var(--border);"/></div>
     </div>`).join('');

@@ -53,7 +53,8 @@ async function storeComboImage(slug, dataUrl) {
   }
   const body = Buffer.from(match[2], 'base64');
   if (body.length > MAX_IMAGE_BYTES) throw new Error('Combo image is too large. Keep it under 4 MB.');
-  const ext = match[1] === 'image/png' ? 'png' : match[1] === 'image/jpeg' ? 'jpg' : 'webp';
+  const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/avif': 'avif' }[match[1].toLowerCase()]
+    || 'webp';   // the admin transcodes covers to WebP, so that is the sane default
   try {
     return await r2PutObject(r2Config(), {
       key: `product-images/combo/${slug}.${ext}`,

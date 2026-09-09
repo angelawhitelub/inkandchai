@@ -32,10 +32,18 @@ function money(value, required = false) {
   return n.toFixed(2);
 }
 
+// The extension has to follow the real MIME: these handlers accept any
+// `data:image/*`, so an AVIF used to be stored as ".jpg" while carrying
+// contentType image/avif.
+const MIME_EXTENSIONS = {
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+  'image/jpeg': 'jpg',
+};
+
 function extensionFromMime(mime) {
-  if (mime === 'image/png') return 'png';
-  if (mime === 'image/webp') return 'webp';
-  return 'jpg';
+  return MIME_EXTENSIONS[String(mime || '').toLowerCase()] || 'jpg';
 }
 
 function slugWithSuffix(baseSlug, sequence) {

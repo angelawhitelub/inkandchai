@@ -12,7 +12,7 @@ const VIDEO_TYPES = { 'video/mp4': 'mp4', 'video/webm': 'webm' };
 // Stills are the other half of the strip: a screenshot of what a customer
 // actually said carries the same proof as an unboxing clip, and there is no
 // clip to shoot for it.
-const IMAGE_TYPES = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' };
+const IMAGE_TYPES = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/avif': 'avif' };
 const MAX_VIDEO_BYTES = 4 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 const MAX_POSTER_BYTES = 512 * 1024;
