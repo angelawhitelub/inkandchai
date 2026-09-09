@@ -7,11 +7,14 @@
  * the token cannot see, and a malformed identifier. Cloudflare distinguishes
  * them in the response body, so this asks it and hands back the error codes.
  *
- * A Worker secret cannot be read back, so this describes CF_ZONE_ID without
- * revealing it: its length, whether it is the 32-hex shape a zone id has, and
- * whether it has been confused with the account id — the classic mistake, and
- * the one that produces exactly this 404. The token is never described beyond
- * present/absent.
+ * A Worker secret cannot be read back, so this describes the secrets without
+ * revealing them: length, shape, stray whitespace, a pasted "Bearer " prefix,
+ * and whether CF_ZONE_ID has been confused with the account id.
+ *
+ * CF_ZONE_ID being unset is the RECOMMENDED setup, not a fault: purge-cache
+ * resolves the zone from SITE_URL's host when the token carries Zone: Read,
+ * which is one fewer hand-typed 32-hex string to get wrong. So an empty zone
+ * id is resolved here the same way and then actually exercised.
  *
  * Headers: X-Admin-Token / X-Admin-Key.
  */
@@ -76,26 +79,40 @@ exports.handler = async (event) => {
     purge_token_has_surrounding_whitespace: token !== token.trim(),
     purge_token_has_inner_whitespace: /\s/.test(token.trim()),
     purge_token_has_bearer_prefix: /^bearer\s/i.test(token.trim()),
-    purge_token_is_cf_token_shape: /^[A-Za-z0-9_-]{40}$/.test(token.trim()),
+    purge_token_is_cf_token_shape: /^[A-Za-z0-9_.-]{30,120}$/.test(token.trim()),
     site_url: site,
   };
 
-  if (!zone || !token) return json(200, { config, verdict: 'CF_ZONE_ID or CF_PURGE_TOKEN is not set.' });
+  if (!token) return json(200, { config, verdict: 'CF_PURGE_TOKEN is not set — purging is disabled.' });
+
+  // Look the zone up first: with no CF_ZONE_ID that is the only way to get one,
+  // and with a wrong CF_ZONE_ID it is what purge-cache falls back to.
+  const lookupFirst = await cf(`/zones?name=${encodeURIComponent(host)}`, token);
+  const foundFirst = Array.isArray(lookupFirst.result) ? lookupFirst.result[0] : null;
+  const effectiveZone = zone || (foundFirst && foundFirst.id) || '';
+  if (!effectiveZone) {
+    return json(200, {
+      config,
+      zone_lookup: { status: lookupFirst.status, ok: lookupFirst.ok, errors: lookupFirst.errors, correct_zone_id: null },
+      verdict: 'No CF_ZONE_ID, and the token cannot look the zone up by name — add Zone: Read to the token, or set CF_ZONE_ID.',
+    });
+  }
 
   // 1. What does the purge endpoint actually say? Purge one URL that exists, so
   //    a success here is a real success and not a quirk of an empty request.
-  const purge = await cf(`/zones/${encodeURIComponent(zone)}/purge_cache`, token, {
+  const purge = await cf(`/zones/${encodeURIComponent(effectiveZone)}/purge_cache`, token, {
     method: 'POST',
     body: JSON.stringify({ files: [`${site}/`] }),
   });
 
   // 2. Can the token see the zone by name? If yes, the correct id is one lookup
   //    away and nobody has to go find it in the dashboard.
-  const lookup = await cf(`/zones?name=${encodeURIComponent(host)}`, token);
-  const found = Array.isArray(lookup.result) ? lookup.result[0] : null;
+  const lookup = lookupFirst;
+  const found = foundFirst;
 
   let verdict;
-  if (purge.ok) verdict = 'Purge works. CF_ZONE_ID and CF_PURGE_TOKEN are correct.';
+  if (purge.ok && !zone) verdict = 'Purge works. CF_ZONE_ID is unset and the zone is resolved by name — the recommended setup.';
+  else if (purge.ok) verdict = 'Purge works. CF_ZONE_ID and CF_PURGE_TOKEN are correct.';
   else if (config.zone_id_is_actually_the_account_id) verdict = 'CF_ZONE_ID holds the ACCOUNT id, not the zone id. They are both 32-hex and easy to mix up.';
   else if (!config.zone_id_is_32_hex) verdict = 'CF_ZONE_ID is not a 32-character hex string, so it cannot be a zone id.';
   else if (found && found.id !== zone) verdict = `CF_ZONE_ID does not match the real zone for ${host}. The correct id is in correct_zone_id below.`;
@@ -114,7 +131,8 @@ exports.handler = async (event) => {
       // overview page. Printing it is the entire point of this endpoint.
       correct_zone_id: found ? found.id : null,
       zone_name: found ? found.name : null,
-      matches_configured: found ? found.id === zone : null,
+      matches_configured: found && zone ? found.id === zone : null,
+      zone_id_source: zone ? 'CF_ZONE_ID' : 'resolved from SITE_URL host',
     },
     verdict,
   });
