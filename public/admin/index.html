@@ -1508,7 +1508,7 @@ select,input,textarea{font-size:1rem;}
       <span class="hint" id="deletedMeta">Deleted pages load after login.</span>
     </div>
     <div class="product-list" id="deletedList"></div>
-    <p class="hint" style="margin-top:0.7rem;">The page stops serving at once. Category pages and on-site search drop the card within the hour they are cached for, and the sitemap and Merchant Center feed clear on the next site regeneration.</p>
+    <p class="hint" style="margin-top:0.7rem;">Deleting and restoring both take about a minute to reach the edge — the takedown list is cached there for 60 seconds. Category pages and on-site search drop the card within the hour they are cached for, and the sitemap and Merchant Center feed clear on the next site regeneration.</p>
   </section>
 
   <section class="product-panel" id="productEditorSection">
@@ -7559,7 +7559,7 @@ async function deleteProductPage() {
     // only the first happened.
     alert(data.index_published === false
       ? `Recorded the takedown for "${data.title || title}", but publishing it to the edge failed (${data.index_reason || 'unknown'}) — the page is still serving. Hit Refresh under "Deleted pages" to retry.`
-      : `Deleted "${data.title || title}". The page now returns 410 Gone. Listings and search clear within the hour they are cached for.`);
+      : `Deleted "${data.title || title}". The page starts returning 410 Gone within about a minute — the edge caches the takedown list for 60 seconds. Listings and search clear within the hour they are cached for.`);
   } catch (e) {
     // A timeout is not a failed delete — the row may already be gone and only
     // the answer lost, so say that rather than implying nothing happened.
@@ -7635,7 +7635,7 @@ function renderDeletedPages() {
 }
 
 async function restoreDeletedPage(slug, btn) {
-  if (!confirm(`Put /product/${slug}/ back online?\n\nThe page serves again immediately, with its price, images and description as they were. Category and search listings pick it up within the hour they are cached for.`)) return;
+  if (!confirm(`Put /product/${slug}/ back online?\n\nThe page serves again within about a minute, with its price, images and description as they were. Category and search listings pick it up within the hour they are cached for.`)) return;
   const label = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Restoring…'; }
   try {

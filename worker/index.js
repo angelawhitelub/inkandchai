@@ -363,9 +363,12 @@ async function runHandler(name, request, env, ctx) {
 // days and re-crawls a 404 for months. A title that is merely out of stock goes
 // through Remove From Sale instead, which keeps the page and its ranking.
 //
-// KV is read at most once a minute per isolate. A failed read means an empty
-// set, i.e. the page keeps serving: a takedown that is briefly late is a much
-// smaller problem than every product page 500ing because KV blipped.
+// KV is read at most once a minute per isolate, and Cloudflare's own cacheTtl
+// floor is 60s, so a takedown reaches every colo in roughly a minute rather
+// than instantly (measured: ~40s in production). The admin says so. A failed
+// read means an empty set, i.e. the page keeps serving: a takedown that is
+// briefly late is a much smaller problem than every product page 500ing
+// because KV blipped.
 const DELETED_TTL_MS = 60_000;
 let _deletedSet = null;
 let _deletedAt = 0;
