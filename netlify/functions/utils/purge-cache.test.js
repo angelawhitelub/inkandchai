@@ -86,3 +86,70 @@ test('purge-by-URL is chunked to Cloudflare’s 30-URL cap', async () => {
     assert.ok(calls.every((n) => n <= 30), `a chunk exceeded the cap: ${calls}`);
   });
 });
+
+// ── Zone resolution ──────────────────────────────────────────────────────────
+// CF_ZONE_ID was set to the literal "inkandchai2026" for months. Cloudflare
+// answers 404/7003 for that, and the old code reported a bare http-404 and
+// gave up, so every admin save silently failed to clear the edge.
+
+test('a zone id Cloudflare cannot route to is looked up by name and retried', async () => {
+  await withEnv({ CF_ZONE_ID: 'inkandchai2026', CF_PURGE_TOKEN: 'tok-lookup-a' }, async () => {
+    const calls = [];
+    global.fetch = async (url, opts) => {
+      calls.push(url);
+      if (url.includes('/zones?name=')) {
+        return { ok: true, json: async () => ({ result: [{ id: 'abc123', name: 'inkandchai.in' }] }) };
+      }
+      if (url.includes('/zones/inkandchai2026/')) {
+        return { ok: false, status: 404, json: async () => ({ errors: [{ code: 7003, message: 'Could not route' }] }) };
+      }
+      return { ok: true };
+    };
+    const out = await purgeCacheTags(['products']);
+    assert.strictEqual(out.purged, true, `expected the retry to succeed, got ${JSON.stringify(out)}`);
+    assert.ok(calls.some((u) => u.includes('/zones?name=inkandchai.in')), 'should look the zone up by name');
+    assert.ok(calls.some((u) => u.includes('/zones/abc123/purge_cache')), 'should retry against the resolved zone');
+  });
+});
+
+test('with no zone id at all the zone is resolved from the site host', async () => {
+  await withEnv({ CF_ZONE_ID: '', CF_PURGE_TOKEN: 'tok-lookup-b' }, async () => {
+    let purgedAgainst = null;
+    global.fetch = async (url) => {
+      if (url.includes('/zones?name=')) {
+        return { ok: true, json: async () => ({ result: [{ id: 'zone-from-name' }] }) };
+      }
+      purgedAgainst = url;
+      return { ok: true };
+    };
+    const out = await purgeCacheTags(['products']);
+    assert.strictEqual(out.purged, true);
+    assert.strictEqual(purgedAgainst, 'https://api.cloudflare.com/client/v4/zones/zone-from-name/purge_cache');
+  });
+});
+
+test('no zone id and a token that cannot look one up reports why', async () => {
+  await withEnv({ CF_ZONE_ID: '', CF_PURGE_TOKEN: 'tok-lookup-c' }, async () => {
+    global.fetch = async () => ({ ok: false, status: 403, json: async () => ({ errors: [] }) });
+    assert.deepStrictEqual(await purgeCacheTags(['products']), { purged: false, reason: 'zone-unresolved' });
+  });
+});
+
+test("a pasted 'Bearer ' prefix does not break the Authorization header", async () => {
+  await withEnv({ CF_ZONE_ID: ' zone-9 ', CF_PURGE_TOKEN: '  Bearer tok-9  ' }, async () => {
+    let seen = null;
+    global.fetch = async (url, opts) => { seen = { url, opts }; return { ok: true }; };
+    await purgeCacheTags(['products']);
+    assert.strictEqual(seen.opts.headers.Authorization, 'Bearer tok-9');
+    assert.strictEqual(seen.url, 'https://api.cloudflare.com/client/v4/zones/zone-9/purge_cache');
+  });
+});
+
+test("Cloudflare's own error code is surfaced, not just the status", async () => {
+  await withEnv({ CF_ZONE_ID: 'zone-x', CF_PURGE_TOKEN: 'tok-detail' }, async () => {
+    global.fetch = async () => ({ ok: false, status: 400, json: async () => ({ errors: [{ code: 1001, message: 'Invalid zone identifier' }] }) });
+    const out = await purgeCacheTags(['products']);
+    assert.strictEqual(out.reason, 'http-400');
+    assert.strictEqual(out.cf_code, 1001);
+  });
+});
