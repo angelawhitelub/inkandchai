@@ -2117,7 +2117,12 @@ HTML = r"""<!DOCTYPE html>
 
   .mob-nav a,.mob-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0.45rem 0;background:transparent;border:none;color:var(--cream-dim);font-family:'Inter',sans-serif;font-size:0.55rem;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:color 0.2s;position:relative}
   .mob-nav a:hover,.mob-nav button:hover,.mob-nav a:active,.mob-nav button:active{color:var(--gold)}
-  .mob-nav .mn-icon{font-size:1.25rem;line-height:1}
+  .mob-nav .mn-icon{display:flex;align-items:center;justify-content:center;height:22px}
+  .mob-nav .mn-icon svg{width:22px;height:22px;display:block}
+  /* The bar had no active state at all, so it never said where you were --
+     the one thing a tab bar exists to do. */
+  .mob-nav .mn-active{color:var(--gold)}
+  .mob-nav .mn-active .mn-icon svg{stroke-width:2}
   .mob-nav .mn-badge{position:absolute;top:0;right:calc(50% - 18px);background:var(--gold);color:var(--bg);border-radius:50%;width:16px;height:16px;font-size:0.55rem;font-weight:600;display:flex;align-items:center;justify-content:center;letter-spacing:0}
 
   /* Trust strip — Why Choose Ink & Chai */
@@ -2535,11 +2540,22 @@ html[data-theme="light"] .btn-primary{
 
 <!-- Mobile bottom nav (mobile only via CSS) -->
 <nav class="mob-nav" aria-label="Mobile navigation">
-  <a href="/" title="Home"><span class="mn-icon">⌂</span><span>Home</span></a>
-  <button onclick="window.IAC ? (IAC.getUser() ? IAC.openAccountModal() : IAC.openAuthModal()) : null" title="Account"><span class="mn-icon">👤</span><span>Account</span></button>
-  <button onclick="window.IAC ? IAC.openMyOrders() : null" title="My Orders"><span class="mn-icon">📦</span><span>Orders</span></button>
-  <button onclick="openCart()" title="Cart"><span class="mn-icon">🛒</span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></button>
+  <a href="/" title="Home"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg></span><span>Home</span></a>
+  <button onclick="window.IAC ? (IAC.getUser() ? IAC.openAccountModal() : IAC.openAuthModal()) : null" title="Account"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20.4a7.2 7.2 0 0 1 14.4 0"/></svg></span><span>Account</span></button>
+  <button onclick="window.IAC ? IAC.openMyOrders() : null" title="My Orders"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg></span><span>Orders</span></button>
+  <button onclick="openCart()" title="Cart"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg></span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></button>
 </nav>
+<script>
+(function(){
+  // Home is the only tab that is a real URL -- the other three open overlays --
+  // so this is all the "you are here" the bar can honestly show.
+  var nav = document.querySelector('nav.mob-nav');
+  if (!nav) return;
+  if ((location.pathname.replace(/\/+$/, '') || '/') !== '/') return;
+  var home = nav.querySelector('a[href="/"]');
+  if (home) { home.classList.add('mn-active'); home.setAttribute('aria-current', 'page'); }
+})();
+</script>
 
 <nav>
   <a class="nav-logo" href="/" aria-label="Ink and Chai — home">
@@ -5169,10 +5185,21 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
 
 <!-- Mobile bottom nav (mobile only) -->
 <nav class="mob-nav" aria-label="Mobile navigation">
-  <a href="/" title="Home"><span class="mn-icon">⌂</span><span>Home</span></a>
-  <button onclick="window.IAC ? IAC.openMyOrders() : null" title="My Orders"><span class="mn-icon">📦</span><span>Orders</span></button>
-  <button onclick="openCart()" title="Cart"><span class="mn-icon">🛒</span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></button>
+  <a href="/" title="Home"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg></span><span>Home</span></a>
+  <button onclick="window.IAC ? IAC.openMyOrders() : null" title="My Orders"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg></span><span>Orders</span></button>
+  <button onclick="openCart()" title="Cart"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg></span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></button>
 </nav>
+<script>
+(function(){
+  // Home is the only tab that is a real URL -- the other three open overlays --
+  // so this is all the "you are here" the bar can honestly show.
+  var nav = document.querySelector('nav.mob-nav');
+  if (!nav) return;
+  if ((location.pathname.replace(/\/+$/, '') || '/') !== '/') return;
+  var home = nav.querySelector('a[href="/"]');
+  if (home) { home.classList.add('mn-active'); home.setAttribute('aria-current', 'page'); }
+})();
+</script>
 
 <!-- POLICY BAR -->
 <div style="background:#1a1612;border-bottom:1px solid rgba(201,168,76,0.12);padding:0.4rem 4rem;display:flex;gap:2rem;justify-content:flex-end;flex-wrap:wrap;">
@@ -10497,10 +10524,21 @@ html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-c
 <body>
 <div class="promo-banner"><strong>✦ PREPAID OFFERS</strong> 10% ₹499+ &nbsp;·&nbsp; 12% ₹999+ &nbsp;·&nbsp; 15% ₹1499+</div>
 <nav class="mob-nav" aria-label="Mobile navigation">
-  <a href="/" title="Home"><span class="mn-icon">⌂</span><span>Home</span></a>
-  <a href="/" title="My Orders"><span class="mn-icon">📦</span><span>Orders</span></a>
-  <a href="/" title="Cart"><span class="mn-icon">🛒</span><span>Cart</span></a>
+  <a href="/" title="Home"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg></span><span>Home</span></a>
+  <a href="/" title="My Orders"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg></span><span>Orders</span></a>
+  <a href="/" title="Cart"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg></span><span>Cart</span></a>
 </nav>
+<script>
+(function(){
+  // Home is the only tab that is a real URL -- the other three open overlays --
+  // so this is all the "you are here" the bar can honestly show.
+  var nav = document.querySelector('nav.mob-nav');
+  if (!nav) return;
+  if ((location.pathname.replace(/\/+$/, '') || '/') !== '/') return;
+  var home = nav.querySelector('a[href="/"]');
+  if (home) { home.classList.add('mn-active'); home.setAttribute('aria-current', 'page'); }
+})();
+</script>
 <a class="wa-float" href="https://wa.me/917678400508" target="_blank" rel="noopener" title="Chat on WhatsApp"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
 <script>
 /* Mobile only: the float is unreachable-by-accident while the grid moves. */
