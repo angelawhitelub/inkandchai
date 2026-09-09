@@ -87,6 +87,27 @@ gtag('config', 'G-ZPZDFWMDP6');
   <div class="body-copy">Box sets and combos are the cheapest way to build a serious library. We curate combo packs across every category — self-help essentials (Atomic Habits + Psychology of Money + Rich Dad combo), complete series (Off-Campus 5-book set, Kings of Sin complete set), Hindi bestsellers bundles, and manga series volumes. Every combo is priced 15-40% below buying the books individually.</p><p style="margin-top:1rem">Gifting? Combos are the highest-impact book gift — your friend gets a complete reading journey, not just one title. Every order ships in branded packaging suitable for gifting.</div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+<script>
+(function(){
+  if (!window.fetch) return;
+  fetch('/deleted-products.json').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    var slugs = (d && d.slugs) || [];
+    if (!slugs.length) return;
+    var gone = {};
+    slugs.forEach(function(s){ gone[String(s).toLowerCase()] = 1; });
+    var links = document.querySelectorAll('a[href^="/product/"]');
+    for (var i = 0; i < links.length; i++) {
+      var m = (links[i].getAttribute('href') || '').match(/^\/product\/([^\/?#]+)/);
+      if (!m) continue;
+      var slug = m[1];
+      try { slug = decodeURIComponent(slug); } catch (e) {}
+      if (!gone[slug.toLowerCase()]) continue;
+      var card = links[i].closest ? (links[i].closest('.ah-card, .card') || links[i]) : links[i];
+      if (card.parentNode) card.parentNode.removeChild(card);
+    }
+  }).catch(function(){});
+})();
+</script>
 
 <div id="iacPageLoader" aria-hidden="true">
   <div class="iac-bookload">

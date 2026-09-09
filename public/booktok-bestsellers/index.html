@@ -87,6 +87,27 @@ gtag('config', 'G-ZPZDFWMDP6');
   <div class="body-copy">If a book trended on BookTok, chances are it's in stock here. We track what's trending on Indian #BookTok and #Bookstagram daily and stock the titles that matter. Whether you're chasing the hype on the latest Colleen Hoover, Sarah J. Maas, or Ana Huang release, or hunting down the underground bestsellers that exploded out of nowhere — this is the shortcut.</p><p style="margin-top:1rem">Every book is a genuine paperback. Many BookTok titles are sold as scanned/pirated PDFs or low-quality print copies on Amazon — we never stock those. If you see a book on TikTok and want the real thing, you'll find it here. We also stock signed editions and special covers where available — check individual product pages.</div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+<script>
+(function(){
+  if (!window.fetch) return;
+  fetch('/deleted-products.json').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    var slugs = (d && d.slugs) || [];
+    if (!slugs.length) return;
+    var gone = {};
+    slugs.forEach(function(s){ gone[String(s).toLowerCase()] = 1; });
+    var links = document.querySelectorAll('a[href^="/product/"]');
+    for (var i = 0; i < links.length; i++) {
+      var m = (links[i].getAttribute('href') || '').match(/^\/product\/([^\/?#]+)/);
+      if (!m) continue;
+      var slug = m[1];
+      try { slug = decodeURIComponent(slug); } catch (e) {}
+      if (!gone[slug.toLowerCase()]) continue;
+      var card = links[i].closest ? (links[i].closest('.ah-card, .card') || links[i]) : links[i];
+      if (card.parentNode) card.parentNode.removeChild(card);
+    }
+  }).catch(function(){});
+})();
+</script>
 
 <div id="iacPageLoader" aria-hidden="true">
   <div class="iac-bookload">

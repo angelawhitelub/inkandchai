@@ -2,6 +2,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 const { selectTolerant } = require('./utils/publisher-sourced');
 const { fetchSettings } = require('./utils/product-settings');
+const { readDeleted } = require('./utils/deleted-products');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -172,7 +173,13 @@ exports.handler = async (event) => {
       overrideBySlug.set(slug, mergeSettings(overrideBySlug.get(slug) || null, row, slug));
     }
     const overrides = [...overrideBySlug.values()].filter(Boolean);
-    return { statusCode: 200, headers: cacheHeaders, body: JSON.stringify({ overrides, custom_products: customProducts }) };
+    // Slugs whose page now 410s. The Worker already refuses the URL, but the
+    // baked listing pages and on-site search still hold the book in their
+    // BOOKS payload, so without this a customer can search a deleted title,
+    // click the card and land on a 410. One Supabase read per edge-cache miss
+    // (~hourly), and a missing table just means an empty list.
+    const { slugs: deleted } = await readDeleted(supabase);
+    return { statusCode: 200, headers: cacheHeaders, body: JSON.stringify({ overrides, custom_products: customProducts, deleted }) };
   } catch (err) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: [], warning: err.message }) };
   }

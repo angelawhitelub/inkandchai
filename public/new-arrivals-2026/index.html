@@ -87,6 +87,27 @@ gtag('config', 'G-ZPZDFWMDP6');
   <div class="body-copy">What's new on the shelves: <em>The Divorce</em> by Freida McFadden, <em>Our Perfect Storm</em> by Carley Fortune, <em>The Midnight Train</em> by Matt Haig, <em>Whistler</em> by Ann Patchett, <em>King of Gluttony</em> by Ana Huang, and dozens more. We add new arrivals to this page within 48 hours of their India release. Subscribe to our WhatsApp updates to be notified when your favourite author drops something new.</div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+<script>
+(function(){
+  if (!window.fetch) return;
+  fetch('/deleted-products.json').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    var slugs = (d && d.slugs) || [];
+    if (!slugs.length) return;
+    var gone = {};
+    slugs.forEach(function(s){ gone[String(s).toLowerCase()] = 1; });
+    var links = document.querySelectorAll('a[href^="/product/"]');
+    for (var i = 0; i < links.length; i++) {
+      var m = (links[i].getAttribute('href') || '').match(/^\/product\/([^\/?#]+)/);
+      if (!m) continue;
+      var slug = m[1];
+      try { slug = decodeURIComponent(slug); } catch (e) {}
+      if (!gone[slug.toLowerCase()]) continue;
+      var card = links[i].closest ? (links[i].closest('.ah-card, .card') || links[i]) : links[i];
+      if (card.parentNode) card.parentNode.removeChild(card);
+    }
+  }).catch(function(){});
+})();
+</script>
 
 <div id="iacPageLoader" aria-hidden="true">
   <div class="iac-bookload">

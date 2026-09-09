@@ -87,6 +87,27 @@ gtag('config', 'G-ZPZDFWMDP6');
   <div class="body-copy">Romance is the fastest-growing fiction category in India, and for good reason — these books deliver the swoon, tension, and emotional payoff that no other genre matches. Our collection spans contemporary romance (think Colleen Hoover, Carley Fortune), dark romance (Ana Huang, Penelope Douglas), college and sports romance (Elle Kennedy's Off-Campus series), and Indian-set love stories. Every paperback is sourced directly from the publisher — no pirated copies, no photocopies, no scans. Pay online via UPI or cards for a guaranteed cashback scratch card (up to ₹200 off your next book), or choose cash on delivery and pay only when your book arrives.</p><p style="margin-top:1rem">Not sure where to start? If you loved <em>It Ends With Us</em>, try <em>Our Perfect Storm</em> by Carley Fortune. If you devoured <em>Twisted Love</em>, <em>King of Gluttony</em> is Ana Huang's latest dark obsession. For college romance fans, <em>The Deal</em> kicks off Elle Kennedy's iconic Off-Campus series.</div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+<script>
+(function(){
+  if (!window.fetch) return;
+  fetch('/deleted-products.json').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    var slugs = (d && d.slugs) || [];
+    if (!slugs.length) return;
+    var gone = {};
+    slugs.forEach(function(s){ gone[String(s).toLowerCase()] = 1; });
+    var links = document.querySelectorAll('a[href^="/product/"]');
+    for (var i = 0; i < links.length; i++) {
+      var m = (links[i].getAttribute('href') || '').match(/^\/product\/([^\/?#]+)/);
+      if (!m) continue;
+      var slug = m[1];
+      try { slug = decodeURIComponent(slug); } catch (e) {}
+      if (!gone[slug.toLowerCase()]) continue;
+      var card = links[i].closest ? (links[i].closest('.ah-card, .card') || links[i]) : links[i];
+      if (card.parentNode) card.parentNode.removeChild(card);
+    }
+  }).catch(function(){});
+})();
+</script>
 
 <div id="iacPageLoader" aria-hidden="true">
   <div class="iac-bookload">

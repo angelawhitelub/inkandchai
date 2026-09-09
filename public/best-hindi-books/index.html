@@ -87,6 +87,27 @@ gtag('config', 'G-ZPZDFWMDP6');
   <div class="body-copy">Hindi literature has a depth no other Indian language matches — from Premchand's social realism to Osho's spiritual essays to translations of every global bestseller. Our Hindi collection is the largest curated catalogue of Hindi paperbacks available online in India, and we specialise in titles Amazon and Flipkart often skip or sell at inflated prices.</p><p style="margin-top:1rem">For self-development in Hindi: Atomic Habits, Rich Dad Poor Dad, and Think and Grow Rich are all available in proper Hindi translations. For literature lovers: complete works of Munshi Premchand (Godan, Gaban, Karmabhoomi), Harivansh Rai Bachchan's poetry, and Mahadevi Verma. For philosophical and spiritual readers: dozens of Osho's discourses, Krishnamurti, and modern translations of the Gita and Upanishads. Every book is a properly printed paperback — not the cheaply photocopied versions you'll find at footpath stalls.</div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+<script>
+(function(){
+  if (!window.fetch) return;
+  fetch('/deleted-products.json').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    var slugs = (d && d.slugs) || [];
+    if (!slugs.length) return;
+    var gone = {};
+    slugs.forEach(function(s){ gone[String(s).toLowerCase()] = 1; });
+    var links = document.querySelectorAll('a[href^="/product/"]');
+    for (var i = 0; i < links.length; i++) {
+      var m = (links[i].getAttribute('href') || '').match(/^\/product\/([^\/?#]+)/);
+      if (!m) continue;
+      var slug = m[1];
+      try { slug = decodeURIComponent(slug); } catch (e) {}
+      if (!gone[slug.toLowerCase()]) continue;
+      var card = links[i].closest ? (links[i].closest('.ah-card, .card') || links[i]) : links[i];
+      if (card.parentNode) card.parentNode.removeChild(card);
+    }
+  }).catch(function(){});
+})();
+</script>
 
 <div id="iacPageLoader" aria-hidden="true">
   <div class="iac-bookload">

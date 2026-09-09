@@ -87,6 +87,27 @@ gtag('config', 'G-ZPZDFWMDP6');
   <div class="body-copy">Dark romance is the subgenre that took BookTok by storm — and for good reason. These stories trade in obsessive love, anti-hero protagonists, and the kind of emotional intensity that mainstream contemporary romance can't deliver. Our dark romance shelf is curated for serious readers of the genre, with the must-reads from Ana Huang's <em>Twisted</em> and <em>Kings of Sin</em> series, plus Penelope Douglas, Sarah Adams, and the under-the-radar gems.</p><p style="margin-top:1rem">New to dark romance? Start with <em>Twisted Love</em> — it's the gateway drug. Already devoured Ana Huang's catalogue? <em>King of Gluttony</em> is Book 6 of Kings of Sin, with the silent Serbian billionaire trope perfected. Books ship discreetly with no cover spoilers visible — your local courier doesn't need to know what you're reading.</div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+<script>
+(function(){
+  if (!window.fetch) return;
+  fetch('/deleted-products.json').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    var slugs = (d && d.slugs) || [];
+    if (!slugs.length) return;
+    var gone = {};
+    slugs.forEach(function(s){ gone[String(s).toLowerCase()] = 1; });
+    var links = document.querySelectorAll('a[href^="/product/"]');
+    for (var i = 0; i < links.length; i++) {
+      var m = (links[i].getAttribute('href') || '').match(/^\/product\/([^\/?#]+)/);
+      if (!m) continue;
+      var slug = m[1];
+      try { slug = decodeURIComponent(slug); } catch (e) {}
+      if (!gone[slug.toLowerCase()]) continue;
+      var card = links[i].closest ? (links[i].closest('.ah-card, .card') || links[i]) : links[i];
+      if (card.parentNode) card.parentNode.removeChild(card);
+    }
+  }).catch(function(){});
+})();
+</script>
 
 <div id="iacPageLoader" aria-hidden="true">
   <div class="iac-bookload">

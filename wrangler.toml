@@ -23,6 +23,9 @@ html_handling = "auto-trailing-slash"
 # internally, so the ~2,740 prebuilt product pages keep winning.
 run_worker_first = [
   "/product/*",
+  # Not a real file -- the Worker builds it from KV so the baked category grids
+  # can drop cards for deleted books between regenerations.
+  "/deleted-products.json",
   "/.netlify/images",
   "/spimg/*",
   "/custom-feed.xml",

@@ -1494,6 +1494,23 @@ select,input,textarea{font-size:1rem;}
     <p class="hint" id="removedCacheNote" style="margin-top:0.7rem;">The storefront caches stock for an hour, at the CDN and again in each visitor's browser — a restored product can take up to that long to become buyable for everyone.</p>
   </section>
 
+  <section class="product-panel" id="deletedPagesSection">
+    <div class="product-head">
+      <div>
+        <h2>Deleted pages</h2>
+        <p>Product pages taken down for good. The URL answers <strong>410&nbsp;Gone</strong>, so Google drops it from search within days instead of re-crawling it for months. <strong>Catalogue books can be restored</strong> — their page file is still there, only hidden. <strong>Admin-created listings cannot</strong>: deleting one removes the row the page was built from. Use “Remove From Sale” above for anything temporary.</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-outline" onclick="fetchDeletedPages(this)">Refresh &amp; republish</button>
+      </div>
+    </div>
+    <div class="toolbar" style="margin-bottom:0.8rem;">
+      <span class="hint" id="deletedMeta">Deleted pages load after login.</span>
+    </div>
+    <div class="product-list" id="deletedList"></div>
+    <p class="hint" style="margin-top:0.7rem;">The page stops serving at once. Category pages and on-site search drop the card within the hour they are cached for, and the sitemap and Merchant Center feed clear on the next site regeneration.</p>
+  </section>
+
   <section class="product-panel" id="productEditorSection">
     <div class="product-head">
       <div>
@@ -5672,6 +5689,7 @@ async function toggleProductRemoved(btn) {
     syncProductRemoveButton();
     // Also refresh the panel above so its count and rows stay truthful.
     fetchRemovedListings();
+    fetchDeletedPages();
   } catch (err) {
     btn.disabled = false;
     btn.textContent = label;
@@ -5924,8 +5942,11 @@ function selectProduct(slug) {
   };
   document.getElementById('productSaveMsg').textContent = row.override ? 'This product has a live override.' : 'No override saved yet.';
   syncProductRemoveButton();
-  // Delete is only possible for custom products (DB-backed dynamic pages).
-  // Catalogue books are baked static files — deleting them needs a redirect.
+  // isCustom still gates the metadata fields below (none of them is persisted
+  // for a catalogue book), but it no longer gates DELETE. Both kinds can be
+  // taken down: a custom listing by deleting its row, a catalogue book by
+  // recording the slug so the Worker answers 410 for it. See
+  // netlify/functions/delete-product.js.
   const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
   // prodBrief and prodAiBtn ride along: the AI fills exactly these fields, and
   // none of them is saved for a catalogue book, so offering the button there
@@ -5941,7 +5962,14 @@ function selectProduct(slug) {
     ? 'Edit the product details used on the product page, search engines, and Merchant Center.'
     : 'Publisher, ISBN, binding, language, description, and SEO metadata are editable for admin-created listings. This catalogue product is generated from the source feed.';
   const delBtn = document.getElementById('prodDeleteBtn');
-  if (delBtn) delBtn.style.display = isCustom ? '' : 'none';
+  if (delBtn) {
+    delBtn.style.display = '';
+    // Say which one it is up front: a custom listing cannot be undone, a
+    // catalogue book can. That difference decides whether this is a safe click.
+    delBtn.title = isCustom
+      ? 'Deletes the listing row. Permanent — it cannot be restored.'
+      : 'Takes the page down (410 Gone). Reversible from “Deleted pages” below.';
+  }
   const galleryRow = document.getElementById('prodGalleryUploadRow');
   if (galleryRow) galleryRow.style.display = '';
   renderCurrentProductImages(row);
@@ -7480,11 +7508,18 @@ async function deleteProductPage() {
   if (!selectedProduct) return;
   const row = selectedProduct;
   const p = mergedProduct(row);
-  if (!String(row.shopify_id || '').startsWith('CUSTOM:')) {
-    alert('This is a catalogue book (a baked static page) — it can\'t be deleted here. Tell me the slug and I\'ll add a 404 redirect for it.');
-    return;
-  }
-  if (!confirm(`Delete the product page for "${p.title}" entirely?\n\nThis removes it from the store, search and feeds, and the page will 404. This cannot be undone.`)) return;
+  const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
+  const title = p.title || row.slug;
+
+  // Two genuinely different actions behind one button, so the question has to
+  // say which one it is. A custom listing's row IS its page — deleting it is
+  // final. A catalogue book keeps its baked file; only the 410 is added, so it
+  // can be put back.
+  const question = isCustom
+    ? `Delete the listing "${title}" entirely?\n\nThis removes the row it is served from, so the page will be gone for good — there is nothing left to restore it from. It also drops out of search and the feeds.\n\nIf you only want it off sale for now, cancel and use "Remove From Sale" instead.`
+    : `Take down the product page for "${title}"?\n\nThe URL will answer 410 Gone, so Google drops it from search within days, and the card disappears from category and search results.\n\nThis is reversible — it will be listed under "Deleted pages" with a Restore button. For a temporary stock-out use "Remove From Sale" instead, which keeps the page and its ranking.`;
+  if (!confirm(question)) return;
+
   const btn = document.getElementById('prodDeleteBtn');
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Deleting…'; }
@@ -7496,7 +7531,7 @@ async function deleteProductPage() {
     const res = await adminFetch('/.netlify/functions/delete-product', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug: row.slug }),
+      body: JSON.stringify({ slug: row.slug, title }),
       signal: ctl.signal,
     });
     const data = await res.json().catch(() => ({}));
@@ -7507,18 +7542,106 @@ async function deleteProductPage() {
     document.getElementById('productEditorForm').style.display = 'none';
     document.getElementById('productEditorEmpty').style.display = '';
     renderProductList();
-    alert(`Deleted "${data.title || p.title}". The product page will now 404 (search/feeds clear within ~1 hour of cache).`);
+    fetchDeletedPages();
+    // index_published is the difference between "recorded in the database" and
+    // "the edge is actually refusing the URL". Never report the second when
+    // only the first happened.
+    alert(data.index_published === false
+      ? `Recorded the takedown for "${data.title || title}", but publishing it to the edge failed (${data.index_reason || 'unknown'}) — the page is still serving. Hit Refresh under "Deleted pages" to retry.`
+      : `Deleted "${data.title || title}". The page now returns 410 Gone. Listings and search clear within the hour they are cached for.`);
   } catch (e) {
     // A timeout is not a failed delete — the row may already be gone and only
     // the answer lost, so say that rather than implying nothing happened.
     alert(ctl.signal.aborted
-      ? 'The delete request timed out. It may still have gone through — reload Products and check whether "' + p.title + '" is still listed before trying again.'
+      ? 'The delete request timed out. It may still have gone through — reload Products and check whether "' + title + '" is still listed before trying again.'
       : ('Could not delete: ' + e.message));
   } finally {
     clearTimeout(timer);
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
 }
+
+// ── Deleted pages ────────────────────────────────────────────────────────────
+// The takedown list, so a delete is reviewable and (for catalogue books)
+// reversible rather than a one-way click with no record.
+let deletedPages = [];
+
+async function fetchDeletedPages(btn) {
+  const list = document.getElementById('deletedList');
+  const meta = document.getElementById('deletedMeta');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    // ?republish=1 re-pushes the table to KV, which is the fix for a delete
+    // whose database row landed but whose edge publish did not.
+    const url = '/.netlify/functions/list-deleted-products' + (btn ? '?republish=1' : '');
+    const res = await adminFetch(url);
+    const data = await res.json().catch(() => ({}));
+    if (data.table_missing) {
+      deletedPages = [];
+      if (meta) meta.textContent = 'Run sql/deleted_products.sql in Supabase to enable page deletion.';
+      if (list) list.innerHTML = '<div class="lead-empty">The deleted_products table has not been created yet.</div>';
+      return;
+    }
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    deletedPages = data.deleted || [];
+    renderDeletedPages();
+  } catch (e) {
+    if (meta) meta.textContent = 'Could not load deleted pages: ' + e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+
+function renderDeletedPages() {
+  const list = document.getElementById('deletedList');
+  const meta = document.getElementById('deletedMeta');
+  if (!list) return;
+  if (meta) {
+    meta.textContent = deletedPages.length
+      ? `${deletedPages.length.toLocaleString('en-IN')} page${deletedPages.length === 1 ? '' : 's'} returning 410 Gone`
+      : 'No pages deleted.';
+  }
+  if (!deletedPages.length) {
+    list.innerHTML = '<div class="lead-empty">No product pages have been deleted.</div>';
+    return;
+  }
+  list.innerHTML = deletedPages.map(r => {
+    const when = r.deleted_at ? new Date(r.deleted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+    // A custom listing's row is gone, so Restore would be a lie. Say why.
+    const action = r.kind === 'custom'
+      ? '<span class="hint" style="white-space:nowrap;">row deleted — not restorable</span>'
+      : `<button class="btn-green" onclick="restoreDeletedPage('${esc(r.slug)}', this)">Restore</button>`;
+    return `<div class="product-row" style="cursor:default;">
+      <div>
+        <div class="product-row-title">${esc(r.title || r.slug)}</div>
+        <div class="product-row-meta">/product/${esc(r.slug)}/ · ${esc(r.kind || 'catalogue')} · deleted ${esc(when)}${r.reason ? ' · ' + esc(r.reason) : ''}</div>
+      </div>
+      ${action}
+    </div>`;
+  }).join('');
+}
+
+async function restoreDeletedPage(slug, btn) {
+  if (!confirm(`Put /product/${slug}/ back online?\n\nThe page will serve again immediately. It will not reappear in category listings until the site is regenerated.`)) return;
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Restoring…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/delete-product', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, undo: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+    deletedPages = deletedPages.filter(r => String(r.slug).toLowerCase() !== String(slug).toLowerCase());
+    renderDeletedPages();
+  } catch (e) {
+    alert('Could not restore: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+
 
 // ── AI draft for an EXISTING listing (Products & Prices) ─────────────────────
 // Same endpoint as the Create Listing button, pointed at the editor's fields.
@@ -11079,7 +11202,7 @@ function switchTab(tab, pushState = true) {
   // The cookie is deliberately unreadable to JavaScript, so its verified flag
   // is the only client-side signal that the remembered session is authenticated.
   const _authed = adminToken || adminKey || adminCookieSession;
-  if (tab === 'products' && _authed) { fetchProducts(); fetchRemovedListings(); }
+  if (tab === 'products' && _authed) { fetchProducts(); fetchRemovedListings(); fetchDeletedPages(); }
   if (tab === 'reels' && _authed) loadSiteReels();
   if (tab === 'banners' && _authed) loadLiveBanners();
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();

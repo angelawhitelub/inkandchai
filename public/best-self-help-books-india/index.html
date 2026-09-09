@@ -87,6 +87,27 @@ gtag('config', 'G-ZPZDFWMDP6');
   <div class="body-copy">Self-help is the most-read non-fiction category in India year after year. The reason: a good self-help book costs ₹300 and can shift your habits, finances, or mindset for life. Our curated list focuses on books with proven, measurable impact — not vague motivational slogans.</p><p style="margin-top:1rem">For habits and behaviour change: <em>Atomic Habits</em> by James Clear is the gold standard, used by Olympians and CEOs. For money mindset: <em>The Psychology of Money</em> by Morgan Housel reframes wealth as behaviour, not math. <em>Rich Dad Poor Dad</em> is still the entry point for understanding cash flow and assets. For deep focus and performance: <em>Can't Hurt Me</em> by David Goggins. For trading and investing: <em>The Disciplined Trader</em> by Mark Douglas, <em>The Intelligent Investor</em>, and Naval Ravikant's collected wisdom. Every book ships in 2-5 days pan-India. 7-day return window if it's not for you.</div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+<script>
+(function(){
+  if (!window.fetch) return;
+  fetch('/deleted-products.json').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    var slugs = (d && d.slugs) || [];
+    if (!slugs.length) return;
+    var gone = {};
+    slugs.forEach(function(s){ gone[String(s).toLowerCase()] = 1; });
+    var links = document.querySelectorAll('a[href^="/product/"]');
+    for (var i = 0; i < links.length; i++) {
+      var m = (links[i].getAttribute('href') || '').match(/^\/product\/([^\/?#]+)/);
+      if (!m) continue;
+      var slug = m[1];
+      try { slug = decodeURIComponent(slug); } catch (e) {}
+      if (!gone[slug.toLowerCase()]) continue;
+      var card = links[i].closest ? (links[i].closest('.ah-card, .card') || links[i]) : links[i];
+      if (card.parentNode) card.parentNode.removeChild(card);
+    }
+  }).catch(function(){});
+})();
+</script>
 
 <div id="iacPageLoader" aria-hidden="true">
   <div class="iac-bookload">

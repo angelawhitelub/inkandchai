@@ -2308,7 +2308,7 @@ gtag('config', 'G-ZPZDFWMDP6');
 <script src="/js/search-suggest.js" defer></script>
 
 <script src="/js/books-lite-7063487c.js"></script>
-<script>window.BOOKS_FULL_URL="/js/books-full-973f03bb.js";</script>
+<script>window.BOOKS_FULL_URL="/js/books-full-04b8860b.js";</script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -2399,6 +2399,25 @@ function customProductToBook(product) {
   };
 }
 
+// Books whose product page has been deleted (the Worker answers 410 for them).
+// This page's BOOKS array was baked before the takedown, so search results and
+// category cards would still link into that 410 until the site is regenerated.
+// Drop them from BOOKS instead -- this is the only signal the browser gets.
+function pruneDeletedBooks(slugs) {
+  const set = new Set((slugs || []).map(s => String(s || '').toLowerCase()).filter(Boolean));
+  window.__deletedSlugs = set;
+  if (!set.size) return 0;
+  let removed = 0;
+  for (let i = BOOKS.length - 1; i >= 0; i--) {
+    const slug = String(BOOKS[i].slug || '').toLowerCase();
+    if (!set.has(slug)) continue;
+    if (typeof BOOK_MAP === 'object' && BOOK_MAP) delete BOOK_MAP[BOOKS[i].slug];
+    BOOKS.splice(i, 1);
+    removed++;
+  }
+  return removed;
+}
+
 async function loadProductOverrides() {
   try {
     // Honor the endpoint's 5-min Cache-Control (was 'no-store', which forced a
@@ -2408,6 +2427,7 @@ async function loadProductOverrides() {
     const data = await res.json();
     const bySlug = new Map((data.overrides || []).map(o => [String(o.slug || '').toLowerCase(), o]));
     window._overrideBySlug = bySlug;  // reused when the full catalogue lazy-loads
+    pruneDeletedBooks(data.deleted);  // before render, so a deleted card never paints
     BOOKS.forEach(book => applyProductOverride(book, bySlug.get(String(book.slug || '').toLowerCase())));
     (data.custom_products || []).forEach(product => {
       const book = customProductToBook(product);
@@ -2952,6 +2972,7 @@ function ensureFullCatalogue(onReady) {
         const seen = new Set(BOOKS.map(b => String(b.slug || '').toLowerCase()));
         for (const b of full) {
           const slug = String(b.slug || '').toLowerCase();
+          if (window.__deletedSlugs && window.__deletedSlugs.has(slug)) continue;
           if (slug && !seen.has(slug)) {
             BOOKS.push(b); BOOK_MAP[b.slug] = b; seen.add(slug); added++;
             if (window._overrideBySlug) applyProductOverride(b, window._overrideBySlug.get(slug));

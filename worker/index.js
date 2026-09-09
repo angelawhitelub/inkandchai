@@ -352,6 +352,69 @@ async function runHandler(name, request, env, ctx) {
   }
 }
 
+// ── Deleted product pages ────────────────────────────────────────────────────
+// A catalogue book is a baked file under public/product/<slug>/, so there is no
+// row to delete and no way for a function to make the URL stop resolving. This
+// is why /product/* is in run_worker_first: the admin records a takedown
+// (netlify/functions/delete-product.js), that publishes the slug list to KV,
+// and we answer 410 Gone here BEFORE ASSETS.fetch() would hand back the file.
+//
+// 410 rather than 404 because these are not coming back — Google drops a 410 in
+// days and re-crawls a 404 for months. A title that is merely out of stock goes
+// through Remove From Sale instead, which keeps the page and its ranking.
+//
+// KV is read at most once a minute per isolate. A failed read means an empty
+// set, i.e. the page keeps serving: a takedown that is briefly late is a much
+// smaller problem than every product page 500ing because KV blipped.
+const DELETED_TTL_MS = 60_000;
+let _deletedSet = null;
+let _deletedAt = 0;
+
+async function deletedSlugs(env) {
+  const now = Date.now();
+  if (_deletedSet && now - _deletedAt < DELETED_TTL_MS) return _deletedSet;
+  try {
+    const ns = env.ORDER_FALLBACK;
+    if (!ns) return _deletedSet || new Set();
+    // Key shape comes from worker/shims/netlify-blobs.js: `${store}:${key}`.
+    const doc = await ns.get('catalog:deleted-products', { type: 'json', cacheTtl: 60 });
+    _deletedSet = new Set((doc && Array.isArray(doc.slugs) ? doc.slugs : [])
+      .map((s) => String(s || '').toLowerCase()));
+    _deletedAt = now;
+    return _deletedSet;
+  } catch (err) {
+    console.warn('[deleted-products] KV read failed:', err && err.message);
+    return _deletedSet || new Set();
+  }
+}
+
+function gonePage(slug) {
+  const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>This title is no longer available — Ink &amp; Chai</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#faf6ef;color:#2b2118;
+font-family:system-ui,-apple-system,'Segoe UI',sans-serif;padding:2rem;text-align:center;line-height:1.6}
+.w{max-width:30rem}h1{font-size:1.4rem;margin:0 0 .6rem}p{margin:0 0 1.4rem;color:#6b5b4a}
+a{display:inline-block;margin:0 .3rem;padding:.7rem 1.4rem;border:1px solid #2b2118;color:#2b2118;
+text-decoration:none;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase}</style></head>
+<body><div class="w"><h1>This title is no longer available</h1>
+<p>We have taken this listing down permanently. There are plenty more where it came from.</p>
+<a href="/">Browse books</a><a href="/books/">Full catalogue</a></div></body></html>`;
+  return new Response(body, {
+    status: 410,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      // Never store a takedown at the edge: undo has to take effect at once,
+      // and a cached 410 pinned in one colo is exactly the failure the 404
+      // no-store rule below exists to prevent.
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': 'noindex, nofollow',
+      'X-Deleted-Slug': slug,
+    },
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     currentEnv = env; currentCtx = ctx;
@@ -383,6 +446,33 @@ export default {
     const bulk = url.pathname.match(/^\/custom-feed-bulk\/([^/]+)\/?$/);
     if (bulk) {
       return runHandler('custom-products-feed-bulk', withQuery(request, { page: bulk[1] }), env, ctx);
+    }
+
+    // Before the asset router, so a deleted catalogue book's baked file can
+    // never be served. Only /product/ pays the lookup, and only from memory
+    // for all but the first request in each minute.
+    // The static category/collection grids are baked <a href> lists, so they
+    // keep linking a deleted book until the site is regenerated. They fetch
+    // this to hide those cards. Served straight from KV -- a few hundred bytes,
+    // no Supabase, no function cold start.
+    if (url.pathname === '/deleted-products.json') {
+      const gone = await deletedSlugs(env);
+      return new Response(JSON.stringify({ slugs: [...gone] }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    const productPath = url.pathname.match(/^\/product\/([^/]+)\/?$/);
+    if (productPath) {
+      let deletedSlug = '';
+      try { deletedSlug = decodeURIComponent(productPath[1]).toLowerCase(); }
+      catch { deletedSlug = productPath[1].toLowerCase(); }
+      const gone = await deletedSlugs(env);
+      if (gone.has(deletedSlug)) return gonePage(deletedSlug);
     }
 
     const assetResponse = await env.ASSETS.fetch(request);

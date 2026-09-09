@@ -38,7 +38,10 @@ const PRODUCT_TAGS = [TAGS.PRODUCTS, 'product-overrides'];
 const TAG_URLS = {
   [TAGS.PRODUCTS]: ['/', '/feed.xml', '/sitemap.xml', '/category/', '/collection/',
                     '/custom-feed.xml'],
-  'product-overrides': ['/', '/feed.xml', '/custom-feed.xml'],
+  // The listing/search payload itself: without it a deleted book keeps being
+  // handed to every browser from the edge for the full hour of s-maxage.
+  'product-overrides': ['/', '/feed.xml', '/custom-feed.xml',
+                        '/.netlify/functions/get-product-overrides'],
   [TAGS.APLUS]: ['/'],
   [TAGS.REVIEWS]: ['/'],
   [TAGS.REELS]: ['/', '/.netlify/functions/site-reels'],

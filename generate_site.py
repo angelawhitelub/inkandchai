@@ -209,6 +209,69 @@ for b in raw:
 books = list(seen.values())
 print(f"Unique books: {len(books)}")
 
+# ── Deleted product pages ────────────────────────────────────────────────────
+# Pages taken down for good from the admin ("Delete Product Page"). A catalogue
+# book has no database row, so the takedown lives in Supabase deleted_products,
+# is mirrored to KV, and worker/index.js answers 410 Gone for the URL. That
+# stops the page serving immediately -- but the page FILE, its sitemap entry,
+# its feed entry and every category card that links it are all baked here, so
+# only a regeneration actually removes them. Dropping the book at the source is
+# also what stops the takedown depending on KV staying up forever.
+#
+# data/deleted_products.json mirrors the table; refresh it with
+#   node scripts/sync-deleted-products.mjs
+_deleted_path = Path(__file__).parent / "data" / "deleted_products.json"
+DELETED_SLUGS = set()
+if _deleted_path.exists():
+    try:
+        _dp = json.loads(_deleted_path.read_text())
+        _entries = _dp.get("slugs", []) if isinstance(_dp, dict) else _dp
+        for _e in (_entries or []):
+            _sl = (_e.get("slug") if isinstance(_e, dict) else _e) or ""
+            _sl = str(_sl).strip().lower()
+            if _sl:
+                DELETED_SLUGS.add(_sl)
+    except Exception as _err:                                   # noqa: BLE001
+        # Never fail the build over this file, but never pretend it was empty
+        # either -- an unnoticed parse error would quietly republish a title
+        # that was deliberately taken down.
+        print(f"WARNING: data/deleted_products.json unreadable ({_err}) — nothing excluded")
+
+if DELETED_SLUGS:
+    _before = len(books)
+    books = [b for b in books
+             if make_slug(b.get("title", ""), b.get("shopify_id", "")) not in DELETED_SLUGS]
+    print(f"Deleted product pages excluded: {_before - len(books)} of {len(DELETED_SLUGS)} listed")
+
+# Category, collection and author landing pages are pure static grids of real
+# <a href> cards — that is what makes them rank, and it is also why a book
+# deleted after the last regeneration keeps a card here pointing at a URL the
+# Worker now answers 410 for. The Worker serves the slug list straight from KV
+# at /deleted-products.json (a few hundred bytes, 5-minute cache, no Supabase
+# and no function cold start), so these pages can drop those cards themselves.
+# The next regeneration removes them from the markup for good.
+_DELETED_PRUNE_JS = """<script>
+(function(){
+  if (!window.fetch) return;
+  fetch('/deleted-products.json').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    var slugs = (d && d.slugs) || [];
+    if (!slugs.length) return;
+    var gone = {};
+    slugs.forEach(function(s){ gone[String(s).toLowerCase()] = 1; });
+    var links = document.querySelectorAll('a[href^="/product/"]');
+    for (var i = 0; i < links.length; i++) {
+      var m = (links[i].getAttribute('href') || '').match(/^\\/product\\/([^\\/?#]+)/);
+      if (!m) continue;
+      var slug = m[1];
+      try { slug = decodeURIComponent(slug); } catch (e) {}
+      if (!gone[slug.toLowerCase()]) continue;
+      var card = links[i].closest ? (links[i].closest('.ah-card, .card') || links[i]) : links[i];
+      if (card.parentNode) card.parentNode.removeChild(card);
+    }
+  }).catch(function(){});
+})();
+</script>"""
+
 # ── Category → tab mapping ───────────────────────────────────────────────────
 FICTION_CATS = {
     "fiction", "all romance books", "romance (on sale)", "romance boxsets",
@@ -3224,6 +3287,25 @@ function customProductToBook(product) {
   };
 }
 
+// Books whose product page has been deleted (the Worker answers 410 for them).
+// This page's BOOKS array was baked before the takedown, so search results and
+// category cards would still link into that 410 until the site is regenerated.
+// Drop them from BOOKS instead -- this is the only signal the browser gets.
+function pruneDeletedBooks(slugs) {
+  const set = new Set((slugs || []).map(s => String(s || '').toLowerCase()).filter(Boolean));
+  window.__deletedSlugs = set;
+  if (!set.size) return 0;
+  let removed = 0;
+  for (let i = BOOKS.length - 1; i >= 0; i--) {
+    const slug = String(BOOKS[i].slug || '').toLowerCase();
+    if (!set.has(slug)) continue;
+    if (typeof BOOK_MAP === 'object' && BOOK_MAP) delete BOOK_MAP[BOOKS[i].slug];
+    BOOKS.splice(i, 1);
+    removed++;
+  }
+  return removed;
+}
+
 async function loadProductOverrides() {
   try {
     // Honor the endpoint's 5-min Cache-Control (was 'no-store', which forced a
@@ -3233,6 +3315,7 @@ async function loadProductOverrides() {
     const data = await res.json();
     const bySlug = new Map((data.overrides || []).map(o => [String(o.slug || '').toLowerCase(), o]));
     window._overrideBySlug = bySlug;  // reused when the full catalogue lazy-loads
+    pruneDeletedBooks(data.deleted);  // before render, so a deleted card never paints
     BOOKS.forEach(book => applyProductOverride(book, bySlug.get(String(book.slug || '').toLowerCase())));
     (data.custom_products || []).forEach(product => {
       const book = customProductToBook(product);
@@ -3777,6 +3860,7 @@ function ensureFullCatalogue(onReady) {
         const seen = new Set(BOOKS.map(b => String(b.slug || '').toLowerCase()));
         for (const b of full) {
           const slug = String(b.slug || '').toLowerCase();
+          if (window.__deletedSlugs && window.__deletedSlugs.has(slug)) continue;
           if (slug && !seen.has(slug)) {
             BOOKS.push(b); BOOK_MAP[b.slug] = b; seen.add(slug); added++;
             if (window._overrideBySlug) applyProductOverride(b, window._overrideBySlug.get(slug));
@@ -7751,7 +7835,7 @@ def landing_html(slug, heading, intro, selected):
 <title>{html_escape(heading)} | Ink &amp; Chai</title><meta name="description" content="{html_escape(intro)} Buy online at Ink & Chai with COD, UPI, cards, and free delivery on ₹499+ orders."/>
 <link rel="canonical" href="{SITE}/{slug}/"/><meta name="robots" content="index,follow"/>
 <style>:root{{--bg:#0d0b08;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.2)}}*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--cream);font-family:'Inter',Arial,sans-serif}}nav{{padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:1rem;align-items:center}}a{{color:inherit;text-decoration:none}}.logo{{font-family:serif;font-size:1.5rem;color:var(--gold)}}.links{{display:flex;gap:1rem;flex-wrap:wrap;color:var(--muted);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase}}main{{max-width:1180px;margin:auto;padding:clamp(2rem,6vw,5rem) 1rem}}.eyebrow{{color:var(--gold);letter-spacing:.24em;text-transform:uppercase;font-size:.65rem}}h1{{font-family:serif;font-size:clamp(2.5rem,7vw,5rem);font-weight:400;line-height:1;margin:.8rem 0}}p{{color:var(--muted);max-width:760px;line-height:1.8}}.grid{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1.4rem;margin-top:2.5rem}}.card{{min-width:0}}.cover{{display:flex;aspect-ratio:2/3;background:#17130f;border:1px solid var(--border);align-items:center;justify-content:center;margin-bottom:.8rem}}img{{max-width:100%;max-height:100%;object-fit:contain}}strong{{display:block;font-family:serif;font-size:1.05rem;line-height:1.25}}small{{display:block;color:var(--muted);margin:.25rem 0 .4rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.price{{color:var(--gold);font-weight:700}}.trust{{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.4rem;color:var(--gold);font-size:.8rem}}.cta{{margin-top:1.6rem;display:inline-block;border:1px solid var(--gold);padding:.8rem 1.2rem;color:var(--gold);font-size:.7rem;letter-spacing:.16em;text-transform:uppercase}}@media(max-width:900px){{.grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}@media(max-width:560px){{nav{{align-items:flex-start;flex-direction:column}}.links{{font-size:.62rem}}.grid{{grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}}}}</style></head>
-<body><nav><a class="logo" href="/">Ink &amp; Chai</a><div class="links"><a href="/hindi-books/">Hindi</a><a href="/self-help-books/">Self-help</a><a href="/bestsellers/">Bestsellers</a><a href="/new-arrivals/">New</a><a href="/book-combos/">Combos</a></div></nav><main><div class="eyebrow">Curated collection</div><h1>{html_escape(heading)}</h1><p>{html_escape(intro)}</p><div class="trust"><span>Free delivery on ₹499+</span><span>COD available</span><span>UPI/cards accepted</span><span>7-day replacement support</span></div><a class="cta" href="/">Search full catalogue</a><section class="grid">{cards}</section></main></body></html>"""
+<body><nav><a class="logo" href="/">Ink &amp; Chai</a><div class="links"><a href="/hindi-books/">Hindi</a><a href="/self-help-books/">Self-help</a><a href="/bestsellers/">Bestsellers</a><a href="/new-arrivals/">New</a><a href="/book-combos/">Combos</a></div></nav><main><div class="eyebrow">Curated collection</div><h1>{html_escape(heading)}</h1><p>{html_escape(intro)}</p><div class="trust"><span>Free delivery on ₹499+</span><span>COD available</span><span>UPI/cards accepted</span><span>7-day replacement support</span></div><a class="cta" href="/">Search full catalogue</a><section class="grid">{cards}</section></main>{_DELETED_PRUNE_JS}</body></html>"""
 
 for slug, heading, intro, predicate in LANDING_PAGES:
     selected = sorted([b for b in slim if predicate(b)], key=landing_rank)
@@ -11157,6 +11241,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
   <div class="body-copy">{_body.replace(chr(10) + chr(10), '</p><p style="margin-top:1rem">')}</div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+{_DELETED_PRUNE_JS}
 </body>
 </html>"""
 
@@ -11292,6 +11377,7 @@ _CAT_TRUST = """  <div class="trust">
     <span>&#128737; <a href="/return-policy/" style="color:inherit">7-day easy returns</a></span>
   </div>"""
 
+
 def _cat_page_html(*, title, description, canonical, h1, intro, grid,
                    ld_json, crumb_html, pager_html="", related_html="",
                    og_image="", robots="index,follow,max-image-preview:large"):
@@ -11328,6 +11414,7 @@ def _cat_page_html(*, title, description, canonical, h1, intro, grid,
 {related_html}
 </main>
 <footer>&copy; 2026 Ink &amp; Chai &middot; inkandchai.in &middot; <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
+{_DELETED_PRUNE_JS}
 </body>
 </html>"""
 
