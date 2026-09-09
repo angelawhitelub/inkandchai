@@ -1056,7 +1056,7 @@ HTML = r"""<!DOCTYPE html>
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>Ink & Chai — Buy Books Online India · Hindi & English · Free Shipping above ₹499</title>
-<meta name="description" content="Buy books online in India at Ink & Chai. 2,300+ titles in Hindi and English — fiction, romance, self-help, mythology, manga & more. Free pan-India shipping above ₹499. Cash on delivery available. Genuine books, 7-day easy returns." />
+<meta name="description" content="Buy books online in India — 25,000+ Hindi & English titles across fiction, romance, self-help and manga. Free shipping above ₹499, COD, 7-day returns." />
 <meta name="keywords" content="buy books online india, hindi books online, online bookstore india, self help books hindi, romance books, fiction books, manga books, ana huang books, david goggins hindi, robin sharma, robert kiyosaki, mythology books, books at 99, cash on delivery books, free shipping books india, ink and chai" />
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
 <meta name="author" content="Ink & Chai" />
@@ -1083,7 +1083,7 @@ HTML = r"""<!DOCTYPE html>
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Ink & Chai" />
 <meta property="og:title" content="Ink & Chai — Buy Books Online India · Free Shipping above ₹499" />
-<meta property="og:description" content="2,300+ titles in Hindi and English. Curated fiction, romance, self-help, mythology & more. Free pan-India shipping above ₹499. Cash on delivery." />
+<meta property="og:description" content="25,000+ titles in Hindi and English. Curated fiction, romance, self-help, mythology & more. Free pan-India shipping above ₹499. Cash on delivery." />
 <meta property="og:image" content="https://inkandchai.in/images/og-default.jpg" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
@@ -1093,7 +1093,7 @@ HTML = r"""<!DOCTYPE html>
 <!-- Twitter -->
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Ink & Chai — Buy Books Online India" />
-<meta name="twitter:description" content="2,300+ titles in Hindi and English. Free shipping above ₹499. COD available." />
+<meta name="twitter:description" content="25,000+ titles in Hindi and English. Free shipping above ₹499. COD available." />
 <meta name="twitter:image" content="https://inkandchai.in/images/og-default.jpg" />
 
 <!-- Structured Data: Organization -->
@@ -1105,7 +1105,7 @@ HTML = r"""<!DOCTYPE html>
   "alternateName": "Ink and Chai",
   "url": "https://inkandchai.in",
   "logo": "https://inkandchai.in/images/og-default.jpg",
-  "description": "Online bookstore in India offering 2,300+ titles in Hindi and English. Free shipping above ₹499, cash on delivery available, 7-day returns.",
+  "description": "Online bookstore in India offering 25,000+ titles in Hindi and English. Free shipping above ₹499, cash on delivery available, 7-day returns.",
   "address": {
     "@type": "PostalAddress",
     "streetAddress": "2379 Kucha Mir Hashim, Turkman Gate",
@@ -1405,6 +1405,8 @@ HTML = r"""<!DOCTYPE html>
   }
 
   /* MARQUEE */
+  .page-h1{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+    clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
   .marquee-bar { background: var(--gold); padding: 0.75rem 0; overflow: hidden; white-space: nowrap; }
   .marquee-track { display: inline-flex; animation: marquee 30s linear infinite; }
   .marquee-item { font-size: 0.6rem; letter-spacing: 0.3em; text-transform: uppercase; color: #f4ecdc; font-weight: 500; padding: 0 2.5rem; }
@@ -2565,6 +2567,15 @@ html[data-theme="light"] .btn-primary{
   </div>
 </div>
 
+<!-- The page had no h1 at all: it opens on the promo carousel and every slide
+     heading is an h2. A slide cannot be promoted to h1 — they rotate, and the
+     sale slide is stripped entirely once the sale ends, which would take the
+     page's main heading with it. This states what the page is, independently
+     of whichever promotion is running. It is placed for assistive tech and
+     crawlers rather than shown, because the visible design deliberately opens
+     on the carousel; delete the .page-h1 rule to make it visible. -->
+<h1 class="page-h1">Ink &amp; Chai — buy books online in India, in Hindi and English</h1>
+
 <!-- HERO PROMO CAROUSEL -->
 <div class="promo-carousel" id="promoCarousel">
 
@@ -3042,7 +3053,7 @@ html[data-theme="light"] .btn-primary{
   <div class="footer-top">
     <div>
       <div class="footer-logo">Ink &amp;<span> Chai</span></div>
-      <p class="footer-about">Books we love, delivered to your door. 2,300+ titles across every genre — fiction, manga, self-help, kids, and more — with pan-India delivery in 2–5 days.</p>
+      <p class="footer-about">Books we love, delivered to your door. 25,000+ titles across every genre — fiction, manga, self-help, kids, and more — with pan-India delivery in 2–5 days.</p>
       <div style="margin-top:1.5rem;">
         <div class="footer-col-title">Contact Us</div>
         <p style="font-size:0.72rem;color:var(--cream-dim);line-height:2;letter-spacing:0.03em;">
