@@ -12,8 +12,9 @@
 create table if not exists public.deleted_products (
   slug        text primary key,
   title       text,
-  -- 'catalogue' = baked static page (reversible: the file is still there).
-  -- 'custom'    = custom_products row, already deleted (not reversible).
+  -- 'catalogue' = baked static page; the file stays, the Worker hides it.
+  -- 'custom'    = custom_products row, retired via is_active=false.
+  -- Both are reversible; kind only says WHAT has to be undone to restore.
   kind        text not null default 'catalogue',
   reason      text,
   deleted_at  timestamptz not null default now(),

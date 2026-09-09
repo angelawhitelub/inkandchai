@@ -1498,7 +1498,7 @@ select,input,textarea{font-size:1rem;}
     <div class="product-head">
       <div>
         <h2>Deleted pages</h2>
-        <p>Product pages taken down for good. The URL answers <strong>410&nbsp;Gone</strong>, so Google drops it from search within days instead of re-crawling it for months. <strong>Catalogue books can be restored</strong> — their page file is still there, only hidden. <strong>Admin-created listings cannot</strong>: deleting one removes the row the page was built from. Use “Remove From Sale” above for anything temporary.</p>
+        <p>Product pages taken down. The URL answers <strong>410&nbsp;Gone</strong>, so Google drops it from search within days instead of re-crawling it for months, and the card disappears from category pages and on-site search. <strong>Every one can be restored</strong> — nothing here is erased, only retired. Use “Remove From Sale” above for a temporary stock-out: that keeps the page live, and its search ranking with it.</p>
       </div>
       <div class="mini-actions">
         <button class="btn-outline" onclick="fetchDeletedPages(this)">Refresh &amp; republish</button>
@@ -2795,6 +2795,9 @@ const selectedOrderIds = new Set();
 let abandonedLeads = [];
 let productRows = [];
 let removedListings = [];
+// Slugs under "Deleted pages" — filtered out of both lists above. See
+// fetchDeletedPages().
+let deletedPages = [];
 let selectedProduct = null;
 let newProductImageDataUrl = '';
 let newProductGalleryDataUrls = [];
@@ -5593,19 +5596,22 @@ function renderRemovedListings() {
   const meta = document.getElementById('removedMeta');
   if (!list) return;
   const q = (document.getElementById('removedSearch')?.value || '').toLowerCase().trim();
+  const gone = deletedSlugSet();
   const matches = removedListings.filter(r =>
-    !q || [r.title, r.author, r.slug].join(' ').toLowerCase().includes(q));
+    !gone.has(String(r.slug || '').toLowerCase())
+    && (!q || [r.title, r.author, r.slug].join(' ').toLowerCase().includes(q)));
   const rows = matches.slice(0, 200);
 
+  const visible = removedListings.filter(r => !gone.has(String(r.slug || '').toLowerCase()));
   if (meta) {
-    meta.textContent = removedListings.length === 0
+    meta.textContent = visible.length === 0
       ? 'Nothing is removed — every listing is on sale.'
-      : `${removedListings.length.toLocaleString('en-IN')} removed`
+      : `${visible.length.toLocaleString('en-IN')} removed`
         + (q ? ` · ${matches.length.toLocaleString('en-IN')} matching` : '')
         + (rows.length < matches.length ? ` · showing first ${rows.length}` : '');
   }
   if (!rows.length) {
-    list.innerHTML = `<div class="lead-empty">${removedListings.length ? 'No removed listing matches that search.' : 'No removed listings.'}</div>`;
+    list.innerHTML = `<div class="lead-empty">${visible.length ? 'No removed listing matches that search.' : 'No removed listings.'}</div>`;
     return;
   }
 
@@ -5834,12 +5840,21 @@ function scheduleProductServerSearch(q) {
   }, 350);
 }
 
+// Slugs under "Deleted pages". A retired custom listing still has its row, so
+// without this it would show up in the editor and in Removed listings as well —
+// three places for one product, two of them wrong.
+function deletedSlugSet() {
+  return new Set((deletedPages || []).map(r => String(r.slug || '').toLowerCase()));
+}
+
 function renderProductList() {
   const list = document.getElementById('productList');
   if (!list) return;
   const q = (document.getElementById('productSearch')?.value || '').toLowerCase().trim();
+  const gone = deletedSlugSet();
   const rows = productRows.filter(row => {
     const p = mergedProduct(row);
+    if (gone.has(String(row.slug || '').toLowerCase())) return false;
     if (!q) return true;
     return [p.title, p.author, p.category, p.publisher, p.isbn, p.slug, p.shopify_id].join(' ').toLowerCase().includes(q);
   }).slice(0, 80);
@@ -5966,9 +5981,7 @@ function selectProduct(slug) {
     delBtn.style.display = '';
     // Say which one it is up front: a custom listing cannot be undone, a
     // catalogue book can. That difference decides whether this is a safe click.
-    delBtn.title = isCustom
-      ? 'Deletes the listing row. Permanent — it cannot be restored.'
-      : 'Takes the page down (410 Gone). Reversible from “Deleted pages” below.';
+    delBtn.title = 'Takes the page down (410 Gone). Reversible from “Deleted pages” above.';
   }
   const galleryRow = document.getElementById('prodGalleryUploadRow');
   if (galleryRow) galleryRow.style.display = '';
@@ -7515,9 +7528,7 @@ async function deleteProductPage() {
   // say which one it is. A custom listing's row IS its page — deleting it is
   // final. A catalogue book keeps its baked file; only the 410 is added, so it
   // can be put back.
-  const question = isCustom
-    ? `Delete the listing "${title}" entirely?\n\nThis removes the row it is served from, so the page will be gone for good — there is nothing left to restore it from. It also drops out of search and the feeds.\n\nIf you only want it off sale for now, cancel and use "Remove From Sale" instead.`
-    : `Take down the product page for "${title}"?\n\nThe URL will answer 410 Gone, so Google drops it from search within days, and the card disappears from category and search results.\n\nThis is reversible — it will be listed under "Deleted pages" with a Restore button. For a temporary stock-out use "Remove From Sale" instead, which keeps the page and its ranking.`;
+  const question = `Take down the product page for "${title}"?\n\nThe URL will answer 410 Gone, so Google drops it from search within days, and the card disappears from category and search results.\n\nThis is reversible — it will be listed under "Deleted pages" with a Restore button. For a temporary stock-out use "Remove From Sale" instead, which keeps the page and its ranking.`;
   if (!confirm(question)) return;
 
   const btn = document.getElementById('prodDeleteBtn');
@@ -7562,9 +7573,10 @@ async function deleteProductPage() {
 }
 
 // ── Deleted pages ────────────────────────────────────────────────────────────
-// The takedown list, so a delete is reviewable and (for catalogue books)
-// reversible rather than a one-way click with no record.
-let deletedPages = [];
+// The takedown list, so a delete is reviewable and reversible rather than a
+// one-way click with no record. `deletedPages` is declared up with productRows
+// and removedListings: renderProductList reads it through deletedSlugSet(),
+// which sits far above this point in the file.
 
 async function fetchDeletedPages(btn) {
   const list = document.getElementById('deletedList');
@@ -7586,6 +7598,9 @@ async function fetchDeletedPages(btn) {
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     deletedPages = data.deleted || [];
     renderDeletedPages();
+    // Either list may have rendered before this one arrived.
+    renderRemovedListings();
+    if (productRows.length) renderProductList();
   } catch (e) {
     if (meta) meta.textContent = 'Could not load deleted pages: ' + e.message;
   } finally {
@@ -7608,10 +7623,7 @@ function renderDeletedPages() {
   }
   list.innerHTML = deletedPages.map(r => {
     const when = r.deleted_at ? new Date(r.deleted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
-    // A custom listing's row is gone, so Restore would be a lie. Say why.
-    const action = r.kind === 'custom'
-      ? '<span class="hint" style="white-space:nowrap;">row deleted — not restorable</span>'
-      : `<button class="btn-green" onclick="restoreDeletedPage('${esc(r.slug)}', this)">Restore</button>`;
+    const action = `<button class="btn-green" onclick="restoreDeletedPage('${esc(r.slug)}', this)">Restore</button>`;
     return `<div class="product-row" style="cursor:default;">
       <div>
         <div class="product-row-title">${esc(r.title || r.slug)}</div>
@@ -7623,7 +7635,7 @@ function renderDeletedPages() {
 }
 
 async function restoreDeletedPage(slug, btn) {
-  if (!confirm(`Put /product/${slug}/ back online?\n\nThe page will serve again immediately. It will not reappear in category listings until the site is regenerated.`)) return;
+  if (!confirm(`Put /product/${slug}/ back online?\n\nThe page serves again immediately, with its price, images and description as they were. Category and search listings pick it up within the hour they are cached for.`)) return;
   const label = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Restoring…'; }
   try {
@@ -7636,6 +7648,9 @@ async function restoreDeletedPage(slug, btn) {
     if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
     deletedPages = deletedPages.filter(r => String(r.slug).toLowerCase() !== String(slug).toLowerCase());
     renderDeletedPages();
+    // The product is live again, so it belongs back in the editor list.
+    if (productRows.length) renderProductList();
+    fetchRemovedListings();
   } catch (e) {
     alert('Could not restore: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = label; }

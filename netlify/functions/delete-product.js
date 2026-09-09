@@ -6,17 +6,23 @@
  * button, because from the admin's side there is no useful difference:
  *
  *   CUSTOM listing (custom_products, shopify_id "CUSTOM:...")
- *     The row IS the page — product-page.js renders it on demand. Deleting the
- *     row deletes the page. Not reversible: nothing is left to restore from.
+ *     The row IS the page — product-page.js renders it on demand, and only
+ *     when is_active. So the row is retired, not dropped: is_active goes false
+ *     and the override row is left alone. The page stops resolving either way,
+ *     and everything needed to bring it back is still there.
  *
  *   CATALOGUE book (baked static file, public/product/<slug>/index.html)
- *     There is no row to delete. Instead the slug is recorded in
- *     deleted_products and mirrored to KV, and worker/index.js answers 410 Gone
- *     for it before the asset router ever sees the request — wrangler.toml puts
- *     /product/* in run_worker_first precisely so the Worker can do this. The
- *     file stays on disk, unreachable, until the next site regeneration drops
- *     it (generate_site.py reads data/deleted_products.json). Reversible: undo
- *     removes the record and the page serves again.
+ *     There is no row to delete. The slug is recorded in deleted_products and
+ *     mirrored to KV, and worker/index.js answers 410 Gone for it before the
+ *     asset router ever sees the request — wrangler.toml puts /product/* in
+ *     run_worker_first precisely so the Worker can do this. The file stays on
+ *     disk, unreachable, until the next site regeneration drops it
+ *     (generate_site.py reads data/deleted_products.json).
+ *
+ * Both are reversible, and deliberately so. This used to hard-delete the custom
+ * row, which made "Delete Product Page" an unrecoverable click on a listing
+ * someone may have spent an hour writing — for no gain, since a retired row
+ * costs nothing and serves nothing.
  *
  * This used to 409 on catalogue books and tell the admin to hand-edit a
  * redirect. That was wrong — it read run_worker_first backwards.
@@ -78,11 +84,14 @@ exports.handler = async (event) => {
         .from('deleted_products').select('slug,kind,title').ilike('slug', slug).maybeSingle();
       if (recErr) return json(500, { error: recErr.message.includes('deleted_products') ? MIGRATION_HINT : recErr.message });
       if (!rec) return json(404, { error: 'That slug is not in the deleted list.' });
+      // A custom listing also has to come back on: the 410 is only half of what
+      // took it down, is_active=false is the other half. Do this BEFORE
+      // dropping the record, so a failure here leaves the page consistently
+      // down rather than half-restored.
       if (rec.kind === 'custom') {
-        return json(409, {
-          error: 'This was an admin-created listing — its row was deleted, so there is nothing to restore. Create the listing again.',
-          kind: 'custom',
-        });
+        const { error: onErr } = await supabase
+          .from('custom_products').update({ is_active: true }).ilike('slug', slug);
+        if (onErr) throw onErr;
       }
       const { error: delErr } = await supabase.from('deleted_products').delete().ilike('slug', slug);
       if (delErr) throw delErr;
@@ -111,11 +120,12 @@ exports.handler = async (event) => {
     let title = found ? (found.title || '') : '';
 
     if (found) {
-      // The row is the page: deleting it is what makes the URL stop resolving.
-      const del = await supabase.from('custom_products').delete().eq('slug', found.slug);
+      // Retire, don't drop. product-page.js selects .eq('is_active', true), so
+      // this alone stops the page resolving, and it keeps the listing (and its
+      // override row, left untouched on purpose) intact for Restore.
+      const del = await supabase
+        .from('custom_products').update({ is_active: false }).eq('slug', found.slug);
       if (del.error) throw del.error;
-      // Best-effort: drop any override row so a stale price/title can't linger.
-      try { await supabase.from('product_overrides').delete().ilike('slug', realSlug); } catch { /* non-fatal */ }
     } else {
       // A catalogue book has no row anywhere; the title is only in the baked
       // file. Take whatever the admin sent so the deleted list stays readable.
@@ -123,19 +133,20 @@ exports.handler = async (event) => {
     }
 
     // Record the takedown for BOTH kinds. For a catalogue book this is the
-    // whole mechanism. For a custom listing it is what keeps the slug 410 —
-    // otherwise the URL would 404 forever as a "might come back", and it also
-    // stops a re-import from silently resurrecting a title that was pulled.
+    // whole mechanism. For a custom listing it is what makes the URL answer 410
+    // instead of 404 ("might come back"), what stops a re-import silently
+    // resurrecting a pulled title, and what puts it in the Restore list.
     const { error: recErr } = await supabase
       .from('deleted_products')
       .upsert({ slug: realSlug, title: title || null, kind, reason }, { onConflict: 'slug' });
     if (recErr) {
-      // The custom row is already gone at this point, so report precisely:
-      // the page is down, but the takedown is not recorded and will not 410.
+      // A custom listing is already retired at this point: its page is down but
+      // the takedown is unrecorded, so it will 404 rather than 410 and will not
+      // appear under Restore. Say so instead of returning a bare error.
       const missing = /relation .*deleted_products.* does not exist|schema cache/i.test(recErr.message);
       return json(missing && kind === 'catalogue' ? 400 : 500, {
         error: missing ? MIGRATION_HINT : recErr.message,
-        deleted_row: kind === 'custom',
+        deactivated: kind === 'custom',
       });
     }
 
