@@ -11892,7 +11892,11 @@ print(f"Generated: {_cart_out}")
 # The pass itself. It runs last so it sees every page this script wrote plus
 # the hand-written ones it never touches, and it is idempotent: each piece is
 # skipped where the page already carries its own.
-_SHELL_SKIP_DIRS = {"admin", "product", "checkout"}
+# /refund-upi/ is excluded for the same reason /checkout/ is, from the other
+# direction: it is a page whose whole message is "we owe you money, tell us
+# where to send it", and hanging a cart drawer with a Checkout button off it is
+# exactly what makes a legitimate refund page look like a phishing one.
+_SHELL_SKIP_DIRS = {"admin", "product", "checkout", "refund-upi"}
 _body_open_re = re.compile(r"<body[^>]*>", re.I)
 
 # Inlining the whole shell put 12.5 KB (4.2 KB gzipped) on every page — a 44%

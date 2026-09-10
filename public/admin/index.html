@@ -887,6 +887,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="abandoned" onclick="switchTab('abandoned')">🛒 Abandoned Carts</button>
     <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab" data-tab="missingbooks" onclick="switchTab('missingbooks')">📕 Missing Books <span id="missingBooksBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab owner-only" data-tab="rtorefunds" onclick="switchTab('rtorefunds')">↩️ RTO Refunds <span id="rtoRefundBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="bundles" onclick="switchTab('bundles')">📦 Bundles</button>
@@ -1892,6 +1893,59 @@ select,input,textarea{font-size:1rem;}
   </section>
 
   </div><!-- /tab-replacements -->
+
+  <!-- ═══ MISSING BOOKS TAB ═══
+       Every replacement raised because books never arrived, prepaid and COD in
+       one list, because the question "who are we still holding money from"
+       does not care how they paid — but the answer does.
+
+       A cancelled missing-book replacement means the customer paid for books
+       they will now never get. Prepaid ones can be sent back through the
+       gateway from the Replacements tab. COD ones cannot: the courier took
+       cash, no gateway holds anything, and the panel's own advice used to be
+       "return the money directly, then cancel it from the Orders tab" — with
+       nowhere to even record a UPI id. Those refunds lived in someone's head.
+  -->
+  <div class="admin-section" id="tab-missingbooks">
+
+  <section class="abandoned-panel">
+    <div class="abandoned-head">
+      <div>
+        <h2 class="abandoned-title">📕 Missing Books</h2>
+        <p class="hint" style="margin:.2rem 0 0;">Replacements raised because a book never arrived — and the refunds owed when one is cancelled.</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-outline" onclick="renderMissingBooks()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div id="missingBooksFilters" style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.6rem;"></div>
+
+    <input class="search-box" id="missingBooksSearch" style="margin-bottom:0.6rem;"
+           placeholder="🔍  Replacement ID · Original order ID · Name · Phone · Email · Book · UPI ID"
+           oninput="renderMissingBooks()"/>
+    <div class="hint" id="missingBooksMeta" style="margin-bottom:0.8rem;">Loading…</div>
+    <div class="tbl-wrap" style="box-shadow:none;">
+      <table class="mini-table">
+        <thead>
+          <tr>
+            <th>Raised</th>
+            <th>Replacement / Original</th>
+            <th>Customer</th>
+            <th>Missing books</th>
+            <th>Value</th>
+            <th>How it refunds</th>
+            <th>Refund state</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="missingBooksBody"></tbody>
+      </table>
+    </div>
+    <div class="lead-empty" id="missingBooksEmpty" style="display:none;">No missing-book replacements found.</div>
+  </section>
+
+  </div><!-- /tab-missingbooks -->
 
   <!-- ═══ RETURNS TAB ═══ -->
   <div class="admin-section" id="tab-returns">
@@ -10904,7 +10958,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','returns','npcancelled','rtorefunds','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','npcancelled','rtorefunds','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -11019,6 +11073,319 @@ function replacementRequestRows() {
       const bm = b.cart_items?.[0]?._replacement;
       return new Date(bm?.requested_at || b.created_at || 0) - new Date(am?.requested_at || a.created_at || 0);
     });
+}
+
+// ── Missing-book replacements ───────────────────────────────────────────────
+// Prepaid and COD in one list, because "who are we still holding money from"
+// does not care how they paid — but the answer does. A cancelled missing-book
+// replacement means the customer paid for books that will now never arrive.
+// Prepaid goes back through the gateway; COD has to be pushed to a UPI handle
+// the customer gives us, and until this tab existed there was nowhere to ask
+// for one, record one, or see which were still outstanding.
+const MB_REASONS = new Set(['missing_item', 'incomplete_set']);
+// missing_pages is deliberately not here: that is a printing defect in a book
+// the customer does hold, not a book that never came.
+
+let missingBooksFilter = 'all';
+
+function mbMeta(o) {
+  const items = Array.isArray(o?.cart_items) ? o.cart_items : [];
+  for (const it of items) if (it && it._replacement) return it._replacement;
+  return null;
+}
+function mbIsMissing(o) {
+  const m = mbMeta(o);
+  return !!m && MB_REASONS.has(String(m.reason || '').toLowerCase());
+}
+
+// What the gateway can send back versus what a person has to transfer. A refund
+// API can only return what it captured, so pure COD (nothing captured) leaves
+// the whole amount to UPI, and partial COD leaves everything above the deposit.
+function mbSplit(repl, original) {
+  const owed = itemsSubtotal(repl?.cart_items);
+  const payId = String(original?.razorpay_payment_id || '').trim();
+  const captured = (Number(original?.amount_paise) || 0) / 100;
+  const gateway = payId ? Math.max(0, Math.min(captured, owed)) : 0;
+  return { owed, gateway, upi: Math.max(0, owed - gateway) };
+}
+
+function mbState(repl, meta, split) {
+  if (String(repl.status || '').toLowerCase() !== 'cancelled') return 'open';
+  if (meta.refund_paid_at) return 'paid';
+  if (meta.refund_upi_id) return 'ready';
+  if (split.upi > 0) return 'needs_upi';
+  return 'gateway';
+}
+
+const MB_STATE_ORDER = { needs_upi: 0, ready: 1, open: 2, gateway: 3, paid: 4 };
+const MB_STATE_LABEL = {
+  needs_upi: 'Needs UPI ID',
+  ready: 'Awaiting payout',
+  open: 'Replacement open',
+  gateway: 'Gateway refund',
+  paid: 'Paid',
+};
+
+function missingBookRows() {
+  const byId = new Map();
+  for (const o of allOrders) {
+    const k = o.razorpay_order_id || o.id;
+    if (k) byId.set(String(k), o);
+  }
+  return allOrders
+    .filter(mbIsMissing)
+    .map(repl => {
+      const meta = mbMeta(repl) || {};
+      const original = byId.get(String(meta.original_order_id || '')) || null;
+      const split = mbSplit(repl, original);
+      return { repl, meta, original, split, state: mbState(repl, meta, split) };
+    })
+    .sort((a, b) => {
+      const d = MB_STATE_ORDER[a.state] - MB_STATE_ORDER[b.state];
+      if (d) return d;
+      return new Date(b.meta.requested_at || b.repl.created_at || 0)
+           - new Date(a.meta.requested_at || a.repl.created_at || 0);
+    });
+}
+
+function mbHaystack(row) {
+  const items = Array.isArray(row.repl.cart_items) ? row.repl.cart_items : [];
+  return [
+    row.repl.razorpay_order_id, row.repl.id, row.meta.original_order_id,
+    row.repl.customer_name, row.repl.customer_phone, row.repl.customer_email,
+    row.repl.status, row.state, MB_STATE_LABEL[row.state],
+    row.meta.refund_upi_id, row.meta.refund_paid_ref, row.meta.reason_label,
+    ...items.map(i => i?.title || i?.name || ''),
+  ].join(' ').toLowerCase();
+}
+
+function mbDate(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  return isNaN(d) ? '—' : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+}
+
+function setMissingBooksFilter(f) {
+  missingBooksFilter = f;
+  renderMissingBooks();
+}
+
+function renderMissingBooks() {
+  const body = document.getElementById('missingBooksBody');
+  const empty = document.getElementById('missingBooksEmpty');
+  const metaEl = document.getElementById('missingBooksMeta');
+  const badge = document.getElementById('missingBooksBadge');
+  const chips = document.getElementById('missingBooksFilters');
+  if (!body || !empty || !metaEl || !chips) return;
+
+  const all = missingBookRows();
+  const counts = all.reduce((m, r) => { m[r.state] = (m[r.state] || 0) + 1; return m; }, {});
+
+  // The badge counts what a person still has to do — ask for a handle, or make
+  // a transfer. Rows the gateway already handled are not anyone's work.
+  const actionable = (counts.needs_upi || 0) + (counts.ready || 0);
+  if (badge) {
+    badge.textContent = actionable;
+    badge.style.display = actionable ? '' : 'none';
+  }
+
+  const owedTotal = all
+    .filter(r => r.state === 'needs_upi' || r.state === 'ready')
+    .reduce((s, r) => s + r.split.upi, 0);
+
+  chips.innerHTML = [
+    ['all', `All (${all.length})`],
+    ['needs_upi', `Needs UPI ID (${counts.needs_upi || 0})`],
+    ['ready', `Awaiting payout (${counts.ready || 0})`],
+    ['gateway', `Gateway refund (${counts.gateway || 0})`],
+    ['open', `Still open (${counts.open || 0})`],
+    ['paid', `Paid (${counts.paid || 0})`],
+  ].map(([key, label]) => `
+    <button onclick="setMissingBooksFilter('${key}')"
+            style="padding:.35rem .7rem;font-size:.62rem;letter-spacing:.06em;cursor:pointer;border-radius:999px;
+                   border:1px solid ${missingBooksFilter === key ? 'var(--gold)' : 'var(--border)'};
+                   background:${missingBooksFilter === key ? 'rgba(201,168,76,0.12)' : 'transparent'};
+                   color:${missingBooksFilter === key ? 'var(--gold)' : 'var(--cream-dim)'};">${label}</button>`).join('');
+
+  const q = (document.getElementById('missingBooksSearch')?.value || '').toLowerCase().trim();
+  let rows = missingBooksFilter === 'all' ? all : all.filter(r => r.state === missingBooksFilter);
+  if (q) rows = rows.filter(r => mbHaystack(r).includes(q));
+
+  metaEl.innerHTML = `${rows.length.toLocaleString('en-IN')} shown of ${all.length.toLocaleString('en-IN')}`
+    + (owedTotal > 0
+        ? ` · <strong style="color:#c98a36;">₹${money(owedTotal)} owed by manual transfer</strong> across ${actionable} order${actionable === 1 ? '' : 's'}`
+        : ' · nothing owed by manual transfer');
+  empty.textContent = q ? 'Nothing matches that search.' : 'No missing-book replacements in this view.';
+  empty.style.display = rows.length ? 'none' : '';
+
+  body.innerHTML = rows.map(r => {
+    const { repl, meta, original, split, state } = r;
+    const rowId = encodeURIComponent(String(repl.id || ''));
+    const replId = repl.razorpay_order_id || repl.id;
+    const items = Array.isArray(repl.cart_items) ? repl.cart_items : [];
+    const books = items.map(i => `${esc(i?.title || i?.name || 'Book')}${itemQty(i) > 1 ? ` ×${itemQty(i)}` : ''}`).join('<br/>');
+
+    const routeCell = split.upi > 0
+      ? `<span style="color:#c98a36;">🏦 Manual transfer</span>
+         <div class="hint" style="margin-top:.2rem;">₹${money(split.upi)} by UPI${split.gateway > 0 ? `<br/>₹${money(split.gateway)} via gateway` : ''}</div>`
+      : `<span style="color:#6dbf6d;">💳 Gateway</span>
+         <div class="hint" style="margin-top:.2rem;">₹${money(split.gateway)} refundable</div>`;
+
+    let stateCell = '';
+    if (state === 'open') {
+      stateCell = `<span style="color:var(--cream-dim);">${esc((repl.status || '—').replace(/_/g, ' '))}</span>`;
+    } else if (state === 'gateway') {
+      stateCell = `<span style="color:var(--cream-dim);">Original is <strong>${esc(original?.status || 'unknown')}</strong></span>`;
+    } else if (state === 'needs_upi') {
+      stateCell = meta.upi_requested_at
+        ? `<span style="color:#c98a36;">Asked ${mbDate(meta.upi_requested_at)}${Number(meta.upi_request_count) > 1 ? ` ×${meta.upi_request_count}` : ''}</span>
+           <div class="hint" style="margin-top:.2rem;">No reply yet</div>`
+        : `<span style="color:#c93636;">Not asked yet</span>`;
+    } else if (state === 'ready') {
+      stateCell = `<div style="font-family:ui-monospace,Menlo,monospace;font-size:.78rem;user-select:all;color:var(--cream);">${esc(meta.refund_upi_id)}</div>
+                   <div class="hint" style="margin-top:.2rem;">Given ${mbDate(meta.refund_upi_at)}${meta.refund_upi_source === 'admin' ? ' (by us)' : ''}</div>`;
+    } else if (state === 'paid') {
+      stateCell = `<span style="color:#6dbf6d;">✓ Paid ${mbDate(meta.refund_paid_at)}</span>
+                   <div class="hint" style="margin-top:.2rem;font-family:ui-monospace,Menlo,monospace;">${esc(meta.refund_upi_id || '')}${meta.refund_paid_ref ? `<br/>${esc(meta.refund_paid_ref)}` : ''}</div>`;
+    }
+
+    const btn = (label, fn, color) =>
+      `<button class="btn-outline" style="font-size:.6rem;padding:.3rem .55rem;${color ? `border-color:${color};color:${color};` : ''}" onclick="${fn}">${label}</button>`;
+
+    let actions = '';
+    if (state === 'needs_upi') {
+      actions = btn(meta.upi_requested_at ? '📧 Ask again' : '📧 Ask for UPI', `mbAskForUpi('${rowId}', ${meta.upi_requested_at ? 'true' : 'false'}, this)`, '#c98a36')
+              + ' ' + btn('✎ Enter it', `mbSaveUpi('${rowId}')`);
+    } else if (state === 'ready') {
+      actions = btn('✓ Mark paid', `mbMarkPaid('${rowId}', this)`, '#6dbf6d')
+              + ' ' + btn('✎ Change', `mbSaveUpi('${rowId}')`);
+    } else if (state === 'paid') {
+      actions = btn('↺ Undo', `mbMarkPaid('${rowId}', this, true)`);
+    } else if (state === 'open' && split.gateway > 0 && repl.status === 'replacement_pending') {
+      actions = btn('💳 Refund & cancel', `refundMissingInsteadOfReplacement('${rowId}')`);
+    } else if (state === 'open') {
+      actions = `<span class="hint">Cancel it to start a refund</span>`;
+    } else {
+      actions = `<span class="hint">Handled by the gateway</span>`;
+    }
+
+    return `<tr>
+      <td style="white-space:nowrap;">${mbDate(meta.requested_at || repl.created_at)}</td>
+      <td><div style="font-family:ui-monospace,Menlo,monospace;font-size:.72rem;">${esc(replId)}</div>
+          <div class="hint" style="margin-top:.2rem;">↳ ${esc(meta.original_order_id || '—')}</div></td>
+      <td>${esc(repl.customer_name || '—')}<div class="hint">${esc(repl.customer_phone || repl.customer_email || '')}</div></td>
+      <td style="font-size:.75rem;line-height:1.5;">${books || '—'}</td>
+      <td>₹${money(split.owed)}</td>
+      <td>${routeCell}</td>
+      <td>${stateCell}</td>
+      <td style="white-space:nowrap;">${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Local-state updates mirror the server write so the row settles immediately;
+// allOrders is the single source every admin panel renders from.
+function mbApplyMeta(rowId, patch) {
+  const repl = allOrders.find(o => String(o.id) === String(rowId));
+  if (!repl) return;
+  const items = Array.isArray(repl.cart_items) ? repl.cart_items : [];
+  const idx = items.findIndex(i => i && i._replacement);
+  if (idx < 0) return;
+  items[idx]._replacement = { ...items[idx]._replacement, ...patch };
+}
+
+async function mbAskForUpi(encodedRowId, again, btn) {
+  const rowId = decodeURIComponent(encodedRowId);
+  const row = missingBookRows().find(r => String(r.repl.id) === rowId);
+  if (!row) { alert('Not found in the current list — hit Refresh.'); return; }
+  const suggested = row.split.upi;
+  const typed = prompt(
+    `Email ${row.repl.customer_email || '(no email on file)'} asking for a UPI ID.\n\n`
+    + `Amount to tell them they are owed (₹):`, String(suggested.toFixed(2)));
+  if (typed === null) return;
+  const amount = Number(String(typed).replace(/[^0-9.]/g, ''));
+  if (!(amount > 0)) { alert('Enter an amount greater than zero.'); return; }
+
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const res = await adminFetch('/.netlify/functions/request-refund-upi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: rowId, amount_paise: Math.round(amount * 100), resend: !!again }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    mbApplyMeta(rowId, {
+      upi_requested_at: new Date().toISOString(),
+      upi_requested_amount_paise: Math.round(amount * 100),
+      upi_request_count: Number(row.meta.upi_request_count || 0) + 1,
+    });
+    alert('✅ ' + data.message);
+    renderMissingBooks();
+  } catch (e) {
+    alert('Could not send it: ' + e.message);
+    btn.disabled = false; btn.textContent = original;
+  }
+}
+
+// For the customer who replies on WhatsApp or over the phone instead of using
+// the link. Same endpoint, same validation — a handle typed here is checked the
+// same way as one the customer typed, because a wrong one sends money nowhere.
+async function mbSaveUpi(encodedRowId) {
+  const rowId = decodeURIComponent(encodedRowId);
+  const row = missingBookRows().find(r => String(r.repl.id) === rowId);
+  if (!row) { alert('Not found in the current list — hit Refresh.'); return; }
+  const typed = prompt('UPI ID the customer gave you (e.g. 9876543210@ybl):', row.meta.refund_upi_id || '');
+  if (typed === null) return;
+  try {
+    const res = await adminFetch('/.netlify/functions/submit-refund-upi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: rowId, upi_id: String(typed).trim() }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    mbApplyMeta(rowId, { refund_upi_id: data.upi_id, refund_upi_at: new Date().toISOString(), refund_upi_source: 'admin' });
+    renderMissingBooks();
+  } catch (e) {
+    alert('Could not save that: ' + e.message);
+  }
+}
+
+async function mbMarkPaid(encodedRowId, btn, undo) {
+  const rowId = decodeURIComponent(encodedRowId);
+  let ref = '';
+  if (!undo) {
+    const typed = prompt('Transaction reference / UTR (optional but worth having):', '');
+    if (typed === null) return;
+    ref = String(typed).trim();
+  } else if (!confirm('Clear the paid mark on this refund?')) {
+    return;
+  }
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const res = await adminFetch('/.netlify/functions/mark-refund-upi-paid', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: rowId, ref, undo: !!undo }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (undo) {
+      const repl = allOrders.find(o => String(o.id) === String(rowId));
+      const items = Array.isArray(repl?.cart_items) ? repl.cart_items : [];
+      const idx = items.findIndex(i => i && i._replacement);
+      if (idx >= 0) { delete items[idx]._replacement.refund_paid_at; delete items[idx]._replacement.refund_paid_ref; }
+    } else {
+      mbApplyMeta(rowId, { refund_paid_at: new Date().toISOString(), ...(ref ? { refund_paid_ref: ref } : {}) });
+    }
+    renderMissingBooks();
+  } catch (e) {
+    alert('Could not update that: ' + e.message);
+    btn.disabled = false; btn.textContent = label;
+  }
 }
 
 // Everything worth typing into the Replacements search: both order ids, the
@@ -11220,7 +11587,7 @@ async function refreshReplacementRequests(btn) {
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
-  if (adminRole !== 'owner' && !new Set(['orders','replacements','returns','npcancelled','botinbox','recover','reels']).has(tab)) tab = 'orders';
+  if (adminRole !== 'owner' && !new Set(['orders','replacements','missingbooks','returns','npcancelled','botinbox','recover','reels']).has(tab)) tab = 'orders';
 
   // Show/hide panels
   TABS.forEach(t => {
@@ -11252,6 +11619,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'bundles' && _authed) initBundleBuilder();
   if (tab === 'reviews') fetchPendingReviews();
   if (tab === 'replacements' && _authed) renderReplacementRequests();
+  if (tab === 'missingbooks' && _authed) renderMissingBooks();
   if (tab === 'returns' && _authed) fetchReturnRequests();
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();
