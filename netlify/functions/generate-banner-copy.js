@@ -28,7 +28,8 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { renderSlide, esc } = require('./utils/banner-slide');
+const { renderSlide, esc, LAYOUT_IDS, DEFAULT_LAYOUT } = require('./utils/banner-slide');
+const { PALETTE_IDS, DEFAULT_PALETTE, PALETTES } = require('./utils/banner-palettes');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -80,7 +81,32 @@ Return ONLY a JSON object with exactly these keys:
                The wording is filled in for you. Never write a shipping,
                payment or returns promise yourself -- you do not know our terms.
 
-Read together, title_line1 + title_accent + title_line3 must form one natural sentence or phrase. Example: "Off Campus" / "all 5 books" / "one order."
+  layout       "classic" or "split". Pick the one that suits this banner:
+               "classic" is the dense hero -- a three-line headline, a sub-line,
+               two buttons and a row of three stats, with a wall of covers. Use
+               it for a set, a series, a box, or any time the offer needs
+               explaining.
+               "split" is a quiet poster -- a two-line headline, one sentence,
+               one button, and a single tilted cover on a colour panel. Use it
+               for one book, a mood, a season, a reading occasion. It has no
+               stats and no second button, so do not pick it when the point is
+               how many books there are or what they cost together.
+  palette      One of: ${PALETTE_IDS.join(', ')}
+               How it should feel. Used by "split"; ignored by "classic".
+  footnote     "split" only. 4-9 words along the bottom of the text half, e.g.
+               "Hindi & English  ·  Delivered across India". A quiet fact, not
+               a promise about delivery or returns.
+  panel_eyebrow "split" only. 2-4 words in small capitals above the cover, e.g.
+               "One more chapter". A mood label, not a category.
+  sticker_line1 "split" only. 1-2 words on a small round sticker beside the
+  sticker_line2 cover, read as two short lines, e.g. "Stay in." / "Read on."
+               Both may be empty if nothing fits -- the sticker is then dropped.
+
+Read together, title_line1 + title_accent + title_line3 must form one natural sentence or phrase.
+For "classic" they stack as three lines: "Off Campus" / "all 5 books" / "one order."
+For "split" they read as two lines with the accent closing the sentence, so write
+title_line1 as a complete first line and title_line3 + title_accent as the second:
+"A little escape." / "A great" + "book."
 
 Write plainly for an Indian reader. No exclamation marks. Never claim a delivery time, a rating, a bestseller rank or a stock level. Never mention a price or a discount anywhere -- the real figures are added from the database.`;
 
@@ -177,7 +203,25 @@ exports.handler = async (event) => {
   // Money and destinations are ours, not the model's.
   const total = books.reduce((sum, b) => sum + b.price, 0);
   const single = books.length === 1;
+  // The model NAMES a layout and a palette; it never describes one. An id we
+  // do not have a renderer or a colour set for is replaced, not stored -- the
+  // same rule the shop promises follow. An explicit choice from the admin wins
+  // over the model's, because the admin is looking at the page and it is not.
+  const pickId = (raw, allowed, fallback) => {
+    const v = String(raw == null ? '' : raw).toLowerCase().trim();
+    return allowed.includes(v) ? v : fallback;
+  };
+  const layout = pickId(body.layout, LAYOUT_IDS, pickId(out.layout, LAYOUT_IDS, DEFAULT_LAYOUT));
+  const paletteId = pickId(body.palette, PALETTE_IDS, pickId(out.palette, PALETTE_IDS, DEFAULT_PALETTE));
+
   const fields = {
+    layout,
+    palette: paletteId,
+    flip: body.flip === true,
+    footnote: one(out.footnote, 90),
+    panel_eyebrow: one(out.panel_eyebrow, 40),
+    sticker_line1: one(out.sticker_line1, 18),
+    sticker_line2: one(out.sticker_line2, 18),
     eyebrow: one(out.eyebrow, 60),
     title_line1: one(out.title_line1, 40),
     title_accent: one(out.title_accent, 40),
@@ -213,6 +257,8 @@ exports.handler = async (event) => {
   return json(200, {
     fields,
     books,
+    layouts: LAYOUT_IDS,
+    palettes: PALETTE_IDS.map(id => ({ id, label: PALETTES[id].label, swatch: [PALETTES[id].paper, PALETTES[id].panel] })),
     html: renderSlide(fields, books),
     warnings: [
       ...(missing.length ? [`Not found, so left out: ${missing.join(', ')}`] : []),

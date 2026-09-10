@@ -25,6 +25,8 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { BUILTIN_SLOTS, isBuiltin } = require('./utils/banner-slots');
+const { LAYOUT_IDS, DEFAULT_LAYOUT, renderSlide } = require('./utils/banner-slide');
+const { PALETTE_IDS, DEFAULT_PALETTE } = require('./utils/banner-palettes');
 const { purgeUrls } = require('./utils/purge-cache');
 
 const CORS = {
@@ -56,7 +58,18 @@ const one = (v, max = 200) => String(v == null ? '' : v).replace(/\s+/g, ' ').tr
 const FIELD_KEYS = [
   'eyebrow', 'title_line1', 'title_accent', 'title_line3', 'subtitle',
   'cta_label', 'cta_href', 'cta_secondary', 'cta_secondary_href', 'price_label',
+  // Used by the split layout; harmless on the classic one, which ignores them.
+  'footnote', 'panel_eyebrow', 'sticker_line1', 'sticker_line2',
 ];
+
+// Layout and palette are the two fields that decide how a banner LOOKS, and
+// they are the only ones that are not free text: an id that is not in the
+// table is replaced by the default rather than stored. A stored value that no
+// renderer knows would be a slide that cannot be drawn.
+const pickId = (raw, allowed, fallback) => {
+  const v = String(raw == null ? '' : raw).toLowerCase().trim();
+  return allowed.includes(v) ? v : fallback;
+};
 
 function cleanFields(raw) {
   const f = {};
@@ -64,6 +77,9 @@ function cleanFields(raw) {
   f.stats = (Array.isArray(raw?.stats) ? raw.stats : []).slice(0, 3)
     .map(s => ({ num: one(s?.num, 24), label: one(s?.label, 40) }))
     .filter(s => s.num || s.label);
+  f.layout = pickId(raw?.layout, LAYOUT_IDS, DEFAULT_LAYOUT);
+  f.palette = pickId(raw?.palette, PALETTE_IDS, DEFAULT_PALETTE);
+  f.flip = raw?.flip === true || raw?.flip === 'true';
   return f;
 }
 
@@ -124,6 +140,23 @@ exports.handler = async (event) => {
   const action = one(body.action, 20);
 
   try {
+    // ── render ──────────────────────────────────────────────────────────────
+    // The editor's live preview. It goes through the same renderSlide the
+    // homepage uses, on fields cleaned the same way publish cleans them, so
+    // what the admin is looking at IS what publishing would put on the page --
+    // not a second stylesheet in the admin that slowly drifts from the first.
+    // Books come from the caller because the picker already holds them; nothing
+    // is written and nothing is read from the database.
+    if (action === 'render') {
+      const books = (Array.isArray(body.books) ? body.books : []).slice(0, 6).map(b => ({
+        slug: one(b?.slug, 200), title: one(b?.title, 200), img: one(b?.img, 600),
+      })).filter(b => b.slug);
+      const fields = cleanFields(body.fields);
+      fields.cta_href = safeHref(fields.cta_href, '/bestsellers/');
+      fields.cta_secondary_href = safeHref(fields.cta_secondary_href, '/bestsellers/');
+      return json(200, { html: renderSlide(fields, books), fields });
+    }
+
     if (action === 'publish') {
       const slugs = (Array.isArray(body.book_slugs) ? body.book_slugs : [])
         .map(s => one(s, 200)).filter(Boolean).slice(0, 6);

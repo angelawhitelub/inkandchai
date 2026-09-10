@@ -18,14 +18,35 @@
 
 'use strict';
 
+const { renderSplit } = require('./banner-split');
+
 // Every value below is inserted as TEXT. Escaping here, rather than trusting
 // whatever produced the fields, is what makes this safe to put on the homepage.
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-/** Assemble the slide. Every value here is either escaped model text or DB data. */
+/**
+ * Which drawing to use. A layout is chosen by ID from this table -- the model
+ * picks the name, never the markup, exactly as it picks a shop promise by ID.
+ * An unknown or missing name falls back to the classic hero, so every banner
+ * published before layouts existed keeps rendering as it always did.
+ */
+const LAYOUTS = {
+  classic: renderClassic,
+  split: renderSplit,
+};
+const LAYOUT_IDS = Object.keys(LAYOUTS);
+const DEFAULT_LAYOUT = 'classic';
+
 function renderSlide(f, books) {
+  const fields = f || {};
+  const draw = LAYOUTS[String(fields.layout || '').toLowerCase()] || LAYOUTS[DEFAULT_LAYOUT];
+  return draw(fields, Array.isArray(books) ? books : []);
+}
+
+/** The original hero: headline left, a wall of covers right. */
+function renderClassic(f, books) {
   const covers = books.map((b, i) => `
           <a class="hero-cover-card${i === 0 ? ' featured' : ''}" href="/product/${encodeURIComponent(b.slug)}/" data-label="${esc(b.title.slice(0, 40))}">
             <picture><img src="${esc(b.img)}" alt="${esc(b.title)}" loading="lazy"/></picture>
@@ -54,4 +75,4 @@ function renderSlide(f, books) {
   </section>`;
 }
 
-module.exports = { renderSlide, esc };
+module.exports = { renderSlide, esc, LAYOUTS, LAYOUT_IDS, DEFAULT_LAYOUT };

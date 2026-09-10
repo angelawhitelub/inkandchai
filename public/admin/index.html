@@ -1255,6 +1255,22 @@ select,input,textarea{font-size:1rem;}
           <div class="hint" style="margin:.9rem 0 .3rem;">Selected — drag order decides the covers; the first is featured.</div>
           <div id="bnrSelected" style="min-height:44px;border:1px dashed var(--border);border-radius:6px;padding:.4rem;"></div>
 
+          <label class="hint" style="display:block;margin:.9rem 0 .25rem;">Layout</label>
+          <select id="bnrLayout" onchange="bnrLayoutChanged()" style="width:100%;padding:.4rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);font-size:.62rem;">
+            <option value="">Let the model choose</option>
+            <option value="classic">Classic — headline, stats, wall of covers</option>
+            <option value="split">Split — poster, one cover on a colour panel</option>
+          </select>
+
+          <div id="bnrSplitOpts" style="display:none;">
+            <label class="hint" style="display:block;margin:.8rem 0 .25rem;">Colour way</label>
+            <div id="bnrPalettes" style="display:flex;flex-wrap:wrap;gap:.35rem;"></div>
+            <label class="hint" style="display:flex;align-items:center;gap:.4rem;margin:.6rem 0 0;cursor:pointer;">
+              <input type="checkbox" id="bnrFlip" onchange="renderBannerPreview()" style="margin:0;"/>
+              Mirror it — covers on the left
+            </label>
+          </div>
+
           <label class="hint" style="display:block;margin:.8rem 0 .25rem;">Lead on</label>
           <select id="bnrAngle" style="width:100%;padding:.4rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);font-size:.62rem;">
             <option value="">Let the model decide</option>
@@ -1286,7 +1302,16 @@ select,input,textarea{font-size:1rem;}
             </div>
             <label class="hint" style="display:block;margin-top:.55rem;">Sub-line
               <textarea id="bnrSub" class="bnr-f" rows="2" oninput="renderBannerPreview()"></textarea></label>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;margin-top:.55rem;">
+            <!-- Only the split layout draws these; hidden otherwise so the
+                 editor never shows a field that cannot appear on the slide. -->
+            <div id="bnrSplitFields" style="display:none;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.55rem;margin-top:.55rem;">
+              <label class="hint">Footnote (under the button)<input id="bnrFootnote" class="bnr-f" oninput="renderBannerPreview()"/></label>
+              <label class="hint">Label above the cover<input id="bnrPanelEyebrow" class="bnr-f" oninput="renderBannerPreview()"/></label>
+              <label class="hint">Sticker — two short lines
+                <input id="bnrSticker1" class="bnr-f" oninput="renderBannerPreview()"/>
+                <input id="bnrSticker2" class="bnr-f" oninput="renderBannerPreview()"/></label>
+            </div>
+            <div id="bnrStatFields" style="display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;margin-top:.55rem;">
               <label class="hint">Stat 1<input id="bnrS0n" class="bnr-f" oninput="renderBannerPreview()"/><input id="bnrS0l" class="bnr-f" oninput="renderBannerPreview()"/></label>
               <label class="hint">Stat 2<input id="bnrS1n" class="bnr-f" oninput="renderBannerPreview()"/><input id="bnrS1l" class="bnr-f" oninput="renderBannerPreview()"/></label>
               <label class="hint">Stat 3<input id="bnrS2n" class="bnr-f" oninput="renderBannerPreview()"/><input id="bnrS2l" class="bnr-f" oninput="renderBannerPreview()"/></label>
@@ -10100,6 +10125,19 @@ function copyAddressAuditList() {
 let bnrPicked = [];       // [{slug,title,img,price}]
 let bnrLastHtml = '';
 let bnrSearchTimer = null;
+// The layout the model chose on the last draft, used when the admin has left
+// the Layout select on "let the model choose".
+let bnrDraftedLayout = '';
+let bnrChosenPalette = 'terracotta';
+// Replaced by the real list the moment a draft comes back; this is only what
+// the swatches show before the first draft.
+let BNR_PALETTES = [
+  { id: 'terracotta', label: 'Terracotta on cream', swatch: ['#efe7d8', '#c25b3c'] },
+  { id: 'midnight',   label: 'Indigo on bone',      swatch: ['#f1ede4', '#2f3557'] },
+  { id: 'forest',     label: 'Forest on oat',       swatch: ['#ece9dc', '#2f5340'] },
+  { id: 'plum',       label: 'Plum on blush',       swatch: ['#f2e8e6', '#5d2f4a'] },
+  { id: 'gold',       label: 'House gold on ink',   swatch: ['#17130d', '#c9a84c'] },
+];
 
 function bnrSearchDebounced() {
   clearTimeout(bnrSearchTimer);
@@ -10172,6 +10210,10 @@ async function generateBanner(btn) {
         slugs: bnrPicked.map(b => b.slug),
         angle: document.getElementById('bnrAngle')?.value || '',
         brief: document.getElementById('bnrBrief')?.value || '',
+        // Empty means "let the model choose"; anything else overrules it.
+        layout: document.getElementById('bnrLayout')?.value || '',
+        palette: document.getElementById('bnrLayout')?.value === 'split' ? bnrPaletteId() : '',
+        flip: !!document.getElementById('bnrFlip')?.checked,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -10192,6 +10234,16 @@ function bnrFill(data) {
   set('bnrAccent', f.title_accent); set('bnrL3', f.title_line3);
   set('bnrSub', f.subtitle); set('bnrCta', f.cta_label); set('bnrCta2', f.cta_secondary);
   (f.stats || []).slice(0, 3).forEach((s, i) => { set(`bnrS${i}n`, s.num); set(`bnrS${i}l`, s.label); });
+  set('bnrFootnote', f.footnote); set('bnrPanelEyebrow', f.panel_eyebrow);
+  set('bnrSticker1', f.sticker_line1); set('bnrSticker2', f.sticker_line2);
+  // What the model picked, and the palettes the server actually has. Taking the
+  // list from the response means adding a colour way server-side needs no edit
+  // here.
+  bnrDraftedLayout = f.layout || 'classic';
+  if (f.palette) bnrChosenPalette = f.palette;
+  if (Array.isArray(data.palettes) && data.palettes.length) BNR_PALETTES = data.palettes;
+  const flip = document.getElementById('bnrFlip'); if (flip) flip.checked = !!f.flip;
+  bnrSyncLayoutUI();
   // Covers and money come from the server's DB lookup, so trust those over the
   // picker, which only holds what the search happened to return.
   if (Array.isArray(data.books) && data.books.length) {
@@ -10204,67 +10256,102 @@ function bnrFill(data) {
   renderBannerPreview();
 }
 
+/* ── Preview ──────────────────────────────────────────────────────────────
+   The preview is rendered BY THE SERVER, through the same renderSlide the
+   homepage uses, on fields cleaned exactly the way publishing cleans them.
+
+   It used to be a hand-written approximation living in this file next to a
+   second copy of the slide markup, with a comment conceding that the two would
+   drift and that the server's copy was the one that shipped. Adding a second
+   layout would have meant a third and fourth copy. Now there is one renderer,
+   and what is on screen is what publishing puts on the page.                */
+
+let bnrPreviewTimer = null;
+let bnrPreviewSeq = 0;
+
 function renderBannerPreview() {
+  clearTimeout(bnrPreviewTimer);
+  bnrPreviewTimer = setTimeout(bnrPreviewNow, 220);   // one render per pause
+}
+
+function bnrLayoutChanged() {
+  bnrSyncLayoutUI();
+  renderBannerPreview();
+}
+
+/** Show only the fields the chosen layout can actually draw. */
+function bnrSyncLayoutUI() {
+  const layout = bnrLayout();
+  const split = layout === 'split';
+  const show = (id, on, disp) => { const el = document.getElementById(id); if (el) el.style.display = on ? (disp || '') : 'none'; };
+  show('bnrSplitOpts', split);
+  show('bnrSplitFields', split, 'grid');
+  show('bnrStatFields', !split, 'grid');
+  bnrRenderPalettes();
+}
+
+/** The layout actually in force: the admin's choice, else whatever was drafted. */
+function bnrLayout() {
+  const chosen = document.getElementById('bnrLayout')?.value || '';
+  return chosen || bnrDraftedLayout || 'classic';
+}
+
+function bnrPaletteId() {
+  return bnrChosenPalette || 'terracotta';
+}
+
+function bnrRenderPalettes() {
+  const box = document.getElementById('bnrPalettes');
+  if (!box) return;
+  const active = bnrPaletteId();
+  box.innerHTML = BNR_PALETTES.map(p => `
+    <button type="button" title="${esc(p.label)}" onclick="bnrPickPalette('${esc(p.id)}')"
+      style="width:34px;height:22px;padding:0;cursor:pointer;border-radius:4px;overflow:hidden;display:flex;
+             border:2px solid ${p.id === active ? 'var(--gold)' : 'var(--border)'};">
+      <span style="flex:1;background:${esc(p.swatch[0])};"></span>
+      <span style="flex:1;background:${esc(p.swatch[1])};"></span>
+    </button>`).join('');
+}
+
+function bnrPickPalette(id) {
+  bnrChosenPalette = id;
+  bnrRenderPalettes();
+  renderBannerPreview();
+}
+
+async function bnrPreviewNow() {
   const box = document.getElementById('bnrPreview');
   if (!box) return;
   const val = (id) => document.getElementById(id)?.value || '';
   if (!bnrPicked.length && !val('bnrEyebrow')) {
     box.innerHTML = '<div class="bnr-empty">Pick a book and draft a banner to see it here.</div>';
+    bnrLastHtml = '';
     return;
   }
-  const stats = [0, 1, 2].map(i => ({ num: val(`bnrS${i}n`), label: val(`bnrS${i}l`) })).filter(s => s.num || s.label);
-  const total = bnrPicked.reduce((sum, b) => sum + (Number(b.price) || 0), 0);
-  box.innerHTML = `<div class="bnr-stage">
-    <div>
-      <div class="bnr-eyebrow">${esc(val('bnrEyebrow'))}</div>
-      <h3 class="bnr-title">${esc(val('bnrL1'))}<br/><em>${esc(val('bnrAccent'))}</em><br/>${esc(val('bnrL3'))}</h3>
-      <p class="bnr-sub">${esc(val('bnrSub'))}</p>
-      <div class="bnr-ctas">
-        <span class="bnr-btn">${esc(val('bnrCta'))}${total ? ' — ₹' + total.toLocaleString('en-IN') : ''}</span>
-        <span class="bnr-ghost">${esc(val('bnrCta2'))} →</span>
-      </div>
-      <div class="bnr-stats">${stats.map(s =>
-        `<div><div class="n">${esc(s.num)}</div><div class="l">${esc(s.label)}</div></div>`).join('')}</div>
-    </div>
-    <div class="bnr-covers">${bnrPicked.map((b, i) =>
-      `<img class="${i === 0 ? 'feat' : ''}" src="${esc(b.img)}" alt="${esc(b.title)}" loading="lazy"/>`).join('')}</div>
-  </div>`;
-
-  // The copy button must hand over what is on screen now, not the original
-  // draft, so re-assemble the markup from the live field values.
-  bnrLastHtml = bnrSlideHtml(stats, total);
-}
-
-// Mirrors renderSlide() in netlify/functions/generate-banner-copy.js. Kept in
-// step with it by tests/netlify/banner-copy.test.js on the server side; if the
-// two ever drift, the server's version is the one that ships.
-function bnrSlideHtml(stats, total) {
-  const val = (id) => document.getElementById(id)?.value || '';
-  const covers = bnrPicked.map((b, i) => `
-          <a class="hero-cover-card${i === 0 ? ' featured' : ''}" href="/product/${encodeURIComponent(b.slug)}/" data-label="${esc(b.title.slice(0, 40))}">
-            <picture><img src="${esc(b.img)}" alt="${esc(b.title)}" loading="lazy"/></picture>
-          </a>`).join('');
-  const statHtml = stats.map(s => `
-        <div><div class="stat-num">${esc(s.num)}</div><div class="stat-label">${esc(s.label)}</div></div>`).join('');
-  const href = bnrPicked.length === 1 ? `/product/${encodeURIComponent(bnrPicked[0].slug)}/` : '/book-combos/';
-  return `  <!-- Banner: ${esc(val('bnrEyebrow'))} -->
-  <section class="hero promo-slide" style="padding:0;" aria-label="${esc(val('bnrEyebrow'))}">
-    <div class="hero-left">
-      <div class="hero-eyebrow">${esc(val('bnrEyebrow'))}</div>
-      <h2 class="hero-title">${esc(val('bnrL1'))}<br/><em>${esc(val('bnrAccent'))}</em><br/>${esc(val('bnrL3'))}</h2>
-      <p class="hero-sub hero-sub-desktop">${esc(val('bnrSub'))}</p>
-      <div class="hero-ctas">
-        <a href="${esc(href)}" class="btn-primary">${esc(val('bnrCta'))}${total ? ' — ₹' + total.toLocaleString('en-IN') : ''}</a>
-        <a href="/bestsellers/" class="btn-ghost">${esc(val('bnrCta2'))}</a>
-      </div>
-      <div class="hero-stats">${statHtml}
-      </div>
-    </div>
-    <div class="hero-right">
-      <div class="hero-cover-wall" aria-label="${esc(val('bnrEyebrow'))} featured books">${covers}
-      </div>
-    </div>
-  </section>`;
+  // Renders can overlap while someone is typing; only the newest may paint.
+  const seq = ++bnrPreviewSeq;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-banners', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'render',
+        fields: bnrFields(),
+        books: bnrPicked.map(b => ({ slug: b.slug, title: b.title, img: b.img })),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (seq !== bnrPreviewSeq) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    // The slide carries its own <style>, so it has to go in as markup. It is
+    // server-rendered from escaped fields, which is the whole reason the
+    // escaping lives there and not here.
+    box.innerHTML = data.html || '';
+    bnrLastHtml = data.html || '';
+  } catch (err) {
+    if (seq !== bnrPreviewSeq) return;
+    box.innerHTML = '<div class="bnr-empty">Could not render the preview: ' + esc(err.message) + '</div>';
+  }
 }
 
 /* ── Publishing ───────────────────────────────────────────────────────────
@@ -10283,13 +10370,25 @@ function bnrFields() {
     title_line3: val('bnrL3'),
     subtitle: val('bnrSub'),
     cta_label: val('bnrCta'),
-    // Matches bnrSlideHtml: one book links to the book, a set to the combos page.
+    // One book links to the book, a set to the combos page.
     cta_href: bnrPicked.length === 1 ? '/product/' + bnrPicked[0].slug + '/' : '/book-combos/',
     cta_secondary: val('bnrCta2'),
     cta_secondary_href: '/bestsellers/',
     price_label: total ? '₹' + total.toLocaleString('en-IN') : '',
     stats: [0, 1, 2].map(i => ({ num: val('bnrS' + i + 'n'), label: val('bnrS' + i + 'l') }))
                     .filter(st => st.num || st.label),
+    // How it is drawn. The server re-checks both against its own tables, so a
+    // stale value in this page can never become a slide nobody can render.
+    layout: bnrLayout(),
+    palette: bnrPaletteId(),
+    flip: !!document.getElementById('bnrFlip')?.checked,
+    // Split-layout copy. Sent whatever the layout is; the classic renderer
+    // ignores them, which is what lets one banner be switched between layouts
+    // without losing the copy written for the other.
+    footnote: val('bnrFootnote'),
+    panel_eyebrow: val('bnrPanelEyebrow'),
+    sticker_line1: val('bnrSticker1'),
+    sticker_line2: val('bnrSticker2'),
   };
 }
 
