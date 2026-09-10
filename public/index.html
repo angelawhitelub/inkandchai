@@ -596,12 +596,6 @@
   .btn-add { font-size: 0.58rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--bg); background: var(--gold); border: none; padding: 0.7rem 1.4rem; cursor: pointer; font-family: 'Inter', sans-serif; font-weight: 500; transition: background 0.3s; }
   .btn-add:hover { background: var(--gold-light); }
 
-  /* Always-visible Add to Cart button below each book card */
-  .btn-add-card { width: 100%; max-width: 100%; margin-top: 0.6rem; font-family: 'Inter', sans-serif; font-size: 0.54rem; letter-spacing: 0.18em; text-transform: uppercase; padding: 0.55rem 0.4rem; background: transparent; color: var(--gold); border: 1px solid rgba(201,168,76,0.4); cursor: pointer; font-weight: 500; transition: all 0.25s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .btn-add-card:hover { background: var(--gold); color: var(--bg); border-color: var(--gold); }
-  .btn-add-card:active { transform: scale(0.98); }
-  html[data-theme="light"] .btn-add-card { color: var(--gold); border-color: rgba(138,106,31,0.4); }
-  html[data-theme="light"] .btn-add-card:hover { background: var(--gold); color: #fff; }
 
   /* "NEW" arrival ribbon */
   .new-badge { position: absolute; top: 8px; left: 8px; z-index: 5; background: linear-gradient(135deg, #c04336, #a2352a); color: #fff; font-size: 0.55rem; letter-spacing: 0.2em; font-weight: 600; padding: 0.3rem 0.6rem; font-family: 'Inter', sans-serif; box-shadow: 0 4px 10px rgba(185,66,54,0.45); animation: newPulse 2.4s ease-in-out infinite; }
@@ -931,7 +925,6 @@
     .book-category { display: block; max-width: 100%; margin-top: 0.25rem; }
     .book-price { display: inline-block; max-width: 100%; }
     .book-orig-price { margin-left: 0.25rem; }
-    .btn-add-card { font-size: 0.5rem; letter-spacing: 0.14em; padding: 0.62rem 0.25rem; }
     .search-wrap { max-width: none; margin-bottom: 1.4rem; }
     .search-box { min-height:54px; }
     .search-icon { left:0.95rem; font-size:1.05rem; }
@@ -1043,7 +1036,6 @@
   .btn-primary:hover::after { left: 140%; }
   /* Outline / nav buttons: gentle fill lift */
   .btn-nav:hover, .btn-ghost:hover { transform: translateY(-1px); }
-  .btn-add-card:active { transform: scale(0.97); }
   /* Add-to-cart "added" success flash */
   .btn-add-card.added, .shelf-card-btn.added {
     background: var(--gold) !important; color: var(--bg) !important; border-color: var(--gold) !important;
@@ -2313,9 +2305,11 @@ gtag('config', 'G-ZPZDFWMDP6');
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/search-suggest.js" defer></script>
+<link rel="stylesheet" href="/css/book-card-e9758327.css"/>
+<script src="/js/book-card-dff54cba.js"></script>
 
 <script src="/js/books-lite-7063487c.js"></script>
-<script>window.BOOKS_FULL_URL="/js/books-full-ba8cb934.js";</script>
+<script>window.BOOKS_FULL_URL="/js/books-full-f93d1f6c.js";</script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -2741,42 +2735,7 @@ function renderBooks() {
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
 
-  grid.innerHTML = slice.map((b, i) => {
-    const wishlisted = window.isWishlisted ? isWishlisted(b.url) : false;
-    const priceNum = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
-    return `
-    <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
-      <div class="book-cover" style="position:relative;">
-        ${b.n ? '<span class="new-badge">NEW</span>' : ''}
-        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
-             onerror="this.style.display='none'" />
-        <button class="wish-btn ${wishlisted ? 'wishlisted' : ''}"
-          data-url="${escHtml(b.url)}"
-          title="${wishlisted ? 'Remove from wishlist' : 'Save to wishlist'}"
-          onclick="event.preventDefault(); event.stopPropagation(); if(window.toggleWishlist) toggleWishlist({url:'${escHtml(b.url)}',title:'${escHtml(b.t).replace(/'/g,"\\'")}',img:'${escHtml(b.img)}',price:${priceNum}}); updateWishlistBadge();">
-          ${wishlisted ? '♥' : '♡'}
-        </button>
-      </div>
-      <div class="book-name">${escHtml(b.t)}</div>
-      <div class="book-author">${escHtml(b.a || '')}</div>
-      <div class="book-meta">
-        <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
-        <span class="book-category">${escHtml(b.cat)}</span>
-      </div>
-      ${isSoldOut(b)
-        ? `<span class="btn-add-card" style="opacity:0.65;cursor:not-allowed;color:#e8a030;border-color:rgba(232,160,48,0.4);">Coming Soon</span>`
-        : `<button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
-        data-url="${escHtml(b.url)}"
-        data-title="${escHtml(b.t)}"
-        data-author="${escHtml(b.a||'')}"
-        data-price="${priceNum}"
-        data-img="${escHtml(b.img)}"
-        data-stock="${b.stock ?? ''}"
-        data-no-cod="${b.no_cod ? '1' : ''}"
-        data-pub-sourced="${b.publisher_sourced ? '1' : ''}"
-        data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>`}
-    </a>`;
-  }).join('');
+  grid.innerHTML = slice.map(iacBookCard).join('');
 
   const btn = document.getElementById('loadMoreBtn');
   const info = document.getElementById('booksCount');
@@ -2875,26 +2834,7 @@ function openCollection(catsEncoded, name) {
   // Render
   visibleCount = Math.min(matches.length, 200);
   const grid = document.getElementById('booksGrid');
-  grid.innerHTML = matches.slice(0, visibleCount).map(b => `
-    <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
-      <div class="book-cover">
-        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
-      </div>
-      <div class="book-name">${escHtml(b.t)}</div>
-      <div class="book-author">${escHtml(b.a || '')}</div>
-      <div class="book-meta">
-        <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
-        <span class="book-category">${escHtml(b.cat)}</span>
-      </div>
-      <button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
-        data-url="${escHtml(b.url)}"
-        data-title="${escHtml(b.t)}"
-        data-author="${escHtml(b.a||'')}"
-        data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
-        data-stock="${b.stock ?? ''}"
-        data-img="${escHtml(b.img)}">+ Add to Cart</button>
-    </a>
-  `).join('');
+  grid.innerHTML = matches.slice(0, visibleCount).map(iacBookCard).join('');
   const info = document.getElementById('booksCount');
   if (info) info.textContent = `Showing ${matches.length} books from ${name}`;
   const btn = document.getElementById('loadMoreBtn');
@@ -3426,27 +3366,7 @@ function renderBooksForCat(cat) {
   const books = BOOKS.filter(b => b.cat === cat);
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
-  grid.innerHTML = slice.map(b => `
-    <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
-      <div class="book-cover" style="position:relative;">
-        ${b.n ? '<span class="new-badge">NEW</span>' : ''}
-        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
-      </div>
-      <div class="book-name">${escHtml(b.t)}</div>
-      <div class="book-author">${escHtml(b.a || '')}</div>
-      <div class="book-meta">
-        <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
-        <span class="book-category">${escHtml(b.cat)}</span>
-      </div>
-      <button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
-        data-url="${escHtml(b.url)}"
-        data-title="${escHtml(b.t)}"
-        data-author="${escHtml(b.a||'')}"
-        data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
-        data-stock="${b.stock ?? ''}"
-        data-img="${escHtml(b.img)}">+ Add to Cart</button>
-    </a>
-  `).join('');
+  grid.innerHTML = slice.map(iacBookCard).join('');
   const btn = document.getElementById('loadMoreBtn');
   const info = document.getElementById('booksCount');
   info.textContent = `Showing ${Math.min(visibleCount, books.length)} of ${books.length} books in "${cat}"`;

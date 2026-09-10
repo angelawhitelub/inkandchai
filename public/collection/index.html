@@ -371,6 +371,8 @@ gtag('config', 'G-ZPZDFWMDP6');
     <a class="btn-nav" href="/">Catalogue</a>
   </div>
 </nav>
+<link rel="stylesheet" href="/css/book-card-e9758327.css"/>
+<script src="/js/book-card-dff54cba.js"></script>
 <div id="page"></div>
 <script src="/js/books-lite-7063487c.js"></script>
 <script>
@@ -450,14 +452,7 @@ function renderGrid() {
   if (sort === 'price-desc') list.sort((a,b) => priceOf(b) - priceOf(a));
   if (sort === 'alpha')      list.sort((a,b) => (a.t||'').localeCompare(b.t||''));
   document.getElementById('visCount').textContent = list.length;
-  document.getElementById('grid').innerHTML = list.map(b => `
-    <div class="book-card" onclick="location.href='/product/${b.slug}/'">
-      <div class="book-cover">${b.img ? `<img src="${esc(b.img)}" alt="${esc(b.t)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}</div>
-      <div class="book-name">${esc(b.t)}</div>
-      <div class="book-author">${esc(b.a||'')}</div>
-      <div><span class="book-price">${esc(b.p)}</span>${b.op ? `<span class="book-orig">${esc(b.op)}</span>` : ''}</div>
-    </div>
-  `).join('');
+  document.getElementById('grid').innerHTML = list.map(iacBookCard).join('');
 }
 </script>
 

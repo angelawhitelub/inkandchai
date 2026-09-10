@@ -21,6 +21,10 @@
   Cache-Control: public, max-age=31536000, immutable
 /js/app-shell-*.js
   Cache-Control: public, max-age=31536000, immutable
+/css/book-card-*.css
+  Cache-Control: public, max-age=31536000, immutable
+/js/book-card-*.js
+  Cache-Control: public, max-age=31536000, immutable
 
 /*
   X-Content-Type-Options: nosniff

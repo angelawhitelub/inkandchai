@@ -18,7 +18,15 @@ function saveCart(cart) {
 }
 
 // ── Add / Remove ───────────────────────────────────────────────────────────
-function addToCart(book) {
+/**
+ * @param book  the item
+ * @param opts  { keepBrowsing: true } adds without opening the drawer. The
+ *              quick-add button on a book card uses it: the whole point of
+ *              adding from the grid is to carry on down the grid, and a
+ *              drawer sliding over the page on every tap fights that.
+ *              Omitted everywhere else, so every existing caller is unchanged.
+ */
+function addToCart(book, opts) {
   const cart = getCart();
   const existing = cart.find(i => i.id === book.id);
   if (existing) {
@@ -40,8 +48,10 @@ function addToCart(book) {
       value: Number(book.price) || 0,
     });
   }
-  openCart();
-  showToast(`"${book.title.slice(0, 30)}…" added to cart`);
+  if (!(opts && opts.keepBrowsing)) openCart();
+  // The ellipsis only belongs there if something was actually cut off.
+  const name = String(book.title || '');
+  showToast(`"${name.length > 30 ? name.slice(0, 30) + '…' : name}" added to cart`);
 }
 
 function removeFromCart(id) {

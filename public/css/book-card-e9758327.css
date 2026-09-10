@@ -1,0 +1,47 @@
+
+/* Book card furniture shared by every grid. The card's own scale --
+   .book-card, .book-cover, .book-name, .book-price -- stays owned by each
+   page, because the homepage grid and the collection grid are different
+   sizes. Only the parts that must look identical everywhere live here. */
+.iac-badges{position:absolute;top:8px;left:8px;z-index:5;display:flex;flex-direction:column;gap:4px;align-items:flex-start;pointer-events:none}
+.iac-off,.iac-new,.iac-soon{font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;padding:0.28rem 0.5rem;line-height:1;white-space:nowrap}
+.iac-off{background:linear-gradient(135deg,#c04336,#a2352a);color:#fff;box-shadow:0 4px 10px rgba(185,66,54,0.4)}
+.iac-new{background:rgba(13,11,8,0.82);color:#c9a84c;border:1px solid rgba(201,168,76,0.5)}
+.iac-soon{background:rgba(13,11,8,0.82);color:#e8a030;border:1px solid rgba(232,160,48,0.5)}
+
+/* Quick add. A tap target on the cover rather than a full-width button under
+   it: it is always visible, it costs no vertical space, and it can carry the
+   count once the book is in the cart. */
+.iac-qadd{position:absolute;right:8px;bottom:8px;z-index:6;width:38px;height:38px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  border:1px solid rgba(201,168,76,0.55);background:rgba(13,11,8,0.86);color:#c9a84c;
+  font-family:'Inter',sans-serif;font-size:1.15rem;font-weight:400;line-height:1;padding:0;
+  -webkit-tap-highlight-color:transparent;transition:transform 0.18s ease,background 0.2s ease,color 0.2s ease}
+@media(hover:hover){.iac-qadd:hover{background:#c9a84c;color:#0d0b08;transform:scale(1.08)}}
+.iac-qadd:active{transform:scale(0.9)}
+.iac-qadd.has{background:#c9a84c;color:#0d0b08;font-size:0.82rem;font-weight:700}
+.iac-qadd.off{border-color:rgba(232,160,48,0.4);color:#e8a030;cursor:not-allowed;font-size:0.9rem}
+.iac-qadd.pop{animation:iacQPop 0.42s ease}
+@keyframes iacQPop{0%{transform:scale(1)}35%{transform:scale(1.32)}100%{transform:scale(1)}}
+html[data-theme="light"] .iac-qadd{background:rgba(255,252,245,0.92);border-color:rgba(138,106,31,0.45);color:#8a6a1f}
+html[data-theme="light"] .iac-qadd.has{background:#8a6a1f;color:#fff}
+html[data-theme="light"] .iac-new{background:rgba(255,252,245,0.9);color:#8a6a1f;border-color:rgba(138,106,31,0.45)}
+
+/* The heart was opacity:0 until :hover, which on a touch screen meant it was
+   never reachable at all. Making it visible exposed the rest: a hard-cornered
+   dark chip with dark text, unreadable in light mode and mismatched against
+   the round quick-add beside it. Scoped to .book-cover so it wins over the
+   page's own rule whichever order the stylesheets happen to load in. */
+.book-cover .wish-btn{width:30px;height:30px;border-radius:50%;padding:0;font-size:0.95rem;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(201,168,76,0.4);background:rgba(13,11,8,0.72);color:#f0e8d8;
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.book-cover .wish-btn.wishlisted{color:#e05050;border-color:rgba(224,80,80,0.5)}
+html[data-theme="light"] .book-cover .wish-btn{background:rgba(255,252,245,0.92);border-color:rgba(138,106,31,0.4);color:#8a6a1f}
+html[data-theme="light"] .book-cover .wish-btn.wishlisted{color:#d04545}
+@media(hover:none){.book-cover .wish-btn{opacity:0.9}}
+
+.iac-meta{display:flex;justify-content:space-between;align-items:baseline;gap:0.4rem;margin-top:0.15rem}
+.iac-orig{font-size:0.65rem;color:var(--cream-dim,#a09080);text-decoration:line-through;margin-left:0.3rem}
+.iac-cat{font-size:0.5rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--gold-dim,#9a824a);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+@media(max-width:560px){.iac-cat{display:none}}

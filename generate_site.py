@@ -1707,12 +1707,6 @@ HTML = r"""<!DOCTYPE html>
   .btn-add { font-size: 0.58rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--bg); background: var(--gold); border: none; padding: 0.7rem 1.4rem; cursor: pointer; font-family: 'Inter', sans-serif; font-weight: 500; transition: background 0.3s; }
   .btn-add:hover { background: var(--gold-light); }
 
-  /* Always-visible Add to Cart button below each book card */
-  .btn-add-card { width: 100%; max-width: 100%; margin-top: 0.6rem; font-family: 'Inter', sans-serif; font-size: 0.54rem; letter-spacing: 0.18em; text-transform: uppercase; padding: 0.55rem 0.4rem; background: transparent; color: var(--gold); border: 1px solid rgba(201,168,76,0.4); cursor: pointer; font-weight: 500; transition: all 0.25s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .btn-add-card:hover { background: var(--gold); color: var(--bg); border-color: var(--gold); }
-  .btn-add-card:active { transform: scale(0.98); }
-  html[data-theme="light"] .btn-add-card { color: var(--gold); border-color: rgba(138,106,31,0.4); }
-  html[data-theme="light"] .btn-add-card:hover { background: var(--gold); color: #fff; }
 
   /* "NEW" arrival ribbon */
   .new-badge { position: absolute; top: 8px; left: 8px; z-index: 5; background: linear-gradient(135deg, #c04336, #a2352a); color: #fff; font-size: 0.55rem; letter-spacing: 0.2em; font-weight: 600; padding: 0.3rem 0.6rem; font-family: 'Inter', sans-serif; box-shadow: 0 4px 10px rgba(185,66,54,0.45); animation: newPulse 2.4s ease-in-out infinite; }
@@ -2042,7 +2036,6 @@ HTML = r"""<!DOCTYPE html>
     .book-category { display: block; max-width: 100%; margin-top: 0.25rem; }
     .book-price { display: inline-block; max-width: 100%; }
     .book-orig-price { margin-left: 0.25rem; }
-    .btn-add-card { font-size: 0.5rem; letter-spacing: 0.14em; padding: 0.62rem 0.25rem; }
     .search-wrap { max-width: none; margin-bottom: 1.4rem; }
     .search-box { min-height:54px; }
     .search-icon { left:0.95rem; font-size:1.05rem; }
@@ -2154,7 +2147,6 @@ HTML = r"""<!DOCTYPE html>
   .btn-primary:hover::after { left: 140%; }
   /* Outline / nav buttons: gentle fill lift */
   .btn-nav:hover, .btn-ghost:hover { transform: translateY(-1px); }
-  .btn-add-card:active { transform: scale(0.97); }
   /* Add-to-cart "added" success flash */
   .btn-add-card.added, .shelf-card-btn.added {
     background: var(--gold) !important; color: var(--bg) !important; border-color: var(--gold) !important;
@@ -3622,42 +3614,7 @@ function renderBooks() {
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
 
-  grid.innerHTML = slice.map((b, i) => {
-    const wishlisted = window.isWishlisted ? isWishlisted(b.url) : false;
-    const priceNum = parseFloat((b.p||'').replace(/[^0-9.]/g,'')) || 0;
-    return `
-    <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
-      <div class="book-cover" style="position:relative;">
-        ${b.n ? '<span class="new-badge">NEW</span>' : ''}
-        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy"
-             onerror="this.style.display='none'" />
-        <button class="wish-btn ${wishlisted ? 'wishlisted' : ''}"
-          data-url="${escHtml(b.url)}"
-          title="${wishlisted ? 'Remove from wishlist' : 'Save to wishlist'}"
-          onclick="event.preventDefault(); event.stopPropagation(); if(window.toggleWishlist) toggleWishlist({url:'${escHtml(b.url)}',title:'${escHtml(b.t).replace(/'/g,"\\'")}',img:'${escHtml(b.img)}',price:${priceNum}}); updateWishlistBadge();">
-          ${wishlisted ? '♥' : '♡'}
-        </button>
-      </div>
-      <div class="book-name">${escHtml(b.t)}</div>
-      <div class="book-author">${escHtml(b.a || '')}</div>
-      <div class="book-meta">
-        <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
-        <span class="book-category">${escHtml(b.cat)}</span>
-      </div>
-      ${isSoldOut(b)
-        ? `<span class="btn-add-card" style="opacity:0.65;cursor:not-allowed;color:#e8a030;border-color:rgba(232,160,48,0.4);">Coming Soon</span>`
-        : `<button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
-        data-url="${escHtml(b.url)}"
-        data-title="${escHtml(b.t)}"
-        data-author="${escHtml(b.a||'')}"
-        data-price="${priceNum}"
-        data-img="${escHtml(b.img)}"
-        data-stock="${b.stock ?? ''}"
-        data-no-cod="${b.no_cod ? '1' : ''}"
-        data-pub-sourced="${b.publisher_sourced ? '1' : ''}"
-        data-sku="${escHtml(b.sku||'')}">+ Add to Cart</button>`}
-    </a>`;
-  }).join('');
+  grid.innerHTML = slice.map(iacBookCard).join('');
 
   const btn = document.getElementById('loadMoreBtn');
   const info = document.getElementById('booksCount');
@@ -3756,26 +3713,7 @@ function openCollection(catsEncoded, name) {
   // Render
   visibleCount = Math.min(matches.length, 200);
   const grid = document.getElementById('booksGrid');
-  grid.innerHTML = matches.slice(0, visibleCount).map(b => `
-    <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
-      <div class="book-cover">
-        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
-      </div>
-      <div class="book-name">${escHtml(b.t)}</div>
-      <div class="book-author">${escHtml(b.a || '')}</div>
-      <div class="book-meta">
-        <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
-        <span class="book-category">${escHtml(b.cat)}</span>
-      </div>
-      <button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
-        data-url="${escHtml(b.url)}"
-        data-title="${escHtml(b.t)}"
-        data-author="${escHtml(b.a||'')}"
-        data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
-        data-stock="${b.stock ?? ''}"
-        data-img="${escHtml(b.img)}">+ Add to Cart</button>
-    </a>
-  `).join('');
+  grid.innerHTML = matches.slice(0, visibleCount).map(iacBookCard).join('');
   const info = document.getElementById('booksCount');
   if (info) info.textContent = `Showing ${matches.length} books from ${name}`;
   const btn = document.getElementById('loadMoreBtn');
@@ -4307,27 +4245,7 @@ function renderBooksForCat(cat) {
   const books = BOOKS.filter(b => b.cat === cat);
   const slice = books.slice(0, visibleCount);
   const grid  = document.getElementById('booksGrid');
-  grid.innerHTML = slice.map(b => `
-    <a class="book-card" href="/product/${b.slug}/" style="text-decoration:none;color:inherit;display:block;">
-      <div class="book-cover" style="position:relative;">
-        ${b.n ? '<span class="new-badge">NEW</span>' : ''}
-        <img src="${b.img}" alt="${escHtml(b.t)}" loading="lazy" onerror="this.style.display='none'" />
-      </div>
-      <div class="book-name">${escHtml(b.t)}</div>
-      <div class="book-author">${escHtml(b.a || '')}</div>
-      <div class="book-meta">
-        <span class="book-price">${escHtml(b.p)}${b.op ? `<span class="book-orig-price">${escHtml(b.op)}</span>` : ''}</span>
-        <span class="book-category">${escHtml(b.cat)}</span>
-      </div>
-      <button class="btn-add-card" onclick="event.preventDefault(); event.stopPropagation(); addToCartById(this)"
-        data-url="${escHtml(b.url)}"
-        data-title="${escHtml(b.t)}"
-        data-author="${escHtml(b.a||'')}"
-        data-price="${(b.p||'').replace(/[^0-9.]/g,'')}"
-        data-stock="${b.stock ?? ''}"
-        data-img="${escHtml(b.img)}">+ Add to Cart</button>
-    </a>
-  `).join('');
+  grid.innerHTML = slice.map(iacBookCard).join('');
   const btn = document.getElementById('loadMoreBtn');
   const info = document.getElementById('booksCount');
   info.textContent = `Showing ${Math.min(visibleCount, books.length)} of ${books.length} books in "${cat}"`;
@@ -4709,6 +4627,280 @@ def strip_expired_sale(html, now=None):
     if sale_is_live(now):
         return html
     return re.sub(r'<!--SALE:START-->.*?<!--SALE:END-->', '', html, flags=re.S)
+
+# ── Book card: one renderer for every grid ───────────────────────────────────
+# Shipped as its own hashed, immutable asset rather than inlined into each
+# template: the homepage, /collection/ and /category/ all need it, and inlining
+# would put the same 8 KB into three pages and re-download it on every content
+# change.
+_BOOK_CARD_JS = r"""
+/* One book card, for every grid on the site.
+ *
+ * There were four copies of this markup and they had drifted apart in ways
+ * that mattered, not just cosmetically:
+ *   - two of them dropped data-no-cod and data-pub-sourced, so a prepaid-only
+ *     title added from those grids reached checkout with Cash on Delivery
+ *     still offered;
+ *   - two had no sold-out state at all;
+ *   - /collection/ had no add button whatsoever, and its card was a <div>
+ *     with an onclick instead of a link, so it could not be opened in a new
+ *     tab and carried no href for a crawler to follow.
+ * One renderer means the next change to a card lands everywhere at once.
+ */
+(function () {
+  if (window.iacBookCard) return;              // one definition per page
+
+  var CART_KEY = 'akshar_cart';
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function num(v) {
+    return parseFloat(String(v == null ? '' : v).replace(/[^0-9.]/g, '')) || 0;
+  }
+
+  /* A discount badge is a price claim, so it is only drawn when the claim is
+     credible. Several hundred titles carry a placeholder MRP -- a 1,199 list
+     price against a 49 cover price -- which arithmetic turns into "96% OFF",
+     a number nobody should publish and the kind of thing Merchant Center
+     suspends an account over. Above the cap the struck-through MRP still
+     shows exactly as it does today; only the badge is withheld. */
+  var MAX_CREDIBLE_OFF = 70;
+  var MIN_WORTH_SHOWING = 5;
+
+  function discountPct(b) {
+    var p = num(b.p), o = num(b.op);
+    if (!(p > 0 && o > p)) return 0;
+    var off = Math.round((1 - p / o) * 100);
+    return (off < MIN_WORTH_SHOWING || off > MAX_CREDIBLE_OFF) ? 0 : off;
+  }
+
+  function isSold(b) {
+    return !!b && b.stock !== null && b.stock !== undefined && Number(b.stock) <= 0;
+  }
+
+  function cartQtyMap() {
+    var m = {};
+    try {
+      var c = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
+      for (var i = 0; i < c.length; i++) {
+        if (c[i] && c[i].id) m[String(c[i].id)] = Number(c[i].qty) || 0;
+      }
+    } catch (e) {}                              // private mode, cleared storage
+    return m;
+  }
+
+  window.iacBookCard = function (b) {
+    if (!b) return '';
+    var url = String(b.url || '');
+    var sold = isSold(b);
+    var off = discountPct(b);
+    var qty = cartQtyMap()[url] || 0;
+
+    var badges = '';
+    if (sold) badges += '<span class="iac-soon">Coming soon</span>';
+    else if (off) badges += '<span class="iac-off">' + off + '% off</span>';
+    if (b.n && !sold) badges += '<span class="iac-new">New</span>';
+
+    /* The heart keeps the class and data-url the page's own
+       updateWishlistBadge() already looks for, so that keeps working
+       untouched. Rendered only where a wishlist actually exists. */
+    var wish = '';
+    if (typeof window.toggleWishlist === 'function') {
+      var on = window.isWishlisted ? !!window.isWishlisted(url) : false;
+      wish = '<button type="button" class="wish-btn' + (on ? ' wishlisted' : '') + '" data-wish="1"'
+        + ' data-url="' + esc(url) + '"'
+        + ' data-title="' + esc(b.t) + '"'
+        + ' data-img="' + esc(b.img || '') + '"'
+        + ' data-price="' + num(b.p) + '"'
+        + ' aria-label="' + (on ? 'Remove from wishlist' : 'Save to wishlist') + '">'
+        + (on ? '♥' : '♡') + '</button>';
+    }
+
+    var qadd;
+    if (sold) {
+      qadd = '<span class="iac-qadd off" aria-hidden="true">—</span>';
+    } else {
+      qadd = '<button type="button" class="iac-qadd' + (qty ? ' has' : '') + '" data-qadd="1"'
+        + ' data-url="' + esc(url) + '"'
+        + ' data-title="' + esc(b.t) + '"'
+        + ' data-author="' + esc(b.a || '') + '"'
+        + ' data-price="' + num(b.p) + '"'
+        + ' data-img="' + esc(b.img || '') + '"'
+        + ' data-sku="' + esc(b.sku || '') + '"'
+        + ' data-stock="' + (b.stock == null ? '' : esc(b.stock)) + '"'
+        + ' data-no-cod="' + (b.no_cod ? '1' : '') + '"'
+        + ' data-pub-sourced="' + (b.publisher_sourced ? '1' : '') + '"'
+        + ' aria-label="Add ' + esc(b.t) + ' to cart">'
+        + (qty ? qty : '+') + '</button>';
+    }
+
+    return '<a class="book-card" href="/product/' + esc(b.slug) + '/" style="text-decoration:none;color:inherit;display:block;">'
+      + '<div class="book-cover" style="position:relative;">'
+      +   (badges ? '<span class="iac-badges">' + badges + '</span>' : '')
+      +   '<img src="' + esc(b.img || '') + '" alt="' + esc(b.t) + '" loading="lazy" onerror="this.style.display=\'none\'"/>'
+      +   wish + qadd
+      + '</div>'
+      + '<div class="book-name">' + esc(b.t) + '</div>'
+      + '<div class="book-author">' + esc(b.a || '') + '</div>'
+      + '<div class="iac-meta">'
+      +   '<span class="book-price">' + esc(b.p) + (b.op ? '<span class="iac-orig">' + esc(b.op) + '</span>' : '') + '</span>'
+      +   (b.cat ? '<span class="iac-cat">' + esc(b.cat) + '</span>' : '')
+      + '</div>'
+      + '</a>';
+  };
+
+  /* The buttons are rendered from localStorage at paint time, so anything that
+     changes the cart afterwards -- the drawer, another tab, a back-navigation
+     out of the bfcache -- has to bring them back in step. */
+  function syncQuickAdds(root) {
+    var m = cartQtyMap();
+    var list = (root || document).querySelectorAll('.iac-qadd[data-qadd]');
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+      var q = m[el.getAttribute('data-url') || ''] || 0;
+      el.textContent = q ? String(q) : '+';
+      if (q) el.classList.add('has'); else el.classList.remove('has');
+    }
+  }
+  window.iacSyncQuickAdds = syncQuickAdds;
+
+  /* The page loader shows its overlay on any click inside a link, from a
+     CAPTURE listener on document. A quick-add button sits inside the card's
+     <a>, so cancelling the navigation in the bubble phase would leave the
+     overlay up for its full 8-second failsafe. Cancel in capture, and clear
+     the overlay anyway in case something else raised it first. */
+  function stopLoader() {
+    var l = document.getElementById('iacPageLoader');
+    if (l) l.classList.remove('show');
+  }
+
+  function quickAdd(btn) {
+    var d = btn.dataset || {};
+    if (d.stock !== '' && d.stock != null && Number(d.stock) <= 0) {
+      if (window.showToast) window.showToast('Out of stock — coming soon');
+      return;
+    }
+    if (typeof window.addToCart !== 'function') {   // no cart on this page
+      window.location.href = d.url || '/';
+      return;
+    }
+    var item = {
+      id: d.url, url: d.url, title: d.title, author: d.author || '',
+      price: num(d.price), img: d.img, sku: d.sku || '',
+    };
+    // _no_cod is what checkout reads to switch Cash on Delivery off. Losing it
+    // is how a prepaid-only title gets ordered COD, so it travels with the
+    // item from every grid, not just the homepage's main one.
+    if (d.noCod) item._no_cod = true;
+    if (d.pubSourced) item._publisher_sourced = true;
+    window.addToCart(item, { keepBrowsing: true });
+    btn.classList.add('pop');
+    setTimeout(function () { btn.classList.remove('pop'); }, 420);
+    syncQuickAdds();
+  }
+
+  function toggleWish(btn) {
+    if (typeof window.toggleWishlist !== 'function') return;
+    var d = btn.dataset || {};
+    window.toggleWishlist({ url: d.url, title: d.title, img: d.img, price: num(d.price) });
+    if (window.updateWishlistBadge) window.updateWishlistBadge();
+  }
+
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    var qa = t.closest('[data-qadd]');
+    if (qa) { ev.preventDefault(); ev.stopPropagation(); stopLoader(); quickAdd(qa); return; }
+    var w = t.closest('[data-wish]');
+    if (w) { ev.preventDefault(); ev.stopPropagation(); stopLoader(); toggleWish(w); }
+  }, true);
+
+  window.addEventListener('storage', function (e) { if (e.key === CART_KEY) syncQuickAdds(); });
+  window.addEventListener('pageshow', function () { syncQuickAdds(); });
+})();
+"""
+
+_BOOK_CARD_CSS = r"""
+/* Book card furniture shared by every grid. The card's own scale --
+   .book-card, .book-cover, .book-name, .book-price -- stays owned by each
+   page, because the homepage grid and the collection grid are different
+   sizes. Only the parts that must look identical everywhere live here. */
+.iac-badges{position:absolute;top:8px;left:8px;z-index:5;display:flex;flex-direction:column;gap:4px;align-items:flex-start;pointer-events:none}
+.iac-off,.iac-new,.iac-soon{font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;padding:0.28rem 0.5rem;line-height:1;white-space:nowrap}
+.iac-off{background:linear-gradient(135deg,#c04336,#a2352a);color:#fff;box-shadow:0 4px 10px rgba(185,66,54,0.4)}
+.iac-new{background:rgba(13,11,8,0.82);color:#c9a84c;border:1px solid rgba(201,168,76,0.5)}
+.iac-soon{background:rgba(13,11,8,0.82);color:#e8a030;border:1px solid rgba(232,160,48,0.5)}
+
+/* Quick add. A tap target on the cover rather than a full-width button under
+   it: it is always visible, it costs no vertical space, and it can carry the
+   count once the book is in the cart. */
+.iac-qadd{position:absolute;right:8px;bottom:8px;z-index:6;width:38px;height:38px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  border:1px solid rgba(201,168,76,0.55);background:rgba(13,11,8,0.86);color:#c9a84c;
+  font-family:'Inter',sans-serif;font-size:1.15rem;font-weight:400;line-height:1;padding:0;
+  -webkit-tap-highlight-color:transparent;transition:transform 0.18s ease,background 0.2s ease,color 0.2s ease}
+@media(hover:hover){.iac-qadd:hover{background:#c9a84c;color:#0d0b08;transform:scale(1.08)}}
+.iac-qadd:active{transform:scale(0.9)}
+.iac-qadd.has{background:#c9a84c;color:#0d0b08;font-size:0.82rem;font-weight:700}
+.iac-qadd.off{border-color:rgba(232,160,48,0.4);color:#e8a030;cursor:not-allowed;font-size:0.9rem}
+.iac-qadd.pop{animation:iacQPop 0.42s ease}
+@keyframes iacQPop{0%{transform:scale(1)}35%{transform:scale(1.32)}100%{transform:scale(1)}}
+html[data-theme="light"] .iac-qadd{background:rgba(255,252,245,0.92);border-color:rgba(138,106,31,0.45);color:#8a6a1f}
+html[data-theme="light"] .iac-qadd.has{background:#8a6a1f;color:#fff}
+html[data-theme="light"] .iac-new{background:rgba(255,252,245,0.9);color:#8a6a1f;border-color:rgba(138,106,31,0.45)}
+
+/* The heart was opacity:0 until :hover, which on a touch screen meant it was
+   never reachable at all. Making it visible exposed the rest: a hard-cornered
+   dark chip with dark text, unreadable in light mode and mismatched against
+   the round quick-add beside it. Scoped to .book-cover so it wins over the
+   page's own rule whichever order the stylesheets happen to load in. */
+.book-cover .wish-btn{width:30px;height:30px;border-radius:50%;padding:0;font-size:0.95rem;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(201,168,76,0.4);background:rgba(13,11,8,0.72);color:#f0e8d8;
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.book-cover .wish-btn.wishlisted{color:#e05050;border-color:rgba(224,80,80,0.5)}
+html[data-theme="light"] .book-cover .wish-btn{background:rgba(255,252,245,0.92);border-color:rgba(138,106,31,0.4);color:#8a6a1f}
+html[data-theme="light"] .book-cover .wish-btn.wishlisted{color:#d04545}
+@media(hover:none){.book-cover .wish-btn{opacity:0.9}}
+
+.iac-meta{display:flex;justify-content:space-between;align-items:baseline;gap:0.4rem;margin-top:0.15rem}
+.iac-orig{font-size:0.65rem;color:var(--cream-dim,#a09080);text-decoration:line-through;margin-left:0.3rem}
+.iac-cat{font-size:0.5rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--gold-dim,#9a824a);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+@media(max-width:560px){.iac-cat{display:none}}
+"""
+
+_bc_js_name = f"book-card-{hashlib.md5(_BOOK_CARD_JS.encode()).hexdigest()[:8]}.js"
+_bc_css_name = f"book-card-{hashlib.md5(_BOOK_CARD_CSS.encode()).hexdigest()[:8]}.css"
+_bc_js_path = Path(__file__).parent / "public" / "js" / _bc_js_name
+_bc_css_path = Path(__file__).parent / "public" / "css" / _bc_css_name
+_bc_js_path.parent.mkdir(parents=True, exist_ok=True)
+_bc_css_path.parent.mkdir(parents=True, exist_ok=True)
+_bc_js_path.write_text(_BOOK_CARD_JS, encoding="utf-8")
+_bc_css_path.write_text(_BOOK_CARD_CSS, encoding="utf-8")
+# Sweep the previous hash, the same way the app shell and the catalogue bundle
+# do. Without this every edit leaves another copy in public/ for ever.
+for _old in _bc_js_path.parent.glob("book-card-*.js"):
+    if _old.name != _bc_js_name:
+        _old.unlink(missing_ok=True)
+for _old in _bc_css_path.parent.glob("book-card-*.css"):
+    if _old.name != _bc_css_name:
+        _old.unlink(missing_ok=True)
+print(f"Generated: {_bc_js_path}")
+print(f"Generated: {_bc_css_path}")
+
+# Not deferred: every grid renderer calls iacBookCard, and some of them run
+# from the inline script that follows this tag.
+_BOOK_CARD_TAGS = (
+    f'<link rel="stylesheet" href="/css/{_bc_css_name}"/>\n'
+    f'<script src="/js/{_bc_js_name}"></script>'
+)
+
+_bc_anchor = '<script src="/js/search-suggest.js" defer></script>'
+assert HTML.count(_bc_anchor) == 1, "homepage book-card anchor moved"
+HTML = HTML.replace(_bc_anchor, _bc_anchor + "\n" + _BOOK_CARD_TAGS, 1)
 
 HTML = strip_expired_sale(HTML)
 
@@ -10594,14 +10786,7 @@ function renderGrid() {
   if (sort === 'price-desc') list.sort((a,b) => priceOf(b) - priceOf(a));
   if (sort === 'alpha')      list.sort((a,b) => (a.t||'').localeCompare(b.t||''));
   document.getElementById('visCount').textContent = list.length;
-  document.getElementById('grid').innerHTML = list.map(b => `
-    <div class="book-card" onclick="location.href='/product/${b.slug}/'">
-      <div class="book-cover">${b.img ? `<img src="${esc(b.img)}" alt="${esc(b.t)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}</div>
-      <div class="book-name">${esc(b.t)}</div>
-      <div class="book-author">${esc(b.a||'')}</div>
-      <div><span class="book-price">${esc(b.p)}</span>${b.op ? `<span class="book-orig">${esc(b.op)}</span>` : ''}</div>
-    </div>
-  `).join('');
+  document.getElementById('grid').innerHTML = list.map(iacBookCard).join('');
 }
 </script>
 </body>
@@ -10612,6 +10797,11 @@ COLLECTION_HTML = COLLECTION_HTML.replace("BOOKS_DATA_PLACEHOLDER", "window.BOOK
 COLLECTION_HTML = COLLECTION_HTML.replace('<div id="page"></div>\n<script>\nconst BOOKS = window.BOOKS_PRELOAD||[];',
                                           f'<div id="page"></div>\n{BOOKS_LITE_TAG}\n<script>\nconst BOOKS = window.BOOKS_PRELOAD||[];')
 COLLECTION_HTML = COLLECTION_HTML.replace("COLLECTIONS_DATA_PLACEHOLDER", json.dumps(coll_data, ensure_ascii=False))
+# /collection/ and /category/ render the same cards, so they load the same
+# renderer. Before this they had a card with no add button at all.
+assert COLLECTION_HTML.count('<div id="page"></div>') == 1, "collection book-card anchor moved"
+COLLECTION_HTML = COLLECTION_HTML.replace('<div id="page"></div>',
+                                          _BOOK_CARD_TAGS + '\n<div id="page"></div>', 1)
 COLLECTION_HTML = with_reader_activity(COLLECTION_HTML)
 
 coll_out = Path(__file__).parent / "public" / "collection" / "index.html"
