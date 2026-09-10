@@ -4597,7 +4597,7 @@ document.querySelectorAll('.stat-num').forEach(el => {
   statObs.observe(el);
 });
 </script>
-<script src="/js/homepage-merchandising.js?v=20260729" defer></script>
+<script src="/js/homepage-merchandising.js?v=20260910" defer></script>
 </body>
 </html>
 """
@@ -4692,17 +4692,27 @@ _BOOK_CARD_JS = r"""
     return m;
   }
 
-  window.iacBookCard = function (b) {
+  /* @param opts  { badge: 'New arrival' } adds a labelled chip above the other
+   *              badges; { className: 'home-merch-card' } adds a class to the
+   *              card, for grids that size their own cards.
+   *              Guarded because every grid calls this as .map(iacBookCard),
+   *              and Array.map hands the index in as the second argument. */
+  window.iacBookCard = function (b, opts) {
     if (!b) return '';
+    opts = (opts && typeof opts === 'object') ? opts : {};
     var url = String(b.url || '');
     var sold = isSold(b);
     var off = discountPct(b);
     var qty = cartQtyMap()[url] || 0;
 
     var badges = '';
+    if (opts.badge) badges += '<span class="iac-tag">' + esc(opts.badge) + '</span>';
     if (sold) badges += '<span class="iac-soon">Coming soon</span>';
     else if (off) badges += '<span class="iac-off">' + off + '% off</span>';
-    if (b.n && !sold) badges += '<span class="iac-new">New</span>';
+    // A caller's own label wins: the merchandising rows already say "New
+    // arrival" over the card, and stacking our own "New" under it just
+    // repeated the word twice in the same corner.
+    if (b.n && !sold && !opts.badge) badges += '<span class="iac-new">New</span>';
 
     /* The heart keeps the class and data-url the page's own
        updateWishlistBadge() already looks for, so that keeps working
@@ -4737,7 +4747,8 @@ _BOOK_CARD_JS = r"""
         + (qty ? qty : '+') + '</button>';
     }
 
-    return '<a class="book-card" href="/product/' + esc(b.slug) + '/" style="text-decoration:none;color:inherit;display:block;">'
+    return '<a class="book-card' + (opts.className ? ' ' + esc(opts.className) : '') + '"'
+      + ' href="/product/' + esc(b.slug) + '/" style="text-decoration:none;color:inherit;display:block;">'
       + '<div class="book-cover" style="position:relative;">'
       +   (badges ? '<span class="iac-badges">' + badges + '</span>' : '')
       +   '<img src="' + esc(b.img || '') + '" alt="' + esc(b.t) + '" loading="lazy" onerror="this.style.display=\'none\'"/>'
@@ -4829,10 +4840,13 @@ _BOOK_CARD_CSS = r"""
    page, because the homepage grid and the collection grid are different
    sizes. Only the parts that must look identical everywhere live here. */
 .iac-badges{position:absolute;top:8px;left:8px;z-index:5;display:flex;flex-direction:column;gap:4px;align-items:flex-start;pointer-events:none}
-.iac-off,.iac-new,.iac-soon{font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;padding:0.28rem 0.5rem;line-height:1;white-space:nowrap}
+.iac-off,.iac-new,.iac-soon,.iac-tag{font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;padding:0.28rem 0.5rem;line-height:1;white-space:nowrap}
 .iac-off{background:linear-gradient(135deg,#c04336,#a2352a);color:#fff;box-shadow:0 4px 10px rgba(185,66,54,0.4)}
 .iac-new{background:rgba(13,11,8,0.82);color:#c9a84c;border:1px solid rgba(201,168,76,0.5)}
 .iac-soon{background:rgba(13,11,8,0.82);color:#e8a030;border:1px solid rgba(232,160,48,0.5)}
+/* A caller-supplied label -- "New arrival", "Bestseller" -- from the homepage
+   merchandising rows. */
+.iac-tag{background:#b8382e;color:#fff;box-shadow:0 4px 10px rgba(184,56,46,0.4)}
 
 /* Quick add. A tap target on the cover rather than a full-width button under
    it: it is always visible, it costs no vertical space, and it can carry the

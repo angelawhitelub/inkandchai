@@ -4,10 +4,13 @@
    page, because the homepage grid and the collection grid are different
    sizes. Only the parts that must look identical everywhere live here. */
 .iac-badges{position:absolute;top:8px;left:8px;z-index:5;display:flex;flex-direction:column;gap:4px;align-items:flex-start;pointer-events:none}
-.iac-off,.iac-new,.iac-soon{font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;padding:0.28rem 0.5rem;line-height:1;white-space:nowrap}
+.iac-off,.iac-new,.iac-soon,.iac-tag{font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;padding:0.28rem 0.5rem;line-height:1;white-space:nowrap}
 .iac-off{background:linear-gradient(135deg,#c04336,#a2352a);color:#fff;box-shadow:0 4px 10px rgba(185,66,54,0.4)}
 .iac-new{background:rgba(13,11,8,0.82);color:#c9a84c;border:1px solid rgba(201,168,76,0.5)}
 .iac-soon{background:rgba(13,11,8,0.82);color:#e8a030;border:1px solid rgba(232,160,48,0.5)}
+/* A caller-supplied label -- "New arrival", "Bestseller" -- from the homepage
+   merchandising rows. */
+.iac-tag{background:#b8382e;color:#fff;box-shadow:0 4px 10px rgba(184,56,46,0.4)}
 
 /* Quick add. A tap target on the cover rather than a full-width button under
    it: it is always visible, it costs no vertical space, and it can carry the

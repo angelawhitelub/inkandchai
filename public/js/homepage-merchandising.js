@@ -34,24 +34,14 @@
       || books.find(book => titleKey(book.t) === wantedTitle);
   }
 
+  /* The fifth copy of the card markup, now the same one as every other grid.
+     It used to build its own, which meant it also dropped data-no-cod and
+     data-sku -- a prepaid-only title added from New Arrivals reached checkout
+     with Cash on Delivery still offered. */
   function card(book, badge) {
-    const price = Number(String(book.p || '').replace(/[^0-9.]/g, '')) || 0;
-    return `<a class="book-card home-merch-card" href="/product/${text(book.slug)}/">
-      <div class="book-cover">
-        <span class="home-merch-badge">${text(badge)}</span>
-        <img src="${text(book.img || '/images/og-default.jpg')}" alt="${text(book.t)}" loading="lazy"
-          onerror="this.src='/images/og-default.jpg'">
-      </div>
-      <div class="book-name">${text(book.t)}</div>
-      <div class="book-author">${text(book.a || '')}</div>
-      <div class="book-meta">
-        <span class="book-price">${text(book.p || '')}${book.op ? `<span class="book-orig-price">${text(book.op)}</span>` : ''}</span>
-        <span class="book-category">${text(book.cat || 'Books')}</span>
-      </div>
-      <button class="btn-add-card" data-url="${text(book.url)}" data-title="${text(book.t)}"
-        data-author="${text(book.a || '')}" data-price="${price}" data-img="${text(book.img)}"
-        onclick="event.preventDefault();event.stopPropagation();addToCartById(this)">+ Add to Cart</button>
-    </a>`;
+    return window.iacBookCard
+      ? window.iacBookCard(book, { badge: badge, className: 'home-merch-card' })
+      : '';
   }
 
   function ensureSection() {
@@ -142,8 +132,6 @@
     .home-merch-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1.15rem}
     .home-merch-card{color:inherit;text-decoration:none;display:block;position:relative}
     .home-merch-card .book-cover{position:relative}
-    .home-merch-badge{position:absolute;top:.65rem;left:.65rem;z-index:2;padding:.3rem .55rem;border-radius:3px;
-      background:#b8382e;color:#fff;font:700 .62rem/1 var(--sans);letter-spacing:.08em;text-transform:uppercase}
     @media(max-width:1100px){.home-merchandising{padding:4rem 2rem 1rem}.home-merch-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
     @media(max-width:760px){.home-merchandising{padding:3rem 1rem 0}.home-merch-block{margin-bottom:3.5rem}
       .home-merch-heading{align-items:center}.home-merch-grid{display:flex;overflow-x:auto;gap:.85rem;padding-bottom:1rem;scroll-snap-type:x mandatory}
