@@ -2919,6 +2919,27 @@ let sortAsc       = false;
 let page          = 1;
 let hasMore       = false;
 let serverTotal   = null; // total count from server (shown immediately, before all pages load)
+
+/**
+ * Is every order in memory yet?
+ *
+ * Orders arrive in pages of PAGE, and the tab bar is initialised after page 1
+ * so the panel is usable straight away. For the ORDERS table that is fine — it
+ * paginates, and more rows simply appear. For the panels that derive a whole
+ * worklist from allOrders (Missing Books, Replacements) it is not: a list built
+ * from the newest 500 orders is not a shorter version of the answer, it is a
+ * different answer, and the counts change under the reader when the rest lands.
+ *
+ * The cached set does not count as complete even when its own row count
+ * matches its own stored total. A cache write that hit the localStorage quota
+ * fails silently, so what loads back can be an internally consistent snapshot
+ * of a smaller, older shop — self-consistent and still wrong. Only the network
+ * assembly sets the flag.
+ */
+let ordersLoadedFully = false;
+function ordersFullyLoaded() {
+  return ordersLoadedFully && Number(serverTotal) > 0 && allOrders.length >= Number(serverTotal);
+}
 const PAGE        = 500;  // rows per request (auto-paginates in parallel until all loaded)
 let tablePage     = 1;    // UI page; only this slice is rendered into the DOM
 let tablePageSize = 50;
@@ -3213,6 +3234,7 @@ async function fetchOrders(reset = false) {
     if (cached?.orders?.length) {
       allOrders   = cached.orders;
       serverTotal = cached.total ?? cached.orders.length;
+      ordersLoadedFully = false;
       // Show dashboard + cached table immediately while fresh data fetches in background
       document.getElementById('loginPanel').style.display = 'none';
       hideBootCheck();
@@ -3299,6 +3321,7 @@ async function fetchOrders(reset = false) {
 
     allOrders = combined;
     hasMore = false;
+    ordersLoadedFully = true;
     page = totalPages + 1;
 
     // Product data is lazy-loaded by the Products tab. Re-fetching it during
@@ -3306,6 +3329,7 @@ async function fetchOrders(reset = false) {
     if (activeAdminTabName() === 'products') fetchProducts();
     updateStats();
     applyFilters();
+    renderOrderDerivedPanels();
     saveOrdersToCache(combined, serverTotal);
 
     // Trigger PhonePe auto-recheck once
@@ -3375,6 +3399,7 @@ async function refreshRecentOrders() {
 
     updateStats();
     applyFilters();
+    renderOrderDerivedPanels();
     saveOrdersToCache(allOrders, serverTotal);
   } catch (e) {
     if (String(e.message) === 'UNAUTHORIZED') return;
@@ -11148,6 +11173,32 @@ function ensureAdminTabInitialized() {
   initTabFromHash();
 }
 
+/**
+ * Redraw whichever open panel reads its rows straight out of allOrders.
+ *
+ * Called when the order set changes under it — the last page of a cold load
+ * arriving, or the 90-second delta finding something. The signature check is
+ * what keeps this from being its own kind of shuffling: re-rendering an
+ * identical list would throw away the reader's scroll position for nothing.
+ */
+let _derivedPanelSignature = '';
+function renderOrderDerivedPanels() {
+  const tab = activeAdminTabName();
+  const render = tab === 'missingbooks' ? window.renderMissingBooks
+               : tab === 'replacements' ? window.renderReplacementRequests
+               : null;
+  if (typeof render !== 'function') { _derivedPanelSignature = ''; return; }
+
+  const rows = tab === 'missingbooks' ? missingBookRows() : replacementRequestRows();
+  const signature = [
+    tab, ordersFullyLoaded(), rows.length,
+    rows.map(r => (r.state ? `${r.state}:${(r.repl || r.original || {}).id || ''}` : r.id)).join(','),
+  ].join('|');
+  if (signature === _derivedPanelSignature) return;
+  _derivedPanelSignature = signature;
+  render();
+}
+
 function applyRoleVisibility() {
   const limited = adminRole !== 'owner';
   document.querySelectorAll('.owner-only').forEach(el => { el.style.display = limited ? 'none' : ''; });
@@ -11322,8 +11373,16 @@ function mbTitleKey(item) {
  * Coverage is checked against EVERY replacement cart for the order, whatever
  * its reason: if a book is going back out, it is handled, and which form the
  * replacement took is not this tab's business.
+ *
+ * Absence of a replacement is only meaningful once every order is in memory.
+ * Mid-load the original can be present and its replacement still unfetched,
+ * which would print "No replacement" against an order that was replaced weeks
+ * ago. On a panel whose next button sends money, a false positive is worse
+ * than a missing row, so this returns nothing until the set is complete and
+ * renderMissingBooks says so in the meta line.
  */
 function mbUnreplacedRows(byId) {
+  if (!ordersFullyLoaded()) return [];
   const covered = new Map();   // original order id -> Set(title key)
   for (const o of allOrders) {
     const meta = mbMeta(o);
@@ -11344,7 +11403,16 @@ function mbUnreplacedRows(byId) {
     // arrive incomplete, and the customer reports that against the replacement
     // id — so it is an "original" for this purpose too, and can legitimately
     // produce both a replacement row and an unreplaced one.
-    const items = Array.isArray(o.cart_items) ? o.cart_items : [];
+    //
+    // What it must not do is inherit. Replacement carts built before
+    // request-replacement.js stripped them still carry the original's
+    // `_missing` stamps, which would list the replacement as a report of
+    // itself. A stamp older than the replacement was made against the order
+    // this cart was copied from, so only a later one is a real report.
+    const ownMeta = mbMeta(o);
+    const bornAt = ownMeta ? String(ownMeta.requested_at || o.created_at || '') : '';
+    const items = (Array.isArray(o.cart_items) ? o.cart_items : [])
+      .filter(it => !bornAt || String((it && it._missing_at) || '') > bornAt);
     const orderKey = String(o.razorpay_order_id || o.id || '');
     const seen = covered.get(orderKey) || new Set();
     // The reported quantity is what is owed, not the quantity ordered: a
@@ -11473,7 +11541,10 @@ function renderMissingBooks() {
   metaEl.innerHTML = `${rows.length.toLocaleString('en-IN')} shown of ${all.length.toLocaleString('en-IN')}`
     + (owedTotal > 0
         ? ` · <strong style="color:#c98a36;">₹${money(owedTotal)} owed by manual transfer</strong> across ${owedFor} order${owedFor === 1 ? '' : 's'}`
-        : ' · nothing owed by manual transfer');
+        : ' · nothing owed by manual transfer')
+    + (ordersFullyLoaded() ? '' :
+        ` · <strong style="color:var(--cream-dim);">still loading ${allOrders.length.toLocaleString('en-IN')} of `
+        + `${Number(serverTotal || 0).toLocaleString('en-IN')} orders — reports with no replacement appear once every order is in</strong>`);
   empty.textContent = q ? 'Nothing matches that search.' : 'Nothing in this view.';
   empty.style.display = rows.length ? 'none' : '';
 
@@ -11800,9 +11871,10 @@ function renderReplacementRequests() {
   const q = (document.getElementById('replacementSearch')?.value || '').toLowerCase().trim();
   const rows = q ? all.filter(o => replacementHaystack(o).includes(q)) : all;
 
-  metaEl.textContent = q
+  metaEl.textContent = (q
     ? `${rows.length.toLocaleString('en-IN')} of ${all.length.toLocaleString('en-IN')} request${all.length === 1 ? '' : 's'} match “${q}” · ${pending.toLocaleString('en-IN')} awaiting action overall`
-    : `${all.length.toLocaleString('en-IN')} request${all.length === 1 ? '' : 's'} · ${pending.toLocaleString('en-IN')} awaiting action`;
+    : `${all.length.toLocaleString('en-IN')} request${all.length === 1 ? '' : 's'} · ${pending.toLocaleString('en-IN')} awaiting action`)
+    + (ordersFullyLoaded() ? '' : ` · still loading ${allOrders.length.toLocaleString('en-IN')} of ${Number(serverTotal || 0).toLocaleString('en-IN')} orders`);
   empty.textContent = q ? 'No replacement requests match that search.' : 'No replacement requests found.';
   empty.style.display = rows.length ? 'none' : '';
 

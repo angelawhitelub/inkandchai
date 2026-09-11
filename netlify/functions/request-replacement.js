@@ -243,7 +243,12 @@ exports.handler = async (event) => {
   // Carry the original cart so warehouse knows what to re-ship. First item gets
   // a `_replacement` meta blob so the admin panel (and any downstream tooling)
   // can link back to the source order without a JOIN.
-  const cartCopy = JSON.parse(JSON.stringify(Array.isArray(orig.cart_items) ? orig.cart_items : []));
+  // The report-missing-books stamps stay behind on the original. Copying them
+  // onto the replacement makes the replacement look like a fresh report of a
+  // book nobody is re-shipping, and the Missing Books tab would list it as
+  // money owed. The original keeps its own record; this cart is just goods.
+  const cartCopy = JSON.parse(JSON.stringify(Array.isArray(orig.cart_items) ? orig.cart_items : []))
+    .map(({ _missing, _missing_at, _missing_qty, _missing_comment, _refund_upi_id, _replacement, ...it }) => it);
   if (cartCopy.length) {
     cartCopy[0]._replacement = {
       original_order_id: orig.razorpay_order_id,
