@@ -181,8 +181,7 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .items-cell div{white-space:normal;overflow-wrap:anywhere;margin-bottom:0.1rem;}
 /* Per-item price breakdown: title wraps, price stays pinned to the first line. */
 .items-cell .item-line{display:flex;align-items:baseline;gap:0.5rem;justify-content:space-between;}
-.items-cell .item-line .it-title{white-space:normal;overflow-wrap:anywhere;min-width:0;line-height:1.35;
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;}
+.items-cell .item-line .it-title{white-space:normal;overflow-wrap:anywhere;min-width:0;line-height:1.35;}
 .items-cell .item-line .it-price{flex-shrink:0;color:var(--gold);font-variant-numeric:tabular-nums;font-size:0.7rem;}
 .items-cell .items-subtotal{margin-top:0.25rem;padding-top:0.25rem;border-top:1px dashed var(--border);color:var(--gold-dim);font-size:0.66rem;}
 .amount{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--gold);}
@@ -11497,20 +11496,31 @@ function renderMissingBooks() {
       : `<span style="color:#6dbf6d;">💳 Gateway</span>
          <div class="hint" style="margin-top:.2rem;">₹${money(split.gateway)} refundable</div>`;
 
+    // The customer hands over a UPI id when they report the missing book, long
+    // before anything is cancelled. It used to surface only once the row
+    // reached "ready", so on a shipped or pending replacement — which is most
+    // of them — the one detail needed to pay the person was invisible here and
+    // had to be dug out of the Replacements tab.
+    const upiLine = meta.refund_upi_id
+      ? `<div style="margin-top:.3rem;font-family:ui-monospace,Menlo,monospace;font-size:.74rem;user-select:all;color:var(--cream);" title="UPI ID the customer gave — click to select">${esc(meta.refund_upi_id)}</div>
+         <div class="hint">${meta.refund_upi_source === 'admin' ? 'Entered by us' : 'Given by the customer'}${meta.refund_upi_at ? ` · ${mbDate(meta.refund_upi_at)}` : ''}</div>`
+      : '';
+
     let stateCell = '';
     if (state === 'unreplaced') {
       stateCell = `<span style="color:#c93636;">Nothing sent yet</span>
          <div class="hint" style="margin-top:.2rem;">Reported ${mbDate(meta.requested_at)} · no replacement covers ${items.length === 1 ? 'this book' : 'these books'}</div>`
         + (meta.customer_comment ? `<div class="hint" style="margin-top:.3rem;font-style:italic;">"${esc(String(meta.customer_comment).slice(0, 140))}"</div>` : '');
     } else if (state === 'open') {
-      stateCell = `<span style="color:var(--cream-dim);">${esc((repl.status || '—').replace(/_/g, ' '))}</span>`;
+      stateCell = `<span style="color:var(--cream-dim);">${esc((repl.status || '—').replace(/_/g, ' '))}</span>` + upiLine;
     } else if (state === 'gateway') {
-      stateCell = `<span style="color:var(--cream-dim);">Original is <strong>${esc(original?.status || 'unknown')}</strong></span>`;
+      stateCell = `<span style="color:var(--cream-dim);">Original is <strong>${esc(original?.status || 'unknown')}</strong></span>` + upiLine;
     } else if (state === 'needs_upi') {
       stateCell = meta.upi_requested_at
         ? `<span style="color:#c98a36;">Asked ${mbDate(meta.upi_requested_at)}${Number(meta.upi_request_count) > 1 ? ` ×${meta.upi_request_count}` : ''}</span>
            <div class="hint" style="margin-top:.2rem;">No reply yet</div>`
         : `<span style="color:#c93636;">Not asked yet</span>`;
+      stateCell += upiLine;
     } else if (state === 'ready') {
       stateCell = `<div style="font-family:ui-monospace,Menlo,monospace;font-size:.78rem;user-select:all;color:var(--cream);">${esc(meta.refund_upi_id)}</div>
                    <div class="hint" style="margin-top:.2rem;">Given ${mbDate(meta.refund_upi_at)}${meta.refund_upi_source === 'admin' ? ' (by us)' : ''}</div>`;
@@ -11530,10 +11540,18 @@ function renderMissingBooks() {
       actions = btn(meta.upi_requested_at ? '📧 Ask again' : '📧 Ask for UPI', `mbAskForUpi('${rowId}', ${meta.upi_requested_at ? 'true' : 'false'}, this)`, '#c98a36')
               + ' ' + btn('✎ Enter it', `mbSaveUpi('${rowId}')`);
     } else if (state === 'ready') {
-      actions = btn('✓ Mark paid', `mbMarkPaid('${rowId}', this)`, '#6dbf6d')
-              + ' ' + btn('✎ Change', `mbSaveUpi('${rowId}')`);
+      actions = btn('₹ I have sent it', `mbRefundSent('${rowId}', this)`, '#6dbf6d')
+              + ' ' + btn('✎ Change UPI', `mbSaveUpi('${rowId}')`);
     } else if (state === 'paid') {
       actions = btn('↺ Undo', `mbMarkPaid('${rowId}', this, true)`);
+    } else if (state === 'open' && meta.refund_upi_id && split.upi > 0 && !meta.refund_paid_at) {
+      // The customer already gave us a handle, so the payout does not need the
+      // replacement cancelled first: sending the money IS the decision, and the
+      // cancellation follows from it — here and in the courier panel.
+      actions = btn('₹ I have sent it', `mbRefundSent('${rowId}', this)`, '#6dbf6d');
+      if (split.gateway > 0 && repl.status === 'replacement_pending') {
+        actions += ' ' + btn('💳 Gateway instead', `refundMissingInsteadOfReplacement('${rowId}')`);
+      }
     } else if (state === 'open' && split.gateway > 0 && repl.status === 'replacement_pending') {
       actions = btn('💳 Refund & cancel', `refundMissingInsteadOfReplacement('${rowId}')`);
     } else if (state === 'open') {
@@ -11625,6 +11643,94 @@ async function mbSaveUpi(encodedRowId) {
     renderMissingBooks();
   } catch (e) {
     alert('Could not save that: ' + e.message);
+  }
+}
+
+/**
+ * Record a manual UPI payout, cancel the replacement in both panels, and tell
+ * the customer — one click, because doing them separately meant the second half
+ * got forgotten and a refunded customer was also sent the book.
+ *
+ * The money has ALREADY moved before this runs: it is transferred by hand in a
+ * banking app. Nothing here can send it, so the confirm below spells out the
+ * exact amount and handle — this writes "we paid you" into a customer's inbox,
+ * and that has to be true before it is clicked.
+ */
+async function mbRefundSent(encodedRowId, btn) {
+  const rowId = decodeURIComponent(encodedRowId);
+  const row = missingBookRows().find(r => r.repl && String(r.repl.id || '') === rowId);
+  if (!row) { alert('Could not find that row — press Refresh and try again.'); return; }
+
+  const upi = row.meta.refund_upi_id || '';
+  if (!upi) { alert('No UPI ID on this one yet. Ask for it, or enter it, first.'); return; }
+  const amount = row.split.upi > 0 ? row.split.upi : row.split.owed;
+  const name = row.repl.customer_name || 'this customer';
+  const shipped = !!row.repl.tracking_id;
+
+  if (!confirm(
+    `Confirm you have ALREADY transferred ₹${money(amount)} to ${upi}.\n\n`
+    + `${name} will be emailed and messaged that the refund is on its way and will show `
+    + `in their statement from Malka Enterprises.\n\n`
+    + `The replacement ${row.repl.razorpay_order_id || ''} will also be cancelled here and in NimbusPost`
+    + `${shipped ? ` (AWB ${row.repl.tracking_id})` : ''}, so it does not ship.\n\n`
+    + `Only press OK if the money has actually left your account.`
+  )) return;
+
+  const typed = prompt('Transaction reference / UTR (optional — it goes into the customer\'s email):', '');
+  if (typed === null) return;
+  const ref = String(typed).trim();
+
+  const label = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Sending…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/mark-refund-upi-paid', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: rowId, ref, notify: true, cancel: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+    mbApplyMeta(rowId, { refund_paid_at: new Date().toISOString(), ...(ref ? { refund_paid_ref: ref } : {}) });
+    const steps = data.steps || {};
+    if (steps.cancelled && steps.cancelled.ok) {
+      const repl = allOrders.find(o => String(o.id) === String(rowId));
+      if (repl) repl.status = 'cancelled';
+    }
+
+    // Say what actually happened, per channel. A silent "done" here would hide
+    // a courier cancel that failed — and that is a parcel still on its way to
+    // someone who has just been refunded for it.
+    const notes = [];
+    if (steps.cancelled && !steps.cancelled.ok) {
+      notes.push(steps.cancelled.skipped
+        ? `Replacement NOT cancelled — ${steps.cancelled.reason}.`
+        : `Replacement could not be cancelled here (${steps.cancelled.error}) — cancel it from the Orders tab.`);
+    }
+    if (steps.nimbuspost && !steps.nimbuspost.ok) {
+      notes.push(`⚠️ NimbusPost did not cancel ${steps.nimbuspost.what || 'the shipment'} (${steps.nimbuspost.error}) — cancel it in the NimbusPost panel yourself or it will still ship.`);
+    }
+    if (steps.notified) {
+      if (!steps.notified.email && !steps.notified.whatsapp) {
+        notes.push(`⚠️ The customer was NOT notified (${(steps.notified.errors || []).join('; ') || 'no contact details'}) — tell them yourself.`);
+      } else if (!steps.notified.whatsapp) {
+        notes.push('Emailed, but WhatsApp did not go.');
+      } else if (!steps.notified.email) {
+        notes.push('WhatsApp sent, but the email did not go.');
+      }
+    }
+    alert(notes.length
+      ? `Recorded as paid.\n\n${notes.join('\n\n')}`
+      : `Done. ₹${money(amount)} recorded as paid, ${name} notified, replacement cancelled here and in NimbusPost.`);
+
+    renderMissingBooks();
+    if (window.renderReplacementRequests) renderReplacementRequests();
+    if (window.applyFilters) applyFilters();
+  } catch (e) {
+    alert('Could not complete that: ' + e.message
+      + '\n\nThe transfer you made is NOT recorded. Nothing was sent to the customer.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = label; }
   }
 }
 
