@@ -23,6 +23,17 @@ function slugify(value) {
     .slice(0, 80);
 }
 
+// Counted quantities (page count, gram weight). An empty box means "not known"
+// and must stay null rather than becoming 0 — a product page that prints
+// "Pages: 0" is worse than one that prints no page count at all.
+function counted(value, max) {
+  const raw = String(value === undefined || value === null ? '' : value).trim();
+  if (!raw) return null;
+  const n = Number(raw.replace(/[^0-9]/g, ''));
+  if (!Number.isFinite(n) || n <= 0 || n > max) return null;
+  return Math.round(n);
+}
+
 function money(value, required = false) {
   const n = Number(String(value || '').replace(/[^0-9.]/g, ''));
   if (!Number.isFinite(n) || n <= 0) {
@@ -167,6 +178,15 @@ exports.handler = async (event) => {
     // store default at render time rather than printing a blank row.
     if (body.format !== undefined) payload.format = cleanText(body.format, 60);
     if (body.language !== undefined) payload.language = cleanText(body.language, 60);
+    // "Other details": the physical facts of this copy. Same omitted/empty
+    // contract as format and language — undefined preserves what is stored, an
+    // explicit empty value clears the row from the Details table.
+    if (body.pages !== undefined) payload.pages = counted(body.pages, 20000);
+    if (body.weight_grams !== undefined) payload.weight_grams = counted(body.weight_grams, 50000);
+    if (body.dimensions !== undefined) payload.dimensions = cleanText(body.dimensions, 80);
+    if (body.edition !== undefined) payload.edition = cleanText(body.edition, 80);
+    if (body.published_on !== undefined) payload.published_on = cleanText(body.published_on, 40);
+    if (body.reading_age !== undefined) payload.reading_age = cleanText(body.reading_age, 40);
     // Preserve an existing gallery when this update only changes listing data.
     // Supplying an explicit array (including []) still replaces/clears it.
     if (galleryImages !== undefined) payload.gallery_images = galleryImages;
@@ -184,6 +204,12 @@ exports.handler = async (event) => {
       { key: 'author_bio', fix: 'run sql/custom_products_author_bio.sql' },
       { key: 'format', fix: 'run sql/custom_products_format_language.sql' },
       { key: 'language', fix: 'run sql/custom_products_format_language.sql' },
+      { key: 'pages', fix: 'run sql/custom_products_book_details.sql' },
+      { key: 'dimensions', fix: 'run sql/custom_products_book_details.sql' },
+      { key: 'weight_grams', fix: 'run sql/custom_products_book_details.sql' },
+      { key: 'edition', fix: 'run sql/custom_products_book_details.sql' },
+      { key: 'published_on', fix: 'run sql/custom_products_book_details.sql' },
+      { key: 'reading_age', fix: 'run sql/custom_products_book_details.sql' },
     ];
     const dropped = [];
     let retryPayload = payload;

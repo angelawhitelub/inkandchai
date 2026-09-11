@@ -2,6 +2,29 @@
 
 Run these once in your Supabase SQL editor (https://supabase.com → your project → SQL Editor → New Query).
 
+## 2026-09-11 — "Other details" on admin-created listings
+
+Adds the physical facts a buyer looks for before adding a book to the cart.
+Every column is nullable and every one is hidden when blank, so listings that
+set none of them render exactly the Details table they render today — there is
+nothing to backfill.
+
+Until this runs, saving a listing still works: `create-product-listing` drops
+whichever column the database rejects, saves everything else, and returns a
+warning naming this file. Prices and descriptions are never lost to a missing
+column.
+
+```sql
+alter table custom_products add column if not exists pages         integer;
+alter table custom_products add column if not exists dimensions    text;
+alter table custom_products add column if not exists weight_grams  integer;
+alter table custom_products add column if not exists edition       text;
+alter table custom_products add column if not exists published_on  text;
+alter table custom_products add column if not exists reading_age   text;
+```
+
+Also in [`sql/custom_products_book_details.sql`](sql/custom_products_book_details.sql).
+
 ## 2026-07-16 — Seven-day stale COD auto-cancellation
 
 Run [`sql/orders_cod_auto_cancel.sql`](sql/orders_cod_auto_cancel.sql) before

@@ -270,6 +270,43 @@ def browser_metadata(url: str, *, visible: bool = False, timeout_seconds: int = 
         raise RuntimeError(f"Chrome extraction failed: {exc}") from exc
 
 
+def google_books_dimensions(dims: Any) -> str:
+    """Google Books returns {"height": "21.60 cm", ...}. Join what is present."""
+    if not isinstance(dims, dict):
+        return ""
+    parts = [clean(dims.get(key)) for key in ("height", "width", "thickness")]
+    present = [part for part in parts if part]
+    if not present:
+        return ""
+    # Every part carries the same unit, so print it once: "21.6 x 14 x 2.1 cm".
+    units = {part.split(" ")[-1] for part in present}
+    if len(units) == 1:
+        unit = units.pop()
+        return " x ".join(part.rsplit(" ", 1)[0] for part in present) + f" {unit}"
+    return " x ".join(present)
+
+
+def grams(weight: Any) -> int | None:
+    """Open Library weights are prose: "1.2 pounds", "450 grams", "1 kg"."""
+    raw = clean(weight).lower()
+    match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*([a-z]+)", raw)
+    if not match:
+        return None
+    value, unit = float(match.group(1)), match.group(2)
+    factor = {
+        "g": 1, "gram": 1, "grams": 1, "gm": 1,
+        "kg": 1000, "kilogram": 1000, "kilograms": 1000,
+        "lb": 453.592, "lbs": 453.592, "pound": 453.592, "pounds": 453.592,
+        "oz": 28.3495, "ounce": 28.3495, "ounces": 28.3495,
+    }.get(unit)
+    if not factor:
+        return None
+    result = round(value * factor)
+    # A book that weighs nothing or more than 50 kg is a parsing failure, not a
+    # book. Better no weight on the listing than a wrong one.
+    return result if 0 < result <= 50000 else None
+
+
 def google_books_metadata(isbn: str) -> dict[str, Any]:
     if not isbn:
         return {}
@@ -291,6 +328,8 @@ def google_books_metadata(isbn: str) -> dict[str, Any]:
         "publisher": clean(info.get("publisher")),
         "isbn": clean(isbn13 or isbn),
         "pages": info.get("pageCount"),
+        "published_on": clean(info.get("publishedDate")),
+        "dimensions": google_books_dimensions(info.get("dimensions")),
         "language": clean(info.get("language", "en")),
         "categories": info.get("categories") or [],
     }
@@ -317,6 +356,9 @@ def open_library_metadata(isbn: str) -> dict[str, Any]:
         "publisher": author_names(info.get("publishers")),
         "isbn": isbn,
         "pages": info.get("number_of_pages"),
+        "published_on": clean(info.get("publish_date")),
+        "dimensions": clean(info.get("physical_dimensions")),
+        "weight_grams": grams(info.get("weight")),
         "language": "en",
         "categories": [clean(item) for item in info.get("subjects") or [] if clean(item)],
     }
@@ -413,24 +455,21 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
     isbn = clean(choose(args.isbn, books.get("isbn"), amazon.get("isbn"), asin))
     publisher = clean(choose(args.publisher, amazon.get("publisher"), books.get("publisher")))
     category = clean(choose(args.category, (books.get("categories") or [""])[0], "Business & Economics"))
-    pages = books.get("pages")
+    pages = choose(books.get("pages"), fallback.get("pages"))
+    published_on = clean(choose(books.get("published_on"), fallback.get("published_on")))
+    dimensions = clean(choose(books.get("dimensions"), fallback.get("dimensions")))
+    weight_grams = choose(books.get("weight_grams"), fallback.get("weight_grams"))
     source_description = clean(choose(args.description, amazon.get("description"), books.get("description")))
     if not source_description:
         source_description = (
             f"Discover {title}, a practical paperback for readers interested in {category.lower()}. "
             "Order online from Ink & Chai with secure checkout and pan-India delivery."
         )
-    details = ["Format: Paperback"]
-    if publisher:
-        details.append(f"Publisher: {publisher}")
-    details.append("Language: English")
-    if pages:
-        details.append(f"Pages: {pages}")
-    if isbn:
-        details.append(f"ISBN: {isbn}")
+    # Format, publisher, language, pages and ISBN all have their own columns now
+    # and render in the product page's Details table. Repeating them as a block
+    # of prose at the end of the description printed each one twice.
     description = (
-        f"Buy {title} by {authors} in paperback from Ink & Chai. {source_description}\n\n"
-        + "\n".join(details)
+        f"Buy {title} by {authors} in paperback from Ink & Chai. {source_description}"
     )[:5000].strip()
     short_title = title.split(":", 1)[0].strip()
     seo_authors = authors.replace(" and ", " & ")
@@ -457,6 +496,12 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
         "gallery_images": [],
         "publisher": publisher,
         "isbn": isbn,
+        "format": "Paperback",
+        "language": "English",
+        "pages": pages or "",
+        "dimensions": dimensions,
+        "published_on": published_on,
+        "weight_grams": weight_grams or "",
         "seo_title": seo_title,
         "meta_description": meta_description,
         "tags": truncate(tags, 700),

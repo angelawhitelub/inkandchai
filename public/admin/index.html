@@ -1435,6 +1435,36 @@ select,input,textarea{font-size:1rem;}
         <input id="newProdLanguage" list="bookLanguageOptions" maxlength="60" placeholder="English"/>
       </div>
       <div class="form-row wide">
+        <label>Other details <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— all optional. Anything left blank is left off the product page entirely.</span></label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;">
+          <div>
+            <label style="display:block;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem;">Pages</label>
+            <input id="newProdPages" type="number" min="1" max="20000" step="1" inputmode="numeric" placeholder="320"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem;">Dimensions</label>
+            <input id="newProdDimensions" list="bookDimensionOptions" maxlength="80" placeholder="21.6 x 14 x 2.1 cm"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem;">Weight (g)</label>
+            <input id="newProdWeight" type="number" min="1" max="50000" step="1" inputmode="numeric" placeholder="480"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem;">Edition</label>
+            <input id="newProdEdition" maxlength="80" placeholder="2nd"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem;">Published</label>
+            <input id="newProdPublished" maxlength="40" placeholder="March 2024"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem;">Reading age</label>
+            <input id="newProdReadingAge" maxlength="40" placeholder="8-12 years"/>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:.5rem;">Weight is in grams and prints as kg above 1000. Dimensions are shown exactly as typed, so any unit is fine. These are facts about the physical copy, so <strong>✨ Draft with AI never fills them</strong> — it would be guessing. Take them off the back cover or the listing you sourced the book from.</p>
+      </div>
+      <div class="form-row wide">
         <label style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
           Product description *
           <button type="button" id="newProdAiBtn" onclick="generateListingCopy()"
@@ -1620,6 +1650,31 @@ select,input,textarea{font-size:1rem;}
                 <label>Language</label>
                 <input id="prodLanguage" list="bookLanguageOptions" maxlength="60" placeholder="English" title="Language shown on the product page. Blank = English."/>
               </div>
+              <div class="form-row">
+                <label>Pages</label>
+                <input id="prodPages" type="number" min="1" max="20000" step="1" inputmode="numeric" placeholder="320" title="Page count. Blank hides the row."/>
+              </div>
+              <div class="form-row">
+                <label>Dimensions</label>
+                <input id="prodDimensions" list="bookDimensionOptions" maxlength="80" placeholder="21.6 x 14 x 2.1 cm" title="Any unit — shown on the product page exactly as typed. Blank hides the row."/>
+              </div>
+              <div class="form-row">
+                <label>Weight <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— grams</span></label>
+                <input id="prodWeight" type="number" min="1" max="50000" step="1" inputmode="numeric" placeholder="480" title="Grams. Shown as kg above 1000. Blank hides the row."/>
+              </div>
+              <div class="form-row">
+                <label>Edition</label>
+                <input id="prodEdition" maxlength="80" placeholder="2nd" title="Blank hides the row."/>
+              </div>
+              <div class="form-row">
+                <label>Published</label>
+                <input id="prodPublished" maxlength="40" placeholder="March 2024" title="Type it as the copyright page has it. Blank hides the row."/>
+              </div>
+              <div class="form-row">
+                <label>Reading age</label>
+                <input id="prodReadingAge" maxlength="40" placeholder="8-12 years" title="Mainly for children's books. Blank hides the row."/>
+              </div>
+<datalist id="bookDimensionOptions"><option>19.8 x 12.9 x 2 cm</option><option>21.6 x 14 x 2.1 cm</option><option>23.4 x 15.6 x 2.5 cm</option><option>20.3 x 25.4 x 1 cm</option></datalist>
 <datalist id="bookFormatOptions"><option>Paperback</option><option>Hardcover</option><option>Boxed Set</option><option>Board Book</option></datalist>
 <datalist id="bookLanguageOptions"><option>English</option><option>Hindi</option><option>Marathi</option><option>Bengali</option><option>Tamil</option><option>Telugu</option><option>Kannada</option><option>Malayalam</option><option>Gujarati</option><option>Punjabi</option><option>Urdu</option></datalist>
             </div>
@@ -5223,7 +5278,7 @@ async function run99Import(btn) {
 }
 
 function clearCreateProductForm() {
-  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdFormat','newProdLanguage','newProdDescription','newProdAuthorBio','newProdTags','newProdSeoTitle','newProdMetaDescription','newProdImageUrl','newProdGalleryUrls']
+  ['newProdTitle','newProdAuthor','newProdCategory','newProdPrice','newProdOriginalPrice','newProdPublisher','newProdIsbn','newProdFormat','newProdLanguage','newProdPages','newProdDimensions','newProdWeight','newProdEdition','newProdPublished','newProdReadingAge','newProdDescription','newProdAuthorBio','newProdTags','newProdSeoTitle','newProdMetaDescription','newProdImageUrl','newProdGalleryUrls']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const psNew = document.getElementById('newProdPublisherSourced');
   if (psNew) psNew.checked = false;
@@ -5505,6 +5560,14 @@ async function createProductListing() {
     isbn: document.getElementById('newProdIsbn').value,
     format: document.getElementById('newProdFormat').value,
     language: document.getElementById('newProdLanguage').value,
+    // "Other details". Sent even when blank: on a brand-new listing there is
+    // nothing to preserve, and an explicit '' is what clears a row on a re-save.
+    pages: document.getElementById('newProdPages').value,
+    dimensions: document.getElementById('newProdDimensions').value,
+    weight_grams: document.getElementById('newProdWeight').value,
+    edition: document.getElementById('newProdEdition').value,
+    published_on: document.getElementById('newProdPublished').value,
+    reading_age: document.getElementById('newProdReadingAge').value,
     description,
     author_bio: document.getElementById('newProdAuthorBio').value,
     // Checkbox, not free text, so the create form and the editor agree on what
@@ -6018,6 +6081,14 @@ function selectProduct(slug) {
   // an untouched listing keeps the store default instead of being pinned to it.
   document.getElementById('prodFormat').value = p.format || '';
   document.getElementById('prodLanguage').value = p.language || '';
+  // Same contract for the optional details: blank means "do not show this row",
+  // so a null column has to land as an empty box, never as "null" or 0.
+  document.getElementById('prodPages').value = p.pages || '';
+  document.getElementById('prodDimensions').value = p.dimensions || '';
+  document.getElementById('prodWeight').value = p.weight_grams || '';
+  document.getElementById('prodEdition').value = p.edition || '';
+  document.getElementById('prodPublished').value = p.published_on || '';
+  document.getElementById('prodReadingAge').value = p.reading_age || '';
   document.getElementById('prodDescription').value = p.description;
   document.getElementById('prodAuthorBio').value = p.author_bio || '';
   document.getElementById('prodSeoTitle').value = p.seo_title;
@@ -6069,7 +6140,7 @@ function selectProduct(slug) {
   // prodBrief and prodAiBtn ride along: the AI fills exactly these fields, and
   // none of them is saved for a catalogue book, so offering the button there
   // would produce copy that silently goes nowhere.
-  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodFormat', 'prodLanguage', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn'];
+  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodFormat', 'prodLanguage', 'prodPages', 'prodDimensions', 'prodWeight', 'prodEdition', 'prodPublished', 'prodReadingAge', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn'];
   metadataFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
   const aiBtn = document.getElementById('prodAiBtn');
   if (aiBtn) { aiBtn.style.opacity = isCustom ? '' : '.4'; aiBtn.style.cursor = isCustom ? 'pointer' : 'not-allowed'; }
@@ -6078,7 +6149,7 @@ function selectProduct(slug) {
   const metadataHint = document.getElementById('prodMetadataHint');
   if (metadataHint) metadataHint.textContent = isCustom
     ? 'Edit the product details used on the product page, search engines, and Merchant Center.'
-    : 'Publisher, ISBN, binding, language, description, and SEO metadata are editable for admin-created listings. This catalogue product is generated from the source feed.';
+    : 'Publisher, ISBN, binding, language, the other book details, description, and SEO metadata are editable for admin-created listings. This catalogue product is generated from the source feed.';
   const delBtn = document.getElementById('prodDeleteBtn');
   if (delBtn) {
     delBtn.style.display = '';
@@ -7866,6 +7937,12 @@ async function saveProductOverride(activeOverride = true) {
         isbn: document.getElementById('prodIsbn').value,
         format: document.getElementById('prodFormat').value,
         language: document.getElementById('prodLanguage').value,
+        pages: document.getElementById('prodPages').value,
+        dimensions: document.getElementById('prodDimensions').value,
+        weight_grams: document.getElementById('prodWeight').value,
+        edition: document.getElementById('prodEdition').value,
+        published_on: document.getElementById('prodPublished').value,
+        reading_age: document.getElementById('prodReadingAge').value,
         description: document.getElementById('prodDescription').value,
         author_bio: document.getElementById('prodAuthorBio').value,
         seo_title: document.getElementById('prodSeoTitle').value,

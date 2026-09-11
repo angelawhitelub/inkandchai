@@ -2,6 +2,7 @@ const { createClient } = require('@supabase/supabase-js');
 const SOCIAL_PROOF = require('../../data/social_proof.json').items || [];
 const { richText, plainText } = require('./utils/rich-text');
 const { withBadgeTag, selectTolerant } = require('./utils/publisher-sourced');
+const { bookDetailRows, schemaBookDetails } = require('./utils/book-details');
 const { fetchSettings } = require('./utils/product-settings');
 
 // The badge used to claim "flat 22.5% off" for every publisher-sourced title.
@@ -18,6 +19,17 @@ function bookFormat(product) {
 
 function bookLanguage(product) {
   return String((product && product.language) || '').trim() || 'English';
+}
+
+// "Other details" — page count, trim size, weight, edition, publication date,
+// reading age. The value logic lives in utils/book-details.js (unit-tested,
+// HTML-free); this only turns the rows it returns into escaped markup and
+// splices them into the fixed Details table.
+function detailRows(product, after) {
+  return bookDetailRows(product)
+    .filter(row => row.after === after)
+    .map(row => `<dt>${esc(row.label)}</dt><dd>${esc(row.value)}</dd>`)
+    .join('');
 }
 
 // schema.org has a fixed vocabulary of bookFormat values; anything outside it
@@ -333,6 +345,7 @@ function productHtml(product, aplusContent = null) {
     publisher: product.publisher || 'Ink & Chai',
     bookFormat: SCHEMA_BOOK_FORMATS[bookFormat(product).toLowerCase()] || undefined,
     inLanguage: SCHEMA_LANGUAGES[bookLanguage(product).toLowerCase()] || undefined,
+    ...schemaBookDetails(product),
     url: canonical,
     // Only expose an Offer (the shopping signal Google Merchant ingests) for
     // real, advertise-able products — never for browse-only catalogue imports.
@@ -475,7 +488,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     </div>
     <div class="desc rich"><div class="label">About this book</div>${desc}</div>
     ${authorBio ? `<div class="desc rich authorbio"><div class="label">About the author</div>${authorBio}</div>` : ''}
-    <div class="details"><div class="label">Details</div><dl><dt>Format</dt><dd>${esc(bookFormat(product))}</dd><dt>Language</dt><dd>${esc(bookLanguage(product))}</dd><dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd><dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
+    <div class="details"><div class="label">Details</div><dl><dt>Format</dt><dd>${esc(bookFormat(product))}</dd>${detailRows(product, 'format')}<dt>Language</dt><dd>${esc(bookLanguage(product))}</dd>${detailRows(product, 'language')}<dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd>${detailRows(product, 'isbn')}<dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
 <!-- Approved customer reviews. Admin-created products are served only by this
