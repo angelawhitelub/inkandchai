@@ -82,8 +82,43 @@ function refundSplitPaise(replacement, original) {
   return { owedPaise: owed, gatewayPaise: gateway, upiPaise: Math.max(0, owed - gateway) };
 }
 
+/**
+ * Title is the only thing an order line and a replacement cart line share. The
+ * replacement is rebuilt from the original's item, so slug and price survive,
+ * but nothing carries an id to join on.
+ */
+function itemTitleKey(item) {
+  return String((item && (item.title || item.name)) || '').trim().toLowerCase();
+}
+
+/**
+ * Does this replacement actually carry every one of `items`?
+ *
+ * Only one replacement is allowed per order. That rule says nothing about WHAT
+ * is in it, so the replacement on file may be for a damaged book, or for the
+ * one title reported last month -- and a book reported missing today may be in
+ * no parcel at all. Anywhere we are about to tell a customer "a replacement is
+ * on its way", this is the question that has to be true first.
+ *
+ * An empty `items` list is vacuously covered; a replacement with no cart covers
+ * nothing.
+ */
+function replacementCovers(replacement, items) {
+  const inCart = new Set(
+    (Array.isArray(replacement && replacement.cart_items) ? replacement.cart_items : [])
+      .map(itemTitleKey)
+      .filter(Boolean)
+  );
+  return (Array.isArray(items) ? items : []).every(it => {
+    const key = itemTitleKey(it);
+    return !!key && inCart.has(key);
+  });
+}
+
 module.exports = {
   MISSING_BOOK_REASONS,
+  itemTitleKey,
+  replacementCovers,
   refundSplitPaise,
   replacementMeta,
   isReplacementOrder,

@@ -5,6 +5,8 @@ const {
   isMissingBookReplacement,
   missingValuePaise,
   refundSplitPaise,
+  replacementCovers,
+  itemTitleKey,
 } = require('./missing-books');
 
 const repl = (reason, items = [{ title: 'A', price: 299, qty: 2 }]) => ({
@@ -73,4 +75,49 @@ test('a missing original order is treated as unrefundable by gateway', () => {
   const split = refundSplitPaise(repl('missing_item'), null);
   assert.equal(split.gatewayPaise, 0);
   assert.equal(split.upiPaise, 59800);
+});
+
+
+// ── Does the replacement on file actually carry the reported books? ──────────
+// Only one replacement is allowed per order, so the one already there may have
+// been raised for a different book entirely, or for an earlier report. Before
+// telling a customer a parcel is coming, this has to be true.
+
+const cart = (...titles) => ({ cart_items: titles.map(t => ({ title: t, price: 100, qty: 1 })) });
+
+test('a replacement covers the books it actually contains', () => {
+  assert.equal(replacementCovers(cart('Book A'), [{ title: 'Book A' }]), true);
+  assert.equal(replacementCovers(cart('Book A', 'Book B'), [{ title: 'Book B' }]), true);
+  assert.equal(replacementCovers(cart('Book A', 'Book B'), [{ title: 'Book A' }, { title: 'Book B' }]), true);
+});
+
+test('a second report naming a different book is NOT covered', () => {
+  // The exact case that left books invisible: report Book A, get a replacement
+  // for Book A, later report Book B. The guard finds a replacement and used to
+  // report success, but nothing is shipping for Book B.
+  assert.equal(replacementCovers(cart('Book A'), [{ title: 'Book B' }]), false);
+  assert.equal(replacementCovers(cart('Book A'), [{ title: 'Book A' }, { title: 'Book B' }]), false);
+});
+
+test('a replacement raised for a damaged book does not cover a missing one', () => {
+  assert.equal(replacementCovers(cart('Damaged Title'), [{ title: 'Missing Title' }]), false);
+});
+
+test('a replacement with no cart covers nothing', () => {
+  assert.equal(replacementCovers({}, [{ title: 'Book A' }]), false);
+  assert.equal(replacementCovers(null, [{ title: 'Book A' }]), false);
+  assert.equal(replacementCovers({ cart_items: [] }, [{ title: 'Book A' }]), false);
+});
+
+test('titles match regardless of case and surrounding space', () => {
+  assert.equal(replacementCovers(cart('  The Coworker  '), [{ title: 'the coworker' }]), true);
+  assert.equal(itemTitleKey({ name: '  Play Bigger ' }), 'play bigger');
+  assert.equal(itemTitleKey({}), '');
+});
+
+test('an untitled line can never be considered covered', () => {
+  // Matching on an empty key would make every untitled line "already handled",
+  // which is the failure this whole check exists to prevent.
+  assert.equal(replacementCovers(cart('Book A'), [{ title: '' }]), false);
+  assert.equal(replacementCovers(cart(''), [{ title: '' }]), false);
 });

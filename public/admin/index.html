@@ -1992,7 +1992,7 @@ select,input,textarea{font-size:1rem;}
     <div class="abandoned-head">
       <div>
         <h2 class="abandoned-title">📕 Missing Books</h2>
-        <p class="hint" style="margin:.2rem 0 0;">Replacements raised because a book never arrived — and the refunds owed when one is cancelled.</p>
+        <p class="hint" style="margin:.2rem 0 0;">Every book a customer reported missing — the replacements raised for them, the refunds owed when one is cancelled, and the reports nothing was ever sent for.</p>
       </div>
       <div class="mini-actions">
         <button class="btn-outline" onclick="renderMissingBooks()">↻ Refresh</button>
@@ -2022,7 +2022,7 @@ select,input,textarea{font-size:1rem;}
         <tbody id="missingBooksBody"></tbody>
       </table>
     </div>
-    <div class="lead-empty" id="missingBooksEmpty" style="display:none;">No missing-book replacements found.</div>
+    <div class="lead-empty" id="missingBooksEmpty" style="display:none;">No missing books reported.</div>
   </section>
 
   </div><!-- /tab-missingbooks -->
@@ -11293,14 +11293,91 @@ function mbState(repl, meta, split) {
   return 'gateway';
 }
 
-const MB_STATE_ORDER = { needs_upi: 0, ready: 1, open: 2, gateway: 3, paid: 4 };
+const MB_STATE_ORDER = { unreplaced: 0, needs_upi: 1, ready: 2, open: 3, gateway: 4, paid: 5 };
 const MB_STATE_LABEL = {
+  unreplaced: 'No replacement',
   needs_upi: 'Needs UPI ID',
   ready: 'Awaiting payout',
   open: 'Replacement open',
   gateway: 'Gateway refund',
   paid: 'Paid',
 };
+
+// Title is the only thing a replacement cart and a reported-missing line share
+// — the replacement is rebuilt from the original's item, so slug/price survive,
+// but nothing carries an id we can join on.
+function mbTitleKey(item) {
+  return String((item && (item.title || item.name)) || '').trim().toLowerCase();
+}
+
+/**
+ * Books a customer reported missing that NO replacement cart covers.
+ *
+ * report-missing-books.js stamps `_missing` on the original order's items on
+ * every report, but only creates a replacement when the order has none yet. So
+ * a second report, or a report whose replacement insert failed, leaves the book
+ * recorded on the order and in no replacement at all — and this tab, which read
+ * only replacements, could not see it. That is money owed to a customer sitting
+ * in a row nobody was looking at.
+ *
+ * Coverage is checked against EVERY replacement cart for the order, whatever
+ * its reason: if a book is going back out, it is handled, and which form the
+ * replacement took is not this tab's business.
+ */
+function mbUnreplacedRows(byId) {
+  const covered = new Map();   // original order id -> Set(title key)
+  for (const o of allOrders) {
+    const meta = mbMeta(o);
+    if (!meta) continue;
+    const key = String(meta.original_order_id || '');
+    if (!key) continue;
+    if (!covered.has(key)) covered.set(key, new Set());
+    const set = covered.get(key);
+    for (const it of (Array.isArray(o.cart_items) ? o.cart_items : [])) {
+      const t = mbTitleKey(it);
+      if (t) set.add(t);
+    }
+  }
+
+  const rows = [];
+  for (const o of allOrders) {
+    // Deliberately NOT skipping replacement orders. A replacement can itself
+    // arrive incomplete, and the customer reports that against the replacement
+    // id — so it is an "original" for this purpose too, and can legitimately
+    // produce both a replacement row and an unreplaced one.
+    const items = Array.isArray(o.cart_items) ? o.cart_items : [];
+    const orderKey = String(o.razorpay_order_id || o.id || '');
+    const seen = covered.get(orderKey) || new Set();
+    // The reported quantity is what is owed, not the quantity ordered: a
+    // customer who ordered three and received two is missing one.
+    const open = items
+      .filter(it => it && it._missing === true && !seen.has(mbTitleKey(it)))
+      .map(it => ({ ...it, qty: Math.max(1, Number(it._missing_qty) || 1) }));
+    if (!open.length) continue;
+
+    const reportedAt = open
+      .map(it => it._missing_at)
+      .filter(Boolean)
+      .sort()
+      .pop() || o.delivered_at || o.created_at;
+    const meta = {
+      original_order_id: orderKey,
+      reason: 'missing_item',
+      reason_label: 'Reported missing — no replacement',
+      requested_at: reportedAt,
+      customer_comment: open.map(it => it._missing_comment).find(Boolean) || '',
+      refund_upi_id: open.map(it => it._refund_upi_id).find(Boolean) || '',
+    };
+    // `repl` is the uncovered lines standing in for a replacement that was
+    // never created, so mbSplit can price them against what the original paid.
+    const stand_in = { ...o, cart_items: open };
+    rows.push({
+      repl: null, report: stand_in, meta, original: o,
+      split: mbSplit(stand_in, o), state: 'unreplaced',
+    });
+  }
+  return rows;
+}
 
 function missingBookRows() {
   const byId = new Map();
@@ -11314,22 +11391,24 @@ function missingBookRows() {
       const meta = mbMeta(repl) || {};
       const original = byId.get(String(meta.original_order_id || '')) || null;
       const split = mbSplit(repl, original);
-      return { repl, meta, original, split, state: mbState(repl, meta, split) };
+      return { repl, report: repl, meta, original, split, state: mbState(repl, meta, split) };
     })
+    .concat(mbUnreplacedRows(byId))
     .sort((a, b) => {
       const d = MB_STATE_ORDER[a.state] - MB_STATE_ORDER[b.state];
       if (d) return d;
-      return new Date(b.meta.requested_at || b.repl.created_at || 0)
-           - new Date(a.meta.requested_at || a.repl.created_at || 0);
+      return new Date(b.meta.requested_at || b.report.created_at || 0)
+           - new Date(a.meta.requested_at || a.report.created_at || 0);
     });
 }
 
 function mbHaystack(row) {
-  const items = Array.isArray(row.repl.cart_items) ? row.repl.cart_items : [];
+  const src = row.report || row.repl || row.original || {};
+  const items = Array.isArray(src.cart_items) ? src.cart_items : [];
   return [
-    row.repl.razorpay_order_id, row.repl.id, row.meta.original_order_id,
-    row.repl.customer_name, row.repl.customer_phone, row.repl.customer_email,
-    row.repl.status, row.state, MB_STATE_LABEL[row.state],
+    src.razorpay_order_id, src.id, row.meta.original_order_id,
+    src.customer_name, src.customer_phone, src.customer_email,
+    src.status, row.state, MB_STATE_LABEL[row.state],
     row.meta.refund_upi_id, row.meta.refund_paid_ref, row.meta.reason_label,
     ...items.map(i => i?.title || i?.name || ''),
   ].join(' ').toLowerCase();
@@ -11359,18 +11438,23 @@ function renderMissingBooks() {
 
   // The badge counts what a person still has to do — ask for a handle, or make
   // a transfer. Rows the gateway already handled are not anyone's work.
-  const actionable = (counts.needs_upi || 0) + (counts.ready || 0);
+  const actionable = (counts.unreplaced || 0) + (counts.needs_upi || 0) + (counts.ready || 0);
   if (badge) {
     badge.textContent = actionable;
     badge.style.display = actionable ? '' : 'none';
   }
 
+  // Only money we have actually decided to send back. An unreplaced report is
+  // not yet a refund — the book may still be reshipped — so it is counted as
+  // work to do, never as rupees owed.
   const owedTotal = all
     .filter(r => r.state === 'needs_upi' || r.state === 'ready')
     .reduce((s, r) => s + r.split.upi, 0);
+  const owedFor = (counts.needs_upi || 0) + (counts.ready || 0);
 
   chips.innerHTML = [
     ['all', `All (${all.length})`],
+    ['unreplaced', `No replacement (${counts.unreplaced || 0})`],
     ['needs_upi', `Needs UPI ID (${counts.needs_upi || 0})`],
     ['ready', `Awaiting payout (${counts.ready || 0})`],
     ['gateway', `Gateway refund (${counts.gateway || 0})`],
@@ -11389,26 +11473,36 @@ function renderMissingBooks() {
 
   metaEl.innerHTML = `${rows.length.toLocaleString('en-IN')} shown of ${all.length.toLocaleString('en-IN')}`
     + (owedTotal > 0
-        ? ` · <strong style="color:#c98a36;">₹${money(owedTotal)} owed by manual transfer</strong> across ${actionable} order${actionable === 1 ? '' : 's'}`
+        ? ` · <strong style="color:#c98a36;">₹${money(owedTotal)} owed by manual transfer</strong> across ${owedFor} order${owedFor === 1 ? '' : 's'}`
         : ' · nothing owed by manual transfer');
-  empty.textContent = q ? 'Nothing matches that search.' : 'No missing-book replacements in this view.';
+  empty.textContent = q ? 'Nothing matches that search.' : 'Nothing in this view.';
   empty.style.display = rows.length ? 'none' : '';
 
   body.innerHTML = rows.map(r => {
-    const { repl, meta, original, split, state } = r;
-    const rowId = encodeURIComponent(String(repl.id || ''));
-    const replId = repl.razorpay_order_id || repl.id;
-    const items = Array.isArray(repl.cart_items) ? repl.cart_items : [];
+    const { repl, report, meta, original, split, state } = r;
+    // An unreplaced report has no replacement row to act on, so every id and
+    // every cart reading below comes from the ORIGINAL order instead.
+    const src = repl || report;
+    const rowId = encodeURIComponent(String((repl || original || {}).id || ''));
+    const replId = repl ? (repl.razorpay_order_id || repl.id) : null;
+    const items = Array.isArray(src.cart_items) ? src.cart_items : [];
     const books = items.map(i => `${esc(i?.title || i?.name || 'Book')}${itemQty(i) > 1 ? ` ×${itemQty(i)}` : ''}`).join('<br/>');
 
-    const routeCell = split.upi > 0
+    const routeCell = state === 'unreplaced'
+      ? `<span style="color:var(--cream-dim);">Not decided yet</span>
+         <div class="hint" style="margin-top:.2rem;">Reship it, or refund ₹${money(split.owed)}</div>`
+      : split.upi > 0
       ? `<span style="color:#c98a36;">🏦 Manual transfer</span>
          <div class="hint" style="margin-top:.2rem;">₹${money(split.upi)} by UPI${split.gateway > 0 ? `<br/>₹${money(split.gateway)} via gateway` : ''}</div>`
       : `<span style="color:#6dbf6d;">💳 Gateway</span>
          <div class="hint" style="margin-top:.2rem;">₹${money(split.gateway)} refundable</div>`;
 
     let stateCell = '';
-    if (state === 'open') {
+    if (state === 'unreplaced') {
+      stateCell = `<span style="color:#c93636;">Nothing sent yet</span>
+         <div class="hint" style="margin-top:.2rem;">Reported ${mbDate(meta.requested_at)} · no replacement covers ${items.length === 1 ? 'this book' : 'these books'}</div>`
+        + (meta.customer_comment ? `<div class="hint" style="margin-top:.3rem;font-style:italic;">"${esc(String(meta.customer_comment).slice(0, 140))}"</div>` : '');
+    } else if (state === 'open') {
       stateCell = `<span style="color:var(--cream-dim);">${esc((repl.status || '—').replace(/_/g, ' '))}</span>`;
     } else if (state === 'gateway') {
       stateCell = `<span style="color:var(--cream-dim);">Original is <strong>${esc(original?.status || 'unknown')}</strong></span>`;
@@ -11429,7 +11523,10 @@ function renderMissingBooks() {
       `<button class="btn-outline" style="font-size:.6rem;padding:.3rem .55rem;${color ? `border-color:${color};color:${color};` : ''}" onclick="${fn}">${label}</button>`;
 
     let actions = '';
-    if (state === 'needs_upi') {
+    if (state === 'unreplaced') {
+      actions = btn('➕ Create replacement', `openReplacementModal('${esc(String(original?.id || ''))}')`, '#6dbf6d')
+              + ' ' + btn('Open in Orders', `searchOrders('${esc(String(meta.original_order_id || ''))}')`);
+    } else if (state === 'needs_upi') {
       actions = btn(meta.upi_requested_at ? '📧 Ask again' : '📧 Ask for UPI', `mbAskForUpi('${rowId}', ${meta.upi_requested_at ? 'true' : 'false'}, this)`, '#c98a36')
               + ' ' + btn('✎ Enter it', `mbSaveUpi('${rowId}')`);
     } else if (state === 'ready') {
@@ -11446,10 +11543,12 @@ function renderMissingBooks() {
     }
 
     return `<tr>
-      <td style="white-space:nowrap;">${mbDate(meta.requested_at || repl.created_at)}</td>
-      <td><div style="font-family:ui-monospace,Menlo,monospace;font-size:.72rem;">${esc(replId)}</div>
+      <td style="white-space:nowrap;">${mbDate(meta.requested_at || src.created_at)}</td>
+      <td><div style="font-family:ui-monospace,Menlo,monospace;font-size:.72rem;">${replId
+            ? esc(replId)
+            : '<span style="color:#c93636;font-family:Manrope,sans-serif;">No replacement</span>'}</div>
           <div class="hint" style="margin-top:.2rem;">↳ ${esc(meta.original_order_id || '—')}</div></td>
-      <td>${esc(repl.customer_name || '—')}<div class="hint">${esc(repl.customer_phone || repl.customer_email || '')}</div></td>
+      <td>${esc(src.customer_name || '—')}<div class="hint">${esc(src.customer_phone || src.customer_email || '')}</div></td>
       <td style="font-size:.75rem;line-height:1.5;">${books || '—'}</td>
       <td>₹${money(split.owed)}</td>
       <td>${routeCell}</td>

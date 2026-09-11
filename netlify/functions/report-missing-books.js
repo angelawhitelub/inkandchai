@@ -22,6 +22,7 @@ const { sendEmail } = require('./utils/email');
 const { sendWhatsApp, sendText } = require('./utils/whatsapp');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
 const { normalizeUpiId } = require('./utils/upi-id');
+const { replacementCovers } = require('./utils/missing-books');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -39,6 +40,7 @@ const REPORTABLE = new Set(['delivered']);
 const orderId = (o) => o.razorpay_order_id || o.id;
 const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
 
+
 /**
  * Auto-create a FREE replacement order for just the missing book(s) — same
  * conventions as request-replacement.js (status replacement_pending, source
@@ -52,12 +54,22 @@ async function createMissingReplacement(supabase, order, replacementItems, comme
     // One replacement per original — matches request-replacement's abuse guard.
     const { data: existing } = await supabase
       .from('orders')
-      .select('razorpay_order_id')
+      .select('razorpay_order_id, cart_items')
       .eq('source', 'replacement')
       .eq('cart_items->0->_replacement->>original_order_id', String(order.razorpay_order_id || order.id))
       .limit(1)
       .maybeSingle();
-    if (existing) return { id: existing.razorpay_order_id, existed: true };
+    if (existing) {
+      // The one-replacement-per-order rule is unchanged. What changes is what we
+      // then TELL people. The replacement already on file may not contain the
+      // book just reported -- a second report naming a different title, or a
+      // replacement raised earlier for a damaged or wrong book entirely. Saying
+      // "replacement created" there is a promise nobody is keeping: no parcel
+      // exists with that book in it. Report it uncovered instead, so the
+      // customer is told a person will follow up and the owner is asked to act.
+      const covers = replacementCovers(existing, replacementItems);
+      return { id: existing.razorpay_order_id, existed: true, covers };
+    }
 
     const now = new Date();
     const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
@@ -95,7 +107,7 @@ async function createMissingReplacement(supabase, order, replacementItems, comme
       source:              'replacement',
     });
     if (error) throw error;
-    return { id: replId, existed: false };
+    return { id: replId, existed: false, covers: true };
   } catch (e) {
     console.error('[report-missing-books] replacement create failed:', e.message);
     return null;
@@ -145,7 +157,7 @@ function missingEmailHtml(order, missing, replId) {
     </div>`;
 }
 
-function ownerMissingEmailHtml(order, missing, replId, comment = '', refundUpi = '') {
+function ownerMissingEmailHtml(order, missing, replId, comment = '', refundUpi = '', blockedBy = '') {
   const rows = missing.map(t => `<li style="margin:4px 0;color:#f0e8d8;">${t}</li>`).join('');
   const safeComment = String(comment || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
   const commentBlock = safeComment
@@ -166,7 +178,9 @@ function ownerMissingEmailHtml(order, missing, replId, comment = '', refundUpi =
     : '';
   const nextLine = replId
     ? `<p style="color:#6dbf6d;font-size:14px;">✅ Replacement order <strong style="color:#c9a84c;">${replId}</strong> was created automatically (₹0, only the missing book${missing.length > 1 ? 's' : ''}). It's in the unshipped list — ship it from the Orders tab. The customer has been notified.</p>`
-    : `<p style="color:#a09080;font-size:13px;">Next: send a replacement (Replacement flow) or issue a refund from the admin panel. The customer has been emailed a confirmation.</p>`;
+    : blockedBy
+      ? `<p style="color:#e0a94a;font-size:14px;">⚠️ <strong>No replacement was created.</strong> This order already has replacement <strong style="color:#c9a84c;">${blockedBy}</strong>, and it does not contain ${missing.length > 1 ? 'these books' : 'this book'} — one replacement per order is the rule, so nothing is shipping for ${missing.length > 1 ? 'them' : 'it'} until you act. It is waiting under <strong>Missing Books &rarr; No replacement</strong>. The customer has been told a person will follow up, not that a parcel is on the way.</p>`
+      : `<p style="color:#a09080;font-size:13px;">Next: send a replacement (Replacement flow) or issue a refund from the admin panel. The customer has been emailed a confirmation.</p>`;
   return `
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
       <h1 style="color:#c9a84c;font-size:22px;font-weight:400;margin-bottom:4px;">Ink &amp; Chai</h1>
@@ -316,9 +330,21 @@ exports.handler = async (event) => {
       return { ...clean, qty: v.qty };
     });
     const repl = await createMissingReplacement(supabase, order, replacementItems, comment, refundUpi);
-    const replId = repl?.id || null;
+    // Every message below keys off replId, and all of them already say the right
+    // thing when it is null ("our team will reach out"). So the single place to
+    // be honest is here: a replacement that does not carry these books is not a
+    // replacement for them.
+    const replId = (repl && repl.covers) ? repl.id : null;
+    const blockedBy = (repl && repl.existed && !repl.covers) ? repl.id : '';
 
-    const result = { email: false, whatsapp: false, ownerEmail: false, replacement_order_id: replId, replacement_existed: !!repl?.existed };
+    const result = {
+      email: false, whatsapp: false, ownerEmail: false,
+      replacement_order_id: replId,
+      replacement_existed: !!repl?.existed,
+      // True when a replacement exists for this order but not for these books:
+      // nothing is shipping for them until someone acts.
+      replacement_uncovered: !!blockedBy,
+    };
     const first = String(order.customer_name || 'there').split(' ')[0];
     // Human labels with quantity, e.g. "Market Wizards ×2, Mastering the Market Cycle".
     const missingLabels = valid.map(v => (v.qty > 1 ? `${v.title} ×${v.qty}` : v.title));
@@ -375,7 +401,7 @@ exports.handler = async (event) => {
           subject: replId
             ? `📦 Incomplete order ${orderId(order)} → replacement ${replId} created — ${missingList}`
             : `📦 Customer reported incomplete order ${orderId(order)} — ${missingList}`,
-          html: ownerMissingEmailHtml(order, missingLabels, replId, comment, refundUpi),
+          html: ownerMissingEmailHtml(order, missingLabels, replId, comment, refundUpi, blockedBy),
         });
         result.ownerEmail = !!sent?.ok;
       } catch (e) {
