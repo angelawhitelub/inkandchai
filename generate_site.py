@@ -1321,16 +1321,20 @@ HTML = r"""<!DOCTYPE html>
   .nav-search-btn:hover { color: var(--gold); border-color: var(--gold); background: rgba(201,168,76,0.14); }
   /* Search sits on its own full-width SECOND row (desktop) instead of being
      squeezed into the first row between the links and the icons. flex-basis
-     100% forces it to wrap below; max-width + margin auto keep it a tidy,
+     100% forces it to wrap below; the clamp + margin auto keep it a tidy,
      centred pill rather than spanning the whole nav width. order:5 pushes it
-     after logo/links/actions so those stay on row 1. */
+     after logo/links/actions so those stay on row 1.
+     The width is fluid (clamp) rather than a fixed 560px: on a wide window a
+     fixed pill reads as a tiny afterthought under a full-width nav, and search
+     is the primary way people find a book here. max-width:100% still caps it
+     against the nav's own padding, so the clamp floor can never overflow. */
   /* Zero-height full-width flex item: forces a line break so the search lands
      on its own visible second row while logo+links+icons stay on row 1. */
   .nav-break { order: 4; flex: 0 0 100%; height: 0; margin: 0; padding: 0; }
-  .nav-search { order: 5; display: flex; align-items: center; gap: 0.3rem; background: rgba(201,168,76,0.08); border: 1px solid var(--border); border-radius: var(--pill); padding: 0.3rem 0.3rem 0.3rem 0.9rem; flex: 0 1 auto; width: 560px; max-width: 100%; min-width: 0; margin: 0.1rem auto 0; position: relative; }
-  .nav-search input { flex: 1; background: transparent; border: 0; color: var(--cream); font: inherit; font-size: 0.78rem; outline: none; min-width: 0; }
+  .nav-search { order: 5; display: flex; align-items: center; gap: 0.5rem; background: rgba(201,168,76,0.08); border: 1px solid var(--border); border-radius: var(--pill); padding: 0.45rem 0.45rem 0.45rem 1.1rem; flex: 0 1 auto; width: clamp(460px, 56vw, 900px); max-width: 100%; min-width: 0; margin: 0.1rem auto 0; position: relative; }
+  .nav-search input { flex: 1; background: transparent; border: 0; color: var(--cream); font: inherit; font-size: 0.92rem; outline: none; min-width: 0; }
   .nav-search input::placeholder { color: var(--cream-dim); }
-  .nav-search button { padding: 0.35rem 0.55rem; border-radius: var(--pill); border: 1px solid var(--border); background: transparent; color: var(--gold); cursor: pointer; font-size: 0.9rem; line-height: 1; min-height: 0; }
+  .nav-search button { padding: 0.45rem 0.75rem; border-radius: var(--pill); border: 1px solid var(--border); background: transparent; color: var(--gold); cursor: pointer; font-size: 1rem; line-height: 1; min-height: 0; }
   .nav-search button:hover { border-color: var(--gold); }
   .nav-kbd-hint { margin-left: 0.2rem; opacity: 0.6; font-size: 0.7rem; }
   @media (hover: none), (max-width: 780px) { .nav-kbd-hint { display: none; } }
