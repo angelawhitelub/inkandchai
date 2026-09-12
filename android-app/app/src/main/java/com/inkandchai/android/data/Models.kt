@@ -68,11 +68,36 @@ data class CatalogBook(
     )
 }
 
+/**
+ * One endpoint, two shapes. `new_arrivals` are custom_products rows
+ * (price_inr / original_price_inr / image_url); `bestsellers` are aggregated
+ * from order line items and carry only (slug, title, author, url, img, price,
+ * qty). Modelling them as one type silently deserialised every bestseller
+ * price as zero, which the `price > 0` filter then dropped -- the trending
+ * shelf simply did not render.
+ */
 @Serializable
 data class MerchandisingResponse(
     @SerialName("new_arrivals") val newArrivals: List<MerchBook> = emptyList(),
-    val bestsellers: List<MerchBook> = emptyList(),
+    val bestsellers: List<BestsellerBook> = emptyList(),
 )
+
+@Serializable
+data class BestsellerBook(
+    val slug: String = "",
+    val title: String = "",
+    val author: String = "",
+    val img: String = "",
+    val price: JsonElement? = null,
+) {
+    fun toBook() = Book(
+        slug = slug,
+        title = title,
+        author = author,
+        price = price.asRupees(),
+        image = img,
+    )
+}
 
 @Serializable
 data class MerchBook(
