@@ -24,6 +24,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +48,39 @@ import com.inkandchai.android.data.rupees
 import com.inkandchai.android.ui.theme.InkShape
 import com.inkandchai.android.ui.theme.InkTheme
 
+/**
+ * What a cover shows when there is no usable image.
+ *
+ * A meaningful share of the catalogue currently points at dead Shopify CDN
+ * URLs (13 of 24 new arrivals at the time of writing), and an empty cream
+ * rectangle reads as a broken app rather than a missing file. A spine-like
+ * placeholder carrying the title at least identifies the book.
+ */
+@Composable
+private fun CoverFallback(title: String) {
+    val colors = InkTheme.colors
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(colors.band, colors.line.copy(alpha = 0.55f)),
+                ),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            title.ifBlank { "\uD83D\uDCD5" },
+            style = InkTheme.type.secondary,
+            color = colors.muted,
+            textAlign = TextAlign.Center,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp),
+        )
+    }
+}
+
 /** A book cover with the warm placeholder the design uses while loading. */
 @Composable
 fun Cover(
@@ -52,6 +90,7 @@ fun Cover(
     modifier: Modifier = Modifier,
     radius: Dp = 10.dp,
     elevation: Dp = 0.dp,
+    title: String = "",
 ) {
     val colors = InkTheme.colors
     Box(
@@ -65,11 +104,15 @@ fun Cover(
             .clip(RoundedCornerShape(radius))
             .background(colors.band),
     ) {
-        if (url.isNotBlank()) {
+        var failed by remember(url) { mutableStateOf(false) }
+        if (url.isBlank() || failed) {
+            CoverFallback(title)
+        } else {
             AsyncImage(
                 model = Api.imageUrl(url),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                onError = { failed = true },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -87,6 +130,7 @@ fun CoverFill(
     modifier: Modifier = Modifier,
     radius: Dp = 10.dp,
     elevation: Dp = 0.dp,
+    title: String = "",
 ) {
     val colors = InkTheme.colors
     Box(
@@ -101,11 +145,15 @@ fun CoverFill(
             .clip(RoundedCornerShape(radius))
             .background(colors.band),
     ) {
-        if (url.isNotBlank()) {
+        var failed by remember(url) { mutableStateOf(false) }
+        if (url.isBlank() || failed) {
+            CoverFallback(title)
+        } else {
             AsyncImage(
                 model = Api.imageUrl(url),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                onError = { failed = true },
                 modifier = Modifier.fillMaxSize(),
             )
         }

@@ -174,7 +174,7 @@ fun DetailScreen(
                                     Modifier.width(110.dp).clickable { onOpenBook(other) },
                                     verticalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
-                                    Cover(other.image, 110.dp, 164.dp, elevation = 5.dp)
+                                    Cover(other.image, 110.dp, 164.dp, elevation = 5.dp, title = other.title)
                                     TruncatedTitle(other.title)
                                     Text(
                                         "₹${other.price.rupees()}",
@@ -246,7 +246,7 @@ private fun DetailHero(
                 )
             }
             Spacer(Modifier.height(14.dp))
-            Cover(book?.image.orEmpty(), 168.dp, 250.dp, elevation = 18.dp, radius = 12.dp)
+            Cover(book?.image.orEmpty(), 168.dp, 250.dp, elevation = 18.dp, radius = 12.dp, title = book?.title.orEmpty())
             Spacer(Modifier.height(20.dp))
         }
     }

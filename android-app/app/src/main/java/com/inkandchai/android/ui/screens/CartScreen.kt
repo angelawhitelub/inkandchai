@@ -137,7 +137,7 @@ private fun CartLineRow(entry: CartEntry, onQty: (Int) -> Unit, onRemove: () -> 
         Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Cover(entry.book.image, 70.dp, 104.dp, elevation = 4.dp)
+        Cover(entry.book.image, 70.dp, 104.dp, elevation = 4.dp, title = entry.book.title)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(
                 entry.book.title,

@@ -209,7 +209,7 @@ private fun ResultCard(book: Book, onOpen: (Book) -> Unit, onAdd: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box {
-            CoverFill(book.image, 222.dp, elevation = 6.dp)
+            CoverFill(book.image, 222.dp, elevation = 6.dp, title = book.title)
             DiscountBadge(book.discountPercent, Modifier.align(Alignment.TopStart))
             AddButton(onAdd, Modifier.align(Alignment.BottomEnd).padding(6.dp))
         }

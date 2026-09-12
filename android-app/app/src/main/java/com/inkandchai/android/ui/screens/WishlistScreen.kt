@@ -91,7 +91,7 @@ fun WishlistScreen(
                     Modifier.fillMaxWidth().clickable { onOpenBook(book) },
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    Cover(book.image, 60.dp, 90.dp, elevation = 4.dp)
+                    Cover(book.image, 60.dp, 90.dp, elevation = 4.dp, title = book.title)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             book.title,

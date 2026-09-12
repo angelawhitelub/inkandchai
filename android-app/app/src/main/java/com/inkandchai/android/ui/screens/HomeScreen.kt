@@ -246,7 +246,7 @@ private fun EditorsPick(book: Book, onOpen: (Book) -> Unit) {
             .padding(18.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Cover(book.image, 96.dp, 144.dp, elevation = 10.dp)
+        Cover(book.image, 96.dp, 144.dp, elevation = 10.dp, title = book.title)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("EDITOR'S PICK", style = InkTheme.type.micro, color = colors.accent)
             Text(
@@ -293,7 +293,7 @@ private fun TrendingCard(book: Book, onOpen: (Book) -> Unit, onAdd: () -> Unit) 
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box {
-            Cover(book.image, 126.dp, 186.dp, elevation = 6.dp)
+            Cover(book.image, 126.dp, 186.dp, elevation = 6.dp, title = book.title)
             DiscountBadge(book.discountPercent, Modifier.align(Alignment.TopStart))
             AddButton(onAdd, Modifier.align(Alignment.BottomEnd).padding(6.dp))
         }
@@ -309,7 +309,7 @@ private fun ArrivalCard(book: Book, onOpen: (Book) -> Unit, onAdd: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box {
-            CoverFill(book.image, 222.dp, elevation = 6.dp)
+            CoverFill(book.image, 222.dp, elevation = 6.dp, title = book.title)
             DiscountBadge(book.discountPercent, Modifier.align(Alignment.TopStart))
             AddButton(onAdd, Modifier.align(Alignment.BottomEnd).padding(6.dp))
         }
@@ -345,7 +345,7 @@ private fun HindiBand(books: List<Book>, onOpen: (Book) -> Unit) {
                     Modifier.width(96.dp).clickable { onOpen(book) },
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Cover(book.image, 96.dp, 142.dp, elevation = 4.dp)
+                    Cover(book.image, 96.dp, 142.dp, elevation = 4.dp, title = book.title)
                     Text("₹${book.price.rupees()}", style = InkTheme.type.bodyStrong, color = colors.ink)
                 }
             }
