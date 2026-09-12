@@ -118,8 +118,37 @@ data class GetBookResponse(
 
 @Serializable
 data class FrequentlyBoughtResponse(
-    val recommendations: List<CatalogBook> = emptyList(),
+    val recommendations: List<RecommendedBook> = emptyList(),
 )
+
+/**
+ * frequently-bought is the one endpoint that answers in camelCase
+ * (originalPrice, not original_price) and carries author/category that
+ * catalog-search does not. Its own type rather than a reused one, so the
+ * mismatch is visible instead of silently deserialising MRP as zero.
+ */
+@Serializable
+data class RecommendedBook(
+    val slug: String = "",
+    val title: String = "",
+    val author: String = "",
+    val category: String = "",
+    val description: String = "",
+    val price: JsonElement? = null,
+    val originalPrice: JsonElement? = null,
+    val img: String = "",
+) {
+    fun toBook() = Book(
+        slug = slug,
+        title = title,
+        author = author,
+        category = category,
+        description = description,
+        price = price.asRupees(),
+        mrp = originalPrice.asRupees(),
+        image = img,
+    )
+}
 
 // ── Checkout ────────────────────────────────────────────────────────────────
 
