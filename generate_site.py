@@ -1263,7 +1263,7 @@ HTML = r"""<!DOCTYPE html>
   html[data-theme="light"] .cart-sidebar, html[data-theme="light"] .modal-content { color: var(--cream); }
 
   /* Theme toggle button */
-  .theme-toggle { background: transparent; border: 1px solid var(--gold-dim); color: var(--gold); width: 38px; height: 38px; border-radius: 50%; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; transition: all 0.3s; margin-right: 0.6rem; }
+  .theme-toggle { background: transparent; border: 1px solid var(--gold-dim); color: var(--gold); width: 38px; height: 38px; border-radius: 50%; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; transition: all 0.3s; margin-right: 0.3rem; }
   .theme-toggle:hover { background: var(--gold); color: var(--bg); transform: rotate(20deg); }
   .theme-toggle .sun { display: none; }
   html[data-theme="light"] .theme-toggle .moon { display: none; }
@@ -1295,8 +1295,8 @@ HTML = r"""<!DOCTYPE html>
      are absolutely positioned inside these <li>s and get clipped if the row
      scrolls/clips. flex:1 1 0 keeps the links to their leftover row-1 space so
      the account icons stay on row 1 without needing overflow. */
-  .nav-links { display: flex; gap: 2rem; list-style: none; flex: 1 1 0; min-width: 0; justify-content: center; overflow: visible; flex-wrap: wrap; row-gap: 0.4rem; }
-  .nav-links a { font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cream-dim); text-decoration: none; transition: color 0.3s; }
+  .nav-links { display: flex; gap: 1.1rem; list-style: none; flex: 1 1 0; min-width: 0; justify-content: center; overflow: visible; flex-wrap: wrap; row-gap: 0.4rem; }
+  .nav-links a { font-size: 0.66rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cream-dim); text-decoration: none; transition: color 0.3s; }
   .nav-links a:hover { color: var(--gold); }
   .nav-links li { position: relative; }
   .nav-dropdown-menu::after { content: ''; position: absolute; left: -1rem; right: -1rem; top: 100%; height: 1rem; }
@@ -1314,7 +1314,7 @@ HTML = r"""<!DOCTYPE html>
   .nav-dropdown a { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; padding: 0.55rem 0.65rem; border: 1px solid transparent; font-size: 0.58rem; letter-spacing: 0.12em; line-height: 1.35; white-space: normal; }
   .nav-dropdown a:hover { border-color: var(--border); background: rgba(201,168,76,0.08); }
   .nav-cat-count { flex: 0 0 auto; color: var(--gold-dim); font-size: 0.72em; letter-spacing: 0.04em; text-transform: none; }
-  .nav-actions { display: flex; gap: 1.4rem; align-items: center; }
+  .nav-actions { display: flex; gap: 0.9rem; align-items: center; }
   .nav-icon { color: var(--cream-dim); cursor: pointer; transition: color 0.3s; font-size: 1rem; }
   .nav-icon:hover { color: var(--gold); }
   .nav-search-btn { color: var(--cream); cursor: pointer; transition: color 0.3s, border-color 0.3s, background 0.3s; font: inherit; background: rgba(201,168,76,0.08); border: 1px solid var(--border); border-radius: var(--pill); padding: 0.5rem 0.95rem; gap: 0.4rem; display: inline-flex; align-items: center; justify-content: center; font-size: 1.05rem; line-height: 1; }
@@ -1339,7 +1339,7 @@ HTML = r"""<!DOCTYPE html>
   .nav-kbd-hint { margin-left: 0.2rem; opacity: 0.6; font-size: 0.7rem; }
   @media (hover: none), (max-width: 780px) { .nav-kbd-hint { display: none; } }
   .nav-search-label { display: inline; font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase; font-family: 'Inter', sans-serif; }
-  .btn-nav { font-family: 'Inter', sans-serif; font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; padding: 0.55rem 1.4rem; border: 1px solid var(--gold-dim); color: var(--gold); background: transparent; cursor: pointer; transition: all 0.3s; text-decoration: none; }
+  .btn-nav { font-family: 'Inter', sans-serif; font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; padding: 0.55rem 1rem; border: 1px solid var(--gold-dim); color: var(--gold); background: transparent; cursor: pointer; transition: all 0.3s; text-decoration: none; }
   .btn-nav:hover { background: var(--gold); color: var(--bg); border-color: var(--gold); }
 
   /* HERO */
@@ -2279,8 +2279,24 @@ nav:not(.mob-nav){
   border-radius:var(--pill);
 }
 .nav-links a{
-  padding:.55rem .82rem;
+  padding:.5rem .55rem;
   border:1px solid transparent;
+}
+/* Narrow-desktop tier. Seven links + five account controls + the logo do not
+   fit one row at 1366-1460px at the roomy sizes above, and the links wrapping
+   to a second row is what made the header three storeys tall (links, links,
+   search). This tightens tracking/padding just enough to hold one row down to
+   ~1300px. Below that it still wraps - there is no honest size that fits all
+   seven at 1200px - and under 1101px the row is hidden entirely.
+   min-width:1101px is load-bearing: without it these rules would also hit the
+   <=600px block below, which turns the same <ul> into a horizontal scroller. */
+@media (min-width:1101px) and (max-width:1460px){
+  nav:not(.mob-nav){padding:.72rem .8rem}
+  .nav-links{gap:.5rem}
+  .nav-links a{padding:.45rem .38rem;letter-spacing:.12em;font-size:.62rem}
+  .nav-actions{gap:.7rem}
+  .btn-nav{padding:.55rem .8rem;letter-spacing:.14em}
+  .theme-toggle{margin-right:.2rem}
 }
 .nav-links a:hover{
   background:rgba(201,168,76,.11);
