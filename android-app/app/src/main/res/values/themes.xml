@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose paints everything; this exists only so the window has the warm
+         cream background instead of flashing white before the first frame. -->
+    <style name="Theme.InkAndChai" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/ic_bg</item>
+        <item name="android:statusBarColor">@color/ic_bg</item>
+        <item name="android:navigationBarColor">@color/ic_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>
