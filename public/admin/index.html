@@ -3219,8 +3219,22 @@ async function fetchOrdersPage(pageNum, limit, filterSnapshot = currentFilter) {
 // visible orders. This prevents overlapping timers from rolling the table back.
 let ordersFetchGeneration = 0;
 
+/**
+ * How many COMPLETE order loads are in flight.
+ *
+ * A full load is 27 requests at 13k orders and can outrun the 90-second poll.
+ * The poll is a one-page delta, so while a full load is running it has nothing
+ * to add -- and, before this counter existed, it did real harm: it claimed the
+ * shared generation, which made the full load discard its own result on arrival
+ * and leave "Loading orders... 500 / 13,168" on screen for ever. A counter
+ * rather than a boolean so two overlapping loads cannot clear each other's
+ * flag.
+ */
+let ordersFullLoadsInFlight = 0;
+
 async function fetchOrders(reset = false) {
   const fetchGeneration = ++ordersFetchGeneration;
+  ordersFullLoadsInFlight++;
   if (reset) { page = 1; tablePage = 1; }
   const btn     = document.getElementById('refreshBtn');
   const tblWrap = document.querySelector('.tbl-wrap');
@@ -3348,6 +3362,7 @@ async function fetchOrders(reset = false) {
       console.warn('Background refresh failed (cached data still shown):', err.message);
     }
   } finally {
+    ordersFullLoadsInFlight--;
     if (fetchGeneration === ordersFetchGeneration) {
       if (btn) btn.innerHTML = '↻ Refresh';
       if (tblWrap) tblWrap.classList.remove('tbl-loading');
@@ -3371,12 +3386,19 @@ async function fetchOrders(reset = false) {
 // remains a complete reload. This keeps the table live, not authoritative.
 async function refreshRecentOrders() {
   if (!allOrders.length) return fetchOrders(true);   // nothing to merge into
+  // A full load already fetches page 1, and more besides. Polling underneath it
+  // adds nothing and used to strand it -- see ordersFullLoadsInFlight.
+  if (ordersFullLoadsInFlight > 0) return;
 
-  const fetchGeneration = ++ordersFetchGeneration;
+  // OBSERVE the generation, do not claim one. Incrementing here made this
+  // one-page poll invalidate an in-flight full load, which then threw away all
+  // 27 pages at the finish line and left ordersFullyLoaded() false for ever --
+  // freezing the header on its page-1 count and permanently hiding the rows
+  // that only appear once every order is in. The guard below still stops a slow
+  // poll from overwriting a newer manual refresh, which is all it was for.
+  const fetchGeneration = ordersFetchGeneration;
   try {
     const data = await fetchOrdersPage(1, PAGE, '');
-    // Same generation guard as fetchOrders: a slow poll must never overwrite a
-    // newer manual refresh.
     if (fetchGeneration !== ordersFetchGeneration) return;
 
     const fresh = data.orders || [];
