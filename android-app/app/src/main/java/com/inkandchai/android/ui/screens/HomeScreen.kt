@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -74,7 +76,7 @@ fun HomeScreen(
     val colors = InkTheme.colors
 
     LazyColumn(
-        Modifier.fillMaxWidth().background(colors.bg),
+        Modifier.fillMaxSize().background(colors.bg),
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
@@ -211,6 +213,10 @@ private fun PromoMarquee() {
     ) {
         Row(
             Modifier
+                // Unbounded, or the Row is clipped to the strip's width and
+                // "half its width" becomes half the VISIBLE width -- the text
+                // would jump rather than loop seamlessly.
+                .wrapContentWidth(align = Alignment.Start, unbounded = true)
                 .onGloballyPositioned { halfWidthPx = it.size.width / 2 }
                 .offset { IntOffset(x = -(progress * halfWidthPx).toInt(), y = 0) },
         ) {
