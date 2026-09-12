@@ -1,23 +1,29 @@
 {
-  "name": "Ink & Chai \u2014 An Indian Bookshop",
+  "id": "/",
+  "name": "Ink & Chai — An Indian Bookshop",
   "short_name": "Ink & Chai",
-  "description": "Buy books online in India. Hindi & English. Free shipping above \u20b9499.",
+  "description": "Buy books online in India. Hindi & English. Cash on delivery. Free shipping above ₹499.",
+  "lang": "en-IN",
+  "dir": "ltr",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
   "background_color": "#0d0b08",
-  "theme_color": "#c9a84c",
+  "theme_color": "#0d0b08",
+  "categories": ["shopping", "books", "education"],
+  "prefer_related_applications": false,
   "icons": [
-    {
-      "src": "/images/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/images/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "/images/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/images/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/images/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/images/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Bestsellers",  "short_name": "Bestsellers",  "url": "/bestsellers/",  "icons": [{ "src": "/images/icon-192.png", "sizes": "192x192" }] },
+    { "name": "New arrivals", "short_name": "New",          "url": "/new-arrivals/", "icons": [{ "src": "/images/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Track order",  "short_name": "Track",        "url": "/track/",        "icons": [{ "src": "/images/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Your cart",    "short_name": "Cart",         "url": "/cart/",         "icons": [{ "src": "/images/icon-192.png", "sizes": "192x192" }] }
   ]
 }

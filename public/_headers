@@ -26,6 +26,21 @@
 /js/book-card-*.js
   Cache-Control: public, max-age=31536000, immutable
 
+# The service worker is the one file that must never go stale. It is also the
+# only way to uninstall a bad one: browsers re-fetch sw.js on navigation, so a
+# worker that unregisters itself reaches every installed client within a visit
+# — but only if this header stops a CDN or a browser holding the old copy.
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Digital Asset Links. Google's verifier requires application/json served
+# directly, with no redirect, or the Android app shows a browser URL bar
+# instead of running full-screen.
+/.well-known/assetlinks.json
+  Content-Type: application/json
+  Cache-Control: public, max-age=300
+  Access-Control-Allow-Origin: *
+
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
