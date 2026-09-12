@@ -11343,7 +11343,30 @@ function mbState(repl, meta, split) {
   return 'gateway';
 }
 
-const MB_STATE_ORDER = { unreplaced: 0, needs_upi: 1, ready: 2, open: 3, gateway: 4, paid: 5 };
+/**
+ * Sort key: when this row actually happened, newest first.
+ *
+ * This list used to rank by state -- unreplaced, then needs_upi, then the rest
+ * -- with the date only breaking ties inside a block. That buried recent work:
+ * a replacement created a minute ago is `open`, so every unreplaced and
+ * needs_upi row sorted above it -- with the queues at their usual size that put
+ * it past position 40, well below the fold. Worse, the
+ * panel renders twice (cached orders first with ordersFullyLoaded() false, so
+ * the unreplaced block does not exist yet; then again once every page is in),
+ * so a row you had just created was visible on the first paint and shoved off
+ * screen by the second. It read as the row vanishing.
+ *
+ * Ordering by state was doing a job the chips and the badge already do better:
+ * both queues are one click away and the badge counts them, so "All" is free to
+ * be what someone actually reaches for it to be -- a feed of what just happened.
+ *
+ * Undated rows sort last rather than to the epoch-NaN top.
+ */
+function mbWhen(row) {
+  const t = Date.parse(row.meta.requested_at || row.report.created_at || '');
+  return Number.isNaN(t) ? 0 : t;
+}
+
 const MB_STATE_LABEL = {
   unreplaced: 'No replacement',
   needs_upi: 'Needs UPI ID',
@@ -11461,12 +11484,7 @@ function missingBookRows() {
       return { repl, report: repl, meta, original, split, state: mbState(repl, meta, split) };
     })
     .concat(mbUnreplacedRows(byId))
-    .sort((a, b) => {
-      const d = MB_STATE_ORDER[a.state] - MB_STATE_ORDER[b.state];
-      if (d) return d;
-      return new Date(b.meta.requested_at || b.report.created_at || 0)
-           - new Date(a.meta.requested_at || a.report.created_at || 0);
-    });
+    .sort((a, b) => mbWhen(b) - mbWhen(a));
 }
 
 function mbHaystack(row) {
