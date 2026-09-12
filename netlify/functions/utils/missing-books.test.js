@@ -7,6 +7,7 @@ const {
   refundSplitPaise,
   replacementCovers,
   itemTitleKey,
+  reportedMissingTitles,
 } = require('./missing-books');
 
 const repl = (reason, items = [{ title: 'A', price: 299, qty: 2 }]) => ({
@@ -120,4 +121,63 @@ test('an untitled line can never be considered covered', () => {
   // which is the failure this whole check exists to prevent.
   assert.equal(replacementCovers(cart('Book A'), [{ title: '' }]), false);
   assert.equal(replacementCovers(cart(''), [{ title: '' }]), false);
+});
+
+
+// ── The reason is a dropdown label; the `_missing` stamp is the customer ──────
+// Raising a replacement for a reported-missing book under the wrong reason used
+// to drop it out of this set entirely, so the refund owed for it went untracked.
+
+/** An original order carrying the customer's own missing-book report. */
+const reported = (...titles) => ({
+  razorpay_order_id: 'IC-1',
+  cart_items: titles.map(t => ({ title: t, price: 299, qty: 1, _missing: true, _missing_at: '2026-09-01T00:00:00Z' })),
+});
+
+test('a mislabelled replacement still counts when the customer reported the book missing', () => {
+  const r = repl('damaged', [{ title: 'Book A', price: 299, qty: 1 }]);
+  // The old one-argument behaviour: reason alone, so it does not qualify.
+  assert.equal(isMissingBookReplacement(r), false);
+  // With the original in hand, the customer's report decides.
+  assert.equal(isMissingBookReplacement(r, reported('Book A')), true);
+  assert.equal(isMissingBookReplacement(repl('wrong_item', [{ title: 'Book A' }]), reported('Book A')), true);
+  assert.equal(isMissingBookReplacement(repl('other', [{ title: 'Book A' }]), reported('Book A')), true);
+});
+
+test('a genuine damaged-book replacement is still not a missing-book one', () => {
+  // Nothing was reported missing on the original, so the reason set still rules.
+  assert.equal(isMissingBookReplacement(repl('damaged', [{ title: 'Book A' }]), { cart_items: [{ title: 'Book A' }] }), false);
+  assert.equal(isMissingBookReplacement(repl('missing_pages', [{ title: 'Book A' }]), { cart_items: [{ title: 'Book A' }] }), false);
+});
+
+test('a replacement for a DIFFERENT book than the one reported does not qualify', () => {
+  // Book A never arrived; this parcel is a damaged Book B. Two separate issues,
+  // and the refund owed for Book A must not be considered handled by it.
+  assert.equal(isMissingBookReplacement(repl('damaged', [{ title: 'Book B' }]), reported('Book A')), false);
+});
+
+test('the two real reasons still qualify with no original at all', () => {
+  assert.equal(isMissingBookReplacement(repl('missing_item'), null), true);
+  assert.equal(isMissingBookReplacement(repl('incomplete_set'), undefined), true);
+});
+
+test('an order with no replacement metadata never qualifies, however it was reported', () => {
+  assert.equal(isMissingBookReplacement({ cart_items: [{ title: 'Book A' }] }, reported('Book A')), false);
+  assert.equal(isMissingBookReplacement(null, reported('Book A')), false);
+});
+
+test('reported titles are read only from real stamps', () => {
+  assert.deepEqual([...reportedMissingTitles(reported('  Book A  '))], ['book a']);
+  // A falsy or absent flag is not a report, and an untitled line is unusable.
+  assert.equal(reportedMissingTitles({ cart_items: [{ title: 'A', _missing: false }] }).size, 0);
+  assert.equal(reportedMissingTitles({ cart_items: [{ title: 'A' }] }).size, 0);
+  assert.equal(reportedMissingTitles({ cart_items: [{ title: '', _missing: true }] }).size, 0);
+  assert.equal(reportedMissingTitles(null).size, 0);
+});
+
+test('a truthy-but-not-true stamp is not a report', () => {
+  // report-missing-books.js writes the boolean. Anything else is data we did
+  // not write, and this panel moves money, so it is not trusted.
+  assert.equal(reportedMissingTitles({ cart_items: [{ title: 'A', _missing: 'yes' }] }).size, 0);
+  assert.equal(reportedMissingTitles({ cart_items: [{ title: 'A', _missing: 1 }] }).size, 0);
 });

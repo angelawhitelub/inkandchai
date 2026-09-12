@@ -37,10 +37,54 @@ function isReplacementOrder(order) {
   return String(order && order.source || '').toLowerCase() === 'replacement' || !!replacementMeta(order);
 }
 
-function isMissingBookReplacement(order) {
+/**
+ * Titles the customer reported as never having arrived, read off the ORIGINAL
+ * order. `_missing` is stamped in exactly one place -- report-missing-books.js,
+ * the customer's own report -- and replacement carts are built with the flag
+ * stripped, so a stamp is always a first-hand claim about the original parcel
+ * and never an artefact copied into a replacement.
+ */
+function reportedMissingTitles(original) {
+  const items = Array.isArray(original && original.cart_items) ? original.cart_items : [];
+  const titles = new Set();
+  for (const item of items) {
+    if (item && item._missing === true) {
+      const key = itemTitleKey(item);
+      if (key) titles.add(key);
+    }
+  }
+  return titles;
+}
+
+/**
+ * Is this replacement about books that never arrived?
+ *
+ * The reason alone used to decide this, which made the answer depend on a label
+ * chosen in a dropdown. Raise the replacement for a reported-missing book but
+ * tag it "damaged", "wrong_item" or "other" and it stopped being a missing-book
+ * replacement -- so the refund flows below rejected it, and the admin panel
+ * showed it nowhere while still counting it as covering the report. The book
+ * fell out of both halves and the money owed for it stopped being tracked.
+ *
+ * So the customer's own report is the second, authoritative route in: if the
+ * original order says a title never arrived and this replacement carries that
+ * title, it qualifies whatever the dropdown said.
+ *
+ * This does NOT widen the reasons themselves. A damaged or missing_pages
+ * replacement for a book the customer actually holds has no `_missing` stamp
+ * behind it and still returns false, which is the distinction the reason set
+ * was drawn to make. `original` is optional: called with one argument this
+ * behaves exactly as it always did.
+ */
+function isMissingBookReplacement(order, original = null) {
   const meta = replacementMeta(order);
   if (!meta) return false;
-  return MISSING_BOOK_REASONS.has(String(meta.reason || '').toLowerCase());
+  if (MISSING_BOOK_REASONS.has(String(meta.reason || '').toLowerCase())) return true;
+
+  const reported = reportedMissingTitles(original);
+  if (!reported.size) return false;
+  const items = Array.isArray(order && order.cart_items) ? order.cart_items : [];
+  return items.some(item => reported.has(itemTitleKey(item)));
 }
 
 /**
@@ -123,5 +167,6 @@ module.exports = {
   replacementMeta,
   isReplacementOrder,
   isMissingBookReplacement,
+  reportedMissingTitles,
   missingValuePaise,
 };

@@ -54,13 +54,9 @@ async function loadReplacement(sb, id) {
 }
 
 /** Amount owed by UPI, preferring the figure the admin actually emailed. */
-async function amountOwedPaise(sb, repl, meta) {
+function amountOwedPaise(repl, meta, original) {
   const emailed = Number(meta.upi_requested_amount_paise);
   if (Number.isFinite(emailed) && emailed > 0) return emailed;
-  const originalId = String(meta.original_order_id || '').trim();
-  const { data: original } = originalId
-    ? await sb.from('orders').select('razorpay_payment_id, amount_paise').eq('razorpay_order_id', originalId).maybeSingle()
-    : { data: null };
   return refundSplitPaise(repl, original).upiPaise;
 }
 
@@ -91,14 +87,23 @@ exports.handler = async (event) => {
     if (!repl) return json(404, { error: 'We could not find that order.' });
 
     const meta = replacementMeta(repl);
-    if (!meta || !isMissingBookReplacement(repl)) {
+    // Loaded before the gate: a replacement tagged with the wrong reason is
+    // still about books that never arrived if the original carries the
+    // customer's `_missing` report for them. The full row is needed anyway for
+    // the refund split below.
+    const originalId = String((meta && meta.original_order_id) || '').trim();
+    const { data: original } = originalId
+      ? await sb.from('orders').select('*').eq('razorpay_order_id', originalId).maybeSingle()
+      : { data: null };
+
+    if (!meta || !isMissingBookReplacement(repl, original)) {
       return json(400, { error: 'That order is not a missing-book replacement.' });
     }
     if (String(repl.status || '').toLowerCase() !== 'cancelled') {
       return json(400, { error: 'Good news — this replacement has not been cancelled, so your books are still on their way. Nothing to refund.' });
     }
 
-    const owedPaise = await amountOwedPaise(sb, repl, meta);
+    const owedPaise = amountOwedPaise(repl, meta, original);
     const items = Array.isArray(repl.cart_items) ? repl.cart_items : [];
 
     if (event.httpMethod === 'GET') {

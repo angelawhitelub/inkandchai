@@ -69,11 +69,20 @@ exports.handler = async (event) => {
       .maybeSingle();
     if (error) throw error;
     if (!repl) return json(404, { error: 'Replacement order not found' });
-    if (!isMissingBookReplacement(repl)) {
+    const meta = replacementMeta(repl) || {};
+    // Loaded before the gate: a replacement raised under the wrong reason is
+    // still a missing-book one if the original carries the customer's
+    // `_missing` report for a book it contains. Reused for the refund split
+    // and the customer's details further down.
+    const originalId = String(meta.original_order_id || '').trim();
+    const { data: original } = originalId
+      ? await sb.from('orders').select('*').eq('razorpay_order_id', originalId).maybeSingle()
+      : { data: null };
+
+    if (!isMissingBookReplacement(repl, original)) {
       return json(400, { error: 'That order is not a missing-book replacement.' });
     }
 
-    const meta = replacementMeta(repl) || {};
     if (!undo && !meta.refund_upi_id) {
       return json(400, { error: 'No UPI ID recorded on this one yet — there is nothing to have paid it to.' });
     }
@@ -145,23 +154,19 @@ exports.handler = async (event) => {
     }
 
     if (alsoNotify) {
-      const original = await sb
-        .from('orders').select('*')
-        .eq('razorpay_order_id', String(meta.original_order_id || ''))
-        .maybeSingle();
       // Quote what was actually transferred by hand, not the whole value of the
       // books. On a partial-COD order the gateway sends part of it back and only
       // the remainder is pushed to UPI — telling the customer the larger number
       // would have them hunting their statement for money nobody sent.
-      const { upiPaise } = refundSplitPaise(repl, original.data);
+      const { upiPaise } = refundSplitPaise(repl, original);
       // The replacement carries the customer's own contact details, but the
       // original is the order they know by number, so that is the id quoted.
       const person = {
         razorpay_order_id: meta.original_order_id || repl.razorpay_order_id,
         id: repl.id,
-        customer_name: repl.customer_name || original.data?.customer_name || '',
-        customer_email: repl.customer_email || original.data?.customer_email || '',
-        customer_phone: repl.customer_phone || original.data?.customer_phone || '',
+        customer_name: repl.customer_name || original?.customer_name || '',
+        customer_email: repl.customer_email || original?.customer_email || '',
+        customer_phone: repl.customer_phone || original?.customer_phone || '',
       };
       const books = (Array.isArray(repl.cart_items) ? repl.cart_items : [])
         .map(it => String((it && (it.title || it.name)) || '').trim())

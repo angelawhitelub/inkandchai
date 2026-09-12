@@ -11319,9 +11319,44 @@ function mbMeta(o) {
   for (const it of items) if (it && it._replacement) return it._replacement;
   return null;
 }
-function mbIsMissing(o) {
+/**
+ * Titles the customer reported as never arrived, read off the ORIGINAL order.
+ * Mirrors reportedMissingTitles() in netlify/functions/utils/missing-books.js —
+ * the two must agree, or this panel offers a button the server then refuses.
+ */
+function mbReportedTitles(original) {
+  const items = Array.isArray(original?.cart_items) ? original.cart_items : [];
+  const titles = new Set();
+  for (const it of items) {
+    if (it && it._missing === true) {
+      const key = mbTitleKey(it);
+      if (key) titles.add(key);
+    }
+  }
+  return titles;
+}
+
+/**
+ * Does this replacement belong on the Missing Books tab?
+ *
+ * The reason alone used to decide, which made membership depend on a dropdown.
+ * Raise a replacement for a reported-missing book and tag it "damaged",
+ * "wrong_item" or "other" and it fell out of this list — while mbUnreplacedRows
+ * below still counted it as covering the report, because coverage was never
+ * reason-aware. The book then appeared nowhere at all and the refund owed for
+ * it stopped being tracked.
+ *
+ * So the customer's own `_missing` report is the second way in, and the two
+ * halves are symmetric again: anything that can hide a report can also be seen.
+ */
+function mbIsMissing(o, original = null) {
   const m = mbMeta(o);
-  return !!m && MB_REASONS.has(String(m.reason || '').toLowerCase());
+  if (!m) return false;
+  if (MB_REASONS.has(String(m.reason || '').toLowerCase())) return true;
+  const reported = mbReportedTitles(original);
+  if (!reported.size) return false;
+  const items = Array.isArray(o?.cart_items) ? o.cart_items : [];
+  return items.some(it => reported.has(mbTitleKey(it)));
 }
 
 // What the gateway can send back versus what a person has to transfer. A refund
@@ -11476,13 +11511,15 @@ function missingBookRows() {
     if (k) byId.set(String(k), o);
   }
   return allOrders
-    .filter(mbIsMissing)
     .map(repl => {
-      const meta = mbMeta(repl) || {};
+      const meta = mbMeta(repl);
+      if (!meta) return null;
       const original = byId.get(String(meta.original_order_id || '')) || null;
+      if (!mbIsMissing(repl, original)) return null;
       const split = mbSplit(repl, original);
       return { repl, report: repl, meta, original, split, state: mbState(repl, meta, split) };
     })
+    .filter(Boolean)
     .concat(mbUnreplacedRows(byId))
     .sort((a, b) => mbWhen(b) - mbWhen(a));
 }

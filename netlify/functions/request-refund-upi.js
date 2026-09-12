@@ -131,7 +131,16 @@ exports.handler = async (event) => {
     if (!repl) return json(404, { error: 'Replacement order not found' });
 
     const meta = replacementMeta(repl);
-    if (!meta || !isMissingBookReplacement(repl)) {
+    // Loaded before the gate, not after it. A replacement raised for a reported
+    // book but tagged "damaged" or "other" only proves it is about books that
+    // never arrived by way of the customer's own `_missing` report, which lives
+    // on the original order.
+    const originalId = String((meta && meta.original_order_id) || '').trim();
+    const { data: original } = originalId
+      ? await sb.from('orders').select('*').eq('razorpay_order_id', originalId).maybeSingle()
+      : { data: null };
+
+    if (!meta || !isMissingBookReplacement(repl, original)) {
       return json(400, { error: 'That order is not a missing-book replacement, so no refund is owed for books that never arrived.' });
     }
     // Only a cancelled replacement means the books are not coming. Sending this
@@ -152,11 +161,6 @@ exports.handler = async (event) => {
 
     const email = String(repl.customer_email || '').trim();
     if (!email) return json(400, { error: 'This customer has no email address on the order — ask for the UPI ID over WhatsApp and save it from the panel.' });
-
-    const originalId = String(meta.original_order_id || '').trim();
-    const { data: original } = originalId
-      ? await sb.from('orders').select('*').eq('razorpay_order_id', originalId).maybeSingle()
-      : { data: null };
 
     const split = refundSplitPaise(repl, original);
     const requested = Number(body.amount_paise);
