@@ -25,6 +25,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { loadSuppressed } = require('./gads-adjustment-rejections');
 const {
   LOSS_STATUSES,
   MAX_CONVERSION_AGE_DAYS,
@@ -108,9 +109,21 @@ exports.handler = async (event) => {
   const sinceIso = new Date(now.getTime() - days * 24 * 3600 * 1000).toISOString();
 
   let orders;
+  let suppress = new Set();
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     orders = await fetchLossOrders(supabase, sinceIso);
+    // Order ids Google has already refused more than once. Skipping them is
+    // what keeps the daily error count meaningful -- see
+    // gads-adjustment-rejections.js for why this cannot drop a real retraction.
+    // A failure to read the list is NOT fatal: emitting a row Google rejects is
+    // a harmless no-op, whereas dropping the whole feed would leave cancelled
+    // revenue counted in Ads.
+    try {
+      suppress = await loadSuppressed(supabase);
+    } catch (e) {
+      console.error('[google-ads-adjustments] suppression list unavailable:', e.message);
+    }
   } catch (error) {
     console.error('[google-ads-adjustments] query failed:', error.message);
     return {
@@ -124,10 +137,11 @@ exports.handler = async (event) => {
     now,
     maxAgeDays: days,
     minAgeHours: MIN_ADJUSTMENT_AGE_HOURS,
+    suppress,
   });
 
   console.log(`[google-ads-adjustments] account=${params.account || 'a'} scanned=${orders.length} `
-    + `retractions=${rows.length} skipped=${JSON.stringify(skipped)}`);
+    + `retractions=${rows.length} suppressed_list=${suppress.size} skipped=${JSON.stringify(skipped)}`);
 
   if (String(params.format || '').toLowerCase() === 'json') {
     const byStatus = {};
@@ -144,6 +158,7 @@ exports.handler = async (event) => {
         window_days: days,
         scanned: orders.length,
         retractions: rows.length,
+        suppression_list_size: suppress.size,
         value_retracted: Math.round(value * 100) / 100,
         by_status: byStatus,
         skipped,

@@ -6,6 +6,8 @@ const {
   istStamp,
   buildAdjustmentRows,
   toCsv,
+  parseAdjustmentResults,
+  TERMINAL_REJECTION,
 } = require('./google-ads-adjustments');
 
 const NOW = new Date('2026-08-06T12:00:00.000Z');
@@ -140,4 +142,79 @@ test('keeps all six template columns, empty value columns included', () => {
 test('quotes a conversion name containing a comma', () => {
   const { rows } = buildAdjustmentRows([order()], { now: NOW });
   assert.match(toCsv(rows, 'Purchase, web'), /,"Purchase, web",/);
+});
+
+
+// ── Suppressing order ids Google has already refused ─────────────────────────
+// The feed is rebuilt from scratch on every fetch, so a retraction is re-sent
+// every day for 54 days. Rows whose conversion never fired fail every one of
+// those times: 1,294 of 2,895 on 15 Sept 2026, and of the 1,270 that failed the
+// day before, zero later succeeded. Suppressing them costs no retraction and
+// takes the error count back to something that means something.
+
+test('a suppressed order id is dropped and counted', () => {
+  const orders = [order({ razorpay_order_id: 'IC-20260701-AAAAA' }),
+                  order({ razorpay_order_id: 'IC-20260701-BBBBB' })];
+  const { rows, skipped } = buildAdjustmentRows(orders, {
+    now: NOW, suppress: new Set(['IC-20260701-AAAAA']),
+  });
+  assert.deepEqual(rows.map(r => r.orderId), ['IC-20260701-BBBBB']);
+  assert.equal(skipped.suppressed, 1);
+});
+
+test('suppression matches the id actually sent, not the order id', () => {
+  // A Razorpay order converted as pay_…, so that is the id Google rejected.
+  const orders = [order({ razorpay_payment_id: 'pay_XYZ' })];
+  const { rows, skipped } = buildAdjustmentRows(orders, {
+    now: NOW, suppress: new Set(['pay_XYZ']),
+  });
+  assert.equal(rows.length, 0);
+  assert.equal(skipped.suppressed, 1);
+});
+
+test('no suppression list behaves exactly as before', () => {
+  const orders = [order()];
+  assert.equal(buildAdjustmentRows(orders, { now: NOW }).rows.length, 1);
+  assert.equal(buildAdjustmentRows(orders, { now: NOW, suppress: null }).rows.length, 1);
+  assert.equal(buildAdjustmentRows(orders, { now: NOW }).skipped.suppressed, 0);
+});
+
+test('reads Google’s results export into rejected and accepted halves', () => {
+  const csv = [
+    'Parameters:TimeZone=Asia/Calcutta',
+    'Order ID,Conversion Name,Adjustment Time,Adjustment Type,Adjusted Value,Adjusted Value Currency,Results',
+    'IC-1,Purchase,2026-07-24 22:09:00,RETRACT,,,# OK',
+    'IC-2,Purchase,2026-07-25 00:06:19,RETRACT,,,This conversion does not exist. Double-check all the parameters.',
+    'pay_ABC,Purchase,2026-07-25 00:06:19,RETRACT,,,This conversion does not exist. Double-check all the parameters.',
+  ].join('\n');
+  const { rejected, accepted } = parseAdjustmentResults(csv);
+  assert.deepEqual(accepted, ['IC-1']);
+  assert.deepEqual(rejected.map(r => r.orderId), ['IC-2', 'pay_ABC']);
+  assert.match(rejected[0].reason, TERMINAL_REJECTION);
+});
+
+test('the errors-only export parses too, and a quoted reason survives', () => {
+  const csv = [
+    'Parameters:TimeZone=Asia/Calcutta',
+    'Order ID,Conversion Name,Adjustment Time,Adjustment Type,Adjusted Value,Adjusted Value Currency,Results',
+    'IC-2,Purchase,2026-07-25 00:06:19,RETRACT,,,"Does not exist, really"',
+  ].join('\r\n');
+  const { rejected, accepted } = parseAdjustmentResults(csv);
+  assert.equal(accepted.length, 0);
+  assert.deepEqual(rejected, [{ orderId: 'IC-2', reason: 'Does not exist, really' }]);
+});
+
+test('only the proven-terminal reason matches TERMINAL_REJECTION', () => {
+  assert.match('This conversion does not exist. Double-check all the parameters.', TERMINAL_REJECTION);
+  // Anything else is left alone: nothing is known about whether it recurs, and
+  // suppressing on a guess would silently drop a retraction that was owed.
+  assert.doesNotMatch('The conversion was already adjusted.', TERMINAL_REJECTION);
+  assert.doesNotMatch('Adjustment time precedes the conversion time.', TERMINAL_REJECTION);
+  assert.doesNotMatch('', TERMINAL_REJECTION);
+});
+
+test('junk in, nothing out', () => {
+  assert.deepEqual(parseAdjustmentResults(''), { rejected: [], accepted: [] });
+  assert.deepEqual(parseAdjustmentResults(null), { rejected: [], accepted: [] });
+  assert.deepEqual(parseAdjustmentResults('no header here\njust,some,cells'), { rejected: [], accepted: [] });
 });

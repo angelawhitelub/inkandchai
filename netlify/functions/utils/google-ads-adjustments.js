@@ -120,8 +120,87 @@ function istStamp(date) {
  * @returns {{rows: Array, skipped: Object}} rows are `{orderId, adjustmentTime,
  *   status, amount, createdAt}`; `skipped` counts why the rest were dropped.
  */
+/**
+ * Parse a Google Ads adjustment results or errors export.
+ *
+ * Both exports share a shape: optional `Parameters:` preamble, a header row,
+ * then one row per uploaded adjustment with the outcome in `Results`. The
+ * errors export carries only the failures; the full "Download all" export
+ * carries the accepted rows too, marked `# OK`.
+ *
+ * Returns both halves, because both are useful: `rejected` is what to suppress
+ * and `accepted` is what to UN-suppress. Feeding back a full export therefore
+ * self-heals the list -- if Google ever matches an id we had written off, the
+ * next upload's results take it off the list again.
+ */
+function parseAdjustmentResults(csvText) {
+  const rows = parseCsv(String(csvText || ''));
+  let header = null;
+  const rejected = [];
+  const accepted = [];
+
+  for (const cells of rows) {
+    if (!cells.length) continue;
+    const first = String(cells[0] || '');
+    if (/^Parameters:/i.test(first)) continue;
+    if (!header) {
+      if (cells.some(c => /^order id$/i.test(String(c).trim()))) {
+        header = cells.map(c => String(c).trim().toLowerCase());
+      }
+      continue;
+    }
+    const idIdx = header.indexOf('order id');
+    const resIdx = header.indexOf('results');
+    if (idIdx < 0) break;
+    const orderId = String(cells[idIdx] || '').trim();
+    if (!orderId) continue;
+    const result = resIdx >= 0 ? String(cells[resIdx] || '').trim() : '';
+    // Google writes "# OK" for an accepted row. Anything else is a rejection,
+    // including messages we have not seen before -- but only the ones we know
+    // to be terminal are ever suppressed, which is decided by the caller.
+    if (/^#\s*OK$/i.test(result)) accepted.push(orderId);
+    else if (result) rejected.push({ orderId, reason: result });
+  }
+  return { rejected, accepted };
+}
+
+/** Minimal RFC-4180 reader: handles quoted fields, escaped quotes and CRLF. */
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); rows.push(row); row = []; field = '';
+    } else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+/**
+ * The only rejection reason proven terminal.
+ *
+ * Measured against two consecutive uploads: of 1,270 rows rejected on 14 Sept
+ * 2026, ZERO succeeded on the 15th -- the 15 that left the error list had
+ * simply aged out of the 54-day window. A conversion Google cannot find does
+ * not later appear, so suppressing these loses no retraction. Any other
+ * message is left alone, because nothing is known about whether it recurs.
+ */
+const TERMINAL_REJECTION = /this conversion does not exist/i;
+
 function buildAdjustmentRows(orders, options = {}) {
   const now = options.now instanceof Date ? options.now : new Date();
+  // Order ids Google has already told us it cannot match. See TERMINAL_REJECTION.
+  const suppress = options.suppress instanceof Set ? options.suppress : new Set();
   const maxAgeDays = Number(options.maxAgeDays) || MAX_CONVERSION_AGE_DAYS;
   const minAgeHours = Number.isFinite(options.minAgeHours)
     ? Number(options.minAgeHours)
@@ -132,7 +211,7 @@ function buildAdjustmentRows(orders, options = {}) {
 
   const skipped = {
     status: 0, source: 0, never_converted: 0,
-    too_old: 0, too_recent: 0, no_order_id: 0, duplicate: 0,
+    too_old: 0, too_recent: 0, no_order_id: 0, duplicate: 0, suppressed: 0,
   };
   const seen = new Set();
   const rows = [];
@@ -151,6 +230,7 @@ function buildAdjustmentRows(orders, options = {}) {
     const orderId = conversionOrderId(order);
     if (!orderId) { skipped.no_order_id++; continue; }
     if (seen.has(orderId)) { skipped.duplicate++; continue; }
+    if (suppress.has(orderId)) { skipped.suppressed++; continue; }
     seen.add(orderId);
 
     rows.push({
@@ -212,6 +292,8 @@ module.exports = {
   NON_CONVERTING_PREFIX,
   MAX_CONVERSION_AGE_DAYS,
   MIN_ADJUSTMENT_AGE_HOURS,
+  TERMINAL_REJECTION,
+  parseAdjustmentResults,
   conversionOrderId,
   adjustmentTimeFor,
   istStamp,

@@ -1124,6 +1124,28 @@ select,input,textarea{font-size:1rem;}
   <div class="admin-section" id="tab-tools">
     <h1>Tools</h1>
     <p class="subtitle">Exports, bulk updates, courier pushes and maintenance jobs. These act on the orders currently loaded and filtered on the Orders tab.</p>
+
+  <!-- Google Ads adjustment feed: teach it which conversions Google cannot find.
+       The feed is a pull, so nothing server-side ever learns an upload's
+       outcome; this file is the only feedback channel Google offers. -->
+  <div style="border:1px solid var(--border);background:var(--bg2);padding:0.9rem 1.1rem;margin:0.8rem 0 1rem;">
+    <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+      <strong style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);">Google Ads · retraction suppression</strong>
+      <span id="gadsSuppressStat" style="font-size:0.62rem;color:var(--cream-dim);">checking…</span>
+      <span style="flex:1;"></span>
+      <button class="btn-outline" style="padding:0.45rem 1rem;font-size:0.58rem;"
+        onclick="document.getElementById('gadsResultsFile').click()">⬆ Upload results CSV</button>
+      <input type="file" id="gadsResultsFile" accept=".csv" style="display:none"
+        onchange="gadsIngestResults(this.files[0]); this.value='';"/>
+    </div>
+    <p style="font-size:0.6rem;color:var(--cream-dim);line-height:1.7;margin:0.6rem 0 0;">
+      Google Ads → Tools → Uploads → <strong>Download all</strong>, then drop the file here. Order ids Google
+      reports as “this conversion does not exist” stop being re-sent, so the daily error count means something
+      again. Rows Google <em>did</em> match are removed from the list automatically, and an id is only
+      suppressed after it has been refused on two separate uploads.
+    </p>
+    <div id="gadsSuppressOut" style="font-size:0.62rem;color:var(--cream-dim);margin-top:0.55rem;white-space:pre-wrap;"></div>
+  </div>
   <div class="export-bar" id="exportBar" style="display:none;">
     <span class="export-label">Export</span>
     <span id="exportCount">0</span>
@@ -2810,6 +2832,58 @@ function scheduleAutoLogout() {
     }
     scheduleAutoLogout();
   }, Math.min(ms, MAX_TIMER_MS));
+}
+
+// ── Google Ads retraction suppression ───────────────────────────────────────
+// google-ads-adjustments.js rebuilds its upload from scratch daily, and Google
+// PULLS it, so nothing in that path can learn which rows were rejected. The
+// results export is the only feedback channel there is: this hands it back.
+
+async function gadsSuppressStatus() {
+  const el = document.getElementById('gadsSuppressStat');
+  if (!el) return;
+  try {
+    const res = await adminFetch('/.netlify/functions/gads-adjustment-rejections');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    el.textContent = `${(d.suppressed ?? 0).toLocaleString('en-IN')} ids suppressed · `
+      + `${(d.total_recorded ?? 0).toLocaleString('en-IN')} seen`;
+  } catch (e) {
+    // Never block the Tools tab on this; the table may not exist yet.
+    el.textContent = 'not set up yet';
+  }
+}
+
+async function gadsIngestResults(file) {
+  if (!file) return;
+  const out = document.getElementById('gadsSuppressOut');
+  if (out) out.textContent = 'Reading ' + file.name + '…';
+  try {
+    const csv = await file.text();
+    const res = await adminFetch('/.netlify/functions/gads-adjustment-rejections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/csv' },
+      body: csv,
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    const other = Object.keys(d.other_reasons || {}).length
+      ? '\nOther rejection reasons seen (NOT suppressed): '
+        + Object.entries(d.other_reasons).map(([k, v]) => `${v}x ${k}`).join('; ')
+      : '';
+    if (out) {
+      out.textContent =
+        `Read ${d.parsed.rejected.toLocaleString('en-IN')} rejected, `
+        + `${d.parsed.accepted.toLocaleString('en-IN')} accepted.\n`
+        + `${d.now_suppressed.toLocaleString('en-IN')} now suppressed, `
+        + `${d.still_below_threshold.toLocaleString('en-IN')} seen once (need ${d.min_rejections_to_suppress}), `
+        + `${d.un_suppressed.toLocaleString('en-IN')} un-suppressed because Google matched them.`
+        + other;
+    }
+    gadsSuppressStatus();
+  } catch (e) {
+    if (out) out.textContent = 'Failed: ' + e.message;
+  }
 }
 
 // Centralised authed fetch — adds X-Admin-Token (preferred) + X-Admin-Key
@@ -12138,6 +12212,7 @@ function switchTab(tab, pushState = true) {
   // The cookie is deliberately unreadable to JavaScript, so its verified flag
   // is the only client-side signal that the remembered session is authenticated.
   const _authed = adminToken || adminKey || adminCookieSession;
+  if (tab === 'tools' && _authed) gadsSuppressStatus();
   if (tab === 'products' && _authed) { fetchProducts(); fetchRemovedListings(); fetchDeletedPages(); }
   if (tab === 'reels' && _authed) loadSiteReels();
   if (tab === 'banners' && _authed) loadLiveBanners();
