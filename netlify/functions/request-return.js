@@ -253,7 +253,7 @@ exports.handler = async (event) => {
                        :                             'awaiting_return_delivery'; // prepaid → auto-refund on return delivered
 
     // Save the return request first (so a mint failure never leaves an orphan code).
-    const { data: inserted, error: insertErr } = await supabase.from('return_requests').insert({
+    const baseRow = {
       order_id:            order.id,
       order_display_id:    order.razorpay_order_id || order.id,
       customer_name:       order.customer_name    || '',
@@ -268,12 +268,36 @@ exports.handler = async (event) => {
       refund_method:       refundMethod,
       payment_type:        paymentType,
       upi_id:              destination.upiId || null,
-      bank_account:        destination.bankAccount || null,
-      bank_ifsc:           destination.bankIfsc || null,
-      bank_holder:         destination.bankHolder || null,
       refund_amount_paise: refundPaise,
       refund_status:       refundStatus,
-    }).select('id').single();
+    };
+    const bankRow = {
+      bank_account: destination.bankAccount || null,
+      bank_ifsc:    destination.bankIfsc || null,
+      bank_holder:  destination.bankHolder || null,
+    };
+    const gaveBank = Boolean(destination.bankAccount);
+
+    let { data: inserted, error: insertErr } = await supabase
+      .from('return_requests').insert({ ...baseRow, ...bankRow }).select('id').single();
+
+    // The three bank columns ship ahead of their migration. Until it is run,
+    // retry without them so UPI and prepaid returns keep working -- but only
+    // when there are no bank details to lose. Dropping a destination the
+    // customer typed would leave a refund owed with nowhere to send it.
+    if (insertErr && /bank_account|bank_ifsc|bank_holder|column .* does not exist/i.test(String(insertErr.message || ''))) {
+      if (gaveBank) {
+        console.error('[request-return] bank columns missing; refusing to drop the destination');
+        return { statusCode: 503, headers: CORS, body: JSON.stringify({
+          error: 'We cannot record bank details just yet — please enter a UPI ID instead, '
+               + 'or contact us and we will take them down by hand.',
+          need_upi: true, need_payout: true, payment_type: paymentType,
+        }) };
+      }
+      console.warn('[request-return] bank columns not migrated yet; inserting without them');
+      ({ data: inserted, error: insertErr } = await supabase
+        .from('return_requests').insert(baseRow).select('id').single());
+    }
     if (insertErr) throw insertErr;
 
     // Wallet path → mint the store-credit code and attach it to the request.
