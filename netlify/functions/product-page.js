@@ -479,6 +479,10 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
       <button class="secondary" id="addToCartBtn" onclick="addProductToCart(false)">Add to Cart</button>
       <button class="primary" onclick="addProductToCart(true)">Buy Now</button>
     </div>
+    <div style="margin:0.55rem 0 0.2rem;">
+      <button type="button" class="pol-trigger" data-policy-sheet="returns"
+              aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
+    </div>
     <!-- Confirmation banner shown after Add to Cart — fills the gap left by the
          absent cart sidebar on this minimalist Lambda-rendered page so the
          customer actually sees that the click worked. -->
@@ -580,6 +584,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 <!-- Google automated discounts: this page is rendered live, not prerendered by
      generate_site.py, so it needs the include of its own. -->
 <script src="/js/google-discount.js"></script>
+<script src="/js/policy-sheet.js" defer></script>
 <script src="/js/search-suggest.js" defer></script>
 <script>
 const currentItem = ${JSON.stringify({

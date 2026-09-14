@@ -2123,7 +2123,7 @@ HTML = r"""<!DOCTYPE html>
   .mob-nav .mn-badge{position:absolute;top:0;right:calc(50% - 18px);background:var(--gold);color:var(--bg);border-radius:50%;width:16px;height:16px;font-size:0.55rem;font-weight:600;display:flex;align-items:center;justify-content:center;letter-spacing:0}
 
   /* Trust strip — Why Choose Ink & Chai */
-  .trust-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:1.5rem;max-width:1240px;margin:0 auto;padding:2.5rem 2rem;border-bottom:1px solid var(--border)}
+  .trust-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:1.5rem;max-width:1240px;margin:0 auto;padding:2.5rem 2rem;border-bottom:1px solid var(--border)}
   .trust-item{display:flex;flex-direction:column;align-items:center;text-align:center;gap:0.5rem}
   .trust-link{text-decoration:none}
   .trust-link:hover .trust-title{color:var(--gold)}
@@ -2872,11 +2872,6 @@ html[data-theme="light"] .btn-primary{
     <div class="trust-icon">📦</div>
     <div class="trust-title">25,000+ Orders Fulfilled</div>
     <div class="trust-text">Trusted by readers across every state in India.</div>
-  </div>
-  <div class="trust-item">
-    <div class="trust-icon"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" style="vertical-align:middle"><path fill="#1877F2" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.26 2.52-.81 3.91c-1.31.67-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.45 1.39-.2 2.9.81 3.91s2.52 1.26 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#fff" d="M10.09 15.42l-3.8-3.79 1.41-1.42 2.39 2.38 5.62-5.62 1.41 1.42z"/></svg></div>
-    <div class="trust-title">Meta Verified Business</div>
-    <div class="trust-text">Our identity is verified by Meta on Instagram &amp; Facebook.</div>
   </div>
   <a class="trust-item trust-link" href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener">
     <div class="trust-icon">◎</div>
@@ -5169,9 +5164,6 @@ html[data-theme="light"] .nav-logo .logo-light{display:block}
 .cred-chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.62rem;font-weight:600;letter-spacing:.02em;padding:.34rem .62rem;border:1px solid var(--border);border-radius:999px;color:var(--cream);background:rgba(255,255,255,.02)}
 .cred-chip svg{flex-shrink:0}
 .cred-meta{border-color:rgba(24,119,242,.45);background:rgba(24,119,242,.1)}
-.meta-verified{display:block;margin:.6rem 0 .3rem;border:1px solid var(--border);border-radius:8px;overflow:hidden;text-decoration:none;background:#fff;max-width:420px}
-.meta-verified img{display:block;width:100%;height:auto}
-.meta-verified-cap{display:flex;align-items:center;gap:.4rem;padding:.5rem .75rem;font-size:.68rem;font-weight:600;letter-spacing:.02em;color:#fff;background:#1877F2}
 
 /* ACTIONS */
 .prod-actions{display:flex;flex-direction:column;gap:0.8rem;margin-top:0.5rem}
@@ -5575,6 +5567,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
+<script src="/js/policy-sheet.js" defer></script>
 <script>
 const BOOKS = BOOKS_DATA_PLACEHOLDER;
 const SOCIAL_PROOF = SOCIAL_PROOF_PLACEHOLDER;
@@ -6008,7 +6001,16 @@ function renderProduct(b) {
           <span>🛡 7-day replacement</span>
         </div>
 
-        <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div> <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="meta-verified" title="Ink &amp; Chai on Instagram — Meta Verified Business"><img src="/images/meta-verified-inkandchai.webp" alt="Ink &amp; Chai is a Meta Verified Business on Instagram — 28.8K followers" width="760" height="368" loading="lazy"/><span class="meta-verified-cap"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#fff" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.26 2.52-.81 3.91c-1.31.67-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.45 1.39-.2 2.9.81 3.91s2.52 1.26 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#1877F2" d="M10.09 15.42l-3.8-3.79 1.41-1.42 2.39 2.38 5.62-5.62 1.41 1.42z"/></svg>Meta Verified Business →</span></a>
+        <!-- Sits directly under the trust row because that row raises the
+             question ("7-day replacement" — on what terms?) without answering
+             it. Opens a sheet rather than navigating: leaving a product page to
+             read a policy is how a cart gets abandoned. -->
+        <div style="margin:0.55rem 0 0.2rem;">
+          <button type="button" class="pol-trigger" data-policy-sheet="returns"
+                  aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
+        </div>
+
+        <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
 
         <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="insta-trust-btn">
           <span class="insta-trust-btn-icon">📸</span>
@@ -7482,9 +7484,6 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
 .cred-chip{{display:inline-flex;align-items:center;gap:.35rem;font-size:.62rem;font-weight:600;letter-spacing:.02em;padding:.34rem .62rem;border:1px solid var(--border);border-radius:999px;color:var(--cream);background:rgba(255,255,255,.02)}}
 .cred-chip svg{{flex-shrink:0}}
 .cred-meta{{border-color:rgba(24,119,242,.45);background:rgba(24,119,242,.1)}}
-.meta-verified{{display:block;margin:.6rem 0 .3rem;border:1px solid var(--border);border-radius:8px;overflow:hidden;text-decoration:none;background:#fff;max-width:420px}}
-.meta-verified img{{display:block;width:100%;height:auto}}
-.meta-verified-cap{{display:flex;align-items:center;gap:.4rem;padding:.5rem .75rem;font-size:.68rem;font-weight:600;letter-spacing:.02em;color:#fff;background:#1877F2}}
 /* ── Nav cart button + sidebar (product page) ── */
 .pdp-cart-btn{{position:relative;background:transparent;border:1px solid var(--border);color:var(--gold);width:38px;height:38px;border-radius:50%;cursor:pointer;font-size:1rem;display:inline-flex;align-items:center;justify-content:center;transition:all .25s;padding:0}}
 .pdp-cart-btn:hover{{background:var(--gold);color:var(--bg);transform:translateY(-1px)}}
@@ -7544,7 +7543,11 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
     {scarcity_badge_html if scarcity_badge_html else '<span class="stock">In Stock</span>'}
     <div id="staticShipBy"></div>
     <div class="trust"><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></svg></span><span class="tt"><b>Delivery in 2-5 days</b><i>Shipped across India</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span><span class="tt"><b>Cash on delivery</b><i>Pay when it arrives</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/><path d="M6 14.5h4"/></svg></span><span class="tt"><b>UPI, cards, net banking</b><i>Secure checkout</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.3-3.1 7.7-7.5 9-4.4-1.3-7.5-4.7-7.5-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="tt"><b>7-day replacement</b><i><a href="#" onclick="event.preventDefault();openReturnVideo();" style="cursor:pointer">Watch how it works &#9654;</a></i></span></span></div>
-    <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div> <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="meta-verified" title="Ink &amp; Chai on Instagram — Meta Verified Business"><img src="/images/meta-verified-inkandchai.webp" alt="Ink &amp; Chai is a Meta Verified Business on Instagram — 28.8K followers" width="760" height="368" loading="lazy"/><span class="meta-verified-cap"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#fff" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.26 2.52-.81 3.91c-1.31.67-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.45 1.39-.2 2.9.81 3.91s2.52 1.26 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#1877F2" d="M10.09 15.42l-3.8-3.79 1.41-1.42 2.39 2.38 5.62-5.62 1.41 1.42z"/></svg>Meta Verified Business →</span></a>
+    <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
+    <div style="margin:0.55rem 0 0.2rem;">
+      <button type="button" class="pol-trigger" data-policy-sheet="returns"
+              aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
+    </div>
     <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="insta-trust">
       <span class="insta-trust-icon">📸</span>
       <span class="insta-trust-text">
@@ -7975,6 +7978,7 @@ setTimeout(reportViewContent, 3000);
 <!-- #InkAndChaiBookstagram reels: light poster strip + Instagram-style viewer.
      Loads video only when a reel is opened, and only the active one. -->
 <script src="/js/reels.js" defer></script>
+<script src="/js/policy-sheet.js" defer></script>
 </body>
 </html>"""
 
@@ -8447,14 +8451,14 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
           <span>↩ 7-day returns</span>
         </div>
 
-        <!-- Meta Verified proof — real screenshot of our verified Instagram, links out -->
-        <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" title="Ink &amp; Chai on Instagram — Meta Verified Business" style="display:block;margin:0.9rem auto 0;max-width:340px;border:1px solid var(--border);border-radius:8px;overflow:hidden;text-decoration:none;background:#fff">
-          <img src="/images/meta-verified-inkandchai.webp" alt="Ink &amp; Chai is a Meta Verified Business on Instagram — 28.8K followers" width="760" height="368" loading="lazy" style="display:block;width:100%;height:auto"/>
-          <span style="display:flex;align-items:center;gap:0.4rem;padding:0.5rem 0.75rem;font-size:0.68rem;font-weight:600;letter-spacing:0.02em;color:#fff;background:#1877F2">
-            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#fff" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.26 2.52-.81 3.91c-1.31.67-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.45 1.39-.2 2.9.81 3.91s2.52 1.26 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#1877F2" d="M10.09 15.42l-3.8-3.79 1.41-1.42 2.39 2.38 5.62-5.62 1.41 1.42z"/></svg>
-            Meta Verified Business →
-          </span>
-        </a>
+        <!-- Directly under the trust row, because "what if I need to send this
+             back, and how do I get cash back?" is asked at the moment of
+             paying. A sheet, not a link: navigating away here loses the order. -->
+        <div style="text-align:center;margin-top:0.7rem;">
+          <button type="button" class="pol-trigger" data-policy-sheet="refunds"
+                  aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
+        </div>
+
       </div>
 
       <!-- RIGHT: Order Summary -->
@@ -8508,6 +8512,7 @@ window.SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY_PLACEHOLDER";
      the server re-verifies before pricing. Without it the grants array is always
      empty and a Google-discounted price silently reverts to full price. -->
 <script src="/js/google-discount.js"></script>
+<script src="/js/policy-sheet.js" defer></script>
 
 <script>
 // ── Cart (must match cart.js CART_KEY) ────────────────────────────────────

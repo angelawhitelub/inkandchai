@@ -196,9 +196,6 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{back
 .cred-chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.62rem;font-weight:600;letter-spacing:.02em;padding:.34rem .62rem;border:1px solid var(--border);border-radius:999px;color:var(--cream);background:rgba(255,255,255,.02)}
 .cred-chip svg{flex-shrink:0}
 .cred-meta{border-color:rgba(24,119,242,.45);background:rgba(24,119,242,.1)}
-.meta-verified{display:block;margin:.6rem 0 .3rem;border:1px solid var(--border);border-radius:8px;overflow:hidden;text-decoration:none;background:#fff;max-width:420px}
-.meta-verified img{display:block;width:100%;height:auto}
-.meta-verified-cap{display:flex;align-items:center;gap:.4rem;padding:.5rem .75rem;font-size:.68rem;font-weight:600;letter-spacing:.02em;color:#fff;background:#1877F2}
 /* ── Nav cart button + sidebar (product page) ── */
 .pdp-cart-btn{position:relative;background:transparent;border:1px solid var(--border);color:var(--gold);width:38px;height:38px;border-radius:50%;cursor:pointer;font-size:1rem;display:inline-flex;align-items:center;justify-content:center;transition:all .25s;padding:0}
 .pdp-cart-btn:hover{background:var(--gold);color:var(--bg);transform:translateY(-1px)}
@@ -467,7 +464,11 @@ gtag('config', 'G-ZPZDFWMDP6');
     <span class="stock">In Stock</span>
     <div id="staticShipBy"></div>
     <div class="trust"><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></svg></span><span class="tt"><b>Delivery in 2-5 days</b><i>Shipped across India</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span><span class="tt"><b>Cash on delivery</b><i>Pay when it arrives</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/><path d="M6 14.5h4"/></svg></span><span class="tt"><b>UPI, cards, net banking</b><i>Secure checkout</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.3-3.1 7.7-7.5 9-4.4-1.3-7.5-4.7-7.5-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="tt"><b>7-day replacement</b><i><a href="#" onclick="event.preventDefault();openReturnVideo();" style="cursor:pointer">Watch how it works &#9654;</a></i></span></span></div>
-    <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div> <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="meta-verified" title="Ink &amp; Chai on Instagram — Meta Verified Business"><img src="/images/meta-verified-inkandchai.webp" alt="Ink &amp; Chai is a Meta Verified Business on Instagram — 28.8K followers" width="760" height="368" loading="lazy"/><span class="meta-verified-cap"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#fff" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.26 2.52-.81 3.91c-1.31.67-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.45 1.39-.2 2.9.81 3.91s2.52 1.26 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#1877F2" d="M10.09 15.42l-3.8-3.79 1.41-1.42 2.39 2.38 5.62-5.62 1.41 1.42z"/></svg>Meta Verified Business →</span></a>
+    <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
+    <div style="margin:0.55rem 0 0.2rem;">
+      <button type="button" class="pol-trigger" data-policy-sheet="returns"
+              aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
+    </div>
     <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="insta-trust">
       <span class="insta-trust-icon">📸</span>
       <span class="insta-trust-text">
@@ -947,6 +948,7 @@ setTimeout(reportViewContent, 3000);
 <!-- #InkAndChaiBookstagram reels: light poster strip + Instagram-style viewer.
      Loads video only when a reel is opened, and only the active one. -->
 <script src="/js/reels.js" defer></script>
+<script src="/js/policy-sheet.js" defer></script>
 
 <script>
 (function(){
