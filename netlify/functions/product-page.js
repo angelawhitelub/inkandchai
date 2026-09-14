@@ -408,7 +408,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 .rich li{margin:.3rem 0}
 .rich li::marker{color:var(--gold)}
 .authorbio p:first-of-type{margin-top:0}
-@media(max-width:760px){.promo{width:calc(100% - 20px);margin:.45rem auto .1rem;border-radius:999px;white-space:normal;line-height:1.45}nav{width:calc(100% - 18px);margin:.45rem auto 0;border-radius:28px;padding:.7rem .85rem}.wrap{display:block;padding:.9rem 1rem 7.6rem}.cover{margin-bottom:1.2rem;border-radius:24px}.trust{grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}.trust>span{padding:.6rem .55rem;gap:.5rem}.trust .ti{width:28px;height:28px}.trust .ti svg{width:15px;height:15px}.trust .tt b{font-size:.73rem}.trust .tt i{font-size:.62rem}.actions{position:fixed;left:12px;right:12px;bottom:10px;z-index:9;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:.6rem;background:rgba(13,11,8,.72);padding:.6rem .6rem calc(.6rem + env(safe-area-inset-bottom));border:1px solid var(--glass-border);border-radius:30px;box-shadow:0 -16px 42px rgba(0,0,0,.45),var(--glass-highlight);backdrop-filter:blur(24px) saturate(1.35)}html[data-theme="light"] .actions{background:rgba(250,247,242,.76);box-shadow:0 -12px 38px rgba(70,52,24,.16),var(--glass-highlight)}.actions button{min-height:52px;padding:.9rem .45rem;font-size:.6rem;letter-spacing:.14em}}
+@media(max-width:760px){.promo{width:calc(100% - 20px);margin:.45rem auto .1rem;border-radius:999px;white-space:normal;line-height:1.45}nav{width:calc(100% - 18px);margin:.45rem auto 0;border-radius:28px;padding:.7rem .85rem}.wrap{display:block;padding:.9rem 1rem 7.6rem}.cover{margin-bottom:1.2rem;border-radius:24px}.trust{grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}.trust>span{padding:.6rem .55rem;gap:.5rem}.trust .ti{width:28px;height:28px}.trust .ti svg{width:15px;height:15px}.trust .tt b{font-size:.73rem}.trust .tt i{font-size:.62rem}.site-footer{margin-bottom:5.5rem}.actions{position:fixed;left:12px;right:12px;bottom:10px;z-index:9;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:.6rem;background:rgba(13,11,8,.72);padding:.6rem .6rem calc(.6rem + env(safe-area-inset-bottom));border:1px solid var(--glass-border);border-radius:30px;box-shadow:0 -16px 42px rgba(0,0,0,.45),var(--glass-highlight);backdrop-filter:blur(24px) saturate(1.35)}html[data-theme="light"] .actions{background:rgba(250,247,242,.76);box-shadow:0 -12px 38px rgba(70,52,24,.16),var(--glass-highlight)}.actions button{min-height:52px;padding:.9rem .45rem;font-size:.6rem;letter-spacing:.14em}}
 /* Swipeable image gallery (front + back cover etc.) */
 .gallery{position:relative;width:100%}
 .gallery-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;border-radius:16px}
@@ -704,6 +704,23 @@ function addProductToCart(buyNow) {
      load the shared campaign enhancer here as well. This keeps new products
      in sync with the sale badge/countdown shown on static catalogue pages. -->
 <script src="/js/summer-sale.js" defer></script>
+<footer class="site-footer" style="text-align:center;padding:2.2rem 1.2rem 3.2rem;border-top:1px solid var(--border,rgba(201,168,76,0.18));margin-top:2.5rem;font-size:0.68rem;line-height:2;color:var(--cream-dim,#a09080);letter-spacing:0.03em;">
+  <div style="color:var(--gold,#c9a84c);font-weight:600;letter-spacing:0.08em;">Ink &amp; Chai</div>
+  <div>6, Ansari Road, Delhi &ndash; 110002, India</div>
+  <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.5rem;">
+    <a href="mailto:support@inkandchai.in" style="color:var(--gold-dim,#b09a5e);text-decoration:none;">📧 support@inkandchai.in</a>
+    <a href="https://wa.me/917678400508" target="_blank" rel="noopener" style="color:var(--gold-dim,#b09a5e);text-decoration:none;">💬 +91 76784 00508</a>
+    <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" style="color:var(--gold-dim,#b09a5e);text-decoration:none;">📸 @inkandchai.in</a>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.35rem;">
+    <a href="/shipping-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Shipping</a>
+    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Returns</a>
+    <a href="/refund-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Refunds</a>
+    <a href="/terms/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Terms</a>
+    <a href="/privacy-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Privacy</a>
+  </div>
+  <div style="margin-top:0.55rem;opacity:0.75;">&copy; 2026 Ink &amp; Chai &middot; All rights reserved.</div>
+</footer>
 </body>
 </html>`;
 }

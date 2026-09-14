@@ -3128,7 +3128,9 @@ html[data-theme="light"] .btn-primary{
         <div class="footer-col-title">Contact Us</div>
         <p style="font-size:0.72rem;color:var(--cream-dim);line-height:2;letter-spacing:0.03em;">
           📧 <a href="mailto:support@inkandchai.in" style="color:var(--gold);text-decoration:none;">support@inkandchai.in</a><br/>
-          💬 <a href="https://wa.me/917678400508" target="_blank" style="color:var(--gold);text-decoration:none;">+91 76784 00508 (WhatsApp)</a>
+          💬 <a href="https://wa.me/917678400508" target="_blank" style="color:var(--gold);text-decoration:none;">+91 76784 00508 (WhatsApp)</a><br/>
+          📸 <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" style="color:var(--gold);text-decoration:none;">@inkandchai.in (Instagram)</a><br/>
+          📍 6, Ansari Road, Delhi &ndash; 110002, India
         </p>
       </div>
     </div>
@@ -3167,9 +3169,11 @@ html[data-theme="light"] .btn-primary{
   <!-- Business identity block — transparency for customers & Google Merchant -->
   <div class="footer-business">
     <span><strong>Ink &amp; Chai</strong> — Online Bookstore</span>
+    <span>📍 6, Ansari Road, Delhi &ndash; 110002, India</span>
     <span>📧 <a href="mailto:support@inkandchai.in">support@inkandchai.in</a></span>
     <span>📞 <a href="https://wa.me/917678400508">+91 76784 00508</a> · Mon–Fri 9 AM–6 PM IST</span>
     <span>🔒 Secure payments via UPI · Cards · Net Banking · Cash on Delivery</span>
+    <span>📸 <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener">@inkandchai.in on Instagram</a></span>
   </div>
   <div class="footer-bottom">
     <span class="footer-copy">© 2026 Ink &amp; Chai · All rights reserved.</span>
@@ -4966,6 +4970,29 @@ print(f"Generated: {out}  ({size_kb:.0f} KB)")
 # ── Generate product.html ────────────────────────────────────────────────────
 razorpay_key = os.environ.get("RAZORPAY_KEY_ID", "rzp_test_CHANGE_ME")
 
+# ── Shared compact footer ────────────────────────────────────────────────────
+# The postal address, the Instagram account and the policy links, for the pages
+# that had no footer at all (both product templates) and the one that had only a
+# copyright line (checkout). A customer being asked to pay -- cash, often, to a
+# courier -- should be able to see who they are paying and where we are.
+COMPACT_FOOTER = """<footer class="site-footer" style="text-align:center;padding:2.2rem 1.2rem 3.2rem;border-top:1px solid var(--border,rgba(201,168,76,0.18));margin-top:2.5rem;font-size:0.68rem;line-height:2;color:var(--cream-dim,#a09080);letter-spacing:0.03em;">
+  <div style="color:var(--gold,#c9a84c);font-weight:600;letter-spacing:0.08em;">Ink &amp; Chai</div>
+  <div>6, Ansari Road, Delhi &ndash; 110002, India</div>
+  <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.5rem;">
+    <a href="mailto:support@inkandchai.in" style="color:var(--gold-dim,#b09a5e);text-decoration:none;">📧 support@inkandchai.in</a>
+    <a href="https://wa.me/917678400508" target="_blank" rel="noopener" style="color:var(--gold-dim,#b09a5e);text-decoration:none;">💬 +91 76784 00508</a>
+    <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" style="color:var(--gold-dim,#b09a5e);text-decoration:none;">📸 @inkandchai.in</a>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.35rem;">
+    <a href="/shipping-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Shipping</a>
+    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Returns</a>
+    <a href="/refund-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Refunds</a>
+    <a href="/terms/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Terms</a>
+    <a href="/privacy-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Privacy</a>
+  </div>
+  <div style="margin-top:0.55rem;opacity:0.75;">&copy; 2026 Ink &amp; Chai &middot; All rights reserved.</div>
+</footer>"""
+
 PRODUCT_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6669,6 +6696,7 @@ const slug    = params.get('id') || pathSlug;
   }
 })();
 </script>
+COMPACT_FOOTER_PLACEHOLDER
 </body>
 </html>
 """
@@ -6691,6 +6719,7 @@ PRODUCT_HTML = PRODUCT_HTML.replace("CATEGORY_SLUGS_PLACEHOLDER",   CATEGORY_PAG
 PRODUCT_HTML = PRODUCT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER",  razorpay_key)
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_URL_PLACEHOLDER",      os.environ.get("SUPABASE_URL", ""))
 PRODUCT_HTML = PRODUCT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER", os.environ.get("SUPABASE_ANON_KEY", ""))
+PRODUCT_HTML = PRODUCT_HTML.replace("COMPACT_FOOTER_PLACEHOLDER", COMPACT_FOOTER)
 PRODUCT_HTML = with_reader_activity(PRODUCT_HTML)
 PRODUCT_HTML = with_meta_pixel(PRODUCT_HTML)
 
@@ -7376,6 +7405,7 @@ html[data-theme="light"] .trust>span{{background:linear-gradient(180deg,rgba(255
   .trust>span{{padding:.6rem .55rem;gap:.5rem}}
   .trust .ti{{width:28px;height:28px}} .trust .ti svg{{width:15px;height:15px}}
   .trust .tt b{{font-size:.73rem}} .trust .tt i{{font-size:.62rem}}
+  .site-footer{{margin-bottom:5.5rem}}
   .actions{{position:fixed;left:0;right:0;bottom:0;z-index:9;margin:0;background:rgba(13,11,8,.98);padding:.75rem 1rem calc(.75rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);box-shadow:0 -10px 26px rgba(60,40,10,.12)}}
   .desc{{font-size:.96rem;line-height:1.78}}
   .details{{font-size:.82rem;line-height:1.75}}
@@ -7979,6 +8009,7 @@ setTimeout(reportViewContent, 3000);
      Loads video only when a reel is opened, and only the active one. -->
 <script src="/js/reels.js" defer></script>
 <script src="/js/policy-sheet.js" defer></script>
+COMPACT_FOOTER_PLACEHOLDER
 </body>
 </html>"""
 
@@ -7989,7 +8020,8 @@ for old_product_dir in product_root.iterdir():
 for book in slim:
     out = product_root / book["slug"] / "index.html"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(with_meta_pixel(with_reader_activity(static_product_html(book))), encoding="utf-8")
+    page = static_product_html(book).replace("COMPACT_FOOTER_PLACEHOLDER", COMPACT_FOOTER)
+    out.write_text(with_meta_pixel(with_reader_activity(page)), encoding="utf-8")
 print(f"Generated crawlable product pages: {len(slim)}")
 
 SELF_HELP_TERMS = ["self", "help", "habit", "hurt", "finished", "rich dad", "psychology", "money", "power", "think", "mindset", "discipline", "atomic", "goggins", "ikigai", "motivation"]
@@ -8496,7 +8528,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
   </div><!-- /checkoutScreen -->
 </main>
 
-<footer>© 2026 Ink &amp; Chai &nbsp;·&nbsp; inkandchai.in &nbsp;·&nbsp; support@inkandchai.in</footer>
+COMPACT_FOOTER_PLACEHOLDER
 
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -10603,6 +10635,7 @@ async function chkVerifyOtp() {
 # here, before its placeholders are filled, so an ended sale never reaches a
 # freshly built page at all.
 CHECKOUT_HTML = strip_expired_sale(CHECKOUT_HTML)
+CHECKOUT_HTML = CHECKOUT_HTML.replace("COMPACT_FOOTER_PLACEHOLDER", COMPACT_FOOTER)
 CHECKOUT_HTML = CHECKOUT_HTML.replace("RAZORPAY_PUB_KEY_PLACEHOLDER", razorpay_key)
 CHECKOUT_HTML = CHECKOUT_HTML.replace("SUPABASE_URL_PLACEHOLDER",     os.environ.get("SUPABASE_URL", ""))
 CHECKOUT_HTML = CHECKOUT_HTML.replace("SUPABASE_ANON_KEY_PLACEHOLDER",os.environ.get("SUPABASE_ANON_KEY", ""))
