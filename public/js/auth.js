@@ -2661,9 +2661,29 @@
         </div>
 
         <div id="iacUpiWrap" style="display:none;margin-top:0.9rem;">
-          <label style="font-size:0.6rem;color:#a09080;display:block;margin-bottom:0.35rem;">Your UPI ID (for the COD refund)</label>
+          <p id="iacPayoutWhy" style="font-size:0.66rem;color:#a09080;line-height:1.7;margin:0 0 0.7rem;">
+            This order was paid in cash, so there is no card or UPI payment for us to reverse.
+            Tell us where to send the refund.
+          </p>
+          <label style="font-size:0.6rem;color:#a09080;display:block;margin-bottom:0.35rem;">Your UPI ID</label>
           <input id="iacUpiInput" type="text" inputmode="email" placeholder="name@bank"
             style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.28);color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;"/>
+          <div style="display:flex;align-items:center;gap:0.6rem;margin:0.8rem 0 0.2rem;">
+            <span style="flex:1;height:1px;background:rgba(201,168,76,0.18);"></span>
+            <span style="font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;color:#6f6252;">or bank transfer</span>
+            <span style="flex:1;height:1px;background:rgba(201,168,76,0.18);"></span>
+          </div>
+          <input id="iacBankAcc" type="text" inputmode="numeric" placeholder="Bank account number"
+            style="width:100%;margin-top:0.5rem;background:#141210;border:1px solid rgba(201,168,76,0.28);color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;"/>
+          <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+            <input id="iacBankIfsc" type="text" placeholder="IFSC (e.g. HDFC0001234)" maxlength="11"
+              style="flex:1;min-width:0;background:#141210;border:1px solid rgba(201,168,76,0.28);color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;text-transform:uppercase;"/>
+            <input id="iacBankHolder" type="text" placeholder="Account holder name"
+              style="flex:1;min-width:0;background:#141210;border:1px solid rgba(201,168,76,0.28);color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;"/>
+          </div>
+          <p style="font-size:0.6rem;color:#6f6252;line-height:1.6;margin:0.6rem 0 0;">
+            Either one is enough — UPI is faster. We transfer once the returned book reaches us.
+          </p>
         </div>
 
         <button id="iacReturnSubmit" onclick="iacSubmitReturn('${escJs(orderId)}')"
@@ -2705,6 +2725,9 @@
     const method = modal?.dataset.method || '';
     const upiWrap = document.getElementById('iacUpiWrap');
     const upiId = document.getElementById('iacUpiInput')?.value.trim() || '';
+    const bankAccount = document.getElementById('iacBankAcc')?.value.trim() || '';
+    const bankIfsc    = document.getElementById('iacBankIfsc')?.value.trim() || '';
+    const bankHolder  = document.getElementById('iacBankHolder')?.value.trim() || '';
     if (!sb || !currentUser) {
       if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please sign in again.'; }
       return;
@@ -2713,9 +2736,10 @@
       if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please choose how you\'d like your refund.'; }
       return;
     }
-    // If the UPI field is showing (COD return) it must be filled.
-    if (upiWrap && upiWrap.style.display !== 'none' && !upiId) {
-      if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please enter your UPI ID to receive the refund.'; }
+    // Once the payout block is showing, one destination or the other is required.
+    // The server re-checks and is the real guard; this only saves a round trip.
+    if (upiWrap && upiWrap.style.display !== 'none' && !upiId && !(bankAccount || bankIfsc || bankHolder)) {
+      if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Enter a UPI ID, or your bank account number and IFSC, so we can send the refund.'; }
       document.getElementById('iacUpiInput')?.focus();
       return;
     }
@@ -2741,15 +2765,27 @@
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token || ''}`,
         },
-        body: JSON.stringify({ order_id: orderId, reason, refund_method: method, upi_id: upiId }),
+        body: JSON.stringify({
+          order_id: orderId, reason, refund_method: method,
+          upi_id: upiId, bank_account: bankAccount, bank_ifsc: bankIfsc, bank_holder: bankHolder,
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         // COD + original method → server asks for a UPI id. Reveal the field and
         // let the customer submit again.
-        if (json.need_upi) {
+        if (json.need_upi || json.need_payout) {
           if (upiWrap) upiWrap.style.display = 'block';
-          if (msg) { msg.style.color = '#c9a84c'; msg.textContent = 'This was a Cash-on-Delivery order — enter your UPI ID to receive the refund, then submit again.'; }
+          const why = document.getElementById('iacPayoutWhy');
+          if (why && json.payment_type === 'partial_cod') {
+            why.textContent = 'This order was part-paid online and the rest in cash, so the card/UPI payment '
+              + 'only covers a fraction of it. Tell us where to send the full refund.';
+          }
+          if (msg) {
+            msg.style.color = '#c9a84c';
+            msg.textContent = json.error
+              || 'Tell us where to send the refund, then submit again.';
+          }
           btn.disabled = false;
           btn.textContent = 'Submit Return Request';
           setTimeout(() => document.getElementById('iacUpiInput')?.focus(), 60);

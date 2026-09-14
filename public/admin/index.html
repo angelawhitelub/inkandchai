@@ -12916,19 +12916,35 @@ function renderReturns() {
 function returnRefundInfo(r) {
   if (!r.refund_method) return '';
   const rupees = r.refund_amount_paise ? '₹' + money(r.refund_amount_paise / 100) : '';
+  // Mirrors needsManualPayout() in netlify/functions/utils/return-refund.js.
+  // partial_cod belongs here: only the deposit was captured online, so the
+  // gateway can never return what the customer actually paid. Labelling it
+  // "Prepaid (auto)" is what hid these refunds -- nothing fires for them
+  // (return-auto-refund filters to payment_type='prepaid'), so the money simply
+  // waited, and the panel said it was handled.
+  const manualPayout = r.payment_type === 'cod' || r.payment_type === 'partial_cod';
+  const dest = r.upi_id
+    ? `UPI <b style="color:#e0a84c">${r.upi_id}</b>`
+    : (r.bank_account
+        ? `A/c <b style="color:#e0a84c">${r.bank_account}</b> · ${r.bank_ifsc || '—'} · ${r.bank_holder || '—'}`
+        : `<b style="color:#e05050">no payout destination on file</b>`);
   const method = r.refund_method === 'wallet'
     ? `👛 Wallet${r.wallet_code ? ' · <b style="color:var(--gold)">' + r.wallet_code + '</b>' : ''}`
-    : (r.payment_type === 'cod'
-        ? `↩ COD → UPI <b style="color:#e0a84c">${r.upi_id || '—'}</b>`
+    : (manualPayout
+        ? `↩ ${r.payment_type === 'partial_cod' ? 'Partial COD' : 'COD'} → ${dest}`
         : `↩ Prepaid (auto)`);
   const st = String(r.refund_status || '').replace(/_/g, ' ');
   const stColor = r.refund_status === 'refunded' ? '#6dbf6d'
     : (['manual_payout_pending','manual_refund_pending'].includes(r.refund_status) ? '#e0a84c'
     : (r.refund_status === 'wallet_issued' ? '#6dbf6d' : 'var(--cream-dim)'));
   const needsManual = ['manual_payout_pending', 'manual_refund_pending'].includes(r.refund_status);
+  // Pre-fix rows: a COD/partial-COD return parked on the prepaid status. The
+  // auto-refund filters those out, so it is waiting on something that will
+  // never happen.
+  const stranded = manualPayout && r.refund_status === 'awaiting_return_delivery';
   return `<div style="margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);font-size:0.63rem;color:var(--cream-dim);line-height:1.7;">
-    Refund: ${method} ${rupees ? '· ' + rupees : ''} · <span style="color:${stColor};">${st}</span>
-    ${needsManual ? `<button onclick="markReturnRefunded('${r.id}',this)" title="Mark this refund as paid (after you've sent the UPI/manual refund)" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.5);color:#6dbf6d;cursor:pointer;border-radius:4px;">✓ Mark refund paid</button>` : ''}
+    Refund: ${method} ${rupees ? '· ' + rupees : ''} · <span style="color:${stranded ? '#e05050' : stColor};">${stranded ? 'STRANDED — no auto-refund runs for a manual payout' : st}</span>
+    ${(needsManual || stranded) ? `<button onclick="markReturnRefunded('${r.id}',this)" title="Mark this refund as paid (after you've sent the UPI/manual refund)" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.5);color:#6dbf6d;cursor:pointer;border-radius:4px;">✓ Mark refund paid</button>` : ''}
   </div>`;
 }
 

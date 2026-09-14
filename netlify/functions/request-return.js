@@ -16,6 +16,10 @@ const {
   resolvePaymentType,
   refundBasePaise,
   mintWalletCredit,
+  needsManualPayout,
+  resolvePayoutDestination,
+  payoutLabel,
+  payoutLabelMasked,
 } = require('./utils/return-refund');
 
 const CORS = {
@@ -65,11 +69,16 @@ function ownerEmailHtml(order, reason, info = {}) {
         <p style="margin:6px 0 0;"><strong>Store-credit code issued:</strong> <code>${esc(info.walletCode)}</code> worth <strong>₹${(info.walletRupees||0).toLocaleString('en-IN')}</strong> (₹${rupees} refund + ₹${info.bonus} bonus).</p>
         <p style="margin:6px 0 0;color:#5a4a38;font-size:13px;">No payout needed — credit is already active for the customer.</p>
       </div>`;
-  } else if (info.paymentType === 'cod') {
+  } else if (info.manualPayout) {
+    // partial COD reads the same as COD here on purpose: the gateway holds only
+    // the deposit, so the whole amount goes out by hand in one transfer.
+    const kind = info.paymentType === 'partial_cod'
+      ? 'Partial COD → manual payout (gateway holds only the deposit)'
+      : 'COD → manual payout';
     refundBlock = `
       <div style="margin:16px 0;padding:14px 16px;background:#fbf1e6;border-left:4px solid #c9852b;">
-        <p style="margin:0;"><strong>Refund method:</strong> Original method — <strong>COD → manual UPI payout</strong></p>
-        <p style="margin:6px 0 0;font-size:16px;"><strong>Pay the customer ₹${rupees}</strong> to UPI: <strong style="color:#8a3a1f;">${esc(info.upiId)}</strong></p>
+        <p style="margin:0;"><strong>Refund method:</strong> Original method — <strong>${esc(kind)}</strong></p>
+        <p style="margin:6px 0 0;font-size:16px;"><strong>Pay the customer ₹${rupees}</strong> to <strong style="color:#8a3a1f;">${esc(payoutLabel(info.destination))}</strong></p>
         <p style="margin:6px 0 0;color:#5a4a38;font-size:13px;">⚠️ Only pay out AFTER the returned book is back with you. Then mark it refunded.</p>
       </div>`;
   } else {
@@ -110,9 +119,9 @@ function customerEmailHtml(order, info = {}) {
         <div style="font-size:12px;color:#8a7a62;">(₹${rupees} refund + ₹${info.bonus} bonus) · valid 6 months</div>
       </div>
       <p style="font-size:13px;">Enter this code in the coupon box at checkout on your next order. Please keep the book and packaging ready — our courier will collect it.</p>`;
-  } else if (info.paymentType === 'cod') {
+  } else if (info.manualPayout) {
     block = `
-      <p>We've noted your refund of <strong>₹${rupees}</strong> to UPI <strong>${esc(info.upiId)}</strong>.</p>
+      <p>We've noted your refund of <strong>₹${rupees}</strong> to <strong>${esc(payoutLabelMasked(info.destination))}</strong>.</p>
       <p>We'll transfer it <strong>once the returned book reaches us</strong>. Please keep the book and packaging ready — our courier will collect it.</p>`;
   } else {
     block = `
@@ -149,6 +158,9 @@ exports.handler = async (event) => {
     const reason = clean(body.reason, 1000);
     const refundMethod = clean(body.refund_method, 20).toLowerCase(); // 'original' | 'wallet'
     const upiIdRaw = clean(body.upi_id, 80);
+    const bankAccountRaw = clean(body.bank_account, 34);
+    const bankIfscRaw    = clean(body.bank_ifsc, 15);
+    const bankHolderRaw  = clean(body.bank_holder, 80);
     if (!orderId) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing order id.' }) };
     if (!['original', 'wallet'].includes(refundMethod)) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Please choose a refund method: "original" or "wallet".' }) };
@@ -208,18 +220,37 @@ exports.handler = async (event) => {
     const refundPaise = refundBasePaise(order);             // what the customer paid
     const refundRupees = Math.round(refundPaise / 100);
 
-    // COD + "original method" has no transaction to reverse — we pay out to UPI.
-    let upiId = '';
-    if (refundMethod === 'original' && paymentType === 'cod') {
-      upiId = upiIdRaw;
-      if (!/^[a-z0-9.\-_]{2,256}@[a-z]{2,64}$/i.test(upiId)) {
-        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Enter a valid UPI ID (e.g. name@bank) to receive your COD refund.', need_upi: true }) };
+    // Neither COD nor partial COD has a transaction the gateway can reverse for
+    // the full amount, so both need a destination from the customer before the
+    // request is allowed to exist at all. Accepting one without it is what
+    // stranded partial-COD refunds: the panel said "Prepaid (auto)" while the
+    // gateway could only ever have returned the deposit.
+    const manualPayout = refundMethod === 'original' && needsManualPayout(paymentType);
+    let destination = { upiId: '', bankAccount: '', bankIfsc: '', bankHolder: '' };
+    if (manualPayout) {
+      const resolved = resolvePayoutDestination({
+        upiId: upiIdRaw,
+        bankAccount: bankAccountRaw,
+        bankIfsc: bankIfscRaw,
+        bankHolder: bankHolderRaw,
+      });
+      if (!resolved.ok) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({
+          error: resolved.error,
+          // need_upi keeps older clients working; need_payout lets a newer one
+          // offer the bank fields too, and payment_type lets it say why.
+          need_upi: true,
+          need_payout: true,
+          payment_type: paymentType,
+        }) };
       }
+      destination = resolved.destination;
     }
+    const upiId = destination.upiId;
 
-    const refundStatus = refundMethod === 'wallet'   ? 'wallet_issued'
-                       : paymentType === 'cod'       ? 'manual_payout_pending'   // admin pays UPI after return received
-                       :                               'awaiting_return_delivery'; // prepaid → auto-refund on return delivered
+    const refundStatus = refundMethod === 'wallet' ? 'wallet_issued'
+                       : manualPayout              ? 'manual_payout_pending'   // paid by hand after the return is received
+                       :                             'awaiting_return_delivery'; // prepaid → auto-refund on return delivered
 
     // Save the return request first (so a mint failure never leaves an orphan code).
     const { data: inserted, error: insertErr } = await supabase.from('return_requests').insert({
@@ -236,7 +267,10 @@ exports.handler = async (event) => {
       status:              'approved',
       refund_method:       refundMethod,
       payment_type:        paymentType,
-      upi_id:              upiId || null,
+      upi_id:              destination.upiId || null,
+      bank_account:        destination.bankAccount || null,
+      bank_ifsc:           destination.bankIfsc || null,
+      bank_holder:         destination.bankHolder || null,
       refund_amount_paise: refundPaise,
       refund_status:       refundStatus,
     }).select('id').single();
@@ -251,7 +285,8 @@ exports.handler = async (event) => {
       await supabase.from('return_requests').update({ wallet_code: walletCode }).eq('id', inserted.id);
     }
 
-    const info = { refundMethod, paymentType, upiId, refundRupees, walletCode, walletRupees, bonus: WALLET_BONUS_RUPEES };
+    const info = { refundMethod, paymentType, upiId, destination, manualPayout,
+                   refundRupees, walletCode, walletRupees, bonus: WALLET_BONUS_RUPEES };
 
     // ── Notify owner (email always; WhatsApp too for the COD manual payout) ────
     const ownerTo = process.env.STORE_OWNER_EMAIL || 'support@inkandchai.in';
@@ -259,18 +294,18 @@ exports.handler = async (event) => {
       to: ownerTo,
       subject: refundMethod === 'wallet'
         ? `Return + wallet credit: ${order.razorpay_order_id || order.id}`
-        : (paymentType === 'cod'
-            ? `⚠️ Return + COD refund ₹${refundRupees} → ${upiId} (${order.razorpay_order_id || order.id})`
+        : (manualPayout
+            ? `⚠️ Return + ${paymentType === 'partial_cod' ? 'PARTIAL COD' : 'COD'} refund ₹${refundRupees} → ${payoutLabel(destination)} (${order.razorpay_order_id || order.id})`
             : `Return + prepaid refund ₹${refundRupees}: ${order.razorpay_order_id || order.id}`),
       html: ownerEmailHtml(order, reason, info),
     }).catch(e => console.error('request-return owner email:', e.message));
 
-    if (refundMethod === 'original' && paymentType === 'cod' && process.env.STORE_OWNER_PHONE) {
+    if (manualPayout && process.env.STORE_OWNER_PHONE) {
       // Free-form text to the owner (they're inside the 24h window via the bot).
       // If out-of-window this silently no-ops; the email still lands.
       await sendText(
         process.env.STORE_OWNER_PHONE,
-        `🔁 COD return — pay the customer\nOrder: ${order.razorpay_order_id || order.id}\nCustomer: ${order.customer_name || '—'} · ${order.customer_phone || '—'}\n💸 Refund ₹${refundRupees} to UPI: ${upiId}\n\n⚠️ Pay only AFTER the returned book reaches you.`
+        `🔁 ${paymentType === 'partial_cod' ? 'PARTIAL COD' : 'COD'} return — pay the customer\nOrder: ${order.razorpay_order_id || order.id}\nCustomer: ${order.customer_name || '—'} · ${order.customer_phone || '—'}\n💸 Refund ₹${refundRupees} to ${payoutLabel(destination)}\n\n⚠️ Pay only AFTER the returned book reaches you.`
       ).catch(() => {});
     }
 
@@ -327,8 +362,8 @@ exports.handler = async (event) => {
         auto_pickup: autoPickup,
         message: refundMethod === 'wallet'
           ? `Wallet credit of ₹${walletRupees} is ready — use code ${walletCode} at checkout. Keep the package ready for pickup.`
-          : (paymentType === 'cod'
-              ? `Return approved. We'll refund ₹${refundRupees} to ${upiId} once the book reaches us. Keep the package ready for pickup.`
+          : (manualPayout
+              ? `Return approved. We'll refund ₹${refundRupees} to ${payoutLabelMasked(destination)} once the book reaches us. Keep the package ready for pickup.`
               : `Return approved. ₹${refundRupees} will be refunded to your original payment method once the book is delivered back to us. Keep the package ready for pickup.`),
       }),
     };
