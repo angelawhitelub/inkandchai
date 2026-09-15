@@ -32,6 +32,7 @@
     'I paid cash — how do I get a refund?',
     'Can I cancel an order?',
     'Where is my order?',
+    'Nobody attempted my delivery',
   ];
 
   var SKEY = 'iac_ink_ai_sid';

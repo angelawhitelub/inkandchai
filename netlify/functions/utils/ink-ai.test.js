@@ -111,3 +111,13 @@ test('answering freely did not loosen the rules that protect money', () => {
   assert.match(STORE_FACTS, /Never improvise a policy/);
   assert.match(STORE_FACTS, /Never ask for, accept, or repeat a UPI ID/);
 });
+
+test('a failed delivery is answered, not handed straight to a human', () => {
+  // The courier can turn an agent around the same day and we cannot, so routing
+  // this to Ankit or Shila first costs the customer a day for nothing.
+  assert.match(STORE_FACTS, /ANSWER THIS ONE, do not escalate it on the first message/);
+  assert.match(STORE_FACTS, /check the text messages on the phone number they entered at checkout/);
+  assert.match(STORE_FACTS, /ask for a re-attempt directly/);
+  assert.match(STORE_FACTS, /same phone number given on the order/);
+  assert.match(STORE_FACTS, /A failed or disputed DELIVERY is not this/);
+});
