@@ -90,7 +90,7 @@
       '<h3 id="pol-returns">Returning a book</h3>' +
       '<p><strong>7 days</strong> from the day your order is delivered. Open <strong>My Orders</strong>, ' +
       'pick the order and tap <strong>Request Return</strong> — our courier collects it free, usually within 48 hours.</p>' +
-      '<p>Returnable: wrong book, damaged or torn pages, a pirated or counterfeit copy, missing pages, ' +
+      '<p>Returnable: wrong book, damaged or torn pages, missing pages, ' +
       'or a book that is not what the page described.</p>' +
 
       '<h3 id="pol-refunds">How your refund reaches you</h3>' +
