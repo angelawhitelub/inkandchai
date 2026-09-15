@@ -139,28 +139,27 @@ const json = (statusCode, body, origin) => ({
   statusCode, headers: CORS(origin), body: JSON.stringify(body),
 });
 
+const LIMIT = 15;            // messages per window, per IP
+const LIMIT_WINDOW_SEC = 60; // a person sends maybe one every ten seconds
+
 /**
- * The real ceiling: Cloudflare's Rate Limiting binding, declared in
- * wrangler.toml and enforced by the runtime rather than by this module. It has
- * to be, because every request lands in a fresh isolate and a counter in module
- * scope resets with it -- a 14-request burst against the live endpoint never
- * tripped the in-process version below.
+ * The real ceiling: a Durable Object, addressed by IP, so the count is exact
+ * and survives the isolate this request happens to land in. worker/
+ * rate-limiter.js records why the two lighter options were dropped.
  *
- * Counted per colo, so it is not a single global number; it is the difference
- * between one script spending the whole OpenAI balance and one script getting
- * 20 answers a minute from wherever it is. Pair it with a monthly budget on the
- * OpenAI project, which is the only truly hard limit.
- *
- * Returns true when the caller is over the limit, and false when the binding is
- * missing -- a `node --test` run has no Worker env, and an absent limiter must
- * not lock everyone out. The in-process throttle below still runs either way.
+ * Returns false when the binding is absent or the call fails -- `node --test`
+ * has no Worker env, and a limiter that is down must not lock out every
+ * customer. The in-process backstop below still runs either way.
  */
 async function overEdgeLimit(ip) {
-  const limiter = bindings.get('INK_AI_LIMIT');
-  if (!limiter || typeof limiter.limit !== 'function') return false;
+  const ns = bindings.get('INK_AI_LIMIT');
+  if (!ns || typeof ns.idFromName !== 'function') return false;
   try {
-    const { success } = await limiter.limit({ key: ip });
-    return !success;
+    const stub = ns.get(ns.idFromName(ip));
+    const res = await stub.fetch(
+      `https://ink-ai-limit/?key=${encodeURIComponent(ip)}&limit=${LIMIT}&window=${LIMIT_WINDOW_SEC}`);
+    const data = await res.json();
+    return data.allowed === false;
   } catch (e) {
     console.warn('[ink-ai] limiter:', e.message);
     return false;
@@ -271,6 +270,22 @@ exports.handler = async (event) => {
   const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : '';
 
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS(allowed), body: '' };
+
+  // Deploy check. Says whether the rate-limit binding actually arrived, which is
+  // otherwise invisible: a missing limiter degrades silently to the in-process
+  // backstop, and the only other way to find out is to be over-billed. Booleans
+  // and a model name -- nothing here is a secret.
+  if (event.httpMethod === 'GET' && (event.queryStringParameters || {}).probe === '1') {
+    const ns = bindings.get('INK_AI_LIMIT');
+    return json(200, {
+      ok: true,
+      model: MODEL,
+      limiter: !!(ns && typeof ns.idFromName === 'function'),
+      limit: `${LIMIT} per ${LIMIT_WINDOW_SEC}s per IP`,
+      key_configured: !!process.env.OPENAI_API_KEY,
+    }, allowed);
+  }
+
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' }, allowed);
 
   // An empty Origin is a same-origin form post or a curl; a foreign one is
