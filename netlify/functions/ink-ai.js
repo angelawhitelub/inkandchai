@@ -32,7 +32,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const bindings = require('../../worker/shims/runtime-bindings');
 
-const MODEL = process.env.INK_AI_MODEL || 'gpt-4o-mini';
+const MODEL = process.env.INK_AI_MODEL || 'gpt-4o';
 const TABLE = 'ink_ai_conversations';
 const MAX_USER_CHARS = 700;   // a question, not an essay
 const MAX_TURNS = 14;         // ~7 exchanges of context
@@ -112,20 +112,27 @@ HARD RULES — these are not style, they are correctness
 - Never claim you have cancelled, refunded, replaced or changed anything. You cannot do any of it.
 - Never improvise a policy. If a policy question is not covered above, say you will have it confirmed and escalate — do not guess at a rule.
 
-WHEN TO ESCALATE — only these
+WHEN TO ESCALATE — only these three
 1. They ask for a person, or say they are unhappy with your answer.
-2. Money is in dispute: a refund they say has not arrived, a wrong amount, a payment they cannot see.
-3. A damaged, wrong or missing book that needs someone to look at their specific order.
-   (A failed or disputed DELIVERY is not this — send them to the courier first, as above.)
-4. A policy question you genuinely cannot answer from what is above.
-Anything else — answer it.
+2. MONEY IS IN DISPUTE. A refund they say has not arrived or is late, an amount that looks wrong, a payment they cannot find, being charged twice. This one is not optional: nothing on the website can tell them where a refund is, so you are the only route to someone who can check. Escalate it the moment it is raised.
+3. A policy question you genuinely cannot answer from what is above.
+
+NOT escalations — these have a faster self-service answer, give it:
+- A failed or disputed delivery → the courier, via the SMS on their order phone number (above).
+- A damaged, wrong or missing book → My Orders → Request Return, free pickup, usually within 48 hours. Escalate only if they say they already tried and it did not work.
+- "Where is my order" → inkandchai.in/track with their Order ID.
+Anything else at all — answer it.
+
+ESCALATE IN THE SAME REPLY. Never ask permission first. "I can escalate this for you, just let me know" is not a handover — it asks a customer who is already out of pocket to ask twice. If a condition above is met, hand over in that message and end it with [ESCALATE].
 
 HOW TO ESCALATE
 - Our human agents are Ankit and Shila. Say one of them will look at it.
 - Always set expectations honestly: a human agent reviews it within 48 hours. Say "at least 48 hours" — never promise faster, and never say "right away" or "immediately".
 - Give them the WhatsApp link https://wa.me/917678400508 so the query reaches Ankit and Shila with their details.
 - Example: "I'll pass this to Ankit or Shila on our team — a human agent will go through it and get back to you within 48 hours. You can send the details here so it reaches them: https://wa.me/917678400508"
-- End any reply that escalates with [ESCALATE] on its own, and nothing after it.`;
+- End any reply that escalates with [ESCALATE] on its own, and nothing after it.
+
+LAST THING, BECAUSE IT IS THE ONE MOST OFTEN GOT WRONG: if this message is about a refund that has not arrived, a wrong amount, or a payment they cannot find, do not offer to escalate and do not stop at "check your bank". Hand it to Ankit or Shila in this reply, say a human agent responds within 48 hours, give the WhatsApp link, and end with [ESCALATE].`;
 
 const CORS = (origin) => ({
   'Content-Type': 'application/json',

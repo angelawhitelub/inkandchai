@@ -92,8 +92,13 @@ test('the prompt tells it to answer, not to punt', () => {
 });
 
 test('escalation is a closed list, not a mood', () => {
-  assert.match(STORE_FACTS, /WHEN TO ESCALATE — only these/);
-  assert.match(STORE_FACTS, /Anything else — answer it\./);
+  assert.match(STORE_FACTS, /WHEN TO ESCALATE — only these three/);
+  assert.match(STORE_FACTS, /Anything else at all — answer it\./);
+  // The three routes that must stay self-service, because each is faster than
+  // a 48-hour queue.
+  assert.match(STORE_FACTS, /A failed or disputed delivery → the courier/);
+  assert.match(STORE_FACTS, /Request Return, free pickup/);
+  assert.match(STORE_FACTS, /inkandchai\.in\/track with their Order ID/);
 });
 
 test('a handover names the agents and promises 48 hours, never sooner', () => {
@@ -119,5 +124,14 @@ test('a failed delivery is answered, not handed straight to a human', () => {
   assert.match(STORE_FACTS, /check the text messages on the phone number they entered at checkout/);
   assert.match(STORE_FACTS, /ask for a re-attempt directly/);
   assert.match(STORE_FACTS, /same phone number given on the order/);
-  assert.match(STORE_FACTS, /A failed or disputed DELIVERY is not this/);
+  assert.match(STORE_FACTS, /NOT escalations — these have a faster self-service answer/);
+});
+
+test('an escalation happens, it is not offered', () => {
+  // Live test, 15 Sept: "my refund was due two weeks ago" came back with
+  // "I can escalate this for you, just let me know" and escalate:false. A
+  // customer already out of pocket should not have to ask twice.
+  assert.match(STORE_FACTS, /ESCALATE IN THE SAME REPLY/);
+  assert.match(STORE_FACTS, /Never ask permission first/);
+  assert.match(STORE_FACTS, /do not stop at "check your bank"/);
 });
