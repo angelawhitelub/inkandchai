@@ -30,6 +30,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const bindings = require('../../worker/shims/runtime-bindings');
 
 const MODEL = process.env.INK_AI_MODEL || 'gpt-4o-mini';
 const TABLE = 'ink_ai_conversations';
@@ -139,16 +140,39 @@ const json = (statusCode, body, origin) => ({
 });
 
 /**
- * Per-IP throttle. Isolate-local, so it is a speed bump rather than a lock: it
- * stops the ordinary case (one page or one script in a loop) and nothing more,
- * because a caller spread across edge locations lands in a different isolate
- * each time. Deliberately not backed by KV -- the shim has no TTL, so the keys
- * would pile up forever in the namespace that holds unreplayed paid orders, and
- * KV's propagation delay is longer than this window anyway.
+ * The real ceiling: Cloudflare's Rate Limiting binding, declared in
+ * wrangler.toml and enforced by the runtime rather than by this module. It has
+ * to be, because every request lands in a fresh isolate and a counter in module
+ * scope resets with it -- a 14-request burst against the live endpoint never
+ * tripped the in-process version below.
  *
- * This endpoint spends money per call, so the real ceiling belongs outside the
- * code, in two places: a Cloudflare Rate Limiting rule on
- * /.netlify/functions/ink-ai, and a monthly budget on the OpenAI project.
+ * Counted per colo, so it is not a single global number; it is the difference
+ * between one script spending the whole OpenAI balance and one script getting
+ * 20 answers a minute from wherever it is. Pair it with a monthly budget on the
+ * OpenAI project, which is the only truly hard limit.
+ *
+ * Returns true when the caller is over the limit, and false when the binding is
+ * missing -- a `node --test` run has no Worker env, and an absent limiter must
+ * not lock everyone out. The in-process throttle below still runs either way.
+ */
+async function overEdgeLimit(ip) {
+  const limiter = bindings.get('INK_AI_LIMIT');
+  if (!limiter || typeof limiter.limit !== 'function') return false;
+  try {
+    const { success } = await limiter.limit({ key: ip });
+    return !success;
+  } catch (e) {
+    console.warn('[ink-ai] limiter:', e.message);
+    return false;
+  }
+}
+
+/**
+ * Isolate-local backstop. Catches the ordinary case within one isolate and
+ * costs nothing; it is not the ceiling, overEdgeLimit is. Deliberately not
+ * backed by KV -- the blobs shim has no TTL, so keys would pile up forever in
+ * the namespace holding unreplayed paid orders, and KV's propagation delay is
+ * longer than this window anyway.
  */
 const HITS = new Map();
 const WINDOW_MS = 60_000;
@@ -254,7 +278,7 @@ exports.handler = async (event) => {
   if (origin && !allowed) return json(403, { error: 'Forbidden' }, '');
 
   const ip = event.headers?.['cf-connecting-ip'] || event.headers?.['x-forwarded-for'] || 'unknown';
-  if (throttled(ip)) {
+  if (await overEdgeLimit(ip) || throttled(ip)) {
     return json(429, { reply: 'One moment \u2014 too many messages at once. Try again in a minute.' }, allowed);
   }
 
@@ -297,6 +321,17 @@ exports.handler = async (event) => {
     return json(200, { reply: clean, escalate }, allowed);
   } catch (err) {
     console.error('[ink-ai]', err.message);
+    // Still a question a customer asked. Losing it because our model call failed
+    // would hide exactly the periods worth reviewing -- an outage is when people
+    // ask the same thing twice and give up.
+    await logExchange({
+      session_id: String(body.session_id || '').slice(0, 64) || null,
+      question: messages[messages.length - 1].content,
+      answer: null,
+      escalated: true,
+      page_url: String(body.page?.url || '').slice(0, 300) || null,
+      turn: messages.filter(m => m.role === 'user').length,
+    });
     return json(502, {
       error: 'unavailable',
       reply: 'Sorry — I could not answer that just now. Send it to Ankit and Shila on our '

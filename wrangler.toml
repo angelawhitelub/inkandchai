@@ -87,3 +87,23 @@ PHONEPE_SWEEP_MAX = "300"
 # process.env.URL with no domain fallback, so without this it would send
 # messages containing link-less URLs. Every other caller falls back already.
 URL = "https://inkandchai.in"
+
+# Cloudflare's Rate Limiting API, for Ink AI.
+#
+# /.netlify/functions/ink-ai is public and spends money on every call, so the
+# ceiling cannot live in the handler: each request lands in a fresh isolate, and
+# a counter in module scope resets with it. A 14-request burst against the live
+# endpoint never tripped the in-process throttle for exactly that reason.
+#
+# This binding is enforced by the runtime per colo, which is not a global count
+# but is the difference between "one script can spend the whole balance" and
+# "one script gets 20 answers a minute from wherever it is". The handler still
+# keeps its in-process throttle as a fallback for when the binding is absent.
+#
+# namespace_id is a number chosen by us, unique within this Worker -- it names
+# the counter, and changing it resets everyone's count.
+[[unsafe.bindings]]
+name = "INK_AI_LIMIT"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }

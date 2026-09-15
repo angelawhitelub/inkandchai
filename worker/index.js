@@ -14,6 +14,7 @@
 // Worker as module format — Service Worker format has no Node builtins.
 import routeTable from './routes.generated.js';
 import * as blobsNs from './shims/netlify-blobs.js';
+import * as bindingsNs from './shims/runtime-bindings.js';
 import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable } from './cache-policy.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
@@ -27,6 +28,7 @@ const CRON_OVERRIDES = {
 };
 const schedules = { ...declaredSchedules, ...CRON_OVERRIDES };
 const blobs = blobsNs.default || blobsNs;
+const bindings = bindingsNs.default || bindingsNs;
 
 const FN_PREFIX = '/.netlify/functions/';
 
@@ -426,6 +428,7 @@ export default {
     // nodejs_compat, so the 161 files reading it need no change. The KV
     // binding is not on process.env, so hand it to the blobs shim per request.
     blobs.bindEnv(env);
+    bindings.bindEnv(env);
 
     const url = new URL(request.url);
     if (url.pathname === '/.netlify/images') {
@@ -505,6 +508,7 @@ export default {
   async scheduled(event, env, ctx) {
     currentEnv = env; currentCtx = ctx;
     blobs.bindEnv(env);
+    bindings.bindEnv(env);
 
     const registered = Object.entries(schedules)
       .filter(([, cron]) => cron === event.cron)
