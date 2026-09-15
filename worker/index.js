@@ -103,6 +103,13 @@ async function toNetlifyEvent(request, name) {
 }
 
 function toResponse(result) {
+  // A handler may hand back a real Response when it is streaming bytes rather
+  // than returning a JSON string — ebook-file.js serves multi-megabyte PDFs, and
+  // the isBase64Encoded path below would inflate one by a third and then walk it
+  // a character at a time to decode. Passing the Response straight through keeps
+  // the body a stream.
+  if (result instanceof Response) return result;
+
   if (!result || typeof result !== 'object') {
     return new Response('Handler returned no response', { status: 502 });
   }

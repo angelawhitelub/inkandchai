@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {
   normaliseSlug, validatePrice, validatePdfUpload, ebookKey, publicEbook, MAX_PDF_BYTES,
 } = require('./ebook');
-const { r2PresignGet, r2EbookConfig } = require('./r2-put');
+const { r2EbookConfig, r2PresignPut } = require('./r2-put');
 
 test('a slug is reduced to the catalogue format', () => {
   assert.equal(normaliseSlug('  Atomic-Habits-ABC12 '), 'atomic-habits-abc12');
@@ -65,31 +65,23 @@ test('the public view of an eBook never carries the storage key', () => {
   assert.equal(pub.size_mb, 5);
 });
 
-test('a signed download URL expires and is bound to one key', () => {
-  const cfg = { accountId: 'acct', accessKeyId: 'AK', secretAccessKey: 'sk', bucket: 'inkandchai-ebooks' };
-  const url = r2PresignGet(cfg, { key: 'ebooks/x/abc.pdf', expiresIn: 300 });
-  assert.match(url, /X-Amz-Signature=[0-9a-f]{64}/);
-  assert.match(url, /X-Amz-Expires=300/);
-  assert.ok(url.includes('/inkandchai-ebooks/ebooks/x/abc.pdf'));
-  // Signing a different key must not produce the same signature.
-  const other = r2PresignGet(cfg, { key: 'ebooks/y/abc.pdf', expiresIn: 300 });
-  assert.notEqual(url.match(/X-Amz-Signature=([0-9a-f]+)/)[1],
-                  other.match(/X-Amz-Signature=([0-9a-f]+)/)[1]);
+test('there is no way to mint a shareable link to a paid PDF', () => {
+  // A presigned GET used to exist here and was removed on purpose: the URL was
+  // a bearer token for the whole book, so forwarding it handed over the book.
+  // Reads now go through ebook-file.js, which checks an entitlement per request.
+  // This test exists to fail if anyone reintroduces the shortcut.
+  const r2 = require('./r2-put');
+  assert.equal(typeof r2.r2PresignGet, 'undefined');
+  assert.equal(typeof r2.r2GetObject, 'function');
 });
 
-test('the expiry is clamped, so a link can never be minted for a year', () => {
-  const cfg = { accountId: 'a', accessKeyId: 'b', secretAccessKey: 'c', bucket: 'eb' };
-  assert.match(r2PresignGet(cfg, { key: 'k', expiresIn: 999999 }), /X-Amz-Expires=3600/);
-  assert.match(r2PresignGet(cfg, { key: 'k', expiresIn: 1 }), /X-Amz-Expires=60/);
-});
-
-test('a filename with spaces is quoted in the disposition', () => {
-  // Unquoted, the header truncates at the first space and the file saves as
-  // "Atomic" with no extension. Book titles have spaces.
-  const cfg = { accountId: 'a', accessKeyId: 'b', secretAccessKey: 'c', bucket: 'eb' };
-  const url = r2PresignGet(cfg, { key: 'k', downloadName: 'Atomic Habits.pdf' });
-  const disp = decodeURIComponent(url.match(/response-content-disposition=([^&]+)/)[1]);
-  assert.equal(disp, 'attachment; filename="Atomic Habits.pdf"');
+test('uploads can still be presigned, because only the admin does them', () => {
+  // The asymmetry is deliberate. A PUT link lets one known admin push one key
+  // for ten minutes and grants no read; a GET link would have been the file.
+  const cfg = { accountId: 'a', accessKeyId: 'b', secretAccessKey: 'c', bucket: 'eb', publicBase: 'https://x.invalid' };
+  const { uploadUrl } = r2PresignPut(cfg, { key: 'ebooks/x/abc.pdf', contentType: 'application/pdf' });
+  assert.match(uploadUrl, /X-Amz-Signature=[0-9a-f]{64}/);
+  assert.match(uploadUrl, /X-Amz-Expires=600/);
 });
 
 test('the ebook bucket config has no public base at all', () => {

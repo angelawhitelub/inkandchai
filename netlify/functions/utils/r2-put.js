@@ -210,7 +210,8 @@ function r2PresignPut(config, { key, contentType, expiresIn = 600 }) {
  * from "publish a book for free", so the two cannot be confused here.
  *
  * There is no publicBase at all: this bucket must have no r2.dev origin and no
- * custom domain. Reads happen only through r2PresignGet.
+ * custom domain. Reads happen only through r2GetObject, server-side, streamed
+ * back by ebook-file.js to a customer whose entitlement has been checked.
  *
  * Env:
  *   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY   (shared)
@@ -231,52 +232,38 @@ function r2EbookConfigured(env = process.env) {
 }
 
 /**
- * A presigned GET URL — the only way a private object is ever read.
+ * GET an object's bytes, server-side.
  *
- * Same query-string signing as r2PresignPut, minus content-type: a GET sends no
- * body, so `host` is the only signed header. Keep that list and the
- * X-Amz-SignedHeaders value identical or R2 answers an opaque 403.
+ * This is how a paid PDF reaches a customer: the worker fetches it and streams
+ * it back through an authenticated endpoint. It replaced handing the browser a
+ * presigned URL, which was a bearer token for the whole book — anyone it was
+ * forwarded to could read it.
  *
- * `downloadName` sets Content-Disposition through R2's response-override, so
- * the file saves as the book's title instead of a random hex key. It is signed,
- * so it cannot be swapped by editing the URL.
+ * @returns {Promise<{ ok: boolean, status: number, body: ArrayBuffer|null, contentType: string }>}
  */
-function r2PresignGet(config, { key, expiresIn = 300, downloadName = '' }) {
+async function r2GetObject(config, key) {
   const { accountId, accessKeyId, secretAccessKey, bucket } = config;
   if (!accountId || !accessKeyId || !secretAccessKey) throw new Error('R2 credentials are not configured');
-
   const host = `${accountId}.r2.cloudflarestorage.com`;
   const path = `/${bucket}/${encodeKey(key)}`;
   const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
-  const dateStamp = amzDate.slice(0, 8);
-  const scope = `${dateStamp}/auto/s3/aws4_request`;
-
-  const pairs = [
-    ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
-    ['X-Amz-Credential', `${accessKeyId}/${scope}`],
-    ['X-Amz-Date', amzDate],
-    ['X-Amz-Expires', String(Math.max(60, Math.min(3600, expiresIn)))],
-    ['X-Amz-SignedHeaders', 'host'],
-  ];
-  if (downloadName) {
-    // Quote the filename: an unquoted one with a space truncates the header at
-    // the space, and book titles have spaces.
-    const safe = String(downloadName).replace(/[^\w .,()\-]/g, '_').slice(0, 120);
-    pairs.push(['response-content-disposition', `attachment; filename="${safe}"`]);
-  }
-
-  const query = pairs
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .sort()
-    .join('&');
-
-  const canonicalRequest = ['GET', path, query, `host:${host}\n`, 'host', 'UNSIGNED-PAYLOAD'].join('\n');
-  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, sha256hex(canonicalRequest)].join('\n');
-  let signingKey = hmac(`AWS4${secretAccessKey}`, dateStamp);
-  for (const part of ['auto', 's3', 'aws4_request']) signingKey = hmac(signingKey, part);
-  const signature = crypto.createHmac('sha256', signingKey).update(stringToSign, 'utf8').digest('hex');
-
-  return `https://${host}${path}?${query}&X-Amz-Signature=${signature}`;
+  const headers = {
+    host,
+    'x-amz-content-sha256': sha256hex(''),
+    'x-amz-date': amzDate,
+  };
+  headers.authorization = signAwsV4({
+    method: 'GET', path, headers: { ...headers }, payload: '',
+    accessKeyId, secretAccessKey, region: 'auto', service: 's3',
+  });
+  const res = await fetch(`https://${host}${path}`, { method: 'GET', headers });
+  if (!res.ok) return { ok: false, status: res.status, body: null, contentType: '' };
+  return {
+    ok: true,
+    status: res.status,
+    body: await res.arrayBuffer(),
+    contentType: res.headers.get('content-type') || 'application/pdf',
+  };
 }
 
 /** HEAD an object, to confirm an upload actually landed before it is sold. */
@@ -311,5 +298,5 @@ async function r2HeadObject(config, key) {
 
 module.exports = {
   r2PutObject, r2PresignPut, r2Configured, r2Config, signAwsV4, encodeKey,
-  r2EbookConfig, r2EbookConfigured, r2PresignGet, r2HeadObject,
+  r2EbookConfig, r2EbookConfigured, r2HeadObject, r2GetObject,
 };

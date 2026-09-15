@@ -2,9 +2,15 @@
  * eBooks on the storefront.
  *
  * Three jobs, one file, because they share the buy flow:
- *   1. On a product page, show "Read instantly" if that book has a PDF on sale.
+ *   1. On a product page, show the eBook price, a free sample, and a buy button.
  *   2. On /ebooks/, render the shop and the customer's own library.
- *   3. Buy, then hand over a download link.
+ *   3. Buy, then open the book in the reader.
+ *
+ * NOTHING HERE HANDS OVER A FILE
+ * Books are read at /ebooks/read/, which streams the PDF through an endpoint
+ * that checks the buyer's entitlement on every request. There is deliberately
+ * no download: a saved PDF is one forward away from being everywhere, and a
+ * link to one is worse. See netlify/functions/ebook-file.js.
  *
  * WHY THERE IS NO CART
  * A digital sale needs no address, no shipping, no COD and no courier, and
@@ -125,7 +131,7 @@
 
       if (data.already_owned) {
         if (btn) { btn.disabled = false; btn.textContent = original; }
-        return download(slug, btn);
+        return read(slug);
       }
 
       var rzp = new window.Razorpay({
@@ -152,8 +158,8 @@
             });
             var vdata = await vres.json();
             if (!vres.ok) throw new Error(vdata.error || 'Could not confirm the payment.');
-            if (btn) { btn.disabled = false; btn.textContent = 'Download'; }
-            download(slug, btn);
+            if (btn) { btn.disabled = false; btn.textContent = 'Read'; }
+            read(slug);
           } catch (e) {
             // They have paid. Never imply otherwise — give them the reference
             // and a way to reach a human.
@@ -172,27 +178,14 @@
     }
   }
 
-  async function download(slug, btn) {
-    if (!signedIn()) { askToSignIn(); return; }
-    var original = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
-    try {
-      var tok = await token();
-      var res = await fetch(FN + 'ebook-download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
-        body: JSON.stringify({ slug: slug }),
-      });
-      var data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not prepare the download.');
-      // A plain navigation, not a fetch: the signed URL streams straight from
-      // R2 and the browser saves it with the Content-Disposition name.
-      window.location.href = data.url;
-    } catch (e) {
-      alert(e.message);
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = original || 'Download'; }
-    }
+  /** Open a book the customer owns. The reader does the authenticating. */
+  function read(slug) {
+    window.location.href = '/ebooks/read/?slug=' + encodeURIComponent(slug);
+  }
+
+  /** The free sample — no account needed, first few pages only. */
+  function readSample(slug) {
+    window.location.href = '/ebooks/read/?sample=1&slug=' + encodeURIComponent(slug);
   }
 
   // ── The button on a product page ─────────────────────────────────────────
@@ -222,11 +215,19 @@
         + '<div class="eb-p">' + (eb.mrp && eb.mrp > eb.price ? '<s>₹' + esc(eb.mrp) + '</s>' : '')
         + '₹' + esc(eb.price) + '</div>';
 
+      // The sample first: it is the cheapest thing to say yes to, and it needs
+      // no account, so it works identically on every page.
+      var sample = el('a', { class: 'eb-btn eb-btn-ghost', href: '/ebooks/read/?sample=1&slug=' + encodeURIComponent(slug) },
+        'Read sample');
+      sample.style.textDecoration = 'none';
+      sample.style.display = 'inline-block';
+      box.appendChild(sample);
+
       var btn;
       if (canAuthHere()) {
-        btn = el('button', { class: 'eb-btn', type: 'button' }, owned ? 'Download' : 'Buy eBook');
+        btn = el('button', { class: 'eb-btn', type: 'button' }, owned ? 'Read' : 'Buy eBook');
         btn.onclick = function () {
-          return owned ? download(slug, btn) : buy(slug, eb.title, btn);
+          return owned ? read(slug) : buy(slug, eb.title, btn);
         };
       } else {
         btn = el('a', { class: 'eb-btn', href: handoffUrl(slug) }, 'Buy eBook');
@@ -281,6 +282,8 @@
               + '<div class="eb-p">' + (e.mrp && e.mrp > e.price ? '<s>₹' + esc(e.mrp) + '</s> ' : '')
               + '₹' + esc(e.price) + '</div>'
               + '<button class="eb-btn" type="button" data-slug="' + esc(e.slug) + '">Buy eBook</button>'
+              + '<a class="eb-btn eb-btn-ghost" style="text-decoration:none;display:inline-block;text-align:center"'
+              + ' href="/ebooks/read/?sample=1&slug=' + esc(e.slug) + '">Read sample</a>'
               + '</div>';
           }).join('') + '</div>';
           shop.querySelectorAll('button[data-slug]').forEach(function (b) {
@@ -319,11 +322,11 @@
           + (e.cover ? '<img src="' + esc(e.cover) + '" alt="" loading="lazy"/>' : '<img alt=""/>')
           + '<div class="eb-ti">' + esc(e.title) + '</div>'
           + (e.author ? '<div class="eb-au">' + esc(e.author) + '</div>' : '')
-          + '<button class="eb-btn" type="button" data-dl="' + esc(e.slug) + '">Download</button>'
+          + '<button class="eb-btn" type="button" data-dl="' + esc(e.slug) + '">Read</button>'
           + '</div>';
       }).join('') + '</div>';
       lib.querySelectorAll('button[data-dl]').forEach(function (b) {
-        b.onclick = function () { download(b.dataset.dl, b); };
+        b.onclick = function () { read(b.dataset.dl); };
       });
     } catch (e) {
       lib.innerHTML = '<div class="eb-empty">Could not load your library.</div>';
@@ -356,5 +359,8 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 
-  window.IacEbooks = { buy: buy, download: download, refreshLibrary: function () { _libCache = null; } };
+  window.IacEbooks = {
+    buy: buy, read: read, readSample: readSample,
+    refreshLibrary: function () { _libCache = null; },
+  };
 })();
