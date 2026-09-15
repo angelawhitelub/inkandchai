@@ -182,9 +182,25 @@ window.rdZoom = async function (dir) {
     await render();
     if (isSample) showSampleEnd(slug);
   } catch (e) {
+    // pdf.js reports a failed fetch as "Missing PDF <url>". Showing that to a
+    // customer leaks the endpoint and reads as a crash, so each case gets a
+    // sentence that says what to do instead.
     const m = String(e && e.message || e);
-    if (/401|403/.test(m)) say('This book is not in your library. <a href="/ebooks/">See your eBooks</a>.');
-    else say('Could not open the book.<br><span style="font-size:.7rem">' + m.replace(/[<>]/g, '') + '</span>');
+    const status = (e && e.status) || 0;
+    if (status === 401 || /401/.test(m)) {
+      say('Please sign in to read this book.<br><button type="button" id="rdSignIn">Sign in</button>');
+      const b = document.getElementById('rdSignIn');
+      if (b) b.onclick = () => window.IAC && window.IAC.openAuthModal && window.IAC.openAuthModal();
+    } else if (status === 403 || /403/.test(m)) {
+      say('This book is not in your library. <a href="/ebooks/">See your eBooks</a>.');
+    } else if (status === 404 || /Missing PDF|404/.test(m)) {
+      say(isSample
+        ? 'There is no sample for this book yet. <a href="/ebooks/">Browse eBooks</a>.'
+        : 'We could not find that book. <a href="/ebooks/">See your eBooks</a>.');
+    } else {
+      say('Could not open the book just now. Please try again, or message us on '
+        + '<a href="https://wa.me/917678400508">WhatsApp</a>.');
+    }
   }
 })();
 
