@@ -721,6 +721,7 @@ function addProductToCart(buyNow) {
   </div>
   <div style="margin-top:0.55rem;opacity:0.75;">&copy; 2026 Ink &amp; Chai &middot; All rights reserved.</div>
 </footer>
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>`;
 }

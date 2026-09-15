@@ -4617,6 +4617,7 @@ document.querySelectorAll('.stat-num').forEach(el => {
 });
 </script>
 <script src="/js/homepage-merchandising.js?v=20260910" defer></script>
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>
 """
@@ -6697,6 +6698,7 @@ const slug    = params.get('id') || pathSlug;
 })();
 </script>
 COMPACT_FOOTER_PLACEHOLDER
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>
 """
@@ -8010,6 +8012,7 @@ setTimeout(reportViewContent, 3000);
 <script src="/js/reels.js" defer></script>
 <script src="/js/policy-sheet.js" defer></script>
 COMPACT_FOOTER_PLACEHOLDER
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>"""
 
@@ -8093,7 +8096,7 @@ def landing_html(slug, heading, intro, selected):
 <title>{html_escape(heading)} | Ink &amp; Chai</title><meta name="description" content="{html_escape(intro)} Buy online at Ink & Chai with COD, UPI, cards, and free delivery on ₹499+ orders."/>
 <link rel="canonical" href="{SITE}/{slug}/"/><meta name="robots" content="index,follow"/>
 <style>:root{{--bg:#0d0b08;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.2)}}*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--cream);font-family:'Inter',Arial,sans-serif}}nav{{padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:1rem;align-items:center}}a{{color:inherit;text-decoration:none}}.logo{{font-family:serif;font-size:1.5rem;color:var(--gold)}}.links{{display:flex;gap:1rem;flex-wrap:wrap;color:var(--muted);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase}}main{{max-width:1180px;margin:auto;padding:clamp(2rem,6vw,5rem) 1rem}}.eyebrow{{color:var(--gold);letter-spacing:.24em;text-transform:uppercase;font-size:.65rem}}h1{{font-family:serif;font-size:clamp(2.5rem,7vw,5rem);font-weight:400;line-height:1;margin:.8rem 0}}p{{color:var(--muted);max-width:760px;line-height:1.8}}.grid{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1.4rem;margin-top:2.5rem}}.card{{min-width:0}}.cover{{display:flex;aspect-ratio:2/3;background:#17130f;border:1px solid var(--border);align-items:center;justify-content:center;margin-bottom:.8rem}}img{{max-width:100%;max-height:100%;object-fit:contain}}strong{{display:block;font-family:serif;font-size:1.05rem;line-height:1.25}}small{{display:block;color:var(--muted);margin:.25rem 0 .4rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.price{{color:var(--gold);font-weight:700}}.trust{{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.4rem;color:var(--gold);font-size:.8rem}}.cta{{margin-top:1.6rem;display:inline-block;border:1px solid var(--gold);padding:.8rem 1.2rem;color:var(--gold);font-size:.7rem;letter-spacing:.16em;text-transform:uppercase}}@media(max-width:900px){{.grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}@media(max-width:560px){{nav{{align-items:flex-start;flex-direction:column}}.links{{font-size:.62rem}}.grid{{grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}}}}</style></head>
-<body><nav><a class="logo" href="/">Ink &amp; Chai</a><div class="links"><a href="/hindi-books/">Hindi</a><a href="/self-help-books/">Self-help</a><a href="/bestsellers/">Bestsellers</a><a href="/new-arrivals/">New</a><a href="/book-combos/">Combos</a></div></nav><main><div class="eyebrow">Curated collection</div><h1>{html_escape(heading)}</h1><p>{html_escape(intro)}</p><div class="trust"><span>Free delivery on ₹499+</span><span>COD available</span><span>UPI/cards accepted</span><span>7-day replacement support</span></div><a class="cta" href="/">Search full catalogue</a><section class="grid">{cards}</section></main>{_DELETED_PRUNE_JS}</body></html>"""
+<body><nav><a class="logo" href="/">Ink &amp; Chai</a><div class="links"><a href="/hindi-books/">Hindi</a><a href="/self-help-books/">Self-help</a><a href="/bestsellers/">Bestsellers</a><a href="/new-arrivals/">New</a><a href="/book-combos/">Combos</a></div></nav><main><div class="eyebrow">Curated collection</div><h1>{html_escape(heading)}</h1><p>{html_escape(intro)}</p><div class="trust"><span>Free delivery on ₹499+</span><span>COD available</span><span>UPI/cards accepted</span><span>7-day replacement support</span></div><a class="cta" href="/">Search full catalogue</a><section class="grid">{cards}</section></main>{_DELETED_PRUNE_JS}<script src="/js/ink-ai.js" defer></script></body></html>"""
 
 for slug, heading, intro, predicate in LANDING_PAGES:
     selected = sorted([b for b in slim if predicate(b)], key=landing_rank)
@@ -10628,6 +10631,7 @@ async function chkVerifyOtp() {
   }
 }
 </script>
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>"""
 
@@ -10861,6 +10865,7 @@ function renderGrid() {
   document.getElementById('grid').innerHTML = list.map(iacBookCard).join('');
 }
 </script>
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>"""
 
@@ -11263,6 +11268,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
   </div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse all books</a></footer>
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>"""
 
@@ -11494,6 +11500,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
 {_DELETED_PRUNE_JS}
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>"""
 
@@ -11667,6 +11674,7 @@ def _cat_page_html(*, title, description, canonical, h1, intro, grid,
 </main>
 <footer>&copy; 2026 Ink &amp; Chai &middot; inkandchai.in &middot; <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
 {_DELETED_PRUNE_JS}
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>"""
 
@@ -12143,6 +12151,7 @@ main{{max-width:760px;padding-top:2.2rem}}
 </main>
 <footer>&copy; 2026 Ink &amp; Chai &middot; inkandchai.in &middot; <a href="/" style="color:var(--muted)">Browse full catalogue</a></footer>
 <script src="/js/cart.js"></script>
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>"""
 
@@ -12447,6 +12456,7 @@ _OFFLINE_HTML = """<!doctype html>
        at inkandchai.in/track once you are back online.</div>
   </div>
   <script>addEventListener('online',function(){location.reload()});</script>
+<script src="/js/ink-ai.js" defer></script>
 </body>
 </html>
 """
