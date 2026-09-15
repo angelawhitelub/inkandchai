@@ -83,6 +83,12 @@ __filename = "'/var/task/netlify/functions/handler.js'"
 # is 400; raise this toward that only if the margin proves unnecessary.
 PHONEPE_SWEEP_MAX = "300"
 
+# The monthly ceiling on Ink AI's OpenAI spend, in US dollars. The per-IP rate
+# limit stops one visitor looping; this stops the bill when traffic is spread
+# across many. At ~$0.0078 a reply this buys roughly 3,200 conversations a
+# month. Raise it here and redeploy; the code falls back to 25 if it is unset.
+INK_AI_MONTHLY_BUDGET_USD = "25"
+
 # Netlify injected URL automatically. whatsapp-broadcast-scheduled reads
 # process.env.URL with no domain fallback, so without this it would send
 # messages containing link-less URLs. Every other caller falls back already.
@@ -104,6 +110,14 @@ URL = "https://inkandchai.in"
 name = "INK_AI_LIMIT"
 class_name = "RateLimiter"
 
+[[durable_objects.bindings]]
+name = "INK_AI_SPEND"
+class_name = "SpendGuard"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RateLimiter"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["SpendGuard"]

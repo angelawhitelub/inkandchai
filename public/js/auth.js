@@ -1821,8 +1821,8 @@
       <h4>Sold By</h4>
       <p>
         <strong>Ink &amp; Chai</strong><br/>
-        211, Gali Arya Samaj Wali<br/>
-        Sitaram Bazar, Delhi – 110002<br/>
+        6, Ansari Road<br/>
+        Delhi – 110002<br/>
         India<br/>
         <span style="color:#8a6a1f;">support@inkandchai.in</span>
       </p>

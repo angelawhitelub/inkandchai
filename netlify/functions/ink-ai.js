@@ -31,12 +31,29 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const bindings = require('../../worker/shims/runtime-bindings');
+const { costMicros, monthKey, budgetMicros } = require('./utils/ink-ai-budget');
 
-const MODEL = process.env.INK_AI_MODEL || 'gpt-4o';
+/**
+ * Both of these are read per call, not once at module scope.
+ *
+ * Under the Workers runtime process.env is populated from the bindings when a
+ * request arrives, so a const evaluated at import time races the first request
+ * on a cold isolate and silently falls back to the default. That was caught in
+ * testing: with INK_AI_MONTHLY_BUDGET_USD set to 0.001, one isolate enforced
+ * 0.001 and another reported 25 — a ceiling honoured on some requests and not
+ * others, which is the failure mode this whole guard exists to avoid.
+ */
+const model = () => process.env.INK_AI_MODEL || 'gpt-4o';
+const budgetUsd = () => process.env.INK_AI_MONTHLY_BUDGET_USD || '25';
 const TABLE = 'ink_ai_conversations';
 const MAX_USER_CHARS = 700;   // a question, not an essay
 const MAX_TURNS = 14;         // ~7 exchanges of context
 const MAX_TOKENS = 330;
+
+// The monthly ceiling, in dollars, lives in budgetUsd() above. The per-IP rate
+// limit bounds one visitor's burst; this bounds the bill when the traffic is
+// spread across many. Set INK_AI_MONTHLY_BUDGET_USD to change it without a code
+// deploy. At roughly 7,800 micros a reply, $25 buys ~3,200 conversations.
 
 // Requests must come from our own pages. Not a security boundary -- a header is
 // forgeable -- but it stops the endpoint being a free OpenAI proxy for anyone
@@ -174,6 +191,44 @@ async function overEdgeLimit(ip) {
 }
 
 /**
+ * The monthly spend ceiling. See worker/spend-guard.js for why it persists and
+ * the rate limiter does not.
+ *
+ * `check` reads the running total; `record` adds the cost of a call that has
+ * already happened. Both fail open, for the same reason overEdgeLimit does: a
+ * guard that is down must not take the bot down with it. The difference is that
+ * a failure here is worth shouting about, because the thing it stops costs
+ * money -- hence the warning on every failed path rather than a silent false.
+ */
+async function spendGuard(params) {
+  const ns = bindings.get('INK_AI_SPEND');
+  if (!ns || typeof ns.idFromName !== 'function') return null;
+  try {
+    // One instance for the whole site: this is a single global total, not a
+    // per-key one, so every request must land on the same object.
+    const stub = ns.get(ns.idFromName('global'));
+    const qs = new URLSearchParams({ month: monthKey(), budget_micros: String(budgetMicros(budgetUsd())), ...params });
+    const res = await stub.fetch(`https://ink-ai-spend/?${qs}`);
+    return await res.json();
+  } catch (e) {
+    console.warn('[ink-ai] spend guard:', e.message);
+    return null;
+  }
+}
+
+async function overBudget() {
+  const s = await spendGuard({});
+  return !!(s && s.over);
+}
+
+/** Bill a completion against the month. Never throws -- the reply already went out. */
+async function recordSpend(usage) {
+  const micros = costMicros(model(), usage);
+  if (!micros) return;
+  await spendGuard({ micros: String(micros) });
+}
+
+/**
  * Isolate-local backstop. Catches the ordinary case within one isolate and
  * costs nothing; it is not the ceiling, overEdgeLimit is. Deliberately not
  * backed by KV -- the blobs shim has no TTL, so keys would pile up forever in
@@ -265,11 +320,12 @@ async function callOpenAI(messages) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: MODEL, messages, max_tokens: MAX_TOKENS, temperature: 0.4 }),
+    body: JSON.stringify({ model: model(), messages, max_tokens: MAX_TOKENS, temperature: 0.4 }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`OpenAI ${res.status}: ${data?.error?.message || 'unknown'}`);
-  return (data.choices?.[0]?.message?.content || '').trim();
+  // usage comes back on every completion; it is what the month is billed from.
+  return { text: (data.choices?.[0]?.message?.content || '').trim(), usage: data.usage };
 }
 
 exports.handler = async (event) => {
@@ -284,12 +340,19 @@ exports.handler = async (event) => {
   // and a model name -- nothing here is a secret.
   if (event.httpMethod === 'GET' && (event.queryStringParameters || {}).probe === '1') {
     const ns = bindings.get('INK_AI_LIMIT');
+    const spend = await spendGuard({});
     return json(200, {
       ok: true,
-      model: MODEL,
+      model: model(),
       limiter: !!(ns && typeof ns.idFromName === 'function'),
       limit: `${LIMIT} per ${LIMIT_WINDOW_SEC}s per IP`,
       key_configured: !!process.env.OPENAI_API_KEY,
+      // Whether the ceiling is wired and holding. The running total is
+      // deliberately not here -- this endpoint is public, and "how much does
+      // this shop spend" is nobody else's business.
+      budget: !!spend,
+      budget_usd: Number(budgetUsd()),
+      over_budget: !!(spend && spend.over),
     }, allowed);
   }
 
@@ -313,6 +376,26 @@ exports.handler = async (event) => {
     return json(400, { error: 'No question.' }, allowed);
   }
 
+  // Before spending anything. A month's budget gone is not an error the
+  // customer caused, so they get a route to a human rather than a failure.
+  if (await overBudget()) {
+    console.warn(`[ink-ai] monthly budget of $${budgetUsd()} reached — replies paused`);
+    await logExchange({
+      session_id: String(body.session_id || '').slice(0, 64) || null,
+      question: messages[messages.length - 1].content,
+      answer: null,
+      escalated: true,
+      page_url: String(body.page?.url || '').slice(0, 300) || null,
+      turn: messages.filter(m => m.role === 'user').length,
+    });
+    return json(200, {
+      reply: 'I am offline for a bit. Send this to Ankit and Shila on our team at '
+           + 'https://wa.me/917678400508 — a human agent goes through every query '
+           + 'within 48 hours. For an order you can also check inkandchai.in/track.',
+      escalate: true,
+    }, allowed);
+  }
+
   try {
     const faq = await adminFaq();
     let system = STORE_FACTS;
@@ -325,7 +408,10 @@ exports.handler = async (event) => {
     }
     system += catalogueContext(body.books);
 
-    const reply = await callOpenAI([{ role: 'system', content: system }, ...messages]);
+    const { text: reply, usage } = await callOpenAI([{ role: 'system', content: system }, ...messages]);
+    // Bill it whether or not the text was usable -- an empty reply was still
+    // charged for, and a month that only counts successes undercounts.
+    await recordSpend(usage);
     if (!reply) return json(502, { error: 'Empty reply' }, allowed);
 
     const escalate = reply.includes('[ESCALATE]');

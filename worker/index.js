@@ -19,6 +19,7 @@ import * as bindingsNs from './shims/runtime-bindings.js';
 // Durable Object class, exported so the runtime can construct it. See the file
 // for why the two lighter rate limiters did not hold.
 export { RateLimiter } from './rate-limiter.js';
+export { SpendGuard } from './spend-guard.js';
 import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable } from './cache-policy.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
