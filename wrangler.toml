@@ -89,6 +89,11 @@ PHONEPE_SWEEP_MAX = "300"
 # month. Raise it here and redeploy; the code falls back to 25 if it is unset.
 INK_AI_MONTHLY_BUDGET_USD = "25"
 
+# The PRIVATE bucket holding eBook PDFs. It must never be given an r2.dev
+# public origin or a custom domain: reads happen only through the short-lived
+# signed URLs ebook-download.js mints for customers who have paid.
+R2_EBOOK_BUCKET = "inkandchai-ebooks"
+
 # Netlify injected URL automatically. whatsapp-broadcast-scheduled reads
 # process.env.URL with no domain fallback, so without this it would send
 # messages containing link-less URLs. Every other caller falls back already.

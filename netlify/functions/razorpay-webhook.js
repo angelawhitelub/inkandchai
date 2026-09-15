@@ -22,6 +22,7 @@ const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { makeOrderId } = require('./utils/pricing');
 const { mirrorOrder, stashLostOrder } = require('./utils/order-fallback');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
+const { grantEbook } = require('./utils/ebook-grant');
 
 const CORS = { 'Content-Type': 'application/json' };
 
@@ -118,6 +119,37 @@ exports.handler = async (event, context) => {
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+
+  // ── eBooks leave here, before anything that assumes a parcel ────────────
+  //
+  // Two reasons this is an early return rather than a branch further down.
+  //
+  // A digital sale has no address, no weight and no courier, so letting it
+  // reach the orders insert below would put a PDF in the NimbusPost push queue
+  // and then chase it with delivery SMS for a parcel that does not exist.
+  //
+  // And this is the path that makes buying an eBook safe at all: if the
+  // customer closes the tab before ebook-verify-payment runs, this webhook is
+  // the only thing left that knows they paid. grantEbook is idempotent on the
+  // payment id, so whichever of the two arrives second changes nothing.
+  if (notes.kind === 'ebook' && notes.slug && notes.user_id) {
+    const granted = await grantEbook(supabase, {
+      slug: notes.slug,
+      userId: notes.user_id,
+      email: customerEmail,
+      paymentId: razorpay_payment_id,
+      orderId: razorpay_order_id,
+      amountPaise: amount_paise,
+    });
+    if (!granted.ok) {
+      // Razorpay retries a non-2xx, which is exactly what we want here: the
+      // customer has paid and does not yet have the book.
+      console.error('[razorpay-webhook] ebook grant failed', razorpay_payment_id, granted.error);
+      return { statusCode: 500, body: 'ebook grant failed' };
+    }
+    console.log('[razorpay-webhook] ebook granted', notes.slug, granted.already ? '(already)' : '');
+    return { statusCode: 200, body: 'OK — ebook' };
+  }
 
   // ── Check if order already exists (handler() may have already saved it) ──
   const { data: existing } = await supabase

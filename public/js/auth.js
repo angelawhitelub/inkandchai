@@ -159,6 +159,23 @@
     openAuthModal,
     openAccountModal,
     openMyOrders,
+
+    /**
+     * The current session's access token, for functions that authenticate the
+     * customer server-side (get-my-orders does this inline; ebooks.js is a
+     * separate file and cannot reach `sb`).
+     *
+     * Always read fresh rather than cached: supabase-js rotates the token on
+     * refresh, and a stale one fails as a 401 that looks like being signed out.
+     */
+    async getToken() {
+      const sb = getSB();
+      if (!sb) return '';
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        return session?.access_token || '';
+      } catch { return ''; }
+    },
   };
 
   // ── Auto-login after order (called from checkout.js) ──────────────────────

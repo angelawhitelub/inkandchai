@@ -880,6 +880,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab owner-only" data-tab="profit" onclick="switchTab('profit')">💰 Profit</button>
     <button class="admin-tab" data-tab="create"    onclick="switchTab('create')">➕ Create Listing</button>
     <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
+    <button class="admin-tab owner-only" data-tab="ebooks" onclick="switchTab('ebooks')">📄 eBooks</button>
     <button class="admin-tab owner-only" data-tab="promotions" onclick="switchTab('promotions')">🏷 Promotions</button>
     <button class="admin-tab" data-tab="reels"     onclick="switchTab('reels')">🎬 Video Reels</button>
     <button class="admin-tab owner-only" data-tab="banners" onclick="switchTab('banners')">🎨 Banner Studio</button>
@@ -1359,6 +1360,59 @@ select,input,textarea{font-size:1rem;}
   </div>
 
   <!-- ═══ VIDEO REELS TAB ═══ -->
+  <div class="admin-section" id="tab-ebooks">
+    <section class="product-panel">
+      <div class="product-head">
+        <div>
+          <h2>📄 Sell a book as a PDF</h2>
+          <p>Pick the book, set a price, upload the PDF. The file is stored privately &mdash; it is never on a public URL, and it is only ever handed to a signed-in customer who has paid for that title.</p>
+        </div>
+        <div class="mini-actions"><button class="btn-outline" onclick="loadEbooks()">&#8635; Refresh</button></div>
+      </div>
+
+      <div class="form-row wide">
+        <label>1. Which book?</label>
+        <input id="ebookSearch" type="text" placeholder="Search the catalogue by title or author&hellip;" oninput="ebookSearchDebounced(this.value)" autocomplete="off"/>
+        <div id="ebookHits" style="display:grid;gap:.4rem;margin-top:.5rem;"></div>
+        <div id="ebookPicked" style="margin-top:.6rem;"></div>
+      </div>
+
+      <div class="form-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;">
+        <div>
+          <label>2. eBook price (&#8377;)</label>
+          <input id="ebookPrice" type="number" min="1" step="1" placeholder="199"/>
+        </div>
+        <div>
+          <label>Strike-through price (optional)</label>
+          <input id="ebookMrp" type="number" min="1" step="1" placeholder="499"/>
+        </div>
+        <div>
+          <label>Pages (optional)</label>
+          <input id="ebookPages" type="number" min="1" step="1" placeholder="320"/>
+        </div>
+      </div>
+
+      <div class="form-row wide">
+        <label>3. The PDF</label>
+        <input id="ebookFile" type="file" accept="application/pdf,.pdf" onchange="ebookFileChosen(this.files[0])"/>
+        <p class="hint" style="margin-top:.45rem;">Up to 200 MB. It uploads straight to storage, so large files are fine &mdash; keep this tab open until it finishes.</p>
+        <div id="ebookUploadBar" style="display:none;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin-top:.6rem;">
+          <div id="ebookUploadFill" style="height:100%;width:0;background:#5d9b55;transition:width .2s;"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-top:1rem;">
+        <button class="btn-green" type="button" onclick="saveEbook()">Save eBook</button>
+        <span class="hint" id="ebookStatus"></span>
+      </div>
+    </section>
+
+    <section class="product-panel" style="margin-top:1rem;">
+      <div class="product-head"><div><h2>On sale</h2><p>Delisting stops new sales. Customers who already paid keep their copy &mdash; taking that away would be repossessing something they bought.</p></div></div>
+      <div id="ebookList"><span class="hint">Open this tab to load eBooks.</span></div>
+    </section>
+  </div><!-- /tab-ebooks -->
+
   <div class="admin-section" id="tab-reels">
     <section class="product-panel">
       <div class="product-head">
@@ -11344,7 +11398,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','npcancelled','rtorefunds','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','npcancelled','rtorefunds','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -12279,6 +12333,219 @@ async function refreshReplacementRequests(btn) {
   }
 }
 
+/* ── eBooks ──────────────────────────────────────────────────────────────
+ *
+ * The PDF never passes through a function: admin-ebook-upload-url signs a URL
+ * for one key and the browser PUTs straight to R2. A 40 MB book could not fit
+ * through a function body (6 MB, and base64 inflates it by a third), which is
+ * the same reason product videos upload this way.
+ */
+let _ebookPick = null;
+let _ebookKey  = '';          // set once the PDF has actually landed in storage
+let _ebookSearchTimer = null;
+
+function ebookSearchDebounced(q) {
+  clearTimeout(_ebookSearchTimer);
+  _ebookSearchTimer = setTimeout(() => ebookSearch(q), 250);
+}
+
+async function ebookSearch(q) {
+  const box = document.getElementById('ebookHits');
+  if (!box) return;
+  if (!q || q.trim().length < 2) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="hint">Searching…</div>';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-product-search?limit=10&q=' + encodeURIComponent(q));
+    const data = await res.json();
+    const books = data.books || [];
+    if (!books.length) { box.innerHTML = '<div class="hint">Nothing matches that.</div>'; return; }
+    box.innerHTML = books.map(b => `
+      <div class="bnr-hit" onclick="ebookPick('${encodeURIComponent(JSON.stringify(b))}')">
+        <img src="${esc(b.img)}" alt="" loading="lazy"/>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.6rem;line-height:1.35;">${esc(b.title)}</div>
+          <div class="hint" style="margin:0;">${b.author ? esc(b.author) + ' · ' : ''}paperback ₹${esc(b.price)}</div>
+        </div>
+      </div>`).join('');
+  } catch (err) {
+    box.innerHTML = '<div class="hint">Search failed: ' + esc(err.message) + '</div>';
+  }
+}
+
+function ebookPick(encoded) {
+  let b; try { b = JSON.parse(decodeURIComponent(encoded)); } catch { return; }
+  if (!b || !b.slug) return;
+  _ebookPick = b;
+  _ebookKey = '';                       // a new book needs its own upload
+  document.getElementById('ebookHits').innerHTML = '';
+  document.getElementById('ebookSearch').value = '';
+  document.getElementById('ebookPicked').innerHTML = `
+    <div style="display:flex;gap:.7rem;align-items:center;padding:.6rem;border:1px solid var(--border);border-radius:4px;">
+      <img src="${esc(b.img)}" alt="" style="width:38px;height:54px;object-fit:cover;border-radius:2px;"/>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:.66rem;">${esc(b.title)}</div>
+        <div class="hint" style="margin:0;">${esc(b.slug)}</div>
+      </div>
+      <button class="btn-outline" type="button" onclick="ebookClearPick()">Change</button>
+    </div>`;
+}
+
+function ebookClearPick() {
+  _ebookPick = null; _ebookKey = '';
+  document.getElementById('ebookPicked').innerHTML = '';
+  document.getElementById('ebookStatus').textContent = '';
+}
+
+function ebookFileChosen(file) {
+  // A freshly chosen file invalidates whatever was uploaded before, so the
+  // save cannot quietly attach the previous PDF to this book.
+  _ebookKey = '';
+  const st = document.getElementById('ebookStatus');
+  if (!file) { st.textContent = ''; return; }
+  if (file.type !== 'application/pdf') { st.textContent = 'That is not a PDF.'; return; }
+  st.textContent = `${file.name} · ${(file.size / 1048576).toFixed(1)} MB — press Save eBook to upload.`;
+}
+
+/** PUT with progress. fetch() cannot report upload progress; XHR can. */
+function ebookPutWithProgress(url, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url, true);
+    // Must match the content type that was signed, exactly, or R2 answers 403.
+    xhr.setRequestHeader('Content-Type', 'application/pdf');
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
+      ? resolve()
+      : reject(new Error('Upload failed (' + xhr.status + ')'));
+    xhr.onerror = () => reject(new Error('Upload failed — check the connection.'));
+    xhr.send(file);
+  });
+}
+
+async function saveEbook() {
+  const st   = document.getElementById('ebookStatus');
+  const file = document.getElementById('ebookFile').files[0];
+  const price = document.getElementById('ebookPrice').value;
+
+  if (!_ebookPick) { st.textContent = 'Pick a book first.'; return; }
+  if (!price)      { st.textContent = 'Set a price.'; return; }
+  if (!file && !_ebookKey) {
+    // Editing an existing eBook's price is fine without re-uploading; the
+    // server keeps the current key when none is sent.
+    const existing = (window._ebookRows || []).some(r => r.slug === _ebookPick.slug);
+    if (!existing) { st.textContent = 'Choose the PDF.'; return; }
+  }
+
+  try {
+    if (file && !_ebookKey) {
+      st.textContent = 'Preparing upload…';
+      const signRes = await adminFetch('/.netlify/functions/admin-ebook-upload-url', {
+        method: 'POST',
+        body: JSON.stringify({ slug: _ebookPick.slug, content_type: 'application/pdf', size_bytes: file.size }),
+      });
+      const sign = await signRes.json();
+      if (!signRes.ok) throw new Error(sign.error || 'Could not start the upload.');
+
+      const bar = document.getElementById('ebookUploadBar');
+      const fill = document.getElementById('ebookUploadFill');
+      bar.style.display = 'block';
+      await ebookPutWithProgress(sign.upload_url, file, (p) => {
+        fill.style.width = Math.round(p * 100) + '%';
+        st.textContent = 'Uploading… ' + Math.round(p * 100) + '%';
+      });
+      bar.style.display = 'none';
+      _ebookKey = sign.key;
+    }
+
+    st.textContent = 'Saving…';
+    const res = await adminFetch('/.netlify/functions/admin-ebooks', {
+      method: 'POST',
+      body: JSON.stringify({
+        slug:   _ebookPick.slug,
+        title:  _ebookPick.title,
+        author: _ebookPick.author || '',
+        cover:  _ebookPick.img || '',
+        price:  Number(price),
+        mrp:    Number(document.getElementById('ebookMrp').value) || null,
+        pages:  Number(document.getElementById('ebookPages').value) || null,
+        r2_key: _ebookKey || undefined,
+        file_name: file ? file.name : undefined,
+        size_bytes: file ? file.size : undefined,
+        active: true,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Save failed.');
+
+    st.textContent = '✓ Saved — it is on sale now.';
+    document.getElementById('ebookFile').value = '';
+    document.getElementById('ebookPrice').value = '';
+    document.getElementById('ebookMrp').value = '';
+    document.getElementById('ebookPages').value = '';
+    ebookClearPick();
+    loadEbooks();
+  } catch (err) {
+    document.getElementById('ebookUploadBar').style.display = 'none';
+    st.textContent = '✗ ' + err.message;
+  }
+}
+
+async function loadEbooks() {
+  const list = document.getElementById('ebookList');
+  if (!list) return;
+  list.innerHTML = '<span class="hint">Loading…</span>';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-ebooks');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not load.');
+    window._ebookRows = data.ebooks || [];
+
+    if (data.table_missing) {
+      list.innerHTML = '<div class="hint">The eBooks tables do not exist yet — run the SQL migration, then refresh.</div>';
+      return;
+    }
+    if (data.r2_configured === false) {
+      list.innerHTML = '<div class="hint" style="color:#c98236;">R2 is not configured, so uploads will fail. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY.</div>';
+    } else if (data.r2_bucket && data.r2_bucket.ok === false) {
+      // Said here rather than discovered on the first 40 MB upload.
+      list.innerHTML = '<div class="hint" style="color:#c98236;">Storage problem: ' + esc(data.r2_bucket.reason) + '</div>';
+    }
+    if (!window._ebookRows.length) {
+      list.innerHTML = '<span class="hint">No eBooks yet.</span>';
+      return;
+    }
+
+    list.innerHTML = `<table class="admin-table"><thead><tr>
+        <th>Book</th><th>Price</th><th>Size</th><th>Sold</th><th>Status</th><th></th>
+      </tr></thead><tbody>` + window._ebookRows.map(r => `
+      <tr>
+        <td>
+          <div style="font-size:.62rem;">${esc(r.title || r.slug)}</div>
+          <div class="hint" style="margin:0;">${esc(r.slug)}</div>
+        </td>
+        <td>₹${esc(String(r.price))}${r.mrp ? ' <span class="hint">was ₹' + esc(String(r.mrp)) + '</span>' : ''}</td>
+        <td>${r.size_bytes ? (r.size_bytes / 1048576).toFixed(1) + ' MB' : '—'}</td>
+        <td>${esc(String(r.sold || 0))}</td>
+        <td>${r.active ? '<span style="color:#5d9b55;">On sale</span>' : '<span class="hint">Delisted</span>'}</td>
+        <td>${r.active
+          ? `<button class="btn-outline" onclick="delistEbook('${esc(r.slug)}')">Delist</button>`
+          : '<span class="hint">—</span>'}</td>
+      </tr>`).join('') + '</tbody></table>';
+  } catch (err) {
+    list.innerHTML = '<div class="hint">✗ ' + esc(err.message) + '</div>';
+  }
+}
+
+async function delistEbook(slug) {
+  if (!confirm('Stop selling this eBook?\n\nAnyone who already bought it keeps their copy.')) return;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-ebooks?slug=' + encodeURIComponent(slug), { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed.');
+    loadEbooks();
+  } catch (err) { alert(err.message); }
+}
+
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
   if (adminRole !== 'owner' && !new Set(['orders','replacements','missingbooks','returns','npcancelled','botinbox','recover','reels']).has(tab)) tab = 'orders';
@@ -12304,6 +12571,7 @@ function switchTab(tab, pushState = true) {
   const _authed = adminToken || adminKey || adminCookieSession;
   if (tab === 'tools' && _authed) gadsSuppressStatus();
   if (tab === 'products' && _authed) { fetchProducts(); fetchRemovedListings(); fetchDeletedPages(); }
+  if (tab === 'ebooks' && _authed && adminRole === 'owner') loadEbooks();
   if (tab === 'reels' && _authed) loadSiteReels();
   if (tab === 'banners' && _authed) loadLiveBanners();
   if (tab === 'abandoned' && _authed) fetchAbandonedCheckouts();

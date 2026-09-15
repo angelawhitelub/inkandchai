@@ -585,6 +585,9 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
      generate_site.py, so it needs the include of its own. -->
 <script src="/js/google-discount.js"></script>
 <script src="/js/policy-sheet.js" defer></script>
+<!-- Like the crawlable book pages, this one does not load auth.js, so the eBook
+     button here links through to /ebooks/ rather than opening checkout. -->
+<script src="/js/ebooks.js" defer></script>
 <script src="/js/search-suggest.js" defer></script>
 <script>
 const currentItem = ${JSON.stringify({
@@ -713,6 +716,7 @@ function addProductToCart(buyNow) {
     <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" style="color:var(--gold-dim,#b09a5e);text-decoration:none;">📸 @inkandchai.in</a>
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.35rem;">
+    <a href="/ebooks/" style="color:var(--cream-dim,#a09080);text-decoration:none;">eBooks</a>
     <a href="/shipping-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Shipping</a>
     <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Returns</a>
     <a href="/refund-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Refunds</a>

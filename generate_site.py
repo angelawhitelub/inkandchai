@@ -4985,6 +4985,7 @@ COMPACT_FOOTER = """<footer class="site-footer" style="text-align:center;padding
     <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" style="color:var(--gold-dim,#b09a5e);text-decoration:none;">📸 @inkandchai.in</a>
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.35rem;">
+    <a href="/ebooks/" style="color:var(--cream-dim,#a09080);text-decoration:none;">eBooks</a>
     <a href="/shipping-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Shipping</a>
     <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Returns</a>
     <a href="/refund-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Refunds</a>
@@ -5596,6 +5597,7 @@ document.addEventListener('keydown', e => {
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/policy-sheet.js" defer></script>
+<script src="/js/ebooks.js" defer></script>
 <script>
 const BOOKS = BOOKS_DATA_PLACEHOLDER;
 const SOCIAL_PROOF = SOCIAL_PROOF_PLACEHOLDER;
@@ -8011,6 +8013,7 @@ setTimeout(reportViewContent, 3000);
      Loads video only when a reel is opened, and only the active one. -->
 <script src="/js/reels.js" defer></script>
 <script src="/js/policy-sheet.js" defer></script>
+<script src="/js/ebooks.js" defer></script>
 COMPACT_FOOTER_PLACEHOLDER
 <script src="/js/ink-ai.js" defer></script>
 </body>
@@ -12502,6 +12505,7 @@ static_urls = [
     (SITE + "/manga-books-india/",     "0.8", "weekly"),
     (SITE + "/cod-books-online/",      "0.8", "weekly"),
     (SITE + "/track/",          "0.7",  "weekly"),
+    (SITE + "/ebooks/",         "0.8",  "weekly"),
     (SITE + "/terms/",          "0.4",  "yearly"),
     (SITE + "/privacy-policy/", "0.4",  "yearly"),
     (SITE + "/refund-policy/",  "0.4",  "yearly"),
