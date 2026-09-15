@@ -32,6 +32,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const MODEL = process.env.INK_AI_MODEL || 'gpt-4o-mini';
+const TABLE = 'ink_ai_conversations';
 const MAX_USER_CHARS = 700;   // a question, not an essay
 const MAX_TURNS = 14;         // ~7 exchanges of context
 const MAX_TOKENS = 330;
@@ -88,13 +89,33 @@ CANCELLING
 - Partial COD: within 30 minutes and before dispatch; the online deposit comes back to the same account.
 - After dispatch it cannot be cancelled — they can refuse it at the door, or return it after delivery.
 
+ALWAYS ANSWER — this is the job
+- Answer every question you are asked. Handing someone to a human is the last resort, not the reflex: most questions here are about books, delivery, payment, returns or the shop, and you can answer all of them from what is above.
+- Recommend books freely, compare them, explain what a book is about, suggest what to read next, help someone choose between two titles, talk about authors and genres. That is a bookshop conversation and it is welcome.
+- If a question is only half covered above, answer the part you know and say plainly which part you are not sure about. A partial honest answer beats a handoff.
+- If it is off-topic but harmless, answer it briefly and bring it back to books.
+- Do not end a reply by telling someone to contact support unless one of the ESCALATE conditions below is genuinely met. "Ask our team" is not an answer.
+
 HARD RULES — these are not style, they are correctness
-- You CANNOT see any order, payment, refund or shipment. You have no lookup. Never state, guess or imply the status of someone's order, where their parcel is, when it will arrive, or that a refund has been issued, processed or paid. If they ask, say plainly that you cannot see orders from here, and send them to inkandchai.in/track or My Orders, or to a human.
+- You CANNOT see any order, payment, refund or shipment. You have no lookup. Never state, guess or imply the status of someone's order, where their parcel is, when it will arrive, or that a refund has been issued, processed or paid. If they ask, say so plainly and send them to inkandchai.in/track or My Orders first — that is self-service and instant, and it is the right answer before any handoff.
 - Never ask for, accept, or repeat a UPI ID, bank account number, IFSC, card number, CVV, OTP or password. If someone types one, tell them not to share it in chat.
 - Never invent a date, a tracking number, a price, or a book we may not have.
 - Never claim you have cancelled, refunded, replaced or changed anything. You cannot do any of it.
-- If you are not sure, say so and hand them to a human — do not improvise a policy.
-- A human replies on WhatsApp at https://wa.me/917678400508, 7 days a week. Offer it whenever the answer is "I can't do that from here", and end that reply with [ESCALATE].`;
+- Never improvise a policy. If a policy question is not covered above, say you will have it confirmed and escalate — do not guess at a rule.
+
+WHEN TO ESCALATE — only these
+1. They ask for a person, or say they are unhappy with your answer.
+2. Money is in dispute: a refund they say has not arrived, a wrong amount, a payment they cannot see.
+3. A damaged, wrong or missing book that needs someone to look at their specific order.
+4. A policy question you genuinely cannot answer from what is above.
+Anything else — answer it.
+
+HOW TO ESCALATE
+- Our human agents are Ankit and Shila. Say one of them will look at it.
+- Always set expectations honestly: a human agent reviews it within 48 hours. Say "at least 48 hours" — never promise faster, and never say "right away" or "immediately".
+- Give them the WhatsApp link https://wa.me/917678400508 so the query reaches Ankit and Shila with their details.
+- Example: "I'll pass this to Ankit or Shila on our team — a human agent will go through it and get back to you within 48 hours. You can send the details here so it reaches them: https://wa.me/917678400508"
+- End any reply that escalates with [ESCALATE] on its own, and nothing after it.`;
 
 const CORS = (origin) => ({
   'Content-Type': 'application/json',
@@ -144,6 +165,28 @@ async function adminFaq() {
     _faqCache = { text: _faqCache.text, at: Date.now() };   // keep the last good copy
   }
   return _faqCache.text;
+}
+
+/**
+ * Every exchange is written to ink_ai_conversations. This is the "learn from
+ * customers" half of the loop: you cannot add an answer to a question you never
+ * saw being asked, and the questions customers actually type are nothing like
+ * the ones anyone guesses in advance. Admin → Bot Instructions lists them,
+ * escalated ones first, and an answer typed there lands in the same
+ * bot_settings.extra_instructions the prompt already treats as authoritative.
+ *
+ * Never allowed to break a reply: the table may not exist yet, and a customer
+ * waiting on an answer must not pay for our bookkeeping. Failures are logged
+ * and swallowed.
+ */
+async function logExchange(row) {
+  try {
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { error } = await db.from(TABLE).insert(row);
+    if (error) console.warn('[ink-ai] log:', error.message);
+  } catch (e) {
+    console.warn('[ink-ai] log:', e.message);
+  }
 }
 
 /** Only role + content, only the two roles we send, and never an oversized turn. */
@@ -203,7 +246,7 @@ exports.handler = async (event) => {
 
   const ip = event.headers?.['cf-connecting-ip'] || event.headers?.['x-forwarded-for'] || 'unknown';
   if (throttled(ip)) {
-    return json(429, { reply: 'One moment — too many messages at once. Try again in a minute.' }, allowed);
+    return json(429, { reply: 'One moment \u2014 too many messages at once. Try again in a minute.' }, allowed);
   }
 
   let body;
@@ -231,18 +274,31 @@ exports.handler = async (event) => {
     if (!reply) return json(502, { error: 'Empty reply' }, allowed);
 
     const escalate = reply.includes('[ESCALATE]');
-    return json(200, { reply: reply.replace('[ESCALATE]', '').trim(), escalate }, allowed);
+    const clean = reply.replace('[ESCALATE]', '').trim();
+
+    await logExchange({
+      session_id: String(body.session_id || '').slice(0, 64) || null,
+      question: messages[messages.length - 1].content,
+      answer: clean,
+      escalated: escalate,
+      page_url: String(body.page?.url || '').slice(0, 300) || null,
+      turn: messages.filter(m => m.role === 'user').length,
+    });
+
+    return json(200, { reply: clean, escalate }, allowed);
   } catch (err) {
     console.error('[ink-ai]', err.message);
     return json(502, {
       error: 'unavailable',
-      reply: 'Sorry — I could not answer that just now. Our team is on WhatsApp at '
-           + 'https://wa.me/917678400508 and replies 7 days a week.',
+      reply: 'Sorry — I could not answer that just now. Send it to Ankit and Shila on our '
+           + 'team at https://wa.me/917678400508 — a human agent goes through every query '
+           + 'within 48 hours.',
       escalate: true,
     }, allowed);
   }
 };
 
+module.exports.TABLE = TABLE;
 module.exports.STORE_FACTS = STORE_FACTS;        // exported for the tests
 module.exports.sanitiseMessages = sanitiseMessages;
 module.exports.catalogueContext = catalogueContext;

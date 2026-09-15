@@ -2635,10 +2635,11 @@ select,input,textarea{font-size:1rem;}
   <div class="admin-section" id="tab-bot">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
       <div>
-        <h2 style="margin:0;font-size:1.1rem;">🤖 WhatsApp Bot Instructions</h2>
+        <h2 style="margin:0;font-size:1.1rem;">🤖 Bot Instructions — WhatsApp &amp; Ink AI</h2>
         <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;max-width:640px;">
-          Extra rules, facts and FAQ answers the bot should follow — added on top of its built-in personality.
-          Write in plain English (or Hindi). Saves instantly; the bot uses it within a minute. No deploy needed.
+          Extra rules, facts and FAQ answers both bots should follow — the WhatsApp bot and Ink AI on the website —
+          added on top of their built-in knowledge. Write in plain English (or Hindi).
+          Saves instantly; both use it within a minute. No deploy needed.
         </div>
       </div>
       <button class="btn-outline" onclick="loadBotSettings()">↻ Reload</button>
@@ -2650,8 +2651,30 @@ select,input,textarea{font-size:1rem;}
       <span id="botSettingsMsg" style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);"></span>
     </div>
     <div style="font-size:0.62rem;color:var(--cream-dim,#8a7a62);margin-top:1rem;line-height:1.6;">
-      💡 Tip: give the bot <em>facts and rules</em>, not conversations. It already knows how to be friendly, track orders,
-      take book requests and share coupons — this box is for anything store-specific it should also know.
+      💡 Tip: give the bots <em>facts and rules</em>, not conversations. They already know how to be friendly, track orders,
+      take book requests and share coupons — this box is for anything store-specific they should also know.
+    </div>
+
+    <!-- The other half of the loop: an answer can only be written for a question
+         somebody has seen being asked. Escalated rows first, because those are
+         the ones Ink AI could not answer. -->
+    <div style="margin-top:2.2rem;border-top:1px solid rgba(201,168,76,0.18);padding-top:1.4rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.9rem;">
+        <div>
+          <h3 style="margin:0;font-size:0.95rem;">✨ What customers asked Ink AI</h3>
+          <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;max-width:640px;">
+            Every question put to the website bot. The ones it had to hand to Ankit or Shila are marked —
+            those are the gaps. Tap <em>Teach an answer</em> to drop the question into the box above,
+            write the answer, and save.
+          </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+          <button class="btn-outline" onclick="loadInkAiQuestions(false)">↻ All</button>
+          <button class="btn-outline" onclick="loadInkAiQuestions(true)">⚠ Needs an answer</button>
+        </div>
+      </div>
+      <div id="inkAiQuestionsMsg" style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-bottom:0.7rem;"></div>
+      <div id="inkAiQuestions"></div>
     </div>
   </div><!-- /tab-bot -->
 
@@ -2695,6 +2718,73 @@ async function saveBotSettings(btn) {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = orig || '💾 Save Instructions'; }
   }
+}
+
+// ── Ink AI: what customers actually asked ───────────────────────────────────
+async function loadInkAiQuestions(onlyEscalated) {
+  const box = document.getElementById('inkAiQuestions');
+  const msg = document.getElementById('inkAiQuestionsMsg');
+  if (!box) return;
+  msg.style.color = 'var(--cream-dim,#8a7a62)';
+  msg.textContent = 'Loading…';
+  box.innerHTML = '';
+  try {
+    const url = '/.netlify/functions/ink-ai-questions?limit=80'
+              + (onlyEscalated ? '&only=escalated' : '');
+    const res = await adminFetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+    if (data.table_missing) {
+      msg.style.color = '#e0b060';
+      msg.textContent = 'Not recording yet — the ink_ai_conversations table has not been created. '
+                      + 'Run the migration and questions will start appearing here.';
+      return;
+    }
+    if (!data.questions.length) {
+      msg.textContent = onlyEscalated
+        ? 'Nothing unanswered. Ink AI handled everything it was asked.'
+        : 'No questions yet.';
+      return;
+    }
+    msg.textContent = data.counts
+      ? data.counts.total + ' questions so far · ' + data.counts.escalated + ' handed to a human'
+      : data.questions.length + ' shown';
+
+    box.innerHTML = data.questions.map(function (q) {
+      var when = new Date(q.created_at).toLocaleString('en-IN');
+      var flag = q.escalated
+        ? '<span style="color:#e0b060;font-size:0.62rem;letter-spacing:0.08em;">⚠ HANDED TO A HUMAN</span>'
+        : '<span style="color:#6dbf6d;font-size:0.62rem;letter-spacing:0.08em;">✓ ANSWERED</span>';
+      return '<div style="border:1px solid rgba(201,168,76,0.16);border-radius:8px;padding:0.8rem 0.9rem;margin-bottom:0.6rem;">'
+        + '<div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.4rem;">'
+        +   flag
+        +   '<span style="font-size:0.62rem;color:var(--cream-dim,#8a7a62);">' + esc(when)
+        +     (q.page_url ? ' · ' + esc(q.page_url) : '') + '</span>'
+        + '</div>'
+        + '<div style="font-size:0.82rem;color:#f0e8d8;line-height:1.5;">' + esc(q.question) + '</div>'
+        + '<div style="font-size:0.74rem;color:var(--cream-dim,#8a7a62);line-height:1.6;margin-top:0.4rem;">'
+        +   esc(q.answer || '') + '</div>'
+        + '<button class="btn-outline" style="margin-top:0.6rem;font-size:0.64rem;padding:0.35rem 0.8rem;" '
+        +   'onclick="teachInkAi(this.dataset.q)" data-q="' + esc(q.question) + '">✎ Teach an answer</button>'
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    msg.style.color = '#e06060';
+    msg.textContent = 'Error: ' + e.message;
+  }
+}
+
+/** Drop the question into the instructions box so the answer can be typed under it. */
+function teachInkAi(question) {
+  const ta = document.getElementById('botExtraInstructions');
+  if (!ta) return;
+  const line = '\n- Q: ' + question + '\n  A: ';
+  ta.value = (ta.value || '').replace(/\s+$/, '') + line;
+  ta.focus();
+  ta.scrollTop = ta.scrollHeight;
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // ── Book Requests (WhatsApp bot order intake) ───────────────────────────────
@@ -12228,7 +12318,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'returns' && _authed) fetchReturnRequests();
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();
-  if (tab === 'bot' && _authed) loadBotSettings();
+  if (tab === 'bot' && _authed) { loadBotSettings(); loadInkAiQuestions(false); }
   if (tab === 'reports') initReports();
   if (tab === 'profit' && _authed) loadProfit();
   if (tab === 'adminaccess' && adminRole === 'owner') { loadAdminUsers(); loadGmailStatus(); }

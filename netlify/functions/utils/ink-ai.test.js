@@ -80,3 +80,34 @@ test('the prompt carries the refund routes the code actually implements', () => 
   assert.match(STORE_FACTS, /within 30 minutes/);
   assert.match(STORE_FACTS, /7 days from delivery/i);
 });
+
+test('the prompt tells it to answer, not to punt', () => {
+  // The first version treated "ask our team" as a safe default. It is not — it
+  // is the bot failing at the one thing it exists for.
+  assert.match(STORE_FACTS, /ALWAYS ANSWER/);
+  assert.match(STORE_FACTS, /Answer every question you are asked/);
+  assert.match(STORE_FACTS, /"Ask our team" is not an answer/);
+  assert.match(STORE_FACTS, /Recommend books freely/);
+  assert.match(STORE_FACTS, /A partial honest answer beats a handoff/);
+});
+
+test('escalation is a closed list, not a mood', () => {
+  assert.match(STORE_FACTS, /WHEN TO ESCALATE — only these/);
+  assert.match(STORE_FACTS, /Anything else — answer it\./);
+});
+
+test('a handover names the agents and promises 48 hours, never sooner', () => {
+  assert.match(STORE_FACTS, /Ankit and Shila/);
+  assert.match(STORE_FACTS, /within 48 hours/);
+  assert.match(STORE_FACTS, /at least 48 hours/);
+  assert.match(STORE_FACTS, /never say "right away" or "immediately"/);
+});
+
+test('answering freely did not loosen the rules that protect money', () => {
+  // The two changes pull in opposite directions; this is the guard that the
+  // second one did not quietly undo the first.
+  assert.match(STORE_FACTS, /CANNOT see any order/);
+  assert.match(STORE_FACTS, /Never invent a date/);
+  assert.match(STORE_FACTS, /Never improvise a policy/);
+  assert.match(STORE_FACTS, /Never ask for, accept, or repeat a UPI ID/);
+});

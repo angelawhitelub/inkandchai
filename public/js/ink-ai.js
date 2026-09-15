@@ -34,6 +34,18 @@
     'Where is my order?',
   ];
 
+  var SKEY = 'iac_ink_ai_sid';
+  function sessionId() {
+    try {
+      var v = sessionStorage.getItem(SKEY);
+      if (!v) {
+        v = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        sessionStorage.setItem(SKEY, v);
+      }
+      return v;
+    } catch (e) { return ''; }
+  }
+
   var built = false, open_ = false;
   var root, panel, log, input, sendBtn, fab, chips;
   var history = [];
@@ -177,9 +189,11 @@
   function escalateRow() {
     var d = document.createElement('div');
     d.className = 'ink-chips';
-    d.style.padding = '0 0 0.2rem';
+    d.style.cssText = 'padding:0 0 0.2rem;flex-direction:column;align-items:flex-start';
     d.innerHTML = '<a class="ink-chip" href="' + WA + '" target="_blank" rel="noopener">'
-                + '💬 Chat with a person on WhatsApp</a>';
+                + '\uD83D\uDCAC Send this to Ankit or Shila</a>'
+                + '<span style="font-size:0.62rem;line-height:1.5;opacity:0.8">'
+                + 'A human agent reads every query and replies within 48 hours.</span>';
     log.appendChild(d);
     log.scrollTop = log.scrollHeight;
   }
@@ -204,6 +218,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: history.slice(-14),
+          session_id: sessionId(),
           page: { url: location.pathname, title: document.title },
           books: matchBooks(text),
         }),
@@ -265,8 +280,9 @@
       +   '<input type="text" placeholder="Ask about a book, shipping, returns…" aria-label="Your question" maxlength="700"/>'
       +   '<button class="ink-send" type="button" aria-label="Send">➤</button>'
       + '</div>'
-      + '<div class="ink-note">Ink AI can’t see your order. For order status try '
-      +   '<a href="/track/">tracking</a>, or <a href="' + WA + '" target="_blank" rel="noopener">message our team</a>.</div>';
+      + '<div class="ink-note">Ink AI can\u2019t see your order \u2014 track it '
+      +   '<a href="/track/">here</a>. Anything it can\u2019t answer goes to Ankit or Shila, '
+      +   'who reply within 48 hours.</div>';
 
     document.body.appendChild(back);
     document.body.appendChild(root);
