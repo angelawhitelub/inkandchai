@@ -109,9 +109,16 @@ const json = (statusCode, body, origin) => ({
 });
 
 /**
- * Per-IP throttle. Isolate-local, so it is a speed bump rather than a lock --
- * an attacker spread across enough edge locations gets more than this. It costs
- * nothing and stops the ordinary case: one page hammering the endpoint.
+ * Per-IP throttle. Isolate-local, so it is a speed bump rather than a lock: it
+ * stops the ordinary case (one page or one script in a loop) and nothing more,
+ * because a caller spread across edge locations lands in a different isolate
+ * each time. Deliberately not backed by KV -- the shim has no TTL, so the keys
+ * would pile up forever in the namespace that holds unreplayed paid orders, and
+ * KV's propagation delay is longer than this window anyway.
+ *
+ * This endpoint spends money per call, so the real ceiling belongs outside the
+ * code, in two places: a Cloudflare Rate Limiting rule on
+ * /.netlify/functions/ink-ai, and a monthly budget on the OpenAI project.
  */
 const HITS = new Map();
 const WINDOW_MS = 60_000;
