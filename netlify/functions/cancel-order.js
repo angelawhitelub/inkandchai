@@ -378,6 +378,7 @@ exports.handler = async (event) => {
       try {
         const refund = await issueRazorpayRefund(paymentId, order.amount_paise, {
           notes: { reason: 'Customer cancelled within 30 minutes of order', order_id: order.razorpay_order_id || order.id },
+          supabase,
         });
         refundId  = refund.id;
         newStatus = 'refunded';

@@ -35,6 +35,12 @@
     return n;
   }
 
+  // Said before payment on purpose: an eBook is delivered the instant it is
+  // paid for, so it is non-refundable, and that only holds up if the buyer
+  // was told first. See utils/refund-guard.js for the enforcement.
+  var NON_REFUNDABLE = 'Instant access · <strong>non-refundable</strong>. '
+    + '<a href="/refund-policy/" target="_blank" rel="noopener">Why</a>';
+
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -86,7 +92,9 @@
     + '.eb-card .eb-ti{font-size:.75rem;line-height:1.4;color:var(--cream,#efe6d2)}'
     + '.eb-card .eb-au{font-size:.62rem;color:var(--cream-dim,#9b917f)}'
     + '.eb-note{font-size:.66rem;color:var(--cream-dim,#9b917f);line-height:1.6}'
-    + '.eb-empty{padding:2rem 0;text-align:center;color:var(--cream-dim,#9b917f);font-size:.75rem}';
+    + '.eb-empty{padding:2rem 0;text-align:center;color:var(--cream-dim,#9b917f);font-size:.75rem}'
+    + '.eb-nr{font-size:.6rem;line-height:1.35;color:var(--cream-dim,#9b917f);margin:.35rem 0 0}'
+    + '.eb-nr a{color:inherit;text-decoration:underline}';
 
   var cssIn = false;
   function injectCss() {
@@ -140,7 +148,7 @@
         currency: data.currency,
         order_id: data.order_id,
         name: 'Ink & Chai',
-        description: data.title || title || 'eBook',
+        description: (data.title || title || 'eBook') + ' — eBook (non-refundable)',
         prefill: { email: data.email || '' },
         theme: { color: '#c9a84c' },
         handler: async function (resp) {
@@ -235,6 +243,7 @@
         btn.style.display = 'inline-block';
       }
       box.appendChild(btn);
+      if (!owned) box.appendChild(el('div', { class: 'eb-nr' }, NON_REFUNDABLE));
 
       // Below the paperback buy controls, so it reads as a second option rather
       // than competing with the main one.
@@ -284,6 +293,7 @@
               + '<button class="eb-btn" type="button" data-slug="' + esc(e.slug) + '">Buy eBook</button>'
               + '<a class="eb-btn eb-btn-ghost" style="text-decoration:none;display:inline-block;text-align:center"'
               + ' href="/ebooks/read/?sample=1&slug=' + esc(e.slug) + '">Read sample</a>'
+              + '<div class="eb-nr">' + NON_REFUNDABLE + '</div>'
               + '</div>';
           }).join('') + '</div>';
           shop.querySelectorAll('button[data-slug]').forEach(function (b) {

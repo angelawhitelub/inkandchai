@@ -63,6 +63,7 @@ async function handleReturnAwbDelivered(supabase, awb) {
     try {
       const r = await issueRazorpayRefund(paymentId, amountPaise, {
         notes: { reason: 'customer_return', return_request_id: String(ret.id), order: String(oid) },
+        supabase,
       });
       await supabase.from('return_requests').update({
         refund_status: 'refunded',

@@ -249,6 +249,7 @@ async function maybeAutoRefund(order) {
     try {
       const refund = await issueRazorpayRefund(pid, amountPaise, {
         notes: { reason: 'Order cancelled', order_id: displayId },
+        supabase,
       });
       await supabase.from('orders').update({ status: 'refunded' }).eq('id', row.id);
       console.log(`[AUTO-REFUND] ${displayId} → Razorpay refunded refundId=${refund.id}`);

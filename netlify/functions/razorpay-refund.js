@@ -93,8 +93,12 @@ exports.handler = async (event) => {
     try {
       refund = await issueRazorpayRefund(paymentId, isFullRefund ? 0 : amountPaise, {
         notes: { reason: 'Admin-issued refund', order_id: displayId },
+        supabase,
       });
     } catch (err) {
+      // A non-refundable payment (an eBook) is not a failed refund — nothing was
+      // attempted and nothing is worth retrying, so leave the order's status alone.
+      if (err.nonRefundable) throw err;
       // Record the failure so it's visible; do NOT mark the order refunded.
       await supabase.from('orders').update({
         status: 'refund_failed',
@@ -174,6 +178,10 @@ exports.handler = async (event) => {
     };
   } catch (err) {
     console.error('razorpay-refund error:', err.message);
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
+    return {
+      statusCode: err.nonRefundable ? 400 : 500,
+      headers: CORS,
+      body: JSON.stringify({ error: err.message }),
+    };
   }
 };

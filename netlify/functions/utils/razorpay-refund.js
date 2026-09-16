@@ -6,10 +6,13 @@
  *
  * @param {string} paymentId   Razorpay payment id (starts with "pay_")
  * @param {number} amountPaise Amount to refund in paise. Omit/0 = full refund of remaining.
- * @param {object} [opts]      { speed: 'normal'|'optimum', notes: {} }
+ * @param {object} [opts]      { speed: 'normal'|'optimum', notes: {}, supabase }
  * @returns {Promise<object>}  Razorpay refund object { id, amount, status, ... }
  * @throws  on missing creds or a non-2xx response (message = Razorpay's description)
+ * @throws  NonRefundableError if the payment bought an eBook (see refund-guard.js)
  */
+const { assertRefundablePayment } = require('./refund-guard');
+
 async function issueRazorpayRefund(paymentId, amountPaise, opts = {}) {
   const keyId     = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -17,6 +20,11 @@ async function issueRazorpayRefund(paymentId, amountPaise, opts = {}) {
   if (!paymentId || !String(paymentId).startsWith('pay_')) {
     throw new Error('Not a Razorpay payment id');
   }
+
+  // eBooks are non-refundable. Checked here rather than in each caller so no
+  // refund path can miss it — see utils/refund-guard.js. Throws on an eBook
+  // payment, and also throws if it cannot tell (fail closed).
+  await assertRefundablePayment(paymentId, { supabase: opts.supabase });
 
   const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
   const payload = {

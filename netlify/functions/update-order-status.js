@@ -218,6 +218,7 @@ exports.handler = async (event) => {
         try {
           const refund = await issueRazorpayRefund(paymentId, amountPaise, {
             notes: { reason: 'Order cancelled by admin', order_id: previousOrder.razorpay_order_id || previousOrder.id },
+            supabase,
           });
           await supabase.from('orders').update({ status: 'refunded' }).eq('id', id);
           refundInfo = { provider: 'razorpay', status: 'refunded', refund_id: refund.id, amount: amountPaise / 100 };

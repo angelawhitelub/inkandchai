@@ -75,6 +75,9 @@ exports.handler = async (event) => {
         slug,
         user_id: who.user.id,
         title: String(ebook.title || '').slice(0, 100),
+        // Read by utils/refund-guard.js to refuse the refund, and shown on the
+        // payment in the Razorpay dashboard so a manual refund is a deliberate act.
+        refund_policy: 'non-refundable',
       },
     });
 
