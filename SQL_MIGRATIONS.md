@@ -2,6 +2,23 @@
 
 Run these once in your Supabase SQL editor (https://supabase.com → your project → SQL Editor → New Query).
 
+## 2026-09-17 — Editions, for the format strip
+
+Links a paperback to its hardcover so a product page can offer both formats.
+Until this runs the strip still works — it simply shows the print edition and
+the eBook, which is what every book but a handful has. See `sql/product_editions.sql`.
+
+```sql
+create table if not exists product_editions (
+  slug       text primary key,
+  group_key  text not null,
+  sort       integer not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists product_editions_group_idx on product_editions (group_key, sort);
+alter table product_editions enable row level security;
+```
+
 ## 2026-09-11 — "Other details" on admin-created listings
 
 Adds the physical facts a buyer looks for before adding a book to the cart.

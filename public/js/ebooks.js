@@ -94,7 +94,27 @@
     + '.eb-note{font-size:.66rem;color:var(--cream-dim,#9b917f);line-height:1.6}'
     + '.eb-empty{padding:2rem 0;text-align:center;color:var(--cream-dim,#9b917f);font-size:.75rem}'
     + '.eb-nr{font-size:.6rem;line-height:1.35;color:var(--cream-dim,#9b917f);margin:.35rem 0 0}'
-    + '.eb-nr a{color:inherit;text-decoration:underline}';
+    + '.eb-nr a{color:inherit;text-decoration:underline}'
+    // The format strip. Chips wrap on a phone rather than scrolling sideways,
+    // because a format you cannot see is a format you will not buy.
+    + '.fmt-strip{margin:1.1rem 0 .9rem}'
+    + '.fmt-lab{font-size:.56rem;letter-spacing:.2em;text-transform:uppercase;color:var(--cream-dim,#9b917f);margin-bottom:.45rem}'
+    + '.fmt-row{display:flex;flex-wrap:wrap;gap:.5rem}'
+    + '.fmt{display:flex;flex-direction:column;align-items:flex-start;gap:.15rem;min-width:104px;'
+    + 'padding:.55rem .8rem;border:1px solid rgba(155,145,127,.38);border-radius:4px;background:transparent;'
+    + 'color:var(--cream,#efe6d2);font-family:inherit;text-align:left;cursor:pointer;text-decoration:none;'
+    + 'text-transform:none;letter-spacing:normal;'
+    + 'transition:border-color .15s,background .15s}'
+    + '.fmt:hover{border-color:var(--gold,#c9a84c)}'
+    + '.fmt.is-on{border-color:var(--gold,#c9a84c);background:rgba(201,168,76,.1);box-shadow:inset 0 0 0 1px var(--gold,#c9a84c)}'
+    + '.fmt .fmt-n{font-size:.68rem;letter-spacing:.06em}'
+    + '.fmt .fmt-p{font-size:.74rem;color:var(--gold,#c9a84c);font-weight:600}'
+    + '.fmt .fmt-p s{font-size:.62rem;color:var(--cream-dim,#9b917f);opacity:.65;font-weight:400;margin-right:.25rem}'
+    + '.fmt-panel{margin:.2rem 0 1rem}'
+    + '.fmt-price{font-family:"Cormorant Garamond",serif;font-size:2.7rem;color:var(--gold,#c9a84c);font-weight:600;line-height:1.1}'
+    + '.fmt-price s{font-size:1rem;color:var(--cream-dim,#9b917f);opacity:.6;font-weight:400;margin-right:.5rem}'
+    + '.fmt-meta{font-size:.7rem;color:var(--cream-dim,#9b917f);margin:.3rem 0 .9rem}'
+    + '.fmt-acts{display:flex;flex-wrap:wrap;gap:.6rem}';
 
   var cssIn = false;
   function injectCss() {
@@ -203,54 +223,220 @@
     return m ? m[1] : '';
   }
 
-  async function mountProductButton() {
+  // ── The format strip ─────────────────────────────────────────────────────
+  //
+  // Amazon's pattern: the formats a book is sold in, across the top of the buy
+  // box, with the one you are looking at selected. Another PRINT edition is a
+  // different product with its own page, stock and cart line, so choosing it
+  // navigates there. The eBook is the same product in another wrapper, so it
+  // swaps the buy box in place.
+  //
+  // Everything here is additive and reversible. A book with one format gets no
+  // strip at all and its page is untouched, which is every book but a handful.
+
+  var _fmtState = null;   // { buyBox, formats, panel, chips, current }
+
+  /**
+   * The print buy box, across the three renderers that draw one.
+   * `hide` is what stops making delivery promises about a PDF: a shipping
+   * estimate and a COD badge are wrong the moment you switch to the eBook.
+   */
+  function findBuyBox() {
+    var actions = document.querySelector('.actions, .pdp-actions, .buy-actions, .product-actions');
+    if (!actions) return null;
+    var priceRow = document.querySelector('.price-row, .product-price-row');
+    if (!priceRow) return null;
+    var hide = [];
+    ['.stock', '#staticShipBy', '.trust'].forEach(function (sel) {
+      var n = document.querySelector(sel);
+      if (n) hide.push(n);
+    });
+    return { actions: actions, priceRow: priceRow, hide: hide };
+  }
+
+  function money(n) { return '₹' + esc(n); }
+
+  function priceHtml(f) {
+    return (f.mrp && f.mrp > f.price ? '<s>' + money(f.mrp) + '</s> ' : '') + money(f.price);
+  }
+
+  function chipHtml(f) {
+    return '<span class="fmt-n">' + esc(f.label) + '</span>'
+      + (f.price ? '<span class="fmt-p">' + priceHtml(f) + '</span>' : '');
+  }
+
+  function buildStrip(formats) {
+    var wrap = el('div', { class: 'fmt-strip' });
+    wrap.innerHTML = '<div class="fmt-lab">Format</div>';
+    var row = el('div', { class: 'fmt-row' });
+    var chips = {};
+
+    formats.forEach(function (f) {
+      var node;
+      if (f.kind === 'print' && !f.current) {
+        // A different edition lives on a different page. A real link, so it
+        // opens in a new tab on a middle click and Google sees the edition.
+        node = el('a', { class: 'fmt', href: f.url });
+        node.innerHTML = chipHtml(f);
+      } else {
+        node = el('button', { class: 'fmt', type: 'button' });
+        node.innerHTML = chipHtml(f);
+        node.onclick = function () { selectFormat(f.kind); };
+      }
+      if (f.current) node.classList.add('is-on');
+      chips[f.kind] = chips[f.kind] || node;
+      row.appendChild(node);
+    });
+
+    wrap.appendChild(row);
+    return { wrap: wrap, chips: chips };
+  }
+
+  /**
+   * The eBook's buy box, as TWO pieces rather than one block.
+   *
+   * A single panel appended after the print buttons put the eBook's price below
+   * the stock badge, the delivery estimate and the trust icons — a long way from
+   * where the price had been a moment earlier. Each half is mounted beside the
+   * print half it replaces instead, so switching format changes the numbers in
+   * place and moves nothing.
+   */
+  function buildEbookPanel(f, owned) {
+    var price = el('div', { class: 'fmt-panel' });
+    price.style.display = 'none';
+
+    var amount = el('div', { class: 'fmt-price' });
+    amount.innerHTML = priceHtml(f);
+    price.appendChild(amount);
+
+    var bits = ['Read instantly — nothing is posted'];
+    if (f.pages) bits.push(esc(f.pages) + ' pages');
+    if (f.size_mb) bits.push(esc(f.size_mb) + ' MB');
+    price.appendChild(el('div', { class: 'fmt-meta' }, bits.join(' · ')));
+
+    var panel = el('div', { class: 'fmt-panel' });
+    panel.style.display = 'none';
+    var acts = el('div', { class: 'fmt-acts' });
+
+    // The sample first: it is the cheapest thing to say yes to, and it needs no
+    // account, so it behaves identically on every page.
+    var sample = el('a', {
+      class: 'eb-btn eb-btn-ghost',
+      href: '/ebooks/read/?sample=1&slug=' + encodeURIComponent(f.slug),
+    }, 'Read sample');
+    sample.style.textDecoration = 'none';
+    sample.style.display = 'inline-block';
+    acts.appendChild(sample);
+
+    var btn;
+    if (canAuthHere()) {
+      btn = el('button', { class: 'eb-btn', type: 'button' }, owned ? 'Read now' : 'Buy eBook');
+      btn.onclick = function () { return owned ? read(f.slug) : buy(f.slug, f.title, btn); };
+    } else {
+      // No auth on this page (the crawlable book pages ship without it), so the
+      // button hands the slug to /ebooks/ and the purchase resumes there.
+      btn = el('a', { class: 'eb-btn', href: handoffUrl(f.slug) }, 'Buy eBook');
+      btn.style.textDecoration = 'none';
+      btn.style.display = 'inline-block';
+    }
+    acts.appendChild(btn);
+    panel.appendChild(acts);
+
+    if (!owned) panel.appendChild(el('div', { class: 'eb-nr' }, NON_REFUNDABLE));
+    return { price: price, actions: panel };
+  }
+
+  function selectFormat(kind) {
+    var st = _fmtState;
+    if (!st || st.current === kind) return;
+    st.current = kind;
+
+    var toEbook = kind === 'ebook';
+    st.buyBox.priceRow.style.display = toEbook ? 'none' : '';
+    st.buyBox.actions.style.display  = toEbook ? 'none' : '';
+    st.buyBox.hide.forEach(function (n) { n.style.display = toEbook ? 'none' : ''; });
+    if (st.panel) {
+      st.panel.price.style.display = toEbook ? '' : 'none';
+      st.panel.actions.style.display = toEbook ? '' : 'none';
+    }
+
+    Object.keys(st.chips).forEach(function (k) {
+      st.chips[k].classList.toggle('is-on', k === kind);
+    });
+  }
+
+  async function mountFormats() {
     var slug = currentSlug();
     if (!slug) return;
     try {
-      var res = await fetch(FN + 'ebook-catalog?slug=' + encodeURIComponent(slug));
+      var res = await fetch(FN + 'product-formats?slug=' + encodeURIComponent(slug));
       var data = await res.json();
-      var eb = (data.ebooks || [])[0];
-      if (!eb) return;                       // most books have no PDF; stay silent
+      var formats = data.formats || [];
+      if (formats.length < 2) return;        // one format is not a choice
+
+      var buyBox = findBuyBox();
+      var ebook = formats.filter(function (f) { return f.kind === 'ebook'; })[0];
+      if (!buyBox) {
+        // A renderer whose buy box this does not recognise still deserves the
+        // eBook, just not an in-place swap.
+        if (ebook) mountEbookFallback(ebook);
+        return;
+      }
 
       injectCss();
-      var owned = await ownsSlug(slug);
-      var box = el('div', { class: 'eb-buy' });
-      box.innerHTML =
-        '<div class="eb-t">📄 <strong>Also available as a PDF eBook</strong>'
-        + '<br><span style="font-size:.68rem;opacity:.8">Read instantly — no delivery wait'
-        + (eb.pages ? ' · ' + esc(eb.pages) + ' pages' : '')
-        + (eb.size_mb ? ' · ' + esc(eb.size_mb) + ' MB' : '') + '</span></div>'
-        + '<div class="eb-p">' + (eb.mrp && eb.mrp > eb.price ? '<s>₹' + esc(eb.mrp) + '</s>' : '')
-        + '₹' + esc(eb.price) + '</div>';
+      var owned = ebook ? await ownsSlug(slug) : false;
+      var built = buildStrip(formats);
+      var panel = ebook ? buildEbookPanel(ebook, owned) : null;
 
-      // The sample first: it is the cheapest thing to say yes to, and it needs
-      // no account, so it works identically on every page.
-      var sample = el('a', { class: 'eb-btn eb-btn-ghost', href: '/ebooks/read/?sample=1&slug=' + encodeURIComponent(slug) },
-        'Read sample');
-      sample.style.textDecoration = 'none';
-      sample.style.display = 'inline-block';
-      box.appendChild(sample);
+      _fmtState = {
+        buyBox: buyBox, panel: panel, chips: built.chips,
+        current: 'print',
+      };
 
-      var btn;
-      if (canAuthHere()) {
-        btn = el('button', { class: 'eb-btn', type: 'button' }, owned ? 'Read' : 'Buy eBook');
-        btn.onclick = function () {
-          return owned ? read(slug) : buy(slug, eb.title, btn);
-        };
-      } else {
-        btn = el('a', { class: 'eb-btn', href: handoffUrl(slug) }, 'Buy eBook');
-        btn.style.textDecoration = 'none';
-        btn.style.display = 'inline-block';
+      // Above the price, where Amazon puts it: the format decides what the
+      // price below it means.
+      buyBox.priceRow.parentNode.insertBefore(built.wrap, buyBox.priceRow);
+      if (panel) {
+        buyBox.priceRow.parentNode.insertBefore(panel.price, buyBox.priceRow.nextSibling);
+        buyBox.actions.parentNode.insertBefore(panel.actions, buyBox.actions.nextSibling);
       }
-      box.appendChild(btn);
-      if (!owned) box.appendChild(el('div', { class: 'eb-nr' }, NON_REFUNDABLE));
-
-      // Below the paperback buy controls, so it reads as a second option rather
-      // than competing with the main one.
-      var anchor = document.querySelector('.pdp-actions, .buy-actions, .actions, .product-actions');
-      if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(box, anchor.nextSibling);
-      else (document.querySelector('main') || document.body).appendChild(box);
     } catch (e) { /* a missing eBook must never break a product page */ }
+  }
+
+  /** The pre-strip layout: a standalone card under the paperback controls. */
+  function mountEbookFallback(f) {
+    injectCss();
+    var box = el('div', { class: 'eb-buy' });
+    box.innerHTML =
+      '<div class="eb-t">📄 <strong>Also available as a PDF eBook</strong>'
+      + '<br><span style="font-size:.68rem;opacity:.8">Read instantly — no delivery wait'
+      + (f.pages ? ' · ' + esc(f.pages) + ' pages' : '')
+      + (f.size_mb ? ' · ' + esc(f.size_mb) + ' MB' : '') + '</span></div>'
+      + '<div class="eb-p">' + priceHtml(f) + '</div>';
+
+    var sample = el('a', {
+      class: 'eb-btn eb-btn-ghost',
+      href: '/ebooks/read/?sample=1&slug=' + encodeURIComponent(f.slug),
+    }, 'Read sample');
+    sample.style.textDecoration = 'none';
+    sample.style.display = 'inline-block';
+    box.appendChild(sample);
+
+    var btn;
+    if (canAuthHere()) {
+      btn = el('button', { class: 'eb-btn', type: 'button' }, 'Buy eBook');
+      btn.onclick = function () { buy(f.slug, f.title, btn); };
+    } else {
+      btn = el('a', { class: 'eb-btn', href: handoffUrl(f.slug) }, 'Buy eBook');
+      btn.style.textDecoration = 'none';
+      btn.style.display = 'inline-block';
+    }
+    box.appendChild(btn);
+    box.appendChild(el('div', { class: 'eb-nr' }, NON_REFUNDABLE));
+
+    var anchor = document.querySelector('.pdp-actions, .buy-actions, .actions, .product-actions');
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(box, anchor.nextSibling);
+    else (document.querySelector('main') || document.body).appendChild(box);
   }
 
   var _libCache = null;
@@ -362,7 +548,7 @@
 
   function start() {
     mountShop();
-    mountProductButton();
+    mountFormats();
     if (document.getElementById('ebShop')) resumeHandoff();
   }
 
