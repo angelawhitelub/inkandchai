@@ -96,6 +96,26 @@ exports.handler = async (event) => {
   };
   rows.sort((a, b) => score(a) - score(b) || String(a.title).length - String(b.title).length);
 
+  // Drop books whose page has been taken down. is_active=true is not enough:
+  // a takedown is recorded in deleted_products and enforced by the Worker as a
+  // 410, and the custom_products row is left alone -- so a dead book still
+  // looked alive here. That is how an eBook came to be attached to a product
+  // page that answers 410 Gone, and how Banner Studio could feature one.
+  // Best-effort: if the table is missing the search behaves as it always did.
+  try {
+    const slugs = rows.map(r => r.slug).filter(Boolean);
+    if (slugs.length) {
+      const { data: gone, error } = await supabase
+        .from('deleted_products').select('slug').in('slug', slugs);
+      if (!error && gone && gone.length) {
+        const dead = new Set(gone.map(g => String(g.slug || '').toLowerCase()));
+        rows = rows.filter(r => !dead.has(String(r.slug || '').toLowerCase()));
+      }
+    }
+  } catch (e) {
+    console.warn('[admin-product-search] takedown filter:', e.message);
+  }
+
   const books = rows.slice(0, limit).map(r => ({
     slug: r.slug,
     title: r.title,
