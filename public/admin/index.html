@@ -12417,7 +12417,13 @@ function ebookPutWithProgress(url, file, onProgress) {
     xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
       ? resolve()
       : reject(new Error('Upload failed (' + xhr.status + ')'));
-    xhr.onerror = () => reject(new Error('Upload failed — check the connection.'));
+    // The browser refuses to tell us why: a dropped connection and a rejected
+    // CORS preflight both arrive here as an opaque error. Name both, because
+    // "check the connection" once sent someone hunting a network fault that was
+    // really a missing CORS rule on the bucket (config/r2-cors-ebooks.json).
+    xhr.onerror = () => reject(new Error(
+      'Upload failed before it started — either the connection dropped, or storage rejected it. '
+      + 'If it fails every time, the bucket CORS rule is the thing to check.'));
     xhr.send(file);
   });
 }
