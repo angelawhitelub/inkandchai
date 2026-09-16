@@ -1064,7 +1064,7 @@ select,input,textarea{font-size:1rem;}
     <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
     <span class="date-sep">→</span>
     <input type="date" id="dateTo" onchange="applyFilters()" title="To date"/>
-    <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID · Book · AWB" oninput="applyFilters()"/>
+    <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID · Payment ID · AWB · Book" oninput="applyFilters()"/>
   </div>
 
   <!-- ── Cancelled sub-filters (shown only when the Cancelled tab is active) ── -->
@@ -4241,6 +4241,20 @@ function orderSearchHaystack(o) {
     o?.awb_no,
     o?.tracking_number,
     o?.courier_name,
+    // Shipment references, for pasting straight out of the courier panel.
+    o?.shipment_id,
+    o?.nimbuspost_order_id,
+    o?.shiprocket_order_id,
+    o?.shiprocket_shipment_id,
+    // The payment id is printed on the row itself, so not being able to paste
+    // it back in was the one search that looked broken. PhonePe txnIds are
+    // written to this same column (see the recover-payment repair), so this
+    // covers both rails. The refund reference matters too: a customer chasing
+    // money quotes the rfnd_/UTR from their bank, never the order id.
+    o?.razorpay_payment_id,
+    o?.refund_id,
+    o?.refund_utr,
+    o?.phonepe_refund_id,
     // Searching an original order id must also surface its replacement row,
     // and searching a replacement id must surface the original — otherwise
     // half of what happened to that customer stays hidden.
@@ -4343,7 +4357,19 @@ function _drawTable() {
 
   if (!filtered.length) {
     body.innerHTML = '';
-    document.getElementById('emptyState').style.display = '';
+    const empty = document.getElementById('emptyState');
+    // "No orders found" is a lie while pages are still arriving, and this is
+    // exactly when it gets told: paste a payment id or AWB straight after
+    // opening the tab and the matching row may simply not be here yet.
+    const q = (document.getElementById('searchBox')?.value || '').trim();
+    if (q && !ordersLoadedFully) {
+      empty.textContent = 'Still loading orders — nothing matches "' + q + '" yet. Give it a moment.';
+    } else if (q) {
+      empty.textContent = 'No order matches "' + q + '".';
+    } else {
+      empty.textContent = 'No orders found.';
+    }
+    empty.style.display = '';
     const pagination = document.getElementById('ordersPagination');
     if (pagination) pagination.style.display = 'none';
     syncSelectionUi();
