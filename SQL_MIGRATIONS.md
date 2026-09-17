@@ -185,3 +185,15 @@ on conflict (id) do update set public = true;
 After running this, open `/admin/`, sign in, use **Create new listing**, upload
 a cover, enter details, and save. The returned product URL is immediately
 available and also appears in storefront search/catalogue after refresh.
+
+## 2026-09-17 — iThink panel push
+
+`ithink-order-push.js` stamps each order it syncs into the iThink panel so a
+re-run skips it instead of creating a duplicate. The function degrades to a
+console warning if the column is missing, so orders still push -- they just
+push again next time.
+
+```sql
+alter table orders add column if not exists ithink_pushed_at timestamptz;
+create index if not exists orders_ithink_pushed_at_idx on orders (ithink_pushed_at);
+```
