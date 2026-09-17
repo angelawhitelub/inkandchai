@@ -19,6 +19,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { buildTrackingUrl } = require('./utils/tracking-url');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
 const { sendRefundInitiated } = require('./utils/refund-notifications');
@@ -31,30 +32,6 @@ const CORS = {
 
 const VALID_STATUSES = ['cod_pending', 'partial_cod_pending', 'confirmed', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'paid', 'refunded'];
 
-// Known Indian couriers + their tracking URL templates
-const COURIER_URLS = {
-  'amazon':       'https://track.amazon.in/tracking/{id}?trackingId={id}',
-  'bluedart':     'https://www.bluedart.com/tracking?trackingNumber={id}',
-  'dtdc':         'https://www.dtdc.in/tracking/tracking_results.asp?action=track&Type=awb&strCnno={id}',
-  'delhivery':    'https://www.delhivery.com/track-v2/package/{id}',
-  'indiapost':    'https://www.indiapost.gov.in/_layouts/15/dop.portal.tracking/trackconsignment.aspx?id={id}',
-  'ecomexpress':  'https://ecomexpress.in/tracking/?awb_field={id}',
-  'shadowfax':    'https://shadowfax.in/tracking/?awb={id}',
-  'xpressbees':   'https://www.xpressbees.com/track?awbNo={id}',
-  'shiprocket':   'https://shiprocket.co/tracking/{id}',
-  'professional': 'https://www.tpcindia.com/Tracking2/Tracking2.aspx?cnno={id}',
-};
-
-function buildTrackingUrl(courier, trackingId) {
-  if (!trackingId) return '';
-  const key = (courier || '').toLowerCase().replace(/\s+/g, '');
-  const nimbusUrl = `https://ship.nimbuspost.com/shipping/tracking/${encodeURIComponent(trackingId)}`;
-  // Ekart AWBs booked through NimbusPost must be tracked on NimbusPost. The
-  // public Ekart page is primarily for Flipkart-originated consignments.
-  if (key.includes('ekart') || key.includes('nimbus')) return nimbusUrl;
-  const tpl = COURIER_URLS[key];
-  return tpl ? tpl.split('{id}').join(encodeURIComponent(trackingId)) : nimbusUrl;
-}
 
 // ── Send email via Resend (auto-fallback to onboarding@resend.dev) ────────
 
@@ -65,7 +42,10 @@ function shipmentEmailHtml(order) {
   const total = order.amount_paise ? (order.amount_paise / 100) : items.reduce((s, i) => s + i.price * i.qty, 0);
   const balance = isPartial ? Math.max(0, Number(meta.balance) || 0) : 0;
   const isCOD = isPartial || order.status === 'cod_pending' || !order.razorpay_payment_id;
-  const trackingUrl = buildTrackingUrl(order.courier_name, order.tracking_id) || order.tracking_url || '';
+  const trackingUrl = buildTrackingUrl({
+    courier: order.courier_name, awb: order.tracking_id,
+    orderNumber: order.razorpay_order_id || order.id, stored: order.tracking_url,
+  });
   const rows = items.map(i => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
@@ -154,7 +134,10 @@ exports.handler = async (event) => {
     // Then, if shipped, try to attach tracking info — tolerate missing columns
     // gracefully so this works even before SQL_MIGRATIONS.md has been run.
     if (status === 'shipped' && tracking_id) {
-      trackingUrl = buildTrackingUrl(courier_name, tracking_id);
+      trackingUrl = buildTrackingUrl({
+        courier: courier_name, awb: tracking_id,
+        orderNumber: order.razorpay_order_id || order.id,
+      });
       const trackingPayload = {
         tracking_id,
         courier_name,

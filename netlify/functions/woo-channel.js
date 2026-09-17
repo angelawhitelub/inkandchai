@@ -390,20 +390,53 @@ exports.handler = async (event) => {
 
   const singleOrder = path.match(/^\/wp-json\/wc\/v[123]\/orders\/(\d+)$/);
   const orderList = /^\/wp-json\/wc\/v[123]\/orders$/.test(path);
+  const orderBatch = /^\/wp-json\/wc\/v[123]\/orders\/batch$/.test(path);
 
-  if (!singleOrder && !orderList) {
+  if (!singleOrder && !orderList && !orderBatch) {
     return wpError('rest_no_route', `No route was found matching the URL: ${path}`, 404);
   }
 
-  // Status push-back. XpressBees offers to write Booked/In Transit/Delivered/
-  // RTO back onto the order. It is accepted and logged, but deliberately does
-  // NOT mutate order state: an RTO must never trigger anything a refund could
-  // key off, and the exact shape XpressBees sends has not been observed yet.
+  // Status push-back. With "Push Order Status" enabled, XpressBees writes
+  // Booked / In Transit / Delivered / RTO back here as a WooCommerce status.
+  //
+  // IT IS RECORDED AND ACKNOWLEDGED, AND MUTATES NOTHING. That is deliberate,
+  // on two counts:
+  //
+  //   1. An RTO must never touch anything a refund could key off. A returned
+  //      parcel is not a refunded order, and this endpoint is reachable by
+  //      anyone holding the consumer pair -- it is not a place to start
+  //      moving money from.
+  //   2. The exact payload XpressBees sends has never been observed. Wiring a
+  //      state machine to a guessed shape is how an order silently ends up in
+  //      the wrong state; the shape is logged in full here so the mapping can
+  //      be written against real data instead.
+  //
+  // Both the single and batch forms are accepted, because which one their
+  // importer uses is equally unobserved, and a 404 would make them retry.
   if (method !== 'GET') {
-    if (!singleOrder) return wpError('rest_no_route', 'Read-only store.', 404);
+    if (!singleOrder && !orderBatch) return wpError('rest_no_route', 'Read-only store.', 404);
     let payload = {};
-    try { payload = JSON.parse(event.body || '{}'); } catch { payload = { _unparsed: String(event.body || '').slice(0, 500) }; }
-    console.log('[woo-channel] status push-back', JSON.stringify({ id: singleOrder[1], method, payload }));
+    try { payload = JSON.parse(event.body || '{}'); }
+    catch { payload = { _unparsed: String(event.body || '').slice(0, 500) }; }
+
+    const h = event.headers || {};
+    console.log('[woo-channel] push-back', JSON.stringify({
+      method,
+      path,
+      content_type: h['content-type'] || h['Content-Type'] || '',
+      user_agent: h['user-agent'] || h['User-Agent'] || '',
+      payload,
+    }));
+
+    if (orderBatch) {
+      const updates = Array.isArray(payload.update) ? payload.update : [];
+      return json(200, {
+        update: updates.map((u) => ({
+          id: Number(u && u.id) || 0,
+          status: String((u && u.status) || 'processing'),
+        })),
+      });
+    }
     return json(200, { id: Number(singleOrder[1]), status: String(payload.status || 'processing') });
   }
 

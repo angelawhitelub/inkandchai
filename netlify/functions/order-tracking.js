@@ -25,6 +25,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp }  = require('./utils/whatsapp');
+const { buildTrackingUrl } = require('./utils/tracking-url');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { orderIdFilter } = require('./utils/order-id-filter');
 
@@ -126,23 +127,6 @@ function normalizeStatus(statusStr, statusCode) {
 }
 
 // ── Build Shiprocket tracking URL ─────────────────────────────────────────────
-function buildTrackingUrl(awb, courierName) {
-  if (!awb) return '';
-  const courier = (courierName || '').toLowerCase();
-  const np = `https://ship.nimbuspost.com/shipping/tracking/${awb}`;
-  // Couriers that track via NimbusPost portal
-  if (courier.includes('bluedart'))      return np;
-  if (courier.includes('amazon'))        return np;
-  // Other couriers — direct tracking pages
-  if (courier.includes('delhivery'))     return `https://www.delhivery.com/track/package/${awb}`;
-  if (courier.includes('xpressbees'))    return `https://www.xpressbees.com/shipment/tracking?awb=${awb}`;
-  if (courier.includes('ecom'))          return `https://ecomexpress.in/tracking/?awb_field=${awb}`;
-  if (courier.includes('shadowfax'))     return `https://tracker.shadowfax.in/?awb=${awb}`;
-  if (courier.includes('dtdc'))          return np;
-  if (courier.includes('ekart'))         return np;  // ekartlogistics page only works for Flipkart-booked AWBs; B2B routes via NimbusPost
-  // Fallback: NimbusPost (works for most couriers booked via NimbusPost)
-  return np;
-}
 
 // ── WhatsApp notifications ────────────────────────────────────────────────────
 async function sendShippedNotification(order) {
@@ -295,7 +279,10 @@ exports.handler = async (event) => {
       }
 
       // ── Always save AWB + courier when we get it ──────────────────────────
-      const trackingUrl = awb ? buildTrackingUrl(awb, courierName) : (order.tracking_url || '');
+      const trackingUrl = buildTrackingUrl({
+        courier: courierName, awb,
+        orderNumber: order.razorpay_order_id || order.id, stored: order.tracking_url,
+      });
       const awbUpdate = {};
       if (awb && awb !== order.tracking_id)          awbUpdate.tracking_id  = awb;
       if (courierName && !order.courier_name)         awbUpdate.courier_name = courierName;

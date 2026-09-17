@@ -23,6 +23,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier, sanitizeAddressText } = require('./utils/nimbuspost-import');
+const { buildTrackingUrl } = require('./utils/tracking-url');
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { requireAdmin } = require('./utils/admin-auth');
 const { isReplacementOrder } = require('./utils/replacement-order');
@@ -39,7 +40,10 @@ const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stri
 // Flat box, same as every other push path. XpressBees reweighs at the hub.
 const BOX = { weight: 400, length: 15, breadth: 10, height: 5 };
 
-const trackUrl = (awb) => `https://www.xpressbees.com/track?awbNo=${encodeURIComponent(awb)}`;
+// www.xpressbees.com drops the AWB, redirects to the site root and shows a
+// CAPTCHA. The shipping-platform page deep-links with no login. See
+// utils/tracking-url.js, which is the single place this is decided.
+const trackUrl = (awb) => buildTrackingUrl({ courier: 'xpressbees', awb });
 
 /**
  * Pick a courier from the serviceability quote.

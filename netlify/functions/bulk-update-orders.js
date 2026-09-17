@@ -29,6 +29,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendEmail }    = require('./utils/email');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { requireAdmin } = require('./utils/admin-auth');
+const { buildTrackingUrl } = require('./utils/tracking-url');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 const CORS = {
@@ -39,25 +40,6 @@ const CORS = {
 
 const VALID_STATUSES = ['cod_pending', 'partial_cod_pending', 'confirmed', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'paid', 'refunded'];
 
-const COURIER_URLS = {
-  'bluedart':     'https://www.bluedart.com/tracking?trackingNumber={id}',
-  'dtdc':         'https://www.dtdc.in/tracking/tracking_results.asp?action=track&Type=awb&strCnno={id}',
-  'delhivery':    'https://www.delhivery.com/track-v2/package/{id}',
-  'indiapost':    'https://www.indiapost.gov.in/_layouts/15/dop.portal.tracking/trackconsignment.aspx?id={id}',
-  'ecomexpress':  'https://ecomexpress.in/tracking/?awb_field={id}',
-  'shadowfax':    'https://shadowfax.in/tracking/?awb={id}',
-  'xpressbees':   'https://www.xpressbees.com/track?awbNo={id}',
-  'shiprocket':   'https://shiprocket.co/tracking/{id}',
-  'professional': 'https://www.tpcindia.com/Tracking2/Tracking2.aspx?cnno={id}',
-};
-
-function buildTrackingUrl(courier, trackingId) {
-  if (!trackingId) return '';
-  // All orders ship via NimbusPost — its universal tracking page works for any
-  // underlying courier (BlueDart, Delhivery, etc.) using just the AWB. Use this
-  // single format for the link sent to customers instead of per-courier URLs.
-  return `https://ship.nimbuspost.com/shipping/tracking/${encodeURIComponent(trackingId)}`;
-}
 
 function text(v) {
   return String(v || '').trim();
@@ -203,7 +185,10 @@ exports.handler = async (event) => {
         continue;
       }
 
-      const trackingUrl = status === 'shipped' && trackingId ? buildTrackingUrl(courierName, trackingId) : '';
+      const trackingUrl = status === 'shipped' && trackingId
+        ? buildTrackingUrl({ courier: courierName, awb: trackingId,
+                             orderNumber: order.razorpay_order_id || order.id })
+        : '';
       const payload = { status };
 
       // A SECOND AWB — the order already carried a different one, so this row is

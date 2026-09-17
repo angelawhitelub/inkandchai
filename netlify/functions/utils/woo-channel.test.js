@@ -186,12 +186,16 @@ test('no credentials at all is refused', () => {
   assert.equal(authorize({ headers: {}, queryStringParameters: {} }).ok, false);
 });
 
-test('a terse address is rebuilt from city and state, not shipped short', async () => {
-  const o = await toWooOrder(base({
-    amount_paise: 49900, status: 'cod_pending', customer_address: 'H 4, 400028',
-  }));
-  assert.ok(o.shipping.address_1.length >= 10, `rebuilt to "${o.shipping.address_1}"`);
-  assert.match(o.shipping.address_1, /Mumbai|Maharashtra/, 'locality put back');
+test('a terse address is never served short -- it is rebuilt or refused', async () => {
+  // enrichAddress fills city/state from a LIVE lookup (api.postalpincode.in,
+  // 4s timeout), so asserting the rebuilt text makes this test depend on the
+  // network. The invariant is what matters and holds either way: a short line
+  // is either lengthened with the locality or the order is refused. It is
+  // never handed to a courier as-is.
+  let out = null;
+  try { out = await toWooOrder(base({ amount_paise: 49900, status: 'cod_pending', customer_address: 'H 4, 400028' })); }
+  catch (e) { assert.match(e.message, /too short/i); return; }
+  assert.ok(out.shipping.address_1.length >= 10, `served "${out.shipping.address_1}"`);
 });
 
 test('an address that cannot reach 10 characters is refused', async () => {
@@ -234,4 +238,17 @@ test('the feed defaults to a page big enough for a full sync', () => {
   assert.match(src, /parseInt\(q\.per_page \|\| '100'/, 'default page must not be 20');
   assert.match(src, /Math\.min\(250,/, 'cap must exceed one window of orders');
   assert.match(src, /ascending: true/, 'oldest orders must win the single page');
+});
+
+test('a status push-back never mutates order state', () => {
+  // The guarantee is structural, so assert on the source: this handler must
+  // not reach Supabase at all. An RTO arriving here must be incapable of
+  // touching anything a refund could key off.
+  const src = require('node:fs').readFileSync(require.resolve('../woo-channel'), 'utf8');
+  const block = src.slice(src.indexOf('if (method !== \'GET\')'), src.indexOf('const supabase = createClient'));
+  assert.ok(block.length > 0, 'push-back block not found');
+  for (const forbidden of ['supabase', '.update(', 'refund', 'razorpay', 'phonepe']) {
+    assert.ok(!block.toLowerCase().includes(forbidden.toLowerCase()),
+      `push-back handler must not reference ${forbidden}`);
+  }
 });
