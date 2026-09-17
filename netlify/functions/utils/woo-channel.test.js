@@ -240,17 +240,121 @@ test('the feed defaults to a page big enough for a full sync', () => {
   assert.match(src, /ascending: true/, 'oldest orders must win the single page');
 });
 
-test('a status push-back never mutates order state', () => {
-  // The guarantee is structural, so assert on the source: this handler must
-  // not reach Supabase at all. An RTO arriving here must be incapable of
-  // touching anything a refund could key off.
-  const src = require('node:fs').readFileSync(require.resolve('../woo-channel'), 'utf8');
-  const block = src.slice(src.indexOf('if (method !== \'GET\')'), src.indexOf('const supabase = createClient'));
-  assert.ok(block.length > 0, 'push-back block not found');
-  for (const forbidden of ['supabase', '.update(', 'refund', 'razorpay', 'phonepe']) {
-    assert.ok(!block.toLowerCase().includes(forbidden.toLowerCase()),
-      `push-back handler must not reference ${forbidden}`);
+// ── Status push-back ───────────────────────────────────────────────────────
+// Payload shape below is the one captured live when orders were booked, not
+// a guess: {status:"On Hold", meta_data:[{key:"AWB Number",value:"..."}, ...]}
+
+const { applyPushBack, metaValue } = require('../woo-channel').__test;
+
+const ORDER_NO = 'IC-20260917-C6WPE';
+const WOO_ID = numericId(ORDER_NO);
+
+function stubDb(row, captured) {
+  return {
+    from() { return this; },
+    select() { return this; },
+    gte() { return this; },
+    limit() { return Promise.resolve({ data: row ? [row] : [], error: null }); },
+    update(payload) { captured.push(payload); return { eq: () => Promise.resolve({ error: null }) }; },
+  };
+}
+const pushed = (status, awb) => ({
+  status,
+  meta_data: [
+    { key: 'Tracking Url', value: `https://shipmentv1.xpressbees.com/orders/tracking/${awb}` },
+    { key: 'Courier Name', value: 'Xpressbees' },
+    { key: 'AWB Number', value: awb },
+  ],
+});
+
+test('a booked push flips the order to shipped and stores the AWB', async () => {
+  const captured = [];
+  const db = stubDb({ id: 'uuid-1', razorpay_order_id: ORDER_NO, status: 'cod_pending' }, captured);
+  const res = await applyPushBack(db, WOO_ID, pushed('On Hold', '143449610504655'));
+  assert.equal(res.applied, true, res.reason);
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].status, 'shipped');
+  assert.equal(captured[0].tracking_id, '143449610504655');
+  assert.equal(captured[0].courier_name, 'Xpressbees');
+  assert.ok(captured[0].shipped_at);
+});
+
+test('the stored tracking URL is normalised to shipmentv2', async () => {
+  // They push shipment. and shipmentv1. on different orders; both redirect to
+  // v2. One canonical host is stored rather than whichever they happened to send.
+  const captured = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'paid' }, captured);
+  await applyPushBack(db, WOO_ID, pushed('On Hold', '143449610504655'));
+  assert.equal(captured[0].tracking_url,
+    'https://shipmentv2.xpressbees.com/orders/tracking/143449610504655');
+});
+
+test('RTO changes nothing at all', async () => {
+  // A returned parcel is not a refunded order.
+  const captured = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'shipped' }, captured);
+  const res = await applyPushBack(db, WOO_ID, pushed('Cancelled', '143449610504655'));
+  assert.equal(res.applied, false);
+  assert.equal(captured.length, 0, 'RTO must not write to the order');
+});
+
+test('In Transit and Delivered are recorded but change nothing', async () => {
+  for (const st of ['Processing', 'Completed']) {
+    const captured = [];
+    const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'shipped' }, captured);
+    const res = await applyPushBack(db, WOO_ID, pushed(st, '1434496105'));
+    assert.equal(res.applied, false, `${st} must not be applied`);
+    assert.equal(captured.length, 0);
   }
+});
+
+test('a booked push with no AWB is refused rather than half-applied', async () => {
+  const captured = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'paid' }, captured);
+  const res = await applyPushBack(db, WOO_ID, { status: 'On Hold', meta_data: [] });
+  assert.equal(res.applied, false);
+  assert.match(res.reason, /no AWB/i);
+  assert.equal(captured.length, 0);
+});
+
+test('a delivered order is never walked back to shipped', async () => {
+  const captured = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'delivered' }, captured);
+  const res = await applyPushBack(db, WOO_ID, pushed('On Hold', '999'));
+  assert.equal(res.applied, false);
+  assert.equal(captured.length, 0);
+});
+
+test('a re-push of the same AWB is a no-op', async () => {
+  const captured = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'shipped', tracking_id: '143449610504655' }, captured);
+  const res = await applyPushBack(db, WOO_ID, pushed('On Hold', '143449610504655'));
+  assert.equal(res.applied, false);
+  assert.equal(captured.length, 0);
+});
+
+test('an unmatched woo id is reported, never applied to some other order', async () => {
+  const captured = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: 'IC-SOMETHING-ELSE', status: 'paid' }, captured);
+  const res = await applyPushBack(db, WOO_ID, pushed('On Hold', '123'));
+  assert.equal(res.applied, false);
+  assert.equal(captured.length, 0);
+});
+
+test('a push never writes a refund field', async () => {
+  const captured = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'paid' }, captured);
+  await applyPushBack(db, WOO_ID, pushed('On Hold', '123'));
+  const keys = Object.keys(captured[0]).join(',').toLowerCase();
+  for (const forbidden of ['refund', 'razorpay', 'phonepe', 'amount']) {
+    assert.ok(!keys.includes(forbidden), `push wrote ${forbidden}: ${keys}`);
+  }
+});
+
+test('meta_data keys are read case-insensitively', () => {
+  assert.equal(metaValue({ meta_data: [{ key: 'awb number', value: 'X1' }] }, 'AWB Number'), 'X1');
+  assert.equal(metaValue({ meta_data: [] }, 'AWB Number'), '');
+  assert.equal(metaValue({}, 'AWB Number'), '');
 });
 
 test('the WordPress batch probe is answered, not 404ed', async () => {

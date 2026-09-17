@@ -57,6 +57,7 @@ const { sanitizeForCourier, sanitizeAddressText } = require('./utils/nimbuspost-
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { classifyShipmentMoney, parseCartItems } = require('./utils/shipment-money');
+const { buildTrackingUrl } = require('./utils/tracking-url');
 
 const UNSHIPPED_STATUSES = [
   'paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending',
@@ -327,9 +328,105 @@ async function loadOrders(supabase) {
   return (data || []).filter((o) => !isPaymentPending(o.status));
 }
 
+/**
+ * What a status push is allowed to do to an order.
+ *
+ * Observed payload, captured live when five orders were booked:
+ *
+ *   PUT /wp-json/wc/v3/orders/{wooId}
+ *   { "status": "On Hold",
+ *     "meta_data": [ {key:"Tracking Url", value:"https://shipmentv1..."},
+ *                    {key:"Courier Name", value:"Xpressbees"},
+ *                    {key:"AWB Number",   value:"143449610504655"} ] }
+ *
+ * "On Hold" is our Booked mapping, so this is the moment an AWB exists.
+ *
+ * ONLY the booked transition is applied, and it only ever moves an order
+ * FORWARD to 'shipped'. In Transit / Delivered / RTO are recorded and applied
+ * to nothing:
+ *
+ *   - RTO must never reach anything a refund could key off. A returned parcel
+ *     is not a refunded order.
+ *   - Delivered drives delivery notifications and COD remittance elsewhere,
+ *     which is not a decision this endpoint should be making on its own.
+ *
+ * No customer notification is sent from here. Flipping 158 orders to shipped
+ * would otherwise fire 158 emails and WhatsApps as a side effect of a panel
+ * action nobody connected to messaging.
+ */
+const PUSH_BOOKED = 'on hold';
+
+function metaValue(payload, key) {
+  const rows = Array.isArray(payload && payload.meta_data) ? payload.meta_data : [];
+  const hit = rows.find((m) => m && String(m.key || '').toLowerCase() === key.toLowerCase());
+  return hit ? String(hit.value || '').trim() : '';
+}
+
+/**
+ * Resolve the derived WooCommerce integer id back to an order.
+ *
+ * The id is a hash, so it cannot be reversed in SQL. It does not need to be:
+ * a push can only concern an order that was in the feed, and the feed never
+ * reaches further back than WOO_FEED_SINCE. That bounds the candidates to the
+ * same window we serve -- a few hundred rows -- whatever their status now is.
+ */
+async function resolveByWooId(supabase, wooId) {
+  const since = process.env.WOO_FEED_SINCE || DEFAULT_SINCE;
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, razorpay_order_id, status, tracking_id, tracking_url, courier_name')
+    .gte('created_at', since)
+    .limit(1000);
+  if (error) throw new Error(`lookup failed: ${error.message}`);
+  const want = Number(wooId);
+  return (data || []).find((o) => numericId(o.razorpay_order_id || o.id) === want) || null;
+}
+
+async function applyPushBack(supabase, wooId, payload) {
+  const status = String((payload && payload.status) || '').trim().toLowerCase();
+  const awb = metaValue(payload, 'AWB Number');
+  const courier = metaValue(payload, 'Courier Name') || 'Xpressbees';
+
+  if (status !== PUSH_BOOKED) return { applied: false, reason: `status "${status}" is recorded only` };
+  if (!awb) return { applied: false, reason: 'booked but no AWB in meta_data' };
+
+  const order = await resolveByWooId(supabase, wooId);
+  if (!order) return { applied: false, reason: `no order matches woo id ${wooId}` };
+
+  const orderNumber = order.razorpay_order_id || order.id;
+
+  // Already carrying this AWB: nothing to do. Re-pushes are normal.
+  if (String(order.tracking_id || '') === awb && order.status === 'shipped') {
+    return { applied: false, order: orderNumber, reason: 'already shipped with this AWB' };
+  }
+
+  // Never walk an order backwards out of a later stage.
+  const TERMINAL = ['delivered', 'rto', 'rto_delivered', 'cancelled', 'refunded'];
+  if (TERMINAL.includes(String(order.status || '').toLowerCase())) {
+    return { applied: false, order: orderNumber, reason: `order is ${order.status}; not moving it back to shipped` };
+  }
+
+  // Their own Tracking Url arrives on two different hosts (shipment. and
+  // shipmentv1.), both of which redirect to shipmentv2. Derive it instead, so
+  // one host is stored and it is the canonical one.
+  const now = new Date().toISOString();
+  const update = {
+    status: 'shipped',
+    tracking_id: awb,
+    courier_name: courier,
+    tracking_url: buildTrackingUrl({ courier, awb, orderNumber }),
+    shipped_at: now,
+    awb_assigned_at: now,
+  };
+
+  const { error } = await supabase.from('orders').update(update).eq('id', order.id);
+  if (error) throw new Error(`update failed for ${orderNumber}: ${error.message}`);
+  return { applied: true, order: orderNumber, awb, tracking_url: update.tracking_url };
+}
+
 // Exported so the money mapping can be tested without a live store: the
 // partial-COD total is the one number here that can overcharge a customer.
-exports.__test = { toWooOrder, numericId, safeEqual, readCredentials, authorize, isPaymentPending, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
+exports.__test = { toWooOrder, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
 
 exports.handler = async (event) => {
   const path = String(event.path || '').replace(/\/+$/, '') || '/wp-json';
@@ -382,20 +479,18 @@ exports.handler = async (event) => {
     const batchAuth = authorize(event);
     if (!batchAuth.ok) return batchAuth.res;
 
-    // Acknowledged, not applied -- for the same reason as the single-order
-    // push below: nothing arriving over this endpoint moves order state.
-    return json(200, {
-      failed: false,
-      responses: requests.map((r) => {
-        const id = Number(String((r && r.path) || '').match(/orders\/(\d+)/)?.[1] || 0);
-        const body = (r && r.body) || {};
-        return {
-          status: 200,
-          headers: {},
-          body: { id, status: String(body.status || 'processing') },
-        };
-      }),
-    });
+    const batchDb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const responses = [];
+    for (const r of requests) {
+      const id = Number(String((r && r.path) || '').match(/orders\/(\d+)/)?.[1] || 0);
+      const body = (r && r.body) || {};
+      let result;
+      try { result = await applyPushBack(batchDb, id, body); }
+      catch (e) { result = { applied: false, reason: e.message }; }
+      console.log('[woo-channel] batch push-back result', JSON.stringify({ id, ...result }));
+      responses.push({ status: 200, headers: {}, body: { id, status: String(body.status || 'processing') } });
+    }
+    return json(200, { failed: false, responses });
   }
 
   const auth = authorize(event);
@@ -473,16 +568,31 @@ exports.handler = async (event) => {
       payload,
     }));
 
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
     if (orderBatch) {
       const updates = Array.isArray(payload.update) ? payload.update : [];
-      return json(200, {
-        update: updates.map((u) => ({
-          id: Number(u && u.id) || 0,
-          status: String((u && u.status) || 'processing'),
-        })),
-      });
+      const out = [];
+      for (const u of updates) {
+        const id = Number(u && u.id) || 0;
+        let result;
+        try { result = await applyPushBack(db, id, u || {}); }
+        catch (e) { result = { applied: false, reason: e.message }; }
+        console.log('[woo-channel] push-back result', JSON.stringify({ id, ...result }));
+        out.push({ id, status: String((u && u.status) || 'processing') });
+      }
+      return json(200, { update: out });
     }
-    return json(200, { id: Number(singleOrder[1]), status: String(payload.status || 'processing') });
+
+    const wooId = Number(singleOrder[1]);
+    let result;
+    try { result = await applyPushBack(db, wooId, payload); }
+    catch (e) { result = { applied: false, reason: e.message }; }
+    console.log('[woo-channel] push-back result', JSON.stringify({ id: wooId, ...result }));
+
+    // Always 200. A non-2xx makes XpressBees retry, and a retry cannot fix an
+    // order we simply could not match -- it would just repeat forever.
+    return json(200, { id: wooId, status: String(payload.status || 'processing') });
   }
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
