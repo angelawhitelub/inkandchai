@@ -106,7 +106,9 @@ async function buildOrder(order) {
     },
     payload: {
       order_number: String(orderId).slice(0, 20),
-      unique_order_number: 'yes',      // let XpressBees reject a double booking
+      // unique_order_number is NOT sent: the v1.1.5 doc drops it, and an
+      // undocumented field is not where to put double-booking protection.
+      // That guard is the tracking_id check in the handler, which is ours.
       payment_type: money.isCOD ? 'cod' : 'prepaid',
       order_amount: money.orderValueRs,
       // Prepaid MUST be zero; COD must be <= order_amount. classifyShipmentMoney

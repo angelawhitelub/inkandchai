@@ -116,3 +116,40 @@ test('a bad pincode is refused before anything is booked', async () => {
 test('a bad phone is refused before anything is booked', async () => {
   await assert.rejects(() => buildOrder(base({ amount_paise: 100, customer_phone: '123' })), /phone/i);
 });
+
+const xbc = require('./xpressbees');
+
+test('every documented scan code maps to an order status', () => {
+  for (const code of ['PP', 'IT', 'EX', 'FD', 'DL', 'RT', 'RT-IT', 'RT-DL']) {
+    const m = xbc.mapStatusCode(code);
+    assert.ok(m, `${code} is unmapped`);
+    assert.ok(m.order_status, `${code} has no order status`);
+  }
+});
+
+test('scan codes are matched case-insensitively and an unknown one is null', () => {
+  assert.equal(xbc.mapStatusCode('dl').order_status, 'delivered');
+  assert.equal(xbc.mapStatusCode('rt-it').order_status, 'rto');
+  assert.equal(xbc.mapStatusCode('ZZ'), null);
+  assert.equal(xbc.mapStatusCode(''), null);
+});
+
+test('RTO never maps to anything a refund could key off', () => {
+  // A parcel coming back is not money going out. Keep these distinct.
+  for (const code of ['RT', 'RT-IT', 'RT-DL']) {
+    assert.ok(!/refund/i.test(xbc.mapStatusCode(code).order_status));
+  }
+  assert.notEqual(xbc.mapStatusCode('RT').order_status, xbc.mapStatusCode('DL').order_status);
+});
+
+test('order_number never exceeds 20 chars and unique_order_number is not sent', async () => {
+  const { payload } = await buildOrder(base({ amount_paise: 49900, status: 'paid', razorpay_payment_id: 'p' }));
+  assert.ok(!('unique_order_number' in payload), 'v1.1.5 does not document this field');
+  assert.ok(payload.order_number.length <= 20);
+});
+
+test('NDR actions are capped at their 100-per-request limit', async () => {
+  const many = Array.from({ length: 101 }, (_, i) => ({ awb: String(i), action: 're-attempt', action_data: {} }));
+  await assert.rejects(() => xbc.ndrCreate(many), /at most 100/);
+  await assert.rejects(() => xbc.ndrCreate([]), /at least one/);
+});

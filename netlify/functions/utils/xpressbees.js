@@ -115,6 +115,65 @@ async function book(payload) {
   return out.data.data;
 }
 
+/**
+ * XpressBees scan codes -> our order statuses. From the v1.1.5 doc, which is
+ * the only version that publishes this table.
+ *
+ * RTO is deliberately NOT treated as a refund trigger anywhere downstream: a
+ * parcel coming back is not the same event as money going out, and conflating
+ * them is how an automatic refund fires on a book we still hold.
+ */
+const STATUS_CODES = {
+  PP:      { label: 'Pending Pickup',  order_status: 'shipped' },
+  IT:      { label: 'In Transit',      order_status: 'in_transit' },
+  EX:      { label: 'Exception',       order_status: 'exception' },
+  FD:      { label: 'Out For Delivery',order_status: 'out_for_delivery' },
+  DL:      { label: 'Delivered',       order_status: 'delivered' },
+  RT:      { label: 'RTO',             order_status: 'rto' },
+  'RT-IT': { label: 'RTO In Transit',  order_status: 'rto' },
+  'RT-DL': { label: 'RTO Delivered',   order_status: 'rto_delivered' },
+};
+
+/** @returns {{code, label, order_status}|null} */
+function mapStatusCode(code) {
+  const key = String(code || '').toUpperCase().trim();
+  const hit = STATUS_CODES[key];
+  return hit ? { code: key, ...hit } : null;
+}
+
+/**
+ * NDR / exception list. v1.1.5 documents pagination and an AWB filter; the
+ * earlier doc had neither, and without them this returns everything.
+ */
+async function ndrList({ awbNumbers, page, perPage } = {}) {
+  const qs = new URLSearchParams();
+  if (awbNumbers?.length) qs.set('awb_number', awbNumbers.map(String).join(','));
+  if (page)    qs.set('page', String(page));
+  if (perPage) qs.set('per_page', String(Math.min(250, Number(perPage) || 50)));
+  const suffix = qs.toString() ? `?${qs}` : '';
+  const out = await withAuth((token) => xbFetch(`/ndr${suffix}`, { token }));
+  if (!out.data || out.data.status !== true) {
+    if (/no record found/i.test(String(out.data?.message || ''))) return [];
+    throw new Error(`XpressBees NDR list failed: ${out.data?.message || out.raw}`);
+  }
+  return Array.isArray(out.data.data) ? out.data.data : [];
+}
+
+/**
+ * Take action on an exception. Up to 100 AWBs per request, and only where the
+ * courier has actually raised one -- otherwise it answers "No Courier
+ * Exception Available" per AWB rather than failing the request.
+ * actions: [{ awb, action: 're-attempt'|'change_address'|'change_phone', action_data }]
+ */
+async function ndrCreate(actions) {
+  if (!Array.isArray(actions) || !actions.length) throw new Error('ndrCreate needs at least one action');
+  if (actions.length > 100) throw new Error('XpressBees accepts at most 100 NDR actions per request');
+  const out = await withAuth((token) => xbFetch('/ndr/create', { method: 'POST', token, body: actions }));
+  const rows = Array.isArray(out.data) ? out.data : (Array.isArray(out.data?.data) ? out.data.data : null);
+  if (!rows) throw new Error(`XpressBees NDR action failed: ${out.data?.message || out.raw}`);
+  return rows;
+}
+
 async function track(awb) {
   const out = await withAuth((token) => xbFetch(`/shipments2/track/${encodeURIComponent(awb)}`, { token }));
   if (!out.data || out.data.status !== true) throw new Error(`XpressBees tracking failed for ${awb}: ${out.data?.message || out.raw}`);
@@ -150,5 +209,6 @@ function pickupFromEnv() {
 module.exports = {
   XB_BASE, login, withAuth, xbFetch,
   couriers, serviceability, book, track, cancel, manifest, pickupFromEnv,
+  STATUS_CODES, mapStatusCode, ndrList, ndrCreate,
   _resetTokenForTests: () => { _token = { value: null, at: 0 }; },
 };
