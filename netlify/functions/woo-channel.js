@@ -58,6 +58,7 @@ const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/n
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { classifyShipmentMoney, parseCartItems } = require('./utils/shipment-money');
 const { buildTrackingUrl } = require('./utils/tracking-url');
+const { sendShippedNotification } = require('./utils/shipped-notification');
 
 const UNSHIPPED_STATUSES = [
   'paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending',
@@ -374,7 +375,8 @@ async function resolveByWooId(supabase, wooId) {
   const since = process.env.WOO_FEED_SINCE || DEFAULT_SINCE;
   const { data, error } = await supabase
     .from('orders')
-    .select('id, razorpay_order_id, status, tracking_id, tracking_url, courier_name')
+    .select('id, razorpay_order_id, status, tracking_id, tracking_url, courier_name, '
+          + 'customer_name, customer_phone, customer_email, cart_items')
     .gte('created_at', since)
     .limit(1000);
   if (error) throw new Error(`lookup failed: ${error.message}`);
@@ -421,7 +423,22 @@ async function applyPushBack(supabase, wooId, payload) {
 
   const { error } = await supabase.from('orders').update(update).eq('id', order.id);
   if (error) throw new Error(`update failed for ${orderNumber}: ${error.message}`);
-  return { applied: true, order: orderNumber, awb, tracking_url: update.tracking_url };
+
+  // Tell the customer. This runs only on the transition INTO shipped -- a
+  // re-push of an AWB already on the order returns above without reaching
+  // here, so a customer cannot be messaged twice for the same shipment.
+  //
+  // WOO_PUSH_NOTIFY=0 turns it off without redeploying, which matters if a
+  // bulk booking session ever needs to run quietly.
+  let notified = null;
+  if (!/^(0|false|no)$/i.test(String(process.env.WOO_PUSH_NOTIFY || ''))) {
+    notified = await sendShippedNotification(
+      { ...order, ...update },
+      { awb, courier, trackingUrl: update.tracking_url },
+    ).catch((e) => ({ error: e.message }));
+  }
+
+  return { applied: true, order: orderNumber, awb, tracking_url: update.tracking_url, notified };
 }
 
 // Exported so the money mapping can be tested without a live store: the
