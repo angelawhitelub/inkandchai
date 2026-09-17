@@ -200,7 +200,11 @@ async function sendShippedNotifications(order, awb) {
     await sendWhatsApp({
       to: order.customer_phone,
       template: 'order_shipped',
-      params: [firstName, bookList, courier, awb, trackUrl],
+      // FOUR variables, confirmed against the live template on 2026-09-17:
+      // this call site sent five for months and Meta rejected every one of
+      // them (error 132000), silently, because sendWhatsApp returns the
+      // failure and the .catch() below only sees exceptions.
+      params: [firstName, courier, awb, trackUrl],
     }).catch(e => console.error('[NimbusPost] Shipped WhatsApp error:', e.message));
   }
 }

@@ -139,12 +139,16 @@ async function sendShippedNotification(order) {
   const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
   const bookTitle = items[0]?.title || 'your books';
 
-  // Template: order_shipped
-  // Body: "Hi {{1}}! 📦 Your Ink & Chai order has been shipped!\nBook: {{2}}\nCourier: {{3}} | AWB: {{4}}\nTrack here: {{5}}"
+  // Template: order_shipped -- FOUR body variables, not five.
+  // The five-variable body documented here before never existed: Meta
+  // rejected every send from this function with error 132000, invisibly,
+  // because sendWhatsApp RETURNS the failure and the .catch() below only
+  // catches exceptions. Confirmed against the live template on 2026-09-17.
+  // Body: {{1}} name | {{2}} courier | {{3}} AWB | {{4}} tracking link
   await sendWhatsApp({
     to: order.customer_phone,
     template: 'order_shipped',
-    params: [firstName, bookTitle, courier || 'courier', awb || '—', trackUrl],
+    params: [firstName, courier || 'courier', awb || '—', trackUrl],
   }).catch(e => console.error('[ShiprocketWebhook] WhatsApp shipped error:', e.message));
 }
 

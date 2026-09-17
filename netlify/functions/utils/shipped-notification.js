@@ -21,11 +21,15 @@
  * is an unrestricted SYSTEM_USER token that cannot resolve its own WABA
  * (see whatsapp-template-diagnose), so there is nothing to list templates on.
  *
- * Rather than guess and be silently wrong, this tries the five-variable shape
- * and falls back to four ONLY on a parameter-count error. A rejected attempt
- * delivers nothing, so the fallback costs an API call and never a duplicate
- * message. Which shape won is logged, so one real send settles the question
- * and the loser can then be deleted.
+ * SETTLED 2026-09-17: the live template takes FOUR body variables. Confirmed
+ * over 49 real sends -- every five-variable attempt came back 132000 and every
+ * four-variable retry came back 200. The two five-variable callers above were
+ * therefore delivering nothing at all, and have been corrected.
+ *
+ * Four is now tried first, so the normal path costs no rejected call. The
+ * five-variable fallback is kept because a template edit at Meta's end would
+ * otherwise silence this the same way it silenced them -- and a rejected
+ * attempt delivers nothing, so a fallback can never duplicate a message.
  *
  * NOTE: the tracking link is a plain BODY parameter here, not a URL button --
  * no order_shipped caller passes urlButtonParam. So the link that reaches the
@@ -84,17 +88,15 @@ async function sendShippedNotification(order, { awb, courier, trackingUrl }) {
   const out = { whatsapp: { skipped: true }, email: { skipped: true } };
 
   if (order.customer_phone) {
-    const five = [firstName, bookTitle, courierName, awbText, trackingUrl];
     const four = [firstName, courierName, awbText, trackingUrl];
+    const five = [firstName, bookTitle, courierName, awbText, trackingUrl];
     let res;
     try {
-      res = await sendWhatsApp({ to: order.customer_phone, template: 'order_shipped', params: five });
+      res = await sendWhatsApp({ to: order.customer_phone, template: 'order_shipped', params: four });
       if (!res.ok && isParamCountError(res)) {
-        console.warn(`[shipped-notify] ${orderNumber}: 5-param order_shipped rejected, retrying with 4`);
-        res = await sendWhatsApp({ to: order.customer_phone, template: 'order_shipped', params: four });
-        if (res.ok) console.log(`[shipped-notify] order_shipped takes FOUR body variables`);
-      } else if (res.ok) {
-        console.log('[shipped-notify] order_shipped takes FIVE body variables');
+        console.warn(`[shipped-notify] ${orderNumber}: 4-param order_shipped rejected, retrying with 5`);
+        res = await sendWhatsApp({ to: order.customer_phone, template: 'order_shipped', params: five });
+        if (res.ok) console.log('[shipped-notify] order_shipped now takes FIVE body variables — template changed, update the callers');
       }
     } catch (e) {
       res = { ok: false, error: e.message };
