@@ -252,3 +252,29 @@ test('a status push-back never mutates order state', () => {
       `push-back handler must not reference ${forbidden}`);
   }
 });
+
+test('the WordPress batch probe is answered, not 404ed', async () => {
+  // Captured live: XpressBees POSTs {"requests":[]} to /wp-json/batch/v1 with
+  // NO auth header before pushing any status. A 404 tells them the store
+  // cannot take batched writes.
+  const { handler } = require('../woo-channel');
+  const res = await handler({
+    path: '/wp-json/batch/v1', httpMethod: 'POST',
+    headers: {}, body: JSON.stringify({ requests: [] }),
+  });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.failed, false);
+  assert.deepEqual(body.responses, []);
+});
+
+test('a non-empty batch still requires the consumer pair', async () => {
+  const { handler } = require('../woo-channel');
+  process.env.WOO_CONSUMER_KEY = 'ck_right';
+  process.env.WOO_CONSUMER_SECRET = 'cs_right';
+  const res = await handler({
+    path: '/wp-json/batch/v1', httpMethod: 'POST', headers: {},
+    body: JSON.stringify({ requests: [{ method: 'PUT', path: '/wc/v3/orders/5', body: { status: 'completed' } }] }),
+  });
+  assert.equal(res.statusCode, 401, 'an unauthenticated write must never be acknowledged');
+});

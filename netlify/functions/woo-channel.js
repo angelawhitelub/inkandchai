@@ -353,6 +353,51 @@ exports.handler = async (event) => {
     });
   }
 
+  // WordPress core's batch endpoint. XpressBees probes this BEFORE pushing any
+  // status update -- captured live at 21:21:25, the minute an order was booked:
+  //
+  //   POST /wp-json/batch/v1   content-length: 15   (i.e. {"requests":[]})
+  //   no Authorization header, from 161.35.55.54 (DigitalOcean)
+  //
+  // It is a capability probe: an empty request list, asking whether the store
+  // can take batched writes. We answered 404, so they had to assume not.
+  //
+  // The probe is answered WITHOUT authentication because an empty batch
+  // carries and reveals nothing. A batch that actually contains sub-requests
+  // is authenticated like everything else.
+  if (/^\/wp-json\/batch\/v1$/.test(path)) {
+    if (method !== 'POST') return wpError('rest_no_route', 'Batch accepts POST.', 404);
+    let payload = {};
+    try { payload = JSON.parse(event.body || '{}'); } catch { payload = {}; }
+    const requests = Array.isArray(payload.requests) ? payload.requests : [];
+
+    console.log('[woo-channel] batch', JSON.stringify({
+      count: requests.length,
+      validation: payload.validation || '',
+      requests: requests.slice(0, 25),
+    }));
+
+    if (!requests.length) return json(200, { failed: false, responses: [] });
+
+    const batchAuth = authorize(event);
+    if (!batchAuth.ok) return batchAuth.res;
+
+    // Acknowledged, not applied -- for the same reason as the single-order
+    // push below: nothing arriving over this endpoint moves order state.
+    return json(200, {
+      failed: false,
+      responses: requests.map((r) => {
+        const id = Number(String((r && r.path) || '').match(/orders\/(\d+)/)?.[1] || 0);
+        const body = (r && r.body) || {};
+        return {
+          status: 200,
+          headers: {},
+          body: { id, status: String(body.status || 'processing') },
+        };
+      }),
+    });
+  }
+
   const auth = authorize(event);
   if (!auth.ok) return auth.res;
 
