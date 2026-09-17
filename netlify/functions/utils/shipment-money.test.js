@@ -154,3 +154,13 @@ test('a cart with no qty-1 line reports any residue instead of hiding it', () =>
     assert.equal(Math.abs(_meta.residual_paise) <= 2, true, 'residue must be reported');
   });
 });
+
+test('every shipment carries alt_phone, which iThink requires despite the docs', async () => {
+  const { shipment } = await buildShipment(base({ amount_paise: 49900, status: 'paid', razorpay_payment_id: 'p' }));
+  assert.equal(shipment.alt_phone, shipment.phone, 'an absent alt_phone fails the whole batch');
+  assert.equal(shipment.billing_alt_phone, shipment.phone);
+  // Presence of the fields iThink validates, even when empty.
+  for (const f of ['company_name', 'add3', 'billing_company_name', 'billing_add2', 'billing_add3', 'billing_country']) {
+    assert.ok(f in shipment, `${f} must be present in the payload`);
+  }
+});

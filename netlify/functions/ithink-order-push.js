@@ -146,6 +146,7 @@ async function buildShipment(order) {
   // "Maharashtra -" comes back when the pincode was appended with a dash.
   const tidy = (v) => String(v || '').replace(/[\s\-\u2013,]+$/, '').trim();
   const line1 = sanitizeForCourier(tidy(a.address) || a.city || '');
+  const tel = String(phone).replace(/\D/g, '').slice(-10);
 
   return {
     _meta: {
@@ -170,15 +171,29 @@ async function buildShipment(order) {
       city: tidy(a.city),
       state: tidy(a.state),
       country: 'India',
-      phone: String(phone).replace(/\D/g, '').slice(-10),
+      phone: tel,
+      // iThink's validator requires alt_phone to be PRESENT even though the
+      // docs mark it optional -- an omitted one is rejected with "alt phone
+      // field must be present", and a whole batch containing one comes back as
+      // a bare null with no message at all. We have only the one number for a
+      // customer, so it doubles as the alternate: it is the same person and
+      // the courier would call it anyway.
+      alt_phone: tel,
       email,
+      company_name: '',
+      add3: '',
       is_billing_same_as_shipping: 'yes',
       billing_name: name,
+      billing_company_name: '',
       billing_add: line1,
+      billing_add2: '',
+      billing_add3: '',
       billing_pin: String(a.pincode),
       billing_city: tidy(a.city),
       billing_state: tidy(a.state),
-      billing_phone: String(phone).replace(/\D/g, '').slice(-10),
+      billing_country: 'India',
+      billing_phone: tel,
+      billing_alt_phone: tel,
       billing_email: email,
       products,
       ...BOX,
@@ -212,7 +227,14 @@ async function syncBatch(shipments) {
   const text = await res.text();
   let data = null;
   try { data = JSON.parse(text); } catch { /* fall through */ }
-  if (!data) throw new Error(`iThink sync returned non-JSON (${res.status}): ${text.slice(0, 300)}`);
+  if (data === null || data === undefined) {
+    // iThink answers a batch it refuses outright with the JSON literal `null`
+    // and no message. It has always been a missing mandatory field on one of
+    // the shipments -- the batch is rejected whole, so every order in it fails.
+    throw new Error('iThink rejected the whole batch with an empty response '
+      + '(usually one shipment is missing a mandatory field; retry the batch one order at a time to find it)');
+  }
+  if (typeof data !== 'object') throw new Error(`iThink sync returned non-JSON (${res.status}): ${text.slice(0, 300)}`);
   // iThink sends status_code 200 on failure too; only `status` decides.
   if (String(data.status || '').toLowerCase() === 'error') {
     throw new Error(data.html_message || 'iThink rejected the batch');
@@ -305,7 +327,37 @@ exports.handler = async (event) => {
         }
       }
     } catch (err) {
-      for (const c of chunk) failed.push({ order_id: c._meta.order_id, error: String(err.message || err) });
+      // iThink rejects a batch WHOLE: one shipment missing a mandatory field
+      // fails the other 24 with it. Retry the chunk one order at a time so the
+      // good ones still land and the report names the actual offender, instead
+      // of 25 identical errors that say nothing about which order is wrong.
+      if (chunk.length === 1) {
+        failed.push({ order_id: chunk[0]._meta.order_id, error: String(err.message || err) });
+        continue;
+      }
+      console.warn(`[ithink-order-push] batch of ${chunk.length} rejected, retrying individually:`, err.message);
+      for (const c of chunk) {
+        try {
+          const one = await syncBatch([c.shipment]);
+          const r = (one?.data && typeof one.data === 'object' ? Object.values(one.data)[0] : null) || {};
+          if (/success/i.test(String(r.status || ''))) {
+            pushed.push({ order_id: c._meta.order_id, remark: r.remark || '' });
+            try {
+              await supabase.from('orders')
+                .update({ ithink_pushed_at: new Date().toISOString() })
+                .eq('id', c._meta.db_id);
+            } catch (e) {
+              console.warn('[ithink-order-push] stamp ithink_pushed_at (run the migration):', e.message);
+            }
+          } else if (/already|duplicate|exists/i.test(String(r.remark || ''))) {
+            skipped.push({ order_id: c._meta.order_id, reason: r.remark });
+          } else {
+            failed.push({ order_id: c._meta.order_id, error: r.remark || 'iThink did not report success' });
+          }
+        } catch (e2) {
+          failed.push({ order_id: c._meta.order_id, error: String(e2.message || e2) });
+        }
+      }
     }
   }
 
