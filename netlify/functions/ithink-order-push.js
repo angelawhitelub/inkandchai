@@ -131,13 +131,19 @@ async function buildShipment(order) {
       product_sku: i.sku,
       product_quantity: String(i.qty),
       product_price: String(Math.max(0, unitsPaise[idx]) / 100),
+      // Omitting these crashes iThink's backend outright -- it casts them to
+      // float and dies: "Cannot assign null to property ...$totalTax of type
+      // float". Books are zero-rated, so 0 is also the correct answer.
+      product_tax_rate: '0',
+      product_hsn_code: '',
       product_discount: '0',
     }));
     productsResidualPaise = residual;
   } else {
     products = [{
       product_name: 'Books', product_sku: '', product_quantity: '1',
-      product_price: String(money.orderValueRs), product_discount: '0',
+      product_price: String(money.orderValueRs),
+      product_tax_rate: '0', product_hsn_code: '', product_discount: '0',
     }];
   }
 
@@ -145,8 +151,23 @@ async function buildShipment(order) {
   const email = order.customer_email || '';
   // "Maharashtra -" comes back when the pincode was appended with a dash.
   const tidy = (v) => String(v || '').replace(/[\s\-\u2013,]+$/, '').trim();
-  const line1 = sanitizeForCourier(tidy(a.address) || a.city || '');
   const tel = String(phone).replace(/\D/g, '').slice(-10);
+
+  // iThink refuses an address under 10 characters ("Total address length for
+  // shipment #1 must be at least 10 characters"). A short line is usually a
+  // terse address whose locality got parsed off into city/state, so put those
+  // back rather than padding with filler -- it is both longer AND more
+  // deliverable. If it is still too short the address is genuinely unusable
+  // and the order is reported instead of being sent to crash on their side.
+  let line1 = sanitizeForCourier(tidy(a.address) || '');
+  if (line1.length < 10) {
+    line1 = sanitizeForCourier([tidy(a.address), tidy(a.city), tidy(a.state)]
+      .filter(Boolean).join(', '));
+  }
+  if (line1.length < 10) {
+    throw new Error(`Address for ${orderId} is only ${line1.length} characters `
+      + `("${line1}") -- iThink requires at least 10. Fix the delivery address on the order.`);
+  }
 
   return {
     _meta: {

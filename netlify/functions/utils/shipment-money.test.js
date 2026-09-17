@@ -164,3 +164,32 @@ test('every shipment carries alt_phone, which iThink requires despite the docs',
     assert.ok(f in shipment, `${f} must be present in the payload`);
   }
 });
+
+test('products carry a tax rate, without which iThink crashes on a null float', async () => {
+  const { shipment } = await buildShipment(base({ amount_paise: 49900, status: 'paid', razorpay_payment_id: 'p' }));
+  for (const p of shipment.products) {
+    assert.equal(p.product_tax_rate, '0');
+    assert.ok('product_hsn_code' in p);
+  }
+});
+
+test('a short address is rebuilt from city and state to clear the 10-char minimum', async () => {
+  const { shipment } = await buildShipment(base({
+    amount_paise: 49900, status: 'paid', razorpay_payment_id: 'p',
+    customer_address: 'A-1, Kochi, Kerala - 682001',
+  }));
+  assert.ok(shipment.add.length >= 10, `add was "${shipment.add}"`);
+});
+
+test('a shipment is never sent with an address iThink would refuse', async () => {
+  // The invariant that matters: either the address clears 10 characters or the
+  // order is reported. Never a third outcome. Enrichment fills city and state
+  // from the pincode, so a terse address usually clears it on its own.
+  for (const addr of ['X, 110006', 'A-1, Kochi, Kerala - 682001', 'no pincode here']) {
+    let out = null, threw = null;
+    try { out = await buildShipment(base({ amount_paise: 49900, customer_address: addr })); }
+    catch (e) { threw = e; }
+    if (out) assert.ok(out.shipment.add.length >= 10, `"${addr}" produced "${out.shipment.add}"`);
+    else assert.ok(threw, `"${addr}" neither built nor reported`);
+  }
+});
