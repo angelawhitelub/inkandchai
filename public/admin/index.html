@@ -1024,6 +1024,7 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
       <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Import all unshipped orders into the NimbusPost Orders panel without choosing couriers or generating AWBs.">Push to NimbusPost Panel (No AWB)</button>
+      <button class="btn-green" onclick="pushAllToXpressbeesPanel(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel. Recent orders are collected automatically; this also queues the older ones. No courier is chosen and no AWB is generated.">Push to XpressBees Panel (No AWB)</button>
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
       <button class="btn-outline" onclick="syncNimbusAwbs(this)" title="Pull AWBs assigned inside the NimbusPost panel back onto your orders, flip them to shipped, and notify customers. Also runs automatically every 15 minutes.">🔄 Sync AWBs from NimbusPost</button>
       <button class="btn-outline" onclick="sendTestEmail(this)" title="Send one test email to the store owner and report which provider (Mailjet/Resend/Brevo) delivered it. Use this to verify email is working after changing providers.">✉️ Send test email</button>
@@ -1220,6 +1221,9 @@ select,input,textarea{font-size:1rem;}
     </button>
     <button class="btn-outline" onclick="pushAllToNimbusPanel(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(77,184,255,0.5);color:#4db8ff;" title="Import all unshipped orders into NimbusPost without assigning couriers or AWBs">
       Push to NimbusPost Panel (No AWB)
+    </button>
+    <button class="btn-outline" onclick="pushAllToXpressbeesPanel(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel">
+      Push to XpressBees Panel (No AWB)
     </button>
     <button class="btn-outline" onclick="openBroadcastModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(37,211,102,0.55);color:#25D366;" title="Send a WhatsApp template to all past customers. Use when paid ads are down to re-engage existing buyers.">
       📣 WhatsApp Broadcast
@@ -10066,6 +10070,69 @@ async function pushAllToNimbusPanel(btn) {
   } finally {
     nimbusPanelPushActive = false;
     allNimbusPushButtons.forEach(button => { button.disabled = false; });
+    if (btn) btn.innerHTML = orig;
+  }
+}
+
+// ── XpressBees: make unshipped orders visible to the Sales Channel ─────────
+//
+// Named "push" to match the NimbusPost button beside it, but XpressBees does
+// not accept a push -- it PULLS our WooCommerce feed every few minutes. So
+// this makes orders visible in that feed and says "queued", never "pushed".
+// Promising a push here would be a lie the operator only finds out about
+// later, looking at a panel that never filled.
+//
+// Most orders need nothing: everything inside the feed window is collected on
+// its own, which is how 133 orders reached the panel on 17 Sep with nobody
+// pressing anything. The button earns its place on the OLDER backlog, which is
+// invisible to XpressBees no matter how long you wait.
+let xbPanelPushActive = false;
+async function pushAllToXpressbeesPanel(btn) {
+  if (xbPanelPushActive) {
+    alert('An XpressBees queue run is already in progress. Please wait for it to finish.');
+    return;
+  }
+  if (!confirm(
+    'Make all unshipped orders visible to the XpressBees panel?\n\n' +
+    'No courier is chosen and NO AWB is generated. XpressBees pulls the feed every few minutes, ' +
+    'then you assign couriers in its panel as usual.\n\n' +
+    'Recent orders are already collected automatically \u2014 this also queues the older ones that ' +
+    'the feed window leaves out.'
+  )) return;
+
+  const orig = btn ? btn.innerHTML : '';
+  const allButtons = [...document.querySelectorAll('[onclick="pushAllToXpressbeesPanel(this)"]')];
+  xbPanelPushActive = true;
+  allButtons.forEach(b => { b.disabled = true; });
+  if (btn) btn.innerHTML = '<span class="spinner"></span>Queueing\u2026';
+
+  try {
+    const res = await fetch('/.netlify/functions/admin-xpressbees-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ all_unshipped: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+    const s = data.summary || {};
+    let message =
+      'XpressBees queue updated:\n\n' +
+      '\u2705 Newly queued (older orders): ' + (s.queued || 0) + '\n' +
+      '\u23ed Already visible to XpressBees: ' + (s.already_queued || 0);
+    if (s.refused) message += '\n\u26d4 Not shippable, skipped: ' + s.refused;
+    if (s.blocked) {
+      message += '\n\u274c Blocked: ' + s.blocked +
+        '\n\nThese are older than the feed window and the queue column does not exist yet. ' +
+        'Run ' + data.migration_needed + ' in Supabase, then press this again.';
+    }
+    message += '\n\nXpressBees pulls every few minutes \u2014 open XpressBees \u2192 Orders shortly to assign couriers.';
+    alert(message);
+  } catch (err) {
+    alert('XpressBees queue run stopped:\n\n' + err.message);
+  } finally {
+    xbPanelPushActive = false;
+    allButtons.forEach(b => { b.disabled = false; });
     if (btn) btn.innerHTML = orig;
   }
 }

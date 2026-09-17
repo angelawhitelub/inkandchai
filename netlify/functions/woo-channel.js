@@ -311,18 +311,34 @@ async function toWooOrder(order) {
 
 async function loadOrders(supabase) {
   const since = process.env.WOO_FEED_SINCE || DEFAULT_SINCE;
-  const { data, error } = await supabase
+
+  // OLDEST FIRST. XpressBees's importer takes one page and does not follow
+  // X-WP-TotalPages: the first sync pulled exactly 100 of 157 and stopped.
+  // A shipping queue should drain oldest-first anyway, so the orders that
+  // have waited longest are the ones that make it into that single page.
+  const base = () => supabase
     .from('orders')
     .select('*')
     .or('source.is.null,source.neq.paperbound')
     .in('status', UNSHIPPED_STATUSES)
-    .gte('created_at', since)
-    // OLDEST FIRST. XpressBees's importer takes one page and does not follow
-    // X-WP-TotalPages: the first sync pulled exactly 100 of 157 and stopped.
-    // A shipping queue should drain oldest-first anyway, so the orders that
-    // have waited longest are the ones that make it into that single page.
     .order('created_at', { ascending: true })
     .limit(500);
+
+  // Two ways in: recent enough, OR an operator pressed "push to XpressBees" on
+  // it from the admin panel. The date bound is a deliberate choice (only the
+  // last few days ship automatically); the stamp is the deliberate exception,
+  // for clearing an older backlog without moving the bound for everything.
+  let { data, error } = await base().or(`created_at.gte.${since},xpressbees_feed_at.not.is.null`);
+
+  // The stamp column is new. Referencing a column that does not exist fails the
+  // WHOLE query, and this query is what XpressBees pulls -- breaking it stops
+  // every shipment. So on that specific failure, fall back to the date bound
+  // alone: the feed keeps working, minus the manual exception.
+  if (error && /xpressbees_feed_at/.test(error.message || '')) {
+    console.warn('[woo-channel] orders.xpressbees_feed_at missing — run sql/orders_xpressbees_feed_at.sql; feed is date-bounded only');
+    ({ data, error } = await base().gte('created_at', since));
+  }
+
   if (error) throw new Error(`orders query failed: ${error.message}`);
   // Belt and braces: the status filter above already excludes these, but the
   // cost of one more test is nothing against shipping an unpaid order.
