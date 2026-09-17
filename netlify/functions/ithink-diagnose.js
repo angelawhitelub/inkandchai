@@ -60,6 +60,11 @@ function describeSecret(name) {
     length: String(raw).length,
     has_surrounding_whitespace: String(raw) !== trimmed,
     looks_like_32_hex: /^[0-9a-f]{32}$/i.test(trimmed),
+    // Connecting a store can regenerate the keys, leaving the Worker holding
+    // a stale pair that still looks perfectly well-formed. First and last four
+    // characters are enough to compare against the panel by eye while leaving
+    // 24 hex characters -- 96 bits -- undisclosed.
+    fingerprint: trimmed.length >= 12 ? `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}` : 'too short to fingerprint',
     // A key pasted with its label still attached is a common copy-button miss.
     contains_spaces_inside: /\s/.test(trimmed),
   };
@@ -166,6 +171,7 @@ exports.handler = async (event) => {
     checked_at: new Date().toISOString(),
     secrets,
     pincode_checked: pincode,
+    store_id_hint: process.env.ITHINK_STORE_ID || 'not set (optional on order/add.json)',
     live_host: liveHost,
     key_orientation_that_worked: worked ? worked.orientation : null,
     hosts_serving_the_api: apiHosts,
