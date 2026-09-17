@@ -22,7 +22,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { sanitizeForCourier } = require('./utils/nimbuspost-import');
+const { sanitizeForCourier, sanitizeAddressText } = require('./utils/nimbuspost-import');
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { requireAdmin } = require('./utils/admin-auth');
 const { isReplacementOrder } = require('./utils/replacement-order');
@@ -123,8 +123,9 @@ async function buildOrder(order) {
       cod_charges: 0,
       discount: 0,
       consignee: {
-        name: sanitizeForCourier(order.customer_name || '') || 'Customer',
-        address: sanitizeForCourier(tidy(a.address) || tidy(a.city) || '').slice(0, 200),
+        // A book-title sanitiser here shipped customers as 'Hindi Book'.
+        name: sanitizeAddressText(order.customer_name || '', 60) || 'Customer',
+        address: sanitizeAddressText(tidy(a.address) || tidy(a.city) || '', 200),
         address_2: '',
         city: tidy(a.city).slice(0, 40),
         state: tidy(a.state).slice(0, 40),

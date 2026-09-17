@@ -37,6 +37,30 @@ function sanitizeForCourier(rawTitle) {
   return ascii.slice(0, 150);
 }
 
+/**
+ * ASCII-normalise a PERSON'S NAME or an ADDRESS LINE.
+ *
+ * sanitizeForCourier() above is a BOOK TITLE sanitiser. When normalisation
+ * leaves fewer than three characters it substitutes "Hindi Book", which is the
+ * right answer for a pure-Devanagari title and a catastrophic one for a
+ * consignee name or a delivery address: sanitizeForCourier('X') returns the
+ * literal string "Hindi Book", so a customer named in Devanagari, or living at
+ * a terse address, was handed to the courier as "Hindi Book".
+ *
+ * This applies the same normalisation and returns '' when nothing survives,
+ * leaving the caller to decide what an empty field means -- which for an
+ * address is "refuse the order", not "invent one".
+ */
+function sanitizeAddressText(raw, max = 200) {
+  return String(raw || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
 function splitName(value) {
   const tokens = String(value || '').trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return { first: 'Customer', last: 'Customer' };
@@ -197,4 +221,4 @@ async function pushOrderToNimbusPost(order, { apiKey, reverse, orderNumber } = {
   return data;
 }
 
-module.exports = { pushOrderToNimbusPost, buildPayload, toFormData, sanitizeForCourier };
+module.exports = { pushOrderToNimbusPost, buildPayload, toFormData, sanitizeForCourier, sanitizeAddressText,};

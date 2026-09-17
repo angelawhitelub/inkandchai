@@ -21,7 +21,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { sanitizeForCourier } = require('./utils/nimbuspost-import');
+const { sanitizeForCourier, sanitizeAddressText } = require('./utils/nimbuspost-import');
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { requireAdmin } = require('./utils/admin-auth');
 const { isReplacementOrder } = require('./utils/replacement-order');
@@ -156,7 +156,7 @@ async function buildShipment(order) {
     }];
   }
 
-  const name = sanitizeForCourier(order.customer_name || '') || 'Customer';
+  const name = sanitizeAddressText(order.customer_name || '', 60) || 'Customer';
   const email = order.customer_email || '';
   // "Maharashtra -" comes back when the pincode was appended with a dash.
   const tidy = (v) => String(v || '').replace(/[\s\-\u2013,]+$/, '').trim();
@@ -168,9 +168,9 @@ async function buildShipment(order) {
   // back rather than padding with filler -- it is both longer AND more
   // deliverable. If it is still too short the address is genuinely unusable
   // and the order is reported instead of being sent to crash on their side.
-  let line1 = sanitizeForCourier(tidy(a.address) || '');
+  let line1 = sanitizeAddressText(tidy(a.address) || '');
   if (line1.length < 10) {
-    line1 = sanitizeForCourier([tidy(a.address), tidy(a.city), tidy(a.state)]
+    line1 = sanitizeAddressText([tidy(a.address), tidy(a.city), tidy(a.state)]
       .filter(Boolean).join(', '));
   }
   if (line1.length < 10) {

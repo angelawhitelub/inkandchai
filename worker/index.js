@@ -461,6 +461,13 @@ export default {
     if (url.pathname === '/custom-feed.xml') {
       return runHandler('custom-products-feed', request, env, ctx);
     }
+    // inkandchai.in answers as a WooCommerce store on /wp-json so the
+    // XpressBees Sales Channel importer can pull unshipped orders into the
+    // panel unfulfilled. Their shipping API has no import: both of its create
+    // endpoints generate an AWB. See netlify/functions/woo-channel.js.
+    if (url.pathname === '/wp-json' || url.pathname.startsWith('/wp-json/')) {
+      return runHandler('woo-channel', request, env, ctx);
+    }
     const bulk = url.pathname.match(/^\/custom-feed-bulk\/([^/]+)\/?$/);
     if (bulk) {
       return runHandler('custom-products-feed-bulk', withQuery(request, { page: bulk[1] }), env, ctx);
