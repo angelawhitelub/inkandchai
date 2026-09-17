@@ -315,7 +315,11 @@ async function loadOrders(supabase) {
     .or('source.is.null,source.neq.paperbound')
     .in('status', UNSHIPPED_STATUSES)
     .gte('created_at', since)
-    .order('created_at', { ascending: false })
+    // OLDEST FIRST. XpressBees's importer takes one page and does not follow
+    // X-WP-TotalPages: the first sync pulled exactly 100 of 157 and stopped.
+    // A shipping queue should drain oldest-first anyway, so the orders that
+    // have waited longest are the ones that make it into that single page.
+    .order('created_at', { ascending: true })
     .limit(500);
   if (error) throw new Error(`orders query failed: ${error.message}`);
   // Belt and braces: the status filter above already excludes these, but the
@@ -427,7 +431,10 @@ exports.handler = async (event) => {
   }
 
   const q = event.queryStringParameters || {};
-  const perPage = Math.min(100, Math.max(1, parseInt(q.per_page || '20', 10) || 20));
+  // WooCommerce caps per_page at 100; this one does not, because the importer
+  // only ever reads one page and a cap is what truncated the first sync. A
+  // client asking for more now gets more, and one asking for 100 is unaffected.
+  const perPage = Math.min(250, Math.max(1, parseInt(q.per_page || '100', 10) || 100));
   const page = Math.max(1, parseInt(q.page || '1', 10) || 1);
 
   // `status` may be a single value, a comma list, or "any".

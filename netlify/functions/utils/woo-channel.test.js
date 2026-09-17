@@ -226,3 +226,12 @@ test('a PhonePe-pending order is never in the feed', () => {
   assert.equal(isPaymentPending('partial_cod_pending'), false);
   assert.equal(isPaymentPending('paid'), false);
 });
+
+test('the feed defaults to a page big enough for a full sync', () => {
+  // The first live sync pulled exactly 100 of 157 orders and never asked for
+  // page 2, so a 20-order default and a 100-order cap both silently truncate.
+  const src = require('node:fs').readFileSync(require.resolve('../woo-channel'), 'utf8');
+  assert.match(src, /parseInt\(q\.per_page \|\| '100'/, 'default page must not be 20');
+  assert.match(src, /Math\.min\(250,/, 'cap must exceed one window of orders');
+  assert.match(src, /ascending: true/, 'oldest orders must win the single page');
+});
