@@ -169,7 +169,9 @@ test('products carry a tax rate, without which iThink crashes on a null float', 
   const { shipment } = await buildShipment(base({ amount_paise: 49900, status: 'paid', razorpay_payment_id: 'p' }));
   for (const p of shipment.products) {
     assert.equal(p.product_tax_rate, '0');
-    assert.ok('product_hsn_code' in p);
+    // Must not be empty: iThink coerces '' to null and crashes casting it.
+    assert.ok(p.product_hsn_code && p.product_hsn_code.length > 0, 'hsn must be non-empty');
+    assert.equal(p.product_hsn_code, '4901');
   }
 });
 

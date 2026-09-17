@@ -27,7 +27,16 @@ const { requireAdmin } = require('./utils/admin-auth');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { classifyShipmentMoney, parseCartItems } = require('./utils/shipment-money');
 
-const ITHINK_SYNC_URL = 'https://my.ithinklogistics.com/api_v3/order/sync.json';
+const ITHINK_SYNC_URL    = 'https://my.ithinklogistics.com/api_v3/order/sync.json';
+const ITHINK_DETAILS_URL = 'https://my.ithinklogistics.com/api_v3/order/get_details.json';
+
+// 4901 is the Indian HSN code for printed books.
+//
+// This cannot be sent as an empty string. iThink's backend treats '' as falsy,
+// coerces it to null, and then dies casting null to string:
+// "Cannot assign null to property ...PlatformItlProductsDAO::$hsnCode of type
+// string". A real code is both required and correct.
+const HSN_PRINTED_BOOKS = process.env.ITHINK_HSN_CODE || '4901';
 
 // iThink accepts at most 25 shipments per sync call.
 const BATCH_SIZE = 25;
@@ -135,7 +144,7 @@ async function buildShipment(order) {
       // float and dies: "Cannot assign null to property ...$totalTax of type
       // float". Books are zero-rated, so 0 is also the correct answer.
       product_tax_rate: '0',
-      product_hsn_code: '',
+      product_hsn_code: HSN_PRINTED_BOOKS,
       product_discount: '0',
     }));
     productsResidualPaise = residual;
@@ -143,7 +152,7 @@ async function buildShipment(order) {
     products = [{
       product_name: 'Books', product_sku: '', product_quantity: '1',
       product_price: String(money.orderValueRs),
-      product_tax_rate: '0', product_hsn_code: '', product_discount: '0',
+      product_tax_rate: '0', product_hsn_code: HSN_PRINTED_BOOKS, product_discount: '0',
     }];
   }
 
@@ -310,6 +319,43 @@ exports.handler = async (event) => {
     prepaid_declared: built.filter(b => b._meta.payment_type === 'prepaid').reduce((t, b) => t + b._meta.declared, 0),
     multi_item: built.filter(b => b._meta.lines > 1).length,
   };
+
+  // Verify mode: read back what iThink actually holds for these orders. A run
+  // that crashed mid-write can leave a record that answers "Duplicate order
+  // found" on retry while holding no products and no collectable amount, so
+  // "it is in the panel" is not the same as "it is in the panel correctly".
+  if (body.verify) {
+    const checked = [];
+    for (const b of built.slice(0, Number(body.verify_limit) || 10)) {
+      try {
+        const res = await fetch(ITHINK_DETAILS_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: {
+            order_no: b._meta.order_id,
+            access_token: process.env.ITHINK_ACCESS_TOKEN,
+            secret_key: process.env.ITHINK_SECRET_KEY,
+          } }),
+        });
+        const data = await res.json().catch(() => null);
+        const rec = data?.data && typeof data.data === 'object' ? Object.values(data.data)[0] : null;
+        checked.push({
+          order_id: b._meta.order_id,
+          found: !!rec,
+          ithink_products: Array.isArray(rec?.products) ? rec.products.length : 0,
+          our_products: b._meta.lines,
+          ithink_awb: rec?.awb_no || null,
+          ithink_status: rec?.latest_courier_status || null,
+          ithink_pincode: rec?.customer_pincode || null,
+          our_pincode: b.shipment.pin,
+          our_collect: b._meta.collect,
+          raw: rec || (data?.html_message ?? null),
+        });
+      } catch (e) {
+        checked.push({ order_id: b._meta.order_id, error: String(e.message || e) });
+      }
+    }
+    return json(200, { verify: true, checked });
+  }
 
   if (body.dry_run) {
     return json(200, {
