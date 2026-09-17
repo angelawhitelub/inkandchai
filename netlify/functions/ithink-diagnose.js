@@ -34,7 +34,11 @@ const json = (statusCode, obj) => ({ statusCode, headers: CORS, body: JSON.strin
 
 // Both candidates from the docs. pre-alpha is their staging tier and needs
 // staging credentials, so it is deliberately not probed with live keys.
-const HOSTS = ['https://my.ithinklogistics.com', 'https://api.ithinklogistics.com'];
+const HOSTS = [
+  'https://my.ithinklogistics.com',
+  'https://api.ithinklogistics.com',
+  'https://pre-alpha.ithinklogistics.com',
+];
 
 // Sitaram Bazar. Only used as the default subject of a serviceability lookup.
 const DEFAULT_PINCODE = '110006';
@@ -59,6 +63,17 @@ function describeSecret(name) {
     // A key pasted with its label still attached is a common copy-button miss.
     contains_spaces_inside: /\s/.test(trimmed),
   };
+}
+
+/**
+ * iThink signals failure with status:"error" while STILL sending
+ * status_code:200 and HTTP 200. Reading the HTTP status, or status_code, or
+ * even the presence of a body, reports a rejected key as a working one --
+ * which this function did on its first run. Only status === 'success' counts.
+ */
+function isSuccess(probe) {
+  return !!probe && probe.parsed && probe.body
+    && probe.body.status === 'success' && probe.body.status !== 'error';
 }
 
 async function ithinkPost(host, path, payload) {
@@ -112,17 +127,29 @@ exports.handler = async (event) => {
   }
 
   const pincode = String((event.queryStringParameters || {}).pincode || DEFAULT_PINCODE).trim();
-  const auth = { access_token: accessToken, secret_key: secretKey };
+  const auth    = { access_token: accessToken, secret_key: secretKey };
+  const swapped = { access_token: secretKey,   secret_key: accessToken };
 
-  // Probe every candidate host so one run settles the docs' contradiction.
+  // Probe every host in both key orientations. "Invalid Access Token And
+  // Secret Key" is the same message whether the pair is wrong or merely the
+  // wrong way round, and the panel shows the two fields adjacently, so a
+  // swap is the single likeliest cause and worth ruling out in one run.
   const pincodeProbes = [];
   for (const host of HOSTS) {
-    pincodeProbes.push(await ithinkPost(host, 'pincode/check.json', { pincode, ...auth }));
+    for (const orientation of ['as-set', 'swapped']) {
+      const keys = orientation === 'as-set' ? auth : swapped;
+      const probe = await ithinkPost(host, 'pincode/check.json', { pincode, ...keys });
+      pincodeProbes.push({ orientation, ...probe });
+    }
   }
 
-  const worked = pincodeProbes.find((p) => p.parsed && p.http_status === 200
-    && (p.body?.status === 'success' || p.body?.status_code === 200));
+  const worked = pincodeProbes.find(isSuccess);
   const liveHost = worked ? new URL(worked.url).origin : null;
+  // A host that answers with a real API error is serving the API; a host that
+  // says "Invalid Request" is not. Worth separating from "keys are bad".
+  const apiHosts = [...new Set(pincodeProbes
+    .filter((p) => p.parsed && /Invalid Access Token|success/i.test(JSON.stringify(p.body || '')))
+    .map((p) => new URL(p.url).origin))];
 
   // warehouse/get.json documents a warehouse_id but we do not have one yet;
   // omitting it is the only way to ask "what warehouses exist?". If iThink
@@ -140,6 +167,14 @@ exports.handler = async (event) => {
     secrets,
     pincode_checked: pincode,
     live_host: liveHost,
+    key_orientation_that_worked: worked ? worked.orientation : null,
+    hosts_serving_the_api: apiHosts,
+    diagnosis: worked
+      ? `Credentials accepted at ${liveHost} with keys ${worked.orientation}.`
+      : 'Credentials REJECTED in every host/orientation combination. The keys are '
+        + 'well-formed but iThink does not recognise the pair. Ask the account '
+        + 'manager to confirm API access is enabled for this account and that '
+        + 'these are live (not staging) keys.',
     // The point of the pincode call is not the pincode — it is proof that the
     // credentials authenticate. A courier list means both keys are good.
     credentials_valid: !!worked,
