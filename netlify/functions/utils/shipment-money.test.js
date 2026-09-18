@@ -195,3 +195,36 @@ test('a shipment is never sent with an address iThink would refuse', async () =>
     else assert.ok(threw, `"${addr}" neither built nor reported`);
   }
 });
+
+// ── The order-number suffix ────────────────────────────────────────────────
+//
+// The panel still holds records for orders that have since gone out on another
+// courier, so a fresh push is indistinguishable from the stale ones. A suffix
+// marks the new batch on sight — and because the number differs, it lands as a
+// new record instead of bouncing off iThink's duplicate check.
+
+test('the suffix changes the number sent to iThink and nothing else', async () => {
+  const { shipment, _meta } = await buildShipment(base({ amount_paise: 49900 }), '-c');
+  assert.equal(shipment.order, 'IC-20260916-TEST-c', 'iThink must receive the suffixed number');
+  // Everything we stamp, skip on and report must stay keyed on the real order,
+  // or the push would mark the wrong row and the report would name an order
+  // that does not exist.
+  assert.equal(_meta.order_id, 'IC-20260916-TEST');
+  assert.equal(_meta.db_id, 'uuid-1');
+  assert.equal(_meta.pushed_as, 'IC-20260916-TEST-c');
+});
+
+test('no suffix leaves the number exactly as it was', async () => {
+  const { shipment, _meta } = await buildShipment(base({ amount_paise: 49900 }));
+  assert.equal(shipment.order, 'IC-20260916-TEST');
+  assert.equal(_meta.pushed_as, 'IC-20260916-TEST');
+});
+
+test('the suffix is appended, never substituted into, the order number', async () => {
+  // A replacement id already carries hyphenated segments; the suffix must not
+  // disturb them or the AWB report cannot be matched back by stripping it.
+  const { shipment } = await buildShipment(
+    base({ razorpay_order_id: 'IC-R-CW-20260917-NQRA7', amount_paise: 49900 }), '-c');
+  assert.equal(shipment.order, 'IC-R-CW-20260917-NQRA7-c');
+  assert.equal(shipment.order.replace(/-c$/, ''), 'IC-R-CW-20260917-NQRA7');
+});

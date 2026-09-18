@@ -18,6 +18,17 @@
  *                          it all_unshipped reaches back to the oldest open
  *                          order, which for a daily run is almost never wanted.
  *       { since: "2026-09-16" }  explicit cutoff, overrides days
+ *       { suffix: "-c" }   appended to the order number SENT TO ITHINK only.
+ *                          The panel already holds records for orders that
+ *                          have since gone out on another courier, and a fresh
+ *                          push is indistinguishable from those. A suffix
+ *                          marks this batch on sight, and because the number
+ *                          differs it also lands as a new record instead of
+ *                          bouncing off iThink's duplicate check. Our own
+ *                          order id is untouched everywhere else — so an AWB
+ *                          report for a suffixed batch comes back carrying
+ *                          the suffix and must have it stripped before it is
+ *                          matched to an order.
  *       { dry_run: true }   builds and returns the payloads without sending
  *       { force: true }     re-push orders already stamped ithink_pushed_at
  * Header: X-Admin-Key / X-Admin-Token
@@ -97,8 +108,11 @@ function istMidnightDaysAgo(days) {
  * duplicate-order-number problem that the bulk CSV could not resolve does not
  * exist on this endpoint.
  */
-async function buildShipment(order) {
+async function buildShipment(order, suffix = '') {
   const orderId = order.razorpay_order_id || order.id;
+  // What iThink is told this shipment is called. Kept apart from orderId so
+  // everything we record, stamp and report stays keyed on the real order.
+  const pushedAs = `${orderId}${suffix}`;
 
   // np-normalize returns { address, city, state, pincode } -- NOT addr1/addr2
   // -- and enrichAddress is ASYNC (it fills city/state from the pincode). Both
@@ -201,7 +215,7 @@ async function buildShipment(order) {
 
   return {
     _meta: {
-      order_id: orderId, db_id: order.id,
+      order_id: orderId, db_id: order.id, pushed_as: pushedAs,
       payment_type: money.shipmentPaymentType,
       declared: money.orderValueRs,
       collect: money.collectableAmount,
@@ -211,7 +225,7 @@ async function buildShipment(order) {
       residual_paise: productsResidualPaise,
     },
     shipment: {
-      order: String(orderId),
+      order: String(pushedAs),
       sub_order: '',
       order_date: ithinkDateTime(order.created_at),
       total_amount: String(money.orderValueRs),
@@ -329,12 +343,28 @@ exports.handler = async (event) => {
   if (error) return json(500, { error: error.message });
   if (!orders?.length) return json(404, { error: 'No orders matched' });
 
+  // Short and boring on purpose: it becomes part of the order number iThink
+  // prints on the label and echoes back in its reports.
+  const suffix = String(body.suffix || '');
+  if (suffix && !/^[A-Za-z0-9_-]{1,8}$/.test(suffix)) {
+    return json(400, { error: `suffix must be 1-8 characters of A-Z, 0-9, - or _ (got ${JSON.stringify(suffix)})` });
+  }
+
   const built = [], skipped = [], failed = [];
+  const rePushed = [];
   for (const order of orders) {
     const orderId = order.razorpay_order_id || order.id;
     if (order.tracking_id) { skipped.push({ order_id: orderId, reason: `already has AWB ${order.tracking_id}` }); continue; }
-    if (order.ithink_pushed_at && !body.force) { skipped.push({ order_id: orderId, reason: 'already pushed to iThink' }); continue; }
-    try { built.push(await buildShipment(order)); }
+    // A suffixed push is deliberately a DIFFERENT record at iThink, so the
+    // "already pushed" stamp does not describe it and must not block it. The
+    // orders it would have skipped are still named in the response, because
+    // silently re-pushing is how the panel filled up with duplicates before.
+    if (order.ithink_pushed_at && !body.force && !suffix) {
+      skipped.push({ order_id: orderId, reason: 'already pushed to iThink' });
+      continue;
+    }
+    if (order.ithink_pushed_at && suffix) rePushed.push(orderId);
+    try { built.push(await buildShipment(order, suffix)); }
     catch (err) { failed.push({ order_id: orderId, error: String(err.message || err) }); }
   }
 
@@ -358,7 +388,7 @@ exports.handler = async (event) => {
         const res = await fetch(ITHINK_DETAILS_URL, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ data: {
-            order_no: b._meta.order_id,
+            order_no: b._meta.pushed_as,
             access_token: process.env.ITHINK_ACCESS_TOKEN,
             secret_key: process.env.ITHINK_SECRET_KEY,
           } }),
@@ -392,7 +422,8 @@ exports.handler = async (event) => {
 
   if (body.dry_run) {
     return json(200, {
-      dry_run: true, endpoint: ITHINK_SYNC_URL, window, totals,
+      dry_run: true, endpoint: ITHINK_SYNC_URL, window, suffix, totals,
+      previously_pushed_unsuffixed: rePushed,
       skipped, failed,
       orders: built.map(b => b._meta),
       sample_payload: built[0]?.shipment || null,
@@ -412,7 +443,7 @@ exports.handler = async (event) => {
         const ok = /success/i.test(String(r.status || ''));
         const orderId = chunk[k]._meta.order_id;
         if (ok) {
-          pushed.push({ order_id: orderId, remark: r.remark || '' });
+          pushed.push({ order_id: orderId, pushed_as: chunk[k]._meta.pushed_as, remark: r.remark || '' });
           try {
             await supabase.from('orders')
               .update({ ithink_pushed_at: new Date().toISOString() })
@@ -441,7 +472,7 @@ exports.handler = async (event) => {
           const one = await syncBatch([c.shipment]);
           const r = (one?.data && typeof one.data === 'object' ? Object.values(one.data)[0] : null) || {};
           if (/success/i.test(String(r.status || ''))) {
-            pushed.push({ order_id: c._meta.order_id, remark: r.remark || '' });
+            pushed.push({ order_id: c._meta.order_id, pushed_as: c._meta.pushed_as, remark: r.remark || '' });
             try {
               await supabase.from('orders')
                 .update({ ithink_pushed_at: new Date().toISOString() })
@@ -461,7 +492,8 @@ exports.handler = async (event) => {
     }
   }
 
-  return json(200, { endpoint: ITHINK_SYNC_URL, window, totals, pushed, skipped, failed });
+  return json(200, { endpoint: ITHINK_SYNC_URL, window, suffix, totals,
+                     previously_pushed_unsuffixed: rePushed, pushed, skipped, failed });
 };
 
 module.exports.buildShipment   = buildShipment;
