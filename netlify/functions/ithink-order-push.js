@@ -13,6 +13,11 @@
  *   api_v3/order/sync.json  imports the order and stops   <-- this file
  *
  * Body: { order_ids: ["IC-...", ...] }   or   { all_unshipped: true }
+ *       { days: 4 }        with all_unshipped: only orders placed in the last
+ *                          4 calendar days, counted from midnight IST. Without
+ *                          it all_unshipped reaches back to the oldest open
+ *                          order, which for a daily run is almost never wanted.
+ *       { since: "2026-09-16" }  explicit cutoff, overrides days
  *       { dry_run: true }   builds and returns the payloads without sending
  *       { force: true }     re-push orders already stamped ithink_pushed_at
  * Header: X-Admin-Key / X-Admin-Token
@@ -68,6 +73,22 @@ function ithinkDateTime(iso) {
   const p2 = (v) => String(v).padStart(2, '0');
   return `${p2(d.getDate())}-${p2(d.getMonth() + 1)}-${d.getFullYear()} `
        + `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+}
+
+/**
+ * Midnight IST, `days` calendar days back inclusive of today: days=1 is today
+ * only, days=4 is today plus the three before it.
+ *
+ * The orders table stores created_at in UTC but the business day is Indian, so
+ * a naive UTC midnight would cut the previous evening's orders — between 18:30
+ * and 24:00 IST an order is already "tomorrow" in UTC.
+ */
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+function istMidnightDaysAgo(days) {
+  const n = Math.max(1, Math.floor(Number(days) || 1));
+  const istNow = new Date(Date.now() + IST_OFFSET_MS);
+  const istMidnight = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate());
+  return new Date(istMidnight - IST_OFFSET_MS - (n - 1) * 86400000).toISOString();
 }
 
 /**
@@ -290,8 +311,14 @@ exports.handler = async (event) => {
 
   // paperbound is a separate storefront with its own fulfilment; never push it.
   let query = supabase.from('orders').select('*').or('source.is.null,source.neq.paperbound');
+  let window = null;
   if (body.all_unshipped) {
     query = query.in('status', UNSHIPPED_STATUSES).order('created_at', { ascending: false }).limit(500);
+    if (body.since || body.days) {
+      window = body.since ? new Date(body.since).toISOString() : istMidnightDaysAgo(body.days);
+      if (Number.isNaN(Date.parse(window))) return json(400, { error: `Unparseable since: ${body.since}` });
+      query = query.gte('created_at', window);
+    }
   } else if (Array.isArray(body.order_ids) && body.order_ids.length) {
     query = query.in('razorpay_order_id', body.order_ids);
   } else {
@@ -336,7 +363,9 @@ exports.handler = async (event) => {
             secret_key: process.env.ITHINK_SECRET_KEY,
           } }),
         });
-        const data = await res.json().catch(() => null);
+        const text = await res.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch { /* keep the text for the report */ }
         const rec = data?.data && typeof data.data === 'object' ? Object.values(data.data)[0] : null;
         checked.push({
           order_id: b._meta.order_id,
@@ -348,7 +377,11 @@ exports.handler = async (event) => {
           ithink_pincode: rec?.customer_pincode || null,
           our_pincode: b.shipment.pin,
           our_collect: b._meta.collect,
+          // Keep the untouched reply. A get_details that answers "not found"
+          // for an order sync.json just accepted means the PROBE is wrong, not
+          // the record — and collapsing that to null hides which it is.
           raw: rec || (data?.html_message ?? null),
+          reply: text.slice(0, 400),
         });
       } catch (e) {
         checked.push({ order_id: b._meta.order_id, error: String(e.message || e) });
@@ -359,7 +392,7 @@ exports.handler = async (event) => {
 
   if (body.dry_run) {
     return json(200, {
-      dry_run: true, endpoint: ITHINK_SYNC_URL, totals,
+      dry_run: true, endpoint: ITHINK_SYNC_URL, window, totals,
       skipped, failed,
       orders: built.map(b => b._meta),
       sample_payload: built[0]?.shipment || null,
@@ -428,7 +461,7 @@ exports.handler = async (event) => {
     }
   }
 
-  return json(200, { endpoint: ITHINK_SYNC_URL, totals, pushed, skipped, failed });
+  return json(200, { endpoint: ITHINK_SYNC_URL, window, totals, pushed, skipped, failed });
 };
 
 module.exports.buildShipment   = buildShipment;
