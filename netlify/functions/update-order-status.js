@@ -134,9 +134,14 @@ exports.handler = async (event) => {
     // Then, if shipped, try to attach tracking info — tolerate missing columns
     // gracefully so this works even before SQL_MIGRATIONS.md has been run.
     if (status === 'shipped' && tracking_id) {
+      // previousOrder, NOT order: `order` is declared in the sibling block
+      // below and does not exist here, so this threw "order is not defined" and
+      // took the whole request down with it — after the status had already been
+      // written. previousOrder is fetched above and is guaranteed non-null by
+      // the 404 check.
       trackingUrl = buildTrackingUrl({
         courier: courier_name, awb: tracking_id,
-        orderNumber: order.razorpay_order_id || order.id,
+        orderNumber: previousOrder.razorpay_order_id || previousOrder.id,
       });
       const trackingPayload = {
         tracking_id,
