@@ -164,6 +164,7 @@ exports.handler = async (event) => {
     const results    = [];
     let updated      = 0;
     let emailsSent   = 0;
+    let whatsappSent = 0;
     let cancellationsNotified = 0;
     let reshipsNotified = 0;
     let skippedNoOp = 0;
@@ -230,6 +231,7 @@ exports.handler = async (event) => {
       }
 
       let emailSent = false;
+      let whatsapp = null;
       if (status === 'shipped' && saved && !isNoOpReship) {
         if (saved.customer_email) {
           await sendEmail({
@@ -248,11 +250,22 @@ exports.handler = async (event) => {
           // Same approved template either way — Meta template text can't be
           // varied at send time, and it already reads as "here is your tracking",
           // which is true for a re-booking too. The email carries the explanation.
-          await sendWhatsApp({
-            to: saved.customer_phone,
-            template: 'order_shipped',
-            params: [firstName, saved.courier_name || 'Courier', saved.tracking_id || '—', trkUrl],
-          });
+          // sendWhatsApp RETURNS its failure rather than throwing, so awaiting
+          // it and dropping the result reports a send that never happened. That
+          // is how order_shipped went out with the wrong parameter count for
+          // weeks without anyone seeing a single error.
+          try {
+            const wa = await sendWhatsApp({
+              to: saved.customer_phone,
+              template: 'order_shipped',
+              params: [firstName, saved.courier_name || 'Courier', saved.tracking_id || '—', trkUrl],
+            });
+            whatsapp = { ok: !!wa?.ok, error: wa?.ok ? undefined : (wa?.error || 'send failed') };
+          } catch (e) {
+            whatsapp = { ok: false, error: String(e.message || e) };
+          }
+          if (whatsapp.ok) whatsappSent++;
+          else console.warn(`[bulk-update-orders] WhatsApp failed for ${orderId}: ${whatsapp.error}`);
         }
         if (isReship) reshipsNotified++;
       } else if (isNoOpReship) {
@@ -272,6 +285,7 @@ exports.handler = async (event) => {
         success: true,
         order_id: orderId,
         email_sent: emailSent,
+        whatsapp: whatsapp,
         reship: isReship,
         skipped_duplicate: isNoOpReship,
         previous_awb: isReship ? prevAwb : null,
@@ -288,6 +302,8 @@ exports.handler = async (event) => {
         updated,
         failed: results.filter(r => !r.success).length,
         emails_sent: emailsSent,
+        whatsapp_sent: whatsappSent,
+        whatsapp_failed: results.filter(r => r.whatsapp && !r.whatsapp.ok).length,
         cancellations_notified: cancellationsNotified,
         reships_notified: reshipsNotified,
         skipped_duplicate_awb: skippedNoOp,
