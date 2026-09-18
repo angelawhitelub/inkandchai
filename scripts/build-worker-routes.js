@@ -32,11 +32,43 @@ const CRON_ALIASES = {
 
 const toml = fs.readFileSync(path.join(ROOT, 'jobs.toml'), 'utf8');
 const schedules = {};
+// Parse a comment-stripped copy. A comment between the header and its schedule
+// line used to break this match silently: the job vanished from the schedule
+// table, kept its HTTP route, and simply never ran again. Stripping first also
+// stops the format examples in this file's own header comment from parsing as
+// real jobs.
+const bare = toml.replace(/^[^\S\n]*#[^\n]*$/gm, '');
 const re = /\[functions\."([^"]+)"\]\s*\n\s*schedule\s*=\s*"([^"]+)"/g;
 let m;
-while ((m = re.exec(toml))) {
+while ((m = re.exec(bare))) {
   const raw = m[2].trim();
   schedules[m[1]] = CRON_ALIASES[raw] || raw;
+}
+
+// Every block that declares a schedule must have been parsed into one. A job
+// that declares a cron and does not reach the table keeps working as an HTTP
+// route, so nothing breaks loudly — it just stops running.
+const declared = [...bare.matchAll(/\[functions\."([^"]+)"\]([\s\S]*?)(?=\n\[|$)/g)]
+  .filter(([, , bodyText]) => /^[^\S\n]*schedule\s*=/m.test(bodyText))
+  .map(([, jobName]) => jobName);
+const dropped = declared.filter((n) => !(n in schedules));
+if (dropped.length) {
+  console.error(`[worker-routes] declared a schedule but did not parse into the table: ${dropped.join(', ')}`);
+  process.exit(1);
+}
+
+// A cron the Worker is never asked to run is a job that silently does not
+// exist. phonepe-payment-sweep-scheduled sat on "*/10 * * * *" — absent from
+// [triggers] — and never ran once. Nothing failed, so nothing said so.
+const wranglerToml = fs.readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
+const cronsBlock = /crons\s*=\s*\[([\s\S]*?)\]/.exec(wranglerToml);
+const triggers = new Set(cronsBlock ? [...cronsBlock[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]) : []);
+const unfired = Object.entries(schedules).filter(([, cron]) => !triggers.has(cron));
+if (unfired.length) {
+  for (const [name, cron] of unfired) {
+    console.error(`[worker-routes] "${name}" is scheduled on "${cron}", which is not in wrangler.toml [triggers] — it will never run`);
+  }
+  process.exit(1);
 }
 
 const missing = Object.keys(schedules).filter((n) => !handlers.includes(n));

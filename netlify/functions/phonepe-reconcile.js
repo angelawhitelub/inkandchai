@@ -126,6 +126,48 @@ async function reconcileOne(supabase, host, token, orderId) {
   const data = await res.json().catch(() => ({}));
   const state = (data.state || '').toUpperCase();
 
+  // A lookup that FAILED is not an order that is pending. Without this, a 404
+  // (the checkout was abandoned before PhonePe ever created the order), a 401
+  // (bad credentials) and a real PENDING all arrive at the same fallthrough and
+  // report "still_pending" — so the order looks like it is waiting on the
+  // customer when in fact nothing was ever asked. The sweep already treats 404
+  // as "no PhonePe order"; this endpoint did not.
+  if (!res.ok || !state) {
+    const detail = String(data.message || data.code || data.error || '').slice(0, 200);
+
+    // PhonePe positively denies knowing this order. The row is inserted BEFORE
+    // the pay request is made, so a customer who closes the tab at the payment
+    // screen leaves a pending_phonepe order PhonePe never heard of. Nothing can
+    // ever move it: the sweep only carries orders forward when money landed,
+    // and auto-cancel-stale-cod only covers cod_pending. They accumulate.
+    //
+    // Narrow on purpose. A 401 or a 5xx also arrives here, and cancelling live
+    // orders because our own credentials broke would be far worse than leaving
+    // them — so only an explicit 404 or "no entry found" counts.
+    const noEntry = res.status === 404 || (res.status === 400 && /no entry found/i.test(detail));
+    if (!noEntry) return { orderId, result: 'lookup_failed', http: res.status, detail };
+
+    // A brand-new order looks identical for the seconds between the insert and
+    // the pay request, so age is what separates abandoned from in-progress.
+    const ageHours = (Date.now() - new Date(existing.created_at).getTime()) / 3_600_000;
+    const minAge = Number(process.env.PHONEPE_ABANDON_HOURS || 6);
+    if (!(ageHours >= minAge)) {
+      return { orderId, result: 'awaiting_phonepe', http: res.status, age_hours: Math.round(ageHours * 10) / 10 };
+    }
+
+    // Cancel SILENTLY. The FAILED branch below tells the customer they were not
+    // charged, which makes sense when they watched a payment fail. Here they
+    // never completed a checkout at all, so a mail days later announcing the
+    // cancellation of an order they never placed only creates doubt about
+    // whether they were charged.
+    await supabase.from('orders')
+      .update({ status: 'cancelled' })
+      .eq('razorpay_order_id', orderId)
+      .in('status', ['pending', 'pending_phonepe', 'pending_partial_phonepe']);
+    return { orderId, result: 'cancelled_abandoned', http: res.status, detail,
+             age_hours: Math.round(ageHours * 10) / 10 };
+  }
+
   if (state === 'COMPLETED') {
     const txnId = data.paymentDetails?.[0]?.transactionId
                || data.paymentDetails?.[0]?.paymentId

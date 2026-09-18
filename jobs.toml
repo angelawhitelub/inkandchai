@@ -54,6 +54,11 @@
 [functions."auto-cancel-stale-cod"]
   schedule = "15 * * * *"
 
+# Close PhonePe checkouts that never completed. Shares the hourly trigger above;
+# normally finds nothing, which is the point.
+[functions."phonepe-reconcile-scheduled"]
+  schedule = "15 * * * *"
+
 # Backfill AWBs assigned inside NimbusPost every 15 minutes. This short
 # scheduled function securely enqueues the separate background worker.
 # Every 3 minutes, not 15. NimbusPost's webhook cannot tell us about a NEW AWB
@@ -107,8 +112,14 @@
 # 41 orders hit this before anything looked; phonepe-reconcile only ever
 # re-checked status='pending_phonepe', which those orders had already left.
 # Every 10 minutes, so a dropped payment is found long before the shipment moves.
+# "*/5", not "*/10": the worker only runs crons listed in wrangler.toml's
+# [triggers], and */10 is not one of them — so this money safety net was
+# registered against a trigger that never fires and had never run. wrangler.toml
+# has named */5 as this job's trigger all along. Note the comment sits ABOVE the
+# header: anything between the header and its schedule line drops the job from
+# the table entirely.
 [functions."phonepe-payment-sweep-scheduled"]
-  schedule = "*/10 * * * *"
+  schedule = "*/5 * * * *"
 
 # 5-min follow-up confirmation ping for WhatsApp book-order requests placed via
 # the bot. Runs every 2 minutes; each row is pinged exactly once thanks to the

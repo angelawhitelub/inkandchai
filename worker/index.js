@@ -152,6 +152,7 @@ const ENABLED_JOBS = new Set([
   'phonepe-payment-sweep-scheduled',
   'replay-lost-orders',
   'auto-cancel-stale-cod',
+  'phonepe-reconcile-scheduled',
   'phonepe-retry-refunds-scheduled',
   'phonepe-reconcile-refunds-scheduled',
   'auto-push-replacements-scheduled',
