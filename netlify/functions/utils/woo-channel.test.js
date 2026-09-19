@@ -491,3 +491,14 @@ test('a non-empty batch still requires the consumer pair', async () => {
     assert.equal(feedRole(broken), 'withhold');
   });
 }
+
+{
+  const { prepaidGateway } = require('../woo-channel').__test;
+  test('prepaid gateway defaults to prepaid/Prepaid and honours an override', () => {
+    assert.deepEqual(prepaidGateway(undefined), { slug: 'prepaid', title: PREPAID_TITLE });
+    assert.deepEqual(prepaidGateway(''), { slug: 'prepaid', title: PREPAID_TITLE });
+    assert.deepEqual(prepaidGateway('razorpay|Razorpay'), { slug: 'razorpay', title: 'Razorpay' });
+    assert.deepEqual(prepaidGateway(' razorpay | Credit Card/UPI '), { slug: 'razorpay', title: 'Credit Card/UPI' });
+    assert.deepEqual(prepaidGateway('razorpay'), { slug: 'razorpay', title: 'razorpay' }, 'a slug alone is its own title');
+  });
+}

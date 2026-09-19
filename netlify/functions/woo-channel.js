@@ -95,6 +95,20 @@ const isPaymentPending = (status) => /^pending(_|$)/i.test(String(status || ''))
 const COD_TITLE = 'Cash on delivery';
 const PREPAID_TITLE = 'Prepaid';
 
+/**
+ * What a prepaid order calls its gateway. Default: slug "prepaid", title
+ * PREPAID_TITLE. WOO_PREPAID_GATEWAY="razorpay|Razorpay" makes prepaid orders
+ * wear a real WooCommerce gateway instead, for the case where the importer
+ * classifies by something other than the title box it was given: a probe
+ * order with the mapping set to exactly "Prepaid" still imported as COD.
+ * Whatever title this returns has to be in the panel's Prepaid Payment
+ * Titles box, or every prepaid order falls to COD again.
+ */
+function prepaidGateway(raw = process.env.WOO_PREPAID_GATEWAY) {
+  const [slug, title] = String(raw || '').split('|').map((x) => x.trim());
+  return { slug: slug || 'prepaid', title: title || (slug ? slug : PREPAID_TITLE) };
+}
+
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   // Never let this response into a shared cache: it is per-key and full of PII.
@@ -291,8 +305,8 @@ async function toWooOrder(order) {
     cart_tax: '0.00',
     total_tax: '0.00',
     total: money2(total),
-    payment_method: money.isCOD ? 'cod' : 'prepaid',
-    payment_method_title: money.isCOD ? COD_TITLE : PREPAID_TITLE,
+    payment_method: money.isCOD ? 'cod' : prepaidGateway().slug,
+    payment_method_title: money.isCOD ? COD_TITLE : prepaidGateway().title,
     transaction_id: money.isCOD ? '' : String(order.razorpay_payment_id || ''),
     date_paid: money.isCOD ? null : wooDate(order.created_at),
     date_paid_gmt: money.isCOD ? null : wooDate(order.created_at),
@@ -565,7 +579,7 @@ async function applyPushBack(supabase, wooId, payload) {
 
 // Exported so the money mapping can be tested without a live store: the
 // partial-COD total is the one number here that can overcharge a customer.
-exports.__test = { toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
+exports.__test = { toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, prepaidGateway, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
 
 exports.handler = async (event) => {
   const path = String(event.path || '').replace(/\/+$/, '') || '/wp-json';
