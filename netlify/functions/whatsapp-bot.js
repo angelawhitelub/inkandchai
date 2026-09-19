@@ -1364,14 +1364,25 @@ async function recordWrongCodUpi(phone, args = {}) {
       return { ok: false, error: 'bad-upi', message: upi.reason || 'Could you send your UPI ID? It looks like name@bank — for example 9876543210@ybl.' };
     }
 
-    await supabase.from('orders')
-      .update({ wrong_cod_upi: upi.value, wrong_cod_upi_at: new Date().toISOString() })
-      .eq('id', target.id);
-
+    // The email is what actually gets the customer paid, so it goes first and
+    // nothing is allowed to come before it. Recording the handle on the order is
+    // bookkeeping: if those columns are missing the write fails the whole query
+    // (Supabase rejects an unknown column), and that must not cost the payout.
     const to = process.env.WRONG_COD_UPI_EMAIL || process.env.STORE_OWNER_EMAIL || 'asfkhn234@gmail.com';
     const mail = ownerUpiEmail({ order: target, amountPaise: verdict.amountPaise, upi: upi.value });
     const sent = await sendEmail({ to, subject: mail.subject, html: mail.html }).catch((e) => ({ ok: false, error: e.message }));
-    if (!sent?.ok) console.error(`[WRONG-COD-UPI] ${displayId} owner email FAILED for ${upi.value} — ₹${rs}`);
+    if (!sent?.ok) console.error(`[WRONG-COD-UPI] ${displayId} owner email FAILED for ${upi.value} — ₹${rs} — PAY THIS BY HAND`);
+
+    const { error: saveErr } = await supabase.from('orders')
+      .update({ wrong_cod_upi: upi.value, wrong_cod_upi_at: new Date().toISOString() })
+      .eq('id', target.id);
+    if (saveErr) console.error(`[WRONG-COD-UPI] ${displayId} could not record ${upi.value}: ${saveErr.message}`);
+
+    // Only an unreachable owner is worth troubling the customer about — a failed
+    // bookkeeping write is ours to fix, not theirs to worry about.
+    if (!sent?.ok) {
+      return { ok: false, error: 'owner-email-failed', upi_id: upi.value, message: `I have your UPI ID (${upi.value}) and I am passing it to our team for the ₹${rs} — I could not get the confirmation through just now, so I am flagging it to them directly. Your money is safe. [ESCALATE]` };
+    }
     console.log(`[WRONG-COD-UPI] ${displayId} upi=${upi.value} amount=${verdict.amountPaise}p emailed=${!!sent?.ok}`);
 
     return {
