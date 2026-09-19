@@ -54,9 +54,13 @@
  * what payment_method says, so a prepaid order routed through here becomes a
  * bill on the customer's doorstep. Prepaid and replacement orders are booked
  * through xpressbees-ship.js or ithink-order-push.js instead, which state the
- * payment mode outright. See isCollectOnDelivery for the measurement.
+ * payment mode outright. See isCollectOnDelivery for the measurement, and
+ * feedAdmits for WOO_FEED_PREPAID, the one way a prepaid order gets back in:
+ * by name, to prove the panel's payment mapping on a single order, or "all"
+ * once it is proven.
  *
  * Env: WOO_CONSUMER_KEY, WOO_CONSUMER_SECRET, WOO_FEED_SINCE (ISO date),
+ *      WOO_FEED_PREPAID (unset = COD only; "all"; or order ids, comma-separated),
  *      SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
 
@@ -327,7 +331,18 @@ async function toWooOrder(order) {
  * shipments imported through this channel came out Payment Mode = COD, while
  * 41 orders uploaded the same week through the panel's own bulk template came
  * out 41/41 PREPAID. Same account, same week, same panel. The panel can do
- * prepaid; this importer cannot, and it does not read the field.
+ * prepaid; this importer did not, on this channel as it is configured.
+ *
+ * As configured is the open question. The channel's own form has a "Map
+ * Payment Status" section -- "Map your payment gateway titles against COD and
+ * Prepaid payments" -- with a COD Payment Titles box and a Prepaid Payment
+ * Titles box that wants its own separator picked. That is where the importer
+ * is told which titles mean prepaid; a title it cannot match falls to COD. The
+ * feed sends PREPAID_TITLE for every prepaid order, and what the panel's box
+ * holds has never been read back. Until one prepaid order is PROVEN to import
+ * as PREPAID -- by a panel export, not by anything on this side of it -- the
+ * feed stays COD-only. WOO_FEED_PREPAID (see feedAdmits) runs that proof on a
+ * single named order without opening the gate for the rest.
  *
  * 66 of those 133 should never have been collectable -- 54 already paid in
  * full and 12 FREE REPLACEMENTS -- Rs 25,042 the courier was going to ask for
@@ -354,6 +369,50 @@ function isCollectOnDelivery(order) {
     console.warn(`[woo-channel] withholding ${order.razorpay_order_id || order.id}: ${e.message}`);
     return false;
   }
+}
+
+/**
+ * What the feed may do with an order: 'cod' is carried, 'prepaid' is carried
+ * only when WOO_FEED_PREPAID admits it, 'withhold' is never carried. The
+ * three-way answer matters because isCollectOnDelivery folds "not COD" and
+ * "could not classify" into one false, and only the first of those is ever
+ * safe to admit.
+ */
+function feedRole(order) {
+  try {
+    return classifyShipmentMoney(order, isReplacementOrder(order)).isCOD ? 'cod' : 'prepaid';
+  } catch (e) {
+    console.warn(`[woo-channel] withholding ${order.razorpay_order_id || order.id}: ${e.message}`);
+    return 'withhold';
+  }
+}
+
+/**
+ * WOO_FEED_PREPAID, parsed.
+ *
+ *   unset, "", "0", "off"      COD only. The default, and the state until the
+ *                              panel's payment mapping is proven.
+ *   "all" (or "1", "on")       prepaid and replacement orders carried too.
+ *   "IC-20260918-ABCDE, ..."   only the named orders carried despite being
+ *                              prepaid. This is the probe: one order in the
+ *                              feed, one sync, one row in the panel to read
+ *                              Payment Mode from BEFORE anyone books it. It
+ *                              costs nothing (channel orders land unbooked)
+ *                              and risks one order, not thirty-nine.
+ */
+function prepaidPolicy(raw = process.env.WOO_FEED_PREPAID) {
+  const text = String(raw || '').trim();
+  if (!text || /^(0|off|false|no|none)$/i.test(text)) return { raw: text, all: false, ids: new Set() };
+  if (/^(all|1|on|true|yes)$/i.test(text)) return { raw: text, all: true, ids: new Set() };
+  return { raw: text, all: false, ids: new Set(text.split(/[\s,]+/).filter(Boolean).map((id) => id.toUpperCase())) };
+}
+
+function feedAdmits(order, policy = prepaidPolicy()) {
+  const role = feedRole(order);
+  if (role === 'cod') return true;
+  if (role !== 'prepaid') return false;
+  if (policy.all) return true;
+  return policy.ids.has(String(order.razorpay_order_id || '').toUpperCase());
 }
 
 async function loadOrders(supabase) {
@@ -506,7 +565,7 @@ async function applyPushBack(supabase, wooId, payload) {
 
 // Exported so the money mapping can be tested without a live store: the
 // partial-COD total is the one number here that can overcharge a customer.
-exports.__test = { toWooOrder, isCollectOnDelivery, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
+exports.__test = { toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
 
 exports.handler = async (event) => {
   const path = String(event.path || '').replace(/\/+$/, '') || '/wp-json';
@@ -686,16 +745,18 @@ exports.handler = async (event) => {
   const built = [];
   const skipped = [];
   const withheld = [];
+  const policy = prepaidPolicy();
   for (const row of rows) {
-    // COD-only channel. See isCollectOnDelivery.
-    if (!isCollectOnDelivery(row)) { withheld.push(row.razorpay_order_id || row.id); continue; }
+    // COD-only channel, unless WOO_FEED_PREPAID admits this order. See feedAdmits.
+    if (!feedAdmits(row, policy)) { withheld.push(row.razorpay_order_id || row.id); continue; }
     try { built.push(await toWooOrder(row)); }
     catch (e) { skipped.push({ order: row.razorpay_order_id || row.id, reason: e.message }); }
   }
   if (skipped.length) console.warn('[woo-channel] skipped', JSON.stringify(skipped));
   if (withheld.length) {
-    console.warn(`[woo-channel] withheld ${withheld.length} prepaid/replacement orders from the COD-only `
-      + `channel; book these through xpressbees-ship or ithink-order-push: ${withheld.join(', ')}`);
+    console.warn(`[woo-channel] withheld ${withheld.length} prepaid/replacement orders `
+      + `(WOO_FEED_PREPAID=${policy.raw || 'unset'}); book these through xpressbees-ship or `
+      + `ithink-order-push, or name one in WOO_FEED_PREPAID to test the importer on it: ${withheld.join(', ')}`);
   }
 
   if (singleOrder) {

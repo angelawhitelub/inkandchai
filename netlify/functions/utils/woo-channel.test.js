@@ -445,3 +445,49 @@ test('a non-empty batch still requires the consumer pair', async () => {
     );
   });
 }
+
+// WOO_FEED_PREPAID is the only way a prepaid order gets back into the feed, and
+// it exists to prove the panel's payment mapping on ONE order before trusting
+// it with all of them. The gate must stay shut by default, open exactly as far
+// as it is told, and never admit an order the classifier refused to price.
+{
+  const { feedRole, feedAdmits, prepaidPolicy } = require('../woo-channel').__test;
+  const paid = base({ razorpay_order_id: 'IC-20260918-PR0BE', amount_paise: 29900, status: 'paid', razorpay_payment_id: 'OM26091800000000000000W' });
+  const cod = base({ razorpay_order_id: 'IC-20260918-C0D00', amount_paise: 38800, status: 'cod_pending', razorpay_payment_id: null });
+  const broken = base({ razorpay_order_id: 'IC-20260918-BR0KE', amount_paise: 30500, status: 'partial_cod_pending', advance_paid_paise: 3400, cart_items: [] });
+
+  test('unset WOO_FEED_PREPAID means COD only', () => {
+    const policy = prepaidPolicy(undefined);
+    assert.equal(feedAdmits(cod, policy), true);
+    assert.equal(feedAdmits(paid, policy), false, 'the default must be the state the 66 wrong bookings forced');
+    for (const raw of ['0', 'off', 'no', ' ']) {
+      const p = prepaidPolicy(raw);
+      assert.equal(p.all, false, raw);
+      assert.equal(p.ids.size, 0, raw);
+    }
+  });
+
+  test('"all" admits prepaid, still never the unclassifiable', () => {
+    const policy = prepaidPolicy('all');
+    assert.equal(feedAdmits(paid, policy), true);
+    assert.equal(feedAdmits(cod, policy), true);
+    assert.equal(feedRole(broken), 'withhold', 'a partial-COD order with no balance metadata cannot be priced');
+    assert.equal(feedAdmits(broken, policy), false, '"all" opens the prepaid gate, not the fail-closed one');
+  });
+
+  test('a named order is admitted alone, whatever its case or separator', () => {
+    for (const raw of ['IC-20260918-PR0BE', 'ic-20260918-pr0be', 'IC-20260918-XXXXX, IC-20260918-PR0BE', 'IC-20260918-PR0BE IC-20260918-YYYYY']) {
+      const policy = prepaidPolicy(raw);
+      assert.equal(policy.all, false, raw);
+      assert.equal(feedAdmits(paid, policy), true, raw);
+    }
+    const other = base({ ...paid, razorpay_order_id: 'IC-20260918-OTHER' });
+    assert.equal(feedAdmits(other, prepaidPolicy('IC-20260918-PR0BE')), false, 'the probe is one order, not a category');
+  });
+
+  test('feedRole distinguishes not-COD from could-not-classify', () => {
+    assert.equal(feedRole(cod), 'cod');
+    assert.equal(feedRole(paid), 'prepaid');
+    assert.equal(feedRole(broken), 'withhold');
+  });
+}
