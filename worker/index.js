@@ -145,6 +145,7 @@ function toResponse(result) {
 const ENABLED_JOBS = new Set([
   // sync / reporting
   'nimbuspost-awb-sync-scheduled',
+  'xpressbees-status-sync-scheduled',
   'auto-recover-carts',
   'daily-unshipped-report',
   'deploy-drift-check',

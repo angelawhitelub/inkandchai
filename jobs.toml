@@ -423,3 +423,11 @@
 # native syntax which has reliable glob matching across subfolders. The TOML
 # [[headers]] rules below ONLY had path-matching bugs (e.g. for="/index.html"
 # missed /product/index.html etc.) and are intentionally omitted here.
+
+# XpressBees reports nothing on its own: no webhook (their panel still says
+# "available soon") and the channel push-back applies only the booked
+# transition. Without this poll, XpressBees orders freeze at `shipped` -- 219
+# of 235 had, by 20 Sep -- so returns (gated on delivered_at) and review
+# requests never fire for any of them. Every 15 minutes, 120 orders a run.
+[functions."xpressbees-status-sync-scheduled"]
+  schedule = "*/15 * * * *"
