@@ -174,6 +174,27 @@ async function ndrCreate(actions) {
   return rows;
 }
 
+/**
+ * The panel's own order list. Undocumented -- it is not in apidoc.pdf,
+ * apidoc_v1.1.5.pdf or the Postman collection -- and read-only: POST, PUT,
+ * PATCH and DELETE all answer "Unknown method".
+ *
+ * It is the only way to read back what the PANEL thinks a shipment is, as
+ * opposed to what we asked for. Nothing else exposes payment mode: the
+ * tracking endpoint returns scans and status, never the collectable. That
+ * gap is why 133 orders imported COD -- 66 of them already paid -- and
+ * nothing noticed for two days.
+ */
+async function panelOrders({ page = 1, perPage = 100 } = {}) {
+  const qs = new URLSearchParams({ page: String(page), per_page: String(Math.min(250, Number(perPage) || 100)) });
+  const out = await withAuth((token) => xbFetch(`/orders?${qs}`, { token }));
+  if (!out.data) throw new Error(`XpressBees order list failed: ${out.raw}`);
+  if (out.data.status === false) throw new Error(`XpressBees order list failed: ${out.data.message || out.raw}`);
+  const d = out.data.data;
+  const rows = Array.isArray(d) ? d : (Array.isArray(d?.data) ? d.data : []);
+  return { rows, meta: Array.isArray(d) ? null : (d && typeof d === 'object' ? { ...d, data: undefined } : null) };
+}
+
 async function track(awb) {
   const out = await withAuth((token) => xbFetch(`/shipments2/track/${encodeURIComponent(awb)}`, { token }));
   if (!out.data || out.data.status !== true) throw new Error(`XpressBees tracking failed for ${awb}: ${out.data?.message || out.raw}`);
@@ -208,7 +229,7 @@ function pickupFromEnv() {
 
 module.exports = {
   XB_BASE, login, withAuth, xbFetch,
-  couriers, serviceability, book, track, cancel, manifest, pickupFromEnv,
+  couriers, serviceability, book, track, cancel, manifest, pickupFromEnv, panelOrders,
   STATUS_CODES, mapStatusCode, ndrList, ndrCreate,
   _resetTokenForTests: () => { _token = { value: null, at: 0 }; },
 };
