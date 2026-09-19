@@ -251,4 +251,75 @@ async function performWrongCodRefund({ supabase, order, source = 'unknown', deps
   return { ok: true, verdict: 'refunded', amountPaise: verdict.amountPaise, ref };
 }
 
-module.exports = { assess, botContext, refundsEnabled, ten, ownerUpiEmail, performWrongCodRefund, REFUND_BLOCKING_STATUSES };
+/** Auto-refund on delivery. Same switch shape as the bot's, its own env var. */
+function autoRefundEnabled(raw = process.env.WRONG_COD_AUTO_REFUND) {
+  const text = String(raw == null ? '' : raw).trim();
+  if (!text) return true;
+  return !/^(0|off|false|no)$/i.test(text);
+}
+
+function refundedEmail({ order, amountPaise, ref }) {
+  const id = order.razorpay_order_id || order.id || '';
+  const first = String(order.customer_name || 'there').split(' ')[0];
+  const amt = (Number(amountPaise || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return {
+    subject: `We've sent back the ₹${amt} you were wrongly charged (${id})`,
+    html: `<div style="font-family:Georgia,serif;color:#3a2f25;max-width:540px;margin:0 auto;padding:24px;background:#faf7f2;">
+      <h2 style="font-weight:400;color:#8a6a1f;margin:0 0 14px;">Your ₹${esc(amt)} is on its way back</h2>
+      <p style="line-height:1.8;">Hi ${esc(first)},</p>
+      <p style="line-height:1.8;">Your order <strong>${esc(id)}</strong> has been delivered — thank you for taking it.</p>
+      <p style="line-height:1.8;">You had already paid for it online, but a mistake in our shipping system printed it as
+        Cash on Delivery, so you were asked for the money a second time at the door. That was our error, and you should
+        not have been put through it.</p>
+      <p style="line-height:1.8;">We have refunded <strong>₹${esc(amt)}</strong> to the payment method you originally paid
+        with. It normally reflects within 2–3 business days.${ref ? ` Your reference is
+        <span style="font-family:Menlo,Consolas,monospace;">${esc(ref)}</span>.` : ''}</p>
+      <p style="line-height:1.8;">You did not have to ask us for this, and you do not need to do anything now. If it has
+        not appeared after 3 business days, reply to this email or message us on WhatsApp and we will chase it.</p>
+      <p style="line-height:1.8;">Sorry again, and I hope the book makes up for some of it.</p>
+      <p style="color:#7a6a58;font-size:12px;margin-top:26px;">Ink &amp; Chai · inkandchai.in</p>
+    </div>`,
+  };
+}
+
+/**
+ * The refund nobody had to ask for.
+ *
+ * Called the moment an affected order is marked delivered, by whichever of the
+ * webhook or the poller saw it first. A customer who has just been made to pay
+ * twice should not also have to notice, work out who to tell, and chase us --
+ * by the time they have done that we have already lost them, which is exactly
+ * how the two RTOs happened.
+ *
+ * Best effort by construction: it re-reads the row, it never throws, and it can
+ * do nothing at all without disturbing the status write that called it. Being
+ * missed here costs a delay, because the button and the bot both still work.
+ */
+async function autoRefundOnDelivery({ supabase, orderId, source = 'delivery', deps = {} }) {
+  const { sendEmail = require('./email').sendEmail } = deps;
+  try {
+    if (!autoRefundEnabled()) return { skipped: 'disabled' };
+    const { data: order, error } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+    // A missing wrong_cod_* column fails this select outright; that is fine,
+    // it simply means the migration has not run and nobody is eligible yet.
+    if (error || !order) return { skipped: error ? `lookup: ${error.message}` : 'no-order' };
+    if (assess(order).verdict !== 'refundable') return { skipped: assess(order).verdict };
+
+    const res = await performWrongCodRefund({ supabase, order, source, deps });
+    if (!res.ok) return { skipped: res.verdict, error: res.error };
+
+    if (order.customer_email) {
+      const mail = refundedEmail({ order, amountPaise: res.amountPaise, ref: res.ref });
+      await sendEmail({ to: order.customer_email, subject: mail.subject, html: mail.html }).catch(() => {});
+    }
+    console.log(`[WRONG-COD-AUTO] ${order.razorpay_order_id || orderId} refunded ${res.amountPaise}p on delivery (${source})`);
+    return { ok: true, amountPaise: res.amountPaise, ref: res.ref };
+  } catch (e) {
+    // Never let a refund problem break a status write.
+    console.error('[WRONG-COD-AUTO]', e.message);
+    return { skipped: 'error', error: e.message };
+  }
+}
+
+module.exports = { assess, botContext, refundsEnabled, autoRefundEnabled, ten, ownerUpiEmail, refundedEmail, performWrongCodRefund, autoRefundOnDelivery, REFUND_BLOCKING_STATUSES };

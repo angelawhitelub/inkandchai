@@ -138,3 +138,105 @@ test('an order with no original payment is never refunded blind', async () => {
   assert.equal(res.verdict, 'no-payment-id');
   assert.equal(db.updates.length, 0);
 });
+
+// ── Auto-refund on delivery ──────────────────────────────────────────────────
+const { autoRefundOnDelivery, autoRefundEnabled, refundedEmail } = require('./wrong-cod-refund');
+
+function fakeDbWithRow(row, opts = {}) {
+  const db = fakeDb(opts);
+  const from = db.from.bind(db);
+  db.from = () => {
+    const base = from();
+    return {
+      ...base,
+      select() { return { eq() { return { async maybeSingle() { return { data: row, error: null }; } }; } }; },
+    };
+  };
+  return db;
+}
+
+function withEnv(value, fn) {
+  const had = process.env.WRONG_COD_AUTO_REFUND;
+  if (value === null) delete process.env.WRONG_COD_AUTO_REFUND;
+  else process.env.WRONG_COD_AUTO_REFUND = value;
+  try { return fn(); } finally {
+    if (had === undefined) delete process.env.WRONG_COD_AUTO_REFUND;
+    else process.env.WRONG_COD_AUTO_REFUND = had;
+  }
+}
+
+test('a delivered affected order is refunded without anyone asking, and the customer is told', async () => {
+  const row = { ...order, customer_email: 'a@b.com', customer_name: 'Sneha Malik' };
+  const db = fakeDbWithRow(row);
+  const mails = [];
+  const res = await autoRefundOnDelivery({
+    supabase: db, orderId: 'uuid-1', source: 'test',
+    deps: {
+      issueRazorpayRefund: async () => ({ id: 'rfnd_auto' }),
+      issuePhonePeRefund: async () => ({}),
+      notifyOwnerRefund: async () => ({}),
+      sendEmail: async (m) => { mails.push(m); return { ok: true }; },
+    },
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.ref, 'rfnd_auto');
+  assert.equal(mails.length, 1);
+  assert.equal(mails[0].to, 'a@b.com');
+  assert.match(mails[0].subject, /368\.20/);
+  assert.match(mails[0].html, /rfnd_auto/);
+});
+
+test('an undelivered order is left alone by the sweep', async () => {
+  const db = fakeDbWithRow({ ...order, status: 'shipped' });
+  let charged = false;
+  const res = await autoRefundOnDelivery({
+    supabase: db, orderId: 'uuid-1',
+    deps: { issueRazorpayRefund: async () => { charged = true; return { id: 'r' }; }, issuePhonePeRefund: async () => ({}), notifyOwnerRefund: async () => ({}), sendEmail: async () => ({ ok: true }) },
+  });
+  assert.equal(res.skipped, 'not-delivered');
+  assert.equal(charged, false);
+});
+
+test('a refund failure never breaks the status write that called it', async () => {
+  const db = fakeDbWithRow({ ...order, customer_email: 'a@b.com' });
+  const res = await autoRefundOnDelivery({
+    supabase: db, orderId: 'uuid-1',
+    deps: {
+      issueRazorpayRefund: async () => { throw new Error('gateway on fire'); },
+      issuePhonePeRefund: async () => ({}), notifyOwnerRefund: async () => ({}),
+      sendEmail: async () => { throw new Error('mail on fire too'); },
+    },
+  });
+  assert.equal(res.ok, undefined);
+  assert.equal(res.skipped, 'gateway-failed');
+});
+
+test('a customer with no email still gets the money, just no note', async () => {
+  const db = fakeDbWithRow({ ...order, customer_email: null });
+  const mails = [];
+  const res = await autoRefundOnDelivery({
+    supabase: db, orderId: 'uuid-1',
+    deps: { issueRazorpayRefund: async () => ({ id: 'r' }), issuePhonePeRefund: async () => ({}), notifyOwnerRefund: async () => ({}), sendEmail: async (m) => { mails.push(m); return { ok: true }; } },
+  });
+  assert.equal(res.ok, true);
+  assert.equal(mails.length, 0);
+});
+
+test('auto-refund can be switched off without touching the code', async () => {
+  assert.equal(autoRefundEnabled(undefined), true);
+  for (const off of ['0', 'off', 'no', 'FALSE']) assert.equal(autoRefundEnabled(off), false, off);
+  await withEnv('0', async () => {
+    const db = fakeDbWithRow(order);
+    const res = await autoRefundOnDelivery({ supabase: db, orderId: 'uuid-1', deps: { sendEmail: async () => ({ ok: true }) } });
+    assert.equal(res.skipped, 'disabled');
+  });
+});
+
+test('the refund email explains it was our mistake and asks nothing of them', () => {
+  const m = refundedEmail({ order: { ...order, customer_name: 'Sneha Malik' }, amountPaise: 36820, ref: 'rfnd_1' });
+  assert.match(m.html, /Hi Sneha,/);
+  assert.match(m.html, /that was our error|That was our error/);
+  assert.match(m.html, /you do not need to do anything/i);
+  assert.match(m.html, /368\.20/);
+  assert.doesNotMatch(m.html, /UPI ID|bank account/i);
+});

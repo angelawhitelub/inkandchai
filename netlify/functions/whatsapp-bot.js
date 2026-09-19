@@ -604,10 +604,58 @@ async function awaitingDetailsContext(from) {
   }
 }
 
+/**
+ * Recognise an affected customer from their phone number alone, on EVERY
+ * message, whatever they typed.
+ *
+ * The ordinary order lookup only fires when a message looks like an order
+ * query, and the people we owe money to do not open with "order status". They
+ * open with "kya hua isme", or "?", or a voice note, or by answering a question
+ * we asked three days ago. Attaching this unconditionally is the difference
+ * between the bot handing back ₹549 and the bot asking them for an order ID.
+ *
+ * Matching is by the phone on the order rather than a hardcoded list, so an
+ * order leaving the affected set — refunded, cancelled — drops out by itself
+ * and cannot be offered a refund by a stale copy of the list.
+ */
+async function wrongCodContext(from, skipIds = []) {
+  try {
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const ten = String(from).replace(/\D/g, '').slice(-10);
+    const { data, error } = await db
+      .from('orders')
+      .select('*')
+      .or(`customer_phone.eq.${ten},customer_phone.eq.91${ten},customer_phone.eq.+91${ten}`)
+      .not('wrong_cod_paise', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    if (error || !data || !data.length) return '';
+    const skip = new Set(skipIds.map((i) => String(i).toUpperCase()));
+    return (data || [])
+      .filter((o) => !skip.has(String(o.razorpay_order_id || '').toUpperCase()))
+      .map((o) => wrongCodBotContext(o, { phone: from }))
+      .filter(Boolean)
+      .join('\n');
+  } catch (e) {
+    // The columns may not exist yet, and an unknown column fails the whole
+    // query. No context is the old behaviour, not a broken conversation.
+    console.warn('[wrong-cod] context failed:', e.message);
+    return '';
+  }
+}
+
 async function buildOrderContext(from, userText) {
   const awaiting = await awaitingDetailsContext(from);
   if (awaiting) return awaiting;
 
+  // Whatever else this message is about, an affected customer is recognised.
+  const rest = await buildOrderContextBody(from, userText);
+  const named = [...String(rest).matchAll(/\bIC-[A-Z0-9-]+/gi)].map((m) => m[0]);
+  const wrongCod = await wrongCodContext(from, named);
+  return [wrongCod, rest].filter(Boolean).join('\n\n');
+}
+
+async function buildOrderContextBody(from, userText) {
   const orderId = extractOrderId(userText);
   if (orderId) {
     const order = await lookupOrder(orderId);

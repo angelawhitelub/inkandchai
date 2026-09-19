@@ -46,6 +46,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const xb = require('./utils/xpressbees');
 const { interpret, SYNCABLE, TERMINAL, RANK } = require('./utils/xpressbees-status');
+const { autoRefundOnDelivery } = require('./utils/wrong-cod-refund');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -178,8 +179,39 @@ exports.handler = async (event) => {
     recorded.push({ order: ref, status: o.status, courier_says: raw, attention: !!verdict.attention });
   }
 
+  // ── Pay back the wrong-COD double payments, without waiting to be asked ────
+  // A separate pass, not a hook on the transition above, because the order can
+  // reach `delivered` by three different routes: this poller, the webhook, or
+  // an admin marking it by hand. A hook would only catch the first, and an
+  // affected customer whose parcel the webhook happened to see would be the one
+  // left chasing us. Sweeping the whole eligible set catches all three.
+  //
+  // It is not done inside the webhook because that has a five-second budget and
+  // a gateway refund does not reliably fit in it — a timeout there counts
+  // toward the 100 consecutive failures that silently disable the webhook. A
+  // refund can wait fifteen minutes; the webhook cannot.
+  const refunds = { paid: [], skipped: 0 };
+  if (!dryRun) {
+    const { data: owed, error: owedErr } = await supabase
+      .from('orders')
+      .select('id, razorpay_order_id')
+      .eq('status', 'delivered')
+      .not('wrong_cod_paise', 'is', null)
+      .is('wrong_cod_refund_at', null)
+      .limit(25);
+    // A missing column here just means the migration has not run yet.
+    if (owedErr) warn.wrongCod = owedErr.message;
+    for (const o of owed || []) {
+      const r = await autoRefundOnDelivery({ supabase, orderId: o.id, source: 'status-sync' });
+      if (r.ok) refunds.paid.push({ order: o.razorpay_order_id, amount_rs: r.amountPaise / 100, reference: r.ref });
+      else refunds.skipped += 1;
+    }
+  }
+
   const to = (s) => changed.filter((c) => c.to === s).length;
   const out = {
+    wrong_cod_refunds: refunds.paid.length,
+    wrong_cod_refund_details: refunds.paid,
     dry_run: dryRun,
     notifications: notify ? 'on' : 'off (set XPRESSBEES_SYNC_NOTIFY=1 to enable)',
     scanned: (orders || []).length,
@@ -196,6 +228,7 @@ exports.handler = async (event) => {
     failures: failed,
   };
   if (warn.migration) out.warning = warn.migration;
+  if (warn.wrongCod) out.wrong_cod_warning = warn.wrongCod;
   console.log('[xpressbees-status-sync]', JSON.stringify({
     scanned: out.scanned, changed: out.changed, delivered: out.to_delivered,
     ofd: out.to_out_for_delivery, rto: out.to_rto, missing: out.awb_not_in_account, failed: out.failed,
