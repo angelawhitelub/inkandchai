@@ -51,13 +51,22 @@ function baseOrderNumber(n) {
   return String(n || '').trim().toUpperCase().replace(/-[A-Z0-9]{1,2}$/i, (m) => (/^-(P|C|D)$/i.test(m) ? '' : m));
 }
 
-/** What the panel says about money, normalised. Field names vary by endpoint. */
+/**
+ * What the panel says about money, normalised.
+ *
+ * GET /orders answers with `payment_method` and `order_amount` and carries no
+ * collectable field of its own: for a COD row the amount IS what the courier
+ * asks for at the door, which is exactly how the importer turned an order
+ * total into a bill. Other endpoints name these differently, so each is read
+ * under every spelling seen.
+ */
 function panelPayment(row) {
   const mode = String(row.payment_type ?? row.payment_mode ?? row.payment_method ?? '').toLowerCase();
-  const collectable = Number(
-    row.collectable_amount ?? row.cod_amount ?? row.collectable ?? row.cod_charges ?? 0,
-  ) || 0;
-  const isCOD = /cod|cash/.test(mode) || (!/prepaid|ppd/.test(mode) && collectable > 0);
+  const explicit = row.collectable_amount ?? row.cod_amount ?? row.collectable ?? row.cod_charges;
+  const isCOD = /cod|cash/.test(mode) || (!/prepaid|ppd/.test(mode) && Number(explicit || 0) > 0);
+  const collectable = explicit != null
+    ? (Number(explicit) || 0)
+    : (isCOD ? (Number(row.order_amount ?? row.total ?? 0) || 0) : 0);
   return { mode: mode || null, collectable, isCOD };
 }
 
@@ -82,7 +91,6 @@ exports.handler = async (event) => {
       meta = out.meta || meta;
       if (!out.rows.length) break;
       panel.push(...out.rows);
-      if (out.rows.length < 100) break;
     }
   } catch (e) {
     return json(502, { error: `could not read the XpressBees order list: ${e.message}` });

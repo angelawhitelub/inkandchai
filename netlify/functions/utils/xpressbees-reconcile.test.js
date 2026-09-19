@@ -17,6 +17,21 @@ test('panel payment is read whatever the field is called', () => {
   assert.deepEqual(panelPayment({ payment_method: 'Cash on Delivery', cod_charges: '305' }), { mode: 'cash on delivery', collectable: 305, isCOD: true });
 });
 
+test('a COD row with no collectable field collects its order_amount', () => {
+  // GET /orders carries no collectable of its own: for a COD row the order
+  // amount IS the doorstep bill. Reading it as zero would report every wrong
+  // COD booking as costing nothing.
+  assert.deepEqual(
+    panelPayment({ payment_method: 'cod', order_amount: '159' }),
+    { mode: 'cod', collectable: 159, isCOD: true },
+  );
+  assert.deepEqual(
+    panelPayment({ payment_method: 'prepaid', order_amount: '619' }),
+    { mode: 'prepaid', collectable: 0, isCOD: false },
+    'a prepaid row collects nothing however large the order',
+  );
+});
+
 test('an unlabelled row with money on it is treated as COD', () => {
   // Fail towards "the courier will collect", because that is the failure that
   // costs a customer money and must be surfaced, not assumed away.
