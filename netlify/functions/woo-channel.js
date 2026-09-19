@@ -47,17 +47,21 @@
  * excluded from the earlier push on purpose, and an unbounded feed would hand
  * every one of them to XpressBees on the first sync.
  *
- * COD ONLY
- * --------
- * The feed carries orders the courier must COLLECT money for, and nothing
- * else. XpressBees's importer stamps every channel order COD regardless of
- * what payment_method says, so a prepaid order routed through here becomes a
- * bill on the customer's doorstep. Prepaid and replacement orders are booked
- * through xpressbees-ship.js or ithink-order-push.js instead, which state the
- * payment mode outright. See isCollectOnDelivery for the measurement, and
- * feedAdmits for WOO_FEED_PREPAID, the one way a prepaid order gets back in:
- * by name, to prove the panel's payment mapping on a single order, or "all"
- * once it is proven.
+ * PAYMENT MODE
+ * ------------
+ * XpressBees's importer decides COD/prepaid by matching the order's payment
+ * title against the channel's "Map Payment Status" boxes, case-sensitively,
+ * after lowercasing ours. Anything unmatched is COD. With the prepaid box
+ * holding "Prepaid" (as this feed sends it) 133 orders imported COD, 66 of
+ * them already paid; with the box holding "Prepaid,prepaid,PREPAID" prepaid
+ * imports as prepaid. The box is the fix, and it lives in their panel, not
+ * here -- see PREPAID_TITLE for the four-probe measurement.
+ *
+ * WOO_FEED_PREPAID is the gate on our side: unset means COD only (the safe
+ * state whenever the panel mapping is in doubt), a list of order ids admits
+ * those alone (how the mapping gets proven, one order at a time, at no cost
+ * because channel orders land unbooked), "all" admits prepaid and
+ * replacement orders too. See feedAdmits.
  *
  * Env: WOO_CONSUMER_KEY, WOO_CONSUMER_SECRET, WOO_FEED_SINCE (ISO date),
  *      WOO_FEED_PREPAID (unset = COD only; "all"; or order ids, comma-separated),
@@ -89,9 +93,19 @@ const DEFAULT_SINCE = '2026-09-15';
 // alone, because those are matched by their own names in UNSHIPPED_STATUSES.
 const isPaymentPending = (status) => /^pending(_|$)/i.test(String(status || ''));
 
-// These two strings are what gets typed into the channel's "COD Payment
-// Titles" and "Prepaid Payment Titles" boxes. They must match exactly or
-// XpressBees books every order on the wrong payment mode.
+// What the feed calls the two payment methods, and what the channel's "Map
+// Payment Status" boxes must be able to match. The match is CASE-SENSITIVE on
+// their side against a lowercased value on ours: with the Prepaid Payment
+// Titles box holding exactly "Prepaid" -- the title as sent -- three probe
+// orders in a row imported as COD (19 Sep 2026: CR3TQ, PNH1R, 44FSK; the
+// third with slug AND title both "Prepaid"). With the box holding
+//   Prepaid,prepaid,PREPAID
+// the fourth (A56VK) imported as PREPAID, and the feed had not changed. So
+// the panel's prepaid box must contain the lowercase word "prepaid"; the
+// other two spellings are harmless insurance. The COD box holds
+// "Cash on delivery" and only ever needs to fall through, because COD is the
+// importer's default for anything it cannot match -- which is exactly how 133
+// orders, 66 of them already paid, all became collectable.
 const COD_TITLE = 'Cash on delivery';
 const PREPAID_TITLE = 'Prepaid';
 
@@ -347,16 +361,12 @@ async function toWooOrder(order) {
  * out 41/41 PREPAID. Same account, same week, same panel. The panel can do
  * prepaid; this importer did not, on this channel as it is configured.
  *
- * As configured is the open question. The channel's own form has a "Map
- * Payment Status" section -- "Map your payment gateway titles against COD and
- * Prepaid payments" -- with a COD Payment Titles box and a Prepaid Payment
- * Titles box that wants its own separator picked. That is where the importer
- * is told which titles mean prepaid; a title it cannot match falls to COD. The
- * feed sends PREPAID_TITLE for every prepaid order, and what the panel's box
- * holds has never been read back. Until one prepaid order is PROVEN to import
- * as PREPAID -- by a panel export, not by anything on this side of it -- the
- * feed stays COD-only. WOO_FEED_PREPAID (see feedAdmits) runs that proof on a
- * single named order without opening the gate for the rest.
+ * As configured turned out to be the whole story: the channel's "Map Payment
+ * Status" boxes are matched case-sensitively against a lowercased title, so
+ * "Prepaid" in the box never matched "Prepaid" in the feed. With the box
+ * holding "Prepaid,prepaid,PREPAID" prepaid imports as prepaid. See
+ * PREPAID_TITLE for the four probes that established it, and feedAdmits for
+ * WOO_FEED_PREPAID, which is how the feed carries prepaid orders again.
  *
  * 66 of those 133 should never have been collectable -- 54 already paid in
  * full and 12 FREE REPLACEMENTS -- Rs 25,042 the courier was going to ask for
@@ -579,6 +589,7 @@ async function applyPushBack(supabase, wooId, payload) {
 
 // Exported so the money mapping can be tested without a live store: the
 // partial-COD total is the one number here that can overcharge a customer.
+exports.feedAdmits = feedAdmits;
 exports.__test = { toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, prepaidGateway, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
 
 exports.handler = async (event) => {

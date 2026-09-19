@@ -35,8 +35,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { classifyShipmentMoney } = require('./utils/shipment-money');
-const { isReplacementOrder } = require('./utils/replacement-order');
+const { feedAdmits } = require('./woo-channel');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -70,17 +69,13 @@ async function loadCandidates(supabase, orderIds) {
   if (orderIds && orderIds.length) q = q.in('razorpay_order_id', orderIds);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  // COD only, matching woo-channel's own isCollectOnDelivery. The feed refuses
-  // to carry a prepaid or replacement order -- XpressBees's importer would
-  // stamp it COD and bill a customer who has already paid -- so this endpoint
-  // must not promise to queue one either. Book those through xpressbees-ship
-  // or ithink-order-push, which state the payment mode outright.
+  // The same gate the feed applies (woo-channel's feedAdmits, governed by
+  // WOO_FEED_PREPAID). Stamping an order the feed would then withhold is a
+  // promise this endpoint cannot keep, and "why is it not in the panel" is
+  // the question it exists to stop being asked.
   return (data || [])
     .filter((o) => !isPaymentPending(o.status))
-    .filter((o) => {
-      try { return classifyShipmentMoney(o, isReplacementOrder(o)).isCOD; }
-      catch { return false; }
-    });
+    .filter((o) => feedAdmits(o));
 }
 
 exports.handler = async (event) => {
@@ -135,8 +130,9 @@ exports.handler = async (event) => {
     if (!found.has(id)) {
       results.push({
         orderNumber: id, action: 'refused',
-        reason: 'not an unshipped COD order the feed will carry '
-              + '(prepaid and replacement orders must be booked through xpressbees-ship or ithink-order-push)',
+        reason: 'not an unshipped order the feed will carry '
+              + '(WOO_FEED_PREPAID decides whether prepaid and replacement orders are admitted; '
+              + 'otherwise book them through xpressbees-ship or ithink-order-push)',
       });
     }
   }
