@@ -14,6 +14,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { canEditAddress } = require('./utils/address-editable');
 const { resolveRefundRef, cleanRefundItems } = require('./utils/refund-notifications');
+const { assess: assessWrongCod } = require('./utils/wrong-cod-refund');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -36,6 +37,28 @@ function norm(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, '
  * none. `refund_pending` deliberately says "processing", never "issued": the
  * money has not left the gateway yet and may still fail.
  */
+/**
+ * The wrong-COD double payment, for the customer's own page.
+ *
+ * Only ever present on an order actually marked as affected, so an ordinary
+ * order never sees a word about it. The button is live only once the parcel is
+ * delivered: before that the customer has not paid twice, and offering a refund
+ * they cannot have would read as a trick.
+ */
+function wrongCodView(data) {
+  const v = assessWrongCod(data);
+  if (v.verdict === 'not-affected') return {};
+  return {
+    wrong_cod: {
+      amount: v.amountPaise / 100,
+      state: v.verdict,
+      can_refund: v.verdict === 'refundable',
+      refunded_at: data.wrong_cod_refund_at || null,
+      reference: data.wrong_cod_refund_ref && !/^failed /.test(data.wrong_cod_refund_ref) ? data.wrong_cod_refund_ref : null,
+    },
+  };
+}
+
 function refundView(data) {
   const status = String(data.status || '');
   const REFUND_STATUS = ['refunded', 'partially_refunded', 'refund_pending'];
@@ -152,6 +175,7 @@ exports.handler = async (event) => {
           tracking_id:     data.tracking_id,
           tracking_url:    data.tracking_url,
           ...refundView(data),
+          ...wrongCodView(data),
         },
       }),
     };

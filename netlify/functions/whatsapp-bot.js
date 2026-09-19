@@ -29,12 +29,9 @@ const {
   findAwaitingOrders, applyRecoveredDetails, isAwaitingDetails,
 } = require('./utils/order-detail-recovery');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
-const { assess: assessWrongCod, botContext: wrongCodBotContext, ownerUpiEmail } = require('./utils/wrong-cod-refund');
+const { assess: assessWrongCod, botContext: wrongCodBotContext, ownerUpiEmail, performWrongCodRefund } = require('./utils/wrong-cod-refund');
 const { normalizeUpiId } = require('./utils/upi-id');
 const { sendEmail } = require('./utils/email');
-const { issueRazorpayRefund } = require('./utils/razorpay-refund');
-const { issuePhonePeRefund } = require('./utils/phonepe-refund-core');
-const { notifyOwnerRefund } = require('./utils/refund-notifications');
 const {
   isOptOutKeyword, isOptInKeyword, isOptedOut,
   OPT_OUT_CONFIRMATION, OPT_IN_CONFIRMATION,
@@ -1239,71 +1236,23 @@ async function refundWrongCodViaBot(phone, args = {}) {
       return { ok: false, error: 'disabled', message: `I can see the ₹${rs} Cash-on-Delivery error on order ${displayId} and I am sorry about it. Our team is processing these refunds — yours is on the list and will go back to your original payment method. [ESCALATE]` };
     }
 
-    const pid = String(target.razorpay_payment_id || '');
-    if (!pid) {
+    const res = await performWrongCodRefund({ supabase, order: target, source: 'whatsapp-bot' });
+    if (res.verdict === 'no-payment-id') {
       return { ok: false, error: 'no-payment-id', message: `I can see the ₹${rs} Cash-on-Delivery error on order ${displayId}, but I cannot find the original online payment against it, so I do not want to guess. Our team will sort your refund out. [ESCALATE]` };
     }
-
-    // Claim it before spending any money. The conditional update is what stops a
-    // second message — or a second worker — issuing the same refund twice.
-    const claimedAt = new Date().toISOString();
-    const { data: claimed, error: claimErr } = await supabase
-      .from('orders')
-      .update({ wrong_cod_refund_at: claimedAt })
-      .eq('id', target.id)
-      .is('wrong_cod_refund_at', null)
-      .select('id')
-      .maybeSingle();
-    if (claimErr) throw claimErr;
-    if (!claimed) {
+    if (res.verdict === 'already-done') {
       return { ok: true, alreadyRefunded: true, order_id: displayId, message: `That refund of ₹${rs} on order ${displayId} is already being processed back to your original payment method. 💛` };
     }
-
-    const release = async (note) => {
-      await supabase.from('orders')
-        .update({ wrong_cod_refund_at: null, wrong_cod_refund_ref: String(note).slice(0, 200) })
-        .eq('id', target.id)
-        .catch(() => {});
-    };
-
-    let ref = '';
-    try {
-      if (pid.startsWith('pay_')) {
-        const refund = await issueRazorpayRefund(pid, amountPaise, {
-          notes: { reason: 'Wrong COD collected on a prepaid order', order_id: displayId },
-          supabase,
-        });
-        ref = refund.id;
-      } else {
-        const attempt = Math.max(0, Number(target.refund_attempts) || 0);
-        const res = await issuePhonePeRefund({ displayId, amountPaise, attempt });
-        if (!res.ok) throw new Error(res.error || 'PhonePe refund failed');
-        ref = res.merchantRefundId;
-      }
-    } catch (e) {
-      // Hand the claim back so the customer can be refunded on a retry, and make
-      // sure a human hears about it rather than the money quietly not moving.
-      await release(`failed ${claimedAt}: ${e.message}`);
-      console.error(`[WRONG-COD-REFUND] ${displayId} failed: ${e.message}`);
-      return { ok: false, error: e.message, message: `I am sorry — I could not put the ₹${rs} through just now. I have flagged it to our team and your refund will be issued to your original payment method. You do not need to chase it. [ESCALATE]` };
+    if (!res.ok) {
+      return { ok: false, error: res.error || res.verdict, message: `I am sorry — I could not put the ₹${rs} through just now. I have flagged it to our team and your refund will be issued to your original payment method. You do not need to chase it. [ESCALATE]` };
     }
-
-    // The order STAYS delivered. This refunds a duplicate payment, not the sale:
-    // the customer keeps the book, so flipping status to refunded would misstate
-    // both the order and our revenue.
-    await supabase.from('orders')
-      .update({ wrong_cod_refund_at: new Date().toISOString(), wrong_cod_refund_ref: ref })
-      .eq('id', target.id);
-    await notifyOwnerRefund(target, amountPaise, { provider: pid.startsWith('pay_') ? 'Razorpay' : 'PhonePe', reason: 'wrong COD collected on a prepaid order (refunded by the WhatsApp bot)', refundId: ref })
-      .catch(() => {});
-    console.log(`[WRONG-COD-REFUND] ${displayId} refunded ${amountPaise}p ref=${ref}`);
 
     return {
       ok: true,
       order_id: displayId,
       amount_rs: rs,
-      reference: ref,
-      message: `Done — I have refunded ₹${rs} for order ${displayId} back to the payment method you originally paid with (reference ${ref}). It normally reflects within 2–3 business days. I am genuinely sorry you were asked to pay twice — that was our error, not yours. 💛`,
+      reference: res.ref,
+      message: `Done — I have refunded ₹${rs} for order ${displayId} back to the payment method you originally paid with (reference ${res.ref}). It normally reflects within 2–3 business days. I am genuinely sorry you were asked to pay twice — that was our error, not yours. 💛`,
     };
   } catch (e) {
     console.error('refundWrongCodViaBot:', e.message);

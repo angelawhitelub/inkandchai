@@ -175,4 +175,80 @@ function ownerUpiEmail({ order, amountPaise, upi }) {
   return { subject, html, text };
 }
 
-module.exports = { assess, botContext, refundsEnabled, ten, ownerUpiEmail, REFUND_BLOCKING_STATUSES };
+/**
+ * Issue the refund. ONE implementation, shared by the WhatsApp bot and the
+ * button on the tracking page, because two code paths that both move money
+ * eventually disagree about when they may — and the disagreement is only ever
+ * found by paying someone twice or not at all.
+ *
+ * Callers must have established WHO is asking. This establishes what may happen.
+ *
+ * @returns {{ok:boolean, verdict:string, amountPaise:number, ref?:string, error?:string}}
+ */
+async function performWrongCodRefund({ supabase, order, source = 'unknown', deps = {} }) {
+  const {
+    issueRazorpayRefund = require('./razorpay-refund').issueRazorpayRefund,
+    issuePhonePeRefund = require('./phonepe-refund-core').issuePhonePeRefund,
+    notifyOwnerRefund = require('./refund-notifications').notifyOwnerRefund,
+  } = deps;
+
+  const verdict = assess(order);
+  const displayId = order.razorpay_order_id || order.id;
+  if (verdict.verdict !== 'refundable') {
+    return { ok: false, verdict: verdict.verdict, amountPaise: verdict.amountPaise, ref: verdict.ref };
+  }
+
+  const pid = String(order.razorpay_payment_id || '');
+  if (!pid) return { ok: false, verdict: 'no-payment-id', amountPaise: verdict.amountPaise };
+
+  // Claim before spending. The conditional update is the whole concurrency
+  // story: two tabs, or a tab and the bot, cannot both win it.
+  const claimedAt = new Date().toISOString();
+  const { data: claimed, error: claimErr } = await supabase
+    .from('orders')
+    .update({ wrong_cod_refund_at: claimedAt })
+    .eq('id', order.id)
+    .is('wrong_cod_refund_at', null)
+    .select('id')
+    .maybeSingle();
+  if (claimErr) return { ok: false, verdict: 'error', amountPaise: verdict.amountPaise, error: claimErr.message };
+  if (!claimed) return { ok: false, verdict: 'already-done', amountPaise: verdict.amountPaise };
+
+  let ref = '';
+  try {
+    if (pid.startsWith('pay_')) {
+      const refund = await issueRazorpayRefund(pid, verdict.amountPaise, {
+        notes: { reason: 'Wrong COD collected on a prepaid order', order_id: displayId, source },
+        supabase,
+      });
+      ref = refund.id;
+    } else {
+      const attempt = Math.max(0, Number(order.refund_attempts) || 0);
+      const res = await issuePhonePeRefund({ displayId, amountPaise: verdict.amountPaise, attempt });
+      if (!res.ok) throw new Error(res.error || 'PhonePe refund failed');
+      ref = res.merchantRefundId;
+    }
+  } catch (e) {
+    // Hand the claim back so a retry can still pay them, and leave the reason
+    // where a human will see it.
+    await supabase.from('orders')
+      .update({ wrong_cod_refund_at: null, wrong_cod_refund_ref: `failed ${claimedAt}: ${e.message}`.slice(0, 200) })
+      .eq('id', order.id);
+    console.error(`[WRONG-COD-REFUND] ${displayId} (${source}) failed: ${e.message}`);
+    return { ok: false, verdict: 'gateway-failed', amountPaise: verdict.amountPaise, error: e.message };
+  }
+
+  // The order STAYS delivered. This returns a duplicate payment, not the sale.
+  await supabase.from('orders')
+    .update({ wrong_cod_refund_at: new Date().toISOString(), wrong_cod_refund_ref: ref })
+    .eq('id', order.id);
+  await notifyOwnerRefund(order, verdict.amountPaise, {
+    provider: pid.startsWith('pay_') ? 'Razorpay' : 'PhonePe',
+    reason: `wrong COD collected on a prepaid order (refunded via ${source})`,
+    refundId: ref,
+  }).catch(() => {});
+  console.log(`[WRONG-COD-REFUND] ${displayId} (${source}) refunded ${verdict.amountPaise}p ref=${ref}`);
+  return { ok: true, verdict: 'refunded', amountPaise: verdict.amountPaise, ref };
+}
+
+module.exports = { assess, botContext, refundsEnabled, ten, ownerUpiEmail, performWrongCodRefund, REFUND_BLOCKING_STATUSES };
