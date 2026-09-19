@@ -153,3 +153,68 @@ test('NDR actions are capped at their 100-per-request limit', async () => {
   await assert.rejects(() => xbc.ndrCreate(many), /at most 100/);
   await assert.rejects(() => xbc.ndrCreate([]), /at least one/);
 });
+
+// ── cancel_existing may only void a shipment that has not moved ────────────
+// 66 orders were booked COD that should not have been. The 12 still awaiting
+// pickup can be voided and re-booked prepaid. The other 54 cannot: cancelling
+// an AWB that is already in a van does not recall the parcel, it just removes
+// the number the customer traces it by. This allowlist is what keeps those
+// two cases apart, and it is fed live status, never a stored one.
+{
+  const { CANCELLABLE } = require('../xpressbees-ship');
+
+  test('only a shipment still awaiting pickup may be cancelled', () => {
+    for (const ok of ['pending pickup', 'Pending Pickup', 'booked', 'BOOKED', 'manifested', 'awaiting pickup']) {
+      assert.equal(CANCELLABLE.test(ok), true, `${ok} should be cancellable`);
+    }
+  });
+
+  test('a moving or finished shipment is never cancelled', () => {
+    for (const no of ['in transit', 'out for delivery', 'delivered', 'rto', 'rto in transit', 'exception', 'undelivered']) {
+      assert.equal(CANCELLABLE.test(no), false, `${no} must NOT be cancellable`);
+    }
+  });
+
+  test('an unknown or empty status is refused, not assumed safe', () => {
+    for (const no of ['', '   ', 'something new xpressbees added', 'pending pickup extra']) {
+      assert.equal(CANCELLABLE.test(no), false, `${JSON.stringify(no)} must be refused`);
+    }
+  });
+}
+
+// ── a re-book needs a new order number ─────────────────────────────────────
+// XpressBees keeps an order number reserved after a cancel. Ten shipments
+// were voided and then refused re-booking with "Order number already in use",
+// which left ten parcels carrying no live AWB at all. The suffix is what makes
+// the second booking possible; the 20-char cap is the API's, so the base has
+// to give way to the suffix and not the other way round.
+{
+  const { buildOrder } = require('../xpressbees-ship');
+  const ORDER = {
+    id: 'uuid-1', razorpay_order_id: 'IC-R-CW-20260917-NQRA7',
+    customer_name: 'Test Buyer', customer_phone: '9876543210',
+    customer_address: 'Flat 12, Gokhale Rd, Dadar, Mumbai, Maharashtra - 400028',
+    amount_paise: 14900, status: 'paid', razorpay_payment_id: 'pay_x',
+    cart_items: [{ title: 'Atomic Habits', sku: 'AH1', qty: 1, price: 149 }],
+  };
+
+  test('a suffixed re-book still fits the 20-char order_number cap', async () => {
+    const built = await buildOrder(ORDER, '-p');
+    assert.ok(built.payload.order_number.length <= 20,
+      `order_number was ${built.payload.order_number.length} chars: ${built.payload.order_number}`);
+    assert.ok(built.payload.order_number.endsWith('-p'),
+      'the suffix is the whole point; trimming it off re-creates the collision');
+  });
+
+  test('the real order id survives the suffix', async () => {
+    const built = await buildOrder(ORDER, '-p');
+    assert.equal(built._meta.order_id, 'IC-R-CW-20260917-NQRA7',
+      'the suffix is cosmetic to the courier; everything we reconcile against uses the real id');
+    assert.notEqual(built._meta.booked_as, built._meta.order_id);
+  });
+
+  test('no suffix leaves the order number exactly as it was', async () => {
+    const built = await buildOrder(ORDER);
+    assert.equal(built.payload.order_number, 'IC-R-CW-20260917-NQR');
+  });
+}

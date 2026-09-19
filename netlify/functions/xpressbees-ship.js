@@ -14,6 +14,8 @@
  *   { action: "serviceability" }           rates for the first order only
  *   { courier_id: 1 }                      force a courier
  *   { force: true }                        re-book an order that has a tracking id
+ *   { cancel_existing: true }              void the current AWB first, then re-book
+ *   { suffix: "-p" }                       book under <order id><suffix>, for a re-book
  *
  * Header: X-Admin-Key / X-Admin-Token
  * Env: XPRESSBEES_EMAIL, XPRESSBEES_PASSWORD, SUPABASE_URL, SUPABASE_SERVICE_KEY
@@ -39,6 +41,23 @@ const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stri
 
 // Flat box, same as every other push path. XpressBees reweighs at the hub.
 const BOX = { weight: 400, length: 15, breadth: 10, height: 5 };
+
+/**
+ * The only states a shipment may be cancelled out of.
+ *
+ * cancel_existing exists to undo a shipment booked with the WRONG PAYMENT
+ * MODE: 66 orders reached the panel as COD through the WooCommerce channel,
+ * 54 already paid in full and 12 free replacements, because that importer
+ * stamps everything COD. Re-booking them prepaid means voiding the AWB first.
+ *
+ * But a parcel that has already been picked up is out of our hands and in a
+ * van. Cancelling its AWB there does not bring it back -- it detaches the only
+ * number anyone can trace it by, and the customer's parcel becomes untrackable
+ * while still being delivered. So this is an allowlist, not a blocklist: an
+ * unrecognised state is refused, and the panel export that says otherwise is
+ * not consulted, because an export is a snapshot and this is checked live.
+ */
+const CANCELLABLE = /^\s*(pending pickup|booked|manifested?|awaiting pickup|data received)\s*$/i;
 
 // www.xpressbees.com drops the AWB, redirects to the site root and shows a
 // CAPTCHA. The shipping-platform page deep-links with no login. See
@@ -74,7 +93,7 @@ function chooseCourier(quotes, { forceId, priority }) {
     (Number(a.total_charges) || Infinity) - (Number(b.total_charges) || Infinity))[0];
 }
 
-async function buildOrder(order) {
+async function buildOrder(order, suffix = '') {
   const orderId = order.razorpay_order_id || order.id;
 
   const a = await enrichAddress(parseAddress(order.customer_address || ''));
@@ -102,6 +121,7 @@ async function buildOrder(order) {
   return {
     _meta: {
       order_id: orderId, db_id: order.id,
+      booked_as: (String(orderId).slice(0, 20 - suffix.length) + suffix),
       payment_type: money.shipmentPaymentType,
       order_amount: money.orderValueRs,
       collectable: money.collectableAmount,
@@ -109,7 +129,14 @@ async function buildOrder(order) {
       lines: order_items.length,
     },
     payload: {
-      order_number: String(orderId).slice(0, 20),
+      // XpressBees keeps an order number RESERVED after a cancel: re-booking
+      // ten voided shipments under their own numbers failed every time with
+      // "Order number already in use", leaving ten parcels with no live AWB.
+      // A suffix makes the number new. It is cosmetic to the courier and the
+      // real id stays in _meta, on the order row and on the label's items.
+      // The 20-char cap is the API's, so the base is trimmed to fit the
+      // suffix rather than the suffix being trimmed off the end.
+      order_number: (String(orderId).slice(0, 20 - suffix.length) + suffix),
       // unique_order_number is NOT sent: the v1.1.5 doc drops it, and an
       // undocumented field is not where to put double-booking protection.
       // That guard is the tracking_id check in the handler, which is ours.
@@ -155,6 +182,11 @@ exports.handler = async (event) => {
   const ids = body.order_ids || (body.order_id ? [body.order_id] : []);
   if (!ids.length) return json(400, { error: 'Provide order_id or order_ids' });
 
+  const suffix = String(body.suffix || '');
+  if (suffix && !/^[A-Za-z0-9_-]{1,8}$/.test(suffix)) {
+    return json(400, { error: `suffix must be 1-8 characters of A-Z, 0-9, - or _ (got ${JSON.stringify(suffix)})` });
+  }
+
   const priority = String(process.env.XPRESSBEES_COURIER_PRIORITY || 'surface')
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
@@ -168,7 +200,7 @@ exports.handler = async (event) => {
 
     // Rates only, book nothing.
     if (body.action === 'serviceability') {
-      const built = await buildOrder(orders[0]);
+      const built = await buildOrder(orders[0], suffix);
       const quotes = await xb.serviceability({
         origin: pickupPincode, destination: built._meta.pincode,
         paymentType: built.payload.payment_type,
@@ -187,12 +219,35 @@ exports.handler = async (event) => {
 
     for (const order of orders) {
       const orderId = order.razorpay_order_id || order.id;
-      if (order.tracking_id && !body.force) {
+      // cancel_existing is a re-book by definition, so it implies force.
+      const force = !!body.force || !!body.cancel_existing;
+      if (order.tracking_id && !force) {
         skipped.push({ order_id: orderId, reason: `already has tracking ${order.tracking_id}` });
         continue;
       }
+      let cancelled = null;
+      if (order.tracking_id && body.cancel_existing) {
+        // Live, never from a stored status: the DB says 'shipped' for all of
+        // these and a two-day-old panel export said 'booked' for shipments
+        // that were by then in transit.
+        let state = '';
+        try { state = String((await xb.track(order.tracking_id))?.status || ''); }
+        catch (e) {
+          failed.push({ order_id: orderId, error: `cannot read live status of ${order.tracking_id}, refusing to cancel blind: ${e.message}` });
+          continue;
+        }
+        if (!CANCELLABLE.test(state)) {
+          failed.push({ order_id: orderId, error: `refusing to cancel ${order.tracking_id}: courier reports "${state}"` });
+          continue;
+        }
+        try { cancelled = { awb: order.tracking_id, message: await xb.cancel(order.tracking_id), was: state }; }
+        catch (e) {
+          failed.push({ order_id: orderId, error: `cancel of ${order.tracking_id} failed, not re-booking: ${e.message}` });
+          continue;
+        }
+      }
       try {
-        const built = await buildOrder(order);
+        const built = await buildOrder(order, suffix);
 
         const quotes = await xb.serviceability({
           origin: pickupPincode, destination: built._meta.pincode,
@@ -228,6 +283,8 @@ exports.handler = async (event) => {
 
         booked.push({
           order_id: orderId, awb,
+          booked_as: built._meta.booked_as,
+          cancelled_awb: cancelled ? cancelled.awb : undefined,
           courier_name: update.courier_name,
           courier_charges: courier.total_charges,
           collectable: built._meta.collectable,
@@ -237,7 +294,14 @@ exports.handler = async (event) => {
           db_updated: !updErr,
         });
       } catch (err) {
-        failed.push({ order_id: orderId, error: String(err.message || err) });
+        // A cancel that succeeded before a book that failed leaves the order
+        // with NO live AWB. Say so loudly: it is not shipped and nothing else
+        // will notice on its own.
+        failed.push({
+          order_id: orderId,
+          error: String(err.message || err),
+          cancelled_awb_now_void: cancelled ? cancelled.awb : undefined,
+        });
       }
     }
 
@@ -256,5 +320,6 @@ exports.handler = async (event) => {
   }
 };
 
+module.exports.CANCELLABLE   = CANCELLABLE;
 module.exports.buildOrder    = buildOrder;
 module.exports.chooseCourier = chooseCourier;
