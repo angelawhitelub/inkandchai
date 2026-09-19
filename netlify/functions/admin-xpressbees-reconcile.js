@@ -83,21 +83,35 @@ exports.handler = async (event) => {
   const pages = Math.min(MAX_PAGES, Math.max(1, Number(body.pages) || 3));
 
   // The panel side. One shared bearer token, so serial.
+  //
+  // The endpoint answers 50 rows whatever per_page asks for, and ignores
+  // `page`: six requests returned the same 50 rows six times, which the first
+  // run reported as six identical disagreements. So rows are de-duplicated by
+  // the panel's own id, and paging stops as soon as a request adds nothing
+  // new. `params` lets a caller try another spelling without a deploy.
+  const seen = new Set();
   const panel = [];
   let meta = null;
+  let paged = true;
   try {
     for (let p = 1; p <= pages; p += 1) {
-      const out = await xb.panelOrders({ page: p, perPage: 100 });
+      const out = await xb.panelOrders({ page: p, perPage: 100, params: body.params || {} });
       meta = out.meta || meta;
-      if (!out.rows.length) break;
-      panel.push(...out.rows);
+      const fresh = out.rows.filter((r) => !seen.has(String(r.id ?? r.order_number)));
+      for (const r of out.rows) seen.add(String(r.id ?? r.order_number));
+      panel.push(...fresh);
+      if (!fresh.length) { paged = p === 1; break; }
     }
   } catch (e) {
     return json(502, { error: `could not read the XpressBees order list: ${e.message}` });
   }
 
   if (body.raw) {
-    return json(200, { fetched: panel.length, meta, sample: panel.slice(0, Number(body.raw) || 2) });
+    return json(200, {
+      fetched: panel.length, meta, paged,
+      statuses: panel.reduce((m, r) => ({ ...m, [r.status || '?']: (m[r.status || '?'] || 0) + 1 }), {}),
+      sample: panel.slice(0, Number(body.raw) || 2),
+    });
   }
 
   // Our side.
@@ -167,6 +181,10 @@ exports.handler = async (event) => {
 
   return json(200, {
     checked: panel.length,
+    // False means the endpoint ignored `page`: this is the newest N rows
+    // only, not the whole panel, and an older shipment could still be wrong.
+    paged,
+    statuses: panel.reduce((m, r) => ({ ...m, [r.status || '?']: (m[r.status || '?'] || 0) + 1 }), {}),
     agree: agree.length,
     disagree: disagree.length,
     unmatched: unmatched.length,

@@ -185,8 +185,12 @@ async function ndrCreate(actions) {
  * gap is why 133 orders imported COD -- 66 of them already paid -- and
  * nothing noticed for two days.
  */
-async function panelOrders({ page = 1, perPage = 100 } = {}) {
-  const qs = new URLSearchParams({ page: String(page), per_page: String(Math.min(250, Number(perPage) || 100)) });
+async function panelOrders({ page = 1, perPage = 100, params = {} } = {}) {
+  const qs = new URLSearchParams({
+    page: String(page),
+    per_page: String(Math.min(250, Number(perPage) || 100)),
+    ...params,
+  });
   const out = await withAuth((token) => xbFetch(`/orders?${qs}`, { token }));
   if (!out.data) throw new Error(`XpressBees order list failed: ${out.raw}`);
   if (out.data.status === false) throw new Error(`XpressBees order list failed: ${out.data.message || out.raw}`);
