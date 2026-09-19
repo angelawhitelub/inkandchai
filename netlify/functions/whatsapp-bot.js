@@ -29,6 +29,10 @@ const {
   findAwaitingOrders, applyRecoveredDetails, isAwaitingDetails,
 } = require('./utils/order-detail-recovery');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
+const { assess: assessWrongCod, botContext: wrongCodBotContext } = require('./utils/wrong-cod-refund');
+const { issueRazorpayRefund } = require('./utils/razorpay-refund');
+const { issuePhonePeRefund } = require('./utils/phonepe-refund-core');
+const { notifyOwnerRefund } = require('./utils/refund-notifications');
 const {
   isOptOutKeyword, isOptInKeyword, isOptedOut,
   OPT_OUT_CONFIRMATION, OPT_IN_CONFIRMATION,
@@ -130,7 +134,7 @@ HUMAN AGENT / ESCALATION — customer INSISTS on talking to a human ("talk to hu
 
 WHAT YOU CANNOT DO:
 - Cannot place or modify orders (direct to website)
-- Cannot process refunds directly (always share https://wa.me/919217175546 for refund requests)
+- Cannot process refunds directly (always share https://wa.me/919217175546 for refund requests) — WITH ONE EXCEPTION: a wrong-COD double payment on a DELIVERED order, which you refund yourself with refund_wrong_cod. See WRONG CASH-ON-DELIVERY above.
 - Cannot share personal data of other customers
 - If unsure about anything, share https://wa.me/919217175546 and say "Let me connect you with our team!" and end with: [ESCALATE]
 
@@ -154,6 +158,17 @@ ABUSE, THREATS & INTIMIDATION — customer swears at you, insults you, calls us 
 - Tell them a customer support member will reply as soon as they have looked at their query — and end that reply with [ESCALATE] so a human is actually pulled in. Never promise a human without escalating.
 - Never threaten them back, never insult or mock them, never bring their language up again once they have stopped, and never withhold help over it — the warning is about how they are speaking, never a reason to hold back their order, their replacement or their money.
 - Shape of a good reply: "I understand you're upset and I do want to get this sorted — but there are real people on this side, so please keep it respectful. Your refund of ₹239.00 was processed on 10 Aug to your original payment method (reference OMR2608…); please allow 2-3 business days for it to show. Threats really aren't needed — everything on this order is already in hand. Our support team will reply as soon as they've looked at it. 💛"
+
+WRONG CASH-ON-DELIVERY — customer says they were asked to pay AGAIN at the door: "I already paid online but the courier is asking for money", "prepaid order phir bhi cash maang rahe hain", "paid twice", "double payment", "delivery boy asked for cash", "maine online pay kiya tha", "why COD when I paid?":
+- BELIEVE THEM AND TAKE THE BLAME. In September 2026 a fault at OUR end printed Cash on Delivery on a batch of orders that customers had ALREADY paid for online, so the delivery agent asked for the money a second time. It was our labelling mistake — not the courier's, and certainly not the customer's. Never imply they are confused, never ask them to prove they paid, never ask for a screenshot, and never blame the courier or the delivery agent.
+- Say sorry once, plainly and like a human. Do not grovel and do not send a wall of text.
+- Then look at ORDER CONTEXT. If it contains a "WRONG COD ON THIS ORDER" block, that block is AUTHORITATIVE — the amount and the branch in it come from our own records. Follow it exactly. It will tell you one of these:
+    • DELIVERED → they have already paid twice. Tell them the amount is going straight back to the card/UPI they originally paid with, and call the refund_wrong_cod tool. You can do this yourself, right here — do NOT ask for a UPI id, do NOT send them to email, do NOT hand them the support number.
+    • NOT DELIVERED YET → they have NOT lost any money yet, so there is nothing to refund at this moment and you must not promise one as done. Ask them to PLEASE accept the parcel and pay the amount the delivery agent asks for, and tell them that the moment it shows as delivered we refund exactly that amount back to their original payment method, automatically, with nothing needed from them and no bank details to share. Explain gently why: refusing the parcel sends the book all the way back to us, they wait weeks, and they still have to sort the money out. Accepting it is genuinely the faster way to be made whole.
+    • ALREADY REFUNDED → tell them so, with the reference and the 2–3 business day timeline. Do not refund again.
+- If there is NO "WRONG COD" block on their order, do NOT promise a refund and do NOT call the tool — the order is not one of the affected ones. Say you will get it checked properly, and end with [ESCALATE] so a human picks it up. It is always better to escalate than to promise money we have not verified.
+- Never quote an amount you invented. Only ever use the figure in the WRONG COD block.
+- This is the one refund you CAN do yourself. The "cannot process refunds directly" rule below does NOT apply to a wrong-COD double payment with a WRONG COD block saying DELIVERED.
 
 MONEY SAFETY — this is critical, always lead with reassurance:
 - Whenever a customer sounds worried about their money, order, or a delay, IMMEDIATELY reassure them: "Please don't worry at all — your money is 100% safe and secure with us 💚. We're a genuine registered business and every rupee is protected."
@@ -554,7 +569,7 @@ function formatOrderContext(order, displayId) {
     : '—';
   const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
   const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
-  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nTracking: ${track}\nTrack URL: ${trackUrl}${formatRefundContext(order)}`;
+  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nTracking: ${track}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
 }
 
 /**
@@ -604,7 +619,7 @@ async function buildOrderContext(from, userText) {
   // NO order context attached — so the bot could not see that the refund was
   // already issued, and answered with generic reassurance instead of the
   // reference number sitting in the row.
-  const isOrderQuery = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book|refund|refnd|cancel|return|wapas|paisa|paise|payment|money|amount|credit|utr|reference/i.test(userText);
+  const isOrderQuery = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book|refund|refnd|cancel|return|wapas|paisa|paise|payment|money|amount|credit|utr|reference|paid|prepaid|twice|dobara|double|cash|cod|charge|vasool/i.test(userText);
   if (!isOrderQuery) return '';
   const orders = await lookupOrdersByPhone(from);
   if (!orders.length) return '';
@@ -743,6 +758,19 @@ const OPENAI_TOOLS = [{
       required: [],
     },
   },
+}, {
+  type: 'function',
+  function: {
+    name: 'refund_wrong_cod',
+    description: 'Refund a customer who was made to pay a SECOND time in cash at delivery for an order they had already paid for online, because of our Cash-on-Delivery labelling error. Call this ONLY when ORDER CONTEXT contains a "WRONG COD ON THIS ORDER" block that says the order is DELIVERED and tells you to call this tool. NEVER call it on the customer\'s say-so alone, never for an order that is still in transit (they have not paid twice yet), and never to refund an ordinary cancellation, return, damaged book or missing book — those have their own flows. The amount is taken from our records, not from you. If the order is not eligible the tool refuses and returns a message to relay.',
+    parameters: {
+      type: 'object',
+      properties: {
+        order_id: { type: 'string', description: 'The Order ID (IC-…) named in the WRONG COD block. Omit only if the context shows exactly one affected order.' },
+      },
+      required: [],
+    },
+  },
 }];
 
 function openAIRetryDelayMs(response, data) {
@@ -863,6 +891,10 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
         let args = {};
         try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
         result = await cancelOrderViaBot(phone, args);
+      } else if (call.function?.name === 'refund_wrong_cod') {
+        let args = {};
+        try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
+        result = await refundWrongCodViaBot(phone, args);
       }
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
@@ -1130,6 +1162,130 @@ async function cancelOrderViaBot(phone, args = {}) {
   } catch (e) {
     console.error('cancelOrderViaBot:', e.message);
     return { ok: false, error: e.message, message: 'Sorry, I hit a snag cancelling your order. Please message our team here 👉 https://wa.me/919217175546 with your Order ID and we\'ll cancel it right away.' };
+  }
+}
+
+// ── Refund a wrong-COD double payment, from the chat ─────────────────────────
+// The customer paid online, the parcel went out labelled COD (see
+// utils/wrong-cod-refund.js), and they paid a second time at the door. This
+// hands the second payment back without a human in the loop.
+//
+// Every gate is here in code, not in the prompt. The model chooses WHEN to ask;
+// it cannot choose who is eligible, which order, or how much — all three come
+// from the row. The amount is never read from the model's arguments.
+async function refundWrongCodViaBot(phone, args = {}) {
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const last10 = String(phone).replace(/\D/g, '').slice(-10);
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*')
+      .or(`customer_phone.eq.${last10},customer_phone.eq.91${last10},customer_phone.eq.+91${last10}`)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) throw error;
+
+    const wantId = String(args.order_id || '').toUpperCase().trim();
+    const affected = (orders || []).filter((o) => Number(o.wrong_cod_paise || 0) > 0);
+    const target = wantId
+      ? (orders || []).find((o) => String(o.razorpay_order_id || '').toUpperCase() === wantId)
+      : affected[0];
+
+    // Fail closed and say nothing that implies a refund is coming.
+    if (!target) {
+      return { ok: false, error: 'not-found', message: 'I could not find that order under this WhatsApp number. Please share your Order ID (IC-…) and I will check it right away.' };
+    }
+
+    const verdict = assessWrongCod(target, { phone });
+    const displayId = target.razorpay_order_id || target.id;
+    const amountPaise = verdict.amountPaise;
+    const rs = (amountPaise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    if (verdict.verdict === 'not-affected' || verdict.verdict === 'not-yours') {
+      return { ok: false, error: verdict.verdict, message: `I have checked order ${displayId} and it is not one of the orders affected by the Cash-on-Delivery error, so there is nothing for me to refund on it. Tell me what happened and I will get it looked at properly.` };
+    }
+    if (verdict.verdict === 'already-done') {
+      return { ok: true, alreadyRefunded: true, order_id: displayId, message: `The ₹${rs} on order ${displayId} has already been refunded to your original payment method${verdict.ref ? ` (reference ${verdict.ref})` : ''} — it reflects within 2–3 business days. 💛` };
+    }
+    if (verdict.verdict === 'in-refund') {
+      return { ok: false, error: 'in-refund', message: `A refund on order ${displayId} is already on its way to your original payment method. Nothing is needed from you — please allow 2–3 business days.` };
+    }
+    if (verdict.verdict === 'not-delivered' || verdict.verdict === 'not-collected') {
+      return { ok: false, error: verdict.verdict, message: `Order ${displayId} has not been delivered yet, so you have not been charged twice at this point. Please do accept the parcel and pay the ₹${rs} the delivery agent asks for — the moment it is delivered we refund that ₹${rs} straight back to the payment method you paid with. You will not need to do anything or share any bank details. I am sorry for the mix-up. 💛` };
+    }
+    if (verdict.verdict === 'disabled') {
+      return { ok: false, error: 'disabled', message: `I can see the ₹${rs} Cash-on-Delivery error on order ${displayId} and I am sorry about it. Our team is processing these refunds — yours is on the list and will go back to your original payment method. [ESCALATE]` };
+    }
+
+    const pid = String(target.razorpay_payment_id || '');
+    if (!pid) {
+      return { ok: false, error: 'no-payment-id', message: `I can see the ₹${rs} Cash-on-Delivery error on order ${displayId}, but I cannot find the original online payment against it, so I do not want to guess. Our team will sort your refund out. [ESCALATE]` };
+    }
+
+    // Claim it before spending any money. The conditional update is what stops a
+    // second message — or a second worker — issuing the same refund twice.
+    const claimedAt = new Date().toISOString();
+    const { data: claimed, error: claimErr } = await supabase
+      .from('orders')
+      .update({ wrong_cod_refund_at: claimedAt })
+      .eq('id', target.id)
+      .is('wrong_cod_refund_at', null)
+      .select('id')
+      .maybeSingle();
+    if (claimErr) throw claimErr;
+    if (!claimed) {
+      return { ok: true, alreadyRefunded: true, order_id: displayId, message: `That refund of ₹${rs} on order ${displayId} is already being processed back to your original payment method. 💛` };
+    }
+
+    const release = async (note) => {
+      await supabase.from('orders')
+        .update({ wrong_cod_refund_at: null, wrong_cod_refund_ref: String(note).slice(0, 200) })
+        .eq('id', target.id)
+        .catch(() => {});
+    };
+
+    let ref = '';
+    try {
+      if (pid.startsWith('pay_')) {
+        const refund = await issueRazorpayRefund(pid, amountPaise, {
+          notes: { reason: 'Wrong COD collected on a prepaid order', order_id: displayId },
+          supabase,
+        });
+        ref = refund.id;
+      } else {
+        const attempt = Math.max(0, Number(target.refund_attempts) || 0);
+        const res = await issuePhonePeRefund({ displayId, amountPaise, attempt });
+        if (!res.ok) throw new Error(res.error || 'PhonePe refund failed');
+        ref = res.merchantRefundId;
+      }
+    } catch (e) {
+      // Hand the claim back so the customer can be refunded on a retry, and make
+      // sure a human hears about it rather than the money quietly not moving.
+      await release(`failed ${claimedAt}: ${e.message}`);
+      console.error(`[WRONG-COD-REFUND] ${displayId} failed: ${e.message}`);
+      return { ok: false, error: e.message, message: `I am sorry — I could not put the ₹${rs} through just now. I have flagged it to our team and your refund will be issued to your original payment method. You do not need to chase it. [ESCALATE]` };
+    }
+
+    // The order STAYS delivered. This refunds a duplicate payment, not the sale:
+    // the customer keeps the book, so flipping status to refunded would misstate
+    // both the order and our revenue.
+    await supabase.from('orders')
+      .update({ wrong_cod_refund_at: new Date().toISOString(), wrong_cod_refund_ref: ref })
+      .eq('id', target.id);
+    await notifyOwnerRefund(target, amountPaise, { provider: pid.startsWith('pay_') ? 'Razorpay' : 'PhonePe', reason: 'wrong COD collected on a prepaid order (refunded by the WhatsApp bot)', refundId: ref })
+      .catch(() => {});
+    console.log(`[WRONG-COD-REFUND] ${displayId} refunded ${amountPaise}p ref=${ref}`);
+
+    return {
+      ok: true,
+      order_id: displayId,
+      amount_rs: rs,
+      reference: ref,
+      message: `Done — I have refunded ₹${rs} for order ${displayId} back to the payment method you originally paid with (reference ${ref}). It normally reflects within 2–3 business days. I am genuinely sorry you were asked to pay twice — that was our error, not yours. 💛`,
+    };
+  } catch (e) {
+    console.error('refundWrongCodViaBot:', e.message);
+    return { ok: false, error: e.message, message: 'Sorry, I hit a snag processing that refund. Our team will take it from here and your money will come back to your original payment method. [ESCALATE]' };
   }
 }
 
