@@ -66,3 +66,9 @@ UPDATE orders o
   ) AS v(order_id, paise)
  WHERE o.razorpay_order_id = v.order_id
    AND o.wrong_cod_paise IS NULL;
+
+-- A customer who will not pay a second time on a promise gives us a UPI id
+-- instead, and we send the money before delivery so they can pay the agent.
+-- The bot collects the handle; a human makes the payout.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS wrong_cod_upi    text;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS wrong_cod_upi_at timestamptz;

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { assess, botContext, refundsEnabled, ten } = require('./wrong-cod-refund');
+const { assess, botContext, refundsEnabled, ten, ownerUpiEmail } = require('./wrong-cod-refund');
 
 const base = {
   id: 'uuid-1',
@@ -102,4 +102,52 @@ test('phone comparison uses the last ten digits only', () => {
   assert.equal(ten('+91 98765 43210'), '9876543210');
   assert.equal(ten('919876543210'), '9876543210');
   assert.equal(ten(null), '');
+});
+
+test('a customer who will not pay twice is offered the UPI route, not an argument', () => {
+  const ctx = botContext(at({ status: 'shipped' }));
+  assert.match(ctx, /IF THEY STILL WILL NOT PAY TWICE/);
+  assert.match(ctx, /do NOT argue/);
+  assert.match(ctx, /record_wrong_cod_upi/);
+  assert.match(ctx, /₹368\.20/);
+});
+
+test('the bot may never ask for anything but a UPI id', () => {
+  const ctx = botContext(at({ status: 'shipped' }));
+  assert.match(ctx, /Never ask for a bank account number, IFSC, card number, OTP or CVV/);
+});
+
+test('a UPI id already on file is not asked for a second time', () => {
+  const ctx = botContext(at({ status: 'shipped', wrong_cod_upi: '9876543210@ybl' }));
+  assert.match(ctx, /ALREADY given us a UPI id/);
+  assert.match(ctx, /9876543210@ybl/);
+  assert.match(ctx, /Do NOT ask for it again/);
+  assert.doesNotMatch(ctx, /IF THEY STILL WILL NOT PAY TWICE/);
+});
+
+test('a delivered order never asks for a UPI id — it refunds to source', () => {
+  const ctx = botContext(base);
+  assert.doesNotMatch(ctx, /record_wrong_cod_upi/);
+  assert.match(ctx, /Do not ask for a UPI id/);
+});
+
+test('the owner email names the amount, the handle and the order', () => {
+  const m = ownerUpiEmail({ order: at({ status: 'shipped', customer_name: 'Sneha', customer_phone: '9876543210', tracking_id: '14345160682132' }), amountPaise: 36820, upi: '9876543210@ybl' });
+  assert.equal(m.subject, 'UPI payout needed — ₹368.20 to 9876543210@ybl (IC-20260916-0R36N)');
+  for (const part of ['368.20', '9876543210@ybl', 'IC-20260916-0R36N', 'Sneha', '14345160682132']) {
+    assert.ok(m.html.includes(part), `html missing ${part}`);
+    assert.ok(m.text.includes(part), `text missing ${part}`);
+  }
+});
+
+test('the owner email says nothing has been paid yet', () => {
+  const m = ownerUpiEmail({ order: base, amountPaise: 36820, upi: 'a@ybl' });
+  assert.match(m.html, /Nothing has been paid yet/);
+  assert.match(m.text, /Nothing has been paid yet/);
+});
+
+test('a customer name cannot inject markup into the owner email', () => {
+  const m = ownerUpiEmail({ order: at({ customer_name: '<script>alert(1)</script>' }), amountPaise: 100, upi: 'a@ybl' });
+  assert.doesNotMatch(m.html, /<script>/);
+  assert.match(m.html, /&lt;script&gt;/);
 });

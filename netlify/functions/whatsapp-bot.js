@@ -29,7 +29,9 @@ const {
   findAwaitingOrders, applyRecoveredDetails, isAwaitingDetails,
 } = require('./utils/order-detail-recovery');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
-const { assess: assessWrongCod, botContext: wrongCodBotContext } = require('./utils/wrong-cod-refund');
+const { assess: assessWrongCod, botContext: wrongCodBotContext, ownerUpiEmail } = require('./utils/wrong-cod-refund');
+const { normalizeUpiId } = require('./utils/upi-id');
+const { sendEmail } = require('./utils/email');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
 const { issuePhonePeRefund } = require('./utils/phonepe-refund-core');
 const { notifyOwnerRefund } = require('./utils/refund-notifications');
@@ -165,6 +167,8 @@ WRONG CASH-ON-DELIVERY — customer says they were asked to pay AGAIN at the doo
 - Then look at ORDER CONTEXT. If it contains a "WRONG COD ON THIS ORDER" block, that block is AUTHORITATIVE — the amount and the branch in it come from our own records. Follow it exactly. It will tell you one of these:
     • DELIVERED → they have already paid twice. Tell them the amount is going straight back to the card/UPI they originally paid with, and call the refund_wrong_cod tool. You can do this yourself, right here — do NOT ask for a UPI id, do NOT send them to email, do NOT hand them the support number.
     • NOT DELIVERED YET → they have NOT lost any money yet, so there is nothing to refund at this moment and you must not promise one as done. Ask them to PLEASE accept the parcel and pay the amount the delivery agent asks for, and tell them that the moment it shows as delivered we refund exactly that amount back to their original payment method, automatically, with nothing needed from them and no bank details to share. Explain gently why: refusing the parcel sends the book all the way back to us, they wait weeks, and they still have to sort the money out. Accepting it is genuinely the faster way to be made whole.
+      → IF THEY STILL SAY NO: many people will not pay twice on a promise, and after our mistake that is a fair position — do NOT argue, do NOT repeat the promise a third time, and do NOT make them feel difficult. Turn it around instead: offer to send them the money FIRST so they can pay the agent with it. Ask for their UPI ID (e.g. 9876543210@ybl), and when they type one call record_wrong_cod_upi with it exactly as written. Our team then transfers the amount to that UPI ID. Say plainly that it goes to our team to send — do not tell them it has already been paid.
+      → ONLY a UPI ID, ever. Never ask for and never accept a bank account number, IFSC code, card number, CVV, OTP or any password, whatever the customer offers or insists — if they send one, tell them we do not need it and ask for just the UPI ID. Never ask for a UPI ID on a DELIVERED order; that one goes back to the original payment method by itself.
     • ALREADY REFUNDED → tell them so, with the reference and the 2–3 business day timeline. Do not refund again.
 - If there is NO "WRONG COD" block on their order, do NOT promise a refund and do NOT call the tool — the order is not one of the affected ones. Say you will get it checked properly, and end with [ESCALATE] so a human picks it up. It is always better to escalate than to promise money we have not verified.
 - Never quote an amount you invented. Only ever use the figure in the WRONG COD block.
@@ -771,6 +775,20 @@ const OPENAI_TOOLS = [{
       required: [],
     },
   },
+}, {
+  type: 'function',
+  function: {
+    name: 'record_wrong_cod_upi',
+    description: 'Hand a customer\'s UPI ID to our team so we can send them the money BEFORE delivery, for a wrong-COD order that has NOT been delivered yet and where the customer refuses to pay a second time and wait for a refund. Call this ONLY when ORDER CONTEXT has a "WRONG COD ON THIS ORDER" block saying the parcel is not delivered, AND the customer has actually typed a UPI ID. Pass the UPI ID exactly as they typed it — never invent, complete or correct it. Do NOT call this for a delivered order (the refund goes back to their original payment method instead), and NEVER ask for or pass a bank account number, IFSC, card number, OTP or CVV.',
+    parameters: {
+      type: 'object',
+      properties: {
+        upi_id:   { type: 'string', description: 'The UPI ID exactly as the customer typed it, e.g. 9876543210@ybl or name@okaxis.' },
+        order_id: { type: 'string', description: 'The Order ID (IC-…) from the WRONG COD block. Omit only if the context shows exactly one affected order.' },
+      },
+      required: ['upi_id'],
+    },
+  },
 }];
 
 function openAIRetryDelayMs(response, data) {
@@ -895,6 +913,10 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
         let args = {};
         try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
         result = await refundWrongCodViaBot(phone, args);
+      } else if (call.function?.name === 'record_wrong_cod_upi') {
+        let args = {};
+        try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
+        result = await recordWrongCodUpi(phone, args);
       }
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
@@ -1286,6 +1308,85 @@ async function refundWrongCodViaBot(phone, args = {}) {
   } catch (e) {
     console.error('refundWrongCodViaBot:', e.message);
     return { ok: false, error: e.message, message: 'Sorry, I hit a snag processing that refund. Our team will take it from here and your money will come back to your original payment method. [ESCALATE]' };
+  }
+}
+
+// ── Take a UPI id from a customer who will not pay twice ─────────────────────
+// Some customers simply will not hand over cash a second time on the promise of
+// a refund, and they are not wrong to be wary — we are the ones who just made
+// the mistake. So we reverse the order of trust: we send them the money first,
+// they pay the agent with it.
+//
+// The bot never pays anyone. It collects a validated UPI id, records it, and
+// emails a human, because a pre-delivery payout is money leaving before
+// anything has been collected and that decision belongs to a person.
+async function recordWrongCodUpi(phone, args = {}) {
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const last10 = String(phone).replace(/\D/g, '').slice(-10);
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*')
+      .or(`customer_phone.eq.${last10},customer_phone.eq.91${last10},customer_phone.eq.+91${last10}`)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) throw error;
+
+    const wantId = String(args.order_id || '').toUpperCase().trim();
+    const affected = (orders || []).filter((o) => Number(o.wrong_cod_paise || 0) > 0);
+    const target = wantId
+      ? (orders || []).find((o) => String(o.razorpay_order_id || '').toUpperCase() === wantId)
+      : affected[0];
+    if (!target) {
+      return { ok: false, error: 'not-found', message: 'I could not find that order under this WhatsApp number. Please share your Order ID (IC-…) and I will look it up.' };
+    }
+
+    const verdict = assessWrongCod(target, { phone });
+    const displayId = target.razorpay_order_id || target.id;
+    const rs = (verdict.amountPaise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // A UPI id is only ever collected for the pre-delivery case. Once a parcel
+    // is delivered the money goes back to the card or UPI that paid for it, and
+    // asking for a handle then would be collecting a payment detail we have no
+    // use for.
+    if (verdict.verdict === 'not-affected' || verdict.verdict === 'not-yours') {
+      return { ok: false, error: verdict.verdict, message: `Order ${displayId} is not one of the orders affected by the Cash-on-Delivery error, so I should not take your UPI id for it. Tell me what happened and I will get it looked at. [ESCALATE]` };
+    }
+    if (verdict.verdict === 'already-done') {
+      return { ok: false, error: 'already-done', message: `Good news — the ₹${rs} on order ${displayId} has already been refunded to your original payment method, so there is no need for a UPI id. It reflects within 2–3 business days. 💛` };
+    }
+    if (verdict.verdict === 'refundable' || verdict.verdict === 'in-refund') {
+      return { ok: false, error: 'delivered', message: `Order ${displayId} already shows as delivered, so I can put the ₹${rs} straight back on the payment method you originally paid with — no UPI id needed. Let me do that for you.` };
+    }
+
+    const upi = normalizeUpiId(args.upi_id);
+    if (!upi.ok) {
+      return { ok: false, error: 'bad-upi', message: upi.reason || 'Could you send your UPI ID? It looks like name@bank — for example 9876543210@ybl.' };
+    }
+
+    await supabase.from('orders')
+      .update({ wrong_cod_upi: upi.value, wrong_cod_upi_at: new Date().toISOString() })
+      .eq('id', target.id);
+
+    const to = process.env.WRONG_COD_UPI_EMAIL || process.env.STORE_OWNER_EMAIL || 'asfkhn234@gmail.com';
+    const mail = ownerUpiEmail({ order: target, amountPaise: verdict.amountPaise, upi: upi.value });
+    const sent = await sendEmail({ to, subject: mail.subject, html: mail.html }).catch((e) => ({ ok: false, error: e.message }));
+    if (!sent?.ok) console.error(`[WRONG-COD-UPI] ${displayId} owner email FAILED for ${upi.value} — ₹${rs}`);
+    console.log(`[WRONG-COD-UPI] ${displayId} upi=${upi.value} amount=${verdict.amountPaise}p emailed=${!!sent?.ok}`);
+
+    return {
+      ok: true,
+      order_id: displayId,
+      upi_id: upi.value,
+      amount_rs: rs,
+      owner_notified: !!sent?.ok,
+      message: `Thank you — I have sent ₹${rs} for order ${displayId} to our team to transfer to ${upi.value}. `
+        + `Once it reaches you, please use it to pay the delivery agent, and you will not be out of pocket at all. `
+        + `Sorry again for the mix-up — it was our error. 💛`,
+    };
+  } catch (e) {
+    console.error('recordWrongCodUpi:', e.message);
+    return { ok: false, error: e.message, message: 'Sorry, I could not save that just now. Our team will contact you about this — your money is safe. [ESCALATE]' };
   }
 }
 
