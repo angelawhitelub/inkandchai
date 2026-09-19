@@ -35,6 +35,8 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { classifyShipmentMoney } = require('./utils/shipment-money');
+const { isReplacementOrder } = require('./utils/replacement-order');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -59,7 +61,8 @@ const feedSince = () => process.env.WOO_FEED_SINCE || DEFAULT_SINCE;
 async function loadCandidates(supabase, orderIds) {
   let q = supabase
     .from('orders')
-    .select('id, razorpay_order_id, status, created_at, customer_name, source')
+    .select('id, razorpay_order_id, status, created_at, customer_name, source, '
+          + 'amount_paise, advance_paid_paise, razorpay_payment_id, cart_items')
     .or('source.is.null,source.neq.paperbound')
     .in('status', UNSHIPPED_STATUSES)
     .order('created_at', { ascending: true })
@@ -67,7 +70,17 @@ async function loadCandidates(supabase, orderIds) {
   if (orderIds && orderIds.length) q = q.in('razorpay_order_id', orderIds);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  return (data || []).filter((o) => !isPaymentPending(o.status));
+  // COD only, matching woo-channel's own isCollectOnDelivery. The feed refuses
+  // to carry a prepaid or replacement order -- XpressBees's importer would
+  // stamp it COD and bill a customer who has already paid -- so this endpoint
+  // must not promise to queue one either. Book those through xpressbees-ship
+  // or ithink-order-push, which state the payment mode outright.
+  return (data || [])
+    .filter((o) => !isPaymentPending(o.status))
+    .filter((o) => {
+      try { return classifyShipmentMoney(o, isReplacementOrder(o)).isCOD; }
+      catch { return false; }
+    });
 }
 
 exports.handler = async (event) => {
@@ -119,7 +132,13 @@ exports.handler = async (event) => {
   // beats a silent count, because "why is it not in the panel" is the question
   // this endpoint exists to stop being asked.
   for (const id of wanted) {
-    if (!found.has(id)) results.push({ orderNumber: id, action: 'refused', reason: 'not an unshipped, shippable order' });
+    if (!found.has(id)) {
+      results.push({
+        orderNumber: id, action: 'refused',
+        reason: 'not an unshipped COD order the feed will carry '
+              + '(prepaid and replacement orders must be booked through xpressbees-ship or ithink-order-push)',
+      });
+    }
   }
 
   const alreadyVisible = rows.filter((o) => o.created_at >= since);

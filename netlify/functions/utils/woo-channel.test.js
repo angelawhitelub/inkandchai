@@ -382,3 +382,66 @@ test('a non-empty batch still requires the consumer pair', async () => {
   });
   assert.equal(res.statusCode, 401, 'an unauthenticated write must never be acknowledged');
 });
+
+// ── The channel carries COD work only ──────────────────────────────────────
+// The tests above assert that the feed LABELS a prepaid order correctly, and
+// it does. That was never the question. XpressBees's importer does not read
+// the label: all 133 shipments it pulled from this channel on 16-18 Sep came
+// out Payment Mode = COD, including 54 orders already paid in full and 12 free
+// replacements -- Rs 25,042 of doorstep bills to people who had already paid.
+// The 41 orders uploaded the same week through the panel's bulk template came
+// out 41/41 PREPAID, so the panel is not the problem, the importer is.
+//
+// What can be tested on our side is what we hand it. These assert the feed
+// never offers an order whose payment mode it is relying on someone else to
+// read correctly.
+{
+  const { isCollectOnDelivery } = require('../woo-channel').__test;
+
+  test('a fully paid order is withheld from the COD-only channel', () => {
+    assert.equal(
+      isCollectOnDelivery(base({ amount_paise: 15900, status: 'paid', razorpay_payment_id: 'OM2609160816317211650242W' })),
+      false,
+      'IC-20260916-6MATS was booked COD Rs 159 after PhonePe had already collected Rs 159',
+    );
+  });
+
+  test('a free replacement is withheld from the COD-only channel', () => {
+    assert.equal(
+      isCollectOnDelivery(base({
+        razorpay_order_id: 'IC-R-20260916-PU43R', status: 'replacement_pending',
+        amount_paise: 0, razorpay_payment_id: null,
+      })),
+      false,
+      'a reship for a damaged book must never arrive with a Rs 619 bill on it',
+    );
+  });
+
+  test('a real COD order is still carried', () => {
+    assert.equal(
+      isCollectOnDelivery(base({ amount_paise: 38800, status: 'cod_pending', razorpay_payment_id: null })),
+      true,
+      'withholding real COD work would stop shipping entirely',
+    );
+  });
+
+  test('partial COD is carried, and collects the balance only', async () => {
+    const o = base({
+      amount_paise: 3400, status: 'partial_cod_pending', razorpay_payment_id: 'pay_advance',
+      cart_items: [{ title: 'Atomic Habits', sku: 'AH1', qty: 1, price: 339,
+                     _payment: { balance: 305, full_total: 339 } }],
+    });
+    assert.equal(isCollectOnDelivery(o), true);
+    const woo = await toWooOrder(o);
+    assert.equal(woo.total, '305.00', 'the importer collects `total`; it must be the balance, not the full value');
+    assert.equal(woo.discount_total, '34.00');
+  });
+
+  test('a partial-COD order with no balance metadata is withheld, not guessed at', () => {
+    assert.equal(
+      isCollectOnDelivery(base({ amount_paise: 3400, status: 'partial_cod_pending', razorpay_payment_id: 'pay_advance' })),
+      false,
+      'failing closed is a late parcel; failing open is charging the advance twice',
+    );
+  });
+}
