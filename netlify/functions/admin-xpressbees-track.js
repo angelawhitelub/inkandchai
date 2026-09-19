@@ -64,13 +64,24 @@ exports.handler = async (event) => {
   if (!awbs.length) return json(400, { error: 'Pass { awbs: [...] }' });
   if (awbs.length > MAX_AWBS) return json(400, { error: `At most ${MAX_AWBS} AWBs per call` });
 
+  // Whether the courier COLLECTED at the door is not in the summary fields,
+  // and it is the question a refund turns on. raw returns the untouched
+  // payload so that is decided on evidence rather than on the assumption that
+  // a COD shipment marked delivered was necessarily paid for.
+  const raw = body.raw === true;
   const results = [];
   // Serially, not Promise.all: one shared bearer token, and a burst of 66
   // parallel calls is how you get rate-limited into a half-answered triage.
   for (const awb of awbs) {
     try {
       const d = await xb.track(awb);
-      const history = Array.isArray(d?.history) ? d.history : [];
+      // XpressBees returns history NEWEST FIRST. Reading the end of the array
+      // reports "Data Received" -- the booking scan -- for every shipment,
+      // including ones already delivered, which is a triage that always looks
+      // calm. Sort on event_time rather than trusting the order.
+      const history = (Array.isArray(d?.history) ? d.history : [])
+        .slice()
+        .sort((x, y) => String(x.event_time || '').localeCompare(String(y.event_time || '')));
       const last = history.length ? history[history.length - 1] : null;
       const status = d?.status || last?.status_code || last?.message || '';
       results.push({
@@ -80,6 +91,7 @@ exports.handler = async (event) => {
         last_event: last ? String(last.message || last.status_code || '').slice(0, 120) : null,
         last_location: last ? String(last.location || '').slice(0, 60) : null,
         last_at: last ? (last.event_time || last.status_time || null) : null,
+        raw: raw ? d : undefined,
       });
     } catch (e) {
       results.push({ awb, error: String(e.message || e).slice(0, 200) });
