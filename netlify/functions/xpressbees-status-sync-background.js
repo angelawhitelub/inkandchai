@@ -123,18 +123,38 @@ exports.handler = async (event) => {
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-  const { data: orders, error } = await supabase
+  // LEAST RECENTLY CHECKED FIRST, not oldest-shipped.
+  //
+  // The first live run took the 60 oldest by shipped_at and spent almost all
+  // of them on 12 September orders whose AWBs answer "Record not found" --
+  // they were booked through NimbusPost with XpressBees as the carrier, so
+  // they are not in our account and never will be. Those 13 are permanently
+  // unresolvable, and ordering by shipped_at parks them at the head of the
+  // queue forever: every run would re-fetch the same dead AWBs while the
+  // orders that actually move never get looked at. Stamping every scanned
+  // order and taking the stalest first rotates the whole set instead.
+  const baseSelect = () => supabase
     .from('orders')
     .select('id, razorpay_order_id, status, tracking_id, courier_name, customer_name, '
           + 'customer_phone, customer_email, shipment_moved_at, delivered_at, shipped_at')
     .ilike('courier_name', '%xpressbees%')
     .in('status', SYNCABLE)
     .not('tracking_id', 'is', null)
-    .order('shipped_at', { ascending: true })
     .limit(limit);
-  if (error) return json(500, { error: `orders query failed: ${error.message}` });
 
   const warn = {};
+  let { data: orders, error } = await baseSelect()
+    .order('last_courier_status_at', { ascending: true, nullsFirst: true });
+
+  // Same tolerance as the write path: the column is new, and referencing a
+  // missing one fails the WHOLE query. Falling back keeps the job running --
+  // it just cannot rotate, so the note says what that costs.
+  if (error && /last_courier_status_at/.test(error.message || '')) {
+    warn.migration = 'orders.last_courier_status / last_courier_status_at are missing — run sql/orders_last_courier_status.sql; '
+      + 'until then this re-checks the oldest shipments every run instead of rotating, and dead AWBs crowd out live ones';
+    ({ data: orders, error } = await baseSelect().order('shipped_at', { ascending: true }));
+  }
+  if (error) return json(500, { error: `orders query failed: ${error.message}` });
   const changed = [];
   const recorded = [];
   const missing = [];
@@ -151,6 +171,12 @@ exports.handler = async (event) => {
       // AWBs booked through NimbusPost with XpressBees as the carrier are not
       // in our XpressBees account and never will be. 13 of the first 150 were
       // these. They are not an error to chase.
+      // Stamp even the unresolvable ones. An AWB that is not in our account
+      // is still "checked"; leaving it unstamped would keep it first in line
+      // on every future run, which is the queue starvation this ordering
+      // exists to prevent.
+      const stamp = { last_courier_status: `lookup failed: ${e.message}`.slice(0, 200), last_courier_status_at: now };
+      if (!dryRun) await updateOrder(supabase, o.id, stamp, warn).catch(() => {});
       if (/record not found/i.test(e.message)) { missing.push({ order: ref, awb: o.tracking_id }); continue; }
       failed.push({ order: ref, awb: o.tracking_id, error: e.message });
       continue;
