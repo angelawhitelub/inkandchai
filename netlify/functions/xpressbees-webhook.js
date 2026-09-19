@@ -83,8 +83,25 @@ exports.handler = async (event) => {
   const rawBody = event.body || '';
   const check = verify(event, rawBody);
   if (!check.okToProcess) {
-    console.warn(`[xpressbees-webhook] refused: ${check.note}`);
-    return { statusCode: 401, headers: JSON_HEADERS, body: JSON.stringify({ error: check.note }) };
+    // A bad signature processes NOTHING — the event is dropped here and no
+    // order is touched. But the answer is 200, not 401, and that is deliberate.
+    //
+    // XpressBees count any non-2xx as a failure and switch the webhook off
+    // after 100 consecutive ones, without telling anybody. We cannot verify
+    // that their HMAC is byte-identical to ours until a real event arrives, so
+    // a 401 here would mean a one-character difference in how they build the
+    // signature costs us the whole integration, silently, and we would find out
+    // weeks later from frozen statuses.
+    //
+    // Refusing loudly buys nothing anyway: an attacker does not care what
+    // status code they get back, and the legitimate sender is the only party a
+    // 401 actually punishes. So we stay noisy in the logs and quiet on the wire.
+    const sent = header(event, 'x-hmac-sha256');
+    console.warn(`[xpressbees-webhook] DROPPED (${check.note}) — nothing processed.`
+      + ` signature_sent=${sent ? `${String(sent).slice(0, 12)}… (${String(sent).length} chars)` : 'none'}`
+      + ` body_bytes=${Buffer.byteLength(rawBody, 'utf8')}`
+      + ` body_head=${JSON.stringify(rawBody.slice(0, 120))}`);
+    return ok({ received: 0, dropped: check.note });
   }
   if (check.note) console.warn(`[xpressbees-webhook] ${check.note}`);
 

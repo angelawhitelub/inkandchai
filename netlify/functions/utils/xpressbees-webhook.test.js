@@ -65,3 +65,34 @@ test('header() returns empty rather than undefined for an absent header', () => 
   assert.equal(header({ headers: {} }, 'x-hmac-sha256'), '');
   assert.equal(header({}, 'x-hmac-sha256'), '');
 });
+
+// ── The handler's answer on a bad signature ──────────────────────────────────
+// Dropping the event is the security property. Answering 200 is the
+// availability property: XpressBees disable a webhook after 100 consecutive
+// non-2xx replies, so refusing loudly would let a signature-format mismatch
+// take the whole integration down silently.
+const { handler } = require('../xpressbees-webhook');
+
+const post = (body, headers = {}) => handler({ httpMethod: 'POST', body, headers });
+
+test('a forged event is dropped, but answered 200 so the webhook is not disabled', async () => {
+  const res = await withSecret('the-real-secret', () => post(BODY, { 'x-hmac-sha256': sign(BODY, 'a-different-secret') }));
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.received, 0);
+  assert.match(body.dropped, /signature mismatch/);
+  assert.ok(!body.results, 'a dropped event must not be processed');
+});
+
+test('an unsigned event is dropped the same way', async () => {
+  const res = await withSecret('the-real-secret', () => post(BODY));
+  assert.equal(res.statusCode, 200);
+  assert.equal(JSON.parse(res.body).received, 0);
+});
+
+test('GET and OPTIONS never answer 3xx — they do not follow redirects', async () => {
+  const get = await handler({ httpMethod: 'GET', headers: {} });
+  assert.equal(get.statusCode, 200);
+  const opt = await handler({ httpMethod: 'OPTIONS', headers: {} });
+  assert.ok(opt.statusCode === 204 || opt.statusCode === 200);
+});
