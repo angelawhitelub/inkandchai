@@ -119,7 +119,6 @@ test('the bot may never ask for anything but a UPI id', () => {
 
 test('a UPI id already on file is not asked for a second time', () => {
   const ctx = botContext(at({ status: 'shipped', wrong_cod_upi: '9876543210@ybl' }));
-  assert.match(ctx, /ALREADY given us a UPI id/);
   assert.match(ctx, /9876543210@ybl/);
   assert.match(ctx, /Do NOT ask for it again/);
   assert.doesNotMatch(ctx, /IF THEY STILL WILL NOT PAY TWICE/);
@@ -150,4 +149,36 @@ test('a customer name cannot inject markup into the owner email', () => {
   const m = ownerUpiEmail({ order: at({ customer_name: '<script>alert(1)</script>' }), amountPaise: 100, upi: 'a@ybl' });
   assert.doesNotMatch(m.html, /<script>/);
   assert.match(m.html, /&lt;script&gt;/);
+});
+
+// ── The manual track and the automatic track must never both pay ─────────────
+test('a customer who gave a UPI id is off the automatic track entirely', () => {
+  const upi = at({ status: 'delivered', wrong_cod_upi: 'ridhimamanni2203@okhdfcbank' });
+  assert.equal(assess(upi).verdict, 'upi-route');
+  assert.equal(assess(upi).upi, 'ridhimamanni2203@okhdfcbank');
+});
+
+test('the UPI route wins over every state that would otherwise pay out', () => {
+  for (const status of ['delivered', 'shipped', 'out_for_delivery']) {
+    assert.equal(assess(at({ status, wrong_cod_upi: 'a@ybl' })).verdict, 'upi-route', status);
+  }
+});
+
+test('a finished refund still reports as done, even with a UPI id on the row', () => {
+  const v = assess(at({ wrong_cod_upi: 'a@ybl', wrong_cod_refund_at: '2026-09-20T08:46:46Z', wrong_cod_refund_ref: 'R1' }));
+  assert.equal(v.verdict, 'already-done');
+});
+
+test('clearing the UPI id puts the order back on the automatic track', () => {
+  assert.equal(assess(at({ status: 'delivered', wrong_cod_upi: null })).verdict, 'refundable');
+  assert.equal(assess(at({ status: 'delivered', wrong_cod_upi: '' })).verdict, 'refundable');
+});
+
+test('the bot is told the money is going to UPI and forbidden from refunding the card', () => {
+  const ctx = botContext(at({ status: 'delivered', wrong_cod_upi: 'a@ybl' }));
+  assert.match(ctx, /a@ybl/);
+  assert.match(ctx, /did not want to pay twice/);
+  assert.match(ctx, /Do NOT ask for it again/);
+  assert.match(ctx, /do NOT call refund_wrong_cod/);
+  assert.match(ctx, /same money twice/);
 });

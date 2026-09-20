@@ -554,6 +554,11 @@ function wrongCodBlockHtml(o) {
       ${w.reference ? `<br><span style="color:var(--cream-dim);font-size:0.76rem;">Reference: <span style="font-family:ui-monospace,Menlo,monospace;">${esc(w.reference)}</span></span>` : ''}
     </div>`);
   }
+  if (w.state === 'upi-route') {
+    return wrap(`<div class="r-row" style="color:#6dbf6d;font-size:0.82rem;line-height:1.7;">
+      ✓ You asked us to send the ${amt} to your UPI ID instead, and our team is transferring it there. Nothing more is needed from you.
+    </div>`);
+  }
   if (w.state === 'in-refund') {
     return wrap(`<div class="r-row" style="color:#6dbf6d;font-size:0.82rem;">✓ Your refund is already on its way to your original payment method. Nothing is needed from you.</div>`);
   }

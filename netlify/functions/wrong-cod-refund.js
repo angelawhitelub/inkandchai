@@ -71,6 +71,12 @@ exports.handler = async (event) => {
         message: `₹${rupees(before.amountPaise)} has already been refunded to your original payment method. It reflects within 2–3 business days.`,
       });
     }
+    if (before.verdict === 'upi-route') {
+      return json(200, {
+        success: true, already: true, amount_rs: rupees(before.amountPaise),
+        message: `You asked us to send the ₹${rupees(before.amountPaise)} to your UPI ID instead, and our team is transferring it there. Nothing more is needed from you.`,
+      });
+    }
     if (before.verdict === 'in-refund') {
       return json(200, { success: true, already: true, amount_rs: rupees(before.amountPaise), message: 'A refund on this order is already on its way to your original payment method.' });
     }

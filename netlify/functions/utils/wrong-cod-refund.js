@@ -71,6 +71,21 @@ function assess(order, { phone = null, enabled = refundsEnabled(), remittanceKno
   if (order.wrong_cod_refund_at) {
     return { verdict: 'already-done', amountPaise, at: order.wrong_cod_refund_at, ref: order.wrong_cod_refund_ref || null };
   }
+  // A UPI id means this customer refused to pay twice and is being paid BY HAND,
+  // before delivery, so that they can pay the agent with our money. From that
+  // moment they belong to the manual track and the automatic one must let go of
+  // them completely: paying them again when the parcel lands is not a refund,
+  // it is the same money twice.
+  //
+  // This is what went wrong on 20 Sep. Three customers gave a UPI id, were paid
+  // by hand, and the delivery sweep -- which only knew about gateway refunds --
+  // paid one of them a second time the moment her parcel was marked delivered.
+  //
+  // Clearing wrong_cod_upi puts an order back on the automatic track, which is
+  // the escape hatch if a manual payout is abandoned.
+  if (order.wrong_cod_upi) {
+    return { verdict: 'upi-route', amountPaise, upi: order.wrong_cod_upi, at: order.wrong_cod_upi_at || null };
+  }
   if (REFUND_BLOCKING_STATUSES.includes(String(order.status || '').toLowerCase())) {
     return { verdict: 'in-refund', amountPaise };
   }
@@ -109,14 +124,19 @@ function botContext(order, opts = {}) {
       + `${a.ref ? ` (reference ${a.ref})` : ''} — it reflects in 2–3 business days. Tell them that, with the reference exactly as written. `
       + `Do NOT call refund_wrong_cod again.`;
   }
+  if (a.verdict === 'upi-route') {
+    return head + `\nThey have given us a UPI id (${a.upi}) because they did not want to pay twice, and our team is sending the ₹${rupees} to it by hand. `
+      + `Tell them it is with the team and on its way to that UPI id. Do NOT ask for it again, do NOT offer to refund the card instead, `
+      + `and do NOT call refund_wrong_cod or record_wrong_cod_upi — this order is being settled manually and any refund from you would be the same money twice.`;
+  }
   if (a.verdict === 'in-refund') {
     return head + `\nA refund on this order is already in progress at the payment gateway. Tell them it is on its way and needs nothing from them. `
       + `Do NOT call refund_wrong_cod.`;
   }
   // not-delivered / not-collected / disabled all get the same customer-facing answer.
-  const upiLine = order.wrong_cod_upi
-    ? `\nThey have ALREADY given us a UPI id (${order.wrong_cod_upi}) for this and our team has it. Do NOT ask for it again — tell them it is with the team and the ₹${rupees} is being sent to that UPI id.`
-    : `\nIF THEY STILL WILL NOT PAY TWICE — and many people will not, because they do not trust a promise from a shop that has just made a mistake — do NOT argue and do NOT keep repeating the promise. Offer the other way round instead: we send them the ₹${rupees} FIRST, by UPI, and they use it to pay the delivery agent. Ask for their UPI id (like 9876543210@ybl) and call the record_wrong_cod_upi tool with exactly what they type. Never ask for a bank account number, IFSC, card number, OTP or CVV — a UPI id is all we need and all we may ask for.`;
+  // An order that already carries a UPI id never reaches here -- assess() sends
+  // it down the upi-route branch above -- so this only ever asks for a new one.
+  const upiLine = `\nIF THEY STILL WILL NOT PAY TWICE — and many people will not, because they do not trust a promise from a shop that has just made a mistake — do NOT argue and do NOT keep repeating the promise. Offer the other way round instead: we send them the ₹${rupees} FIRST, by UPI, and they use it to pay the delivery agent. Ask for their UPI id (like 9876543210@ybl) and call the record_wrong_cod_upi tool with exactly what they type. Never ask for a bank account number, IFSC, card number, OTP or CVV — a UPI id is all we need and all we may ask for.`;
   return head + `\nThe parcel is NOT delivered yet (status: ${a.status || 'in transit'}), so they have not paid twice yet and there is nothing to refund at this moment. `
     + `Tell them clearly: please DO accept the parcel and pay the ₹${rupees} the delivery agent asks for, and the moment it is delivered `
     + `we refund that ₹${rupees} straight back to the payment method they originally paid with — they do not need to do anything, ask anyone, or share any bank details. `

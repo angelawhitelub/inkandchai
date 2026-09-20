@@ -1274,6 +1274,9 @@ async function refundWrongCodViaBot(phone, args = {}) {
     if (verdict.verdict === 'already-done') {
       return { ok: true, alreadyRefunded: true, order_id: displayId, message: `The ₹${rs} on order ${displayId} has already been refunded to your original payment method${verdict.ref ? ` (reference ${verdict.ref})` : ''} — it reflects within 2–3 business days. 💛` };
     }
+    if (verdict.verdict === 'upi-route') {
+      return { ok: false, error: 'upi-route', message: `You gave us your UPI ID (${verdict.upi}) for this one, and our team is sending the ₹${rs} there by hand — so I must not also put it back on your card, or you would be paid twice. It is on its way. 💛` };
+    }
     if (verdict.verdict === 'in-refund') {
       return { ok: false, error: 'in-refund', message: `A refund on order ${displayId} is already on its way to your original payment method. Nothing is needed from you — please allow 2–3 business days.` };
     }
@@ -1354,6 +1357,10 @@ async function recordWrongCodUpi(phone, args = {}) {
     }
     if (verdict.verdict === 'refundable' || verdict.verdict === 'in-refund') {
       return { ok: false, error: 'delivered', message: `Order ${displayId} already shows as delivered, so I can put the ₹${rs} straight back on the payment method you originally paid with — no UPI id needed. Let me do that for you.` };
+    }
+
+    if (verdict.verdict === 'upi-route') {
+      return { ok: false, error: 'upi-route', message: `We already have your UPI ID (${verdict.upi}) for this order and our team is sending the ₹${rs} to it. If that UPI ID is wrong, tell me the right one and I will pass it on.` };
     }
 
     const upi = normalizeUpiId(args.upi_id);

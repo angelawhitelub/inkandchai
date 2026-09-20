@@ -265,3 +265,14 @@ test('a Razorpay refund leaves the attempt counter alone', async () => {
   const final = db.updates[db.updates.length - 1].patch;
   assert.ok(!('refund_attempts' in final));
 });
+
+test('the delivery sweep never pays a customer who is on the UPI route', async () => {
+  const db = fakeDbWithRow({ ...order, wrong_cod_upi: 'a@okhdfcbank' });
+  let charged = false;
+  const res = await autoRefundOnDelivery({
+    supabase: db, orderId: 'uuid-1',
+    deps: { issueRazorpayRefund: async () => { charged = true; return { id: 'r' }; }, issuePhonePeRefund: async () => ({}), notifyOwnerRefund: async () => ({}), sendEmail: async () => ({ ok: true }) },
+  });
+  assert.equal(res.skipped, 'upi-route');
+  assert.equal(charged, false, 'this is exactly the double payment we are preventing');
+});
