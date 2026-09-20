@@ -215,6 +215,7 @@ async function performWrongCodRefund({ supabase, order, source = 'unknown', deps
   if (!claimed) return { ok: false, verdict: 'already-done', amountPaise: verdict.amountPaise };
 
   let ref = '';
+  let usedAttempt = null;
   try {
     if (pid.startsWith('pay_')) {
       const refund = await issueRazorpayRefund(pid, verdict.amountPaise, {
@@ -227,6 +228,9 @@ async function performWrongCodRefund({ supabase, order, source = 'unknown', deps
       const res = await issuePhonePeRefund({ displayId, amountPaise: verdict.amountPaise, attempt });
       if (!res.ok) throw new Error(res.error || 'PhonePe refund failed');
       ref = res.merchantRefundId;
+      // The merchant refund id is derived from the attempt number, so a later
+      // refund on this order must not be handed the same one back.
+      usedAttempt = attempt + 1;
     }
   } catch (e) {
     // Hand the claim back so a retry can still pay them, and leave the reason
@@ -239,9 +243,9 @@ async function performWrongCodRefund({ supabase, order, source = 'unknown', deps
   }
 
   // The order STAYS delivered. This returns a duplicate payment, not the sale.
-  await supabase.from('orders')
-    .update({ wrong_cod_refund_at: new Date().toISOString(), wrong_cod_refund_ref: ref })
-    .eq('id', order.id);
+  const done = { wrong_cod_refund_at: new Date().toISOString(), wrong_cod_refund_ref: ref };
+  if (usedAttempt != null) done.refund_attempts = usedAttempt;
+  await supabase.from('orders').update(done).eq('id', order.id);
   await notifyOwnerRefund(order, verdict.amountPaise, {
     provider: pid.startsWith('pay_') ? 'Razorpay' : 'PhonePe',
     reason: `wrong COD collected on a prepaid order (refunded via ${source})`,

@@ -240,3 +240,28 @@ test('the refund email explains it was our mistake and asks nothing of them', ()
   assert.match(m.html, /368\.20/);
   assert.doesNotMatch(m.html, /UPI ID|bank account/i);
 });
+
+test('the attempt counter moves on, so a later refund cannot reuse the same id', async () => {
+  const db = fakeDb();
+  await performWrongCodRefund({
+    supabase: db, order: { ...order, razorpay_payment_id: 'OM2609', refund_attempts: 0 }, source: 'test',
+    deps: {
+      issueRazorpayRefund: async () => { throw new Error('wrong gateway'); },
+      issuePhonePeRefund: async ({ attempt }) => ({ ok: true, merchantRefundId: `REFUND-A${attempt}` }),
+      notifyOwnerRefund: async () => ({}),
+    },
+  });
+  const final = db.updates[db.updates.length - 1].patch;
+  assert.equal(final.wrong_cod_refund_ref, 'REFUND-A0');
+  assert.equal(final.refund_attempts, 1);
+});
+
+test('a Razorpay refund leaves the attempt counter alone', async () => {
+  const db = fakeDb();
+  await performWrongCodRefund({
+    supabase: db, order, source: 'test',
+    deps: { issueRazorpayRefund: async () => ({ id: 'rfnd_1' }), issuePhonePeRefund: async () => ({}), notifyOwnerRefund: async () => ({}) },
+  });
+  const final = db.updates[db.updates.length - 1].patch;
+  assert.ok(!('refund_attempts' in final));
+});

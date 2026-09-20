@@ -315,6 +315,22 @@ exports.handler = async (event) => {
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ignored: refundResult.ignore, orderId }) };
       }
       dbStatus = refundResult.status;
+
+      // A wrong-COD refund returns a DUPLICATE payment, not the sale. The
+      // customer was charged twice, kept the book, and is getting the second
+      // charge back — so the order is still delivered and still revenue, and
+      // flipping it to `refunded` would say we sold nothing. It also reads as
+      // a cancelled order to the customer on their own tracking page, and
+      // hides the order from anything that skips refunded rows.
+      //
+      // Recognised by the refund id we recorded when we issued it, which is
+      // the only thing that distinguishes these from an ordinary refund.
+      if (existing?.wrong_cod_refund_ref
+          && refundMerchantId
+          && String(existing.wrong_cod_refund_ref) === String(refundMerchantId)) {
+        console.log(`[PHONEPE] ${orderId} wrong-COD refund ${refundMerchantId} — keeping status ${existing.status}`);
+        dbStatus = existing.status;
+      }
     }
 
     const meta = Array.isArray(existing?.cart_items) ? existing.cart_items[0]?._payment : null;
