@@ -161,9 +161,21 @@ function orderCancelledEmailHtml(order, refund, opts = {}) {
   const total = moneyFromPaise(order.amount_paise);
   // Send them back to the exact book where we can, so re-ordering is one tap.
   // Falls back to the catalogue when the cart line carries no url.
-  // Same test refundSentence applies, so the big number and the sentence below
-  // it can never contradict each other.
-  const refundable = !opts.skipRefund && Number(order.amount_paise || 0) > 0 && !!order.razorpay_payment_id;
+  // The big number states a COMPLETED fact, so it may only appear once the
+  // gateway has confirmed the refund -- the same test refundSentence applies,
+  // so the two can never contradict each other.
+  //
+  // This used to key off "was there money to refund", which is true the moment
+  // a prepaid order is cancelled. A pending or failed refund therefore printed
+  //     Rs 239 refunded
+  //     Your refund of Rs 239 is being processed...
+  // telling the customer in the headline that they had their money back while
+  // the sentence underneath said it was still on the way. Never claim a refund
+  // is issued while the gateway says PENDING or FAILED.
+  const refundable = !opts.skipRefund
+    && Number(order.amount_paise || 0) > 0
+    && !!order.razorpay_payment_id
+    && !!(refund && refund.ok && refund.nextStatus === 'refunded');
   const firstUrl = items.map(i => i.url || i.id || '').find(u => String(u).startsWith('/product/'));
   const reorderUrl = firstUrl ? `https://inkandchai.in${firstUrl}` : 'https://inkandchai.in/books/';
   const kind = cancellationKind(opts);
@@ -478,3 +490,4 @@ async function notifyOrderCancelled(order, opts = {}) {
 }
 
 module.exports = { notifyOrderCancelled, refundSentence, refundSentenceShort, bookListShort, cancellationKind, cancellationCopy };
+module.exports.__test = { orderCancelledEmailHtml };

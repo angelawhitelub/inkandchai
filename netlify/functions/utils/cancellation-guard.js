@@ -27,12 +27,38 @@
  * Scope
  * -----
  * This governs automated cancellation only: courier status sync and the stale
- * COD sweeper. Deliberate human decisions keep their own rules — a customer
+ * no-AWB sweeper. Deliberate human decisions keep their own rules — a customer
  * cancelling in the 30-minute window (cancel-order.js) and an admin cancelling
  * by hand are choices someone made, not a timeout firing on its own.
+ *
+ * Two floors, not one. Courier-driven cancellation stays at
+ * CANCEL_MIN_AGE_DAYS; the sweep for orders that never got an AWB uses
+ * CANCEL_NO_AWB_MIN_AGE_DAYS and passes it as `minAgeDays`. See the note on
+ * that constant for why the shorter one cannot reopen the 24 Aug hole.
  */
 
 const CANCEL_MIN_AGE_DAYS = 10;
+
+/**
+ * The floor for an order WE NEVER GAVE AN AWB TO.
+ *
+ * Seven days, not ten, and the difference is deliberate. CANCEL_MIN_AGE_DAYS
+ * exists because of 24 Aug, when a COURIER declared shipments cancelled from
+ * 7.6 days and we mirrored it onto live orders. Every order in that incident
+ * had an AWB — that is what made the courier's opinion reachable at all.
+ *
+ * An order with no AWB after seven days has a different meaning entirely:
+ * nobody has an opinion about it because nobody ever picked it up. It is not a
+ * courier timeout we are guessing at, it is our own failure to ship, and the
+ * customer has been waiting a week. Cancelling it and returning their money is
+ * the correct answer, and waiting three more days only makes it worse.
+ *
+ * The 24 Aug failure therefore cannot recur through this threshold: the query
+ * that uses it requires tracking_id IS NULL, and none of those 71 shipments
+ * would have matched.
+ */
+const CANCEL_NO_AWB_MIN_AGE_DAYS = 7;
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function orderAgeDays(order, now = Date.now()) {
@@ -66,4 +92,4 @@ function cancellationBlocked(order, opts) {
   return !cancellationAllowed(order, opts).allowed;
 }
 
-module.exports = { CANCEL_MIN_AGE_DAYS, orderAgeDays, cancellationAllowed, cancellationBlocked };
+module.exports = { CANCEL_MIN_AGE_DAYS, CANCEL_NO_AWB_MIN_AGE_DAYS, orderAgeDays, cancellationAllowed, cancellationBlocked };

@@ -1,14 +1,23 @@
 /**
- * Pure-COD seven-day cancellation sweep for orders that never received an AWB.
+ * Seven-day cancellation sweep for orders that never received an AWB.
  * Once an AWB exists, lack of courier movement must never auto-cancel an order.
- * Prepaid and partial-COD orders are fail-closed and never eligible.
+ *
+ * Two paths, because the money works differently:
+ *   Path 1  pure COD      — cancel, nothing to refund.
+ *   Path 2  prepaid and   — cancel AND return the money that was captured.
+ *           partial COD
+ *
+ * Path 2 is newer and deliberately the more cautious of the two. It refuses
+ * any order without a gateway payment reference rather than cancelling a
+ * "paid" row it cannot actually refund, and it is capped far below Path 1 so a
+ * bad query cannot empty the gateway balance in a single hourly run.
  */
 
 const { requireAdmin } = require('./utils/admin-auth');
 const { cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
-const { cancellationAllowed, CANCEL_MIN_AGE_DAYS } = require('./utils/cancellation-guard');
+const { cancellationAllowed, CANCEL_NO_AWB_MIN_AGE_DAYS } = require('./utils/cancellation-guard');
 const { sendEmail } = require('./utils/email');
 const { sendText } = require('./utils/whatsapp');
 
@@ -18,12 +27,30 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-// Was 7, which cancelled orders three days inside the protected window. The
-// threshold is now the guard itself, so this job and the courier sync can never
-// drift apart: raising one raises both.
-const THRESHOLD_DAYS = CANCEL_MIN_AGE_DAYS;
+// Seven days, from the guard, so this job and the guard cannot drift apart.
+// This is the NO-AWB floor specifically, not the courier-cancellation floor —
+// see cancellation-guard.js for why the two differ.
+const THRESHOLD_DAYS = CANCEL_NO_AWB_MIN_AGE_DAYS;
 const MAX_PER_RUN = 25;
+
+// Prepaid cancellation moves real money, so it gets its own, much smaller cap.
+// At the observed backlog (3 orders, Rs 582) this is never the binding limit;
+// it exists so that a future query bug cannot issue 25 refunds an hour before
+// anyone notices.
+const MAX_REFUNDS_PER_RUN = 10;
+
+// Kill switch. Set AUTO_CANCEL_STALE_PREPAID=0 to stop Path 2 without
+// touching Path 1 or redeploying anything else.
+function prepaidSweepEnabled(raw = process.env.AUTO_CANCEL_STALE_PREPAID) {
+  const v = String(raw ?? '').trim().toLowerCase();
+  if (['0', 'off', 'false', 'no'].includes(v)) return false;
+  return true;
+}
+
+const PREPAID_STATUSES = ['paid', 'confirmed', 'partial_cod_pending'];
+
 const CUSTOMER_REASON = 'The book in your order was out of stock with us, so we had to cancel your order. We are sorry for the inconvenience.';
+const PREPAID_CUSTOMER_REASON = 'The book in your order was out of stock with us, so we had to cancel your order and return your money. We are sorry for the inconvenience.';
 
 function displayId(order) {
   return order.razorpay_order_id || order.id;
@@ -57,6 +84,17 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     no_awb_skipped_race: 0,
     no_awb_nimbuspost_failed: 0,
     no_awb_db_failed: 0,
+    prepaid_candidates: 0,
+    prepaid_eligible: 0,
+    prepaid_cancelled: 0,
+    prepaid_refund_requested: 0,
+    prepaid_refund_confirmed: 0,
+    prepaid_skipped_is_cod: 0,
+    prepaid_skipped_no_payment_ref: 0,
+    prepaid_skipped_race: 0,
+    prepaid_skipped_too_young: 0,
+    prepaid_db_failed: 0,
+    prepaid_disabled: false,
     examples: [],
   };
 
@@ -120,10 +158,13 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     // Belt and braces: the cutoff above filters the QUERY, this checks the ROW.
     // A stale claim, a retry, or a future edit to the query could otherwise put
     // an order here that is younger than the guard allows.
-    const verdict = cancellationAllowed(order);
+    // minAgeDays is passed explicitly. Without it the guard applies its
+    // 10-day courier default and would silently block every order this sweep
+    // is now meant to catch between days 7 and 10.
+    const verdict = cancellationAllowed(order, { minAgeDays: THRESHOLD_DAYS });
     if (!verdict.allowed) {
       await supabase.from('orders').update({ auto_cancel_claimed_at: null }).eq('id', order.id);
-      console.warn(`[stale-cod] BLOCKED cancel for ${displayId(order)}: ${verdict.reason} (min ${CANCEL_MIN_AGE_DAYS}d) — claim released`);
+      console.warn(`[stale-cod] BLOCKED cancel for ${displayId(order)}: ${verdict.reason} (min ${THRESHOLD_DAYS}d) — claim released`);
       summary.blocked_too_young = (summary.blocked_too_young || 0) + 1;
       continue;
     }
@@ -136,7 +177,7 @@ async function runSweep(supabase, { dryRun = false } = {}) {
       auto_cancelled_at: cancelledAt,
       // Stable identifier, not a duration: ~2,000 historical rows carry this
       // exact string and the admin badge filters on it. The actual threshold is
-      // CANCEL_MIN_AGE_DAYS above — do not encode the number here again.
+      // THRESHOLD_DAYS above — do not encode the number here again.
       cancellation_source: 'no_awb_cod_7_day',
       cancellation_reason: CUSTOMER_REASON,
       auto_cancel_last_error_at: np.ok ? null : cancelledAt,
@@ -159,6 +200,132 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     }
     summary.no_awb_cancelled++;
     if (summary.examples.length < 10) summary.examples.push({ order_id: displayId(order), awb: null, type: 'no_awb' });
+  }
+
+  // ── Path 2: PREPAID and partial-COD orders with no AWB after seven days ───
+  // Same trigger as Path 1, but money was captured, so cancelling without
+  // returning it would be theft by timeout. The refund itself is delegated to
+  // notifyOrderCancelled, which already owns every safeguard that matters:
+  // it re-reads the row, refuses an order that is refunded / partially
+  // refunded / refund_pending, refuses RTO, marks refund_pending BEFORE
+  // calling the gateway so two events cannot both pay, and never tells the
+  // customer the money is issued while the gateway still says pending.
+  // Duplicating any of that here would be a second opinion about whether
+  // someone has been paid, which is exactly how an order gets refunded twice.
+  if (!prepaidSweepEnabled()) {
+    summary.prepaid_disabled = true;
+    return summary;
+  }
+
+  const { data: prepaidOrders, error: prepaidError } = await supabase
+    .from('orders')
+    .select('*')
+    .or('source.is.null,source.neq.paperbound')
+    .in('status', PREPAID_STATUSES)
+    .is('tracking_id', null)
+    .lte('created_at', cutoff)
+    .is('auto_cancelled_at', null)
+    .is('auto_cancel_claimed_at', null)
+    .order('created_at', { ascending: true })
+    .limit(MAX_REFUNDS_PER_RUN);
+  if (prepaidError) throw new Error(`Prepaid candidate query failed: ${prepaidError.message}`);
+
+  summary.prepaid_candidates = prepaidOrders?.length || 0;
+  for (const order of prepaidOrders || []) {
+    // A pure-COD row that somehow reached a prepaid status belongs to Path 1,
+    // which knows not to promise a refund. Never let it fall through to here.
+    if (isDefinitelyCod(order)) {
+      summary.prepaid_skipped_is_cod++;
+      continue;
+    }
+    // Fail closed on money. "Paid" with no gateway reference is a data problem,
+    // and cancelling it would tell a customer their refund is on its way when
+    // there is nothing to send it through. Leave it for a human.
+    if (!String(order.razorpay_payment_id || '').trim() || !(Number(order.amount_paise) > 0)) {
+      summary.prepaid_skipped_no_payment_ref++;
+      console.warn(`[stale-cod] ${displayId(order)} is ${order.status} with no usable payment reference — left for manual review`);
+      continue;
+    }
+    const verdict = cancellationAllowed(order, { minAgeDays: THRESHOLD_DAYS });
+    if (!verdict.allowed) {
+      summary.prepaid_skipped_too_young++;
+      continue;
+    }
+    summary.prepaid_eligible++;
+    if (dryRun) {
+      if (summary.examples.length < 10) {
+        summary.examples.push({
+          order_id: displayId(order), awb: null, type: 'prepaid',
+          refund_paise: order.amount_paise, age_days: Number(verdict.ageDays.toFixed(1)),
+        });
+      }
+      continue;
+    }
+
+    const claimedAt = new Date().toISOString();
+    const claim = await supabase
+      .from('orders')
+      .update({ auto_cancel_claimed_at: claimedAt })
+      .eq('id', order.id)
+      .in('status', PREPAID_STATUSES)
+      .is('tracking_id', null)
+      .is('auto_cancel_claimed_at', null)
+      .select('id');
+    if (claim.error || !claim.data?.length) {
+      summary.prepaid_skipped_race++;
+      continue;
+    }
+
+    // Status is NOT written here. notifyOrderCancelled moves a refunded order
+    // to refund_pending / refunded itself, and stamping 'cancelled' on top of
+    // that would erase where the money got to.
+    const cancelledAt = new Date().toISOString();
+    const update = await supabase.from('orders').update({
+      auto_cancel_claimed_at: null,
+      auto_cancelled_at: cancelledAt,
+      cancellation_source: 'no_awb_prepaid_7_day',
+      cancellation_reason: PREPAID_CUSTOMER_REASON,
+    })
+      .eq('id', order.id)
+      .in('status', PREPAID_STATUSES)
+      .is('tracking_id', null)
+      .select('id');
+    if (update.error || !update.data?.length) {
+      summary.prepaid_db_failed++;
+      await supabase.from('orders').update({ auto_cancel_claimed_at: null }).eq('id', order.id);
+      continue;
+    }
+    summary.prepaid_cancelled++;
+    summary.prepaid_refund_requested++;
+
+    // No skipRefund: this is the whole point of Path 2.
+    const result = await notifyOrderCancelled(
+      { ...order, auto_cancelled_at: cancelledAt },
+      { reason: PREPAID_CUSTOMER_REASON },
+    );
+    if (result?.refund?.ok && result.refund.nextStatus === 'refunded') summary.prepaid_refund_confirmed++;
+
+    // Don't strand the order. maybeAutoRefund owns the status once it engages
+    // (refund_pending -> refunded), but every one of its early exits -- no id,
+    // already refunded, RTO, no payment reference, no amount -- returns before
+    // touching it. Those are pre-filtered above, so reaching here with the
+    // status untouched should be impossible; if it happens anyway the order
+    // would sit in 'paid' carrying auto_cancelled_at, cancelled in every way
+    // except the one the admin panel can see. Close it out as cancelled.
+    const { data: after } = await supabase
+      .from('orders').select('status').eq('id', order.id).maybeSingle();
+    if (after && PREPAID_STATUSES.includes(after.status)) {
+      console.warn(`[stale-cod] ${displayId(order)} refund did not claim the row (${JSON.stringify(result?.refund?.skipped || result?.refund?.error || null)}) — marking cancelled`);
+      await supabase.from('orders').update({ status: 'cancelled' })
+        .eq('id', order.id).in('status', PREPAID_STATUSES);
+      summary.prepaid_refund_unclaimed = (summary.prepaid_refund_unclaimed || 0) + 1;
+    }
+    if (summary.examples.length < 10) {
+      summary.examples.push({
+        order_id: displayId(order), awb: null, type: 'prepaid',
+        refund_paise: order.amount_paise, refund: result?.refund?.skipped || result?.refund?.nextStatus || 'requested',
+      });
+    }
   }
 
   return summary;
@@ -199,3 +366,7 @@ exports.handler = async (event) => {
 };
 
 exports._runSweep = runSweep;
+exports.__test = {
+  prepaidSweepEnabled, PREPAID_STATUSES, THRESHOLD_DAYS, MAX_PER_RUN, MAX_REFUNDS_PER_RUN,
+  PREPAID_CUSTOMER_REASON,
+};
