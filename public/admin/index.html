@@ -3233,7 +3233,10 @@ function logout() {
   allOrders = [];
   serverTotal = null;
   selectedOrderIds.clear();
-  try { localStorage.removeItem(ORDERS_CACHE_KEY); } catch {}
+  // Signing out must clear the orders held in IndexedDB too, not just the
+  // (never-populated) localStorage copy — otherwise the next person to open
+  // this browser gets the previous admin's order data from cache.
+  clearOrdersCache();
   hideBootCheck();
   ['loginPanel','loginErr'].forEach(id => document.getElementById(id).style.display = id === 'loginPanel' ? '' : 'none');
   document.getElementById('dashboard').style.display = 'none';
@@ -3397,21 +3400,72 @@ window.addEventListener('DOMContentLoaded', async () => {
 //      (Promise.all), cutting wall time from N×latency down to ~1×latency
 //   3. localStorage cache (5-min TTL) — refresh appears instant; fresh data
 //      arrives in background and seamlessly updates the table
-function loadOrdersFromCache() {
+// WHY INDEXEDDB AND NOT localStorage
+// ----------------------------------
+// One order serialises to ~2.6KB, so the whole set is ~35MB at 14,000 orders.
+// That is far past the per-origin cap Chromium applies to localStorage (5-10MiB
+// depending on version), and a save over the cap throws QuotaExceededError.
+// The old code caught that in a bare `catch {}`, so a cache that could not
+// write looked exactly like one that could -- and every visit then paid for a
+// complete cold download while appearing to have a warm cache.
+//
+// NOT VERIFIED in the browser this actually broke in: measured in a Chromium
+// build here, localStorage accepted the full 35MB without throwing, so the cap
+// is not enforced everywhere. Treat "the cache never wrote" as the likely
+// story, not a proven one. What IS certain is that 35MB has no business in a
+// store designed for kilobytes, and that the failure was silent.
+//
+// IndexedDB removes the question: structured clones instead of a 35MB JSON
+// string, and a quota that is a share of free disk (~2.9GB here) rather than
+// a few megabytes. The write failure is now logged rather than swallowed.
+const ORDERS_IDB_NAME  = 'iac_admin';
+const ORDERS_IDB_STORE = 'cache';
+
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(ORDERS_IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(ORDERS_IDB_STORE)) {
+        req.result.createObjectStore(ORDERS_IDB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+function idbRun(mode, fn) {
+  return idbOpen().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(ORDERS_IDB_STORE, mode);
+    const rq = fn(tx.objectStore(ORDERS_IDB_STORE));
+    tx.oncomplete = () => { db.close(); resolve(rq ? rq.result : undefined); };
+    tx.onerror    = () => { db.close(); reject(tx.error); };
+    tx.onabort    = () => { db.close(); reject(tx.error); };
+  }));
+}
+
+async function clearOrdersCache() {
+  try { localStorage.removeItem(ORDERS_CACHE_KEY); } catch {}
+  try { await idbRun('readwrite', st => st.delete(ORDERS_CACHE_KEY)); } catch {}
+}
+
+async function loadOrdersFromCache() {
   try {
-    const raw = localStorage.getItem(ORDERS_CACHE_KEY);
-    if (!raw) return null;
-    const j = JSON.parse(raw);
+    const j = await idbRun('readonly', st => st.get(ORDERS_CACHE_KEY));
     if (!j?.orders || (Date.now() - (j.ts || 0)) > ORDERS_CACHE_TTL_MS) return null;
     return j;
   } catch { return null; }
 }
-function saveOrdersToCache(orders, total) {
+
+async function saveOrdersToCache(orders, total) {
   try {
-    localStorage.setItem(ORDERS_CACHE_KEY, JSON.stringify({
-      orders, total, ts: Date.now(),
-    }));
-  } catch {}
+    await idbRun('readwrite', st => st.put({ orders, total, ts: Date.now() }, ORDERS_CACHE_KEY));
+  } catch (e) {
+    // Loud on purpose. A cache that cannot write is the difference between a
+    // one-second refresh and a 35MB one, and the silent version of this line
+    // is what hid the problem for months.
+    console.warn('[admin] order cache write failed:', e?.message || e);
+  }
 }
 
 async function fetchOrdersPage(pageNum, limit, filterSnapshot = currentFilter) {
@@ -3466,7 +3520,7 @@ async function fetchOrders(reset = false) {
   // in-memory data yet, use the cache; only a true cold start gets skeletons.
   let usedCache = allOrders.length > 0;
   if (reset && !usedCache) {
-    const cached = loadOrdersFromCache();
+    const cached = await loadOrdersFromCache();
     if (cached?.orders?.length) {
       allOrders   = cached.orders;
       serverTotal = cached.total ?? cached.orders.length;
@@ -3545,19 +3599,78 @@ async function fetchOrders(reset = false) {
       bar.style.width = pct + '%';
     }
 
-    // ── Step 2: Fire all remaining pages IN PARALLEL ────────────────────────
+    // ── Step 2: Remaining pages, BOUNDED concurrency + per-page retry ───────
+    // This used to be Promise.all over every remaining page at once. At 14,016
+    // orders that is 28 simultaneous requests of ~1.3MB each, and it produced a
+    // dashboard frozen on "Loading orders… 500 / 14016 (4%)" in three separate
+    // ways:
+    //
+    //   1. Promise.all is all-or-nothing. ONE page failing discarded the other
+    //      27 after they had already been downloaded, and the catch below only
+    //      console.warns when a cache is showing — so the stale progress line
+    //      stayed on screen with nothing to explain it.
+    //   2. `combined` only grew once every page had landed, so the counter
+    //      could not move between page 1 and the very end. A load that was
+    //      merely slow looked identical to one that had died.
+    //   3. 28 concurrent large responses fight each other for bandwidth.
+    //      Measured against production: a single page returns in ~3s, but the
+    //      slowest of a 28-way burst took 44s.
+    //
+    // A small pool fixes all three: steady progress, one bad page costs one
+    // page, and the connection is not saturated.
+    const FETCH_CONCURRENCY = 6;
+    const PAGE_RETRIES = 3;
     const totalPages = Math.ceil((serverTotal || 0) / PAGE);
+    const failedPages = [];
     if (totalPages > 1) {
-      const remaining = [];
-      for (let p = 2; p <= totalPages; p++) remaining.push(fetchOrdersPage(p, PAGE, ''));
-      const results = await Promise.all(remaining);
+      let nextPage = 2;
+      let stale = false;
+      const worker = async () => {
+        while (!stale) {
+          const p = nextPage++;
+          if (p > totalPages) return;
+          let got = null;
+          for (let attempt = 1; attempt <= PAGE_RETRIES && got === null; attempt++) {
+            try {
+              got = (await fetchOrdersPage(p, PAGE, '')).orders || [];
+            } catch (e) {
+              // A dead session is fatal for every page; retrying it just burns
+              // time before the same login prompt.
+              if (e.message === 'UNAUTHORIZED') throw e;
+              if (attempt === PAGE_RETRIES) {
+                console.warn(`[admin] page ${p} failed after ${PAGE_RETRIES} tries: ${e.message}`);
+                failedPages.push(p);
+                got = [];
+              } else {
+                await new Promise(r => setTimeout(r, 400 * attempt));
+              }
+            }
+          }
+          // A newer refresh has taken over. Stop the whole pool rather than
+          // keep downloading pages whose result may no longer be applied.
+          if (fetchGeneration !== ordersFetchGeneration) { stale = true; return; }
+          combined = combined.concat(got);
+          // Real progress, page by page. Only the counter and the bar move
+          // here; the table is not re-rendered until the load finishes.
+          if (!usedCache) { allOrders = combined; updateStats(); }
+          if (bar) {
+            bar.style.width = Math.min(96,
+              Math.round((combined.length / Math.max(1, serverTotal)) * 100)) + '%';
+          }
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(FETCH_CONCURRENCY, totalPages - 1) }, worker)
+      );
       if (fetchGeneration !== ordersFetchGeneration) return;
-      for (const r of results) combined = combined.concat(r.orders || []);
     }
 
     allOrders = combined;
     hasMore = false;
-    ordersLoadedFully = true;
+    // Not "fully loaded" when pages are missing. Filters, counts and exports
+    // all read this, and claiming completeness over a short set is how a
+    // dashboard reports numbers that are quietly wrong.
+    ordersLoadedFully = failedPages.length === 0;
     page = totalPages + 1;
 
     // Product data is lazy-loaded by the Products tab. Re-fetching it during
@@ -3566,7 +3679,18 @@ async function fetchOrders(reset = false) {
     updateStats();
     applyFilters();
     renderOrderDerivedPanels();
-    saveOrdersToCache(combined, serverTotal);
+    if (failedPages.length) {
+      // Say it plainly instead of leaving the "Loading orders…" line up for
+      // ever, which is indistinguishable from a hang.
+      const sub = document.getElementById('dashSubtitle');
+      if (sub) {
+        sub.textContent = `${allOrders.length} of ${serverTotal} orders loaded — `
+          + `${failedPages.length} page${failedPages.length > 1 ? 's' : ''} failed. `
+          + `Press ↻ Refresh to retry.`;
+      }
+    } else {
+      saveOrdersToCache(combined, serverTotal);
+    }
 
     // Trigger PhonePe auto-recheck once
     if (reset) setTimeout(() => { autoRecheckPhonePe(); updateAutoRecheckBadge(); }, 8000);
