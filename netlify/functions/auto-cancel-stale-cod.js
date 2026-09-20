@@ -96,6 +96,12 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     prepaid_db_failed: 0,
     prepaid_disabled: false,
     examples: [],
+    // Its OWN list. `examples` is capped at 10 and the COD path always runs
+    // first, so at any real backlog every slot is taken before the refund path
+    // adds a single entry -- which hid precisely the rows that move money and
+    // most need reviewing. Never make an audit trail compete for space with a
+    // routine one.
+    prepaid_examples: [],
   };
 
   // Path 1: pure-COD orders that still have no AWB after seven full days.
@@ -253,12 +259,10 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     }
     summary.prepaid_eligible++;
     if (dryRun) {
-      if (summary.examples.length < 10) {
-        summary.examples.push({
-          order_id: displayId(order), awb: null, type: 'prepaid',
-          refund_paise: order.amount_paise, age_days: Number(verdict.ageDays.toFixed(1)),
-        });
-      }
+      summary.prepaid_examples.push({
+        order_id: displayId(order), status: order.status,
+        refund_paise: order.amount_paise, age_days: Number(verdict.ageDays.toFixed(1)),
+      });
       continue;
     }
 
@@ -320,12 +324,11 @@ async function runSweep(supabase, { dryRun = false } = {}) {
         .eq('id', order.id).in('status', PREPAID_STATUSES);
       summary.prepaid_refund_unclaimed = (summary.prepaid_refund_unclaimed || 0) + 1;
     }
-    if (summary.examples.length < 10) {
-      summary.examples.push({
-        order_id: displayId(order), awb: null, type: 'prepaid',
-        refund_paise: order.amount_paise, refund: result?.refund?.skipped || result?.refund?.nextStatus || 'requested',
-      });
-    }
+    summary.prepaid_examples.push({
+      order_id: displayId(order), status: order.status,
+      refund_paise: order.amount_paise,
+      refund: result?.refund?.skipped || result?.refund?.nextStatus || result?.refund?.error || 'requested',
+    });
   }
 
   return summary;
