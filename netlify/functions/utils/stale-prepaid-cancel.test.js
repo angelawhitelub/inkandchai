@@ -1,44 +1,34 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const {
-  CANCEL_MIN_AGE_DAYS,
-  CANCEL_NO_AWB_MIN_AGE_DAYS,
-  CANCEL_NO_AWB_MAX_AGE_DAYS,
-  cancellationAllowed,
-} = require('./cancellation-guard');
+const { CANCEL_MIN_AGE_DAYS, cancellationAllowed } = require('./cancellation-guard');
 
 const DAY = 24 * 60 * 60 * 1000;
 const aged = (days) => ({ created_at: new Date(Date.now() - days * DAY).toISOString() });
 
 // ── The two floors ──────────────────────────────────────────────────────────
 
-test('the no-AWB floor is seven days and the courier floor stays at ten', () => {
-  assert.strictEqual(CANCEL_NO_AWB_MIN_AGE_DAYS, 7);
+test('there is ONE floor for automated cancellation, and it is ten days', () => {
   assert.strictEqual(CANCEL_MIN_AGE_DAYS, 10);
+  const g = require('./cancellation-guard');
+  assert.ok(!('CANCEL_NO_AWB_MIN_AGE_DAYS' in g), 'the second floor must be gone, not just unused');
+  assert.ok(!('CANCEL_NO_AWB_MAX_AGE_DAYS' in g), 'the ceiling must be gone, not just unused');
 });
 
-test('an 8-day order passes the no-AWB floor but not the courier floor', () => {
-  const order = aged(8);
-  assert.strictEqual(cancellationAllowed(order, { minAgeDays: CANCEL_NO_AWB_MIN_AGE_DAYS }).allowed, true);
-  assert.strictEqual(cancellationAllowed(order).allowed, false);
+test('an unshipped order is cancelled at ten days and never before', () => {
+  assert.strictEqual(cancellationAllowed(aged(9.9)).allowed, false);
+  assert.strictEqual(cancellationAllowed(aged(10.01)).allowed, true);
 });
 
-test('a 6-day order is blocked by both', () => {
-  const order = aged(6);
-  assert.strictEqual(cancellationAllowed(order, { minAgeDays: CANCEL_NO_AWB_MIN_AGE_DAYS }).allowed, false);
-  assert.strictEqual(cancellationAllowed(order).allowed, false);
+test('there is no upper bound — however old, it still gets cancelled', () => {
+  for (const d of [11, 93, 400]) {
+    assert.strictEqual(cancellationAllowed(aged(d)).allowed, true, `${d}d must still be cancellable`);
+  }
 });
 
-test('exactly seven days is old enough for the no-AWB sweep', () => {
-  assert.strictEqual(
-    cancellationAllowed(aged(7.001), { minAgeDays: CANCEL_NO_AWB_MIN_AGE_DAYS }).allowed, true);
-});
-
-test('a missing created_at is still blocked, shorter floor or not', () => {
-  assert.strictEqual(cancellationAllowed({}, { minAgeDays: CANCEL_NO_AWB_MIN_AGE_DAYS }).allowed, false);
-  assert.strictEqual(
-    cancellationAllowed({ created_at: 'not a date' }, { minAgeDays: CANCEL_NO_AWB_MIN_AGE_DAYS }).allowed, false);
+test('a missing or unparseable created_at is still blocked', () => {
+  assert.strictEqual(cancellationAllowed({}).allowed, false);
+  assert.strictEqual(cancellationAllowed({ created_at: 'not a date' }).allowed, false);
 });
 
 // ── The email may not claim a refund that has not happened ──────────────────
@@ -81,6 +71,7 @@ test('a COD cancellation says plainly that nothing was charged', () => {
 // ── The sweep's own wiring ──────────────────────────────────────────────────
 
 const sweep = require('../auto-cancel-stale-cod');
+const drainFns = require('../admin-cancel-stale-backlog').__test;
 
 test('the prepaid sweep is on by default and killable by env', () => {
   const { prepaidSweepEnabled } = sweep.__test;
@@ -95,7 +86,18 @@ test('the prepaid sweep is on by default and killable by env', () => {
 test('the refund cap is far below the cancellation cap', () => {
   const { MAX_REFUNDS_PER_RUN, MAX_PER_RUN, THRESHOLD_DAYS } = sweep.__test;
   assert.ok(MAX_REFUNDS_PER_RUN < MAX_PER_RUN);
-  assert.strictEqual(THRESHOLD_DAYS, 7);
+  assert.strictEqual(THRESHOLD_DAYS, CANCEL_MIN_AGE_DAYS);
+});
+
+test('the sweep and the guard cannot drift apart', () => {
+  assert.strictEqual(sweep.__test.THRESHOLD_DAYS, 10);
+});
+
+test('the manual drain does NOT inherit the sweep threshold', () => {
+  // Tying them together would let a change to the sweep silently widen what
+  // the bulk silent-cancel tool reaches.
+  assert.notStrictEqual(drainFns.DEFAULT_MIN_AGE_DAYS, sweep.__test.THRESHOLD_DAYS);
+  assert.strictEqual(drainFns.DEFAULT_MIN_AGE_DAYS, 30);
 });
 
 test('partial COD is swept as prepaid, never as pure COD', () => {
@@ -106,50 +108,7 @@ test('partial COD is swept as prepaid, never as pure COD', () => {
 });
 
 
-// ── The ceiling ─────────────────────────────────────────────────────────────
-
-const CEIL = { minAgeDays: CANCEL_NO_AWB_MIN_AGE_DAYS, maxAgeDays: CANCEL_NO_AWB_MAX_AGE_DAYS };
-
-test('the ceiling is ten days', () => {
-  assert.strictEqual(CANCEL_NO_AWB_MAX_AGE_DAYS, 10);
-});
-
-test('an order inside the 7-10 day window is swept', () => {
-  for (const d of [7.01, 8, 9.9]) {
-    assert.strictEqual(cancellationAllowed(aged(d), CEIL).allowed, true, `${d}d should be swept`);
-  }
-});
-
-test('an order past the ceiling is refused, and says so distinctly', () => {
-  const v = cancellationAllowed(aged(93), CEIL);
-  assert.strictEqual(v.allowed, false);
-  assert.strictEqual(v.tooOld, true);
-  assert.match(v.reason, /ceiling/);
-});
-
-test('"not yet" and "not any more" are tellable apart', () => {
-  const young = cancellationAllowed(aged(3), CEIL);
-  const old = cancellationAllowed(aged(40), CEIL);
-  assert.strictEqual(young.allowed, false);
-  assert.ok(!young.tooOld, 'a young order must not be reported as too old');
-  assert.strictEqual(old.tooOld, true);
-});
-
-test('with no ceiling passed, nothing is ever too old (existing callers unchanged)', () => {
-  const v = cancellationAllowed(aged(400));
-  assert.strictEqual(v.allowed, true);
-  assert.ok(!v.tooOld);
-});
-
-test('the sweep applies both bounds', () => {
-  const { THRESHOLD_DAYS, CEILING_DAYS } = sweep.__test;
-  assert.strictEqual(THRESHOLD_DAYS, 7);
-  assert.strictEqual(CEILING_DAYS, 10);
-});
-
 // ── The backlog drain ───────────────────────────────────────────────────────
-
-const drainFns = require('../admin-cancel-stale-backlog').__test;
 
 test('the drain only ever looks at COD statuses', () => {
   assert.deepStrictEqual(drainFns.COD_STATUSES, ['cod_pending', 'cod_awaiting_confirmation']);

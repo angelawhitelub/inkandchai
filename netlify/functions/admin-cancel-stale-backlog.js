@@ -1,18 +1,18 @@
 /**
- * One-off drain for orders stranded PAST the sweep's age ceiling.
+ * Cancel old unshipped COD orders WITHOUT telling anyone.
  *
- * auto-cancel-stale-cod refuses to act on an order older than
- * CANCEL_NO_AWB_MAX_AGE_DAYS so that an hourly job can never start messaging
- * customers about months of history it slept through. That leaves a pile
- * behind — 65 COD orders, oldest 93 days, when this was written — and this is
- * the deliberate, human-triggered way to clear it.
+ * auto-cancel-stale-cod does the same job on a timer and messages the
+ * customer, which is right for an order that went stale this week. It is not
+ * right for a pile nobody has looked at: this was written to clear 65 orders,
+ * the oldest 93 days, where an automatic "out of stock, please order again"
+ * about a June order would have been worse than silence. That is a judgement
+ * about customers, so it is a button someone presses, not a cron.
  *
  * DIFFERENT FROM THE SWEEP IN THREE WAYS, ALL ON PURPOSE:
  *
- *   1. SILENT. No email, no WhatsApp. The whole reason these are not in the
- *      sweep is that nobody wants to tell someone their June order is out of
- *      stock in September. Cancelling the record is housekeeping; messaging
- *      them is a decision, and it is not this function's to make.
+ *   1. SILENT. No email, no WhatsApp. Cancelling a long-dead record is
+ *      housekeeping; telling someone their June order is out of stock in
+ *      September is a decision, and not this function's to make.
  *
  *   2. NO COURIER CALL. These were pushed to a courier we have since left, and
  *      none of them ever got an AWB. Asking NimbusPost to cancel a
@@ -30,7 +30,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
-const { CANCEL_NO_AWB_MAX_AGE_DAYS, orderAgeDays } = require('./utils/cancellation-guard');
+const { orderAgeDays } = require('./utils/cancellation-guard');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -39,12 +39,18 @@ const CORS = {
 };
 
 const COD_STATUSES = ['cod_pending', 'cod_awaiting_confirmation'];
+
+// Deliberately NOT the sweep's threshold. This tool exists for orders the
+// sweep should not be let loose on, so tying it to the same number would
+// mean a change there silently widened what this cancels without warning.
+// Override per call with max_age_days.
+const DEFAULT_MIN_AGE_DAYS = 30;
 const HARD_CAP = 500;
 const CANCEL_REASON = 'Order was never shipped and has been closed. No payment was taken.';
 
 function displayId(o) { return o.razorpay_order_id || o.id; }
 
-async function drain(supabase, { dryRun = true, limit = HARD_CAP, maxAgeDays = CANCEL_NO_AWB_MAX_AGE_DAYS } = {}) {
+async function drain(supabase, { dryRun = true, limit = HARD_CAP, maxAgeDays = DEFAULT_MIN_AGE_DAYS } = {}) {
   const ceiling = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
   const out = {
     dry_run: dryRun,
@@ -129,7 +135,7 @@ exports.handler = async (event) => {
     const result = await drain(supabase, {
       dryRun,
       limit: Number(body.limit) > 0 ? Number(body.limit) : HARD_CAP,
-      maxAgeDays: Number(body.max_age_days) > 0 ? Number(body.max_age_days) : CANCEL_NO_AWB_MAX_AGE_DAYS,
+      maxAgeDays: Number(body.max_age_days) > 0 ? Number(body.max_age_days) : DEFAULT_MIN_AGE_DAYS,
     });
     console.log('[backlog-drain]', JSON.stringify({ ...result, orders: result.orders.length }));
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, ...result }) };
@@ -139,4 +145,4 @@ exports.handler = async (event) => {
   }
 };
 
-exports.__test = { drain, COD_STATUSES, HARD_CAP, CANCEL_REASON };
+exports.__test = { drain, COD_STATUSES, HARD_CAP, CANCEL_REASON, DEFAULT_MIN_AGE_DAYS };

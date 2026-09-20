@@ -31,52 +31,12 @@
  * cancelling in the 30-minute window (cancel-order.js) and an admin cancelling
  * by hand are choices someone made, not a timeout firing on its own.
  *
- * Two floors, not one. Courier-driven cancellation stays at
- * CANCEL_MIN_AGE_DAYS; the sweep for orders that never got an AWB uses
- * CANCEL_NO_AWB_MIN_AGE_DAYS and passes it as `minAgeDays`. See the note on
- * that constant for why the shorter one cannot reopen the 24 Aug hole.
+ * ONE floor, for both. A seven-day floor for no-AWB orders was tried and
+ * withdrawn: ten days is the store's rule for an unshipped order, and a
+ * second threshold only created a window where the two paths disagreed.
  */
 
 const CANCEL_MIN_AGE_DAYS = 10;
-
-/**
- * The floor for an order WE NEVER GAVE AN AWB TO.
- *
- * Seven days, not ten, and the difference is deliberate. CANCEL_MIN_AGE_DAYS
- * exists because of 24 Aug, when a COURIER declared shipments cancelled from
- * 7.6 days and we mirrored it onto live orders. Every order in that incident
- * had an AWB — that is what made the courier's opinion reachable at all.
- *
- * An order with no AWB after seven days has a different meaning entirely:
- * nobody has an opinion about it because nobody ever picked it up. It is not a
- * courier timeout we are guessing at, it is our own failure to ship, and the
- * customer has been waiting a week. Cancelling it and returning their money is
- * the correct answer, and waiting three more days only makes it worse.
- *
- * The 24 Aug failure therefore cannot recur through this threshold: the query
- * that uses it requires tracking_id IS NULL, and none of those 71 shipments
- * would have matched.
- */
-const CANCEL_NO_AWB_MIN_AGE_DAYS = 7;
-
-/**
- * The CEILING on the same sweep: it will not act on an order older than this.
- *
- * The sweep stopped running around the Netlify suspension and 65 unshipped COD
- * orders piled up, the oldest 93 days. Switching it back on would have sent 65
- * people an "out of stock, please order again" message about an order they
- * placed in June — an automatic job speaking to customers about a period
- * nobody had reviewed. A timeout sweep should handle the order that just went
- * stale, not three months of history it slept through.
- *
- * THE COST OF A CEILING, AND WHY IT IS STILL LOGGED
- * An order that ages past the ceiling while the job is down would, on its own,
- * become permanently invisible — which is precisely how the 65 accumulated in
- * the first place. So over-ceiling orders are counted and logged loudly on
- * every run rather than silently skipped. They need a human decision, not
- * silence; drain them deliberately with admin-cancel-stale-backlog.
- */
-const CANCEL_NO_AWB_MAX_AGE_DAYS = 10;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -91,7 +51,7 @@ function orderAgeDays(order, now = Date.now()) {
 /**
  * @returns {{allowed: boolean, ageDays: number|null, reason: string}}
  */
-function cancellationAllowed(order, { now = Date.now(), minAgeDays = CANCEL_MIN_AGE_DAYS, maxAgeDays = Infinity } = {}) {
+function cancellationAllowed(order, { now = Date.now(), minAgeDays = CANCEL_MIN_AGE_DAYS } = {}) {
   const ageDays = orderAgeDays(order, now);
   if (ageDays === null) {
     return { allowed: false, ageDays: null, reason: 'order has no usable created_at — blocked to be safe' };
@@ -103,17 +63,6 @@ function cancellationAllowed(order, { now = Date.now(), minAgeDays = CANCEL_MIN_
       reason: `order is ${ageDays.toFixed(2)} days old; automated cancellation is blocked until ${minAgeDays} days`,
     };
   }
-  // `tooOld` is separate from `allowed` on purpose. Both mean "do not act",
-  // but a caller has to be able to tell "not yet" from "not any more" — the
-  // first resolves itself with time, the second never does and needs a person.
-  if (ageDays > maxAgeDays) {
-    return {
-      allowed: false,
-      tooOld: true,
-      ageDays,
-      reason: `order is ${ageDays.toFixed(2)} days old; past the ${maxAgeDays}-day ceiling for automated cancellation`,
-    };
-  }
   return { allowed: true, ageDays, reason: '' };
 }
 
@@ -122,7 +71,4 @@ function cancellationBlocked(order, opts) {
   return !cancellationAllowed(order, opts).allowed;
 }
 
-module.exports = {
-  CANCEL_MIN_AGE_DAYS, CANCEL_NO_AWB_MIN_AGE_DAYS, CANCEL_NO_AWB_MAX_AGE_DAYS,
-  orderAgeDays, cancellationAllowed, cancellationBlocked,
-};
+module.exports = { CANCEL_MIN_AGE_DAYS, orderAgeDays, cancellationAllowed, cancellationBlocked };

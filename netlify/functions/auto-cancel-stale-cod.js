@@ -1,5 +1,5 @@
 /**
- * Seven-day cancellation sweep for orders that never received an AWB.
+ * Ten-day cancellation sweep for orders that never received an AWB.
  * Once an AWB exists, lack of courier movement must never auto-cancel an order.
  *
  * Two paths, because the money works differently:
@@ -17,7 +17,7 @@ const { requireAdmin } = require('./utils/admin-auth');
 const { cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
-const { cancellationAllowed, CANCEL_NO_AWB_MIN_AGE_DAYS, CANCEL_NO_AWB_MAX_AGE_DAYS } = require('./utils/cancellation-guard');
+const { cancellationAllowed, CANCEL_MIN_AGE_DAYS } = require('./utils/cancellation-guard');
 const { sendEmail } = require('./utils/email');
 const { sendText } = require('./utils/whatsapp');
 
@@ -27,17 +27,11 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-// Seven days, from the guard, so this job and the guard cannot drift apart.
-// This is the NO-AWB floor specifically, not the courier-cancellation floor —
-// see cancellation-guard.js for why the two differ.
-const THRESHOLD_DAYS = CANCEL_NO_AWB_MIN_AGE_DAYS;
-
-// The sweep handles orders that just went stale. Anything older than this
-// belongs to a backlog nobody has reviewed, and an hourly job must not start
-// messaging customers about it — see the note in cancellation-guard.js.
-// Over-ceiling orders are reported, never silently dropped.
-const CEILING_DAYS = CANCEL_NO_AWB_MAX_AGE_DAYS;
-const GUARD = { minAgeDays: THRESHOLD_DAYS, maxAgeDays: CEILING_DAYS };
+// Ten days, taken from the guard so this job and the guard can never drift
+// apart: raising one raises both. There is no upper bound — an unshipped order
+// is cancelled however long it has been sitting there.
+const THRESHOLD_DAYS = CANCEL_MIN_AGE_DAYS;
+const GUARD = { minAgeDays: THRESHOLD_DAYS };
 
 const MAX_PER_RUN = 25;
 
@@ -83,12 +77,6 @@ async function notifyCancellationFailure(order, error) {
 
 async function runSweep(supabase, { dryRun = false } = {}) {
   const cutoff = new Date(Date.now() - THRESHOLD_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  // The ceiling has to be in the QUERY, not just the per-row check. The query
-  // is ordered oldest-first and capped at MAX_PER_RUN, so with a backlog
-  // present every row on the page would be an over-ceiling order and the sweep
-  // would skip 25 of them an hour while never reaching the recent ones it
-  // exists to handle.
-  const ceilingCutoff = new Date(Date.now() - CEILING_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const summary = {
     no_awb_candidates: 0,
     no_awb_eligible_cod: 0,
@@ -118,11 +106,10 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     prepaid_examples: [],
   };
 
-  // Count what the ceiling is holding back. A skipped order that is never
-  // counted is an order that has quietly left the safety net, which is the
-  // failure this whole ceiling is a response to — so it gets reported on every
-  // single run, loudly enough that the next backlog is noticed in hours rather
-  // than after 93 days.
+  // How many are waiting in total. The sweep only takes MAX_PER_RUN an hour,
+  // so a backlog drains over hours and the per-run counters alone cannot say
+  // whether 25 orders are queued or 2,500. A pile nobody counts is a pile
+  // nobody notices — which is how 65 orders once sat unswept for 93 days.
   for (const [key, statuses] of [['cod', ['cod_pending', 'cod_awaiting_confirmation']], ['prepaid', PREPAID_STATUSES]]) {
     const { count, error } = await supabase
       .from('orders')
@@ -130,18 +117,19 @@ async function runSweep(supabase, { dryRun = false } = {}) {
       .or('source.is.null,source.neq.paperbound')
       .in('status', statuses)
       .is('tracking_id', null)
-      .lt('created_at', ceilingCutoff)
+      .lte('created_at', cutoff)
       .is('auto_cancelled_at', null);
-    if (error) { summary[`over_ceiling_${key}_error`] = error.message; continue; }
-    summary[`over_ceiling_${key}`] = count || 0;
-    if (count) {
-      console.warn(`[stale-cod] ${count} ${key} order(s) are past the ${CEILING_DAYS}-day ceiling and will NEVER be swept automatically. Drain them with admin-cancel-stale-backlog.`);
+    if (error) { summary[`queued_${key}_error`] = error.message; continue; }
+    summary[`queued_${key}`] = count || 0;
+    const cap = key === 'cod' ? MAX_PER_RUN : MAX_REFUNDS_PER_RUN;
+    if ((count || 0) > cap) {
+      console.warn(`[stale-cod] ${count} ${key} order(s) are past ${THRESHOLD_DAYS} days; this run handles at most ${cap}.`);
     }
   }
 
-  // Path 1: pure-COD orders that still have no AWB after seven full days.
+  // Path 1: pure-COD orders that still have no AWB after ten full days.
   // `created_at` is the fallback clock; if the order was pushed to NimbusPost
-  // later, give it a fresh seven-day window from `nimbus_pushed_at`.
+  // later, give it a fresh ten-day window from `nimbus_pushed_at`.
   const { data: noAwbOrders, error: noAwbError } = await supabase
     .from('orders')
     .select('*')
@@ -149,7 +137,6 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     .in('status', ['cod_pending', 'cod_awaiting_confirmation'])
     .is('tracking_id', null)
     .lte('created_at', cutoff)
-    .gte('created_at', ceilingCutoff)
     .is('auto_cancelled_at', null)
     .is('auto_cancel_claimed_at', null)
     .order('created_at', { ascending: true })
@@ -244,7 +231,7 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     if (summary.examples.length < 10) summary.examples.push({ order_id: displayId(order), awb: null, type: 'no_awb' });
   }
 
-  // ── Path 2: PREPAID and partial-COD orders with no AWB after seven days ───
+  // ── Path 2: PREPAID and partial-COD orders with no AWB after ten days ───
   // Same trigger as Path 1, but money was captured, so cancelling without
   // returning it would be theft by timeout. The refund itself is delegated to
   // notifyOrderCancelled, which already owns every safeguard that matters:
@@ -266,7 +253,6 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     .in('status', PREPAID_STATUSES)
     .is('tracking_id', null)
     .lte('created_at', cutoff)
-    .gte('created_at', ceilingCutoff)
     .is('auto_cancelled_at', null)
     .is('auto_cancel_claimed_at', null)
     .order('created_at', { ascending: true })
@@ -407,6 +393,6 @@ exports.handler = async (event) => {
 
 exports._runSweep = runSweep;
 exports.__test = {
-  prepaidSweepEnabled, PREPAID_STATUSES, THRESHOLD_DAYS, CEILING_DAYS, MAX_PER_RUN, MAX_REFUNDS_PER_RUN,
+  prepaidSweepEnabled, PREPAID_STATUSES, THRESHOLD_DAYS, MAX_PER_RUN, MAX_REFUNDS_PER_RUN,
   PREPAID_CUSTOMER_REASON,
 };
