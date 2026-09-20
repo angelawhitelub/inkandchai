@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const {
   CANCEL_MIN_AGE_DAYS,
   CANCEL_NO_AWB_MIN_AGE_DAYS,
+  CANCEL_NO_AWB_MAX_AGE_DAYS,
   cancellationAllowed,
 } = require('./cancellation-guard');
 
@@ -102,4 +103,96 @@ test('partial COD is swept as prepaid, never as pure COD', () => {
   assert.ok(PREPAID_STATUSES.includes('partial_cod_pending'));
   assert.ok(PREPAID_STATUSES.includes('paid'));
   assert.ok(!PREPAID_STATUSES.includes('cod_pending'));
+});
+
+
+// ── The ceiling ─────────────────────────────────────────────────────────────
+
+const CEIL = { minAgeDays: CANCEL_NO_AWB_MIN_AGE_DAYS, maxAgeDays: CANCEL_NO_AWB_MAX_AGE_DAYS };
+
+test('the ceiling is ten days', () => {
+  assert.strictEqual(CANCEL_NO_AWB_MAX_AGE_DAYS, 10);
+});
+
+test('an order inside the 7-10 day window is swept', () => {
+  for (const d of [7.01, 8, 9.9]) {
+    assert.strictEqual(cancellationAllowed(aged(d), CEIL).allowed, true, `${d}d should be swept`);
+  }
+});
+
+test('an order past the ceiling is refused, and says so distinctly', () => {
+  const v = cancellationAllowed(aged(93), CEIL);
+  assert.strictEqual(v.allowed, false);
+  assert.strictEqual(v.tooOld, true);
+  assert.match(v.reason, /ceiling/);
+});
+
+test('"not yet" and "not any more" are tellable apart', () => {
+  const young = cancellationAllowed(aged(3), CEIL);
+  const old = cancellationAllowed(aged(40), CEIL);
+  assert.strictEqual(young.allowed, false);
+  assert.ok(!young.tooOld, 'a young order must not be reported as too old');
+  assert.strictEqual(old.tooOld, true);
+});
+
+test('with no ceiling passed, nothing is ever too old (existing callers unchanged)', () => {
+  const v = cancellationAllowed(aged(400));
+  assert.strictEqual(v.allowed, true);
+  assert.ok(!v.tooOld);
+});
+
+test('the sweep applies both bounds', () => {
+  const { THRESHOLD_DAYS, CEILING_DAYS } = sweep.__test;
+  assert.strictEqual(THRESHOLD_DAYS, 7);
+  assert.strictEqual(CEILING_DAYS, 10);
+});
+
+// ── The backlog drain ───────────────────────────────────────────────────────
+
+const drainFns = require('../admin-cancel-stale-backlog').__test;
+
+test('the drain only ever looks at COD statuses', () => {
+  assert.deepStrictEqual(drainFns.COD_STATUSES, ['cod_pending', 'cod_awaiting_confirmation']);
+  assert.ok(!drainFns.COD_STATUSES.includes('paid'));
+  assert.ok(!drainFns.COD_STATUSES.includes('partial_cod_pending'));
+});
+
+test('the drain tells the customer nothing was taken, because nothing was', () => {
+  assert.match(drainFns.CANCEL_REASON, /No payment was taken/);
+});
+
+test('the drain skips anything with money on it rather than closing it', async () => {
+  const rows = [
+    { id: '1', razorpay_order_id: 'IC-A', status: 'cod_pending', amount_paise: 25900,
+      created_at: new Date(Date.now() - 90 * 864e5).toISOString(), razorpay_payment_id: null },
+    { id: '2', razorpay_order_id: 'IC-B', status: 'cod_pending', amount_paise: 13900,
+      created_at: new Date(Date.now() - 90 * 864e5).toISOString(), razorpay_payment_id: 'pay_x' },
+  ];
+  const q = { _r: rows };
+  for (const m of ['select', 'or', 'in', 'is', 'lt', 'order']) q[m] = () => q;
+  q.limit = () => Promise.resolve({ data: q._r, error: null });
+  const supabase = { from: () => q };
+
+  const out = await drainFns.drain(supabase, { dryRun: true });
+  assert.strictEqual(out.candidates, 2);
+  assert.strictEqual(out.skipped_has_payment, 1);
+  assert.strictEqual(out.orders.length, 1);
+  assert.strictEqual(out.orders[0].order_id, 'IC-A');
+  assert.strictEqual(out.needs_a_refund_decision[0].order_id, 'IC-B');
+});
+
+test('a dry run writes nothing', async () => {
+  let updates = 0;
+  const rows = [{ id: '1', razorpay_order_id: 'IC-A', status: 'cod_pending', amount_paise: 25900,
+    created_at: new Date(Date.now() - 90 * 864e5).toISOString(), razorpay_payment_id: null }];
+  const q = { _r: rows };
+  for (const m of ['select', 'or', 'in', 'is', 'lt', 'order']) q[m] = () => q;
+  q.limit = () => Promise.resolve({ data: q._r, error: null });
+  q.update = () => { updates++; return q; };
+  const supabase = { from: () => q };
+
+  const out = await drainFns.drain(supabase, { dryRun: true });
+  assert.strictEqual(updates, 0);
+  assert.strictEqual(out.cancelled, 0);
+  assert.strictEqual(out.candidates, 1);
 });
