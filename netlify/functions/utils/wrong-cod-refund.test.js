@@ -7,6 +7,7 @@ const base = {
   id: 'uuid-1',
   razorpay_order_id: 'IC-20260916-0R36N',
   customer_phone: '9876543210',
+  razorpay_payment_id: 'pay_abc123',
   wrong_cod_paise: 36820,
   wrong_cod_refund_at: null,
   status: 'delivered',
@@ -181,4 +182,31 @@ test('the bot is told the money is going to UPI and forbidden from refunding the
   assert.match(ctx, /Do NOT ask for it again/);
   assert.match(ctx, /do NOT call refund_wrong_cod/);
   assert.match(ctx, /same money twice/);
+});
+
+// ── Free replacements: no payment to reverse, UPI is the only way back ───────
+const repl = (over) => at({ razorpay_payment_id: null, wrong_cod_paise: 19900, ...over });
+
+test('a free replacement is never called refundable, delivered or not', () => {
+  for (const status of ['delivered', 'shipped', 'out_for_delivery']) {
+    assert.equal(assess(repl({ status })).verdict, 'manual-only', status);
+  }
+});
+
+test('a replacement is never promised a refund to a card it never paid with', () => {
+  const ctx = botContext(repl({ status: 'delivered' }));
+  assert.match(ctx, /FREE REPLACEMENT/);
+  assert.match(ctx, /Never tell them it goes back to "the payment method you originally paid with"/);
+  assert.match(ctx, /record_wrong_cod_upi/);
+  assert.match(ctx, /Do NOT call refund_wrong_cod/);
+});
+
+test('the copy knows whether a replacement customer has paid yet', () => {
+  assert.match(botContext(repl({ status: 'delivered' })), /already paid the ₹199\.00 in cash/);
+  assert.match(botContext(repl({ status: 'shipped' })),   /If they pay the ₹199\.00 at the door/);
+});
+
+test('a paid order is still refundable to source — replacements are the exception', () => {
+  assert.equal(assess(at({ status: 'delivered', razorpay_payment_id: 'pay_x' })).verdict, 'refundable');
+  assert.equal(assess(at({ status: 'delivered', razorpay_payment_id: 'OM2609' })).verdict, 'refundable');
 });

@@ -131,11 +131,15 @@ test('an undelivered order never reaches the gateway or the claim', async () => 
 
 test('an order with no original payment is never refunded blind', async () => {
   const db = fakeDb();
+  let charged = false;
   const res = await performWrongCodRefund({
     supabase: db, order: { ...order, razorpay_payment_id: null }, source: 'test',
-    deps: { issueRazorpayRefund: async () => ({ id: 'r' }), issuePhonePeRefund: async () => ({}), notifyOwnerRefund: noop },
+    deps: { issueRazorpayRefund: async () => { charged = true; return { id: 'r' }; }, issuePhonePeRefund: async () => { charged = true; return {}; }, notifyOwnerRefund: noop },
   });
-  assert.equal(res.verdict, 'no-payment-id');
+  // assess() catches this first and names it manual-only; the no-payment-id
+  // guard inside perform stays as the second line of defence.
+  assert.equal(res.verdict, 'manual-only');
+  assert.equal(charged, false);
   assert.equal(db.updates.length, 0);
 });
 

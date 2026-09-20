@@ -1274,6 +1274,9 @@ async function refundWrongCodViaBot(phone, args = {}) {
     if (verdict.verdict === 'already-done') {
       return { ok: true, alreadyRefunded: true, order_id: displayId, message: `The ₹${rs} on order ${displayId} has already been refunded to your original payment method${verdict.ref ? ` (reference ${verdict.ref})` : ''} — it reflects within 2–3 business days. 💛` };
     }
+    if (verdict.verdict === 'manual-only') {
+      return { ok: false, error: 'manual-only', message: `This one was a free replacement, so there is no online payment of yours for me to put the ₹${rs} back onto — I can only send it by UPI. Share your UPI ID (like 9876543210@ybl) and I will get our team to transfer it right away.` };
+    }
     if (verdict.verdict === 'upi-route') {
       return { ok: false, error: 'upi-route', message: `You gave us your UPI ID (${verdict.upi}) for this one, and our team is sending the ₹${rs} there by hand — so I must not also put it back on your card, or you would be paid twice. It is on its way. 💛` };
     }
@@ -1356,6 +1359,8 @@ async function recordWrongCodUpi(phone, args = {}) {
       return { ok: false, error: 'already-done', message: `Good news — the ₹${rs} on order ${displayId} has already been refunded to your original payment method, so there is no need for a UPI id. It reflects within 2–3 business days. 💛` };
     }
     if (verdict.verdict === 'refundable' || verdict.verdict === 'in-refund') {
+      // 'manual-only' deliberately falls through: a free replacement has no
+      // instrument to refund, so UPI is the only way its money ever goes back.
       return { ok: false, error: 'delivered', message: `Order ${displayId} already shows as delivered, so I can put the ₹${rs} straight back on the payment method you originally paid with — no UPI id needed. Let me do that for you.` };
     }
 

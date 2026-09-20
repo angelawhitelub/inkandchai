@@ -71,6 +71,9 @@ exports.handler = async (event) => {
         message: `₹${rupees(before.amountPaise)} has already been refunded to your original payment method. It reflects within 2–3 business days.`,
       });
     }
+    if (before.verdict === 'manual-only') {
+      return json(409, { error: `This was a free replacement, so there is no online payment of yours for us to reverse — we have to send the ₹${rupees(before.amountPaise)} to you by UPI instead. Message us on WhatsApp with your UPI ID and we will transfer it.` });
+    }
     if (before.verdict === 'upi-route') {
       return json(200, {
         success: true, already: true, amount_rs: rupees(before.amountPaise),

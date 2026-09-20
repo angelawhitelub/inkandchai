@@ -89,6 +89,17 @@ function assess(order, { phone = null, enabled = refundsEnabled(), remittanceKno
   if (REFUND_BLOCKING_STATUSES.includes(String(order.status || '').toLowerCase())) {
     return { verdict: 'in-refund', amountPaise };
   }
+  // A free replacement (IC-R-…) was never paid for online, so there is no
+  // payment to reverse. Seven of the affected orders are these: the customer
+  // owed nothing, was charged COD anyway, and if they pay it, the only way the
+  // money goes back is UPI by hand.
+  //
+  // Checked BEFORE delivery, because delivery changes nothing here — there is
+  // no instrument either way, and the pre-delivery copy would otherwise promise
+  // a refund "to the payment method you paid with" to someone who never paid.
+  if (!order.razorpay_payment_id) {
+    return { verdict: 'manual-only', amountPaise, status: String(order.status || '').toLowerCase() };
+  }
   if (String(order.status || '').toLowerCase() !== 'delivered') {
     return { verdict: 'not-delivered', amountPaise, status: String(order.status || '').toLowerCase() };
   }
@@ -128,6 +139,14 @@ function botContext(order, opts = {}) {
     return head + `\nThey have given us a UPI id (${a.upi}) because they did not want to pay twice, and our team is sending the ₹${rupees} to it by hand. `
       + `Tell them it is with the team and on its way to that UPI id. Do NOT ask for it again, do NOT offer to refund the card instead, `
       + `and do NOT call refund_wrong_cod or record_wrong_cod_upi — this order is being settled manually and any refund from you would be the same money twice.`;
+  }
+  if (a.verdict === 'manual-only') {
+    const delivered = a.status === 'delivered';
+    return head + `\nThis was a FREE REPLACEMENT — the customer never paid us anything for it online, so there is no card or UPI payment of theirs to reverse. `
+      + `${delivered ? 'They have already paid the ₹' + rupees + ' in cash at the door.' : 'If they pay the ₹' + rupees + ' at the door they will be out of pocket by that much.'} `
+      + `Never tell them it goes back to "the payment method you originally paid with" — they did not pay one, and saying so will confuse them. `
+      + `The only way to return this money is UPI. Apologise, then ask for their UPI id (like 9876543210@ybl) and call the record_wrong_cod_upi tool with exactly what they type, so our team can send the ₹${rupees}. `
+      + `Do NOT call refund_wrong_cod — there is nothing for it to refund and it will refuse.`;
   }
   if (a.verdict === 'in-refund') {
     return head + `\nA refund on this order is already in progress at the payment gateway. Tell them it is on its way and needs nothing from them. `
