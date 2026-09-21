@@ -1025,6 +1025,7 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
       <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Import all unshipped orders into the NimbusPost Orders panel without choosing couriers or generating AWBs.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="pushAllToXpressbeesPanel(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel. Recent orders are collected automatically; this also queues the older ones. No courier is chosen and no AWB is generated.">Push to XpressBees Panel (No AWB)</button>
+      <button class="btn-green" onclick="pushAllToIthinkPanel(this)" style="background:rgba(120,160,255,0.14);border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel. Shows a dry-run preview with the COD collectable total before anything is sent. No courier is chosen and no AWB is generated. A suffix is added to the order number sent to iThink so the batch is identifiable and does not collide with records already in the panel.">Push to iThink Panel (No AWB)</button>
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
       <button class="btn-outline" onclick="syncNimbusAwbs(this)" title="Pull AWBs assigned inside the NimbusPost panel back onto your orders, flip them to shipped, and notify customers. Also runs automatically every 15 minutes.">🔄 Sync AWBs from NimbusPost</button>
       <button class="btn-outline" onclick="sendTestEmail(this)" title="Send one test email to the store owner and report which provider (Mailjet/Resend/Brevo) delivered it. Use this to verify email is working after changing providers.">✉️ Send test email</button>
@@ -1224,6 +1225,9 @@ select,input,textarea{font-size:1rem;}
     </button>
     <button class="btn-outline" onclick="pushAllToXpressbeesPanel(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel">
       Push to XpressBees Panel (No AWB)
+    </button>
+    <button class="btn-outline" onclick="pushAllToIthinkPanel(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel (dry-run preview first, no courier, no AWB)">
+      Push to iThink Panel (No AWB)
     </button>
     <button class="btn-outline" onclick="openBroadcastModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(37,211,102,0.55);color:#25D366;" title="Send a WhatsApp template to all past customers. Use when paid ads are down to re-engage existing buyers.">
       📣 WhatsApp Broadcast
@@ -10256,6 +10260,145 @@ async function pushAllToXpressbeesPanel(btn) {
     alert('XpressBees queue run stopped:\n\n' + err.message);
   } finally {
     xbPanelPushActive = false;
+    allButtons.forEach(b => { b.disabled = false; });
+    if (btn) btn.innerHTML = orig;
+  }
+}
+
+// ── iThink Logistics: push unshipped orders to the panel, no courier, no AWB ─
+//
+// Two things separate this from its NimbusPost and XpressBees siblings, and
+// both come from how iThink behaves rather than from taste:
+//
+//   1. A SUFFIX is appended to the order number SENT TO ITHINK. Ours is never
+//      touched. iThink refuses a number it already holds, and the panel is full
+//      of records for orders that have since gone out on another courier, so an
+//      unsuffixed re-push silently bounces off the duplicate check. With a
+//      suffix it lands as a new record and the batch is identifiable on sight.
+//      The cost is real and must be remembered: an AWB report for this batch
+//      comes back carrying the suffix and has to have it stripped before it is
+//      matched to an order. Strip longer suffixes first -- "-c2" before "-c".
+//
+//   2. It DRY-RUNS FIRST, every time. ithink-order-push builds every payload
+//      and reports the COD collectable total without sending anything. On 17
+//      September 133 orders were booked with the wrong payment mode and it
+//      stayed invisible for two days because nothing compared the numbers
+//      before committing. The confirm below is that comparison: if the
+//      collectable total looks wrong, this is the last place to stop it.
+let ithinkPanelPushActive = false;
+async function pushAllToIthinkPanel(btn) {
+  if (ithinkPanelPushActive) {
+    alert('An iThink push is already in progress. Please wait for it to finish.');
+    return;
+  }
+
+  const daysRaw = prompt(
+    'Push unshipped orders to the iThink panel.\n\n' +
+    'How many days back? (counted from midnight IST)\n' +
+    'Leave blank for EVERY open order — that reaches back to the oldest one.',
+    '4'
+  );
+  if (daysRaw === null) return;
+  const wantsAll = daysRaw.trim() === '';
+  const days = parseInt(daysRaw, 10);
+  if (!wantsAll && (!Number.isFinite(days) || days < 1)) {
+    alert('Days must be a whole number of 1 or more, or blank for every open order.');
+    return;
+  }
+
+  const suffix = prompt(
+    'Suffix for the order numbers sent to iThink (ours stay unchanged).\n\n' +
+    'iThink rejects a number it already holds, so each push of the same order\n' +
+    'needs a new one: -c for the first, -c2 for the next, and so on.\n\n' +
+    '1-8 characters: A-Z, 0-9, - or _',
+    '-c'
+  );
+  if (suffix === null) return;
+  if (!/^[A-Za-z0-9_-]{1,8}$/.test(suffix)) {
+    alert('Suffix must be 1-8 characters of A-Z, 0-9, - or _  (got "' + suffix + '")');
+    return;
+  }
+
+  const orig = btn ? btn.innerHTML : '';
+  const allButtons = [...document.querySelectorAll('[onclick="pushAllToIthinkPanel(this)"]')];
+  ithinkPanelPushActive = true;
+  allButtons.forEach(b => { b.disabled = true; });
+
+  const base = { all_unshipped: true, suffix };
+  if (!wantsAll) base.days = days;
+
+  const call = async (extra) => {
+    const res = await fetch('/.netlify/functions/ithink-order-push', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Token': adminToken || '',
+        'X-Admin-Key': adminKey || '',
+      },
+      body: JSON.stringify({ ...base, ...extra }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    return data;
+  };
+  const rupees = (n) => '\u20b9' + Number(n || 0).toLocaleString('en-IN');
+
+  try {
+    if (btn) btn.innerHTML = '<span class="spinner"></span>Checking\u2026';
+    const preview = await call({ dry_run: true });
+    const t = preview.totals || {};
+
+    if (!t.queued) {
+      alert('Nothing to push.\n\n' +
+        'No unshipped order in that window could be built for iThink.\n' +
+        'Skipped: ' + (preview.skipped || []).length +
+        ' · Failed to build: ' + (preview.failed || []).length);
+      return;
+    }
+
+    let ask =
+      'Send ' + t.queued + ' order(s) to iThink as a new batch?\n\n' +
+      'Order numbers go out with "' + preview.suffix + '" appended.\n' +
+      'Window: ' + (preview.window ? preview.window.slice(0, 10) + ' onwards' : 'every open order') + '\n\n' +
+      'COD: ' + (t.cod_orders || 0) + ' order(s), ' + rupees(t.cod_collectable) + ' collectable at the door\n' +
+      'Prepaid: ' + (t.prepaid_orders || 0) + ' order(s), ' + rupees(t.prepaid_declared) + ' declared, nothing to collect\n';
+    if (t.multi_item) ask += 'Multi-item parcels: ' + t.multi_item + '\n';
+    if ((preview.previously_pushed_unsuffixed || []).length) {
+      ask += '\n⚠ ' + preview.previously_pushed_unsuffixed.length +
+        ' of these were already pushed to iThink without a suffix. They will now exist TWICE ' +
+        'in the panel — the old record and this one. Cancel the old ones there before booking.';
+    }
+    if ((preview.failed || []).length) {
+      ask += '\n❌ ' + preview.failed.length + ' could not be built and will be left out.';
+    }
+    ask += '\n\nNo courier is chosen and no AWB is generated.';
+
+    if (!confirm(ask)) return;
+
+    if (btn) btn.innerHTML = '<span class="spinner"></span>Pushing\u2026';
+    const data = await call({});
+    const pushed = data.pushed || [], skipped = data.skipped || [], failed = data.failed || [];
+
+    let msg =
+      'iThink push finished:\n\n' +
+      '✅ Pushed: ' + pushed.length + '\n' +
+      '⏭ Skipped: ' + skipped.length + '\n' +
+      '❌ Failed: ' + failed.length;
+    if (pushed.length) {
+      msg += '\n\nSent as:\n' + pushed.slice(0, 12).map(p => '  ' + p.pushed_as).join('\n');
+      if (pushed.length > 12) msg += '\n  …and ' + (pushed.length - 12) + ' more';
+    }
+    if (failed.length) {
+      msg += '\n\nFailures:\n' +
+        failed.slice(0, 6).map(f => '  ' + f.order_id + ': ' + f.error).join('\n');
+    }
+    msg += '\n\nOpen iThink → Orders to assign couriers. Their AWB report will carry the "' +
+      (data.suffix || suffix) + '" suffix — strip it before matching back to these orders.';
+    alert(msg);
+  } catch (err) {
+    alert('iThink push stopped:\n\n' + err.message);
+  } finally {
+    ithinkPanelPushActive = false;
     allButtons.forEach(b => { b.disabled = false; });
     if (btn) btn.innerHTML = orig;
   }
