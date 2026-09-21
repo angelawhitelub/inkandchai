@@ -2403,38 +2403,57 @@
       </div>`;
   }
 
-  // Mirrors netlify/functions/utils/order-payment-kind.js and fails closed the
-  // same way: partial COD has a deposit captured online, so it refunds to that
-  // instrument and is NOT treated as COD here. The server re-checks before it
-  // stores anything, so a wrong guess in the browser cannot save a UPI ID
-  // against a prepaid order.
+  // Mirrors netlify/functions/utils/order-payment-kind.js CLAUSE FOR CLAUSE, and
+  // fails closed the same way: partial COD has a deposit captured online, so it
+  // refunds to that instrument and is NOT treated as COD here.
+  //
+  // The mirror has to be exact now that the UPI ID is required rather than
+  // offered. It used to be enough to be roughly right: the server re-checked
+  // and discarded anything it did not need, so the worst a disagreement cost
+  // was a field shown needlessly. Since the server started REFUSING a COD
+  // report with no handle, a browser that reads the same order as prepaid hides
+  // the field and leaves the customer looking at an error about a box that is
+  // not on their screen. `payment_type` and `payment_status` were the two
+  // clauses this copy was missing.
+  //
+  // get-my-orders returns the whole row, so every field the server reads is
+  // here to read. If these two ever drift again, the server's answer is the
+  // right one and this is the copy that is wrong.
   function isCodOrder(order) {
     const persisted = String(order?.shipment_payment_type || '').toLowerCase();
     if (persisted === 'cod') return true;
     if (persisted === 'prepaid' || persisted === 'partial_cod') return false;
     const items = Array.isArray(order?.cart_items) ? order.cart_items : [];
-    const meta = items.find(i => i && (i._payment || i.__payment));
-    const mode = String((meta?._payment || meta?.__payment || {}).mode || '').toLowerCase();
+    const metaItem = items.find(i => i && (i._payment || i.__payment));
+    const meta = metaItem?._payment || metaItem?.__payment || {};
+    const mode = String(meta.mode || meta.payment_type || '').toLowerCase();
     if (mode === 'partial_cod' || mode === 'prepaid' || mode === 'online') return false;
     if (mode === 'cod') return true;
     const status = String(order?.status || '').toLowerCase();
     if (status === 'partial_cod_pending') return false;
     if (status === 'cod_pending' || status === 'cod_awaiting_confirmation') return true;
-    return !String(order?.razorpay_payment_id || '').trim() && status === 'shipped';
+    if (order?.payment_status) return false;
+    if (String(order?.razorpay_payment_id || '').trim()) return false;
+    return status === 'shipped';
   }
 
   // A COD parcel was never paid for online, so if the missing book cannot be
-  // arranged there is no instrument to refund to. Optional, COD only.
+  // arranged there is no instrument to refund to. REQUIRED, COD only: the
+  // report is the one moment the customer is still engaged, and a handle asked
+  // for afterwards — from someone who believes the matter is settled — mostly
+  // never comes, leaving the money owed for a book that never shipped with
+  // nowhere to go. report-missing-books refuses the report without it.
   function missUpiFieldHtml(order) {
     if (!isCodOrder(order)) return '';
     return `
       <div style="border:1px solid rgba(201,168,76,0.25);background:rgba(201,168,76,0.05);padding:0.6rem 0.7rem;margin-bottom:0.6rem;">
-        <div style="font-size:0.62rem;color:#f0e8d8;margin-bottom:0.3rem;">Your UPI ID <span style="color:#a09080;">(optional)</span></div>
+        <div style="font-size:0.62rem;color:#f0e8d8;margin-bottom:0.3rem;">Your UPI ID <span style="color:#e8a030;">(required)</span></div>
         <div style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-bottom:0.45rem;">
-          We'll send the missing book free of charge. In the rare event we can't arrange it,
-          share your UPI ID and we'll refund the value of the missing book to it instead.
+          We'll send the missing book free of charge. But this order was Cash on Delivery — there is
+          no online payment for us to reverse — so if we can't arrange the book, your UPI ID is the
+          only way we can refund what it cost you. Please add it now so we never have to come back and ask.
         </div>
-        <input class="miss-upi" type="text" inputmode="email" autocomplete="off" maxlength="128" placeholder="e.g. 9876543210@ybl"
+        <input class="miss-upi" type="text" inputmode="email" autocomplete="off" maxlength="128" required aria-required="true" placeholder="e.g. 9876543210@ybl"
           style="width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
                  padding:0.45rem 0.6rem;font-family:inherit;font-size:0.72rem;"/>
       </div>`;
@@ -2468,6 +2487,16 @@
       msg.textContent = 'Please tap the book(s) that were missing.';
       return;
     }
+    // COD only: the field is rendered only for those orders, and where it is
+    // rendered it is required. The server enforces it too — this is here so the
+    // customer hears it before the round trip, with the cursor in the box.
+    const upiEl = wrap.querySelector('.miss-upi');
+    if (upiEl && !upiEl.value.trim()) {
+      msg.style.display = ''; msg.style.color = '#e06060';
+      msg.textContent = 'Please add your UPI ID — this order was Cash on Delivery, so it is the only way we can refund you if the book cannot be arranged.';
+      upiEl.focus();
+      return;
+    }
     // A written account is required — it's the only way we learn what actually
     // happened (packet open, wrong book swapped in, seal broken, etc.).
     const commentEl = wrap.querySelector('.miss-comment');
@@ -2491,7 +2520,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: btn.dataset.oid, q: btn.dataset.q, missing, comment: commentText,
-          upi_id: (wrap.querySelector('.miss-upi')?.value || '').trim(),
+          upi_id: (upiEl?.value || '').trim(),
         }),
       });
       const json = await res.json().catch(() => ({}));

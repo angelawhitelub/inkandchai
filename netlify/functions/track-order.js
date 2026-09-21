@@ -15,6 +15,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { canEditAddress } = require('./utils/address-editable');
 const { resolveRefundRef, cleanRefundItems } = require('./utils/refund-notifications');
 const { assess: assessWrongCod } = require('./utils/wrong-cod-refund');
+const { isDefinitelyCod } = require('./utils/order-payment-kind');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -169,6 +170,14 @@ exports.handler = async (event) => {
           paid_now:        paidNow,
           balance_due:     isPartial ? Number(meta?.balance) || 0 : 0,
           payment_method:  isPartial ? 'partial_cod' : (isCOD ? 'cod' : 'online'),
+          // Whether the missing-book form must collect a refund UPI ID.
+          // Deliberately NOT derived from payment_method above: that one is the
+          // loose "no payment id" reading, used to label the total, while
+          // report-missing-books enforces the strict isDefinitelyCod. Deriving
+          // the field from the loose one lets the two disagree, and the direction
+          // that hurts is a form that hides the field for an order the server
+          // then refuses for not having it. Same function, same answer.
+          refund_upi_required: isDefinitelyCod(data),
           placed_at:       data.created_at,
           shipped_at:      data.shipped_at,
           courier_name:    data.courier_name,

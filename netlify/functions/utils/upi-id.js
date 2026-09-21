@@ -3,11 +3,13 @@
 /**
  * Validate a customer-typed UPI ID (VPA).
  *
- * We ask for this in exactly one place: a COD order that arrived with a book
- * missing. A prepaid refund goes back to the card or UPI that paid, but nobody
- * paid us online for a COD parcel, so if the missing book turns out to be
- * unarrangeable there is no instrument to refund to — hence asking, optionally
- * and up front, rather than chasing the customer weeks later.
+ * The case that drives this: a COD order that arrived with a book missing. A
+ * prepaid refund goes back to the card or UPI that paid, but nobody paid us
+ * online for a COD parcel, so if the missing book turns out to be unarrangeable
+ * there is no instrument to refund to. On that one flow the handle is REQUIRED
+ * (see requireUpiId) — asked while the customer is still on the page and still
+ * wants something from us, rather than chased weeks later when they have
+ * stopped replying and the money owed just sits there.
  *
  * Because a human types it and a wrong handle silently sends money nowhere,
  * this is deliberately stricter than "contains an @":
@@ -22,10 +24,19 @@ const VPA_RE = /^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{1,63})@[a-zA-Z][a-zA-Z0-9.-]{1,63}
 // The handles of real PSPs are not domains. Anything ending like one is an email.
 const EMAILISH_RE = /\.(com|in|net|org|co\.in|co|io|edu|gov)$/i;
 
+// Shown when a COD customer submits a missing-book report with the field empty.
+// Phrased as what to type and why, not as a validation failure: the customer is
+// being asked for a payment address in the middle of telling us something went
+// wrong, and "required field" is not a reason anyone accepts for that.
+const UPI_REQUIRED_REASON =
+  'Please add the UPI ID we should send your refund to. This order was Cash on Delivery, '
+  + 'so there is no online payment for us to reverse — for example 9876543210@ybl.';
+
 /**
  * @param {string} raw
  * @returns {{ ok: boolean, value: string, reason: string }}
- *   ok:false with reason '' means "nothing was supplied" — the field is optional.
+ *   ok:false with reason '' means "nothing was supplied". Whether that is
+ *   allowed is the caller's decision: requireUpiId turns it into an error.
  */
 function normalizeUpiId(raw) {
   const value = String(raw == null ? '' : raw).trim().replace(/\s+/g, '');
@@ -44,4 +55,22 @@ function normalizeUpiId(raw) {
   return { ok: true, value, reason: '' };
 }
 
-module.exports = { normalizeUpiId };
+/**
+ * normalizeUpiId, except that leaving the field blank is itself an error.
+ *
+ * Use this wherever the handle is the ONLY way the money can get back — today
+ * that is a missing book on a COD order. Where the gateway can reverse the
+ * original payment, use normalizeUpiId and let an empty field pass: a UPI ID we
+ * have no use for is personal data we should not be holding.
+ *
+ * @param {string} raw
+ * @returns {{ ok: boolean, value: string, reason: string }}  reason is never ''
+ *   when ok is false — there is always something to show the customer.
+ */
+function requireUpiId(raw) {
+  const result = normalizeUpiId(raw);
+  if (!result.ok && !result.reason) return { ok: false, value: '', reason: UPI_REQUIRED_REASON };
+  return result;
+}
+
+module.exports = { normalizeUpiId, requireUpiId, UPI_REQUIRED_REASON };

@@ -28,7 +28,11 @@ test('junk is rejected with a message the customer can act on', () => {
   }
 });
 
-test('an empty field is not an error — the UPI ID is optional', () => {
+// NOTE: `npm test` globs netlify/functions/utils/*.test.js and does not reach
+// this directory, so the rules that matter live in
+// netlify/functions/utils/upi-id.test.js. This file is the older copy; keep the
+// two from contradicting each other.
+test('normalizeUpiId itself lets an empty field through — requireUpiId is the strict one', () => {
   for (const v of ['', '   ', null, undefined]) {
     const r = normalizeUpiId(v);
     assert.strictEqual(r.ok, false);

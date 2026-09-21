@@ -14,14 +14,17 @@
  *   • flags the items on the order (cart_items[i]._missing),
  *   • emails the store OWNER so a replacement/refund can be arranged.
  *
- * Body: { id: <order_id>, q: <email-or-phone>, missing: string[] }  // titles
+ * Body: { id: <order_id>, q: <email-or-phone>, missing: string[]|{title,qty}[],
+ *         comment: string, upi_id: string }
+ * `comment` is required (min 10 chars). `upi_id` is required on a pure-COD
+ * order and ignored on any other — see the isDefinitelyCod block below.
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
 const { sendWhatsApp, sendText } = require('./utils/whatsapp');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
-const { normalizeUpiId } = require('./utils/upi-id');
+const { normalizeUpiId, requireUpiId } = require('./utils/upi-id');
 const { replacementCovers } = require('./utils/missing-books');
 
 const CORS = {
@@ -221,12 +224,14 @@ exports.handler = async (event) => {
   // gives nothing to act on. Min length keeps it from being a single character.
   const comment = String(body.comment || '').trim().slice(0, 1000);
   const MIN_COMMENT = 10;
-  // Optional, and only meaningful for COD (checked below, once we know the
-  // order). Validated here so a typo comes back to the customer while they are
-  // still looking at the form, not weeks later when a refund goes nowhere.
+  // Required on a COD order, ignored on every other kind — and which one this
+  // is cannot be known until the order is loaded, so the REQUIRED check waits
+  // until below. The FORMAT check happens here so a typo comes back to the
+  // customer while they are still looking at the form, with no database round
+  // trip and no chance of it being mistaken for the missing-field message.
   const upi = normalizeUpiId(body.upi_id);
   if (!upi.ok && upi.reason) {
-    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: upi.reason }) };
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: upi.reason, need_upi: true }) };
   }
   // Accept either legacy `missing: ["Title", ...]` or the new
   // `missing: [{ title, qty }, ...]`. Qty is validated/capped later against the
@@ -280,9 +285,27 @@ exports.handler = async (event) => {
 
     // A prepaid refund goes back to the instrument that paid, so a UPI handle is
     // neither needed nor ours to keep. Only a pure-COD order has nowhere to send
-    // money back to. isDefinitelyCod fails closed, so partial COD (which has a
-    // deposit captured online) is excluded too.
-    const refundUpi = upi.ok && isDefinitelyCod(order) ? upi.value : '';
+    // money back to — and on those the handle is now REQUIRED rather than a
+    // nice-to-have. What went wrong with asking nicely: the report is the one
+    // moment the customer is engaged and wants something from us. Skip the field
+    // then and it has to be collected later, from someone who has stopped
+    // replying because as far as they know the matter is closed — so the money
+    // owed for an unarrangeable book just sits there. Refusing the report is the
+    // only lever that works, and the customer loses nothing by it: they are
+    // three seconds from being able to submit.
+    //
+    // isDefinitelyCod fails closed, so partial COD (a deposit captured online)
+    // and prepaid are never asked. `need_upi` tells the form which field to open
+    // and focus — a page may have decided, on the looser signal it has, not to
+    // render it at all.
+    const isCod = isDefinitelyCod(order);
+    if (isCod) {
+      const required = requireUpiId(body.upi_id);
+      if (!required.ok) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: required.reason, need_upi: true }) };
+      }
+    }
+    const refundUpi = isCod ? upi.value : '';
 
     // Map ordered titles → the ordered quantity (summing any duplicate lines),
     // so we can cap each requested quantity at what the customer actually bought.

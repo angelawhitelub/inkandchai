@@ -644,8 +644,8 @@ function reportBlockHtml(o) {
         </div>`).join('')}
     </div>
     ${upiFieldHtml(o)}
-    <label for="missComment" style="display:block;font-size:0.72rem;color:var(--cream-dim);margin:0 0 0.4rem;">Anything else we should know? <span style="opacity:0.7;">(optional)</span></label>
-    <textarea id="missComment" rows="3" maxlength="1000" placeholder="e.g. the packet was already open, or only some copies were inside…"
+    <label for="missComment" style="display:block;font-size:0.72rem;color:var(--cream-dim);margin:0 0 0.4rem;">What happened? <span style="color:#e8a030;">(required)</span></label>
+    <textarea id="missComment" rows="3" maxlength="1000" required aria-required="true" placeholder="e.g. the packet was already open, or only some copies were inside…"
       style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.8rem;font-family:inherit;font-size:0.82rem;resize:vertical;margin-bottom:1rem;"></textarea>
     <button id="reportBtn" onclick="submitMissingReport(this)"
       style="background:var(--gold);border:1px solid var(--gold);color:#0d0b08;padding:0.65rem 1.4rem;font-size:0.65rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:600;">
@@ -656,18 +656,28 @@ function reportBlockHtml(o) {
 }
 
 // A COD parcel was never paid for online, so if the missing book turns out to
-// be unarrangeable there is no card or UPI to send the money back to. Asking
-// here, optionally, beats chasing the customer for it later. Prepaid and
-// partial-COD orders refund to the original instrument and never see this.
+// be unarrangeable there is no card or UPI to send the money back to. This is
+// REQUIRED, not offered: the report is the last moment the customer is engaged,
+// and a handle collected afterwards, from someone who thinks the matter is
+// settled, mostly never arrives. Prepaid and partial-COD orders refund to the
+// original instrument and never see this field.
+//
+// `refund_upi_required` comes from the server's own isDefinitelyCod, so the
+// field appears exactly when report-missing-books will insist on it. The older
+// `payment_method === 'cod'` fallback is kept only for a cached page served
+// before that field existed; it is the looser test, so at worst it shows the
+// field on an order that did not need it and the value is discarded server-side.
 function upiFieldHtml(o) {
-  if (String(o.payment_method || '') !== 'cod') return '';
+  const required = ('refund_upi_required' in o) ? !!o.refund_upi_required : String(o.payment_method || '') === 'cod';
+  if (!required) return '';
   return `<div style="border:1px solid rgba(201,168,76,0.25);background:rgba(201,168,76,0.05);padding:0.8rem 0.9rem;margin-bottom:1rem;">
-    <label for="missUpi" style="display:block;font-size:0.72rem;color:var(--cream);margin:0 0 0.35rem;">Your UPI ID <span style="opacity:0.7;">(optional)</span></label>
+    <label for="missUpi" style="display:block;font-size:0.72rem;color:var(--cream);margin:0 0 0.35rem;">Your UPI ID <span style="color:#e8a030;">(required)</span></label>
     <div style="font-size:0.72rem;color:var(--cream-dim);line-height:1.6;margin-bottom:0.55rem;">
-      We'll send the missing book free of charge. In the rare event we can't arrange it,
-      share your UPI ID and we'll refund the value of the missing book to it instead.
+      We'll send the missing book free of charge. But this order was Cash on Delivery — there is no
+      online payment for us to reverse — so if we can't arrange the book, your UPI ID is the only way
+      we can refund what it cost you. Please add it now so we never have to come back and ask.
     </div>
-    <input id="missUpi" type="text" inputmode="email" autocomplete="off" maxlength="128" placeholder="e.g. 9876543210@ybl"
+    <input id="missUpi" type="text" inputmode="email" autocomplete="off" maxlength="128" required aria-required="true" placeholder="e.g. 9876543210@ybl"
       style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.8rem;font-family:inherit;font-size:0.82rem;"/>
   </div>`;
 }
@@ -701,6 +711,27 @@ async function submitMissingReport(btn) {
     msg.textContent = 'Please tap the book(s) that were missing.';
     return;
   }
+  // The field only exists on a COD order, and where it exists it is required.
+  // The server enforces this too — this check is here so the customer is told
+  // before the round trip, with the cursor already in the right box.
+  const upiEl = document.getElementById('missUpi');
+  if (upiEl && !upiEl.value.trim()) {
+    msg.style.display = ''; msg.style.color = '#e05050';
+    msg.textContent = 'Please add your UPI ID — this order was Cash on Delivery, so it is the only way we can refund you if the book cannot be arranged.';
+    upiEl.focus();
+    return;
+  }
+  // Required server-side (min 10 chars) since the account page started asking
+  // for it; this page went on calling it optional and let customers discover
+  // the rule as a red error after they pressed Submit.
+  const commentEl = document.getElementById('missComment');
+  const commentText = (commentEl?.value || '').trim();
+  if (commentText.length < 10) {
+    msg.style.display = ''; msg.style.color = '#e05050';
+    msg.textContent = 'Please tell us what happened (at least 10 characters) — e.g. "the packet was open and one book was missing".';
+    commentEl?.focus();
+    return;
+  }
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = 'Sending…';
   msg.style.display = 'none';
@@ -710,8 +741,8 @@ async function submitMissingReport(btn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: lastTracked.id, q: lastTracked.q, missing,
-        comment: (document.getElementById('missComment')?.value || '').trim(),
-        upi_id: (document.getElementById('missUpi')?.value || '').trim(),
+        comment: commentText,
+        upi_id: (upiEl?.value || '').trim(),
       }),
     });
     const data = await res.json().catch(() => ({}));

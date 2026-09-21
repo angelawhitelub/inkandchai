@@ -28,7 +28,19 @@ function isDefinitelyCod(order) {
   // Legacy AWB rows lost their original cod_pending status when AWB assignment
   // changed them to shipped. No payment id + no payment marker is the only
   // safe legacy signature for a pure COD shipment.
-  return status === 'shipped';
+  //
+  // 'delivered' is in here because a delivered parcel is a shipped one the
+  // courier then scanned: nothing about the payment changed on the way. Leaving
+  // it out was an oversight with a cost — 25 of the 400 most recent delivered
+  // orders (16% of everything that looked like COD) carry this exact signature,
+  // and the missing-book form was collecting refund UPI IDs from those
+  // customers and then throwing them away, because the same orders read as
+  // not-COD the moment their status moved on.
+  //
+  // This only widens the set of DELIVERED orders. Every other caller
+  // (auto-cancel-stale-cod, admin-cancel-stale-backlog) queries unshipped
+  // orders by status and can never be handed one.
+  return status === 'shipped' || status === 'delivered';
 }
 
 module.exports = { isDefinitelyCod };
