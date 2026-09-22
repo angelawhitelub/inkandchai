@@ -5,13 +5,19 @@
  * Required Netlify env vars:
  *   SHIPROCKET_EMAIL           — API user email (Settings → API in Shiprocket)
  *   SHIPROCKET_PASSWORD        — API user password
- *   SHIPROCKET_PICKUP_LOCATION — warehouse name exactly as in Shiprocket (e.g. "Office")
+ *   SHIPROCKET_PICKUP_LOCATION — the pickup address NICKNAME exactly as Shiprocket shows it
+ *                                under Settings -> Pickup Addresses. Ours is "Home". This is
+ *                                an exact string match: "home" or a trailing space is rejected,
+ *                                and the fallback below ('Office') matches nothing in our account,
+ *                                so leaving this unset fails every order at creation.
  *
  * Optional:
  *   SHIPROCKET_CHANNEL_ID      — channel ID from the Manual channel you created (leave blank to omit)
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { classifyShipmentMoney } = require('./shipment-money');
+const { isReplacementOrder } = require('./replacement-order');
 
 const BASE = 'https://apiv2.shiprocket.in/v1/external';
 
@@ -65,15 +71,65 @@ function estimateDims(items) {
 }
 
 // ── Push one order to Shiprocket ──────────────────────────────────────────────
-async function pushOrderToShiprocket({ inkOrderId, customerName, customerEmail, customerPhone, customerAddress, cartItems, amountPaise, status, createdAt }) {
-  const token = await getToken();
+// Callers pass either an `orders` row or the older flat argument bag. Both are
+// accepted because three of the four call sites are live checkout paths --
+// cod-order, verify-payment, phonepe-verify-status -- and none of them should
+// have to change to get the money right.
+function asOrderRow(input) {
+  if (!input || typeof input !== 'object') return {};
+  if (!('inkOrderId' in input)) return input;          // already a row
+  return {
+    razorpay_order_id:   input.inkOrderId,
+    razorpay_payment_id: input.razorpayPaymentId || null,
+    status:              input.status,
+    amount_paise:        input.amountPaise,
+    advance_paid_paise:  input.advancePaidPaise || 0,
+    cart_items:          input.cartItems,
+    customer_name:       input.customerName,
+    customer_email:      input.customerEmail,
+    customer_phone:      input.customerPhone,
+    customer_address:    input.customerAddress,
+    created_at:          input.createdAt,
+  };
+}
 
-  const isCOD     = ['cod_pending', 'partial_cod_pending'].includes(status);
-  const payMethod = isCOD ? 'COD' : 'Prepaid';
-  const amountRs  = (amountPaise || 0) / 100;
-  const items     = Array.isArray(cartItems) ? cartItems : [];
-  const subtotal  = items.reduce((s, i) => s + (i.price * (i.qty || 1)), 0) || amountRs;
-  const dims      = estimateDims(items);
+async function pushOrderToShiprocket(input) {
+  const order = asOrderRow(input);
+  const inkOrderId      = order.razorpay_order_id;
+  const customerName    = order.customer_name;
+  const customerEmail   = order.customer_email;
+  const customerPhone   = order.customer_phone;
+  const customerAddress = order.customer_address;
+  const createdAt       = order.created_at;
+
+  // What the courier is allowed to ask for at the door, decided by WHAT IS
+  // STILL OWED rather than by the status label.
+  //
+  // The old test here was `['cod_pending','partial_cod_pending'].includes(status)`
+  // with sub_total taken from the cart lines. Both halves were wrong, and a
+  // dry run over 46 live orders showed exactly how:
+  //
+  //   * cart lines exclude delivery, so 27 COD parcels would have collected the
+  //     book price and not the shipping -- Rs 1,063 never asked for;
+  //   * on partial COD, amount_paise is the DEPOSIT, while the cart still holds
+  //     the full basket, so 2 customers who had already paid Rs 55 online would
+  //     have been asked for the whole Rs 549 again at their door.
+  //
+  // classifyShipmentMoney is the one place that gets this right, it is what
+  // iThink and NimbusPost already use, and it fails closed: a partial-COD order
+  // with no balance metadata throws rather than guessing. Shiprocket's adhoc
+  // endpoint has no separate collectable field -- for COD it collects sub_total
+  // -- so sub_total IS the collectable and must be that number exactly. On a
+  // partial-COD order that deliberately makes sub_total smaller than the sum of
+  // the item lines; the difference is the deposit the customer already paid.
+  const money     = classifyShipmentMoney(order, isReplacementOrder(order));
+  const payMethod = money.isCOD ? 'COD' : 'Prepaid';
+  const subtotal  = money.isCOD ? money.collectableAmount : money.orderValueRs;
+
+  const token = await getToken();
+  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const dims  = estimateDims(items);
+  const amountRs = subtotal;
 
   const addr = parseAddress(customerAddress);
   const orderDate = createdAt
@@ -148,9 +204,13 @@ async function pushOrderToShiprocket({ inkOrderId, customerName, customerEmail, 
       const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
         auth: { autoRefreshToken: false, persistSession: false },
       });
+      // shiprocket_shipment_id is NOT written: the column does not exist on
+      // `orders`, and PostgREST rejects the whole statement over one unknown
+      // column -- which silently took shiprocket_order_id down with it, so
+      // nothing was ever saved and order-tracking.js (which matches on
+      // shiprocket_order_id) could never find the order a webhook was about.
       const update = {};
-      if (data.order_id)    update.shiprocket_order_id    = String(data.order_id);
-      if (data.shipment_id) update.shiprocket_shipment_id = String(data.shipment_id);
+      if (data.order_id) update.shiprocket_order_id = String(data.order_id);
       await supabase.from('orders').update(update).eq('razorpay_order_id', inkOrderId);
       console.log(`[Shiprocket] Saved SR IDs for ${inkOrderId}:`, update);
     } catch (e) {

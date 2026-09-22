@@ -1,6 +1,6 @@
 /**
- * Netlify Function: shiprocket-webhook
- * POST /.netlify/functions/shiprocket-webhook
+ * Netlify Function: order-tracking
+ * POST /.netlify/functions/order-tracking
  *
  * Receives real-time shipment status updates from Shiprocket and:
  *   1. Updates the order status in Supabase
@@ -9,7 +9,10 @@
  *
  * One-time Shiprocket setup:
  *   Dashboard → Settings → Webhooks → Add Webhook
- *   URL: https://inkandchai.in/.netlify/functions/shiprocket-webhook
+ *   URL: https://inkandchai.in/.netlify/functions/order-tracking
+ *        (NOT /shiprocket-webhook -- this file is routed under its own name and
+ *         that path 404s. A webhook registered there is accepted by Shiprocket
+ *         and then silently delivers nothing, forever.)
  *   Events: All shipment status events
  *
  * Optional env var:
