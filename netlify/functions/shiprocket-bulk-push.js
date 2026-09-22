@@ -96,6 +96,7 @@ exports.handler = async (event) => {
     for (const order of orders) {
       const id = order.razorpay_order_id || order.id;
       if (order.tracking_id) { refused.push({ order_id: id, reason: `already has AWB ${order.tracking_id}` }); continue; }
+      if (order.shiprocket_order_id) { refused.push({ order_id: id, reason: `already in Shiprocket as ${order.shiprocket_order_id}` }); continue; }
       let money;
       try { money = classifyShipmentMoney(order, isReplacementOrder(order)); }
       catch (e) { refused.push({ order_id: id, reason: String(e.message || e) }); continue; }
@@ -114,6 +115,13 @@ exports.handler = async (event) => {
     // An order that already carries an AWB has been booked with some courier.
     // Pushing it again creates a second parcel for one sale.
     if (order.tracking_id) {
+      summary.skipped++;
+      continue;
+    }
+    // A Shiprocket id without an AWB is an order already sitting in the panel
+    // awaiting a courier. The AWB guard above cannot see it, so without this a
+    // re-run books the same sale twice — one of them uncollectable.
+    if (order.shiprocket_order_id) {
       summary.skipped++;
       continue;
     }
