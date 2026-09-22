@@ -45,6 +45,12 @@ function text(v) {
   return String(v || '').trim();
 }
 
+// Remove a courier push suffix (-c, -c2, -c3 ...) from an order id. See the
+// comment at the batch fetch for why this exists and why it is safe.
+function stripPushSuffix(id) {
+  return String(id || '').replace(/-c\d*$/i, '');
+}
+
 function isUuid(v) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text(v));
 }
@@ -142,7 +148,20 @@ exports.handler = async (event) => {
     // ── 2. Batch-fetch all orders in TWO queries (UUIDs + IC-* IDs) ──────────
     //    This avoids N sequential SELECTs — was the cause of 504 timeouts.
     const uuidIds    = rows.map(r => r.orderId).filter(isUuid);
-    const razorpayIds = rows.map(r => r.orderId).filter(id => id && !isUuid(id));
+    // An AWB report from iThink comes back carrying the push suffix, because
+    // the suffix is what we sent them: IC-20260922-IY9JX-c2, not
+    // IC-20260922-IY9JX. Matched literally, every row of a suffixed batch
+    // fails "Order not found". Our own ids never end this way -- the last
+    // segment is five alphanumerics -- so a trailing -c, -c2, -c3 ... can only
+    // be ours. Both spellings are fetched and the exact one always wins, so
+    // stripping can never pull in an order the literal id would have found.
+    const razorpayIds = [];
+    for (const r of rows) {
+      if (!r.orderId || isUuid(r.orderId)) continue;
+      razorpayIds.push(r.orderId);
+      const bare = stripPushSuffix(r.orderId);
+      if (bare !== r.orderId) razorpayIds.push(bare);
+    }
 
     const [uuidRes, rpRes] = await Promise.all([
       uuidIds.length
@@ -180,7 +199,7 @@ exports.handler = async (event) => {
         continue;
       }
 
-      const order = byUuid.get(orderId) || byRpId.get(orderId);
+      const order = byUuid.get(orderId) || byRpId.get(orderId) || byRpId.get(stripPushSuffix(orderId));
       if (!order) {
         results.push({ success: false, order_id: orderId, error: 'Order not found' });
         continue;
