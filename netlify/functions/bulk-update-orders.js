@@ -130,6 +130,19 @@ exports.handler = async (event) => {
   // set, the caller takes responsibility for sending a single digest instead;
   // the CUSTOMER notifications are untouched and still go out per order.
   const skipOwnerEmail = body.skip_owner_email === true;
+  // Cancel the order in our records WITHOUT telling the customer. This exists
+  // for one situation: a duplicate order the customer never meant to place.
+  // Telling them "your order is cancelled" when a real order of theirs is on
+  // its way reads as though the real one died. The order still has to be
+  // cancelled, because every courier push selects on status -- the Samruddhi
+  // duplicate was cancelled in Shiprocket and queued itself for iThink an hour
+  // later. Requires a reason, so a silent cancellation is never anonymous.
+  const silent = body.silent === true;
+  const silentReason = text(body.silent_reason);
+  if (silent && !silentReason) {
+    return { statusCode: 400, headers: CORS,
+             body: JSON.stringify({ error: 'silent:true requires silent_reason' }) };
+  }
   if (!updates.length) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide updates[]' }) };
   }
@@ -211,6 +224,18 @@ exports.handler = async (event) => {
         : '';
       const payload = { status };
 
+      // Four orders in this database are cancelled with cancelled_at, the
+      // reason, the source and auto_cancelled_at all null, and nothing records
+      // who did it. A silent cancellation is the easiest way to create a fifth,
+      // so it writes its own trail.
+      if (status === 'cancelled' && order.status !== 'cancelled') {
+        payload.cancelled_at = new Date().toISOString();
+        if (silent) {
+          payload.cancellation_reason = silentReason;
+          payload.cancellation_source = 'admin_silent';
+        }
+      }
+
       // A SECOND AWB — the order already carried a different one, so this row is
       // a re-booking (cancelled shipment, re-created with another courier).
       const prevAwb = text(order.tracking_id);
@@ -291,7 +316,7 @@ exports.handler = async (event) => {
         skippedNoOp++;
       }
 
-      if (status === 'cancelled' && order.status !== 'cancelled' && saved) {
+      if (status === 'cancelled' && order.status !== 'cancelled' && saved && !silent) {
         await notifyOrderCancelled(saved, {
           reason: 'Your order status was updated to cancelled.',
           skipOwnerEmail,
