@@ -5,6 +5,15 @@
  * Body: { all_unshipped: true } or { order_ids: ["IC-...", ...] }
  *       { dry_run: true }   build every payload, contact Delhivery for nothing
  *       { limit: n }        cap how many go in one run
+ *       { force: true }     also send orders still holding a shiprocket_order_id
+ *
+ * force exists for the migration off Shiprocket. Cancelling a Shiprocket
+ * booking leaves shiprocket_order_id on the row on purpose -- it is what stops
+ * shiprocket-bulk-push re-booking a cancelled order -- but that same field then
+ * reads as "already shipping" to every other courier, and the orders are in
+ * fact free. force ignores THAT field only. It never ignores tracking_id: an
+ * AWB means a courier is physically holding the parcel, and no flag should be
+ * able to talk this endpoint into booking a second one.
  * Headers: X-Admin-Key / X-Admin-Token
  *
  * THIS BOOKS PARCELS. Delhivery's create.json assigns a waybill immediately --
@@ -88,7 +97,7 @@ exports.handler = async (event) => {
     const id = order.razorpay_order_id || order.id;
     // An AWB means some courier is already carrying this sale.
     if (order.tracking_id) { refused.push({ order_id: id, reason: `already has AWB ${order.tracking_id}` }); continue; }
-    if (order.shiprocket_order_id) { refused.push({ order_id: id, reason: `already in Shiprocket as ${order.shiprocket_order_id}` }); continue; }
+    if (order.shiprocket_order_id && !body.force) { refused.push({ order_id: id, reason: `already in Shiprocket as ${order.shiprocket_order_id} — cancel it there, then re-run with force:true` }); continue; }
     let money, shipment;
     try {
       money = classifyShipmentMoney(order, isReplacementOrder(order));
@@ -113,6 +122,7 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({
       dry_run: true,
       books_immediately: true,
+      force: body.force === true,
       pickup_location: pickup || '(DELHIVERY_PICKUP_NAME not set — every push will fail)',
       totals: preview, would_send: toSend.length, orders: rows, refused,
       sample_payload: toSend.length ? buildShipment(toSend[0], pickup || 'UNSET') : null,
