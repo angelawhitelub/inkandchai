@@ -133,8 +133,13 @@ exports.handler = async (event) => {
     const awb = d.tracking_id || (d.barcodes && d.barcodes.wbn) || null;
     const ok = out.httpStatus === 200 && d.status !== false && awb;
     if (!ok) {
+      // `message` is their error CODE (SWIFT_VALIDATION_EXCEPTION); the human
+      // half is in `description` ("Shipment creation blocked...", "invoiceAmount
+      // cannot be null"). Reporting only the code turns every distinct failure
+      // into the same opaque string.
       results.push({ order_id: p.id, ok: false, http: out.httpStatus,
-                     error: d.remark || d.message || d.error || out.raw });
+                     error: d.description || d.remark || d.message || d.error || out.raw,
+                     code: d.message || null });
       continue;
     }
 
