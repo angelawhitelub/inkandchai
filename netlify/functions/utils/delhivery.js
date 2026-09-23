@@ -46,14 +46,22 @@ function dlSafe(value, max = 250) {
     .slice(0, max);
 }
 
-function estimateDims(items) {
-  const qty = items.reduce((s, i) => s + (i.qty || 1), 0);
-  return {
-    weightGrams: Math.max(500, qty * 250),   // Delhivery wants grams, not kg
-    length: 22,
-    breadth: 14,
-    height: Math.max(3, qty * 3),
-  };
+// One flat parcel, whatever is in it.
+//
+// This used to scale with quantity -- 250g and 3cm of height per item -- so a
+// three-book combo declared 750g and a 22x14x9 box. Every parcel we send is
+// the same flat box, so that was inventing weight nobody was shipping.
+//
+// The height mattered as much as the weight. Delhivery bills the greater of
+// dead weight and volumetric, and volumetric is L*W*H/5000: at 22x14x9 that is
+// 554g, which would have quietly billed above 500g even after the dead weight
+// was pinned. The box below comes to 150g, well under, so 500g is what
+// actually gets charged. Any change to these three numbers has to keep
+// L*W*H under 2500 or the declared weight stops being the billed one.
+const FLAT_PARCEL = { weightGrams: 500, length: 15, breadth: 10, height: 5 };
+
+function estimateDims() {
+  return { ...FLAT_PARCEL };
 }
 
 /**
@@ -81,7 +89,7 @@ function buildShipment(order, pickupName) {
   }
 
   const items = Array.isArray(order.cart_items) ? order.cart_items : [];
-  const dims  = estimateDims(items);
+  const dims  = estimateDims();
   const desc  = items.length
     ? dlSafe(items.map(i => sanitizeForCourier(i.title || i.name || 'Book')).join(', '), 200)
     : 'Books';
