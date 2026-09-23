@@ -44,7 +44,10 @@ const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stri
 
 const PAGE_LIMIT = 200;   // 300 times out upstream; 200 is comfortably inside it
 const MAX_PAGES  = 4;
-const BATCH      = 20;    // ids per cancel call
+// One id per call. The panel's own v2 bundle joins ids with commas, but this
+// (legacy) endpoint answers a list with 404 "The id field must contain an
+// integer" -- so a batch cancels nothing at all rather than part of itself.
+const BATCH      = 1;
 
 /** Panel numbers carry re-book suffixes (-p, -c, -c2, -r1); ours do not. */
 function baseOrderNumber(n) {
