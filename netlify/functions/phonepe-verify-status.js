@@ -22,7 +22,7 @@ const { sendWhatsApp }  = require('./utils/whatsapp');
 const { sendEmail }     = require('./utils/email');
 const { claimPaidNotify } = require('./utils/paid-notify-once');
 const { afterResponse } = require('./utils/after-response');
-const { pushOrderToShiprocket } = require('./utils/shiprocket');
+const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
@@ -215,7 +215,7 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
     }
 
     // ── Auto-push to Shiprocket panel ─────────────────────────────────────
-    pushOrderToShiprocket({
+    autoPushOrderToShiprocket({
       inkOrderId:      order.razorpay_order_id,
       customerName:    order.customer_name    || '',
       customerEmail:   order.customer_email   || '',

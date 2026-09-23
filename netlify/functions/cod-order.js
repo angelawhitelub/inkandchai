@@ -10,7 +10,7 @@ const { afterResponse } = require('./utils/after-response');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
-const { pushOrderToShiprocket } = require('./utils/shiprocket');
+const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricing');
 const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk');
@@ -251,7 +251,7 @@ exports.handler = async (event, context) => {
     }
 
     // ── Auto-push to Shiprocket panel ─────────────────────────────────────
-    pushOrderToShiprocket({
+    autoPushOrderToShiprocket({
       inkOrderId:      orderId,
       customerName:    customer.name    || '',
       customerEmail:   customer.email   || '',

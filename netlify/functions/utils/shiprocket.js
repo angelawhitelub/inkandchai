@@ -221,4 +221,27 @@ async function pushOrderToShiprocket(input) {
   return data;
 }
 
-module.exports = { pushOrderToShiprocket };
+/**
+ * The checkout paths call THIS, not pushOrderToShiprocket directly.
+ *
+ * Every new order was being pushed into Shiprocket the moment it was placed,
+ * from cod-order, verify-payment and phonepe-verify-status, with nothing to
+ * turn it off. It went unnoticed while SHIPROCKET_PICKUP_LOCATION was wrong,
+ * because every one of those pushes failed silently; correcting the pickup
+ * name switched it on again, and 9 orders landed in Shiprocket within a day.
+ *
+ * SHIPMENT_AUTO_PUSH controls it. Unset keeps the old behaviour, so nothing
+ * changes until somebody decides it should. 'off' stops the checkout push
+ * without touching the admin panel's own buttons, which call
+ * pushOrderToShiprocket directly and are always an explicit human action.
+ */
+function autoPushOrderToShiprocket(payload) {
+  const mode = String(process.env.SHIPMENT_AUTO_PUSH || 'shiprocket').toLowerCase();
+  if (mode !== 'shiprocket') {
+    console.log(`[Shiprocket] auto-push skipped for ${payload && payload.inkOrderId} (SHIPMENT_AUTO_PUSH=${mode})`);
+    return Promise.resolve({ skipped: true, mode });
+  }
+  return pushOrderToShiprocket(payload);
+}
+
+module.exports = { pushOrderToShiprocket, autoPushOrderToShiprocket };

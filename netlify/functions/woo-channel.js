@@ -451,6 +451,13 @@ async function loadOrders(supabase) {
     .select('*')
     .or('source.is.null,source.neq.paperbound')
     .in('status', UNSHIPPED_STATUSES)
+    // An AWB means some courier is already carrying this sale. Every direct
+    // push path (iThink, Shiprocket, Delhivery) refuses those orders, but this
+    // feed selected on status alone -- so an order booked elsewhere and not yet
+    // moved to 'shipped' was still offered to XpressBees, who would happily
+    // book it a second time. Delhivery's create.json returns the waybill in the
+    // same call, which makes that window the normal case rather than a rarity.
+    .is('tracking_id', null)
     .order('created_at', { ascending: true })
     .limit(500);
 

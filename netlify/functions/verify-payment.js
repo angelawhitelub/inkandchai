@@ -10,7 +10,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { afterResponse } = require('./utils/after-response');
 const { sendEmail }    = require('./utils/email');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
-const { pushOrderToShiprocket } = require('./utils/shiprocket');
+const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
@@ -274,7 +274,7 @@ exports.handler = async (event, context) => {
     }
 
     // ── Auto-push to Shiprocket panel ─────────────────────────────────────
-    pushOrderToShiprocket({
+    autoPushOrderToShiprocket({
       inkOrderId:       inkOrderId,
       customerName:     customer?.name    || '',
       customerEmail:    customer?.email   || '',
