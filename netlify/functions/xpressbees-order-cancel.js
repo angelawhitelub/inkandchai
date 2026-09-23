@@ -51,6 +51,34 @@ function baseOrderNumber(n) {
   return String(n || '').trim().toUpperCase().replace(/-(P|C\d*|D|R\d*)$/i, '');
 }
 
+/**
+ * The panel rejects an application/json body here with a 404 and the bare
+ * message "id is required" -- the same quirk NimbusPost's panel has, where
+ * this endpoint reads only form-encoded input. So the id list goes out as a
+ * form, and `shape` stays configurable because that is a guess about someone
+ * else's server, not a fact we control.
+ */
+async function postIds(path, token, ids, shape) {
+  const url = `${xb.XB_BASE}${path}`;
+  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+  let body;
+  if (shape === 'multipart') {
+    body = new FormData();
+    body.append('id', ids.join(','));           // fetch sets the boundary itself
+  } else if (shape === 'json') {
+    body = JSON.stringify({ id: ids.join(',') });
+    headers['Content-Type'] = 'application/json';
+  } else {
+    body = new URLSearchParams({ id: ids.join(',') }).toString();
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  }
+  const res = await fetch(url, { method: 'POST', headers, body });
+  const text = await res.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch { /* raw below */ }
+  return { httpStatus: res.status, data, raw: text.slice(0, 400) };
+}
+
 const isCancelled = (row) => String(row.status || '').toLowerCase() === 'cancelled';
 const hasAwb = (row) => String(row.awb_numbers || '').trim() !== '';
 
@@ -67,6 +95,7 @@ exports.handler = async (event) => {
   const dryRun = body.dry_run !== false;
   const endpoint = String(body.endpoint || '/orders/cancel');
   const limit = Math.max(1, Math.min(200, Number(body.limit) || 200));
+  const shape = String(body.shape || 'form');
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -145,6 +174,7 @@ exports.handler = async (event) => {
   const summary = {
     dry_run: dryRun,
     endpoint,
+    shape,
     panel_rows_read: panel.length,
     delhivery_carried: carried.size,
     to_cancel: plan.length,
@@ -167,9 +197,7 @@ exports.handler = async (event) => {
     const ids = group.map((t) => t.panel_id);
     let out;
     try {
-      out = await xb.withAuth((token) => xb.xbFetch(endpoint, {
-        method: 'POST', token, body: { id: ids.join(',') },
-      }));
+      out = await xb.withAuth((token) => postIds(endpoint, token, ids, shape));
     } catch (e) {
       results.push({ ids, ok: false, error: e.message });
       continue;
