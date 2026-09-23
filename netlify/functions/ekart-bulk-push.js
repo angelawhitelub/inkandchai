@@ -87,6 +87,7 @@ exports.handler = async (event) => {
           dropPincode: p.payload.drop_location.pin,
           paymentType: p.payload.payment_mode,
           codAmount: String(p.payload.cod_amount),
+          invoiceAmount: String(p.payload.total_amount),
         });
         const list = Array.isArray(out.data) ? out.data : (out.data?.data || []);
         service[p.id] = { http: out.httpStatus, partners: Array.isArray(list) ? list.length : 0,

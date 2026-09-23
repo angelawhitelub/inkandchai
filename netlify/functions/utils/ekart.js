@@ -97,18 +97,30 @@ async function withAuth(fn) {
   return out;
 }
 
-/** Which partners cover this lane. Read-only; books nothing. */
-async function serviceability({ pickupPincode, dropPincode, paymentType = 'COD', codAmount = '0', serviceType = 'SURFACE' }) {
+/**
+ * Which partners cover this lane, and at what price. Read-only; books nothing.
+ *
+ * The published spec for this endpoint is WRONG about its input: it validates
+ * against the pricing-estimate shape, so it also demands `direction` (which
+ * must be UPPERCASE -- "forward" is rejected by enum) and `invoiceAmount`,
+ * neither of which appears in serviceability_v3_request. Without them you get
+ * SWIFT_VALIDATION_EXCEPTION / SWIFT_MALFORMED_INPUT_EXCEPTION, not an empty
+ * partner list -- so a missing field reads like an unserviceable pincode.
+ */
+async function serviceability({ pickupPincode, dropPincode, paymentType = 'COD', codAmount = '0', invoiceAmount, serviceType = 'SURFACE' }) {
   const body = {
+    direction: 'FORWARD',
     pickupPincode: String(pickupPincode),
     dropPincode: String(dropPincode),
     length: String(FLAT_PARCEL.length),
     width: String(FLAT_PARCEL.breadth),
     height: String(FLAT_PARCEL.height),
     weight: String(FLAT_PARCEL.weightGrams),
+    paymentMode: paymentType,
     paymentType,
     serviceType,
     codAmount: String(codAmount),
+    invoiceAmount: String(invoiceAmount == null ? codAmount : invoiceAmount),
   };
   return withAuth((token) => ekFetch('/data/v3/serviceability', { method: 'POST', token, body }));
 }
