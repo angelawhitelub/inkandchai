@@ -49,6 +49,11 @@ exports.handler = async (event) => {
       ref:      sh.ReferenceNo,
       waybill:  sh.AWB,
       status:   sh.Status && sh.Status.Status,
+      // A cancelled shipment that never got picked up STAYS "Manifested" --
+      // only the type changes, to UD. So Status alone cannot tell a live
+      // booking from a cancelled one, and StatusType is the field that can.
+      status_type: sh.Status && sh.Status.StatusType,
+      instructions: sh.Status && sh.Status.Instructions,
       cod:      sh.CODAmount,
       pickup:   sh.PickUpDate,
       consignee: sh.Consignee && sh.Consignee.Name,
@@ -57,6 +62,12 @@ exports.handler = async (event) => {
 
   return { statusCode: 200, headers: CORS, body: JSON.stringify({
     asked: ids, found_count: found.length, found,
-    missing: ids.filter(i => !found.some(f => String(f.ref) === String(i))),
+    // A re-booked order was sent under a suffixed reference, so its shipment
+    // comes back as IC-...-r1 while we asked for IC-.... Strip a trailing
+    // suffix before deciding something is missing.
+    missing: ids.filter(i => !found.some(f => {
+      const ref = String(f.ref || '');
+      return ref === String(i) || ref.replace(/-[A-Za-z0-9_]{1,8}$/, '') === String(i);
+    })),
   }, null, 2) };
 };

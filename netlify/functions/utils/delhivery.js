@@ -68,8 +68,15 @@ function estimateDims() {
  * Build the shipment object for one order row. Exported so the dry run can
  * show exactly what would be sent without a token or a network call.
  */
-function buildShipment(order, pickupName) {
+function buildShipment(order, pickupName, suffix = '') {
   const inkOrderId = order.razorpay_order_id || order.id;
+  // Delhivery rejects an order reference it has seen before with "Duplicate
+  // order id", and a CANCELLED shipment still holds its reference. So an order
+  // we cancel and re-book -- the parcel was fine, our declared weight was not
+  // -- cannot go back under its own number. The suffix is appended to the
+  // reference SENT TO DELHIVERY only; our order id is untouched everywhere
+  // else. iThink needs the same trick for the same reason.
+  const sentAs = suffix ? `${inkOrderId}${suffix}` : inkOrderId;
 
   // Same rule as every other courier path: what the courier may collect is
   // decided by what is still owed, never by the status label. On partial COD
@@ -97,7 +104,7 @@ function buildShipment(order, pickupName) {
 
   return {
     name:           dlSafe(order.customer_name || 'Customer', 80),
-    order:          dlSafe(inkOrderId, 60),
+    order:          dlSafe(sentAs, 60),
     phone,
     add:            dlSafe(addr.address || order.customer_address, 250),
     pin,
@@ -137,14 +144,14 @@ function pickupName() {
  * Create shipments in one call. Delhivery accepts an array, so a batch is one
  * request rather than one per order.
  */
-async function createShipments(orders) {
+async function createShipments(orders, suffix = '') {
   const token = process.env.DELHIVERY_API_TOKEN;
   if (!token) throw new Error('DELHIVERY_API_TOKEN not set');
   const base = process.env.DELHIVERY_BASE || DEFAULT_BASE;
   const name = pickupName();
 
   const shipments = orders.map((o) => {
-    const s = buildShipment(o, name);
+    const s = buildShipment(o, name, suffix);
     delete s._pickup;
     return s;
   });

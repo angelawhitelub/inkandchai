@@ -6,6 +6,12 @@
  *       { dry_run: true }   build every payload, contact Delhivery for nothing
  *       { limit: n }        cap how many go in one run
  *       { force: true }     also send orders still holding a shiprocket_order_id
+ *       { suffix: "-r1" }   appended to the reference SENT TO DELHIVERY only.
+ *                           Needed to re-book an order whose earlier shipment
+ *                           was cancelled: Delhivery keeps the reference and
+ *                           answers "Duplicate order id". The AWB comes back
+ *                           in the same response, so nothing has to be matched
+ *                           back by reference afterwards.
  *
  * force exists for the migration off Shiprocket. Cancelling a Shiprocket
  * booking leaves shiprocket_order_id on the row on purpose -- it is what stops
@@ -89,6 +95,10 @@ exports.handler = async (event) => {
   }
 
   const pickup = process.env.DELHIVERY_PICKUP_NAME || '';
+  const suffix = typeof body.suffix === 'string' ? body.suffix.trim() : '';
+  if (suffix && !/^[A-Za-z0-9_-]{1,8}$/.test(suffix)) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'suffix must match [A-Za-z0-9_-]{1,8}' }) };
+  }
   const ready = [], refused = [];
   const preview = { queued: 0, cod_orders: 0, cod_collectable: 0, prepaid_orders: 0, prepaid_declared: 0 };
   const rows = [];
@@ -101,7 +111,7 @@ exports.handler = async (event) => {
     let money, shipment;
     try {
       money = classifyShipmentMoney(order, isReplacementOrder(order));
-      shipment = buildShipment(order, pickup || 'UNSET');
+      shipment = buildShipment(order, pickup || 'UNSET', suffix);
     } catch (e) {
       refused.push({ order_id: id, reason: String(e.message || e) });
       continue;
@@ -125,7 +135,8 @@ exports.handler = async (event) => {
       force: body.force === true,
       pickup_location: pickup || '(DELHIVERY_PICKUP_NAME not set — every push will fail)',
       totals: preview, would_send: toSend.length, orders: rows, refused,
-      sample_payload: toSend.length ? buildShipment(toSend[0], pickup || 'UNSET') : null,
+      suffix: suffix || null,
+      sample_payload: toSend.length ? buildShipment(toSend[0], pickup || 'UNSET', suffix) : null,
     }, null, 2) };
   }
 
@@ -140,7 +151,7 @@ exports.handler = async (event) => {
     const chunk = toSend.slice(i, i + BATCH_SIZE);
     let data;
     try {
-      data = await createShipments(chunk);
+      data = await createShipments(chunk, suffix);
     } catch (e) {
       summary.failed += chunk.length;
       summary.errors.push(String(e.message || e).slice(0, 300));
@@ -150,7 +161,8 @@ exports.handler = async (event) => {
     const packages = Array.isArray(data.packages) ? data.packages : [];
     for (const order of chunk) {
       const id  = order.razorpay_order_id || order.id;
-      const pkg = packages.find(p => String(p.refnum || '') === String(id));
+      const sentAs = suffix ? `${id}${suffix}` : String(id);
+      const pkg = packages.find(p => String(p.refnum || '') === sentAs);
       const ok  = pkg && String(pkg.status || '').toLowerCase() === 'success' && pkg.waybill;
 
       if (!ok) {
