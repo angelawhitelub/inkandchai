@@ -128,7 +128,13 @@ async function serviceability({ pickupPincode, dropPincode, paymentType = 'COD',
 function pickupLocation() {
   // Ekart autofills a single registered warehouse, and accepts an alias when
   // several exist. Sending a full address block that does not match a
-  // REGISTERED one is what gets a booking rejected, so an alias wins when set.
+  // REGISTERED one is what gets a booking rejected -- observed as a 404
+  // SWIFT_RESOURCE_NOT_FOUND_EXCEPTION on create, which reads like a bad URL
+  // rather than a bad warehouse. So an alias wins when set.
+  //
+  // GET /api/v2/addresses lists what is actually registered (note the plural;
+  // /api/v2/address is PATH_NOT_IMPLEMENTED for GET). Ours is one address,
+  // alias "Office".
   const alias = process.env.EKART_PICKUP_ALIAS;
   if (alias) return { name: alias };
   return {
