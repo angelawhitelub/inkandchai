@@ -104,7 +104,13 @@ async function withAuth(fn) {
 }
 
 /**
- * Which partners cover this lane, and at what price. Read-only; books nothing.
+ * A PRICE QUOTE for this lane. Read-only; books nothing.
+ *
+ * It is NOT a coverage check, despite the name: it answered `partners: 1`
+ * with a full rate card for five pincodes, and create then refused four of
+ * them as "Drop Pincode is not serviceable". Do not gate a push on this or
+ * report it to anyone as proof a parcel can be delivered -- the booking is
+ * the only honest test.
  *
  * The published spec for this endpoint is WRONG about its input: it validates
  * against the pricing-estimate shape, so it also demands `direction` (which
