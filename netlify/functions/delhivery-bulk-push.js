@@ -44,6 +44,7 @@ const { classifyShipmentMoney } = require('./utils/shipment-money');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { buildShipment, createShipments } = require('./utils/delhivery');
 const { buildTrackingUrl } = require('./utils/tracking-url');
+const delhiveryPins = require('./utils/delhivery-pincodes');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -116,6 +117,20 @@ exports.handler = async (event) => {
       refused.push({ order_id: id, reason: String(e.message || e) });
       continue;
     }
+    // Delhivery's own serviceability export, checked before anything is sent.
+    // Their API only answers this by refusing the booking, and it reports the
+    // refusal as "Crashing while saving package ... is non serviceable
+    // pincode" even for pincodes it plainly does serve -- so the response is
+    // not a reliable answer to this question and the list is.
+    // `skip_serviceability: true` sends anyway, for when the export is behind
+    // the network.
+    const verdict = delhiveryPins.canShip(shipment.pin, { isCOD: money.isCOD });
+    if (!verdict.ok && !body.skip_serviceability) {
+      refused.push({ order_id: id, reason: `Delhivery: ${verdict.reason}`,
+                     pin: shipment.pin, unshippable_by_delhivery: true });
+      continue;
+    }
+
     preview.queued++;
     if (money.isCOD) { preview.cod_orders++; preview.cod_collectable += money.collectableAmount; }
     else { preview.prepaid_orders++; preview.prepaid_declared += money.orderValueRs; }
