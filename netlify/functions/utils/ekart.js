@@ -28,6 +28,12 @@ const { sanitizeForCourier } = require('./nimbuspost-import');
 const DEFAULT_BASE = 'https://app.elite.ekartlogistics.in';
 const TIMEOUT_MS = 20000;
 
+/** An alternate contact only if it is real AND different from the main one. */
+function altPhone(main) {
+  const alt = String(process.env.EKART_ALT_PHONE || '').replace(/\D/g, '').slice(-10);
+  return alt.length === 10 && alt !== main ? alt : '';
+}
+
 /** Same flat parcel every courier gets. Quantity and title never change it. */
 const FLAT_PARCEL = { weightGrams: 500, length: 15, breadth: 10, height: 5 };
 
@@ -190,7 +196,13 @@ function buildShipment(order, suffix = '') {
     seller_gst_tin: process.env.EKART_SELLER_GST || '',
 
     consignee_name: name,
-    consignee_alternate_phone: phone,   // we hold one number; Ekart wants this field
+    // NO consignee_alternate_phone. Their schema marks it required, but the
+    // API rejects "Phone and Alternate Phone cannot be same" -- and we hold
+    // exactly one number per customer. Inventing a second would put a number
+    // a delivery agent actually calls into the shipment, so the field is
+    // omitted instead. Set one deliberately via EKART_ALT_PHONE only if it is
+    // a real, reachable number.
+    ...(altPhone(phone) ? { consignee_alternate_phone: altPhone(phone) } : {}),
     consignee_gst_amount: 0,
 
     payment_mode: money.isCOD ? 'COD' : 'Prepaid',
