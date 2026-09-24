@@ -1026,6 +1026,7 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Import all unshipped orders into the NimbusPost Orders panel without choosing couriers or generating AWBs.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="pushAllToXpressbeesPanel(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel. Recent orders are collected automatically; this also queues the older ones. No courier is chosen and no AWB is generated.">Push to XpressBees Panel (No AWB)</button>
       <button class="btn-green" onclick="pushAllToIthinkPanel(this)" style="background:rgba(120,160,255,0.14);border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel. Shows a dry-run preview with the COD collectable total before anything is sent. No courier is chosen and no AWB is generated. A suffix is added to the order number sent to iThink so the batch is identifiable and does not collide with records already in the panel.">Push to iThink Panel (No AWB)</button>
+      <button class="btn-green" onclick="pushServiceableToDelhivery(this)" style="background:rgba(181,107,18,0.12);border-color:rgba(181,107,18,0.55);color:var(--orange);" title="Book every unshipped order whose pincode Delhivery serves. Shows a preview first; each booked order gets a real AWB and is charged to the Delhivery wallet. Failures are grouped by cause with what to do next.">🚚 Book Serviceable on Delhivery (AWB)</button>
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
       <button class="btn-outline" onclick="syncNimbusAwbs(this)" title="Pull AWBs assigned inside the NimbusPost panel back onto your orders, flip them to shipped, and notify customers. Also runs automatically every 15 minutes.">🔄 Sync AWBs from NimbusPost</button>
       <button class="btn-outline" onclick="sendTestEmail(this)" title="Send one test email to the store owner and report which provider (Mailjet/Resend/Brevo) delivered it. Use this to verify email is working after changing providers.">✉️ Send test email</button>
@@ -1228,6 +1229,9 @@ select,input,textarea{font-size:1rem;}
     </button>
     <button class="btn-outline" onclick="pushAllToIthinkPanel(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel (dry-run preview first, no courier, no AWB)">
       Push to iThink Panel (No AWB)
+    </button>
+    <button class="btn-outline" onclick="pushServiceableToDelhivery(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(181,107,18,0.55);color:var(--orange);" title="Book unshipped orders on Delhivery (serviceable pincodes only, preview first, real AWBs)">
+      🚚 Book on Delhivery (AWB)
     </button>
     <button class="btn-outline" onclick="openBroadcastModal()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(37,211,102,0.55);color:#25D366;" title="Send a WhatsApp template to all past customers. Use when paid ads are down to re-engage existing buyers.">
       📣 WhatsApp Broadcast
@@ -10402,6 +10406,299 @@ async function pushAllToIthinkPanel(btn) {
     allButtons.forEach(b => { b.disabled = false; });
     if (btn) btn.innerHTML = orig;
   }
+}
+
+// ── Delhivery: book every unshipped order whose pincode Delhivery serves ─────
+//
+// Unlike the panel pushes above, this BOOKS: each order comes back with a real
+// AWB, and Delhivery charges the wallet for it. So it dry-runs first and shows
+// exactly what will go before anything is sent.
+//
+// Only pincodes in Delhivery's published serviceability list are sent (see
+// utils/delhivery-pincodes.js); the rest are listed as "not on Delhivery's
+// network" and left for another courier.
+//
+// ERRORS ARE THE POINT OF THE RESULTS SCREEN. Every Delhivery refusal arrives
+// as "Crashing while saving package ... Package might have been partially
+// saved", so an empty wallet and a refused pincode look identical in a raw
+// list, and the one worth acting on gets buried. The server groups failures by
+// cause (utils/delhivery-errors.js); this shows each group with what to do,
+// and keeps Delhivery's own words one click away.
+let delhiveryPushActive = false;
+
+function dlEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+const dlRupees = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
+
+function dlModal(html) {
+  let m = document.getElementById('delhiveryPushModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'delhiveryPushModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:10800;padding:1rem;';
+    document.body.appendChild(m);
+  }
+  m.innerHTML =
+    '<div style="background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);width:min(760px,96vw);max-height:90vh;overflow-y:auto;padding:1.6rem 1.6rem 1.3rem;position:relative;color:var(--cream);font-size:0.8rem;line-height:1.6;">' +
+      '<button type="button" onclick="dlClose()" aria-label="Close" style="position:absolute;top:0.6rem;right:0.6rem;background:transparent;border:1px solid var(--border);width:32px;height:32px;border-radius:50%;cursor:pointer;color:var(--cream-dim);font-size:0.9rem;">✕</button>' +
+      html +
+    '</div>';
+  return m;
+}
+function dlClose() {
+  if (delhiveryPushActive) return;           // never hide a push that is still booking
+  document.getElementById('delhiveryPushModal')?.remove();
+}
+
+const DL_H = 'font-family:\'DM Serif Display\',serif;font-size:1.5rem;font-weight:400;color:var(--white);margin:0 0 0.3rem;';
+const DL_SEC = 'font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;font-weight:700;margin:1.2rem 0 0.4rem;';
+const DL_ROW = 'display:flex;gap:0.8rem;padding:0.28rem 0;border-bottom:1px solid var(--border);font-size:0.74rem;';
+const DL_MONO = 'font-family:ui-monospace,Menlo,monospace;';
+
+async function dlCall(body) {
+  let res, text;
+  try {
+    res = await fetch('/.netlify/functions/delhivery-bulk-push', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Token': adminToken || '',
+        'X-Admin-Key': adminKey || '',
+      },
+      body: JSON.stringify(body),
+    });
+    text = await res.text();
+  } catch (e) {
+    // The request never got an answer. For a live push that means the outcome
+    // is UNKNOWN, not "nothing happened" -- the caller says so.
+    const err = new Error('Could not reach the server: ' + (e.message || e));
+    err.transport = true;
+    throw err;
+  }
+  let data;
+  try { data = JSON.parse(text); } catch { data = null; }
+  if (!res.ok || !data) {
+    const err = new Error((data && data.error) || ('HTTP ' + res.status + (text ? ' — ' + text.slice(0, 300) : '')));
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function dlErrorBox(title, message, hint) {
+  return '<div style="border:1px solid rgba(201,54,54,0.45);background:rgba(201,54,54,0.07);padding:0.8rem 1rem;margin-top:1rem;">' +
+    '<div style="color:var(--red);font-weight:700;margin-bottom:0.25rem;">' + dlEsc(title) + '</div>' +
+    '<div style="' + DL_MONO + 'font-size:0.72rem;white-space:pre-wrap;word-break:break-word;">' + dlEsc(message) + '</div>' +
+    (hint ? '<div style="margin-top:0.45rem;color:var(--cream-dim);font-size:0.72rem;">' + dlEsc(hint) + '</div>' : '') +
+  '</div>';
+}
+
+function dlOrderList(rows, render) {
+  if (!rows.length) return '';
+  return '<div>' + rows.map(r => '<div style="' + DL_ROW + '">' + render(r) + '</div>').join('') + '</div>';
+}
+
+// Step 1: preview. includeShiprocket re-runs the dry run with force, so the
+// count on the confirm button is the count that will actually be sent.
+async function pushServiceableToDelhivery(btn, includeShiprocket) {
+  if (delhiveryPushActive) { alert('A Delhivery push is already running. Please wait for it to finish.'); return; }
+  dlModal('<h2 style="' + DL_H + '">Book on Delhivery</h2><p style="color:var(--cream-dim);"><span class="spinner"></span>Checking unshipped orders…</p>');
+
+  let p;
+  try {
+    p = await dlCall({ all_unshipped: true, dry_run: true, force: !!includeShiprocket });
+  } catch (e) {
+    dlModal('<h2 style="' + DL_H + '">Book on Delhivery</h2>' +
+      dlErrorBox('Could not load the preview', e.message, 'Nothing was sent to Delhivery.') +
+      '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="dlClose()">Close</button></div>');
+    return;
+  }
+
+  const t = p.totals || {};
+  const refused = p.refused || [];
+  const by = (k) => refused.filter(r => r.kind === k);
+  const shiprocket = by('shiprocket');
+  const offNet = refused.filter(r => r.kind === 'off_network' || r.kind === 'no_cod');
+  const build = by('build');
+  const hasAwb = by('has_awb');
+  const ready = p.orders || [];
+
+  let h = '<h2 style="' + DL_H + '">Book on Delhivery</h2>' +
+    '<p style="color:var(--cream-dim);font-size:0.74rem;margin:0 0 0.8rem;">This <b>books real shipments</b>: each order gets an AWB and Delhivery charges your wallet. Only pincodes on Delhivery’s serviceability list are sent.</p>';
+
+  if (/not set/i.test(p.pickup_location || '')) {
+    h += dlErrorBox('Pickup warehouse is not configured', p.pickup_location,
+      'Set DELHIVERY_PICKUP_NAME to the warehouse name exactly as it appears in the Delhivery panel. Every booking will fail until it is set.');
+  }
+
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.6rem;margin:0.6rem 0;">' +
+    '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.5rem;color:var(--green);">' + (p.would_send || 0) + '</div><div style="font-size:0.66rem;color:var(--cream-dim);">ready to book</div></div>' +
+    '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.1rem;">' + (t.cod_orders || 0) + ' COD</div><div style="font-size:0.66rem;color:var(--cream-dim);">' + dlRupees(t.cod_collectable) + ' collected at the door</div></div>' +
+    '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.1rem;">' + (t.prepaid_orders || 0) + ' prepaid</div><div style="font-size:0.66rem;color:var(--cream-dim);">' + dlRupees(t.prepaid_declared) + ' declared, nothing to collect</div></div>' +
+  '</div>';
+
+  if (ready.length) {
+    h += '<details style="margin-top:0.4rem;"><summary style="cursor:pointer;font-size:0.72rem;color:var(--cream-dim);">Show the ' + ready.length + ' order(s) that will be booked</summary>' +
+      dlOrderList(ready, r =>
+        '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
+        '<span style="min-width:4rem;">' + dlEsc(r.pin) + '</span>' +
+        '<span>' + (r.collect ? 'COD ' + dlRupees(r.collect) : 'Prepaid') + '</span>') +
+    '</details>';
+  }
+
+  if (shiprocket.length || includeShiprocket) {
+    const n = includeShiprocket ? '' : shiprocket.length + ' ';
+    h += '<div style="' + DL_SEC + 'color:var(--orange);">Also sitting in Shiprocket</div>' +
+      '<label style="display:flex;gap:0.6rem;align-items:flex-start;cursor:pointer;border:1px solid rgba(181,107,18,0.4);background:rgba(181,107,18,0.06);padding:0.7rem 0.8rem;">' +
+        '<input type="checkbox" ' + (includeShiprocket ? 'checked' : '') + ' onchange="pushServiceableToDelhivery(null, this.checked)" style="margin-top:0.25rem;">' +
+        '<span>Include the ' + n + 'order(s) that also exist in Shiprocket.<br>' +
+        '<span style="color:var(--cream-dim);font-size:0.72rem;">Only tick this if they are cancelled in Shiprocket, or have no AWB there. Otherwise the same parcel can end up booked twice.</span></span>' +
+      '</label>' +
+      (!includeShiprocket ? dlOrderList(shiprocket, r =>
+        '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
+        '<span style="color:var(--cream-dim);">Shiprocket #' + dlEsc(r.shiprocket_order_id) + '</span>') : '');
+  }
+
+  if (offNet.length) {
+    h += '<div style="' + DL_SEC + 'color:var(--red);">Not on Delhivery’s network — will not be sent (' + offNet.length + ')</div>' +
+      dlOrderList(offNet, r =>
+        '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
+        '<span style="min-width:4rem;">' + dlEsc(r.pin) + '</span>' +
+        '<span style="color:var(--cream-dim);">' + dlEsc(String(r.reason || '').replace(/^Delhivery:\s*/, '')) + '</span>') +
+      '<div style="font-size:0.7rem;color:var(--cream-dim);margin-top:0.3rem;">Ship these with another courier.</div>';
+  }
+
+  if (build.length) {
+    h += '<div style="' + DL_SEC + 'color:var(--red);">Cannot be sent — fix the order first (' + build.length + ')</div>' +
+      dlOrderList(build, r =>
+        '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
+        '<span>' + dlEsc(r.reason) + '</span>');
+  }
+
+  if (hasAwb.length) {
+    h += '<div style="font-size:0.7rem;color:var(--cream-dim);margin-top:0.9rem;">' + hasAwb.length + ' other open order(s) already have an AWB and are skipped.</div>';
+  }
+
+  const n = p.would_send || 0;
+  h += '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.3rem;flex-wrap:wrap;">' +
+    '<button class="btn-outline" onclick="dlClose()">Cancel</button>' +
+    (n ? '<button class="btn-green" id="dlConfirmBtn" onclick="dlRunPush(' + (includeShiprocket ? 'true' : 'false') + ',' + n + ')">Book ' + n + ' on Delhivery</button>'
+       : '<button class="btn-green" disabled style="opacity:0.5;cursor:not-allowed;">Nothing to book</button>') +
+  '</div>';
+
+  dlModal(h);
+}
+
+// Step 2: book, then show every outcome.
+async function dlRunPush(includeShiprocket, expected) {
+  if (delhiveryPushActive) return;
+  delhiveryPushActive = true;
+  const buttons = [...document.querySelectorAll('[onclick="pushServiceableToDelhivery(this)"]')];
+  buttons.forEach(b => { b.disabled = true; });
+  dlModal('<h2 style="' + DL_H + '">Booking on Delhivery…</h2>' +
+    '<p style="color:var(--cream-dim);"><span class="spinner"></span>Sending ' + expected + ' order(s) in batches of 20. Do not close this tab.</p>');
+
+  let d;
+  try {
+    d = await dlCall({ all_unshipped: true, force: !!includeShiprocket });
+  } catch (e) {
+    delhiveryPushActive = false;
+    buttons.forEach(b => { b.disabled = false; });
+    const unknown = e.transport || !e.status || e.status >= 500;
+    dlModal('<h2 style="' + DL_H + '">Delhivery push stopped</h2>' +
+      dlErrorBox(unknown ? 'No answer from the server' : 'The server refused the push', e.message,
+        unknown
+          ? 'Some orders MAY have been booked before this failed. Click “Check again” — anything that got an AWB will show as already booked and will not be sent twice.'
+          : 'Nothing was sent to Delhivery.') +
+      '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1rem;">' +
+        '<button class="btn-outline" onclick="dlClose()">Close</button>' +
+        '<button class="btn-green" onclick="pushServiceableToDelhivery(null)">Check again</button>' +
+      '</div>');
+    return;
+  }
+  delhiveryPushActive = false;
+  buttons.forEach(b => { b.disabled = false; });
+
+  const s = d.summary || {};
+  const results = s.results || [];
+  const ok = results.filter(r => r.ok);
+  const bad = results.filter(r => !r.ok);
+  const notSaved = ok.filter(r => r.saved === false);
+  const skippedHere = (d.refused || []).filter(r => r.kind !== 'has_awb');
+
+  // Group failures by cause; wallet first because it is the one that is
+  // always fixable in a minute.
+  const ORDER = ['wallet', 'pickup', 'network', 'pincode', 'duplicate', 'address', 'phone', 'other'];
+  const groups = {};
+  for (const r of bad) (groups[r.kind || 'other'] = groups[r.kind || 'other'] || []).push(r);
+  const kinds = Object.keys(groups).sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+
+  let h = '<h2 style="' + DL_H + '">Delhivery push finished</h2>' +
+    '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:0.9rem;margin:0.3rem 0 0.6rem;">' +
+      '<span style="color:var(--green);">✅ Booked <b>' + ok.length + '</b></span>' +
+      '<span style="color:' + (bad.length ? 'var(--red)' : 'var(--cream-dim)') + ';">❌ Failed <b>' + bad.length + '</b></span>' +
+      '<span style="color:var(--cream-dim);">⏭ Not sent <b>' + skippedHere.length + '</b></span>' +
+    '</div>';
+
+  if (notSaved.length) {
+    h += dlErrorBox(notSaved.length + ' booked at Delhivery but NOT saved here',
+      notSaved.map(r => r.order_id + '  →  AWB ' + r.awb).join('\n'),
+      'These parcels exist at Delhivery. Copy the AWBs onto the orders by hand before pushing again, or they will be booked a second time.');
+  }
+
+  for (const k of kinds) {
+    const rows = groups[k];
+    const first = rows[0];
+    h += '<div style="border:1px solid rgba(201,54,54,0.4);background:rgba(201,54,54,0.05);padding:0.8rem 1rem;margin-top:0.9rem;">' +
+      '<div style="color:var(--red);font-weight:700;">' + dlEsc(first.title || 'Delhivery refused the order') + ' — ' + rows.length + ' order(s)</div>' +
+      '<div style="font-size:0.74rem;margin:0.25rem 0 0.5rem;">' + dlEsc(first.action || '') + '</div>' +
+      dlOrderList(rows, r =>
+        '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
+        '<span style="color:var(--cream-dim);">' + dlEsc(r.reason || r.error) + '</span>') +
+      '<details style="margin-top:0.4rem;"><summary style="cursor:pointer;font-size:0.68rem;color:var(--cream-dim);">Delhivery’s exact response</summary>' +
+        '<pre style="' + DL_MONO + 'font-size:0.66rem;white-space:pre-wrap;word-break:break-word;margin:0.4rem 0 0;color:var(--cream-dim);">' +
+          dlEsc(rows.map(r => r.order_id + ': ' + (r.raw || r.error)).join('\n')) +
+        '</pre></details>' +
+    '</div>';
+  }
+
+  if (ok.length) {
+    h += '<div style="' + DL_SEC + 'color:var(--green);">Booked (' + ok.length + ')</div>' +
+      dlOrderList(ok, r =>
+        '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
+        '<span style="' + DL_MONO + '">' + dlEsc(r.awb) + '</span>');
+  }
+
+  if (skippedHere.length) {
+    h += '<details style="margin-top:0.9rem;"><summary style="cursor:pointer;font-size:0.72rem;color:var(--cream-dim);">' + skippedHere.length + ' order(s) were not sent — why</summary>' +
+      dlOrderList(skippedHere, r =>
+        '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
+        '<span style="color:var(--cream-dim);">' + dlEsc(r.reason) + '</span>') +
+    '</details>';
+  }
+
+  // A plain-text copy of the whole outcome, for a message to a courier rep or
+  // to paste back into a ticket.
+  const lines = ['Delhivery push — ' + new Date().toLocaleString('en-IN'),
+    'Booked ' + ok.length + ', failed ' + bad.length + ', not sent ' + skippedHere.length, ''];
+  for (const k of kinds) {
+    lines.push(groups[k][0].title + ' (' + groups[k].length + ')');
+    groups[k].forEach(r => lines.push('  ' + r.order_id + ' — ' + (r.reason || r.error)));
+    lines.push('');
+  }
+  if (ok.length) { lines.push('Booked'); ok.forEach(r => lines.push('  ' + r.order_id + '  ' + r.awb)); lines.push(''); }
+  if (skippedHere.length) { lines.push('Not sent'); skippedHere.forEach(r => lines.push('  ' + r.order_id + ' — ' + r.reason)); }
+  window._dlReport = lines.join('\n');
+
+  h += '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.3rem;flex-wrap:wrap;">' +
+    '<button class="btn-outline" onclick="navigator.clipboard.writeText(window._dlReport||\'\').then(()=>{this.textContent=\'Copied✓\'},()=>{alert(window._dlReport)})">Copy report</button>' +
+    (bad.length ? '<button class="btn-outline" onclick="pushServiceableToDelhivery(null)">Check again</button>' : '') +
+    '<button class="btn-green" onclick="dlClose();if(typeof fetchOrders===\'function\')fetchOrders(true);">Done</button>' +
+  '</div>';
+
+  dlModal(h);
 }
 
 // ── NimbusPost: push ONE order to the panel, no courier, no AWB ─────────────

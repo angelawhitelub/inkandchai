@@ -45,6 +45,7 @@ const { isReplacementOrder } = require('./utils/replacement-order');
 const { buildShipment, createShipments } = require('./utils/delhivery');
 const { buildTrackingUrl } = require('./utils/tracking-url');
 const delhiveryPins = require('./utils/delhivery-pincodes');
+const { explain, KINDS: DL_KINDS } = require('./utils/delhivery-errors');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -107,29 +108,35 @@ exports.handler = async (event) => {
   for (const order of orders) {
     const id = order.razorpay_order_id || order.id;
     // An AWB means some courier is already carrying this sale.
-    if (order.tracking_id) { refused.push({ order_id: id, reason: `already has AWB ${order.tracking_id}` }); continue; }
-    if (order.shiprocket_order_id && !body.force) { refused.push({ order_id: id, reason: `already in Shiprocket as ${order.shiprocket_order_id} — cancel it there, then re-run with force:true` }); continue; }
+    if (order.tracking_id) { refused.push({ order_id: id, kind: 'has_awb', reason: `already has AWB ${order.tracking_id}` }); continue; }
     let money, shipment;
     try {
       money = classifyShipmentMoney(order, isReplacementOrder(order));
       shipment = buildShipment(order, pickup || 'UNSET', suffix);
     } catch (e) {
-      refused.push({ order_id: id, reason: String(e.message || e) });
+      refused.push({ order_id: id, kind: 'build', reason: String(e.message || e) });
       continue;
     }
     // Delhivery's own serviceability export, checked before anything is sent.
-    // Their API only answers this by refusing the booking, and it reports the
-    // refusal as "Crashing while saving package ... is non serviceable
-    // pincode" even for pincodes it plainly does serve -- so the response is
-    // not a reliable answer to this question and the list is.
+    // A pincode ABSENT from it is one they do not serve, so there is no point
+    // spending a booking attempt on it. The converse does not hold: on 25 Sep
+    // their API refused 683585, 795001 and 389155, all listed as fully
+    // serviceable -- so a listed pincode can still bounce, and that refusal is
+    // reported per order like any other.
     // `skip_serviceability: true` sends anyway, for when the export is behind
     // the network.
     const verdict = delhiveryPins.canShip(shipment.pin, { isCOD: money.isCOD });
     if (!verdict.ok && !body.skip_serviceability) {
-      refused.push({ order_id: id, reason: `Delhivery: ${verdict.reason}`,
+      refused.push({ order_id: id, kind: verdict.detail.serviceable ? 'no_cod' : 'off_network',
+                     reason: `Delhivery: ${verdict.reason}`,
                      pin: shipment.pin, unshippable_by_delhivery: true });
       continue;
     }
+
+    // After the serviceability check on purpose: an order Delhivery cannot
+    // serve should be reported as that, not as "cancel it in Shiprocket first"
+    // -- cancelling it there would strand it with no courier at all.
+    if (order.shiprocket_order_id && !body.force) { refused.push({ order_id: id, kind: 'shiprocket', shiprocket_order_id: String(order.shiprocket_order_id), reason: `already in Shiprocket as ${order.shiprocket_order_id} — cancel it there, then re-run with force:true` }); continue; }
 
     preview.queued++;
     if (money.isCOD) { preview.cod_orders++; preview.cod_collectable += money.collectableAmount; }
@@ -168,8 +175,20 @@ exports.handler = async (event) => {
     try {
       data = await createShipments(chunk, suffix);
     } catch (e) {
+      // The whole request failed, so nothing in this chunk was booked. Say so
+      // per order: a single batch-level line leaves nobody able to tell which
+      // orders to retry.
+      const why = String(e.message || e).slice(0, 300);
+      const ex = explain(why);
+      // A thrown request is a transport failure unless the text says otherwise.
+      const kind = ex.kind === 'other' ? 'network' : ex.kind;
       summary.failed += chunk.length;
-      summary.errors.push(String(e.message || e).slice(0, 300));
+      summary.errors.push(why);
+      for (const order of chunk) {
+        summary.results.push({ order_id: order.razorpay_order_id || order.id, ok: false,
+                               error: why, ...ex, kind,
+                               title: DL_KINDS[kind].title, action: DL_KINDS[kind].action });
+      }
       continue;
     }
 
@@ -185,7 +204,7 @@ exports.handler = async (event) => {
         const why = pkg ? (Array.isArray(pkg.remarks) ? pkg.remarks.join('; ') : String(pkg.remarks || 'rejected'))
                         : 'no package returned for this order';
         summary.errors.push(`${id}: ${why}`.slice(0, 300));
-        summary.results.push({ order_id: id, ok: false, error: why });
+        summary.results.push({ order_id: id, ok: false, error: why, ...explain(why) });
         continue;
       }
 
@@ -208,6 +227,14 @@ exports.handler = async (event) => {
       }
       summary.pushed++;
     }
+  }
+
+  // Failures grouped by cause, so the one worth acting on (usually: recharge
+  // the wallet) is not buried under the ones that are not.
+  summary.failed_by_kind = {};
+  for (const r of summary.results) {
+    if (r.ok) continue;
+    (summary.failed_by_kind[r.kind] = summary.failed_by_kind[r.kind] || []).push(r.order_id);
   }
 
   return { statusCode: 200, headers: CORS, body: JSON.stringify({ summary, refused }, null, 2) };

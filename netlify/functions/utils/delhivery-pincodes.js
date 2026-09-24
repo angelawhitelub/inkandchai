@@ -10,10 +10,12 @@
  * does not serve, which is exactly the question this module exists to answer.
  * Refreshed by scripts/build-delhivery-pincodes.js; see it for the format.
  *
- * CAUTION: "serviceable" here means the lane exists, not that a given parcel
- * will be accepted. Weight limits, embargoes and a flat wallet are all still
- * live reasons for a refusal, so this narrows the guesswork -- it does not
- * replace reading what Delhivery says when a booking fails.
+ * CAUTION: this is only reliable in one direction. ABSENT means Delhivery
+ * does not serve it. PRESENT does not guarantee a booking: on 25 Sep their API
+ * refused 683585, 795001 and 389155 as "non serviceable pincode" although the
+ * export lists all three as fully serviceable. Weight limits, embargoes and a
+ * flat wallet are further reasons for a refusal. So this narrows the guesswork
+ * -- it does not replace reading what Delhivery says when a booking fails.
  */
 
 const DATA = require('../../../data/delhivery-pincodes.generated.js');
