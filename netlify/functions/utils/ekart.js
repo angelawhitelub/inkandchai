@@ -3,7 +3,7 @@
  *
  *   POST /integrations/v2/auth/token/{client_id}  { username, password } -> access_token (24h)
  *   PUT  /api/v1/package/create                   BOOKS and returns tracking_id
- *   POST /api/v1/package/cancel                   { wbn }
+ *   DEL  /api/v1/package/cancel?tracking_id=<awb>  cancels it
  *   POST /data/v3/serviceability                  which partners cover a lane
  *
  * WHY THIS EXISTS
@@ -274,7 +274,11 @@ async function createShipment(payload) {
 }
 
 async function cancelShipment(wbn) {
-  return withAuth((token) => ekFetch('/api/v1/package/cancel', { method: 'POST', token, body: { wbn: String(wbn) } }));
+  // DELETE with the waybill in the QUERY STRING, not POST with a body. A POST
+  // here answers 404 PATH_NOT_IMPLEMENTED -- the same shape as a wrong URL,
+  // so it reads like the endpoint does not exist at all.
+  const qs = new URLSearchParams({ tracking_id: String(wbn) }).toString();
+  return withAuth((token) => ekFetch(`/api/v1/package/cancel?${qs}`, { method: 'DELETE', token }));
 }
 
 /** Their own tracking page, so a direct booking is not sent to NimbusPost's. */
