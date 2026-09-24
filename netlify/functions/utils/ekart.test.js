@@ -80,3 +80,33 @@ test('a direct booking does not get the legacy NimbusPost tracking page', () => 
   assert.ok(!/nimbus/i.test(url), url);
   assert.ok(url.includes('ABC123'));
 });
+
+test('label carries the real titles and the real book count', () => {
+  const s = ek.buildShipment({
+    razorpay_order_id: 'IC-20260916-KCQQ7',
+    customer_name: 'Pradnya Jadhav',
+    customer_phone: '9876543210',
+    customer_address: 'Navi peth, Pune, Maharashtra, 411030',
+    amount_paise: 38800,
+    status: 'cod_pending',
+    cart_items: [
+      { title: 'Manifest: 7 Steps to living your best life   Paperback', qty: 1, price: 149 },
+      { title: 'HOW TO TALK TO ANYONE', qty: 1, price: 179 },
+    ],
+  });
+  // Not the hardcoded "Books": a two-book parcel must say so on the one
+  // document that travels with it.
+  assert.match(s.products_desc, /Manifest/);
+  assert.match(s.products_desc, /HOW TO TALK TO ANYONE/);
+  assert.equal(s.quantity, 2);
+});
+
+test('quantity sums qty across lines, and falls back to 1 when empty', () => {
+  const base = {
+    razorpay_order_id: 'IC-1', customer_name: 'A', customer_phone: '9876543210',
+    customer_address: 'x, Pune, Maharashtra, 411030', amount_paise: 10000, status: 'paid',
+  };
+  assert.equal(ek.buildShipment({ ...base, cart_items: [{ title: 'A', qty: 3 }, { title: 'B', qty: 2 }] }).quantity, 5);
+  assert.equal(ek.buildShipment({ ...base, cart_items: [] }).quantity, 1);
+  assert.equal(ek.buildShipment({ ...base, cart_items: [] }).products_desc, 'Books');
+});

@@ -168,6 +168,23 @@ function pickupLocation() {
  * value; both are overridable by env if that ever stops being true. Their
  * schema wants taxable_amount >= 1, which every real order clears.
  */
+/** Every title in the parcel, as the label prints them. */
+function productsDesc(order) {
+  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const env = process.env.EKART_PRODUCT_DESC;
+  if (env) return sanitizeForCourier(env).slice(0, 120);
+  if (!items.length) return 'Books';
+  const desc = items.map((i) => sanitizeForCourier(i.title || i.name || 'Book')).join(', ');
+  return desc.slice(0, 120) || 'Books';
+}
+
+/** How many books are actually in the box -- `qty`, not `quantity`. */
+function itemCount(order) {
+  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const n = items.reduce((sum, i) => sum + (Number(i.qty || i.quantity) || 1), 0);
+  return n > 0 ? n : 1;
+}
+
 function buildShipment(order, suffix = '') {
   const inkOrderId = order.razorpay_order_id || order.id;
   const sentAs = suffix ? `${inkOrderId}${suffix}` : String(inkOrderId);
@@ -219,8 +236,14 @@ function buildShipment(order, suffix = '') {
     commodity_value: String(taxable),
 
     category_of_goods: process.env.EKART_CATEGORY || 'Books',
-    products_desc: sanitizeForCourier(process.env.EKART_PRODUCT_DESC || 'Books').slice(0, 120),
-    quantity: 1,
+    // The real titles and the real count, exactly as utils/delhivery.js builds
+    // them. These two fields are what the printed label shows the packer, the
+    // delivery agent and the customer -- a hardcoded "Books - (Qty: 1)" on a
+    // two-book parcel understates the contents on the one document that
+    // travels with it, which is the document an RTO or an unboxing dispute is
+    // settled against.
+    products_desc: productsDesc(order),
+    quantity: itemCount(order),
     return_reason: '',                  // forward shipment; required key, empty value
 
     weight: FLAT_PARCEL.weightGrams,
