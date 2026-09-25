@@ -14,6 +14,7 @@
 // Memoise pincode → {city,state} for the life of the function invocation so a
 // bulk push of many same-city orders makes at most one lookup per pincode.
 const { pincodeInState, stateInAddress } = require('./pincode-state');
+const { isKnownPincode } = require('./india-pincodes');
 
 const PIN_CACHE = new Map();
 
@@ -49,8 +50,10 @@ function normalizeIndianPhone(raw) {
  *                400053, Mumbai, Maharashtra, 400005" -- Lokhandwala is
  *                400053; the field's 400005 is Colaba.
  *
- * So: keep only the codes that lie in the state the address names. If exactly
- * one survives, that is the pincode. Otherwise return NO pincode and say why:
+ * First drop codes no pincode directory knows: "flat no 260187" is a flat
+ * number, not a pincode (IC-20260811-RQIL6). If ONE known code is left, that
+ * is the pincode. Then keep only the codes that lie in the state the address
+ * names. If exactly one survives, that is the pincode. Otherwise return NO pincode and say why:
  * every courier path refuses an order without one, which puts a person in
  * front of an address a program cannot read, instead of a parcel in the wrong
  * city.
@@ -69,18 +72,24 @@ function pickPincode(raw) {
   const lastOf = (pin) => hits.filter((h) => h.pincode === pin).pop();
   if (distinct.length === 1) return { ...lastOf(distinct[0]), candidates: distinct, problem: '' };
 
+  // When NO code is known, the directory has nothing to say; fall through
+  // with all of them rather than discard the address.
+  const known = distinct.filter(isKnownPincode);
+  const pool = known.length ? known : distinct;
+  if (pool.length === 1) return { ...lastOf(pool[0]), candidates: distinct, problem: '' };
+
   const state = stateInAddress(raw);
-  const inState = state ? distinct.filter((pin) => pincodeInState(pin, state)) : [];
+  const inState = state ? pool.filter((pin) => pincodeInState(pin, state)) : [];
   if (inState.length === 1) return { ...lastOf(inState[0]), candidates: distinct, problem: '' };
 
   const why = !state
     ? 'no state is named to choose between them'
     : inState.length === 0
-      ? `neither is in ${state}, the state the address names`
-      : `both are in ${state}`;
+      ? `none is in ${state}, the state the address names`
+      : `${inState.length === 2 ? 'both' : 'all'} are in ${state}`;
   return {
     pincode: '', index: -1, candidates: distinct,
-    problem: `Address has ${distinct.length} different pincodes (${distinct.join(', ')}) and ${why}. ` +
+    problem: `Address has ${pool.length} different pincodes (${pool.join(', ')}) and ${why}. ` +
              'Correct the address to the one right pincode, then push again.',
   };
 }

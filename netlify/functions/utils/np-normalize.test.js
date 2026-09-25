@@ -92,6 +92,23 @@ test('two pincodes and no state named: refuse', () => {
   assert.match(a.pincodeProblem, /no state is named/);
 });
 
+test('a flat or house number that is no pincode at all is ignored', () => {
+  // IC-20260811-RQIL6 was booked to 260187 -- the flat number. No such
+  // pincode exists; the field's 201009 is the only real one.
+  assert.equal(parseAddress('flat no 260187, tower v, 14th avenue, gaur city 2, Ghaziabad, Uttar Pradesh, 201009').pincode, '201009');
+  // IC-20260730-1U94S: 400000 is not a pincode either.
+  const a = parseAddress('Room 4, 400000 building, Ghatkopar, Mumbai, Maharashtra 400080, Mumbai, Maharashtra, 400000');
+  assert.equal(a.pincode, '400080');
+  assert.equal(a.pincodeProblem, '');
+});
+
+test('two REAL pincodes in one state are still refused, flat numbers or not', () => {
+  const a = parseAddress('Flat 260187, Lokhandwala, Mumbai 400053, Mumbai, Maharashtra, 400005');
+  assert.equal(a.pincode, '');
+  assert.match(a.pincodeProblem, /2 different pincodes \(400053, 400005\)/);
+  assert.doesNotMatch(a.pincodeProblem, /260187/);
+});
+
 test('the same digits in the street line survive when the pincode is cut out', () => {
   const a = parseAddress('Plot 411028, Sector 5, Pune, Maharashtra, 411028');
   assert.equal(a.pincode, '411028');
