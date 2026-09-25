@@ -3,7 +3,7 @@
  * POST /.netlify/functions/xpressbees-order-cancel
  *
  * Body: { dry_run: true,
- *         order_ids: ["IC-..."] | all_delhivery_today: true,
+ *         order_ids: ["IC-..."] | all_delhivery_today: true | any_courier: true,
  *         limit: 50, endpoint: "/orders/cancel", probe: false }
  * Headers: X-Admin-Key / X-Admin-Token
  *
@@ -17,10 +17,15 @@
  * order is already shipped by Delhivery as far as our books and the customer
  * are concerned; this only clears the duplicate from someone else's queue.
  *
+ * any_courier: true widens guard 1 from "Delhivery is carrying it" to "SOME
+ * courier is carrying it" -- a tracking_id on an order that is not cancelled.
+ * Every other panel row is left alone, and guards 2 and 3 are unchanged.
+ *
  * THREE GUARDS, none of them bypassable by any flag:
  *
- *   1. Delhivery must actually be carrying it -- courier_name Delhivery AND a
- *      tracking_id. Without this the endpoint would happily cancel live work.
+ *   1. A courier must actually be carrying it -- a tracking_id, from Delhivery
+ *      unless any_courier widens it. Without this the endpoint would happily
+ *      cancel live work.
  *   2. The panel row must have NO awb_numbers. A row with a waybill is a real
  *      XpressBees shipment; killing that is a different decision with a real
  *      parcel behind it, and it belongs to /shipments2/cancel, not here.
@@ -43,7 +48,7 @@ const CORS = {
 const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stringify(body, null, 2) });
 
 const PAGE_LIMIT = 200;   // 300 times out upstream; 200 is comfortably inside it
-const MAX_PAGES  = 4;
+const MAX_PAGES  = 25;  // stops at the first page with nothing new
 // One id per call. The panel's own v2 bundle joins ids with commas, but this
 // (legacy) endpoint answers a list with 404 "The id field must contain an
 // integer" -- so a batch cancels nothing at all rather than part of itself.
@@ -101,39 +106,7 @@ exports.handler = async (event) => {
   const shape = String(body.shape || 'form');
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-
-  // ---- our side: which orders is Delhivery carrying? ----
-  let q = supabase.from('orders')
-    .select('id, razorpay_order_id, status, courier_name, tracking_id, awb_assigned_at')
-    .eq('courier_name', 'Delhivery')
-    .not('tracking_id', 'is', null);
-
-  if (body.all_delhivery_today) {
-    const day = String(body.day || new Date().toISOString().slice(0, 10));
-    q = q.gte('awb_assigned_at', `${day}T00:00:00Z`).lt('awb_assigned_at', `${day}T23:59:59.999Z`);
-  }
-
-  const { data: rows, error } = await q.limit(1000);
-  if (error) return json(500, { error: `orders query failed: ${error.message}` });
-
-  let carried = new Map();
-  for (const o of rows || []) {
-    const num = String(o.razorpay_order_id || o.id).toUpperCase();
-    carried.set(num, o);
-  }
-
-  // An explicit list narrows the set; it can never widen past guard 1.
-  if (Array.isArray(body.order_ids) && body.order_ids.length) {
-    const want = new Set(body.order_ids.map((s) => String(s).trim().toUpperCase()));
-    const refusedNotCarried = [...want].filter((id) => !carried.has(id));
-    carried = new Map([...carried].filter(([id]) => want.has(id)));
-    if (refusedNotCarried.length && body.strict !== false) {
-      return json(400, {
-        error: 'some ids are not carried by Delhivery; refusing the whole batch',
-        refused: refusedNotCarried,
-      });
-    }
-  }
+  const anyCourier = body.any_courier === true;
 
   // ---- their side: read the panel ----
   const seen = new Set();
@@ -152,6 +125,66 @@ exports.handler = async (event) => {
     return json(502, { error: `could not read the XpressBees order list: ${e.message}` });
   }
 
+  // ---- our side: which of those orders is a courier already carrying? ----
+  let carried = new Map();
+  const leftAlone = { cancelled_here: [], not_shipped_here: [], not_in_our_orders: [] };
+  if (anyCourier) {
+    // Ask only about the orders actually queued there (tens to hundreds), not
+    // every shipped order we have ever had.
+    const queued = [...new Set(panel
+      .filter((r) => !isCancelled(r) && !hasAwb(r))
+      .map((r) => baseOrderNumber(r.order_number)).filter(Boolean))];
+    const found = new Set();
+    for (let i = 0; i < queued.length; i += 150) {
+      const { data, error: qErr } = await supabase.from('orders')
+        .select('id, razorpay_order_id, status, courier_name, tracking_id, awb_assigned_at')
+        .in('razorpay_order_id', queued.slice(i, i + 150));
+      if (qErr) return json(500, { error: `orders query failed: ${qErr.message}` });
+      for (const o of data || []) {
+        const num = String(o.razorpay_order_id).toUpperCase();
+        found.add(num);
+        // An AWB on an order we cancelled is a booking that never went out --
+        // not "already shipped". Report it, never act on it.
+        if (String(o.status) === 'cancelled') leftAlone.cancelled_here.push(num);
+        else if (!String(o.tracking_id || '').trim()) leftAlone.not_shipped_here.push(num);
+        else carried.set(num, o);
+      }
+    }
+    leftAlone.not_in_our_orders = queued.filter((n) => !found.has(n.toUpperCase()));
+  }
+
+  let q = supabase.from('orders')
+    .select('id, razorpay_order_id, status, courier_name, tracking_id, awb_assigned_at')
+    .eq('courier_name', 'Delhivery')
+    .not('tracking_id', 'is', null);
+
+  if (body.all_delhivery_today) {
+    const day = String(body.day || new Date().toISOString().slice(0, 10));
+    q = q.gte('awb_assigned_at', `${day}T00:00:00Z`).lt('awb_assigned_at', `${day}T23:59:59.999Z`);
+  }
+
+  if (!anyCourier) {
+    const { data: rows, error } = await q.limit(1000);
+    if (error) return json(500, { error: `orders query failed: ${error.message}` });
+    for (const o of rows || []) {
+      const num = String(o.razorpay_order_id || o.id).toUpperCase();
+      carried.set(num, o);
+    }
+  }
+
+  // An explicit list narrows the set; it can never widen past guard 1.
+  if (Array.isArray(body.order_ids) && body.order_ids.length) {
+    const want = new Set(body.order_ids.map((s) => String(s).trim().toUpperCase()));
+    const refusedNotCarried = [...want].filter((id) => !carried.has(id));
+    carried = new Map([...carried].filter(([id]) => want.has(id)));
+    if (refusedNotCarried.length && body.strict !== false) {
+      return json(400, {
+        error: `some ids are not carried by ${anyCourier ? 'any courier' : 'Delhivery'}; refusing the whole batch`,
+        refused: refusedNotCarried,
+      });
+    }
+  }
+
   // ---- match ----
   const targets = [];
   const skipped = { already_cancelled: [], has_awb: [] };
@@ -166,6 +199,8 @@ exports.handler = async (event) => {
       status: row.status,
       amount: row.order_amount,
       payment: row.payment_method,
+      carried_by: carried.get(base).courier_name || '',
+      our_status: carried.get(base).status,
     });
   }
   targets.sort((a, b) => (a.order < b.order ? -1 : 1));
@@ -179,7 +214,8 @@ exports.handler = async (event) => {
     endpoint,
     shape,
     panel_rows_read: panel.length,
-    delhivery_carried: carried.size,
+    mode: anyCourier ? 'any_courier' : 'delhivery',
+    carried: carried.size,
     to_cancel: plan.length,
     skipped_already_cancelled: skipped.already_cancelled.length,
     skipped_has_awb: skipped.has_awb.length,
@@ -187,7 +223,8 @@ exports.handler = async (event) => {
   };
 
   if (dryRun) {
-    return json(200, { ...summary, plan, skipped, never_imported: neverImported });
+    return json(200, { ...summary, plan, skipped, left_alone: anyCourier ? leftAlone : undefined,
+      never_imported: anyCourier ? undefined : neverImported });
   }
 
   // ---- cancel ----
