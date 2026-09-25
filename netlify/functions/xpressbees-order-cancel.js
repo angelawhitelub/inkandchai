@@ -113,9 +113,17 @@ exports.handler = async (event) => {
   const panel = [];
   try {
     for (let p = 1; p <= MAX_PAGES; p += 1) {
-      const out = await xb.panelOrders({
-        params: { limit: String(PAGE_LIMIT), page_no: String(p) },
-      });
+      let out;
+      try {
+        out = await xb.panelOrders({
+          params: { limit: String(PAGE_LIMIT), page_no: String(p) },
+        });
+      } catch (e) {
+        // Past the last page the panel answers status:false "No data Found."
+        // rather than an empty page. On page 1 that is a real failure.
+        if (p > 1 && /no data found/i.test(e.message)) break;
+        throw e;
+      }
       const fresh = out.rows.filter((r) => !seen.has(String(r.id)));
       for (const r of out.rows) seen.add(String(r.id));
       panel.push(...fresh);
