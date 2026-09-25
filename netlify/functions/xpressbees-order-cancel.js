@@ -26,9 +26,12 @@
  *   1. A courier must actually be carrying it -- a tracking_id, from Delhivery
  *      unless any_courier widens it. Without this the endpoint would happily
  *      cancel live work.
- *   2. The panel row must have NO awb_numbers. A row with a waybill is a real
- *      XpressBees shipment; killing that is a different decision with a real
- *      parcel behind it, and it belongs to /shipments2/cancel, not here.
+ *   2. The panel row must be an unbooked queue row: status 'new' and no
+ *      waybill in awb_numbers OR awb_number. A booked row is a real XpressBees
+ *      shipment; killing that is a different decision with a real parcel
+ *      behind it, and it belongs to /shipments2/cancel, not here. (26 Sep: the
+ *      list returned 200 booked rows with awb_numbers empty -- checking only
+ *      that field would have cancelled 200 live parcels.)
  *   3. Rows already cancelled are skipped, not re-sent.
  *
  * The panel's own list endpoint pages with `limit` and `page_no` (NOT the
@@ -88,7 +91,13 @@ async function postIds(path, token, ids, shape) {
 }
 
 const isCancelled = (row) => String(row.status || '').toLowerCase() === 'cancelled';
-const hasAwb = (row) => String(row.awb_numbers || '').trim() !== '';
+// The list API has been seen to carry the waybill as awb_number (singular) with
+// awb_numbers empty -- on 26 Sep that hid 200 booked shipments from this guard.
+const panelAwb = (row) => String(row.awb_numbers || row.awb_number || '').trim();
+const hasAwb = (row) => panelAwb(row) !== '';
+// Only an UNBOOKED queue row is ever cancelled here. 'booked' (or anything
+// else) is a shipment whether or not an AWB field is filled in.
+const isQueued = (row) => String(row.status || '').trim().toLowerCase() === 'new';
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
@@ -140,7 +149,9 @@ exports.handler = async (event) => {
     // Ask only about the orders actually queued there (tens to hundreds), not
     // every shipped order we have ever had.
     const queued = [...new Set(panel
-      .filter((r) => !isCancelled(r) && !hasAwb(r))
+      // Booked rows too: they are never cancelled (see isQueued), but listing
+      // them against our courier is how a double booking shows up.
+      .filter((r) => !isCancelled(r))
       .map((r) => baseOrderNumber(r.order_number)).filter(Boolean))];
     const found = new Set();
     for (let i = 0; i < queued.length; i += 150) {
@@ -195,12 +206,13 @@ exports.handler = async (event) => {
 
   // ---- match ----
   const targets = [];
-  const skipped = { already_cancelled: [], has_awb: [] };
+  const skipped = { already_cancelled: [], has_awb: [], booked: [] };
   for (const row of panel) {
     const base = baseOrderNumber(row.order_number);
     if (!carried.has(base)) continue;
     if (isCancelled(row)) { skipped.already_cancelled.push(base); continue; }
-    if (hasAwb(row))      { skipped.has_awb.push({ order: base, awb: row.awb_numbers }); continue; }
+    if (hasAwb(row))      { skipped.has_awb.push({ order: base, awb: panelAwb(row), our_awb: carried.get(base).tracking_id, our_courier: carried.get(base).courier_name }); continue; }
+    if (!isQueued(row))   { skipped.booked.push({ order: base, status: row.status, our_awb: carried.get(base).tracking_id, our_courier: carried.get(base).courier_name }); continue; }
     targets.push({
       order: base,
       panel_id: String(row.id),
@@ -227,6 +239,7 @@ exports.handler = async (event) => {
     to_cancel: plan.length,
     skipped_already_cancelled: skipped.already_cancelled.length,
     skipped_has_awb: skipped.has_awb.length,
+    skipped_booked: skipped.booked.length,
     never_imported: neverImported.length,
   };
 
