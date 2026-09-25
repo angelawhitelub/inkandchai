@@ -64,3 +64,17 @@ test('AWB discovery prefers shipments and reads every reported page', async () =
     global.fetch = originalFetch;
   }
 });
+
+test('a re-push suffix maps back to the order, and a code that merely starts with C does not', () => {
+  // Pushed as "<id>-c" after its panel draft was cancelled (nimbuspost-order-push suffix mode).
+  assert.equal(orderNumberFromRow({ order_number: 'IC-20260925-10SZ9-c' }), 'IC-20260925-10SZ9');
+  assert.equal(orderNumberFromRow({ order_number: 'IC-CW-20260925-N2LSO-C2' }), 'IC-CW-20260925-N2LSO');
+  assert.equal(orderNumberFromRow({ order_number: 'IC-R-20260925-2U7MB-c' }), 'IC-R-20260925-2U7MB');
+  // The 5-character code itself may be C + digits. That is not a suffix.
+  assert.equal(orderNumberFromRow({ order_number: 'IC-20260924-C1234' }), 'IC-20260924-C1234');
+  assert.equal(orderNumberFromRow({ order_number: 'IC-20260924-C9QN0' }), 'IC-20260924-C9QN0');
+
+  const map = new Map();
+  collectRows({ data: [{ order_number: 'IC-20260925-10SZ9-c', awb_number: '1234567890', id: 9 }] }, map);
+  assert.equal(map.get('IC-20260925-10SZ9').awb, '1234567890');
+});

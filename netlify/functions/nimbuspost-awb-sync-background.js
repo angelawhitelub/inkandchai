@@ -128,12 +128,21 @@ function courierFromRow(row) {
   return '';
 }
 
+// A re-push after a cancelled panel draft goes out as "<id>-c" (see
+// nimbuspost-order-push suffix mode), because NimbusPost refuses a number it
+// has seen before. Map it back to the order. Only a "-C"/"-C2" AFTER the
+// 8-digit date and 5-character code is a suffix: the code itself can be
+// "C1234", and a bare /-C\d*$/ would cut IC-20260924-C1234 down to the date.
+function stripPushSuffix(num) {
+  return String(num || '').replace(/^(.*-\d{8}-[A-Z0-9]{5})-C\d*$/, '$1');
+}
+
 function orderNumberFromRow(row) {
-  return normalizeOrderNumber(
+  return stripPushSuffix(normalizeOrderNumber(
     row?.order_number || row?.order_no || row?.channel_order_id ||
     row?.channel_order_number || row?.order_reference ||
     row?.order?.order_number || row?.order_id
-  );
+  ));
 }
 
 // AWBs belong to shipment rows. /api/orders is the draft/panel-order feed and

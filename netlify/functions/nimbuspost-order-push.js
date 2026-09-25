@@ -3,6 +3,18 @@
  * generating an AWB. Uses NimbusPost's custom-order API (not Partners API).
  *
  * POST body: { order_ids: ["IC-...", ...] } or { all_unshipped: true }
+ *
+ * RE-PUSH WITH A SUFFIX: { all_unshipped: true, suffix: "-c", dry_run: true }
+ * NimbusPost treats an order number it has seen before -- even one cancelled
+ * in its panel -- as a duplicate, so an order whose panel draft was cancelled
+ * cannot be pushed again under its own number. With `suffix`, such an order is
+ * pushed as "<id>-c" instead. Guards, for this mode only:
+ *   - our order must have NO tracking_id (another courier may be carrying it);
+ *   - its panel draft must be CANCELLED -- a live draft means it is already
+ *     there, and a second copy is how a parcel ships twice;
+ *   - "<id>-c" must not already be in the panel (use "-c2" for a second round).
+ * An order the panel has never seen is pushed under its plain number.
+ * nimbuspost-awb-sync strips the suffix when it maps an AWB back to the order.
  * Header: X-Admin-Key: <admin password>
  * Required env: NIMBUSPOST_API_KEY
  */
@@ -184,10 +196,17 @@ function normalizeOrderNumber(value) {
 const NP_MAX_PAGE = 50;    // NimbusPost rejects page > 50
 const NP_SCAN_PAGES = 5;   // recent pages are enough to catch re-pushes; keeps us well under the function timeout
 
-async function getExistingOrderNumbers(apiKey) {
+// A panel draft's own state, in whatever field this account's API uses.
+function panelRowCancelled(row) {
+  const vals = [row?.status, row?.order_status, row?.fulfillment, row?.fulfillment_status,
+    row?.status_name, row?.order?.status].map((v) => String(v ?? '').toLowerCase());
+  return vals.some((v) => /cancel/.test(v));
+}
+
+async function getExistingOrderNumbers(apiKey, { pages = NP_SCAN_PAGES, rowsByNumber = null, sample = null } = {}) {
   const existing = new Set();
   const perPage = 100;
-  const lastPage = Math.min(NP_SCAN_PAGES, NP_MAX_PAGE);
+  const lastPage = Math.min(pages, NP_MAX_PAGE);
 
   for (let page = 1; page <= lastPage; page++) {
     const url = new URL(NP_ORDERS_URL);
@@ -222,6 +241,15 @@ async function getExistingOrderNumbers(apiKey) {
         row?.order?.order_number || row?.order_id
       );
       if (number) existing.add(number);
+      if (number && rowsByNumber) {
+        if (!rowsByNumber.has(number)) rowsByNumber.set(number, []);
+        rowsByNumber.get(number).push({ cancelled: panelRowCancelled(row) });
+      }
+      if (sample && !sample.length) {
+        sample.push(Object.fromEntries(Object.entries(row || {})
+          .filter(([, v]) => v === null || typeof v !== 'object')
+          .map(([k, v]) => [k, typeof v === 'string' ? v.slice(0, 40) : v])));
+      }
     }
 
     const pagination = paginationFromResponse(payload);
@@ -256,6 +284,69 @@ async function pushOrder(order, apiKey) {
   return data;
 }
 
+async function suffixRun({ body, orders, apiKey, supabase }) {
+  const suffix = String(body.suffix || '').trim();
+  if (!/^-[A-Za-z0-9]{1,3}$/.test(suffix)) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'suffix must look like "-c" or "-c2"' }) };
+  }
+  const dryRun = body.dry_run !== false;
+
+  // The whole guard rests on knowing each order's panel state, so a failed or
+  // partial panel read stops the run instead of pushing blind.
+  const rowsByNumber = new Map();
+  const sample = [];
+  await getExistingOrderNumbers(apiKey, { pages: Number(body.scan_pages) || 20, rowsByNumber, sample });
+
+  const plan = [];
+  const skipped = { has_awb: [], live_in_panel: [], suffix_taken: [], pushed_before_not_found: [] };
+  for (const order of orders) {
+    const id = String(order.razorpay_order_id || order.id);
+    const base = normalizeOrderNumber(id);
+    const suffixed = normalizeOrderNumber(id + suffix);
+    if (String(order.tracking_id || '').trim()) { skipped.has_awb.push(`${id} (${order.courier_name || '?'} ${order.tracking_id})`); continue; }
+    const rows = rowsByNumber.get(base) || [];
+    if (rows.some((r) => !r.cancelled)) { skipped.live_in_panel.push(id); continue; }
+    if (rowsByNumber.has(suffixed)) { skipped.suffix_taken.push(id + suffix); continue; }
+    if (!rows.length && order.nimbus_pushed_at) {
+      // Stamped as pushed but not on the pages read: cannot tell whether that
+      // draft is live, so it is not guessed at.
+      skipped.pushed_before_not_found.push(id);
+      continue;
+    }
+    plan.push({ order, number: rows.length ? id + suffix : id, reason: rows.length ? 'panel draft cancelled' : 'never in panel' });
+  }
+
+  const report = {
+    dry_run: dryRun,
+    suffix,
+    panel_rows_read: [...rowsByNumber.values()].reduce((n, r) => n + r.length, 0),
+    candidates: orders.length,
+    to_push: plan.length,
+    with_suffix: plan.filter((p) => p.number !== String(p.order.razorpay_order_id || p.order.id)).length,
+    plan: plan.map((p) => ({ order: p.order.razorpay_order_id, push_as: p.number, why: p.reason, status: p.order.status })),
+    skipped_counts: Object.fromEntries(Object.entries(skipped).map(([k, v]) => [k, v.length])),
+    skipped,
+    panel_row_sample: dryRun ? sample[0] || null : undefined,
+  };
+  if (dryRun) return { statusCode: 200, headers: CORS, body: JSON.stringify(report) };
+
+  const results = [];
+  for (const p of plan) {
+    try {
+      await pushOrder({ ...p.order, razorpay_order_id: p.number }, apiKey);
+      await supabase.from('orders').update({ nimbus_pushed_at: new Date().toISOString() }).eq('id', p.order.id);
+      results.push({ order: p.order.razorpay_order_id, pushed_as: p.number, ok: true });
+    } catch (err) {
+      results.push({ order: p.order.razorpay_order_id, pushed_as: p.number, ok: false, error: String(err.message || err).slice(0, 300) });
+    }
+    if (plan.length > 5) await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  report.results = results;
+  report.pushed = results.filter((r) => r.ok).length;
+  report.failed = results.filter((r) => !r.ok).length;
+  return { statusCode: 200, headers: CORS, body: JSON.stringify(report) };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
@@ -288,6 +379,10 @@ exports.handler = async (event) => {
 
     const { data: orders, error } = await query;
     if (error) throw error;
+
+    if (body.suffix !== undefined) {
+      return await suffixRun({ body, orders: orders || [], apiKey, supabase });
+    }
 
     // Dedup is best-effort: if the panel lookup fails, proceed with the push
     // and flag it, rather than blocking the whole import.
