@@ -59,4 +59,24 @@ async function publishDeletedIndex(supabase) {
   }
 }
 
-module.exports = { readDeleted, publishDeletedIndex, normSlug, STORE, KEY, KV_KEY };
+/**
+ * The published slug set, read from KV (what the Worker enforces), cached per
+ * isolate for a minute. For read paths that must not offer a page the Worker
+ * answers 410 for. Fails open to the last good set -- a KV hiccup should not
+ * empty search.
+ */
+const DELETED_TTL_MS = 60_000;
+let _set = null, _at = 0;
+async function deletedSlugSet() {
+  if (_set && Date.now() - _at < DELETED_TTL_MS) return _set;
+  try {
+    const doc = await getStore(STORE).get(KEY, { type: 'json' });
+    _set = new Set((doc && Array.isArray(doc.slugs) ? doc.slugs : []).map(normSlug));
+    _at = Date.now();
+  } catch (err) {
+    console.warn('[deleted-products] KV read failed:', err.message);
+  }
+  return _set || new Set();
+}
+
+module.exports = { readDeleted, publishDeletedIndex, deletedSlugSet, normSlug, STORE, KEY, KV_KEY };

@@ -23,6 +23,7 @@ const CORS = {
 };
 
 const { proxifySupabaseImage } = require('./utils/supabase-img');
+const { deletedSlugSet } = require('./utils/deleted-products');
 
 function absImg(u) {
   const s = String(u || '');
@@ -136,11 +137,14 @@ exports.handler = async (event) => {
       } catch (e) { console.warn('search-suggest custom_products:', e.message); }
     }
 
-    // Rank, de-dupe by url, take top N
+    // Rank, de-dupe by url, drop pages taken down in admin (the baked
+    // catalogue still lists them until the next regeneration), take top N
     const seen = new Set();
+    const gone = await deletedSlugSet();
+    const slugOf = (url) => url.replace(/^\/product\//, '').replace(/\/$/, '').toLowerCase();
     const results = scored
       .sort((a, b) => b._score - a._score)
-      .filter(r => { if (seen.has(r.url)) return false; seen.add(r.url); return true; })
+      .filter(r => { if (seen.has(r.url) || gone.has(slugOf(r.url))) return false; seen.add(r.url); return true; })
       .slice(0, limit)
       .map(({ title, author, price, mrp, img, url }) => ({ title, author, price, mrp: mrp > price ? mrp : 0, img, url }));
 
