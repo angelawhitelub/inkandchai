@@ -30,6 +30,19 @@
 const { pushOrderToNimbusPost } = require('./nimbuspost-import');
 
 /**
+ * Automatic panel pushes are OFF unless NIMBUS_AUTO_PUSH is "on" (26 Sep 2026:
+ * the owner wants every NimbusPost order to be a deliberate, manual push).
+ * This gates every automatic path -- checkout, both payment webhooks, the
+ * WhatsApp bot, new replacements, and the two sweeps -- and nothing else. The
+ * admin's "Push to NimbusPost Panel" buttons call nimbuspost-order-push
+ * directly and are unaffected. Turn it back on with
+ *   npx wrangler secret put NIMBUS_AUTO_PUSH --name inkandchai   (value: on)
+ */
+function nimbusAutoPushOn() {
+  return ['on', 'true', '1', 'yes'].includes(String(process.env.NIMBUS_AUTO_PUSH || '').trim().toLowerCase());
+}
+
+/**
  * @param {object} supabase  service-role client
  * @param {object} order     order row; needs `id` or `razorpay_order_id`
  * @returns {Promise<{pushed: boolean, reason?: string, error?: string}>}
@@ -40,6 +53,8 @@ async function pushToNimbusOnce(supabase, order) {
   const key = order?.id || order?.razorpay_order_id;
   const label = order?.razorpay_order_id || key;
   if (!key) return { pushed: false, reason: 'no_order_key' };
+  // Before the claim, so the order stays un-pushed and a manual push sees it.
+  if (!nimbusAutoPushOn()) return { pushed: false, reason: 'auto_push_off' };
 
   // Claim. `.is('nimbus_pushed_at', null)` is what makes this exclusive.
   let claimed;
@@ -75,4 +90,4 @@ async function pushToNimbusOnce(supabase, order) {
   }
 }
 
-module.exports = { pushToNimbusOnce };
+module.exports = { pushToNimbusOnce, nimbusAutoPushOn };

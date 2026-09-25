@@ -199,7 +199,7 @@ exports.handler = async (event) => {
     let push = { pushed: false, reason: 'not attempted' };
     if (inserted) {
       push = await pushToNimbusOnce(supabase, inserted);
-      if (!push.pushed && push.reason !== 'already_pushed') {
+      if (!push.pushed && push.reason !== 'already_pushed' && push.reason !== 'auto_push_off') {
         console.error('[admin-create-replacement] nimbus push failed:', push.error || push.reason);
       }
     }

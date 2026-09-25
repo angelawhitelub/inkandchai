@@ -14,7 +14,10 @@ require.cache[importPath] = {
   },
 };
 
-const { pushToNimbusOnce } = require('./nimbus-push-once');
+const { pushToNimbusOnce, nimbusAutoPushOn } = require('./nimbus-push-once');
+
+// Automatic pushing is off by default; the claim tests below exercise it on.
+process.env.NIMBUS_AUTO_PUSH = 'on';
 
 /**
  * Minimal Supabase double modelling the one thing that matters: an UPDATE
@@ -109,4 +112,26 @@ test('refuses an order with no key at all', async () => {
   assert.equal(r.pushed, false);
   assert.equal(r.reason, 'no_order_key');
   assert.equal(pushed.length, 0);
+});
+
+test('automatic pushing is OFF unless NIMBUS_AUTO_PUSH says on — nothing claimed, nothing sent', async () => {
+  const saved = process.env.NIMBUS_AUTO_PUSH;
+  try {
+    for (const v of [undefined, '', 'off', 'false', '0']) {
+      if (v === undefined) delete process.env.NIMBUS_AUTO_PUSH; else process.env.NIMBUS_AUTO_PUSH = v;
+      assert.equal(nimbusAutoPushOn(), false, String(v));
+      const { client, state } = fakeSupabase(null);
+      const before = pushed.length;
+      const res = await pushToNimbusOnce(client, { id: 'x', razorpay_order_id: 'IC-TEST' });
+      assert.deepEqual(res, { pushed: false, reason: 'auto_push_off' });
+      assert.equal(pushed.length, before, 'no push sent');
+      assert.equal(state.stamp, null, 'the order stays un-pushed, so a manual push still sees it');
+    }
+    for (const v of ['on', 'ON', 'true', '1', 'yes']) {
+      process.env.NIMBUS_AUTO_PUSH = v;
+      assert.equal(nimbusAutoPushOn(), true, v);
+    }
+  } finally {
+    process.env.NIMBUS_AUTO_PUSH = saved;
+  }
 });

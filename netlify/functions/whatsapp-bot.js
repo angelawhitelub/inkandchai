@@ -1072,6 +1072,8 @@ async function notifyOwnerDetailsRecovered(order, out, verdict, push = null) {
           ? '<strong>Pushed to NimbusPost.</strong> Assign a courier in the panel to get an AWB.'
           : push.reason === 'already_pushed'
             ? 'Already in NimbusPost — not pushed again.'
+            : push.reason === 'auto_push_off'
+            ? 'Not pushed — automatic NimbusPost pushing is off. Push it by hand from the admin panel.'
             : `<strong style="color:#b00">NimbusPost push FAILED:</strong> ${push.error || push.reason}. Push it by hand from the admin panel.`}</p>` : ''}
       </div>`,
     });

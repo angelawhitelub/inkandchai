@@ -37,7 +37,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
+const { pushToNimbusOnce, nimbusAutoPushOn } = require('./utils/nimbus-push-once');
 
 const CORS = { 'Content-Type': 'application/json' };
 const DEFAULT_GRACE_MINUTES = 120;
@@ -80,6 +80,12 @@ function isOwnerCreated(order) {
 }
 
 async function runSweep(supabase, { dryRun = false } = {}) {
+  // Automatic pushes are off by default; see utils/nimbus-push-once. A dry run
+  // still reports what WOULD go, which is harmless.
+  if (!dryRun && !nimbusAutoPushOn()) {
+    console.log('[replacement-push] skipped: NIMBUS_AUTO_PUSH is off (manual pushes only)');
+    return { considered: 0, pushed: [], skipped: [], failed: [], dry_run: false, auto_push: 'off' };
+  }
   const cutoff = new Date(Date.now() - graceMinutes() * 60 * 1000).toISOString();
 
   const { data, error } = await supabase

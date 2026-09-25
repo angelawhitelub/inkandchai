@@ -9578,7 +9578,9 @@ async function submitReplacement(displayId, btn, force) {
       + `\nCustomer emailed: ${data.emailed ? 'yes' : 'no'}`
       + (data.pushed_to_nimbus
           ? `\n\n🚀 Already pushed to the NimbusPost panel — assign a courier there to get the AWB.\nIts contents can no longer be edited.`
-          : `\n\n⚠️ Not pushed to NimbusPost yet (${data.push_reason || 'unknown reason'}).\nThe auto-push sweep retries within 15 minutes, or push it by hand from Unshipped.`));
+          : data.push_reason === 'auto_push_off'
+            ? `\n\nNot pushed to NimbusPost — automatic pushing is off. Push it by hand from Unshipped when it is ready.`
+            : `\n\n⚠️ Not pushed to NimbusPost yet (${data.push_reason || 'unknown reason'}).\nPush it by hand from Unshipped.`));
     loadOrders();
   } catch (e) {
     if (msg) msg.textContent = e.message;

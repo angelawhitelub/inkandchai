@@ -42,6 +42,7 @@
 'use strict';
 
 const { createClient } = require('@supabase/supabase-js');
+const { nimbusAutoPushOn } = require('./utils/nimbus-push-once');
 
 const HEADERS = { 'Content-Type': 'application/json' };
 
@@ -75,6 +76,11 @@ const MAX_AGE_DAYS = 7;
 const hasPincode = (address) => /\b\d{6}\b/.test(String(address || ''));
 
 exports.handler = async () => {
+  // Automatic pushes are off by default; see utils/nimbus-push-once.
+  if (!nimbusAutoPushOn()) {
+    console.log('[np-push-sweep] skipped: NIMBUS_AUTO_PUSH is off (manual pushes only)');
+    return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ skipped: 'auto_push_off' }) };
+  }
   const secret = process.env.ADMIN_SECRET;
   const site = String(process.env.SITE_URL || process.env.URL || 'https://inkandchai.in').replace(/\/$/, '');
   if (!secret) {
