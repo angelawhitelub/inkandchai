@@ -38,16 +38,20 @@ async function getToken() {
 }
 
 // ── Parse customer_address string into components ─────────────────────────────
+const { pickPincode } = require('./np-normalize');
 // Our address is stored as one string: "12B, MG Road, Lajpat Nagar, New Delhi, 110024, Delhi"
 function parseAddress(addressStr) {
   if (!addressStr) return {};
   // Common format from checkout: "house/street, city, pincode, state"
-  // Try to extract pincode (6 digits)
-  const pincodeMatch = addressStr.match(/\b(\d{6})\b/);
-  const pincode = pincodeMatch ? pincodeMatch[1] : '';
+  // Same pincode rule as every other courier path (utils/np-normalize
+  // pickPincode): two different codes in one address are resolved by the state
+  // it names, or left blank so the booking fails instead of misrouting.
+  const picked = pickPincode(addressStr);
+  const pincode = picked.pincode;
 
-  // Remove pincode from string, split remaining
-  const withoutPin = addressStr.replace(pincode, '').replace(/,\s*,/g, ',').trim().replace(/,\s*$/, '');
+  // Remove the chosen pincode (by position, not by value) and split the rest.
+  const cut = pincode ? addressStr.slice(0, picked.index) + addressStr.slice(picked.index + pincode.length) : addressStr;
+  const withoutPin = cut.replace(/,\s*,/g, ',').trim().replace(/,\s*$/, '');
   const parts = withoutPin.split(',').map(p => p.trim()).filter(Boolean);
 
   // Heuristic: last part = state, second-to-last = city, rest = address line

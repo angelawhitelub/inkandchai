@@ -120,7 +120,7 @@ async function buildShipment(order, suffix = '') {
   // with an empty address line.
   const a = await enrichAddress(parseAddress(order.customer_address || ''));
   if (!/^\d{6}$/.test(String(a.pincode || ''))) {
-    throw new Error(`Cannot determine a 6-digit pincode for ${orderId}`);
+    throw new Error(a.pincodeProblem ? `${orderId}: ${a.pincodeProblem}` : `Cannot determine a 6-digit pincode for ${orderId}`);
   }
   const phone = normalizeIndianPhone(order.customer_phone || '');
   if (!phone || String(phone).replace(/\D/g, '').length < 10) {

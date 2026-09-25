@@ -218,7 +218,7 @@ async function toWooOrder(order) {
   // order that can never be delivered -- the handler catches the throw and
   // skips the row, leaving the other 96 to sync.
   if (!/^\d{6}$/.test(String(a.pincode || ''))) {
-    throw new Error(`Cannot determine a 6-digit pincode for ${number}`);
+    throw new Error(a.pincodeProblem ? `${number}: ${a.pincodeProblem}` : `Cannot determine a 6-digit pincode for ${number}`);
   }
   const phone = String(normalizeIndianPhone(order.customer_phone || '') || '').replace(/\D/g, '').slice(-10);
   if (phone.length !== 10) {

@@ -143,7 +143,7 @@ async function buildPayload(order, opts = {}) {
   const amount = isCod ? collectable : Math.round(collectable || itemSubtotal);
 
   if (!phone) throw new Error('Customer phone must contain a valid 10-digit mobile number');
-  if (!addr.pincode) throw new Error('Customer address has no 6-digit pincode');
+  if (!addr.pincode) throw new Error(addr.pincodeProblem || 'Customer address has no 6-digit pincode');
   if (!addr.address) throw new Error('Customer address has no street line — only a city/state/pincode was saved');
   // city/state are derived from the pincode when the address doesn't spell them
   // out, so reaching here almost always means the pincode itself isn't real.

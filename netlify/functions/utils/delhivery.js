@@ -87,7 +87,7 @@ function buildShipment(order, pickupName, suffix = '') {
   const addr = parseAddress(order.customer_address);
   const pin  = String(addr.pincode || '').replace(/\D/g, '');
   if (pin.length !== 6) {
-    throw new Error(`Cannot determine a 6-digit pincode for ${inkOrderId}`);
+    throw new Error(addr.pincodeProblem ? `${inkOrderId}: ${addr.pincodeProblem}` : `Cannot determine a 6-digit pincode for ${inkOrderId}`);
   }
 
   const phone = String(order.customer_phone || '').replace(/\D/g, '').slice(-10);

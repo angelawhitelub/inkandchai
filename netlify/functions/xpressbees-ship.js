@@ -97,7 +97,7 @@ async function buildOrder(order, suffix = '') {
   const orderId = order.razorpay_order_id || order.id;
 
   const a = await enrichAddress(parseAddress(order.customer_address || ''));
-  if (!/^\d{6}$/.test(String(a.pincode || ''))) throw new Error(`Cannot determine a 6-digit pincode for ${orderId}`);
+  if (!/^\d{6}$/.test(String(a.pincode || ''))) throw new Error(a.pincodeProblem ? `${orderId}: ${a.pincodeProblem}` : `Cannot determine a 6-digit pincode for ${orderId}`);
 
   const tel = String(normalizeIndianPhone(order.customer_phone || '') || '').replace(/\D/g, '').slice(-10);
   if (tel.length !== 10) throw new Error(`Cannot determine a 10-digit phone for ${orderId} (got "${tel}")`);

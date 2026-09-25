@@ -62,3 +62,45 @@ test('phones survive country codes and trunk zeros', () => {
   assert.equal(normalizeIndianPhone('+91 98715 18571'), '9871518571');
   assert.equal(normalizeIndianPhone('12345'), '');
 });
+
+test('two pincodes in different states: the one in the named state wins', () => {
+  // IC-20260905-U8RZQ, verbatim. The first-match parser sent this to 561202
+  // (Karnataka); the parcel went to the wrong state and came back RTO.
+  const a = parseAddress('Tower 56, floor 12, Flat 02, Future Tower, (561202), Amanora Park Town, Hadapsar, Pune, Maharashtra, 411028');
+  assert.equal(a.pincode, '411028');
+  assert.equal(a.city, 'Pune');
+  assert.equal(a.state, 'Maharashtra');
+  assert.equal(a.pincodeProblem, '');
+  // IC-20260630-SSCUT: here the FIRST code is the junk one (396580 is Gujarat).
+  assert.equal(parseAddress('396580, Varanasi Rd, Mirzapur, Uttar Pradesh, 231305').pincode, '231305');
+});
+
+test('two pincodes in the SAME state: refuse to guess, and say why', () => {
+  // IC-CW-20260918-PL08Q. Lokhandwala is 400053; the pincode field's 400005
+  // is Colaba. "Take the last" would have misrouted this one, "take the
+  // first" misrouted U8RZQ -- so neither rule is safe and none is applied.
+  const a = parseAddress('1101/2, A wing, Highland Park housing society, Lion Sol Marg, Lokhandwala Complex, Andheri West, Mumbai 400053, Mumbai, Maharashtra, 400005');
+  assert.equal(a.pincode, '');
+  assert.match(a.pincodeProblem, /400053/);
+  assert.match(a.pincodeProblem, /400005/);
+  assert.match(a.pincodeProblem, /Correct the address/);
+});
+
+test('two pincodes and no state named: refuse', () => {
+  const a = parseAddress('Flat 3, 110085 Rohini, near 110034 metro');
+  assert.equal(a.pincode, '');
+  assert.match(a.pincodeProblem, /no state is named/);
+});
+
+test('the same digits in the street line survive when the pincode is cut out', () => {
+  const a = parseAddress('Plot 411028, Sector 5, Pune, Maharashtra, 411028');
+  assert.equal(a.pincode, '411028');
+  assert.match(a.address, /Plot 411028/);
+  assert.equal(a.state, 'Maharashtra');
+});
+
+test('a single pincode anywhere is still found', () => {
+  assert.equal(parseAddress('House No A-68 , Near Kendriya Bhandar Pin code 110021').pincode, '110021');
+  assert.equal(parseAddress('Flat 3 Sector 9 Rohini Delhi 110085 near metro').pincode, '110085');
+  assert.equal(parseAddress('House No A-68 , Near Kendriya Bhandar Pin code 110021').pincodeProblem, '');
+});

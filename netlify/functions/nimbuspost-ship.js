@@ -52,6 +52,7 @@ function courierTrackUrl(name, awb) {
 }
 
 // ── Address parser (single string → fields) ────────────────────────────────
+const { pickPincode } = require('./utils/np-normalize');
 // Input:  "Flat 12, Gokhale Rd, Dadar, Mumbai, Maharashtra - 400028"
 // Output: { addr1, addr2, city, state, pincode }
 function parseAddress(addr) {
@@ -59,11 +60,13 @@ function parseAddress(addr) {
   const parts = addr.split(',').map(p => p.trim()).filter(Boolean);
 
   // Extract 6-digit pincode (may be appended with dash/space)
-  let pincode = '';
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const m = parts[i].match(/\b(\d{6})\b/);
+  // Same pincode rule as every other courier path (utils/np-normalize
+  // pickPincode): two different codes in one address are resolved by the state
+  // it names, or left blank so the booking fails instead of misrouting.
+  const pincode = pickPincode(addr).pincode;
+  for (let i = parts.length - 1; pincode && i >= 0; i--) {
+    const m = parts[i].match(new RegExp('\\b' + pincode + '\\b'));
     if (m) {
-      pincode = m[1];
       const cleaned = parts[i].replace(m[0], '').replace(/[-–\s]+$/, '').trim();
       if (cleaned) parts[i] = cleaned; else parts.splice(i, 1);
       break;
