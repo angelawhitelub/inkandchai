@@ -119,6 +119,18 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .product-editor{border:1px solid var(--border);background:var(--bg2);padding:1.2rem;}
 .product-editor .form-row input{background:var(--bg3);}
 .product-editor-actions{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.8rem;}
+.copy-listing-box{border:1px dashed var(--border);background:var(--bg2);padding:0.9rem 1rem;margin-bottom:1.1rem;}
+.copy-listing-box>label{display:block;font-size:0.66rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.45rem;}
+.copy-listing-box input{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.7rem 0.9rem;font-family:'Manrope',sans-serif;font-size:0.84rem;outline:none;}
+.copy-listing-box input:focus{border-color:var(--gold);}
+#copyListingResults{display:flex;flex-direction:column;gap:0.35rem;margin-top:0.5rem;}
+#copyListingResults:empty{display:none;}
+.copy-hit{display:flex;align-items:center;gap:0.7rem;text-align:left;width:100%;background:var(--bg3);border:1px solid var(--border);padding:0.45rem 0.6rem;cursor:pointer;font-family:inherit;color:var(--cream);}
+.copy-hit:hover{border-color:var(--gold);}
+.copy-hit img{width:34px;height:48px;object-fit:cover;flex:none;background:var(--bg2);}
+.copy-hit b{display:block;font-size:0.8rem;font-weight:600;color:var(--white);}
+.copy-hit span{font-size:0.68rem;color:var(--cream-dim);}
+#copyListingBanner{margin-top:0.6rem;font-size:0.74rem;line-height:1.55;color:var(--green);}
 .override-pill{display:inline-block;font-size:0.58rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--green);border:1px solid rgba(35,122,59,0.3);padding:0.18rem 0.5rem;margin-left:0.35rem;}
 .creator-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
 .creator-grid .wide{grid-column:1/-1;}
@@ -1483,6 +1495,12 @@ select,input,textarea{font-size:1rem;}
         <button class="btn-outline" onclick="clearCreateProductForm()">Clear Form</button>
       </div>
     </div>
+    <div class="copy-listing-box">
+      <label for="copyListingSearch">📋 Copy from an existing listing <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— optional. Fills this form with its details and images; nothing is saved until you press Create.</span></label>
+      <input id="copyListingSearch" autocomplete="off" placeholder="Search by title, author or slug…" oninput="searchCopyListing(this.value)"/>
+      <div id="copyListingResults"></div>
+      <div id="copyListingBanner" style="display:none;"></div>
+    </div>
     <div class="creator-grid">
       <div class="form-row wide">
         <label>Product title *</label>
@@ -1908,6 +1926,7 @@ select,input,textarea{font-size:1rem;}
           <div class="product-editor-actions">
             <button class="btn-green" onclick="saveProductOverride()">Save Product Override</button>
             <button class="btn-outline" onclick="openSelectedProduct()">Open Product Page</button>
+            <button class="btn-outline" onclick="duplicateSelectedProduct()" title="Opens Create Listing pre-filled with this product's details. Nothing is saved until you press Create.">📋 Duplicate as New Listing</button>
             <button id="prodRemoveBtn" class="btn-outline" onclick="toggleProductRemoved(this)" style="border-color:rgba(224,80,80,0.35);color:#c93636;">Remove From Sale</button>
             <button class="btn-outline" onclick="clearProductOverride()" style="border-color:rgba(224,80,80,0.35);color:#c93636;">Disable Override</button>
             <button id="prodDeleteBtn" onclick="deleteProductPage()" style="display:none;background:transparent;border:1px solid rgba(224,80,80,0.55);color:#e05050;padding:0.65rem 1.4rem;font-family:'Manrope',sans-serif;font-size:0.72rem;letter-spacing:0.16em;text-transform:uppercase;cursor:pointer;">🗑 Delete Product Page</button>
@@ -5978,6 +5997,185 @@ function clearCreateProductForm() {
   if (openBtn) openBtn.style.display = 'none';
   const msg = document.getElementById('createProductMsg');
   if (msg) msg.textContent = 'New listings appear in catalogue/search after refresh and have a direct `/product/.../` URL immediately.';
+  const banner = document.getElementById('copyListingBanner');
+  if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
+}
+
+// ── Copy an existing listing into the create form ────────────────────────────
+// For a new edition, a Hindi version, a combo built from one book: most of the
+// details are the same, so start from the old listing instead of retyping it.
+// This only FILLS the form. It creates nothing -- the admin changes what differs
+// and presses Create, which always allocates a fresh slug (mode: 'create'), so
+// the original listing can never be overwritten from here.
+//
+// Deliberately NOT copied:
+//   ISBN      -- two listings with one ISBN is a duplicate GTIN in Merchant Center,
+//                and the copy is usually a different edition anyway.
+//   stock, shipping exclusions, A+ content, coupons, reviews -- those belong to
+//                the original product, not to its details.
+// Images ARE copied, as the same hosted URLs: nothing is re-uploaded, and a new
+// cover can still be chosen before Create.
+
+/** Absolute URL for a stored image path, so the gallery box accepts it. */
+function copyListingImageUrl(u) {
+  const v = String(u || '').trim();
+  if (!v || v.startsWith('data:')) return '';
+  if (/^https?:\/\//i.test(v)) return v;
+  return location.origin + (v.startsWith('/') ? v : '/' + v);
+}
+
+/** The listing as the create form needs it, from a product row. */
+function listingFromRow(row) {
+  const p = mergedProduct(row);
+  const tagParts = productShippingTagParts(p.tags);
+  const ps = row.override ? row.override.publisher_sourced : undefined;
+  return {
+    slug: row.slug,
+    from_title: p.title,
+    title: p.title, author: p.author, category: p.category,
+    price_inr: p.price_inr, original_price_inr: p.original_price_inr,
+    publisher: p.publisher, format: p.format, language: p.language,
+    pages: p.pages, dimensions: p.dimensions, weight_grams: p.weight_grams,
+    edition: p.edition, published_on: p.published_on, reading_age: p.reading_age,
+    description: p.description, author_bio: p.author_bio,
+    tags: tagParts.publicTags.join(', '),
+    publisher_sourced: (ps === true || ps === false) ? ps : !!tagParts.publisherSourced,
+    seo_title: p.seo_title, meta_description: p.meta_description,
+    image_url: p.image_url || row.image_url || '',
+    gallery_images: p.gallery_images || [],
+  };
+}
+
+/** Fill the create form from a listing and switch to it. */
+function fillCreateFormFromListing(src) {
+  if (!src) return;
+  const hasWork = ['newProdTitle', 'newProdDescription', 'newProdPrice']
+    .some(id => (document.getElementById(id)?.value || '').trim());
+  if (hasWork && !confirm('The Create Listing form already has details in it.\n\nReplace them with a copy of "' + (src.title || src.slug) + '"?')) return;
+
+  clearCreateProductForm();
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v === null || v === undefined) ? '' : String(v); };
+  set('newProdTitle', src.title);
+  set('newProdAuthor', src.author);
+  set('newProdCategory', src.category);
+  set('newProdPrice', src.price_inr);
+  set('newProdOriginalPrice', src.original_price_inr);
+  set('newProdPublisher', src.publisher);
+  set('newProdFormat', src.format);
+  set('newProdLanguage', src.language);
+  set('newProdPages', src.pages || '');
+  set('newProdDimensions', src.dimensions);
+  set('newProdWeight', src.weight_grams || '');
+  set('newProdEdition', src.edition);
+  set('newProdPublished', src.published_on);
+  set('newProdReadingAge', src.reading_age);
+  set('newProdDescription', src.description);
+  set('newProdAuthorBio', src.author_bio);
+  set('newProdTags', src.tags);
+  set('newProdSeoTitle', src.seo_title);
+  set('newProdMetaDescription', src.meta_description);
+  // The cover goes in exactly as the original stores it; only the gallery box
+  // needs absolute URLs (it drops anything that is not http[s]).
+  set('newProdImageUrl', String(src.image_url || '').startsWith('data:') ? '' : src.image_url);
+  set('newProdGalleryUrls', (src.gallery_images || []).map(copyListingImageUrl).filter(Boolean).slice(0, 8).join('\n'));
+  const psEl = document.getElementById('newProdPublisherSourced');
+  if (psEl) psEl.checked = !!src.publisher_sourced;
+
+  const search = document.getElementById('copyListingSearch');
+  if (search) search.value = '';
+  const results = document.getElementById('copyListingResults');
+  if (results) results.innerHTML = '';
+  const banner = document.getElementById('copyListingBanner');
+  if (banner) {
+    const n = (src.gallery_images || []).length;
+    banner.innerHTML = '✓ Copied from <a href="/product/' + encodeURIComponent(src.slug) + '/" target="_blank" rel="noopener">' + esc(src.from_title || src.title || src.slug) + '</a>'
+      + ' — details, price, description, SEO and ' + (src.image_url ? 'cover' : 'no cover') + (n ? ' + ' + n + ' gallery image' + (n === 1 ? '' : 's') : '') + '.'
+      + '<br><span style="color:var(--orange);">Change what is different — title, edition, price, cover — and add the ISBN (not copied, so the two listings never share one). '
+      + 'The original listing is not changed; Create always makes a new page.</span>';
+    banner.style.display = '';
+  }
+
+  switchTab('create');
+  const title = document.getElementById('newProdTitle');
+  if (title) {
+    title.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    title.focus({ preventScroll: true });
+    title.select();
+  }
+}
+
+/** Products & Prices → "Duplicate as New Listing": copies what the editor shows, unsaved edits included. */
+function duplicateSelectedProduct() {
+  if (!selectedProduct) return;
+  const src = listingFromRow(selectedProduct);
+  const val = id => document.getElementById(id)?.value ?? '';
+  Object.assign(src, {
+    title: val('prodTitle'), author: val('prodAuthor'), category: val('prodCategory'),
+    price_inr: val('prodPrice'), original_price_inr: val('prodOriginalPrice'),
+    publisher: val('prodPublisher'), format: val('prodFormat'), language: val('prodLanguage'),
+    pages: val('prodPages'), dimensions: val('prodDimensions'), weight_grams: val('prodWeight'),
+    edition: val('prodEdition'), published_on: val('prodPublished'), reading_age: val('prodReadingAge'),
+    description: val('prodDescription'), author_bio: val('prodAuthorBio'),
+    tags: val('prodTags'), seo_title: val('prodSeoTitle'), meta_description: val('prodMetaDescription'),
+    image_url: val('prodImageUrl') || src.image_url,
+    publisher_sourced: !!document.getElementById('prodPublisherSourced')?.checked,
+  });
+  fillCreateFormFromListing(src);
+}
+
+/** Create Listing → "Copy from an existing listing" search. */
+let copyListingTimer = null;
+let copyListingSeq = 0;
+function searchCopyListing(raw) {
+  const box = document.getElementById('copyListingResults');
+  if (!box) return;
+  const q = String(raw || '').toLowerCase().trim();
+  clearTimeout(copyListingTimer);
+  if (q.length < 2) { box.innerHTML = ''; return; }
+  const gone = deletedSlugSet();
+  const render = (note) => {
+    const hits = productRows.filter(row => {
+      if (gone.has(String(row.slug || '').toLowerCase())) return false;
+      const p = mergedProduct(row);
+      return [p.title, p.author, p.slug, p.isbn].join(' ').toLowerCase().includes(q);
+    }).slice(0, 8);
+    box.innerHTML = hits.map(row => {
+      const p = mergedProduct(row);
+      return '<button type="button" class="copy-hit" onclick="copyListingBySlug(\'' + esc(row.slug) + '\')">'
+        + '<img src="' + esc(productImageSrc(p.image_url || row.image_url)) + '" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'"/>'
+        + '<div><b>' + esc(p.title) + '</b><span>' + esc(p.author || '—') + ' · ' + moneyText(p.price_inr) + ' · /product/' + esc(row.slug) + '/</span></div></button>';
+    }).join('') || '<div class="hint">' + (note || 'No matching listing.') + '</div>';
+  };
+  render(q.length >= 3 ? 'Searching the full catalogue…' : 'Type one more letter to search the full catalogue.');
+  if (q.length < 3) return;
+  // The page only holds the newest listings, so ask the server too.
+  const seq = ++copyListingSeq;
+  copyListingTimer = setTimeout(async () => {
+    try {
+      const res = await adminFetch('/.netlify/functions/get-products-admin?q=' + encodeURIComponent(q));
+      const data = await res.json();
+      if (seq !== copyListingSeq) return;
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      // Same merge as the Products search: the override holds the live price.
+      const overrides = new Map((data.overrides || []).map(o => [o.slug, o]));
+      const aplus = new Map((data.aplus_content || []).map(item => [item.slug, item]));
+      const shippingRules = new Map((data.shipping_rules || []).map(item => [item.slug, item]));
+      const known = new Set(productRows.map(r => r.slug));
+      (data.products || []).forEach(p => {
+        if (!p.slug || known.has(p.slug)) return;
+        productRows.push({ ...p, override: overrides.get(p.slug) || null, aplus: aplus.get(p.slug) || null, shippingRule: shippingRules.get(p.slug) || null });
+        known.add(p.slug);
+      });
+      render();
+    } catch (e) {
+      if (seq === copyListingSeq) render('Catalogue search failed — ' + esc(e.message));
+    }
+  }, 300);
+}
+
+function copyListingBySlug(slug) {
+  const row = productRows.find(r => r.slug === slug);
+  if (row) fillCreateFormFromListing(listingFromRow(row));
 }
 
 // ── AI first draft for the copy fields ───────────────────────────────────────
@@ -13528,6 +13726,7 @@ function switchTab(tab, pushState = true) {
   const _authed = adminToken || adminKey || adminCookieSession;
   if (tab === 'tools' && _authed) gadsSuppressStatus();
   if (tab === 'products' && _authed) { fetchProducts(); fetchRemovedListings(); fetchDeletedPages(); }
+  if (tab === 'create' && _authed && !productRows.length) fetchProducts();
   if (tab === 'ebooks' && _authed && adminRole === 'owner') loadEbooks();
   if (tab === 'reels' && _authed) loadSiteReels();
   if (tab === 'banners' && _authed) loadLiveBanners();
