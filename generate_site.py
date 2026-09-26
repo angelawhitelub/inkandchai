@@ -9934,6 +9934,7 @@ function showSuccess(type, orderId, addr, value, surveyOrderId = orderId) {
       </p>
     </div>` : '')}
     <div id="scratchCardSlot"></div>
+    <div id="feedbackSlot"></div>
     <a href="/" class="btn-home">← Continue Shopping</a>
   `;
 
@@ -9941,6 +9942,16 @@ function showSuccess(type, orderId, addr, value, surveyOrderId = orderId) {
     orderId: surveyOrderId,
     email: addr.email,
   });
+
+  // 5-star "how was ordering" card (public/js/site-feedback.js). That script is
+  // deferred, and the return-from-payment path can land here before it has run,
+  // so wait for it briefly rather than skip. Never allowed to throw in here.
+  (function askFeedback(n) {
+    try {
+      if (window.IACFeedback) IACFeedback.order(surveyOrderId, document.getElementById('feedbackSlot'));
+      else if (n < 20) setTimeout(function () { askFeedback(n + 1); }, 250);
+    } catch (e) { /* feedback is optional */ }
+  })(0);
 
   // ── Scratch card reward (prepaid only) ─────────────────────────────────
   if (isPaid) loadScratchCard(orderId);

@@ -4,9 +4,9 @@
  * POST /.netlify/functions/ink-ai-improve  { days?: 7|30|90 }   (admin)
  *   → { summary, themes: [...], counts: {...} }
  *
- * Reads the questions logged in ink_ai_conversations and the chats customers
- * rated 1-3 stars in ink_ai_feedback, and asks the model to group them into
- * themes and draft the answer Ink AI should give for each.
+ * Reads the questions logged in ink_ai_conversations, including which ones
+ * Ink AI handed to a human, and asks the model to group them into themes and
+ * draft the answer Ink AI should give for each.
  *
  * Nothing here changes the bot. Every draft goes to the admin panel, where the
  * owner edits it and presses "Add to Ink AI" -- that writes the same
@@ -36,9 +36,9 @@ const SYSTEM = `You improve "Ink AI", the customer assistant on the Ink & Chai b
 
 You get:
 1. WHAT INK AI ALREADY KNOWS -- its built-in facts and the team's own answers.
-2. Real customer questions from the last few weeks. [HANDED OFF] means Ink AI passed it to a human. [LOW RATING n★] means the customer rated that chat n stars out of 5, followed by their comment if any.
+2. Real customer questions from the last few weeks. [HANDED OFF] means Ink AI passed it to a human.
 
-Group the questions into themes (merge rephrasings and Hindi/Hinglish variants of the same question). For each theme, decide whether Ink AI needs a better answer. A theme needs work when questions in it were handed off, rated low, or when the knowledge below does not clearly cover it.
+Group the questions into themes (merge rephrasings and Hindi/Hinglish variants of the same question). For each theme, decide whether Ink AI needs a better answer. A theme needs work when questions in it were handed off, or when the knowledge below does not clearly cover it.
 
 For themes that need work, draft the answer Ink AI should give:
 - Use ONLY facts stated in WHAT INK AI ALREADY KNOWS. Never invent a policy, price, timeline, phone number or promise.
@@ -55,7 +55,6 @@ Return ONLY JSON:
       "topic": "short name",
       "count": <number of questions in this theme>,
       "handed_off": <how many were handed off>,
-      "low_rated": <how many came from low-rated chats>,
       "examples": ["up to 3 real questions, verbatim"],
       "status": "needs_answer" | "answered_well",
       "problem": "one line: why Ink AI falls short here, or empty",
@@ -90,41 +89,25 @@ exports.handler = async (event) => {
 
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { data: rows, error } = await db.from(CONVERSATIONS)
-      .select('question, escalated, session_id, created_at')
+      .select('question, escalated, created_at')
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(MAX_QUESTIONS);
     if (error) throw new Error(error.message);
-
-    // Low ratings, keyed by session, so each question can carry its chat's score.
-    // A missing feedback table just means no ratings yet.
-    const low = new Map();
-    const { data: fb } = await db.from('ink_ai_feedback')
-      .select('session_id, rating, comment')
-      .lte('rating', 3)
-      .gte('updated_at', since)
-      .limit(1000);
-    for (const f of fb || []) low.set(f.session_id, f);
 
     const questions = (rows || []).filter(r => r.question && r.question.trim());
     if (questions.length < 3) {
       return json(200, {
         summary: `Only ${questions.length} question${questions.length === 1 ? '' : 's'} in the last ${days} days — not enough to find patterns yet.`,
         themes: [],
-        counts: { questions: questions.length, handed_off: 0, low_rated: 0, days },
+        counts: { questions: questions.length, handed_off: 0, days },
       });
     }
 
-    let handedOff = 0, lowRated = 0;
+    let handedOff = 0;
     const lines = questions.map((r) => {
-      const tags = [];
-      if (r.escalated) { tags.push('[HANDED OFF]'); handedOff += 1; }
-      const f = r.session_id && low.get(r.session_id);
-      if (f) {
-        lowRated += 1;
-        tags.push(`[LOW RATING ${f.rating}★${f.comment ? ` — "${String(f.comment).slice(0, 160).replace(/\s+/g, ' ')}"` : ''}]`);
-      }
-      return `- ${String(r.question).slice(0, MAX_CHARS).replace(/\s+/g, ' ')} ${tags.join(' ')}`.trim();
+      if (r.escalated) handedOff += 1;
+      return `- ${String(r.question).slice(0, MAX_CHARS).replace(/\s+/g, ' ')}${r.escalated ? ' [HANDED OFF]' : ''}`;
     });
 
     const team = await teamAnswers(db);
@@ -154,7 +137,6 @@ exports.handler = async (event) => {
       topic: String(t.topic || '').slice(0, 120),
       count: Number(t.count) || 0,
       handed_off: Number(t.handed_off) || 0,
-      low_rated: Number(t.low_rated) || 0,
       examples: (Array.isArray(t.examples) ? t.examples : []).slice(0, 3).map(e => String(e).slice(0, 240)),
       status: t.status === 'answered_well' ? 'answered_well' : 'needs_answer',
       problem: String(t.problem || '').slice(0, 300),
@@ -166,7 +148,7 @@ exports.handler = async (event) => {
     return json(200, {
       summary: String(report.summary || '').slice(0, 800),
       themes,
-      counts: { questions: questions.length, handed_off: handedOff, low_rated: lowRated, days },
+      counts: { questions: questions.length, handed_off: handedOff, days },
     });
   } catch (e) {
     console.error('[ink-ai-improve]', e.message);

@@ -12,6 +12,10 @@ Two ways in:
   * `python3 site_theme.py` applies it to the pages already in public/, for a
     theme change that should not wait on (or risk) a full rebuild.
 
+The same fenced block also loads public/js/site-feedback.js, the 5-star
+"how was the website / how was ordering" card, because it has to reach exactly
+the same set of pages.
+
 Everything this writes into a page sits inside an IAC-THEME fence and is
 stripped before it is written again, so re-running is always safe.
 """
@@ -69,6 +73,7 @@ def theme_tag(href: str) -> str:
         + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>'
         + f'<link rel="stylesheet" href="{FONTS_URL}"/>'
         + f'<link rel="stylesheet" href="{href}"/>'
+        + '<script src="/js/site-feedback.js" defer></script>'
         + _CLOSE
     )
 
