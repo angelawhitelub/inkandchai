@@ -90,10 +90,10 @@
     document.querySelectorAll('.auth-nav-btn').forEach(btn => {
       if (currentUser) {
         const first = currentProfile?.name?.split(' ')[0] || currentUser.email?.split('@')[0] || 'Account';
-        btn.textContent = '👤 ' + first;
+        btn.textContent = first;
         btn.onclick = openAccountModal;
       } else {
-        btn.textContent = '👤 Sign In';
+        btn.textContent = 'Sign In';
         btn.onclick = openAuthModal;
       }
     });

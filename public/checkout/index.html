@@ -419,6 +419,7 @@ gtag('js', new Date());
 gtag('config', 'G-ZPZDFWMDP6');
 </script>
 <!-- End Google Analytics 4 -->
+<!--IAC-THEME--><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"/><link rel="stylesheet" href="/css/theme-886fa54b.css"/><!--/IAC-THEME-->
 </head>
 <body>
 <nav>
@@ -428,7 +429,7 @@ gtag('config', 'G-ZPZDFWMDP6');
     <button id="chkAuthBtn" onclick="chkOpenAuth()"
       style="font-family:'Inter',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;
              padding:0.45rem 1rem;border:1px solid var(--border);color:var(--gold);background:transparent;
-             cursor:pointer;transition:all 0.2s;">👤 Sign In</button>
+             cursor:pointer;transition:all 0.2s;">Sign In</button>
     <button class="theme-toggle" onclick="(function(){var d=document.documentElement;var t=d.getAttribute('data-theme');if(t==='light'){d.removeAttribute('data-theme');try{localStorage.setItem('iac_theme','dark')}catch(e){}}else{d.setAttribute('data-theme','light');try{localStorage.setItem('iac_theme','light')}catch(e){}}})()" title="Toggle theme">☀</button>
   </div>
 </nav>
@@ -2584,7 +2585,7 @@ function clearAutofill() {
       applyProfile(cached.name, cached.email || '', cached.phone, cached.address, cached.pincode, cached.city, cached.state);
       // Update auth button to show name
       const btn = document.getElementById('chkAuthBtn');
-      if (btn && cached.name) btn.textContent = '👤 ' + cached.name.split(' ')[0];
+      if (btn && cached.name) btn.textContent = cached.name.split(' ')[0];
       return;
     }
   } catch(e) {}
@@ -2597,7 +2598,7 @@ function clearAutofill() {
       if (session) {
         // Update auth button
         const btn = document.getElementById('chkAuthBtn');
-        if (btn) btn.textContent = '👤 ' + (session.user.email?.split('@')[0] || 'Account');
+        if (btn) btn.textContent = (session.user.email?.split('@')[0] || 'Account');
 
         const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
         if (profile && (profile.name || profile.address)) {
@@ -2724,7 +2725,7 @@ async function chkVerifyOtp() {
       showAutofillBanner(profile.name);
     }
     const btn = document.getElementById('chkAuthBtn');
-    if (btn) btn.textContent = '👤 ' + ((profile?.name||data.user.email||'').split(' ')[0]);
+    if (btn) btn.textContent = ((profile?.name||data.user.email||'').split(' ')[0]);
   } catch(e) {
     if(msg){msg.textContent=e.message||'Invalid code.';}
   }

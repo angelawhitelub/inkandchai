@@ -601,6 +601,7 @@ gtag('js', new Date());
 gtag('config', 'G-ZPZDFWMDP6');
 </script>
 <!-- End Google Analytics 4 -->
+<!--IAC-THEME--><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"/><link rel="stylesheet" href="/css/theme-886fa54b.css"/><!--/IAC-THEME-->
 </head>
 <body>
 
@@ -648,8 +649,8 @@ gtag('config', 'G-ZPZDFWMDP6');
   <a class="nav-back" href="javascript:history.back()">← Back to catalogue</a>
   <div style="display:flex;gap:1rem;align-items:center;">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
-    <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
-    <button class="btn-nav auth-nav-btn" id="authNavBtnProd" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
+    <button class="btn-nav orders-nav-btn" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">My Orders</button>
+    <button class="btn-nav auth-nav-btn" id="authNavBtnProd" onclick="window.IAC ? IAC.openAuthModal() : null">Sign In</button>
     <div class="nav-cart-wrap">
       <button class="btn-nav" onclick="openCart()">Cart</button>
       <span class="cart-badge" id="cartBadge" style="display:none;">0</span>

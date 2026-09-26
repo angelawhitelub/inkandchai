@@ -2586,8 +2586,8 @@ html[data-theme="light"] .btn-primary{
   <div class="nav-actions">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
     <span class="nav-icon" title="Wishlist" onclick="openWishlistModal()">&#9825;<span id="wishBadge" style="display:none;font-size:0.55rem;background:var(--gold);color:var(--bg);border-radius:50%;width:14px;height:14px;display:none;align-items:center;justify-content:center;position:absolute;top:-4px;right:-6px;"></span></span>
-    <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
-    <button class="btn-nav auth-nav-btn" id="authNavBtnMain" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
+    <button class="btn-nav orders-nav-btn" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">My Orders</button>
+    <button class="btn-nav auth-nav-btn" id="authNavBtnMain" onclick="window.IAC ? IAC.openAuthModal() : null">Sign In</button>
     <div class="nav-cart-wrap">
       <button class="btn-nav" onclick="openCart()" style="cursor:pointer;">Cart</button>
       <span class="cart-badge" id="cartBadge" style="display:none;">0</span>
@@ -5435,8 +5435,8 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
   <a class="nav-back" href="javascript:history.back()">← Back to catalogue</a>
   <div style="display:flex;gap:1rem;align-items:center;">
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="moon">🌙</span><span class="sun">☀️</span></button>
-    <button class="btn-nav" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">📦 My Orders</button>
-    <button class="btn-nav auth-nav-btn" id="authNavBtnProd" onclick="window.IAC ? IAC.openAuthModal() : null">👤 Sign In</button>
+    <button class="btn-nav orders-nav-btn" onclick="window.IAC ? IAC.openMyOrders() : null" style="margin-right:0.3rem;">My Orders</button>
+    <button class="btn-nav auth-nav-btn" id="authNavBtnProd" onclick="window.IAC ? IAC.openAuthModal() : null">Sign In</button>
     <div class="nav-cart-wrap">
       <button class="btn-nav" onclick="openCart()">Cart</button>
       <span class="cart-badge" id="cartBadge" style="display:none;">0</span>
@@ -8348,7 +8348,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
     <button id="chkAuthBtn" onclick="chkOpenAuth()"
       style="font-family:'Inter',sans-serif;font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;
              padding:0.45rem 1rem;border:1px solid var(--border);color:var(--gold);background:transparent;
-             cursor:pointer;transition:all 0.2s;">👤 Sign In</button>
+             cursor:pointer;transition:all 0.2s;">Sign In</button>
     <button class="theme-toggle" onclick="(function(){var d=document.documentElement;var t=d.getAttribute('data-theme');if(t==='light'){d.removeAttribute('data-theme');try{localStorage.setItem('iac_theme','dark')}catch(e){}}else{d.setAttribute('data-theme','light');try{localStorage.setItem('iac_theme','light')}catch(e){}}})()" title="Toggle theme">☀</button>
   </div>
 </nav>
@@ -10488,7 +10488,7 @@ function clearAutofill() {
       applyProfile(cached.name, cached.email || '', cached.phone, cached.address, cached.pincode, cached.city, cached.state);
       // Update auth button to show name
       const btn = document.getElementById('chkAuthBtn');
-      if (btn && cached.name) btn.textContent = '👤 ' + cached.name.split(' ')[0];
+      if (btn && cached.name) btn.textContent = cached.name.split(' ')[0];
       return;
     }
   } catch(e) {}
@@ -10501,7 +10501,7 @@ function clearAutofill() {
       if (session) {
         // Update auth button
         const btn = document.getElementById('chkAuthBtn');
-        if (btn) btn.textContent = '👤 ' + (session.user.email?.split('@')[0] || 'Account');
+        if (btn) btn.textContent = (session.user.email?.split('@')[0] || 'Account');
 
         const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
         if (profile && (profile.name || profile.address)) {
@@ -10628,7 +10628,7 @@ async function chkVerifyOtp() {
       showAutofillBanner(profile.name);
     }
     const btn = document.getElementById('chkAuthBtn');
-    if (btn) btn.textContent = '👤 ' + ((profile?.name||data.user.email||'').split(' ')[0]);
+    if (btn) btn.textContent = ((profile?.name||data.user.email||'').split(' ')[0]);
   } catch(e) {
     if(msg){msg.textContent=e.message||'Invalid code.';}
   }
@@ -12638,3 +12638,10 @@ if GA4_MEASUREMENT_ID:
     print(f"Generated: GA4 tag {GA4_MEASUREMENT_ID} on {_tagged} pages")
 else:
     print("Skipped: GA4 tag (set GA4_MEASUREMENT_ID to enable)")
+
+# ── Site theme ────────────────────────────────────────────────────────────────
+# Last pass on purpose: site_theme.css has to be the final stylesheet in <head>
+# on every page to settle type, pills and palette over the per-page styles.
+# See site_theme.py; it can also be run on its own against public/.
+import site_theme
+print(f"Generated: site theme on {site_theme.apply_to_tree(Path(__file__).parent / 'public')} pages")
