@@ -899,6 +899,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="botinbox"  onclick="location.href='/admin/inbox.html'">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="bookreq"   onclick="switchTab('bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="insights"  onclick="switchTab('insights')">💡 Insights</button>
+    <button class="admin-tab" data-tab="inkai"     onclick="switchTab('inkai')">✨ Ink AI</button>
     <button class="admin-tab" data-tab="bot"       onclick="switchTab('bot')">🤖 Bot Instructions</button>
     <button class="admin-tab" data-tab="recover"   onclick="switchTab('recover')">⚡ Recover Payment</button>
     <button class="admin-tab owner-only" data-tab="adminaccess" onclick="switchTab('adminaccess')">🔐 Admin Access</button>
@@ -2743,6 +2744,269 @@ select,input,textarea{font-size:1rem;}
       <div id="inkAiQuestions"></div>
     </div>
   </div><!-- /tab-bot -->
+
+  <!-- ═══ INK AI TAB ═══
+       Star ratings from the website chat, and the loop that turns what
+       customers asked into better answers. Nothing here edits the bot on its
+       own: "Add to Ink AI" writes to the same Bot Instructions the prompt
+       already reads, and only when someone presses it. -->
+  <div class="admin-section" id="tab-inkai">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.1rem;">
+      <div>
+        <h2 style="margin:0;font-size:1.1rem;">✨ Ink AI — ratings &amp; feedback</h2>
+        <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;max-width:680px;">
+          After Ink AI answers, customers are asked to rate the chat from 1 to 5 stars and can leave a comment.
+          Open any rating to read the whole chat behind it.
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <select id="inkFbFilter" onchange="loadInkAiFeedback()" style="background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;">
+          <option value="all">All ratings</option>
+          <option value="low">1–3 stars only</option>
+          <option value="comments">With a comment</option>
+        </select>
+        <button class="btn-outline" onclick="loadInkAiFeedback()">↻ Reload</button>
+      </div>
+    </div>
+    <div id="inkFbStats" style="margin-bottom:1rem;"></div>
+    <div id="inkFbMsg" style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-bottom:0.7rem;"></div>
+    <div id="inkFbList"></div>
+
+    <div style="margin-top:2.4rem;border-top:1px solid rgba(201,168,76,0.18);padding-top:1.4rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.9rem;">
+        <div>
+          <h3 style="margin:0;font-size:0.95rem;">🧠 Improve Ink AI from real questions</h3>
+          <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;max-width:680px;">
+            Groups every question customers asked Ink AI, together with the chats rated 1–3 stars, into themes.
+            For each weak spot it drafts the answer Ink AI should give, using only facts the bot already has.
+            Edit the draft if needed, then press <em>Add to Ink AI</em>. Ink AI uses it within a minute.
+            Themes marked <em>needs your answer</em> are questions only you can settle.
+          </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+          <select id="inkImproveDays" style="background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+          <button class="btn-gold" onclick="runInkAiImprove(this)" style="padding:0.6rem 1.3rem;">🔍 Find what to improve</button>
+          <button class="btn-outline" onclick="switchTab('bot')">Every question →</button>
+        </div>
+      </div>
+      <div id="inkImproveResult"></div>
+    </div>
+  </div><!-- /tab-inkai -->
+
+<script>
+// ── Ink AI: ratings & feedback ──────────────────────────────────────────────
+function inkStars(n) {
+  n = Number(n) || 0;
+  return '<span style="color:#e3a72f;letter-spacing:1px;">' + '★'.repeat(n) + '</span>'
+       + '<span style="color:rgba(160,144,128,0.4);letter-spacing:1px;">' + '★'.repeat(5 - n) + '</span>';
+}
+
+async function loadInkAiFeedback() {
+  const list = document.getElementById('inkFbList');
+  const msg = document.getElementById('inkFbMsg');
+  const statsBox = document.getElementById('inkFbStats');
+  if (!list) return;
+  const f = (document.getElementById('inkFbFilter') || {}).value || 'all';
+  msg.style.color = 'var(--cream-dim,#8a7a62)';
+  msg.textContent = 'Loading…';
+  list.innerHTML = '';
+  try {
+    let url = '/.netlify/functions/ink-ai-feedback?limit=150';
+    if (f === 'low') url += '&max_rating=3';
+    if (f === 'comments') url += '&with_comment=1';
+    const res = await adminFetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (data.table_missing) {
+      statsBox.innerHTML = '';
+      msg.style.color = '#e0b060';
+      msg.textContent = 'Not recording yet — the ink_ai_feedback table has not been created. '
+                      + 'Run sql/ink_ai_feedback.sql in Supabase and ratings will start appearing here.';
+      return;
+    }
+    const s = data.stats || { count: 0, distribution: {} };
+    const max = Math.max(1, ...[1, 2, 3, 4, 5].map(i => s.distribution[i] || 0));
+    statsBox.innerHTML = s.count
+      ? '<div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:center;border:1px solid rgba(201,168,76,0.18);border-radius:10px;padding:1rem 1.2rem;">'
+        + '<div><div style="font-size:2.1rem;font-weight:700;color:#f0e8d8;line-height:1;">' + s.average.toFixed(1)
+        +   ' <span style="font-size:1rem;color:#e3a72f;">★</span></div>'
+        +   '<div style="font-size:0.7rem;color:var(--cream-dim,#8a7a62);margin-top:0.35rem;">' + s.count + ' rating' + (s.count === 1 ? '' : 's') + '</div></div>'
+        + '<div style="flex:1;min-width:220px;max-width:420px;">'
+        +   [5, 4, 3, 2, 1].map(function (i) {
+              const c = s.distribution[i] || 0;
+              return '<div style="display:flex;align-items:center;gap:0.6rem;font-size:0.7rem;margin:0.15rem 0;">'
+                + '<span style="width:1.6rem;color:var(--cream-dim,#8a7a62);">' + i + '★</span>'
+                + '<span style="flex:1;height:8px;border-radius:99px;background:rgba(201,168,76,0.12);overflow:hidden;">'
+                +   '<span style="display:block;height:100%;width:' + (c / max * 100) + '%;background:' + (i >= 4 ? '#6dbf6d' : i === 3 ? '#e0b060' : '#e06060') + ';"></span></span>'
+                + '<span style="width:2rem;text-align:right;color:#f0e8d8;">' + c + '</span></div>';
+            }).join('')
+        + '</div></div>'
+      : '';
+    if (!data.feedback.length) {
+      msg.textContent = s.count ? 'No ratings match this filter.' : 'No ratings yet. They appear here as customers rate their chats.';
+      return;
+    }
+    msg.textContent = data.feedback.length + ' shown, newest first';
+    list.innerHTML = data.feedback.map(function (r) {
+      const when = new Date(r.updated_at || r.created_at).toLocaleString('en-IN');
+      const border = r.rating <= 2 ? 'rgba(224,96,96,0.45)' : r.rating === 3 ? 'rgba(224,176,96,0.4)' : 'rgba(201,168,76,0.16)';
+      return '<div style="border:1px solid ' + border + ';border-radius:8px;padding:0.8rem 0.9rem;margin-bottom:0.6rem;">'
+        + '<div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center;">'
+        +   '<span style="font-size:1rem;">' + inkStars(r.rating) + '</span>'
+        +   '<span style="font-size:0.62rem;color:var(--cream-dim,#8a7a62);">' + esc(when)
+        +     (r.page_url ? ' · ' + esc(r.page_url) : '') + (r.turns ? ' · ' + r.turns + ' question' + (r.turns === 1 ? '' : 's') : '') + '</span>'
+        + '</div>'
+        + (r.comment
+            ? '<div style="font-size:0.82rem;color:#f0e8d8;line-height:1.55;margin-top:0.45rem;white-space:pre-wrap;">“' + esc(r.comment) + '”</div>'
+            : '<div style="font-size:0.7rem;color:var(--cream-dim,#8a7a62);margin-top:0.35rem;">No comment</div>')
+        + '<button class="btn-outline" style="margin-top:0.6rem;font-size:0.64rem;padding:0.35rem 0.8rem;" '
+        +   'data-session="' + esc(r.session_id) + '" onclick="toggleInkAiChat(this)">💬 Show the chat</button>'
+        + '<div class="ink-fb-chat" hidden style="margin-top:0.6rem;"></div>'
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    msg.style.color = '#e06060';
+    msg.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function toggleInkAiChat(btn) {
+  const box = btn.nextElementSibling;
+  if (!box) return;
+  if (!box.hidden) { box.hidden = true; btn.textContent = '💬 Show the chat'; return; }
+  box.hidden = false;
+  btn.textContent = '▴ Hide the chat';
+  if (box.dataset.loaded) return;
+  box.innerHTML = '<div style="font-size:0.7rem;color:var(--cream-dim,#8a7a62);">Loading…</div>';
+  try {
+    const res = await adminFetch('/.netlify/functions/ink-ai-feedback?session=' + encodeURIComponent(btn.dataset.session));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    box.dataset.loaded = '1';
+    if (!data.conversation.length) { box.innerHTML = '<div style="font-size:0.7rem;color:var(--cream-dim,#8a7a62);">No messages found for this chat.</div>'; return; }
+    box.innerHTML = data.conversation.map(function (m) {
+      return '<div style="margin:0.35rem 0;padding:0.5rem 0.7rem;border-radius:8px;background:rgba(109,191,109,0.08);font-size:0.76rem;color:#f0e8d8;">'
+        + '<b style="font-size:0.62rem;color:#6dbf6d;">CUSTOMER</b><br>' + esc(m.question) + '</div>'
+        + '<div style="margin:0.35rem 0 0.7rem 1.2rem;padding:0.5rem 0.7rem;border-radius:8px;background:rgba(201,168,76,0.07);font-size:0.74rem;color:var(--cream-dim,#b5a595);white-space:pre-wrap;">'
+        + '<b style="font-size:0.62rem;color:#c9a84c;">INK AI' + (m.escalated ? ' · handed to a human' : '') + '</b><br>'
+        + esc(m.answer || '(no answer — the model call failed or the budget was reached)') + '</div>'
+        + '<button class="btn-outline" style="margin:0 0 0.6rem 1.2rem;font-size:0.6rem;padding:0.25rem 0.7rem;" '
+        +   'data-q="' + esc(m.question) + '" onclick="teachFromFeedback(this)">✎ Teach a better answer</button>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div style="font-size:0.7rem;color:#e06060;">Error: ' + esc(e.message) + '</div>';
+  }
+}
+
+/** Open a small editor under the question; saving appends it to Bot Instructions. */
+function teachFromFeedback(btn) {
+  if (btn.nextElementSibling && btn.nextElementSibling.classList.contains('ink-teach')) return;
+  const box = document.createElement('div');
+  box.className = 'ink-teach';
+  box.style.cssText = 'margin:0 0 0.8rem 1.2rem;';
+  box.innerHTML = '<textarea rows="3" placeholder="What should Ink AI say when asked this?" style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.6rem;font-size:0.76rem;border-radius:6px;"></textarea>'
+    + '<button class="btn-gold" style="margin-top:0.4rem;font-size:0.66rem;padding:0.4rem 1rem;">＋ Add to Ink AI</button> '
+    + '<span style="font-size:0.66rem;"></span>';
+  btn.after(box);
+  box.querySelector('button').addEventListener('click', function () {
+    addToInkAi(btn.dataset.q, box.querySelector('textarea').value, this, box.querySelector('span'));
+  });
+  box.querySelector('textarea').focus();
+}
+
+/**
+ * Append one Q/A to bot_settings.extra_instructions. Reads the live text
+ * first so a save from another tab is not overwritten, and refuses rather
+ * than letting bot-settings silently clip the end off at 8,000 characters.
+ */
+async function addToInkAi(question, answer, btn, out) {
+  answer = String(answer || '').trim();
+  if (!answer) { out.style.color = '#e06060'; out.textContent = 'Write the answer first.'; return; }
+  btn.disabled = true;
+  out.style.color = 'var(--cream-dim,#8a7a62)';
+  out.textContent = 'Saving…';
+  try {
+    const cur = await adminFetch('/.netlify/functions/bot-settings').then(r => r.json());
+    const base = String(cur.extra_instructions || '').replace(/\s+$/, '');
+    const entry = '- Q: ' + String(question || '').replace(/\s+/g, ' ').trim() + '\n  A: ' + answer.replace(/\n+/g, ' ');
+    if (base.includes(entry)) { out.style.color = '#6dbf6d'; out.textContent = '✓ Already in Ink AI.'; return; }
+    const next = (base ? base + '\n' : '') + entry;
+    if (next.length > 8000) throw new Error('Bot Instructions would pass 8,000 characters. Tidy them in the Bot Instructions tab first.');
+    const res = await adminFetch('/.netlify/functions/bot-settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ extra_instructions: next }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+    out.style.color = '#6dbf6d';
+    out.textContent = '✓ Added. Ink AI uses it within a minute.';
+    btn.textContent = '✓ Added';
+    if (typeof loadBotSettings === 'function') loadBotSettings();
+  } catch (e) {
+    btn.disabled = false;
+    out.style.color = '#e06060';
+    out.textContent = e.message;
+  }
+}
+
+async function runInkAiImprove(btn) {
+  const box = document.getElementById('inkImproveResult');
+  const days = (document.getElementById('inkImproveDays') || {}).value || '30';
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Reading questions…';
+  box.innerHTML = '<div style="font-size:0.74rem;color:var(--cream-dim,#8a7a62);padding:1rem 0;">Reading every question and low rating — this takes 20–40 seconds.</div>';
+  try {
+    const res = await adminFetch('/.netlify/functions/ink-ai-improve', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ days: Number(days) }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const c = data.counts || {};
+    let html = '<div style="border:1px solid rgba(201,168,76,0.2);border-radius:10px;padding:0.9rem 1rem;margin-bottom:1rem;">'
+      + '<div style="font-size:0.66rem;color:var(--cream-dim,#8a7a62);margin-bottom:0.35rem;">'
+      + (c.questions || 0) + ' questions · ' + (c.handed_off || 0) + ' handed to a human · ' + (c.low_rated || 0) + ' from 1–3★ chats · last ' + (c.days || days) + ' days</div>'
+      + '<div style="font-size:0.82rem;color:#f0e8d8;line-height:1.6;">' + esc(data.summary || '') + '</div></div>';
+    html += (data.themes || []).map(function (t, i) {
+      const good = t.status === 'answered_well';
+      const tag = good
+        ? '<span style="color:#6dbf6d;font-size:0.62rem;font-weight:700;">✓ ANSWERED WELL</span>'
+        : t.needs_owner_input
+          ? '<span style="color:#e0b060;font-size:0.62rem;font-weight:700;">? NEEDS YOUR ANSWER</span>'
+          : '<span style="color:#e06060;font-size:0.62rem;font-weight:700;">⚠ NEEDS A BETTER ANSWER</span>';
+      const q = t.examples && t.examples[0] ? t.examples[0] : t.topic;
+      return '<div style="border:1px solid ' + (good ? 'rgba(201,168,76,0.14)' : 'rgba(224,176,96,0.35)') + ';border-radius:8px;padding:0.85rem 0.95rem;margin-bottom:0.7rem;">'
+        + '<div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center;">'
+        +   '<b style="font-size:0.88rem;color:#f0e8d8;">' + esc(t.topic) + '</b>' + tag + '</div>'
+        + '<div style="font-size:0.66rem;color:var(--cream-dim,#8a7a62);margin-top:0.25rem;">' + t.count + ' asked'
+        +   (t.handed_off ? ' · ' + t.handed_off + ' handed off' : '') + (t.low_rated ? ' · ' + t.low_rated + ' low-rated' : '') + '</div>'
+        + (t.examples && t.examples.length ? '<ul style="margin:0.5rem 0 0 1rem;padding:0;font-size:0.74rem;color:#d8ccb8;line-height:1.5;">'
+            + t.examples.map(e => '<li>“' + esc(e) + '”</li>').join('') + '</ul>' : '')
+        + (t.problem ? '<div style="font-size:0.72rem;color:#e0b060;margin-top:0.45rem;">' + esc(t.problem) + '</div>' : '')
+        + (good ? '' :
+            '<div style="font-size:0.66rem;color:var(--cream-dim,#8a7a62);margin-top:0.6rem;">'
+            + (t.needs_owner_input ? esc(t.owner_question || 'What should Ink AI say here?') : 'Suggested answer — edit before adding:') + '</div>'
+            + '<textarea id="inkImp' + i + '" rows="3" style="width:100%;margin-top:0.3rem;background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.6rem;font-size:0.76rem;border-radius:6px;">'
+            + esc(t.suggested_answer || '') + '</textarea>'
+            + '<button class="btn-gold" style="margin-top:0.4rem;font-size:0.66rem;padding:0.4rem 1rem;" data-q="' + esc(q) + '" '
+            +   'onclick="addToInkAi(this.dataset.q, document.getElementById(\'inkImp' + i + '\').value, this, this.nextElementSibling)">＋ Add to Ink AI</button> '
+            + '<span style="font-size:0.66rem;"></span>')
+        + '</div>';
+    }).join('');
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div style="font-size:0.74rem;color:#e06060;padding:0.6rem 0;">Error: ' + esc(e.message) + '</div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+</script>
+
 
 <script>
 // ── Bot Instructions (edit the WhatsApp bot's extra rules / FAQ) ─────────────
@@ -12092,7 +12356,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','npcancelled','rtorefunds','botinbox','bookreq','insights','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','npcancelled','rtorefunds','botinbox','bookreq','insights','inkai','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -13287,6 +13551,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();
   if (tab === 'bot' && _authed) { loadBotSettings(); loadInkAiQuestions(false); }
+  if (tab === 'inkai' && _authed) loadInkAiFeedback();
   if (tab === 'reports') initReports();
   if (tab === 'profit' && _authed) loadProfit();
   if (tab === 'adminaccess' && adminRole === 'owner') { loadAdminUsers(); loadGmailStatus(); }

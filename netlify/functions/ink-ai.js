@@ -461,3 +461,9 @@ module.exports.TABLE = TABLE;
 module.exports.STORE_FACTS = STORE_FACTS;        // exported for the tests
 module.exports.sanitiseMessages = sanitiseMessages;
 module.exports.catalogueContext = catalogueContext;
+// Shared with ink-ai-feedback.js (same per-IP limiter) and ink-ai-improve.js
+// (same monthly ceiling -- an admin analysis is billed to the same account).
+module.exports.overEdgeLimit = overEdgeLimit;
+module.exports.overBudget = overBudget;
+module.exports.recordSpend = recordSpend;
+module.exports.ALLOWED_ORIGINS = ALLOWED_ORIGINS;

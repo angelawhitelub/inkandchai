@@ -22,6 +22,8 @@
   'use strict';
 
   var API = '/.netlify/functions/ink-ai';
+  var FEEDBACK_API = '/.netlify/functions/ink-ai-feedback';
+  var RKEY = 'iac_ink_ai_rated';
   var WA = 'https://wa.me/917678400508';
   var KEY = 'iac_ink_ai_v1';
 
@@ -48,7 +50,7 @@
   }
 
   var built = false, open_ = false;
-  var root, panel, log, input, sendBtn, fab, chips;
+  var root, panel, log, input, sendBtn, fab, chips, rate;
   var history = [];
   var busy = false;
 
@@ -125,6 +127,31 @@
     '.ink-note{flex:none;padding:0 1rem 0.7rem;font-size:0.6rem;line-height:1.5;color:var(--cream-dim,#a09080);text-align:center}',
     '.ink-note a{color:var(--gold-dim,#b09a5e)}',
 
+    // Star rating. Asked once per chat, only after Ink AI has actually answered
+    // something -- a rating of a greeting measures nothing.
+    '.ink-rate[hidden]{display:none!important}',
+    '.ink-rate{flex:none;margin:0 1rem 0.6rem;padding:0.65rem 0.8rem;border-radius:12px;',
+      'border:1px solid var(--border,rgba(201,168,76,0.22));background:rgba(201,168,76,0.06);font-size:0.74rem}',
+    '.ink-rate-row{display:flex;align-items:center;justify-content:space-between;gap:0.6rem;flex-wrap:wrap}',
+    '.ink-rate-q{font-weight:600}',
+    '.ink-stars{display:flex;gap:2px}',
+    '.ink-star{background:none;border:none;padding:0 2px;cursor:pointer;font-size:1.45rem;line-height:1;',
+      'color:rgba(160,144,128,0.45);transition:color .12s,transform .12s;font-family:system-ui,sans-serif}',
+    '.ink-star.on{color:#e3a72f}',
+    '.ink-star:hover{transform:scale(1.15)}',
+    '.ink-star:focus-visible{outline:2px solid #e3a72f;outline-offset:2px;border-radius:4px}',
+    '.ink-rate textarea{display:block;width:100%;margin-top:0.55rem;min-height:58px;resize:vertical;font:inherit;',
+      'font-size:0.76rem;color:inherit;background:rgba(255,255,255,0.05);border:1px solid var(--border,rgba(201,168,76,0.25));',
+      'border-radius:10px;padding:0.5rem 0.65rem;box-sizing:border-box}',
+    '.ink-rate textarea:focus{outline:none;border-color:var(--gold,#c9a84c)}',
+    '.ink-rate-actions{display:flex;justify-content:flex-end;gap:0.4rem;margin-top:0.45rem}',
+    '.ink-rate-actions button{font:inherit;font-size:0.72rem;font-weight:600;border-radius:999px;padding:0.4rem 0.9rem;cursor:pointer}',
+    '.ink-rate-skip{background:none;border:1px solid var(--border,rgba(201,168,76,0.3));color:inherit}',
+    '.ink-rate-send{border:none;background:linear-gradient(135deg,#e2c46a,#c9a84c);color:#141008}',
+    '.ink-rate-thanks{text-align:center;font-weight:600}',
+    'html[data-theme="light"] .ink-rate{background:#fff5e2}',
+    'html[data-theme="light"] .ink-rate textarea{background:#fff}',
+
     'html[data-theme="light"] .ink-panel{background:#fffaf0;color:#2a2018}',
     'html[data-theme="light"] .ink-log{color:#3a2e22}',
     'html[data-theme="light"] .ink-foot input{background:rgba(0,0,0,0.04)}',
@@ -199,6 +226,111 @@
     log.scrollTop = log.scrollHeight;
   }
 
+  // ── Star rating ────────────────────────────────────────────────────────
+  function ratedState() {
+    try { return JSON.parse(sessionStorage.getItem(RKEY) || 'null'); } catch (e) { return null; }
+  }
+  function setRatedState(v) {
+    try { sessionStorage.setItem(RKEY, JSON.stringify(v)); } catch (e) { /* fine */ }
+  }
+
+  /** Fire-and-forget. A rating that fails to save must never show the customer an error. */
+  function postFeedback(rating, comment) {
+    try {
+      fetch(FEEDBACK_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({
+          session_id: sessionId(),
+          rating: rating,
+          comment: comment || '',
+          page_url: location.pathname,
+          turns: history.filter(function (m) { return m.role === 'user'; }).length,
+        }),
+      }).catch(function () { /* fine */ });
+    } catch (e) { /* fine */ }
+  }
+
+  function paintStars(n) {
+    rate.querySelectorAll('.ink-star').forEach(function (b, i) {
+      b.classList.toggle('on', i < n);
+      b.textContent = i < n ? '\u2605' : '\u2606';
+    });
+  }
+
+  function thank() {
+    rate.innerHTML = '<div class="ink-rate-thanks">Thank you \u2728 Your feedback helps Ink AI get better.</div>';
+    setTimeout(function () { rate.hidden = true; }, 2600);
+  }
+
+  function askComment(n) {
+    var low = n <= 3;
+    var box = document.createElement('div');
+    box.innerHTML =
+      '<textarea maxlength="1000" placeholder="' + (low
+        ? 'What went wrong? What should Ink AI have said? (optional)'
+        : 'Anything we could do better? (optional)') + '" aria-label="Your feedback"></textarea>'
+      + '<div class="ink-rate-actions">'
+      +   '<button type="button" class="ink-rate-skip">Skip</button>'
+      +   '<button type="button" class="ink-rate-send">Send feedback</button>'
+      + '</div>';
+    var old = rate.querySelector('.ink-rate-more');
+    if (old) old.remove();
+    box.className = 'ink-rate-more';
+    rate.appendChild(box);
+    var ta = box.querySelector('textarea');
+    box.querySelector('.ink-rate-skip').addEventListener('click', function () {
+      setRatedState({ rating: n, done: true });
+      thank();
+    });
+    box.querySelector('.ink-rate-send').addEventListener('click', function () {
+      var c = ta.value.trim();
+      if (c) postFeedback(n, c);
+      setRatedState({ rating: n, done: true });
+      thank();
+    });
+    if (window.matchMedia('(min-width:760px)').matches) ta.focus();
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function maybeShowRate() {
+    if (!rate) return;
+    var st = ratedState();
+    var answered = history.some(function (m) { return m.role === 'assistant'; });
+    if (!answered || (st && st.done)) { rate.hidden = true; return; }
+    if (!rate.hidden) return;
+    rate.innerHTML =
+      '<div class="ink-rate-row">'
+      +   '<span class="ink-rate-q">How helpful was Ink AI?</span>'
+      +   '<span class="ink-stars" role="radiogroup" aria-label="Rate Ink AI from 1 to 5 stars">'
+      +     [1, 2, 3, 4, 5].map(function (i) {
+              return '<button type="button" class="ink-star" role="radio" aria-checked="false" '
+                + 'data-v="' + i + '" aria-label="' + i + ' star' + (i > 1 ? 's' : '') + '">\u2606</button>';
+            }).join('')
+      +   '</span>'
+      + '</div>';
+    var stars = rate.querySelectorAll('.ink-star');
+    stars.forEach(function (b) {
+      var v = Number(b.dataset.v);
+      b.addEventListener('mouseenter', function () { paintStars(v); });
+      b.addEventListener('focus', function () { paintStars(v); });
+      b.addEventListener('click', function () {
+        stars.forEach(function (x) { x.setAttribute('aria-checked', String(Number(x.dataset.v) === v)); });
+        rate.dataset.v = String(v);
+        paintStars(v);
+        postFeedback(v, '');                 // the stars count even if they skip the comment
+        setRatedState({ rating: v, done: false });
+        askComment(v);
+      });
+    });
+    rate.querySelector('.ink-stars').addEventListener('mouseleave', function () {
+      paintStars(Number(rate.dataset.v || 0));
+    });
+    if (st && st.rating) { rate.dataset.v = String(st.rating); paintStars(st.rating); askComment(st.rating); }
+    rate.hidden = false;
+  }
+
   async function send(text) {
     text = String(text || '').trim();
     if (!text || busy) return;
@@ -232,6 +364,7 @@
       if (res.ok) history.push({ role: 'assistant', content: reply });
       if (data.escalate || !res.ok) escalateRow();
       save();
+      maybeShowRate();
     } catch (e) {
       thinking.className = 'ink-msg bot err';
       thinking.innerHTML = render('I could not reach our server. Please check your connection, or message us on WhatsApp.');
@@ -276,6 +409,7 @@
       +   '<button class="ink-x" type="button" aria-label="Close">✕</button>'
       + '</div>'
       + '<div class="ink-log" aria-live="polite"></div>'
+      + '<div class="ink-rate" hidden></div>'
       + '<div class="ink-chips" hidden></div>'
       + '<div class="ink-foot">'
       +   '<input type="text" placeholder="Ask about a book, shipping, returns…" aria-label="Your question" maxlength="700"/>'
@@ -291,6 +425,7 @@
     panel = root;
     log = root.querySelector('.ink-log');
     chips = root.querySelector('.ink-chips');
+    rate = root.querySelector('.ink-rate');
     input = root.querySelector('.ink-foot input');
     sendBtn = root.querySelector('.ink-send');
 
@@ -303,6 +438,7 @@
     history = restore();
     if (history.length) {
       history.forEach(function (m) { bubble(m.role, m.content); });
+      maybeShowRate();
     } else {
       bubble('assistant', 'Hi 👋 I’m Ink AI. Ask me anything about our books, '
         + 'delivery, payments or returns — or pick one below.');
