@@ -249,12 +249,19 @@ const { applyPushBack, metaValue } = require('../woo-channel').__test;
 const ORDER_NO = 'IC-20260917-C6WPE';
 const WOO_ID = numericId(ORDER_NO);
 
-function stubDb(row, captured) {
+// A paging fake: `rows` is the whole lookup window, newest first, served in
+// .range() slices the way PostgREST does; .eq().maybeSingle() fetches one.
+function stubDb(rowOrRows, captured, reads = []) {
+  const rows = Array.isArray(rowOrRows) ? rowOrRows : (rowOrRows ? [rowOrRows] : []);
+  let byId = null;
   return {
-    from() { return this; },
+    from() { byId = null; return this; },
     select() { return this; },
     gte() { return this; },
-    limit() { return Promise.resolve({ data: row ? [row] : [], error: null }); },
+    order() { return this; },
+    range(a, b) { reads.push([a, b]); return Promise.resolve({ data: rows.slice(a, b + 1), error: null }); },
+    eq(col, v) { byId = v; return this; },
+    maybeSingle() { return Promise.resolve({ data: rows.find(r => r.id === byId) || null, error: null }); },
     update(payload) { captured.push(payload); return { eq: () => Promise.resolve({ error: null }) }; },
   };
 }
@@ -502,3 +509,24 @@ test('a non-empty batch still requires the consumer pair', async () => {
     assert.deepEqual(prepaidGateway('razorpay'), { slug: 'razorpay', title: 'razorpay' }, 'a slug alone is its own title');
   });
 }
+
+test('a push for an order beyond the first 1,000 in the window still matches', async () => {
+  // 27 Sept 2026: the window held ~1,060 orders and a single unordered
+  // .limit(1000) dropped the rest, so 10 booked orders never got their AWB.
+  const filler = Array.from({ length: 2400 }, (_, i) => ({ id: `f${i}`, razorpay_order_id: `IC-20260901-F${String(i).padStart(4, '0')}`, status: 'shipped' }));
+  const target = { id: 'uuid-far', razorpay_order_id: ORDER_NO, status: 'cod_pending' };
+  const captured = []; const reads = [];
+  const res = await applyPushBack(stubDb([...filler, target], captured, reads), WOO_ID, pushed('On Hold', '143449610845219'));
+  assert.equal(res.applied, true);
+  assert.equal(captured[0].tracking_id, '143449610845219');
+  assert.equal(reads.length, 3, 'walked all three pages');
+});
+
+test('an unknown woo id walks the window once and stops', async () => {
+  const filler = Array.from({ length: 1500 }, (_, i) => ({ id: `f${i}`, razorpay_order_id: `IC-20260901-G${i}`, status: 'paid' }));
+  const reads = [];
+  const res = await applyPushBack(stubDb(filler, [], reads), 12345, pushed('On Hold', '143449610845219'));
+  assert.equal(res.applied, false);
+  assert.match(res.reason, /no order matches/);
+  assert.equal(reads.length, 2);
+});

@@ -524,17 +524,41 @@ function metaValue(payload, key) {
  * reaches further back than WOO_FEED_SINCE. That bounds the candidates to the
  * same window we serve -- a few hundred rows -- whatever their status now is.
  */
+//
+// The window is walked in full, newest first, reading only the two id columns.
+// It used to be one `.limit(1000)` with no ORDER BY: once the window passed
+// 1,000 orders (around 27 Sept 2026) Postgres returned whichever 1,000 came
+// first on disk -- the OLDEST -- so the newest orders, exactly the ones being
+// booked, stopped matching. Their push-backs were dropped as "no order
+// matches", XpressBees does not retry, and 10 booked shipments sat in admin as
+// unshipped with no AWB (and bookable again with another courier).
+const RESOLVE_PAGE = 1000;
+
 async function resolveByWooId(supabase, wooId) {
   const since = process.env.WOO_FEED_SINCE || DEFAULT_SINCE;
-  const { data, error } = await supabase
-    .from('orders')
-    .select('id, razorpay_order_id, status, tracking_id, tracking_url, courier_name, '
-          + 'customer_name, customer_phone, customer_email, cart_items')
-    .gte('created_at', since)
-    .limit(1000);
-  if (error) throw new Error(`lookup failed: ${error.message}`);
   const want = Number(wooId);
-  return (data || []).find((o) => numericId(o.razorpay_order_id || o.id) === want) || null;
+  for (let from = 0; ; from += RESOLVE_PAGE) {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('id, razorpay_order_id')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, from + RESOLVE_PAGE - 1);
+    if (error) throw new Error(`lookup failed: ${error.message}`);
+    const hit = (data || []).find((o) => numericId(o.razorpay_order_id || o.id) === want);
+    if (hit) {
+      const { data: order, error: oErr } = await supabase
+        .from('orders')
+        .select('id, razorpay_order_id, status, tracking_id, tracking_url, courier_name, '
+              + 'customer_name, customer_phone, customer_email, cart_items')
+        .eq('id', hit.id)
+        .maybeSingle();
+      if (oErr) throw new Error(`lookup failed: ${oErr.message}`);
+      return order || null;
+    }
+    if (!data || data.length < RESOLVE_PAGE) return null;
+  }
 }
 
 async function applyPushBack(supabase, wooId, payload) {
