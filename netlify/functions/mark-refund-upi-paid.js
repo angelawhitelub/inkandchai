@@ -143,7 +143,7 @@ exports.handler = async (event) => {
         try {
           steps.nimbuspost = repl.tracking_id
             ? { what: `AWB ${repl.tracking_id}`, ...(await cancelNimbusShipment(repl.tracking_id)) }
-            : { what: `order ${displayId}`, ...(await cancelNimbusOrder(displayId)) };
+            : { what: `order ${displayId}`, ...(await cancelNimbusOrder(displayId, { pushed: !!repl.nimbus_pushed_at })) };
         } catch (e) {
           steps.nimbuspost = { ok: false, error: e.message };
         }

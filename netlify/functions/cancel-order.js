@@ -332,7 +332,7 @@ exports.handler = async (event) => {
       npResult = await cancelNimbusShipment(order.tracking_id);
     } else {
       npWhat = `order ${displayId}`;
-      npResult = await cancelNimbusOrder(displayId);
+      npResult = await cancelNimbusOrder(displayId, { pushed: !!order.nimbus_pushed_at });
     }
     if (npResult.ok) {
       console.log(`[cancel-order] NP ${npWhat} cancelled (idempotent=${!!npResult.alreadyCancelled})`);

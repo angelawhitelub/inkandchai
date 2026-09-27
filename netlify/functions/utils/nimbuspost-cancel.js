@@ -78,8 +78,17 @@ async function cancelNimbusShipment(awb) {
  * this is best-effort: on any non-success the caller falls back to alerting the
  * store owner to cancel the order manually in the panel. Never throws.
  *
+ * `opts.pushed` is whether our row says the order was ever pushed
+ * (`!!order.nimbus_pushed_at`). A COD order is only pushed once auto-push or the
+ * push sweep gets to it, so one cancelled early (or while NIMBUS_AUTO_PUSH is
+ * off) was never in the panel at all. Not finding a never-pushed order is
+ * therefore success -- there is nothing upstream to cancel -- instead of a
+ * false "cancel this manually" alert. When the stamp is set (or unknown) a miss
+ * is still reported, since that order really should be in the panel.
+ *
  * @param {string} orderNumber  the IC-… order id used as order_number on push
- * @returns {Promise<{ok:boolean, alreadyCancelled?:boolean, error?:string, data?:any}>}
+ * @param {{pushed?: boolean}} [opts]
+ * @returns {Promise<{ok:boolean, alreadyCancelled?:boolean, notPushed?:boolean, error?:string, data?:any}>}
  */
 const NP_PANEL_BASE = 'https://ship.nimbuspost.com/api';
 const NP_PANEL_ORDERS_URL = `${NP_PANEL_BASE}/orders`;
@@ -158,7 +167,7 @@ async function findNimbusOrder(orderNumber, apiKey) {
   return null;
 }
 
-async function cancelNimbusOrder(orderNumber) {
+async function cancelNimbusOrder(orderNumber, { pushed } = {}) {
   const num = String(orderNumber || '').trim();
   if (!num) return { ok: false, error: 'No order_number provided' };
   const key = process.env.NIMBUSPOST_API_KEY;
@@ -167,6 +176,7 @@ async function cancelNimbusOrder(orderNumber) {
   try {
     const panelOrder = await findNimbusOrder(num, key);
     if (!panelOrder) {
+      if (pushed === false) return { ok: true, notPushed: true };
       return { ok: false, error: `NimbusPost panel order not found for order_number ${num}` };
     }
 

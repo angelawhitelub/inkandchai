@@ -1206,7 +1206,7 @@ async function cancelOrderViaBot(phone, args = {}) {
     const displayId = target.razorpay_order_id || target.id;
     const npResult = target.tracking_id
       ? await cancelNimbusShipment(target.tracking_id)
-      : await cancelNimbusOrder(displayId);
+      : await cancelNimbusOrder(displayId, { pushed: !!target.nimbus_pushed_at });
     if (!npResult.ok) {
       console.error(`[WHATSAPP-CANCEL] NimbusPost cancel failed for ${displayId}: ${npResult.error}`);
     }
