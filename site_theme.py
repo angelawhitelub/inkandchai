@@ -73,7 +73,7 @@ def theme_tag(href: str) -> str:
         + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>'
         + f'<link rel="stylesheet" href="{FONTS_URL}"/>'
         + f'<link rel="stylesheet" href="{href}"/>'
-        + '<script src="/js/site-feedback.js" defer></script>'
+        + '<script src="/js/site-feedback.js" defer></script><script src="/js/ad-click.js" defer></script>'
         + _CLOSE
     )
 

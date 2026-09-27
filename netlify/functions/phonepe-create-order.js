@@ -27,6 +27,7 @@ const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 const { freedomSaleDiscount } = require('./utils/freedom-sale');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
+const { recordAdClick } = require('./utils/ad-click');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
 
 const CORS = {
@@ -269,6 +270,8 @@ exports.handler = async (event) => {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { error: dbErr } = await supabase.from('orders').insert(orderRow);
+    // Google Ads click or not, for the retraction feed. Never affects the order.
+    if (!dbErr) await recordAdClick(supabase, orderRow.razorpay_order_id, body.ad_click);
     // Marketing consent, if the customer ticked the box. Never blocks the order.
     if (customer && customer.whatsapp_optin) {
       await recordMarketingOptIn(supabase, customer.phone, 'checkout_phonepe');

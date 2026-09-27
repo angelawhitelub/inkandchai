@@ -9588,6 +9588,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
         payment_mode: isPartial ? 'partial_cod' : 'online',
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
+        ad_click: (window.iacAdClick ? window.iacAdClick() : null),
       }),
     });
     const data = await res.json();
@@ -9682,6 +9683,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
               discount: isPartial ? 0 : totals.discount,
               discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
               payment_mode: isPartial ? 'partial_cod' : 'online',
+              ad_click: (window.iacAdClick ? window.iacAdClick() : null),
             }),
           });
           const verifiedOrder = await vRes.json().catch(() => ({}));
@@ -9746,6 +9748,7 @@ async function doCOD(addr) {
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
         amount: totals.total, shipping: totals.shipping,
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
+        ad_click: (window.iacAdClick ? window.iacAdClick() : null),
       }),
     });
     const data = await res.json();

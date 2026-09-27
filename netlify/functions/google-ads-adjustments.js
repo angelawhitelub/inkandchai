@@ -60,10 +60,23 @@ function timingSafeEqual(a, b) {
 
 /** Every loss-status order in the window, paginated — `.select()` silently caps at 1000. */
 async function fetchLossOrders(supabase, sinceIso) {
+  try {
+    return await fetchLossOrderPages(supabase, sinceIso, true);
+  } catch (e) {
+    // orders.ad_click not added yet: run exactly as before rather than serve
+    // nothing, because an empty feed would leave every cancelled order counted.
+    if (!/ad_click/.test(e.message)) throw e;
+    console.warn('[google-ads-adjustments] orders.ad_click missing, not filtering by ad click');
+    return fetchLossOrderPages(supabase, sinceIso, false);
+  }
+}
+
+async function fetchLossOrderPages(supabase, sinceIso, withAdClick) {
   const columns = [
     'razorpay_order_id', 'razorpay_payment_id', 'status', 'source',
     'amount_paise', 'created_at', 'cancelled_at', 'auto_cancelled_at',
     'refund_updated_at', 'shipment_moved_at', 'last_nimbuspost_event_at',
+    ...(withAdClick ? ['ad_click'] : []),
   ].join(',');
 
   const out = [];

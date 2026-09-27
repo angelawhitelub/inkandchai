@@ -10,6 +10,7 @@ const { afterResponse } = require('./utils/after-response');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
+const { recordAdClick } = require('./utils/ad-click');
 const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { nimbusAutoPushOn } = require('./utils/nimbus-push-once');
@@ -234,6 +235,8 @@ exports.handler = async (event, context) => {
     }
 
     const { error } = await supabase.from('orders').insert(orderRow);
+    // Google Ads click or not, for the retraction feed. Never affects the order.
+    if (!error) await recordAdClick(supabase, orderRow.razorpay_order_id, body.ad_click);
     // Marketing consent, if the customer ticked the box. Never blocks the order.
     if (customer && customer.whatsapp_optin) {
       await recordMarketingOptIn(supabase, customer.phone, 'checkout_cod');

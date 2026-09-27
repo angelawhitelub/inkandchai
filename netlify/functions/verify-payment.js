@@ -10,6 +10,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { afterResponse } = require('./utils/after-response');
 const { sendEmail }    = require('./utils/email');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
+const { recordAdClick } = require('./utils/ad-click');
 const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
@@ -251,6 +252,8 @@ exports.handler = async (event, context) => {
     }
 
     const { error } = await supabase.from('orders').insert(orderRow);
+    // Google Ads click or not, for the retraction feed. Never affects the order.
+    if (!error) await recordAdClick(supabase, orderRow.razorpay_order_id, body.ad_click);
 
     if (error) {
       // Unique-violation on razorpay_payment_id (DB index) means the webhook just
