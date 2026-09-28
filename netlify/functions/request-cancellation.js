@@ -2,11 +2,10 @@
  * Netlify Function: request-cancellation
  * POST /.netlify/functions/request-cancellation   { order_id, reason? }
  *
- * Customer-facing "please cancel this" REQUEST, for BOTH COD and prepaid, and
- * only BEFORE the order ships. Once it has shipped (any courier status, an AWB
- * on the order, or recorded movement) cancellation has expired: the website
- * says so and this endpoint refuses, so no request can be sent for a parcel
- * that is already with the courier.
+ * RETIRED. Customers can no longer request a cancellation: My Orders shows
+ * "Cancellation expired" wherever the instant cancel (cancel-order.js) is not
+ * available, and this endpoint refuses every request after the ownership check.
+ * It used to record a request and alert the owner at any live status.
  *
  * CRITICAL: this is a REQUEST ONLY. It does NOT:
  *   - change order.status,
@@ -98,12 +97,14 @@ exports.handler = async (event) => {
   if (status === 'delivered') {
     return json(422, { error: 'This order has already been delivered. Please use the Return option instead.' });
   }
-  if (hasShipped(order)) {
-    return json(422, {
-      error: 'Cancellation has expired — this order has already been shipped. If there is a problem once it arrives, you can request a return.',
-      expired: true,
-    });
-  }
+  // Customers can no longer request a cancellation at all. Everything below
+  // this line is kept only so the history of the old flow is readable.
+  return json(422, {
+    error: hasShipped(order)
+      ? 'Cancellation has expired — this order has already been shipped. If there is a problem once it arrives, you can request a return.'
+      : 'Cancellation has expired for this order. If there is a problem once it arrives, you can request a return.',
+    expired: true,
+  });
 
   // Idempotent: don't spam the owner if they already asked.
   if (order.cancellation_requested_at) {

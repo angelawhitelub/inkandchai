@@ -2080,15 +2080,13 @@
     }
   };
 
-  // ── Request cancellation (before shipping only) ─────────────────────────────
-  // Shown only when the instant-cancel block above is NOT available. This is a
-  // REQUEST — it never cancels or refunds; it alerts the team to act manually.
-  //
-  // Once the order has shipped there is nothing left to request: the parcel is
-  // with the courier, so the card says "Cancellation expired" and offers no
-  // button, and request-cancellation.js refuses the same orders server-side.
-  // "Shipped" is any courier status, an AWB on the order, or recorded movement.
-  // The instant cancel above (COD before pickup) is decided first and untouched.
+  // ── No cancellation requests ─────────────────────────────────────────────────
+  // Shown only when the instant-cancel block above is NOT available (prepaid
+  // past its 30-minute window, or anything that has shipped). There used to be
+  // a "Request Cancellation" button here that alerted the team; customers can
+  // no longer request one at all, so the card just says the window is closed.
+  // request-cancellation.js refuses every request server-side as well. The
+  // instant cancel above (prepaid 30 min, COD before pickup) is untouched.
   const SHIPPED_FOR_REQUEST = ['shipped', 'in_transit', 'out_for_delivery', 'rto', 'undelivered', 'lost'];
   function orderHasShipped(order) {
     const status = String(order.status || '').toLowerCase();
@@ -2098,23 +2096,15 @@
   function requestCancellationBlock(order) {
     const status = String(order.status || '').toLowerCase();
 
-    // Terminal / non-requestable states: nothing to request.
-    // Delivered uses the Return flow (rendered separately), so skip it here too.
+    // Terminal states: nothing to say. Delivered uses the Return flow instead.
     const NO_REQUEST = ['cancelled', 'refunded', 'refund_pending', 'refund_failed',
                         'partially_refunded', 'delivered'];
     if (NO_REQUEST.includes(status)) return '';
 
-    if (orderHasShipped(order)) {
-      return `
-        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
-                    font-size:0.6rem;color:#a09080;line-height:1.6;">
-          <span style="letter-spacing:0.14em;text-transform:uppercase;color:#e06060;">Cancellation expired</span>
-          <span style="display:block;margin-top:0.25rem;">Your order has been shipped, so it can no longer be cancelled. If there is a problem once it arrives, you can request a return.</span>
-        </div>`;
-    }
-
-    // Already asked — show a calm "under review" state, no button.
-    if (order.cancellation_requested_at) {
+    const shipped = orderHasShipped(order);
+    // A request sent before this change is still with the team: say so, until
+    // the order ships.
+    if (!shipped && order.cancellation_requested_at) {
       return `
         <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
                     font-size:0.6rem;color:#e8a030;line-height:1.6;">
@@ -2124,47 +2114,13 @@
 
     return `
       <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
-                  display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">
-        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
-          Need to cancel? Send us a request — we'll review it.
-        </div>
-        <button onclick="iacRequestCancellation('${escJs(order.id)}')"
-          id="reqcancel-btn-${escJs(order.id)}"
-          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
-                 padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,168,48,0.5);
-                 color:#e8a030;cursor:pointer;transition:all 0.2s;">
-          Request Cancellation
-        </button>
+                  font-size:0.6rem;color:#a09080;line-height:1.6;">
+        <span style="letter-spacing:0.14em;text-transform:uppercase;color:#e06060;">Cancellation expired</span>
+        <span style="display:block;margin-top:0.25rem;">${shipped
+          ? 'Your order has been shipped, so it can no longer be cancelled. If there is a problem once it arrives, you can request a return.'
+          : 'The cancellation window for this order has closed, and it is being prepared for dispatch. If there is a problem once it arrives, you can request a return.'}</span>
       </div>`;
   }
-
-  window.iacRequestCancellation = async function (orderId) {
-    const reason = prompt('Tell us briefly why you\'d like to cancel (optional). We\'ll review your request — the order will not be cancelled automatically.');
-    if (reason === null) return; // user hit Cancel on the prompt
-
-    const btn = document.getElementById(`reqcancel-btn-${orderId}`);
-    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-
-    try {
-      const sb = getSB();
-      const { data: { session } } = await sb.auth.getSession();
-      const token = session?.access_token || '';
-
-      const res = await fetch('/.netlify/functions/request-cancellation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ order_id: orderId, reason: String(reason || '').trim() }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Request failed');
-
-      alert(json.message || 'Your cancellation request has been sent. The order is not cancelled yet — we\'ll review it.');
-      await openMyOrders();
-    } catch (err) {
-      alert('Could not send request: ' + err.message);
-      if (btn) { btn.disabled = false; btn.textContent = 'Request Cancellation'; }
-    }
-  };
 
   function returnWindowInfo(order) {
     const status = String(order.status || '').toLowerCase();
@@ -2455,7 +2411,7 @@
     if (status === 'cod_pending' || status === 'cod_awaiting_confirmation') return true;
     if (order?.payment_status) return false;
     if (String(order?.razorpay_payment_id || '').trim()) return false;
-    return status === 'shipped';
+    return status === 'shipped' || status === 'delivered';
   }
 
   // A COD parcel was never paid for online, so if the missing book cannot be
@@ -2465,7 +2421,10 @@
   // never comes, leaving the money owed for a book that never shipped with
   // nowhere to go. report-missing-books refuses the report without it.
   function missUpiFieldHtml(order) {
-    if (!isCodOrder(order)) return '';
+    // The server's flag (get-my-orders) wins; the mirror is only a fallback for
+    // a response from before the flag existed.
+    const required = ('refund_upi_required' in order) ? !!order.refund_upi_required : isCodOrder(order);
+    if (!required) return '';
     return `
       <div style="border:1px solid rgba(201,168,76,0.25);background:rgba(201,168,76,0.05);padding:0.6rem 0.7rem;margin-bottom:0.6rem;">
         <div style="font-size:0.62rem;color:#f0e8d8;margin-bottom:0.3rem;">Your UPI ID <span style="color:#e8a030;">(required)</span></div>
@@ -2545,6 +2504,19 @@
         }),
       });
       const json = await res.json().catch(() => ({}));
+      // The server insists on a UPI ID this page did not ask for. Put the box
+      // on screen rather than leave the customer reading about a field that is
+      // not there (they typed it into the comment instead).
+      if (json.need_upi && !wrap.querySelector('.miss-upi')) {
+        const holder = document.createElement('div');
+        holder.innerHTML = missUpiFieldHtml({ refund_upi_required: true });
+        wrap.querySelector('.miss-comment')?.before(holder.firstElementChild);
+        msg.style.display = ''; msg.style.color = '#e06060';
+        msg.textContent = 'Please add your UPI ID in the box above — this order was Cash on Delivery, so it is the only way we can refund you if the book cannot be arranged.';
+        wrap.querySelector('.miss-upi')?.focus();
+        btn.disabled = false; btn.textContent = orig;
+        return;
+      }
       if (!res.ok || !json.success) throw new Error(json.error || 'Could not submit your report.');
       wrap.innerHTML = `
         <div style="padding-top:0.2rem;">

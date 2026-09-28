@@ -8,6 +8,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { isDefinitelyCod } = require('./utils/order-payment-kind');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -139,6 +140,11 @@ exports.handler = async (event) => {
       }
 
       orders.forEach(o => {
+        // The server's own answer to "will report-missing-books demand a UPI
+        // ID?", so My Orders shows the box exactly when it will be required --
+        // the same flag track-order already sends. A browser-side copy of this
+        // rule drifted once and hid a required field from COD customers.
+        o.refund_upi_required = isDefinitelyCod(o);
         if (returnMap[o.id]) o.return_request_status = returnMap[o.id];
         const rm = o.razorpay_order_id && replMap[o.razorpay_order_id];
         if (rm) { o.replacement_order_id = rm.replacement_order_id; o.replacement_status = rm.status; }
