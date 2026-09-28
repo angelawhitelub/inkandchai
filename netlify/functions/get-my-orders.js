@@ -9,6 +9,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
+const { quoteLateCancel } = require('./utils/prepaid-late-cancel');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -145,6 +146,16 @@ exports.handler = async (event) => {
         // the same flag track-order already sends. A browser-side copy of this
         // rule drifted once and hid a required field from COD customers.
         o.refund_upi_required = isDefinitelyCod(o);
+        // Prepaid cancellation after the 30-minute window: the server's own
+        // terms, so the button quotes exactly what cancel-prepaid-order pays.
+        // Offered only once sql/orders_late_cancel.sql has run: select('*')
+        // carries the column (as null) from then on, and before it the
+        // endpoint would refuse every click.
+        const lc = quoteLateCancel(o);
+        if (lc.eligible && 'late_cancel_at' in o) {
+          o.late_cancel = { refund_paise: lc.refundPaise, deduction_paise: lc.deductionPaise,
+                            books: lc.books, slab_kg: lc.slabKg, has_awb: lc.hasAwb };
+        }
         if (returnMap[o.id]) o.return_request_status = returnMap[o.id];
         const rm = o.razorpay_order_id && replMap[o.razorpay_order_id];
         if (rm) { o.replacement_order_id = rm.replacement_order_id; o.replacement_status = rm.status; }

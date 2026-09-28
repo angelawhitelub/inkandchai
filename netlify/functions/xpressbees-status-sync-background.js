@@ -50,6 +50,7 @@ const xb = require('./utils/xpressbees');
 const { interpret, SYNCABLE, TERMINAL, RANK } = require('./utils/xpressbees-status');
 const { autoRefundOnDelivery } = require('./utils/wrong-cod-refund');
 const { courierSaysCancelled, handleCourierCancelled, clearCourierCancelled } = require('./utils/courier-cancelled');
+const { sweepAwaitingReturn } = require('./utils/prepaid-late-cancel');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -228,6 +229,17 @@ exports.handler = async (event) => {
     }
   }
 
+  // ── Customers who cancelled after dispatch, waiting on their parcel ───────
+  // Refunded (minus shipping) once the courier shows it coming back. Every
+  // courier, not just XpressBees: the NimbusPost webhook moves its orders to
+  // rto itself, and this is simply the job that already runs every 15 minutes.
+  let lateCancel = null;
+  try {
+    lateCancel = await sweepAwaitingReturn(supabase, { dryRun });
+  } catch (e) {
+    lateCancel = { errors: [e.message] };
+  }
+
   const to = (s) => changed.filter((c) => c.to === s).length;
   const out = {
     wrong_cod_refunds: refunds.paid.length,
@@ -247,6 +259,7 @@ exports.handler = async (event) => {
     attention: recorded.filter((r) => r.attention),
     failures: failed,
     courier_cancelled: courierCancelled,
+    late_cancel_returns: lateCancel,
   };
   if (warn.migration) out.warning = warn.migration;
   if (warn.wrongCod) out.wrong_cod_warning = warn.wrongCod;

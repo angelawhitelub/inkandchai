@@ -76,8 +76,15 @@ function refundEmailHtml(order, amtPaise) {
 
 async function processOrder(supabase, order, force = false, reconcileOnly = false) {
   const displayId = order.razorpay_order_id || order.id;
-  const amountPaise = Number(order.amount_paise) || 0;
-  if (amountPaise <= 0) return { order: displayId, result: 'skip_no_amount' };
+  const orderPaise = Number(order.amount_paise) || 0;
+  if (orderPaise <= 0) return { order: displayId, result: 'skip_no_amount' };
+  // A customer who cancelled after dispatch (utils/prepaid-late-cancel.js) is
+  // owed refund_amount_paise -- the total minus shipping. Re-issuing or
+  // announcing the order total here would hand the shipping charge back.
+  const owed = Number(order.refund_amount_paise) || 0;
+  const amountPaise = owed > 0 && owed < orderPaise ? owed : orderPaise;
+  const doneStatus = amountPaise < orderPaise ? 'partially_refunded' : 'refunded';
+  const lateCancel = order.late_cancel_at ? { late_cancel_state: 'refunded' } : {};
 
   // ── 1. Establish the TRUE current refund state (money-safe guard) ──────────
   // Check EVERY merchant refund id this order could have used, not just the one
@@ -113,7 +120,7 @@ async function processOrder(supabase, order, force = false, reconcileOnly = fals
 
   // ── 2. Act on the confirmed state ─────────────────────────────────────────
   if (trueState === 'COMPLETED') {
-    const done = { status: 'refunded', refund_state: 'COMPLETED', refund_updated_at: new Date().toISOString() };
+    const done = { status: doneStatus, refund_state: 'COMPLETED', refund_updated_at: new Date().toISOString(), ...lateCancel };
     if (gatewayRef) done.phonepe_refund_id = gatewayRef;
     if (refundUtr) done.refund_utr = refundUtr;
     // Point refund_id at the id that actually completed, so the record stops
@@ -193,8 +200,9 @@ async function processOrder(supabase, order, force = false, reconcileOnly = fals
   if (res.ok && st && st !== 'FAILED') {
     // Accepted (PENDING/COMPLETED). Persist the new refund id so the next run
     // can check it precisely, and reflect status.
-    const newStatus = st === 'COMPLETED' ? 'refunded' : 'refund_pending';
+    const newStatus = st === 'COMPLETED' ? doneStatus : 'refund_pending';
     await supabase.from('orders').update({
+      ...(st === 'COMPLETED' ? lateCancel : {}),
       status: newStatus, refund_id: merchantRefundId, refund_state: st,
       refund_attempts: attempts + 1, refund_last_error: null,
       refund_updated_at: new Date().toISOString(),
@@ -203,7 +211,7 @@ async function processOrder(supabase, order, force = false, reconcileOnly = fals
     // usually comes back PENDING and can still fail asynchronously (balance
     // policy) — so PENDING must not trigger any customer message. A later run
     // will detect COMPLETED (above) and notify then. Dedup-guarded internally.
-    if (newStatus === 'refunded') {
+    if (newStatus === doneStatus) {
       await sendRefundInitiated(order, amountPaise, { supabase, state: st })
         .catch(e => console.error('retry refund-initiated notify:', e.message));
     }

@@ -119,6 +119,13 @@ async function handleCourierCancelled(supabase, orderRowId, opts = {}, deps = {}
   if (!ACTABLE.includes(status)) {
     return { action: 'ignored', order: ref, reason: `order is ${status}` };
   }
+  // The customer cancelled it themselves after dispatch: that refund is
+  // shipping-deducted and belongs to utils/prepaid-late-cancel.js, whose sweep
+  // reads this same "cancelled" as the courier accepting. A full refund from
+  // here would hand back the shipping charge.
+  if (order.late_cancel_at) {
+    return { action: 'ignored', order: ref, reason: 'customer late-cancel owns this refund' };
+  }
 
   // Why it would be held, worked out once so the first-sighting email can say.
   const verdict = cancellationAllowed(order, { now: now.getTime() });

@@ -178,3 +178,12 @@ test('dry run reports what it would do and writes nothing', async () => {
   assert.equal(db.row.status, 'shipped');
   assert.equal(db.updates.length, 0);
 });
+
+test('a customer late-cancel keeps its shipping-deducted refund — no full refund from here', async () => {
+  const db = fakeDb(order({ late_cancel_at: new Date(NOW - DAY).toISOString(), courier_cancelled_at: new Date(NOW - 9 * 3600000).toISOString(), courier_cancelled_awb: AWB }));
+  const d = deps();
+  const r = await handleCourierCancelled(db, 'u1', { awb: AWB, now: NOW }, d);
+  assert.equal(r.action, 'ignored');
+  assert.equal(db.row.status, 'shipped');
+  assert.equal(d.notified.length, 0);
+});

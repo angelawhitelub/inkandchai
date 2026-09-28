@@ -23,6 +23,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
+const { quoteLateCancel, executeLateCancel } = require('./utils/prepaid-late-cancel');
 const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
 const {
@@ -95,7 +96,9 @@ ORDER CANCELLATION — "cancel my order" / "order cancel karna hai":
 - Flow: (1) When they ask to cancel, reply asking them to confirm — name the order if you know it, e.g. "Just to confirm, you'd like to cancel order IC-… for <book>? Reply YES to confirm and I'll cancel it right away." (2) ONLY after they reply yes/haan/confirm/cancel it, call the cancel_order tool (pass their Order ID if they gave one; otherwise it cancels their most recent still-cancellable order). (3) Relay the tool's result message to the customer.
 - If they say no / changed their mind, do NOT cancel — reassure them the order stays as-is.
 - After a successful cancel: for PREPAID/online orders a refund is issued AUTOMATICALLY to their original payment method (reflects in 2–3 business days) — they do NOT need to email anyone. For COD orders nothing was paid, so nothing to refund.
-- Cancellation is only possible before dispatch. If the order is already shipped or delivered, the tool will say so — then tell them they can return it after delivery instead.
+- PREPAID orders can be cancelled until they are OUT FOR DELIVERY. Before it is booked with a courier the refund is in full; once booked, the shipping charge is kept (₹74 per 0.5 kg — ₹74 for one book, ₹148 for two, ₹296 for 3–4) and the rest is refunded. For those the tool first answers with error "needs-deduction-consent" and the exact amounts — relay them word for word, ask them to reply YES to cancel on those terms, and ONLY after that YES call cancel_order again with accept_deduction: true. Never call it with accept_deduction on the first confirmation, and never quote your own figures — only the tool's.
+- If the parcel had already left, the refund goes out automatically once the courier confirms it is coming back; tell them to refuse the delivery if it reaches them first.
+- COD orders can only be cancelled before dispatch. Out for delivery or delivered: the tool will say so — then tell them they can return it after delivery instead.
 - Never claim an order is cancelled unless the cancel_order tool returned success.
 
 ORDER NOT DISPATCHED / STUCK / DELAYED — AUTO-CANCEL & AUTO-REFUND POLICY (customer asks "order not dispatched", "why not shipped yet", "itne din ho gaye", "still not shipped", or asks about a cancellation/refund for an order that hasn't shipped):
@@ -866,6 +869,7 @@ const OPENAI_TOOLS = [{
       type: 'object',
       properties: {
         order_id: { type: 'string', description: 'The specific Order ID (IC-…) to cancel, IF the customer gave one. Omit to cancel their most recent still-cancellable order.' },
+        accept_deduction: { type: 'boolean', description: 'true ONLY when the tool already told this customer the shipping deduction and refund amount (error "needs-deduction-consent") and they replied YES to those terms. Omit otherwise.' },
       },
       required: [],
     },
@@ -1436,6 +1440,27 @@ async function cancelOrderViaBot(phone, args = {}) {
     const isPrepaid = st === 'paid' && !isPartialCod;
     const createdAt = target.created_at ? new Date(target.created_at).getTime() : 0;
     const ageMs = createdAt ? Date.now() - createdAt : Number.POSITIVE_INFINITY;
+
+    // Prepaid past the 30-minute window, or already booked: cancellable until
+    // out for delivery, shipping kept once an AWB exists
+    // (utils/prepaid-late-cancel.js). The deduction is quoted and agreed to
+    // BEFORE anything happens -- the amount comes from the row, never the model.
+    // 'late_cancel_at' in target: the migration has run (select('*') carries it).
+    const late = quoteLateCancel(target);
+    if (late.eligible && 'late_cancel_at' in target) {
+      const oid = target.razorpay_order_id;
+      if (late.deductionPaise > 0 && args.accept_deduction !== true) {
+        return {
+          ok: false, error: 'needs-deduction-consent', order_id: oid,
+          refund_rs: late.refundPaise / 100, deduction_rs: late.deductionPaise / 100,
+          message: `Order ${oid} has already been booked with the courier, so if you cancel now the shipping charge of ₹${late.deductionPaise / 100} (${late.slabKg} kg) is kept and ₹${late.refundPaise / 100} is refunded to your original payment method. If the parcel has already left, the refund is sent once the courier confirms it is coming back. Reply YES to cancel on these terms.`,
+        };
+      }
+      const r = await executeLateCancel(supabase, target);
+      return r.ok
+        ? { ok: true, order_id: oid, was_prepaid: true, outcome: r.outcome, message: `Done — ${r.message} We've sent the details to your email too. 💛` }
+        : { ok: false, error: r.reason || 'late-cancel-failed', message: r.message };
+    }
 
     // Guard: already shipped or delivered → cannot cancel.
     if (['shipped', 'in_transit', 'out_for_delivery'].includes(st)) {
@@ -2095,5 +2120,5 @@ async function handleInboundMessage(msg, value) {
 // Shared with the admin-only missed-reply recovery function. Keeping these
 // internals here ensures live replies and retries use exactly the same prompt,
 // order lookup, WhatsApp sender selection, and persistence rules.
-exports._internal = { askOpenAI, reportMissingBookViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
+exports._internal = { askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
   describeNonText, collectInboundMessages, logStatusUpdates, buttonLabelOf, handleInboundMessage, processedMsgIds };

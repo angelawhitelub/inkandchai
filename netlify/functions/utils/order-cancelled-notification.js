@@ -243,6 +243,13 @@ async function maybeAutoRefund(order) {
   if (String(row.status || '').toLowerCase() === 'rto') {
     return { skipped: 'rto-no-auto-refund' };
   }
+  // A customer who cancelled after dispatch is owed the paid amount MINUS
+  // shipping (refund_amount_paise), and utils/prepaid-late-cancel.js pays it.
+  // Any other cancellation of the same order -- admin, courier -- must not pay
+  // the full amount on top.
+  if (row.late_cancel_at) {
+    return { skipped: 'late-cancel-owns-refund' };
+  }
   const pid = row.razorpay_payment_id || '';
   if (!pid) return { skipped: 'no-payment-id' };
   const amountPaise = Number(row.amount_paise || 0);

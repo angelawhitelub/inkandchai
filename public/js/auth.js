@@ -1553,7 +1553,7 @@
                </div>` : ''}
           ${addressUpdateBlock(o)}
           ${orderTrackingBlock(o)}
-          ${(() => { const c = cancelOrderBlock(o); return c || requestCancellationBlock(o); })()}
+          ${(() => { const c = cancelOrderBlock(o); return c || lateCancelBlock(o) || requestCancellationBlock(o); })()}
           ${returnRequestBlock(o)}
           ${missingBookBlock(o)}
           ${invoiceDownloadBlock(o)}
@@ -2077,6 +2077,78 @@
     } catch (err) {
       alert('Could not cancel order: ' + err.message);
       if (btn) { btn.disabled = false; btn.textContent = isPrepaid ? 'Cancel & Refund' : 'Cancel Order'; }
+    }
+  };
+
+  // ── Prepaid cancellation after the 30-minute window ─────────────────────────
+  // Offered until the parcel is out for delivery. The terms come from the
+  // server (get-my-orders → order.late_cancel, computed by
+  // utils/prepaid-late-cancel.js), so the amount on the button is the amount
+  // cancel-prepaid-order refunds. Before an AWB it is the full amount; after,
+  // shipping is kept back (₹74 per 0.5 kg).
+  function inrPaise(p) {
+    return '₹' + (Number(p || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  }
+
+  function lateCancelBlock(order) {
+    const row = (inner) => `
+      <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                  display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">${inner}</div>`;
+
+    if (order.late_cancel_state === 'awaiting_return') {
+      return row(`
+        <div style="font-size:0.6rem;color:#e8a030;line-height:1.6;">
+          <span style="letter-spacing:0.14em;text-transform:uppercase;">Cancelled</span>
+          <span style="display:block;margin-top:0.25rem;color:#a09080;">We've asked the courier to return your parcel. Your refund of
+          ${inrPaise(order.refund_amount_paise)} is sent automatically once it's on its way back. If it reaches you first, please refuse the delivery.</span>
+        </div>`);
+    }
+
+    const lc = order.late_cancel;
+    if (!lc) return '';
+    const terms = lc.deduction_paise
+      ? `Refund ${inrPaise(lc.refund_paise)} · ${inrPaise(lc.deduction_paise)} shipping kept (${lc.slab_kg} kg)`
+      : `Full refund of ${inrPaise(lc.refund_paise)}`;
+    return row(`
+        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
+          Changed your mind? You can cancel until it's out for delivery.
+          <span style="display:block;margin-top:0.2rem;color:#e8a030;">${terms}</span>
+        </div>
+        <button onclick="iacLateCancel('${escJs(order.id)}')"
+          id="late-cancel-btn-${escJs(order.id)}"
+          data-refund="${Number(lc.refund_paise) || 0}" data-deduction="${Number(lc.deduction_paise) || 0}"
+          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                 padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,112,112,0.4);
+                 color:#e87070;cursor:pointer;transition:all 0.2s;">
+          Cancel Order
+        </button>`);
+  }
+
+  window.iacLateCancel = async function (orderId) {
+    const btn = document.getElementById(`late-cancel-btn-${orderId}`);
+    const refund = Number(btn?.dataset.refund || 0);
+    const deduction = Number(btn?.dataset.deduction || 0);
+    const msg = deduction
+      ? `Cancel this order?\n\nYour order has already been booked with the courier, so the shipping charge of ${inrPaise(deduction)} is kept back and ${inrPaise(refund)} is refunded to your original payment method.\n\nIf the parcel is already on its way, the refund is sent once the courier confirms it is coming back. This cannot be undone.`
+      : `Cancel this order?\n\nYou'll get a full refund of ${inrPaise(refund)} to your original payment method. This cannot be undone.`;
+    if (!confirm(msg)) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
+    try {
+      const sb = getSB();
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('/.netlify/functions/cancel-prepaid-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ order_id: orderId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Cancellation failed');
+      alert(json.message || 'Order cancelled.');
+      await openMyOrders();
+    } catch (err) {
+      alert('Could not cancel order: ' + err.message);
+      if (btn) { btn.disabled = false; btn.textContent = 'Cancel Order'; }
+      await openMyOrders().catch(() => {});
     }
   };
 

@@ -197,3 +197,12 @@ push again next time.
 alter table orders add column if not exists ithink_pushed_at timestamptz;
 create index if not exists orders_ithink_pushed_at_idx on orders (ithink_pushed_at);
 ```
+
+## orders_late_cancel.sql — prepaid cancellation after the 30-minute window
+
+```sql
+alter table public.orders add column if not exists late_cancel_at    timestamptz;
+alter table public.orders add column if not exists late_cancel_state text;
+create index if not exists orders_late_cancel_state_idx
+  on public.orders (late_cancel_state) where late_cancel_state is not null;
+```

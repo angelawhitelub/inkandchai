@@ -73,7 +73,10 @@ exports.handler = async (event) => {
     }
 
     // Resolve refund amount (default = full).
-    let amountPaise = orderAmount;
+    // Default to what the order is actually owed: a customer who cancelled after
+    // dispatch gets the total minus shipping (utils/prepaid-late-cancel.js).
+    const owedPaise = Number(order.refund_amount_paise) || 0;
+    let amountPaise = owedPaise > 0 && owedPaise < orderAmount ? owedPaise : orderAmount;
     if (body.amount_paise != null) amountPaise = Math.round(Number(body.amount_paise));
     else if (body.amount_rupees != null) amountPaise = Math.round(Number(body.amount_rupees) * 100);
     if (!Number.isFinite(amountPaise) || amountPaise <= 0) {

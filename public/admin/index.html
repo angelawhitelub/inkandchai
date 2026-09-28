@@ -4837,6 +4837,17 @@ function _drawTable() {
           // link threw and nothing happened. The search box is #searchBox.
           return `<div title="Replacement of ${orig}${reasonLabel ? ' — ' + reasonLabel : ''}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;font-weight:600;">🔄 Replacement${orig ? ` · <a href="#" onclick="event.preventDefault(); searchOrders('${orig}')" style="color:#6dbf6d;text-decoration:underline;">${orig}</a>` : ''}${meta?.reported_via === 'whatsapp' ? ' · <span title="Filed by the WhatsApp bot from the customer\'s chat — check Bot Inbox">💬 bot</span>' : ''}</div>`;
         })() : ''}
+        ${o.late_cancel_at ? (() => {
+          // Customer cancelled a prepaid order after the 30-minute window
+          // (utils/prepaid-late-cancel.js). awaiting_return = the courier API
+          // could not stop it: raise the RTO; the refund goes out on its own.
+          const st = String(o.late_cancel_state || '');
+          const rto = st === 'awaiting_return';
+          const col = rto ? '#e8a030' : st === 'delivered_anyway' || st === 'refund_failed' ? '#e87070' : '#a09080';
+          const label = rto ? 'Customer cancelled · RTO needed' : st === 'delivered_anyway' ? 'Cancelled · delivered anyway' : `Customer cancelled · ${esc(st.replace(/_/g, ' '))}`;
+          const money = `refund ₹${(Number(o.refund_amount_paise || 0) / 100).toLocaleString('en-IN')}${Number(o.cancellation_fee_paise) ? ` · ₹${Number(o.cancellation_fee_paise) / 100} shipping kept` : ''}`;
+          return `<div title="${esc(money)}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;border:1px solid ${col};color:${col};font-weight:600;">↩ ${label}</div>`;
+        })() : ''}
         ${linkedRecordsHtml(o)}
       </td>
       <td data-label="Date" style="font-size:0.65rem;color:var(--cream-dim);white-space:nowrap;">${date}</td>

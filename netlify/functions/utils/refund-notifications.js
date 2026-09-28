@@ -244,6 +244,9 @@ function refundPartialEmailHtml(order, amtPaise, refundRef, items) {
   const oid = order.razorpay_order_id || order.id || '';
   const total = Number(order.amount_paise) || 0;
   const rest = total > amtPaise ? `₹${rupees(total - amtPaise)}` : null;
+  // A cancellation after dispatch (utils/prepaid-late-cancel.js): the part not
+  // refunded is shipping, and there is no "rest of the order" still coming.
+  const fee = Number(order.cancellation_fee_paise) > 0 && total > amtPaise ? Number(order.cancellation_fee_paise) : 0;
   const ref = resolveRefundRef(order, refundRef);
   const list = cleanRefundItems(items);
 
@@ -262,7 +265,9 @@ function refundPartialEmailHtml(order, amtPaise, refundRef, items) {
     <p>Hi ${firstName(order.customer_name)},</p>
     <p>We've initiated a refund of <strong>${amt}</strong> on your order <strong>${oid}</strong>.</p>
     ${itemsBlock}
-    ${rest ? `<p style="background:#f2ece1;padding:10px 14px;border-left:3px solid #8a6a1f;">
+    ${fee ? `<p style="background:#f2ece1;padding:10px 14px;border-left:3px solid #8a6a1f;">
+      Your order was cancelled after it had been booked with the courier, so the shipping charge of <strong>₹${rupees(fee)}</strong> has been kept from the ₹${rupees(total)} you paid.
+    </p>` : rest ? `<p style="background:#f2ece1;padding:10px 14px;border-left:3px solid #8a6a1f;">
       This is a <strong>partial</strong> refund. The rest of your order (${rest}) is unaffected — anything still to be delivered is on its way as normal.
     </p>` : ''}
     ${ref ? `<p style="background:#f2ece1;padding:10px 14px;border-left:3px solid #8a6a1f;">
