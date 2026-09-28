@@ -43,6 +43,8 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { interpret, SYNCABLE, TERMINAL, RANK } = require('./utils/xpressbees-status');
+const { courierSaysCancelled, handleCourierCancelled } = require('./utils/courier-cancelled');
+const { afterResponse } = require('./utils/after-response');
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 const ok = (body) => ({ statusCode: 200, headers: JSON_HEADERS, body: JSON.stringify(body) });
@@ -76,7 +78,7 @@ function verify(event, rawBody) {
     : { okToProcess: false, note: 'signature mismatch' };
 }
 
-exports.handler = async (event) => {
+exports.handler = async (event, context) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: JSON_HEADERS, body: '' };
   if (event.httpMethod !== 'POST') return ok({ ignored: 'POST only' });
 
@@ -156,6 +158,16 @@ exports.handler = async (event) => {
     if (wErr) { results.push({ awb, order: ref, error: wErr.message }); continue; }
 
     results.push({ awb, order: ref, courier_says: raw, status: fields.status || current, changed: !!fields.status });
+
+    // XpressBees cancelled this AWB. Never inline -- five-second budget -- and
+    // never straight to a refund: the handler stamps the first sighting and
+    // emails the owner, and cancels + refunds only after the grace period,
+    // re-checking XpressBees live first. See utils/courier-cancelled.js.
+    if (courierSaysCancelled(raw)) {
+      afterResponse(context, handleCourierCancelled(supabase, order.id, { awb, raw })
+        .then((r) => console.log(`[xpressbees-webhook] ${ref} courier-cancel → ${r.action}${r.reason ? ` (${r.reason})` : ''}`)),
+      'xpressbees-webhook courier-cancel');
+    }
     console.log(`[xpressbees-webhook] ${ref} ${awb} "${raw}"${fields.status ? ` → ${fields.status}` : ' (recorded only)'}`);
   }
 

@@ -25,10 +25,12 @@
  *
  * WHAT IT REFUSES TO DO
  * ---------------------
- * 1. `cancelled` from the courier NEVER cancels the order. Cancelling a stale
- *    panel row is our own housekeeping -- 51 were cancelled on 19 Sep for
- *    orders that had already shipped through iThink -- and mapping that back
- *    onto `status` would have cancelled 51 live shipments.
+ * 1. `cancelled` from the courier is not mapped straight onto `status`.
+ *    Cancelling a stale panel row is our own housekeeping -- 51 were cancelled
+ *    on 19 Sep for orders that had already shipped through iThink. It goes to
+ *    utils/courier-cancelled.js instead, which acts only when the cancelled AWB
+ *    is the order's current XpressBees shipment, after a grace period and the
+ *    10-day floor, and then cancels + refunds through notifyOrderCancelled.
  * 2. RTO sets `status` and nothing else. A returned parcel is not a refund,
  *    and no money path may key off this job.
  * 3. An order in a refund state keeps its status; the courier's view is
@@ -47,6 +49,7 @@ const { requireAdmin } = require('./utils/admin-auth');
 const xb = require('./utils/xpressbees');
 const { interpret, SYNCABLE, TERMINAL, RANK } = require('./utils/xpressbees-status');
 const { autoRefundOnDelivery } = require('./utils/wrong-cod-refund');
+const { courierSaysCancelled, handleCourierCancelled, clearCourierCancelled } = require('./utils/courier-cancelled');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -105,7 +108,7 @@ exports.handler = async (event) => {
   const baseSelect = () => supabase
     .from('orders')
     .select('id, razorpay_order_id, status, tracking_id, courier_name, customer_name, '
-          + 'customer_phone, customer_email, shipment_moved_at, delivered_at, shipped_at')
+          + 'customer_phone, customer_email, shipment_moved_at, delivered_at, shipped_at, last_courier_status')
     .ilike('courier_name', '%xpressbees%')
     .in('status', SYNCABLE)
     .not('tracking_id', 'is', null)
@@ -128,6 +131,7 @@ exports.handler = async (event) => {
   const recorded = [];
   const missing = [];
   const failed = [];
+  const courierCancelled = [];
   const now = new Date().toISOString();
 
   // Serial: one shared bearer token, same as admin-xpressbees-track.
@@ -155,6 +159,22 @@ exports.handler = async (event) => {
     const verdict = interpret(raw);
     const fields = { last_courier_status: raw.slice(0, 200), last_courier_status_at: now };
     if (verdict.moved) fields.shipment_moved_at = o.shipment_moved_at || now;
+
+    // XpressBees cancelled this AWB: record it, then let the handler decide
+    // (first sighting → owner email; after the grace period → cancel + refund).
+    // liveChecked: this status was read from their tracking API a moment ago.
+    if (courierSaysCancelled(raw)) {
+      if (!dryRun) await updateOrder(supabase, o.id, fields, warn).catch(() => {});
+      try {
+        const r = await handleCourierCancelled(supabase, o.id, { awb: o.tracking_id, raw, liveChecked: true, dryRun });
+        courierCancelled.push({ awb: o.tracking_id, ...r });
+      } catch (e) {
+        failed.push({ order: ref, error: `courier-cancel: ${e.message}` });
+      }
+      continue;
+    }
+    // Was cancelled on an earlier check and is not any more: forget it.
+    if (!dryRun && courierSaysCancelled(o.last_courier_status)) await clearCourierCancelled(supabase, o.id);
 
     const target = verdict.status;
     const forward = target
@@ -226,12 +246,14 @@ exports.handler = async (event) => {
     changes: changed,
     attention: recorded.filter((r) => r.attention),
     failures: failed,
+    courier_cancelled: courierCancelled,
   };
   if (warn.migration) out.warning = warn.migration;
   if (warn.wrongCod) out.wrong_cod_warning = warn.wrongCod;
   console.log('[xpressbees-status-sync]', JSON.stringify({
     scanned: out.scanned, changed: out.changed, delivered: out.to_delivered,
     ofd: out.to_out_for_delivery, rto: out.to_rto, missing: out.awb_not_in_account, failed: out.failed,
+    courier_cancelled: courierCancelled.map((c) => `${c.order || c.awb}:${c.action}`),
   }));
   return json(200, out);
 };

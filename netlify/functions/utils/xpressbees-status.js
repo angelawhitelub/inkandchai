@@ -12,10 +12,11 @@
  *
  * The rules it encodes, each one a test in utils/xpressbees-status.test.js:
  *
- *   - `cancelled` NEVER cancels the order. Cancelling a stale panel row is
- *     our own housekeeping -- 51 were cancelled on 19 Sep for orders that had
- *     already shipped through iThink -- and mapping that back onto `status`
- *     would have cancelled 51 live shipments.
+ *   - `cancelled` is never mapped onto `status` here. Cancelling a stale
+ *     panel row is our own housekeeping -- 51 were cancelled on 19 Sep for
+ *     orders that had already shipped through iThink. Both callers hand it to
+ *     utils/courier-cancelled.js, which cancels + refunds only the order whose
+ *     CURRENT AWB it is, after a grace period and the 10-day floor.
  *   - RTO sets `status` and nothing else. A returned parcel is not a refund
  *     and no money path may key off a courier scan.
  *   - `in transit` never touches `status`. Hub scans repeat endlessly and
@@ -47,7 +48,7 @@ function interpret(raw) {
   // Exception / NDR: real, but we have no such order status and it must not
   // look like a delivery failure the customer caused. Recorded for the owner.
   if (/exception|undelivered|ndr|failed/.test(s))            return { record: true, attention: true };
-  // "cancelled" lands here deliberately -- see WHAT IT REFUSES TO DO (1).
+  // "cancelled" lands here deliberately: utils/courier-cancelled.js owns it.
   return { record: true };
 }
 
