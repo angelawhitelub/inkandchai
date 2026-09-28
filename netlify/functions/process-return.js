@@ -2,7 +2,8 @@
  * Netlify Function: process-return
  * POST /.netlify/functions/process-return
  *
- * Admin endpoint — create a NimbusPost reverse pickup for a return request.
+ * Admin endpoint — create a NimbusPost reverse pickup for a return request, or
+ * an XpressBees one with { action: 'xpressbees' } (utils/xpressbees-reverse).
  *
  * Pickup:      customer's delivery address
  * Destination: 2969, Kucha Mai Dass, Sitaram Bazar, Delhi - 110006
@@ -23,6 +24,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
 const { sanitizeOrderId, orderIdFilter } = require('./utils/order-id-filter');
+const { bookReverseForReturn } = require('./utils/xpressbees-reverse');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 const STORE_NAME = 'Ink and Chai';
@@ -395,7 +397,7 @@ exports.handler = async (event) => {
     // reverse-capable courier for the customer's pincode, then create the
     // shipment with that courier so it doesn't auto-cancel.
     if (ret.status !== 'approved') {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Approve this return before pushing it to NimbusPost.' }) };
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Approve this return before booking a reverse pickup.' }) };
     }
     if (ret.awb || ret.status === 'pushed_to_nimbus' || ret.status === 'pickup_scheduled') {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: ret.awb ? `Already pushed. AWB: ${ret.awb}` : 'This return has already been pushed to NimbusPost.' }) };
@@ -405,6 +407,46 @@ exports.handler = async (event) => {
     const { addr1, city, state, pincode } = parseAddress(ret.customer_address || '');
     if (!pincode) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Cannot parse pincode from customer address: "${ret.customer_address}"` }) };
+    }
+
+    // ── XpressBees reverse pickup ("Auto Pickup (XpressBees)") ────────────────
+    // Same guards as NimbusPost above (approved, not already booked), same
+    // record and the same customer notice; only the courier differs. A
+    // rejection goes through pushFailed, so the return stays approved with the
+    // reason recorded, exactly like a failed NimbusPost push.
+    if (action === 'xpressbees') {
+      let booked;
+      try {
+        booked = await bookReverseForReturn(ret, { addr1, city, state, pincode });
+      } catch (e) {
+        return pushFailed(supabase, ret, `XpressBees rejected the reverse pickup — ${e.message}`);
+      }
+      const shipment = booked.shipment || {};
+      const awb = String(shipment.awb_number);
+      const courierName = 'XpressBees';
+      await supabase.from('return_requests').update({
+        status:       'pickup_scheduled',
+        awb,
+        courier_name: courierName,
+        processed_at: new Date().toISOString(),
+      }).eq('id', return_request_id);
+      console.log(`[process-return] XpressBees reverse ${awb} for ${ret.order_display_id || ret.id} (category ${booked.category})`);
+      const notify = await notifyPickupScheduled(ret, awb, courierName);
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({
+        success: true,
+        pushed: true,
+        awb,
+        courier_name: courierName,
+        xb_courier: shipment.courier_name || 'Express Reverse',
+        label: shipment.label || null,
+        category: booked.category,
+        status: 'pickup_scheduled',
+        message: `XpressBees reverse pickup booked (AWB ${awb}) from pincode ${pincode}.`,
+        notified: !!(notify && (notify.email?.ok || notify.whatsapp?.ok)),
+        notify_detail: notify,
+        pickup_from: `${ret.customer_name} — ${ret.customer_address}`,
+        pickup_to: '2969, Kucha Mai Dass, Sitaram Bazar, Delhi - 110006',
+      }) };
     }
 
     // Reverse order number shown in the NimbusPost panel.

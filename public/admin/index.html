@@ -14425,6 +14425,7 @@ function renderReturns() {
           ${canReject  ? `<button class="btn-danger" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="rejectReturn('${r.id}',this)">✗ Reject</button>` : ''}
           ${canPickup ? `<button class="btn-green" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="pushSingleReturnNoAwb('${r.id}',this)" title="Push ONLY this return into the NimbusPost panel as a New reverse order — no courier, no AWB. Assign the reverse AWB later inside NimbusPost by hitting Ship.">⬆ Push to NP (No AWB)</button>` : ''}
           ${canPickup ? `<button class="btn-outline" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturn('${r.id}',this)" title="Auto-book a reverse pickup via NimbusPost">🚚 Auto Pickup (NimbusPost)</button>` : ''}
+          ${canPickup ? `<button class="btn-outline" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturnXb('${r.id}',this)" title="Book a reverse pickup directly with XpressBees (Express Reverse) — AWB + auto-pickup from the customer's address to the Delhi office">🐝 Auto Pickup (XpressBees)</button>` : ''}
         </div>
         ${canTrack ? `<div style="display:flex;gap:0.3rem;flex-wrap:wrap;align-items:center;margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);">
           <input id="trk_${r.id}" placeholder="Tracking ID" style="width:100px;font-size:0.62rem;padding:0.3rem 0.4rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);border-radius:4px;">
@@ -14508,6 +14509,23 @@ async function processReturn(returnId, btn) {
   } catch (e) {
     alert('Error: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = '🚚 Auto Pickup (NimbusPost)'; }
+  }
+}
+
+async function processReturnXb(returnId, btn) {
+  if (!confirm('Book an XpressBees reverse pickup for this approved return?\n\nThis creates an XpressBees reverse shipment (Express Reverse), an AWB and a pickup request from the customer address to the Delhi return office. The customer will be notified to hand over the books.')) return;
+  try {
+    const data = await _returnCall({ return_request_id: returnId, action: 'xpressbees' }, btn);
+    if (data.pushed === false) {
+      alert('⚠️ XpressBees did not book it.\n\n' + (data.np_error || data.message || 'Unknown error') + '\n\nThe return is still approved — fix the cause and try again.');
+      btn.textContent = '🐝 Auto Pickup (XpressBees)';
+      return;
+    }
+    alert(`✅ XpressBees reverse pickup booked!\nAWB: ${data.awb}\nFrom: ${data.pickup_from}${data.label ? `\nLabel: ${data.label}` : ''}${_notifySummary(data.notify_detail)}`);
+    await fetchReturnRequests();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🐝 Auto Pickup (XpressBees)'; }
   }
 }
 

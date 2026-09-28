@@ -13,6 +13,7 @@
  *   GET  /api/shipments2/track/{awb}   scan history
  *   POST /api/shipments2/cancel        { awb }
  *   POST /api/shipments2/manifest      { awbs: [] } -> manifest pdf
+ *   POST /api/ReverseShipments         BOOKS a reverse pickup ("Express Reverse")
  *
  * Every response is { status: true|false, ... }. A false status with HTTP 200
  * is the normal failure shape, so `status` is the only thing worth reading --
@@ -199,6 +200,20 @@ async function panelOrders({ page = 1, perPage = 100, params = {} } = {}) {
   return { rows, meta: Array.isArray(d) ? null : (d && typeof d === 'object' ? { ...d, data: undefined } : null) };
 }
 
+/**
+ * BOOKS a reverse pickup: XpressBees collects from `consignee` (the customer)
+ * and delivers to `pickup` (our warehouse) -- the same field roles as a
+ * forward booking, the direction is what the endpoint implies. Returns
+ * { awb_number, courier_name, label, manifest, ... }.
+ */
+async function bookReverse(payload) {
+  const out = await withAuth((token) => xbFetch('/ReverseShipments', { method: 'POST', token, body: payload }));
+  if (!out.data || out.data.status !== true || !out.data.data?.awb_number) {
+    throw new Error(`XpressBees reverse booking failed: ${out.data?.message || out.raw}`);
+  }
+  return out.data.data;
+}
+
 async function track(awb) {
   const out = await withAuth((token) => xbFetch(`/shipments2/track/${encodeURIComponent(awb)}`, { token }));
   if (!out.data || out.data.status !== true) throw new Error(`XpressBees tracking failed for ${awb}: ${out.data?.message || out.raw}`);
@@ -233,7 +248,7 @@ function pickupFromEnv() {
 
 module.exports = {
   XB_BASE, login, withAuth, xbFetch,
-  couriers, serviceability, book, track, cancel, manifest, pickupFromEnv, panelOrders,
+  couriers, serviceability, book, bookReverse, track, cancel, manifest, pickupFromEnv, panelOrders,
   STATUS_CODES, mapStatusCode, ndrList, ndrCreate,
   _resetTokenForTests: () => { _token = { value: null, at: 0 }; },
 };
