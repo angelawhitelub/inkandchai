@@ -5139,6 +5139,12 @@ async function updateStatus(id, status) {
       const trackUrl = data.tracking_url || '';
       alert(`✅ Shipped! Customer email sent with AWB ${tracking_id}.${trackUrl ? '\n\n' + trackUrl : ''}`);
     }
+    // Cancelling also tries to stop the courier shipment. Say what happened,
+    // loudly when it could not be stopped: that parcel is still coming.
+    if (status === 'cancelled' && data.courier && data.courier.message) {
+      const ok = ['cancelled', 'already_cancelled'].includes(data.courier.action);
+      alert((ok ? '✅ Order cancelled. ' : '⚠️ Order cancelled, but the SHIPMENT IS STILL LIVE.\n\n') + data.courier.message);
+    }
   } catch (err) {
     alert('Could not update status: ' + err.message);
   }
@@ -9510,6 +9516,7 @@ async function cancelSelectedNpOrders(btn) {
   btn.disabled = true;
   const done = [];
   const failed = [];
+  const courierLive = [];
 
   // One order per request on purpose. Each cancellation calls a payment gateway
   // and sends two messages, so a batch of thirty would blow the function
@@ -9526,6 +9533,8 @@ async function cancelSelectedNpOrders(btn) {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.updated === 1) done.push(ids[i]);
+      const cc = data.results?.[0]?.courier;
+      if (cc && !['cancelled', 'already_cancelled'].includes(cc.action)) courierLive.push(ids[i] + ': ' + cc.message);
       else failed.push(ids[i] + ': ' + (data.error || data.results?.[0]?.error || ('HTTP ' + res.status)));
     } catch (e) {
       failed.push(ids[i] + ': ' + e.message);
@@ -9552,6 +9561,7 @@ async function cancelSelectedNpOrders(btn) {
   alert(
     `Cancelled ${done.length} of ${ids.length}.\n\n`
     + (failed.length ? `Failed:\n${failed.join('\n')}\n\n` : '')
+    + (courierLive.length ? `⚠️ Shipments still live (not cancelled with the courier):\n${courierLive.join('\n')}\n\n` : '')
     + `Prepaid refunds are issued automatically. PhonePe refunds settle over a few hours — `
     + `the hourly reconcile marks them refunded and mails the customer once the gateway confirms.`
   );

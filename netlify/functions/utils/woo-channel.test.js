@@ -530,3 +530,19 @@ test('an unknown woo id walks the window once and stops', async () => {
   assert.match(res.reason, /no order matches/);
   assert.equal(reads.length, 2);
 });
+
+test('a booking pushed for an order we cancelled is cancelled with XpressBees, not shipped', async () => {
+  // IC-R-20260925-2U7MB: cancelled here while its panel row was still queued;
+  // the row was booked anyway and the parcel went out for pickup.
+  for (const st of ['cancelled', 'refunded', 'refund_pending', 'refund_failed']) {
+    const captured = [];
+    const cancelledAwbs = [];
+    const xb = { track: async () => ({ status: 'pending pickup' }), cancel: async (awb) => { cancelledAwbs.push(awb); return 'ok'; } };
+    const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: st }, captured);
+    const res = await applyPushBack(db, WOO_ID, pushed('On Hold', '143449610819605'), { xb });
+    assert.equal(res.applied, false, st);
+    assert.equal(res.courier.action, 'cancelled', st);
+    assert.deepEqual(cancelledAwbs, ['143449610819605'], st);
+    assert.ok(!captured.some(c => c.status === 'shipped'), `${st} must not become shipped`);
+  }
+});

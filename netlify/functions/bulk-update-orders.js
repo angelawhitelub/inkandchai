@@ -30,6 +30,7 @@ const { sendEmail }    = require('./utils/email');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { requireAdmin } = require('./utils/admin-auth');
 const { buildTrackingUrl } = require('./utils/tracking-url');
+const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-shipment-cancel');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
 const CORS = {
@@ -316,6 +317,14 @@ exports.handler = async (event) => {
         skippedNoOp++;
       }
 
+      // Cancel the courier shipment too, while it can still be stopped. See
+      // utils/courier-shipment-cancel.js; it reports, it never throws.
+      let courierCancel = null;
+      if (status === 'cancelled' && order.status !== 'cancelled' && saved && order.tracking_id) {
+        courierCancel = await cancelCourierShipment(order);
+        await recordCourierCancel(supabase, order.id, courierCancel);
+      }
+
       if (status === 'cancelled' && order.status !== 'cancelled' && saved && !silent) {
         await notifyOrderCancelled(saved, {
           reason: 'Your order status was updated to cancelled.',
@@ -334,6 +343,7 @@ exports.handler = async (event) => {
         skipped_duplicate: isNoOpReship,
         previous_awb: isReship ? prevAwb : null,
         tracking_url: saved?.tracking_url || null,
+        courier: courierCancel && courierCancel.action !== 'none' ? courierCancel : undefined,
         order: saved,
       });
     }

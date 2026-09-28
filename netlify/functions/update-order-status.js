@@ -19,6 +19,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-shipment-cancel');
 const { buildTrackingUrl } = require('./utils/tracking-url');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
@@ -188,6 +189,14 @@ exports.handler = async (event) => {
       }
     }
 
+    // Cancel the courier shipment too, while it can still be stopped. Reported
+    // back rather than thrown: the order is already cancelled at this point.
+    let courierCancel = null;
+    if (status === 'cancelled' && previousOrder.status !== 'cancelled' && previousOrder.tracking_id) {
+      courierCancel = await cancelCourierShipment(previousOrder);
+      await recordCourierCancel(supabase, id, courierCancel);
+    }
+
     let refundInfo = null;
     if (status === 'cancelled' && previousOrder.status !== 'cancelled') {
       const paymentId = previousOrder.razorpay_payment_id || '';
@@ -241,6 +250,7 @@ exports.handler = async (event) => {
     const result = { success: true, tracking_url: trackingUrl || null };
     if (refundInfo) result.refund = refundInfo;
     if (trackingWarning) result.warning = trackingWarning;
+    if (courierCancel && courierCancel.action !== 'none') result.courier = courierCancel;
     return { statusCode: 200, headers: CORS, body: JSON.stringify(result) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };

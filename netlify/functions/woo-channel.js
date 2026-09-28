@@ -68,6 +68,7 @@
  *      SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
 
+const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-shipment-cancel');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier, sanitizeAddressText } = require('./utils/nimbuspost-import');
@@ -561,7 +562,14 @@ async function resolveByWooId(supabase, wooId) {
   }
 }
 
-async function applyPushBack(supabase, wooId, payload) {
+// Orders that must never go out. A booked push for one of these means the
+// panel booked an order after we cancelled it -- its queue row outlived the
+// cancellation (IC-R-20260925-2U7MB, IC-20260917-HH6WG). refund_pending and
+// refund_failed are cancellations owed money; they were not in TERMINAL, so a
+// push used to flip them to shipped.
+const NEVER_SHIP = ['cancelled', 'refunded', 'refund_pending', 'refund_failed'];
+
+async function applyPushBack(supabase, wooId, payload, deps = {}) {
   const status = String((payload && payload.status) || '').trim().toLowerCase();
   const awb = metaValue(payload, 'AWB Number');
   const courier = metaValue(payload, 'Courier Name') || 'Xpressbees';
@@ -577,6 +585,15 @@ async function applyPushBack(supabase, wooId, payload) {
   // Already carrying this AWB: nothing to do. Re-pushes are normal.
   if (String(order.tracking_id || '') === awb && order.status === 'shipped') {
     return { applied: false, order: orderNumber, reason: 'already shipped with this AWB' };
+  }
+
+  // Booked after we cancelled it: cancel the new AWB while it is still
+  // waiting for pickup, which a just-booked shipment always is.
+  if (NEVER_SHIP.includes(String(order.status || '').toLowerCase())) {
+    const courierCancel = await cancelCourierShipment({ tracking_id: awb, courier_name: courier }, deps);
+    await recordCourierCancel(supabase, order.id, courierCancel);
+    console.warn(`[woo-channel] ${orderNumber} is ${order.status} but was booked as ${awb}: ${courierCancel.action} ${courierCancel.message || ''}`);
+    return { applied: false, order: orderNumber, reason: `order is ${order.status}; shipment ${courierCancel.action}`, courier: courierCancel };
   }
 
   // Never walk an order backwards out of a later stage.
