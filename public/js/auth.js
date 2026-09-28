@@ -2080,11 +2080,38 @@
     }
   };
 
-  // ── Request cancellation (in-transit / any live status, COD or prepaid) ──────
+  // ── Request cancellation (before shipping only) ─────────────────────────────
   // Shown only when the instant-cancel block above is NOT available. This is a
   // REQUEST — it never cancels or refunds; it alerts the team to act manually.
+  //
+  // Once the order has shipped there is nothing left to request: the parcel is
+  // with the courier, so the card says "Cancellation expired" and offers no
+  // button, and request-cancellation.js refuses the same orders server-side.
+  // "Shipped" is any courier status, an AWB on the order, or recorded movement.
+  // The instant cancel above (COD before pickup) is decided first and untouched.
+  const SHIPPED_FOR_REQUEST = ['shipped', 'in_transit', 'out_for_delivery', 'rto', 'undelivered', 'lost'];
+  function orderHasShipped(order) {
+    const status = String(order.status || '').toLowerCase();
+    return SHIPPED_FOR_REQUEST.includes(status) || !!order.tracking_id || shipmentHasMoved(order);
+  }
+
   function requestCancellationBlock(order) {
     const status = String(order.status || '').toLowerCase();
+
+    // Terminal / non-requestable states: nothing to request.
+    // Delivered uses the Return flow (rendered separately), so skip it here too.
+    const NO_REQUEST = ['cancelled', 'refunded', 'refund_pending', 'refund_failed',
+                        'partially_refunded', 'delivered'];
+    if (NO_REQUEST.includes(status)) return '';
+
+    if (orderHasShipped(order)) {
+      return `
+        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                    font-size:0.6rem;color:#a09080;line-height:1.6;">
+          <span style="letter-spacing:0.14em;text-transform:uppercase;color:#e06060;">Cancellation expired</span>
+          <span style="display:block;margin-top:0.25rem;">Your order has been shipped, so it can no longer be cancelled. If there is a problem once it arrives, you can request a return.</span>
+        </div>`;
+    }
 
     // Already asked — show a calm "under review" state, no button.
     if (order.cancellation_requested_at) {
@@ -2094,12 +2121,6 @@
           ⏳ Cancellation requested — our team is reviewing it. The order isn't cancelled yet; we'll be in touch.
         </div>`;
     }
-
-    // Terminal / non-requestable states: nothing to request.
-    // Delivered uses the Return flow (rendered separately), so skip it here too.
-    const NO_REQUEST = ['cancelled', 'refunded', 'refund_pending', 'refund_failed',
-                        'partially_refunded', 'delivered'];
-    if (NO_REQUEST.includes(status)) return '';
 
     return `
       <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);

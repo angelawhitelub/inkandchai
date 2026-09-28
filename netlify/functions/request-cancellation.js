@@ -2,8 +2,11 @@
  * Netlify Function: request-cancellation
  * POST /.netlify/functions/request-cancellation   { order_id, reason? }
  *
- * Customer-facing "please cancel this" REQUEST — available at any live status
- * (including in-transit / shipped / out-for-delivery) for BOTH COD and prepaid.
+ * Customer-facing "please cancel this" REQUEST, for BOTH COD and prepaid, and
+ * only BEFORE the order ships. Once it has shipped (any courier status, an AWB
+ * on the order, or recorded movement) cancellation has expired: the website
+ * says so and this endpoint refuses, so no request can be sent for a parcel
+ * that is already with the courier.
  *
  * CRITICAL: this is a REQUEST ONLY. It does NOT:
  *   - change order.status,
@@ -26,6 +29,11 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Content-Type': 'application/json',
 };
+
+// Shipped: the parcel is with the courier and cancellation has expired.
+const SHIPPED = new Set(['shipped', 'in_transit', 'out_for_delivery', 'rto', 'undelivered', 'lost']);
+const hasShipped = (o) => SHIPPED.has(String(o.status || '').toLowerCase())
+  || !!o.tracking_id || !!o.shipment_moved_at;
 
 // Statuses where a cancellation request makes no sense. Delivered is excluded on
 // purpose — that's a RETURN, not a cancellation — and the message says so.
@@ -89,6 +97,12 @@ exports.handler = async (event) => {
   }
   if (status === 'delivered') {
     return json(422, { error: 'This order has already been delivered. Please use the Return option instead.' });
+  }
+  if (hasShipped(order)) {
+    return json(422, {
+      error: 'Cancellation has expired — this order has already been shipped. If there is a problem once it arrives, you can request a return.',
+      expired: true,
+    });
   }
 
   // Idempotent: don't spam the owner if they already asked.
