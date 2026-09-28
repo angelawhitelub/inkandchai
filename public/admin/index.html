@@ -4835,7 +4835,7 @@ function _drawTable() {
           const reasonLabel = meta?.reason_label ? esc(meta.reason_label) : '';
           // The jump used to target #searchInput, which does not exist — the
           // link threw and nothing happened. The search box is #searchBox.
-          return `<div title="Replacement of ${orig}${reasonLabel ? ' — ' + reasonLabel : ''}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;font-weight:600;">🔄 Replacement${orig ? ` · <a href="#" onclick="event.preventDefault(); searchOrders('${orig}')" style="color:#6dbf6d;text-decoration:underline;">${orig}</a>` : ''}</div>`;
+          return `<div title="Replacement of ${orig}${reasonLabel ? ' — ' + reasonLabel : ''}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;font-weight:600;">🔄 Replacement${orig ? ` · <a href="#" onclick="event.preventDefault(); searchOrders('${orig}')" style="color:#6dbf6d;text-decoration:underline;">${orig}</a>` : ''}${meta?.reported_via === 'whatsapp' ? ' · <span title="Filed by the WhatsApp bot from the customer\'s chat — check Bot Inbox">💬 bot</span>' : ''}</div>`;
         })() : ''}
         ${linkedRecordsHtml(o)}
       </td>

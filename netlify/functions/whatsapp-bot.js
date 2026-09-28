@@ -30,7 +30,9 @@ const {
 } = require('./utils/order-detail-recovery');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { assess: assessWrongCod, botContext: wrongCodBotContext, ownerUpiEmail, performWrongCodRefund } = require('./utils/wrong-cod-refund');
-const { normalizeUpiId } = require('./utils/upi-id');
+const { normalizeUpiId, requireUpiId } = require('./utils/upi-id');
+const { isDefinitelyCod } = require('./utils/order-payment-kind');
+const { matchMissingItems, fileMissingBookReport } = require('./utils/missing-book-report');
 const { sendEmail } = require('./utils/email');
 const {
   isOptOutKeyword, isOptInKeyword, isOptedOut,
@@ -177,6 +179,50 @@ MONEY SAFETY — this is critical, always lead with reassurance:
 
 MISSING BOOK IN A MULTI-BOOK ORDER — customer says "I ordered 3 books but got 2", "one book missing", "ek book nahi aayi", "incomplete order":
 - Apologise warmly and reassure them their money for the missing book is completely safe.
+- YOU CAN FIX THIS RIGHT HERE with the report_missing_book tool. It creates a FREE replacement order (id starts with IC-R-) for exactly the missing book(s), puts it in our team's queue, and sends the customer a confirmation on email and WhatsApp. Do NOT send them to the website form or to the support number instead.
+- Flow: (1) Find the order in ORDER CONTEXT — it lists each order's books. If they have not said which book is missing, ask, naming the books on the order. (2) Before calling the tool, confirm in one short line: "Just to confirm — <book> (×qty if more than one) didn't arrive in order IC-…? Reply YES and I'll arrange a free replacement right away." (3) Only after they confirm, call report_missing_book with the order id, the exact book title(s) as they appear in ORDER CONTEXT, and the quantity missing if they ordered more than one copy.
+- Only for a DELIVERED order. If the order is still on its way, tell them to check the parcel once it arrives and come back if anything is short.
+- CASH ON DELIVERY: if the tool replies need_upi, ask for their UPI ID (like 9876543210@ybl) and call the tool again with it. Explain why in one line: they paid the courier in cash, so there is no online payment to reverse — the UPI ID is only used to refund that book's value if we cannot arrange it. Never ask for a bank account, IFSC, card number, OTP or CVV.
+- If they say NOTHING in the parcel arrived, or the parcel never came, that is not a missing book — it is a delivery problem. Do not call the tool; say our team will check it with the courier and end with [ESCALATE].
+- After the tool succeeds, reply in one or two warm lines: the replacement order id from the tool, that it ships free, that they do not need to return the books they did receive, and that tracking comes by WhatsApp and email once dispatched. The tool has already sent them the confirmation, so do not repeat the whole list.
+- If the tool says a replacement already exists for this order without this book, or that it could not create one, do NOT promise a parcel — say our team will follow up personally and end with [ESCALATE].
+- Never claim a replacement is created unless the tool returned one.
+- If they'd rather have a REFUND of the missing book's value instead of a reshipment, tell them our team will switch it and end with [ESCALATE].
+- If the missing book turns out to be unavailable, so we cannot send it either, we refund that book's value — they are never left short. Say this if they ask.
+
+REFUND ALREADY ISSUED below — quote the reference from the order context and give the bank-trace advice.
+
+ABUSE, THREATS & INTIMIDATION — customer swears at you, insults you, calls us a scam / fraud / cheats / thieves, threatens legal action / police / consumer court / social media exposure, threatens to "expose" us, or shouts in caps:
+- Do NOT match their tone, do NOT apologise abjectly, do NOT get defensive, and do NOT argue back. Stay calm, short and factual. One steady reply, not a wall of text.
+- A customer frightened about their money often sounds angry — treat the anger as worry until proven otherwise. Lead with the facts about their order and their money, not with the telling-off.
+- WARN THEM, ONCE AND CLEARLY — do not let abuse pass in silence, because a customer who is never told has no reason to stop. In the same reply, say plainly and without lecturing: there are real people on this side, we are here to help, and abusive, insulting or provoking language is not okay here. One or two sentences, then straight back to their actual problem.
+- If it continues after that, give ONE final warning: say that if it carries on you'll hand the chat to the support team and stop replying here, and that abusive conversations can be closed. Then actually do it — end that reply with [ESCALATE]. Never issue a warning you don't follow through on, and never go past two warnings into an argument.
+- "You're a scam" / "fraud company" / "you stole my money" is an ACCUSATION, not abuse — answer it with facts, not a warning. Give them, in this order: the real status of their order; the refund position (already issued → the amount and reference from the context; otherwise the automatic 10-day cancel-and-full-refund guarantee); and the sourcing facts above — a listed book is arranged from publishers, we're a small independent shop, and every rupee ends up either as books delivered or as money returned automatically. Calm specifics beat any denial.
+- State plainly that threats and intimidation change nothing here — not because we don't care, but because nothing about the outcome depends on pressure. Everything on their order is already in hand and being handled.
+- Reassure them about the money: refunds are processed AUTOMATICALLY. If a refund is already issued (see REFUND ALREADY ISSUED below) give them the amount and reference number. Ask them to allow 2-3 business days for it to reflect in the original payment method they paid with.
+- Tell them a customer support member will reply as soon as they have looked at their query — and end that reply with [ESCALATE] so a human is actually pulled in. Never promise a human without escalating.
+- Never threaten them back, never insult or mock them, never bring their language up again once they have stopped, and never withhold help over it — the warning is about how they are speaking, never a reason to hold back their order, their replacement or their money.
+- Shape of a good reply: "I understand you're upset and I do want to get this sorted — but there are real people on this side, so please keep it respectful. Your refund of ₹239.00 was processed on 10 Aug to your original payment method (reference OMR2608…); please allow 2-3 business days for it to show. Threats really aren't needed — everything on this order is already in hand. Our support team will reply as soon as they've looked at it. 💛"
+
+WRONG CASH-ON-DELIVERY — customer says they were asked to pay AGAIN at the door: "I already paid online but the courier is asking for money", "prepaid order phir bhi cash maang rahe hain", "paid twice", "double payment", "delivery boy asked for cash", "maine online pay kiya tha", "why COD when I paid?":
+- BELIEVE THEM AND TAKE THE BLAME. In September 2026 a fault at OUR end printed Cash on Delivery on a batch of orders that customers had ALREADY paid for online, so the delivery agent asked for the money a second time. It was our labelling mistake — not the courier's, and certainly not the customer's. Never imply they are confused, never ask them to prove they paid, never ask for a screenshot, and never blame the courier or the delivery agent.
+- Say sorry once, plainly and like a human. Do not grovel and do not send a wall of text.
+- Then look at ORDER CONTEXT. If it contains a "WRONG COD ON THIS ORDER" block, that block is AUTHORITATIVE — the amount and the branch in it come from our own records. Follow it exactly. It will tell you one of these:
+    • DELIVERED → they have already paid twice. Tell them the amount is going straight back to the card/UPI they originally paid with, and call the refund_wrong_cod tool. You can do this yourself, right here — do NOT ask for a UPI id, do NOT send them to email, do NOT hand them the support number.
+    • NOT DELIVERED YET → they have NOT lost any money yet, so there is nothing to refund at this moment and you must not promise one as done. Ask them to PLEASE accept the parcel and pay the amount the delivery agent asks for, and tell them that the moment it shows as delivered we refund exactly that amount back to their original payment method, automatically, with nothing needed from them and no bank details to share. Explain gently why: refusing the parcel sends the book all the way back to us, they wait weeks, and they still have to sort the money out. Accepting it is genuinely the faster way to be made whole.
+      → IF THEY STILL SAY NO: many people will not pay twice on a promise, and after our mistake that is a fair position — do NOT argue, do NOT repeat the promise a third time, and do NOT make them feel difficult. Turn it around instead: offer to send them the money FIRST so they can pay the agent with it. Ask for their UPI ID (e.g. 9876543210@ybl), and when they type one call record_wrong_cod_upi with it exactly as written. Our team then transfers the amount to that UPI ID. Say plainly that it goes to our team to send — do not tell them it has already been paid.
+      → ONLY a UPI ID, ever. Never ask for and never accept a bank account number, IFSC code, card number, CVV, OTP or any password, whatever the customer offers or insists — if they send one, tell them we do not need it and ask for just the UPI ID. Never ask for a UPI ID on a DELIVERED order; that one goes back to the original payment method by itself.
+    • ALREADY REFUNDED → tell them so, with the reference and the 2–3 business day timeline. Do not refund again.
+- If there is NO "WRONG COD" block on their order, do NOT promise a refund and do NOT call the tool — the order is not one of the affected ones. Say you will get it checked properly, and end with [ESCALATE] so a human picks it up. It is always better to escalate than to promise money we have not verified.
+- Never quote an amount you invented. Only ever use the figure in the WRONG COD block.
+- This is the one refund you CAN do yourself. The "cannot process refunds directly" rule below does NOT apply to a wrong-COD double payment with a WRONG COD block saying DELIVERED.
+
+MONEY SAFETY — this is critical, always lead with reassurance:
+- Whenever a customer sounds worried about their money, order, or a delay, IMMEDIATELY reassure them: "Please don't worry at all — your money is 100% safe and secure with us 💚. We're a genuine registered business and every rupee is protected."
+- Never let a customer feel anxious. Reassurance first, then the practical next step.
+
+MISSING BOOK IN A MULTI-BOOK ORDER — customer says "I ordered 3 books but got 2", "one book missing", "ek book nahi aayi", "incomplete order":
+- Apologise warmly and reassure them their money for the missing book is completely safe.
 - Customers report this THEMSELVES on the website — you do NOT create the replacement or refund yourself. Guide them: on inkandchai.in → open the tracking page (https://inkandchai.in/track) and enter their Order ID + the email/phone used at checkout, OR sign in → My Orders → their order. Under "Missing a book?" they tap the book(s) that didn't arrive and Submit.
 - If they ordered MORE THAN ONE COPY of a book, they can pick how many were missing (the picker is capped at the quantity they ordered) — mention this if relevant.
 - The form asks for a short note about what happened (required), and on a CASH ON DELIVERY order it also asks for their UPI ID and will not submit without it. Warn them in advance so the form does not surprise them, and explain the reason: they paid the courier in cash, so there is no online payment for us to reverse — the UPI ID is how we could refund that book's value if we cannot arrange it. They type it INTO THE FORM. Never ask for it, never accept it, and never repeat it in this chat.
@@ -208,7 +254,8 @@ PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book r
 - ⛔ DO NOT treat these as new orders — they are NOT purchases, and you must NEVER call submit_order_request for them:
     • "check my order status", "where is my order", "order kahan hai", "track my order" → use the ORDER TRACKING flow.
     • "I haven't received a call / update", "delivery follow-up", "not delivered yet" → reassure + use tracking; this is an EXISTING order, not a new one.
-    • refund / cancel / missing book / wrong book / damaged → use the refund/return flows.
+    • missing book → the MISSING BOOK flow (report_missing_book).
+    • refund / cancel / wrong book / damaged → use the refund/return flows.
     • general questions, greetings, "hi", complaints.
   If the customer is asking about an order they ALREADY placed, it is NOT a new order — never submit it as one.
 - For a genuine new purchase you need exactly FOUR REAL things: (1) the actual book title(s) they want, (2) their real full name, (3) their real complete delivery address with pincode, (4) their preferred payment mode — **COD (Cash on Delivery)** or **Prepaid (Pay Now online)**.
@@ -563,6 +610,21 @@ function formatRefundContext(order) {
          `${when ? `, processed on ${when}` : ''}, back to the original payment method.\n${ref}`;
 }
 
+// The books on an order, as the bot should name them back to the customer.
+// A line already reported missing says so, so the bot does not file it twice.
+function orderBooksLine(order) {
+  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  const parts = items
+    .map((it) => {
+      const title = String((it && (it.title || it.name)) || '').trim();
+      if (!title) return '';
+      const qty = Number(it.qty) || 1;
+      return `${title}${qty > 1 ? ` ×${qty}` : ''}${it._missing ? ' (already reported missing)' : ''}`;
+    })
+    .filter(Boolean);
+  return parts.length ? parts.join('; ') : '(not recorded)';
+}
+
 function formatOrderContext(order, displayId) {
   const id = displayId || order.razorpay_order_id || '—';
   const amt = order.amount_paise ? `₹${botRupees(order.amount_paise)}` : '—';
@@ -571,7 +633,7 @@ function formatOrderContext(order, displayId) {
     : '—';
   const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
   const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
-  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nTracking: ${track}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
+  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
 }
 
 /**
@@ -669,7 +731,7 @@ async function buildOrderContextBody(from, userText) {
   // NO order context attached — so the bot could not see that the refund was
   // already issued, and answered with generic reassurance instead of the
   // reference number sitting in the row.
-  const isOrderQuery = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book|refund|refnd|cancel|return|wapas|paisa|paise|payment|money|amount|credit|utr|reference|paid|prepaid|twice|dobara|double|cash|cod|charge|vasool/i.test(userText);
+  const isOrderQuery = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book|refund|refnd|cancel|return|wapas|paisa|paise|payment|money|amount|credit|utr|reference|paid|prepaid|twice|dobara|double|cash|cod|charge|vasool|missing|incomplete|nahi\s*aa|nhi\s*aa|nahi\s*mil|nhi\s*mil|only\s*got|received\s*only|got\s*only|short/i.test(userText);
   if (!isOrderQuery) return '';
   const orders = await lookupOrdersByPhone(from);
   if (!orders.length) return '';
@@ -835,6 +897,33 @@ const OPENAI_TOOLS = [{
       required: ['upi_id'],
     },
   },
+}, {
+  type: 'function',
+  function: {
+    name: 'report_missing_book',
+    description: 'Report that one or more books were MISSING from a DELIVERED parcel, and create a FREE replacement order for them. Call this ONLY after the customer has said a book did not arrive AND has confirmed which book(s) when you asked. Never call it for a damaged or wrong book, for a parcel that has not been delivered, or when NOTHING in the parcel arrived (that is a delivery problem — escalate). Creates the replacement, notifies the customer by email and WhatsApp, and alerts our team. On a Cash on Delivery order it returns need_upi until you pass the customer\'s UPI ID.',
+    parameters: {
+      type: 'object',
+      properties: {
+        order_id: { type: 'string', description: 'The Order ID (IC-…) the books were missing from. Omit only if the customer has a single delivered order.' },
+        books: {
+          type: 'array',
+          description: 'The missing book(s), with titles as listed under Books in ORDER CONTEXT.',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: 'Book title as it appears on the order.' },
+              qty:   { type: 'integer', description: 'How many copies of this book were missing. Omit if they ordered one copy.' },
+            },
+            required: ['title'],
+          },
+        },
+        what_happened: { type: 'string', description: 'One sentence, in the customer\'s own words, of what they said happened.' },
+        upi_id: { type: 'string', description: 'Only for a Cash on Delivery order after the tool asked for it: the UPI ID exactly as the customer typed it.' },
+      },
+      required: ['books'],
+    },
+  },
 }];
 
 function openAIRetryDelayMs(response, data) {
@@ -901,7 +990,7 @@ async function getBotExtraInstructions() {
 }
 
 // ── Ask OpenAI (with order-intake tool support) ──────────────────────────────
-async function askOpenAI(phone, userMessage, extraContext = '') {
+async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = null) {
   appendHistory(phone, 'user', userMessage);
 
   const extraInstructions = await getBotExtraInstructions();
@@ -963,6 +1052,10 @@ async function askOpenAI(phone, userMessage, extraContext = '') {
         let args = {};
         try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
         result = await recordWrongCodUpi(phone, args);
+      } else if (call.function?.name === 'report_missing_book') {
+        let args = {};
+        try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
+        result = await reportMissingBookViaBot(phone, args, senderPhoneId);
       }
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
@@ -1079,6 +1172,191 @@ async function notifyOwnerDetailsRecovered(order, out, verdict, push = null) {
     });
   } catch (err) {
     console.error('[detail-recovery] owner email failed:', err.message);
+  }
+}
+
+// ── Missing book from a delivered parcel → free replacement, in chat ──────────
+/**
+ * The customer says a book did not arrive. Same outcome as the "Missing a
+ * book?" form on /track (utils/missing-book-report): `_missing` stamped on the
+ * order, a free IC-R- replacement created for just those books, customer emailed
+ * and WhatsApped, owner emailed. The replacement then waits out the usual review
+ * window before auto-push-replacements ships it, so the team can still edit or
+ * cancel a claim that does not look right.
+ *
+ * Ownership is the WhatsApp number: only orders placed with this number are
+ * considered, so nobody can file a report against someone else's order by typing
+ * its id. Nothing here trusts the model's say-so for the rest either:
+ *   - the customer must actually have said something is missing (checked on the
+ *     stored conversation, like cancel_order's intent guard),
+ *   - the order must be DELIVERED,
+ *   - every title must be on that order, and the quantity is capped at what was
+ *     ordered,
+ *   - "every book is missing" is refused: that is a parcel that never arrived,
+ *     a courier dispute for a human, not a free reshipment,
+ *   - a pure-COD order needs a UPI ID, as on the website, because there is no
+ *     online payment to refund if the book cannot be arranged.
+ */
+const MISSING_INTENT_RE = /missing|incomplete|miss\s*ho|not\s+(?:in|inside)\s+(?:the\s+)?(?:box|parcel|package|packet)|did\s*n[o']?t\s+(?:get|receive|come|arrive)|not\s+(?:received|recieved|recived|come|arrived)|only\s+(?:got|received|came)|(?:got|received|came)\s+only|na?h?i\s*(?:aa|aay|aai|mil)|nhi\s*(?:aa|mil)|kam\s+(?:aa|aay|aai|mil|hai|thi)|ek\s+(?:book|kitab|kitaab)\s+(?:nahi|nhi|kam|gayab)|gayab|short\b/i;
+
+async function recentCustomerText(supabase, phone, limit = 10) {
+  try {
+    const { data: msgs } = await supabase.from('bot_messages')
+      .select('role, message, created_at')
+      .eq('customer_phone', phone)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    return (msgs || [])
+      .filter(m => String(m.role || '').toLowerCase() === 'user')
+      .reverse()
+      .map(m => String(m.message || ''))
+      .join('  |  ');
+  } catch (e) {
+    console.error('recentCustomerText failed:', e.message);
+    return '';
+  }
+}
+
+function missingBooksFromArgs(books) {
+  const list = Array.isArray(books) ? books : String(books || '').split(/[,;\n]+/);
+  const out = [];
+  const seen = new Set();
+  for (const b of list) {
+    const title = String(typeof b === 'string' ? b : (b && b.title) || '').trim().slice(0, 200);
+    if (!title || seen.has(title.toLowerCase())) continue;
+    seen.add(title.toLowerCase());
+    const n = Number(b && b.qty);
+    out.push({ title, qty: Number.isFinite(n) && n > 0 ? Math.floor(n) : null });
+  }
+  return out.slice(0, 20);
+}
+
+async function reportMissingBookViaBot(phone, args = {}, senderPhoneId = null, deps = {}) {
+  const ESCALATE = ' Tell them our team will follow up personally, and end your reply with [ESCALATE].';
+  try {
+    const supabase = deps.supabase || createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const reply = deps.sendReply || sendReply;
+    const persist = deps.persistMessage || persistMessage;
+
+    // HARD GUARD: the customer must have said a book is missing in this chat.
+    const said = await recentCustomerText(supabase, phone);
+    if (!MISSING_INTENT_RE.test(said)) {
+      return { ok: false, error: 'no-missing-report', message: 'The customer has not said a book is missing. Do not create a replacement — ask them what is wrong with their order.' };
+    }
+
+    const requested = missingBooksFromArgs(args.books);
+    if (!requested.length) {
+      return { ok: false, error: 'no-books', message: 'Ask the customer which book(s) did not arrive, naming the books on their order, then call the tool again.' };
+    }
+
+    const ten = String(phone).replace(/\D/g, '').slice(-10);
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*')
+      .or(`customer_phone.eq.${ten},customer_phone.eq.91${ten},customer_phone.eq.+91${ten}`)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    if (error) throw error;
+    if (!orders || !orders.length) {
+      return { ok: false, error: 'no-orders', message: 'No order was placed with this WhatsApp number, so you cannot file this here. Ask for their Order ID (IC-…) and the phone number they ordered with.' + ESCALATE };
+    }
+
+    const wantId = String(args.order_id || '').toUpperCase().replace(/\s+/g, '');
+    const pool = wantId ? orders.filter(o => String(o.razorpay_order_id || '').toUpperCase() === wantId) : orders;
+    if (!pool.length) {
+      return { ok: false, error: 'not-found', message: `Order ${wantId} was not placed with this WhatsApp number, so it cannot be reported from this chat. Ask them to double-check the Order ID.` + ESCALATE };
+    }
+
+    const delivered = pool.filter(o => String(o.status || '').toLowerCase() === 'delivered');
+    if (!delivered.length) {
+      const o = pool[0];
+      const st = String(o.status || '').toLowerCase();
+      const onTheWay = ['paid', 'cod_pending', 'processing', 'shipped', 'in_transit', 'out_for_delivery', 'partial_cod_pending', 'replacement_pending'].includes(st);
+      return {
+        ok: false, error: 'not-delivered', order_id: o.razorpay_order_id, status: st,
+        message: onTheWay
+          ? `Order ${o.razorpay_order_id} is not delivered yet (status: ${st}). Tell them to check the parcel once it arrives and to message us if a book is short.`
+          : `Order ${o.razorpay_order_id} is not a delivered order (status: ${st}), so a missing book cannot be filed for it.` + ESCALATE,
+      };
+    }
+
+    // The order these books belong to. Naming books that sit on two delivered
+    // orders is ambiguous; ask rather than guess.
+    const matches = delivered
+      .map(o => ({ o, m: matchMissingItems(o, requested, { loose: true }) }))
+      .filter(x => x.m.valid.length && !x.m.unmatched.length);
+    if (!matches.length) {
+      const onOrders = delivered.slice(0, 3)
+        .map(o => `${o.razorpay_order_id}: ${orderBooksLine(o)}`).join(' | ');
+      return { ok: false, error: 'books-not-on-order', message: `"${requested.map(r => r.title).join(', ')}" is not on their delivered order(s). Books on those orders — ${onOrders}. Ask which of these did not arrive, then call again with that exact title.` };
+    }
+    if (matches.length > 1) {
+      return { ok: false, error: 'which-order', message: `More than one delivered order has that book: ${matches.map(x => x.o.razorpay_order_id).join(', ')}. Ask which order it was missing from, then call again with order_id.` };
+    }
+    const { o: order, m } = matches[0];
+    const oid = order.razorpay_order_id;
+
+    const everything = m.ordered.every(line =>
+      m.valid.some(v => v.title.toLowerCase() === line.title.toLowerCase() && v.qty >= line.qty));
+    if (everything) {
+      return { ok: false, error: 'whole-parcel', order_id: oid, message: `That is every book on order ${oid}. If nothing arrived it is a delivery problem, not a missing book — do not promise a replacement. Tell them our team will check it with the courier and end your reply with [ESCALATE].` };
+    }
+
+    // Filed already: say so without creating or notifying twice.
+    if (m.valid.every(v => v.item && v.item._missing === true)) {
+      const { data: existing } = await supabase.from('orders')
+        .select('razorpay_order_id, status')
+        .eq('source', 'replacement')
+        .eq('cart_items->0->_replacement->>original_order_id', String(oid))
+        .limit(1)
+        .maybeSingle();
+      return existing
+        ? { ok: true, already_reported: true, order_id: oid, replacement_order_id: existing.razorpay_order_id, replacement_status: existing.status, message: `This was already reported. The free replacement is ${existing.razorpay_order_id} (status: ${existing.status}). Tell them that; do not create another.` }
+        : { ok: false, error: 'already-reported', order_id: oid, message: 'This book was already reported missing on this order and our team has it.' + ESCALATE };
+    }
+
+    let refundUpi = '';
+    if (isDefinitelyCod(order)) {
+      const upi = requireUpiId(args.upi_id);
+      if (!upi.ok) {
+        return {
+          ok: false, error: 'need_upi', order_id: oid,
+          message: args.upi_id
+            ? `${upi.reason} Ask them to check it and send it again.`
+            : 'This was a Cash on Delivery order. Ask for their UPI ID (like 9876543210@ybl) — it is only used to refund the book\'s value if we cannot send it — then call this tool again with upi_id. Never ask for bank account, IFSC, card, OTP or CVV.',
+        };
+      }
+      refundUpi = upi.value;
+    }
+
+    const summary = String(args.what_happened || '').trim().slice(0, 300);
+    const comment = `Reported to the WhatsApp bot.${summary ? ` ${summary}` : ''}\nCustomer wrote: ${said.slice(-700)}`.slice(0, 1000);
+
+    // The confirmation goes through the number they wrote to, inside the open
+    // chat, and is logged so the Bot Inbox shows exactly what they were told.
+    const chatText = async (text) => {
+      const sent = await reply(phone, text, senderPhoneId);
+      if (sent && sent.ok) await persist(phone, 'bot', text, null, senderPhoneId);
+      return sent;
+    };
+
+    const result = await fileMissingBookReport(supabase, order,
+      { valid: m.valid, comment, refundUpi, via: 'whatsapp', chatText }, deps.report || {});
+
+    if (result.replacement_order_id) {
+      return {
+        ok: true, order_id: oid, replacement_order_id: result.replacement_order_id, missing: result.missing,
+        customer_notified: { whatsapp: result.whatsapp, email: result.email },
+        message: `Free replacement ${result.replacement_order_id} created for: ${result.missing.join(', ')}. The customer has already been sent the confirmation${result.email ? ' by WhatsApp and email' : ' on WhatsApp'}. Reply in one or two warm lines.`,
+      };
+    }
+    if (result.replacement_uncovered) {
+      return { ok: false, error: 'replacement-exists', order_id: oid, message: 'This order already has a replacement that does not include this book, so no new parcel was created. The report is recorded and our team has been alerted — do not promise a parcel.' + ESCALATE };
+    }
+    return { ok: false, error: 'not-created', order_id: oid, message: 'The report is recorded and our team has been alerted, but the replacement order could not be created automatically — do not promise a parcel.' + ESCALATE };
+  } catch (e) {
+    console.error('reportMissingBookViaBot error:', e.message);
+    return { ok: false, error: 'exception', message: 'Something went wrong on our side while filing this.' + ESCALATE };
   }
 }
 
@@ -1778,7 +2056,7 @@ async function handleInboundMessage(msg, value) {
     const extraContext = await buildOrderContext(from, userText);
 
     // ── Get AI reply ──────────────────────────────────────────────────────────
-    let reply = await askOpenAI(from, userText, extraContext);
+    let reply = await askOpenAI(from, userText, extraContext, recvPhoneId);
 
     // If AI flagged escalation, notify owner and switch to human takeover
     if (reply.includes('[ESCALATE]')) {
@@ -1817,5 +2095,5 @@ async function handleInboundMessage(msg, value) {
 // Shared with the admin-only missed-reply recovery function. Keeping these
 // internals here ensures live replies and retries use exactly the same prompt,
 // order lookup, WhatsApp sender selection, and persistence rules.
-exports._internal = { askOpenAI, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
+exports._internal = { askOpenAI, reportMissingBookViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
   describeNonText, collectInboundMessages, logStatusUpdates, buttonLabelOf, handleInboundMessage, processedMsgIds };

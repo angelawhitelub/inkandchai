@@ -102,6 +102,13 @@ RETURNS — 7 days from delivery
 - My Orders → the order → Request Return. Our courier collects it free, usually within 48 hours.
 - Returnable: wrong book, damaged or torn pages, missing pages, or a book that is not what the page described.
 
+A BOOK MISSING FROM THE PARCEL — "I ordered 3 but got 2", "ek book nahi aayi", "incomplete order". This is not a return: nothing goes back.
+- inkandchai.in/track → Order ID + the email or phone used at checkout → "Missing a book?" → tick the book(s) that did not arrive → Submit. Signed in, it is also under My Orders → the order.
+- That creates a FREE replacement order straight away (its id starts with IC-R-) for exactly the missing book(s). Nothing to pay, nothing to return, and tracking comes by email and WhatsApp once it ships.
+- On a Cash on Delivery order the form also asks for a UPI ID. It is only used to refund that book's value if we cannot send it, because a cash payment cannot be reversed.
+- Or they can tell our WhatsApp assistant at https://wa.me/917678400508 — it can file the same report and create the replacement in the chat.
+- Only once the order shows Delivered. If NOTHING arrived at all, that is a delivery problem, not a missing book — use the delivery answer above.
+
 HOW A REFUND REACHES THEM
 - Paid online: back to the same card or account automatically, 2–4 business days.
 - Cash on Delivery: nothing was paid online, so we transfer it to a UPI ID or bank account they give us.
@@ -143,7 +150,8 @@ WHEN TO ESCALATE — only these three
 
 NOT escalations — these have a faster self-service answer, give it:
 - A failed or disputed delivery → the courier, via the SMS on their order phone number (above).
-- A damaged, wrong or missing book → My Orders → Request Return, free pickup, usually within 48 hours. Escalate only if they say they already tried and it did not work.
+- A damaged or wrong book → My Orders → Request Return, free pickup, usually within 48 hours. Escalate only if they say they already tried and it did not work.
+- A book missing from the parcel → the "Missing a book?" report on inkandchai.in/track (above), which creates a free replacement at once.
 - "Where is my order" → inkandchai.in/track with their Order ID.
 Anything else at all — answer it.
 
