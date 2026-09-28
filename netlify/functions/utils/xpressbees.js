@@ -13,7 +13,9 @@
  *   GET  /api/shipments2/track/{awb}   scan history
  *   POST /api/shipments2/cancel        { awb }
  *   POST /api/shipments2/manifest      { awbs: [] } -> manifest pdf
- *   POST /api/ReverseShipments         BOOKS a reverse pickup ("Express Reverse")
+ *   POST /api/reverseshipments         BOOKS a reverse pickup ("Express Reverse").
+ *                                      Lowercase: the doc's /api/ReverseShipments
+ *                                      is a 404 web page, not the API.
  *
  * Every response is { status: true|false, ... }. A false status with HTTP 200
  * is the normal failure shape, so `status` is the only thing worth reading --
@@ -43,7 +45,12 @@ async function xbFetch(path, { method = 'GET', token, body, ms = TIMEOUT_MS } = 
     const text = await res.text();
     let data = null;
     try { data = JSON.parse(text); } catch { /* keep raw below */ }
-    return { httpStatus: res.status, data, raw: text.slice(0, 400) };
+    // A wrong path gets their web app's HTML 404, which used to reach the
+    // admin as a page of markup. Say what it is instead.
+    const raw = !data && /^\s*<(?:!doctype|html)/i.test(text)
+      ? `XpressBees returned a web page (HTTP ${res.status}) instead of an API response for ${path} — the endpoint is wrong or has moved`
+      : text.slice(0, 400);
+    return { httpStatus: res.status, data, raw };
   } catch (err) {
     if (err.name === 'AbortError') {
       return { httpStatus: 599, data: null, raw: `XpressBees ${path} timed out after ${Math.round(ms / 1000)}s` };
@@ -207,7 +214,7 @@ async function panelOrders({ page = 1, perPage = 100, params = {} } = {}) {
  * { awb_number, courier_name, label, manifest, ... }.
  */
 async function bookReverse(payload) {
-  const out = await withAuth((token) => xbFetch('/ReverseShipments', { method: 'POST', token, body: payload }));
+  const out = await withAuth((token) => xbFetch('/reverseshipments', { method: 'POST', token, body: payload }));
   if (!out.data || out.data.status !== true || !out.data.data?.awb_number) {
     throw new Error(`XpressBees reverse booking failed: ${out.data?.message || out.raw}`);
   }
