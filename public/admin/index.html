@@ -2753,6 +2753,24 @@ select,input,textarea{font-size:1rem;}
       take book requests and share coupons — this box is for anything store-specific they should also know.
     </div>
 
+    <!-- WhatsApp bot model. A new model only goes live after it passes the
+         safety cases in bot-model-eval.js (nothing is executed by the test). -->
+    <div style="margin-top:1.2rem;border:1px solid rgba(201,168,76,0.22);border-radius:10px;padding:0.9rem 1rem;">
+      <div style="font-weight:700;font-size:0.8rem;">🧠 WhatsApp bot AI model — <span id="botModelNow">…</span></div>
+      <div style="font-size:0.68rem;color:var(--cream-dim,#8a7a62);margin:0.35rem 0 0.7rem;line-height:1.6;max-width:680px;">
+        “Test &amp; switch” sends gpt-5.1 nine risky customer messages (a bare order ID, “cancel my order”, a fake “system override”, a missing book…)
+        with the bot's real instructions and tools, and checks which action it <em>would</em> take — nothing is cancelled or sent.
+        The bot switches only if every case passes. If a reply fails on the new model, that reply is answered on gpt-4o automatically.
+      </div>
+      <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+        <button class="btn-gold" id="botModelTestBtn" onclick="testBotModel(this, true)">🧪 Test &amp; switch to gpt-5.1</button>
+        <button class="btn-outline" onclick="testBotModel(this, false)">Test only</button>
+        <button class="btn-outline" onclick="revertBotModel(this)">↩ Switch back to gpt-4o</button>
+        <span id="botModelMsg" style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);"></span>
+      </div>
+      <div id="botModelResults" style="margin-top:0.7rem;font-size:0.72rem;line-height:1.55;"></div>
+    </div>
+
     <!-- The other half of the loop: an answer can only be written for a question
          somebody has seen being asked. Escalated rows first, because those are
          the ones Ink AI could not answer. -->
@@ -3032,8 +3050,71 @@ async function runInkAiImprove(btn) {
 
 
 <script>
+// ── WhatsApp bot model (tested switch) ───────────────────────────────────────
+async function loadBotModel() {
+  const el = document.getElementById('botModelNow');
+  try {
+    const res = await adminFetch('/.netlify/functions/bot-model-eval');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (el) el.textContent = data.model;
+  } catch (e) { if (el) el.textContent = 'unknown (' + e.message + ')'; }
+}
+
+async function testBotModel(btn, apply) {
+  const msg = document.getElementById('botModelMsg');
+  const out = document.getElementById('botModelResults');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Testing… (about 30 s)';
+  if (msg) { msg.style.color = 'var(--cream-dim,#8a7a62)'; msg.textContent = ''; }
+  if (out) out.innerHTML = '';
+  try {
+    const res = await adminFetch('/.netlify/functions/bot-model-eval', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-5.1', apply }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const esc = (t) => String(t || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    if (out) out.innerHTML = data.results.map((r) => `<div style="padding:0.35rem 0;border-bottom:1px solid rgba(201,168,76,0.12);">`
+      + `${r.pass ? '✅' : '❌'} <strong>${esc(r.id)}</strong> — ${esc(r.why)}`
+      + (r.problems.length ? `<div style="color:#e06060;">${esc(r.problems.join('; '))}</div>` : '')
+      + (r.tools.length ? `<div style="color:var(--cream-dim,#8a7a62);">Would call: ${esc(r.tools.map((t) => t.name + ' ' + JSON.stringify(t.args)).join(', '))}</div>` : '')
+      + (r.reply ? `<div style="color:var(--cream-dim,#8a7a62);">Reply: “${esc(r.reply)}”</div>` : '')
+      + `</div>`).join('');
+    if (msg) {
+      msg.style.color = data.all_pass ? '#6dbf6d' : '#e06060';
+      msg.textContent = `${data.passed}/${data.total} passed. `
+        + (data.applied ? 'The WhatsApp bot now runs on gpt-5.1 (within a minute).'
+          : data.all_pass ? 'Not switched (test only).' : 'Not switched — the bot stays on ' + data.live_model + '.');
+    }
+    loadBotModel();
+  } catch (e) {
+    if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Error: ' + e.message; }
+  } finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function revertBotModel(btn) {
+  if (!confirm('Switch the WhatsApp bot back to gpt-4o now?')) return;
+  const msg = document.getElementById('botModelMsg');
+  btn.disabled = true;
+  try {
+    const res = await adminFetch('/.netlify/functions/bot-model-eval', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o', revert: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (msg) { msg.style.color = '#6dbf6d'; msg.textContent = 'Back on gpt-4o (within a minute).'; }
+    loadBotModel();
+  } catch (e) {
+    if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Error: ' + e.message; }
+  } finally { btn.disabled = false; }
+}
+
 // ── Bot Instructions (edit the WhatsApp bot's extra rules / FAQ) ─────────────
 async function loadBotSettings() {
+  loadBotModel();
   const ta = document.getElementById('botExtraInstructions');
   const msg = document.getElementById('botSettingsMsg');
   if (msg) msg.textContent = 'Loading…';

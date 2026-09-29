@@ -24,6 +24,7 @@ const { normalizePhone } = require('./utils/whatsapp');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 const { quoteLateCancel, executeLateCancel } = require('./utils/prepaid-late-cancel');
+const { chatPayload, currentBotModel, FALLBACK_MODEL } = require('./utils/bot-model');
 const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
 const {
@@ -943,20 +944,14 @@ function openAIRetryDelayMs(response, data) {
 
 function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
-async function callOpenAIChat(messages, { tools = false } = {}) {
+async function callOpenAIChat(messages, { tools = false, model = null, noFallback = false } = {}) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not set');
-  const payload = {
-    // gpt-4o-mini was too weak at tool discipline — it fired cancel_order off a
-    // bare order id (no cancellation request), cancelling + refunding an order.
-    // gpt-4o follows the "confirm first / only cancel on request" rules far more
-    // reliably. Override via OPENAI_MODEL env var without a redeploy if needed.
-    model: process.env.OPENAI_MODEL || 'gpt-4o',
-    messages,
-    max_tokens: 320,
-    temperature: 0.4,        // steadier, less erratic tool selection
-  };
-  if (tools) { payload.tools = OPENAI_TOOLS; payload.tool_choice = 'auto'; }
+  // The model is chosen by utils/bot-model.js: gpt-4o unless a candidate has
+  // passed the safety cases in bot-model-eval.js (gpt-4o-mini was dropped after
+  // it cancelled and refunded an order off a bare order id).
+  const useModel = model || await currentBotModel();
+  const payload = chatPayload(useModel, { messages, tools: tools ? OPENAI_TOOLS : null, maxTokens: 320, temperature: 0.4 });
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -970,6 +965,12 @@ async function callOpenAIChat(messages, { tools = false } = {}) {
       console.warn(`OpenAI rate limit reached; retrying once in ${retryMs}ms`);
       await wait(retryMs);
       continue;
+    }
+    // A newer model the account or API rejects must never leave a customer
+    // without a reply: answer this one on the proven model instead.
+    if (!noFallback && useModel !== FALLBACK_MODEL && res.status !== 429) {
+      console.error(`[bot-model] ${useModel} failed (${res.status}: ${data.error?.message || ''}); answering on ${FALLBACK_MODEL}`);
+      return callOpenAIChat(messages, { tools, model: FALLBACK_MODEL, noFallback: true });
     }
     throw new Error(`OpenAI error ${res.status}: ${data.error?.message || JSON.stringify(data)}`);
   }
@@ -993,14 +994,9 @@ async function getBotExtraInstructions() {
   return _botExtraCache.text;
 }
 
-// ── Ask OpenAI (with order-intake tool support) ──────────────────────────────
-async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = null) {
-  appendHistory(phone, 'user', userMessage);
-
-  const extraInstructions = await getBotExtraInstructions();
-  // Put the admin's custom instructions at the TOP and mark them authoritative,
-  // so the model actually follows them over the generic defaults below (appending
-  // them at the very end let the long default prompt drown them out).
+// The system prompt exactly as the bot sends it. Shared with bot-model-eval.js
+// so a model is tested against the real prompt, not a copy that drifts.
+function buildSystemContent(extraInstructions, known, extraContext) {
   let systemContent = SYSTEM_PROMPT;
   if (extraInstructions) {
     systemContent =
@@ -1011,7 +1007,6 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
   }
   // If we already know this customer from a prior order, tell the model — so
   // it doesn't ask for name/address again on their next purchase.
-  const known = await getBotCustomer(phone);
   if (known && (known.customer_name || known.address)) {
     systemContent += '\n\nRETURNING CUSTOMER (do NOT re-ask for these — they are already on file):\n'
       + `- Name: ${known.customer_name || '(missing)'}\n`
@@ -1022,6 +1017,19 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
   if (extraContext) {
     systemContent += '\n\nORDER CONTEXT FOR THIS CONVERSATION:\n' + extraContext;
   }
+  return systemContent;
+}
+
+// ── Ask OpenAI (with order-intake tool support) ──────────────────────────────
+async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = null) {
+  appendHistory(phone, 'user', userMessage);
+
+  const extraInstructions = await getBotExtraInstructions();
+  // Put the admin's custom instructions at the TOP and mark them authoritative,
+  // so the model actually follows them over the generic defaults below (appending
+  // them at the very end let the long default prompt drown them out).
+  const known = await getBotCustomer(phone);
+  const systemContent = buildSystemContent(extraInstructions, known, extraContext);
 
   const messages = [
     { role: 'system', content: systemContent },
@@ -1029,7 +1037,9 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
   ];
 
   // First pass — the model may decide to call submit_order_request.
-  const first = await callOpenAIChat(messages, { tools: true });
+  // Both passes on the same model, even if the setting changes mid-reply.
+  const model = await currentBotModel();
+  const first = await callOpenAIChat(messages, { tools: true, model });
 
   if (first.tool_calls && first.tool_calls.length) {
     // Execute each tool call, then ask the model for a natural confirmation reply.
@@ -1063,7 +1073,7 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
       }
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
-    const second = await callOpenAIChat(messages, { tools: false });
+    const second = await callOpenAIChat(messages, { tools: false, model });
     const reply = (second.content || '').trim() || 'Got it! I\'ve sent your request to our team — they\'ll confirm shortly 📚';
     appendHistory(phone, 'assistant', reply);
     return reply;
@@ -2120,5 +2130,5 @@ async function handleInboundMessage(msg, value) {
 // Shared with the admin-only missed-reply recovery function. Keeping these
 // internals here ensures live replies and retries use exactly the same prompt,
 // order lookup, WhatsApp sender selection, and persistence rules.
-exports._internal = { askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
+exports._internal = { buildSystemContent, callOpenAIChat, formatOrderContext, getBotExtraInstructions, OPENAI_TOOLS, askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
   describeNonText, collectInboundMessages, logStatusUpdates, buttonLabelOf, handleInboundMessage, processedMsgIds };
