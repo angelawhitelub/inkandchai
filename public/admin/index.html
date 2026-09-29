@@ -5378,6 +5378,15 @@ async function togglePaymentType(id, target, btn) {
 
 async function updateStatus(id, status) {
   if (!status) return;
+  // A replacement being cancelled may owe the customer money for books that
+  // never arrived — that path cancels AND refunds (cancel-replacement.js).
+  if (status === 'cancelled') {
+    const ord = allOrders.find(o => o.id === id);
+    const items = Array.isArray(ord?.cart_items) ? ord.cart_items : [];
+    if (ord && (ord.source === 'replacement' || items.some(i => i && i._replacement))) {
+      return cancelReplacementWithRefund(id);
+    }
+  }
 
   let tracking_id = '', courier_name = '';
   if (status === 'shipped') {
@@ -10316,6 +10325,87 @@ function refundMissingInsteadOfReplacement(encodedRowId) {
   });
 }
 
+// Cancel a replacement and, when it replaced books that never arrived, refund
+// their value on the original order in the same step. The server decides and
+// refuses whenever a second refund is possible or the parcel is still moving;
+// the dry run here only lets the person see the amount before agreeing.
+async function cancelReplacementWithRefund(rowId) {
+  const post = async (extra) => {
+    const res = await fetch('/.netlify/functions/cancel-replacement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+      body: JSON.stringify({ id: rowId, ...extra }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    return data;
+  };
+  try {
+    const dry = await post({ dry_run: true });
+    const p = dry.plan || {};
+    const amt = '₹' + money((p.amount_paise || 0) / 100);
+    const books = (p.items || []).map(i => `• ${i.title}${i.qty > 1 ? ' ×' + i.qty : ''}`).join('\n');
+    const via = p.gateway === 'razorpay' ? 'Razorpay' : 'PhonePe';
+    const question =
+      p.action === 'gateway'
+        ? `Cancel replacement ${dry.replacement_id} and refund ${amt} on ${p.original_id} via ${via}?\n\n${books}\n\nThe refund is sent only once the parcel is confirmed stopped. The customer is notified.`
+      : p.action === 'upi'
+        ? `Cancel replacement ${dry.replacement_id}?\n\n${p.reason}\n${amt} is owed by UPI — you'll be asked next whether to email the customer for their UPI ID.`
+      : p.action === 'manual'
+        ? `Cancel replacement ${dry.replacement_id}?\n\n⚠️ ${amt} is owed but will NOT be refunded automatically:\n${p.reason}`
+        : `Cancel replacement ${dry.replacement_id}?`;
+    if (!confirm(question)) { applyFilters(); return; }
+
+    let r = await post({});
+    if (r.refund?.status === 'needs_confirm') {
+      if (confirm(`Replacement cancelled here.\n\n${r.refund.message}\n\nOK = it is cancelled in that panel, refund now.\nCancel = refund later from the Missing Books tab.`)) {
+        r = await post({ confirm_stopped: true });
+      }
+    }
+
+    // Reflect it locally without waiting for a full reload.
+    const repl = allOrders.find(o => String(o.id) === String(rowId));
+    if (repl) repl.status = 'cancelled';
+    const rf = r.refund || {};
+    if (rf.status === 'issued') {
+      const orig = allOrders.find(o => (o.razorpay_order_id || o.id) === p.original_id);
+      if (orig) orig.status = String(rf.state || '').toUpperCase() === 'COMPLETED' ? 'partially_refunded' : 'refund_pending';
+      const m = repl && (repl.cart_items || []).find(i => i && i._replacement)?._replacement;
+      if (m) { m.refund_issued_at = new Date().toISOString(); m.refund_amount_paise = rf.amount_paise; if (rf.ref) m.refund_ref = rf.ref; }
+    }
+    updateStats();
+    applyFilters();
+    if (window.renderReplacementRequests) renderReplacementRequests();
+
+    const courierLine = r.courier?.message ? `\n\nCourier: ${r.courier.message}` : '';
+    const lines = {
+      issued: `✅ Replacement cancelled and ${'₹' + money((rf.amount_paise || 0) / 100)} refunded on ${p.original_id}.\n\n${rf.message || ''}${rf.ref ? '\nRef: ' + rf.ref : ''}`,
+      withheld: `⚠️ Replacement cancelled, but NOT refunded.\n\n${rf.message}`,
+      needs_confirm: `Replacement cancelled. Refund not sent yet.\n\n${rf.message}`,
+      failed: `⚠️ Replacement cancelled, but the refund failed.\n\n${rf.message}`,
+      manual: `Replacement cancelled. Refund NOT sent automatically:\n\n${rf.message}`,
+      not_owed: `✅ Replacement cancelled.${rf.message && p.action !== 'none' ? '\n\n' + rf.message : ''}`,
+    };
+    if (rf.status === 'upi') {
+      alert(`✅ Replacement cancelled.${courierLine}`);
+      if (confirm(`${rf.message}\n\nEmail the customer now asking for their UPI ID for ${'₹' + money((rf.amount_paise || 0) / 100)}?`)) {
+        const res = await fetch('/.netlify/functions/request-refund-upi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
+          body: JSON.stringify({ id: rowId, amount_paise: rf.amount_paise }),
+        });
+        const d = await res.json().catch(() => ({}));
+        alert(res.ok ? `📧 ${d.message}` : `Could not send: ${d.error || 'HTTP ' + res.status}`);
+      }
+      return;
+    }
+    alert((lines[rf.status] || '✅ Replacement cancelled.') + courierLine);
+  } catch (err) {
+    applyFilters();
+    alert('Could not cancel the replacement: ' + err.message);
+  }
+}
+
 // ── Edit order customer details / books ──────────────────────────────────────
 // ── Manual missing-book replacement (delivered orders) ──────────────────────
 // The customer-facing report (report-missing-books.js) only exists when the
@@ -13435,6 +13525,9 @@ function renderMissingBooks() {
         + (meta.customer_comment ? `<div class="hint" style="margin-top:.3rem;font-style:italic;">"${esc(String(meta.customer_comment).slice(0, 140))}"</div>` : '');
     } else if (state === 'open') {
       stateCell = `<span style="color:var(--cream-dim);">${esc((repl.status || '—').replace(/_/g, ' '))}</span>` + upiLine;
+    } else if (state === 'gateway' && meta.refund_issued_at) {
+      stateCell = `<span style="color:#6dbf6d;">✓ Refunded ₹${money((Number(meta.refund_amount_paise) || 0) / 100)} ${mbDate(meta.refund_issued_at)}</span>`
+        + (meta.refund_ref ? `<div class="hint" style="margin-top:.2rem;font-family:ui-monospace,Menlo,monospace;">${esc(meta.refund_ref)}</div>` : '');
     } else if (state === 'gateway') {
       stateCell = `<span style="color:var(--cream-dim);">Original is <strong>${esc(original?.status || 'unknown')}</strong></span>` + upiLine;
     } else if (state === 'needs_upi') {
@@ -13476,8 +13569,16 @@ function renderMissingBooks() {
       }
     } else if (state === 'open' && split.gateway > 0 && repl.status === 'replacement_pending') {
       actions = btn('💳 Refund & cancel', `refundMissingInsteadOfReplacement('${rowId}')`);
+    } else if (state === 'open' && repl && repl.status !== 'delivered') {
+      actions = btn('✕ Cancel & refund', `cancelReplacementWithRefund(decodeURIComponent('${rowId}'))`, '#e06060');
     } else if (state === 'open') {
       actions = `<span class="hint">Cancel it to start a refund</span>`;
+    } else if (state === 'gateway' && repl && !meta.refund_issued_at
+               && !['refunded', 'partially_refunded', 'refund_pending'].includes(String(original?.status || ''))) {
+      // Cancelled, but nothing on either row says the money went back (a
+      // replacement cancelled before refunds were automatic, or one whose
+      // parcel had to be confirmed stopped first).
+      actions = btn(`💳 Refund ₹${money(split.gateway)}`, `cancelReplacementWithRefund(decodeURIComponent('${rowId}'))`, '#6dbf6d');
     } else {
       actions = `<span class="hint">Handled by the gateway</span>`;
     }

@@ -50,6 +50,7 @@ const STAFF_ENDPOINT_PERMISSIONS = {
   'retry-missed-bot-replies': 'support.inbox',
   'phonepe-refund': 'refunds.issue',
   'razorpay-refund': 'refunds.issue',
+  'cancel-replacement': 'refunds.issue',
   'phonepe-retry-refunds-background': 'refunds.issue',
   'phonepe-reconcile': 'refunds.issue',
   'razorpay-reconcile': 'refunds.issue',
