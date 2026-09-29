@@ -774,7 +774,8 @@ select,input,textarea{font-size:1rem;}
      100% and then jump. Inline style beats the html{font-size:18px} rule. -->
 <script>
 (function () {
-  var KEY = 'iac_admin_font_scale', BASE = 18, MIN = 0.8, MAX = 1.6, STEP = 0.1;
+  var KEY = 'iac_admin_font_scale', BASE = 18, MIN = 1, MAX = 1.6, STEP = 0.1;
+  // Readable baseline: older saved 80–90% settings now open at 100%.
   function clamp(v) { return Math.min(MAX, Math.max(MIN, Math.round(v * 100) / 100)); }
   function read() { var v; try { v = parseFloat(localStorage.getItem(KEY)); } catch (e) {} return isFinite(v) ? clamp(v) : 1; }
   function apply(scale) {
@@ -805,6 +806,9 @@ select,input,textarea{font-size:1rem;}
   });
 })();
 </script>
+<link rel="stylesheet" href="/admin/mobile.css?v=20260929"/>
+<script src="/admin/mobile.js?v=20260929" defer></script>
+<link rel="stylesheet" href="/admin/readability.css?v=20260929"/>
 </head>
 <body>
 <div id="loadingBar"></div>
@@ -1063,6 +1067,13 @@ select,input,textarea{font-size:1rem;}
     <button class="filter-btn day-btn" data-days="-1"  onclick="setDayRange(this,-1)">All time</button>
   </div>
 
+  <!-- Search stays visible independently of the horizontally scrollable filters. -->
+  <div class="order-search">
+    <label for="searchBox">Search orders</label>
+    <input class="search-box" id="searchBox" type="search" placeholder="Search orders…" aria-describedby="orderSearchHint" oninput="applyFilters()"/>
+    <p id="orderSearchHint">Order or payment ID, AWB, customer, phone, email or book title</p>
+  </div>
+
   <!-- ── Status filters + search ────────────────────────────── -->
   <div class="toolbar">
     <button class="filter-btn active" data-status="" onclick="setFilter(this,'')">All</button>
@@ -1082,7 +1093,6 @@ select,input,textarea{font-size:1rem;}
     <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
     <span class="date-sep">→</span>
     <input type="date" id="dateTo" onchange="applyFilters()" title="To date"/>
-    <input class="search-box" id="searchBox" placeholder="🔍  Name · Phone · Email · Order ID · Payment ID · AWB · Book" oninput="applyFilters()"/>
   </div>
 
   <!-- ── Cancelled sub-filters (shown only when the Cancelled tab is active) ── -->
