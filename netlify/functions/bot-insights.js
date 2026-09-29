@@ -109,7 +109,7 @@ exports.handler = async (event) => {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: process.env.OPENAI_INSIGHTS_MODEL || process.env.OPENAI_MODEL || 'gpt-4o',
+        model: process.env.OPENAI_INSIGHTS_MODEL || 'gpt-4.1',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt },

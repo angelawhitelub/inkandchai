@@ -43,7 +43,10 @@ const { costMicros, monthKey, budgetMicros } = require('./utils/ink-ai-budget');
  * 0.001 and another reported 25 — a ceiling honoured on some requests and not
  * others, which is the failure mode this whole guard exists to avoid.
  */
-const model = () => process.env.INK_AI_MODEL || 'gpt-4o';
+// gpt-4.1-mini: Ink AI has no tools and answers from STORE_FACTS + the FAQ, so
+// the small model is enough, and it is about 6x cheaper than gpt-4o -- the
+// monthly budget goes that much further.
+const model = () => process.env.INK_AI_MODEL || 'gpt-4.1-mini';
 const budgetUsd = () => process.env.INK_AI_MONTHLY_BUDGET_USD || '25';
 const TABLE = 'ink_ai_conversations';
 const MAX_USER_CHARS = 700;   // a question, not an essay

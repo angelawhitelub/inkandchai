@@ -145,6 +145,17 @@ function updateCartUI() {
 
   if (emptyEl)  emptyEl.style.display = 'none';
   if (footerEl) footerEl.style.display = 'flex';
+  // "Report a problem" under the checkout button (site-feedback.js provides
+  // the form; it loads deferred, so the link appears from the next render).
+  if (footerEl && window.IACBugReport && !footerEl.querySelector('.iac-cart-bug')) {
+    const bug = document.createElement('button');
+    bug.type = 'button';
+    bug.className = 'iac-cart-bug';
+    bug.textContent = 'Something not working? Report a problem';
+    bug.style.cssText = 'background:none;border:0;padding:.4rem 0 0;margin:0 auto;font:inherit;font-size:.72rem;color:var(--muted,#8a7a62);text-decoration:underline;cursor:pointer;width:100%;text-align:center';
+    bug.addEventListener('click', function () { if (typeof closeCart === 'function') closeCart(); window.IACBugReport.open(); });
+    footerEl.appendChild(bug);
+  }
   if (totalEl) {
     if (shipping === 0) {
       totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.55rem;color:var(--ship-free,#2f6e37);letter-spacing:0.15em;text-transform:uppercase;font-family:'Montserrat',sans-serif;font-weight:500;margin-top:4px;">✓ Free Shipping</div>`;

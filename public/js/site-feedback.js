@@ -12,6 +12,12 @@
  * and not again for 30 days once dismissed. A shop that nags loses the sale it
  * was asking about.
  *
+ * Report a problem -- a "🐞 Report a problem" link beside it (and in the cart
+ *            drawer) opens a short form. The report carries the page, device,
+ *            cart and the last few script errors this page hit, so "the cart
+ *            doesn't work" can be reproduced. Posts to /.netlify/functions/
+ *            bug-report and lands in admin → 🐞 Bug reports.
+ *
  * Stars are saved the moment they are tapped, so a rating counts even if the
  * comment is skipped; the comment then updates the same row. Nothing here is
  * ever allowed to show the customer an error. Posts to
@@ -44,6 +50,22 @@
   }
 
   function device() { return window.matchMedia('(max-width:760px)').matches ? 'mobile' : 'desktop'; }
+
+  // The last few script errors on this page, attached to a bug report. This
+  // file loads deferred, so anything thrown before it ran is missed; what it
+  // does catch is usually the click that "did nothing".
+  var ERRORS = [];
+  function noteError(msg, src, line) {
+    try {
+      ERRORS.push({ msg: String(msg || '').slice(0, 300), src: String(src || '').split('/').pop().slice(0, 160), line: line || 0, at: new Date().toISOString() });
+      if (ERRORS.length > 8) ERRORS.shift();
+    } catch (e) { /* fine */ }
+  }
+  window.addEventListener('error', function (e) { noteError(e.message, e.filename, e.lineno); });
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    noteError(r && r.message ? r.message : String(r), 'promise', 0);
+  });
 
   function post(payload) {
     try {
@@ -95,6 +117,12 @@
     '.iac-fb-thanks{font-size:14.5px;font-weight:700;text-align:center;padding:6px 0}',
     '.iac-fb-link{display:inline-block;margin-top:8px;font-weight:600;cursor:pointer;text-decoration:underline;',
       'text-underline-offset:3px;color:inherit;background:none;border:0;font:inherit;padding:0}',
+    '.iac-fb-links{display:flex;gap:18px;flex-wrap:wrap;justify-content:center}',
+    '.iac-fb input.iac-bug-contact{display:block;width:100%;box-sizing:border-box;margin-top:8px;font:inherit;font-size:14px;',
+      'color:inherit;background:var(--t-paper,#faf6ef);border:1px solid var(--t-line-2,rgba(29,24,19,.16));border-radius:12px;padding:10px 12px}',
+    '.iac-fb input.iac-bug-contact:focus{outline:2px solid var(--t-brand,#8f5f12);outline-offset:1px}',
+    '.iac-bug-err{font-size:12.5px;color:#b23b3b;margin-top:8px}',
+    '.iac-bug-note{font-size:11.5px;color:var(--t-muted,#766a5d);margin-top:8px;line-height:1.45}',
   ].join('');
 
   var styled = false;
@@ -245,17 +273,103 @@
     }, DELAY_MS);
   }
 
+  // ── Report a problem ─────────────────────────────────────────────────────
+  var bugCard = null;
+
+  function cartSnapshot() {
+    try {
+      var c = JSON.parse(localStorage.getItem('akshar_cart') || '[]');
+      return Array.isArray(c) ? c.slice(0, 20).map(function (i) {
+        return { title: i && i.title, qty: i && i.qty, price: i && i.price };
+      }) : null;
+    } catch (e) { return null; }
+  }
+
+  function openBugReport() {
+    style();
+    if (bugCard && document.body.contains(bugCard)) { var t = bugCard.querySelector('textarea'); if (t) t.focus(); return; }
+    // One floating card at a time: the rating card gives way.
+    if (floating && document.body.contains(floating)) floating.remove();
+    var el = document.createElement('div');
+    el.className = 'iac-fb iac-fb-float';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Report a problem');
+    el.innerHTML =
+      '<div class="iac-fb-top"><div>'
+      +   '<p class="iac-fb-q">Something not working?</p>'
+      +   '<p class="iac-fb-sub">Tell us what you tried and what happened. We fix these first.</p>'
+      + '</div><button type="button" class="iac-fb-x" aria-label="Close">✕</button></div>'
+      + '<textarea maxlength="2000" aria-label="What went wrong" placeholder="e.g. I pressed Remove in the cart and the book stayed there"></textarea>'
+      + '<input class="iac-bug-contact" type="text" maxlength="120" autocomplete="tel" aria-label="Phone or email (optional)" placeholder="Phone or email, if you want an update (optional)"/>'
+      + '<div class="iac-bug-note">We also send the page you are on, your device and what is in your cart, to help us find it.</div>'
+      + '<div class="iac-bug-err" hidden></div>'
+      + '<div class="iac-fb-actions"><button type="button" class="iac-fb-skip">Cancel</button>'
+      + '<button type="button" class="iac-fb-send">Send report</button></div>';
+    var ta = el.querySelector('textarea');
+    var contact = el.querySelector('.iac-bug-contact');
+    var err = el.querySelector('.iac-bug-err');
+    var send = el.querySelector('.iac-fb-send');
+    function close() { el.remove(); bugCard = null; }
+    el.querySelector('.iac-fb-x').onclick = close;
+    el.querySelector('.iac-fb-skip').onclick = close;
+    function fail(text) { err.hidden = false; err.textContent = text; send.disabled = false; send.textContent = 'Send report'; }
+    send.onclick = function () {
+      var msg = ta.value.trim();
+      if (msg.length < 5) { fail('Tell us a little about what went wrong.'); ta.focus(); return; }
+      err.hidden = true;
+      send.disabled = true;
+      send.textContent = 'Sending…';
+      fetch('/.netlify/functions/bug-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: msg,
+          contact: contact.value.trim(),
+          page_url: location.pathname + location.search,
+          device: device(),
+          viewport: window.innerWidth + 'x' + window.innerHeight,
+          user_agent: navigator.userAgent,
+          cart: cartSnapshot(),
+          errors: ERRORS,
+          visitor_id: visitorId(),
+        }),
+      }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || !res.d || !res.d.ok) throw new Error((res.d && res.d.error) || 'failed');
+          el.innerHTML = '<div class="iac-fb-thanks">Thank you — we have it (' + res.d.ref + ').<br/>'
+            + '<span style="font-weight:400;font-size:13px">We look at every report' + (contact.value.trim() ? ' and will update you.' : '.') + '</span></div>';
+          setTimeout(close, 4500);
+        })
+        .catch(function (e) {
+          // Do not lose what they wrote: say so, and give them a way that works.
+          fail((e && e.message && e.message !== 'failed' ? e.message + ' ' : 'That did not send. ')
+            + 'Please try again, or message us on WhatsApp: +91 92171 75546.');
+        });
+    };
+    document.body.appendChild(el);
+    lift(el);
+    bugCard = el;
+    if (device() === 'desktop') ta.focus();
+  }
+
   function footerLink() {
     var foots = document.querySelectorAll('footer');
     var f = foots[foots.length - 1];
     if (!f || f.querySelector('.iac-fb-link')) return;
     var wrap = document.createElement('div');
+    wrap.className = 'iac-fb-links';
     var a = document.createElement('button');
     a.type = 'button';
     a.className = 'iac-fb-link';
     a.textContent = '★ Rate your experience';
     a.addEventListener('click', function () { style(); openWebsite(true); });
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'iac-fb-link';
+    b.textContent = '🐞 Report a problem';
+    b.addEventListener('click', openBugReport);
     wrap.appendChild(a);
+    wrap.appendChild(b);
     f.appendChild(wrap);
   }
 
@@ -269,4 +383,5 @@
   else init();
 
   window.IACFeedback = { order: order, open: function () { style(); openWebsite(true); } };
+  window.IACBugReport = { open: openBugReport };
 })();
