@@ -8189,6 +8189,9 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:400;color
 .checkout-qty-row{display:flex;align-items:center;gap:0.55rem;margin-top:0.55rem;flex-wrap:wrap;}
 .checkout-qty-btn{width:28px;height:28px;border:1px solid var(--border);background:var(--bg2);color:var(--cream);font-size:1rem;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
 .checkout-qty-btn:hover{border-color:var(--gold);color:var(--gold);}
+/* Remove at checkout: - stops at 1, so without this a book could only leave the basket from the cart drawer. */
+.checkout-remove{margin-left:.6rem;background:none;border:0;padding:.2rem 0;color:var(--muted,#a09080);font-size:.78rem;text-decoration:underline;cursor:pointer}
+.checkout-remove:hover{color:var(--gold)}
 .checkout-qty-num{min-width:24px;text-align:center;color:var(--cream);font-size:0.78rem;font-weight:500;}
 .checkout-remove{border:none;background:transparent;color:#c97a7a;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;margin-left:0.2rem;}
 .checkout-remove:hover{color:#e06060;}
@@ -9097,6 +9100,7 @@ function renderSummary() {
           <button type="button" class="checkout-qty-btn" onclick="updateCheckoutQty(${idx}, -1)" aria-label="Decrease quantity">-</button>
           <span class="checkout-qty-num">Qty ${itemQty(i)}</span>
           <button type="button" class="checkout-qty-btn" onclick="updateCheckoutQty(${idx}, 1)" aria-label="Increase quantity">+</button>
+          <button type="button" class="checkout-remove" onclick="removeCheckoutItem(${idx})" aria-label="Remove this book">Remove</button>
         </div>
       </div>
     </div>`).join('') + `

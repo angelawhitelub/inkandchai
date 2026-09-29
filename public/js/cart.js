@@ -7,9 +7,37 @@
 const CART_KEY = 'akshar_cart';
 
 // ── State ──────────────────────────────────────────────────────────────────
+// Every item is keyed by a STRING id. Carts saved by older versions of the site
+// (and by other pages writing this key) can hold a numeric id, no id at all, or
+// a quantity/price stored as text. Those rows could never be removed -- Remove
+// compared the id strictly and matched nothing, so the book stayed in the cart
+// through every refresh -- and a text qty turned the badge count into "011".
+// Repair them on read and write the repaired cart back once.
+function normalizeCartItem(item, index) {
+  if (!item || typeof item !== 'object') return null;
+  const raw = item.id != null && item.id !== '' ? item.id : (item.url || item.slug || item.title || ('item-' + index));
+  return {
+    ...item,
+    id: String(raw),
+    qty: Math.max(1, Math.round(Number(item.qty)) || 1),
+    price: Number(item.price) || 0,
+  };
+}
+
 function getCart() {
-  try { return JSON.parse(localStorage.getItem(CART_KEY)) || []; }
-  catch { return []; }
+  let raw;
+  try { raw = JSON.parse(localStorage.getItem(CART_KEY)); } catch { raw = null; }
+  if (!Array.isArray(raw)) return [];
+  const cart = [];
+  for (let i = 0; i < raw.length; i++) {
+    const item = normalizeCartItem(raw[i], i);
+    if (!item) continue;
+    const dup = cart.find(c => c.id === item.id);   // same book twice -> one row
+    if (dup) dup.qty += item.qty; else cart.push(item);
+  }
+  const fixed = JSON.stringify(cart);
+  if (fixed !== JSON.stringify(raw)) { try { localStorage.setItem(CART_KEY, fixed); } catch {} }
+  return cart;
 }
 
 function saveCart(cart) {
@@ -28,11 +56,11 @@ function saveCart(cart) {
  */
 function addToCart(book, opts) {
   const cart = getCart();
-  const existing = cart.find(i => i.id === book.id);
+  const existing = cart.find(i => i.id === String(book.id));
   if (existing) {
     existing.qty += 1;
   } else {
-    cart.push({ ...book, qty: 1 });
+    cart.push(normalizeCartItem({ ...book, qty: 1 }, cart.length));
   }
   saveCart(cart);
   // Meta AddToCart. iacMeta is defined by the pixel snippet in the page head,
@@ -55,12 +83,12 @@ function addToCart(book, opts) {
 }
 
 function removeFromCart(id) {
-  saveCart(getCart().filter(i => i.id !== id));
+  saveCart(getCart().filter(i => i.id !== String(id)));
 }
 
 function updateQty(id, delta) {
   const cart = getCart();
-  const item = cart.find(i => i.id === id);
+  const item = cart.find(i => i.id === String(id));
   if (!item) return;
   item.qty = Math.max(1, item.qty + delta);
   saveCart(cart);
@@ -128,7 +156,7 @@ function updateCartUI() {
   }
 
   itemsEl.innerHTML = cart.map(item => `
-    <div class="cart-item" data-id="${item.id}">
+    <div class="cart-item" data-id="${esc(item.id)}">
       <div class="cart-item-img">
         ${item.img
           ? `<img src="${iacImg(item.img,140)}" alt="${esc(item.title)}" loading="lazy" onerror="this.style.display='none'" />`
@@ -139,10 +167,10 @@ function updateCartUI() {
         <div class="cart-item-author">${esc(item.author || '')}</div>
         <div class="cart-item-price">₹ ${(item.price * item.qty).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
         <div class="cart-item-controls">
-          <button class="qty-btn" onclick="updateQty('${item.id}', -1); renderCart()">−</button>
+          <button class="qty-btn" data-cart-act="dec" data-cart-id="${esc(item.id)}" aria-label="One fewer">−</button>
           <span class="qty-num">${item.qty}</span>
-          <button class="qty-btn" onclick="updateQty('${item.id}', +1); renderCart()">+</button>
-          <button class="cart-remove" onclick="removeFromCart('${item.id}'); renderCart()">Remove</button>
+          <button class="qty-btn" data-cart-act="inc" data-cart-id="${esc(item.id)}" aria-label="One more">+</button>
+          <button class="cart-remove" data-cart-act="remove" data-cart-id="${esc(item.id)}">Remove</button>
         </div>
       </div>
     </div>
@@ -308,6 +336,68 @@ async function renderCartRecommendations() {
 }
 
 function renderCart() { updateCartUI(); }
+
+// Item buttons carry the id in a data attribute, not inside an inline
+// onclick='...' string: an id with an apostrophe in it broke that JavaScript
+// and left the buttons dead. One delegated listener serves the drawer and /cart/.
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest && e.target.closest('[data-cart-act]');
+  if (!btn) return;
+  const id = btn.getAttribute('data-cart-id');
+  const act = btn.getAttribute('data-cart-act');
+  if (act === 'remove') removeFromCart(id);
+  else if (act === 'inc') updateQty(id, +1);
+  else if (act === 'dec') updateQty(id, -1);
+  renderCart();
+});
+
+// ── Floating cart button ───────────────────────────────────────────────────
+// Product pages have no bottom tab bar (the sticky Add to Cart / Buy Now bar
+// sits there), and their header -- with the only cart button -- scrolls away.
+// So once a shopper scrolled down a book page there was no way to reach the
+// cart at all. On any page without the tab bar, show a small cart button
+// whenever the header's own cart button is off screen.
+(function floatingCart() {
+  if (/^\/checkout/.test(location.pathname)) return;
+  function init() {
+    if (document.querySelector('.mob-nav') || document.getElementById('iacFloatCart')) return;
+    const btn = document.createElement('button');
+    btn.id = 'iacFloatCart';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Open cart');
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg><span class="iac-float-badge" id="cartBadgeFloat"></span>';
+    btn.style.cssText = 'position:fixed;top:calc(12px + env(safe-area-inset-top,0px));right:12px;z-index:900;width:46px;height:46px;border-radius:50%;border:1px solid var(--border,rgba(0,0,0,.12));background:var(--bg,#faf6ef);color:var(--gold,#9a6b1f);box-shadow:0 4px 16px rgba(0,0,0,.18);display:none;align-items:center;justify-content:center;cursor:pointer;padding:0';
+    btn.addEventListener('click', function () {
+      if (typeof openCart === 'function' && document.getElementById('cartItems')) openCart();
+      else location.href = '/cart/';
+    });
+    document.body.appendChild(btn);
+    const badge = btn.querySelector('.iac-float-badge');
+    badge.style.cssText = 'position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--gold,#9a6b1f);color:var(--bg,#fff);font:600 11px/18px system-ui,sans-serif;text-align:center;display:none';
+    const paintBadge = function () {
+      const n = getCart().reduce((s, i) => s + i.qty, 0);
+      badge.textContent = n > 0 ? String(n) : '';
+      badge.style.display = n > 0 ? 'block' : 'none';
+    };
+    paintBadge();
+    window.addEventListener('storage', function (e) { if (e.key === CART_KEY) paintBadge(); });
+    const _update = updateCartUI;
+    window.updateCartUI = updateCartUI = function () { _update(); paintBadge(); };
+
+    const headerBtn = document.getElementById('pdpCartBtn')
+      || document.querySelector('nav [onclick*="openCart"], nav a[href="/cart/"], header [onclick*="openCart"]');
+    const show = function (on) { btn.style.display = on ? 'flex' : 'none'; };
+    if (headerBtn && 'IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) { show(!entries[0].isIntersecting); }).observe(headerBtn);
+    } else {
+      const onScroll = function () { show(window.scrollY > 160); };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
 
 function openCart() {
   const sidebar = document.getElementById('cartSidebar');
