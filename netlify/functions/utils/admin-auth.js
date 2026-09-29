@@ -33,6 +33,7 @@ const STAFF_ENDPOINT_PERMISSIONS = {
   'admin-nimbuspost-cancelled': 'orders.read',
   'admin-bundle': 'products.write',
   'update-order-status': 'orders.manage',
+  'courier-cancel-shipment': 'orders.manage',
   'update-order-details': 'orders.manage',
   'set-order-payment-type': 'orders.manage',
   'get-return-requests': 'returns.read',
