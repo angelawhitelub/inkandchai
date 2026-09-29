@@ -38,6 +38,8 @@ function client() {
   }
 }
 
+const { existingOrderIds } = require('./existing-order-ids');
+
 const isEnabled = () => !!(process.env.NEON_DATABASE_URL || process.env.NEON_POSTGRES_URL);
 
 /**
@@ -150,15 +152,15 @@ async function reconcileFromNeon(supabase, { days = 14, limit = 500, dryRun = fa
   const rows = await neonRecentOrders({ days, limit });
   if (!rows) { out.errors.push('standby unreadable'); return out; }
 
-  for (const r of rows) {
-    const orderId = r.razorpay_order_id;
-    if (!orderId) continue;
-    out.checked++;
+  const candidates = rows.filter(r => r.razorpay_order_id);
+  out.checked = candidates.length;
+  // Batched: one query per 200 orders (utils/existing-order-ids.js).
+  const present = await existingOrderIds(supabase, candidates.map(r => r.razorpay_order_id));
+  if (present.error) { out.failed += candidates.length; out.errors.push(`lookup ${present.error}`); return out; }
 
-    const { data: existing, error } = await supabase
-      .from('orders').select('id').eq('razorpay_order_id', orderId).maybeSingle();
-    if (error) { out.failed++; out.errors.push(`${orderId}: lookup ${error.message}`); continue; }
-    if (existing) { out.present++; continue; }
+  for (const r of candidates) {
+    const orderId = r.razorpay_order_id;
+    if (present.ids.has(orderId)) { out.present++; continue; }
 
     out.missing.push(orderId);
     if (dryRun) continue;

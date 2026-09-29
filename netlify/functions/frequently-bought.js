@@ -195,7 +195,28 @@ function normalizeCustomProduct(product) {
   };
 }
 
+// The product list is the same for every slug, so it is built once per
+// isolate and reused for PRODUCTS_TTL_MS. Before this, every request -- one per
+// product page and cart view, in every Cloudflare colo the edge cache missed in
+// -- re-read the catalogue file and ran the custom_products query (107k calls,
+// ~37% of all database time, 29 Sep 2026). An in-flight load is shared so a
+// burst on a cold isolate costs one query, not one each.
+const PRODUCTS_TTL_MS = 10 * 60 * 1000;
+let _products = null;
+let _productsAt = 0;
+let _productsLoading = null;
+
 async function loadProducts() {
+  if (_products && Date.now() - _productsAt < PRODUCTS_TTL_MS) return _products;
+  if (!_productsLoading) {
+    _productsLoading = buildProducts()
+      .then((list) => { _products = list; _productsAt = Date.now(); return list; })
+      .finally(() => { _productsLoading = null; });
+  }
+  return _productsLoading;
+}
+
+async function buildProducts() {
   const raw = JSON.parse(fs.readFileSync(findCataloguePath(), 'utf8'));
   const products = raw.map(normalizeRawBook).filter((p) => p.slug && p.title && p.price > 0 && p.img);
   const seen = new Set(products.map((p) => p.slug));
