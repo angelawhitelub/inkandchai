@@ -6207,6 +6207,27 @@ function copyListingBySlug(slug) {
 }
 
 // ── AI first draft for the copy fields ───────────────────────────────────────
+// ISBN found alongside the draft (utils/isbn-lookup.js). The server only marks
+// it `fill` when a book database lists it for this title; a web-only answer is
+// reported, never typed in -- a wrong ISBN becomes a wrong GTIN at Google.
+// Only an empty box is filled, so a number typed while the draft ran survives.
+function applyDraftIsbn(inputId, r) {
+  if (!r) return '';
+  const el = document.getElementById(inputId);
+  const where = (() => { try { return r.source_url ? new URL(r.source_url).hostname.replace(/^www\./, '') : ''; } catch { return ''; } })();
+  const detail = [r.publisher, r.source === 'web search' ? where : r.source].filter(Boolean).join(', ');
+  if (r.fill && r.isbn) {
+    if (el && !el.value.trim()) {
+      el.value = r.isbn;
+      el.title = (r.reason || '') + (r.source_url ? ' ' + r.source_url : '');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    return ` ISBN ${r.isbn} filled${detail ? ' (' + detail + ')' : ''} — match it to the back cover before saving.`;
+  }
+  if (r.isbn) return ` Web search suggests ISBN ${r.isbn}${detail ? ' (' + detail + ')' : ''}, but no book database confirms it, so it was not filled.`;
+  return ' No ISBN found' + (r.notes && r.notes.length ? ' (' + r.notes.join('; ') + ')' : '') + '.';
+}
+
 // Fills description, author bio, tags, SEO title and meta description from the
 // title (and author, if given — without it the model is guessing which book you
 // mean). A DRAFT: nothing is saved, the admin still edits and still presses
@@ -6227,7 +6248,7 @@ async function generateListingCopy() {
 
   const old = btn?.innerHTML;
   if (btn) { btn.disabled = true; btn.innerHTML = '✨ Drafting…'; }
-  say('Asking the model — this takes a few seconds.');
+  say('Asking the model — this takes a few seconds (longer when it is also looking up the ISBN).');
 
   try {
     const res = await adminFetch('/.netlify/functions/generate-listing-copy', {
@@ -6240,6 +6261,7 @@ async function generateListingCopy() {
         category: val('newProdCategory'),
         publisher: val('newProdPublisher'),
         isbn: val('newProdIsbn'),
+        language: val('newProdLanguage'),
         price_inr: val('newProdPrice'),
         original_price_inr: val('newProdOriginalPrice'),
       }),
@@ -6253,11 +6275,12 @@ async function generateListingCopy() {
     set('newProdTags', data.tags);
     set('newProdSeoTitle', data.seo_title);
     set('newProdMetaDescription', data.meta_description);
+    const isbnNote = applyDraftIsbn('newProdIsbn', data.isbn);
 
     // Character counts, because these two are the fields Google truncates and
     // the model treats the limits as a suggestion.
     const t = (data.seo_title || '').length, m = (data.meta_description || '').length;
-    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.`, '#6dbf6d');
+    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.${isbnNote}`, '#6dbf6d');
   } catch (e) {
     say(e.message, '#e06060');
   } finally {
@@ -8839,7 +8862,7 @@ async function generateProductCopy() {
 
   const old = btn?.innerHTML;
   if (btn) { btn.disabled = true; btn.innerHTML = '✨ Drafting…'; }
-  say('Asking the model — this takes a few seconds.');
+  say('Asking the model — this takes a few seconds (longer when it is also looking up the ISBN).');
   try {
     const res = await adminFetch('/.netlify/functions/generate-listing-copy', {
       method: 'POST',
@@ -8851,6 +8874,7 @@ async function generateProductCopy() {
         category: val('prodCategory'),
         publisher: val('prodPublisher'),
         isbn: val('prodIsbn'),
+        language: val('prodLanguage'),
         price_inr: val('prodPrice'),
         original_price_inr: val('prodOriginalPrice'),
       }),
@@ -8864,11 +8888,12 @@ async function generateProductCopy() {
     set('prodTags', data.tags);
     set('prodSeoTitle', data.seo_title);
     set('prodMetaDescription', data.meta_description);
+    const isbnNote = applyDraftIsbn('prodIsbn', data.isbn);
 
     // Same counts the Create form shows: these are the two Google truncates,
     // and the model treats the limits as a suggestion.
     const t = (data.seo_title || '').length, m = (data.meta_description || '').length;
-    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.`, '#6dbf6d');
+    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.${isbnNote}`, '#6dbf6d');
   } catch (err) {
     say(err.message || 'Drafting failed.', '#c96a6a');
   } finally {

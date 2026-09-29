@@ -25,10 +25,16 @@
  *                        in the box, translator, why this printing differs).
  *                        The model has no way to know any of that.
  *
- * Returns { description, author_bio, tags, seo_title, meta_description }.
+ *   find_isbn optional   default true; when the listing has no ISBN yet, one is
+ *                        looked up alongside the copy (utils/isbn-lookup.js)
+ *
+ * Returns { description, author_bio, tags, seo_title, meta_description, isbn? }.
+ * `isbn` is { isbn, status, fill, publisher, source, source_url, reason, notes }
+ * -- the admin only drops it into the form when `fill` is true.
  */
 
 const { requireAdmin } = require('./utils/admin-auth');
+const { findIsbn } = require('./utils/isbn-lookup');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -118,6 +124,12 @@ exports.handler = async (event) => {
     body.original_price_inr ? `MRP: Rs ${str(body.original_price_inr, 20)}` : null,
   ].filter(Boolean).join('\n');
 
+  // Runs alongside the copy request, so it costs no extra wait. Never rejects.
+  const wantIsbn = !str(body.isbn, 40) && body.find_isbn !== false;
+  const isbnLookup = wantIsbn
+    ? findIsbn({ title, author: body.author, publisher: body.publisher, language: body.language }).catch((e) => ({ status: 'none', fill: false, isbn: '', notes: [e.message] }))
+    : Promise.resolve(null);
+
   try {
     // Bounded so a hung upstream can't hold a Netlify function open to its limit.
     const controller = new AbortController();
@@ -165,6 +177,7 @@ exports.handler = async (event) => {
       seo_title: str(out.seo_title, 220),
       meta_description: str(out.meta_description, 300),
       model: ai.model || null,
+      isbn: await isbnLookup,
     });
   } catch (err) {
     const msg = err.name === 'AbortError' ? 'The model took too long to respond. Try again.' : err.message;
