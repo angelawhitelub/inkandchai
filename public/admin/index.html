@@ -4682,29 +4682,81 @@ function updateAnalytics() {
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────
-function updateStats() {
-  const cod          = allOrders.filter(o => o.status === 'cod_pending').length;
-  const partial      = allOrders.filter(isPartialOrder).length;
-  const onlinePending= allOrders.filter(isPendingOnlineOrder).length;
-  const paid         = allOrders.filter(o => o.status === 'paid').length;
-  const shipped      = allOrders.filter(o => o.status === 'shipped').length;
-  const inTransit    = allOrders.filter(isNimbusInTransit).length;
-  const delivered    = allOrders.filter(o => o.status === 'delivered').length;
-  const cancelled    = allOrders.filter(o => o.status === 'cancelled').length;
-  const refunded     = allOrders.filter(o => o.status === 'refunded').length;
-  const unshipped    = allOrders.filter(orderIsUnshipped).length;
-  const rev          = allOrders
+// The orders the counters describe: everything, or -- while a search or date
+// range is set -- just the orders matching it, so searching a book shows how
+// many orders it has and where they stand. The status cards stay clickable
+// and filter within that search.
+function statsScope() {
+  const q = (document.getElementById('searchBox')?.value || '').toLowerCase().trim();
+  const dateFrom = document.getElementById('dateFrom')?.value;
+  const dateTo = document.getElementById('dateTo')?.value;
+  if (!q && !dateFrom && !dateTo) return { base: allOrders, q: '', scoped: false };
+  const base = allOrders.filter(o => {
+    if (q && !orderSearchHaystack(o).includes(q)) return false;
+    if (dateFrom && new Date(o.created_at) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(o.created_at) > new Date(dateTo + 'T23:59:59')) return false;
+    return true;
+  });
+  // Copies sold of the book being searched for (lines whose title matches),
+  // counting only orders that went ahead.
+  let copies = 0;
+  if (q) {
+    const live = new Set(['cancelled', 'refunded', 'refund_pending']);
+    base.forEach(o => {
+      if (live.has(String(o.status || '').toLowerCase())) return;
+      (Array.isArray(o.cart_items) ? o.cart_items : []).forEach(it => {
+        const t = [it?.title, it?.name, it?.product_name, it?.slug, it?.isbn].filter(Boolean).join(' ').toLowerCase();
+        if (t.includes(q)) copies += Math.max(1, Number(it?.qty) || 1);
+      });
+    });
+  }
+  return { base, q, scoped: true, copies, dateFrom, dateTo };
+}
+
+function updateStats(opts = {}) {
+  const scope = statsScope();
+  const base = scope.base;
+  const cod          = base.filter(o => o.status === 'cod_pending').length;
+  const partial      = base.filter(isPartialOrder).length;
+  const onlinePending= base.filter(isPendingOnlineOrder).length;
+  const paid         = base.filter(o => o.status === 'paid').length;
+  const shipped      = base.filter(o => o.status === 'shipped').length;
+  const inTransit    = base.filter(isNimbusInTransit).length;
+  const delivered    = base.filter(o => o.status === 'delivered').length;
+  const cancelled    = base.filter(o => o.status === 'cancelled').length;
+  const refunded     = base.filter(o => o.status === 'refunded').length;
+  const unshipped    = base.filter(orderIsUnshipped).length;
+  const rev          = base
     .filter(o => ['paid','delivered','shipped','out_for_delivery','confirmed','cod_pending','partial_cod_pending'].includes(o.status) && o.payment_status !== 'prepaid_pending')
     .reduce((s,o) => s + Math.round(orderPaymentBreakdown(o).full * 100), 0);
 
-  const cancelReq    = allOrders.filter(hasOpenCancelRequest).length;
+  const cancelReq    = base.filter(hasOpenCancelRequest).length;
   const cancelReqBtn = document.querySelector('.filter-btn[data-status="cancel_requested"]');
   if (cancelReqBtn) cancelReqBtn.innerHTML = `⏳ Cancel Requests${cancelReq ? ` <span style="background:var(--orange);color:#fff;border-radius:8px;padding:0 5px;font-size:0.85em;">${cancelReq}</span>` : ''}`;
 
-  const displayTotal = serverTotal != null ? serverTotal : allOrders.length;
-  const stillLoading = serverTotal != null && allOrders.length < serverTotal;
+  const loadingAll = serverTotal != null && allOrders.length < serverTotal;
+  const displayTotal = scope.scoped ? base.length : (serverTotal != null ? serverTotal : allOrders.length);
+  const stillLoading = loadingAll;
 
-  document.getElementById('statTotal').textContent     = displayTotal;
+  document.getElementById('statTotal').textContent     = scope.scoped && loadingAll ? '…' : displayTotal;
+  // Say what the numbers are counting, so a scoped view is never mistaken for
+  // the whole shop.
+  const totalLabel = document.getElementById('statTotal')?.previousElementSibling;
+  if (totalLabel) {
+    const range = scope.dateFrom || scope.dateTo ? ' · ' + (scope.dateFrom || '…') + ' → ' + (scope.dateTo || 'today') : '';
+    totalLabel.textContent = scope.scoped
+      ? (scope.q ? `Orders matching “${scope.q}”` : 'Orders in range') + range
+      : 'Total Orders';
+    totalLabel.title = scope.scoped ? 'All counters below are for this search / date range. Clear it to see the whole shop.' : '';
+  }
+  let copiesEl = document.getElementById('statCopies');
+  if (!copiesEl) {
+    copiesEl = document.createElement('div');
+    copiesEl.id = 'statCopies';
+    copiesEl.style.cssText = 'font-size:0.62rem;color:var(--cream-dim);margin-top:0.25rem;';
+    document.getElementById('statTotal')?.after(copiesEl);
+  }
+  copiesEl.textContent = scope.q && !loadingAll ? `${scope.copies} ${scope.copies === 1 ? 'copy' : 'copies'} sold (excl. cancelled/refunded)` : '';
   document.getElementById('statUnshipped').textContent = stillLoading ? '…' : unshipped;
   document.getElementById('statCod').textContent       = stillLoading ? '…' : cod;
   const partialEl = document.getElementById('statPartial');
@@ -4722,19 +4774,23 @@ function updateStats() {
   const refundEl = document.getElementById('statRefunded');
   if (refundEl) refundEl.textContent = stillLoading ? '…' : refunded;
   document.getElementById('statRev').textContent       = stillLoading ? '…' : '₹' + Math.round(rev / 100).toLocaleString('en-IN');
-  renderReplacementRequests();
-  if (!stillLoading) updateAnalytics();
+  // Typing in the search re-runs the counters only; the charts and the
+  // replacement panel describe the whole shop and are not rebuilt per keystroke.
+  if (!opts.light) {
+    renderReplacementRequests();
+    if (!stillLoading) updateAnalytics();
+  }
   if (stillLoading) {
-    const pct = Math.round((allOrders.length / displayTotal) * 100);
-    document.getElementById('dashSubtitle').textContent = `Loading orders… ${allOrders.length} / ${displayTotal} (${pct}%)`;
-  } else {
-    document.getElementById('dashSubtitle').textContent = `${displayTotal} orders · refreshed ${new Date().toLocaleTimeString('en-IN')}`;
+    const pct = Math.round((allOrders.length / serverTotal) * 100);
+    document.getElementById('dashSubtitle').textContent = `Loading orders… ${allOrders.length} / ${serverTotal} (${pct}%)`;
+  } else if (!opts.light) {
+    document.getElementById('dashSubtitle').textContent = `${serverTotal != null ? serverTotal : allOrders.length} orders · refreshed ${new Date().toLocaleTimeString('en-IN')}`;
   }
 
   // Full breakdown — every status so the maths adds up to Total
   if (!stillLoading) {
     const counts = {};
-    allOrders.forEach(o => { const s = o.status || 'unknown'; counts[s] = (counts[s]||0)+1; });
+    base.forEach(o => { const s = o.status || 'unknown'; counts[s] = (counts[s]||0)+1; });
     const ORDER = ['cod_pending','partial_cod_pending','paid','confirmed','shipped',
                    'out_for_delivery','delivered','undelivered','rto','lost','cancelled','refunded','partially_refunded','replacement_pending'];
     const LABEL = {
@@ -4758,7 +4814,7 @@ function updateStats() {
     const total = Object.values(counts).reduce((a,b)=>a+b,0);
     const el = document.getElementById('statusBreakdown');
     if (el) el.innerHTML = parts.join('<span style="color:#3a2a18;"> · </span>')
-      + `<span style="color:#3a2a18;margin-left:0.4rem;"> = ${total} total</span>`;
+      + `<span style="color:#3a2a18;margin-left:0.4rem;"> = ${total} ${scope.scoped ? 'matching' : 'total'}</span>`;
   }
 }
 
@@ -4944,6 +5000,9 @@ function applyFilters() {
       cancCount.textContent = '';
     }
   }
+
+  // Counters follow the search / date range (see statsScope).
+  updateStats({ light: true });
 
   // Update export count
   document.getElementById('exportCount').textContent = filtered.length;
