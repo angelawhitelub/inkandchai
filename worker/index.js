@@ -21,6 +21,7 @@ import * as bindingsNs from './shims/runtime-bindings.js';
 export { RateLimiter } from './rate-limiter.js';
 export { SpendGuard } from './spend-guard.js';
 import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable } from './cache-policy.mjs';
+import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
 
 const { routes, schedules: declaredSchedules } = routeTable;
 
@@ -407,6 +408,72 @@ async function deletedSlugs(env) {
   }
 }
 
+// ── Admin-written copy for catalogue books ───────────────────────────────────
+// The baked page carries the feed's description. When the admin has rewritten
+// it (netlify/functions/update-catalog-content.js), the saved copy is published
+// to KV and applied here as the page is served -- title, meta, "About this
+// book", author bio, JSON-LD -- so Google and customers both see it without a
+// site rebuild. Read at most once a minute per isolate, like deleted slugs; a
+// failed read serves the baked page unchanged.
+const CONTENT_TTL_MS = 60_000;
+let _contentMap = null;
+let _contentAt = 0;
+
+async function catalogContent(env) {
+  const now = Date.now();
+  if (_contentMap && now - _contentAt < CONTENT_TTL_MS) return _contentMap;
+  try {
+    const ns = env.ORDER_FALLBACK;
+    if (!ns) return _contentMap || {};
+    const doc = await ns.get('catalog:content-overrides', { type: 'json', cacheTtl: 60 });
+    _contentMap = (doc && doc.items && typeof doc.items === 'object') ? doc.items : {};
+    _contentAt = now;
+    return _contentMap;
+  } catch (err) {
+    console.warn('[catalog-content] KV read failed:', err && err.message);
+    return _contentMap || {};
+  }
+}
+
+function rewriteCatalogPage(response, entry) {
+  const rw = catalogRender.contentRewrite(entry);
+  if (!rw) return response;
+  let descDone = false;
+  let ldBuf = '';
+  const rewriter = new HTMLRewriter()
+    .on('head', { element(el) { el.append(catalogRender.RICH_CSS, { html: true }); } })
+    .on('title', { element(el) { if (rw.title) el.setInnerContent(rw.title); } })
+    .on('meta[name="description"]', { element(el) { if (rw.meta) el.setAttribute('content', rw.meta); } })
+    .on('meta[property="og:description"]', { element(el) { if (rw.meta) el.setAttribute('content', rw.meta); } })
+    .on('div.desc', {
+      element(el) {
+        if (descDone) return;
+        descDone = true;
+        if (rw.descHtml) {
+          el.setAttribute('class', 'desc rich');
+          el.setInnerContent(catalogRender.descInner(rw), { html: true });
+        }
+        if (rw.bioHtml) el.after(catalogRender.bioBlock(rw), { html: true });
+      },
+    })
+    .on('script[type="application/ld+json"]', {
+      text(chunk) {
+        ldBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = ldBuf;
+        ldBuf = '';
+        chunk.replace(catalogRender.patchJsonLd(whole, rw) || whole, { html: true });
+      },
+    });
+  // Drop the baked file's validators: an ETag here would let a browser
+  // revalidate against the static file and keep yesterday's rewritten copy.
+  const out = rewriter.transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('last-modified');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
 function gonePage(slug) {
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -502,7 +569,24 @@ export default {
       if (gone.has(deletedSlug)) return gonePage(deletedSlug);
     }
 
+    // The saved catalogue copy, for scripts/sync-catalog-content.mjs to bake
+    // into data/ at the next site build (and so into feed.xml).
+    if (url.pathname === '/catalog-content.json') {
+      return new Response(JSON.stringify({ items: await catalogContent(env) }), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+
     const assetResponse = await env.ASSETS.fetch(request);
+
+    if (productPath && assetResponse.status === 200
+        && /text\/html/i.test(assetResponse.headers.get('content-type') || '')) {
+      let contentSlug = '';
+      try { contentSlug = decodeURIComponent(productPath[1]).toLowerCase(); }
+      catch { contentSlug = productPath[1].toLowerCase(); }
+      const entry = (await catalogContent(env))[contentSlug];
+      if (entry) return rewriteCatalogPage(assetResponse, entry);
+    }
 
     // Admin-created products have no generated page: the catalogue books are
     // static files, everything else is rendered by product-page. Try the static

@@ -237,6 +237,26 @@ if _deleted_path.exists():
         # that was deliberately taken down.
         print(f"WARNING: data/deleted_products.json unreadable ({_err}) — nothing excluded")
 
+# ── Admin-written copy for catalogue books ───────────────────────────────────
+# Saved in the admin (catalog_content, update-catalog-content.js) and applied
+# live by the Worker. Baking it in here as well puts it into feed.xml -- which
+# Google Shopping reads instead of the page -- and keeps it if KV is ever lost.
+# data/catalog_content.json mirrors the table; refresh it with
+#   node scripts/sync-catalog-content.mjs
+_content_path = Path(__file__).parent / "data" / "catalog_content.json"
+if _content_path.exists():
+    try:
+        _cc = json.loads(_content_path.read_text()).get("items", {}) or {}
+        _applied = 0
+        for _b in books:
+            _entry = _cc.get(make_slug(_b.get("title", ""), _b.get("shopify_id", "")).lower())
+            if _entry and (_entry.get("description") or "").strip():
+                _b["description"] = _entry["description"].strip()
+                _applied += 1
+        print(f"Catalogue copy applied: {_applied} of {len(_cc)} saved")
+    except Exception as _err:                                   # noqa: BLE001
+        print(f"WARNING: data/catalog_content.json unreadable ({_err}) — feed descriptions used")
+
 if DELETED_SLUGS:
     _before = len(books)
     books = [b for b in books

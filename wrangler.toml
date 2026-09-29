@@ -26,6 +26,9 @@ run_worker_first = [
   # Not a real file -- the Worker builds it from KV so the baked category grids
   # can drop cards for deleted books between regenerations.
   "/deleted-products.json",
+  # Same idea: admin-written catalogue copy, which scripts/sync-catalog-content.mjs
+  # pulls down so the next `npm run build` bakes it into the pages and feed.xml.
+  "/catalog-content.json",
   "/.netlify/images",
   "/spimg/*",
   "/custom-feed.xml",

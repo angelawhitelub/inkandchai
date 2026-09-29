@@ -26,6 +26,18 @@
  *
  * Title AND author are searched, because "Elle Kennedy" is how you look for a
  * series you intend to feature.
+ *
+ * TWO SOURCES, EACH WORD SEPARATELY
+ * ---------------------------------
+ * custom_products is only the admin-created and imported listings. The ~5,000
+ * baked catalogue books (data/ALL_BOOKS.json -- "The Love Hypothesis by Ali
+ * Hazelwood" among them) are not in it, so the eBooks panel answered "Nothing
+ * matches that" for a book with a live product page. Both are searched now.
+ *
+ * And the query is split into words, each of which must appear in the title or
+ * the author. Matching the whole string meant "The Love Hypothesis by Ali
+ * Hazelwood" only found a title containing that exact run of words -- typing
+ * the author after the title, the natural way, found nothing.
  */
 
 'use strict';
@@ -33,6 +45,42 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
+const { makeSlug } = require('./utils/pricing');
+const CATALOGUE = require('../../data/ALL_BOOKS.json');
+
+// Words that carry no signal in a title search ("… by Ali Hazelwood").
+const STOP = new Set(['by', 'the', 'a', 'an', 'of', 'and', '&']);
+
+/** Search words: lowercased, stop words dropped, at most 6 so the query stays small. */
+function searchWords(q) {
+  const words = String(q || '').toLowerCase().split(/\s+/).filter(w => w.length >= 2 && !STOP.has(w));
+  return [...new Set(words)].slice(0, 6);
+}
+
+/** Every word appears in the title or the author. */
+function matchesAll(book, words) {
+  const hay = `${book.title || ''} ${book.author || ''}`.toLowerCase();
+  return words.every(w => hay.includes(w));
+}
+
+/** Catalogue books shaped like custom_products rows, one per product. */
+let _catalogue = null;
+function catalogueRows() {
+  if (_catalogue) return _catalogue;
+  const seen = new Set();
+  _catalogue = [];
+  for (const b of Array.isArray(CATALOGUE) ? CATALOGUE : []) {
+    const sid = String(b.shopify_id || '');
+    if (!sid || !b.title || seen.has(sid)) continue;
+    seen.add(sid);
+    _catalogue.push({
+      slug: makeSlug(b.title, sid), title: b.title, author: b.author || '',
+      category: b.category || '', price_inr: b.price_inr, original_price_inr: b.original_price_inr,
+      image_url: b.image_url || '', source: 'catalogue',
+    });
+  }
+  return _catalogue;
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -68,19 +116,33 @@ exports.handler = async (event) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  // Every word must match (each .or() is ANDed with the others). A query of
+  // only stop words falls back to the whole string.
+  const words = searchWords(safe);
+  const terms = words.length ? words : [safe.toLowerCase()];
+
   let rows;
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('custom_products')
       .select('slug,title,author,category,price_inr,original_price_inr,image_url')
-      .eq('is_active', true)
-      .or(`title.ilike.%${safe}%,author.ilike.%${safe}%`)
-      .limit(CANDIDATES);
+      .eq('is_active', true);
+    for (const w of terms) query = query.or(`title.ilike.%${w}%,author.ilike.%${w}%`);
+    const { data, error } = await query.limit(CANDIDATES);
     if (error) throw error;
     rows = data || [];
   } catch (e) {
     console.error('[admin-product-search]', e.message);
     return json(500, { error: e.message });
+  }
+
+  // The baked catalogue, which custom_products does not contain. A slug in
+  // both is the custom row's (it is the live listing).
+  const have = new Set(rows.map(r => String(r.slug || '').toLowerCase()));
+  for (const b of catalogueRows()) {
+    if (rows.length >= CANDIDATES * 2) break;
+    if (have.has(b.slug.toLowerCase()) || !matchesAll(b, terms)) continue;
+    rows.push(b);
   }
 
   // Exact title, then title starting with the term, then a title match
@@ -92,7 +154,9 @@ exports.handler = async (event) => {
     if (t === needle) return 0;
     if (t.startsWith(needle)) return 1;
     if (t.includes(needle)) return 2;
-    return 3;
+    // Every word in the title itself beats a match that needed the author.
+    if (terms.every(w => t.includes(w))) return 3;
+    return 4;
   };
   rows.sort((a, b) => score(a) - score(b) || String(a.title).length - String(b.title).length);
 
@@ -124,7 +188,10 @@ exports.handler = async (event) => {
     price: r.price_inr,
     original_price: r.original_price_inr || null,
     img: proxifySupabaseImage(r.image_url),
+    source: r.source || 'custom',
   }));
 
   return json(200, { books, total: books.length, truncated: rows.length >= CANDIDATES });
 };
+
+exports._test = { searchWords, matchesAll, catalogueRows };

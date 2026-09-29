@@ -1704,6 +1704,17 @@ select,input,textarea{font-size:1rem;}
             <input id="prodSlug" readonly/>
           </div>
           <div class="form-row">
+            <label>Google item ID <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--cream-dim);">— the Product ID in Merchant Center and Google Ads</span></label>
+            <div style="display:flex;gap:.5rem;align-items:center;">
+              <input id="prodGoogleId" readonly style="flex:1;font-family:Menlo,Consolas,monospace;"/>
+              <button type="button" onclick="copyGoogleItemId()"
+                style="white-space:nowrap;font-family:'Manrope',sans-serif;font-size:.52rem;letter-spacing:.16em;text-transform:uppercase;
+                       padding:.55rem .8rem;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.5);
+                       color:var(--gold);cursor:pointer;border-radius:3px;">Copy</button>
+            </div>
+            <p class="hint" id="prodGoogleIdHint" style="margin-top:.35rem;"></p>
+          </div>
+          <div class="form-row">
             <label>Title</label>
             <input id="prodTitle"/>
           </div>
@@ -6920,7 +6931,8 @@ function renderProductList() {
     const p = mergedProduct(row);
     if (gone.has(String(row.slug || '').toLowerCase())) return false;
     if (!q) return true;
-    return [p.title, p.author, p.category, p.publisher, p.isbn, p.slug, p.shopify_id].join(' ').toLowerCase().includes(q);
+    // google_item_id too, so an id pasted from a Merchant Center issue finds its book.
+    return [p.title, p.author, p.category, p.publisher, p.isbn, p.slug, p.shopify_id, row.google_item_id].join(' ').toLowerCase().includes(q);
   }).slice(0, 80);
   // The initial load only carries the 1000 newest custom rows, so the product
   // wanted may not be local. Ask the server for EVERY query >=3 chars, not just
@@ -6950,6 +6962,7 @@ function renderProductList() {
       <div>
         <div class="product-row-title">${esc(p.title)}${edited}</div>
         <div class="product-row-meta">${esc(p.author || '—')} · ${esc(p.category || 'Books')}</div>
+        ${row.google_item_id ? `<div class="product-row-meta" title="Google item ID (Merchant Center Product ID)" style="font-family:Menlo,Consolas,monospace;font-size:.5rem;opacity:.8;">G · ${esc(row.google_item_id)}</div>` : ''}
       </div>
       <div class="product-row-price">${moneyText(p.price_inr)}</div>
     </div>`;
@@ -6964,6 +6977,15 @@ function selectProduct(slug) {
   document.getElementById('productEditorEmpty').style.display = 'none';
   document.getElementById('productEditorForm').style.display = '';
   document.getElementById('prodSlug').value = row.slug;
+  {
+    const gid = document.getElementById('prodGoogleId');
+    const gh = document.getElementById('prodGoogleIdHint');
+    if (gid) gid.value = row.google_item_id || '';
+    if (gh) gh.textContent = !row.google_item_id ? 'Not known for this listing.'
+      : String(row.shopify_id || '').startsWith('CUSTOM:')
+        ? 'Sent in /custom-feed.xml. Merchant Center may show it as online:en:IN:' + row.google_item_id + '.'
+        : 'Sent in /feed.xml (catalogue). Merchant Center may show it as online:en:IN:' + row.google_item_id + '.';
+  }
   document.getElementById('prodTitle').value = p.title;
   document.getElementById('prodAuthor').value = p.author;
   // The existing value is shown untouched — reformatting it here would look
@@ -7035,19 +7057,25 @@ function selectProduct(slug) {
   // recording the slug so the Worker answers 410 for it. See
   // netlify/functions/delete-product.js.
   const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
-  // prodBrief and prodAiBtn ride along: the AI fills exactly these fields, and
-  // none of them is saved for a catalogue book, so offering the button there
-  // would produce copy that silently goes nowhere.
-  const metadataFields = ['prodPublisher', 'prodIsbn', 'prodFormat', 'prodLanguage', 'prodPages', 'prodDimensions', 'prodWeight', 'prodEdition', 'prodPublished', 'prodReadingAge', 'prodDescription', 'prodAuthorBio', 'prodSeoTitle', 'prodMetaDescription', 'prodTags', 'prodBrief', 'prodAiBtn'];
-  metadataFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
+  // Book facts (publisher, ISBN, pages, weight…) are saved for admin-created
+  // listings only: a catalogue book's page is baked from the source feed.
+  // The COPY -- description, author bio, SEO title/meta, tags, and so Draft
+  // with AI -- is saved for both: catalogue books through
+  // update-catalog-content, which the Worker applies to the baked page.
+  const factFields = ['prodPublisher', 'prodIsbn', 'prodFormat', 'prodLanguage', 'prodPages', 'prodDimensions', 'prodWeight', 'prodEdition', 'prodPublished', 'prodReadingAge'];
+  factFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
+  CATALOG_COPY_FIELDS.forEach(([id]) => { const field = document.getElementById(id); if (field) field.disabled = false; });
+  ['prodBrief', 'prodAiBtn'].forEach(id => { const field = document.getElementById(id); if (field) field.disabled = false; });
   const aiBtn = document.getElementById('prodAiBtn');
-  if (aiBtn) { aiBtn.style.opacity = isCustom ? '' : '.4'; aiBtn.style.cursor = isCustom ? 'pointer' : 'not-allowed'; }
+  if (aiBtn) { aiBtn.style.opacity = ''; aiBtn.style.cursor = 'pointer'; }
+  row._catalogCopy = null;
+  if (!isCustom) loadCatalogCopy(row);
   const aiMsg = document.getElementById('prodAiMsg'); if (aiMsg) aiMsg.textContent = '';
   const briefEl = document.getElementById('prodBrief'); if (briefEl) briefEl.value = '';
   const metadataHint = document.getElementById('prodMetadataHint');
   if (metadataHint) metadataHint.textContent = isCustom
     ? 'Edit the product details used on the product page, search engines, and Merchant Center.'
-    : 'Publisher, ISBN, binding, language, the other book details, description, and SEO metadata are editable for admin-created listings. This catalogue product is generated from the source feed.';
+    : 'Catalogue book: description, author bio, tags and SEO fields are editable and go live on the page within a minute of saving. Publisher, ISBN, binding and the other book details come from the source feed.';
   const delBtn = document.getElementById('prodDeleteBtn');
   if (delBtn) {
     delBtn.style.display = '';
@@ -8734,6 +8762,58 @@ async function restoreDeletedPage(slug, btn) {
 // Same endpoint as the Create Listing button, pointed at the editor's fields.
 // Only offered for custom listings: for a catalogue book none of these fields
 // is persisted by saveProductOverride, so the draft would go nowhere.
+// [field id, API key] for the copy a catalogue book can carry.
+const CATALOG_COPY_FIELDS = [
+  ['prodDescription', 'description'],
+  ['prodAuthorBio', 'author_bio'],
+  ['prodSeoTitle', 'seo_title'],
+  ['prodMetaDescription', 'meta_description'],
+  ['prodTags', 'tags'],
+];
+
+function catalogCopyValues() {
+  const out = {};
+  for (const [id, key] of CATALOG_COPY_FIELDS) out[key] = (document.getElementById(id)?.value || '').trim();
+  return out;
+}
+
+// Fill the copy fields for a catalogue book: its saved override, else the
+// feed's own description. The loaded values are kept so Save can tell whether
+// the admin actually changed anything.
+async function loadCatalogCopy(row) {
+  const msg = document.getElementById('prodAiMsg');
+  try {
+    const res = await adminFetch('/.netlify/functions/update-catalog-content?slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct !== row) return;              // another product opened meanwhile
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const o = data.override || {};
+    const values = {
+      description: (o.description || data.feed?.description || '').trim(),
+      author_bio: o.author_bio || '',
+      seo_title: o.seo_title || '',
+      meta_description: o.meta_description || '',
+      tags: o.tags || '',
+    };
+    for (const [id, key] of CATALOG_COPY_FIELDS) { const el = document.getElementById(id); if (el) el.value = values[key]; }
+    if (!document.getElementById('prodPublisher').value) document.getElementById('prodPublisher').value = data.feed?.publisher || '';
+    if (!document.getElementById('prodIsbn').value) document.getElementById('prodIsbn').value = data.feed?.isbn || '';
+    row._catalogCopy = { values: catalogCopyValues() };
+    if (msg && data.warning) { msg.textContent = data.warning; msg.style.color = '#e8a030'; }
+    else if (msg && data.override) { msg.textContent = 'This book has admin-written copy.'; msg.style.color = 'var(--cream-dim)'; }
+  } catch (err) {
+    if (msg && selectedProduct === row) { msg.textContent = 'Could not load this book\'s copy: ' + err.message; msg.style.color = '#c96a6a'; }
+  }
+}
+
+function copyGoogleItemId() {
+  const v = document.getElementById('prodGoogleId')?.value || '';
+  if (!v) return;
+  navigator.clipboard.writeText(v)
+    .then(() => { const h = document.getElementById('prodGoogleIdHint'); if (h) { h.dataset.was = h.dataset.was || h.textContent; h.textContent = 'Copied ' + v; setTimeout(() => { h.textContent = h.dataset.was; }, 1800); } })
+    .catch(() => alert('Could not copy — select the box and copy it by hand.'));
+}
+
 async function generateProductCopy() {
   if (!selectedProduct) return;
   const btn = document.getElementById('prodAiBtn');
@@ -8741,8 +8821,8 @@ async function generateProductCopy() {
   const val = id => (document.getElementById(id)?.value || '').trim();
   const say = (text, color = 'var(--cream-dim)') => { if (msg) { msg.textContent = text; msg.style.color = color; } };
 
-  if (!String(selectedProduct.shopify_id || '').startsWith('CUSTOM:')) {
-    say('Only admin-created listings can be edited here.', '#e8a030');
+  if (!String(selectedProduct.shopify_id || '').startsWith('CUSTOM:') && !selectedProduct._catalogCopy) {
+    say('Still loading this book\'s current copy — try again in a moment.', '#e8a030');
     return;
   }
   const title = val('prodTitle');
@@ -8865,6 +8945,27 @@ async function saveProductOverride(activeOverride = true) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
 
+    // Catalogue book: the copy fields save separately, and only when changed,
+    // so a price edit never freezes today's feed description over tomorrow's.
+    let copyNote = '';
+    if (!isCustom && selectedProduct._catalogCopy) {
+      const now = catalogCopyValues();
+      const was = selectedProduct._catalogCopy.values;
+      if (CATALOG_COPY_FIELDS.some(([, key]) => (now[key] || '') !== (was[key] || ''))) {
+        const cRes = await adminFetch('/.netlify/functions/update-catalog-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: selectedProduct.slug, ...now }),
+        });
+        const cData = await cRes.json().catch(() => ({}));
+        if (!cRes.ok) throw new Error('Price saved, but the description did not: ' + (cData.error || ('HTTP ' + cRes.status)));
+        selectedProduct._catalogCopy.values = now;
+        copyNote = cData.reverted ? ' Page copy reset to the feed text.'
+          : cData.published ? ' Page copy saved — live within a minute.'
+          : ' Page copy saved, but publishing it failed (' + (cData.publish_error || 'unknown') + ') — save again.';
+      }
+    }
+
     const shippingRes = await adminFetch('/.netlify/functions/update-product-shipping-rules', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -8886,7 +8987,7 @@ async function saveProductOverride(activeOverride = true) {
       : '';
     msg.textContent = (data.override?.is_active === false
       ? 'Override disabled. Storefront will use generated catalogue values.'
-      : 'Saved and live — reload the product page.') + stale;
+      : 'Saved and live — reload the product page.') + stale + copyNote;
     renderProductList();
   } catch (err) {
     msg.textContent = 'Could not save: ' + err.message;

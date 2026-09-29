@@ -56,8 +56,17 @@ function richText(raw) {
   };
 
   // Blank lines separate blocks; within a block a newline is a hard break.
-  for (const block of text.split(/\n{2,}/)) {
+  const blocks = text.split(/\n{2,}/);
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
     const lines = block.split('\n');
+    // "## Heading" directly above its text or bullets (one newline, no blank
+    // line) is how people -- and the AI drafter -- usually type it. No prose
+    // line starts with "## ", so split it off and format the rest normally.
+    if (lines.length > 1 && /^\s*#{2,3}\s+\S/.test(lines[0])) {
+      blocks.splice(i + 1, 0, lines[0], lines.slice(1).join('\n'));
+      continue;
+    }
     // A block is a list only if every line is a bullet — otherwise a sentence
     // starting with a hyphen would silently become a list item.
     if (lines.every(l => /^\s*[-*•]\s+/.test(l))) {

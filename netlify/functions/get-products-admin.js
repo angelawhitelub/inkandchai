@@ -15,6 +15,10 @@ const CORS = {
 // under e.g. "...-NG-HI" while the storefront looks for "...-ng-hi". 13 override
 // rows — 12 of them price overrides — were silently doing nothing as a result.
 const { makeSlug } = require('./utils/pricing');
+// The Google Merchant item id each listing goes out under: custom listings in
+// /custom-feed.xml, catalogue books in /feed.xml. Checked against both live
+// feeds (1,031 and 2,699 ids, all identical) when this was added.
+const { feedId, catalogueFeedId } = require('./utils/feed-id');
 
 function money(v) {
   const n = Number(v);
@@ -155,6 +159,7 @@ exports.handler = async (event) => {
       const products = rows.map(p => ({
         slug: p.slug,
         shopify_id: `CUSTOM:${p.slug}`,
+        google_item_id: feedId(p.slug),
         title: p.title || '',
         author: p.author || '',
         category: p.category || 'Books',
@@ -187,9 +192,11 @@ exports.handler = async (event) => {
       const sid = String(b.shopify_id || '');
       if (!sid || seen.has(sid) || !b.title) continue;
       seen.add(sid);
+      const slug = makeSlug(b.title, sid);
       products.push({
-        slug: makeSlug(b.title, sid),
+        slug,
         shopify_id: sid,
+        google_item_id: catalogueFeedId(slug),
         title: b.title || '',
         author: b.author || '',
         category: b.category || '',
@@ -234,6 +241,7 @@ exports.handler = async (event) => {
       products.unshift({
         slug: p.slug,
         shopify_id: `CUSTOM:${p.slug}`,
+        google_item_id: feedId(p.slug),
         title: p.title || '',
         author: p.author || '',
         category: p.category || 'Books',
