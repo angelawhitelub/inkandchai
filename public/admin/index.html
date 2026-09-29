@@ -7057,14 +7057,12 @@ function selectProduct(slug) {
   // recording the slug so the Worker answers 410 for it. See
   // netlify/functions/delete-product.js.
   const isCustom = String(row.shopify_id || '').startsWith('CUSTOM:');
-  // Book facts (publisher, ISBN, pages, weight…) are saved for admin-created
-  // listings only: a catalogue book's page is baked from the source feed.
-  // The COPY -- description, author bio, SEO title/meta, tags, and so Draft
-  // with AI -- is saved for both: catalogue books through
-  // update-catalog-content, which the Worker applies to the baked page.
-  const factFields = ['prodPublisher', 'prodIsbn', 'prodFormat', 'prodLanguage', 'prodPages', 'prodDimensions', 'prodWeight', 'prodEdition', 'prodPublished', 'prodReadingAge'];
-  factFields.forEach(id => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
-  CATALOG_COPY_FIELDS.forEach(([id]) => { const field = document.getElementById(id); if (field) field.disabled = false; });
+  // Copy and book details are editable for both kinds. Custom listings save
+  // them to custom_products; catalogue books through update-catalog-content,
+  // which the Worker applies to the baked page. A catalogue book's fields stay
+  // locked until loadCatalogCopy has filled them, so nothing typed in the
+  // meantime is overwritten by the load.
+  CATALOG_COPY_FIELDS.forEach(([id]) => { const field = document.getElementById(id); if (field) field.disabled = !isCustom; });
   ['prodBrief', 'prodAiBtn'].forEach(id => { const field = document.getElementById(id); if (field) field.disabled = false; });
   const aiBtn = document.getElementById('prodAiBtn');
   if (aiBtn) { aiBtn.style.opacity = ''; aiBtn.style.cursor = 'pointer'; }
@@ -7075,7 +7073,7 @@ function selectProduct(slug) {
   const metadataHint = document.getElementById('prodMetadataHint');
   if (metadataHint) metadataHint.textContent = isCustom
     ? 'Edit the product details used on the product page, search engines, and Merchant Center.'
-    : 'Catalogue book: description, author bio, tags and SEO fields are editable and go live on the page within a minute of saving. Publisher, ISBN, binding and the other book details come from the source feed.';
+    : 'Catalogue book: every field here goes live on the page within a minute of saving. Blank publisher/ISBN = the original value; other blank details are simply not shown.';
   const delBtn = document.getElementById('prodDeleteBtn');
   if (delBtn) {
     delBtn.style.display = '';
@@ -8760,15 +8758,24 @@ async function restoreDeletedPage(slug, btn) {
 
 // ── AI draft for an EXISTING listing (Products & Prices) ─────────────────────
 // Same endpoint as the Create Listing button, pointed at the editor's fields.
-// Only offered for custom listings: for a catalogue book none of these fields
-// is persisted by saveProductOverride, so the draft would go nowhere.
-// [field id, API key] for the copy a catalogue book can carry.
+// [field id, API key] for what a catalogue book can carry: its copy and its
+// book details, both saved through update-catalog-content.
 const CATALOG_COPY_FIELDS = [
   ['prodDescription', 'description'],
   ['prodAuthorBio', 'author_bio'],
   ['prodSeoTitle', 'seo_title'],
   ['prodMetaDescription', 'meta_description'],
   ['prodTags', 'tags'],
+  ['prodPublisher', 'publisher'],
+  ['prodIsbn', 'isbn'],
+  ['prodFormat', 'format'],
+  ['prodLanguage', 'language'],
+  ['prodPages', 'pages'],
+  ['prodDimensions', 'dimensions'],
+  ['prodWeight', 'weight_grams'],
+  ['prodEdition', 'edition'],
+  ['prodPublished', 'published_on'],
+  ['prodReadingAge', 'reading_age'],
 ];
 
 function catalogCopyValues() {
@@ -8788,19 +8795,17 @@ async function loadCatalogCopy(row) {
     if (selectedProduct !== row) return;              // another product opened meanwhile
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     const o = data.override || {};
-    const values = {
-      description: (o.description || data.feed?.description || '').trim(),
-      author_bio: o.author_bio || '',
-      seo_title: o.seo_title || '',
-      meta_description: o.meta_description || '',
-      tags: o.tags || '',
-    };
-    for (const [id, key] of CATALOG_COPY_FIELDS) { const el = document.getElementById(id); if (el) el.value = values[key]; }
-    if (!document.getElementById('prodPublisher').value) document.getElementById('prodPublisher').value = data.feed?.publisher || '';
-    if (!document.getElementById('prodIsbn').value) document.getElementById('prodIsbn').value = data.feed?.isbn || '';
+    // Saved value, else what the baked page shows. Publisher, ISBN and the
+    // description have a baked value; the other details start blank (= no row).
+    const feed = { description: (data.feed?.description || '').trim(), publisher: data.feed?.publisher || '', isbn: data.feed?.isbn || '' };
+    for (const [id, key] of CATALOG_COPY_FIELDS) {
+      const el = document.getElementById(id);
+      if (el) el.value = o[key] != null && o[key] !== '' ? String(o[key]) : (feed[key] || '');
+      if (el) el.disabled = false;
+    }
     row._catalogCopy = { values: catalogCopyValues() };
     if (msg && data.warning) { msg.textContent = data.warning; msg.style.color = '#e8a030'; }
-    else if (msg && data.override) { msg.textContent = 'This book has admin-written copy.'; msg.style.color = 'var(--cream-dim)'; }
+    else if (msg && data.override) { msg.textContent = 'This book has admin-edited copy or details.'; msg.style.color = 'var(--cream-dim)'; }
   } catch (err) {
     if (msg && selectedProduct === row) { msg.textContent = 'Could not load this book\'s copy: ' + err.message; msg.style.color = '#c96a6a'; }
   }
@@ -8958,10 +8963,10 @@ async function saveProductOverride(activeOverride = true) {
           body: JSON.stringify({ slug: selectedProduct.slug, ...now }),
         });
         const cData = await cRes.json().catch(() => ({}));
-        if (!cRes.ok) throw new Error('Price saved, but the description did not: ' + (cData.error || ('HTTP ' + cRes.status)));
+        if (!cRes.ok) throw new Error('Price saved, but the copy/book details did not: ' + (cData.error || ('HTTP ' + cRes.status)));
         selectedProduct._catalogCopy.values = now;
-        copyNote = cData.reverted ? ' Page copy reset to the feed text.'
-          : cData.published ? ' Page copy saved — live within a minute.'
+        copyNote = cData.reverted ? ' Page copy and details reset to the original.'
+          : cData.published ? ' Page copy and details saved — live within a minute.'
           : ' Page copy saved, but publishing it failed (' + (cData.publish_error || 'unknown') + ') — save again.';
       }
     }

@@ -440,6 +440,8 @@ function rewriteCatalogPage(response, entry) {
   if (!rw) return response;
   let descDone = false;
   let ldBuf = '';
+  let dtLabel = '';
+  const det = rw.details;
   const rewriter = new HTMLRewriter()
     .on('head', { element(el) { el.append(catalogRender.RICH_CSS, { html: true }); } })
     .on('title', { element(el) { if (rw.title) el.setInnerContent(rw.title); } })
@@ -454,6 +456,24 @@ function rewriteCatalogPage(response, entry) {
           el.setInnerContent(catalogRender.descInner(rw), { html: true });
         }
         if (rw.bioHtml) el.after(catalogRender.bioBlock(rw), { html: true });
+      },
+    })
+    // Details table: HTMLRewriter streams, so remember the last <dt> label and
+    // act on the <dd> that follows it. Values go in as text (auto-escaped).
+    .on('div.details dl', { element(el) { if (det && det.lead) el.prepend(det.lead, { html: true }); } })
+    .on('div.details dt', {
+      element() { dtLabel = ''; },
+      text(chunk) { dtLabel += chunk.text; },
+    })
+    .on('div.details dd', {
+      element(el) {
+        if (!det) return;
+        const label = dtLabel.trim();
+        if (label === 'Publisher' && det.publisher) el.setInnerContent(det.publisher);
+        if (label === 'ISBN') {
+          if (det.isbn) el.setInnerContent(det.isbn);
+          if (det.tail) el.after(det.tail, { html: true });
+        }
       },
     })
     .on('script[type="application/ld+json"]', {

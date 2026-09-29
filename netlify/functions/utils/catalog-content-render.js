@@ -6,7 +6,8 @@
  * Worker closes that gap: for a slug in the catalog_content table (mirrored to
  * KV by utils/catalog-content.js) it rewrites the page as it is served --
  * <title>, the meta and og descriptions, "About this book", an "About the
- * author" block, and the description/keywords in the Book JSON-LD.
+ * author" block, the Details table (publisher, ISBN, format, pages…), and the
+ * matching fields in the Book JSON-LD.
  *
  * This file is the pure part (text in, strings out), so it is unit-tested and
  * the Worker only does the HTMLRewriter plumbing. Formatting uses the same
@@ -16,7 +17,8 @@
 
 'use strict';
 
-const { richText, plainText } = require('./rich-text');
+const { richText, plainText, escapeHtml } = require('./rich-text');
+const { bookDetailRows, schemaBookDetails, SCHEMA_BOOK_FORMATS, SCHEMA_LANGUAGES } = require('./book-details');
 
 // Same rules custom product pages get (product-page.js); the baked template
 // has no .rich styles of its own.
@@ -40,9 +42,55 @@ function clip(text, max) {
 // entity would be escaped a second time if the runtime ever starts escaping.
 const attr = (s) => String(s || '').replace(/"/g, '”');
 
+const text = (v) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+const dl = (rows) => rows.map((r) => `<dt>${escapeHtml(r.label)}</dt><dd>${escapeHtml(r.value)}</dd>`).join('');
+
 /**
- * @param {object} entry  { description, author_bio, seo_title, meta_description, tags }
- * @returns {null | { title, meta, descHtml, bioHtml, ldDescription, keywords }}
+ * The Details table changes. The baked table is Category, [Author], Publisher,
+ * ISBN, Sold by; a custom listing's is Format, [Pages], Language, [Edition,
+ * Published], Category, Publisher, ISBN, [Dimensions, Weight, Reading age],
+ * Sold by. Same order here: `lead` goes at the top of the <dl>, `tail` after
+ * the ISBN row. Format and Language are only shown when set -- the baked page
+ * does not claim either, and neither should an override that left them blank.
+ */
+function detailsRewrite(entry) {
+  const format = text(entry.format);
+  const language = text(entry.language);
+  const extra = bookDetailRows(entry);
+  const lead = [
+    ...(format ? [{ label: 'Format', value: format }] : []),
+    ...extra.filter((r) => r.after === 'format'),
+    ...(language ? [{ label: 'Language', value: language }] : []),
+    ...extra.filter((r) => r.after === 'language'),
+  ];
+  const tail = extra.filter((r) => r.after === 'isbn');
+  const out = {
+    publisher: text(entry.publisher) || null,
+    isbn: text(entry.isbn) || null,
+    lead: lead.length ? dl(lead) : null,
+    tail: tail.length ? dl(tail) : null,
+  };
+  return Object.values(out).some(Boolean) ? out : null;
+}
+
+/** Book JSON-LD fields the details map to (only the ones that are set). */
+function ldDetails(entry) {
+  const out = { ...schemaBookDetails(entry) };
+  if (text(entry.publisher)) out.publisher = text(entry.publisher);
+  if (text(entry.isbn)) out.isbn = text(entry.isbn);
+  const fmt = SCHEMA_BOOK_FORMATS[text(entry.format).toLowerCase()];
+  if (fmt) out.bookFormat = fmt;
+  const lang = SCHEMA_LANGUAGES[text(entry.language).toLowerCase()];
+  if (lang) out.inLanguage = lang;
+  for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k];
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * @param {object} entry  { description, author_bio, seo_title, meta_description, tags,
+ *                          publisher, isbn, format, language, pages, dimensions,
+ *                          weight_grams, edition, published_on, reading_age }
+ * @returns {null | { title, meta, descHtml, bioHtml, ldDescription, keywords, details, ld }}
  *          null fields are left as the baked page has them.
  */
 function contentRewrite(entry) {
@@ -52,7 +100,9 @@ function contentRewrite(entry) {
   const seoTitle = String(entry.seo_title || '').trim();
   const metaIn = String(entry.meta_description || '').trim();
   const tags = String(entry.tags || '').split(',').map((t) => t.trim()).filter(Boolean);
-  if (!description && !bio && !seoTitle && !metaIn && !tags.length) return null;
+  const details = detailsRewrite(entry);
+  const ld = ldDetails(entry);
+  if (!description && !bio && !seoTitle && !metaIn && !tags.length && !details && !ld) return null;
   const meta = metaIn ? clip(metaIn, 320) : description ? clip(plainText(description), 155) : '';
   return {
     title: seoTitle ? clip(seoTitle, 150) : null,
@@ -61,6 +111,8 @@ function contentRewrite(entry) {
     bioHtml: bio ? richText(bio) : null,
     ldDescription: description ? clip(plainText(description), 5000) : null,
     keywords: tags.length ? tags.join(', ') : null,
+    details,
+    ld,
   };
 }
 
@@ -69,13 +121,14 @@ function contentRewrite(entry) {
  * does not parse, or is another type, comes back null (leave it alone).
  */
 function patchJsonLd(text, rw) {
-  if (!rw || (!rw.ldDescription && !rw.keywords)) return null;
+  if (!rw || (!rw.ldDescription && !rw.keywords && !rw.ld)) return null;
   let doc;
   try { doc = JSON.parse(text); } catch { return null; }
   const types = [].concat(doc && doc['@type'] || []).map(String);
   if (!types.some((t) => t === 'Book' || t === 'Product')) return null;
   if (rw.ldDescription) doc.description = rw.ldDescription;
   if (rw.keywords) doc.keywords = rw.keywords;
+  if (rw.ld) Object.assign(doc, rw.ld);
   // "</script>" inside a string would end the script element.
   return JSON.stringify(doc).replace(/</g, '\\u003c');
 }

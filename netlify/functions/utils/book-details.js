@@ -71,4 +71,28 @@ function schemaBookDetails(product) {
   };
 }
 
-module.exports = { bookDetailRows, schemaBookDetails, weightText, schemaDatePublished, count };
+// schema.org values for the Format / Language boxes (shared by the custom
+// product page and the Worker's catalogue-page rewrite).
+// schema.org has a fixed vocabulary of bookFormat values; anything outside it
+// is invalid structured data, so an unrecognised binding is simply omitted.
+const SCHEMA_BOOK_FORMATS = {
+  paperback: 'https://schema.org/Paperback',
+  hardcover: 'https://schema.org/Hardcover',
+  hardback: 'https://schema.org/Hardcover',
+  ebook: 'https://schema.org/EBook',
+  audiobook: 'https://schema.org/AudiobookFormat',
+  'graphic novel': 'https://schema.org/GraphicNovel',
+};
+
+// BCP-47 for the languages we actually stock; unknown values are omitted
+// rather than guessed at.
+const SCHEMA_LANGUAGES = {
+  english: 'en', hindi: 'hi', marathi: 'mr', bengali: 'bn', tamil: 'ta',
+  telugu: 'te', kannada: 'kn', malayalam: 'ml', gujarati: 'gu',
+  punjabi: 'pa', urdu: 'ur', odia: 'or', assamese: 'as', sanskrit: 'sa',
+};
+
+module.exports = {
+  bookDetailRows, schemaBookDetails, weightText, schemaDatePublished, count,
+  SCHEMA_BOOK_FORMATS, SCHEMA_LANGUAGES,
+};

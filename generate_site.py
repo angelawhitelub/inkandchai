@@ -238,6 +238,7 @@ if _deleted_path.exists():
         print(f"WARNING: data/deleted_products.json unreadable ({_err}) — nothing excluded")
 
 # ── Admin-written copy for catalogue books ───────────────────────────────────
+# Admin-written catalogue copy and book details.
 # Saved in the admin (catalog_content, update-catalog-content.js) and applied
 # live by the Worker. Baking it in here as well puts it into feed.xml -- which
 # Google Shopping reads instead of the page -- and keeps it if KV is ever lost.
@@ -250,9 +251,17 @@ if _content_path.exists():
         _applied = 0
         for _b in books:
             _entry = _cc.get(make_slug(_b.get("title", ""), _b.get("shopify_id", "")).lower())
-            if _entry and (_entry.get("description") or "").strip():
+            if not _entry:
+                continue
+            if (_entry.get("description") or "").strip():
                 _b["description"] = _entry["description"].strip()
-                _applied += 1
+            # Publisher and ISBN are what the baked page and feed.xml print
+            # (a valid ISBN becomes g:gtin). The other details (pages, format…)
+            # have no slot in the baked template; the Worker adds those rows.
+            for _k in ("publisher", "isbn"):
+                if str(_entry.get(_k) or "").strip():
+                    _b[_k] = str(_entry[_k]).strip()
+            _applied += 1
         print(f"Catalogue copy applied: {_applied} of {len(_cc)} saved")
     except Exception as _err:                                   # noqa: BLE001
         print(f"WARNING: data/catalog_content.json unreadable ({_err}) — feed descriptions used")

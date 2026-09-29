@@ -80,3 +80,39 @@ test('a "## heading" typed directly above its bullets still renders as heading +
   // A sentence that merely starts with a hyphen is still not a list.
   assert.equal(richText('Plain\n- dash sentence'), '<p>Plain<br/>- dash sentence</p>');
 });
+
+test('book details: numbers are cleaned, re-saving the baked publisher/ISBN is not an override', () => {
+  const b = catalogueBook(SLUG);
+  const { pagePublisher } = require('./catalog-content');
+  assert.equal(pagePublisher({ publisher: '99bookstore' }), '');            // supplier name never shown
+  assert.equal(overrideFor(b, { publisher: pagePublisher(b), isbn: String(b.isbn || '') }), null);
+  const f = cleanFields({ pages: '320', weight_grams: 'abc', publisher: '  Bloomsbury  ' });
+  assert.equal(f.pages, 320);
+  assert.equal(f.weight_grams, null);
+  assert.equal(f.publisher, 'Bloomsbury');
+  assert.equal(cleanFields({ pages: 0 }).pages, null);
+  const o = overrideFor(b, { publisher: 'Bloomsbury', format: 'Hardcover' });
+  assert.equal(o.publisher, 'Bloomsbury');
+  assert.equal(o.format, 'Hardcover');
+});
+
+test('book details rewrite: Details rows in custom-page order, escaped, and in the Book JSON-LD', () => {
+  const rw = contentRewrite({
+    publisher: 'A <b>& Co', isbn: '9781408855652', format: 'Hardcover', language: 'Hindi',
+    pages: 320, weight_grams: 1250, reading_age: '12+', edition: '2nd',
+  });
+  assert.equal(rw.descHtml, null);                    // copy untouched when only details change
+  assert.equal(rw.details.publisher, 'A <b>& Co');   // Worker inserts it as TEXT (auto-escaped)
+  assert.equal(rw.details.lead,
+    '<dt>Format</dt><dd>Hardcover</dd><dt>Pages</dt><dd>320</dd><dt>Language</dt><dd>Hindi</dd><dt>Edition</dt><dd>2nd</dd>');
+  assert.equal(rw.details.tail, '<dt>Weight</dt><dd>1.25 kg</dd><dt>Reading age</dt><dd>12+</dd>');
+  const ld = JSON.parse(patchJsonLd(JSON.stringify({ '@type': 'Book', publisher: 'Ink & Chai', isbn: null }), rw));
+  assert.equal(ld.publisher, 'A <b>& Co');
+  assert.equal(ld.isbn, '9781408855652');
+  assert.equal(ld.bookFormat, 'https://schema.org/Hardcover');
+  assert.equal(ld.inLanguage, 'hi');
+  assert.equal(ld.numberOfPages, 320);
+  assert.ok(!patchJsonLd(JSON.stringify({ '@type': 'Book' }), rw).includes('<b>'));   // </script>-safe
+  assert.equal(contentRewrite({ format: 'Hardcover' }).details.lead, '<dt>Format</dt><dd>Hardcover</dd>');
+  assert.equal(contentRewrite({ pages: null, format: '' }), null);
+});

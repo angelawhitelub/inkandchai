@@ -2,7 +2,7 @@ const { createClient } = require('@supabase/supabase-js');
 const SOCIAL_PROOF = require('../../data/social_proof.json').items || [];
 const { richText, plainText } = require('./utils/rich-text');
 const { withBadgeTag, selectTolerant } = require('./utils/publisher-sourced');
-const { bookDetailRows, schemaBookDetails } = require('./utils/book-details');
+const { bookDetailRows, schemaBookDetails, SCHEMA_BOOK_FORMATS, SCHEMA_LANGUAGES } = require('./utils/book-details');
 const { fetchSettings } = require('./utils/product-settings');
 
 // The badge used to claim "flat 22.5% off" for every publisher-sourced title.
@@ -31,25 +31,6 @@ function detailRows(product, after) {
     .map(row => `<dt>${esc(row.label)}</dt><dd>${esc(row.value)}</dd>`)
     .join('');
 }
-
-// schema.org has a fixed vocabulary of bookFormat values; anything outside it
-// is invalid structured data, so an unrecognised binding is simply omitted.
-const SCHEMA_BOOK_FORMATS = {
-  paperback: 'https://schema.org/Paperback',
-  hardcover: 'https://schema.org/Hardcover',
-  hardback: 'https://schema.org/Hardcover',
-  ebook: 'https://schema.org/EBook',
-  audiobook: 'https://schema.org/AudiobookFormat',
-  'graphic novel': 'https://schema.org/GraphicNovel',
-};
-
-// BCP-47 for the languages we actually stock; unknown values are omitted
-// rather than guessed at.
-const SCHEMA_LANGUAGES = {
-  english: 'en', hindi: 'hi', marathi: 'mr', bengali: 'bn', tamil: 'ta',
-  telugu: 'te', kannada: 'kn', malayalam: 'ml', gujarati: 'gu',
-  punjabi: 'pa', urdu: 'ur', odia: 'or', assamese: 'as', sanskrit: 'sa',
-};
 
 function publisherSourcedDiscount(product) {
   const num = v => Number(String(v == null ? '' : v).replace(/[^0-9.]/g, '')) || 0;
