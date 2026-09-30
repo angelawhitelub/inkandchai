@@ -65,7 +65,7 @@ crons = [
   "*/3 * * * *",   # nimbuspost-awb-sync-scheduled
   "*/5 * * * *",   # replay-lost-orders, phonepe-payment-sweep-scheduled
   "15 * * * *",    # auto-cancel-stale-cod (phonepe-reconcile-refunds shares this
-                   # trigger and is held off by ENABLED_JOBS in worker/index.js)
+                   # trigger and is held off by ENABLED_JOBS in worker/scheduled-jobs.mjs)
   "0 * * * *",     # auto-recover-carts, deploy-drift-check
   "30 15 * * *",   # daily-unshipped-report
   "*/2 * * * *",   # bot-order-followup-background

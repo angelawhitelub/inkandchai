@@ -22,6 +22,7 @@ export { RateLimiter } from './rate-limiter.js';
 export { SpendGuard } from './spend-guard.js';
 import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable } from './cache-policy.mjs';
 import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
+import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
 
@@ -33,6 +34,8 @@ const CRON_OVERRIDES = {
   'phonepe-payment-sweep-scheduled': '*/5 * * * *',
 };
 const schedules = { ...declaredSchedules, ...CRON_OVERRIDES };
+// Cron jobs answer HTTP only to the owner; see worker/scheduled-jobs.mjs.
+const JOB_NAMES = scheduledJobNames(schedules, ENABLED_JOBS);
 const blobs = blobsNs.default || blobsNs;
 const bindings = bindingsNs.default || bindingsNs;
 
@@ -135,41 +138,6 @@ function toResponse(result) {
 }
 
 
-// Re-issue a request with extra query parameters, so a handler that expects
-// ?slug=/?page= still sees them when the value came from the path.
-// Which scheduled handlers may actually run. A cron expression fans out to
-// every handler registered against it, and several money-critical jobs share a
-// trigger (auto-cancel-stale-cod and phonepe-reconcile-refunds-scheduled are
-// both "15 * * * *"). Listing jobs explicitly means adding a trigger can never
-// silently start a job nobody asked for. To enable a job: add its name here AND
-// its cron to [triggers] in wrangler.toml.
-const ENABLED_JOBS = new Set([
-  // sync / reporting
-  'nimbuspost-awb-sync-scheduled',
-  'xpressbees-status-sync-scheduled',
-  'auto-recover-carts',
-  'daily-unshipped-report',
-  'deploy-drift-check',
-  // money safety nets
-  'phonepe-payment-sweep-scheduled',
-  'replay-lost-orders',
-  'auto-cancel-stale-cod',
-  'phonepe-reconcile-scheduled',
-  'phonepe-retry-refunds-scheduled',
-  'phonepe-reconcile-refunds-scheduled',
-  'auto-push-replacements-scheduled',
-  'nimbuspost-push-sweep-scheduled',
-  // customer messaging
-  'request-reviews-scheduled',
-  'bot-order-followup-background',
-  'whatsapp-broadcast-scheduled',
-  'whatsapp-broadcast-oneoff',
-  // catalogue
-  'bestseller-agent-scheduled',
-  // auto-mark-delivered is deliberately absent: delivered now comes from the
-  // NimbusPost webhook. Run it by hand if orders stick in out_for_delivery.
-]);
-
 function noStore(response) {
   const r = new Response(response.body, response);
   r.headers.set('Cache-Control', 'no-store');
@@ -177,6 +145,8 @@ function noStore(response) {
   return r;
 }
 
+// Re-issue a request with extra query parameters, so a handler that expects
+// ?slug=/?page= still sees them when the value came from the path.
 function withQuery(request, params) {
   const url = new URL(request.url);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
@@ -539,6 +509,10 @@ export default {
     }
     if (url.pathname.startsWith(FN_PREFIX)) {
       const name = url.pathname.slice(FN_PREFIX.length).replace(/\/+$/, '').split('/')[0];
+      // Here and not in runHandler: cron and in-process self-calls never pass
+      // through fetch(), so they keep working without a key.
+      const refused = refuseAnonymousJobRun(name, request, JOB_NAMES);
+      if (refused) return refused;
       return runHandler(name, request, env, ctx);
     }
 
