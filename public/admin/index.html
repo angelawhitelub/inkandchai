@@ -809,6 +809,8 @@ select,input,textarea{font-size:1rem;}
 <link rel="stylesheet" href="/admin/mobile.css?v=20260929"/>
 <script src="/admin/mobile.js?v=20260929" defer></script>
 <link rel="stylesheet" href="/admin/readability.css?v=20260929"/>
+<link rel="stylesheet" href="/admin/table-sizing.css?v=20261001"/>
+<script src="/admin/table-sizing.js?v=20261001" defer></script>
 </head>
 <body>
 <div id="loadingBar"></div>
@@ -5302,7 +5304,7 @@ function _drawTable() {
 
     const checked = selectedOrderIds.has(String(o.id)) ? 'checked' : '';
 
-    return `<tr class="${checked ? 'selected-row' : ''}">
+    return `<tr data-order-size-key="${esc(String(o.id || o.razorpay_order_id))}" class="${checked ? 'selected-row' : ''}">
       <td class="select-cell" data-label="Select">
         <input class="order-check" type="checkbox" ${checked} onchange="toggleOrderSelection('${esc(o.id)}', this.checked)" onclick="event.stopPropagation()" title="Select order"/>
       </td>
