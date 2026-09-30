@@ -444,3 +444,9 @@
 # "Bestsellers" review queue. Publishes nothing; every draft needs approval.
 [functions."bestseller-agent-scheduled"]
   schedule = "0 22 * * *"
+
+# Daily 09:00 IST: cancel XpressBees panel queue rows for orders another courier
+# already carries (the channel importer keeps pulling them in). Only unbooked
+# 'new' rows; see xpressbees-order-cancel. Switched by XPRESSBEES_QUEUE_CLEANUP.
+[functions."xpressbees-queue-cleanup-scheduled"]
+  schedule = "30 3 * * *"

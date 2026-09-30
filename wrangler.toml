@@ -75,6 +75,7 @@ crons = [
   "30 14 * * *",   # whatsapp-broadcast-oneoff
   "30 13 * * 2,5", # whatsapp-broadcast-scheduled
   "0 22 * * *",     # bestseller-agent-scheduled
+  "30 3 * * *",    # xpressbees-queue-cleanup-scheduled
 ]
 
 # The handlers build data-file paths with path.join(__dirname, ...), which does
@@ -98,6 +99,10 @@ PHONEPE_SWEEP_MAX = "300"
 # buttons keep working either way. At most RTO_AUTO_REFUND_MAX_PER_RUN a run.
 RTO_AUTO_REFUND = "on"
 RTO_AUTO_REFUND_MAX_PER_RUN = "25"
+
+# Daily cancel of XpressBees panel queue rows for orders another courier already
+# carries (xpressbees-queue-cleanup-scheduled). Unbooked rows only. "off" stops it.
+XPRESSBEES_QUEUE_CLEANUP = "on"
 
 # The monthly ceiling on Ink AI's OpenAI spend, in US dollars. The per-IP rate
 # limit stops one visitor looping; this stops the bill when traffic is spread
