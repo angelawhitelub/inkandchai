@@ -18,7 +18,9 @@
  *     utils/courier-cancelled.js, which cancels + refunds only the order whose
  *     CURRENT AWB it is, after a grace period and the 10-day floor.
  *   - RTO sets `status` and nothing else. A returned parcel is not a refund
- *     and no money path may key off a courier scan.
+ *     and no money path may key off this mapping. (rto-auto-refund-scheduled
+ *     pays prepaid RTOs, but only after asking the tracking API itself for
+ *     the RT-DL "RTO Delivered" scan on that order's AWB.)
  *   - `in transit` never touches `status`. Hub scans repeat endlessly and
  *     admin filters and revenue must not move with them; only the movement
  *     stamp advances.

@@ -40,6 +40,7 @@ export const ENABLED_JOBS = new Set([
   'phonepe-reconcile-scheduled',
   'phonepe-retry-refunds-scheduled',
   'phonepe-reconcile-refunds-scheduled',
+  'rto-auto-refund-scheduled',
   'auto-push-replacements-scheduled',
   'nimbuspost-push-sweep-scheduled',
   // customer messaging

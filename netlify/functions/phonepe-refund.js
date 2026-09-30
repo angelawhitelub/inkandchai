@@ -121,6 +121,12 @@ exports.handler = async (event) => {
     if (order.status === 'refunded') {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Order is already refunded.' }) };
     }
+    // The automatic RTO refund (rto-auto-refund-scheduled) claims an order before
+    // calling this endpoint. A Refund click landing in that window would pay it
+    // twice -- Razorpay accepts several partials -- so only the job may proceed.
+    if (order.refund_state === 'AUTO_CLAIMED' && body.auto_rto !== true) {
+      return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'The automatic RTO refund is issuing this refund right now. Rescan in a minute.' }) };
+    }
 
     const REFUNDABLE = ['paid', 'confirmed', 'shipped', 'out_for_delivery',
       'delivered', 'refund_pending', 'refund_failed', 'partially_refunded',

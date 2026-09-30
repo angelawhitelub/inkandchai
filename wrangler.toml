@@ -70,7 +70,7 @@ crons = [
   "30 15 * * *",   # daily-unshipped-report
   "*/2 * * * *",   # bot-order-followup-background
   "*/15 * * * *",  # auto-push-replacements-scheduled
-  "30 7-12 * * *", # phonepe-retry-refunds-scheduled
+  "30 7-12 * * *", # phonepe-retry-refunds-scheduled, rto-auto-refund-scheduled
   "30 4 * * *",    # request-reviews-scheduled
   "30 14 * * *",   # whatsapp-broadcast-oneoff
   "30 13 * * 2,5", # whatsapp-broadcast-scheduled
@@ -91,6 +91,13 @@ __filename = "'/var/task/netlify/functions/handler.js'"
 # under 1000 while clearing the backlog in a few runs. The handler's own default
 # is 400; raise this toward that only if the margin proves unnecessary.
 PHONEPE_SWEEP_MAX = "300"
+
+# Automatic prepaid RTO refunds (rto-auto-refund-scheduled): paid minus both
+# shipping legs, issued only after the courier's own tracking shows the parcel
+# delivered back to us. "off" stops every automatic refund; the admin tab's
+# buttons keep working either way. At most RTO_AUTO_REFUND_MAX_PER_RUN a run.
+RTO_AUTO_REFUND = "on"
+RTO_AUTO_REFUND_MAX_PER_RUN = "25"
 
 # The monthly ceiling on Ink AI's OpenAI spend, in US dollars. The per-IP rate
 # limit stops one visitor looping; this stops the bill when traffic is spread

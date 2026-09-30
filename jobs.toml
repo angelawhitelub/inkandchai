@@ -98,6 +98,13 @@
 [functions."phonepe-retry-refunds-scheduled"]
   schedule = "30 7-12 * * *"
 
+# Prepaid RTO refunds (paid minus both shipping legs), only once the courier's
+# live tracking shows the parcel delivered back to us. Same afternoon slot as
+# the retries, when PhonePe has the day's takings to refund from. Switched by
+# RTO_AUTO_REFUND in wrangler.toml [vars].
+[functions."rto-auto-refund-scheduled"]
+  schedule = "30 7-12 * * *"
+
 # READ-ONLY refund reconciliation, hourly around the clock. Refunds complete at
 # any hour; this flips PENDING → refunded and notifies the customer as soon as
 # PhonePe confirms, instead of waiting for the afternoon re-issue window above
