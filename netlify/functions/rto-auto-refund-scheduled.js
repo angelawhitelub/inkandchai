@@ -62,7 +62,9 @@ async function hasReplacement(supabase, orderId) {
   const { data, error } = await supabase.from('orders')
     .select('razorpay_order_id, status')
     .eq('source', 'replacement')
-    .contains('cart_items', [{ _replacement: { original_order_id: orderId } }])
+    // As a JSON string: given an array, supabase-js writes a Postgres array
+    // literal, which a jsonb column rejects.
+    .contains('cart_items', JSON.stringify([{ _replacement: { original_order_id: orderId } }]))
     .limit(5);
   if (error) throw new Error(`replacement check: ${error.message}`);
   return (data || []).filter(r => r.status !== 'cancelled').map(r => r.razorpay_order_id);

@@ -92,11 +92,18 @@ function npReturnedToOrigin(row, awb) {
   }
   const status = String(row.status || '').trim();
   if (RTO_DELIVERED_TEXT.test(status)) return { verified: true, scan: status };
+  // The headline says only "rto" for the whole return trip; the delivered-back
+  // scan is in the history, under whichever of these fields the courier fills.
   const history = Array.isArray(row.history) ? row.history : [];
   const scan = history.find(h => String(h?.status_code || '').toUpperCase() === 'RT-DL'
-    || RTO_DELIVERED_TEXT.test(String(h?.status || '').trim()));
-  if (scan) return { verified: true, scan: `${scan.status || scan.status_code} · ${scan.event_time || ''}`.trim() };
-  return { verified: false, reason: `not back yet: ${status || 'unknown'}` };
+    || RTO_DELIVERED_TEXT.test(String(h?.status || '').trim())
+    || RTO_DELIVERED_TEXT.test(String(h?.message || '').trim()));
+  if (scan) return { verified: true, scan: `${scan.message || scan.status || scan.status_code} · ${scan.event_time || ''}`.trim() };
+  // What the courier did say, so a wording we do not recognise shows up in
+  // the admin preview instead of an order waiting forever for no visible reason.
+  const latest = history.slice().sort((a, b) => String(b.event_time || '').localeCompare(String(a.event_time || '')))
+    .slice(0, 2).map(h => [h.status_code, h.status, h.message].filter(Boolean).join('/')).join(' | ');
+  return { verified: false, reason: `not back yet: ${status || 'unknown'}${latest ? ` (latest: ${latest})` : ''}` };
 }
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';

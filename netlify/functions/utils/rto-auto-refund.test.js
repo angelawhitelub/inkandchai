@@ -37,7 +37,8 @@ function fakeSupabase(orders, replacements = []) {
       kind === 'eq' ? r[col] === val : kind === 'is' ? (r[col] ?? null) === val : kind === 'gte' ? String(r[col]) >= val : true);
     const run = () => {
       if (q.contains) {
-        const want = q.contains[0]._replacement.original_order_id;
+        assert.equal(typeof q.contains, 'string', 'jsonb containment must be sent as JSON');
+        const want = JSON.parse(q.contains)[0]._replacement.original_order_id;
         return { data: replacements.filter(r => r.original === want).map(r => ({ razorpay_order_id: r.id, status: r.status || 'shipped' })), error: null };
       }
       if (q.op === 'update') {
@@ -101,6 +102,13 @@ test('NimbusPost: rto delivered on the exact AWB, nothing looser', () => {
   assert.equal(rto.npReturnedToOrigin({ awb_number: '236454', status: 'delivered' }, '236454').verified, false);
   assert.equal(rto.npReturnedToOrigin({ awb_number: '999', status: 'rto delivered' }, '236454').verified, false);
   assert.equal(rto.npReturnedToOrigin(undefined, '236454').verified, false);
+  // Headline "rto", delivered-back scan only in the history message.
+  const hist = { awb_number: '236454', status: 'rto', history: [
+    { status_code: 'RT', status: 'rto', message: 'RTO Delivered', event_time: '2026-09-20 11:00' }] };
+  assert.equal(rto.npReturnedToOrigin(hist, '236454').verified, true);
+  const onWay = { awb_number: '236454', status: 'rto', history: [
+    { status_code: 'RT', status: 'rto', message: 'RTO In Transit', event_time: '2026-09-20 11:00' }] };
+  assert.match(rto.npReturnedToOrigin(onWay, '236454').reason, /RTO In Transit/);
 });
 
 test('courier routing: our XpressBees account direct, everything else NimbusPost', () => {
