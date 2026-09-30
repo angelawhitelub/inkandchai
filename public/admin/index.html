@@ -14724,6 +14724,24 @@ async function rtoBulkRefund() {
 
 // Read-only: asks the couriers which parcels are back, exactly as the hourly
 // job will, and lists what it would refund. Nothing is paid from here.
+// Ticks exactly the rows the courier confirmed are back with us, so they can
+// be refunded now with "Refund selected" instead of waiting for the next run.
+let rtoVerifiedIds = [];
+function rtoSelectVerified() {
+  const search = document.getElementById('rtoRefundSearch');
+  if (search && search.value) { search.value = ''; renderRtoRefunds(); }
+  const want = new Set(rtoVerifiedIds);
+  let ticked = 0;
+  document.querySelectorAll('.rto-pick').forEach(cb => {
+    cb.checked = want.has(cb.dataset.rtoPick);
+    if (cb.checked) ticked++;
+  });
+  rtoUpdateBulk();
+  const msg = document.getElementById('rtoBulkMsg');
+  if (msg) msg.textContent = `${ticked} ticked — check the amounts, then press “Refund selected”.`;
+  document.getElementById('rtoBulkBtn')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
 async function previewRtoAutoRefund() {
   const box = document.getElementById('rtoAutoPreview');
   if (!box) return;
@@ -14734,9 +14752,12 @@ async function previewRtoAutoRefund() {
     const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
     const total = (d.would_refund || []).reduce((sum, r) => sum + r.refund_paise, 0);
+    rtoVerifiedIds = (d.would_refund || []).map(r => r.order_id);
     const li = (r, extra) => `<li><strong>${esc(r.order_id)}</strong> · ₹${money(r.refund_paise / 100)} · ${esc(r.courier || '')} ${esc(r.awb || '')} — ${esc(extra || '')}</li>`;
     box.innerHTML = `<div style="margin-bottom:.4rem;">Automatic refunds are <strong>${d.enabled ? 'ON' : 'OFF'}</strong> · hourly 1–6 PM IST · up to ${d.max_per_run} a run.</div>`
-      + `<div><strong>${(d.would_refund || []).length}</strong> back with us — would be refunded next run (₹${money(total / 100)}):</div>`
+      + `<div><strong>${(d.would_refund || []).length}</strong> back with us — would be refunded next run (₹${money(total / 100)}):`
+      + ((d.would_refund || []).length ? ` <button class="btn-gold owner-only" style="padding:.3rem .6rem;font-size:.58rem;margin-left:.4rem;" onclick="rtoSelectVerified()">☑ Tick these ${(d.would_refund || []).length} to refund now</button>` : '')
+      + `</div>`
       + `<ul style="margin:.3rem 0 .6rem 1.1rem;">${(d.would_refund || []).map(r => li(r, r.scan)).join('') || '<li>none</li>'}</ul>`
       + `<details><summary>${(d.waiting || []).length} still on the way back · ${(d.skipped || []).length} skipped</summary>`
       + `<ul style="margin:.3rem 0 0 1.1rem;">${[...(d.waiting || []), ...(d.skipped || [])].map(r => li(r, r.reason)).join('')}</ul></details>`;
