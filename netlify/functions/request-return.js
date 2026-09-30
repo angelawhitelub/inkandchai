@@ -340,7 +340,9 @@ exports.handler = async (event) => {
       html: customerEmailHtml(order, info),
     }).catch(e => console.error('request-return customer email:', e.message));
 
-    // ── Auto-push the reverse pickup to NimbusPost (backgrounded) ──────────────
+    // ── Auto-book the reverse pickup (backgrounded) ────────────────────────────
+    // XpressBees first, then NimbusPost, else the customer is asked to Speed Post
+    // it and we reimburse the postage: see auto-return-pickup-background.js.
     // The return is auto-approved above; now book the NimbusPost reverse pickup
     // so an AWB is assigned and the customer is told the courier will collect the
     // books — no manual admin step. This is dispatched to a BACKGROUND function
