@@ -15,7 +15,8 @@
  *      and there is a recorded gateway payment id. COD never appears.
  *   3. The order is inside the window (RTO_AUTO_REFUND_DAYS, default 90).
  *   4. No free replacement was created for it -- that customer got the books.
- *   5. After shipping there is something left to refund.
+ *   5. After shipping there is something left to refund, and the parcel is at
+ *      most 4 books (a bigger one weighs more than the bundle rate covers).
  *   6. The courier's live tracking for THIS order's AWB shows the parcel
  *      delivered back to origin (utils/rto-refund.js). Our own status column is
  *      never enough: it is written by webhooks, and it says "rto" from the
@@ -110,6 +111,7 @@ async function runAutoRefund(deps, opts = {}) {
   const dryRun = !!opts.dryRun;
   const days = opts.days || 90;
   const maxPerRun = opts.maxPerRun || 25;
+  const maxAutoBooks = opts.maxAutoBooks || 4;
   const rates = opts.rates || rto.defaultRates();
 
   const summary = {
@@ -145,6 +147,12 @@ async function runAutoRefund(deps, opts = {}) {
     if (calc.refund <= 0) { summary.skipped.push({ ...base, reason: 'nothing left after shipping' }); continue; }
     if (calc.refund > calc.gross) { summary.skipped.push({ ...base, reason: 'refund exceeds amount paid' }); continue; }
     if (!o.tracking_id) { summary.skipped.push({ ...base, reason: 'no AWB to verify' }); continue; }
+    // The bundle rate is two slabs. A big parcel crosses many more, so the flat
+    // deduction would over-refund it: those are left for the owner to price.
+    if ((calc.parcel.books || 0) > maxAutoBooks) {
+      summary.skipped.push({ ...base, reason: `${calc.parcel.books}-book parcel: deduct the real courier charge and refund by hand` });
+      continue;
+    }
     eligible.push({ order: o, base });
   }
 

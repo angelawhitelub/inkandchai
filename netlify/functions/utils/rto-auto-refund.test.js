@@ -215,3 +215,12 @@ test('manual refund endpoints refuse an order the job has claimed', async () => 
     + require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'razorpay-refund.js'), 'utf8');
   assert.equal((src.match(/order\.refund_state === 'AUTO_CLAIMED' && body\.auto_rto !== true/g) || []).length, 2);
 });
+
+test('a big bundle is left for the owner to price', async () => {
+  const big = order({ cart_items: Array.from({ length: 14 }, (_, i) => book('Book ' + i)) });
+  const supabase = fakeSupabase([big]);
+  const refund = refundSpy();
+  const s = await runAutoRefund({ supabase, refund, ownerAlert: noAlert, xbTrack: async () => XB_BACK, npTrackMany: async () => new Map() }, {});
+  assert.equal(refund.calls.length, 0);
+  assert.match(s.skipped[0].reason, /14-book parcel/);
+});
