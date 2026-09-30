@@ -164,6 +164,8 @@ const ENABLED_JOBS = new Set([
   'bot-order-followup-background',
   'whatsapp-broadcast-scheduled',
   'whatsapp-broadcast-oneoff',
+  // catalogue
+  'bestseller-agent-scheduled',
   // auto-mark-delivered is deliberately absent: delivered now comes from the
   // NimbusPost webhook. Run it by hand if orders stick in out_for_delivery.
 ]);

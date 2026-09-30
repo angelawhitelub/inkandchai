@@ -913,6 +913,7 @@ select,input,textarea{font-size:1rem;}
          re-rendered the whole panel, so a thread being read scrolled itself
          away and a reply in progress felt like the page resetting. -->
     <button class="admin-tab" data-tab="botinbox"  onclick="location.href='/admin/inbox.html'">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab owner-only" data-tab="bestsellers" onclick="switchTab('bestsellers')">📈 Bestsellers <span id="bestsellersBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="bookreq"   onclick="switchTab('bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="insights"  onclick="switchTab('insights')">💡 Insights</button>
     <button class="admin-tab" data-tab="feedback"  onclick="switchTab('feedback')">📝 Feedback</button>
@@ -2713,6 +2714,37 @@ select,input,textarea{font-size:1rem;}
     </div>
   </div><!-- /tab-bookreq -->
 
+  <!-- ═══ BESTSELLERS TAB ═══ -->
+  <div class="admin-section" id="tab-bestsellers">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;">
+      <div style="max-width:720px;">
+        <h2 style="margin:0;font-size:1.1rem;">📈 Bestseller drafts</h2>
+        <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;line-height:1.5;">Every night the agent reads the Amazon.in bestseller lists and drafts the top books we don't sell yet, priced at M.R.P. − 40%. Nothing goes live until you approve it. Check the price and cover, edit anything, then approve. Rejected books are never suggested again.</div>
+      </div>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
+        <select id="bsStatus" onchange="loadBestsellers()" style="padding:0.45rem;font-size:0.72rem;">
+          <option value="pending">Waiting for review</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="in_catalogue">Already listed</option>
+          <option value="skipped">Skipped</option>
+        </select>
+        <button class="btn-outline" onclick="loadBestsellers()">↻ Refresh</button>
+        <button class="btn-outline" id="bsRunBtn" onclick="runBestsellerAgent()">▶ Find 10 more now</button>
+      </div>
+    </div>
+    <div id="bsMeta" style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-bottom:0.6rem;"></div>
+    <div id="bsBulk" style="display:none;gap:0.4rem;align-items:center;flex-wrap:wrap;margin-bottom:0.7rem;font-size:0.72rem;">
+      <label style="display:flex;gap:0.3rem;align-items:center;"><input type="checkbox" id="bsAll" onchange="bsToggleAll(this.checked)"> Select all</label>
+      <button class="btn-green" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsBulk('approve')">✓ Approve selected</button>
+      <button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsBulk('reject')">✕ Reject selected</button>
+      <span id="bsBulkMsg"></span>
+    </div>
+    <div id="bsList" style="display:flex;flex-direction:column;gap:0.7rem;">
+      <div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;">Loading…</div>
+    </div>
+  </div><!-- /tab-bestsellers -->
+
   <!-- ═══ INSIGHTS TAB ═══ -->
   <div class="admin-section" id="tab-insights">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
@@ -3408,6 +3440,168 @@ async function setBookReqStatus(id, status) {
     fetchBookRequests();
   } catch (e) { alert('Update failed: ' + e.message); }
 }
+// ── Bestsellers (agent drafts → review queue) ───────────────────────────────
+// Drafts come from netlify/functions/bestseller-agent-scheduled.js. Approving
+// creates a real listing through create-product-listing; nothing here can
+// publish without a click.
+let bsRows = [];
+const bsEsc = (v) => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+async function loadBestsellers() {
+  const list = document.getElementById('bsList');
+  const meta = document.getElementById('bsMeta');
+  if (!list) return;
+  const status = document.getElementById('bsStatus')?.value || 'pending';
+  list.innerHTML = '<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;">Loading…</div>';
+  try {
+    const res = await adminFetch('/.netlify/functions/bestseller-candidates?status=' + encodeURIComponent(status));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    bsRows = data.candidates || [];
+    const c = data.counts || {};
+    const badge = document.getElementById('bestsellersBadge');
+    if (badge) { badge.textContent = c.pending || ''; badge.style.display = c.pending ? '' : 'none'; }
+    const r = data.last_run;
+    const when = (iso) => iso ? new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    meta.innerHTML = `${c.pending || 0} waiting · ${c.approved || 0} approved · ${c.rejected || 0} rejected · ${c.in_catalogue || 0} already listed · ${c.skipped || 0} skipped`
+      + (r ? `<br>Last run ${bsEsc(when(r.finished_at || r.started_at))} (${bsEsc(r.trigger)}): ${r.drafted || 0} drafted, ${r.in_catalogue || 0} already listed, ${r.skipped || 0} skipped${r.failed ? `, <span style="color:#c93636">${r.failed} failed</span>` : ''}${r.remaining ? `, ${r.remaining} more to draft` : ''}.`
+        + ((r.errors || []).length ? ` <span style="color:#c93636">${bsEsc(r.errors.join(' · '))}</span>` : '') : '<br>The agent has not run yet. It runs nightly at 03:30, or press “Find 10 more now”.');
+    document.getElementById('bsBulk').style.display = status === 'pending' && bsRows.length ? 'flex' : 'none';
+    const allBox = document.getElementById('bsAll'); if (allBox) allBox.checked = false;
+    if (!bsRows.length) {
+      list.innerHTML = `<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;padding:1rem 0;">${status === 'pending' ? 'No drafts waiting.' : 'Nothing here.'}</div>`;
+      return;
+    }
+    list.innerHTML = bsRows.map((b) => bsCard(b, status)).join('');
+  } catch (e) {
+    list.innerHTML = '<div style="color:#c93636;font-size:0.8rem;">Could not load: ' + bsEsc(e.message) + '</div>';
+  }
+}
+
+function bsCard(b, status) {
+  const pending = status === 'pending';
+  const lists = (Array.isArray(b.lists) ? b.lists : []).map((l) => `#${l.rank} ${l.list}`).join(' · ');
+  const warnings = Array.isArray(b.warnings) ? b.warnings : [];
+  const dup = b.possible_duplicate;
+  const input = (field, value, width, type = 'text') => `<input data-bs="${field}" type="${type}" value="${bsEsc(value)}" style="width:${width};padding:0.3rem 0.4rem;font-size:0.78rem;">`;
+  const cover = b.image_url
+    ? `<img src="${bsEsc(b.image_url)}" alt="" loading="lazy" style="width:84px;height:120px;object-fit:cover;border-radius:4px;background:#0001;" onerror="this.style.opacity=0.2">`
+    : '<div style="width:84px;height:120px;border:1px dashed #c93636;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:#c93636;text-align:center;">No cover</div>';
+  const save = b.mrp_inr && b.price_inr ? Math.round((1 - b.price_inr / b.mrp_inr) * 100) : null;
+  return `<div id="bs-${b.id}" data-id="${b.id}" style="border:1px solid var(--border,rgba(201,168,76,0.25));border-radius:12px;padding:0.85rem 1rem;background:var(--bg2,#1a1613);display:flex;gap:0.9rem;align-items:flex-start;">
+    ${pending ? `<input type="checkbox" class="bs-pick" style="margin-top:0.3rem;">` : ''}
+    <div style="flex:none;">${cover}</div>
+    <div style="flex:1;min-width:0;font-size:0.78rem;line-height:1.55;">
+      ${pending
+        ? `<div>${input('title', b.title, '100%')}</div>
+           <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.35rem;align-items:center;">
+             ${input('author', b.author, '12rem')} ${input('category', b.category, '12rem')}
+             <span>M.R.P. ₹</span>${input('mrp_inr', b.mrp_inr, '5rem', 'number')}
+             <span>Our price ₹</span>${input('price_inr', b.price_inr, '5rem', 'number')}
+             ${save != null ? `<span style="color:var(--cream-dim,#8a7a62)">(${save}% off)</span>` : ''}
+           </div>`
+        : `<strong style="color:var(--gold,#c9a84c);font-size:0.9rem;">${bsEsc(b.title)}</strong><div>${bsEsc(b.author || '')}${b.price_inr ? ` · ₹${bsEsc(b.price_inr)} (M.R.P. ₹${bsEsc(b.mrp_inr || '?')})` : ''}</div>`}
+      <div style="color:var(--cream-dim,#8a7a62);margin-top:0.3rem;">📈 ${bsEsc(lists || b.source_list || '')}${b.isbn13 ? ` · ISBN ${bsEsc(b.isbn13)}` : ''}${b.publisher ? ` · ${bsEsc(b.publisher)}` : ''}${b.language ? ` · ${bsEsc(b.language)}` : ''}${b.format ? ` · ${bsEsc(b.format)}` : ''}${b.pages ? ` · ${b.pages} pages` : ''}
+        · <a href="https://www.amazon.in/dp/${bsEsc(b.asin)}" target="_blank" rel="noopener" style="color:var(--gold,#c9a84c);">Amazon</a>
+        ${b.product_slug ? ` · <a href="/product/${bsEsc(b.product_slug)}/" target="_blank" style="color:#5d9b55;">View listing</a>` : ''}</div>
+      ${dup ? `<div style="color:#c98a36;margin-top:0.25rem;">⚠ Looks like <a href="/product/${bsEsc(dup.slug)}/" target="_blank" style="color:#c98a36;text-decoration:underline;">${bsEsc(dup.title)}</a>, which we already list. Reject it if it's the same book.</div>` : ''}
+      ${warnings.map((w) => `<div style="color:#c98a36;">⚠ ${bsEsc(w)}</div>`).join('')}
+      ${b.status_reason && !pending ? `<div style="color:var(--cream-dim,#8a7a62);">${bsEsc(b.status_reason)}</div>` : ''}
+      ${pending ? `<details style="margin-top:0.35rem;"><summary style="cursor:pointer;color:var(--gold,#c9a84c);">Cover URL, description &amp; SEO</summary>
+          <div style="display:flex;flex-direction:column;gap:0.35rem;margin-top:0.35rem;">
+            <label>Cover image URL ${input('image_url', b.image_url, '100%')}</label>
+            <label>Description<textarea data-bs="description" rows="7" style="width:100%;font-size:0.76rem;">${bsEsc(b.description)}</textarea></label>
+            <label>About the author<textarea data-bs="author_bio" rows="3" style="width:100%;font-size:0.76rem;">${bsEsc(b.author_bio)}</textarea></label>
+            <label>SEO title ${input('seo_title', b.seo_title, '100%')}</label>
+            <label>Meta description ${input('meta_description', b.meta_description, '100%')}</label>
+            <label>Search keywords ${input('tags', b.tags, '100%')}</label>
+          </div></details>` : ''}
+      <div style="display:flex;gap:0.4rem;margin-top:0.55rem;flex-wrap:wrap;align-items:center;">
+        ${pending ? `<button class="btn-green" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsAct('${b.id}','approve')">✓ Approve &amp; list</button>
+          <button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsAct('${b.id}','update')">Save edits</button>
+          <button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsAct('${b.id}','reject')">✕ Reject</button>`
+        : (b.status === 'rejected' || b.status === 'skipped' || b.status === 'in_catalogue')
+          ? `<button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsAct('${b.id}','restore')">↺ Back to review</button>` : ''}
+        <span class="bs-msg" style="font-size:0.72rem;"></span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function bsFields(id) {
+  const card = document.getElementById('bs-' + id);
+  const fields = {};
+  card?.querySelectorAll('[data-bs]').forEach((el) => { fields[el.dataset.bs] = el.value; });
+  return fields;
+}
+
+async function bsAct(id, action, opts = {}) {
+  const card = document.getElementById('bs-' + id);
+  const msg = card?.querySelector('.bs-msg');
+  const body = { id, action };
+  if (action === 'approve' || action === 'update') body.fields = bsFields(id);
+  if (action === 'approve') {
+    const f = body.fields;
+    if (!opts.quiet && !confirm(`List “${f.title}” at ₹${f.price_inr}${f.mrp_inr ? ` (M.R.P. ₹${f.mrp_inr})` : ''}?\n\nIt goes live on the site straight away.`)) return false;
+  }
+  if (msg) { msg.style.color = ''; msg.textContent = action === 'approve' ? 'Creating listing…' : 'Saving…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/bestseller-candidates', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (action === 'update') { if (msg) { msg.style.color = '#5d9b55'; msg.textContent = 'Saved.'; } return true; }
+    if (action === 'approve' && msg) { msg.style.color = '#5d9b55'; msg.innerHTML = `Listed: <a href="${bsEsc(data.url)}" target="_blank" style="color:#5d9b55;">${bsEsc(data.url)}</a>${data.warning ? ' · ' + bsEsc(data.warning) : ''}`; }
+    if (!opts.quiet) setTimeout(loadBestsellers, action === 'approve' ? 1500 : 0);
+    return true;
+  } catch (e) {
+    if (msg) { msg.style.color = '#c93636'; msg.textContent = e.message; }
+    return false;
+  }
+}
+
+function bsToggleAll(on) {
+  document.querySelectorAll('#bsList .bs-pick').forEach((b) => { b.checked = on; });
+}
+
+async function bsBulk(action) {
+  const ids = [...document.querySelectorAll('#bsList .bs-pick:checked')].map((b) => b.closest('[data-id]').dataset.id);
+  const out = document.getElementById('bsBulkMsg');
+  if (!ids.length) { out.textContent = 'Tick some books first.'; return; }
+  if (action === 'approve') {
+    const noPrice = ids.filter((id) => !(Number(bsFields(id).price_inr) > 0));
+    if (noPrice.length) { out.textContent = `${noPrice.length} selected book(s) have no price.`; return; }
+    if (!confirm(`List ${ids.length} book(s) on the site now, at the prices shown?`)) return;
+  } else if (!confirm(`Reject ${ids.length} book(s)? They won't be suggested again.`)) return;
+  let ok = 0;
+  for (const [i, id] of ids.entries()) {
+    out.textContent = `${action === 'approve' ? 'Listing' : 'Rejecting'} ${i + 1} of ${ids.length}…`;
+    if (await bsAct(id, action, { quiet: true })) ok += 1;
+  }
+  out.textContent = `${ok} of ${ids.length} done${ok < ids.length ? ' — the rest show their error on the card' : ''}.`;
+  if (ok === ids.length) loadBestsellers();
+}
+
+async function runBestsellerAgent() {
+  const btn = document.getElementById('bsRunBtn');
+  const meta = document.getElementById('bsMeta');
+  if (btn) { btn.disabled = true; btn.textContent = 'Working… (about a minute)'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/bestseller-agent-scheduled', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 10 }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    await loadBestsellers();
+    if (meta) meta.innerHTML += `<br><span style="color:#5d9b55">Just now: ${data.drafted} drafted, ${data.in_catalogue} already listed, ${data.skipped} skipped${data.failed ? `, ${data.failed} failed` : ''}; ${data.remaining} more waiting.</span>`;
+  } catch (e) {
+    if (meta) meta.innerHTML += `<br><span style="color:#c93636">Run failed: ${bsEsc(e.message)}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Find 10 more now'; }
+  }
+}
+
 async function pushBookRequest(id) {
   const req = window._bookReqById?.[String(id)] || {};
   const savedAmount = req.amount_paise ? Math.round(Number(req.amount_paise) / 100) : 0;
@@ -13054,7 +13248,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','npcancelled','rtorefunds','botinbox','bookreq','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -14260,6 +14454,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'returns' && _authed) fetchReturnRequests();
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();
+  if (tab === 'bestsellers' && _authed && adminRole === 'owner') loadBestsellers();
   if (tab === 'bot' && _authed) { loadBotSettings(); loadInkAiQuestions(false); }
   if (tab === 'feedback' && _authed) loadSiteFeedback();
   if (tab === 'bugs' && _authed) loadBugReports();

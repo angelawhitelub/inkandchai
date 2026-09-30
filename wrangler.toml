@@ -74,6 +74,7 @@ crons = [
   "30 4 * * *",    # request-reviews-scheduled
   "30 14 * * *",   # whatsapp-broadcast-oneoff
   "30 13 * * 2,5", # whatsapp-broadcast-scheduled
+  "0 22 * * *",     # bestseller-agent-scheduled
 ]
 
 # The handlers build data-file paths with path.join(__dirname, ...), which does

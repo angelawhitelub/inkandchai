@@ -431,3 +431,9 @@
 # requests never fire for any of them. Every 15 minutes, 120 orders a run.
 [functions."xpressbees-status-sync-scheduled"]
   schedule = "*/15 * * * *"
+
+# Bestseller agent: once a day at 22:00 UTC (03:30 IST), read the Amazon.in
+# bestseller lists and draft up to 30 books we do not sell into the admin
+# "Bestsellers" review queue. Publishes nothing; every draft needs approval.
+[functions."bestseller-agent-scheduled"]
+  schedule = "0 22 * * *"
