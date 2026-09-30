@@ -43,6 +43,20 @@ function nimbusAutoPushOn() {
 }
 
 /**
+ * Why an order must not go to NimbusPost because another courier has it, or
+ * null. tracking_id: an AWB from any courier. ithink_pushed_at: created in the
+ * iThink panel, whose AWB only arrives later by import. xpressbees_feed_at: the
+ * owner pressed "Push to XpressBees" for it.
+ */
+function bookedElsewhere(order) {
+  if (!order) return null;
+  if (String(order.tracking_id || '').trim()) return `already has AWB ${String(order.tracking_id).trim()}`;
+  if (order.ithink_pushed_at) return 'already pushed to iThink';
+  if (order.xpressbees_feed_at) return 'already queued for XpressBees';
+  return null;
+}
+
+/**
  * @param {object} supabase  service-role client
  * @param {object} order     order row; needs `id` or `razorpay_order_id`
  * @returns {Promise<{pushed: boolean, reason?: string, error?: string}>}
@@ -56,7 +70,19 @@ async function pushToNimbusOnce(supabase, order) {
   // Before the claim, so the order stays un-pushed and a manual push sees it.
   if (!nimbusAutoPushOn()) return { pushed: false, reason: 'auto_push_off' };
 
-  // Claim. `.is('nimbus_pushed_at', null)` is what makes this exclusive.
+  // Already with another courier. IC-20260914-9VP7A shipped three times: it
+  // was booked in iThink (ithink_pushed_at) but its AWB never came back into
+  // tracking_id, so this looked un-pushed and a sweep sent it to NimbusPost
+  // too. Reported as already_pushed -- callers treat that as "handled".
+  const elsewhere = bookedElsewhere(order);
+  if (elsewhere) {
+    console.log(`[NimbusPost] not pushing ${label}: ${elsewhere}`);
+    return { pushed: false, reason: 'already_pushed', detail: elsewhere };
+  }
+
+  // Claim. `.is('nimbus_pushed_at', null)` is what makes this exclusive; the
+  // other three repeat bookedElsewhere against the row as it is NOW, since the
+  // caller's copy of the order may be minutes old.
   let claimed;
   try {
     const { data, error } = await supabase
@@ -64,6 +90,9 @@ async function pushToNimbusOnce(supabase, order) {
       .update({ nimbus_pushed_at: new Date().toISOString() })
       .eq(col, key)
       .is('nimbus_pushed_at', null)
+      .is('tracking_id', null)
+      .is('ithink_pushed_at', null)
+      .is('xpressbees_feed_at', null)
       .select('id');
     if (error) throw error;
     claimed = data;
@@ -90,4 +119,4 @@ async function pushToNimbusOnce(supabase, order) {
   }
 }
 
-module.exports = { pushToNimbusOnce, nimbusAutoPushOn };
+module.exports = { pushToNimbusOnce, nimbusAutoPushOn, bookedElsewhere };

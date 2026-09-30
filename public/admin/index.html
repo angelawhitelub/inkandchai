@@ -11364,7 +11364,8 @@ async function pushAllToNimbusPanel(btn) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     const s = data.summary || {};
-    let message = `NimbusPost panel import complete:\n\n✅ Newly pushed: ${s.pushed || 0}\n⏭ Already in NimbusPost: ${s.skipped || 0}\n❌ Failed: ${s.failed || 0}`;
+    let message = `NimbusPost panel import complete:\n\n✅ Newly pushed: ${s.pushed || 0}\n⏭ Already in NimbusPost: ${s.skipped || 0}\n🚚 Left alone, booked with another courier: ${(s.booked_elsewhere || []).length}\n❌ Failed: ${s.failed || 0}`;
+    if (s.booked_elsewhere?.length) message += `\n\nBooked elsewhere (not pushed):\n${s.booked_elsewhere.slice(0, 8).join('\n')}`;
     if (data.errors?.length) message += `\n\nFirst errors:\n${data.errors.slice(0, 5).join('\n')}`;
     message += '\n\nOpen NimbusPost → Orders to assign couriers and generate AWBs.';
     alert(message);
@@ -11882,8 +11883,8 @@ async function dlRunPush(includeShiprocket, expected) {
 // Dedup is the endpoint's, not ours: it skips anything already carrying
 // nimbus_pushed_at or already present in the panel, so pressing this twice
 // cannot create a second shipment.
-async function npPushOrderToPanel(orderId, btn) {
-  if (!confirm(`Push ${orderId} to the NimbusPost Orders panel?\n\nNo courier is selected and NO AWB is generated — the order just appears in the panel, ready to ship whenever you want.`)) return;
+async function npPushOrderToPanel(orderId, btn, forceElsewhere = false) {
+  if (!forceElsewhere && !confirm(`Push ${orderId} to the NimbusPost Orders panel?\n\nNo courier is selected and NO AWB is generated — the order just appears in the panel, ready to ship whenever you want.`)) return;
 
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Pushing…'; }
@@ -11892,12 +11893,23 @@ async function npPushOrderToPanel(orderId, btn) {
     const res = await fetch('/.netlify/functions/nimbuspost-order-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
-      body: JSON.stringify({ order_ids: [orderId] }),
+      body: JSON.stringify({ order_ids: [orderId], include_booked_elsewhere: forceElsewhere }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
 
     const s = data.summary || {};
+    if (s.booked_elsewhere?.length) {
+      // Another courier already has it and its AWB has not come back yet.
+      // Pushing anyway is sometimes right (that booking was cancelled), so it
+      // is the owner's call -- but only after being told plainly.
+      const why = s.booked_elsewhere[0].replace(/^[^:]+:\s*/, '');
+      if (confirm(`⚠️ ${orderId} is ${why}.\n\nPushing it to NimbusPost as well can ship the same parcel twice. Only continue if that other booking was cancelled.\n\nPush it anyway?`)) {
+        if (btn) btn.innerHTML = orig;
+        return await npPushOrderToPanel(orderId, btn, true);
+      }
+      return;
+    }
     if (s.pushed) {
       alert(`✅ ${orderId} is now in the NimbusPost Orders panel.\n\nNo AWB was generated. Open NimbusPost → Orders to assign a courier when you're ready.`
         + (data.warning ? `\n\n⚠️ ${data.warning}` : ''));

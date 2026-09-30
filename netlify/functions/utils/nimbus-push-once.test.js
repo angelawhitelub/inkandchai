@@ -135,3 +135,35 @@ test('automatic pushing is OFF unless NIMBUS_AUTO_PUSH says on — nothing claim
     process.env.NIMBUS_AUTO_PUSH = saved;
   }
 });
+
+test('an order another courier has is never pushed, and nothing is claimed', async () => {
+  for (const [extra, why] of [
+    [{ ithink_pushed_at: '2026-09-14T10:00:00Z' }, /iThink/],
+    [{ xpressbees_feed_at: '2026-09-14T10:00:00Z' }, /XpressBees/],
+    [{ tracking_id: '21733500000001' }, /AWB 21733500000001/],
+  ]) {
+    const { client, state } = fakeSupabase();
+    const r = await pushToNimbusOnce(client, { id: 'row-1', razorpay_order_id: 'IC-20260914-9VP7A', ...extra });
+    assert.equal(r.pushed, false);
+    assert.equal(r.reason, 'already_pushed', 'callers read this as handled');
+    assert.match(r.detail, why);
+    assert.equal(state.updates.length, 0, 'no claim written');
+  }
+  assert.equal(pushed.length, 0);
+});
+
+test('the claim re-checks every courier stamp on the row as it is now', async () => {
+  const isCols = [];
+  const client = { from() {
+    const q = {};
+    q.update = () => q; q.eq = () => q;
+    q.is = (col) => { isCols.push(col); return q; };
+    q.select = () => Promise.resolve({ data: [], error: null });
+    return q;
+  } };
+  const r = await pushToNimbusOnce(client, { id: 'row-1', razorpay_order_id: 'IC-1' });
+  assert.equal(r.reason, 'already_pushed');
+  assert.deepEqual(isCols.sort(), ['ithink_pushed_at', 'nimbus_pushed_at', 'tracking_id', 'xpressbees_feed_at']);
+  assert.equal(pushed.length, 0);
+});
+

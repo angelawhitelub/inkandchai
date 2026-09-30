@@ -30,9 +30,11 @@
  * whose inline push failed, on the next run rather than two hours later.
  *
  * Skipped, never pushed: anything without a delivery address or without books,
- * and anything already pushed or already carrying an AWB (pushToNimbusOnce
- * claims `nimbus_pushed_at` first, so a concurrent manual push cannot produce a
- * second shipment).
+ * anything already pushed or already carrying an AWB, and anything booked
+ * with another courier -- pushed to iThink or queued for XpressBees -- whose
+ * AWB has not come back yet (pushToNimbusOnce claims `nimbus_pushed_at` first
+ * and re-checks all of these, so a concurrent booking cannot produce a second
+ * shipment).
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -94,6 +96,10 @@ async function runSweep(supabase, { dryRun = false } = {}) {
     .eq('status', 'replacement_pending')
     .is('nimbus_pushed_at', null)
     .is('tracking_id', null)
+    // Booked with iThink or queued for XpressBees: another courier has it.
+    // Missing these is how IC-20260914-9VP7A shipped three times.
+    .is('ithink_pushed_at', null)
+    .is('xpressbees_feed_at', null)
     .order('created_at', { ascending: true })
     .limit(MAX_PER_RUN);
   if (error) throw new Error(error.message);
