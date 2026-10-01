@@ -59,8 +59,20 @@
 
     var cover = document.querySelector('main section.cover');
     var actions = document.querySelector('main .actions');
-    if (cover && cover.parentNode) cover.insertAdjacentElement('afterend', row);
-    else if (actions && actions.parentNode) actions.insertAdjacentElement('afterend', row);
+    if (cover && cover.parentNode) {
+      // On admin-created pages (product-page.js) the cover is itself a column
+      // of the two-column .wrap grid; a sibling dropped next to it becomes a
+      // grid item, takes the right column and pushes the title below. Wrap the
+      // cover and the button together, as the generated pages already do.
+      var parent = cover.parentNode;
+      if (parent.matches && parent.matches('main.wrap, main')) {
+        var col = document.createElement('div');
+        col.className = 'iac-sample-col';
+        parent.insertBefore(col, cover);
+        col.appendChild(cover);
+      }
+      cover.insertAdjacentElement('afterend', row);
+    } else if (actions && actions.parentNode) actions.insertAdjacentElement('afterend', row);
     else return;
     addStyles();
   }
