@@ -907,6 +907,7 @@ select,input,textarea{font-size:1rem;}
     <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="missingbooks" onclick="switchTab('missingbooks')">📕 Missing Books <span id="missingBooksBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <button class="admin-tab" data-tab="tickets" onclick="switchTab('tickets')">🎫 Tickets <span id="ticketsBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab owner-only" data-tab="rtorefunds" onclick="switchTab('rtorefunds')">↩️ RTO Refunds <span id="rtoRefundBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
     <button class="admin-tab" data-tab="bundles" onclick="switchTab('bundles')">📦 Bundles</button>
     <button class="admin-tab" data-tab="coupons" onclick="switchTab('coupons')">🏷️ Coupons</button>
@@ -2222,6 +2223,33 @@ select,input,textarea{font-size:1rem;}
   </div><!-- /tab-returns -->
 
   <!-- ═══ ADMIN ACCESS TAB ═══ -->
+  <div class="admin-section" id="tab-tickets">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
+      <div>
+        <h2 style="margin:0;font-size:1.1rem;">🎫 Support tickets</h2>
+        <div style="font-size:0.72rem;color:var(--cream-dim);margin-top:0.3rem;max-width:760px;line-height:1.6;">
+          Raised by customers at <a href="/support/" target="_blank" rel="noopener" style="color:var(--gold);">inkandchai.in/support</a> with their order ID.
+          Promise: first reply within <strong>24 h</strong>, resolved within <strong>48 h</strong>. Past 48 h the customer is emailed that it is taking longer than expected
+          (and so are you). <strong>Resolve &amp; close</strong> sends the customer your resolution and stops the clock.
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+        <select id="tkStatus" onchange="loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;">
+          <option value="active">Active (open + in progress)</option>
+          <option value="waiting">Waiting on customer</option>
+          <option value="closed">Closed</option>
+          <option value="all">All</option>
+        </select>
+        <input id="tkSearch" placeholder="Search ticket, order, name, email…" onkeydown="if(event.key==='Enter')loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;min-width:220px;"/>
+        <button class="btn-outline" onclick="loadTickets()">↻ Reload</button>
+      </div>
+    </div>
+    <div id="tkCounts" style="font-size:0.72rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
+    <div id="tkMsg" style="font-size:0.72rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
+    <div id="tkList"></div>
+    <div id="tkDetail" style="display:none;"></div>
+  </div><!-- /tab-tickets -->
+
   <div class="admin-section" id="tab-adminaccess">
   <section class="abandoned-panel">
     <div class="abandoned-head">
@@ -3076,6 +3104,226 @@ async function updateBugReport(id, patch) {
     msg.style.color = '#e06060';
     msg.textContent = 'Could not save: ' + e.message;
   }
+}
+
+// ── Support tickets (raised at /support/) ──────────────────────────────────
+const TK_API = '/.netlify/functions/admin-support-tickets';
+const TK_STATUS = { open: 'Open', in_progress: 'In progress', waiting_customer: 'Waiting on customer', closed: 'Closed' };
+const TK_COLOUR = { open: '#c98a36', in_progress: '#3f7fc4', waiting_customer: '#8a7a62', closed: '#5d9b55' };
+let tkOpenId = null;
+
+function tkHours(iso) { return (new Date(iso).getTime() - Date.now()) / 3600000; }
+
+function tkDueText(t) {
+  if (t.status === 'closed') return '<span style="color:#5d9b55;">closed ' + esc(new Date(t.closed_at || t.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })) + '</span>';
+  if (t.status === 'waiting_customer') return '<span style="color:var(--cream-dim);">clock paused</span>';
+  const h = tkHours(t.due_at);
+  if (h < 0) return '<strong style="color:#e06060;">overdue ' + Math.round(-h) + 'h</strong>';
+  return '<span style="color:' + (h < 8 ? '#e0a060' : 'var(--cream-dim)') + ';">due in ' + Math.round(h) + 'h</span>';
+}
+
+function tkChip(label, colour) {
+  return '<span style="display:inline-block;border:1px solid ' + colour + ';color:' + colour + ';border-radius:999px;padding:.05rem .55rem;font-size:.62rem;letter-spacing:.06em;">' + esc(label) + '</span>';
+}
+
+async function refreshTicketBadge() {
+  const b = document.getElementById('ticketsBadge');
+  if (!b || !(adminToken || adminKey || adminCookieSession)) return;
+  try {
+    const res = await adminFetch(TK_API + '?status=active');
+    const data = await res.json();
+    if (!res.ok || !data.counts) return;
+    const n = data.counts.active;
+    b.textContent = n;
+    b.style.background = data.counts.overdue ? '#c93636' : '#c98a36';
+    b.style.display = n ? 'inline-block' : 'none';
+    b.title = data.counts.overdue + ' overdue · ' + data.counts.unanswered + ' unanswered';
+  } catch (e) { /* the badge is a convenience */ }
+}
+setInterval(() => { if (document.visibilityState === 'visible') refreshTicketBadge(); }, 180000);
+
+async function loadTickets() {
+  const list = document.getElementById('tkList');
+  const msg = document.getElementById('tkMsg');
+  const counts = document.getElementById('tkCounts');
+  if (!list) return;
+  tkOpenId = null;
+  document.getElementById('tkDetail').style.display = 'none';
+  list.style.display = '';
+  const status = document.getElementById('tkStatus').value;
+  const q = document.getElementById('tkSearch').value.trim();
+  msg.style.color = 'var(--cream-dim)';
+  msg.textContent = 'Loading…';
+  list.innerHTML = '';
+  try {
+    const res = await adminFetch(TK_API + '?status=' + encodeURIComponent(status) + (q ? '&q=' + encodeURIComponent(q) : ''));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (data.table_missing) {
+      counts.textContent = '';
+      msg.style.color = 'var(--orange)';
+      msg.textContent = 'Tickets are not recording yet — the support_tickets table has not been created. Run sql/support_tickets.sql in Supabase and they will appear here.';
+      return;
+    }
+    const c = data.counts || {};
+    counts.innerHTML = 'Active <strong>' + c.active + '</strong> · Waiting on customer ' + c.waiting + ' · Closed ' + c.closed
+      + (c.overdue ? ' · <strong style="color:#e06060;">' + c.overdue + ' overdue</strong>' : '')
+      + (c.unanswered ? ' · <strong style="color:#e0a060;">' + c.unanswered + ' unanswered</strong>' : '');
+    const b = document.getElementById('ticketsBadge');
+    if (b) { b.textContent = c.active; b.style.background = c.overdue ? '#c93636' : '#c98a36'; b.style.display = c.active ? 'inline-block' : 'none'; }
+    if (!data.tickets.length) { msg.textContent = q ? 'No tickets match that search.' : 'No tickets here.'; return; }
+    msg.textContent = data.tickets.length + ' shown' + (status === 'active' ? ' — most urgent first' : ', newest first');
+    list.innerHTML = data.tickets.map(function (t) {
+      const border = t.overdue ? 'rgba(224,96,96,.55)' : t.status === 'open' && !t.first_response_at ? 'rgba(224,176,96,.45)' : 'var(--border)';
+      return '<div onclick="openTicket(\'' + esc(t.id) + '\')" style="cursor:pointer;border:1px solid ' + border + ';border-radius:12px;padding:.8rem 1rem;margin-bottom:.6rem;">'
+        + '<div style="display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:center;">'
+        +   '<div style="font-size:.78rem;"><strong style="color:var(--gold);">' + esc(t.ticket_no) + '</strong> · ' + esc(t.order_id) + ' · ' + esc(t.customer_name || t.customer_email || t.customer_phone || '')
+        +     (t.evidence_count ? ' · 📎 ' + t.evidence_count : '') + '</div>'
+        +   '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">'
+        +     (t.priority === 'high' ? tkChip('high priority', '#e06060') : '')
+        +     (t.status === 'open' && !t.first_response_at ? tkChip('no reply yet', '#e0a060') : '')
+        +     tkChip(TK_STATUS[t.status] || t.status, TK_COLOUR[t.status] || '#888')
+        +     '<span style="font-size:.7rem;">' + tkDueText(t) + '</span>'
+        +   '</div></div>'
+        + '<div style="font-size:.72rem;color:var(--cream-dim);margin-top:.35rem;">' + esc(t.category_label) + ' · opened ' + esc(new Date(t.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>'
+        + '<div style="font-size:.82rem;margin-top:.35rem;color:var(--cream);">' + esc(t.preview) + (t.preview && t.preview.length >= 140 ? '…' : '') + '</div>'
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    msg.style.color = '#e06060';
+    msg.textContent = 'Could not load tickets: ' + e.message;
+  }
+}
+
+async function openTicket(id) {
+  const box = document.getElementById('tkDetail');
+  tkOpenId = id;
+  document.getElementById('tkList').style.display = 'none';
+  box.style.display = '';
+  box.innerHTML = '<div style="color:var(--cream-dim);font-size:.8rem;">Loading ticket…</div>';
+  try {
+    const res = await adminFetch(TK_API + '?id=' + encodeURIComponent(id));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    renderTicketDetail(data);
+  } catch (e) {
+    box.innerHTML = '<div style="color:#e06060;font-size:.8rem;">Could not open the ticket: ' + esc(e.message) + ' <button class="btn-outline" onclick="loadTickets()">← Back</button></div>';
+  }
+}
+
+function renderTicketDetail(d) {
+  const t = d.ticket, o = d.order, box = document.getElementById('tkDetail');
+  const phone = String(t.customer_phone || '').replace(/\D/g, '').slice(-10);
+  const orderLine = o
+    ? esc(o.id) + ' · ' + esc(o.status) + ' · ' + (o.prepaid ? 'prepaid' : 'COD') + ' · ₹' + o.amount
+      + (o.courier ? ' · ' + esc(o.courier) + ' ' + esc(o.awb || '') : '')
+      + (o.refund_state ? ' · refund: ' + esc(o.refund_state) : '')
+      + (o.items.length ? '<br/>' + o.items.map(i => esc(i.title) + ' ×' + esc(String(i.qty))).join('; ') : '')
+    : esc(t.order_id) + ' <span style="color:#e0a060;">(order not found)</span>';
+  const closed = t.status === 'closed';
+  const evidence = (t.evidence || []).map(function (f, i) {
+    return '<div class="tk-ev" data-i="' + i + '" data-type="' + esc(f.type) + '" style="width:120px;">'
+      + '<div class="tk-ev-box" style="height:90px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg3);cursor:pointer;font-size:1.6rem;" onclick="tkOpenEvidence(this.parentNode)">'
+      + (/^image\//.test(f.type) ? '<span style="font-size:.7rem;color:var(--cream-dim);">loading…</span>' : (/^video\//.test(f.type) ? '🎬' : '📄')) + '</div>'
+      + '<div style="font-size:.62rem;color:var(--cream-dim);margin-top:.2rem;word-break:break-all;">' + esc(f.name) + '</div></div>';
+  }).join('');
+  const events = (d.events || []).map(function (e) {
+    const who = e.actor === 'customer' ? 'Customer' : e.actor === 'staff' ? 'Staff' : 'System';
+    const colour = e.internal ? '#c98a36' : e.actor === 'customer' ? 'var(--gold)' : e.actor === 'staff' ? '#5d9b55' : 'var(--cream-dim)';
+    const files = (e.attachments || []).length ? '<div style="font-size:.68rem;color:var(--cream-dim);margin-top:.2rem;">📎 ' + e.attachments.map(a => esc(a.name)).join(', ') + '</div>' : '';
+    return '<div style="border-left:3px solid ' + colour + ';padding:.4rem .8rem;margin:.5rem 0;' + (e.internal ? 'background:rgba(201,138,54,.07);' : '') + '">'
+      + '<div style="font-size:.65rem;color:var(--cream-dim);">' + (e.internal ? '🔒 internal note · ' : '') + '<strong style="color:' + colour + ';">' + who + '</strong> · ' + esc(new Date(e.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>'
+      + (e.body ? '<div style="font-size:.84rem;white-space:pre-wrap;margin-top:.15rem;">' + esc(e.body) + '</div>' : '') + files + '</div>';
+  }).join('');
+  const inputCss = 'width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:.55rem .7rem;font-size:.8rem;border-radius:8px;outline:none;';
+  box.innerHTML =
+    '<button class="btn-outline" onclick="loadTickets()" style="margin-bottom:.8rem;">← All tickets</button>'
+    + '<div style="border:1px solid var(--border);border-radius:14px;padding:1.1rem 1.2rem;">'
+    +   '<div style="display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:center;">'
+    +     '<h3 style="margin:0;font-size:1rem;color:var(--gold);">' + esc(t.ticket_no) + ' — ' + esc(t.category_label) + '</h3>'
+    +     '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">' + (t.priority === 'high' ? tkChip('high priority', '#e06060') : '') + (t.overdue ? tkChip('OVERDUE', '#e06060') : '') + tkChip(TK_STATUS[t.status], TK_COLOUR[t.status]) + '<span style="font-size:.72rem;">' + tkDueText(t) + '</span></div>'
+    +   '</div>'
+    +   '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.9rem;margin-top:.9rem;font-size:.78rem;line-height:1.7;">'
+    +     '<div><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Customer</div>' + esc(t.customer_name || '—') + '<br/>' + esc(t.customer_email || '') + '<br/>' + esc(t.customer_phone || '')
+    +       (phone ? ' · <a href="https://wa.me/91' + phone + '" target="_blank" rel="noopener" style="color:var(--gold);">WhatsApp</a>' : '') + '</div>'
+    +     '<div><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Order</div>' + orderLine + '</div>'
+    +     '<div><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Timeline</div>Opened ' + esc(new Date(t.created_at).toLocaleString('en-IN')) + '<br/>Reply by ' + esc(new Date(t.respond_by).toLocaleString('en-IN')) + '<br/>Resolve by ' + esc(new Date(t.due_at).toLocaleString('en-IN'))
+    +       (t.delay_notices ? '<br/><span style="color:#e0a060;">Customer told of delay ' + t.delay_notices + '×</span>' : '') + (t.reopened_count ? '<br/>Reopened ' + t.reopened_count + '×' : '') + '</div>'
+    +   '</div>'
+    +   (evidence ? '<div style="margin-top:1rem;"><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:.4rem;">Evidence (click to open)</div><div style="display:flex;gap:.6rem;flex-wrap:wrap;">' + evidence + '</div></div>' : '')
+    +   (closed && t.resolution ? '<div style="margin-top:1rem;border-left:3px solid #5d9b55;padding:.5rem .9rem;background:rgba(93,155,85,.08);font-size:.82rem;white-space:pre-wrap;"><strong>Resolution:</strong> ' + esc(t.resolution) + '</div>' : '')
+    +   '<div style="margin-top:1rem;"><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Conversation</div>' + events + '</div>'
+    +   '<div id="tkDetailMsg" style="font-size:.74rem;margin:.8rem 0 .2rem;min-height:1em;"></div>'
+    +   (closed
+        ? '<button class="btn-green" onclick="tkAct(\'reopen\', {})">Reopen ticket</button>'
+        : '<div style="display:grid;gap:.9rem;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:.4rem;">'
+        +   '<div><div style="font-size:.66rem;font-weight:700;color:var(--gold);margin-bottom:.3rem;">Reply to customer (emails them)</div>'
+        +     '<textarea id="tkReply" rows="4" style="' + inputCss + '" placeholder="Your reply…"></textarea>'
+        +     '<div style="display:flex;gap:.5rem;margin-top:.4rem;flex-wrap:wrap;align-items:center;">'
+        +       '<select id="tkReplyStatus" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:.4rem .6rem;font-size:.72rem;border-radius:6px;"><option value="in_progress">Then: in progress</option><option value="waiting_customer">Then: waiting on customer (pauses the clock)</option></select>'
+        +       '<button class="btn-green" onclick="tkAct(\'reply\', {message: document.getElementById(\'tkReply\').value, status: document.getElementById(\'tkReplyStatus\').value}, this)">Send reply</button></div></div>'
+        +   '<div><div style="font-size:.66rem;font-weight:700;color:#c98a36;margin-bottom:.3rem;">🔒 Internal note (customer never sees it)</div>'
+        +     '<textarea id="tkNote" rows="4" style="' + inputCss + '" placeholder="What you found, what you tried…"></textarea>'
+        +     '<div style="margin-top:.4rem;display:flex;gap:.5rem;flex-wrap:wrap;"><button class="btn-outline" onclick="tkAct(\'note\', {body: document.getElementById(\'tkNote\').value}, this)">Add note</button>'
+        +       (t.status !== 'open' ? '<button class="btn-outline" onclick="tkAct(\'status\', {status:\'open\'}, this)">Mark open</button>' : '')
+        +       (t.status !== 'in_progress' ? '<button class="btn-outline" onclick="tkAct(\'status\', {status:\'in_progress\'}, this)">Mark in progress</button>' : '') + '</div></div>'
+        +   '</div>'
+        +   '<div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:.9rem;"><div style="font-size:.66rem;font-weight:700;color:#5d9b55;margin-bottom:.3rem;">Resolve &amp; close — this text is emailed to the customer</div>'
+        +     '<textarea id="tkResolution" rows="3" style="' + inputCss + '" placeholder="What was done to fix it (e.g. replacement dispatched, AWB …; refund of ₹… initiated)"></textarea>'
+        +     '<button class="btn-green" style="margin-top:.5rem;" onclick="tkClose(this)">✅ Resolve &amp; close ticket</button></div>')
+    + '</div>';
+  box.querySelectorAll('.tk-ev[data-type^="image/"]').forEach(function (n) { tkPreviewEvidence(n); });
+}
+
+// Evidence sits in a private bucket: fetch it with the admin session, then show the blob.
+async function tkEvidenceUrl(node) {
+  if (!node._url) {
+    const res = await adminFetch(TK_API + '?evidence=' + encodeURIComponent(tkOpenId) + '&i=' + node.dataset.i);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    node._url = URL.createObjectURL(await res.blob());
+  }
+  return node._url;
+}
+
+async function tkPreviewEvidence(node) {
+  const boxEl = node.querySelector('.tk-ev-box');
+  try {
+    const url = await tkEvidenceUrl(node);
+    boxEl.innerHTML = '<img src="' + url + '" alt="" style="width:100%;height:100%;object-fit:cover;"/>';
+  } catch (e) {
+    boxEl.innerHTML = '<span style="font-size:.65rem;color:#e06060;padding:.3rem;text-align:center;">' + esc(e.message) + '</span>';
+  }
+}
+
+async function tkOpenEvidence(node) {
+  try { window.open(await tkEvidenceUrl(node), '_blank'); }
+  catch (e) { const m = document.getElementById('tkDetailMsg'); if (m) { m.style.color = '#e06060'; m.textContent = 'Could not open the file: ' + e.message; } }
+}
+
+async function tkAct(action, payload, btn) {
+  const msg = document.getElementById('tkDetailMsg');
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const res = await adminFetch(TK_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, id: tkOpenId, ...payload }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    await openTicket(tkOpenId);
+    refreshTicketBadge();
+    const m = document.getElementById('tkDetailMsg');
+    if (m) { m.style.color = '#6dbf6d'; m.textContent = action === 'reply' ? (data.emailed ? 'Reply sent and emailed to the customer.' : 'Reply saved (the customer has no email on file).') : 'Done.'; }
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+    if (msg) { msg.style.color = '#e06060'; msg.textContent = e.message; }
+  }
+}
+
+function tkClose(btn) {
+  const text = (document.getElementById('tkResolution').value || '').trim();
+  const msg = document.getElementById('tkDetailMsg');
+  if (text.length < 5) { msg.style.color = '#e06060'; msg.textContent = 'Write what was done to resolve it — the customer receives this.'; return; }
+  if (!confirm('Close this ticket and email the customer this resolution?\n\n' + text)) return;
+  tkAct('close', { resolution: text }, btn);
 }
 
 async function loadSiteFeedback() {
@@ -13429,7 +13677,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -13475,13 +13723,14 @@ function applyRoleVisibility() {
   document.querySelectorAll('.owner-only').forEach(el => { el.style.display = limited ? 'none' : ''; });
   if (limited) {
     // Keep the staff workflow focused on support operations.
-    const allowed = new Set(['orders','replacements','returns','botinbox','recover','reels']);
+    const allowed = new Set(['orders','replacements','returns','tickets','botinbox','recover','reels']);
     document.querySelectorAll('.admin-tab').forEach(btn => {
       if (!allowed.has(btn.dataset.tab)) btn.style.display = 'none';
     });
   }
   const chip = document.getElementById('adminChip');
   if (chip && limited) chip.textContent = '● Support staff';
+  if (typeof refreshTicketBadge === 'function') refreshTicketBadge();
 }
 
 // ── Customer Insights (AI over bot conversations) ──────────────────────────
@@ -14596,7 +14845,7 @@ async function delistEbook(slug) {
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
-  if (adminRole !== 'owner' && !new Set(['orders','replacements','missingbooks','returns','npcancelled','botinbox','recover','reels']).has(tab)) tab = 'orders';
+  if (adminRole !== 'owner' && !new Set(['orders','replacements','missingbooks','returns','tickets','npcancelled','botinbox','recover','reels']).has(tab)) tab = 'orders';
 
   // Show/hide panels
   TABS.forEach(t => {
@@ -14633,6 +14882,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'replacements' && _authed) renderReplacementRequests();
   if (tab === 'missingbooks' && _authed) renderMissingBooks();
   if (tab === 'returns' && _authed) fetchReturnRequests();
+  if (tab === 'tickets' && _authed) loadTickets();
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();
   if (tab === 'bestsellers' && _authed && adminRole === 'owner') loadBestsellers();

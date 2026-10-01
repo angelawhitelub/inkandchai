@@ -256,7 +256,7 @@ html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-c
   <div id="result" class="result"></div>
 
   <div class="help">
-    <b>Can't find your order ID?</b> Check the confirmation email we sent at checkout — the subject line includes it (e.g. <code style="color:var(--gold);background:rgba(201,168,76,0.1);padding:1px 6px;">IC-20260430-AB3CD</code>). Still stuck? <a href="https://wa.me/919217175546">WhatsApp us</a> and we'll find it for you.
+    <b>Can't find your order ID?</b> Check the confirmation email we sent at checkout — the subject line includes it (e.g. <code style="color:var(--gold);background:rgba(201,168,76,0.1);padding:1px 6px;">IC-20260430-AB3CD</code>). Still stuck? <a href="https://wa.me/919217175546">WhatsApp us</a> and we'll find it for you. Problem with an order? <a href="/support/">Raise a support ticket</a>.
   </div>
 </main>
 
@@ -406,7 +406,8 @@ function renderOrder(o) {
       <div class="r-items">${items}</div>
       ${o.total ? `<div class="r-total"><span class="r-total-label">${o.payment_method === 'cod' ? 'Cash on Delivery' : 'Total Paid'}</span><span class="r-total-amt">₹${o.total.toLocaleString('en-IN')}</span></div>` : ''}
     </div>
-    ${reportBlockHtml(o)}`;
+    ${reportBlockHtml(o)}
+    <div class="r-section" style="font-size:0.78rem;line-height:1.7;">Something wrong with this order? <a href="/support/?order=${encodeURIComponent(o.order_id || document.getElementById('oid').value.trim())}" style="color:var(--gold);">Raise a support ticket →</a></div>`;
 
   const result = document.getElementById('result');
   result.innerHTML = html;

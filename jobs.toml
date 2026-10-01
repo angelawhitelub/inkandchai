@@ -450,3 +450,9 @@
 # 'new' rows; see xpressbees-order-cancel. Switched by XPRESSBEES_QUEUE_CLEANUP.
 [functions."xpressbees-queue-cleanup-scheduled"]
   schedule = "30 3 * * *"
+
+# Hourly: the support-ticket promise (reply in 24 h, resolve in 48 h). Tells the
+# customer when a ticket is taking longer than expected and nudges the owner
+# about unanswered ones. See support-ticket-sla-scheduled; SUPPORT_TICKET_SLA.
+[functions."support-ticket-sla-scheduled"]
+  schedule = "0 * * * *"

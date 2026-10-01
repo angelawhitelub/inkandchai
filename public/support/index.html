@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en" class="iac-light">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Raise a Support Ticket — Ink &amp; Chai | Help with your order</title>
+<meta name="description" content="Something wrong with your Ink &amp; Chai order? Raise a support ticket with your order ID and photos. We reply within 24 hours and resolve within 24–48 hours."/>
+<meta name="robots" content="index,follow"/>
+<link rel="canonical" href="https://inkandchai.in/support/"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--cream);font-family:'Montserrat',sans-serif;font-weight:300;min-height:100vh;-webkit-font-smoothing:antialiased}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1.2rem 4rem;background:rgba(13,11,8,0.97);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
+.logo{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:600;color:var(--gold);text-decoration:none;}
+.logo span{color:var(--cream);font-weight:300;font-style:italic}
+.nav-back{font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--cream-dim);text-decoration:none;transition:color 0.3s;}
+.nav-back:hover{color:var(--gold)}
+main.sp{max-width:760px;margin:0 auto;padding:4rem 1.4rem 7rem;}
+a{color:var(--gold);text-decoration:none;}a:hover{text-decoration:underline;}
+footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-size:0.65rem;color:var(--gold-dim);letter-spacing:0.08em;}
+footer a{color:var(--gold-dim);}
+@media(max-width:600px){nav{padding:1rem 1.5rem;}main.sp{padding:2.2rem 1rem 5rem;}}
+
+/* Support desk — colours come from the shared theme so light and dark both read. */
+.sp{--sp-ink:var(--t-ink,#f0e8d8);--sp-ink2:var(--t-ink-2,#d7cdbf);--sp-muted:var(--t-muted,#a09080);--sp-line:var(--t-line-2,rgba(201,168,76,.25));--sp-surface:var(--t-surface,#1c1916);--sp-surface2:var(--t-surface-2,#141210);--sp-brand:var(--t-brand,#c9a84c);--sp-btn:var(--t-btn,#c9a84c);--sp-btn-ink:var(--t-btn-ink,#0d0b08);--sp-good:var(--t-new,#23704a);--sp-good-bg:var(--t-new-bg,#dff0e6);--sp-bad:#b3402f}
+.sp h1{font-family:var(--t-display,'Cormorant Garamond',serif);font-size:clamp(2rem,6vw,2.9rem);font-weight:400;line-height:1.1;color:var(--sp-ink);margin-bottom:.7rem}
+.sp-lead{font-size:.95rem;line-height:1.8;color:var(--sp-ink2);margin-bottom:1.4rem;max-width:62ch}
+.sp-lead strong{color:var(--sp-ink);font-weight:600}
+.sp-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:.7rem;margin:0 0 1.8rem}
+.sp-step{background:var(--sp-surface);border:1px solid var(--sp-line);border-radius:14px;padding:.85rem .9rem}
+.sp-step b{display:block;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--sp-brand);margin-bottom:.3rem;font-weight:600}
+.sp-step span{font-size:.8rem;line-height:1.5;color:var(--sp-ink2)}
+.sp-tabs{display:flex;gap:.4rem;border-bottom:1px solid var(--sp-line);margin-bottom:1.4rem}
+.sp-tab{appearance:none;background:none;border:0;border-bottom:2px solid transparent;padding:.75rem 1rem;margin-bottom:-1px;font:500 .72rem 'Montserrat',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--sp-muted);cursor:pointer}
+.sp-tab[aria-selected="true"]{color:var(--sp-ink);border-bottom-color:var(--sp-brand)}
+.sp-field{margin-bottom:1.15rem}
+.sp-field label{display:block;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sp-ink);font-weight:600;margin-bottom:.4rem}
+.sp-field .req{color:var(--sp-bad)}
+.sp-field small{display:block;margin-top:.35rem;font-size:.74rem;line-height:1.5;color:var(--sp-muted)}
+html body .sp input:not([type=file]):not([type=checkbox]),html body .sp select,html body .sp textarea{width:100%;font:400 .95rem 'Plus Jakarta Sans','Montserrat',sans-serif !important;color:var(--sp-ink) !important;background:var(--sp-surface) !important;border:1px solid var(--sp-line) !important;border-radius:12px !important;padding:.75rem .9rem !important;min-height:46px;letter-spacing:0 !important}
+html body .sp textarea{min-height:140px;resize:vertical;line-height:1.6}
+html body .sp input:focus,html body .sp select:focus,html body .sp textarea:focus{outline:2px solid var(--sp-brand);outline-offset:1px}
+.sp .invalid{border-color:var(--sp-bad) !important}
+.sp-count{float:right;font-size:.7rem;color:var(--sp-muted);margin-top:.35rem}
+.sp-drop{border:1.5px dashed var(--sp-line);border-radius:14px;padding:1rem;background:var(--sp-surface2)}
+.sp-drop input[type=file]{width:100%;font-size:.8rem;color:var(--sp-ink2)}
+.sp-files{list-style:none;margin-top:.7rem;display:grid;gap:.45rem}
+.sp-files li{display:flex;align-items:center;gap:.6rem;background:var(--sp-surface);border:1px solid var(--sp-line);border-radius:10px;padding:.4rem .6rem;font-size:.8rem;color:var(--sp-ink)}
+.sp-files img{width:38px;height:38px;object-fit:cover;border-radius:6px;flex:none}
+.sp-files .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sp-files .sz{color:var(--sp-muted);font-size:.72rem;flex:none}
+.sp-files button{background:none;border:0;color:var(--sp-bad);cursor:pointer;font-size:1.1rem;line-height:1;padding:.2rem .4rem}
+.sp-hp{position:absolute !important;left:-9999px !important;width:1px !important;height:1px !important;opacity:0 !important}
+.sp-btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:.5rem;background:var(--sp-btn);color:var(--sp-btn-ink);border:0;border-radius:999px;padding:.95rem 2rem;font:600 .72rem 'Montserrat',sans-serif;letter-spacing:.16em;text-transform:uppercase;cursor:pointer}
+.sp-btn[disabled]{opacity:.55;cursor:not-allowed}
+.sp-btn.ghost{background:transparent;color:var(--sp-ink);border:1px solid var(--sp-line)}
+.sp-err{display:none;margin:0 0 1rem;padding:.8rem 1rem;border-radius:12px;background:rgba(179,64,47,.1);border:1px solid rgba(179,64,47,.4);color:var(--sp-bad);font-size:.85rem;line-height:1.55}
+.sp-err.show{display:block}
+.sp-status{font-size:.82rem;color:var(--sp-muted);margin-top:.8rem;min-height:1.2em}
+.sp-card{background:var(--sp-surface);border:1px solid var(--sp-line);border-radius:18px;padding:1.4rem}
+.sp-done{text-align:center;padding:2rem 1.4rem}
+.sp-done .tick{width:54px;height:54px;border-radius:50%;background:var(--sp-good-bg);color:var(--sp-good);display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin:0 auto .9rem}
+.sp-done h2,.sp-ticket h2{font-family:var(--t-display,'Cormorant Garamond',serif);font-weight:400;font-size:1.7rem;color:var(--sp-ink);margin-bottom:.4rem}
+.sp-no{display:inline-flex;align-items:center;gap:.6rem;font:600 1.25rem 'Montserrat',sans-serif;letter-spacing:.08em;color:var(--sp-brand);background:var(--sp-surface2);border:1px dashed var(--sp-line);border-radius:12px;padding:.55rem 1rem;margin:.6rem 0}
+.sp-no button{background:none;border:0;color:var(--sp-muted);cursor:pointer;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase}
+.sp-done p{font-size:.88rem;line-height:1.75;color:var(--sp-ink2);margin:.5rem auto;max-width:48ch}
+.sp-warn{background:rgba(214,150,40,.12);border:1px solid rgba(214,150,40,.4);border-radius:12px;padding:.7rem .9rem;color:var(--sp-ink);font-size:.82rem;line-height:1.55;margin:.9rem 0;text-align:left}
+.sp-badge{display:inline-block;padding:.25rem .7rem;border-radius:999px;font:600 .62rem 'Montserrat',sans-serif;letter-spacing:.12em;text-transform:uppercase;background:var(--sp-surface2);border:1px solid var(--sp-line);color:var(--sp-ink)}
+.sp-badge.open,.sp-badge.in_progress{background:rgba(143,95,18,.12);color:var(--sp-brand)}
+.sp-badge.waiting_customer{background:rgba(214,150,40,.16);color:#9a6a10}
+.sp-badge.closed{background:var(--sp-good-bg);color:var(--sp-good)}
+.sp-meta{display:flex;flex-wrap:wrap;gap:.3rem 1.2rem;font-size:.78rem;color:var(--sp-muted);margin:.5rem 0 1rem}
+.sp-sla{border-radius:12px;padding:.8rem 1rem;font-size:.86rem;line-height:1.6;background:var(--sp-surface2);border:1px solid var(--sp-line);color:var(--sp-ink);margin-bottom:1rem}
+.sp-sla.late{background:rgba(214,150,40,.12);border-color:rgba(214,150,40,.45)}
+.sp-sla.done{background:var(--sp-good-bg);border-color:transparent;color:var(--sp-good)}
+.sp-resolution{border-left:3px solid var(--sp-good);padding:.7rem 1rem;background:var(--sp-surface2);border-radius:0 12px 12px 0;margin-bottom:1rem;font-size:.9rem;line-height:1.65;color:var(--sp-ink);white-space:pre-wrap}
+.sp-tl{list-style:none;border-left:2px solid var(--sp-line);margin:1rem 0 1.4rem .5rem;padding-left:1.1rem;display:grid;gap:.9rem}
+.sp-tl li{position:relative}
+.sp-tl li::before{content:"";position:absolute;left:-1.62rem;top:.35rem;width:10px;height:10px;border-radius:50%;background:var(--sp-line);border:2px solid var(--sp-surface)}
+.sp-tl li.customer::before{background:var(--sp-brand)}
+.sp-tl li.staff::before{background:var(--sp-good)}
+.sp-tl .who{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sp-muted)}
+.sp-tl .who b{color:var(--sp-ink);font-weight:600}
+.sp-tl .txt{font-size:.9rem;line-height:1.65;color:var(--sp-ink);white-space:pre-wrap;margin-top:.15rem}
+.sp-tl .att{font-size:.76rem;color:var(--sp-muted);margin-top:.2rem}
+.sp-tl li.system .txt{color:var(--sp-muted);font-size:.82rem}
+.sp-recent{margin:0 0 1.2rem;font-size:.82rem;color:var(--sp-muted)}
+.sp-recent button{background:none;border:1px solid var(--sp-line);color:var(--sp-brand);border-radius:999px;padding:.25rem .7rem;margin:.2rem .3rem 0 0;font:600 .72rem 'Montserrat',sans-serif;cursor:pointer;letter-spacing:.05em}
+.sp-link{background:none;border:0;color:var(--sp-brand);font:inherit;font-size:.8rem;cursor:pointer;text-decoration:underline;padding:0}
+.sp-help{margin-top:2.4rem;padding-top:1.4rem;border-top:1px solid var(--sp-line);font-size:.84rem;line-height:1.8;color:var(--sp-muted)}
+@media(max-width:600px){.sp-steps{grid-template-columns:1fr}.sp-btn{width:100%}.sp-tab{padding:.7rem .6rem;font-size:.66rem}}
+</style>
+<!-- Google Analytics 4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-ZPZDFWMDP6"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-ZPZDFWMDP6');
+</script>
+<!-- End Google Analytics 4 -->
+<!--IAC-SHELL--><style id="iac-mob-nav">
+.mob-nav{display:none}
+@media(max-width:780px){
+  /* This one rule is dropped into ~137 pages built from six different
+     templates, each with its own `nav{...}`, and `nav` matches this element
+     too. So every property a host page might set on a bar it knows nothing
+     about is restated here rather than left to inherit:
+       - top:auto, or a `nav{top:0}` plus bottom:0 stretches it to full height;
+       - flex-direction, or the landing template's
+         `@media(max-width:560px){nav{flex-direction:column}}` stacks the four
+         tabs down the right-hand side of the screen;
+       - align-items / justify-content / gap / margin / border-bottom, all of
+         which some template sets on its own header nav. */
+  .mob-nav{display:flex;flex-direction:row;align-items:stretch;justify-content:space-between;gap:0;margin:0;width:auto;max-width:none;box-sizing:border-box;border-bottom:none;position:fixed;top:auto!important;bottom:0;left:0;right:0;height:auto;z-index:9998;background:rgba(13,11,8,0.97);border-top:1px solid rgba(201,168,76,0.25);padding:0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom,0px));backdrop-filter:blur(14px);box-shadow:0 -4px 20px rgba(0,0,0,0.4)}
+  body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+}
+.mob-nav a,.mob-nav button{flex:1 1 0;min-width:0;margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0.45rem 0;background:transparent;border:none;border-radius:0;color:var(--cream-dim,#a09080);font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:400;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:color 0.2s;position:relative}
+.mob-nav a:hover,.mob-nav button:hover,.mob-nav a:active,.mob-nav button:active{color:var(--gold,#c9a84c)}
+.mob-nav .mn-icon{display:flex;align-items:center;justify-content:center;height:22px}
+.mob-nav .mn-icon svg{width:22px;height:22px;display:block}
+.mob-nav .mn-active{color:var(--gold,#c9a84c)}
+.mob-nav .mn-active .mn-icon svg{stroke-width:2}
+.mob-nav .mn-badge{position:absolute;top:0;right:calc(50% - 18px);background:var(--gold,#c9a84c);color:var(--bg,#0d0b08);border-radius:50%;width:16px;height:16px;font-size:0.55rem;font-weight:600;display:flex;align-items:center;justify-content:center;letter-spacing:0}
+</style><!--/IAC-SHELL-->
+<!--IAC-SHELL--><link rel="stylesheet" href="/css/app-shell-1ab7a601.css"/><!--/IAC-SHELL-->
+<!--IAC-THEME--><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"/><link rel="stylesheet" href="/css/theme-886fa54b.css"/><script src="/js/site-feedback.js" defer></script><script src="/js/ad-click.js" defer></script><!--/IAC-THEME-->
+</head>
+<body>
+<!--IAC-SHELL--><!-- Mobile bottom nav — injected site-wide by the app-shell pass in generate_site.py. Edit it there, not here. -->
+<nav class="mob-nav" aria-label="Mobile navigation">
+  <a href="/" data-mn="home" title="Home"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.7 9.4V19a1.6 1.6 0 0 0 1.6 1.6h9.4A1.6 1.6 0 0 0 18.3 19V9.4"/></svg></span><span>Home</span></a>
+  <a href="/?account=1" data-mn="account" title="Account"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20.4a7.2 7.2 0 0 1 14.4 0"/></svg></span><span>Account</span></a>
+  <a href="/?orders=1" data-mn="orders" title="My Orders"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 3.6 7.6v8.8L12 20.8l8.4-4.4V7.6Z"/><path d="M3.6 7.6 12 12l8.4-4.4"/><path d="M12 12v8.8"/></svg></span><span>Orders</span></a>
+  <a href="/cart/" data-mn="cart" title="Cart"><span class="mn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 8.2h11.6l-1 12.2H7.2Z"/><path d="M9.2 8.2V6.1a2.8 2.8 0 0 1 5.6 0v2.1"/></svg></span><span>Cart</span><span class="mn-badge" id="cartBadgeMobile" style="display:none;">0</span></a>
+</nav><!--/IAC-SHELL-->
+<nav>
+  <a class="logo" href="/">Ink &amp;<span> Chai</span></a>
+  <a class="nav-back" href="/">← Back to Store</a>
+</nav>
+<main class="sp">
+  <h1>Help &amp; support</h1>
+  <p class="sp-lead">Something wrong with an order? Tell us here. <strong>We reply within 24 hours and aim to resolve every ticket within 24–48 hours</strong> — and if it takes longer, we will tell you, so you never have to chase us.</p>
+
+  <div class="sp-steps" aria-hidden="true">
+    <div class="sp-step"><b>1 · Raise it</b><span>Your order ID, what went wrong, and photos if you have them.</span></div>
+    <div class="sp-step"><b>2 · We reply</b><span>A first answer within 24 hours, by email.</span></div>
+    <div class="sp-step"><b>3 · Resolved</b><span>Fixed within 24–48 hours. The ticket closes with what we did.</span></div>
+  </div>
+
+  <div class="sp-tabs" role="tablist" aria-label="Support">
+    <button class="sp-tab" role="tab" id="spTabNew" aria-selected="true" aria-controls="spNew" type="button">Raise a ticket</button>
+    <button class="sp-tab" role="tab" id="spTabTrack" aria-selected="false" aria-controls="spTrack" type="button">Check a ticket</button>
+  </div>
+
+  <section id="spNew" role="tabpanel" aria-labelledby="spTabNew">
+    <form id="spForm" novalidate autocomplete="on">
+      <div class="sp-field">
+        <label for="spOrder">Order ID <span class="req">*</span></label>
+        <input id="spOrder" name="order_id" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="e.g. IC-20260930-ABCDE" maxlength="64" required/>
+        <small>Required. You will find it in your order confirmation email, or on the <a href="/track/">Track Order</a> page.</small>
+      </div>
+      <div class="sp-field">
+        <label for="spContact">Email or phone used on the order <span class="req">*</span></label>
+        <input id="spContact" name="contact" type="text" autocomplete="email" placeholder="you@example.com or 98765 43210" maxlength="200" required/>
+        <small>This is how we confirm the order is yours. We will send updates to the email on the order.</small>
+      </div>
+      <div class="sp-field">
+        <label for="spCat">What is this about? <span class="req">*</span></label>
+        <select id="spCat" name="category" required>
+          <option value="">Choose one…</option>
+          <option value="damaged_wrong">Damaged, defective or wrong item</option>
+          <option value="missing_item">Item missing from the parcel</option>
+          <option value="not_received">Order not delivered / shipping delay</option>
+          <option value="refund_payment">Refund or payment issue</option>
+          <option value="return_replace">Return or replacement</option>
+          <option value="change_cancel">Change address or cancel order</option>
+          <option value="other">Something else</option>
+        </select>
+      </div>
+      <div class="sp-field">
+        <label for="spMsg">Describe the problem <span class="req">*</span></label>
+        <textarea id="spMsg" name="message" maxlength="3000" placeholder="What happened? Which book? When did you notice? The more detail, the faster we can fix it."></textarea>
+        <span class="sp-count" id="spCount">0 / 3000</span>
+        <small>At least 20 characters.</small>
+      </div>
+      <div class="sp-field">
+        <label for="spFile">Evidence <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--sp-muted)">(optional, but it speeds things up)</span></label>
+        <div class="sp-drop">
+          <input id="spFile" type="file" multiple accept="image/*,video/mp4,video/quicktime,video/webm,application/pdf"/>
+          <ul class="sp-files" id="spFiles"></ul>
+        </div>
+        <small>Photos of the damaged item, the parcel and the shipping label — or a short unboxing video. Up to 5 files · photos 10 MB, videos 40 MB.</small>
+      </div>
+      <input class="sp-hp" type="text" name="website" id="spHp" tabindex="-1" autocomplete="off" aria-hidden="true"/>
+      <div class="sp-err" id="spErr" role="alert"></div>
+      <button class="sp-btn" id="spSubmit" type="submit">Raise ticket</button>
+      <div class="sp-status" id="spStatus" role="status" aria-live="polite"></div>
+    </form>
+
+    <div class="sp-card sp-done" id="spDone" hidden tabindex="-1">
+      <div class="tick" aria-hidden="true">✓</div>
+      <h2>Your ticket is open</h2>
+      <div class="sp-no"><span id="spDoneNo">TKT-</span><button type="button" id="spCopy">Copy</button></div>
+      <p>We have emailed you a confirmation. <strong>We will reply within 24 hours</strong> and aim to resolve this within <strong>24–48 hours</strong>. If it takes longer, we will let you know.</p>
+      <div class="sp-warn" id="spDoneWarn" hidden></div>
+      <p style="margin-top:1.2rem"><button class="sp-btn ghost" id="spDoneView" type="button">View this ticket</button></p>
+    </div>
+  </section>
+
+  <section id="spTrack" role="tabpanel" aria-labelledby="spTabTrack" hidden>
+    <div class="sp-recent" id="spRecent" hidden></div>
+    <form id="spLookup" novalidate>
+      <div class="sp-field">
+        <label for="spTno">Ticket number</label>
+        <input id="spTno" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="TKT-AB12CD" maxlength="20"/>
+      </div>
+      <div class="sp-field">
+        <label for="spTcontact">Email or phone used on the order</label>
+        <input id="spTcontact" type="text" autocomplete="email" placeholder="you@example.com or 98765 43210" maxlength="200"/>
+      </div>
+      <div class="sp-err" id="spTerr" role="alert"></div>
+      <button class="sp-btn" id="spTgo" type="submit">Show my ticket</button>
+      <p style="margin-top:.9rem"><button type="button" class="sp-link" id="spLost">I do not have my ticket number</button></p>
+    </form>
+    <form id="spFind" novalidate hidden style="margin-top:1rem">
+      <div class="sp-field">
+        <label for="spForder">Order ID</label>
+        <input id="spForder" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="IC-20260930-ABCDE" maxlength="64"/>
+        <small>Use the same email or phone as above and we will list the tickets on that order.</small>
+      </div>
+      <button class="sp-btn ghost" type="submit">Find my tickets</button>
+      <div class="sp-status" id="spFindOut"></div>
+    </form>
+
+    <article class="sp-card sp-ticket" id="spTicket" hidden style="margin-top:1.4rem"></article>
+  </section>
+
+  <div class="sp-help">
+    Prefer to talk? WhatsApp us on <a href="https://wa.me/919217175546">+91 92171 75546</a> or email <a href="mailto:support@inkandchai.in">support@inkandchai.in</a> — please quote your ticket number. See also our <a href="/return-policy/">Return Policy</a>, <a href="/refund-policy/">Refund Policy</a> and <a href="/shipping-policy/">Shipping Policy</a>.
+  </div>
+</main>
+<footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/">Browse all books</a></footer>
+<script src="/js/ink-ai.js" defer></script>
+<script src="/js/support.js" defer></script>
+<!--IAC-SHELL--><!-- Cart drawer — injected by the app-shell pass; rendered by /js/cart.js -->
+<div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
+<div class="cart-sidebar" id="cartSidebar">
+  <div class="cart-header">
+    <span class="cart-title">Your Cart</span>
+    <button class="cart-close" onclick="closeCart()" aria-label="Close cart">&#10005;</button>
+  </div>
+  <div class="cart-body">
+    <div class="cart-empty" id="cartEmpty">
+      <div class="cart-empty-icon">&#128218;</div>
+      <div>Your cart is empty.</div>
+    </div>
+    <div id="cartItems"></div>
+  </div>
+  <div class="cart-footer" id="cartFooter" style="display:none;">
+    <div class="cart-total-row">
+      <span class="cart-total-label">Total</span>
+      <span class="cart-total-amount" id="cartTotal">&#8377; 0</span>
+    </div>
+    <button class="btn-checkout" onclick="window.location.href='/checkout/'">Checkout &rarr;</button>
+  </div>
+</div>
+<script src="/js/cart.js"></script><!--/IAC-SHELL-->
+<!--IAC-SHELL--><script src="/js/app-shell-228cb1b7.js" defer></script><!--/IAC-SHELL-->
+<!--IAC-SW--><script>if('serviceWorker'in navigator){addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})});}</script><!--/IAC-SW-->
+</body>
+</html>

@@ -31,6 +31,7 @@ export const ENABLED_JOBS = new Set([
   'nimbuspost-awb-sync-scheduled',
   'xpressbees-status-sync-scheduled',
   'xpressbees-queue-cleanup-scheduled',
+  'support-ticket-sla-scheduled',
   'auto-recover-carts',
   'daily-unshipped-report',
   'deploy-drift-check',
