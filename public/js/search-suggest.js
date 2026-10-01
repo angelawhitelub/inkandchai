@@ -42,9 +42,9 @@
     box.className = 'sugg-box';
     form.appendChild(box);
 
-    var items = [], sel = -1, timer = null, lastQ = '';
+    var items = [], sel = -1, timer = null, requestId = 0, controller = null;
 
-    function close() { box.style.display = 'none'; sel = -1; }
+    function close() { box.style.display = 'none'; sel = -1; requestId++; clearTimeout(timer); if (controller) controller.abort(); }
     function highlight() {
       var rows = box.querySelectorAll('.sugg-row');
       for (var i = 0; i < rows.length; i++) rows[i].classList.toggle('sugg-active', i === sel);
@@ -52,7 +52,10 @@
     }
     function render(results, q) {
       items = results || [];
-      if (!items.length) { close(); return; }
+      if (!items.length) {
+        box.innerHTML = '<div class="sugg-row">No close match yet. Try a title word or author.</div><a class="sugg-foot" href="/?q=' + encodeURIComponent(q) + '">Search the full catalogue →</a>';
+        box.style.display = 'block'; sel = -1; return;
+      }
       var html = items.map(function (r, i) {
         var mrp = r.mrp ? '<span style="color:var(--muted,#b9ab96);text-decoration:line-through;font-size:.66rem;margin-left:.35rem">₹' + r.mrp + '</span>' : '';
         return '<a class="sugg-row" href="' + esc(r.url) + '" data-i="' + i + '">'
@@ -70,17 +73,21 @@
     input.addEventListener('input', function () {
       var q = input.value.trim();
       clearTimeout(timer);
+      const id = ++requestId;
+      if (controller) controller.abort();
+      items = []; box.style.display = 'none'; sel = -1;
       if (q.length < 2) { close(); return; }
       timer = setTimeout(function () {
-        lastQ = q;
-        fetch('/.netlify/functions/search-suggest?q=' + encodeURIComponent(q))
+        controller = new AbortController();
+        fetch('/.netlify/functions/search-suggest?v=20261002&q=' + encodeURIComponent(q), { signal: controller.signal })
           .then(function (r) { return r.json(); })
-          .then(function (d) { if (input.value.trim() === lastQ) render(d.results || [], q); })
-          .catch(function () { close(); });
+          .then(function (d) { if (id === requestId && input.value.trim() === q) render(d.results || [], q); })
+          .catch(function (error) { if (id === requestId && error.name !== 'AbortError') close(); });
       }, 200);
     });
 
     input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { close(); return; }
       if (box.style.display === 'none') return;
       var rows = box.querySelectorAll('.sugg-row');
       if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(rows.length - 1, sel + 1); highlight(); }

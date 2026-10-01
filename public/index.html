@@ -2324,6 +2324,7 @@ gtag('config', 'G-ZPZDFWMDP6');
 <script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
+<script src="/js/book-search.js?v=20261002"></script>
 <script src="/js/search-suggest.js" defer></script>
 <link rel="stylesheet" href="/css/book-card-69951f90.css"/>
 <script src="/js/book-card-e9103f00.js"></script>
@@ -2695,43 +2696,9 @@ function fuzzyWordHit(word, field) {
 }
 
 function searchScore(book, rawQuery) {
-  const q = applySynonyms(normalizeSearchText(rawQuery));
-  if (!q) return 0;
-  const doc = bookSearchDoc(book);
-  const tokens = q.split(' ').filter(Boolean);
-  const aliases = searchAliases(q);
-  let score = 0;
-
-  if (aliases.some(a => doc.title === a || doc.isbn === a)) score += 900;
-  if (aliases.some(a => doc.title.startsWith(a))) score += 620;
-  if (aliases.some(a => doc.title.includes(a))) score += 420;
-  if (aliases.some(a => doc.author.includes(a))) score += 280;
-  if (aliases.some(a => doc.category.includes(a))) score += 150;
-  if (aliases.some(a => doc.publisher.includes(a) || doc.slug.includes(a))) score += 80;
-  if (aliases.some(a => doc.full.includes(a))) score += 60;
-
-  let matched = 0;
-  const titleWords  = doc.title.split(' ');
-  const authorWords = doc.author.split(' ');
-  for (const token of tokens) {
-    if (titleWords.some(w => w === token)) { score += 95; matched++; continue; }
-    // Prefix hit: typing "atom hab" finds "atomic habits"
-    if (token.length >= 3 && titleWords.some(w => w.startsWith(token))) { score += 80; matched++; continue; }
-    if (doc.title.includes(token)) { score += 70; matched++; continue; }
-    if (token.length >= 3 && authorWords.some(w => w.startsWith(token))) { score += 55; matched++; continue; }
-    if (doc.author.includes(token)) { score += 50; matched++; continue; }
-    if (doc.isbn.includes(token)) { score += 45; matched++; continue; }
-    if (doc.category.includes(token)) { score += 35; matched++; continue; }
-    if (doc.full.includes(token)) { score += 16; matched++; continue; }
-    if (fuzzyWordHit(token, doc.title) || fuzzyWordHit(token, doc.author)) { score += 10; matched++; }
-  }
-  if (tokens.length && matched < Math.ceil(tokens.length * 0.7)) return 0;
-  if (matched === tokens.length && tokens.length > 1) score += 110;
-
-  score += Math.min(trendScore(book), 120) * 0.35;
-  score += book.n ? 12 : 0;
-  score -= editionPenalty(book) * 2;
-  return score;
+  const relevance = window.IACBookSearch.score(book, rawQuery);
+  if (!relevance) return 0;
+  return relevance + Math.min(trendScore(book), 120) * 0.35 + (book.n ? 12 : 0) - editionPenalty(book) * 2;
 }
 
 function filteredBooks() {
@@ -2989,9 +2956,10 @@ function catalogFallbackSearch(rawQuery) {
     if (_catFetched.has(key)) return;
     _catFetched.set(key, true);
     try {
-      const res = await fetch('/.netlify/functions/catalog-search?per_page=24&q=' + encodeURIComponent(q));
-      if (!res.ok) return;
+      const res = await fetch('/.netlify/functions/catalog-search?v=20261002&per_page=24&q=' + encodeURIComponent(q));
+      if (!res.ok) throw new Error('Catalogue search failed');
       const data = await res.json();
+      if (data.warning) throw new Error(data.warning);
       const seen = new Set(BOOKS.map(b => String(b.slug || '').toLowerCase()));
       let added = 0;
       for (const r of (data.books || [])) {
@@ -3002,6 +2970,7 @@ function catalogFallbackSearch(rawQuery) {
         const book = customProductToBook({
           slug: r.slug,
           title: r.title,
+          author: r.author || '',
           price_inr: r.price,
           original_price_inr: r.original_price,
           image_url: r.img,
