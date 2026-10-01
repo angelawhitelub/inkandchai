@@ -472,6 +472,7 @@ function showToast(msg) {
 document.addEventListener('DOMContentLoaded', () => {
   updateCartUI();
   initAplusContent();
+  initReadSample();
   initProductCouponBadge();
   initFrequentlyBoughtTogether();
 
@@ -546,6 +547,22 @@ function initAplusContent() {
   const script = document.createElement('script');
   script.id = 'iac-aplus-js';
   script.src = '/js/aplus-content.js';
+  script.defer = true;
+  document.head.appendChild(script);
+}
+
+// ── Read sample ────────────────────────────────────────────────────────────
+// The admin-uploaded "Read sample" PDF. read-sample.js asks whether this book
+// has one and only then adds the button, so books without a sample are untouched.
+function initReadSample() {
+  if (!isProductDetailPage()) return;
+  if (document.getElementById('iac-read-sample-js')) {
+    if (window.IACReadSample) window.IACReadSample.init();
+    return;
+  }
+  const script = document.createElement('script');
+  script.id = 'iac-read-sample-js';
+  script.src = '/js/read-sample.js';
   script.defer = true;
   document.head.appendChild(script);
 }

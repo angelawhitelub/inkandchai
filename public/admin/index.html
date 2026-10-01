@@ -1937,6 +1937,26 @@ select,input,textarea{font-size:1rem;}
             </div>
             <p class="hint" id="prodAplusSaveMsg" style="margin-top:.65rem;"></p>
           </details>
+          <details id="prodSampleEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(201,168,76,.035);">
+            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">Read sample (PDF)</summary>
+            <p class="hint" style="margin:.65rem 0 0;">Customers get a <strong>📖 Read sample</strong> button under the cover. Upload the book or a sample PDF: only the first pages you choose are kept and uploaded, so the rest of the book never leaves this computer.</p>
+            <p class="hint" id="prodSampleCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
+            <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:flex-end;margin-top:.75rem;">
+              <div class="form-row" style="flex:1 1 220px;margin:0;">
+                <label>PDF file</label>
+                <input type="file" id="prodSampleFile" accept="application/pdf,.pdf"/>
+              </div>
+              <div class="form-row" style="width:140px;margin:0;">
+                <label>Pages to show</label>
+                <input type="number" id="prodSamplePages" min="1" max="60" value="20"/>
+              </div>
+            </div>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;">
+              <button class="btn-green" type="button" id="prodSampleUploadBtn" onclick="uploadProductSample()">Upload Sample</button>
+              <button class="btn-outline" type="button" id="prodSampleRemoveBtn" onclick="removeProductSample()" style="display:none;border-color:rgba(224,80,80,.35);color:#c93636;">Remove Sample</button>
+            </div>
+            <p class="hint" id="prodSampleMsg" style="margin-top:.65rem;"></p>
+          </details>
           <div style="display:flex;gap:1.2rem;margin-top:0.4rem;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:var(--cream-dim);">
               <input type="checkbox" id="prodActive" checked style="accent-color:var(--green);"/> Override active
@@ -7612,6 +7632,7 @@ function selectProduct(slug) {
       + 'Kept silent and trimmed to the first 30 seconds. Shoot it portrait, and show the paper and print rather than the cover.';
   }
   loadAplusEditor(row);
+  loadProductSampleEditor(row);
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
 }
@@ -8266,6 +8287,141 @@ async function previewAplusBlockImage(index, fileList) {
   aplusEditorBlocks[index].image_url = await window.iacImageToWebp(file);
   renderAplusBlocks();
   if (msg) msg.textContent = `Module ${index + 1} image ready. Save A+ Content to publish it.`;
+}
+
+// ── Read sample (PDF) ──────────────────────────────────────────────────────
+// The PDF is cut down to its first N pages HERE, with pdf-lib, and only that
+// short copy is uploaded (browser → R2 directly). Uploading a whole book and
+// trusting a viewer to stop at page 20 would put the whole book on the web.
+const SAMPLE_PDFLIB = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+let productSampleState = null;
+
+function setSampleUi(sample, note) {
+  productSampleState = sample || null;
+  const cur = document.getElementById('prodSampleCurrent');
+  const rm = document.getElementById('prodSampleRemoveBtn');
+  const up = document.getElementById('prodSampleUploadBtn');
+  if (cur) {
+    if (sample) {
+      cur.innerHTML = `✅ Live: ${esc(String(sample.pages || '?'))} pages · <a href="${esc(sample.file_url)}" target="_blank" rel="noopener" style="color:var(--gold);">open the PDF</a>`
+        + (sample.updated_at ? ` · uploaded ${esc(new Date(sample.updated_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }))}` : '');
+    } else {
+      cur.textContent = note || 'No sample yet.';
+    }
+  }
+  if (rm) rm.style.display = sample ? '' : 'none';
+  if (up) up.textContent = sample ? 'Replace Sample' : 'Upload Sample';
+}
+
+async function loadProductSampleEditor(row) {
+  const msg = document.getElementById('prodSampleMsg');
+  const file = document.getElementById('prodSampleFile');
+  if (msg) msg.textContent = '';
+  if (file) file.value = '';
+  setSampleUi(null, 'Checking for a sample…');
+  if (!row?.slug) return;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-product-sample?slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setSampleUi(data.sample, data.migration ? '⚠ ' + data.migration : 'No sample yet.');
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setSampleUi(null, 'Could not check the sample: ' + e.message);
+  }
+}
+
+function loadPdfLib() {
+  if (window.PDFLib) return Promise.resolve(window.PDFLib);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = SAMPLE_PDFLIB;
+    s.onload = () => window.PDFLib ? resolve(window.PDFLib) : reject(new Error('pdf-lib did not load'));
+    s.onerror = () => reject(new Error('Could not load pdf-lib — check the connection and try again.'));
+    document.head.appendChild(s);
+  });
+}
+
+async function uploadProductSample() {
+  if (!selectedProduct) return;
+  const slug = selectedProduct.slug;
+  const msg = document.getElementById('prodSampleMsg');
+  const btn = document.getElementById('prodSampleUploadBtn');
+  const file = document.getElementById('prodSampleFile')?.files?.[0];
+  const wanted = Math.floor(Number(document.getElementById('prodSamplePages')?.value));
+  const say = (t, bad) => { if (msg) { msg.textContent = t; msg.style.color = bad ? '#d96060' : ''; } };
+  if (!file) { say('Choose a PDF first.', true); return; }
+  if (!/pdf$/i.test(file.type) && !/\.pdf$/i.test(file.name)) { say('That is not a PDF.', true); return; }
+  if (!(wanted >= 1 && wanted <= 60)) { say('Pages to show must be between 1 and 60.', true); return; }
+
+  const original = btn?.textContent || '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
+  try {
+    say('Reading the PDF…');
+    const PDFLib = await loadPdfLib();
+    let src;
+    try {
+      src = await PDFLib.PDFDocument.load(await file.arrayBuffer());
+    } catch (e) {
+      throw new Error(/encrypt/i.test(e.message) ? 'This PDF is password-protected. Export an unprotected copy and try again.' : 'Could not read this PDF: ' + e.message);
+    }
+    const total = src.getPageCount();
+    const keep = Math.min(wanted, total);
+    say(`Keeping the first ${keep} of ${total} pages…`);
+    const out = await PDFLib.PDFDocument.create();
+    const pages = await out.copyPages(src, Array.from({ length: keep }, (_, i) => i));
+    pages.forEach(p => out.addPage(p));
+    out.setTitle(`${selectedProduct.title || slug} — free sample`);
+    out.setProducer('Ink & Chai');
+    const bytes = await out.save();
+    const sizeMb = bytes.length / 1048576;
+    if (sizeMb > 25) throw new Error(`Even ${keep} pages come to ${sizeMb.toFixed(1)} MB (limit 25 MB). Choose fewer pages or a lighter PDF.`);
+
+    say(`Uploading ${keep} pages (${sizeMb.toFixed(1)} MB)…`);
+    const signRes = await adminFetch('/.netlify/functions/admin-product-sample', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'sign', slug }),
+    });
+    const signed = await signRes.json().catch(() => ({}));
+    if (!signRes.ok || !signed.upload_url) throw new Error(signed.error || ('HTTP ' + signRes.status));
+    const put = await fetch(signed.upload_url, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: new Blob([bytes], { type: 'application/pdf' }) });
+    if (!put.ok) throw new Error(`Storage rejected the upload (HTTP ${put.status})`);
+
+    say('Publishing…');
+    const saveRes = await adminFetch('/.netlify/functions/admin-product-sample', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'save', slug, key: signed.key, pages: keep }),
+    });
+    const saved = await saveRes.json().catch(() => ({}));
+    if (!saveRes.ok) throw new Error(saved.error || ('HTTP ' + saveRes.status));
+    if (selectedProduct?.slug === slug) setSampleUi(saved.sample);
+    document.getElementById('prodSampleFile').value = '';
+    say(`✅ Sample live — ${keep} pages.` + (keep < wanted ? ` (the PDF only has ${total}.)` : '')
+      + (saved.cache_purged === false ? ' The product page may take up to 5 minutes to show the button.' : ''));
+  } catch (e) {
+    say('❌ ' + e.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = productSampleState ? 'Replace Sample' : (original || 'Upload Sample'); }
+  }
+}
+
+async function removeProductSample() {
+  if (!selectedProduct || !productSampleState) return;
+  if (!confirm(`Remove the Read sample button from "${selectedProduct.title || selectedProduct.slug}"?`)) return;
+  const slug = selectedProduct.slug;
+  const msg = document.getElementById('prodSampleMsg');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-product-sample', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'remove', slug }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (selectedProduct?.slug === slug) setSampleUi(null);
+    if (msg) { msg.style.color = ''; msg.textContent = 'Sample removed.'; }
+  } catch (e) {
+    if (msg) { msg.style.color = '#d96060'; msg.textContent = '❌ ' + e.message; }
+  }
 }
 
 async function saveAplusContent(isActive) {

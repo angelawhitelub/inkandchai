@@ -35,6 +35,7 @@ const STAFF_ENDPOINT_PERMISSIONS = {
   'update-order-status': 'orders.manage',
   'courier-cancel-shipment': 'orders.manage',
   'courier-void-stuck': 'orders.manage',
+  'admin-product-sample': 'products.write',
   'update-order-details': 'orders.manage',
   'set-order-payment-type': 'orders.manage',
   'get-return-requests': 'returns.read',
