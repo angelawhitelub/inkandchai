@@ -27,6 +27,7 @@ const { quoteLateCancel, executeLateCancel } = require('./utils/prepaid-late-can
 const { chatPayload, currentBotModel, FALLBACK_MODEL } = require('./utils/bot-model');
 const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
+const { draftOrderRequest, confirmDraftOrder, draftReplyDecision, botOrdersContext, lookupBotRequest, describeRequest } = require('./utils/bot-order-request');
 const {
   findAwaitingOrders, applyRecoveredDetails, isAwaitingDetails,
 } = require('./utils/order-detail-recovery');
@@ -263,13 +264,15 @@ PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book r
 - Ask ONLY for the pieces you don't already have yet, ONE at a time. CRITICAL: NEVER re-ask for or re-confirm a detail the customer has ALREADY given earlier in this same conversation. Read back through the conversation — if the name, address, book, or payment mode is already there, treat it as final and move on. Do NOT say "just to confirm your name/address" — that annoys customers.
 - PAYMENT MODE — always ask this LAST (after you have book, name, address). Ask exactly like: "Would you like to pay Cash on Delivery, or pay online now (prepaid)? Prepaid orders get 10-15% off with our coupons 💚". Accept: "cod"/"cash"/"delivery" → cod. "prepaid"/"online"/"upi"/"now"/"pay now" → prepaid.
 - NEVER invent, guess, or use placeholder values like "N/A", "book", "Customer", "Delhi", or a date. If you don't have a REAL book title, a REAL name, a REAL full address, AND a real payment mode choice, DO NOT call the tool — ask the customer for the missing real detail instead.
-- The MOMENT you genuinely have all four real values, immediately call the submit_order_request tool. Do not ask further questions. Do not re-verify.
-- Do NOT claim the order is placed until the tool has actually been called and returned success.
-- After the tool succeeds it returns an order_id (format IC-W-YYYYMMDD-XXXXX), a payment_mode, a total_rs (₹ total including shipping), a subtotal_rs (books only), a shipping_rs, and (if prepaid) a payment_link. Always tell the customer the TOTAL AMOUNT they need to pay. Share this with the customer:
-    • For COD: "Got it! Your COD order is placed ✅\\nOrder ID: <order_id>\\nTotal: ₹<total_rs> (books ₹<subtotal_rs> + shipping ₹<shipping_rs>)\\nPay ₹<total_rs> in cash when the courier delivers. We'll dispatch it soon 📚"
-    • For prepaid: "Got it! Your order is placed ✅\\nOrder ID: <order_id>\\nAmount to pay: ₹<total_rs> (books ₹<subtotal_rs> + shipping ₹<shipping_rs>)\\n\\nTap here to pay securely: <payment_link>\\n\\nAs soon as we receive your payment we'll dispatch it — usually same-day 📚"
-- If shipping_rs is 0 (free shipping over ₹499), skip the "+ shipping" line and just say "Total: ₹<total_rs>".
-- Keep the confirmation short and warm. Do NOT invent a payment link, total, or amount if the tool did not return one.`;
+- The MOMENT you genuinely have all four real values, call the submit_order_request tool. It does NOT place the order — it prepares it and prices it so the customer can check it.
+- When the tool returns needs_confirmation, send the customer ONE short summary from its "summary" and ask them to reply YES to place it, e.g.:
+    "Please check your order 👇\n📚 <books>\n👤 <name>\n📍 <address>\n💵 <COD or Prepaid> · Total ₹<total_rs> (books ₹<subtotal_rs> + shipping ₹<shipping_rs>)\n\nReply *YES* to place it, or tell me what to change."
+  Do NOT say the order is placed, and do NOT give an order ID or payment link at this step. When they reply YES, the order is placed automatically and they get the order ID (and payment link if prepaid) straight away — you do not need to do anything.
+- If they change something (a book, the address, the payment mode), call submit_order_request again with the corrected values — it updates the same pending order — and ask for YES again.
+- If the tool returns already_placed, that order EXISTS. Tell them their order <order_id> is already placed (and share the payment_link if one is returned). NEVER try to place it again.
+- A customer asking "is my order placed?", "did it go through?", or re-sending their earlier message is NOT a new order. Answer from WHATSAPP ORDERS ON THIS NUMBER in the order context; never call submit_order_request to check.
+- If shipping_rs is 0 (free shipping over ₹499), skip the "+ shipping" part and just say "Total ₹<total_rs>".
+- Do NOT invent a payment link, total, or amount if the tool did not return one.`;
 
 // ── Per-user conversation memory (in-memory cache + Supabase persistence) ────
 const conversationHistory = new Map(); // phone → [{role, content}]
@@ -716,7 +719,9 @@ async function buildOrderContext(from, userText) {
   const rest = await buildOrderContextBody(from, userText);
   const named = [...String(rest).matchAll(/\bIC-[A-Z0-9-]+/gi)].map((m) => m[0]);
   const wrongCod = await wrongCodContext(from, named);
-  return [wrongCod, rest].filter(Boolean).join('\n\n');
+  const botOrders = await botOrdersContext(
+    createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), from);
+  return [wrongCod, rest, botOrders].filter(Boolean).join('\n\n');
 }
 
 async function buildOrderContextBody(from, userText) {
@@ -724,6 +729,11 @@ async function buildOrderContextBody(from, userText) {
   if (orderId) {
     const order = await lookupOrder(orderId);
     if (order) return formatOrderContext(order, orderId);
+    // A WhatsApp order lives in bot_order_requests until the team pushes it.
+    const req = /^IC-W-/i.test(orderId)
+      ? await lookupBotRequest(createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), orderId)
+      : null;
+    if (req) return `WhatsApp order ${orderId} (looked up in our database):\n${describeRequest(req)}`;
     return `Order ID ${orderId} was searched in our database but was not found. This could mean the customer typed it incorrectly, or it belongs to a different account. Ask them to double-check the order ID from their confirmation email/SMS or from My Orders on inkandchai.in.`;
   }
 
@@ -830,7 +840,7 @@ const OPENAI_TOOLS = [{
   type: 'function',
   function: {
     name: 'submit_order_request',
-    description: 'Submit a NEW book PURCHASE the customer wants to place. Call this ONLY when the customer explicitly wants to BUY a new book AND you have all four REAL values from them: book title(s), full name, complete delivery address, and payment mode. NEVER call this for order-status checks, delivery follow-ups, complaints about an existing order, refunds, cancellations, or general questions. NEVER use placeholder/guessed values like "N/A", "Not provided", "book", "Customer", or a date — if you do not have a real book title, real name, real full address, and payment mode, do NOT call this tool; ask the customer instead.',
+    description: 'Prepare a NEW book PURCHASE for the customer to confirm. It does NOT place the order: it returns needs_confirmation with a priced summary to read back, and the order is placed only when the customer replies YES. If they already have the same order it returns already_placed instead. Call this ONLY when the customer explicitly wants to BUY a new book AND you have all four REAL values from them: book title(s), full name, complete delivery address, and payment mode. NEVER call this for order-status checks, delivery follow-ups, complaints about an existing order, refunds, cancellations, or general questions. NEVER use placeholder/guessed values like "N/A", "Not provided", "book", "Customer", or a date — if you do not have a real book title, real name, real full address, and payment mode, do NOT call this tool; ask the customer instead.',
     parameters: {
       type: 'object',
       properties: {
@@ -1007,7 +1017,7 @@ function buildSystemContent(extraInstructions, known, extraContext) {
       + `- Name: ${known.customer_name || '(missing)'}\n`
       + `- Delivery address: ${known.address || '(missing)'}\n`
       + `- Previous orders: ${known.order_count || 0}\n`
-      + 'When they want to place a new order, ONLY ask for the book title(s) and payment mode (COD or prepaid). Confirm the delivery address once ("Shipping to <address> — same address?"), then place the order. Do NOT re-collect name or address unless the customer explicitly says the address has changed.';
+      + 'When they want to place a new order, ONLY ask for the book title(s) and payment mode (COD or prepaid). The order summary you send for their YES shows the address on file, so they can correct it there. Do NOT re-collect name or address unless the customer explicitly says the address has changed.';
   }
   if (extraContext) {
     systemContent += '\n\nORDER CONTEXT FOR THIS CONVERSATION:\n' + extraContext;
@@ -1069,7 +1079,7 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
     const second = await callOpenAIChat(messages, { tools: false, model });
-    const reply = (second.content || '').trim() || 'Got it! I\'ve sent your request to our team — they\'ll confirm shortly 📚';
+    const reply = (second.content || '').trim() || 'Sorry, I could not finish that just now — please send your message once more 🙏';
     appendHistory(phone, 'assistant', reply);
     return reply;
   }
@@ -1078,12 +1088,6 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
   appendHistory(phone, 'assistant', reply);
   return reply;
 }
-
-// Per-book fallback price used when a title can't be matched against the
-// catalogue. Kept close to the typical single-book price so a payment link
-// still lands the right amount; the owner is notified about unmatched titles
-// so they can correct it manually.
-const UNMATCHED_BOOK_FALLBACK_RS = 349;
 
 // ── Fill in the details of an order the 24 Aug outage stripped ───────────────
 /**
@@ -1703,189 +1707,47 @@ async function recordWrongCodUpi(phone, args = {}) {
   }
 }
 
-// ── Persist a WhatsApp book-order request + notify the store owner ────────────
+// ── WhatsApp book order: the tool only drafts it ─────────────────────────────
+// Placing happens in confirmDraftOrder when the customer replies YES — see
+// utils/bot-order-request.js for why (duplicate requests, 18 Sep).
 async function submitOrderRequest(phone, args) {
-  const last10 = String(phone).replace(/\D/g, '').slice(-10);
-  const customerName = String(args.customer_name || '').slice(0, 160).trim();
-  const address      = String(args.address || '').slice(0, 600).trim();
-  const books        = String(args.books || '').slice(0, 600).trim();
-  const notes        = String(args.notes || '').slice(0, 400).trim();
-  const paymentMode  = String(args.payment_mode || '').toLowerCase().trim() === 'prepaid' ? 'prepaid'
-                     : String(args.payment_mode || '').toLowerCase().trim() === 'cod'     ? 'cod'
-                     : '';
-  if (!customerName || !address || !books) {
-    return { ok: false, error: 'Missing name, address, or book name.' };
-  }
-  if (!paymentMode) {
-    return { ok: false, error: 'Missing payment_mode. Ask the customer whether they want COD (Cash on Delivery) or Prepaid (pay online now), then call this tool again with payment_mode set.' };
-  }
-
-  // ── Junk / placeholder guard ────────────────────────────────────────────────
-  // The model sometimes forces a tool call for NON-orders (status checks,
-  // delivery complaints) by stuffing required fields with placeholders like
-  // "N/A", "book", "Customer", or a date. Reject those so they never pollute
-  // the Book Requests panel. Returning an error string makes the AI go back and
-  // ask the customer for real details (or realise it's not an order at all).
-  const isPlaceholder = (v) => /^(n\/?a|na|none|null|nil|unknown|not\s+(provided|given|specified|available)|not\s+shared|no\s+(name|address|book|books)|customer|book|books|your\s+book\s+title|book\s+title|title|test|\d{6,})$/i.test(String(v).trim());
-
-  // The model keeps mis-firing submit_order_request for order-STATUS / support
-  // queries (it already has the customer's remembered name+address, so it only
-  // needs a "book" and stuffs the query text into it: "where is my order",
-  // "order status", "check order status"). These are NOT purchases. Detect a
-  // support/tracking/complaint intent in the book title and reject so it never
-  // becomes a bogus book request + payment link.
-  const looksLikeQuery = (v) => {
-    const s = String(v || '').trim().toLowerCase();
-    if (!s) return false;
-    if (/\?$/.test(s)) return true;                       // it's a question
-    return /(where\s*(is|are)?\s*(my|the)?\s*(order|parcel|package|book|delivery|shipment)|my\s+order|order\s*(status|update|kahan|kaha|kab)|status\s+of|track(ing)?\s+(my\s+)?(order|parcel|package|shipment)|check\s+(my\s+)?order|kahan\s*hai|kaha\s*hai|not\s+(delivered|received|arrived)|haven'?t\s+(received|got)|delivery\s+(update|status)|when\s+will|kab\s+(aayega|milega)|cancel|refund|return|complaint|damaged|wrong\s+(book|item))/i.test(s)
-        || /^(order|status|tracking|track|help|update|delivery|refund|cancel|return)$/i.test(s);
-  };
-
-  const badFields = [];
-  if (isPlaceholder(customerName) || customerName.length < 2) badFields.push('a real full name');
-  if (isPlaceholder(books) || looksLikeQuery(books)) badFields.push('the actual book title');
-  // A real Indian address is more than a bare city/word — expect a pincode or
-  // reasonable length. "Delhi" / "N/A" alone is not a deliverable address.
-  const hasPin = /\b\d{6}\b/.test(address);
-  if (isPlaceholder(address) || (address.length < 12 && !hasPin)) badFields.push('the complete delivery address with pincode');
-  if (badFields.length) {
-    return { ok: false, error: `This does not look like a real new-book order. Do NOT submit it. If the customer actually wants to buy a book, ask them for ${badFields.join(', ')}. If they are asking about an existing order, delivery, or a refund, handle that instead — do not call this tool.` };
-  }
-
-  // Unique WhatsApp-order id — IC-W-YYYYMMDD-XXXXX. Distinct 'W' segment marks
-  // it as a bot/WhatsApp order (vs IC- online, IC-CW- crossword). Same 5-char
-  // random tail so it matches the extractOrderId regex + admin search.
-  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const randPart = Math.random().toString(36).slice(2, 7).toUpperCase();
-  const orderId  = `IC-W-${datePart}-${randPart}`;
-
-  // Price the customer's book list against the live catalogue. Sum + shipping
-  // (₹40 flat under ₹499, free above) — matches the website's rule so the
-  // customer never sees a different total on WhatsApp vs. the site.
-  let pricing;
+  const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   try {
-    pricing = await priceBooksList(books, UNMATCHED_BOOK_FALLBACK_RS);
-  } catch (e) {
-    console.error('submitOrderRequest priceBooksList:', e.message);
-    // Fall back so a lookup failure doesn't block the order.
-    pricing = { items: [], subtotalRs: UNMATCHED_BOOK_FALLBACK_RS, shippingRs: 40,
-                totalRs: UNMATCHED_BOOK_FALLBACK_RS + 40,
-                totalPaise: (UNMATCHED_BOOK_FALLBACK_RS + 40) * 100,
-                unmatched: [books] };
-  }
-
-  // Prepaid: generate a Razorpay Payment Link the customer can pay from WhatsApp.
-  let paymentLink = '';
-  let paymentLinkId = '';
-  let paymentLinkError = '';
-  if (paymentMode === 'prepaid') {
-    try {
-      const link = await createRazorpayPaymentLink({
-        amountPaise:     pricing.totalPaise,
-        description:     `Ink & Chai — ${books.slice(0, 100)}`,
-        customerName,
-        customerPhone:   last10,
-        shippingAddress: address,   // so the paid-link webhook saves name + address
-        books,
-        referenceId:     orderId,
-        callbackUrl:     `https://inkandchai.in/track/?id=${encodeURIComponent(orderId)}`,
-      });
-      paymentLink = link.short_url || '';
-      paymentLinkId = link.id || '';
-    } catch (e) {
-      paymentLinkError = e.message;
-      console.error('submitOrderRequest payment link:', e.message);
-    }
-  }
-
-  // Follow-up ping in 5 minutes — the scheduled function reads this row and
-  // asks the customer to confirm the order.
-  const followUpAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-
-  try {
-    // Persist the request in two steps so it ALWAYS registers even if the
-    // payment-flow SQL migration (bot_order_requests_payment_flow.sql) hasn't
-    // been run yet:
-    //   1. Insert the core columns that have always existed → row appears in
-    //      the Book Requests panel no matter what.
-    //   2. Best-effort UPDATE the newer payment/follow-up columns; if they don't
-    //      exist yet, this quietly fails and the core row is untouched.
-    let saved = false;
-    try {
-      const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-      const { error } = await db.from('bot_order_requests').insert({
-        order_id:       orderId,
-        customer_phone: last10,
-        customer_name:  customerName,
-        address,
-        books,
-        notes,
-        status:         'new',
-        created_at:     new Date().toISOString(),
-      });
-      if (error) console.error('submitOrderRequest insert:', error.message);
-      else {
-        saved = true;
-        // Step 2 — extras (present only after the migration). Never blocks.
-        const { error: upErr } = await db.from('bot_order_requests').update({
-          payment_mode:             paymentMode,
-          amount_paise:             pricing.totalPaise,
-          payment_link:             paymentLink || null,
-          razorpay_payment_link_id: paymentLinkId || null,
-          payment_status:           paymentMode === 'prepaid' ? (paymentLink ? 'created' : 'link_failed') : null,
-          follow_up_at:             followUpAt,
-        }).eq('order_id', orderId);
-        if (upErr) console.warn('submitOrderRequest extras update (run bot_order_requests_payment_flow.sql):', upErr.message);
-      }
-    } catch (dbErr) {
-      console.error('submitOrderRequest db exception:', dbErr.message);
-    }
-
-    // Save customer for next time so we don't re-ask their name/address.
-    await upsertBotCustomer(phone, { customer_name: customerName, address, order_id: orderId });
-
-    // Always notify the store owner on WhatsApp so they can action it immediately,
-    // even if the DB insert failed.
-    const ownerPhone = process.env.STORE_OWNER_PHONE;
-    if (ownerPhone) {
-      const modeLabel = paymentMode === 'prepaid'
-        ? (paymentLink ? `💳 Prepaid — ${paymentLink}` : `💳 Prepaid — ⚠️ link failed: ${paymentLinkError || 'unknown'}`)
-        : '💵 COD';
-      const priceLine = `💰 Total ₹${pricing.totalRs} (books ₹${pricing.subtotalRs} + ship ₹${pricing.shippingRs})`;
-      const unmatchedLine = pricing.unmatched.length
-        ? `\n⚠️ Titles not in catalogue (verify price): ${pricing.unmatched.join('; ')}`
-        : '';
-      await sendReply(ownerPhone,
-        `🆕 New book order request (WhatsApp bot)${saved ? '' : ' ⚠️ (not saved to panel — check bot_order_requests table)'}\n\n🆔 ${orderId}\n👤 ${customerName}\n📞 ${last10}\n📚 ${books}\n📍 ${address}\n${priceLine}${unmatchedLine}\n${modeLabel}${notes ? `\n📝 ${notes}` : ''}\n\nOpen admin panel → Book Requests → Push to Orders.`
-      );
-    }
-    console.log(`[ORDER-REQUEST] ${orderId} ${last10} -> ${books.slice(0, 60)} mode=${paymentMode} total=₹${pricing.totalRs} (saved=${saved})`);
-    return {
-      ok: true,
-      order_id: orderId,
-      payment_mode: paymentMode,
-      payment_link: paymentLink || null,
-      payment_link_error: paymentLinkError || null,
-      subtotal_rs: pricing.subtotalRs,
-      shipping_rs: pricing.shippingRs,
-      total_rs:    pricing.totalRs,
-      message: paymentMode === 'prepaid'
-        ? (paymentLink
-            ? `Prepaid order request saved. Total: ₹${pricing.totalRs}. Share the payment_link and total_rs with the customer verbatim.`
-            : `Prepaid order saved (₹${pricing.totalRs}) but payment link could not be generated — tell the customer the team will send the payment link shortly.`)
-        : `COD order request saved. Total: ₹${pricing.totalRs} to pay on delivery.`,
-      saved,
-    };
+    return await draftOrderRequest({ db, priceBooksList }, phone, args);
   } catch (e) {
     console.error('submitOrderRequest exception:', e.message);
     return { ok: false, error: e.message };
   }
 }
 
+// The customer's YES/NO to a drafted order. True when it was handled here.
+async function handleDraftOrderReply(from, decision, senderPhoneId) {
+  const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  const out = await confirmDraftOrder({
+    db,
+    priceBooksList,
+    createPaymentLink: createRazorpayPaymentLink,
+    upsertBotCustomer,
+    notifyOwner: async (text) => {
+      const ownerPhone = process.env.STORE_OWNER_PHONE;
+      if (ownerPhone) await sendReply(ownerPhone, text);
+    },
+  }, from, decision);
+  if (!out || !out.handled) return false;
+  if (out.reply) {
+    const sent = await sendReply(from, out.reply, senderPhoneId);
+    if (!sent.ok) console.error(`[ORDER-REQUEST] ${out.order_id} reply to ${from} failed: ${sent.error || 'unknown'}`);
+    await persistMessage(from, 'bot', out.reply, null, senderPhoneId);
+    appendHistory(from, 'assistant', out.reply);
+  }
+  return true;
+}
+
 // ── Extract Order ID from message ─────────────────────────────────────────────
 function extractOrderId(text) {
-  const match = text.match(/\bIC-\d{8}-[A-Z0-9]{5}\b/i);
+  // IC-W- (WhatsApp), IC-CW- (Crossword) and IC-R- (replacement) ids too — the
+  // bot used to answer "not our format" to the ids it had issued itself.
+  const match = text.match(/\bIC-(?:[A-Z]{1,2}-)?\d{8}-[A-Z0-9]{5}\b/i);
   return match ? match[0].toUpperCase() : null;
 }
 
@@ -2049,6 +1911,11 @@ async function handleInboundMessage(msg, value) {
       console.log(`[TAKEOVER] ${from} — bot suppressed, human handling`);
       return;
     }
+
+    // ── YES/NO to an order the bot just drafted ──────────────────────────────
+    // Placing an order is decided here, in code — never by the model.
+    const draftDecision = draftReplyDecision(userText);
+    if (draftDecision && await handleDraftOrderReply(from, draftDecision, recvPhoneId)) return;
 
     // ── Short YES/NO reply to the 5-min bot-order confirmation ping ──────────
     // Only act on it if a follow-up was actually sent for this customer, so a
