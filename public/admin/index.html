@@ -893,39 +893,40 @@ select,input,textarea{font-size:1rem;}
 
   <!-- Tab bar (hidden until login) -->
   <nav class="admin-tabs" id="adminTabBar" style="display:none">
-    <button class="admin-tab" data-tab="orders"    onclick="switchTab('orders')">📦 Orders</button>
-    <button class="admin-tab owner-only" data-tab="tools" onclick="switchTab('tools')">🛠 Tools</button>
-    <button class="admin-tab" data-tab="reports"   onclick="switchTab('reports')">📊 Reports</button>
-    <button class="admin-tab owner-only" data-tab="profit" onclick="switchTab('profit')">💰 Profit</button>
-    <button class="admin-tab" data-tab="create"    onclick="switchTab('create')">➕ Create Listing</button>
-    <button class="admin-tab" data-tab="products"  onclick="switchTab('products')">✏️ Products &amp; Prices</button>
-    <button class="admin-tab owner-only" data-tab="ebooks" onclick="switchTab('ebooks')">📄 eBooks</button>
-    <button class="admin-tab owner-only" data-tab="promotions" onclick="switchTab('promotions')">🏷 Promotions</button>
-    <button class="admin-tab" data-tab="reels"     onclick="switchTab('reels')">🎬 Video Reels</button>
-    <button class="admin-tab owner-only" data-tab="banners" onclick="switchTab('banners')">🎨 Banner Studio</button>
-    <button class="admin-tab" data-tab="abandoned" onclick="switchTab('abandoned')">🛒 Abandoned Carts</button>
-    <button class="admin-tab" data-tab="reviews"   onclick="switchTab('reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab" data-tab="replacements" onclick="switchTab('replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab" data-tab="missingbooks" onclick="switchTab('missingbooks')">📕 Missing Books <span id="missingBooksBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab" data-tab="returns"   onclick="switchTab('returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab" data-tab="tickets" onclick="switchTab('tickets')">🎫 Tickets <span id="ticketsBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab owner-only" data-tab="rtorefunds" onclick="switchTab('rtorefunds')">↩️ RTO Refunds <span id="rtoRefundBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab" data-tab="bundles" onclick="switchTab('bundles')">📦 Bundles</button>
-    <button class="admin-tab" data-tab="coupons" onclick="switchTab('coupons')">🏷️ Coupons</button>
-    <button class="admin-tab" data-tab="npcancelled" onclick="switchTab('npcancelled')">🚫 NP Cancelled <span id="npCancelledBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
+    <a class="admin-tab" data-tab="orders" href="/admin/#orders" onclick="return adminTabClick(event,'orders')">📦 Orders</a>
+    <a class="admin-tab owner-only" data-tab="tools" href="/admin/#tools" onclick="return adminTabClick(event,'tools')">🛠 Tools</a>
+    <a class="admin-tab" data-tab="reports" href="/admin/#reports" onclick="return adminTabClick(event,'reports')">📊 Reports</a>
+    <a class="admin-tab owner-only" data-tab="profit" href="/admin/#profit" onclick="return adminTabClick(event,'profit')">💰 Profit</a>
+    <a class="admin-tab" data-tab="create" href="/admin/#create" onclick="return adminTabClick(event,'create')">➕ Create Listing</a>
+    <a class="admin-tab" data-tab="products" href="/admin/#products" onclick="return adminTabClick(event,'products')">✏️ Products &amp; Prices</a>
+    <a class="admin-tab owner-only" data-tab="ebooks" href="/admin/#ebooks" onclick="return adminTabClick(event,'ebooks')">📄 eBooks</a>
+    <a class="admin-tab owner-only" data-tab="promotions" href="/admin/#promotions" onclick="return adminTabClick(event,'promotions')">🏷 Promotions</a>
+    <a class="admin-tab" data-tab="reels" href="/admin/#reels" onclick="return adminTabClick(event,'reels')">🎬 Video Reels</a>
+    <a class="admin-tab owner-only" data-tab="banners" href="/admin/#banners" onclick="return adminTabClick(event,'banners')">🎨 Banner Studio</a>
+    <a class="admin-tab" data-tab="abandoned" href="/admin/#abandoned" onclick="return adminTabClick(event,'abandoned')">🛒 Abandoned Carts</a>
+    <a class="admin-tab" data-tab="reviews" href="/admin/#reviews" onclick="return adminTabClick(event,'reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+    <a class="admin-tab" data-tab="replacements" href="/admin/#replacements" onclick="return adminTabClick(event,'replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+    <a class="admin-tab" data-tab="missingbooks" href="/admin/#missingbooks" onclick="return adminTabClick(event,'missingbooks')">📕 Missing Books <span id="missingBooksBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+    <a class="admin-tab" data-tab="returns" href="/admin/#returns" onclick="return adminTabClick(event,'returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+    <a class="admin-tab" data-tab="tickets" href="/admin/#tickets" onclick="return adminTabClick(event,'tickets')">🎫 Tickets <span id="ticketsBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+    <a class="admin-tab" data-tab="notpicked" href="/admin/#notpicked" onclick="return adminTabClick(event,'notpicked')" title="Orders 48 h+ old that no courier has picked up">⏳ Not Picked Up <span id="notPickedBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+    <a class="admin-tab owner-only" data-tab="rtorefunds" href="/admin/#rtorefunds" onclick="return adminTabClick(event,'rtorefunds')">↩️ RTO Refunds <span id="rtoRefundBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+    <a class="admin-tab" data-tab="bundles" href="/admin/#bundles" onclick="return adminTabClick(event,'bundles')">📦 Bundles</a>
+    <a class="admin-tab" data-tab="coupons" href="/admin/#coupons" onclick="return adminTabClick(event,'coupons')">🏷️ Coupons</a>
+    <a class="admin-tab" data-tab="npcancelled" href="/admin/#npcancelled" onclick="return adminTabClick(event,'npcancelled')">🚫 NP Cancelled <span id="npCancelledBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
     <!-- The inbox lives on its own page now. Inside the SPA every 30s poll
          re-rendered the whole panel, so a thread being read scrolled itself
          away and a reply in progress felt like the page resetting. -->
-    <button class="admin-tab" data-tab="botinbox"  onclick="location.href='/admin/inbox.html'">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab owner-only" data-tab="bestsellers" onclick="switchTab('bestsellers')">📈 Bestsellers <span id="bestsellersBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab" data-tab="bookreq"   onclick="switchTab('bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></button>
-    <button class="admin-tab" data-tab="insights"  onclick="switchTab('insights')">💡 Insights</button>
-    <button class="admin-tab" data-tab="feedback"  onclick="switchTab('feedback')">📝 Feedback</button>
-    <button class="admin-tab" data-tab="bugs"  onclick="switchTab('bugs')">🐞 Bug reports <span id="bugNewBadge" style="display:none;background:#e06060;color:#fff;border-radius:999px;padding:0 6px;font-size:0.6rem;margin-left:4px;"></span></button>
-    <button class="admin-tab" data-tab="inkai"     onclick="switchTab('inkai')">✨ Ink AI</button>
-    <button class="admin-tab" data-tab="bot"       onclick="switchTab('bot')">🤖 Bot Instructions</button>
-    <button class="admin-tab" data-tab="recover"   onclick="switchTab('recover')">⚡ Recover Payment</button>
-    <button class="admin-tab owner-only" data-tab="adminaccess" onclick="switchTab('adminaccess')">🔐 Admin Access</button>
+    <a class="admin-tab" data-tab="botinbox" href="/admin/inbox.html">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+    <a class="admin-tab owner-only" data-tab="bestsellers" href="/admin/#bestsellers" onclick="return adminTabClick(event,'bestsellers')">📈 Bestsellers <span id="bestsellersBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+    <a class="admin-tab" data-tab="bookreq" href="/admin/#bookreq" onclick="return adminTabClick(event,'bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+    <a class="admin-tab" data-tab="insights" href="/admin/#insights" onclick="return adminTabClick(event,'insights')">💡 Insights</a>
+    <a class="admin-tab" data-tab="feedback" href="/admin/#feedback" onclick="return adminTabClick(event,'feedback')">📝 Feedback</a>
+    <a class="admin-tab" data-tab="bugs" href="/admin/#bugs" onclick="return adminTabClick(event,'bugs')">🐞 Bug reports <span id="bugNewBadge" style="display:none;background:#e06060;color:#fff;border-radius:999px;padding:0 6px;font-size:0.6rem;margin-left:4px;"></span></a>
+    <a class="admin-tab" data-tab="inkai" href="/admin/#inkai" onclick="return adminTabClick(event,'inkai')">✨ Ink AI</a>
+    <a class="admin-tab" data-tab="bot" href="/admin/#bot" onclick="return adminTabClick(event,'bot')">🤖 Bot Instructions</a>
+    <a class="admin-tab" data-tab="recover" href="/admin/#recover" onclick="return adminTabClick(event,'recover')">⚡ Recover Payment</a>
+    <a class="admin-tab owner-only" data-tab="adminaccess" href="/admin/#adminaccess" onclick="return adminTabClick(event,'adminaccess')">🔐 Admin Access</a>
   </nav>
 
   <!-- ═══ ORDERS TAB ═══ -->
@@ -2251,6 +2252,40 @@ select,input,textarea{font-size:1rem;}
     <div id="tkDetail" style="display:none;"></div>
   </div><!-- /tab-tickets -->
 
+  <div class="admin-section" id="tab-notpicked">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
+      <div>
+        <h2 style="margin:0;font-size:1.1rem;">⏳ Not picked up</h2>
+        <div style="font-size:0.72rem;color:var(--cream-dim);margin-top:0.3rem;max-width:780px;line-height:1.6;">
+          Orders placed at least <strong id="npuHoursLabel">48</strong> hours ago that no courier has picked up yet — either <strong>not booked</strong> (no AWB) or
+          <strong>booked, awaiting pickup</strong> (AWB created, parcel has not moved). An AWB alone sets the order to "shipped"; pickup is the courier's first scan.
+          XpressBees and NimbusPost send us those scans. Delhivery, DTDC and Amazon bookings made outside NimbusPost do not, so those show as <em>no scan yet</em> — check them in the courier panel.
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+        <select id="npuBucket" onchange="renderNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;">
+          <option value="all">All</option>
+          <option value="awaiting_pickup">Booked — awaiting pickup</option>
+          <option value="not_booked">Not booked yet</option>
+        </select>
+        <select id="npuCourier" onchange="renderNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;"><option value="">All couriers</option></select>
+        <label style="font-size:0.7rem;color:var(--cream-dim);">Older than
+          <select id="npuHours" onchange="loadNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.45rem 0.6rem;font-size:0.72rem;border-radius:6px;outline:none;">
+            <option value="48" selected>2 days</option><option value="72">3 days</option><option value="120">5 days</option><option value="168">7 days</option>
+          </select>
+        </label>
+        <input id="npuSearch" placeholder="Search order, name, AWB, pincode…" oninput="renderNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;min-width:200px;"/>
+        <button class="btn-outline" onclick="loadNotPicked()">↻ Reload</button>
+        <button class="btn-outline" id="npuLiveBtn" onclick="checkNotPickedLive(this)" title="Ask XpressBees for the live status of every XpressBees AWB shown">📡 Check XpressBees live</button>
+        <button class="btn-outline" onclick="copyNotPickedIds(this)">⧉ Copy order IDs</button>
+        <button class="btn-outline" onclick="exportNotPickedCsv()">⬇ CSV</button>
+      </div>
+    </div>
+    <div id="npuCounts" style="font-size:0.72rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
+    <div id="npuMsg" style="font-size:0.72rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
+    <div style="overflow-x:auto;"><table id="npuTable" style="width:100%;border-collapse:collapse;font-size:0.76rem;"></table></div>
+  </div><!-- /tab-notpicked -->
+
   <div class="admin-section" id="tab-adminaccess">
   <section class="abandoned-panel">
     <div class="abandoned-head">
@@ -3142,6 +3177,187 @@ async function refreshTicketBadge() {
   } catch (e) { /* the badge is a convenience */ }
 }
 setInterval(() => { if (document.visibilityState === 'visible') refreshTicketBadge(); }, 180000);
+
+// ── Tab links ────────────────────────────────────────────────────────────────
+// Tabs are real links so they can be opened in a new tab (right-click, ⌘/Ctrl-
+// click, middle-click). A plain click still switches in place.
+function adminTabClick(e, tab) {
+  if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (e.button && e.button !== 0))) return true;
+  if (e) e.preventDefault();
+  switchTab(tab);
+  return false;
+}
+// A link that opens one order in the Orders tab: /admin/#orders?q=IC-…
+function orderLinkHref(orderId) { return '/admin/#orders?q=' + encodeURIComponent(orderId || ''); }
+function orderLinkClick(e, orderId) {
+  if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (e.button && e.button !== 0))) return true;
+  if (e) e.preventDefault();
+  searchOrders(orderId);
+  return false;
+}
+function orderLink(orderId, label, style) {
+  const id = String(orderId || '');
+  return '<a class="btn-outline" style="display:inline-block;text-decoration:none;' + (style || '') + '" href="' + orderLinkHref(id)
+    + '" onclick="return orderLinkClick(event,\'' + esc(id).replace(/'/g, '&#39;') + '\')">' + (label || 'Open in Orders') + '</a>';
+}
+
+// ── Not picked up (48 h+) ───────────────────────────────────────────────────
+const NPU_API = '/.netlify/functions/admin-not-picked-up';
+let npuData = null;
+let npuLive = {};   // awb → { status, last_event, at }
+
+function npuHours() { return Number(document.getElementById('npuHours')?.value || 48); }
+
+async function refreshNotPickedBadge() {
+  const b = document.getElementById('notPickedBadge');
+  if (!b || !(adminToken || adminKey || adminCookieSession)) return;
+  try {
+    const res = await adminFetch(NPU_API + '?min_hours=48');
+    const data = await res.json();
+    if (!res.ok || !data.counts) return;
+    b.textContent = data.counts.total;
+    b.style.display = data.counts.total ? 'inline-block' : 'none';
+    b.title = data.counts.awaiting_pickup + ' booked, awaiting pickup · ' + data.counts.not_booked + ' not booked';
+  } catch (e) { /* the badge is a convenience */ }
+}
+setInterval(() => { if (document.visibilityState === 'visible') refreshNotPickedBadge(); }, 600000);
+
+async function loadNotPicked() {
+  const msg = document.getElementById('npuMsg');
+  if (!msg) return;
+  msg.style.color = 'var(--cream-dim)';
+  msg.textContent = 'Loading…';
+  document.getElementById('npuHoursLabel').textContent = npuHours();
+  try {
+    const res = await adminFetch(NPU_API + '?min_hours=' + npuHours());
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    npuData = data;
+    npuLive = {};
+    const sel = document.getElementById('npuCourier');
+    const keep = sel.value;
+    const couriers = Object.keys(data.counts.by_courier || {}).sort();
+    sel.innerHTML = '<option value="">All couriers</option>' + couriers.map(c => '<option value="' + esc(c) + '">' + esc(c) + ' (' + data.counts.by_courier[c] + ')</option>').join('');
+    if (couriers.includes(keep)) sel.value = keep;
+    if (npuHours() === 48) {
+      const b = document.getElementById('notPickedBadge');
+      if (b) { b.textContent = data.counts.total; b.style.display = data.counts.total ? 'inline-block' : 'none'; }
+    }
+    msg.textContent = '';
+    renderNotPicked();
+  } catch (e) {
+    msg.style.color = '#e06060';
+    msg.textContent = 'Could not load: ' + e.message;
+  }
+}
+
+function npuAge(h) {
+  if (h == null) return '—';
+  const d = Math.floor(h / 24), r = h % 24;
+  return d ? d + 'd ' + r + 'h' : r + 'h';
+}
+
+function npuVisibleRows() {
+  if (!npuData) return [];
+  const bucket = document.getElementById('npuBucket').value;
+  const courier = document.getElementById('npuCourier').value;
+  const q = document.getElementById('npuSearch').value.trim().toLowerCase();
+  return npuData.orders.filter(r =>
+    (bucket === 'all' || r.bucket === bucket)
+    && (!courier || r.courier === courier)
+    && (!q || [r.order_id, r.customer_name, r.tracking_id, r.pincode, r.courier].some(v => String(v || '').toLowerCase().includes(q))));
+}
+
+function renderNotPicked() {
+  const table = document.getElementById('npuTable');
+  const counts = document.getElementById('npuCounts');
+  if (!table || !npuData) return;
+  const c = npuData.counts;
+  const rows = npuVisibleRows();
+  counts.innerHTML = '<strong>' + c.total + '</strong> orders older than ' + npuData.min_hours + ' h with no pickup · '
+    + '<strong>' + c.awaiting_pickup + '</strong> booked, awaiting pickup (' + c.awaiting_confirmed + ' confirmed by the courier) · '
+    + '<strong>' + c.not_booked + '</strong> not booked'
+    + (rows.length !== c.total ? ' · showing ' + rows.length : '');
+  if (!rows.length) { table.innerHTML = '<tr><td style="padding:1rem 0;color:var(--cream-dim);">Nothing here 🎉</td></tr>'; return; }
+  const th = (t) => '<th style="text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--border);font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--cream-dim);white-space:nowrap;">' + t + '</th>';
+  const td = (h, extra) => '<td style="padding:.55rem .6rem;border-bottom:1px solid var(--border);vertical-align:top;' + (extra || '') + '">' + h + '</td>';
+  const pay = { cod: 'COD', prepaid: 'Prepaid', partial_cod: 'Partial COD', replacement: 'Free replacement' };
+  table.innerHTML = '<thead><tr>' + [th('Order'), th('Age'), th('Stage'), th('Courier / AWB'), th('Last scan'), th('Payment'), th('Customer'), th('')].join('') + '</tr></thead><tbody>'
+    + rows.map(r => {
+      const live = r.tracking_id ? npuLive[r.tracking_id] : null;
+      const moved = live && !/pending|not picked|booked|manifest/i.test(live.status || '');
+      const stage = r.bucket === 'not_booked'
+        ? '<span style="color:#e0a060;">Not booked</span>' + (r.nimbus_pushed_at ? '<div class="hint">Pushed to NimbusPost, no AWB</div>' : '') + '<div class="hint">' + esc(r.status.replace(/_/g, ' ')) + '</div>'
+        : '<span style="color:' + (r.confirmed ? '#e06060' : 'var(--cream)') + ';">Awaiting pickup</span>'
+          + '<div class="hint">' + (r.confirmed ? 'courier says pending' : 'no scan yet') + (r.hours_since_booking != null ? ' · booked ' + npuAge(r.hours_since_booking) + ' ago' : '') + '</div>';
+      const awb = r.tracking_id
+        ? esc(r.courier || '') + '<div style="font-family:ui-monospace,Menlo,monospace;font-size:.72rem;user-select:all;">'
+          + (r.tracking_url ? '<a href="' + esc(r.tracking_url) + '" target="_blank" rel="noopener" style="color:var(--gold);">' + esc(r.tracking_id) + '</a>' : esc(r.tracking_id)) + '</div>'
+        : '—';
+      const scan = live
+        ? '<strong style="color:' + (moved ? '#6dbf6d' : '#e06060') + ';">' + esc(live.status || '?') + '</strong>' + (live.last_event ? '<div class="hint">' + esc(live.last_event) + '</div>' : '') + '<div class="hint">live</div>'
+        : esc(r.last_scan || '—');
+      return '<tr style="' + (moved ? 'opacity:.55;' : '') + '">'
+        + td('<span style="font-family:ui-monospace,Menlo,monospace;user-select:all;">' + esc(r.order_id) + '</span><div class="hint">' + new Date(r.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</div>')
+        + td('<strong>' + npuAge(r.age_hours) + '</strong>', 'white-space:nowrap;')
+        + td(stage)
+        + td(awb)
+        + td(scan)
+        + td((pay[r.payment] || r.payment) + (r.amount_rs ? '<div class="hint">₹' + r.amount_rs.toLocaleString('en-IN') + '</div>' : ''))
+        + td(esc(r.customer_name) + (r.pincode ? '<div class="hint">' + esc(r.pincode) + '</div>' : ''))
+        + td(orderLink(r.order_id, 'Open', 'font-size:.6rem;padding:.3rem .6rem;'))
+        + '</tr>';
+    }).join('') + '</tbody>';
+}
+
+async function checkNotPickedLive(btn) {
+  const awbs = [...new Set(npuVisibleRows().filter(r => r.tracking_id && /xpress/i.test(r.courier || '')).map(r => r.tracking_id))];
+  const msg = document.getElementById('npuMsg');
+  if (!awbs.length) { msg.textContent = 'No XpressBees AWBs in the current view.'; return; }
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  try {
+    for (let i = 0; i < awbs.length; i += 200) {
+      btn.innerHTML = 'Checking ' + Math.min(i + 200, awbs.length) + '/' + awbs.length + '…';
+      const res = await adminFetch('/.netlify/functions/admin-xpressbees-track', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ awbs: awbs.slice(i, i + 200) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      for (const r of data.results || []) npuLive[r.awb] = { status: r.status || r.error || '', last_event: r.last_event || '' };
+    }
+    const moved = Object.values(npuLive).filter(l => !/pending|not picked|booked|manifest/i.test(l.status || '')).length;
+    msg.style.color = 'var(--cream-dim)';
+    msg.textContent = 'Checked ' + awbs.length + ' XpressBees AWBs live. ' + (moved ? moved + ' have actually moved (dimmed) — they drop off this list after the next status sync.' : 'All still waiting for pickup.');
+    renderNotPicked();
+  } catch (e) {
+    msg.style.color = '#e06060';
+    msg.textContent = 'Live check failed: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+async function copyNotPickedIds(btn) {
+  const ids = npuVisibleRows().map(r => r.order_id).join(', ');
+  try { await navigator.clipboard.writeText(ids); btn.textContent = '✓ Copied ' + npuVisibleRows().length; }
+  catch { prompt('Order IDs', ids); }
+  setTimeout(() => { btn.textContent = '⧉ Copy order IDs'; }, 2000);
+}
+
+function exportNotPickedCsv() {
+  const rows = npuVisibleRows();
+  const cell = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const head = ['order_id', 'created_at', 'age_hours', 'stage', 'courier_confirmed_pending', 'courier', 'awb', 'hours_since_booking', 'last_scan', 'payment', 'amount_rs', 'customer', 'pincode', 'status'];
+  const lines = [head.join(',')].concat(rows.map(r => [r.order_id, r.created_at, r.age_hours, r.bucket, r.confirmed, r.courier || '', r.tracking_id || '', r.hours_since_booking ?? '',
+    (npuLive[r.tracking_id] || {}).status || r.last_scan || '', r.payment, r.amount_rs, r.customer_name, r.pincode, r.status].map(cell).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = 'not-picked-up-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
 
 async function loadTickets() {
   const list = document.getElementById('tkList');
@@ -13676,12 +13892,12 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
   return document.querySelector('.admin-tab.active')?.dataset.tab
-    || location.hash.replace('#', '')
+    || location.hash.replace('#', '').split('?')[0]
     || 'orders';
 }
 
@@ -13722,7 +13938,7 @@ function applyRoleVisibility() {
   document.querySelectorAll('.owner-only').forEach(el => { el.style.display = limited ? 'none' : ''; });
   if (limited) {
     // Keep the staff workflow focused on support operations.
-    const allowed = new Set(['orders','replacements','returns','tickets','botinbox','recover','reels']);
+    const allowed = new Set(['orders','replacements','returns','tickets','notpicked','botinbox','recover','reels']);
     document.querySelectorAll('.admin-tab').forEach(btn => {
       if (!allowed.has(btn.dataset.tab)) btn.style.display = 'none';
     });
@@ -13730,6 +13946,7 @@ function applyRoleVisibility() {
   const chip = document.getElementById('adminChip');
   if (chip && limited) chip.textContent = '● Support staff';
   if (typeof refreshTicketBadge === 'function') refreshTicketBadge();
+  if (typeof refreshNotPickedBadge === 'function') refreshNotPickedBadge();
 }
 
 // ── Customer Insights (AI over bot conversations) ──────────────────────────
@@ -14183,7 +14400,7 @@ function renderMissingBooks() {
     let actions = '';
     if (state === 'unreplaced') {
       actions = btn('➕ Create replacement', `openReplacementModal('${esc(String(original?.id || ''))}')`, '#6dbf6d')
-              + ' ' + btn('Open in Orders', `searchOrders('${esc(String(meta.original_order_id || ''))}')`);
+              + ' ' + orderLink(meta.original_order_id, 'Open in Orders', 'font-size:.6rem;padding:.3rem .55rem;');
     } else if (state === 'needs_upi') {
       actions = btn(meta.upi_requested_at ? '📧 Ask again' : '📧 Ask for UPI', `mbAskForUpi('${rowId}', ${meta.upi_requested_at ? 'true' : 'false'}, this)`, '#c98a36')
               + ' ' + btn('✎ Enter it', `mbSaveUpi('${rowId}')`);
@@ -14523,7 +14740,7 @@ function renderReplacementRequests() {
         ${o.status === 'replacement_pending' && !o.tracking_id && !o.nimbus_pushed_at
           ? `<button class="btn-gold" style="padding:.4rem .65rem;margin-bottom:.35rem;display:block;width:100%;" onclick="openReplacementItemsEditor('${orderRowId}')">Edit books</button>`
           : ''}
-        <button class="btn-outline" style="padding:.4rem .65rem;" onclick="openReplacementInOrders('${orderRowId}')">Open in Orders</button>
+        ${orderLink(o.razorpay_order_id || decodeURIComponent(orderRowId || ''), 'Open in Orders', 'padding:.4rem .65rem;')}
         ${missingValue > 0 && o.status === 'replacement_pending'
           ? `<button class="btn-outline" style="padding:.4rem .65rem;margin-top:.35rem;border-color:rgba(224,96,96,.5);color:#e06060;display:block;width:100%;"
                title="Cancel this replacement and refund only the missing book's value (₹${money(missingValue)}) on the original order"
@@ -14604,12 +14821,6 @@ async function saveReplacementItems(encodedRowId) {
     show(`Could not save: ${error.message}`, '#e06060');
     button.disabled = false; button.textContent = 'Save books';
   }
-}
-
-function openReplacementInOrders(encodedRowId) {
-  const rowId = decodeURIComponent(encodedRowId || '');
-  const order = allOrders.find(o => String(o.id || '') === rowId);
-  searchOrders(order?.razorpay_order_id || rowId);
 }
 
 async function refreshReplacementRequests(btn) {
@@ -14844,7 +15055,7 @@ async function delistEbook(slug) {
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
-  if (adminRole !== 'owner' && !new Set(['orders','replacements','missingbooks','returns','tickets','npcancelled','botinbox','recover','reels']).has(tab)) tab = 'orders';
+  if (adminRole !== 'owner' && !new Set(['orders','replacements','missingbooks','returns','tickets','notpicked','npcancelled','botinbox','recover','reels']).has(tab)) tab = 'orders';
 
   // Show/hide panels
   TABS.forEach(t => {
@@ -14882,6 +15093,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'missingbooks' && _authed) renderMissingBooks();
   if (tab === 'returns' && _authed) fetchReturnRequests();
   if (tab === 'tickets' && _authed) loadTickets();
+  if (tab === 'notpicked' && _authed) loadNotPicked();
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();
   if (tab === 'bestsellers' && _authed && adminRole === 'owner') loadBestsellers();
@@ -15406,9 +15618,21 @@ async function startGmailWatch() {
 
 // Read hash on load / back-forward
 function initTabFromHash() {
-  const hash = location.hash.replace('#','') || 'orders';
+  const raw = location.hash.replace('#','') || 'orders';
+  const [hash, query] = raw.split('?');
   adminTabInitialized = true;
-  switchTab(hash, false);
+  switchTab(hash || 'orders', false);
+  // /admin/#orders?q=IC-… — an "Open in Orders" link opened in a new tab.
+  const q = new URLSearchParams(query || '').get('q');
+  if (hash === 'orders' && q) openOrderFromLink(q);
+}
+
+// Orders arrive after login and in pages, so wait for the set before searching.
+function openOrderFromLink(q, tries = 0) {
+  const box = document.getElementById('searchBox');
+  if (box) box.value = q;
+  if (typeof allOrders !== 'undefined' && allOrders.length) { searchOrders(q); return; }
+  if (tries < 60) setTimeout(() => openOrderFromLink(q, tries + 1), 500);
 }
 
 window.addEventListener('popstate', () => initTabFromHash());
