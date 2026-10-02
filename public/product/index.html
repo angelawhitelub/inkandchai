@@ -636,7 +636,7 @@ gtag('config', 'G-ZPZDFWMDP6');
   <a href="/terms/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Terms &amp; Conditions</a>
   <a href="/privacy-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Privacy Policy</a>
   <a href="/refund-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Refund Policy</a>
-  <a href="/return-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Return Policy</a>
+  <a href="/return-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Replacement Policy</a>
   <a href="/shipping-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Shipping Policy</a>
 </div>
 
@@ -1063,7 +1063,7 @@ function trackProductView(b) {
 // ── Render product page ───────────────────────────────────────────────────
 function renderProduct(b) {
   const pageTitle = b.t + (b.a ? ' by ' + b.a : '') + ' — Buy Online at Ink & Chai';
-  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day easy returns.');
+  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day free replacement.');
   const canonical = 'https://inkandchai.in/product/' + b.slug + '/';
   const imgAbs = (b.img || '').startsWith('http') ? b.img : ('https://inkandchai.in' + (b.img || ''));
 
@@ -1251,7 +1251,7 @@ function renderProduct(b) {
              read a policy is how a cart gets abandoned. -->
         <div style="margin:0.55rem 0 0.2rem;">
           <button type="button" class="pol-trigger" data-policy-sheet="returns"
-                  aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
+                  aria-haspopup="dialog">🛡 Replacements &amp; refunds</button>
         </div>
 
         <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
@@ -1285,7 +1285,7 @@ function renderProduct(b) {
           ${b.pub  ? `<div class="prod-meta-item"><div class="prod-meta-label">Publisher</div><div class="prod-meta-val">${esc(b.pub)}</div></div>` : ''}
           ${b.isbn ? `<div class="prod-meta-item"><div class="prod-meta-label">ISBN</div><div class="prod-meta-val">${esc(b.isbn)}</div></div>` : ''}
           <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India · 2–5 days</div></div>
-          <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day easy returns · <a href="#" onclick="event.preventDefault();openReturnVideo();" style="color:var(--gold);text-decoration:underline;cursor:pointer;">▶ Watch how (30 sec)</a></div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Replacement</div><div class="prod-meta-val">Free if defective, wrong or missing · <a href="/return-policy/" style="color:var(--gold);text-decoration:underline;">How it works</a></div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">COD · UPI · Cards</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Sold by</div><div class="prod-meta-val">Ink &amp; Chai</div></div>
         </div>
@@ -1924,7 +1924,7 @@ const slug    = params.get('id') || pathSlug;
   <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.35rem;">
     <a href="/ebooks/" style="color:var(--cream-dim,#a09080);text-decoration:none;">eBooks</a>
     <a href="/shipping-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Shipping</a>
-    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Returns</a>
+    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Replacements</a>
     <a href="/refund-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Refunds</a>
     <a href="/terms/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Terms</a>
     <a href="/privacy-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Privacy</a>
