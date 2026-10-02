@@ -71,10 +71,12 @@ exports.handler = async (event) => {
     // whether the order total may move live in the util, which is tested.
     if (typeof body.books === 'string' && body.books.trim()) {
       const rebuilt = await rebuildOrderBooks(body.books, order, lookupBook);
-      patch.cart_items = rebuilt.cartItems;
-      if (rebuilt.amountPaise !== null) patch.amount_paise = rebuilt.amountPaise;
-      repriced = rebuilt.repriced;
-      warning  = rebuilt.warning;
+      if (!rebuilt.unchanged) {
+        patch.cart_items = rebuilt.cartItems;
+        if (rebuilt.amountPaise !== null) patch.amount_paise = rebuilt.amountPaise;
+        repriced = rebuilt.repriced;
+        warning  = rebuilt.warning;
+      }
     }
 
     if (!Object.keys(patch).length) {

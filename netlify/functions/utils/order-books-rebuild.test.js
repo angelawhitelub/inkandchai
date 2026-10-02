@@ -95,3 +95,44 @@ test('knows which orders have money on them', () => {
   assert.equal(isSettled({ status: 'shipped', razorpay_payment_id: 'pay_1' }), true);
   assert.equal(isSettled({ status: 'shipped', advance_paid_paise: 5000 }), true);
 });
+
+// IC-CW-20261001-Y830C: a 10% partial-COD order whose address was corrected.
+// The form resends the prefilled books, and the rebuild kept only
+// title/qty/price, so the ₹395 balance vanished and the panel push sent 0.
+const partialOrder = () => ({
+  status: 'partial_cod_pending',
+  amount_paise: 4400,
+  razorpay_payment_id: 'pay_x',
+  advance_paid_paise: 0,
+  cart_items: [{
+    id: '/product/mirror/', slug: 'mirror', qty: 1, price: 399,
+    title: 'The Mirror of Infinite Endings', author: 'Stephanie Garber',
+    _payment: { mode: 'partial_cod', rate: 0.1, balance: 395, deposit: 44, full_total: 439 },
+    _offer_id: 'cp-mirror', _publisher_sourced: true,
+  }],
+});
+
+test('the unchanged prefilled list leaves cart_items alone', async () => {
+  const order = partialOrder();
+  const r = await rebuildOrderBooks(' the mirror of  infinite endings ', order, lookup);
+  assert.equal(r.unchanged, true);
+  assert.equal(r.amountPaise, null);
+  assert.equal(r.cartItems, order.cart_items);
+});
+
+test('a real edit keeps the partial-COD balance and the line\'s own fields', async () => {
+  const r = await rebuildOrderBooks('The Mirror of Infinite Endings ×2, Atomic Habits', partialOrder(), lookup);
+  assert.equal(r.unchanged, false);
+  assert.equal(r.cartItems[0]._payment.balance, 395);
+  assert.equal(r.cartItems[0]._offer_id, 'cp-mirror');
+  assert.equal(r.cartItems[0].slug, 'mirror');
+  assert.equal(r.cartItems[0].qty, 2);
+  assert.equal(r.cartItems[1]._payment, undefined);
+  assert.equal(r.amountPaise, null, 'part-paid, so the total is not rewritten');
+});
+
+test('the payment terms move to the new first line when the book is swapped', async () => {
+  const r = await rebuildOrderBooks('Atomic Habits', partialOrder(), lookup);
+  assert.equal(r.cartItems[0].title, 'Atomic Habits');
+  assert.equal(r.cartItems[0]._payment.balance, 395);
+});
