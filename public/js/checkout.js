@@ -147,7 +147,7 @@ function openCheckoutForm() {
 
         <p style="font-size:0.6rem;color:#7a6330;text-align:center;margin-top:1.2rem;
                   letter-spacing:0.06em;line-height:1.7;">
-          Secure checkout &nbsp;·&nbsp; Pan-India delivery &nbsp;·&nbsp; 7-day returns
+          Secure checkout &nbsp;·&nbsp; Pan-India delivery &nbsp;·&nbsp; Free replacement if defective
         </p>
       </div>
     </div>

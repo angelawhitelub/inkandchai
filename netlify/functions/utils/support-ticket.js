@@ -40,7 +40,7 @@ const CATEGORIES = [
   { id: 'missing_item', label: 'Item missing from the parcel', priority: 'high' },
   { id: 'not_received', label: 'Order not delivered / shipping delay', priority: 'high' },
   { id: 'refund_payment', label: 'Refund or payment issue', priority: 'high' },
-  { id: 'return_replace', label: 'Return or replacement', priority: 'normal' },
+  { id: 'return_replace', label: 'Replacement (defective, wrong or missing book)', priority: 'normal' },
   { id: 'change_cancel', label: 'Change address or cancel order', priority: 'normal' },
   { id: 'other', label: 'Something else', priority: 'normal' },
 ];

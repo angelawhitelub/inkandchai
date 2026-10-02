@@ -1,5 +1,5 @@
 /**
- * Returns & refunds bottom sheet.
+ * Replacements & refunds bottom sheet.
  *
  * A peek at the policy without leaving the page — the question "what happens if
  * this book turns up damaged, and how do I get my money back if I paid cash?"
@@ -17,10 +17,9 @@
  * nothing beyond this script.
  *
  * Content must stay in step with /return-policy/ and /refund-policy/. The
- * figures are the ones the code enforces: a 7-day window from delivered_at
- * (request-return.js), a 30-minute cancellation window for prepaid and partial
- * COD (cancel-order.js), and Rs 50 of store credit valid 6 months
- * (utils/return-refund.js).
+ * figures are the ones the code enforces: a 7-day replacement window from
+ * delivered_at (request-replacement.js) and a 30-minute cancellation window for
+ * prepaid and partial COD (cancel-order.js). Returns are no longer offered.
  */
 (function () {
   'use strict';
@@ -82,35 +81,33 @@
   var HTML =
     '<div class="pol-grip"></div>' +
     '<div class="pol-head">' +
-      '<h2 id="polSheetTitle">Returns &amp; refunds</h2>' +
+      '<h2 id="polSheetTitle">Replacements &amp; refunds</h2>' +
       '<button class="pol-x" type="button" aria-label="Close">&#10005;</button>' +
     '</div>' +
     '<div class="pol-body">' +
 
-      '<h3 id="pol-returns">Returning a book</h3>' +
-      '<p><strong>7 days</strong> from the day your order is delivered. Open <strong>My Orders</strong>, ' +
-      'pick the order and tap <strong>Request Return</strong> — our courier collects it free, usually within 48 hours.</p>' +
-      '<p>Returnable: wrong book, damaged or torn pages, missing pages, ' +
-      'or a book that is not what the page described.</p>' +
+      '<h3 id="pol-returns">Replacements, not returns</h3>' +
+      '<p>We don\'t take returns. We replace, free of charge, any book that arrived ' +
+      '<strong>defective or misprinted</strong>, the <strong>wrong book</strong>, or a book <strong>missing</strong> from the parcel.</p>' +
+      '<p>Open <strong>My Orders</strong> or <strong>Track Order</strong>, choose the reason under <strong>Need a replacement?</strong> ' +
+      'and pick the book(s). Defective or wrong books: within <strong>7 days</strong> of delivery.</p>' +
 
       '<h3 id="pol-refunds">How your refund reaches you</h3>' +
       '<div class="pol-row"><b>Paid online</b><span>Straight back to the same card or account, automatically. 2–4 business days.</span></div>' +
       '<div class="pol-row"><b>Cash on Delivery</b><span>Nothing was paid online, so we transfer it to a UPI ID or bank account you give us.</span></div>' +
       '<div class="pol-row"><b>Partial COD</b><span>Only the deposit was taken online. We send the <strong>whole amount — deposit and cash together — as one transfer</strong>, never split in two.</span></div>' +
-      '<div class="pol-row"><b>Store credit</b><span>Instant, with a <strong>₹50 bonus</strong> on top, valid 6 months. No bank details needed.</span></div>' +
 
-      '<div class="pol-note">Paid cash? We ask for a <strong>UPI ID</strong>, or your <strong>account number with IFSC ' +
-      'and the account-holder name</strong>, at the moment you raise the return. Either one is enough. ' +
-      'We ask up front because without it there is nowhere to send your money.</div>' +
+      '<div class="pol-note">Paid cash? If a book has to be refunded instead of replaced, we ask for a <strong>UPI ID</strong>, ' +
+      'because a cash payment cannot be reversed online.</div>' +
 
       '<h3 id="pol-cancel">Cancelling an order</h3>' +
       '<div class="pol-row"><b>Cash on Delivery</b><span>Any time before dispatch. Nothing was paid, so nothing to refund.</span></div>' +
       '<div class="pol-row"><b>Paid online</b><span>Within <strong>30 minutes</strong> of placing — full refund to the original method.</span></div>' +
       '<div class="pol-row"><b>Partial COD</b><span>Within <strong>30 minutes</strong> and before dispatch. The online deposit comes back to the same account.</span></div>' +
-      '<p>After dispatch an order cannot be cancelled — refuse it at the door, or return it once delivered.</p>' +
+      '<p>After dispatch an order cannot be cancelled — refuse it at the door.</p>' +
 
       '<div class="pol-links">' +
-        '<a href="/return-policy/">Full return policy</a>' +
+        '<a href="/return-policy/">Replacement policy</a>' +
         '<a href="/refund-policy/">Refunds &amp; cancellations</a>' +
       '</div>' +
     '</div>';

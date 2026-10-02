@@ -2,6 +2,9 @@
  * Netlify Function: request-return
  * POST /.netlify/functions/request-return
  *
+ * RETIRED: refuses with 410 unless RETURNS_ENABLED=on. The store offers
+ * replacements only (request-replacement / report-missing-books).
+ *
  * Lets a signed-in customer initiate a return request from My Orders. The
  * return window is seven days from delivery date when available, otherwise
  * seven days from order creation.
@@ -27,6 +30,8 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Content-Type': 'application/json',
 };
+
+const RETURNS_ENABLED = String(process.env.RETURNS_ENABLED || '').toLowerCase() === 'on';
 
 function esc(value) {
   return String(value || '')
@@ -142,6 +147,17 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method not allowed' }) };
+  }
+
+  // Returns are no longer offered — only replacements (defective/misprint,
+  // wrong book, missing book). Kept as a refusal rather than deleted so a
+  // cached My Orders page gets a clear answer instead of a 404. Existing
+  // return requests are still processed from the admin Returns tab.
+  if (!RETURNS_ENABLED) {
+    return { statusCode: 410, headers: CORS, body: JSON.stringify({
+      error: 'Returns are no longer available. If your book arrived defective, misprinted, wrong or missing, request a free replacement from My Orders or the Track Order page.',
+      replacement_only: true,
+    }) };
   }
 
   try {

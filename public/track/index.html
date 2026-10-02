@@ -256,7 +256,7 @@ html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-c
   <div id="result" class="result"></div>
 
   <div class="help">
-    <b>Can't find your order ID?</b> Check the confirmation email we sent at checkout — the subject line includes it (e.g. <code style="color:var(--gold);background:rgba(201,168,76,0.1);padding:1px 6px;">IC-20260430-AB3CD</code>). Still stuck? <a href="https://wa.me/919217175546">WhatsApp us</a> and we'll find it for you. Problem with an order? <a href="/support/">Raise a support ticket</a>.
+    <b>Can't find your order ID?</b> Check the confirmation email we sent at checkout — the subject line includes it (e.g. <code style="color:var(--gold);background:rgba(201,168,76,0.1);padding:1px 6px;">IC-20260430-AB3CD</code>). Still stuck? <a href="https://wa.me/919217175546">WhatsApp us</a> and we'll find it for you. Book defective, wrong or missing? Track the order above and request a free replacement, or <a href="/support/">raise a support ticket</a>.
   </div>
 </main>
 
@@ -615,9 +615,22 @@ async function claimWrongCodRefund(btn) {
   }
 }
 
-// ── Report a missing book (customer-facing, delivered orders only) ─────
+// ── Request a replacement (delivered orders) ────────────────────────────
+// We replace, we don't take returns. One dropdown decides where it goes:
+//   defective / wrong_book → request-replacement (7 days from delivery)
+//   missing                → report-missing-books (any time after delivery)
+const REPL_WINDOW_DAYS = 7;
+function replWindow(o) {
+  const t = o.delivered_at ? new Date(o.delivered_at).getTime() : NaN;
+  // An older cached API response has no delivered_at: let the server decide.
+  if (!Number.isFinite(t)) return { open: !('delivered_at' in o), daysLeft: null };
+  const ms = t + REPL_WINDOW_DAYS * 86400000 - Date.now();
+  return { open: ms >= 0, daysLeft: Math.max(0, Math.ceil(ms / 86400000)) };
+}
+
 function reportBlockHtml(o) {
   if (!REPORTABLE_STATUS.has(String(o.status || '').toLowerCase())) return '';
+  if (o.is_replacement) return '';
   const lineItems = (o.items || [])
     .map(i => ({ title: String(i.title || '').trim(), qty: Math.max(1, Number(i.qty) || 1) }))
     .filter(i => i.title);
@@ -625,13 +638,25 @@ function reportBlockHtml(o) {
   const already = (o.items || []).some(i => i && i._missing);
   if (already) {
     return `<div class="r-section" style="border-top:1px dashed var(--border);padding-top:1.2rem;">
-      <div class="r-section-h">Missing a book?</div>
+      <div class="r-section-h">Need a replacement?</div>
       <div class="r-row" style="color:#6dbf6d;font-size:0.82rem;">✓ You've reported a missing book for this order. Our team will be in touch — check your email &amp; WhatsApp.</div>
     </div>`;
   }
+  const w = replWindow(o);
+  const closed = w.open ? '' : ' (closed — 7 days after delivery)';
+  const field = 'width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.8rem;font-family:inherit;font-size:0.82rem;';
   return `<div class="r-section" id="reportSection" style="border-top:1px dashed var(--border);padding-top:1.2rem;">
-    <div class="r-section-h">Missing a book?</div>
-    <div class="r-row" style="color:var(--cream-dim);font-size:0.8rem;margin-bottom:0.9rem;">If your parcel arrived without one of these books, tap the missing one(s) and let us know. We'll send it or refund you.</div>
+    <div class="r-section-h">Need a replacement?</div>
+    <div class="r-row" style="color:var(--cream-dim);font-size:0.8rem;margin-bottom:0.9rem;line-height:1.6;">We don't take returns, but we replace any book that arrived defective, misprinted, wrong or missing — free of charge.${w.open && w.daysLeft != null ? ` <span style="color:var(--gold);">${w.daysLeft} day${w.daysLeft === 1 ? '' : 's'} left for defective or wrong books.</span>` : ''}</div>
+    <label for="replReason" style="display:block;font-size:0.72rem;color:var(--cream-dim);margin:0 0 0.4rem;">Reason <span style="color:#e8a030;">(required)</span></label>
+    <select id="replReason" onchange="replReasonChanged()" style="${field}margin-bottom:1rem;">
+      <option value="">Choose a reason…</option>
+      <option value="defective"${w.open ? '' : ' disabled'}>Defective book / misprint${closed}</option>
+      <option value="wrong_book"${w.open ? '' : ' disabled'}>Wrong book received${closed}</option>
+      <option value="missing">Book missing from the parcel</option>
+    </select>
+    <div id="replBody" style="display:none;">
+    <div id="replWhich" class="r-row" style="color:var(--cream-dim);font-size:0.8rem;margin-bottom:0.6rem;">Tap the book(s) that need replacing.</div>
     <div id="missBooks" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;">
       ${lineItems.map(it => `
         <div class="miss-row" data-title="${esc(it.title)}" data-max="${it.qty}" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
@@ -639,22 +664,97 @@ function reportBlockHtml(o) {
             style="flex:1;min-width:60%;text-align:left;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.65rem 0.9rem;font-size:0.82rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
             <span style="display:inline-block;width:1.2rem;">☐</span> ${esc(it.title)}${it.qty > 1 ? ` <span style="color:var(--cream-dim)">(you ordered ${it.qty})</span>` : ''}
           </button>
-          ${it.qty > 1 ? `<label style="font-size:0.72rem;color:var(--cream-dim);display:flex;align-items:center;gap:0.3rem;">Qty missing
+          ${it.qty > 1 ? `<label style="font-size:0.72rem;color:var(--cream-dim);display:flex;align-items:center;gap:0.3rem;">Qty
             <select class="miss-qty" disabled style="background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.35rem 0.4rem;font-family:inherit;font-size:0.8rem;">
               ${Array.from({ length: it.qty }, (_, k) => k + 1).map(n => `<option value="${n}"${n === it.qty ? ' selected' : ''}>${n}</option>`).join('')}
             </select></label>` : ''}
         </div>`).join('')}
     </div>
-    ${upiFieldHtml(o)}
+    <div id="replUpiSlot" style="display:none;">${upiFieldHtml(o)}</div>
     <label for="missComment" style="display:block;font-size:0.72rem;color:var(--cream-dim);margin:0 0 0.4rem;">What happened? <span style="color:#e8a030;">(required)</span></label>
-    <textarea id="missComment" rows="3" maxlength="1000" required aria-required="true" placeholder="e.g. the packet was already open, or only some copies were inside…"
-      style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.8rem;font-family:inherit;font-size:0.82rem;resize:vertical;margin-bottom:1rem;"></textarea>
-    <button id="reportBtn" onclick="submitMissingReport(this)"
+    <textarea id="missComment" rows="3" maxlength="500" required aria-required="true" placeholder="Tell us what went wrong"
+      style="${field}resize:vertical;margin-bottom:1rem;"></textarea>
+    <div id="replPhotosWrap" style="margin-bottom:1rem;">
+      <label for="replPhotos" style="display:block;font-size:0.72rem;color:var(--cream-dim);margin:0 0 0.4rem;">Photos (optional, up to 3) — they help us sort it faster</label>
+      <input id="replPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple style="width:100%;color:var(--cream-dim);font-size:0.8rem;"/>
+    </div>
+    <button id="reportBtn" onclick="submitReplacementRequest(this)"
       style="background:var(--gold);border:1px solid var(--gold);color:#0d0b08;padding:0.65rem 1.4rem;font-size:0.65rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:600;">
-      Report missing book(s)
+      Request free replacement
     </button>
+    </div>
     <div id="reportMsg" style="margin-top:0.9rem;font-size:0.82rem;display:none;"></div>
   </div>`;
+}
+
+function replReasonChanged() {
+  const r = document.getElementById('replReason').value;
+  document.getElementById('replBody').style.display = r ? '' : 'none';
+  document.getElementById('replUpiSlot').style.display = r === 'missing' ? '' : 'none';
+  document.getElementById('replPhotosWrap').style.display = r === 'missing' ? 'none' : '';
+  document.getElementById('replWhich').textContent = r === 'missing' ? 'Tap the book(s) that were missing from your parcel.'
+    : r === 'wrong_book' ? 'Tap the book(s) you ordered that were sent wrong.'
+    : 'Tap the book(s) that are defective or misprinted.';
+  document.getElementById('missComment').placeholder = r === 'missing' ? 'e.g. the packet was already open, or only some copies were inside…'
+    : r === 'wrong_book' ? 'Which book did you receive instead?'
+    : 'e.g. pages 40–56 are blank, or the binding came apart';
+}
+
+// Phone photos are often several MB; the endpoint takes up to 2 MB each.
+function shrinkPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(`"${file.name}" could not be read as an image.`)); };
+    img.src = url;
+  });
+}
+
+async function submitReplacementRequest(btn) {
+  if (!lastTracked) return;
+  const reason = document.getElementById('replReason').value;
+  if (reason === 'missing') return submitMissingReport(btn);
+  const msg = document.getElementById('reportMsg');
+  const say = (t) => { msg.style.display = ''; msg.style.color = '#e05050'; msg.textContent = t; };
+  if (!reason) return say('Please choose a reason.');
+  const items = [...document.querySelectorAll('#missBooks .miss-row')]
+    .filter(row => row.querySelector('button')?.dataset.on === '1')
+    .map(row => {
+      const max = Math.max(1, Number(row.dataset.max) || 1);
+      return { title: row.dataset.title, qty: Math.min(max, Math.max(1, Number(row.querySelector('.miss-qty')?.value) || max)) };
+    });
+  if (!items.length) return say('Please tap the book(s) that need replacing.');
+  const noteEl = document.getElementById('missComment');
+  const note = (noteEl.value || '').trim();
+  if (note.length < 10) { noteEl.focus(); return say('Please tell us what happened (at least 10 characters).'); }
+  const files = [...(document.getElementById('replPhotos').files || [])].slice(0, 3);
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  msg.style.display = 'none';
+  try {
+    const photos = [];
+    for (const f of files) photos.push(await shrinkPhoto(f));
+    const res = await fetch('/.netlify/functions/request-replacement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ original_order_id: lastTracked.id, q: lastTracked.q, reason, note, photos, items }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || 'Could not request the replacement.');
+    document.getElementById('reportSection').innerHTML = `<div class="r-section-h">Need a replacement?</div>
+      <div class="r-row" style="color:#6dbf6d;font-size:0.82rem;line-height:1.6;">✓ Done — free replacement order <b>${esc(data.replacement_order_id)}</b> has been created for <b>${items.map(i => esc(i.qty > 1 ? i.title + ' ×' + i.qty : i.title)).join(', ')}</b>. It ships at no charge and you'll get tracking by email &amp; WhatsApp. Please keep the original copy until it arrives, in case we need to inspect it.</div>`;
+  } catch (e) {
+    say(e.message);
+    btn.disabled = false; btn.textContent = orig;
+  }
 }
 
 // A COD parcel was never paid for online, so if the missing book turns out to
@@ -757,7 +857,7 @@ async function submitMissingReport(btn) {
       const labels = Array.isArray(data.missing) && data.missing.length
         ? data.missing
         : missing.map(m => m.qty > 1 ? `${m.title} ×${m.qty}` : m.title);
-      section.innerHTML = `<div class="r-section-h">Missing a book?</div>
+      section.innerHTML = `<div class="r-section-h">Need a replacement?</div>
         <div class="r-row" style="color:#6dbf6d;font-size:0.82rem;line-height:1.6;">✓ Thanks — we've noted that ${labels.length > 1 ? 'these were' : 'this was'} missing:<br/><b>${labels.map(esc).join(', ')}</b><br/>${replNote}</div>`;
     }
   } catch (e) {
