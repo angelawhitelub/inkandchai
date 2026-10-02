@@ -149,7 +149,7 @@ exports.handler = async (event) => {
     }
 
     // Stamp the report, create the free replacement, notify customer + owner.
-    const result = await fileMissingBookReport(supabase, order, { valid, comment, refundUpi, via: 'website' });
+    const result = await fileMissingBookReport(supabase, order, { valid, comment, refundUpi, photos: body.photos, via: 'website' });
     const missingLabels = result.missing;
     const replId = result.replacement_order_id;
 
@@ -160,6 +160,6 @@ exports.handler = async (event) => {
     };
   } catch (err) {
     console.error('report-missing-books error:', err.message);
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
+    return { statusCode: err.statusCode || 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
 };

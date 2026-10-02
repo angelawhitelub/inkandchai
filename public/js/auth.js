@@ -1,3 +1,25 @@
+window.IACClaimEvidence = {
+  async read(input, transform) {
+    const files = Array.from(input?.files || []);
+    if (!files.length || files.length > 3) throw new Error('Attach 1–3 photos of the parcel, shipping label and received books.');
+    return Promise.all(files.map(async file => {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > (transform ? 20000000 : 2000000) || file.size < 200)
+        throw new Error('Use JPEG, PNG or WebP photos, up to 2 MB each.');
+      if (transform) {
+        const value = await transform(file);
+        if (value.length > 2666700) throw new Error('The photo is still too large. Please choose a smaller image.');
+        return value;
+      }
+      return new Promise((resolve,reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Could not read a photo. Please select it again.'));
+        reader.readAsDataURL(file);
+      });
+    }));
+  }
+};
+
 /**
  * auth.js — Ink & Chai user accounts
  * Requires: window.SUPABASE_URL, window.SUPABASE_ANON_KEY
@@ -2409,8 +2431,8 @@
           <textarea class="miss-comment" rows="2" maxlength="500" required placeholder="Required — what happened? e.g. pages 40–56 are blank"
             style="${field}resize:vertical;margin-bottom:0.6rem;"></textarea>
           <div class="repl-photos-wrap" style="margin-bottom:0.6rem;">
-            <div style="font-size:0.6rem;color:#a09080;margin-bottom:0.3rem;">Photos (optional, up to 3) — they help us sort it faster</div>
-            <input class="repl-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple style="width:100%;color:#a09080;font-size:0.7rem;"/>
+            <div style="font-size:0.6rem;color:#a09080;margin-bottom:0.3rem;">Photo evidence (required, 1–3 photos) — parcel, label and received books</div>
+            <input class="repl-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple required aria-required="true" style="width:100%;color:#a09080;font-size:0.7rem;"/>
           </div>
           <button data-oid="${escHtmlAttr(oid)}" data-q="${escHtmlAttr(q)}" onclick="iacSubmitReplacementRequest(this)"
             style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
@@ -2428,7 +2450,7 @@
     const r = sel.value;
     wrap.querySelector('.repl-body').style.display = r ? '' : 'none';
     wrap.querySelector('.repl-upi-slot').style.display = r === 'missing' ? '' : 'none';
-    wrap.querySelector('.repl-photos-wrap').style.display = r === 'missing' ? 'none' : '';
+    wrap.querySelector('.repl-photos-wrap').style.display = '';
     wrap.querySelector('.repl-which').textContent = r === 'missing'
       ? 'Tap the book(s) that were missing from your parcel.'
       : r === 'wrong_book' ? 'Tap the book(s) you ordered that were sent wrong.'
@@ -2476,13 +2498,11 @@
     const note = (commentEl.value || '').trim();
     if (note.length < 10) { commentEl.focus(); return say('Please tell us what happened (at least 10 characters).'); }
 
-    const files = [...(wrap.querySelector('.repl-photos').files || [])].slice(0, 3);
     const orig = btn.textContent;
     btn.disabled = true; btn.textContent = 'Sending…';
     msg.style.display = 'none';
     try {
-      const photos = [];
-      for (const f of files) photos.push(await iacShrinkPhoto(f));
+      const photos = await window.IACClaimEvidence.read(wrap.querySelector('.repl-photos'), iacShrinkPhoto);
       const sb = getSB();
       let token = '';
       try { token = (await sb?.auth.getSession())?.data?.session?.access_token || ''; } catch (e) {}
@@ -2623,11 +2643,12 @@
     btn.disabled = true; btn.textContent = 'Sending…';
     msg.style.display = 'none';
     try {
+      const photos = await window.IACClaimEvidence.read(wrap.querySelector('.repl-photos'), iacShrinkPhoto);
       const res = await fetch('/.netlify/functions/report-missing-books', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: btn.dataset.oid, q: btn.dataset.q, missing, comment: commentText,
+          id: btn.dataset.oid, q: btn.dataset.q, missing, photos, comment: commentText,
           upi_id: (upiEl?.value || '').trim(),
         }),
       });

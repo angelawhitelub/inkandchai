@@ -22,7 +22,7 @@ function fakeSupabase(state) {
     const q = { filters: [], insert: null };
     const api = {
       select() { return api; },
-      eq(k, v) { q.filters.push((r) => String(r[k]) === String(v)); return api; },
+      eq(k, v) { q.filters.push((r) => String(k === 'cart_items->0->_replacement->>original_order_id' ? r.cart_items?.[0]?._replacement?.original_order_id : r[k]) === String(v)); return api; },
       ilike(k, v) {
         const re = new RegExp('^' + String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i');
         q.filters.push((r) => re.test(typeof r[k] === 'string' ? r[k] : JSON.stringify(r[k] || '')));
@@ -49,6 +49,10 @@ function fakeSupabase(state) {
 }
 
 let state;
+test.beforeEach(() => require('../../../worker/shims/runtime-bindings').bindEnv({
+  CUSTOMER_CLAIMS: { idFromName: n => n, get: () => ({ fetch: async () => Response.json({ allowed:true }) }) },
+}));
+const photo = 'data:image/png;base64,' + Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(210)]).toString('base64');
 stub('../../node_modules/@supabase/supabase-js', { createClient: () => fakeSupabase(state) });
 stub('utils/email', { sendEmail: async (m) => { sent.email.push(m); return {}; } });
 stub('utils/whatsapp', { sendWhatsApp: async (m) => { sent.wa.push(m); return {}; }, sendText: async () => ({}) });
@@ -68,7 +72,7 @@ function order(extra = {}) {
   };
 }
 const call = (body) => replacement.handler({ httpMethod: 'POST', headers: {}, body: JSON.stringify(body) });
-const base = { original_order_id: 'IC-20260928-ABCDE', reason: 'defective', note: 'Pages 40 to 56 are blank' };
+const base = { original_order_id: 'IC-20260928-ABCDE', reason: 'defective', note: 'Pages 40 to 56 are blank', photos: [photo] };
 
 test('request-return refuses new returns', async () => {
   const res = await ret.handler({ httpMethod: 'POST', headers: {}, body: '{}' });
@@ -109,13 +113,23 @@ test('the 7-day window and the delivered status still hold', async () => {
   assert.equal((await call({ ...base, q: 'asha@example.com' })).statusCode, 400);
 });
 
-test('one replacement per customer, also without a session', async () => {
+test('a replacement on a different order does not disqualify this customer', async () => {
   state = { orders: [order(), { razorpay_order_id: 'IC-R-20260901-ZZZZZ', source: 'replacement', customer_email: 'asha@example.com', customer_phone: '', cart_items: [] }] };
   const res = await call({ ...base, q: 'asha@example.com' });
-  assert.equal(res.statusCode, 409);
+  assert.equal(res.statusCode, 200, res.body);
 });
 
 test('an unknown reason is refused', async () => {
   state = { orders: [order()] };
   assert.equal((await call({ ...base, reason: 'changed_my_mind', q: 'asha@example.com' })).statusCode, 400);
+});
+
+test('a prior replacement for this original order is refused', async () => {
+  state = { orders: [order(), { source: 'replacement', razorpay_order_id: 'IC-R-OLD', cart_items: [{ _replacement: { original_order_id: base.original_order_id } }] }] };
+  assert.equal((await call({ ...base, q: 'asha@example.com' })).statusCode, 409);
+});
+test('photo evidence is required for the logged-out Track Order flow', async () => {
+  state = { orders: [order()] };
+  assert.equal((await call({ ...base, q: 'asha@example.com', photos: [] })).statusCode, 400);
+  assert.equal(state.orders.length, 1);
 });

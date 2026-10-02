@@ -34,7 +34,7 @@ const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { assess: assessWrongCod, botContext: wrongCodBotContext, ownerUpiEmail, performWrongCodRefund } = require('./utils/wrong-cod-refund');
 const { normalizeUpiId, requireUpiId } = require('./utils/upi-id');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
-const { matchMissingItems, fileMissingBookReport } = require('./utils/missing-book-report');
+const { matchMissingItems } = require('./utils/missing-book-report');
 const { sendEmail } = require('./utils/email');
 const {
   isOptOutKeyword, isOptInKeyword, isOptedOut,
@@ -189,8 +189,7 @@ MONEY SAFETY — this is critical, always lead with reassurance:
 
 MISSING BOOK IN A MULTI-BOOK ORDER — customer says "I ordered 3 books but got 2", "one book missing", "ek book nahi aayi", "incomplete order":
 - Apologise warmly and reassure them their money for the missing book is completely safe.
-- YOU CAN FIX THIS RIGHT HERE with the report_missing_book tool. It creates a FREE replacement order (id starts with IC-R-) for exactly the missing book(s), puts it in our team's queue, and sends the customer a confirmation on email and WhatsApp. Do NOT send them to the website form or to the support number instead.
-- Flow: (1) Find the order in ORDER CONTEXT — it lists each order's books. If they have not said which book is missing, ask, naming the books on the order. (2) Before calling the tool, confirm in one short line: "Just to confirm — <book> (×qty if more than one) didn't arrive in order IC-…? Reply YES and I'll arrange a free replacement right away." (3) Only after they confirm, call report_missing_book with the order id, the exact book title(s) as they appear in ORDER CONTEXT, and the quantity missing if they ordered more than one copy.
+- Photo evidence is REQUIRED. Direct the customer to https://inkandchai.in/track/ to look up the order and upload photos of the parcel, label and received books. Chat alone does not create a replacement. Never claim one was created or promise one before the form accepts their request.
 - Only for a DELIVERED order. If the order is still on its way, tell them to check the parcel once it arrives and come back if anything is short.
 - CASH ON DELIVERY: if the tool replies need_upi, ask for their UPI ID (like 9876543210@ybl) and call the tool again with it. Explain why in one line: they paid the courier in cash, so there is no online payment to reverse — the UPI ID is only used to refund that book's value if we cannot arrange it. Never ask for a bank account, IFSC, card number, OTP or CVV.
 - If they say NOTHING in the parcel arrived, or the parcel never came, that is not a missing book — it is a delivery problem. Do not call the tool; say our team will check it with the courier and end with [ESCALATE].
@@ -1344,28 +1343,10 @@ async function reportMissingBookViaBot(phone, args = {}, senderPhoneId = null, d
     const summary = String(args.what_happened || '').trim().slice(0, 300);
     const comment = `Reported to the WhatsApp bot.${summary ? ` ${summary}` : ''}\nCustomer wrote: ${said.slice(-700)}`.slice(0, 1000);
 
-    // The confirmation goes through the number they wrote to, inside the open
-    // chat, and is logged so the Bot Inbox shows exactly what they were told.
-    const chatText = async (text) => {
-      const sent = await reply(phone, text, senderPhoneId);
-      if (sent && sent.ok) await persist(phone, 'bot', text, null, senderPhoneId);
-      return sent;
-    };
+    // Chat tools cannot invent evidence or pass arbitrary remote image URLs.
+    return { ok: false, error: 'photos-required', order_id: oid,
+      message: 'Photo evidence is required before creating a missing-book request. Ask the customer to open https://inkandchai.in/track/, look up this order, choose the missing-book reason and attach photos of the parcel, label and received books. No request has been created from this chat.' };
 
-    const result = await fileMissingBookReport(supabase, order,
-      { valid: m.valid, comment, refundUpi, via: 'whatsapp', chatText }, deps.report || {});
-
-    if (result.replacement_order_id) {
-      return {
-        ok: true, order_id: oid, replacement_order_id: result.replacement_order_id, missing: result.missing,
-        customer_notified: { whatsapp: result.whatsapp, email: result.email },
-        message: `Free replacement ${result.replacement_order_id} created for: ${result.missing.join(', ')}. The customer has already been sent the confirmation${result.email ? ' by WhatsApp and email' : ' on WhatsApp'}. Reply in one or two warm lines.`,
-      };
-    }
-    if (result.replacement_uncovered) {
-      return { ok: false, error: 'replacement-exists', order_id: oid, message: 'This order already has a replacement that does not include this book, so no new parcel was created. The report is recorded and our team has been alerted — do not promise a parcel.' + ESCALATE };
-    }
-    return { ok: false, error: 'not-created', order_id: oid, message: 'The report is recorded and our team has been alerted, but the replacement order could not be created automatically — do not promise a parcel.' + ESCALATE };
   } catch (e) {
     console.error('reportMissingBookViaBot error:', e.message);
     return { ok: false, error: 'exception', message: 'Something went wrong on our side while filing this.' + ESCALATE };

@@ -12,8 +12,8 @@
  *             (default: the whole order, as before)
  *     q:      the order's email or phone, for the logged-out Track Order page
  *     reason: one of REASONS below
- *     note:   optional plaintext, max 500 chars
- *     photos: optional array of base64 data-URLs (max 3, max 2 MB each).
+ *     note:   required plaintext, max 500 chars
+ *     photos: required array of base64 data-URLs (max 3, max 2 MB each).
  *             Uploaded to product-images bucket under replacement-photos/.
  *
  * Auth: the Supabase JWT (Authorization: Bearer <token>) of a user who owns
@@ -23,9 +23,10 @@
  * Guards:
  *   - original must be `delivered` (or recently shipped — store policy)
  *   - within REPLACEMENT_WINDOW_DAYS of delivery
- *   - only ONE replacement request per customer (prevents repeat requests)
+ *   - only ONE replacement or missing-book request per original order (prevents repeat requests)
  */
 
+const { beginClaim } = require('./utils/customer-claim');
 const { createClient } = require('@supabase/supabase-js');
 const { sendEmail }    = require('./utils/email');
 const { sendWhatsApp } = require('./utils/whatsapp');
@@ -62,19 +63,6 @@ const REASON_LABEL = {
 
 function last10(p) { return String(p || '').replace(/\D/g, '').slice(-10); }
 function json(code, body) { return { statusCode: code, headers: CORS, body: JSON.stringify(body) }; }
-
-async function uploadPhoto(sb, dataUrl, slugPrefix) {
-  const m = String(dataUrl || '').match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/i);
-  if (!m) return null;
-  const ct = m[1].toLowerCase();
-  const ext = ct === 'image/png' ? 'png' : ct === 'image/webp' ? 'webp' : 'jpg';
-  const buf = Buffer.from(m[2], 'base64');
-  if (buf.length < 200 || buf.length > 2_000_000) return null;       // 200B–2MB
-  const path = `replacement-photos/${slugPrefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
-  const up = await sb.storage.from('product-images').upload(path, buf, { contentType: ct, upsert: false });
-  if (up.error) return null;
-  return sb.storage.from('product-images').getPublicUrl(path).data.publicUrl;
-}
 
 function buildOwnerEmailHtml(orig, repl, reasonLabel, note, photos) {
   const items = (repl.cart_items || orig.cart_items || []).map(i => `<li>${(i.title || 'Book').replace(/[<>]/g,'')} × ${i.qty || 1}</li>`).join('');
@@ -214,58 +202,10 @@ exports.handler = async (event) => {
     picked = match.valid.map((v) => ({ title: v.title, qty: v.qty }));
   }
 
-  // Only one replacement per original (clearer error for an exact repeat).
-  const { data: prior } = await sb.from('orders')
-    .select('razorpay_order_id').eq('source', 'replacement')
-    .ilike('cart_items', `%${orig.razorpay_order_id}%`).limit(1);
-  if (prior && prior.length) {
-    return json(409, { error: 'A replacement was already created for this order: ' + prior[0].razorpay_order_id });
-  }
-
-  // Only one replacement request per customer, across all of their orders.
-  // Check on the server so the restriction cannot be bypassed by changing the
-  // storefront. New replacement rows always carry user_id; email and phone
-  // checks cover older rows and customers whose order predates account linking.
-  const identityChecks = [
-  ];
-  if (user) identityChecks.push(sb.from('orders').select('razorpay_order_id').eq('source', 'replacement').eq('user_id', user.id).limit(1));
-  const identityEmails = [...new Set([userEmail, String(orig.customer_email || '').trim().toLowerCase()].filter(Boolean))];
-  identityEmails.forEach(email => {
-    identityChecks.push(
-      sb.from('orders').select('razorpay_order_id').eq('source', 'replacement').ilike('customer_email', email).limit(1)
-    );
-  });
-  const identityPhones = [...new Set([
-    String(user ? (user.user_metadata?.phone || user.phone || '') : '').trim(),
-    String(orig.customer_phone || '').trim(),
-  ].filter(Boolean))];
-  identityPhones.forEach(phone => {
-    identityChecks.push(
-      sb.from('orders').select('razorpay_order_id').eq('source', 'replacement').eq('customer_phone', phone).limit(1)
-    );
-  });
-
-  const customerChecks = await Promise.all(identityChecks);
-  const checkError = customerChecks.find(result => result.error)?.error;
-  if (checkError) {
-    console.error('[replacement] duplicate-customer check:', checkError.message);
-    return json(500, { error: 'Could not verify replacement eligibility — please try again' });
-  }
-  const priorCustomerRequest = customerChecks.flatMap(result => result.data || [])[0];
-  if (priorCustomerRequest) {
-    return json(409, {
-      error: `A replacement request has already been used by this customer (${priorCustomerRequest.razorpay_order_id}). Only one replacement request is allowed per customer.`,
-    });
-  }
-
-  // ── Upload photos (best-effort) ──────────────────────────────────────────
-  const photoUrls = [];
-  if (Array.isArray(photos) && photos.length) {
-    for (const p of photos.slice(0, 3)) {
-      const u = await uploadPhoto(sb, p, orig.razorpay_order_id);
-      if (u) photoUrls.push(u);
-    }
-  }
+  let claim;
+  try { claim = await beginClaim(sb, orig, photos); }
+  catch (error) { return json(error.statusCode || 503, { error: error.message }); }
+  const photoUrls = claim.photos;
 
   // ── Build the replacement order row ──────────────────────────────────────
   const now = new Date();
@@ -287,7 +227,7 @@ exports.handler = async (event) => {
   // book nobody is re-shipping, and the Missing Books tab would list it as
   // money owed. The original keeps its own record; this cart is just goods.
   let cartCopy = JSON.parse(JSON.stringify(Array.isArray(orig.cart_items) ? orig.cart_items : []))
-    .map(({ _missing, _missing_at, _missing_qty, _missing_comment, _refund_upi_id, _replacement, ...it }) => it);
+    .map(({ _missing, _missing_at, _missing_qty, _missing_photos, _missing_comment, _refund_upi_id, _replacement, ...it }) => it);
   // Only the books the customer picked, at the quantity they picked (capped at
   // what was ordered). Metadata-only rows (no title) are dropped with the rest.
   if (picked) {
@@ -325,7 +265,8 @@ exports.handler = async (event) => {
   };
 
   const { data: inserted, error: insErr } = await sb.from('orders').insert(replRow).select().single();
-  if (insErr) return json(500, { error: 'Failed to create replacement order: ' + insErr.message });
+  if (insErr) { await claim.release(); return json(500, { error: 'Failed to create replacement order: ' + insErr.message }); }
+  await claim.complete();
 
   // ── Notifications (non-fatal) ────────────────────────────────────────────
   const reasonLabel = REASON_LABEL[reason] || reason;

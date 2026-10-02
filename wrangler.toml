@@ -155,3 +155,11 @@ new_sqlite_classes = ["RateLimiter"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["SpendGuard"]
+
+[[durable_objects.bindings]]
+name = "CUSTOMER_CLAIMS"
+class_name = "ClaimGuard"
+
+[[migrations]]
+tag = "v3-customer-claims"
+new_sqlite_classes = ["ClaimGuard"]

@@ -23,6 +23,7 @@
  * person will follow up and the owner is asked to act.
  */
 
+const { beginClaim } = require('./customer-claim');
 const { sendEmail } = require('./email');
 const { sendWhatsApp, sendText } = require('./whatsapp');
 const { replacementCovers } = require('./missing-books');
@@ -40,7 +41,7 @@ const looseKey = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+
  * Guard: at most ONE replacement per original order. Returns the new order id
  * or null (never throws — the report itself must still succeed).
  */
-async function createMissingReplacement(supabase, order, replacementItems, comment = '', refundUpi = '', via = 'website') {
+async function createMissingReplacement(supabase, order, replacementItems, comment = '', refundUpi = '', via = 'website', photos = []) {
   try {
     // One replacement per original — matches request-replacement's abuse guard.
     const { data: existing } = await supabase
@@ -70,7 +71,7 @@ async function createMissingReplacement(supabase, order, replacementItems, comme
 
     // Cart = ONLY the missing books, with the customer-selected quantities
     // (already capped at what they ordered), stripped of any _missing flags.
-    const cart = replacementItems.map(({ _missing, _missing_at, _missing_qty, ...it }) => ({ ...it }));
+    const cart = replacementItems.map(({ _missing, _missing_at, _missing_qty, _missing_photos, ...it }) => ({ ...it }));
     cart[0]._replacement = {
       original_order_id: order.razorpay_order_id || order.id,
       reason: 'missing_item',
@@ -79,6 +80,7 @@ async function createMissingReplacement(supabase, order, replacementItems, comme
         ? 'Auto-created by the WhatsApp bot from the customer\'s chat.'
         : 'Auto-created from the customer\'s missing-book report.',
       reported_via: via,
+      photos,
       ...(comment ? { customer_comment: comment } : {}),
       // Only ever set for a COD order: the handle to send a partial refund to
       // if the missing book turns out to be unarrangeable. See utils/upi-id.
@@ -265,8 +267,8 @@ function matchMissingItems(order, requested, { loose = false } = {}) {
  *
  * Never throws for a notification failure; the report itself is what matters.
  */
-async function fileMissingBookReport(supabase, order, {
-  valid, comment = '', refundUpi = '', via = 'website', chatText = null,
+async function recordMissingBookReport(supabase, order, {
+  valid, comment = '', refundUpi = '', via = 'website', chatText = null, photos = [],
 } = {}, deps = {}) {
   const email = deps.sendEmail || sendEmail;
   const waTemplate = deps.sendWhatsApp || sendWhatsApp;
@@ -286,23 +288,25 @@ async function fileMissingBookReport(supabase, order, {
         _missing_qty: validQtyByTitle.get(title.toLowerCase()),
         _missing_at: now,
         _missing_via: via,
+        _missing_photos: photos,
         ...(comment ? { _missing_comment: comment } : {}),
         ...(refundUpi ? { _refund_upi_id: refundUpi } : {}),
       }
       : it;
   });
   try {
-    await supabase.from('orders').update({ cart_items: stampedItems }).eq('id', order.id);
+    const saved = await supabase.from('orders').update({ cart_items: stampedItems }).eq('id', order.id);
+    if (saved.error) throw saved.error;
   } catch (e) {
-    console.error('[missing-book-report] flag update failed:', e.message);
+    throw e;
   }
 
   // Clean replacement lines carrying the chosen (capped) quantities.
   const replacementItems = valid.map(v => {
-    const { _missing, _missing_at, _missing_qty, _missing_via, _missing_comment, _refund_upi_id, ...clean } = v.item;
+    const { _missing, _missing_at, _missing_qty, _missing_photos, _missing_via, _missing_comment, _refund_upi_id, ...clean } = v.item;
     return { ...clean, qty: v.qty };
   });
-  const repl = await createMissingReplacement(supabase, order, replacementItems, comment, refundUpi, via);
+  const repl = await createMissingReplacement(supabase, order, replacementItems, comment, refundUpi, via, photos);
   // Every message below keys off replId, and all of them already say the right
   // thing when it is null ("our team will reach out"). So the single place to
   // be honest is here: a replacement that does not carry these books is not a
@@ -398,6 +402,16 @@ async function fileMissingBookReport(supabase, order, {
   }
 
   return result;
+}
+
+async function fileMissingBookReport(supabase, order, options = {}, deps = {}) {
+  const claim = await beginClaim(supabase, order, options.photos);
+  try {
+    const result = await recordMissingBookReport(supabase, order, { ...options, photos: claim.photos }, deps);
+    if (result.replacement_order_id) await claim.complete();
+    else await claim.release(); // The recorded report blocks repeat customer claims; admin can fulfil it.
+    return result;
+  } catch (error) { await claim.release(); throw error; }
 }
 
 module.exports = { matchMissingItems, fileMissingBookReport, createMissingReplacement };

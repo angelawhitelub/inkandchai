@@ -1,19 +1,21 @@
 /* Table dimensions are browser preferences; no order data is changed. */
 (() => {
-  const section = document.getElementById('ordersTableSection');
-  const body = document.getElementById('ordersBody');
+function setup(sectionId, bodyId, defaults) {
+  const section = document.getElementById(sectionId);
+  const body = document.getElementById(bodyId);
   const table = section?.querySelector('table');
   if (!table || !body) return;
   const headers = [...table.tHead.rows[0].cells];
-  const names = headers.map((cell, i) => i ? cell.textContent.replace('↕', '').trim() : 'Selection');
-  const KEY = 'iac_admin_order_table_sizes_v1';
+  const names = headers.map((cell, i) => sectionId === 'ordersTableSection' && !i ? 'Selection' : cell.textContent.replace('↕', '').trim());
+  const KEY = sectionId === 'ordersTableSection' ? 'iac_admin_order_table_sizes_v1' : 'iac_admin_' + sectionId + '_sizes_v1';
   const desktop = matchMedia('(min-width:821px)');
   const clamp = (value, min, max) => Math.round(Math.min(max, Math.max(min, value)));
   const valid = (n, min, max) => Number.isFinite(n) && n >= min && n <= max;
-  let prefs = { widths: null, height: null, rows: Object.create(null) };
+  let prefs = { widths: defaults, font: 16, height: null, rows: Object.create(null) };
   try {
     const stored = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (stored) {
+      if (valid(stored.font,14,24)) prefs.font = stored.font;
       if (Array.isArray(stored.widths) && stored.widths.length === headers.length && stored.widths.every((v, i) => valid(v, i ? 100 : 48, 1000))) prefs.widths = stored.widths;
       if (valid(stored.height, 80, 1200)) prefs.height = stored.height;
       for (const [key, value] of Object.entries(stored.rows || {}).slice(-500)) if (value === null || valid(value, 80, 1200)) prefs.rows[key] = value;
@@ -22,9 +24,9 @@
 
   const panel = document.createElement('details');
   panel.className = 'order-size-panel';
-  panel.innerHTML = `<summary>Resize rows &amp; columns</summary>
+  panel.innerHTML = `<summary>Adjust text, rows &amp; columns</summary>
     <p>Drag a column edge or a row’s ↕ handle, or enter a size below. Shorter rows scroll inside each cell. Sizes are saved in this browser.</p>
-    <div class="order-size-fields">
+    <div class="order-size-fields"><label>Text size<input id="orderSizeFont" type="range" min="14" max="24" value="16" step="1"><output id="orderSizeFontValue"></output></label>
       <label>Column<select id="orderSizeColumn"></select></label>
       <label>Width (px)<input id="orderSizeWidth" type="number" min="100" max="1000" step="10" inputmode="numeric"></label>
       <button type="button" id="orderSizeApplyColumn" class="btn-outline">Set width</button>
@@ -34,14 +36,18 @@
       <button type="button" id="orderSizeAutoRow" class="btn-outline">Auto height</button>
       <button type="button" id="orderSizeReset" class="btn-outline">Reset all sizes</button>
     </div><p id="orderSizeNotice" role="status" aria-live="polite"></p>`;
+  panel.innerHTML = panel.innerHTML.replaceAll('id="orderSize', 'id="' + sectionId + 'orderSize');
   section.before(panel);
-  const find = id => panel.querySelector('#' + id);
+  const find = id => panel.querySelector('#' + sectionId + id);
   const column = find('orderSizeColumn'), widthInput = find('orderSizeWidth');
   const rowSelect = find('orderSizeRow'), heightInput = find('orderSizeHeight');
   const notice = find('orderSizeNotice');
   names.forEach((name, i) => column.add(new Option(name, String(i))));
   column.value = '1';
-  const rows = () => [...body.querySelectorAll('tr[data-order-size-key]')];
+  const rows = () => [...body.rows].filter(row => row.cells.length === headers.length).map(row => {
+    if (!row.dataset.orderSizeKey) row.dataset.orderSizeKey = row.querySelector('.order-id')?.textContent.trim() || row.cells[1]?.textContent.trim() || row.textContent.trim();
+    return row;
+  });
   const heightForKey = key => Object.hasOwn(prefs.rows, key) ? prefs.rows[key] : prefs.height;
   const heightFor = row => heightForKey(row.dataset.orderSizeKey);
   const widths = () => prefs.widths || headers.map((header, i) => clamp(header.getBoundingClientRect().width, i ? 100 : 48, 1000));
@@ -50,6 +56,14 @@
     try { localStorage.setItem(KEY, JSON.stringify(prefs)); notice.textContent = 'Sizes saved in this browser.'; }
     catch { notice.textContent = 'Sizes applied. This browser could not save them for next time.'; }
   }
+  const fontInput = find('orderSizeFont');
+  function applyFont() {
+    section.style.setProperty('--claim-font-size', prefs.font + 'px');
+    section.classList.add('adjustable-admin-table');
+    fontInput.value = prefs.font; find('orderSizeFontValue').textContent = prefs.font + ' px';
+  }
+  fontInput.addEventListener('input', () => { prefs.font = Number(fontInput.value); applyFont(); save(); });
+  applyFont();
   let cols;
   function applyColumns() {
     const fixed = desktop.matches && !!prefs.widths;
@@ -171,10 +185,14 @@
     setRow(rowSelect.value, null); save();
   });
   find('orderSizeReset').addEventListener('click', () => {
-    prefs = { widths: null, height: null, rows: Object.create(null) };
-    applyColumns(); syncRows(); save(); notice.textContent = 'Default column widths and automatic row heights restored.';
+    prefs = { widths: defaults, font: 16, height: null, rows: Object.create(null) };
+    applyFont(); applyColumns(); syncRows(); save(); notice.textContent = 'Default column widths and automatic row heights restored.';
   });
   new MutationObserver(syncRows).observe(body, { childList: true });
   desktop.addEventListener('change', () => { applyColumns(); syncRows(); });
   applyColumns(); syncRows();
+}
+setup('ordersTableSection','ordersBody',null);
+setup('replacementsTableSection','replacementRequestsBody',[180,240,260,300,380,120,180,180]);
+setup('missingBooksTableSection','missingBooksBody',[180,240,260,300,140,260,200,200]);
 })();
