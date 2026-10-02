@@ -3261,10 +3261,11 @@ async function loadNotPicked(opts = {}) {
     renderNotPicked();
     // Most bookings send us no scans, so the list is only as good as the last
     // time someone asked the couriers. Ask once per visit for anything not
-    // checked in the last 6 hours.
+    // checked in the last 6 hours, or whose last answer was not a status
+    // (an XpressBees lookup that failed because NimbusPost booked it).
     if (!npuAutoChecked) {
       npuAutoChecked = true;
-      const stale = data.orders.filter(r => r.tracking_id && (!r.checked_at || Date.now() - Date.parse(r.checked_at) > 6 * 3600e3));
+      const stale = data.orders.filter(r => r.tracking_id && (!r.confirmed || !r.checked_at || Date.now() - Date.parse(r.checked_at) > 6 * 3600e3));
       if (stale.length) checkNotPickedLive(document.getElementById('npuLiveBtn'), stale);
     }
   } catch (e) {
