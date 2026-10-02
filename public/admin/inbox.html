@@ -157,6 +157,15 @@ main{flex:1;min-height:0;display:flex}
   .view.active{flex-direction:column}
   .sidebar.hide-mobile{display:none}
 }
+.customer-details{padding:.6rem 1rem;border-bottom:1px solid var(--border);max-height:32vh;overflow:auto;background:#fff;font-size:.9rem;line-height:1.5}
+.customer-details summary{font-weight:700;cursor:pointer}.customer-details .order-detail{margin:.6rem 0;padding:.6rem;border:1px solid var(--border);border-radius:8px;overflow-wrap:anywhere}.history-status{padding:.4rem 1rem;font-size:.8rem;color:var(--cream-dim)}.customer-details p{margin:.3rem 0}
+.mobile-back{display:none}
+@media(max-width:820px){
+  body{height:100dvh}nav{padding:.5rem;gap:.4rem}.viewtab{padding:.4rem;font-size:.8rem}.nav-right{gap:.3rem}
+  .thread{display:none}body.in-thread .thread{display:flex}body.in-thread .sidebar{display:none}
+  .mobile-back{display:inline-block;margin-bottom:.3rem}.thead{padding:.5rem;flex-wrap:wrap;gap:.4rem}.tactions .btn{padding:.35rem;font-size:.65rem}
+  .customer-details{max-height:25vh}.msg{max-width:92%}.msgs{padding:.6rem}.composer{padding:.5rem}
+}
 </style>
 <!-- Applied in <head> so the saved size is on <html> before first paint. -->
 <script>
@@ -238,11 +247,13 @@ main{flex:1;min-height:0;display:flex}
       <div id="threadBody" style="display:none;flex:1;flex-direction:column;min-height:0">
         <div class="thead">
           <div>
-            <div class="name" id="tName">—</div>
+            <button class="btn mobile-back" onclick="backToConversations()">← Conversations</button><div class="name" id="tName">—</div>
             <div class="ph" id="tPhone">—</div>
           </div>
           <div class="tactions" id="tActions"></div>
         </div>
+        <details id="customerDetails" class="customer-details" open><summary>Customer &amp; orders</summary><div id="customerContent">Loading customer details…</div></details>
+        <div class="history-status"><span id="historyStatus" role="status"></span> <button class="btn" id="historyRetry" onclick="loadMessages(true)" hidden>Retry history</button></div>
         <div class="msgs" id="msgs"></div>
         <div class="composer">
           <textarea id="reply" rows="2" placeholder="Type a message — Enter sends, Shift+Enter for a new line"></textarea>
@@ -348,6 +359,9 @@ let search        = '';
 let renderedIds   = new Set();   // message ids already in the DOM
 let lastSeenCount = 0;
 let sending       = false;
+let threadVersion = 0;
+let historyBusy = false;
+let allHistoryLoaded = false;
 
 function showView(v) {
   document.getElementById('view-inbox').classList.toggle('active', v === 'inbox');
@@ -440,7 +454,7 @@ function atBottom(box) { return box.scrollHeight - box.scrollTop - box.clientHei
 
 function messageEl(m) {
   const role = m.role === 'user' ? 'user' : (m.role === 'admin' ? 'admin' : 'bot');
-  const who  = role === 'user' ? 'Customer' : (role === 'admin' ? 'You' : 'Bot');
+  const who  = role === 'user' ? (document.getElementById('tName').textContent || 'Customer') : (role === 'admin' ? 'You' : 'Bot');
   const d = document.createElement('div');
   d.className = 'msg m-' + role;
   d.dataset.mid = m.id ?? (m.created_at + '|' + (m.message || '').slice(0, 24));
@@ -448,8 +462,13 @@ function messageEl(m) {
   return d;
 }
 
+function backToConversations(){document.body.classList.remove('in-thread');}
+
 async function openThread(phone) {
+  document.body.classList.add('in-thread');
+  if(matchMedia('(max-width:820px)').matches)document.getElementById('customerDetails').open=false;
   activePhone = phone;
+  threadVersion++; historyBusy = false; allHistoryLoaded = false;
   renderedIds = new Set();
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('threadBody').style.display = 'flex';
@@ -459,6 +478,7 @@ async function openThread(phone) {
   document.getElementById('tPhone').textContent = phone;
   renderActions(phone, conv);
   renderList();
+  loadCustomer(phone, threadVersion);
   await loadMessages(true);
   api('/.netlify/functions/bot-inbox', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -466,27 +486,52 @@ async function openThread(phone) {
   }).then(() => loadConversations()).catch(() => {});
 }
 
-async function loadMessages(forceScroll) {
-  if (!activePhone) return;
-  const phone = activePhone;
-  const res = await api('/.netlify/functions/bot-inbox?action=thread&phone=' + encodeURIComponent(phone));
-  const data = await res.json();
-  if (phone !== activePhone) return;              // reader moved on mid-request
-  const box = document.getElementById('msgs');
-  const wasAtBottom = forceScroll || atBottom(box);
-
-  // Drop optimistic bubbles once the real rows come back.
-  box.querySelectorAll('.msg.pending').forEach(n => n.remove());
-
-  let appended = 0;
-  for (const m of (data.messages || [])) {
-    const key = String(m.id ?? (m.created_at + '|' + (m.message || '').slice(0, 24)));
-    if (renderedIds.has(key)) continue;
-    renderedIds.add(key);
-    box.appendChild(messageEl(m));
-    appended++;
-  }
-  if (appended && wasAtBottom) box.scrollTop = box.scrollHeight;
+async function loadCustomer(phone, version) {
+  const target=document.getElementById('customerContent');target.textContent='Loading customer details…';
+  try {
+    const res=await api('/.netlify/functions/bot-inbox?action=customer&phone='+encodeURIComponent(phone));
+    if(!res.ok)throw new Error('Customer details unavailable');
+    const d=await res.json();if(version!==threadVersion)return;
+    if(d.name){document.getElementById('tName').textContent=d.name;const conv=conversations.find(c=>c.customer_phone===phone);if(conv)conv.customer_name=d.name;renderList();}
+    target.innerHTML=`<p><strong>${esc(d.name||'Name not on record')}</strong> · ${esc(phone)}</p>
+      ${d.email?`<p>${esc(d.email)}</p>`:''}${d.address?`<p>Latest order address: ${esc(d.address)}</p>`:''}
+      <p>${d.orders.length} linked order(s)</p>` + d.orders.map(o=>`<div class="order-detail"><strong>${esc(o.id)}</strong> · ${esc(o.status)} · ₹${esc(o.total)} · ${esc(new Date(o.date).toLocaleDateString('en-IN'))}
+      <div>${o.items.map(i=>esc(i.title)+' × '+esc(i.qty)).join('<br>')}</div>
+      ${o.tracking?`<div>${esc(o.courier)} · Tracking: ${esc(o.tracking)}</div>`:''}</div>`).join('');
+  }catch(e){if(version===threadVersion){target.textContent=e.message+' — refresh to retry.';}}
+}
+async function loadMessages(fullHistory) {
+  if (!activePhone || historyBusy) return;
+  fullHistory = fullHistory || !allHistoryLoaded;
+  const phone=activePhone,version=threadVersion,box=document.getElementById('msgs');
+  const status=document.getElementById('historyStatus'),retry=document.getElementById('historyRetry');
+  historyBusy=true;retry.hidden=true;
+  let offset=0,snapshot='',complete=false;
+  try {
+    do {
+      const res=await api('/.netlify/functions/bot-inbox?action=thread&phone='+encodeURIComponent(phone)+'&offset='+offset+(snapshot?'&snapshot='+encodeURIComponent(snapshot):''));
+      if(!res.ok)throw new Error('Could not load conversation history');
+      const data=await res.json();if(version!==threadVersion)return;
+      snapshot=data.snapshot;
+      const oldHeight=box.scrollHeight,oldTop=box.scrollTop,stick=atBottom(box)||(!renderedIds.size&&fullHistory);
+      box.querySelectorAll('.msg.pending').forEach(n=>n.remove());
+      let fresh=0;
+      for(const m of data.messages||[]){
+        const key=String(m.id??(m.created_at+'|'+m.message));if(renderedIds.has(key))continue;
+        renderedIds.add(key);fresh++;const el=messageEl(m);el.dataset.sort=m.created_at+'|'+String(m.id||'');
+        const next=[...box.children].find(n=>n.dataset.sort>el.dataset.sort);box.insertBefore(el,next||null);
+      }
+      if(stick)box.scrollTop=box.scrollHeight;else if(offset)box.scrollTop=oldTop+box.scrollHeight-oldHeight;
+      offset=data.next_offset;
+      complete=offset===null;
+      if(complete)allHistoryLoaded=true;
+      status.textContent=renderedIds.size+' saved messages loaded'+(complete?' · End of recorded history.':' · Loading history…');
+      // On refresh, page back until reaching messages already present (also catches >200 new messages).
+      if(!fullHistory&&fresh<(data.messages||[]).length)break;
+    }while(offset!==null);
+    if(!fullHistory)status.textContent=renderedIds.size+' saved messages loaded';
+  }catch(e){if(version===threadVersion){status.textContent=e.message+' — history may be incomplete.';retry.hidden=false;}}
+  finally{if(version===threadVersion)historyBusy=false;}
 }
 
 function renderActions(phone, conv) {

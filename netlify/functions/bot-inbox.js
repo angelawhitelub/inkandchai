@@ -13,6 +13,7 @@
  * POST {action:"mark_read",phone}       — clear unread count
  */
 
+const { threadPage, customerDetails, enrichNames } = require('./utils/inbox-history');
 const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
 const { requireAdmin } = require('./utils/admin-auth');
@@ -21,6 +22,8 @@ const PHONE_ID = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VER  = 'v20.0';
 
 const CORS = {
+  'Cache-Control': 'private, no-store',
+  'Content-Type': 'application/json',
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token, X-Admin-Key',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -77,26 +80,13 @@ exports.handler = async (event) => {
           .order('last_message_at', { ascending: false })
           .limit(200);
         if (error) throw error;
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({ conversations: data || [] }) };
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ conversations: await enrichNames(db, data || []) }) };
       }
 
-      if (q.action === 'thread' && q.phone) {
-        const { data, error } = await db
-          .from('bot_messages')
-          .select('*')
-          .eq('customer_phone', q.phone)
-          // Fetch the newest rows before applying the cap. Ordering ascending
-          // here returned the *oldest* 200 messages, so recent human replies
-          // were saved and shown in the sidebar preview but disappeared from
-          // long threads. Reverse below to keep the UI chronological.
-          .order('created_at', { ascending: false })
-          .limit(200);
-        if (error) throw error;
-        return {
-          statusCode: 200,
-          headers: CORS,
-          body: JSON.stringify({ messages: (data || []).reverse() }),
-        };
+      if ((q.action === 'thread' || q.action === 'customer') && q.phone) {
+        if (!/^\+?[\d ()-]{7,24}$/.test(q.phone) || !/^\d{7,15}$/.test(q.phone.replace(/\D/g,''))) return {statusCode:400,headers:CORS,body:JSON.stringify({error:'Invalid phone'})};
+        const result = q.action === 'customer' ? await customerDetails(db,q.phone) : await threadPage(db,q.phone,q);
+        return {statusCode:200,headers:CORS,body:JSON.stringify(result)};
       }
 
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Unknown action' }) };

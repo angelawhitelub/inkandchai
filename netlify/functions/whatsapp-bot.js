@@ -1803,6 +1803,7 @@ exports.handler = async (event) => {
 async function handleInboundMessage(msg, value) {
   try {
     const msgId         = msg.id;
+    const customerName = value?.contacts?.find(c => c.wa_id === msg.from)?.profile?.name || null;
     const from          = msg.from;  // sender's WhatsApp phone number
     // The number that RECEIVED this message. We reply through the same one so
     // that customers messaging 7678400508 hear back from 7678400508, and those
@@ -1828,12 +1829,12 @@ async function handleInboundMessage(msg, value) {
       if (btnText.includes('confirm') || btnText.includes('cancel')) {
         // Log the tap BEFORE acting on it. It used to return without persisting,
         // so an order confirmed or cancelled by button left no trace in the inbox.
-        await persistMessage(from, 'user', btnLabel || '[button tap]', null, recvPhoneId);
+        await persistMessage(from, 'user', btnLabel || '[button tap]', customerName, recvPhoneId);
         const handled = await handleCodConfirm(from, btnText.includes('cancel') ? 'cancel' : 'confirm', recvPhoneId);
         if (handled) {
           await persistMessage(from, 'bot',
             btnText.includes('cancel') ? 'COD order cancelled by customer' : 'COD order confirmed by customer',
-            null, recvPhoneId);
+            customerName, recvPhoneId);
           return;
         }
       }
@@ -1850,7 +1851,7 @@ async function handleInboundMessage(msg, value) {
       // Photo, voice note, document… The bot can't read it, but it must still be
       // recorded: this used to return before persisting, so a customer who opened
       // with a photo produced a thread that appeared to start mid-conversation.
-      await persistMessage(from, 'user', describeNonText(msg), null, recvPhoneId);
+      await persistMessage(from, 'user', describeNonText(msg), customerName, recvPhoneId);
       // A human handling this thread should not be talked over by the decline.
       if (await isHumanTakeover(from)) {
         console.log(`[TAKEOVER] ${from} — ${msg.type} received, bot suppressed`);
@@ -1858,7 +1859,7 @@ async function handleInboundMessage(msg, value) {
       }
       const decline = "Hi! I can only read text messages right now 😊 Please type your question and I'll help you out!";
       await sendReply(from, decline, recvPhoneId);
-      await persistMessage(from, 'bot', decline, null, recvPhoneId);
+      await persistMessage(from, 'bot', decline, customerName, recvPhoneId);
       return;
     }
 
@@ -1873,7 +1874,7 @@ async function handleInboundMessage(msg, value) {
       createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), from);
 
     // ── Persist inbound message ───────────────────────────────────────────────
-    await persistMessage(from, 'user', userText, null, recvPhoneId);
+    await persistMessage(from, 'user', userText, customerName, recvPhoneId);
 
     // ── Opt-out / opt-in ─────────────────────────────────────────────────────
     // STOP is WhatsApp's universal opt-out keyword. The bot used to greet the
@@ -1884,7 +1885,7 @@ async function handleInboundMessage(msg, value) {
     if (isOptOutKeyword(userText)) {
       if (!wasOptedOut) {
         await sendReply(from, OPT_OUT_CONFIRMATION, recvPhoneId);
-        await persistMessage(from, 'bot', OPT_OUT_CONFIRMATION, null, recvPhoneId);
+        await persistMessage(from, 'bot', OPT_OUT_CONFIRMATION, customerName, recvPhoneId);
       }
       console.log(`[OPTOUT] ${from} opted out${wasOptedOut ? ' (already; staying silent)' : ''}`);
       return;
@@ -1893,7 +1894,7 @@ async function handleInboundMessage(msg, value) {
     // "continue" are ordinary words and must reach the assistant as usual.
     if (wasOptedOut && isOptInKeyword(userText)) {
       await sendReply(from, OPT_IN_CONFIRMATION, recvPhoneId);
-      await persistMessage(from, 'bot', OPT_IN_CONFIRMATION, null, recvPhoneId);
+      await persistMessage(from, 'bot', OPT_IN_CONFIRMATION, customerName, recvPhoneId);
       console.log(`[OPTOUT] ${from} opted back in — assistant resumed`);
       return;
     }
@@ -1962,7 +1963,7 @@ async function handleInboundMessage(msg, value) {
     const sendResult = await sendReply(from, reply, recvPhoneId);
     if (!sendResult.ok) throw new Error(`WhatsApp send failed: ${sendResult.error || 'Meta rejected the message'}`);
     // Persist bot reply (reset unread — bot replied so nothing new for admin)
-    await persistMessage(from, 'bot', reply, null, recvPhoneId);
+    await persistMessage(from, 'bot', reply, customerName, recvPhoneId);
     console.log(`[OUT] ${from}: ${reply.slice(0, 120)}`);
 
   } catch (err) {
