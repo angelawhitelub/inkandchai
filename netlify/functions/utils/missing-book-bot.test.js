@@ -70,34 +70,28 @@ function harness(db) {
   return { chat, emails, deps };
 }
 
-test('creates a free replacement for the missing book and confirms in the same chat', async () => {
+// Photo evidence is required (utils/customer-claim), and a chat cannot supply
+// it, so the bot checks the report and sends the customer to the form.
+function assertNothingFiled(db, h) {
+  assert.equal(db.inserted.length, 0, 'no replacement order');
+  assert.equal(db.updated.length, 0, 'the original order is not stamped');
+  assert.equal(h.chat.length, 0, 'the tool sends nothing itself');
+  assert.equal(h.emails.length, 0);
+}
+
+test('a valid missing-book report is sent to the Track Order form for photos, not filed from chat', async () => {
   process.env.STORE_OWNER_EMAIL = 'owner@example.com';
   const db = fakeDb({ messages: said('hi', 'one book missing from my parcel, alchemist nahi aayi'), orders: [order()] });
   const h = harness(db);
   const res = await reportMissingBookViaBot(PHONE, { order_id: 'IC-20260920-ABCDE', books: [{ title: 'the alchemist', qty: 1 }] }, 'PHONE_B', h.deps);
 
-  assert.equal(res.ok, true, JSON.stringify(res));
-  assert.match(res.replacement_order_id, /^IC-R-\d{8}-[A-Z0-9]{5}$/);
-  const row = db.inserted[0];
-  assert.equal(row.status, 'replacement_pending');
-  assert.equal(row.amount_paise, 0);
-  assert.equal(row.shipment_payment_type, 'prepaid');
-  assert.deepEqual(row.cart_items.map(i => [i.title, i.qty]), [['The Alchemist', 1]]);
-  assert.equal(row.cart_items[0]._replacement.reported_via, 'whatsapp');
-  assert.equal(row.cart_items[0]._replacement.original_order_id, 'IC-20260920-ABCDE');
-
-  // The original is stamped, so it shows under Missing Books in admin.
-  const stamped = db.updated[0].row.cart_items.find(i => i.title === 'The Alchemist');
-  assert.equal(stamped._missing, true);
-  assert.equal(stamped._missing_qty, 1);
-  assert.equal(stamped._missing_via, 'whatsapp');
-
-  // Customer: one message through the number they wrote to, plus an email.
-  assert.equal(h.chat.length, 1);
-  assert.equal(h.chat[0].via, 'PHONE_B');
-  assert.match(h.chat[0].text, new RegExp(res.replacement_order_id));
-  assert.ok(h.emails.some(e => e.to === 'riya@example.com'));
-  assert.ok(h.emails.some(e => e.to === 'owner@example.com' && /WhatsApp bot/.test(e.subject)));
+  assert.equal(res.ok, false);
+  assert.equal(res.error, 'photos-required', JSON.stringify(res));
+  assert.equal(res.order_id, 'IC-20260920-ABCDE');
+  assert.match(res.message, /https:\/\/inkandchai\.in\/track\//);
+  assert.match(res.message, /No request has been created/);
+  assert.doesNotMatch(res.message, /UPI/, 'a prepaid order is not asked for a UPI ID');
+  assertNothingFiled(db, h);
 });
 
 test('nothing is created unless the customer actually said something is missing', async () => {
@@ -136,27 +130,27 @@ test('a title that is not on the order gets the real list back to ask with', asy
   assert.match(res.message, /The Alchemist/);
 });
 
-test('cash on delivery asks for a UPI ID first, then files with it', async () => {
+test('cash on delivery: no UPI ID is collected in chat, the form asks for it', async () => {
   const cod = order({ razorpay_payment_id: null, shipment_payment_type: 'cod' });
   const db = fakeDb({ messages: said('ek book nahi aayi'), orders: [cod] });
   const h = harness(db);
-  const first = await reportMissingBookViaBot(PHONE, { books: ['Atomic Habits'] }, null, h.deps);
-  assert.equal(first.error, 'need_upi');
-  assert.equal(db.inserted.length, 0);
-
-  const second = await reportMissingBookViaBot(PHONE, { books: ['Atomic Habits'], upi_id: '9876543210@ybl' }, null, h.deps);
-  assert.equal(second.ok, true, JSON.stringify(second));
-  assert.equal(db.inserted[0].cart_items[0]._replacement.refund_upi_id, '9876543210@ybl');
+  const res = await reportMissingBookViaBot(PHONE, { books: ['Atomic Habits'] }, null, h.deps);
+  assert.equal(res.error, 'photos-required', JSON.stringify(res));
+  assert.match(res.message, /form will also ask for their UPI ID/);
+  assert.match(res.message, /never in this chat/);
+  assertNothingFiled(db, h);
 });
 
-test('a replacement already on file without this book promises nothing', async () => {
-  const existing = { razorpay_order_id: 'IC-R-20260921-OLD01', cart_items: [{ title: 'Atomic Habits (Paperback)' }] };
+test('an order that already has a replacement is not sent to the form again', async () => {
+  const existing = { razorpay_order_id: 'IC-R-20260921-OLD01', status: 'replacement_pending', cart_items: [{ title: 'Atomic Habits (Paperback)' }] };
   const db = fakeDb({ messages: said('alchemist missing'), orders: [order()], replacements: [existing] });
   const h = harness(db);
   const res = await reportMissingBookViaBot(PHONE, { books: ['The Alchemist'] }, null, h.deps);
   assert.equal(res.error, 'replacement-exists');
-  assert.equal(db.inserted.length, 0);
-  assert.doesNotMatch(h.chat[0].text, /IC-R-/);
+  assert.match(res.message, /only one is allowed per order/);
+  assert.match(res.message, /\[ESCALATE\]/);
+  assert.doesNotMatch(res.message, /inkandchai\.in\/track/);
+  assertNothingFiled(db, h);
 });
 
 test('loose matching accepts a typed title but not an ambiguous one', () => {

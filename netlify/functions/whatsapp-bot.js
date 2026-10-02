@@ -32,7 +32,7 @@ const {
 } = require('./utils/order-detail-recovery');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { assess: assessWrongCod, botContext: wrongCodBotContext, ownerUpiEmail, performWrongCodRefund } = require('./utils/wrong-cod-refund');
-const { normalizeUpiId, requireUpiId } = require('./utils/upi-id');
+const { normalizeUpiId } = require('./utils/upi-id');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
 const { matchMissingItems } = require('./utils/missing-book-report');
 const { sendEmail } = require('./utils/email');
@@ -191,10 +191,10 @@ MISSING BOOK IN A MULTI-BOOK ORDER — customer says "I ordered 3 books but got 
 - Apologise warmly and reassure them their money for the missing book is completely safe.
 - Photo evidence is REQUIRED. Direct the customer to https://inkandchai.in/track/ to look up the order and upload photos of the parcel, label and received books. Chat alone does not create a replacement. Never claim one was created or promise one before the form accepts their request.
 - Only for a DELIVERED order. If the order is still on its way, tell them to check the parcel once it arrives and come back if anything is short.
-- CASH ON DELIVERY: if the tool replies need_upi, ask for their UPI ID (like 9876543210@ybl) and call the tool again with it. Explain why in one line: they paid the courier in cash, so there is no online payment to reverse — the UPI ID is only used to refund that book's value if we cannot arrange it. Never ask for a bank account, IFSC, card number, OTP or CVV.
+- CASH ON DELIVERY: the form on /track/ asks for their UPI ID (it is only used to refund that book's value if we cannot arrange it). Warn them it will ask, and tell them to type it THERE. Never ask for a UPI ID, bank account, IFSC, card number, OTP or CVV in this chat.
 - If they say NOTHING in the parcel arrived, or the parcel never came, that is not a missing book — it is a delivery problem. Do not call the tool; say our team will check it with the courier and end with [ESCALATE].
-- After the tool succeeds, reply in one or two warm lines: the replacement order id from the tool, that it ships free, that they do not need to return the books they did receive, and that tracking comes by WhatsApp and email once dispatched. The tool has already sent them the confirmation, so do not repeat the whole list.
-- If the tool says a replacement already exists for this order without this book, or that it could not create one, do NOT promise a parcel — say our team will follow up personally and end with [ESCALATE].
+- The report_missing_book tool only checks the report. When it returns photos-required, relay its message warmly: the Track Order link, which book(s), and that photos of the parcel, shipping label and received books are needed. Once they submit the form, a free replacement is created and they get the confirmation by WhatsApp and email.
+- If the tool says a replacement already exists for this order (only one request is allowed per order), do NOT promise a parcel and do NOT send them to the form — say our team will follow up personally and end with [ESCALATE].
 - Never claim a replacement is created unless the tool returned one.
 - If they'd rather have a REFUND of the missing book's value instead of a reshipment, tell them our team will switch it and end with [ESCALATE].
 - If the missing book turns out to be unavailable, so we cannot send it either, we refund that book's value — they are never left short. Say this if they ask.
@@ -903,7 +903,7 @@ const OPENAI_TOOLS = [{
   type: 'function',
   function: {
     name: 'report_missing_book',
-    description: 'Report that one or more books were MISSING from a DELIVERED parcel, and create a FREE replacement order for them. Call this ONLY after the customer has said a book did not arrive AND has confirmed which book(s) when you asked. Never call it for a damaged or wrong book, for a parcel that has not been delivered, or when NOTHING in the parcel arrived (that is a delivery problem — escalate). Creates the replacement, notifies the customer by email and WhatsApp, and alerts our team. On a Cash on Delivery order it returns need_upi until you pass the customer\'s UPI ID.',
+    description: 'Check a report that one or more books were MISSING from a DELIVERED parcel, and tell the customer how to file it. Call this ONLY after the customer has said a book did not arrive AND has confirmed which book(s) when you asked. Never call it for a damaged or wrong book, for a parcel that has not been delivered, or when NOTHING in the parcel arrived (that is a delivery problem — escalate). It checks the order and the books, but it does NOT create the replacement: photo evidence is required, so it returns photos-required with the link to the Track Order form where the customer attaches photos (and, on a COD order, their UPI ID). Relay that; never say a replacement was created.',
     parameters: {
       type: 'object',
       properties: {
@@ -920,8 +920,6 @@ const OPENAI_TOOLS = [{
             required: ['title'],
           },
         },
-        what_happened: { type: 'string', description: 'One sentence, in the customer\'s own words, of what they said happened.' },
-        upi_id: { type: 'string', description: 'Only for a Cash on Delivery order after the tool asked for it: the UPI ID exactly as the customer typed it.' },
       },
       required: ['books'],
     },
@@ -1326,26 +1324,26 @@ async function reportMissingBookViaBot(phone, args = {}, senderPhoneId = null, d
         : { ok: false, error: 'already-reported', order_id: oid, message: 'This book was already reported missing on this order and our team has it.' + ESCALATE };
     }
 
-    let refundUpi = '';
-    if (isDefinitelyCod(order)) {
-      const upi = requireUpiId(args.upi_id);
-      if (!upi.ok) {
-        return {
-          ok: false, error: 'need_upi', order_id: oid,
-          message: args.upi_id
-            ? `${upi.reason} Ask them to check it and send it again.`
-            : 'This was a Cash on Delivery order. Ask for their UPI ID (like 9876543210@ybl) — it is only used to refund the book\'s value if we cannot send it — then call this tool again with upi_id. Never ask for bank account, IFSC, card, OTP or CVV.',
-        };
-      }
-      refundUpi = upi.value;
+    // One replacement or missing-book request per order (utils/customer-claim).
+    // If one exists, the website form would refuse them too — say so instead.
+    const { data: prior } = await supabase.from('orders')
+      .select('razorpay_order_id, status')
+      .eq('source', 'replacement')
+      .eq('cart_items->0->_replacement->>original_order_id', String(oid))
+      .limit(1)
+      .maybeSingle();
+    if (prior) {
+      return { ok: false, error: 'replacement-exists', order_id: oid,
+        message: `Order ${oid} already has a replacement request, and only one is allowed per order, so do not promise another parcel or send them to the form.` + ESCALATE };
     }
 
-    const summary = String(args.what_happened || '').trim().slice(0, 300);
-    const comment = `Reported to the WhatsApp bot.${summary ? ` ${summary}` : ''}\nCustomer wrote: ${said.slice(-700)}`.slice(0, 1000);
-
-    // Chat tools cannot invent evidence or pass arbitrary remote image URLs.
+    // Chat tools cannot invent evidence or pass arbitrary remote image URLs, so
+    // the bot never files the request itself: the form at /track/ takes the
+    // photos and, on a COD order, the UPI ID. Nothing is collected here.
     return { ok: false, error: 'photos-required', order_id: oid,
-      message: 'Photo evidence is required before creating a missing-book request. Ask the customer to open https://inkandchai.in/track/, look up this order, choose the missing-book reason and attach photos of the parcel, label and received books. No request has been created from this chat.' };
+      message: 'Photo evidence is required before creating a missing-book request. Ask the customer to open https://inkandchai.in/track/, look up this order, choose the missing-book reason and attach photos of the parcel, label and received books.'
+        + (isDefinitelyCod(order) ? ' This was Cash on Delivery, so the form will also ask for their UPI ID — they type it there, never in this chat.' : '')
+        + ' No request has been created from this chat.' };
 
   } catch (e) {
     console.error('reportMissingBookViaBot error:', e.message);
