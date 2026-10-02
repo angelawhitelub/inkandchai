@@ -363,6 +363,7 @@ function describeNonText(msg) {
 }
 
 // ── Persist a message to Supabase + update conversation row ──────────────────
+const { canAutoClose, contextFor, ACK, isClosureCandidate } = require('./utils/conversation-priority');
 async function persistMessage(phone, role, message, customerName = null, whatsappPhoneId = null) {
   try {
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -370,27 +371,32 @@ async function persistMessage(phone, role, message, customerName = null, whatsap
     const preview = (role === 'user' ? message : `[Bot]: ${message}`).slice(0, 100);
 
     // Insert message
-    await db.from('bot_messages').insert({ customer_phone: phone, role, message, created_at: now });
+    const savedMessage = await db.from('bot_messages').insert({ customer_phone: phone, role, message, created_at: now });
+    if(savedMessage?.error)throw savedMessage.error;
 
+    const { data: existing, error: conversationError } = await db.from('bot_conversations')
+      .select('status,human_takeover,unread_count').eq('customer_phone',phone).maybeSingle();
+    let resolved = !conversationError && existing?.status === 'resolved' && (role !== 'user' || ACK.test(message));
+    if (role === 'user' && isClosureCandidate(message) && !resolved && !conversationError && !existing?.human_takeover) {
+      try {
+        const context = await contextFor(db,phone);
+        resolved = context.complete && canAutoClose(existing||{},context.messages,context.orders);
+      } catch(e) { console.error('Conversation resolution check failed:',e.message); }
+    }
     // Upsert conversation summary
     const convUpdate = {
       customer_phone:  phone,
       last_message:    preview,
       last_message_at: now,
-      status:          'active',
+      status:          resolved ? 'resolved' : 'active',
     };
     if (customerName) convUpdate.customer_name = customerName;
     // Remember which Ink & Chai WhatsApp number received this conversation.
     // The account has multiple Cloud API numbers; manual inbox replies must be
     // sent from the same number or they appear in a different WhatsApp chat.
     if (whatsappPhoneId) convUpdate.whatsapp_phone_id = String(whatsappPhoneId);
-    // Only increment unread for inbound customer messages
-    if (role === 'user') {
-      // Use raw SQL increment via rpc — fallback: just set a flag
-      const { data: existing } = await db.from('bot_conversations')
-        .select('unread_count').eq('customer_phone', phone).maybeSingle();
-      convUpdate.unread_count = ((existing?.unread_count) || 0) + 1;
-    }
+    if (role === 'user') convUpdate.unread_count = resolved ? 0 : ((existing?.unread_count)||0)+1;
+    if (resolved) convUpdate.unread_count = 0;
 
     await db.from('bot_conversations').upsert(convUpdate, { onConflict: 'customer_phone' });
   } catch (e) {

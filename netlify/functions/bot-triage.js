@@ -22,6 +22,7 @@
  * Auth: same admin gate as every other admin endpoint.
  */
 
+const { category } = require('./utils/conversation-priority');
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 
@@ -160,7 +161,7 @@ exports.handler = async (event) => {
     // Order context: a complaint attached to an RTO or a cancelled order is a
     // different problem from a complaint attached to nothing.
     const { data: orders } = await db.from('orders')
-      .select('razorpay_order_id,customer_phone,customer_name,status,amount_paise,tracking_id,created_at')
+      .select('razorpay_order_id,customer_phone,customer_name,status,amount_paise,tracking_id,created_at,cart_items,source')
       .gte('created_at', new Date(Date.now() - 90 * 86400e3).toISOString())
       .order('created_at', { ascending: false });
     const ordersByPhone = new Map();
@@ -176,6 +177,7 @@ exports.handler = async (event) => {
 
     for (const [phone, msgs] of byPhone) {
       const conv = convByPhone.get(phone) || {};
+      if(conv.status === 'resolved') continue;
       const customerMsgs = msgs.filter(m => m.role === 'user' || m.role === 'customer').map(m => m.message || '');
       const botMsgs = msgs.filter(m => m.role === 'assistant' || m.role === 'bot').map(m => m.message || '');
       const humanMsgs = msgs.filter(m => m.role === 'admin' || m.role === 'human');
@@ -232,6 +234,12 @@ exports.handler = async (event) => {
         reasons.push({ key: 'bad_order', points: 12, label: `Order ${troubled[0].razorpay_order_id} is ${troubled[0].status}` });
       }
 
+      const priority = category(conv,msgs,custOrders,now);
+      if(priority.category === 'top') {
+        score = Math.max(score,60);
+        reasons.push({key:'top_priority',points:60,label:priority.category_reason});
+      }
+
       // ── Dampeners ─────────────────────────────────────────────────────────
       // A thread can score high on its history and still be over: "theek hai",
       // "ok thanks", "got it". Without this the list fills with arguments that
@@ -248,8 +256,8 @@ exports.handler = async (event) => {
         score -= 15;
         reasons.push({ key: 'taken_over', points: -15, label: 'A human has taken this over' });
       }
-      if (conv.status === 'resolved' && !(customerSpokeLast && waitingMin < 1440)) continue;
 
+      if(priority.category === 'top') score=Math.max(score,60);
       if (score < minScore) continue;
 
       results.push({
@@ -257,6 +265,7 @@ exports.handler = async (event) => {
         name: conv.customer_name || custOrders[0]?.customer_name || '',
         score,
         severity: severityOf(score),
+        category: priority.category,
         reasons: reasons.sort((a, b) => b.points - a.points),
         waiting_minutes: customerSpokeLast ? waitingMin : 0,
         customer_spoke_last: Boolean(customerSpokeLast),

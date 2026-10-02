@@ -9,11 +9,13 @@
  * POST {action:"takeover", phone}       — admin takes over; bot stops replying
  * POST {action:"release",  phone}       — release back to bot
  * POST {action:"resolve",  phone}       — mark conversation resolved
+ * POST {action:"reopen",   phone}       — reopen a closed conversation
  * POST {action:"send",     phone, text} — admin sends a WhatsApp message
  * POST {action:"mark_read",phone}       — clear unread count
  */
 
 const { threadPage, customerDetails, enrichNames } = require('./utils/inbox-history');
+const { categorizeConversations } = require('./utils/conversation-priority');
 const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
 const { requireAdmin } = require('./utils/admin-auth');
@@ -80,7 +82,7 @@ exports.handler = async (event) => {
           .order('last_message_at', { ascending: false })
           .limit(200);
         if (error) throw error;
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({ conversations: await enrichNames(db, data || []) }) };
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ conversations: await categorizeConversations(db, await enrichNames(db, data || [])) }) };
       }
 
       if ((q.action === 'thread' || q.action === 'customer') && q.phone) {
@@ -116,10 +118,16 @@ exports.handler = async (event) => {
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true }) };
       }
 
+      if (action === 'reopen') {
+        const {error}=await db.from('bot_conversations').update({status:'active'}).eq('customer_phone',phone);
+        if(error)throw error;
+        return {statusCode:200,headers:CORS,body:JSON.stringify({ok:true})};
+      }
       if (action === 'resolve') {
-        await db.from('bot_conversations')
+        const {error}=await db.from('bot_conversations')
           .update({ status: 'resolved', human_takeover: false, unread_count: 0 })
           .eq('customer_phone', phone);
+        if(error)throw error;
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true }) };
       }
 

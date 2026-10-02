@@ -166,6 +166,7 @@ main{flex:1;min-height:0;display:flex}
   .mobile-back{display:inline-block;margin-bottom:.3rem}.thead{padding:.5rem;flex-wrap:wrap;gap:.4rem}.tactions .btn{padding:.35rem;font-size:.65rem}
   .customer-details{max-height:25vh}.msg{max-width:92%}.msgs{padding:.6rem}.composer{padding:.5rem}
 }
+.category-label{display:block;font-size:.73rem;font-weight:700;margin:.15rem 0}.cat-top{color:#b4232c}.cat-low{color:#236b45}.cat-attention{color:#905200}.cat-closed{color:#586574}
 </style>
 <!-- Applied in <head> so the saved size is on <html> before first paint. -->
 <script>
@@ -234,9 +235,11 @@ main{flex:1;min-height:0;display:flex}
         <div class="filters">
           <button class="fbtn active" onclick="setFilter('all',this)">All</button>
           <button class="fbtn" onclick="setFilter('unread',this)">Unread</button>
-          <button class="fbtn" onclick="setFilter('flagged',this)">🚨 Flagged</button>
+          <button class="fbtn" onclick="setFilter('top',this)">🔴 Top priority</button>
+          <button class="fbtn" onclick="setFilter('low',this)">Low priority</button>
+          <button class="fbtn" onclick="setFilter('attention',this)">Needs attention</button>
           <button class="fbtn" onclick="setFilter('takeover',this)">Human</button>
-          <button class="fbtn" onclick="setFilter('resolved',this)">Resolved</button>
+          <button class="fbtn" onclick="setFilter('closed',this)">Closed chats</button>
         </div>
       </div>
       <div class="convlist" id="convlist"><div class="spin">Loading…</div></div>
@@ -404,14 +407,14 @@ function visibleConversations() {
   return conversations.filter(c => {
     if (filter === 'unread'   && !(c.unread_count > 0)) return false;
     if (filter === 'takeover' && !c.human_takeover)     return false;
-    if (filter === 'resolved' && c.status !== 'resolved') return false;
+    if (['top','low','attention','closed'].includes(filter) && c.category !== filter) return false;
     if (filter === 'flagged'  && !flaggedPhones.has(c.customer_phone)) return false;
     if (search) {
       const hay = (c.customer_phone + ' ' + (c.customer_name || '')).toLowerCase();
       if (!hay.includes(search)) return false;
     }
     return true;
-  });
+  }).sort((a,b)=>({top:0,attention:1,low:2,closed:3}[a.category]??1)-({top:0,attention:1,low:2,closed:3}[b.category]??1));
 }
 
 function renderList() {
@@ -429,10 +432,11 @@ function renderList() {
           <span class="who">${esc(label)}</span>
           <span class="when">${ago(c.last_message_at)}</span>
         </span>
+        <span class="category-label cat-${esc(c.category||'attention')}" title="${esc(c.category_reason||'')}">${esc(({top:'Top priority',low:'Low priority',attention:'Needs attention',closed:'Closed'})[c.category]||'Needs attention')}</span>
         <span class="prev">
           ${flag ? `<span class="badge b-${flag.severity}">${flag.severity === 'critical' ? '🚨' : '⚠'} ${flag.score}</span>` : ''}
           ${c.human_takeover ? '<span class="badge b-human">HUMAN</span>' : ''}
-          ${c.status === 'resolved' ? '<span class="badge b-resolved">DONE</span>' : ''}
+          ${c.status === 'resolved' ? '<span class="badge b-resolved">CLOSED</span>' : ''}
           <span class="prevtext">${esc((c.last_message || '').slice(0, 90))}</span>
           ${unread > 0 ? `<span class="unread">${unread > 99 ? '99+' : unread}</span>` : ''}
         </span>
@@ -538,7 +542,7 @@ function renderActions(phone, conv) {
   document.getElementById('tActions').innerHTML = `
     ${!conv.human_takeover ? `<button class="btn" onclick="act('takeover','${esc(phone)}')">🙋 Take over</button>` : ''}
     ${conv.human_takeover  ? `<button class="btn" onclick="act('release','${esc(phone)}')">🤖 Hand to bot</button>` : ''}
-    ${conv.status !== 'resolved' ? `<button class="btn green" onclick="act('resolve','${esc(phone)}')">✓ Resolve</button>` : ''}
+    ${conv.status === 'resolved' ? `<button class="btn" onclick="act('reopen','${esc(phone)}')">Reopen chat</button>` : `<button class="btn green" onclick="act('resolve','${esc(phone)}')">✓ Close chat</button>`}
     <a class="btn" target="_blank" rel="noopener" href="https://wa.me/${esc(phone)}">WhatsApp ↗</a>`;
 }
 
