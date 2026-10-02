@@ -28,7 +28,9 @@ const RESOLVE_HOURS = 48;
 const DELAY_REPEAT_HOURS = 48;
 const MAX_DELAY_NOTICES = 3;
 const REOPEN_WINDOW_DAYS = 7;
-const MAX_OPEN_PER_ORDER_CATEGORY = 1;
+// One unresolved ticket per order, whatever the topic: a second one only splits
+// the conversation. Enforced again by a partial unique index (sql/support_tickets.sql).
+const MAX_OPEN_PER_ORDER = 1;
 
 const MIN_MESSAGE = 20;
 const MAX_MESSAGE = 3000;
@@ -405,7 +407,7 @@ function customerWhatsApp(kind, t) {
 
 module.exports = {
   OWNER_EMAIL_DEFAULT, RESPOND_HOURS, RESOLVE_HOURS, DELAY_REPEAT_HOURS, MAX_DELAY_NOTICES, REOPEN_WINDOW_DAYS,
-  MAX_OPEN_PER_ORDER_CATEGORY, MIN_MESSAGE, MAX_MESSAGE, MAX_FILES_PER_SUBMISSION, MAX_FILES_PER_TICKET,
+  MAX_OPEN_PER_ORDER, MIN_MESSAGE, MAX_MESSAGE, MAX_FILES_PER_SUBMISSION, MAX_FILES_PER_TICKET,
   CATEGORIES, CATEGORY_BY_ID, STATUSES, STATUS_LABEL, ACTIVE, EVIDENCE_TYPES,
   ownerEmail, newTicketNo, normTicketNo, contactMatches, cleanOrderId, parseNewTicket, parseFileMetas, cleanFileName,
   evidenceKey, isEvidenceKeyFor, evidenceKind, slaDates, delayNoticeDue, ownerNudgeDue, isOverdue, canReopen,

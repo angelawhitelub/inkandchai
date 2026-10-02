@@ -21,6 +21,20 @@ const TICKETS = 'support_tickets';
 const EVENTS = 'support_ticket_events';
 const MISSING_TABLE = /relation .* does not exist|Could not find the table|schema cache/i;
 const UNIQUE_VIOLATION = '23505';
+// The partial unique index that allows one unresolved ticket per order.
+const ONE_OPEN_INDEX = 'support_tickets_one_open_per_order';
+const UNRESOLVED = ['open', 'in_progress', 'waiting_customer'];
+
+// The order's unresolved ticket, if any (other than `exceptId`).
+async function unresolvedTicketFor(deps, orderId, exceptId = null) {
+  const r = await deps.db.from(TICKETS).select('id,ticket_no,status').eq('order_id', orderId).in('status', UNRESOLVED);
+  if (r.error) return { error: r.error };
+  return { ticket: (r.data || []).find((t) => t.id !== exceptId) || null };
+}
+
+function alreadyOpen(t) {
+  return fail(409, `This order already has an open ticket (${t.ticket_no}). We'll resolve that one first — please add any new details or photos to it. You can raise a new ticket for this order once it is closed.`, { existing_ticket: t.ticket_no });
+}
 
 const fail = (status, error, extra = {}) => ({ status, body: { ok: false, error, ...extra } });
 const ok = (body = {}) => ({ status: 200, body: { ok: true, ...body } });
@@ -101,13 +115,11 @@ async function createTicket(deps, body, { ipHash = null } = {}) {
   }
   const realOrderId = order.razorpay_order_id || orderId;
 
-  // One open ticket per order and topic: a second one only splits the thread.
-  const open = await deps.db.from(TICKETS).select('ticket_no,status')
-    .eq('order_id', realOrderId).eq('category', category.id).in('status', ['open', 'in_progress', 'waiting_customer']);
+  // One unresolved ticket per order, whatever the topic, until it is closed.
+  const open = await unresolvedTicketFor(deps, realOrderId);
   if (open.error && MISSING_TABLE.test(open.error.message || '')) return fail(503, NO_TABLE);
-  if (open.data && open.data.length >= T.MAX_OPEN_PER_ORDER_CATEGORY) {
-    return fail(409, `You already have an open ticket for this (${open.data[0].ticket_no}). Please add your details to that one instead.`, { existing_ticket: open.data[0].ticket_no });
-  }
+  if (open.error) return fail(500, 'Could not check this order right now. Please try again in a minute.');
+  if (open.ticket) return alreadyOpen(open.ticket);
 
   const now = nowOf(deps);
   const sla = T.slaDates(now);
@@ -135,6 +147,11 @@ async function createTicket(deps, body, { ipHash = null } = {}) {
     const { data, error } = await deps.db.from(TICKETS).insert({ ...base, ticket_no: T.newTicketNo(deps.randomBytes ? deps.randomBytes() : undefined) }).select('*').single();
     if (!error) { ticket = data; break; }
     if (MISSING_TABLE.test(error.message || '')) return fail(503, NO_TABLE);
+    // Two submissions at once: the index lets only one through.
+    if (error.code === UNIQUE_VIOLATION && String(error.message || '').includes(ONE_OPEN_INDEX)) {
+      const winner = await unresolvedTicketFor(deps, realOrderId);
+      return winner.ticket ? alreadyOpen(winner.ticket) : fail(409, 'This order already has an open ticket. Please check your email for its number.');
+    }
     if (error.code !== UNIQUE_VIOLATION) {
       console.error('[support-ticket] insert:', error.message);
       return fail(500, 'We could not save your ticket just now. Please try again, or WhatsApp us on +91 92171 75546.');
@@ -259,6 +276,8 @@ async function customerReply(deps, body) {
   let reopened = false;
   if (ticket.status === 'closed') {
     if (!T.canReopen(ticket, now)) return fail(409, `This ticket was closed more than ${T.REOPEN_WINDOW_DAYS} days ago. Please open a new ticket and mention ${ticket.ticket_no}.`);
+    const other = await unresolvedTicketFor(deps, ticket.order_id, ticket.id);
+    if (other.ticket) return alreadyOpen(other.ticket);
     const sla = T.slaDates(now);
     Object.assign(patch, { status: 'open', closed_at: null, resolution: null, reopened_count: (ticket.reopened_count || 0) + 1,
       respond_by: sla.respond_by, due_at: sla.due_at, delay_notices: 0, delay_notified_at: null, owner_reminded_at: null, first_response_at: null });
@@ -272,6 +291,10 @@ async function customerReply(deps, body) {
     return fail(409, `A ticket can hold ${T.MAX_FILES_PER_TICKET} files in all.`);
   }
   const { error: upErr } = await deps.db.from(TICKETS).update(patch).eq('id', ticket.id);
+  if (upErr && reopened && String(upErr.message || '').includes(ONE_OPEN_INDEX)) {
+    const other = await unresolvedTicketFor(deps, ticket.order_id, ticket.id);
+    if (other.ticket) return alreadyOpen(other.ticket);
+  }
   if (upErr) return fail(500, 'Could not send your message. Please try again.');
 
   if (reopened) await addEvent(deps, ticket.id, { actor: 'system', kind: 'status', body: 'Reopened by the customer.' });
@@ -352,6 +375,8 @@ async function staffReopen(deps, { id }) {
   const { ticket, error } = await loadById(deps, id);
   if (error) return error;
   if (ticket.status !== 'closed') return fail(409, 'Only a closed ticket can be reopened.');
+  const other = await unresolvedTicketFor(deps, ticket.order_id, ticket.id);
+  if (other.ticket) return fail(409, `Order ${ticket.order_id} already has an open ticket (${other.ticket.ticket_no}). Close that one first, or continue there.`, { existing_ticket: other.ticket.ticket_no });
   const now = nowOf(deps);
   const sla = T.slaDates(now);
   const iso = new Date(now).toISOString();
@@ -359,6 +384,7 @@ async function staffReopen(deps, { id }) {
     status: 'open', closed_at: null, resolution: null, reopened_count: (ticket.reopened_count || 0) + 1,
     respond_by: sla.respond_by, due_at: sla.due_at, delay_notices: 0, delay_notified_at: null, owner_reminded_at: null, updated_at: iso,
   }).eq('id', ticket.id);
+  if (upErr && String(upErr.message || '').includes(ONE_OPEN_INDEX)) return fail(409, `Order ${ticket.order_id} already has an open ticket. Close that one first, or continue there.`);
   if (upErr) return fail(500, upErr.message);
   await addEvent(deps, ticket.id, { actor: 'staff', kind: 'status', body: 'Reopened by staff.', internal: true });
   return ok({ status: 'open' });

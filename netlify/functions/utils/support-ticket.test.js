@@ -161,15 +161,64 @@ test('order ids are matched case-insensitively', async () => {
   assert.equal(s.db.tables.support_tickets[0].order_id, 'IC-20260930-ABCDE');
 });
 
-test('a second open ticket on the same order and topic is refused and points at the first', async () => {
+test('one unresolved ticket per order, whatever the topic, until it is closed', async () => {
   const s = setup();
   const first = await A.createTicket(s.deps, valid());
-  const second = await A.createTicket(s.deps, valid());
+  for (const category of ['damaged_wrong', 'refund_payment', 'other']) {
+    const again = await A.createTicket(s.deps, valid({ category, message: 'Another problem with the very same order here.' }));
+    assert.equal(again.status, 409, category);
+    assert.equal(again.body.existing_ticket, first.body.ticket_no);
+    assert.match(again.body.error, /already has an open ticket/);
+  }
+  assert.equal(s.db.tables.support_tickets.length, 1);
+
+  // Waiting on the customer is still unresolved.
+  const t = s.db.tables.support_tickets[0];
+  t.status = 'waiting_customer';
+  assert.equal((await A.createTicket(s.deps, valid({ category: 'other' }))).status, 409);
+
+  // Closed: a new ticket is allowed.
+  await A.staffClose(s.deps, { id: t.id, resolution: 'Replacement sent today.' });
+  const next = await A.createTicket(s.deps, valid({ category: 'refund_payment' }));
+  assert.equal(next.status, 200);
+  assert.notEqual(next.body.ticket_no, first.body.ticket_no);
+});
+
+test('two submissions at once: the database index lets one through and the other points at it', async () => {
+  const s = setup();
+  const first = await A.createTicket(s.deps, valid());
+  // Simulate the race: the pre-check sees nothing, the insert hits the index.
+  const realFrom = s.db.from;
+  let raced = false;
+  s.db.from = (name) => {
+    const q = realFrom(name);
+    if (name !== 'support_tickets') return q;
+    const origIn = q.in, origInsert = q.insert;
+    q.in = (...a) => { const r = origIn(...a); if (!raced) { raced = true; return { then: (ok) => Promise.resolve({ data: [], error: null }).then(ok) }; } return r; };
+    q.insert = () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "support_tickets_one_open_per_order"' } }) }) });
+    return q;
+  };
+  const second = await A.createTicket(s.deps, valid({ category: 'other' }));
   assert.equal(second.status, 409);
   assert.equal(second.body.existing_ticket, first.body.ticket_no);
-  assert.equal(s.db.tables.support_tickets.length, 1);
-  const other = await A.createTicket(s.deps, valid({ category: 'refund_payment' }));
-  assert.equal(other.status, 200);
+});
+
+test('a closed ticket cannot be reopened while the order has another open one', async () => {
+  const s = setup();
+  const a = await A.createTicket(s.deps, valid());
+  const ta = s.db.tables.support_tickets[0];
+  await A.staffClose(s.deps, { id: ta.id, resolution: 'Replacement sent today.' });
+  const b = await A.createTicket(s.deps, valid({ category: 'refund_payment' }));
+  assert.equal(b.status, 200);
+
+  const re = await A.customerReply(s.deps, { ticket_no: a.body.ticket_no, contact: 'asha@example.com', message: 'Still not right.' });
+  assert.equal(re.status, 409);
+  assert.equal(re.body.existing_ticket, b.body.ticket_no);
+  assert.equal(ta.status, 'closed');
+
+  const staff = await A.staffReopen(s.deps, { id: ta.id });
+  assert.equal(staff.status, 409);
+  assert.equal(ta.status, 'closed');
 });
 
 test('a colliding ticket number is retried, not failed', async () => {
@@ -186,7 +235,7 @@ test('the missing table is a polite 503, not a crash', async () => {
   const s = setup();
   const real = s.db.from;
   s.db.from = (n) => (n === 'support_tickets'
-    ? { select: () => ({ eq: () => ({ eq: () => ({ in: async () => ({ data: null, error: { message: 'relation "support_tickets" does not exist' } }) }) }) }) }
+    ? { select: () => ({ eq: () => ({ in: async () => ({ data: null, error: { message: 'relation "support_tickets" does not exist' } }) }) }) }
     : real(n));
   const r = await A.createTicket(s.deps, valid());
   assert.equal(r.status, 503);

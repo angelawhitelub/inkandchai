@@ -42,6 +42,9 @@ create table if not exists support_tickets (
 create index if not exists support_tickets_status_due_idx on support_tickets (status, due_at);
 create index if not exists support_tickets_order_idx on support_tickets (order_id);
 create index if not exists support_tickets_created_idx on support_tickets (created_at desc);
+-- One unresolved ticket per order (any topic) until it is closed.
+create unique index if not exists support_tickets_one_open_per_order
+  on support_tickets (order_id) where status <> 'closed';
 
 create table if not exists support_ticket_events (
   id          bigint generated always as identity primary key,
