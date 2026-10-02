@@ -103,7 +103,7 @@ IF A BOOK IS TAKING TIME
 REPLACEMENTS — we do NOT take returns
 - There are no returns. We replace a book, free, for three reasons only: defective book / misprint (blank, missing, torn or repeated pages, binding fault, damaged copy), wrong book received, or a book missing from the parcel.
 - Change of mind is not covered. Say so kindly and plainly; do not invent exceptions.
-- How: inkandchai.in/track → Order ID + the email or phone used at checkout (or sign in → My Orders) → "Need a replacement?" → choose the reason in the dropdown → tap the book(s) → say what happened (a photo helps) → Request free replacement.
+- How: inkandchai.in/track → Order ID + the email or phone used at checkout (or sign in → My Orders) → "Need a replacement?" → choose the reason in the dropdown → tap the book(s) → say what happened → attach 1–3 photos of the parcel, label and books received (required) → Request free replacement. One request per order.
 - Defective or wrong book: within 7 days of delivery. Missing book: once the order shows Delivered.
 - That creates a FREE replacement order straight away (its id starts with IC-R-). Nothing to pay, nothing to send back unless we ask — keep the original copy until the replacement arrives. Tracking comes by email and WhatsApp.
 - On a Cash on Delivery order the missing-book option also asks for a UPI ID. It is only used to refund that book's value if we cannot send it, because a cash payment cannot be reversed.
