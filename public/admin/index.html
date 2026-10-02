@@ -2259,7 +2259,7 @@ select,input,textarea{font-size:1rem;}
         <div style="font-size:0.72rem;color:var(--cream-dim);margin-top:0.3rem;max-width:780px;line-height:1.6;">
           Orders placed at least <strong id="npuHoursLabel">48</strong> hours ago that no courier has picked up yet — either <strong>not booked</strong> (no AWB) or
           <strong>booked, awaiting pickup</strong> (AWB created, parcel has not moved). An AWB alone sets the order to "shipped"; pickup is the courier's first scan.
-          XpressBees and NimbusPost send us those scans. Delhivery, DTDC and Amazon bookings made outside NimbusPost do not, so those show as <em>no scan yet</em> — check them in the courier panel.
+          Most couriers send us no scans, so on opening this tab every AWB not checked in the last 6 hours is checked live with its courier (XpressBees, Delhivery, iThink, NimbusPost); parcels already picked up or delivered drop off. Tick rows to cancel &amp; refund them in bulk — each courier is asked again first, and a parcel that has moved is never cancelled.
         </div>
       </div>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
@@ -2267,6 +2267,8 @@ select,input,textarea{font-size:1rem;}
           <option value="all">All</option>
           <option value="awaiting_pickup">Booked — awaiting pickup</option>
           <option value="not_booked">Not booked yet</option>
+          <option value="confirmed">Courier confirms not picked up</option>
+          <option value="courier_cancelled">Courier voided the AWB</option>
         </select>
         <select id="npuCourier" onchange="renderNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;"><option value="">All couriers</option></select>
         <label style="font-size:0.7rem;color:var(--cream-dim);">Older than
@@ -2276,10 +2278,18 @@ select,input,textarea{font-size:1rem;}
         </label>
         <input id="npuSearch" placeholder="Search order, name, AWB, pincode…" oninput="renderNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;min-width:200px;"/>
         <button class="btn-outline" onclick="loadNotPicked()">↻ Reload</button>
-        <button class="btn-outline" id="npuLiveBtn" onclick="checkNotPickedLive(this)" title="Ask XpressBees for the live status of every XpressBees AWB shown">📡 Check XpressBees live</button>
-        <button class="btn-outline" onclick="copyNotPickedIds(this)">⧉ Copy order IDs</button>
-        <button class="btn-outline" onclick="exportNotPickedCsv()">⬇ CSV</button>
+        <button class="btn-outline" id="npuLiveBtn" onclick="checkNotPickedLive(this)" title="Ask each courier (XpressBees, Delhivery, iThink, NimbusPost) for the live status of the selected rows, or of every row shown">📡 Check couriers live</button>
+        <button class="btn-outline" onclick="copyNotPickedIds(this)" title="Selected rows, or every row shown">⧉ Copy order IDs</button>
+        <button class="btn-outline" onclick="exportNotPickedCsv()" title="Selected rows, or every row shown">⬇ CSV</button>
+        <button class="btn-outline" onclick="exportNotPickedPdf()" title="Selected rows, or every row shown — opens a print sheet; choose Save as PDF">⬇ PDF</button>
       </div>
+    </div>
+    <div id="npuBulkBar" style="display:none;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.7rem;padding:.55rem .8rem;border:1px solid rgba(224,96,96,.35);border-radius:8px;background:rgba(224,96,96,.06);font-size:.72rem;">
+      <strong id="npuSelCount">0 selected</strong>
+      <button class="btn-outline" style="border-color:#e06060;color:#e06060;" onclick="cancelNotPickedSelected(this)" title="Asks each courier first; only parcels still waiting for pickup are cancelled. Prepaid money goes back automatically; COD missing-book replacements get a UPI request by email and WhatsApp.">✕ Cancel &amp; refund selected</button>
+      <button class="btn-outline" onclick="exportNotPickedCsv()">⬇ CSV</button>
+      <button class="btn-outline" onclick="exportNotPickedPdf()">⬇ PDF</button>
+      <button class="btn-outline" onclick="npuClearSel()">Clear</button>
     </div>
     <div id="npuCounts" style="font-size:0.72rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
     <div id="npuMsg" style="font-size:0.72rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
@@ -3203,8 +3213,12 @@ function orderLink(orderId, label, style) {
 
 // ── Not picked up (48 h+) ───────────────────────────────────────────────────
 const NPU_API = '/.netlify/functions/admin-not-picked-up';
+const NPU_LIVE_API = '/.netlify/functions/admin-pickup-live';
+const NPU_CANCEL_API = '/.netlify/functions/admin-not-picked-up-cancel';
 let npuData = null;
-let npuLive = {};   // awb → { status, last_event, at }
+let npuLive = {};          // order uuid → { state, status, channel }
+let npuSel = new Set();    // selected order uuids
+let npuAutoChecked = false;
 
 function npuHours() { return Number(document.getElementById('npuHours')?.value || 48); }
 
@@ -3222,18 +3236,18 @@ async function refreshNotPickedBadge() {
 }
 setInterval(() => { if (document.visibilityState === 'visible') refreshNotPickedBadge(); }, 600000);
 
-async function loadNotPicked() {
+async function loadNotPicked(opts = {}) {
   const msg = document.getElementById('npuMsg');
   if (!msg) return;
-  msg.style.color = 'var(--cream-dim)';
-  msg.textContent = 'Loading…';
+  if (!opts.quiet) { msg.style.color = 'var(--cream-dim)'; msg.textContent = 'Loading…'; }
   document.getElementById('npuHoursLabel').textContent = npuHours();
   try {
     const res = await adminFetch(NPU_API + '?min_hours=' + npuHours());
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     npuData = data;
-    npuLive = {};
+    const ids = new Set(data.orders.map(r => r.id));
+    npuSel = new Set([...npuSel].filter(id => ids.has(id)));
     const sel = document.getElementById('npuCourier');
     const keep = sel.value;
     const couriers = Object.keys(data.counts.by_courier || {}).sort();
@@ -3243,8 +3257,16 @@ async function loadNotPicked() {
       const b = document.getElementById('notPickedBadge');
       if (b) { b.textContent = data.counts.total; b.style.display = data.counts.total ? 'inline-block' : 'none'; }
     }
-    msg.textContent = '';
+    if (!opts.quiet) msg.textContent = '';
     renderNotPicked();
+    // Most bookings send us no scans, so the list is only as good as the last
+    // time someone asked the couriers. Ask once per visit for anything not
+    // checked in the last 6 hours.
+    if (!npuAutoChecked) {
+      npuAutoChecked = true;
+      const stale = data.orders.filter(r => r.tracking_id && (!r.checked_at || Date.now() - Date.parse(r.checked_at) > 6 * 3600e3));
+      if (stale.length) checkNotPickedLive(document.getElementById('npuLiveBtn'), stale);
+    }
   } catch (e) {
     msg.style.color = '#e06060';
     msg.textContent = 'Could not load: ' + e.message;
@@ -3263,9 +3285,37 @@ function npuVisibleRows() {
   const courier = document.getElementById('npuCourier').value;
   const q = document.getElementById('npuSearch').value.trim().toLowerCase();
   return npuData.orders.filter(r =>
-    (bucket === 'all' || r.bucket === bucket)
+    (bucket === 'all' || r.bucket === bucket
+      || (bucket === 'courier_cancelled' && r.courier_cancelled)
+      || (bucket === 'confirmed' && r.confirmed && !r.courier_cancelled))
     && (!courier || r.courier === courier)
-    && (!q || [r.order_id, r.customer_name, r.tracking_id, r.pincode, r.courier].some(v => String(v || '').toLowerCase().includes(q))));
+    && (!q || [r.order_id, r.customer_name, r.customer_phone, r.tracking_id, r.pincode, r.courier, r.books,
+               r.replacement && r.replacement.original_order_id, r.replacement && r.replacement.refund_upi_id]
+      .some(v => String(v || '').toLowerCase().includes(q))));
+}
+
+// Selected rows if any are ticked, otherwise everything in the current view.
+function npuTargetRows() {
+  const rows = npuVisibleRows();
+  const picked = rows.filter(r => npuSel.has(r.id));
+  return picked.length ? picked : rows;
+}
+
+const NPU_PAY = { cod: 'COD', prepaid: 'Prepaid', partial_cod: 'Partial COD', replacement: 'Free replacement' };
+
+function npuStageText(r) {
+  if (r.bucket === 'not_booked') return 'Not booked';
+  if (r.courier_cancelled) return 'Courier cancelled the AWB';
+  return r.confirmed ? 'Awaiting pickup (courier confirms)' : 'Awaiting pickup (no courier answer)';
+}
+
+function npuUpiCell(r) {
+  const rp = r.replacement;
+  if (!rp) return '';
+  if (rp.refund_paid_at) return '<div class="hint" style="color:#6dbf6d;">UPI refund sent</div>';
+  if (rp.refund_upi_id) return '<div style="margin-top:.3rem;font-family:ui-monospace,Menlo,monospace;font-size:.72rem;user-select:all;color:#6dbf6d;" title="UPI ID the customer gave for the refund">UPI: ' + esc(rp.refund_upi_id) + '</div>';
+  if (rp.upi_requested_at) return '<div class="hint" style="color:#e0a060;">UPI asked ' + new Date(rp.upi_requested_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ', no reply yet</div>';
+  return '';
 }
 
 function renderNotPicked() {
@@ -3274,89 +3324,228 @@ function renderNotPicked() {
   if (!table || !npuData) return;
   const c = npuData.counts;
   const rows = npuVisibleRows();
+  const voided = npuData.orders.filter(r => r.courier_cancelled).length;
   counts.innerHTML = '<strong>' + c.total + '</strong> orders older than ' + npuData.min_hours + ' h with no pickup · '
-    + '<strong>' + c.awaiting_pickup + '</strong> booked, awaiting pickup (' + c.awaiting_confirmed + ' confirmed by the courier) · '
+    + '<strong>' + c.awaiting_pickup + '</strong> booked, awaiting pickup (' + c.awaiting_confirmed + ' confirmed by the courier'
+    + (voided ? ', ' + voided + ' voided by the courier' : '') + ') · '
     + '<strong>' + c.not_booked + '</strong> not booked'
     + (rows.length !== c.total ? ' · showing ' + rows.length : '');
+  const bar = document.getElementById('npuBulkBar');
+  const nSel = rows.filter(r => npuSel.has(r.id)).length;
+  if (bar) {
+    bar.style.display = nSel ? 'flex' : 'none';
+    document.getElementById('npuSelCount').textContent = nSel + ' selected';
+  }
   if (!rows.length) { table.innerHTML = '<tr><td style="padding:1rem 0;color:var(--cream-dim);">Nothing here 🎉</td></tr>'; return; }
   const th = (t) => '<th style="text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--border);font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--cream-dim);white-space:nowrap;">' + t + '</th>';
   const td = (h, extra) => '<td style="padding:.55rem .6rem;border-bottom:1px solid var(--border);vertical-align:top;' + (extra || '') + '">' + h + '</td>';
-  const pay = { cod: 'COD', prepaid: 'Prepaid', partial_cod: 'Partial COD', replacement: 'Free replacement' };
-  table.innerHTML = '<thead><tr>' + [th('Order'), th('Age'), th('Stage'), th('Courier / AWB'), th('Last scan'), th('Payment'), th('Customer'), th('')].join('') + '</tr></thead><tbody>'
+  const allOn = rows.every(r => npuSel.has(r.id));
+  table.innerHTML = '<thead><tr>'
+    + '<th style="padding:.5rem .6rem;border-bottom:1px solid var(--border);"><input type="checkbox" title="Select every row shown" ' + (allOn ? 'checked' : '') + ' onchange="npuSelectAll(this.checked)"/></th>'
+    + [th('Order'), th('Age'), th('Books'), th('Stage'), th('Courier / AWB'), th('Last scan'), th('Payment'), th('Customer'), th('')].join('') + '</tr></thead><tbody>'
     + rows.map(r => {
-      const live = r.tracking_id ? npuLive[r.tracking_id] : null;
-      const moved = live && !/pending|not picked|booked|manifest/i.test(live.status || '');
+      const live = npuLive[r.id];
+      const moved = live && live.state === 'moved';
       const stage = r.bucket === 'not_booked'
         ? '<span style="color:#e0a060;">Not booked</span>' + (r.nimbus_pushed_at ? '<div class="hint">Pushed to NimbusPost, no AWB</div>' : '') + '<div class="hint">' + esc(r.status.replace(/_/g, ' ')) + '</div>'
-        : '<span style="color:' + (r.confirmed ? '#e06060' : 'var(--cream)') + ';">Awaiting pickup</span>'
-          + '<div class="hint">' + (r.confirmed ? 'courier says pending' : 'no scan yet') + (r.hours_since_booking != null ? ' · booked ' + npuAge(r.hours_since_booking) + ' ago' : '') + '</div>';
+        : r.courier_cancelled
+          ? '<span style="color:#c98a36;">Courier cancelled the AWB</span><div class="hint">order still open here — re-book or cancel it</div>'
+          : '<span style="color:' + (r.confirmed ? '#e06060' : 'var(--cream)') + ';">Awaiting pickup</span>'
+            + '<div class="hint">' + (r.confirmed ? 'courier says not picked up' : 'no answer from the courier yet') + (r.hours_since_booking != null ? ' · booked ' + npuAge(r.hours_since_booking) + ' ago' : '') + '</div>';
       const awb = r.tracking_id
         ? esc(r.courier || '') + '<div style="font-family:ui-monospace,Menlo,monospace;font-size:.72rem;user-select:all;">'
           + (r.tracking_url ? '<a href="' + esc(r.tracking_url) + '" target="_blank" rel="noopener" style="color:var(--gold);">' + esc(r.tracking_id) + '</a>' : esc(r.tracking_id)) + '</div>'
         : '—';
-      const scan = live
-        ? '<strong style="color:' + (moved ? '#6dbf6d' : '#e06060') + ';">' + esc(live.status || '?') + '</strong>' + (live.last_event ? '<div class="hint">' + esc(live.last_event) + '</div>' : '') + '<div class="hint">live</div>'
-        : esc(r.last_scan || '—');
+      const scan = live && live.state !== 'unknown'
+        ? '<strong style="color:' + (moved ? '#6dbf6d' : live.state === 'waiting' ? '#e06060' : '#c98a36') + ';">' + esc(live.status || '?') + '</strong><div class="hint">live' + (live.channel ? ' · ' + esc(live.channel) : '') + '</div>'
+        : esc(r.last_scan || '—') + (r.checked_at ? '<div class="hint">checked ' + new Date(r.checked_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</div>' : '');
+      const repl = r.replacement
+        ? '<div class="hint">replaces ' + esc(r.replacement.original_order_id || '?') + (r.replacement.reason ? ' · ' + esc(String(r.replacement.reason).replace(/_/g, ' ')) : '') + '</div>' + npuUpiCell(r)
+        : '';
       return '<tr style="' + (moved ? 'opacity:.55;' : '') + '">'
-        + td('<span style="font-family:ui-monospace,Menlo,monospace;user-select:all;">' + esc(r.order_id) + '</span><div class="hint">' + new Date(r.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</div>')
+        + td('<input type="checkbox" ' + (npuSel.has(r.id) ? 'checked' : '') + ' onchange="npuToggle(\'' + esc(r.id) + '\', this.checked)"/>')
+        + td('<span style="font-family:ui-monospace,Menlo,monospace;user-select:all;">' + esc(r.order_id) + '</span><div class="hint">' + new Date(r.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</div>' + repl)
         + td('<strong>' + npuAge(r.age_hours) + '</strong>', 'white-space:nowrap;')
+        + td(esc(r.books || '—'), 'min-width:180px;max-width:280px;line-height:1.45;')
         + td(stage)
         + td(awb)
         + td(scan)
-        + td((pay[r.payment] || r.payment) + (r.amount_rs ? '<div class="hint">₹' + r.amount_rs.toLocaleString('en-IN') + '</div>' : ''))
+        + td((NPU_PAY[r.payment] || r.payment) + (r.amount_rs ? '<div class="hint">₹' + r.amount_rs.toLocaleString('en-IN') + '</div>' : ''))
         + td(esc(r.customer_name) + (r.pincode ? '<div class="hint">' + esc(r.pincode) + '</div>' : ''))
         + td(orderLink(r.order_id, 'Open', 'font-size:.6rem;padding:.3rem .6rem;'))
         + '</tr>';
     }).join('') + '</tbody>';
 }
 
-async function checkNotPickedLive(btn) {
-  const awbs = [...new Set(npuVisibleRows().filter(r => r.tracking_id && /xpress/i.test(r.courier || '')).map(r => r.tracking_id))];
+function npuToggle(id, on) { if (on) npuSel.add(id); else npuSel.delete(id); renderNotPicked(); }
+function npuSelectAll(on) { for (const r of npuVisibleRows()) { if (on) npuSel.add(r.id); else npuSel.delete(r.id); } renderNotPicked(); }
+function npuClearSel() { npuSel.clear(); renderNotPicked(); }
+
+// Asks every order's courier (XpressBees, Delhivery, iThink, NimbusPost) and
+// records the answer, so delivered parcels leave the list for good.
+async function checkNotPickedLive(btn, onlyRows) {
+  const rows = (onlyRows || npuTargetRows()).filter(r => r.tracking_id);
   const msg = document.getElementById('npuMsg');
-  if (!awbs.length) { msg.textContent = 'No XpressBees AWBs in the current view.'; return; }
-  const original = btn.innerHTML;
-  btn.disabled = true;
+  if (!rows.length) { msg.textContent = 'No AWBs to check in the current view.'; return; }
+  const original = btn ? btn.innerHTML : '';
+  if (btn) btn.disabled = true;
+  const tally = { waiting: 0, moved: 0, cancelled: 0, unknown: 0 };
   try {
-    for (let i = 0; i < awbs.length; i += 200) {
-      btn.innerHTML = 'Checking ' + Math.min(i + 200, awbs.length) + '/' + awbs.length + '…';
-      const res = await adminFetch('/.netlify/functions/admin-xpressbees-track', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ awbs: awbs.slice(i, i + 200) }),
+    for (let i = 0; i < rows.length; i += 50) {
+      if (btn) btn.innerHTML = 'Checking ' + Math.min(i + 50, rows.length) + '/' + rows.length + '…';
+      const res = await adminFetch(NPU_LIVE_API, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_ids: rows.slice(i, i + 50).map(r => r.id) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-      for (const r of data.results || []) npuLive[r.awb] = { status: r.status || r.error || '', last_event: r.last_event || '' };
+      for (const r of data.results || []) { npuLive[r.id] = r; tally[r.state] = (tally[r.state] || 0) + 1; }
+      renderNotPicked();
     }
-    const moved = Object.values(npuLive).filter(l => !/pending|not picked|booked|manifest/i.test(l.status || '')).length;
     msg.style.color = 'var(--cream-dim)';
-    msg.textContent = 'Checked ' + awbs.length + ' XpressBees AWBs live. ' + (moved ? moved + ' have actually moved (dimmed) — they drop off this list after the next status sync.' : 'All still waiting for pickup.');
-    renderNotPicked();
+    msg.innerHTML = 'Asked the couriers about ' + rows.length + ' AWBs: <strong>' + tally.waiting + '</strong> still waiting for pickup, '
+      + '<strong>' + tally.moved + '</strong> already picked up or delivered (removed), '
+      + (tally.cancelled ? '<strong>' + tally.cancelled + '</strong> voided by the courier, ' : '')
+      + '<strong>' + tally.unknown + '</strong> no answer — check those in the courier panel.';
+    await loadNotPicked({ quiet: true });
   } catch (e) {
     msg.style.color = '#e06060';
     msg.textContent = 'Live check failed: ' + e.message;
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = original;
+    if (btn) { btn.disabled = false; btn.innerHTML = original; }
   }
 }
 
 async function copyNotPickedIds(btn) {
-  const ids = npuVisibleRows().map(r => r.order_id).join(', ');
-  try { await navigator.clipboard.writeText(ids); btn.textContent = '✓ Copied ' + npuVisibleRows().length; }
+  const rows = npuTargetRows();
+  const ids = rows.map(r => r.order_id).join(', ');
+  try { await navigator.clipboard.writeText(ids); btn.textContent = '✓ Copied ' + rows.length; }
   catch { prompt('Order IDs', ids); }
   setTimeout(() => { btn.textContent = '⧉ Copy order IDs'; }, 2000);
 }
 
+function npuExportRows() {
+  return npuTargetRows().map(r => {
+    const live = npuLive[r.id];
+    return {
+      order_id: r.order_id,
+      placed: new Date(r.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      age: npuAge(r.age_hours),
+      books: r.books || '',
+      stage: npuStageText(r),
+      courier: r.courier || '',
+      awb: r.tracking_id || '',
+      last_scan: (live && live.state !== 'unknown' ? live.status : r.last_scan) || '',
+      payment: NPU_PAY[r.payment] || r.payment,
+      amount_rs: r.amount_rs || 0,
+      customer: r.customer_name || '',
+      phone: r.customer_phone || '',
+      pincode: r.pincode || '',
+      replaces: (r.replacement && r.replacement.original_order_id) || '',
+      refund_upi: (r.replacement && r.replacement.refund_upi_id) || '',
+    };
+  });
+}
+
 function exportNotPickedCsv() {
-  const rows = npuVisibleRows();
+  const rows = npuExportRows();
+  if (!rows.length) return;
   const cell = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const head = ['order_id', 'created_at', 'age_hours', 'stage', 'courier_confirmed_pending', 'courier', 'awb', 'hours_since_booking', 'last_scan', 'payment', 'amount_rs', 'customer', 'pincode', 'status'];
-  const lines = [head.join(',')].concat(rows.map(r => [r.order_id, r.created_at, r.age_hours, r.bucket, r.confirmed, r.courier || '', r.tracking_id || '', r.hours_since_booking ?? '',
-    (npuLive[r.tracking_id] || {}).status || r.last_scan || '', r.payment, r.amount_rs, r.customer_name, r.pincode, r.status].map(cell).join(',')));
+  const head = Object.keys(rows[0]);
+  const lines = [head.join(',')].concat(rows.map(r => head.map(k => cell(r[k])).join(',')));
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }));
   a.download = 'not-picked-up-' + new Date().toISOString().slice(0, 10) + '.csv';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// A printable sheet; the browser's "Save as PDF" turns it into the file. Built
+// as HTML rather than with a PDF library so Hindi/Urdu titles and ₹ render.
+function exportNotPickedPdf() {
+  const rows = npuExportRows();
+  if (!rows.length) return;
+  const cols = [['order_id', 'Order'], ['placed', 'Placed'], ['age', 'Age'], ['books', 'Books'], ['stage', 'Stage'], ['courier', 'Courier'], ['awb', 'AWB'],
+    ['last_scan', 'Last scan'], ['payment', 'Payment'], ['amount_rs', '₹'], ['customer', 'Customer'], ['phone', 'Phone'], ['pincode', 'PIN'], ['refund_upi', 'Refund UPI']];
+  const w = window.open('', '_blank');
+  if (!w) { alert('Allow pop-ups for this site to download the PDF.'); return; }
+  const title = 'Not picked up — ' + rows.length + ' orders — ' + new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>'
+    + '@page{size:A4 landscape;margin:10mm}body{font:10px/1.35 -apple-system,Segoe UI,Roboto,"Noto Sans",sans-serif;color:#111}'
+    + 'h1{font-size:13px;margin:0 0 8px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:3px 4px;text-align:left;vertical-align:top}'
+    + 'th{background:#eee}tr{page-break-inside:avoid}td.m{font-family:ui-monospace,Menlo,monospace;white-space:nowrap}</style></head><body>'
+    + '<h1>' + esc(title) + '</h1><table><thead><tr>' + cols.map(c => '<th>' + c[1] + '</th>').join('') + '</tr></thead><tbody>'
+    + rows.map(r => '<tr>' + cols.map(c => '<td' + (['order_id', 'awb', 'refund_upi'].includes(c[0]) ? ' class="m"' : '') + '>' + esc(r[c[0]]) + '</td>').join('') + '</tr>').join('')
+    + '</tbody></table><script>window.onload=function(){setTimeout(function(){window.print()},200)}<\/script></body></html>');
+  w.document.close();
+}
+
+// Cancel and refund, in two passes. The first is a dry run: the server asks each
+// courier live and says what it would do. Nothing is cancelled until the admin
+// has seen that, and a parcel the courier says has moved is never touched.
+async function cancelNotPickedSelected(btn) {
+  const rows = npuVisibleRows().filter(r => npuSel.has(r.id));
+  const msg = document.getElementById('npuMsg');
+  if (!rows.length) { alert('Tick the orders to cancel first.'); return; }
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  const call = async (ids, extra) => {
+    const res = await adminFetch(NPU_CANCEL_API, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order_ids: ids, ...extra }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    return data.results || [];
+  };
+  try {
+    const plan = [];
+    for (let i = 0; i < rows.length; i += 10) {
+      btn.innerHTML = 'Checking ' + Math.min(i + 10, rows.length) + '/' + rows.length + '…';
+      plan.push(...await call(rows.slice(i, i + 10).map(r => r.id), { dry_run: true }));
+    }
+    const go = plan.filter(p => p.outcome === 'would_cancel');
+    const unverified = plan.filter(p => p.outcome === 'needs_manual');
+    const skip = plan.filter(p => p.outcome === 'skipped');
+    const refundRs = go.reduce((s, p) => s + Number(p.refund && p.refund.amount_rs || 0), 0);
+    const upi = go.filter(p => p.refund && p.refund.via === 'upi').length;
+    let text = go.length + ' of ' + rows.length + ' can be cancelled — the courier confirms they have not been picked up.\n'
+      + (refundRs ? '₹' + refundRs.toLocaleString('en-IN') + ' goes back automatically to the original payment method.\n' : '')
+      + (upi ? upi + ' COD missing-book replacement(s): the customer is emailed and WhatsApped for a UPI ID.\n' : '')
+      + 'Each customer gets the cancellation email and WhatsApp.\n';
+    if (skip.length) text += '\n' + skip.length + ' will NOT be touched:\n' + skip.slice(0, 12).map(p => '  ' + p.order_id + ' — ' + p.reason).join('\n') + (skip.length > 12 ? '\n  …' : '') + '\n';
+    if (unverified.length) text += '\n' + unverified.length + ' could not be checked with the courier, so they are left alone:\n' + unverified.slice(0, 8).map(p => '  ' + p.order_id + ' — ' + p.reason).join('\n') + '\n';
+    if (!go.length && !unverified.length) { alert(text); return; }
+    let manual = false;
+    if (go.length && !confirm(text + '\nCancel and refund the ' + go.length + ' now?')) return;
+    if (unverified.length) {
+      manual = confirm(unverified.length + ' order(s) could not be verified with the courier.\n\nOnly press OK if you have ALREADY cancelled them in the courier panel yourself '
+        + '— they will then be cancelled and refunded here too. Cancel leaves them alone.');
+    }
+    const todo = go.map(p => p.id).concat(manual ? unverified.map(p => p.id) : []);
+    if (!todo.length) return;
+    const done = [];
+    for (let i = 0; i < todo.length; i += 5) {
+      btn.innerHTML = 'Cancelling ' + Math.min(i + 5, todo.length) + '/' + todo.length + '…';
+      done.push(...await call(todo.slice(i, i + 5), manual ? { confirm_manual: true } : {}));
+    }
+    const ok = done.filter(d => d.outcome === 'cancelled');
+    const bad = done.filter(d => d.outcome !== 'cancelled');
+    msg.style.color = 'var(--cream-dim)';
+    msg.innerHTML = '<strong>' + ok.length + '</strong> cancelled'
+      + (bad.length ? ', <strong style="color:#e06060;">' + bad.length + ' not</strong>' : '') + '.'
+      + '<div style="margin-top:.4rem;max-height:240px;overflow:auto;font-family:ui-monospace,Menlo,monospace;font-size:.68rem;line-height:1.6;">'
+      + done.map(d => esc(d.order_id) + ' — ' + esc(d.outcome) + (d.reason ? ': ' + esc(d.reason) : '')
+          + (d.refund ? ' · refund ' + esc(d.refund.status) + (d.refund.amount_rs ? ' ₹' + d.refund.amount_rs : '') + (d.refund.message ? ' (' + esc(d.refund.message) + ')' : '') : '')).join('<br>')
+      + '</div>';
+    npuSel = new Set([...npuSel].filter(id => !ok.some(d => d.id === id)));
+    await loadNotPicked({ quiet: true });
+  } catch (e) {
+    msg.style.color = '#e06060';
+    msg.textContent = 'Bulk cancel stopped: ' + e.message + ' — reload to see what was already cancelled.';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
 }
 
 async function loadTickets() {
@@ -14402,7 +14591,7 @@ function renderMissingBooks() {
       actions = btn('➕ Create replacement', `openReplacementModal('${esc(String(original?.id || ''))}')`, '#6dbf6d')
               + ' ' + orderLink(meta.original_order_id, 'Open in Orders', 'font-size:.6rem;padding:.3rem .55rem;');
     } else if (state === 'needs_upi') {
-      actions = btn(meta.upi_requested_at ? '📧 Ask again' : '📧 Ask for UPI', `mbAskForUpi('${rowId}', ${meta.upi_requested_at ? 'true' : 'false'}, this)`, '#c98a36')
+      actions = btn(meta.upi_requested_at ? '📧 Ask again' : '📧 Ask for UPI (email + WhatsApp)', `mbAskForUpi('${rowId}', ${meta.upi_requested_at ? 'true' : 'false'}, this)`, '#c98a36')
               + ' ' + btn('✎ Enter it', `mbSaveUpi('${rowId}')`);
     } else if (state === 'ready') {
       actions = btn('₹ I have sent it', `mbRefundSent('${rowId}', this)`, '#6dbf6d')
@@ -14466,7 +14655,7 @@ async function mbAskForUpi(encodedRowId, again, btn) {
   if (!row) { alert('Not found in the current list — hit Refresh.'); return; }
   const suggested = row.split.upi;
   const typed = prompt(
-    `Email ${row.repl.customer_email || '(no email on file)'} asking for a UPI ID.\n\n`
+    `Email ${row.repl.customer_email || '(no email on file)'} and WhatsApp ${row.repl.customer_phone || '(no phone on file)'} asking for a UPI ID.\n\n`
     + `Amount to tell them they are owed (₹):`, String(suggested.toFixed(2)));
   if (typed === null) return;
   const amount = Number(String(typed).replace(/[^0-9.]/g, ''));

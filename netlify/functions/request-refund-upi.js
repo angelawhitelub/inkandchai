@@ -2,8 +2,9 @@
  * Netlify Function: request-refund-upi
  * POST /.netlify/functions/request-refund-upi   (admin only)
  *
- * Emails the customer of a CANCELLED missing-book replacement asking where to
- * send their money, and hands them a signed link that captures it.
+ * Emails and WhatsApps the customer of a CANCELLED missing-book replacement
+ * asking where to send their money, and hands them a signed link that captures
+ * it. cancel-replacement calls this itself when the original was COD.
  *
  * Why this exists: when a replacement for a missing book is cancelled, the
  * customer has paid for books they will now never receive. On a prepaid order
@@ -25,6 +26,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { sendEmail } = require('./utils/email');
+const { sendWhatsApp, sendText } = require('./utils/whatsapp');
 const { signRefundUpiToken } = require('./utils/refund-upi-token');
 const {
   replacementMeta,
@@ -100,6 +102,37 @@ function customerEmailHtml({ firstName, originalId, items, amountPaise, link }) 
   </div>`;
 }
 
+/**
+ * The same ask on WhatsApp. Template first: `refund_upi_request` has to be
+ * created and approved in Meta (UTILITY, one paragraph):
+ *
+ *   Hi {{1}}, we could not send the missing book(s) from order {{2}}, so we
+ *   have cancelled the replacement and owe you Rs {{3}}. Your order was cash on
+ *   delivery, so please tell us your UPI ID here: {{4}} - or just reply with it.
+ *   Ink & Chai
+ *
+ * Until then the free-form text below reaches only customers who messaged us
+ * in the last 24 hours. The email always goes, so each channel is reported.
+ */
+async function askOnWhatsApp({ repl, originalId, amountPaise, link }) {
+  if (!repl.customer_phone) return { ok: false, skipped: true, reason: 'no phone' };
+  const first = String(repl.customer_name || 'there').split(' ')[0] || 'there';
+  const amount = rupees(amountPaise);
+  const tpl = await sendWhatsApp({
+    to: repl.customer_phone,
+    template: process.env.WHATSAPP_REFUND_UPI_REQUEST_TEMPLATE || 'refund_upi_request',
+    params: [first, originalId, amount, link],
+  }).catch((e) => ({ ok: false, error: e.message }));
+  if (tpl && tpl.ok) return { ok: true, via: 'template' };
+  if (tpl && tpl.skipped) return { ok: false, skipped: true, reason: 'whatsapp not configured' };
+  const txt = await sendText(repl.customer_phone,
+    `Hi ${first}, we're sorry - we could not send the missing book(s) from order ${originalId}, so we have cancelled `
+    + `the replacement and owe you Rs ${amount}. Your order was cash on delivery, so there is no online payment to reverse. `
+    + `Please send us your UPI ID here: ${link} - or simply reply to this message with it. We will never ask for a PIN, `
+    + `OTP or any payment. - Ink & Chai`).catch((e) => ({ ok: false, error: e.message }));
+  return txt && txt.ok ? { ok: true, via: 'text' } : { ok: false, error: (txt && txt.error) || 'template rejected and free-form text failed (outside the 24-hour window)' };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
@@ -160,7 +193,7 @@ exports.handler = async (event) => {
     }
 
     const email = String(repl.customer_email || '').trim();
-    if (!email) return json(400, { error: 'This customer has no email address on the order — ask for the UPI ID over WhatsApp and save it from the panel.' });
+    if (!email && !repl.customer_phone) return json(400, { error: 'This customer has no email or phone on the order — ask for the UPI ID another way and save it from the panel.' });
 
     const split = refundSplitPaise(repl, original);
     const requested = Number(body.amount_paise);
@@ -176,7 +209,7 @@ exports.handler = async (event) => {
     const token = signRefundUpiToken(replId);
     const link = `${siteUrl()}/refund-upi/?id=${encodeURIComponent(replId)}&t=${encodeURIComponent(token)}`;
 
-    await sendEmail({
+    const emailed = email ? await sendEmail({
       to: email,
       subject: `Refund for your missing ${(repl.cart_items || []).length > 1 ? 'books' : 'book'} — ${originalId || replId}`,
       html: customerEmailHtml({
@@ -186,7 +219,11 @@ exports.handler = async (event) => {
         amountPaise,
         link,
       }),
-    });
+    }).catch((e) => ({ ok: false, error: e.message })) : { ok: false, skipped: true };
+    const whatsapp = await askOnWhatsApp({ repl, originalId: originalId || replId, amountPaise, link });
+    if (!(emailed && emailed.ok) && !whatsapp.ok) {
+      return json(502, { error: `Could not reach the customer: email ${email ? (emailed && emailed.error) || 'failed' : 'not on file'}, WhatsApp ${whatsapp.error || whatsapp.reason || 'failed'}.` });
+    }
 
     // Stamp the replacement so the panel can show it was asked, and so a second
     // click has to be deliberate.
@@ -203,11 +240,15 @@ exports.handler = async (event) => {
       if (upErr) console.error('[request-refund-upi] stamp failed:', upErr.message);
     }
 
+    const via = [emailed && emailed.ok ? `email (${email})` : '', whatsapp.ok ? `WhatsApp (${whatsapp.via})` : ''].filter(Boolean).join(' and ');
     return json(200, {
       ok: true,
       sent_to: email,
+      email: !!(emailed && emailed.ok),
+      whatsapp,
       amount_paise: amountPaise,
-      message: `Asked ${email} for a UPI ID for ₹${rupees(amountPaise)}.`,
+      message: `Asked for a UPI ID for ₹${rupees(amountPaise)} by ${via}.`
+        + (whatsapp.ok ? '' : ` WhatsApp did not go: ${whatsapp.error || whatsapp.reason}.`),
     });
   } catch (e) {
     console.error('[request-refund-upi]', e);

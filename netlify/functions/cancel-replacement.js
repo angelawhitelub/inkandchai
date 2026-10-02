@@ -12,6 +12,13 @@
  *   dry_run          say what would happen, change nothing (the panel's confirm)
  *   confirm_stopped  the admin has cancelled it in a courier panel we cannot
  *                    check (XpressBees feed, iThink), so the refund may go ahead
+ *   shipment_stopped the caller (admin-not-picked-up-cancel) has already
+ *                    cancelled the AWB with its courier, live; trusted as stopped
+ *
+ * When the original was cash on delivery there is nothing for a gateway to
+ * reverse, so the customer is asked for a UPI ID straight away -- by email and
+ * WhatsApp, through request-refund-upi -- instead of waiting for someone to
+ * press "Ask for UPI" in the Missing Books tab.
  *
  * Order of work, chosen so a failure never costs a book AND the money:
  *   1. cancel the replacement (update-order-status, which also stops an
@@ -50,6 +57,7 @@ const FUNCTIONS = {
   'update-order-status': () => require('./update-order-status'),
   'razorpay-refund': () => require('./razorpay-refund'),
   'phonepe-refund': () => require('./phonepe-refund'),
+  'request-refund-upi': () => require('./request-refund-upi'),
 };
 
 /** Run another admin function in-process, as the same admin, with its own staff permission check. */
@@ -145,12 +153,21 @@ exports.handler = async (event) => {
     } else if (!repl.tracking_id && repl.nimbus_pushed_at) {
       nimbus = await cancelNimbusOrder(displayId).catch(e => ({ ok: false, error: e.message }));
     }
-    const stop = shipmentStopState(repl, { courier, nimbus });
+    const stop = body.shipment_stopped === true ? { stopped: true } : shipmentStopState(repl, { courier, nimbus });
     const result = { ok: true, replacement_id: displayId, cancelled, courier, nimbus, plan: publicPlan };
 
     // ── 2. Money ───────────────────────────────────────────────────────────
     if (plan.action !== 'gateway') {
       result.refund = { status: plan.action === 'none' ? 'not_owed' : plan.action, message: plan.reason, amount_paise: plan.amountPaise || 0 };
+      // COD original: ask where to send the money now. Only once the parcel is
+      // known to be stopped -- the message tells them the books are not coming.
+      if (plan.action === 'upi' && stop.stopped === true && body.ask_upi !== false) {
+        const ask = await callFunction(event, 'request-refund-upi', { id: repl.id })
+          .catch((e) => ({ statusCode: 500, data: { error: e.message } }));
+        result.upi_request = ask.statusCode === 200
+          ? { sent: true, message: ask.data.message, email: ask.data.email, whatsapp: ask.data.whatsapp }
+          : { sent: false, message: ask.data.error || `HTTP ${ask.statusCode}` };
+      }
       return json(200, result);
     }
     if (stop.stopped === false) {

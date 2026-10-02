@@ -17,6 +17,8 @@
 const { statusImpliesMovement } = require('./nimbuspost-track');
 const { isDefinitelyCod } = require('./order-payment-kind');
 const { isReplacementOrder } = require('./replacement-order');
+const { pickupState } = require('./pickup-live');
+const { replacementMeta } = require('./missing-books');
 
 const UNBOOKED = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending'];
 const DEFAULT_MIN_HOURS = 48;
@@ -37,6 +39,33 @@ function paymentLabel(order) {
   return isDefinitelyCod(order) ? 'cod' : 'prepaid';
 }
 
+function booksOf(order) {
+  return (Array.isArray(order.cart_items) ? order.cart_items : [])
+    .map((i) => {
+      const t = String(i?.title || i?.name || '').replace(/\s+/g, ' ').trim();
+      return t && Number(i.qty) > 1 ? `${t} ×${i.qty}` : t;
+    })
+    .filter(Boolean)
+    .join(', ');
+}
+
+/** What the Not Picked Up tab needs to know about a replacement's refund. */
+function replacementInfo(order) {
+  const m = replacementMeta(order);
+  if (!m) return null;
+  return {
+    reason: m.reason || '',
+    original_order_id: m.original_order_id || '',
+    refund_upi_id: m.refund_upi_id || '',
+    refund_upi_at: m.refund_upi_at || null,
+    upi_requested_at: m.upi_requested_at || null,
+    refund_paid_at: m.refund_paid_at || null,
+    refund_issued_at: m.refund_issued_at || null,
+  };
+}
+
+const moved = (s) => statusImpliesMovement(s) || pickupState(s) === 'moved';
+
 function pincodeOf(address) {
   const m = String(address || '').match(/\b\d{6}\b(?!.*\b\d{6}\b)/s);
   return m ? m[0] : '';
@@ -56,7 +85,10 @@ function classify(order, now = Date.now(), minHours = DEFAULT_MIN_HOURS) {
     created_at: order.created_at,
     age_hours: Math.floor(ageHours),
     customer_name: order.customer_name || '',
+    customer_phone: order.customer_phone || '',
     pincode: pincodeOf(order.customer_address),
+    books: booksOf(order),
+    replacement: replacementInfo(order),
     amount_rs: Math.round(Number(order.amount_paise || 0) / 100),
     payment: paymentLabel(order),
   };
@@ -74,7 +106,10 @@ function classify(order, now = Date.now(), minHours = DEFAULT_MIN_HOURS) {
   const scans = [order.last_courier_status, order.last_nimbuspost_status]
     .map((s) => String(s || '').toLowerCase().trim())
     .filter(Boolean);
-  if (scans.some(statusImpliesMovement)) return null;
+  if (scans.some(moved)) return null;
+  // The courier voided the AWB but the order is still open here: it needs a
+  // new booking (or cancelling), not chasing for a pickup.
+  const courierCancelled = scans.some((x) => pickupState(x) === 'cancelled');
 
   const bookedAt = order.awb_assigned_at || order.shipped_at || null;
   const sinceBooking = bookedAt ? hoursBetween(bookedAt, now) : null;
@@ -87,9 +122,11 @@ function classify(order, now = Date.now(), minHours = DEFAULT_MIN_HOURS) {
     booked_at: bookedAt,
     hours_since_booking: sinceBooking == null ? null : Math.floor(sinceBooking),
     last_scan: order.last_courier_status || order.last_nimbuspost_status || '',
+    checked_at: order.last_courier_status_at || null,
+    courier_cancelled: courierCancelled,
     // True only when the courier itself said it is waiting. False = no scan
     // recorded, which for a courier without a feed proves nothing either way.
-    confirmed: scans.some((s) => PENDING_RE.test(s)),
+    confirmed: scans.some((s) => PENDING_RE.test(s) || pickupState(s) === 'waiting'),
   };
 }
 
@@ -106,4 +143,4 @@ function summarize(rows) {
   return counts;
 }
 
-module.exports = { classify, summarize, paymentLabel, UNBOOKED, DEFAULT_MIN_HOURS };
+module.exports = { classify, summarize, paymentLabel, booksOf, UNBOOKED, DEFAULT_MIN_HOURS };

@@ -20,10 +20,11 @@ const CORS = {
 const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stringify(body) });
 
 const COLUMNS = [
-  'id', 'razorpay_order_id', 'status', 'created_at', 'customer_name', 'customer_address',
+  'id', 'razorpay_order_id', 'status', 'created_at', 'customer_name', 'customer_phone', 'customer_address',
   'amount_paise', 'advance_paid_paise', 'razorpay_payment_id', 'payment_status', 'shipment_payment_type',
   'source', 'cart_items', 'tracking_id', 'tracking_url', 'courier_name', 'shipped_at', 'awb_assigned_at',
-  'shipment_moved_at', 'last_courier_status', 'last_nimbuspost_status', 'nimbus_pushed_at',
+  'shipment_moved_at', 'last_courier_status', 'last_courier_status_at', 'last_nimbuspost_status',
+  'nimbus_pushed_at', 'ithink_pushed_at',
 ];
 const PAGE = 1000;
 
