@@ -15,6 +15,10 @@
  *   Delhivery courier             -> Delhivery's tracking API (direct bookings)
  *   pushed to iThink              -> iThink track
  *   pushed to NimbusPost          -> NimbusPost bulk track
+ *   Amazon Shipping courier       -> track.amazon.in's public tracker JSON (the
+ *                                    iThink track API does not know these AWBs;
+ *                                    IC-20260919-XOHQB sat in the tab "no answer"
+ *                                    after being delivered on 25 Sep)
  *
  * States, from the courier's words:
  *   waiting    booked, not yet picked up -- the only state a bulk cancel acts on
@@ -133,6 +137,46 @@ async function trackNimbus(awbs, deps = {}) {
   return out;
 }
 
+// ── Amazon Shipping ───────────────────────────────────────────────────────
+// The public tracking page's own JSON. A parcel counts as waiting only while
+// its event history holds nothing past label creation: any scan after that
+// (PickupDone, Received, Departed, Delivered…) means it left our hands.
+const AMAZON_PRE_PICKUP = /^(creationconfirmed|created|labelcreated|shipmentcreated|pickupscheduled|pickupattempted|pickuprescheduled|readyforpickup)$/i;
+
+function amazonState(json) {
+  const parse = (v) => (typeof v === 'string' ? JSON.parse(v) : v) || {};
+  const history = parse(json.eventHistory);
+  const tracker = parse(json.progressTracker);
+  const events = Array.isArray(history.eventHistory) ? history.eventHistory : [];
+  const codes = events.map((e) => String(e && e.eventCode || '')).filter(Boolean);
+  const summary = String((tracker.summary && tracker.summary.status) || '').trim();
+  if (!codes.length && !summary) return null;
+  if (codes.some((c) => /cancel/i.test(c)) && !codes.some((c) => /pickupdone|received|departed|deliver/i.test(c))) {
+    return { status: 'Cancelled', detail: summary };
+  }
+  if (codes.length && codes.every((c) => AMAZON_PRE_PICKUP.test(c))) return { status: 'Not Picked', detail: summary || 'label created' };
+  // Past pickup. Say what Amazon says, but never a phrase that reads as waiting.
+  const words = summary && !WAITING.has(norm(summary)) ? summary : `In transit (${codes[codes.length - 1] || 'scanned'})`;
+  return { status: words, detail: codes[codes.length - 1] || '' };
+}
+
+async function trackAmazon(awbs, fetchFn = fetch) {
+  const out = new Map();
+  for (const part of chunk(awbs, 5)) {
+    await Promise.all(part.map(async (awb) => {
+      try {
+        const res = await fetchFn(`https://track.amazon.in/api/tracker/${encodeURIComponent(awb)}`, {
+          headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129 Safari/537.36' },
+        });
+        const data = await readJson(res);
+        const st = data && !data._raw ? amazonState(data) : null;
+        if (st && st.status) out.set(awb, st);
+      } catch (_) { /* unknown */ }
+    }));
+  }
+  return out;
+}
+
 // ── XpressBees ────────────────────────────────────────────────────────────
 async function trackXpressbees(awbs, deps = {}) {
   const out = new Map();
@@ -154,6 +198,7 @@ function channelsFor(order) {
   const list = [];
   if (/xpress/i.test(courier)) list.push('xpressbees');
   if (/delhivery/i.test(courier)) list.push('delhivery');
+  if (/amazon/i.test(courier)) list.push('amazon');
   if (order.ithink_pushed_at) list.push('ithink');
   if (order.nimbus_pushed_at || order.last_nimbuspost_status) list.push('nimbuspost');
   // XpressBees AWBs booked through NimbusPost answer "Record not found" on the
@@ -169,16 +214,17 @@ function channelsFor(order) {
 async function checkPickups(orders, deps = {}) {
   const fetchFn = deps.fetch || fetch;
   const withAwb = orders.filter((o) => String(o.tracking_id || '').trim());
-  const want = { xpressbees: new Set(), delhivery: new Set(), ithink: new Set(), nimbuspost: new Set() };
+  const want = { xpressbees: new Set(), delhivery: new Set(), amazon: new Set(), ithink: new Set(), nimbuspost: new Set() };
   for (const o of withAwb) for (const c of channelsFor(o)) want[c].add(String(o.tracking_id).trim());
 
-  const [xbMap, dlMap, itMap, npMap] = await Promise.all([
+  const [xbMap, dlMap, amMap, itMap, npMap] = await Promise.all([
     trackXpressbees([...want.xpressbees], deps),
     trackDelhivery([...want.delhivery], fetchFn),
+    trackAmazon([...want.amazon], fetchFn),
     trackIthink([...want.ithink], fetchFn),
     trackNimbus([...want.nimbuspost], deps),
   ]);
-  const maps = { xpressbees: xbMap, delhivery: dlMap, ithink: itMap, nimbuspost: npMap };
+  const maps = { xpressbees: xbMap, delhivery: dlMap, amazon: amMap, ithink: itMap, nimbuspost: npMap };
 
   const out = new Map();
   for (const o of orders) {
@@ -249,10 +295,11 @@ async function cancelAtCourier(order, live, deps = {}) {
     }
     if (live.channel === 'ithink') return await cancelIthink(awb, fetchFn);
     if (live.channel === 'delhivery') return await cancelDelhivery(awb, fetchFn);
+    if (live.channel === 'amazon') return { ok: false, message: `Amazon Shipping ${awb} cannot be cancelled from here — cancel it in the Amazon Shipping / iThink panel, then confirm.` };
     return { ok: false, message: `No courier answered for ${awb}, so it was not cancelled.` };
   } catch (e) {
     return { ok: false, message: `Cancelling ${awb} failed: ${e.message}` };
   }
 }
 
-module.exports = { checkPickups, cancelAtCourier, pickupState, channelsFor, trackDelhivery, trackIthink, ITHINK_TRACK_URL };
+module.exports = { checkPickups, cancelAtCourier, pickupState, channelsFor, amazonState, trackDelhivery, trackIthink, ITHINK_TRACK_URL };

@@ -63,3 +63,23 @@ test('a courier cancel counts only on an explicit success', async () => {
   const boom = async () => { throw new Error('network down'); };
   assert.equal((await cancelAtCourier(order, { channel: 'delhivery' }, { fetch: boom })).ok, false);
 });
+
+// IC-20260919-XOHQB, Amazon Shipping 372685506697: delivered 25 Sep, listed as
+// "no answer" because the iThink track API does not know Amazon AWBs.
+test('Amazon Shipping: label-only is waiting, any scan after it is moved', () => {
+  const { amazonState, pickupState: ps } = require('./pickup-live');
+  const wrap = (codes, status) => ({
+    eventHistory: JSON.stringify({ eventHistory: codes.map((eventCode) => ({ eventCode })) }),
+    progressTracker: JSON.stringify({ summary: { status } }),
+  });
+  const delivered = amazonState(wrap(['CreationConfirmed', 'PickupDone', 'Received', 'Departed', 'Delivered'], 'Delivered'));
+  assert.equal(ps(delivered.status), 'moved');
+  assert.equal(ps(amazonState(wrap(['CreationConfirmed'], 'Label created')).status), 'waiting');
+  assert.equal(ps(amazonState(wrap(['CreationConfirmed', 'PickupDone'], 'Not Picked')).status), 'moved', 'a summary that reads as waiting cannot hide a pickup scan');
+  assert.equal(ps(amazonState(wrap(['CreationConfirmed', 'ShipmentCancelled'], 'Cancelled')).status), 'cancelled');
+  assert.equal(amazonState({}), null);
+});
+
+test('an Amazon AWB is asked of Amazon before iThink', () => {
+  assert.deepEqual(channelsFor({ courier_name: 'Amazon Shipping', ithink_pushed_at: 'x', nimbus_pushed_at: 'x' }), ['amazon', 'ithink', 'nimbuspost']);
+});
