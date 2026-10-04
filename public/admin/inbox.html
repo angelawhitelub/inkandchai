@@ -203,6 +203,8 @@ main{flex:1;min-height:0;display:flex}
   });
 })();
 </script>
+<link rel="stylesheet" href="/admin/inbox-layout.css?v=20261005"/>
+<script src="/admin/inbox-layout.js?v=20261005" defer></script>
 </head>
 <body>
 
@@ -221,6 +223,22 @@ main{flex:1;min-height:0;display:flex}
       <button type="button" class="fz-plus" id="fzPlus" aria-label="Increase text size"
               title="Larger text (Ctrl/⌘ + Shift + +)" onclick="bumpFontScale(__fzStep)">A+</button>
     </div>
+    <details class="inbox-layout" id="inboxLayout">
+      <summary class="btn" aria-controls="inboxLayoutPanel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg> Layout</summary>
+      <section class="inbox-layout-panel" id="inboxLayoutPanel" aria-label="Inbox layout settings">
+        <div class="layout-heading"><div><h2>Make room to read</h2><p>Adjust columns and blocks independently of text size.</p></div><button type="button" class="layout-close" id="closeInboxLayout" aria-label="Close layout settings">×</button></div>
+        <div class="layout-fields">
+          <div class="layout-field" data-layout-field="sidebar"><label for="layout-sidebar">Conversation column</label><div class="layout-value"><input type="number" id="layout-sidebar-value" aria-label="Conversation column in pixels" inputmode="numeric"/><span aria-hidden="true">px</span></div><input type="range" id="layout-sidebar" data-layout-setting="sidebar"/><small id="layout-sidebar-hint"></small></div>
+          <div class="layout-field" data-layout-field="rows"><label for="layout-rows">Conversation row height</label><div class="layout-value"><input type="number" id="layout-rows-value" aria-label="Conversation row height in pixels" inputmode="numeric"/><span aria-hidden="true">px</span></div><input type="range" id="layout-rows" data-layout-setting="rows"/><small id="layout-rows-hint"></small></div>
+          <div class="layout-field" data-layout-field="bubble"><label for="layout-bubble">Message block width</label><div class="layout-value"><input type="number" id="layout-bubble-value" aria-label="Message block width in percent" inputmode="numeric"/><span aria-hidden="true">%</span></div><input type="range" id="layout-bubble" data-layout-setting="bubble"/><small id="layout-bubble-hint"></small></div>
+          <div class="layout-field" data-layout-field="spacing"><label for="layout-spacing">Message spacing</label><div class="layout-value"><input type="number" id="layout-spacing-value" aria-label="Message spacing in pixels" inputmode="numeric"/><span aria-hidden="true">px</span></div><input type="range" id="layout-spacing" data-layout-setting="spacing"/><small id="layout-spacing-hint"></small></div>
+          <div class="layout-field" data-layout-field="details"><label for="layout-details">Customer details height</label><div class="layout-value"><input type="number" id="layout-details-value" aria-label="Customer details height in pixels" inputmode="numeric"/><span aria-hidden="true">px</span></div><input type="range" id="layout-details" data-layout-setting="details"/><small id="layout-details-hint"></small></div>
+          <div class="layout-field" data-layout-field="reply"><label for="layout-reply">Reply box height</label><div class="layout-value"><input type="number" id="layout-reply-value" aria-label="Reply box height in pixels" inputmode="numeric"/><span aria-hidden="true">px</span></div><input type="range" id="layout-reply" data-layout-setting="reply"/><small id="layout-reply-hint"></small></div>
+        </div>
+        <p class="layout-tip">Drag the divider between columns or the grips above the reply box and below customer details. Double-click a grip to reset that size.</p>
+        <div class="layout-footer"><span id="layoutSaveStatus" role="status">Saved on this browser</span><button type="button" class="btn" id="resetInboxLayout">Reset layout</button></div>
+      </section>
+    </details>
     <button class="btn" onclick="refreshAll()">↻ Refresh</button>
     <a class="btn" href="/admin/">← Admin</a>
   </div>
@@ -244,6 +262,7 @@ main{flex:1;min-height:0;display:flex}
       </div>
       <div class="convlist" id="convlist"><div class="spin">Loading…</div></div>
     </aside>
+    <div class="inbox-resize inbox-resize-column" id="inboxColumnGrip" role="separator" tabindex="0" aria-label="Resize conversation column" aria-orientation="vertical" aria-controls="sidebar" title="Drag to resize the conversation column · Double-click to reset"></div>
 
     <section class="thread" id="thread">
       <div class="empty" id="emptyState">Select a conversation</div>
@@ -255,9 +274,13 @@ main{flex:1;min-height:0;display:flex}
           </div>
           <div class="tactions" id="tActions"></div>
         </div>
+        <div class="customer-block">
         <details id="customerDetails" class="customer-details" open><summary>Customer &amp; orders</summary><div id="customerContent">Loading customer details…</div></details>
+        <div class="inbox-resize inbox-resize-row" id="inboxDetailsGrip" role="separator" tabindex="0" aria-label="Resize customer details" aria-orientation="horizontal" aria-controls="customerDetails" title="Drag to resize customer details · Double-click to reset"></div>
+        </div>
         <div class="history-status"><span id="historyStatus" role="status"></span> <button class="btn" id="historyRetry" onclick="loadMessages(true)" hidden>Retry history</button></div>
         <div class="msgs" id="msgs"></div>
+        <div class="inbox-resize inbox-resize-row" id="inboxReplyGrip" role="separator" tabindex="0" aria-label="Resize reply box" aria-orientation="horizontal" aria-controls="reply" title="Drag up to enlarge the reply box · Double-click to reset"></div>
         <div class="composer">
           <textarea id="reply" rows="2" placeholder="Type a message — Enter sends, Shift+Enter for a new line"></textarea>
           <button class="btn gold" id="sendBtn" onclick="send()">Send</button>
