@@ -106,4 +106,8 @@ async function listNotPicked(db, { minHours, days = 30, now = Date.now() }) {
   return { orders: listed.map(([o]) => o), rows, counts: summarize(rows) };
 }
 
-module.exports = { listNotPicked };
+// How far back both the tab and the daily report look. A parcel nobody has
+// picked up in two months is exactly the one that must not fall off the list.
+const REPORT_DAYS = 60;
+
+module.exports = { listNotPicked, REPORT_DAYS };

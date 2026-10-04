@@ -29,7 +29,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { listNotPicked } = require('./utils/not-picked-up-list');
+const { listNotPicked, REPORT_DAYS } = require('./utils/not-picked-up-list');
 const { buildNotPickedPdf } = require('./utils/not-picked-up-pdf');
 const { checkPickups } = require('./utils/pickup-live');
 const { sendEmail } = require('./utils/email');
@@ -98,9 +98,9 @@ exports.handler = async (event = {}) => {
 
   try {
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const first = await listNotPicked(db, { minHours: minDays * 24, days: 60, now });
+    const first = await listNotPicked(db, { minHours: minDays * 24, days: REPORT_DAYS, now });
     const live = await refreshStale(db, first.orders, now).catch((e) => ({ error: e.message }));
-    const { rows } = live.checked ? await listNotPicked(db, { minHours: minDays * 24, days: 60, now }) : first;
+    const { rows } = live.checked ? await listNotPicked(db, { minHours: minDays * 24, days: REPORT_DAYS, now }) : first;
 
     const generatedAt = new Date(now);
     const pdf = await buildNotPickedPdf(rows, { minDays, generatedAt });

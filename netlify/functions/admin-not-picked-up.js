@@ -10,7 +10,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { DEFAULT_MIN_HOURS } = require('./utils/not-picked-up');
-const { listNotPicked } = require('./utils/not-picked-up-list');
+const { listNotPicked, REPORT_DAYS } = require('./utils/not-picked-up-list');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -27,7 +27,7 @@ exports.handler = async (event) => {
 
   const q = event.queryStringParameters || {};
   const minHours = Math.min(24 * 30, Math.max(1, Number(q.min_hours) || DEFAULT_MIN_HOURS));
-  const days = Math.min(120, Math.max(3, Number(q.days) || 30));
+  const days = Math.min(120, Math.max(3, Number(q.days) || REPORT_DAYS));
   const now = Date.now();
 
   try {
