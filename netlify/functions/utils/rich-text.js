@@ -29,6 +29,34 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
+// Some descriptions arrive as HTML ("<p><strong>Book Scavenger</strong> is…"),
+// written by an importer rather than typed. Escaped, that showed customers the
+// literal tags (5 Oct 2026). Fold the common tags into the marks above, drop
+// any other tag, and decode the entities -- all BEFORE escaping, so the output
+// still contains only tags this file writes.
+const HTML_TAG = /<\/?(p|br|strong|b|em|i|u|ul|ol|li|h[1-6]|div|span)\b[^>]*>/i;
+const ENTITIES = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'", rsquo: "'", lsquo: "'", rdquo: '"', ldquo: '"', ndash: '–', mdash: '—', hellip: '…' };
+
+function htmlToMarks(raw) {
+  const s = String(raw == null ? '' : raw);
+  if (!HTML_TAG.test(s)) return s;
+  return s
+    .replace(/\r\n?/g, '\n')
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|ul|ol|h[1-6])\s*>/gi, '\n\n')
+    .replace(/<h[1-6]\b[^>]*>/gi, '\n\n## ')
+    .replace(/<li\b[^>]*>/gi, '\n- ')
+    .replace(/<\/?(strong|b)\b[^>]*>/gi, '**')
+    .replace(/<\/?(em|i)\b[^>]*>/gi, '*')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(#39|[a-z]+);/gi, (m, name) => ENTITIES[name.toLowerCase()] ?? m)
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 // Inline marks. Runs on ALREADY-ESCAPED text, so it can only ever wrap plain
 // characters. ** is handled before * or "**x**" would parse as an empty italic.
 function inlineMarks(escaped) {
@@ -44,7 +72,7 @@ function inlineMarks(escaped) {
  * use it directly in a `x ? block : ''` conditional.
  */
 function richText(raw) {
-  const text = String(raw == null ? '' : raw).replace(/\r\n?/g, '\n').trim();
+  const text = htmlToMarks(raw).replace(/\r\n?/g, '\n').trim();
   if (!text) return '';
 
   const out = [];
@@ -93,7 +121,7 @@ function richText(raw) {
  * "**" in a Merchant Center description would show the asterisks verbatim.
  */
 function plainText(raw) {
-  return String(raw == null ? '' : raw)
+  return htmlToMarks(raw)
     .replace(/^\s*#{2,3}\s+/gm, '')
     .replace(/^\s*[-*•]\s+/gm, '')
     .replace(/\*\*([^*\n]+)\*\*/g, '$1')
@@ -103,4 +131,4 @@ function plainText(raw) {
     .trim();
 }
 
-module.exports = { richText, plainText, escapeHtml };
+module.exports = { richText, plainText, escapeHtml, htmlToMarks };

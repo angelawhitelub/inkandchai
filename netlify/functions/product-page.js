@@ -1,6 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const SOCIAL_PROOF = require('../../data/social_proof.json').items || [];
 const { richText, plainText } = require('./utils/rich-text');
+const { applySiteTheme } = require('./utils/site-theme');
 const { withBadgeTag, selectTolerant } = require('./utils/publisher-sourced');
 const { bookDetailRows, schemaBookDetails, SCHEMA_BOOK_FORMATS, SCHEMA_LANGUAGES } = require('./utils/book-details');
 const { fetchSettings } = require('./utils/product-settings');
@@ -562,7 +563,6 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 </script>
 <script src="/js/delivery-estimate.js" defer></script>
 <script src="/js/cart.js"></script>
-<script src="/js/site-feedback.js" defer></script>
 <!-- Google automated discounts: this page is rendered live, not prerendered by
      generate_site.py, so it needs the include of its own. -->
 <script src="/js/google-discount.js"></script>
@@ -811,7 +811,8 @@ exports.handler = async (event) => {
         // Purged the moment an admin save changes this (utils/purge-cache.js).
         'Netlify-Cache-Tag': 'products,aplus',
       },
-      body: productHtml(product, aplusContent || null),
+      // The site theme (fonts, theme CSS, site-feedback.js) baked pages carry.
+      body: applySiteTheme(productHtml(product, aplusContent || null)),
     };
   } catch (err) {
     if (err instanceof DatabaseDown || err?.name === 'DatabaseDown') {

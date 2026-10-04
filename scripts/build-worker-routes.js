@@ -99,5 +99,21 @@ fs.writeFileSync(OUT, lines.join('\n'));
 const crons = [...new Set(Object.values(schedules))].sort();
 fs.writeFileSync(path.join(ROOT, 'worker', 'crons.generated.json'), JSON.stringify(crons, null, 2) + '\n');
 
+// The site theme (site_theme.py) is written into every baked page as a fenced
+// block whose stylesheet name is a content hash. Pages a function renders per
+// request -- product-page.js, for books added from the admin -- need the same
+// block, and a Worker cannot list public/css at runtime, so record it here,
+// copied verbatim from a baked page so the two can never differ.
+{
+  const baked = fs.readFileSync(path.join(ROOT, 'public', '404.html'), 'utf8');
+  const block = (baked.match(/<!--IAC-THEME-->[\s\S]*?<!--\/IAC-THEME-->/) || [])[0];
+  const href = block && (block.match(/href="(\/css\/theme-[0-9a-f]+\.css)"/) || [])[1];
+  if (!block || !href || !fs.existsSync(path.join(ROOT, 'public', href))) {
+    console.error('[worker-routes] public/404.html has no IAC-THEME block pointing at an existing /css/theme-*.css — run python3 site_theme.py');
+    process.exit(1);
+  }
+  fs.writeFileSync(path.join(FN_DIR, 'utils', 'site-theme.generated.json'), JSON.stringify({ block, href }, null, 2) + '\n');
+}
+
 console.log(`[worker-routes] ${handlers.length} handlers, ${Object.keys(schedules).length} scheduled jobs on ${crons.length} distinct triggers`);
 console.log(`[worker-routes] crons: ${crons.join(' | ')}`);
