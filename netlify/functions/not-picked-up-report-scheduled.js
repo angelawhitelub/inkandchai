@@ -128,21 +128,32 @@ exports.handler = async (event = {}) => {
     const whatsapp = [];
     if (phones.length) {
       const media = await uploadMedia(pdf.bytes, { mime: 'application/pdf', filename });
+      const template = process.env.NPU_REPORT_TEMPLATE || 'not_picked_up_report';
+      const params = [pdf.count, minDays, pdf.oldestDays];
       for (const to of phones) {
-        if (!media.ok) { whatsapp.push({ to, ok: false, error: 'PDF upload to WhatsApp failed' }); continue; }
-        const tpl = await sendWhatsApp({
+        // 1. The template with the PDF as its document header -- reaches anyone.
+        if (media.ok) {
+          const withPdf = await sendWhatsApp({ to, template, params, headerDocument: { id: media.id, filename } });
+          if (withPdf.ok) { whatsapp.push({ to, ok: true, via: 'template + pdf' }); continue; }
+        }
+        // 2. The same template with no header (how it was submitted on 5 Oct
+        //    2026): the alert always lands, and opens nothing by itself.
+        const alert = await sendWhatsApp({ to, template, params });
+        // 3. The PDF as a plain document, delivered only inside the 24 h window.
+        const doc = media.ok
+          ? await sendDocument(to, {
+            id: media.id, filename,
+            caption: `${pdf.count} orders placed ${minDays}+ days ago have not been picked up. Oldest: ${pdf.oldestDays} days. Oldest first. - Ink & Chai`,
+          })
+          : { ok: false };
+        whatsapp.push({
           to,
-          template: process.env.NPU_REPORT_TEMPLATE || 'not_picked_up_report',
-          params: [pdf.count, minDays, pdf.oldestDays],
-          headerDocument: { id: media.id, filename },
+          ok: !!(alert.ok || doc.ok),
+          via: [alert.ok && 'template', doc.ok && 'pdf'].filter(Boolean).join(' + ') || undefined,
+          error: doc.ok ? undefined
+            : alert.ok ? 'alert sent; PDF not delivered (the number has not messaged us in 24 h) — it is in the email'
+              : `template "${template}" not approved yet and the number has not messaged us in 24 h`,
         });
-        if (tpl.ok) { whatsapp.push({ to, ok: true, via: 'template' }); continue; }
-        const doc = await sendDocument(to, {
-          id: media.id, filename,
-          caption: `${pdf.count} orders placed ${minDays}+ days ago have not been picked up. Oldest: ${pdf.oldestDays} days. Oldest first. - Ink & Chai`,
-        });
-        whatsapp.push({ to, ok: doc.ok, via: doc.ok ? 'document' : undefined,
-          error: doc.ok ? undefined : 'template not approved yet and the number has not messaged us in 24 h' });
       }
     }
 
