@@ -2871,7 +2871,7 @@ select,input,textarea{font-size:1rem;}
           <option value="in_catalogue">Already listed</option>
           <option value="skipped">Skipped</option>
         </select>
-        <select id="bsGenreFilter" onchange="renderBestsellers()" title="Show drafts found on one genre's bestseller list" style="padding:0.45rem;font-size:0.72rem;max-width:15rem;"><option value="">All genres</option></select>
+        <select id="bsGenreFilter" onchange="bsPickGenre(this.value)" title="Show drafts found on one genre's bestseller list" style="padding:0.45rem;font-size:0.72rem;max-width:15rem;"><option value="">All genres</option></select>
         <button class="btn-outline" onclick="loadBestsellers()">↻ Refresh</button>
         <select id="bsGenreRun" title="Which Amazon.in bestseller list to read. The nightly run reads the starred genres; any genre can be read now (its top 100)." style="padding:0.45rem;font-size:0.72rem;max-width:15rem;"><option value="">★ Nightly genres</option></select>
         <button class="btn-outline" id="bsRunBtn" onclick="runBestsellerAgent()">▶ Find 10 more now</button>
@@ -4282,9 +4282,17 @@ function bsFillGenres() {
     + bsGenres.map((g) => '<option value="' + bsEsc(g.id) + '">' + (g.nightly ? '★ ' : '') + bsEsc(g.name) + '</option>').join('');
   run.value = keepRun;
   const n = (name) => bsRows.filter((b) => bsInGenre(b, name)).length;
+  // Every genre, even with nothing waiting: an empty one is the cue to read it.
   filter.innerHTML = '<option value="">All genres (' + bsRows.length + ')</option>'
-    + bsGenres.filter((g) => n(g.name)).map((g) => '<option value="' + bsEsc(g.name) + '">' + bsEsc(g.name) + ' (' + n(g.name) + ')</option>').join('');
+    + bsGenres.map((g) => '<option value="' + bsEsc(g.name) + '">' + (g.nightly ? '★ ' : '') + bsEsc(g.name) + ' (' + n(g.name) + ')</option>').join('');
   filter.value = [...filter.options].some((o) => o.value === keepFilter) ? keepFilter : '';
+}
+// Filtering to a genre also aims "Find 10 more now" at it.
+function bsPickGenre(name) {
+  const g = bsGenres.find((x) => x.name === name);
+  const run = document.getElementById('bsGenreRun');
+  if (run) run.value = g ? g.id : '';
+  renderBestsellers();
 }
 function bsInGenre(b, name) {
   return b.source_list === name || (Array.isArray(b.lists) && b.lists.some((l) => l && l.list === name));
@@ -4296,7 +4304,7 @@ function renderBestsellers() {
   const rows = genre ? bsRows.filter((b) => bsInGenre(b, genre)) : bsRows;
   const allBox = document.getElementById('bsAll'); if (allBox) allBox.checked = false;
   if (!rows.length) {
-    list.innerHTML = `<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;padding:1rem 0;">${status === 'pending' ? 'No drafts waiting' + (genre ? ' from ' + bsEsc(genre) : '') + '.' : 'Nothing here.'}</div>`;
+    list.innerHTML = `<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;padding:1rem 0;">${status === 'pending' ? 'No drafts waiting' + (genre ? ' from ' + bsEsc(genre) + '. Press “Find 10 more now” to read its top 100 — books already on the site are skipped' : '') + '.' : 'Nothing here.'}</div>`;
     return;
   }
   list.innerHTML = rows.map((b) => bsCard(b, status)).join('');
