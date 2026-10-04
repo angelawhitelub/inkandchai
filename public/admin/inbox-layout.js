@@ -35,8 +35,9 @@
     if (!panel.isConnected) return;
     for (const [key,spec] of Object.entries(specs)) {
       const value = valueFor(key), range = document.getElementById('layout-' + key), number = document.getElementById('layout-' + key + '-value');
-      // Unedited settings keep their original responsive/rem-based defaults.
-      if (key in saved) root.style.setProperty('--inbox-' + key, value + spec.unit); else root.style.removeProperty('--inbox-' + key);
+      // Keep the default column in sync with zoom while leaving room for chat.
+      // Other unedited settings retain their original responsive defaults.
+      if (key in saved || key === 'sidebar') root.style.setProperty('--inbox-' + key, value + spec.unit); else root.style.removeProperty('--inbox-' + key);
       for (const input of [range,number]) {
         input.min = spec.min; input.max = spec.max(); input.step = 1; input.disabled = key === 'sidebar' && mobile.matches;
         if (input !== document.activeElement || input.type === 'range') input.value = value;
