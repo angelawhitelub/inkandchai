@@ -1,7 +1,7 @@
 /* Reuse the existing navigation actions and role visibility on small screens. */
 (() => {
   const tabs = document.getElementById('adminTabBar');
-  if (!tabs) return;
+  if (!tabs || tabs.classList.contains('grouped-nav')) return;
   const picker = document.createElement('div');
   picker.className = 'mobile-section-picker';
   picker.hidden = true;

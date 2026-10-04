@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Admin — Ink &amp; Chai</title>
-<meta name="admin-build" content="admin-pill-ui-v2"/>
+<meta name="admin-build" content="admin-grouped-nav-v1"/>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>
 <link rel="icon" type="image/png" sizes="96x96" href="/images/favicon-96.png"/>
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"/>
@@ -807,8 +807,10 @@ select,input,textarea{font-size:1rem;}
 })();
 </script>
 <link rel="stylesheet" href="/admin/mobile.css?v=20260929"/>
-<script src="/admin/mobile.js?v=20260929" defer></script>
+<script src="/admin/mobile.js?v=20261005" defer></script>
 <link rel="stylesheet" href="/admin/readability.css?v=20260929"/>
+<link rel="stylesheet" href="/admin/navigation.css?v=20261005"/>
+<script src="/admin/navigation.js?v=20261005" defer></script>
 <link rel="stylesheet" href="/admin/table-sizing.css?v=20261002"/>
 <script src="/admin/table-sizing.js?v=20261002" defer></script>
 <script src="/js/claim-evidence.js?v=20261002" defer></script>
@@ -892,41 +894,72 @@ select,input,textarea{font-size:1rem;}
   </div>
 
   <!-- Tab bar (hidden until login) -->
-  <nav class="admin-tabs" id="adminTabBar" style="display:none">
-    <a class="admin-tab" data-tab="orders" href="/admin/#orders" onclick="return adminTabClick(event,'orders')">📦 Orders</a>
-    <a class="admin-tab owner-only" data-tab="tools" href="/admin/#tools" onclick="return adminTabClick(event,'tools')">🛠 Tools</a>
-    <a class="admin-tab" data-tab="reports" href="/admin/#reports" onclick="return adminTabClick(event,'reports')">📊 Reports</a>
-    <a class="admin-tab owner-only" data-tab="profit" href="/admin/#profit" onclick="return adminTabClick(event,'profit')">💰 Profit</a>
-    <a class="admin-tab" data-tab="create" href="/admin/#create" onclick="return adminTabClick(event,'create')">➕ Create Listing</a>
-    <a class="admin-tab" data-tab="products" href="/admin/#products" onclick="return adminTabClick(event,'products')">✏️ Products &amp; Prices</a>
-    <a class="admin-tab owner-only" data-tab="ebooks" href="/admin/#ebooks" onclick="return adminTabClick(event,'ebooks')">📄 eBooks</a>
-    <a class="admin-tab owner-only" data-tab="promotions" href="/admin/#promotions" onclick="return adminTabClick(event,'promotions')">🏷 Promotions</a>
-    <a class="admin-tab" data-tab="reels" href="/admin/#reels" onclick="return adminTabClick(event,'reels')">🎬 Video Reels</a>
-    <a class="admin-tab owner-only" data-tab="banners" href="/admin/#banners" onclick="return adminTabClick(event,'banners')">🎨 Banner Studio</a>
-    <a class="admin-tab" data-tab="abandoned" href="/admin/#abandoned" onclick="return adminTabClick(event,'abandoned')">🛒 Abandoned Carts</a>
-    <a class="admin-tab" data-tab="reviews" href="/admin/#reviews" onclick="return adminTabClick(event,'reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <a class="admin-tab" data-tab="replacements" href="/admin/#replacements" onclick="return adminTabClick(event,'replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <a class="admin-tab" data-tab="missingbooks" href="/admin/#missingbooks" onclick="return adminTabClick(event,'missingbooks')">📕 Missing Books <span id="missingBooksBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <a class="admin-tab" data-tab="returns" href="/admin/#returns" onclick="return adminTabClick(event,'returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <a class="admin-tab" data-tab="tickets" href="/admin/#tickets" onclick="return adminTabClick(event,'tickets')">🎫 Tickets <span id="ticketsBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <a class="admin-tab" data-tab="notpicked" href="/admin/#notpicked" onclick="return adminTabClick(event,'notpicked')" title="Orders 48 h+ old that no courier has picked up">⏳ Not Picked Up <span id="notPickedBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <a class="admin-tab owner-only" data-tab="rtorefunds" href="/admin/#rtorefunds" onclick="return adminTabClick(event,'rtorefunds')">↩️ RTO Refunds <span id="rtoRefundBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <a class="admin-tab" data-tab="bundles" href="/admin/#bundles" onclick="return adminTabClick(event,'bundles')">📦 Bundles</a>
-    <a class="admin-tab" data-tab="coupons" href="/admin/#coupons" onclick="return adminTabClick(event,'coupons')">🏷️ Coupons</a>
-    <a class="admin-tab" data-tab="npcancelled" href="/admin/#npcancelled" onclick="return adminTabClick(event,'npcancelled')">🚫 NP Cancelled <span id="npCancelledBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <!-- The inbox lives on its own page now. Inside the SPA every 30s poll
-         re-rendered the whole panel, so a thread being read scrolled itself
-         away and a reply in progress felt like the page resetting. -->
-    <a class="admin-tab" data-tab="botinbox" href="/admin/inbox.html">💬 Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <a class="admin-tab owner-only" data-tab="bestsellers" href="/admin/#bestsellers" onclick="return adminTabClick(event,'bestsellers')">📈 Bestsellers <span id="bestsellersBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <a class="admin-tab" data-tab="bookreq" href="/admin/#bookreq" onclick="return adminTabClick(event,'bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
-    <a class="admin-tab" data-tab="insights" href="/admin/#insights" onclick="return adminTabClick(event,'insights')">💡 Insights</a>
-    <a class="admin-tab" data-tab="feedback" href="/admin/#feedback" onclick="return adminTabClick(event,'feedback')">📝 Feedback</a>
-    <a class="admin-tab" data-tab="bugs" href="/admin/#bugs" onclick="return adminTabClick(event,'bugs')">🐞 Bug reports <span id="bugNewBadge" style="display:none;background:#e06060;color:#fff;border-radius:999px;padding:0 6px;font-size:0.6rem;margin-left:4px;"></span></a>
-    <a class="admin-tab" data-tab="inkai" href="/admin/#inkai" onclick="return adminTabClick(event,'inkai')">✨ Ink AI</a>
-    <a class="admin-tab" data-tab="bot" href="/admin/#bot" onclick="return adminTabClick(event,'bot')">🤖 Bot Instructions</a>
-    <a class="admin-tab" data-tab="recover" href="/admin/#recover" onclick="return adminTabClick(event,'recover')">⚡ Recover Payment</a>
-    <a class="admin-tab owner-only" data-tab="adminaccess" href="/admin/#adminaccess" onclick="return adminTabClick(event,'adminaccess')">🔐 Admin Access</a>
+  <nav class="admin-tabs grouped-nav" id="adminTabBar" aria-label="Admin sections" style="display:none">
+    <div class="admin-nav-group" data-nav-group="orders">
+      <button type="button" class="admin-nav-trigger" aria-expanded="false" aria-controls="admin-menu-orders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 9-4 9 4-9 4-9-4Z"/><path d="M3 7v10l9 4 9-4V7M12 11v10"/></svg><span>Orders</span><span class="admin-group-count" hidden></span><svg class="nav-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+      <div class="admin-nav-menu" id="admin-menu-orders" hidden><p class="admin-menu-title">Orders & reporting</p>
+        <a class="admin-tab" data-tab="orders" href="/admin/#orders" onclick="return adminTabClick(event,'orders')">📦 Orders</a>
+        <a class="admin-tab owner-only" data-tab="tools" href="/admin/#tools" onclick="return adminTabClick(event,'tools')">🛠 Tools</a>
+        <a class="admin-tab" data-tab="reports" href="/admin/#reports" onclick="return adminTabClick(event,'reports')">📊 Reports</a>
+        <a class="admin-tab owner-only" data-tab="profit" href="/admin/#profit" onclick="return adminTabClick(event,'profit')">💰 Profit</a>
+      </div>
+    </div>
+    <div class="admin-nav-group" data-nav-group="catalogue">
+      <button type="button" class="admin-nav-trigger" aria-expanded="false" aria-controls="admin-menu-catalogue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h5v16H4zM9 4h5v16H9zM16 4l4-1 4 16-4 1z" transform="translate(-1 0)"/></svg><span>Catalogue</span><span class="admin-group-count" hidden></span><svg class="nav-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+      <div class="admin-nav-menu" id="admin-menu-catalogue" hidden><p class="admin-menu-title">Books & listings</p>
+        <a class="admin-tab" data-tab="create" href="/admin/#create" onclick="return adminTabClick(event,'create')">➕ Create Listing</a>
+        <a class="admin-tab" data-tab="products" href="/admin/#products" onclick="return adminTabClick(event,'products')">✏️ Products &amp; Prices</a>
+        <a class="admin-tab owner-only" data-tab="ebooks" href="/admin/#ebooks" onclick="return adminTabClick(event,'ebooks')">📄 eBooks</a>
+        <div class="admin-menu-divider" aria-hidden="true"></div>
+        <a class="admin-tab" data-tab="bundles" href="/admin/#bundles" onclick="return adminTabClick(event,'bundles')">📦 Bundles</a>
+        <a class="admin-tab owner-only" data-tab="bestsellers" href="/admin/#bestsellers" onclick="return adminTabClick(event,'bestsellers')">📈 Bestsellers <span id="bestsellersBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <a class="admin-tab" data-tab="bookreq" href="/admin/#bookreq" onclick="return adminTabClick(event,'bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+      </div>
+    </div>
+    <div class="admin-nav-group" data-nav-group="marketing">
+      <button type="button" class="admin-nav-trigger" aria-expanded="false" aria-controls="admin-menu-marketing"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 17-6v16L3 14v-4ZM7 15l2 6h4l-2-5M20 9h2v6h-2"/></svg><span>Marketing</span><span class="admin-group-count" hidden></span><svg class="nav-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+      <div class="admin-nav-menu" id="admin-menu-marketing" hidden><p class="admin-menu-title">Promote your store</p>
+        <a class="admin-tab owner-only" data-tab="promotions" href="/admin/#promotions" onclick="return adminTabClick(event,'promotions')">🏷 Promotions</a>
+        <a class="admin-tab" data-tab="reels" href="/admin/#reels" onclick="return adminTabClick(event,'reels')">🎬 Video Reels</a>
+        <a class="admin-tab owner-only" data-tab="banners" href="/admin/#banners" onclick="return adminTabClick(event,'banners')">🎨 Banner Studio</a>
+        <div class="admin-menu-divider" aria-hidden="true"></div>
+        <a class="admin-tab" data-tab="coupons" href="/admin/#coupons" onclick="return adminTabClick(event,'coupons')">🏷️ Coupons</a>
+        <a class="admin-tab" data-tab="abandoned" href="/admin/#abandoned" onclick="return adminTabClick(event,'abandoned')">🛒 Abandoned Carts</a>
+      </div>
+    </div>
+    <div class="admin-nav-group" data-nav-group="care">
+      <button type="button" class="admin-nav-trigger" aria-expanded="false" aria-controls="admin-menu-care"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11a8 8 0 1 1 2 7M4 4v7h7"/></svg><span>Customer Care</span><span class="admin-group-count" hidden></span><svg class="nav-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+      <div class="admin-nav-menu" id="admin-menu-care" hidden><p class="admin-menu-title">Replacements & returns</p>
+        <a class="admin-tab" data-tab="replacements" href="/admin/#replacements" onclick="return adminTabClick(event,'replacements')">🔄 Replacements <span id="replacementRequestsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <a class="admin-tab" data-tab="missingbooks" href="/admin/#missingbooks" onclick="return adminTabClick(event,'missingbooks')">📕 Missing Books <span id="missingBooksBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <a class="admin-tab" data-tab="returns" href="/admin/#returns" onclick="return adminTabClick(event,'returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <div class="admin-menu-divider" aria-hidden="true"></div>
+        <a class="admin-tab" data-tab="tickets" href="/admin/#tickets" onclick="return adminTabClick(event,'tickets')">🎫 Tickets <span id="ticketsBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <a class="admin-tab" data-tab="reviews" href="/admin/#reviews" onclick="return adminTabClick(event,'reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+      </div>
+    </div>
+    <div class="admin-nav-group" data-nav-group="shipping">
+      <button type="button" class="admin-nav-trigger" aria-expanded="false" aria-controls="admin-menu-shipping"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h11v12H3zM14 9h4l3 4v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Shipping</span><span class="admin-group-count" hidden></span><svg class="nav-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+      <div class="admin-nav-menu" id="admin-menu-shipping" hidden><p class="admin-menu-title">Pickup & refunds</p>
+        <a class="admin-tab" data-tab="notpicked" href="/admin/#notpicked" onclick="return adminTabClick(event,'notpicked')" title="Orders 48 h+ old that no courier has picked up">⏳ Not Picked Up <span id="notPickedBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <a class="admin-tab owner-only" data-tab="rtorefunds" href="/admin/#rtorefunds" onclick="return adminTabClick(event,'rtorefunds')">↩️ RTO Refunds <span id="rtoRefundBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <div class="admin-menu-divider" aria-hidden="true"></div>
+        <a class="admin-tab" data-tab="npcancelled" href="/admin/#npcancelled" onclick="return adminTabClick(event,'npcancelled')">🚫 NP Cancelled <span id="npCancelledBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <a class="admin-tab" data-tab="recover" href="/admin/#recover" onclick="return adminTabClick(event,'recover')">⚡ Recover Payment</a>
+      </div>
+    </div>
+    <div class="admin-nav-group" data-nav-group="more">
+      <button type="button" class="admin-nav-trigger" aria-expanded="false" aria-controls="admin-menu-more"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><span>More</span><span class="admin-group-count" hidden></span><svg class="nav-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+      <div class="admin-nav-menu" id="admin-menu-more" hidden><p class="admin-menu-title">Insights & settings</p>
+        <a class="admin-tab" data-tab="insights" href="/admin/#insights" onclick="return adminTabClick(event,'insights')">💡 Insights</a>
+        <a class="admin-tab" data-tab="feedback" href="/admin/#feedback" onclick="return adminTabClick(event,'feedback')">📝 Feedback</a>
+        <a class="admin-tab" data-tab="bugs" href="/admin/#bugs" onclick="return adminTabClick(event,'bugs')">🐞 Bug reports <span id="bugNewBadge" style="display:none;background:#e06060;color:#fff;border-radius:999px;padding:0 6px;font-size:0.6rem;margin-left:4px;"></span></a>
+        <a class="admin-tab" data-tab="inkai" href="/admin/#inkai" onclick="return adminTabClick(event,'inkai')">✨ Ink AI</a>
+        <a class="admin-tab" data-tab="bot" href="/admin/#bot" onclick="return adminTabClick(event,'bot')">🤖 Bot Instructions</a>
+        <a class="admin-tab owner-only" data-tab="adminaccess" href="/admin/#adminaccess" onclick="return adminTabClick(event,'adminaccess')">🔐 Admin Access</a>
+      </div>
+    </div>
+    <a class="admin-tab admin-inbox-link" data-tab="botinbox" href="/admin/inbox.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4H3v13h4v4l5-4h9V4Z"/></svg> Bot Inbox <span id="botUnreadBadge" style="display:none;background:#1a7fcf;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
   </nav>
 
   <!-- ═══ ORDERS TAB ═══ -->
