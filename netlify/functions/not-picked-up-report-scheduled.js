@@ -15,13 +15,15 @@
  *   NPU_REPORT_PHONES    WhatsApp numbers, comma-separated. Empty: email only.
  *   NPU_REPORT_EMAILS    addresses, comma-separated. Default DAILY_REPORT_EMAIL.
  *   NPU_REPORT_MIN_DAYS  default 2.
- *   NPU_REPORT_TEMPLATE  default not_picked_up_report. A UTILITY template with
- *                        a DOCUMENT header and this body, approved in Meta:
- *       {{1}} orders placed {{2}}+ days ago have not been picked up by the
- *       courier. The oldest is {{3}} days old. The full list is attached,
- *       oldest first. - Ink & Chai
- *     Until it is approved, the PDF goes as a plain document message, which
- *     WhatsApp delivers only to numbers that messaged us in the last 24 hours.
+ *   NPU_REPORT_TEMPLATE  default not_picked_up_report, UTILITY, submitted to
+ *                        Meta on 5 Oct 2026 WITHOUT a header, with this body:
+ *       Daily report: {{1}} orders placed {{2}}+ days ago have not been picked
+ *       up by the courier. The oldest is {{3}} days old. The full list is
+ *       attached, oldest first. - Ink & Chai
+ *     So each number gets that alert, and the PDF as a plain document, which
+ *     WhatsApp delivers only inside the 24-hour window. Add a DOCUMENT header
+ *     to the template and the PDF rides on the template instead -- the send
+ *     tries that first, no code change needed.
  *
  * Also POSTed by the owner from the admin tab ("Send report now"):
  *   { min_days?, dry_run? }   dry_run builds the list and says who would get it.
