@@ -6,7 +6,7 @@
  * the admin to approve or reject. Publishes nothing. See utils/bestseller-agent.
  *
  * Also callable from the admin "Bestsellers" tab:
- *   POST { dry_run?, limit?, lists? }   (admin)
+ *   POST { dry_run?, limit?, lists?, pages? }   (admin; lists = genre ids, pages 2 = top 100)
  * An HTTP call is capped at HTTP_LIMIT drafts so it stays well inside a
  * request's CPU budget; the panel calls again for more.
  *
@@ -76,7 +76,7 @@ exports.handler = async (event = {}) => {
       catalogue,
       openaiKey: dryRun ? null : process.env.OPENAI_API_KEY,
       openaiModel: process.env.OPENAI_BESTSELLER_MODEL || 'gpt-4.1-mini',
-    }, { limit, dryRun, lists: Array.isArray(body.lists) ? body.lists.map(String) : null });
+    }, { limit, dryRun, lists: Array.isArray(body.lists) ? body.lists.map(String) : null, pages: fromCron ? 1 : body.pages });
 
     if (!dryRun) {
       const { error } = await supabase.from('bestseller_agent_runs').insert({

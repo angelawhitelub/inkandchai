@@ -2861,7 +2861,7 @@ select,input,textarea{font-size:1rem;}
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;">
       <div style="max-width:720px;">
         <h2 style="margin:0;font-size:1.1rem;">📈 Bestseller drafts</h2>
-        <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;line-height:1.5;">Every night the agent reads the Amazon.in bestseller lists and drafts the top books we don't sell yet, priced at M.R.P. − 40%. Nothing goes live until you approve it. Check the price and cover, edit anything, then approve. Rejected books are never suggested again.</div>
+        <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;line-height:1.5;">Every night the agent reads the Amazon.in bestseller lists for the ★ genres and drafts the top books we don't sell yet; pick any other genre and press “Find 10 more now” to read its top 100, priced at M.R.P. − 40%. Nothing goes live until you approve it. Check the price and cover, edit anything, then approve. Rejected books are never suggested again.</div>
       </div>
       <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
         <select id="bsStatus" onchange="loadBestsellers()" style="padding:0.45rem;font-size:0.72rem;">
@@ -2871,7 +2871,9 @@ select,input,textarea{font-size:1rem;}
           <option value="in_catalogue">Already listed</option>
           <option value="skipped">Skipped</option>
         </select>
+        <select id="bsGenreFilter" onchange="renderBestsellers()" title="Show drafts found on one genre's bestseller list" style="padding:0.45rem;font-size:0.72rem;max-width:15rem;"><option value="">All genres</option></select>
         <button class="btn-outline" onclick="loadBestsellers()">↻ Refresh</button>
+        <select id="bsGenreRun" title="Which Amazon.in bestseller list to read. The nightly run reads the starred genres; any genre can be read now (its top 100)." style="padding:0.45rem;font-size:0.72rem;max-width:15rem;"><option value="">★ Nightly genres</option></select>
         <button class="btn-outline" id="bsRunBtn" onclick="runBestsellerAgent()">▶ Find 10 more now</button>
       </div>
     </div>
@@ -4267,6 +4269,38 @@ async function setBookReqStatus(id, status) {
 // creates a real listing through create-product-listing; nothing here can
 // publish without a click.
 let bsRows = [];
+let bsGenres = [];
+
+// Both genre menus, from the agent's own list (bestseller-candidates GET).
+function bsFillGenres() {
+  const run = document.getElementById('bsGenreRun');
+  const filter = document.getElementById('bsGenreFilter');
+  if (!run || !filter || !bsGenres.length) return;
+  const keepRun = run.value, keepFilter = filter.value;
+  const nightly = bsGenres.filter((g) => g.nightly);
+  run.innerHTML = '<option value="">★ Nightly genres (' + nightly.length + ')</option>'
+    + bsGenres.map((g) => '<option value="' + bsEsc(g.id) + '">' + (g.nightly ? '★ ' : '') + bsEsc(g.name) + '</option>').join('');
+  run.value = keepRun;
+  const n = (name) => bsRows.filter((b) => bsInGenre(b, name)).length;
+  filter.innerHTML = '<option value="">All genres (' + bsRows.length + ')</option>'
+    + bsGenres.filter((g) => n(g.name)).map((g) => '<option value="' + bsEsc(g.name) + '">' + bsEsc(g.name) + ' (' + n(g.name) + ')</option>').join('');
+  filter.value = [...filter.options].some((o) => o.value === keepFilter) ? keepFilter : '';
+}
+function bsInGenre(b, name) {
+  return b.source_list === name || (Array.isArray(b.lists) && b.lists.some((l) => l && l.list === name));
+}
+function renderBestsellers() {
+  const list = document.getElementById('bsList');
+  const status = document.getElementById('bsStatus')?.value || 'pending';
+  const genre = document.getElementById('bsGenreFilter')?.value || '';
+  const rows = genre ? bsRows.filter((b) => bsInGenre(b, genre)) : bsRows;
+  const allBox = document.getElementById('bsAll'); if (allBox) allBox.checked = false;
+  if (!rows.length) {
+    list.innerHTML = `<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;padding:1rem 0;">${status === 'pending' ? 'No drafts waiting' + (genre ? ' from ' + bsEsc(genre) : '') + '.' : 'Nothing here.'}</div>`;
+    return;
+  }
+  list.innerHTML = rows.map((b) => bsCard(b, status)).join('');
+}
 const bsEsc = (v) => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 async function loadBestsellers() {
@@ -4280,6 +4314,8 @@ async function loadBestsellers() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     bsRows = data.candidates || [];
+    if (Array.isArray(data.genres) && data.genres.length) bsGenres = data.genres;
+    bsFillGenres();
     const c = data.counts || {};
     const badge = document.getElementById('bestsellersBadge');
     if (badge) { badge.textContent = c.pending || ''; badge.style.display = c.pending ? '' : 'none'; }
@@ -4289,12 +4325,7 @@ async function loadBestsellers() {
       + (r ? `<br>Last run ${bsEsc(when(r.finished_at || r.started_at))} (${bsEsc(r.trigger)}): ${r.drafted || 0} drafted, ${r.in_catalogue || 0} already listed, ${r.skipped || 0} skipped${r.failed ? `, <span style="color:#c93636">${r.failed} failed</span>` : ''}${r.remaining ? `, ${r.remaining} more to draft` : ''}.`
         + ((r.errors || []).length ? ` <span style="color:#c93636">${bsEsc(r.errors.join(' · '))}</span>` : '') : '<br>The agent has not run yet. It runs nightly at 03:30, or press “Find 10 more now”.');
     document.getElementById('bsBulk').style.display = status === 'pending' && bsRows.length ? 'flex' : 'none';
-    const allBox = document.getElementById('bsAll'); if (allBox) allBox.checked = false;
-    if (!bsRows.length) {
-      list.innerHTML = `<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;padding:1rem 0;">${status === 'pending' ? 'No drafts waiting.' : 'Nothing here.'}</div>`;
-      return;
-    }
-    list.innerHTML = bsRows.map((b) => bsCard(b, status)).join('');
+    renderBestsellers();
   } catch (e) {
     list.innerHTML = '<div style="color:#c93636;font-size:0.8rem;">Could not load: ' + bsEsc(e.message) + '</div>';
   }
@@ -4408,15 +4439,23 @@ async function bsBulk(action) {
 async function runBestsellerAgent() {
   const btn = document.getElementById('bsRunBtn');
   const meta = document.getElementById('bsMeta');
+  const genreId = document.getElementById('bsGenreRun')?.value || '';
+  const genre = bsGenres.find((g) => g.id === genreId);
   if (btn) { btn.disabled = true; btn.textContent = 'Working… (about a minute)'; }
   try {
+    // One genre: read its top 100 (two list pages). Nightly genres: top 50 each.
     const res = await adminFetch('/.netlify/functions/bestseller-agent-scheduled', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 10 }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(genre ? { limit: 10, lists: [genre.id], pages: 2 } : { limit: 10 }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     await loadBestsellers();
-    if (meta) meta.innerHTML += `<br><span style="color:#5d9b55">Just now: ${data.drafted} drafted, ${data.in_catalogue} already listed, ${data.skipped} skipped${data.failed ? `, ${data.failed} failed` : ''}; ${data.remaining} more waiting.</span>`;
+    if (genre) {
+      const f = document.getElementById('bsGenreFilter');
+      if (f && [...f.options].some((o) => o.value === genre.name)) { f.value = genre.name; renderBestsellers(); }
+    }
+    if (meta) meta.innerHTML += `<br><span style="color:#5d9b55">Just now${genre ? ' from ' + bsEsc(genre.name) : ''}: ${data.drafted} drafted, ${data.in_catalogue} already listed, ${data.skipped} skipped${data.failed ? `, ${data.failed} failed` : ''}; ${data.remaining} more waiting.</span>`;
   } catch (e) {
     if (meta) meta.innerHTML += `<br><span style="color:#c93636">Run failed: ${bsEsc(e.message)}</span>`;
   } finally {

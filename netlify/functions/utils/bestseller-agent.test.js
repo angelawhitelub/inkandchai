@@ -276,6 +276,38 @@ test('run: honours the limit and reports what is left for the next run', async (
   assert.equal(summary.remaining, 1);
 });
 
+test('genres: every Amazon books list is known, the nightly run reads only the store\'s genres', async () => {
+  const ids = agent.LISTS.map((l) => l.id);
+  assert.equal(new Set(ids).size, ids.length, 'no genre listed twice');
+  assert.equal(agent.LISTS.length, 36);
+  assert.equal(agent.NIGHTLY_LISTS.length, 11);
+  for (const name of ['Exam Preparation', 'School Books', 'Textbooks & Study Guides']) {
+    assert.ok(!agent.NIGHTLY_LISTS.some((l) => l.name === name), `${name} is on demand only`);
+  }
+
+  const fetchImpl = fakeFetch([[/bestsellers/, { body: listPage([], [['0062316095', 1]]) }]]);
+  await agent.runAgent({ supabase: fakeSupabase(), fetchImpl, pauseMs: 0, catalogue: [] }, { limit: 0 });
+  assert.equal(fetchImpl.calls.length, 11, 'one page per nightly genre');
+});
+
+test('genres: one picked genre reads its top 100, and the overall list is /books/', async () => {
+  const fetchImpl = fakeFetch([[/bestsellers/, (url) => ({ body: /pg=2/.test(url)
+    ? listPage([], [['0141439513', 51]]) : listPage([], [['0062316095', 1]]) })]]);
+  const summary = await agent.runAgent({ supabase: fakeSupabase(), fetchImpl, pauseMs: 0, catalogue: [] },
+    { limit: 0, lists: ['all'], pages: 2 });
+  assert.deepEqual(fetchImpl.calls, ['https://www.amazon.in/gp/bestsellers/books/', 'https://www.amazon.in/gp/bestsellers/books/?pg=2']);
+  assert.equal(summary.ranked, 2);
+  assert.equal(summary.remaining, 2);
+});
+
+test('categoryFor: new genres fall back to a store category', () => {
+  const byName = (n) => agent.LISTS.find((l) => l.name === n);
+  assert.equal(agent.categoryFor(byName('Health, Fitness & Nutrition'), ['Books', 'Health, Fitness & Nutrition']), 'Health & Fitness');
+  assert.equal(agent.categoryFor(byName('Science & Mathematics'), ['Books', 'Science & Mathematics']), 'Science');
+  assert.equal(agent.categoryFor(byName('Fantasy, Horror & Science Fiction'), ['Books', 'Fantasy, Horror & Science Fiction']), 'Fiction');
+  assert.equal(agent.categoryFor(byName('Travel'), ['Books', 'Travel']), 'Non-Fiction');
+});
+
 // ── the endpoint's gate ────────────────────────────────────────────────────
 
 test('scheduled endpoint: an HTTP request without an admin session is refused', async () => {

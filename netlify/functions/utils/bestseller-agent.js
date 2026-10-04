@@ -30,23 +30,55 @@ const FETCH_TIMEOUT_MS = 20000;
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36';
 
 /**
- * The Amazon.in bestseller categories that match what the store sells. Exam
- * prep, school books and textbooks are deliberately absent: they dominate the
- * overall Books list and are not our trade. `category` is ours, not Amazon's.
+ * Every Amazon.in Books bestseller list (the left-hand genre menu, read 5 Oct
+ * 2026), plus the overall Books list. `category` is ours, not Amazon's, and is
+ * only the fallback: a book's own breadcrumb wins (categoryFor).
+ *
+ * `nightly` lists are the ones the 03:30 run reads -- what the store sells.
+ * Exam prep, school books and textbooks dominate the overall list and are not
+ * our trade, so they, and every other genre, run only when the admin picks
+ * them in the Bestsellers tab.
  */
 const LISTS = [
-  { id: '1318157031', name: 'Literature & Fiction', category: 'Fiction' },
-  { id: '1318168031', name: 'Romance', category: 'All Romance Books' },
-  { id: '1318161031', name: 'Crime, Thriller & Mystery', category: 'Fiction' },
-  { id: '1402038031', name: 'Fantasy, Horror & Science Fiction', category: 'Fiction' },
-  { id: '64619754031', name: 'Teen & Young Adult', category: 'Fiction' },
-  { id: '1318128031', name: 'Health, Family & Personal Development', category: 'All Self Help' },
-  { id: '1318068031', name: 'Business & Economics', category: 'Business and Finance' },
-  { id: '1318064031', name: 'Biographies, Diaries & True Accounts', category: 'Biography and Autobiography' },
-  { id: '64619755031', name: "Children's Books", category: 'Kids Book' },
-  { id: '1318104031', name: 'Comics & Mangas', category: 'Manga' },
-  { id: '1318188031', name: 'Religion', category: 'Best of Spirituality and Mythology' },
+  { id: '1318157031', name: 'Literature & Fiction', category: 'Fiction', nightly: true },
+  { id: '1318168031', name: 'Romance', category: 'All Romance Books', nightly: true },
+  { id: '1318161031', name: 'Crime, Thriller & Mystery', category: 'Fiction', nightly: true },
+  { id: '1402038031', name: 'Fantasy, Horror & Science Fiction', category: 'Fiction', nightly: true },
+  { id: '64619754031', name: 'Teen & Young Adult', category: 'Fiction', nightly: true },
+  { id: '1318128031', name: 'Health, Family & Personal Development', category: 'All Self Help', nightly: true },
+  { id: '1318068031', name: 'Business & Economics', category: 'Business and Finance', nightly: true },
+  { id: '1318064031', name: 'Biographies, Diaries & True Accounts', category: 'Biography and Autobiography', nightly: true },
+  { id: '64619755031', name: "Children's Books", category: 'Kids Book', nightly: true },
+  { id: '1318104031', name: 'Comics & Mangas', category: 'Manga', nightly: true },
+  { id: '1318188031', name: 'Religion', category: 'Best of Spirituality and Mythology', nightly: true },
+  // On demand only.
+  { id: 'all', name: 'Books (overall)', category: 'Non-Fiction' },
+  { id: '1318158031', name: 'Action & Adventure', category: 'Fiction' },
+  { id: '1318052031', name: 'Arts, Film & Photography', category: 'Non-Fiction' },
+  { id: '1318105031', name: 'Computing, Internet & Digital Media', category: 'Non-Fiction' },
+  { id: '1318118031', name: 'Crafts, Home & Lifestyle', category: 'Non-Fiction' },
+  { id: '22960344031', name: 'Engineering', category: 'Non-Fiction' },
+  { id: '4149751031', name: 'Exam Preparation', category: 'Non-Fiction' },
+  { id: '23033693031', name: 'Health, Fitness & Nutrition', category: 'Health & Fitness' },
+  { id: '4149418031', name: 'Higher Education Textbooks', category: 'Non-Fiction' },
+  { id: '1318164031', name: 'Historical Fiction', category: 'Fiction' },
+  { id: '4149493031', name: 'History', category: 'Non-Fiction' },
+  { id: '1318143031', name: 'Humour', category: 'Non-Fiction' },
+  { id: '1318144031', name: 'Language, Linguistics & Writing', category: 'Non-Fiction' },
+  { id: '4149542031', name: 'Law', category: 'Non-Fiction' },
+  { id: '1318298031', name: 'Maps & Atlases', category: 'Non-Fiction' },
+  { id: '4149549031', name: 'Medicine & Health Sciences', category: 'Non-Fiction' },
+  { id: '1318176031', name: 'Politics', category: 'Non-Fiction' },
+  { id: '1318185031', name: 'Reference', category: 'Non-Fiction' },
+  { id: '4149807031', name: 'School Books', category: 'Non-Fiction' },
+  { id: '4149708031', name: 'Science & Mathematics', category: 'Science' },
+  { id: '1318203031', name: 'Sciences, Technology & Medicine', category: 'Science' },
+  { id: '1318216031', name: 'Society & Social Sciences', category: 'Non-Fiction' },
+  { id: '1318224031', name: 'Sports', category: 'Non-Fiction' },
+  { id: '15417300031', name: 'Textbooks & Study Guides', category: 'Non-Fiction' },
+  { id: '1318295031', name: 'Travel', category: 'Non-Fiction' },
 ];
+const NIGHTLY_LISTS = LISTS.filter((l) => l.nightly);
 
 // ── small helpers ───────────────────────────────────────────────────────────
 
@@ -275,7 +307,9 @@ const CRUMB_CATEGORY = [
   [/business|economics/i, 'Business and Finance'],
   [/biograph/i, 'Biography and Autobiography'],
   [/religion|spirituality/i, 'Best of Spirituality and Mythology'],
-  [/literature|fiction|crime|thriller|fantasy|teen|young adult/i, 'Fiction'],
+  [/literature|fiction|crime|thriller|fantasy|teen|young adult|action|adventure/i, 'Fiction'],
+  [/fitness|nutrition/i, 'Health & Fitness'],
+  [/science|mathematics/i, 'Science'],
 ];
 function categoryFor(list, crumbs) {
   const top = (crumbs || [])[1] || '';
@@ -424,7 +458,8 @@ async function fetchText(url, { fetchImpl = fetch, accept = 'text/html', timeout
 }
 
 async function fetchList(list, { fetchImpl, page = 1 } = {}) {
-  const url = `https://www.amazon.in/gp/bestsellers/books/${list.id}${page > 1 ? `?pg=${page}` : ''}`;
+  const path = list.id === 'all' ? '' : list.id;
+  const url = `https://www.amazon.in/gp/bestsellers/books/${path}${page > 1 ? `?pg=${page}` : ''}`;
   const { status, body } = await fetchText(url, { fetchImpl });
   if (status !== 200) throw new Error(`HTTP ${status}`);
   const entries = parseListPage(body);
@@ -570,7 +605,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *
  * deps: { supabase, catalogue: [{title, slug, source, isbn?, weak?}],
  *         fetchImpl?, openaiKey?, openaiModel?, pauseMs? }
- * opts: { limit, dryRun, lists (ids), log }
+ * opts: { limit, dryRun, lists (ids; default the nightly ones), pages (1-2:
+ *         top 50 or top 100 of each list), log }
  */
 async function runAgent(deps, opts = {}) {
   const { supabase, fetchImpl = fetch } = deps;
@@ -578,7 +614,8 @@ async function runAgent(deps, opts = {}) {
   const dryRun = !!opts.dryRun;
   const pauseMs = deps.pauseMs ?? 700;
   const log = opts.log || (() => {});
-  const lists = opts.lists && opts.lists.length ? LISTS.filter((l) => opts.lists.includes(l.id)) : LISTS;
+  const lists = opts.lists && opts.lists.length ? LISTS.filter((l) => opts.lists.includes(l.id)) : NIGHTLY_LISTS;
+  const pages = Math.max(1, Math.min(2, Number(opts.pages) || 1));
 
   const summary = {
     started_at: new Date().toISOString(), dry_run: dryRun, lists: [], ranked: 0,
@@ -591,6 +628,11 @@ async function runAgent(deps, opts = {}) {
   for (const list of lists) {
     try {
       const entries = await fetchList(list, { fetchImpl });
+      for (let page = 2; page <= pages; page++) {
+        await sleep(pauseMs);
+        // Page 2 is ranks 51-100. Losing it still leaves the top 50.
+        try { entries.push(...await fetchList(list, { fetchImpl, page })); } catch (e) { summary.errors.push(`${list.name} page ${page}: ${e.message}`); }
+      }
       perList.push({ list, entries });
       summary.lists.push({ list: list.name, titles: entries.length });
     } catch (e) {
@@ -764,6 +806,7 @@ async function remember(supabase, r, fields) {
 
 module.exports = {
   LISTS,
+  NIGHTLY_LISTS,
   PRICE_FACTOR,
   DEFAULT_LIMIT,
   priceFromMrp,

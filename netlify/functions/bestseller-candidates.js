@@ -18,6 +18,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { isbnToGtin } = require('./utils/gtin');
+const { LISTS } = require('./utils/bestseller-agent');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -104,7 +105,9 @@ exports.handler = async (event) => {
       drafted: last.summary?.drafted, in_catalogue: last.summary?.in_catalogue, skipped: last.summary?.skipped,
       failed: last.summary?.failed, remaining: last.summary?.remaining, errors: (last.summary?.errors || []).slice(0, 5),
     } : null;
-    return json(200, { candidates: data || [], counts, last_run: lastRun });
+    // The genre menu for the tab: every list the agent can read, nightly or not.
+    const genres = LISTS.map((l) => ({ id: l.id, name: l.name, nightly: !!l.nightly }));
+    return json(200, { candidates: data || [], counts, last_run: lastRun, genres });
   }
 
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
