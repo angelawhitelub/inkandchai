@@ -34,6 +34,7 @@ export const ENABLED_JOBS = new Set([
   'support-ticket-sla-scheduled',
   'auto-recover-carts',
   'daily-unshipped-report',
+  'not-picked-up-report-scheduled',
   'deploy-drift-check',
   // money safety nets
   'phonepe-payment-sweep-scheduled',

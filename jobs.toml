@@ -161,6 +161,10 @@
 [functions."request-reviews-scheduled"]
   schedule = "30 4 * * *"
 
+# Not Picked Up PDF to the ops numbers/emails — 10:00 IST daily (internal, never customers)
+[functions."not-picked-up-report-scheduled"]
+  schedule = "30 4 * * *"
+
 [functions."deploy-drift-check"]
   schedule = "@hourly"
 

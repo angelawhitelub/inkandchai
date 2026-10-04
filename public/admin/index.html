@@ -2316,6 +2316,7 @@ select,input,textarea{font-size:1rem;}
         <button class="btn-outline" onclick="copyNotPickedIds(this)" title="Selected rows, or every row shown">⧉ Copy order IDs</button>
         <button class="btn-outline" onclick="exportNotPickedCsv()" title="Selected rows, or every row shown">⬇ CSV</button>
         <button class="btn-outline" onclick="exportNotPickedPdf()" title="Selected rows, or every row shown — opens a print sheet; choose Save as PDF">⬇ PDF</button>
+        <button class="btn-outline" onclick="sendNotPickedReport(this)" title="The daily 10 AM report, now: a PDF of everything not picked up for the chosen number of days, oldest first, by email and WhatsApp to the report recipients">📨 Send report now</button>
       </div>
     </div>
     <div id="npuBulkBar" style="display:none;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.7rem;padding:.55rem .8rem;border:1px solid rgba(224,96,96,.35);border-radius:8px;background:rgba(224,96,96,.06);font-size:.72rem;">
@@ -3453,7 +3454,8 @@ function renderNotPicked() {
         + td((NPU_PAY[r.payment] || r.payment) + (r.amount_rs ? '<div class="hint">₹' + r.amount_rs.toLocaleString('en-IN') + '</div>' : '')
           + (r.payment === 'replacement' ? '<div class="hint" style="color:' + (npuCodOriginal(r) ? '#e0a060' : npuOrigPay(r) === 'prepaid' ? '#6dbf6d' : 'var(--cream-dim)') + ';">original ' + esc(NPU_ORIG[npuOrigPay(r)] || npuOrigPay(r)) + (r.replacement && r.replacement.paid_order_id ? ' (paid on ' + esc(r.replacement.paid_order_id) + ')' : '') + '</div>' : ''))
         + td(esc(r.customer_name) + (r.pincode ? '<div class="hint">' + esc(r.pincode) + '</div>' : ''))
-        + td(orderLink(r.order_id, 'Open', 'font-size:.6rem;padding:.3rem .6rem;'))
+        + td(orderLink(r.order_id, 'Open', 'font-size:.6rem;padding:.3rem .6rem;')
+          + (moved ? '' : '<button class="btn-outline" style="display:block;margin-top:.35rem;font-size:.6rem;padding:.3rem .6rem;border-color:#e06060;color:#e06060;white-space:nowrap;" title="Asks the courier first; only a parcel still waiting for pickup is cancelled, then refunded the same way as bulk" onclick="cancelNotPickedOne(\'' + esc(r.id) + '\', this)">✕ Cancel</button>'))
         + '</tr>';
     }).join('') + '</tbody>';
 }
@@ -3566,8 +3568,54 @@ function exportNotPickedPdf() {
 // Cancel and refund, in two passes. The first is a dry run: the server asks each
 // courier live and says what it would do. Nothing is cancelled until the admin
 // has seen that, and a parcel the courier says has moved is never touched.
-async function cancelNotPickedSelected(btn) {
-  const rows = npuVisibleRows().filter(r => npuSel.has(r.id));
+// The daily report (not-picked-up-report-scheduled), on demand. A dry run first
+// shows how many orders and who receives it; nothing goes until confirmed.
+async function sendNotPickedReport(btn) {
+  const days = prompt('Report orders not picked up for at least how many days?', String(Math.max(2, Math.round(npuHours() / 24))));
+  if (days == null) return;
+  const minDays = Math.max(1, Math.round(Number(days) || 2));
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  const call = async (extra) => {
+    const res = await adminFetch('/.netlify/functions/not-picked-up-report-scheduled', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ min_days: minDays, ...extra }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    return data;
+  };
+  try {
+    btn.innerHTML = 'Asking couriers…';
+    const plan = await call({ dry_run: true });
+    if (!plan.count) { alert('Nothing has been waiting ' + minDays + '+ days — no report to send.'); return; }
+    const to = (plan.would_email || []).concat(plan.would_whatsapp || []);
+    if (!to.length) { alert('No report recipients are set (NPU_REPORT_PHONES / NPU_REPORT_EMAILS).'); return; }
+    if (!confirm(plan.count + ' orders not picked up for ' + minDays + '+ days (oldest ' + plan.oldest_days + ' days).\n\nSend the PDF to:\n'
+      + (plan.would_email || []).map(e => '  ✉ ' + e).join('\n') + ((plan.would_email || []).length ? '\n' : '')
+      + (plan.would_whatsapp || []).map(p => '  WhatsApp +' + p).join('\n'))) return;
+    btn.innerHTML = 'Sending…';
+    const r = await call({});
+    const msg = document.getElementById('npuMsg');
+    msg.style.color = 'var(--cream-dim)';
+    msg.innerHTML = 'Report sent: <strong>' + r.count + '</strong> orders. '
+      + (r.email || []).map(e => (e.ok ? '✓ ' : '✗ ') + esc(e.to)).join(', ')
+      + ((r.whatsapp || []).length ? ' · WhatsApp: ' + r.whatsapp.map(w => (w.ok ? '✓ +' : '✗ +') + esc(w.to) + (w.ok ? '' : ' (' + esc(w.error || 'failed') + ')')).join(', ') : '');
+  } catch (e) {
+    alert('Report failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+// One row's Cancel button: the same courier check, preview and confirm as bulk.
+function cancelNotPickedOne(id, btn) {
+  const row = (npuData && npuData.orders || []).find(r => r.id === id);
+  if (row) cancelNotPickedSelected(btn, [row]);
+}
+
+async function cancelNotPickedSelected(btn, onlyRows) {
+  const rows = onlyRows || npuVisibleRows().filter(r => npuSel.has(r.id));
   const msg = document.getElementById('npuMsg');
   if (!rows.length) { alert('Tick the orders to cancel first.'); return; }
   const original = btn.innerHTML;
