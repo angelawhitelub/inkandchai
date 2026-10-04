@@ -10,7 +10,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { classify, summarize, withOriginal, UNBOOKED, DEFAULT_MIN_HOURS } = require('./utils/not-picked-up');
-const { isReplacementOrder, replacementMeta } = require('./utils/missing-books');
+const { isReplacementOrder, replacementMeta, isMissingBookReplacement } = require('./utils/missing-books');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -113,9 +113,17 @@ exports.handler = async (event) => {
     const orders = await loadOrders(db,
       new Date(now - days * 24 * 3600 * 1000).toISOString(),
       new Date(now - minHours * 3600 * 1000).toISOString());
-    const classified = orders.map((o) => classify(o, now, minHours)).filter(Boolean);
-    const originalOf = await loadOriginals(db, classified);
-    const rows = classified.map((r) => (r.replacement ? withOriginal(r, originalOf(r.replacement.original_order_id)) : r));
+    const listed = orders.map((o) => [o, classify(o, now, minHours)]).filter(([, r]) => r);
+    const originalOf = await loadOriginals(db, listed.map(([, r]) => r));
+    const rows = listed.map(([o, r]) => {
+      if (!r.replacement) return r;
+      const chain = originalOf(r.replacement.original_order_id);
+      const row = withOriginal(r, chain);
+      // Same test the refund flows use: the reason, or a title the customer
+      // reported missing on the original.
+      row.replacement.missing_book = isMissingBookReplacement(o, chain.direct);
+      return row;
+    });
     return json(200, { generated_at: new Date(now).toISOString(), min_hours: minHours, days, counts: summarize(rows), orders: rows });
   } catch (e) {
     console.error('[admin-not-picked-up]', e.message);

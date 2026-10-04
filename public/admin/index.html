@@ -3351,6 +3351,10 @@ const NPU_PAY_FILTERS = [
   ['replacement', 'Replacements — all'],
   ['repl_prepaid', 'Replacement · original prepaid'],
   ['repl_cod', 'Replacement · original COD'],
+  ['missing', 'Missing book — all'],
+  ['missing_prepaid', 'Missing book · original prepaid'],
+  ['missing_cod', 'Missing book · original COD'],
+  ['repl_other', 'Replacement · other reason (wrong / damaged…)'],
 ];
 function npuOrigPay(r) { return (r.replacement && r.replacement.original_payment) || 'unknown'; }
 function npuPayMatches(r, f) {
@@ -3360,6 +3364,11 @@ function npuPayMatches(r, f) {
   if (f === 'replacement') return repl;
   if (f === 'repl_prepaid') return repl && npuOrigPay(r) === 'prepaid';
   if (f === 'repl_cod') return repl && (npuOrigPay(r) === 'cod' || npuOrigPay(r) === 'partial_cod');
+  const missing = repl && !!(r.replacement && r.replacement.missing_book);
+  if (f === 'missing') return missing;
+  if (f === 'missing_prepaid') return missing && npuOrigPay(r) === 'prepaid';
+  if (f === 'missing_cod') return missing && (npuOrigPay(r) === 'cod' || npuOrigPay(r) === 'partial_cod');
+  if (f === 'repl_other') return repl && !missing;
   return true;
 }
 function npuFillPayFilter() {
@@ -3510,6 +3519,7 @@ function npuExportRows() {
       last_scan: (live && live.state !== 'unknown' ? live.status : r.last_scan) || '',
       payment: NPU_PAY[r.payment] || r.payment,
       original_paid: r.payment === 'replacement' ? (NPU_ORIG[npuOrigPay(r)] || npuOrigPay(r)) : '',
+      replacement_reason: r.replacement ? String(r.replacement.reason || '').replace(/_/g, ' ') : '',
       amount_rs: r.amount_rs || 0,
       customer: r.customer_name || '',
       phone: r.customer_phone || '',
