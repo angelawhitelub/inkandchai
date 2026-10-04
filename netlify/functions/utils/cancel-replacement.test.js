@@ -38,6 +38,14 @@ test('a prepaid missing book is refunded for exactly what the missing books cost
   assert.equal(replacementRefundPlan(replacement(), original({ razorpay_payment_id: 'OMO123' })).gateway, 'phonepe');
 });
 
+test('a replacement of a free replacement is never treated as COD', () => {
+  const middle = original({ razorpay_order_id: 'IC-R-20260921-0T4CG', source: 'replacement', razorpay_payment_id: null, amount_paise: 0,
+    cart_items: [{ title: 'How to Win Friends', price: 179.1, qty: 1, _replacement: { reason: 'missing_item', original_order_id: 'IC-20260915-AAAAA' } }] });
+  const plan = replacementRefundPlan(replacement({}, { original_order_id: 'IC-R-20260921-0T4CG' }), middle);
+  assert.equal(plan.action, 'manual');
+  assert.match(plan.reason, /itself a free replacement/);
+});
+
 test('nothing is refunded for a replacement that is not about missing books', () => {
   assert.equal(replacementRefundPlan(replacement({}, { reason: 'damaged' }), original()).action, 'none');
   assert.equal(replacementRefundPlan(replacement({}, { reason: 'missing_pages' }), original()).action, 'none');

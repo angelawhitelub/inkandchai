@@ -83,6 +83,18 @@ test('a replacement row learns how its original was paid, and the UPI given in t
   assert.equal(withOriginal(plain, null), plain, 'a non-replacement row is untouched');
 });
 
+test('a replacement of a replacement is paid however the first order was', () => {
+  const row = classify(order({ razorpay_payment_id: null, source: 'replacement',
+    cart_items: [{ title: 'X', _replacement: { original_order_id: 'IC-R-2' } }] }), NOW);
+  const direct = { razorpay_order_id: 'IC-R-2', razorpay_payment_id: null, source: 'replacement',
+    cart_items: [{ title: 'X', _replacement: { original_order_id: 'IC-1' } }] };
+  const root = { razorpay_order_id: 'IC-1', razorpay_payment_id: 'pay_1', cart_items: [] };
+  const r = withOriginal(row, { direct, root, via: ['IC-R-2'] });
+  assert.equal(r.replacement.original_payment, 'prepaid');
+  assert.equal(r.replacement.paid_order_id, 'IC-1');
+  assert.equal(withOriginal(row, { direct, root: null, via: ['IC-R-2'] }).replacement.original_payment, 'unknown');
+});
+
 test('a UPI ID already on the replacement wins over the report', () => {
   const row = classify(order({ razorpay_payment_id: null, source: 'replacement',
     cart_items: [{ title: 'X', _replacement: { original_order_id: 'IC-1', refund_upi_id: 'new@upi' } }] }), NOW);

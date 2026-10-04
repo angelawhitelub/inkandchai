@@ -3409,7 +3409,7 @@ function renderNotPicked() {
         + td(awb)
         + td(scan)
         + td((NPU_PAY[r.payment] || r.payment) + (r.amount_rs ? '<div class="hint">₹' + r.amount_rs.toLocaleString('en-IN') + '</div>' : '')
-          + (r.payment === 'replacement' ? '<div class="hint" style="color:' + (npuCodOriginal(r) ? '#e0a060' : npuOrigPay(r) === 'prepaid' ? '#6dbf6d' : 'var(--cream-dim)') + ';">original ' + esc(NPU_ORIG[npuOrigPay(r)] || npuOrigPay(r)) + '</div>' : ''))
+          + (r.payment === 'replacement' ? '<div class="hint" style="color:' + (npuCodOriginal(r) ? '#e0a060' : npuOrigPay(r) === 'prepaid' ? '#6dbf6d' : 'var(--cream-dim)') + ';">original ' + esc(NPU_ORIG[npuOrigPay(r)] || npuOrigPay(r)) + (r.replacement && r.replacement.paid_order_id ? ' (paid on ' + esc(r.replacement.paid_order_id) + ')' : '') + '</div>' : ''))
         + td(esc(r.customer_name) + (r.pincode ? '<div class="hint">' + esc(r.pincode) + '</div>' : ''))
         + td(orderLink(r.order_id, 'Open', 'font-size:.6rem;padding:.3rem .6rem;'))
         + '</tr>';

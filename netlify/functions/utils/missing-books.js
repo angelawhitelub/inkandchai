@@ -243,6 +243,12 @@ function replacementRefundPlan(replacement, original) {
     return { ...base, action: 'manual', reason: `Original order ${base.originalId || '(unknown)'} was not found.` };
   }
 
+  // A replacement of a replacement: the order it replaces was free, so its
+  // missing payment id says nothing about COD. The money is on the order
+  // before it; refunding that is left to a person rather than guessed.
+  if (isReplacementOrder(original)) {
+    return { ...base, action: 'manual', reason: `${base.originalId} is itself a free replacement — refund on the order it replaced, by hand.` };
+  }
   const payId = String(original.razorpay_payment_id || '').trim();
   if (!payId) return { ...base, action: 'upi', reason: 'The original order was cash on delivery, so there is no online payment to refund.' };
   if (isPartialCodOrder(original)) {

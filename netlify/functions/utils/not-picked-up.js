@@ -75,16 +75,23 @@ function originalPaymentKind(original) {
   return String(original.razorpay_payment_id || '').trim() ? 'prepaid' : 'cod';
 }
 
-/** Adds what only the original order knows to a replacement's row. */
+/**
+ * Adds what only the original order knows to a replacement's row. `original`
+ * is the order it replaces, or { direct, root, via } when that order is itself
+ * a replacement: how it was paid is then the paid root's, and the UPI from the
+ * missing-book report may be on either.
+ */
 function withOriginal(row, original) {
   if (!row || !row.replacement) return row;
+  const chain = original && 'direct' in original ? original : { direct: original, root: original, via: [] };
   const rp = row.replacement;
-  const reported = rp.refund_upi_id ? '' : reportedUpiId(original);
+  const reported = rp.refund_upi_id ? '' : (reportedUpiId(chain.direct) || reportedUpiId(chain.root));
   return {
     ...row,
     replacement: {
       ...rp,
-      original_payment: originalPaymentKind(original),
+      original_payment: originalPaymentKind(chain.root),
+      paid_order_id: chain.via.length && chain.root ? chain.root.razorpay_order_id : '',
       refund_upi_id: rp.refund_upi_id || reported,
       refund_upi_source: rp.refund_upi_id ? 'replacement' : reported ? 'missing_report' : '',
     },

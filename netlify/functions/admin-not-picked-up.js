@@ -10,6 +10,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { classify, summarize, withOriginal, UNBOOKED, DEFAULT_MIN_HOURS } = require('./utils/not-picked-up');
+const { isReplacementOrder, replacementMeta } = require('./utils/missing-books');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -59,18 +60,42 @@ async function loadOrders(db, sinceIso, untilIso) {
 
 // A replacement's refund depends on how its ORIGINAL order was paid, and a COD
 // customer's UPI ID may sit on the original (the missing-book form stamps it
-// there), so the originals are read too.
-async function loadOriginals(db, rows) {
-  const ids = [...new Set(rows.map((r) => r.replacement && r.replacement.original_order_id).filter(Boolean))];
-  const byId = new Map();
-  for (let i = 0; i < ids.length; i += 200) {
-    const { data, error } = await db.from('orders')
-      .select('razorpay_order_id, razorpay_payment_id, status, cart_items')
-      .in('razorpay_order_id', ids.slice(i, i + 200));
+// there), so the originals are read too. A replacement can replace another
+// replacement; the chain is followed back to the order the customer paid for.
+const ORIGINAL_COLS = 'razorpay_order_id, razorpay_payment_id, status, source, cart_items';
+
+async function loadByOrderId(db, ids, into) {
+  const want = [...new Set(ids)].filter((id) => id && !into.has(id));
+  for (let i = 0; i < want.length; i += 200) {
+    const { data, error } = await db.from('orders').select(ORIGINAL_COLS).in('razorpay_order_id', want.slice(i, i + 200));
     if (error) throw new Error(error.message);
-    for (const o of data || []) byId.set(o.razorpay_order_id, o);
+    for (const o of data || []) into.set(o.razorpay_order_id, o);
   }
-  return byId;
+}
+
+async function loadOriginals(db, rows) {
+  const byId = new Map();
+  let next = rows.map((r) => r.replacement && r.replacement.original_order_id);
+  for (let hop = 0; hop < 4 && next.some(Boolean); hop++) {
+    await loadByOrderId(db, next, byId);
+    next = next.map((id) => {
+      const o = id && byId.get(id);
+      const m = o && isReplacementOrder(o) && replacementMeta(o);
+      return m ? m.original_order_id : null;
+    });
+  }
+  // Direct original (for the UPI from the report) and the paid root (for how it was paid).
+  return (id) => {
+    const direct = byId.get(id) || null;
+    let root = direct;
+    const via = [];
+    for (let hop = 0; root && isReplacementOrder(root) && hop < 4; hop++) {
+      const up = (replacementMeta(root) || {}).original_order_id;
+      via.push(root.razorpay_order_id);
+      root = up ? byId.get(up) || null : null;
+    }
+    return { direct, root, via };
+  };
 }
 
 exports.handler = async (event) => {
@@ -89,8 +114,8 @@ exports.handler = async (event) => {
       new Date(now - days * 24 * 3600 * 1000).toISOString(),
       new Date(now - minHours * 3600 * 1000).toISOString());
     const classified = orders.map((o) => classify(o, now, minHours)).filter(Boolean);
-    const originals = await loadOriginals(db, classified);
-    const rows = classified.map((r) => (r.replacement ? withOriginal(r, originals.get(r.replacement.original_order_id) || null) : r));
+    const originalOf = await loadOriginals(db, classified);
+    const rows = classified.map((r) => (r.replacement ? withOriginal(r, originalOf(r.replacement.original_order_id)) : r));
     return json(200, { generated_at: new Date(now).toISOString(), min_hours: minHours, days, counts: summarize(rows), orders: rows });
   } catch (e) {
     console.error('[admin-not-picked-up]', e.message);
