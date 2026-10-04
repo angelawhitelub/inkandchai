@@ -1,5 +1,6 @@
 /**
- * Owner-only: read and re-case admin-added book descriptions in bulk.
+ * Owner-only: read and re-case admin-added book copy in bulk -- descriptions,
+ * titles and their SEO lines.
  *
  * Thousands of imported listings (crossword.in, 99bookstores, bookstohome)
  * arrived with descriptions In Title Case Like This. The sentence-casing
@@ -7,8 +8,13 @@
  * which does not belong in the Worker, so it runs offline and this endpoint
  * only moves text:
  *
- *   GET  ?offset=0&limit=1000  -> { rows: [{ slug, title, author, description }], total }
- *   POST { items: [{ slug, from, to }], dry_run? }
+ *   GET  ?offset=0&limit=1000  -> { rows: [{ slug, title, author, description, seo_title, meta_description }], total }
+ *   POST { items: [{ slug, from, to, field?, table? }], dry_run? }
+ *
+ * field defaults to description. custom_products takes description, title,
+ * seo_title and meta_description; product_overrides (the admin's title
+ * override for any book) takes title. Slugs never change: they are stored,
+ * not derived from the title.
  *
  * A POST writes `to` only when it differs from `from` by letter case alone and
  * the stored description is still exactly `from`, so it cannot change a
@@ -27,10 +33,17 @@ const CORS = {
 };
 const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stringify(body) });
 const MAX_ITEMS = 200;
+const FIELDS = {
+  custom_products: new Set(['description', 'title', 'seo_title', 'meta_description']),
+  product_overrides: new Set(['title']),
+};
 
 /** Why an item may not be written, or null when it may. */
 function rejectReason(item) {
   if (!item || typeof item.slug !== 'string' || !item.slug) return 'missing slug';
+  const table = item.table || 'custom_products';
+  if (!FIELDS[table]) return 'unknown table';
+  if (!FIELDS[table].has(item.field || 'description')) return 'field not allowed';
   if (typeof item.from !== 'string' || typeof item.to !== 'string') return 'missing text';
   if (item.from === item.to) return 'unchanged';
   if (item.from.length !== item.to.length || item.from.toLowerCase() !== item.to.toLowerCase()) return 'not a case-only change';
@@ -50,7 +63,7 @@ exports.handler = async (event = {}) => {
       const offset = Math.max(0, Math.floor(Number(q.offset) || 0));
       const limit = Math.min(1000, Math.max(1, Math.floor(Number(q.limit) || 1000)));
       const { data, error, count } = await db.from('custom_products')
-        .select('slug,title,author,description', { count: 'exact' })
+        .select('slug,title,author,description,seo_title,meta_description', { count: 'exact' })
         .order('slug', { ascending: true })
         .range(offset, offset + limit - 1);
       if (error) throw error;
@@ -70,18 +83,30 @@ exports.handler = async (event = {}) => {
       if (why) results.push({ slug: item && item.slug, ok: false, reason: why });
       else valid.push(item);
     }
-    const { data: current, error } = valid.length
-      ? await db.from('custom_products').select('slug,description').in('slug', valid.map((i) => i.slug))
-      : { data: [] };
-    if (error) throw error;
-    const stored = new Map((current || []).map((r) => [r.slug, r.description]));
+    // Read every targeted row once, per table and field.
+    const stored = new Map();
+    const groups = new Map();
+    for (const item of valid) {
+      const key = `${item.table || 'custom_products'}|${item.field || 'description'}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item.slug);
+    }
+    for (const [key, slugs] of groups) {
+      const [table, field] = key.split('|');
+      const { data, error } = await db.from(table).select(`slug,${field}`).in('slug', slugs);
+      if (error) throw error;
+      for (const r of data || []) stored.set(`${key}|${r.slug}`, r[field]);
+    }
 
     for (const item of valid) {
-      if (!stored.has(item.slug)) { results.push({ slug: item.slug, ok: false, reason: 'not found' }); continue; }
-      if (stored.get(item.slug) !== item.from) { results.push({ slug: item.slug, ok: false, reason: 'changed since read' }); continue; }
-      if (body.dry_run === true) { results.push({ slug: item.slug, ok: true, dry_run: true }); continue; }
-      const { error: upErr } = await db.from('custom_products').update({ description: item.to }).eq('slug', item.slug);
-      results.push(upErr ? { slug: item.slug, ok: false, reason: upErr.message } : { slug: item.slug, ok: true });
+      const table = item.table || 'custom_products';
+      const field = item.field || 'description';
+      const key = `${table}|${field}|${item.slug}`;
+      if (!stored.has(key)) { results.push({ slug: item.slug, field, ok: false, reason: 'not found' }); continue; }
+      if (stored.get(key) !== item.from) { results.push({ slug: item.slug, field, ok: false, reason: 'changed since read' }); continue; }
+      if (body.dry_run === true) { results.push({ slug: item.slug, field, ok: true, dry_run: true }); continue; }
+      const { error: upErr } = await db.from(table).update({ [field]: item.to }).eq('slug', item.slug);
+      results.push(upErr ? { slug: item.slug, field, ok: false, reason: upErr.message } : { slug: item.slug, field, ok: true });
     }
     const written = results.filter((r) => r.ok && !r.dry_run).length;
     return json(200, { written, skipped: results.length - results.filter((r) => r.ok).length, results });
