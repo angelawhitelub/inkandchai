@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classify, summarize } = require('./not-picked-up');
+const { classify, summarize, withOriginal } = require('./not-picked-up');
 
 const NOW = Date.parse('2026-10-03T12:00:00Z');
 const hoursAgo = (h) => new Date(NOW - h * 3600 * 1000).toISOString();
@@ -55,6 +55,40 @@ test('an unbooked paid or COD order is listed as not booked', () => {
 
 test('a free replacement is labelled as one', () => {
   assert.equal(classify(order({ razorpay_order_id: 'IC-R-20260918-7LWJX', razorpay_payment_id: null }), NOW).payment, 'replacement');
+});
+
+test('a replacement row learns how its original was paid, and the UPI given in the report', () => {
+  const repl = order({
+    razorpay_order_id: 'IC-R-20260918-7LWJX', razorpay_payment_id: null, amount_paise: 0, source: 'replacement',
+    cart_items: [{ title: 'The Shiva Sutras', qty: 1, price: 299, _replacement: { original_order_id: 'IC-20260913-CW4QJ', reason: 'missing_item' } }],
+  });
+  const row = classify(repl, NOW);
+  assert.equal(row.payment, 'replacement');
+
+  const cod = withOriginal(row, { razorpay_order_id: 'IC-20260913-CW4QJ', razorpay_payment_id: null, status: 'delivered',
+    cart_items: [{ title: 'The Shiva Sutras', _missing: true, _refund_upi_id: '9876543210@ybl' }] });
+  assert.equal(cod.replacement.original_payment, 'cod');
+  assert.equal(cod.replacement.refund_upi_id, '9876543210@ybl');
+  assert.equal(cod.replacement.refund_upi_source, 'missing_report');
+
+  const prepaid = withOriginal(row, { razorpay_payment_id: 'pay_9', status: 'delivered', cart_items: [] });
+  assert.equal(prepaid.replacement.original_payment, 'prepaid');
+  assert.equal(prepaid.replacement.refund_upi_id, '');
+
+  const partial = withOriginal(row, { razorpay_payment_id: 'pay_9', status: 'delivered', cart_items: [{ _payment: { mode: 'partial_cod' } }] });
+  assert.equal(partial.replacement.original_payment, 'partial_cod');
+
+  assert.equal(withOriginal(row, null).replacement.original_payment, 'unknown');
+  const plain = classify(order(), NOW);
+  assert.equal(withOriginal(plain, null), plain, 'a non-replacement row is untouched');
+});
+
+test('a UPI ID already on the replacement wins over the report', () => {
+  const row = classify(order({ razorpay_payment_id: null, source: 'replacement',
+    cart_items: [{ title: 'X', _replacement: { original_order_id: 'IC-1', refund_upi_id: 'new@upi' } }] }), NOW);
+  const r = withOriginal(row, { razorpay_payment_id: null, cart_items: [{ _refund_upi_id: 'old@upi' }] });
+  assert.equal(r.replacement.refund_upi_id, 'new@upi');
+  assert.equal(r.replacement.refund_upi_source, 'replacement');
 });
 
 test('summary counts buckets and couriers', () => {

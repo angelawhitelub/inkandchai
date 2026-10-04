@@ -172,6 +172,18 @@ function isPartialCodOrder(order) {
   return items.some(i => i && i._payment && i._payment.mode === 'partial_cod') || status === 'partial_cod_pending';
 }
 
+/**
+ * The UPI ID a COD customer typed into the missing-book form. It is stamped on
+ * the ORIGINAL order's reported lines (`_refund_upi_id`), and reaches the
+ * replacement only when the form created it; one raised from the panel starts
+ * without it. Read from both so nobody is asked for a UPI ID they already gave.
+ */
+function reportedUpiId(original) {
+  const items = Array.isArray(original && original.cart_items) ? original.cart_items : [];
+  const hit = items.find((i) => i && String(i._refund_upi_id || '').trim());
+  return hit ? String(hit._refund_upi_id).trim() : '';
+}
+
 /** "How to Win Friends ×1" lines for the refund notification, amounts in rupees. */
 function refundItemsFor(replacement) {
   return (Array.isArray(replacement && replacement.cart_items) ? replacement.cart_items : [])
@@ -298,4 +310,6 @@ module.exports = {
   replacementRefundPlan,
   shipmentStopState,
   refundItemsFor,
+  isPartialCodOrder,
+  reportedUpiId,
 };

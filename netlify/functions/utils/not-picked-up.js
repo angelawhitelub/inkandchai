@@ -18,7 +18,7 @@ const { statusImpliesMovement } = require('./nimbuspost-track');
 const { isDefinitelyCod } = require('./order-payment-kind');
 const { isReplacementOrder } = require('./replacement-order');
 const { pickupState } = require('./pickup-live');
-const { replacementMeta } = require('./missing-books');
+const { replacementMeta, isPartialCodOrder, reportedUpiId } = require('./missing-books');
 
 const UNBOOKED = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending'];
 const DEFAULT_MIN_HOURS = 48;
@@ -61,6 +61,33 @@ function replacementInfo(order) {
     upi_requested_at: m.upi_requested_at || null,
     refund_paid_at: m.refund_paid_at || null,
     refund_issued_at: m.refund_issued_at || null,
+  };
+}
+
+/**
+ * How a replacement's ORIGINAL order was paid, in the terms its refund uses
+ * (utils/missing-books replacementRefundPlan): a payment id means the gateway
+ * can refund it; none means COD, refunded by UPI; partial COD is split.
+ */
+function originalPaymentKind(original) {
+  if (!original) return 'unknown';
+  if (isPartialCodOrder(original)) return 'partial_cod';
+  return String(original.razorpay_payment_id || '').trim() ? 'prepaid' : 'cod';
+}
+
+/** Adds what only the original order knows to a replacement's row. */
+function withOriginal(row, original) {
+  if (!row || !row.replacement) return row;
+  const rp = row.replacement;
+  const reported = rp.refund_upi_id ? '' : reportedUpiId(original);
+  return {
+    ...row,
+    replacement: {
+      ...rp,
+      original_payment: originalPaymentKind(original),
+      refund_upi_id: rp.refund_upi_id || reported,
+      refund_upi_source: rp.refund_upi_id ? 'replacement' : reported ? 'missing_report' : '',
+    },
   };
 }
 
@@ -143,4 +170,4 @@ function summarize(rows) {
   return counts;
 }
 
-module.exports = { classify, summarize, paymentLabel, booksOf, UNBOOKED, DEFAULT_MIN_HOURS };
+module.exports = { classify, summarize, paymentLabel, booksOf, withOriginal, originalPaymentKind, UNBOOKED, DEFAULT_MIN_HOURS };

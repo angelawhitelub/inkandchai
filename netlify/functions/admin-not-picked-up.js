@@ -9,7 +9,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { classify, summarize, UNBOOKED, DEFAULT_MIN_HOURS } = require('./utils/not-picked-up');
+const { classify, summarize, withOriginal, UNBOOKED, DEFAULT_MIN_HOURS } = require('./utils/not-picked-up');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -57,6 +57,22 @@ async function loadOrders(db, sinceIso, untilIso) {
   throw new Error('too many missing columns');
 }
 
+// A replacement's refund depends on how its ORIGINAL order was paid, and a COD
+// customer's UPI ID may sit on the original (the missing-book form stamps it
+// there), so the originals are read too.
+async function loadOriginals(db, rows) {
+  const ids = [...new Set(rows.map((r) => r.replacement && r.replacement.original_order_id).filter(Boolean))];
+  const byId = new Map();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await db.from('orders')
+      .select('razorpay_order_id, razorpay_payment_id, status, cart_items')
+      .in('razorpay_order_id', ids.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    for (const o of data || []) byId.set(o.razorpay_order_id, o);
+  }
+  return byId;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   const block = requireAdmin(event, CORS); if (block) return block;
@@ -72,7 +88,9 @@ exports.handler = async (event) => {
     const orders = await loadOrders(db,
       new Date(now - days * 24 * 3600 * 1000).toISOString(),
       new Date(now - minHours * 3600 * 1000).toISOString());
-    const rows = orders.map((o) => classify(o, now, minHours)).filter(Boolean);
+    const classified = orders.map((o) => classify(o, now, minHours)).filter(Boolean);
+    const originals = await loadOriginals(db, classified);
+    const rows = classified.map((r) => (r.replacement ? withOriginal(r, originals.get(r.replacement.original_order_id) || null) : r));
     return json(200, { generated_at: new Date(now).toISOString(), min_hours: minHours, days, counts: summarize(rows), orders: rows });
   } catch (e) {
     console.error('[admin-not-picked-up]', e.message);

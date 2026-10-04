@@ -32,6 +32,7 @@ const {
   replacementMeta,
   isMissingBookReplacement,
   refundSplitPaise,
+  reportedUpiId,
 } = require('./utils/missing-books');
 
 const CORS = {
@@ -181,6 +182,30 @@ exports.handler = async (event) => {
     // an order we are in fact still shipping.
     if (String(repl.status || '').toLowerCase() !== 'cancelled') {
       return json(400, { error: `This replacement is "${repl.status}", not cancelled. Cancel it first — the email tells the customer their books are not coming.` });
+    }
+    // A COD customer types a UPI ID into the missing-book form; it lands on the
+    // original order, and on the replacement only when the form created it.
+    // Asking again would be asking for something they already gave us.
+    const reported = !meta.refund_upi_id && reportedUpiId(original);
+    if (reported) {
+      const cart = JSON.parse(JSON.stringify(Array.isArray(repl.cart_items) ? repl.cart_items : []));
+      const at = cart.findIndex(it => it && it._replacement);
+      if (at >= 0) {
+        cart[at]._replacement = {
+          ...cart[at]._replacement,
+          refund_upi_id: reported,
+          refund_upi_at: new Date().toISOString(),
+          refund_upi_source: 'missing_report',
+        };
+        const { error: upErr } = await sb.from('orders').update({ cart_items: cart }).eq('id', repl.id);
+        if (upErr) throw upErr;
+      }
+      return json(200, {
+        ok: true,
+        already_on_file: true,
+        upi_id: reported,
+        message: `Not asked: the customer already gave UPI ${reported} in their missing-book report. Saved on the replacement — pay that out.`,
+      });
     }
     if (meta.refund_upi_id) {
       return json(400, { error: `The customer already gave us a UPI ID (${meta.refund_upi_id}). Pay that out instead of asking again.` });

@@ -33,7 +33,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { classify, UNBOOKED } = require('./utils/not-picked-up');
 const { checkPickups, cancelAtCourier } = require('./utils/pickup-live');
-const { isReplacementOrder, replacementMeta, replacementRefundPlan } = require('./utils/missing-books');
+const { isReplacementOrder, replacementMeta, replacementRefundPlan, reportedUpiId } = require('./utils/missing-books');
 const { cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 
 const CORS = {
@@ -72,7 +72,11 @@ async function refundPreview(sb, order) {
     const plan = replacementRefundPlan(order, original);
     const amount_rs = rs(plan.amountPaise);
     if (plan.action === 'gateway') return { via: 'gateway', amount_rs, message: `refund on ${originalId}` };
-    if (plan.action === 'upi') return { via: 'upi', amount_rs, message: 'COD original: UPI ID asked by email + WhatsApp' };
+    if (plan.action === 'upi') {
+      const onFile = String((replacementMeta(order) || {}).refund_upi_id || '').trim() || reportedUpiId(original);
+      return { via: 'upi', amount_rs, upi_id: onFile || '',
+               message: onFile ? `COD original: pay ₹${amount_rs} to UPI ${onFile} (already given)` : 'COD original: UPI ID asked by email + WhatsApp' };
+    }
     if (plan.action === 'manual') return { via: 'manual', amount_rs, message: plan.reason };
     return { via: 'none', amount_rs: 0, message: plan.reason };
   }

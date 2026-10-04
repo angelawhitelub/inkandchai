@@ -165,7 +165,9 @@ exports.handler = async (event) => {
         const ask = await callFunction(event, 'request-refund-upi', { id: repl.id })
           .catch((e) => ({ statusCode: 500, data: { error: e.message } }));
         result.upi_request = ask.statusCode === 200
-          ? { sent: true, message: ask.data.message, email: ask.data.email, whatsapp: ask.data.whatsapp }
+          ? ask.data.already_on_file
+            ? { sent: false, on_file: true, upi_id: ask.data.upi_id, message: ask.data.message }
+            : { sent: true, message: ask.data.message, email: ask.data.email, whatsapp: ask.data.whatsapp }
           : { sent: false, message: ask.data.error || `HTTP ${ask.statusCode}` };
       }
       return json(200, result);

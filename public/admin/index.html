@@ -2270,6 +2270,7 @@ select,input,textarea{font-size:1rem;}
           <option value="confirmed">Courier confirms not picked up</option>
           <option value="courier_cancelled">Courier voided the AWB</option>
         </select>
+        <select id="npuPay" onchange="renderNotPicked()" title="Replacements are split by how the ORIGINAL order was paid: prepaid ones are refunded to the card/UPI automatically, COD ones need the customer's UPI ID" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;"><option value="">All payments</option></select>
         <select id="npuCourier" onchange="renderNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;"><option value="">All couriers</option></select>
         <label style="font-size:0.7rem;color:var(--cream-dim);">Older than
           <select id="npuHours" onchange="loadNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.45rem 0.6rem;font-size:0.72rem;border-radius:6px;outline:none;">
@@ -3253,6 +3254,7 @@ async function loadNotPicked(opts = {}) {
     const couriers = Object.keys(data.counts.by_courier || {}).sort();
     sel.innerHTML = '<option value="">All couriers</option>' + couriers.map(c => '<option value="' + esc(c) + '">' + esc(c) + ' (' + data.counts.by_courier[c] + ')</option>').join('');
     if (couriers.includes(keep)) sel.value = keep;
+    npuFillPayFilter();
     if (npuHours() === 48) {
       const b = document.getElementById('notPickedBadge');
       if (b) { b.textContent = data.counts.total; b.style.display = data.counts.total ? 'inline-block' : 'none'; }
@@ -3284,8 +3286,10 @@ function npuVisibleRows() {
   if (!npuData) return [];
   const bucket = document.getElementById('npuBucket').value;
   const courier = document.getElementById('npuCourier').value;
+  const pay = document.getElementById('npuPay').value;
   const q = document.getElementById('npuSearch').value.trim().toLowerCase();
   return npuData.orders.filter(r =>
+    (!pay || npuPayMatches(r, pay)) &&
     (bucket === 'all' || r.bucket === bucket
       || (bucket === 'courier_cancelled' && r.courier_cancelled)
       || (bucket === 'confirmed' && r.confirmed && !r.courier_cancelled))
@@ -3303,6 +3307,37 @@ function npuTargetRows() {
 }
 
 const NPU_PAY = { cod: 'COD', prepaid: 'Prepaid', partial_cod: 'Partial COD', replacement: 'Free replacement' };
+const NPU_ORIG = { cod: 'COD', prepaid: 'prepaid', partial_cod: 'partial COD', unknown: 'not found' };
+
+// Payment filter. A replacement is free, so what matters is how its ORIGINAL
+// order was paid: prepaid -> refunded to the card/UPI on cancel; COD -> the
+// customer's UPI ID is needed. Partial COD counts as COD (part goes by UPI).
+const NPU_PAY_FILTERS = [
+  ['prepaid', 'Prepaid'],
+  ['cod', 'COD (incl. partial COD)'],
+  ['replacement', 'Replacements — all'],
+  ['repl_prepaid', 'Replacement · original prepaid'],
+  ['repl_cod', 'Replacement · original COD'],
+];
+function npuOrigPay(r) { return (r.replacement && r.replacement.original_payment) || 'unknown'; }
+function npuPayMatches(r, f) {
+  const repl = r.payment === 'replacement';
+  if (f === 'prepaid') return !repl && r.payment === 'prepaid';
+  if (f === 'cod') return !repl && (r.payment === 'cod' || r.payment === 'partial_cod');
+  if (f === 'replacement') return repl;
+  if (f === 'repl_prepaid') return repl && npuOrigPay(r) === 'prepaid';
+  if (f === 'repl_cod') return repl && (npuOrigPay(r) === 'cod' || npuOrigPay(r) === 'partial_cod');
+  return true;
+}
+function npuFillPayFilter() {
+  const sel = document.getElementById('npuPay');
+  if (!sel || !npuData) return;
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">All payments</option>' + NPU_PAY_FILTERS.map(([v, label]) =>
+    '<option value="' + v + '">' + label + ' (' + npuData.orders.filter(r => npuPayMatches(r, v)).length + ')</option>').join('');
+  sel.value = keep;
+}
+function npuCodOriginal(r) { return r.payment === 'replacement' && (npuOrigPay(r) === 'cod' || npuOrigPay(r) === 'partial_cod'); }
 
 function npuStageText(r) {
   if (r.bucket === 'not_booked') return 'Not booked';
@@ -3314,8 +3349,10 @@ function npuUpiCell(r) {
   const rp = r.replacement;
   if (!rp) return '';
   if (rp.refund_paid_at) return '<div class="hint" style="color:#6dbf6d;">UPI refund sent</div>';
-  if (rp.refund_upi_id) return '<div style="margin-top:.3rem;font-family:ui-monospace,Menlo,monospace;font-size:.72rem;user-select:all;color:#6dbf6d;" title="UPI ID the customer gave for the refund">UPI: ' + esc(rp.refund_upi_id) + '</div>';
+  if (rp.refund_upi_id) return '<div style="margin-top:.3rem;font-family:ui-monospace,Menlo,monospace;font-size:.72rem;user-select:all;color:#6dbf6d;" title="UPI ID the customer gave for the refund">UPI: ' + esc(rp.refund_upi_id) + '</div>'
+    + (rp.refund_upi_source === 'missing_report' ? '<div class="hint">from their missing-book report</div>' : '');
   if (rp.upi_requested_at) return '<div class="hint" style="color:#e0a060;">UPI asked ' + new Date(rp.upi_requested_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ', no reply yet</div>';
+  if (npuCodOriginal(r)) return '<div class="hint" style="color:#e0a060;" title="The ask says the replacement is cancelled, so it goes out only when it is: Cancel &amp; refund sends it straight away">No UPI yet — asked by email + WhatsApp automatically on cancel</div>';
   return '';
 }
 
@@ -3371,7 +3408,8 @@ function renderNotPicked() {
         + td(stage)
         + td(awb)
         + td(scan)
-        + td((NPU_PAY[r.payment] || r.payment) + (r.amount_rs ? '<div class="hint">₹' + r.amount_rs.toLocaleString('en-IN') + '</div>' : ''))
+        + td((NPU_PAY[r.payment] || r.payment) + (r.amount_rs ? '<div class="hint">₹' + r.amount_rs.toLocaleString('en-IN') + '</div>' : '')
+          + (r.payment === 'replacement' ? '<div class="hint" style="color:' + (npuCodOriginal(r) ? '#e0a060' : npuOrigPay(r) === 'prepaid' ? '#6dbf6d' : 'var(--cream-dim)') + ';">original ' + esc(NPU_ORIG[npuOrigPay(r)] || npuOrigPay(r)) + '</div>' : ''))
         + td(esc(r.customer_name) + (r.pincode ? '<div class="hint">' + esc(r.pincode) + '</div>' : ''))
         + td(orderLink(r.order_id, 'Open', 'font-size:.6rem;padding:.3rem .6rem;'))
         + '</tr>';
@@ -3438,6 +3476,7 @@ function npuExportRows() {
       awb: r.tracking_id || '',
       last_scan: (live && live.state !== 'unknown' ? live.status : r.last_scan) || '',
       payment: NPU_PAY[r.payment] || r.payment,
+      original_paid: r.payment === 'replacement' ? (NPU_ORIG[npuOrigPay(r)] || npuOrigPay(r)) : '',
       amount_rs: r.amount_rs || 0,
       customer: r.customer_name || '',
       phone: r.customer_phone || '',
@@ -3467,7 +3506,7 @@ function exportNotPickedPdf() {
   const rows = npuExportRows();
   if (!rows.length) return;
   const cols = [['order_id', 'Order'], ['placed', 'Placed'], ['age', 'Age'], ['books', 'Books'], ['stage', 'Stage'], ['courier', 'Courier'], ['awb', 'AWB'],
-    ['last_scan', 'Last scan'], ['payment', 'Payment'], ['amount_rs', '₹'], ['customer', 'Customer'], ['phone', 'Phone'], ['pincode', 'PIN'], ['refund_upi', 'Refund UPI']];
+    ['last_scan', 'Last scan'], ['payment', 'Payment'], ['original_paid', 'Original paid'], ['amount_rs', '₹'], ['customer', 'Customer'], ['phone', 'Phone'], ['pincode', 'PIN'], ['refund_upi', 'Refund UPI']];
   const w = window.open('', '_blank');
   if (!w) { alert('Allow pop-ups for this site to download the PDF.'); return; }
   const title = 'Not picked up — ' + rows.length + ' orders — ' + new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
@@ -3508,10 +3547,13 @@ async function cancelNotPickedSelected(btn) {
     const unverified = plan.filter(p => p.outcome === 'needs_manual');
     const skip = plan.filter(p => p.outcome === 'skipped');
     const refundRs = go.reduce((s, p) => s + Number(p.refund && p.refund.amount_rs || 0), 0);
-    const upi = go.filter(p => p.refund && p.refund.via === 'upi').length;
+    const upiRows = go.filter(p => p.refund && p.refund.via === 'upi');
+    const upiOnFile = upiRows.filter(p => p.refund.upi_id);
+    const upi = upiRows.length - upiOnFile.length;
     let text = go.length + ' of ' + rows.length + ' can be cancelled — the courier confirms they have not been picked up.\n'
       + (refundRs ? '₹' + refundRs.toLocaleString('en-IN') + ' goes back automatically to the original payment method.\n' : '')
       + (upi ? upi + ' COD missing-book replacement(s): the customer is emailed and WhatsApped for a UPI ID.\n' : '')
+      + (upiOnFile.length ? upiOnFile.length + ' COD missing-book replacement(s) already have a UPI ID — pay those out from Missing Books:\n' + upiOnFile.map(p => '  ' + p.order_id + ' — ₹' + p.refund.amount_rs + ' to ' + p.refund.upi_id).join('\n') + '\n' : '')
       + 'Each customer gets the cancellation email and WhatsApp.\n';
     if (skip.length) text += '\n' + skip.length + ' will NOT be touched:\n' + skip.slice(0, 12).map(p => '  ' + p.order_id + ' — ' + p.reason).join('\n') + (skip.length > 12 ? '\n  …' : '') + '\n';
     if (unverified.length) text += '\n' + unverified.length + ' could not be checked with the courier, so they are left alone:\n' + unverified.slice(0, 8).map(p => '  ' + p.order_id + ' — ' + p.reason).join('\n') + '\n';
@@ -3536,7 +3578,8 @@ async function cancelNotPickedSelected(btn) {
       + (bad.length ? ', <strong style="color:#e06060;">' + bad.length + ' not</strong>' : '') + '.'
       + '<div style="margin-top:.4rem;max-height:240px;overflow:auto;font-family:ui-monospace,Menlo,monospace;font-size:.68rem;line-height:1.6;">'
       + done.map(d => esc(d.order_id) + ' — ' + esc(d.outcome) + (d.reason ? ': ' + esc(d.reason) : '')
-          + (d.refund ? ' · refund ' + esc(d.refund.status) + (d.refund.amount_rs ? ' ₹' + d.refund.amount_rs : '') + (d.refund.message ? ' (' + esc(d.refund.message) + ')' : '') : '')).join('<br>')
+          + (d.refund ? ' · refund ' + esc(d.refund.status) + (d.refund.amount_rs ? ' ₹' + d.refund.amount_rs : '') + (d.refund.message ? ' (' + esc(d.refund.message) + ')' : '') : '')
+          + (d.upi_request ? ' · UPI: ' + esc(d.upi_request.message || (d.upi_request.sent ? 'asked' : 'not asked')) : '')).join('<br>')
       + '</div>';
     npuSel = new Set([...npuSel].filter(id => !ok.some(d => d.id === id)));
     await loadNotPicked({ quiet: true });
