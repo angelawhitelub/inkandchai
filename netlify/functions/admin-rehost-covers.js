@@ -103,17 +103,22 @@ function titleOverlap(ours, theirs) {
   return best;
 }
 
-/** The cover URL on a Goodreads book page, if the page is the same book. */
+/**
+ * The cover URL on a Goodreads book page, if the page is the same book.
+ * Returns { url } or { why } so a refusal (Goodreads answers bursts with 202)
+ * can be told apart from a title mismatch.
+ */
 async function goodreadsCover(id, title) {
   const res = await fetch(`https://www.goodreads.com/book/show/${id}`, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36' },
   });
-  if (!res.ok) return null;
+  if (res.status !== 200) return { why: `goodreads ${res.status}` };
   const html = await res.text();
   const img = (html.match(/<meta property="og:image" content="([^"]+)"/) || [])[1];
   const theirs = (html.match(/<meta property="og:title" content="([^"]+)"/) || html.match(/<title>([^<]+)/) || [])[1];
-  if (!img || !theirs || titleOverlap(title, theirs) < 0.6) return null;
-  return img.replace(/&amp;/g, '&');
+  if (!img || !theirs) return { why: 'goodreads page has no cover' };
+  if (titleOverlap(title, theirs) < 0.6) return { why: `title mismatch: ${theirs.slice(0, 80)}` };
+  return { url: img.replace(/&amp;/g, '&') };
 }
 
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
@@ -175,22 +180,24 @@ exports.handler = async (event = {}) => {
 
       let url = null;
       let via = null;
+      const why = [];
       for (const src of sources) {
         if (src === 'placeholder') { url = PLACEHOLDER; via = 'placeholder'; break; }
         let from = src;
         if (src.startsWith('goodreads:')) {
-          from = await goodreadsCover(src.slice(10), row.title).catch(() => null);
-          if (!from || !sourceAllowed(from)) continue;
+          const gr = await goodreadsCover(src.slice(10), row.title).catch((e) => ({ why: `goodreads ${e.message}` }));
+          if (!gr.url || !sourceAllowed(gr.url)) { why.push(gr.why || 'goodreads cover host not allowed'); continue; }
+          from = gr.url;
         }
         const img = await fetchImage(from).catch(() => null);
-        if (!img) continue;
+        if (!img) { why.push(`no image at ${new URL(from).hostname}`); continue; }
         if (body.dry_run === true) { url = '(dry run)'; via = src.startsWith('goodreads:') ? 'goodreads' : new URL(src).hostname; break; }
         const key = `covers/rehost/${slug}.${EXT[img.type]}`;
         url = await r2PutObject(r2Config(), { key, body: img.body, contentType: img.type });
         via = src.startsWith('goodreads:') ? 'goodreads' : new URL(src).hostname;
         break;
       }
-      if (!url) { results.push({ slug, ok: false, reason: 'no source worked' }); continue; }
+      if (!url) { results.push({ slug, ok: false, reason: 'no source worked', why }); continue; }
       if (body.dry_run === true) { results.push({ slug, ok: true, via, dry_run: true }); continue; }
 
       const { error: upErr } = await db.from(table).update({ image_url: url }).eq('slug', slug);
