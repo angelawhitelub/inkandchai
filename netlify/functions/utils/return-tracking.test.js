@@ -162,6 +162,18 @@ test('without the tracking columns: no save, no alert, and it says which SQL is 
   assert.ok(s.columns_missing.includes('tracking_status'));
 });
 
+test('several returns received in one run make ONE owner message', async () => {
+  const rows = ['1', '2', '3'].map((n) => ({ id: n, status: 'pickup_scheduled', awb: `55${n}`, order_display_id: `IC-${n}` }));
+  const alerts = [];
+  const s = await job.refresh(fakeDb(rows), {
+    trackReturns: async () => new Map(rows.map((r) => [r.awb, DELIVERED])),
+    ownerAlert: async (t) => alerts.push(t), awbMap: async () => new Map(),
+  });
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /3 returns received back/);
+  assert.deepEqual(s.alerted, ['IC-1', 'IC-2', 'IC-3']);
+});
+
 test('rejected returns are never tracked', async () => {
   const rows = [{ id: 'a', status: 'rejected', awb: '555' }];
   let asked = false;

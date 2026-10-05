@@ -134,6 +134,7 @@ async function refresh(db, deps = {}) {
   if (!live.length) return summary;
   const views = await track(live.map((r) => r.awb));
   const now = new Date().toISOString();
+  const received = [];
 
   for (const ret of live) {
     const v = views.get(String(ret.awb).trim());
@@ -167,8 +168,16 @@ async function refresh(db, deps = {}) {
       .eq('id', ret.id).is('delivered_alerted_at', null).select('id');
     if (claim.error) { missing('delivered_alerted_at'); continue; }
     if (!(claim.data || []).length) continue;
-    await ownerAlert(receivedAlert(ret, v));
+    received.push(receivedAlert(ret, v));
     summary.alerted.push(ret.order_display_id || ret.order_id);
+  }
+  // One message per run: the first run after the SQL finds every return that
+  // came back before it, and a dozen separate WhatsApps helps nobody.
+  if (received.length) {
+    const head = received.length > 1 ? `📦 ${received.length} returns received back\n\n` : '';
+    let text = head + received.join('\n\n');
+    if (text.length > 3800) text = `${text.slice(0, 3700)}\n\n…and more: see Returns → filter "Received back" in the admin.`;
+    await ownerAlert(text);
   }
   return summary;
 }
