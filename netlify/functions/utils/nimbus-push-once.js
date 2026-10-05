@@ -28,6 +28,7 @@
  */
 
 const { pushOrderToNimbusPost } = require('./nimbuspost-import');
+const { ensureOrderAddress } = require('./address-fixer');
 
 /**
  * Automatic panel pushes are OFF unless NIMBUS_AUTO_PUSH is "on" (26 Sep 2026:
@@ -79,6 +80,9 @@ async function pushToNimbusOnce(supabase, order) {
     console.log(`[NimbusPost] not pushing ${label}: ${elsewhere}`);
     return { pushed: false, reason: 'already_pushed', detail: elsewhere };
   }
+
+  try { await ensureOrderAddress(supabase, order); }
+  catch (error) { return { pushed: false, reason: 'address_review', error: error.message }; }
 
   // Claim. `.is('nimbus_pushed_at', null)` is what makes this exclusive; the
   // other three repeat bookedElsewhere against the row as it is NOW, since the

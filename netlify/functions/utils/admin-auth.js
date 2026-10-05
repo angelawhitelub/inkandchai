@@ -38,6 +38,7 @@ const STAFF_ENDPOINT_PERMISSIONS = {
   'admin-product-sample': 'products.write',
   'admin-support-tickets': 'support.inbox',
   'update-order-details': 'orders.manage',
+  'admin-fix-address': 'orders.manage',
   'set-order-payment-type': 'orders.manage',
   'get-return-requests': 'returns.read',
   'process-return': 'returns.manage',

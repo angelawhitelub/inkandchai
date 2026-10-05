@@ -6315,6 +6315,7 @@ function _drawTable() {
       </td>
       <td class="addr-cell" data-label="Deliver to" style="max-width:220px;line-height:1.55;">
         ${esc(o.customer_address || '—')}
+        ${orderIsUnshipped(o) ? `<div style="margin:0.5rem 0;"><button class="btn-outline" type="button" onclick="iacFixAddress('${esc(o.id)}',this)" style="font-size:0.8rem;padding:0.5rem 0.7rem;letter-spacing:normal;color:#284d3b;background:#edf6ef;border-color:#9dbca8;">✨ AI fix address / PIN</button><div data-address-result role="status" style="font-size:0.82rem;line-height:1.5;margin-top:0.4rem;color:#344054;"></div></div>` : ''}
         ${orderIsUnshipped(o) ? `<button onclick="npShipOrder('${esc(o.razorpay_order_id||o.id)}', this)" title="Create shipment on NimbusPost and get AWB automatically"
           style="display:block;margin-top:0.5rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.32rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;width:100%;"
           onmouseover="this.style.background='rgba(201,168,76,0.18)';"
@@ -6602,6 +6603,7 @@ async function npShipOrder(orderId, btn) {
         ord.tracking_id  = shipped.awb;
         ord.courier_name = shipped.courier_name;
         ord.tracking_url = shipped.tracking_url;
+        if (shipped.corrected_address) ord.customer_address = shipped.corrected_address;
       }
       updateStats();
       applyFilters();
@@ -11762,6 +11764,35 @@ async function submitReplacement(displayId, btn, force) {
   }
 }
 
+async function iacFixAddress(id,btn,action='fix',auditId='') {
+  const box=btn.parentElement.querySelector('[data-address-result]');
+  btn.disabled=true; const label=btn.textContent; btn.textContent=action==='undo'?'Restoring…':'Checking locality & PIN…';
+  box.textContent='';
+  try {
+    const response=await adminFetch('/.netlify/functions/admin-fix-address',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action,audit_id:auditId})});
+    const result=await response.json(); if(!response.ok)throw new Error(result.error||'Address check failed');
+    const order=allOrders.find(o=>String(o.id)===String(id));
+    box.textContent=result.reason||'No correction needed.';
+    if(result.status==='fixed'||result.status==='undone') {
+      if(order)order.customer_address=result.corrected;
+      const detail=document.createElement('div');detail.style.cssText='white-space:pre-wrap;padding:0.5rem;background:#edf6ef;border-radius:6px;margin-top:0.4rem';
+      detail.textContent='Saved address: '+result.corrected;box.appendChild(detail);
+      // Update the address text at the top of this cell without rerendering the
+      // row (keeps the original, explanation and Undo control visible).
+      const cell=btn.closest('.addr-cell');
+      if(cell)for(const node of cell.childNodes){if(node.nodeType===3&&node.textContent.trim()){node.textContent='\n'+result.corrected+'\n';break;}}
+    }
+    if(result.status==='fixed') {
+      const before=document.createElement('details'),title=document.createElement('summary'),text=document.createElement('div');
+      title.textContent='View original address';text.textContent=result.original;before.append(title,text);box.appendChild(before);
+      const undo=document.createElement('button');undo.className='btn-outline';undo.textContent='Undo fix';undo.type='button';undo.style.marginTop='0.5rem';
+      undo.onclick=()=>{undo.remove();iacFixAddress(id,btn,'undo',result.audit_id)};box.appendChild(undo);
+    }
+    if(result.status==='review')box.style.color='#9a3412';
+  } catch(error) {box.textContent=error.message;box.style.color='#9a3412';}
+  finally {btn.disabled=false;btn.textContent=label;}
+}
+
 function openEditOrderModal(orderUuid) {
   const o = allOrders.find(x => String(x.id) === String(orderUuid));
   if (!o) { alert('Order not found in the current list — refresh and try again.'); return; }
@@ -12990,6 +13021,7 @@ async function npPushOrderToPanel(orderId, btn, forceElsewhere = false) {
       return;
     }
     if (s.pushed) {
+      if (typeof fetchOrders === 'function') await fetchOrders(true);
       alert(`✅ ${orderId} is now in the NimbusPost Orders panel.\n\nNo AWB was generated. Open NimbusPost → Orders to assign a courier when you're ready.`
         + (data.warning ? `\n\n⚠️ ${data.warning}` : ''));
     } else if (s.skipped) {

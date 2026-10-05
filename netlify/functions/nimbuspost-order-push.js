@@ -1,3 +1,4 @@
+const { ensureOrderAddress } = require('./utils/address-fixer');
 /**
  * Push website orders into the NimbusPost panel without assigning a courier or
  * generating an AWB. Uses NimbusPost's custom-order API (not Partners API).
@@ -334,6 +335,7 @@ async function suffixRun({ body, orders, apiKey, supabase }) {
   const results = [];
   for (const p of plan) {
     try {
+      await ensureOrderAddress(supabase, p.order);
       await pushOrder({ ...p.order, razorpay_order_id: p.number }, apiKey);
       await supabase.from('orders').update({ nimbus_pushed_at: new Date().toISOString() }).eq('id', p.order.id);
       results.push({ order: p.order.razorpay_order_id, pushed_as: p.number, ok: true });
@@ -423,6 +425,7 @@ exports.handler = async (event) => {
       }
 
       try {
+        await ensureOrderAddress(supabase, order);
         await pushOrder(order, apiKey);
         summary.pushed++;
         // Also protects against repeated rows in this same request.
