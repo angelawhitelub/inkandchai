@@ -566,41 +566,6 @@ BOOKS_LITE_TAG = f'<script src="/js/{_books_lite_file}"></script>'
 BOOKS_FULL_PRELOAD = f'<link rel="preload" as="script" href="/js/{_books_full_file}"/>'
 BOOKS_LITE_PRELOAD = f'<link rel="preload" as="script" href="/js/{_books_lite_file}"/>'
 
-recent_order_activity_path = Path(__file__).parent / "data" / "recent_order_activity.json"
-try:
-    recent_order_activity = json.loads(recent_order_activity_path.read_text()) if recent_order_activity_path.exists() else []
-except Exception:
-    recent_order_activity = []
-def _norm_activity_title(value):
-    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
-
-def _match_activity_book(title):
-    needle = _norm_activity_title(str(title or "").split("+")[0])
-    if not needle:
-        return None
-    for book in slim:
-        hay = _norm_activity_title(book.get("t", "") + " " + book.get("a", ""))
-        hay_prefix = hay[:38].strip()
-        if (len(needle) >= 6 and needle in hay) or (len(hay_prefix) >= 10 and hay_prefix in needle):
-            return book
-    words = [w for w in needle.split() if len(w) > 3][:4]
-    if len(words) >= 2:
-        for book in slim:
-            hay = _norm_activity_title(book.get("t", "") + " " + book.get("a", ""))
-            if all(w in hay for w in words):
-                return book
-    return None
-
-enriched_recent_order_activity = []
-for item in recent_order_activity:
-    matched = _match_activity_book(item.get("title", ""))
-    enriched_recent_order_activity.append({
-        "name": clean_text(item.get("name", "")),
-        "title": clean_text(item.get("title", "")),
-        "img": matched.get("img", "") if matched else "",
-        "url": matched.get("url", "") if matched else "",
-    })
-recent_order_activity_js = json.dumps(enriched_recent_order_activity, ensure_ascii=False)
 new_count = sum(b["n"] for b in slim)
 print(f"New arrivals (last {NEW_ARRIVAL_DAYS} days): {new_count}")
 
@@ -915,137 +880,9 @@ html:not([data-theme="light"]) .reader-activity-time{color:#a09080}
 @media(prefers-reduced-motion:reduce){.reader-activity-toast{transition:none}}
 """
 
-READER_ACTIVITY_JS = r"""
-<script>
-(function(){
-  const recentOrders = RECENT_ORDER_ACTIVITY_PLACEHOLDER;
-  const names = ['Aarav','Ananya','Riya','Kabir','Priya','Arjun','Meera','Ishaan','Neha','Rohan','Sanya','Aditya','Kavya','Rahul','Nisha','Vivaan'];
-  const cities = ['Delhi','Mumbai','Pune','Jaipur','Lucknow','Bengaluru','Hyderabad','Chandigarh','Ahmedabad','Indore','Kolkata','Surat'];
-  const browseActions = ['added to cart', 'is checking out', 'is browsing', 'is viewing'];
-  const orderActions = ['ordered', 'purchased'];
-  const times = ['just now','2 minutes ago','5 minutes ago','12 minutes ago','today','yesterday'];
-  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-  const esc = s => String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  function stopActivity(){
-    sessionStorage.setItem('iac_reader_activity_closed','1');
-    const el = document.getElementById('readerActivityToast');
-    if (el) {
-      el.classList.remove('show');
-      window.clearTimeout(el._hideTimer);
-    }
-  }
-  window.stopReaderActivity = stopActivity;
-  function booksPool(){
-    try {
-      if (typeof BOOKS === 'undefined' || !Array.isArray(BOOKS)) {
-        if (typeof currentItem !== 'undefined' && currentItem && currentItem.title && currentItem.img) {
-          return [{
-            t: currentItem.title,
-            a: currentItem.author || '',
-            img: currentItem.img,
-            url: currentItem.url && String(currentItem.url).startsWith('/product/') ? currentItem.url : location.pathname,
-            slug: ''
-          }];
-        }
-        return [];
-      }
-      return BOOKS.filter(b => b && b.t && b.img && (b.url || b.slug))
-        .filter(b => (b.n || /hindi|self help|romance|bestseller|combo/i.test((b.cat || '') + ' ' + b.t)))
-        .slice(0, 180);
-    } catch(e) { return []; }
-  }
-  function matchBook(title, pool){
-    const needle = norm(String(title || '').split('+')[0]);
-    if (!needle || !pool.length) return null;
-    return pool.find(b => norm(b.t).includes(needle) || needle.includes(norm(b.t).slice(0, 38))) ||
-      pool.find(b => {
-        const words = needle.split(' ').filter(w => w.length > 3).slice(0, 4);
-        const hay = norm(b.t + ' ' + (b.a || ''));
-        return words.length >= 2 && words.every(w => hay.includes(w));
-      }) || null;
-  }
-  function activityItem(pool){
-    if (Array.isArray(recentOrders) && recentOrders.length && Math.random() < 0.58) {
-      const order = pick(recentOrders);
-      const match = matchBook(order.title, pool) || pick(pool);
-      return {
-        name: order.name || pick(names),
-        city: 'India',
-        action: pick(orderActions),
-        title: order.title || match.t,
-        img: order.img || match.img,
-        url: order.url || match.url || ('/product/' + match.slug + '/'),
-        time: pick(['yesterday','today','12 minutes ago','5 minutes ago'])
-      };
-    }
-    const b = pick(pool);
-    return {
-      name: pick(names),
-      city: pick(cities),
-      action: pick(browseActions),
-      title: b.t,
-      img: b.img,
-      url: b.url || ('/product/' + b.slug + '/'),
-      time: pick(times)
-    };
-  }
-  function ensureToast(){
-    let el = document.getElementById('readerActivityToast');
-    if (el) return el;
-    el = document.createElement('aside');
-    el.id = 'readerActivityToast';
-    el.className = 'reader-activity-toast';
-    el.setAttribute('aria-live','polite');
-    el.setAttribute('aria-label','Reader activity');
-    document.body.appendChild(el);
-    return el;
-  }
-  function showActivity(){
-    if (sessionStorage.getItem('iac_reader_activity_closed') === '1') return;
-    const pool = booksPool();
-    if (!pool.length) return;
-    const item = activityItem(pool);
-    const el = ensureToast();
-    el.innerHTML = `
-      <img class="reader-activity-img" src="${esc(item.img)}" alt="" loading="lazy"/>
-      <div>
-        <div class="reader-activity-kicker">${esc(item.name)} from ${esc(item.city)} ${esc(item.action)}</div>
-        <div class="reader-activity-title">${esc(item.title)}</div>
-        <div class="reader-activity-time">${esc(item.time)}</div>
-      </div>
-      <button class="reader-activity-close" type="button" aria-label="Hide reader activity">×</button>`;
-    el.onclick = e => { if (!e.target.closest('button')) location.href = item.url; };
-    el.querySelector('button').onclick = e => {
-      e.stopPropagation();
-      el.classList.remove('show');
-      sessionStorage.setItem('iac_reader_activity_closed','1');
-    };
-    requestAnimationFrame(() => el.classList.add('show'));
-    window.clearTimeout(el._hideTimer);
-    el._hideTimer = window.setTimeout(() => el.classList.remove('show'), 6200);
-  }
-  function schedule(){
-    const delay = 12000 + Math.floor(Math.random() * 12000);
-    window.setTimeout(() => { showActivity(); schedule(); }, delay);
-  }
-  window.addEventListener('load', () => {
-    if (sessionStorage.getItem('iac_reader_activity_closed') === '1') return;
-    window.setTimeout(showActivity, 5200);
-    schedule();
-  });
-  document.addEventListener('click', event => {
-    const target = event.target.closest('button,a');
-    if (!target) return;
-    const onclick = target.getAttribute('onclick') || '';
-    const href = target.getAttribute('href') || '';
-    if (/buyNowBook|addBookToCart|checkout/i.test(onclick) || /\/checkout\/?/i.test(href)) {
-      stopActivity();
-    }
-  }, true);
-})();
-</script>
-"""
+READER_ACTIVITY_JS = '''
+<script defer src="/js/recent-purchases.js?v=20261006"></script>
+'''
 
 def with_reader_activity(html: str) -> str:
     # A few page-level refinement rules mention `.reader-activity-toast`
@@ -1054,8 +891,8 @@ def with_reader_activity(html: str) -> str:
     # component marker so a partial selector cannot suppress the real CSS.
     if "/* Animated reader activity notification */" not in html:
         html = html.replace("</style>", READER_ACTIVITY_CSS + "\n</style>", 1)
-    if "readerActivityToast" not in html:
-        html = html.replace("</body>", READER_ACTIVITY_JS.replace("RECENT_ORDER_ACTIVITY_PLACEHOLDER", recent_order_activity_js) + "\n</body>", 1)
+    if "/js/recent-purchases.js" not in html:
+        html = html.replace("</body>", READER_ACTIVITY_JS + "\n</body>", 1)
     html = with_page_loader(html)
     return html
 
