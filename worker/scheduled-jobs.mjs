@@ -35,6 +35,7 @@ export const ENABLED_JOBS = new Set([
   'auto-recover-carts',
   'daily-unshipped-report',
   'not-picked-up-report-scheduled',
+  'return-tracking-scheduled',
   'deploy-drift-check',
   // money safety nets
   'phonepe-payment-sweep-scheduled',

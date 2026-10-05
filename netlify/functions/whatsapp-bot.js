@@ -25,6 +25,7 @@ const { notifyOrderCancelled } = require('./utils/order-cancelled-notification')
 const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 const { quoteLateCancel, executeLateCancel } = require('./utils/prepaid-late-cancel');
 const { chatPayload, currentBotModel, FALLBACK_MODEL } = require('./utils/bot-model');
+const { returnsContext } = require('./utils/return-bot-context');
 const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
 const { draftOrderRequest, confirmDraftOrder, draftReplyDecision, botOrdersContext, lookupBotRequest, describeRequest } = require('./utils/bot-order-request');
@@ -250,7 +251,7 @@ REFUND ALREADY ISSUED — when the order context contains a "Refund: ALREADY ISS
 
 NEVER GIVE OUT ANY EMAIL ADDRESS WHEN MONEY IS INVOLVED — no refund inbox, no support inbox, no address at all, however the customer asks and however insistent they are. There is nothing an email can do here that this chat cannot: a refund is either already issued (quote the reference, as above) or the customer needs a human, and a human is reached at https://wa.me/919217175546. Sending someone to email about their own money reads as a brush-off and adds days to their wait.
 
-RETURN REQUESTS — there are no returns. Use the REPLACEMENTS section above: free replacement for a defective/misprinted, wrong or missing book; nothing else is taken back. A customer who filed a return BEFORE this change still has it processed by our team — if they ask about one, reassure them and share https://wa.me/919217175546.
+RETURN REQUESTS — there are no returns. Use the REPLACEMENTS section above: free replacement for a defective/misprinted, wrong or missing book; nothing else is taken back. A customer who filed a return BEFORE this change still has it processed by our team. When ORDER CONTEXT has a "RETURN requests" block, answer from it: the return's status, the pickup courier and AWB, the latest tracking scan, and whether the books have been delivered back to us. Never invent a pickup date or a refund date, and say a refund is done only if the block says it was issued. If there is no such block, reassure them and share https://wa.me/919217175546.
 
 PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book right now: "I want to order <book>", "mujhe <book> chahiye", "how do I buy this", "order karna hai", or they name a specific book they want to purchase.
 - ⛔ DO NOT treat these as new orders — they are NOT purchases, and you must NEVER call submit_order_request for them:
@@ -717,6 +718,8 @@ async function wrongCodContext(from, skipIds = []) {
   }
 }
 
+const RETURN_QUERY_RE = /return|wapas|vapas|waapas|pick\s*-?\s*up|pickup|reverse|exchange|replace/i;
+
 async function buildOrderContext(from, userText) {
   const awaiting = await awaitingDetailsContext(from);
   if (awaiting) return awaiting;
@@ -727,7 +730,18 @@ async function buildOrderContext(from, userText) {
   const wrongCod = await wrongCodContext(from, named);
   const botOrders = await botOrdersContext(
     createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), from);
-  return [wrongCod, rest, botOrders].filter(Boolean).join('\n\n');
+  // Their return requests and where each reverse pickup is, whenever the
+  // message is about an order or a return. Matched by phone and by any order
+  // id the conversation named.
+  let returns = '';
+  if (rest || RETURN_QUERY_RE.test(String(userText || ''))) {
+    try {
+      returns = await returnsContext(
+        createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), from,
+        [...named, extractOrderId(userText)].filter(Boolean));
+    } catch (e) { console.warn('[returns] context failed:', e.message); }
+  }
+  return [wrongCod, rest, returns, botOrders].filter(Boolean).join('\n\n');
 }
 
 async function buildOrderContextBody(from, userText) {

@@ -382,6 +382,13 @@ exports.handler = async (event) => {
         courier_name: courierName || null,
         processed_at: new Date().toISOString(),
       }).eq('id', return_request_id);
+      // Tracking saved for the previous AWB is not this parcel's.
+      if (ret.awb && String(ret.awb).trim() !== awb) {
+        await softUpdate(supabase, return_request_id, {
+          tracking_status: null, tracking_last_scan: null, tracking_last_scan_at: null,
+          tracking_checked_at: null, tracking_events: null, return_delivered_at: null, delivered_alerted_at: null,
+        });
+      }
       await notifyPickupScheduled(ret, awb, courierName);
       return { statusCode: 200, headers: CORS, body: JSON.stringify({
         success: true, status: 'pickup_scheduled', awb, courier_name: courierName, notified: true,

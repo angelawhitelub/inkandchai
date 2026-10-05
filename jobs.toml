@@ -460,3 +460,10 @@
 # about unanswered ones. See support-ticket-sla-scheduled; SUPPORT_TICKET_SLA.
 [functions."support-ticket-sla-scheduled"]
   schedule = "0 * * * *"
+
+# Reverse-pickup tracking for customer returns, hourly. Backfills AWBs NimbusPost
+# assigned to R-RET-… bookings, saves each return's latest scan for the Returns
+# panel and the WhatsApp bot, and alerts the owner once when a return is
+# delivered back. Moves no money and messages no customer.
+[functions."return-tracking-scheduled"]
+  schedule = "0 * * * *"
