@@ -11,6 +11,7 @@ const rows=[
 ];
 const client={from(table){const query={};for(const method of ['select','eq','or','order'])query[method]=(...args)=>{calls.push([method,...args]);return query;};query.limit=async()=>({data:rows});query.range=async()=>({data:rows,count:4});return query;}};
 Module._load=function(name,parent,...rest){
+ if(name==='./utils/search-discovery'){const real=original.call(this,name,parent,...rest);return {...real,discover:async()=>({for_you:[],bestsellers:[{slug:'custom-atomic',url:'/product/custom-atomic/',title:'Atomic Habits',author:'James Clear',price:399}],featured:[]})};}
  if(name==='@supabase/supabase-js')return {createClient:()=>client};
  if(name==='./utils/deleted-products')return {deletedSlugSet:async()=>new Set(['removed-cant'])};
  return original.call(this,name,parent,...rest);
@@ -35,4 +36,13 @@ test('typos return ranked catalogue books and gibberish does not return random r
  assert.equal(JSON.parse(r.body).books[0].title,'Atomic Habits');
  const empty=await suggest.handler({httpMethod:'GET',queryStringParameters:{q:'qxzzyyqq zzzq'}});
  assert.deepEqual(JSON.parse(empty.body).results,[]);
+});
+
+test('empty search offers bestsellers and personalised responses are never shared-cacheable',async()=>{
+ const plain=await suggest.handler({httpMethod:'GET',queryStringParameters:{}});const data=JSON.parse(plain.body);
+ assert.equal(data.bestsellers[0].title,'Atomic Habits');assert.equal(data.matched_count,null);assert.deepEqual(data.results,[]);
+ const personal=await suggest.handler({httpMethod:'GET',queryStringParameters:{interests:'["romance"]'}});
+ assert.match(personal.headers['Cache-Control'],/private, no-store/);assert.match(personal.headers['Netlify-CDN-Cache-Control'],/private, no-store/);
+ const empty=JSON.parse((await suggest.handler({httpMethod:'GET',queryStringParameters:{q:'qxzzyyqq zzzq'}})).body);
+ assert.equal(empty.matched_count,0);assert.equal(empty.bestsellers.length,1);assert.equal(empty.results.length,0);
 });

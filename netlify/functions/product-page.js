@@ -570,7 +570,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 <!-- Like the crawlable book pages, this one does not load auth.js, so the eBook
      button here links through to /ebooks/ rather than opening checkout. -->
 <script src="/js/ebooks.js" defer></script>
-<script src="/js/search-suggest.js" defer></script>
+<script src="/js/search-suggest.js?v=20261005" defer></script>
 <script>
 const currentItem = ${JSON.stringify({
     id: `/product/${product.slug}/`,

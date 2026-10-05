@@ -3237,7 +3237,7 @@ html[data-theme="light"] .btn-primary{
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/book-search.js?v=20261002"></script>
-<script src="/js/search-suggest.js" defer></script>
+<script src="/js/search-suggest.js?v=20261005" defer></script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -4039,6 +4039,7 @@ function highlightMatch(text, query) {
 }
 
 function renderSrchResults(query) {
+  if (window.InkSearch) { window.InkSearch.showOverlay(query); return; }
   const box = document.getElementById('srchResults');
   if (!box) return;
   _srchSel = -1;
@@ -4091,21 +4092,14 @@ function srchKey(e) {
     if (sel) { location.href = sel.getAttribute('href'); return; }
   }
   if (e.key === 'Enter') {
-    // Track search query for recommendation personalisation
-    const q = (document.getElementById('srchInput')?.value || '').trim();
-    if (q.length > 2) {
-      try {
-        const prev = JSON.parse(localStorage.getItem('iac_searches') || '[]');
-        const updated = [...prev.filter(s => s !== q), q].slice(-20);
-        localStorage.setItem('iac_searches', JSON.stringify(updated));
-      } catch(e) {}
-    }
+    window.InkSearch?.record((document.getElementById('srchInput')?.value || '').trim(), null, 'overlay');
     closeSiteSearch();
     document.getElementById('featured')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
 function srchQuick(query) {
+  window.InkSearch?.record(query, null, 'overlay');
   const srchIn = document.getElementById('srchInput');
   if (srchIn) srchIn.value = query;
   srchType();
@@ -4114,6 +4108,7 @@ function srchQuick(query) {
 }
 
 function quickSearch(query) {
+  window.InkSearch?.record(query, null, 'home');
   const input = document.getElementById('searchInput');
   input.value = query;
   currentQuery = query;
@@ -4930,7 +4925,7 @@ _BOOK_CARD_TAGS = (
     f'<script src="/js/{_bc_js_name}"></script>'
 )
 
-_bc_anchor = '<script src="/js/search-suggest.js" defer></script>'
+_bc_anchor = '<script src="/js/search-suggest.js?v=20261005" defer></script>'
 assert HTML.count(_bc_anchor) == 1, "homepage book-card anchor moved"
 HTML = HTML.replace(_bc_anchor, _bc_anchor + "\n" + _BOOK_CARD_TAGS, 1)
 
@@ -7648,7 +7643,7 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
 
 <script src="/js/cart.js"></script>
 <script src="/js/google-discount.js"></script>
-<script src="/js/search-suggest.js" defer></script>
+<script src="/js/search-suggest.js?v=20261005" defer></script>
 <script src="/js/summer-sale.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 <script>

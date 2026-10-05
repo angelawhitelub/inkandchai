@@ -17,6 +17,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { makeSlug } = require('./utils/pricing');
 const search = require('../../public/js/book-search');
 const { findCandidates } = require('./utils/search-candidates');
+const discovery = require('./utils/search-discovery');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -58,6 +59,7 @@ function getCatalog() {
     const slug = makeSlug(b.title || '', b.shopify_id || '').toLowerCase();
     if (!slug) continue;
     _catalog.push({
+      slug, category: String(b.category || ''), isbn: String(b.isbn || ''),
       title: String(b.title).slice(0, 200),
       author: String(b.author || ''),
       price,
@@ -77,9 +79,8 @@ exports.handler = async (event) => {
 
   const q = search.canonical(String((event.queryStringParameters || {}).q || '').slice(0,120));
   const limit = Math.min(12, Math.max(1, parseInt((event.queryStringParameters || {}).limit || '8', 10) || 8));
-  if (q.length < 2) {
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ results: [] }) };
-  }
+  const prefs = discovery.preferences(event.queryStringParameters || {});
+  const personal = prefs.viewed.length || prefs.interests.length;
 
   const headers = {
     ...CORS,
@@ -90,9 +91,16 @@ exports.handler = async (event) => {
     'Netlify-Cache-Tag': 'products',
   };
 
+  if (personal) { headers['Cache-Control'] = 'private, no-store'; headers['Netlify-CDN-Cache-Control'] = 'private, no-store'; }
   try {
+    const gone = await deletedSlugSet();
+    const picks = await discovery.discover(getCatalog(), prefs, gone).catch(() => discovery.choose(getCatalog(), [], prefs, gone));
+    const clean = r => ({title:r.title,author:r.author,price:r.price,mrp:r.mrp>r.price?r.mrp:0,img:r.img,url:r.url});
+    const sections = Object.fromEntries(Object.entries(picks).map(([k,v])=>[k,v.map(clean)]));
+    if(q.length < 2)return {statusCode:200,headers,body:JSON.stringify({results:[],matched_count:null,...sections})};
     // 1) Static catalogue (in-memory, no egress)
     const scored = [];
+    let complete = true;
     for (const b of getCatalog()) {
       const s = search.score(b, q);
       if (s > 0) scored.push({ ...b, _score: s });
@@ -119,22 +127,21 @@ exports.handler = async (event) => {
             });
           }
         }
-      } catch (e) { console.warn('search-suggest custom_products:', e.message); }
+      } catch (e) { complete = false; console.warn('search-suggest custom_products:', e.message); }
     }
 
     // Rank, de-dupe by url, drop pages taken down in admin (the baked
     // catalogue still lists them until the next regeneration), take top N
     const seen = new Set();
-    const gone = await deletedSlugSet();
     const slugOf = (url) => url.replace(/^\/product\//, '').replace(/\/$/, '').toLowerCase();
-    const results = scored
+    const ranked = scored
       .filter(r => r._score > 0)
-      .sort((a, b) => b._score - a._score)
-      .filter(r => { if (seen.has(r.url) || gone.has(slugOf(r.url))) return false; seen.add(r.url); return true; })
-      .slice(0, limit)
+      .sort((a, b) => b._score - a._score || picks.bestsellers.some(r=>r.url===b.url)-picks.bestsellers.some(r=>r.url===a.url))
+      .filter(r => { if (seen.has(r.url) || gone.has(slugOf(r.url))) return false; seen.add(r.url); return true; });
+    const results = ranked.slice(0, limit)
       .map(({ title, author, price, mrp, img, url }) => ({ title, author, price, mrp: mrp > price ? mrp : 0, img, url }));
 
-    return { statusCode: 200, headers, body: JSON.stringify({ results }) };
+    return { statusCode: 200, headers, body: JSON.stringify({ results, matched_count:complete?ranked.length:null, partial:!complete, ...sections }) };
   } catch (err) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ results: [], warning: err.message }) };
   }
