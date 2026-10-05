@@ -82,12 +82,17 @@ async function fetchImage(url) {
 const words = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]+/g, ' ')
   .split(/\s+/).filter((w) => w.length > 2 && !['the', 'and', 'for', 'with', 'from', 'book', 'books', 'paperback', 'hardcover', 'edition'].includes(w));
 
-/** Fraction of our title's words found in theirs. */
+const share = (a, b) => (a.length ? a.filter((w) => b.includes(w)).length / a.length : 0);
+
+/**
+ * How well two titles agree, 0-1. Ours often adds "by Author" or a subtitle and
+ * Goodreads cuts long titles off with "…", so either side being mostly
+ * contained in the other counts.
+ */
 function titleOverlap(ours, theirs) {
   const a = words(ours);
-  const b = new Set(words(theirs));
-  if (!a.length) return 0;
-  return a.filter((w) => b.has(w)).length / a.length;
+  const b = words(String(theirs || '').replace(/\s*\|\s*Goodreads\s*$/i, '').replace(/\S*…\s*$/, ''));
+  return Math.max(share(a, b), share(b, a));
 }
 
 /** The cover URL on a Goodreads book page, if the page is the same book. */

@@ -24,6 +24,8 @@ test('a Goodreads cover is used only for the same book', () => {
   assert.ok(titleOverlap('The Silent Patient', 'The Silent Patient by Alex Michaelides | Goodreads') >= 0.6);
   assert.ok(titleOverlap('Ikigai: The Japanese Secret to a Long and Happy Life', 'Ikigai: The Japanese Secret to a Long and Happy Life') === 1);
   assert.ok(titleOverlap('The Silent Patient', 'Atomic Habits by James Clear') < 0.6);
+  assert.ok(titleOverlap('1-2-3 Peas by Keith Baker', '1-2-3 Peas') >= 0.6);
+  assert.ok(titleOverlap('10 Indian Scientists Whose Extraordinary Work You May Not Know', '10 Indian Scientists Whose Extraordinary Work You May N…') >= 0.6);
   assert.ok(sourceAllowed('goodreads:18668444'));
   assert.ok(!sourceAllowed('goodreads:abc'));
 });
