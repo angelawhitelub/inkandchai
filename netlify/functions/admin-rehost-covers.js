@@ -15,6 +15,9 @@
  *        Tries each source in order; the first that returns a real image is
  *        uploaded to R2 and becomes image_url. 'placeholder' sets the site's
  *        "Cover coming soon" card, which the Merchant feed already skips.
+ *        `goodreads:<book id>` reads that Goodreads page's og:image (the old
+ *        files were Goodreads 50px thumbnails named <id>._SX50.jpg) and is used
+ *        only when the page's title shares most words with ours.
  *        Written only while the stored image_url still equals `from`.
  */
 const { createClient } = require('@supabase/supabase-js');
@@ -39,7 +42,7 @@ const MIN_BYTES = 2000;          // Open Library and Amazon both answer some mis
 const SOURCE_HOSTS = /^(m\.media-amazon\.com|images-na\.ssl-images-amazon\.com|covers\.openlibrary\.org|archive\.org|[a-z0-9-]+\.us\.archive\.org)$/;
 
 function sourceAllowed(url) {
-  if (url === 'placeholder') return true;
+  if (url === 'placeholder' || /^goodreads:\d{3,12}$/.test(String(url))) return true;
   try {
     const u = new URL(url);
     return u.protocol === 'https:' && SOURCE_HOSTS.test(u.hostname);
@@ -74,6 +77,30 @@ async function fetchImage(url) {
     return { body, type };
   }
   return null;
+}
+
+const words = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]+/g, ' ')
+  .split(/\s+/).filter((w) => w.length > 2 && !['the', 'and', 'for', 'with', 'from', 'book', 'books', 'paperback', 'hardcover', 'edition'].includes(w));
+
+/** Fraction of our title's words found in theirs. */
+function titleOverlap(ours, theirs) {
+  const a = words(ours);
+  const b = new Set(words(theirs));
+  if (!a.length) return 0;
+  return a.filter((w) => b.has(w)).length / a.length;
+}
+
+/** The cover URL on a Goodreads book page, if the page is the same book. */
+async function goodreadsCover(id, title) {
+  const res = await fetch(`https://www.goodreads.com/book/show/${id}`, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36' },
+  });
+  if (!res.ok) return null;
+  const html = await res.text();
+  const img = (html.match(/<meta property="og:image" content="([^"]+)"/) || [])[1];
+  const theirs = (html.match(/<meta property="og:title" content="([^"]+)"/) || html.match(/<title>([^<]+)/) || [])[1];
+  if (!img || !theirs || titleOverlap(title, theirs) < 0.6) return null;
+  return img.replace(/&amp;/g, '&');
 }
 
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
@@ -128,7 +155,7 @@ exports.handler = async (event = {}) => {
       const sources = Array.isArray(item && item.sources) ? item.sources.filter(sourceAllowed).slice(0, 4) : [];
       if (!slug || typeof item.from !== 'string' || !sources.length) { results.push({ slug, ok: false, reason: 'bad item' }); continue; }
 
-      const { data: row, error } = await db.from(table).select('slug,image_url').eq('slug', slug).maybeSingle();
+      const { data: row, error } = await db.from(table).select('slug,title,image_url').eq('slug', slug).maybeSingle();
       if (error) { results.push({ slug, ok: false, reason: error.message }); continue; }
       if (!row) { results.push({ slug, ok: false, reason: 'not found' }); continue; }
       if (row.image_url !== item.from) { results.push({ slug, ok: false, reason: 'changed since read' }); continue; }
@@ -137,12 +164,17 @@ exports.handler = async (event = {}) => {
       let via = null;
       for (const src of sources) {
         if (src === 'placeholder') { url = PLACEHOLDER; via = 'placeholder'; break; }
-        const img = await fetchImage(src).catch(() => null);
+        let from = src;
+        if (src.startsWith('goodreads:')) {
+          from = await goodreadsCover(src.slice(10), row.title).catch(() => null);
+          if (!from || !sourceAllowed(from)) continue;
+        }
+        const img = await fetchImage(from).catch(() => null);
         if (!img) continue;
-        if (body.dry_run === true) { url = '(dry run)'; via = new URL(src).hostname; break; }
+        if (body.dry_run === true) { url = '(dry run)'; via = src.startsWith('goodreads:') ? 'goodreads' : new URL(src).hostname; break; }
         const key = `covers/rehost/${slug}.${EXT[img.type]}`;
         url = await r2PutObject(r2Config(), { key, body: img.body, contentType: img.type });
-        via = new URL(src).hostname;
+        via = src.startsWith('goodreads:') ? 'goodreads' : new URL(src).hostname;
         break;
       }
       if (!url) { results.push({ slug, ok: false, reason: 'no source worked' }); continue; }
@@ -163,3 +195,4 @@ exports.handler = async (event = {}) => {
 
 exports.sourceAllowed = sourceAllowed;
 exports.isShopify = isShopify;
+exports.titleOverlap = titleOverlap;

@@ -18,3 +18,12 @@ test('only Shopify-hosted covers are scanned', () => {
   assert.ok(!isShopify('https://pub-e82e9bd0c7bd4d1eb2de92eb40d0dc33.r2.dev/x.webp'));
   assert.ok(!isShopify(null));
 });
+
+test('a Goodreads cover is used only for the same book', () => {
+  const { titleOverlap } = require('../admin-rehost-covers');
+  assert.ok(titleOverlap('The Silent Patient', 'The Silent Patient by Alex Michaelides | Goodreads') >= 0.6);
+  assert.ok(titleOverlap('Ikigai: The Japanese Secret to a Long and Happy Life', 'Ikigai: The Japanese Secret to a Long and Happy Life') === 1);
+  assert.ok(titleOverlap('The Silent Patient', 'Atomic Habits by James Clear') < 0.6);
+  assert.ok(sourceAllowed('goodreads:18668444'));
+  assert.ok(!sourceAllowed('goodreads:abc'));
+});
