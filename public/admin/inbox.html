@@ -204,7 +204,8 @@ main{flex:1;min-height:0;display:flex}
 })();
 </script>
 <link rel="stylesheet" href="/admin/inbox-layout.css?v=20261005"/>
-<script src="/admin/inbox-layout.js?v=20261005.1" defer></script>
+<link rel="stylesheet" href="/admin/inbox-summary.css?v=20261005"/>
+<script src="/admin/inbox-layout.js?v=20261005.2" defer></script>
 </head>
 <body>
 
@@ -274,6 +275,7 @@ main{flex:1;min-height:0;display:flex}
           </div>
           <div class="tactions" id="tActions"></div>
         </div>
+        <details id="chatSummary" class="chat-summary" hidden><summary>AI summary <span id="summaryMeta"></span></summary><div id="summaryContent" aria-live="polite"></div><p id="summaryFreshness" class="summary-note"></p></details>
         <div class="customer-block">
         <details id="customerDetails" class="customer-details" open><summary>Customer &amp; orders</summary><div id="customerContent">Loading customer details…</div></details>
         <div class="inbox-resize inbox-resize-row" id="inboxDetailsGrip" role="separator" tabindex="0" aria-label="Resize customer details" aria-orientation="horizontal" aria-controls="customerDetails" title="Drag to resize customer details · Double-click to reset"></div>
@@ -388,6 +390,7 @@ let sending       = false;
 let threadVersion = 0;
 let historyBusy = false;
 let allHistoryLoaded = false;
+const chatSummaries = new Map();
 
 function showView(v) {
   document.getElementById('view-inbox').classList.toggle('active', v === 'inbox');
@@ -484,6 +487,7 @@ function messageEl(m) {
   const who  = role === 'user' ? (document.getElementById('tName').textContent || 'Customer') : (role === 'admin' ? 'You' : 'Bot');
   const d = document.createElement('div');
   d.className = 'msg m-' + role;
+  d.dataset.ts = m.created_at || '';
   d.dataset.mid = m.id ?? (m.created_at + '|' + (m.message || '').slice(0, 24));
   d.innerHTML = `${esc(m.message || '')}<div class="meta">${who} · ${new Date(m.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</div>`;
   return d;
@@ -500,6 +504,7 @@ async function openThread(phone) {
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('threadBody').style.display = 'flex';
   document.getElementById('msgs').innerHTML = '';
+  renderChatSummary(phone);
   const conv = conversations.find(c => c.customer_phone === phone) || {};
   document.getElementById('tName').textContent = conv.customer_name || phone;
   document.getElementById('tPhone').textContent = phone;
@@ -558,15 +563,63 @@ async function loadMessages(fullHistory) {
     }while(offset!==null);
     if(!fullHistory)status.textContent=renderedIds.size+' saved messages loaded';
   }catch(e){if(version===threadVersion){status.textContent=e.message+' — history may be incomplete.';retry.hidden=false;}}
-  finally{if(version===threadVersion)historyBusy=false;}
+  finally{if(version===threadVersion){historyBusy=false;summaryFreshness();}}
 }
 
 function renderActions(phone, conv) {
   document.getElementById('tActions').innerHTML = `
+    <button type="button" class="btn" id="summariseBtn" onclick="summariseChat()">✨ Summarise</button>
     ${!conv.human_takeover ? `<button class="btn" onclick="act('takeover','${esc(phone)}')">🙋 Take over</button>` : ''}
     ${conv.human_takeover  ? `<button class="btn" onclick="act('release','${esc(phone)}')">🤖 Hand to bot</button>` : ''}
     ${conv.status === 'resolved' ? `<button class="btn" onclick="act('reopen','${esc(phone)}')">Reopen chat</button>` : `<button class="btn green" onclick="act('resolve','${esc(phone)}')">✓ Close chat</button>`}
     <a class="btn" target="_blank" rel="noopener" href="https://wa.me/${esc(phone)}">WhatsApp ↗</a>`;
+  syncSummaryButton(phone);
+}
+
+// Per-customer summary state never starts a request while opening or polling chats.
+function syncSummaryButton(phone) {
+  const button=document.getElementById('summariseBtn'),state=chatSummaries.get(phone);
+  if(!button)return;
+  button.disabled=!!state?.loading;
+  button.textContent=state?.loading?'Summarising…':state?.data?'✨ Summarise again':'✨ Summarise';
+}
+function summaryFreshness() {
+  const state=chatSummaries.get(activePhone),note=document.getElementById('summaryFreshness');
+  if(!note)return;
+  if(state?.error){note.textContent='Click Summarise to retry.';return;}
+  if(!state?.data){note.textContent='';return;}
+  const latest=[...document.querySelectorAll('#msgs .msg[data-ts]')].some(el=>Date.parse(el.dataset.ts)>Date.parse(state.data.meta.last_message_at));
+  note.textContent=latest?'New messages arrived. Click Summarise again to update.':'AI-assisted summary — check the conversation and records before taking action.';
+}
+function renderChatSummary(phone,expand=false) {
+  const box=document.getElementById('chatSummary'),content=document.getElementById('summaryContent'),meta=document.getElementById('summaryMeta'),state=chatSummaries.get(phone);
+  box.hidden=!state; if(!state){content.replaceChildren();meta.textContent='';return;}
+  if(expand)box.open=true;
+  syncSummaryButton(phone);
+  if(state.loading){document.getElementById('summaryFreshness').textContent='';meta.textContent='Working…';content.textContent='Reading this customer’s conversation and linked order records…';return;}
+  if(state.error){meta.textContent='Could not summarise';content.textContent=state.error;document.getElementById('summaryFreshness').textContent='Click Summarise to retry.';return;}
+  const {summary:s,meta:m}=state.data;
+  meta.textContent=m.message_count+' messages · '+new Date(m.generated_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+  const list=(title,items)=>items.length?'<section><h3>'+title+'</h3><ul>'+items.map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul></section>':'';
+  content.innerHTML='<p class="summary-issue">'+esc(s.issue)+'</p><p><strong>Customer wants:</strong> '+esc(s.requested_outcome)+'</p><p><strong>Current status:</strong> '+esc(s.current_status)+'</p>'
+    +(s.order_ids.length?'<p><strong>Relevant orders:</strong> '+s.order_ids.map(esc).join(', ')+'</p>':'')
+    +list('What happened',s.history)+list('Next steps',s.next_steps)+list('Needs verification',s.verify)
+    +((m.history_limited||m.orders_limited)?'<p class="summary-limit">This summary uses a limited portion of the records. Earlier messages or some order details may be excluded.</p>':'');
+  summaryFreshness();
+}
+async function summariseChat() {
+  // The only entry point that requests AI, invoked by the Summarise button.
+  const phone=activePhone;
+  if(!phone||chatSummaries.get(phone)?.loading)return;
+  chatSummaries.set(phone,{loading:true});renderChatSummary(phone,true);
+  try {
+    const res=await api('/.netlify/functions/bot-inbox',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'summarise',phone})});
+    const data=await res.json();
+    if(!res.ok||!data.summary)throw new Error(data.error||'Could not summarise this chat. Please try again.');
+    chatSummaries.set(phone,{data});
+  } catch(error) { chatSummaries.set(phone,{error:error.message}); }
+  // Responses belong to the customer who was clicked, even if staff switch chats.
+  if(activePhone===phone&&document.getElementById('chatSummary'))renderChatSummary(phone,true);
 }
 
 async function act(action, phone) {

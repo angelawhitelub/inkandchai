@@ -13,7 +13,7 @@
     const composerStyle = getComputedStyle(body.querySelector('.composer'));
     const padding = parseFloat(composerStyle.paddingTop) + parseFloat(composerStyle.paddingBottom);
     // Leave a readable message area even when both blocks are expanded.
-    return Math.max(152, body.clientHeight - height('.thead') - height('.history-status') - height('#inboxReplyGrip') - height('#inboxDetailsGrip') - padding - 120);
+    return Math.max(152, body.clientHeight - height('.thead') - height('.history-status') - height('#chatSummary') - height('#inboxReplyGrip') - height('#inboxDetailsGrip') - padding - 120);
   }
   const specs = {
     sidebar: {min:260, max:() => Math.max(260, Math.min(680, innerWidth - 380)), default:rem => 23.5 * rem, unit:'px'},
@@ -121,7 +121,7 @@
   new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:['style']});
   let frame;
   const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(render); });
-  for (const selector of ['#threadBody','.thead','.history-status']) observer.observe(document.querySelector(selector));
+  for (const selector of ['#threadBody','.thead','.history-status','#chatSummary']) { const node=document.querySelector(selector); if(node)observer.observe(node); }
   document.getElementById('customerDetails').addEventListener('toggle', render);
   render();
 })();

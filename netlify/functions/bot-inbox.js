@@ -12,10 +12,12 @@
  * POST {action:"reopen",   phone}       — reopen a closed conversation
  * POST {action:"send",     phone, text} — admin sends a WhatsApp message
  * POST {action:"mark_read",phone}       — clear unread count
+ * POST {action:"summarise",phone}       — generate an internal summary on demand
  */
 
 const { threadPage, customerDetails, enrichNames } = require('./utils/inbox-history');
 const { categorizeConversations } = require('./utils/conversation-priority');
+const { summariseConversation } = require('./utils/inbox-summary');
 const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
 const { requireAdmin } = require('./utils/admin-auth');
@@ -100,6 +102,16 @@ exports.handler = async (event) => {
       const { action, phone, text } = body;
 
       if (!phone) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'phone required' }) };
+
+      // Explicit employee action only. Never called from listing, polling or webhooks.
+      if (action === 'summarise') {
+        try {
+          const result = await summariseConversation(db,phone);
+          return {statusCode:200,headers:CORS,body:JSON.stringify(result)};
+        } catch (error) {
+          return {statusCode:error.statusCode||500,headers:CORS,body:JSON.stringify({error:error.message})};
+        }
+      }
 
       if (action === 'takeover') {
         await db.from('bot_conversations').upsert({

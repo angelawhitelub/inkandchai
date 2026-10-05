@@ -1,0 +1,16 @@
+.chat-summary{flex:0 0 auto;min-height:0;max-height:36dvh;overflow:auto;border-bottom:1px solid #bdcfc1;background:#f3f8f4;font-size:.9rem;line-height:1.6;}
+.chat-summary[hidden]{display:none;}
+.chat-summary>summary{position:sticky;top:0;z-index:1;padding:.65rem 1rem;background:#edf4ee;color:#2e513a;cursor:pointer;font-weight:700;}
+#summaryMeta{font-size:.72rem;font-weight:500;margin-left:.45rem;color:#506859;}
+#summaryContent{padding:.75rem 1rem .3rem;overflow-wrap:anywhere;}
+#summaryContent p{margin:0 0 .55rem;}
+#summaryContent .summary-issue{font-weight:700;}
+#summaryContent section{margin:.7rem 0;}
+#summaryContent h3{font-size:.85rem;font-weight:700;color:#2e513a;margin-bottom:.25rem;}
+#summaryContent ul{padding-left:1.3rem;}
+#summaryContent li{margin:.2rem 0;}
+.summary-note{font-size:.75rem;color:#52655a;padding:.3rem 1rem .7rem;}
+.summary-limit{background:#fff1db;border:1px solid #e3c590;border-radius:6px;padding:.5rem .7rem;color:#754719;font-size:.8rem;}
+#summariseBtn{background:#eef5ef;border-color:#a4bdac;color:#2e513a;}
+#summariseBtn:disabled{cursor:wait;}
+@media(max-width:820px){.chat-summary{max-height:32dvh;}#summaryMeta{display:block;margin:.1rem 0 0;}}
