@@ -26,6 +26,10 @@ test('a Goodreads cover is used only for the same book', () => {
   assert.ok(titleOverlap('The Silent Patient', 'Atomic Habits by James Clear') < 0.6);
   assert.ok(titleOverlap('1-2-3 Peas by Keith Baker', '1-2-3 Peas') >= 0.6);
   assert.ok(titleOverlap('10 Indian Scientists Whose Extraordinary Work You May Not Know', '10 Indian Scientists Whose Extraordinary Work You May N…') >= 0.6);
+  assert.ok(titleOverlap('15-Minute Indian by Anjula Devi', '15-Minute Indian: One-Pan Recipes Using Minimal Steps a…') >= 0.6);
+  assert.ok(titleOverlap('A Script for Danger by Carolyn Keene', 'A Script for Danger (Nancy Drew Diaries #10)') >= 0.6);
+  assert.ok(titleOverlap('31 सर्वश्रेष्ठ कहानियां by Munshi Premchand', '31 सर्वश्रेष्ठ कहानियां') >= 0.6);
+  assert.ok(titleOverlap('Atomic Habits by James Clear', 'The Silent Patient (Paperback)') < 0.6);
   assert.ok(sourceAllowed('goodreads:18668444'));
   assert.ok(!sourceAllowed('goodreads:abc'));
 });

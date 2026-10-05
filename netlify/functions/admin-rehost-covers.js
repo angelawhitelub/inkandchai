@@ -79,20 +79,28 @@ async function fetchImage(url) {
   return null;
 }
 
-const words = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]+/g, ' ')
-  .split(/\s+/).filter((w) => w.length > 2 && !['the', 'and', 'for', 'with', 'from', 'book', 'books', 'paperback', 'hardcover', 'edition'].includes(w));
+const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'book', 'books', 'paperback', 'hardcover', 'edition']);
+// Letters and marks of any script, so Hindi titles compare too.
+const words = (s) => String(s || '').toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{M}\p{N} ]+/gu, ' ')
+  .split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w));
 
 const share = (a, b) => (a.length ? a.filter((w) => b.includes(w)).length / a.length : 0);
 
-/**
- * How well two titles agree, 0-1. Ours often adds "by Author" or a subtitle and
- * Goodreads cuts long titles off with "…", so either side being mostly
- * contained in the other counts.
- */
+// Ours often ends "by Author"; Goodreads adds "(Series #3)", subtitles, and
+// cuts long titles off with "…". Compare the full titles and the parts before
+// a subtitle, and let either side being mostly inside the other count.
+const variants = (t) => {
+  const full = String(t || '').replace(/\s*\|\s*Goodreads\s*$/i, '').replace(/\S*…\s*$/, '')
+    .replace(/\s+by\s+[^:()]+$/i, '').replace(/\([^)]*\)/g, ' ');
+  const main = full.split(/\s*[:–—]\s*|\s+-\s+/)[0];
+  return [words(full), words(main)].filter((w) => w.length);
+};
+
+/** How well two titles agree, 0-1. */
 function titleOverlap(ours, theirs) {
-  const a = words(ours);
-  const b = words(String(theirs || '').replace(/\s*\|\s*Goodreads\s*$/i, '').replace(/\S*…\s*$/, ''));
-  return Math.max(share(a, b), share(b, a));
+  let best = 0;
+  for (const a of variants(ours)) for (const b of variants(theirs)) best = Math.max(best, share(a, b), share(b, a));
+  return best;
 }
 
 /** The cover URL on a Goodreads book page, if the page is the same book. */
