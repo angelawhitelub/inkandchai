@@ -36,6 +36,7 @@ export const ENABLED_JOBS = new Set([
   'daily-unshipped-report',
   'not-picked-up-report-scheduled',
   'return-tracking-scheduled',
+  'xpressbees-labels-send-scheduled',
   'deploy-drift-check',
   // money safety nets
   'phonepe-payment-sweep-scheduled',

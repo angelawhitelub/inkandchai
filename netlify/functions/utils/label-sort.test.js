@@ -193,3 +193,91 @@ test('asks for labels 50 AWBs at a time and refuses a label URL off the XpressBe
     ? { httpStatus: 200, data: { status: true, data: 'https://evil.example/x.pdf' } } : orig(p, o));
   await assert.rejects(endpoint.run({}, { ...evil, fetch: async () => assert.fail('must not fetch') }), /label download failed/);
 });
+
+// ── WhatsApp send to the packing team ───────────────────────────────────────
+
+const { _test: send } = require('../xpressbees-labels-send-scheduled');
+
+/** XpressBees with `awbs` ready, whose label PDFs are synthetic labels for exactly the AWBs asked. */
+function xbWithLabels(awbs) {
+  const asked = [];
+  return {
+    asked,
+    login: async () => 'tok',
+    ucpFetch: async (path, opts) => {
+      if (path.startsWith('/shipment/list')) {
+        const page = Number(new URLSearchParams(path.split('?')[1]).get('page'));
+        return { httpStatus: 200, data: { data: { records: page === 1 ? awbs.map((a) => ({ awb_number: a, ship_status: 'pending pickup' })) : [] } } };
+      }
+      asked.push(opts.body.awbs);
+      return { httpStatus: 200, data: { status: true, data: `https://xb-ucp-files-s3.xbees.in/labels/${opts.body.awbs}.pdf` } };
+    },
+    fetch: async (url) => {
+      const list = decodeURIComponent(url.split('/labels/')[1].replace('.pdf', '')).split(',');
+      const bytes = await labelPdf(list.map((a, i) => ({ awb: a, orderNo: `IC-${a}`, items: [{ name: `Book ${i % 2}`, qty: 1 }] })));
+      return { ok: true, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+    },
+  };
+}
+
+function fakeKv(init = {}) {
+  const store = new Map(Object.entries(init));
+  return { store, get: async (k) => store.get(k) ?? null, put: async (k, v) => { store.set(k, v); } };
+}
+
+function fakeWa({ template = true, document = true } = {}) {
+  const sent = [];
+  return {
+    sent,
+    uploadMedia: async () => ({ ok: true, id: 'm1' }),
+    sendWhatsApp: async (o) => { sent.push({ kind: 'template', ...o }); return template ? { ok: true } : { ok: false, data: { error: { message: 'Template name does not exist' } } }; },
+    sendDocument: async (to, o) => { sent.push({ kind: 'document', to, ...o }); return document ? { ok: true } : { ok: false, data: { error: { message: 'Re-engagement message' } } }; },
+  };
+}
+
+test('sends only labels not sent before, and remembers them once delivered', async () => {
+  const kv = fakeKv({ [send.SENT_KEY]: JSON.stringify({ 1001: new Date().toISOString() }) });
+  const wa = fakeWa();
+  const xb = xbWithLabels(['1001', '1002', '1003']);
+  const r = await send.sendLabels({}, { kv, wa, xb, phones: ['919811690850', '919718883454'] });
+  assert.equal(r.sent, true);
+  assert.equal(r.labels, 2);
+  assert.deepEqual(xb.asked, ['1002,1003']);
+  assert.equal(wa.sent.filter((s) => s.kind === 'template').length, 2);
+  assert.equal(wa.sent[0].headerDocument.id, 'm1');
+  assert.deepEqual(Object.keys(JSON.parse(kv.store.get(send.SENT_KEY))).sort(), ['1001', '1002', '1003']);
+
+  // Next run: nothing new, nothing sent.
+  const again = await send.sendLabels({}, { kv, wa: fakeWa(), xb: xbWithLabels(['1001', '1002', '1003']), phones: ['919811690850'] });
+  assert.equal(again.sent, false);
+  assert.equal(again.reason, 'no new labels');
+});
+
+test('falls back to a plain PDF without the template; marks nothing when no number got it', async () => {
+  const kv = fakeKv();
+  const viaDoc = await send.sendLabels({}, { kv, wa: fakeWa({ template: false }), xb: xbWithLabels(['1001']), phones: ['919811690850'] });
+  assert.equal(viaDoc.whatsapp[0].via, 'document');
+  assert.equal(viaDoc.marked, true);
+
+  const kv2 = fakeKv();
+  const none = await send.sendLabels({}, { kv: kv2, wa: fakeWa({ template: false, document: false }), xb: xbWithLabels(['1001']), phones: ['919811690850'] });
+  assert.equal(none.sent, false);
+  assert.match(none.whatsapp[0].error, /24 h/);
+  assert.equal(kv2.store.size, 0, 'a failed send is retried next run');
+});
+
+test('dry run sends nothing; all=true includes labels sent before', async () => {
+  const kv = fakeKv({ [send.SENT_KEY]: JSON.stringify({ 1001: new Date().toISOString() }) });
+  const wa = fakeWa();
+  const dry = await send.sendLabels({ dryRun: true }, { kv, wa, xb: xbWithLabels(['1001', '1002']), phones: ['919811690850'] });
+  assert.deepEqual({ ready: dry.ready, new_labels: dry.new_labels, already_sent: dry.already_sent }, { ready: 2, new_labels: 1, already_sent: 1 });
+  assert.equal(wa.sent.length, 0);
+  const xb = xbWithLabels(['1001', '1002']);
+  await send.sendLabels({ all: true }, { kv, wa, xb, phones: ['919811690850'] });
+  assert.deepEqual(xb.asked, ['1001,1002']);
+});
+
+test('no phones configured: nothing is built or sent', async () => {
+  const r = await send.sendLabels({}, { kv: fakeKv(), wa: fakeWa(), xb: xbWithLabels(['1001']), phones: [] });
+  assert.equal(r.sent, false);
+});

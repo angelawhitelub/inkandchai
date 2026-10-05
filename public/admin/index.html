@@ -1084,6 +1084,7 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Import all unshipped orders into the NimbusPost Orders panel without choosing couriers or generating AWBs.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="pushAllToXpressbeesPanel(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel. Recent orders are collected automatically; this also queues the older ones. No courier is chosen and no AWB is generated.">Push to XpressBees Panel (No AWB)</button>
       <button class="btn-green" onclick="downloadXpressbeesLabels(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Every XpressBees shipment in Ready to Pickup as one label PDF sorted for packing: pick list first, same-book orders grouped with the biggest quantities first, mixed orders after, the book names stamped under each label, and a blank page last. Read-only at XpressBees.">🏷️ XpressBees Labels (sorted)</button>
+      <button class="btn-outline" onclick="sendXpressbeesLabelsToTeam(this)" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="WhatsApp the sorted XpressBees label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send Labels to Team</button>
       <button class="btn-green" onclick="pushAllToIthinkPanel(this)" style="background:rgba(120,160,255,0.14);border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel. Shows a dry-run preview with the COD collectable total before anything is sent. No courier is chosen and no AWB is generated. A suffix is added to the order number sent to iThink so the batch is identifiable and does not collide with records already in the panel.">Push to iThink Panel (No AWB)</button>
       <button class="btn-green" onclick="pushServiceableToDelhivery(this)" style="background:rgba(181,107,18,0.12);border-color:rgba(181,107,18,0.55);color:var(--orange);" title="Book every unshipped order whose pincode Delhivery serves. Shows a preview first; each booked order gets a real AWB and is charged to the Delhivery wallet. Failures are grouped by cause with what to do next.">🚚 Book Serviceable on Delhivery (AWB)</button>
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
@@ -12430,6 +12431,39 @@ async function downloadXpressbeesLabels(btn) {
       (unread ? '\n\n\u26a0\ufe0f ' + unread + ' label(s) could not be read \u2014 they are at the end, check their item table by hand.' : ''));
   } catch (err) {
     alert('XpressBees labels failed:\n\n' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// WhatsApp the sorted labels to the packing team (xpressbees-labels-send-scheduled.js).
+async function sendXpressbeesLabelsToTeam(btn) {
+  const orig = btn ? btn.innerHTML : '';
+  const url = '/.netlify/functions/xpressbees-labels-send-scheduled';
+  const post = async (body) => {
+    const res = await adminFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    return data;
+  };
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking\u2026'; }
+  try {
+    const dry = await post({ dry_run: true });
+    if (dry.reason) { alert(dry.reason); return; }
+    let all = false;
+    if (!dry.new_labels) {
+      if (!dry.ready) { alert('No XpressBees labels are waiting for pickup.'); return; }
+      if (!confirm('All ' + dry.ready + ' ready labels were already sent to the team.\n\nSend ALL of them again?')) return;
+      all = true;
+    } else if (!confirm('WhatsApp ' + dry.new_labels + ' new label(s) to:\n  ' + dry.would_whatsapp.join('\n  ') +
+      (dry.already_sent ? '\n\n(' + dry.already_sent + ' ready label(s) were sent before and are left out.)' : '') + '\n\nSend now?')) return;
+    if (btn) btn.innerHTML = '<span class="spinner"></span>Sending\u2026';
+    const r = await post({ all });
+    const lines = (r.whatsapp || []).map(w => (w.ok ? '\u2705 ' : '\u274c ') + w.to + (w.ok ? ' (' + w.via + ')' : ' \u2014 ' + w.error));
+    alert((r.sent ? 'Sent ' + r.labels + ' labels \u00b7 ' + r.units + ' books' : 'NOT sent' + (r.reason ? ': ' + r.reason : '')) +
+      (lines.length ? '\n\n' + lines.join('\n') : ''));
+  } catch (err) {
+    alert('Sending labels failed:\n\n' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }

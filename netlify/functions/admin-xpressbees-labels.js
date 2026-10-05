@@ -122,11 +122,13 @@ const istDate = (d = new Date()) => {
   return `${p.month}${p.day}`;
 };
 
-async function run({ days = 30, summaryOnly = false } = {}, deps = {}) {
+/** `only(awb)`, when given, keeps just those AWBs (the WhatsApp send skips ones already sent). */
+async function run({ days = 30, summaryOnly = false, only = null } = {}, deps = {}) {
   const call = makeCaller(deps);
   const shipments = await readyShipments(call, { days });
-  const awbs = shipments.map((r) => String(r.awb_number).trim());
-  if (summaryOnly || !awbs.length) return { awbs, shipments };
+  const ready = shipments.map((r) => String(r.awb_number).trim());
+  const awbs = only ? ready.filter(only) : ready;
+  if (summaryOnly || !awbs.length) return { awbs, ready, shipments };
 
   const sources = [];
   for (let i = 0; i < awbs.length; i += CHUNK) {
@@ -134,7 +136,7 @@ async function run({ days = 30, summaryOnly = false } = {}, deps = {}) {
     sources.push({ bytes: await labelPdf(call, chunk, deps.fetch || fetch), awbs: chunk });
   }
   const built = await buildSortedLabels(sources, { date: new Date() });
-  return { awbs, shipments, ...built };
+  return { awbs, ready, shipments, ...built };
 }
 
 exports.handler = async (event = {}) => {

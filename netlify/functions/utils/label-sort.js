@@ -259,13 +259,13 @@ function stamp(page, label, total, fonts) {
   if (label.kind === 'single') {
     const it = label.items[0];
     const name = winAnsi(it.title) || 'SEE ITEM TABLE ABOVE';
-    const text = it.qty > 1 ? `${it.qty} x ${name}` : name;
-    const f = fit(fonts.bold, text, boxW, areaH, { max: 22, min: 7, maxLines: 4 });
+    // Quantity always shown, 1 included: the packer checks the count too.
+    const f = fit(fonts.bold, `${it.qty} x ${name}`, boxW, areaH, { max: 13, min: 7, maxLines: 3 });
     if (f) { draw(f.lines, f.size, fonts.bold); return { stamped: true }; }
   } else if (label.kind === 'mixed') {
     const lines = label.items.map((i) => `${i.qty} x ${winAnsi(shortTitle(i.title)) || '?'}`);
     // One column, then two, before giving up on listing them.
-    for (let size = 11; size >= 7; size -= 0.5) {
+    for (let size = 10; size >= 7; size -= 0.5) {
       const fits1 = lines.every((l) => fonts.bold.widthOfTextAtSize(l, size) <= boxW) && lines.length * size * 1.12 <= areaH;
       if (fits1) { draw(lines, size, fonts.bold); return { stamped: true }; }
     }

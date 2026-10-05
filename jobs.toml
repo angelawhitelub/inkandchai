@@ -467,3 +467,8 @@
 # delivered back. Moves no money and messages no customer.
 [functions."return-tracking-scheduled"]
   schedule = "0 * * * *"
+
+# Sorted XpressBees labels to the packing team on WhatsApp — 09:00 and 14:00 IST
+# (internal, never customers; only labels not sent before)
+[functions."xpressbees-labels-send-scheduled"]
+  schedule = "30 3,8 * * *"
