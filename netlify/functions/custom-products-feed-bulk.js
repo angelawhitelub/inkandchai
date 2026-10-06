@@ -22,6 +22,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { soldOutSlugs } = require('./utils/sold-out');
 const crypto = require('crypto');
 const { skipFromFeed } = require('./utils/feed-image-filter');
 const { identifierXml } = require('./utils/gtin');
@@ -114,6 +115,11 @@ exports.handler = async (event) => {
       if (!data || data.length < to - from + 1) break;
     }
 
+    // The admin's manual stock (product_overrides.stock_qty <= 0): the page shows
+    // "Coming Soon", so Google must not advertise it. A failed read keeps the
+    // feed as it was rather than failing the whole fetch.
+    const soldOut = await soldOutSlugs(supabase).catch((e) => { console.warn('[custom-feed-bulk] sold out:', e.message); return new Set(); });
+
     const items = products.map((p) => {
       const price = priceText(p.price_inr);
       if (!p.slug || !p.title || !p.image_url || !price) return '';
@@ -138,7 +144,7 @@ exports.handler = async (event) => {
       <g:link>${xmlEscape(link)}</g:link>
       <g:image_link>${xmlEscape(p.image_url)}</g:image_link>
       <g:condition>new</g:condition>
-      <g:availability>in stock</g:availability>
+      <g:availability>${soldOut.has(String(p.slug).toLowerCase()) ? 'out of stock' : 'in stock'}</g:availability>
       ${hasSale ? `<g:price>${xmlEscape(salePrice)}</g:price>\n      <g:sale_price>${xmlEscape(price)}</g:sale_price>` : `<g:price>${xmlEscape(price)}</g:price>`}
       <g:brand>${brand}</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>

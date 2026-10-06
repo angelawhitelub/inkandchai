@@ -1,6 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { resolveCartPrices } = require('./utils/pricing');
-const { findShippingRestriction } = require('./utils/shipping-restrictions');
+const { findShippingRestriction, findSoldOut } = require('./utils/shipping-restrictions');
 const { isFakePincode } = require('./utils/pincode-valid');
 
 const CORS = {
@@ -19,11 +19,15 @@ exports.handler = async (event) => {
     const body = JSON.parse(event.body || '{}');
     const cart = Array.isArray(body.cart) ? body.cart : [];
     const pincode = String(body.pincode || '').replace(/\D/g, '');
-    if (!cart.length || pincode.length !== 6 || isFakePincode(pincode)) {
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({ allowed: true }) };
-    }
+    if (!cart.length) return { statusCode: 200, headers: CORS, body: JSON.stringify({ allowed: true }) };
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const priced = await resolveCartPrices(cart, supabase);
+    // A sold-out book blocks checkout whatever the address.
+    const soldOut = findSoldOut(priced.cart);
+    if (soldOut.blocked) return { statusCode: 200, headers: CORS, body: JSON.stringify({ allowed: false, ...soldOut }) };
+    if (pincode.length !== 6 || isFakePincode(pincode)) {
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ allowed: true }) };
+    }
     const restriction = findShippingRestriction(priced.cart, {
       pincode,
       state: body.state || '',

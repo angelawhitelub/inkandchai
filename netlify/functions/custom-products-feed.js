@@ -12,6 +12,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { soldOutSlugs } = require('./utils/sold-out');
 const crypto = require('crypto');
 const { skipFromFeed } = require('./utils/feed-image-filter');
 const { identifierXml } = require('./utils/gtin');
@@ -108,6 +109,11 @@ exports.handler = async () => {
       if (override.original_price_inr != null) product.original_price_inr = override.original_price_inr;
     });
 
+    // The admin's manual stock (product_overrides.stock_qty <= 0): the page shows
+    // "Coming Soon", so Google must not advertise it. Matched case-insensitively
+    // (override slugs are stored lower-cased). A failed read keeps the feed as it was.
+    const soldOut = await soldOutSlugs(supabase).catch((e) => { console.warn('[custom-feed] sold out:', e.message); return new Set(); });
+
     const items = (products || []).map((p) => {
       const price = priceText(p.price_inr);
       if (!p.slug || !p.title || !p.image_url || !price) return '';  // skip incomplete rows
@@ -133,7 +139,7 @@ exports.handler = async () => {
       <g:link>${xmlEscape(link)}</g:link>
       <g:image_link>${xmlEscape(p.image_url)}</g:image_link>
       <g:condition>new</g:condition>
-      <g:availability>in stock</g:availability>
+      <g:availability>${soldOut.has(String(p.slug).toLowerCase()) ? 'out of stock' : 'in stock'}</g:availability>
       ${hasSale ? `<g:price>${xmlEscape(salePrice)}</g:price>\n      <g:sale_price>${xmlEscape(price)}</g:sale_price>` : `<g:price>${xmlEscape(price)}</g:price>`}
       <g:brand>${brand}</g:brand>
       <g:google_product_category>Media &gt; Books</g:google_product_category>

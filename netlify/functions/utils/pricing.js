@@ -180,15 +180,24 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   // disabled one) is skipped for pricing, but the admin may still have set the
   // badge on it, and the badge is what decides the IC-CW- order-ID prefix.
   const overrideBadgeMap = {};
+  // Sold out: the admin's manual stock (stock_qty <= 0) on an active override
+  // row -- the same rule the product page uses to show "Coming Soon". The page
+  // applies it only after its own fetch returns, and a Google Shopping click on
+  // a slow connection could press Buy Now first, so every order path refuses
+  // it here (see findShippingRestriction).
+  const soldOut = new Set();
   if (items.length && supabase) {
     const { data, error } = await selectTolerant(cols => supabase
       .from('product_overrides')
       .select(cols)
       .or(orFilter),
-      'slug,title,price_inr,is_active,updated_at');
+      'slug,title,price_inr,is_active,updated_at,stock_qty');
     if (error) console.error('[pricing] product_overrides lookup:', error.message);
     for (const row of (data || [])) {
       if (row.is_active === false) continue;
+      if (row.stock_qty !== null && row.stock_qty !== undefined && Number(row.stock_qty) <= 0) {
+        soldOut.add(String(row.slug).toLowerCase());
+      }
       if (row.publisher_sourced === true || row.publisher_sourced === false) {
         overrideBadgeMap[String(row.slug).toLowerCase()] = row.publisher_sourced;
       }
@@ -261,6 +270,9 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   // under `cp-…`, everything else under its bare slug.
   for (const item of resolved) {
     item._offer_id = feedOfferId(item.slug, { custom: !!customMap[String(item.slug || '').toLowerCase()] });
+    // Only the server says what is sold out; whatever the browser sent is dropped.
+    if (soldOut.has(String(item.slug || '').toLowerCase())) item._sold_out = true;
+    else delete item._sold_out;
   }
 
   // ── Google automated discounts ───────────────────────────────────────────

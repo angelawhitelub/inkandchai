@@ -23,6 +23,7 @@ export { ClaimGuard } from './claim-guard.js';
 export { SpendGuard } from './spend-guard.js';
 import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable } from './cache-policy.mjs';
 import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
+import soldOutUtil from '../netlify/functions/utils/sold-out.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
@@ -467,6 +468,72 @@ function rewriteCatalogPage(response, entry) {
   return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
 }
 
+// ── Sold-out books ──────────────────────────────────────────────────────────
+// The admin's manual stock (product_overrides.stock_qty <= 0) turns a page's
+// Buy buttons into "Coming Soon" -- but only in the browser, after the page's
+// own fetch returns. Google read the baked page and feed.xml, both of which
+// say InStock, so Shopping kept advertising sold-out books and a quick tap on
+// Buy Now beat the fetch (6 Oct 2026). Here the page arrives already flagged
+// and its structured data says OutOfStock, and feed.xml says "out of stock".
+// The list is read at most once a minute per isolate; a failed read leaves
+// pages as baked (checkout still refuses the book: utils/pricing.js).
+const SOLD_TTL_MS = 60_000;
+let _soldSet = null;
+let _soldAt = 0;
+
+async function soldOutSet(env, ctx, origin) {
+  const now = Date.now();
+  if (_soldSet && now - _soldAt < SOLD_TTL_MS) return _soldSet;
+  try {
+    const res = await runHandler('sold-out-slugs', new Request(`${origin}${FN_PREFIX}sold-out-slugs`), env, ctx);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const doc = await res.json();
+    _soldSet = new Set((Array.isArray(doc.slugs) ? doc.slugs : []).map((x) => String(x || '').toLowerCase()));
+    _soldAt = now;
+  } catch (err) {
+    console.warn('[sold-out] read failed:', err && err.message);
+    // Keep the last good list; with none, retry in ~10s rather than on every request.
+    if (!_soldSet) { _soldSet = new Set(); _soldAt = now - SOLD_TTL_MS + 10_000; }
+  }
+  return _soldSet;
+}
+
+function markSoldOutPage(response) {
+  let ldBuf = '';
+  const out = new HTMLRewriter()
+    // Before any of the page's scripts: the buy handlers check this flag, so a
+    // tap before the override fetch returns is refused too.
+    .on('head', { element(el) { el.prepend('<script>window.__soldOut=true;</script>', { html: true }); } })
+    .on('span.stock', { element(el) { el.setInnerContent('Coming Soon'); } })
+    .on('script[type="application/ld+json"]', {
+      text(chunk) {
+        ldBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = ldBuf;
+        ldBuf = '';
+        chunk.replace(soldOutUtil.markJsonLdSoldOut(whole), { html: true });
+      },
+    })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('last-modified');
+  headers.set('X-Sold-Out', '1');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
+async function soldOutFeed(request, env, ctx, origin) {
+  const asset = await env.ASSETS.fetch(request);
+  if (request.method !== 'GET' || asset.status !== 200) return asset;
+  const sold = await soldOutSet(env, ctx, origin);
+  if (!sold.size) return asset;
+  const { xml, changed } = soldOutUtil.markFeedSoldOut(await asset.text(), sold);
+  const headers = new Headers(asset.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  headers.set('X-Sold-Out-Items', String(changed));
+  return new Response(xml, { status: 200, headers });
+}
+
 function gonePage(slug) {
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -574,6 +641,8 @@ export default {
       });
     }
 
+    if (url.pathname === '/feed.xml') return soldOutFeed(request, env, ctx, url.origin);
+
     const assetResponse = await env.ASSETS.fetch(request);
 
     if (productPath && assetResponse.status === 200
@@ -582,7 +651,9 @@ export default {
       try { contentSlug = decodeURIComponent(productPath[1]).toLowerCase(); }
       catch { contentSlug = productPath[1].toLowerCase(); }
       const entry = (await catalogContent(env))[contentSlug];
-      if (entry) return rewriteCatalogPage(assetResponse, entry);
+      let page = entry ? rewriteCatalogPage(assetResponse, entry) : assetResponse;
+      if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
+      return page;
     }
 
     // Admin-created products have no generated page: the catalogue books are
@@ -594,6 +665,9 @@ export default {
       if (product) {
         const slug = decodeURIComponent(product[1]);
         const rendered = await runHandler('product-page', withQuery(request, { slug }), env, ctx);
+        if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
+          return markSoldOutPage(rendered);
+        }
         if (rendered.status !== 404) return rendered;
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per

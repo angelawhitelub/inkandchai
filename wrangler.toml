@@ -32,6 +32,8 @@ run_worker_first = [
   "/.netlify/images",
   "/spimg/*",
   "/custom-feed.xml",
+  # Sold-out books are marked "out of stock" on the way out (worker/index.js).
+  "/feed.xml",
   "/custom-feed-bulk/*",
   "/.netlify/functions/*",
   # The WooCommerce-shaped order feed XpressBees polls. Both patterns are
