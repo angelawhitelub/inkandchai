@@ -1085,6 +1085,7 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-green" onclick="pushAllToXpressbeesPanel(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel. Recent orders are collected automatically; this also queues the older ones. No courier is chosen and no AWB is generated.">Push to XpressBees Panel (No AWB)</button>
       <button class="btn-green" onclick="downloadXpressbeesLabels(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Every XpressBees shipment in Ready to Pickup as one label PDF sorted for packing: pick list first, same-book orders grouped with the biggest quantities first, mixed orders after, the book names stamped under each label, and a blank page last. Read-only at XpressBees.">🏷️ XpressBees Labels (sorted)</button>
       <button class="btn-outline" onclick="sendXpressbeesLabelsToTeam(this)" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="WhatsApp the sorted XpressBees label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send Labels to Team</button>
+      <button class="btn-outline" onclick="downloadDtdcUpload(this)" style="border-color:rgba(255,204,0,0.55);color:#ffcc00;" title="Every unshipped order (no AWB, last 30 days) filled into DTDC's Bulk Upload template (sample-consignment-upload.xlsx): COD amount only on COD orders, the balance on partial COD. Upload it in the DTDC customer portal. Books nothing.">⬇ DTDC Bulk Upload (.xlsx)</button>
       <button class="btn-green" onclick="pushAllToIthinkPanel(this)" style="background:rgba(120,160,255,0.14);border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel. Shows a dry-run preview with the COD collectable total before anything is sent. No courier is chosen and no AWB is generated. A suffix is added to the order number sent to iThink so the batch is identifiable and does not collide with records already in the panel.">Push to iThink Panel (No AWB)</button>
       <button class="btn-green" onclick="pushServiceableToDelhivery(this)" style="background:rgba(181,107,18,0.12);border-color:rgba(181,107,18,0.55);color:var(--orange);" title="Book every unshipped order whose pincode Delhivery serves. Shows a preview first; each booked order gets a real AWB and is charged to the Delhivery wallet. Failures are grouped by cause with what to do next.">🚚 Book Serviceable on Delhivery (AWB)</button>
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
@@ -12488,6 +12489,33 @@ async function downloadXpressbeesLabels(btn) {
       (unread ? '\n\n\u26a0\ufe0f ' + unread + ' label(s) could not be read \u2014 they are at the end, check their item table by hand.' : ''));
   } catch (err) {
     alert('XpressBees labels failed:\n\n' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// DTDC customer portal Bulk Upload sheet for the unshipped orders (admin-dtdc-upload.js).
+async function downloadDtdcUpload(btn) {
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Preparing DTDC sheet\u2026'; }
+  try {
+    if (typeof XLSX === 'undefined') throw new Error('The Excel library did not load. Reload the page and try again.');
+    const res = await adminFetch('/.netlify/functions/admin-dtdc-upload?days=30');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const skipped = (data.skipped || []).map(s => '  ' + s.order + ': ' + s.error).join('\n');
+    if (!data.rows.length) { alert('No unshipped orders to upload (last ' + data.days + ' days).' + (skipped ? '\n\nSkipped:\n' + skipped : '')); return; }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([data.columns, ...data.rows]), 'consignment');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([data.question_columns]), 'questions');
+    const d = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+    const name = 'dtdc-consignment-upload-' + data.rows.length + '-' + d + '.xlsx';
+    XLSX.writeFile(wb, name);
+    alert('Downloaded ' + name + '\n\n' + data.rows.length + ' orders: ' + data.cod + ' COD (\u20b9' + data.cod_total_rs.toLocaleString('en-IN') + ' to collect), ' + data.prepaid + ' prepaid/replacement.' +
+      (skipped ? '\n\n\u26a0\ufe0f Not in the sheet \u2014 fix the address first:\n' + skipped : '') +
+      '\n\nUpload it in the DTDC portal (Bulk Upload). Orders that are also waiting unbooked in the XpressBees panel must be booked in ONE panel only.');
+  } catch (err) {
+    alert('DTDC sheet failed:\n\n' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }

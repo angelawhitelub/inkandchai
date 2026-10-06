@@ -734,6 +734,10 @@ async function applyBooking(supabase, wooId, { awb, courier }, deps = {}) {
 // Exported so the money mapping can be tested without a live store: the
 // partial-COD total is the one number here that can overcharge a customer.
 exports.feedAdmits = feedAdmits;
+// The DTDC bulk-upload sheet (admin-dtdc-upload) projects orders the same way.
+exports.toWooOrder = toWooOrder;
+exports.isPaymentPending = isPaymentPending;
+exports.UNSHIPPED_STATUSES = UNSHIPPED_STATUSES;
 exports.__test = { toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, prepaidGateway, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, applyBooking, bookingFromPush, dtdcAwb, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
 
 exports.handler = async (event) => {
