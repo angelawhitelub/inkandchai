@@ -3,7 +3,7 @@
  * and the daily report (not-picked-up-report-scheduled) so they never disagree.
  * Read-only.
  */
-const { classify, summarize, withOriginal, UNBOOKED } = require('./not-picked-up');
+const { classify, summarize, withOriginal, refundOnCancel, UNBOOKED } = require('./not-picked-up');
 const { isReplacementOrder, replacementMeta, isMissingBookReplacement } = require('./missing-books');
 
 const COLUMNS = [
@@ -11,7 +11,7 @@ const COLUMNS = [
   'amount_paise', 'advance_paid_paise', 'razorpay_payment_id', 'payment_status', 'shipment_payment_type',
   'source', 'cart_items', 'tracking_id', 'tracking_url', 'courier_name', 'shipped_at', 'awb_assigned_at',
   'shipment_moved_at', 'last_courier_status', 'last_courier_status_at', 'last_nimbuspost_status',
-  'nimbus_pushed_at', 'ithink_pushed_at',
+  'nimbus_pushed_at', 'ithink_pushed_at', 'late_cancel_at',
 ];
 const PAGE = 1000;
 
@@ -48,7 +48,9 @@ async function loadOrders(db, sinceIso, untilIso) {
 // customer's UPI ID may sit on the original (the missing-book form stamps it
 // there), so the originals are read too. A replacement can replace another
 // replacement; the chain is followed back to the order the customer paid for.
-const ORIGINAL_COLS = 'razorpay_order_id, razorpay_payment_id, status, source, cart_items';
+// Whole rows: the refund on cancel (refundOnCancel) reads the original's
+// refund state and amount, exactly as the cancel does.
+const ORIGINAL_COLS = '*';
 
 async function loadByOrderId(db, ids, into) {
   const want = [...new Set(ids)].filter((id) => id && !into.has(id));
@@ -95,12 +97,13 @@ async function listNotPicked(db, { minHours, days = 30, now = Date.now() }) {
   const listed = orders.map((o) => [o, classify(o, now, minHours)]).filter(([, r]) => r);
   const originalOf = await loadOriginals(db, listed.map(([, r]) => r));
   const rows = listed.map(([o, r]) => {
-    if (!r.replacement) return r;
+    if (!r.replacement) return { ...r, refund: refundOnCancel(o, null) };
     const chain = originalOf(r.replacement.original_order_id);
     const row = withOriginal(r, chain);
     // Same test the refund flows use: the reason, or a title the customer
     // reported missing on the original.
     row.replacement.missing_book = isMissingBookReplacement(o, chain.direct);
+    row.refund = refundOnCancel(o, chain.direct);
     return row;
   });
   return { orders: listed.map(([o]) => o), rows, counts: summarize(rows) };

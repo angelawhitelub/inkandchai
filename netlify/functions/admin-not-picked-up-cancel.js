@@ -31,9 +31,9 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { classify, UNBOOKED } = require('./utils/not-picked-up');
+const { classify, refundOnCancel, UNBOOKED } = require('./utils/not-picked-up');
 const { checkPickups, cancelAtCourier } = require('./utils/pickup-live');
-const { isReplacementOrder, replacementMeta, replacementRefundPlan, reportedUpiId } = require('./utils/missing-books');
+const { isReplacementOrder, replacementMeta } = require('./utils/missing-books');
 const { cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 
 const CORS = {
@@ -62,28 +62,14 @@ async function callFunction(event, name, body) {
   return { statusCode: res.statusCode, data };
 }
 
-/** What the customer gets back, before anything is done. */
+/** What the customer gets back, before anything is done (the tab shows the same). */
 async function refundPreview(sb, order) {
-  if (isReplacementOrder(order)) {
-    const originalId = String((replacementMeta(order) || {}).original_order_id || '').trim();
-    const { data: original } = originalId
-      ? await sb.from('orders').select('*').eq('razorpay_order_id', originalId).maybeSingle()
-      : { data: null };
-    const plan = replacementRefundPlan(order, original);
-    const amount_rs = rs(plan.amountPaise);
-    if (plan.action === 'gateway') return { via: 'gateway', amount_rs, message: `refund on ${originalId}` };
-    if (plan.action === 'upi') {
-      const onFile = String((replacementMeta(order) || {}).refund_upi_id || '').trim() || reportedUpiId(original);
-      return { via: 'upi', amount_rs, upi_id: onFile || '',
-               message: onFile ? `COD original: pay ₹${amount_rs} to UPI ${onFile} (already given)` : 'COD original: UPI ID asked by email + WhatsApp' };
-    }
-    if (plan.action === 'manual') return { via: 'manual', amount_rs, message: plan.reason };
-    return { via: 'none', amount_rs: 0, message: plan.reason };
-  }
-  const paid = String(order.razorpay_payment_id || '').trim() && Number(order.amount_paise || 0) > 0;
-  if (!paid) return { via: 'none', amount_rs: 0, message: 'COD — nothing was charged' };
-  if (order.late_cancel_at) return { via: 'manual', amount_rs: rs(order.amount_paise), message: 'late cancel already owns this refund' };
-  return { via: 'gateway', amount_rs: rs(order.amount_paise), message: String(order.razorpay_payment_id).startsWith('pay_') ? 'Razorpay' : 'PhonePe' };
+  if (!isReplacementOrder(order)) return refundOnCancel(order, null);
+  const originalId = String((replacementMeta(order) || {}).original_order_id || '').trim();
+  const { data: original } = originalId
+    ? await sb.from('orders').select('*').eq('razorpay_order_id', originalId).maybeSingle()
+    : { data: null };
+  return refundOnCancel(order, original);
 }
 
 async function handleOne(event, sb, order, opts) {

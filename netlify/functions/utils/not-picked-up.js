@@ -18,7 +18,7 @@ const { statusImpliesMovement } = require('./nimbuspost-track');
 const { isDefinitelyCod } = require('./order-payment-kind');
 const { isReplacementOrder } = require('./replacement-order');
 const { pickupState } = require('./pickup-live');
-const { replacementMeta, isPartialCodOrder, reportedUpiId } = require('./missing-books');
+const { replacementMeta, isPartialCodOrder, reportedUpiId, replacementRefundPlan } = require('./missing-books');
 
 const UNBOOKED = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending'];
 const DEFAULT_MIN_HOURS = 48;
@@ -96,6 +96,40 @@ function withOriginal(row, original) {
       refund_upi_source: rp.refund_upi_id ? 'replacement' : reported ? 'missing_report' : '',
     },
   };
+}
+
+const rs = (paise) => Math.round(Number(paise || 0)) / 100;
+
+/**
+ * What cancelling this order would pay the customer, and how -- the same
+ * answer admin-not-picked-up-cancel acts on, so the tab and the Cancel button
+ * can never disagree. `original` is the order a replacement replaces (its
+ * direct original, as the cancel reads it); unused for other orders.
+ *
+ *   via 'gateway'  back to the card/UPI they paid with (Razorpay / PhonePe)
+ *   via 'upi'      we pay it by UPI (COD original); upi_id when we have one
+ *   via 'manual'   owed, but a person has to work out or send it
+ *   via 'none'     nothing to refund
+ */
+function refundOnCancel(order, original) {
+  if (isReplacementOrder(order)) {
+    const plan = replacementRefundPlan(order, original);
+    const amount_rs = rs(plan.amountPaise);
+    if (plan.action === 'gateway') {
+      return { via: 'gateway', amount_rs, message: `refund on ${plan.originalId} (${plan.gateway === 'razorpay' ? 'Razorpay' : 'PhonePe'})` };
+    }
+    if (plan.action === 'upi') {
+      const onFile = String((replacementMeta(order) || {}).refund_upi_id || '').trim() || reportedUpiId(original);
+      return { via: 'upi', amount_rs, upi_id: onFile || '',
+               message: onFile ? `COD original: pay ₹${amount_rs} to UPI ${onFile} (already given)` : 'COD original: UPI ID asked by email + WhatsApp' };
+    }
+    if (plan.action === 'manual') return { via: 'manual', amount_rs, message: plan.reason };
+    return { via: 'none', amount_rs: 0, message: plan.reason };
+  }
+  const paid = String(order.razorpay_payment_id || '').trim() && Number(order.amount_paise || 0) > 0;
+  if (!paid) return { via: 'none', amount_rs: 0, message: 'COD — nothing was charged' };
+  if (order.late_cancel_at) return { via: 'manual', amount_rs: rs(order.amount_paise), message: 'late cancel already owns this refund' };
+  return { via: 'gateway', amount_rs: rs(order.amount_paise), message: String(order.razorpay_payment_id).startsWith('pay_') ? 'Razorpay' : 'PhonePe' };
 }
 
 const moved = (s) => statusImpliesMovement(s) || pickupState(s) === 'moved';
@@ -177,4 +211,4 @@ function summarize(rows) {
   return counts;
 }
 
-module.exports = { classify, summarize, paymentLabel, booksOf, withOriginal, originalPaymentKind, UNBOOKED, DEFAULT_MIN_HOURS };
+module.exports = { classify, summarize, paymentLabel, booksOf, withOriginal, originalPaymentKind, refundOnCancel, UNBOOKED, DEFAULT_MIN_HOURS };

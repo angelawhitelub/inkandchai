@@ -3397,6 +3397,29 @@ function npuFillPayFilter() {
     '<option value="' + v + '">' + label + ' (' + npuData.orders.filter(r => npuPayMatches(r, v)).length + ')</option>').join('');
   sel.value = keep;
 }
+// What Cancel would pay back (utils/not-picked-up.js refundOnCancel — the
+// same calculation the Cancel button acts on).
+function npuRefundText(r) {
+  const f = r.refund;
+  if (!f) return '';
+  const amt = '\u20b9' + Number(f.amount_rs || 0).toLocaleString('en-IN');
+  if (f.via === 'gateway') return 'Refund ' + amt + ' to original payment (' + f.message + ')';
+  if (f.via === 'upi') return 'Refund ' + amt + ' by UPI' + (f.upi_id ? ' to ' + f.upi_id : ' \u2014 UPI ID not given yet');
+  if (f.via === 'manual') return 'Refund ' + amt + ' by hand: ' + f.message;
+  return 'No refund' + (r.payment === 'cod' ? ' (COD)' : '');
+}
+function npuRefundCell(r) {
+  const f = r.refund;
+  if (!f) return '';
+  const color = f.via === 'gateway' ? '#6dbf6d' : f.via === 'upi' || f.via === 'manual' ? '#e0a060' : 'var(--cream-dim)';
+  const amt = '\u20b9' + Number(f.amount_rs || 0).toLocaleString('en-IN');
+  const label = f.via === 'gateway' ? 'Refund ' + amt + ' \u2192 ' + esc(f.message)
+    : f.via === 'upi' ? 'Refund ' + amt + ' by UPI' + (f.upi_id ? '<div style="font-family:ui-monospace,Menlo,monospace;user-select:all;">' + esc(f.upi_id) + '</div>' : '<div>UPI ID not given yet</div>')
+    : f.via === 'manual' ? 'Refund ' + amt + ' by hand'
+    : 'No refund on cancel';
+  return '<div style="margin-top:.3rem;padding-top:.3rem;border-top:1px dashed var(--border);font-size:.68rem;line-height:1.35;color:' + color + ';" title="' + esc(npuRefundText(r) + (f.via === 'none' && f.message ? ' \u2014 ' + f.message : '')) + '">'
+    + '<div style="font-size:.55rem;letter-spacing:.12em;text-transform:uppercase;opacity:.8;">On cancel</div>' + label + '</div>';
+}
 function npuCodOriginal(r) { return r.payment === 'replacement' && (npuOrigPay(r) === 'cod' || npuOrigPay(r) === 'partial_cod'); }
 
 function npuStageText(r) {
@@ -3469,7 +3492,8 @@ function renderNotPicked() {
         + td(awb)
         + td(scan)
         + td((NPU_PAY[r.payment] || r.payment) + (r.amount_rs ? '<div class="hint">₹' + r.amount_rs.toLocaleString('en-IN') + '</div>' : '')
-          + (r.payment === 'replacement' ? '<div class="hint" style="color:' + (npuCodOriginal(r) ? '#e0a060' : npuOrigPay(r) === 'prepaid' ? '#6dbf6d' : 'var(--cream-dim)') + ';">original ' + esc(NPU_ORIG[npuOrigPay(r)] || npuOrigPay(r)) + (r.replacement && r.replacement.paid_order_id ? ' (paid on ' + esc(r.replacement.paid_order_id) + ')' : '') + '</div>' : ''))
+          + (r.payment === 'replacement' ? '<div class="hint" style="color:' + (npuCodOriginal(r) ? '#e0a060' : npuOrigPay(r) === 'prepaid' ? '#6dbf6d' : 'var(--cream-dim)') + ';">original ' + esc(NPU_ORIG[npuOrigPay(r)] || npuOrigPay(r)) + (r.replacement && r.replacement.paid_order_id ? ' (paid on ' + esc(r.replacement.paid_order_id) + ')' : '') + '</div>' : '')
+          + npuRefundCell(r))
         + td(esc(r.customer_name) + (r.pincode ? '<div class="hint">' + esc(r.pincode) + '</div>' : ''))
         + td(orderLink(r.order_id, 'Open', 'font-size:.6rem;padding:.3rem .6rem;')
           + (moved ? '' : '<button class="btn-outline" style="display:block;margin-top:.35rem;font-size:.6rem;padding:.3rem .6rem;border-color:#e06060;color:#e06060;white-space:nowrap;" title="Asks the courier first; only a parcel still waiting for pickup is cancelled, then refunded the same way as bulk" onclick="cancelNotPickedOne(\'' + esc(r.id) + '\', this)">✕ Cancel</button>'))
@@ -3540,6 +3564,8 @@ function npuExportRows() {
       original_paid: r.payment === 'replacement' ? (NPU_ORIG[npuOrigPay(r)] || npuOrigPay(r)) : '',
       replacement_reason: r.replacement ? String(r.replacement.reason || '').replace(/_/g, ' ') : '',
       amount_rs: r.amount_rs || 0,
+      refund_on_cancel_rs: (r.refund && r.refund.amount_rs) || 0,
+      refund_on_cancel: npuRefundText(r),
       customer: r.customer_name || '',
       phone: r.customer_phone || '',
       pincode: r.pincode || '',

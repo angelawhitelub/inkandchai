@@ -113,3 +113,28 @@ test('summary counts buckets and couriers', () => {
   assert.deepEqual([c.total, c.awaiting_pickup, c.awaiting_confirmed, c.not_booked], [3, 2, 1, 1]);
   assert.deepEqual(c.by_courier, { Xpressbees: 1, Delhivery: 1 });
 });
+
+// ── refund on cancel (shown in the tab, acted on by the Cancel button) ──────
+
+const { refundOnCancel } = require('./not-picked-up');
+
+test('refund on cancel: prepaid goes back to the gateway, COD owes nothing, a late cancel is left to its own flow', () => {
+  assert.deepEqual(refundOnCancel({ razorpay_payment_id: 'OMO123', amount_paise: 31100 }),
+    { via: 'gateway', amount_rs: 311, message: 'PhonePe' });
+  assert.equal(refundOnCancel({ razorpay_payment_id: 'pay_X', amount_paise: 92800 }).message, 'Razorpay');
+  assert.deepEqual(refundOnCancel({ razorpay_payment_id: null, amount_paise: 30900 }),
+    { via: 'none', amount_rs: 0, message: 'COD — nothing was charged' });
+  assert.equal(refundOnCancel({ razorpay_payment_id: 'OMO1', amount_paise: 50000, late_cancel_at: '2026-10-01' }).via, 'manual');
+});
+
+test('refund on cancel: a missing-book replacement of a COD order is paid by UPI, to the ID the customer gave', () => {
+  const repl = { razorpay_order_id: 'IC-R-1', source: 'replacement', razorpay_payment_id: null, amount_paise: 0,
+    cart_items: [{ title: 'God of Wrath', qty: 1, price: 549, _replacement: { original_order_id: 'IC-1', reason: 'missing_item' } }] };
+  const original = { razorpay_order_id: 'IC-1', status: 'delivered', razorpay_payment_id: null, amount_paise: 54900,
+    cart_items: [{ title: 'God of Wrath', qty: 1, price: 549, _missing: true, _refund_upi_id: 'akshita@oksbi' }] };
+  const f = refundOnCancel(repl, original);
+  assert.equal(f.via, 'upi');
+  assert.equal(f.amount_rs, 549);
+  assert.equal(f.upi_id, 'akshita@oksbi');
+  assert.equal(refundOnCancel(repl, { ...original, cart_items: [{ title: 'God of Wrath', qty: 1, price: 549, _missing: true }] }).upi_id, '');
+});
