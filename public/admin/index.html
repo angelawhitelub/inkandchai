@@ -3609,7 +3609,8 @@ function npuRepeatedBooks(rows) {
 function exportNotPickedPdf() {
   const rows = npuExportRows();
   if (!rows.length) return;
-  const repeated = npuRepeatedBooks(npuTargetRows());
+  const src = npuTargetRows();   // same rows, same order: npuExportRows maps it
+  const repeated = npuRepeatedBooks(src);
   const cols = [['order_id', 'Order'], ['placed', 'Placed'], ['age', 'Age'], ['books', 'Books'], ['stage', 'Stage'], ['courier', 'Courier'], ['awb', 'AWB'],
     ['last_scan', 'Last scan'], ['payment', 'Payment'], ['original_paid', 'Original paid'], ['amount_rs', '₹'], ['customer', 'Customer'], ['phone', 'Phone'], ['pincode', 'PIN'], ['refund_upi', 'Refund UPI']];
   const w = window.open('', '_blank');
@@ -3625,7 +3626,10 @@ function exportNotPickedPdf() {
       + repeated.map(b => '<tr><td style="text-align:right;font-weight:700">' + b.qty + '</td><td>' + esc(b.title) + '</td><td style="text-align:right">' + b.orders + '</td></tr>').join('')
       + '</tbody></table>' : '')
     + '<table><thead><tr>' + cols.map(c => '<th>' + c[1] + '</th>').join('') + '</tr></thead><tbody>'
-    + rows.map(r => '<tr>' + cols.map(c => '<td' + (['order_id', 'awb', 'refund_upi'].includes(c[0]) ? ' class="m"' : '') + '>' + esc(r[c[0]]) + '</td>').join('') + '</tr>').join('')
+    + rows.map((r, idx) => '<tr>' + cols.map(c => '<td' + (['order_id', 'awb', 'refund_upi'].includes(c[0]) ? ' class="m"' : '') + '>'
+        + (c[0] === 'books' && (src[idx].items || []).length > 1
+          ? src[idx].items.map(i => (Number(i.qty) > 1 ? '<b>' + i.qty + ' x</b> ' : '') + esc(i.title)).join('<br>')
+          : esc(r[c[0]])) + '</td>').join('') + '</tr>').join('')
     + '</tbody></table><script>window.onload=function(){setTimeout(function(){window.print()},200)}<\/script></body></html>');
   w.document.close();
 }

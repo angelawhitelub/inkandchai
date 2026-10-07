@@ -58,3 +58,17 @@ test('books in more than one copy head the PDF and the email, most copies first'
   assert.match(html, /Deep &lt;Work&gt;/);
   assert.doesNotMatch(report.emailHtml({ count: 1, minDays: 2, oldestDays: 3, notBooked: 0, when: 'now', repeated: [] }), /more than one copy/);
 });
+
+test('a many-book order lists every book, one per line, none cut off', async () => {
+  const { PDFDocument: Doc } = require('pdf-lib');
+  const font = await (await Doc.create()).embedFont(require('pdf-lib').StandardFonts.Helvetica);
+  const { _test: pdf } = require('./not-picked-up-pdf');
+  const items = Array.from({ length: 9 }, (_, i) => ({ title: `Book number ${i + 1} with a reasonably long title`, qty: i === 0 ? 2 : 1 }));
+  const lines = pdf.bookLines(font, { items }, 210);
+  assert.ok(lines.length >= 9);
+  assert.ok(lines[0].startsWith('2 x Book number 1'));
+  assert.ok(lines.some((l) => l.includes('Book number 9')));
+  assert.ok(!lines.some((l) => l.endsWith('...')));
+  const out = await buildNotPickedPdf([row(1, { items })], { minDays: 2 });
+  assert.equal(out.count, 1);
+});

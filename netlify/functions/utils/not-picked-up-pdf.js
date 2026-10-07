@@ -74,6 +74,14 @@ function ageText(h) {
   return d ? `${d}d ${h % 24}h` : `${h}h`;
 }
 
+/** The Books cell: each book on its own line(s), "2 x" for more than one copy. */
+function bookLines(font, r, width) {
+  const items = Array.isArray(r.items) && r.items.length
+    ? r.items.map((i) => `${Number(i.qty) > 1 ? `${i.qty} x ` : ''}${i.title}`)
+    : [r.books || '-'];
+  return items.flatMap((t) => wrap(font, t, width, items.length > 1 ? 3 : 6));
+}
+
 /** One table row's cells, as plain strings. */
 function cellsFor(r, i) {
   const placed = new Date(r.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' });
@@ -165,7 +173,10 @@ async function buildNotPickedPdf(rows, { minDays, generatedAt = new Date() } = {
 
   sorted.forEach((r, i) => {
     const cells = cellsFor(r, i);
-    const lines = Object.fromEntries(COLS.map((c) => [c.key, wrap(font, cells[c.key], c.w - 4, c.key === 'books' ? 4 : 3)]));
+    const lines = Object.fromEntries(COLS.map((c) => [c.key, wrap(font, cells[c.key], c.w - 4, 3)]));
+    // Every book of the order, one per line -- a multi-book order is packed
+    // from this sheet, so none may be cut off.
+    lines.books = bookLines(font, r, COLS.find((c) => c.key === 'books').w - 4);
     const height = Math.max(...Object.values(lines).map((l) => l.length)) * LINE + 4;
     if (y - height < MARGIN + 14) header();
     let x = MARGIN;
@@ -187,4 +198,4 @@ async function buildNotPickedPdf(rows, { minDays, generatedAt = new Date() } = {
   return { bytes: await doc.save(), count: sorted.length, oldestDays: oldest, notBooked, repeated };
 }
 
-module.exports = { buildNotPickedPdf, pdfSafe };
+module.exports = { buildNotPickedPdf, pdfSafe, _test: { bookLines } };
