@@ -2315,9 +2315,11 @@ window.IACClaimEvidence = {
     const editBtn = wrap.querySelector('button[data-oid]');
     const msg = wrap.querySelector('.addr-msg');
     const address = (wrap.querySelector('.addr-input')?.value || '').trim();
-    if (address.length < 12) {
+    if (address.length < 12 || !/\b[1-9]\d{5}\b/.test(address)) {
       msg.style.display = ''; msg.style.color = '#e06060';
-      msg.textContent = 'Please enter a complete address (with city and pincode).';
+      msg.textContent = address.length < 12
+        ? 'Please enter a complete address (with city and pincode).'
+        : 'Please include your 6-digit pincode in the address.';
       return;
     }
     const orig = btn.textContent;

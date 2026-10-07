@@ -19,6 +19,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
 const { sendText } = require('./utils/whatsapp');
 const { canEditAddress, addressLockReason } = require('./utils/address-editable');
+const { extractPincode, pincodeRejection } = require('./utils/pincode-valid');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -47,6 +48,17 @@ exports.handler = async (event) => {
   const address = String(body.address || '').trim().replace(/\s+\n/g, '\n').slice(0, 1000);
   if (!id || !q)             return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide order id and email/phone' }) };
   if (address.length < 12)   return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Please enter a complete delivery address (with area, city and pincode).' }) };
+  // Checkout will not take an order without a pincode, so neither may the
+  // change: this edit replaces the whole address, and IC-20261006-QPV2H lost a
+  // good one to "Gym knight krishna colony hodal". Same gate as checkout:
+  // junk and courier-unserviceable pincodes are refused too.
+  if (!extractPincode({ address })) {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Please include your 6-digit pincode in the address.', code: 'missing_pincode' }) };
+  }
+  {
+    const bad = await pincodeRejection({ address });
+    if (bad) return { statusCode: 400, headers: CORS, body: JSON.stringify(bad) };
+  }
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
