@@ -77,12 +77,25 @@ async function refreshStale(db, orders, now) {
   return { checked: stale.length, ...counts };
 }
 
-function emailHtml({ count, minDays, oldestDays, notBooked, when }) {
+const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function repeatedHtml(repeated = []) {
+  if (!repeated.length) return '';
+  const shown = repeated.slice(0, 60);
+  return `<h3 style="margin:16px 0 6px;font-size:15px;">Books in more than one copy (${repeated.length})</h3>
+    <table style="border-collapse:collapse;font-size:13px;">
+      <tr><th style="text-align:right;padding:3px 8px;border-bottom:1px solid #ccc;">Copies</th><th style="text-align:left;padding:3px 8px;border-bottom:1px solid #ccc;">Book</th><th style="text-align:right;padding:3px 8px;border-bottom:1px solid #ccc;">Orders</th></tr>
+      ${shown.map((b) => `<tr><td style="text-align:right;padding:3px 8px;font-weight:700;">${b.qty}</td><td style="padding:3px 8px;">${escHtml(b.title)}</td><td style="text-align:right;padding:3px 8px;color:#666;">${b.orders}</td></tr>`).join('')}
+    </table>${repeated.length > shown.length ? `<p style="color:#666;font-size:12px;">…and ${repeated.length - shown.length} more in the PDF.</p>` : ''}`;
+}
+
+function emailHtml({ count, minDays, oldestDays, notBooked, when, repeated }) {
   return `<div style="font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#222;max-width:560px;">
     <h2 style="margin:0 0 6px;font-size:18px;">Not picked up for ${minDays}+ days: ${count}</h2>
     <p style="color:#666;margin:0 0 14px;font-size:12px;">${when} IST</p>
     <p style="margin:0 0 10px;">${count - notBooked} booked and waiting for the courier, ${notBooked} not booked yet. The oldest is <strong>${oldestDays} days</strong> old.</p>
     <p style="margin:0 0 10px;">The full list is attached as a PDF, oldest first. To cancel and refund any of them, open <a href="https://inkandchai.in/admin/#notpicked">Admin → Not Picked Up</a>; the courier is asked again before anything is cancelled.</p>
+    ${repeatedHtml(repeated)}
   </div>`;
 }
 
@@ -108,7 +121,7 @@ exports.handler = async (event = {}) => {
     const pdf = await buildNotPickedPdf(rows, { minDays, generatedAt });
     const when = generatedAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
     const filename = `not-picked-up-${minDays}d-${generatedAt.toISOString().slice(0, 10)}.pdf`;
-    const summary = { count: pdf.count, min_days: minDays, oldest_days: pdf.oldestDays, not_booked: pdf.notBooked, live };
+    const summary = { count: pdf.count, min_days: minDays, oldest_days: pdf.oldestDays, not_booked: pdf.notBooked, repeated_books: pdf.repeated.length, live };
 
     if (dryRun) return json(200, { dry_run: true, ...summary, would_email: emails, would_whatsapp: phones, pdf_bytes: pdf.bytes.length });
     if (!pdf.count) {
@@ -166,3 +179,5 @@ exports.handler = async (event = {}) => {
     return json(500, { error: e.message });
   }
 };
+
+exports._test = { emailHtml, repeatedHtml };

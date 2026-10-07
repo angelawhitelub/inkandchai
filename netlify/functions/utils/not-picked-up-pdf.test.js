@@ -35,3 +35,26 @@ test('an empty list still makes a PDF', async () => {
   assert.equal(out.count, 0);
   assert.equal((await PDFDocument.load(out.bytes)).getPageCount(), 1);
 });
+
+test('books in more than one copy head the PDF and the email, most copies first', async () => {
+  const rows = [
+    row(1, { items: [{ title: 'Deep Work', qty: 2 }, { title: 'Atomic Habits', qty: 1 }] }),
+    row(2, { items: [{ title: 'atomic habits', qty: 1 }] }),
+    row(3, { items: [{ title: 'Deep Work', qty: 1 }, { title: 'Ikigai', qty: 1 }] }),
+    row(4, { items: [{ title: 'गोदान', qty: 2 }] }),
+  ];
+  const out = await buildNotPickedPdf(rows, { minDays: 2 });
+  assert.deepEqual(out.repeated.map((b) => [b.qty, b.title.toLowerCase(), b.orders]), [[3, 'deep work', 2], [2, 'atomic habits', 2], [2, 'गोदान', 1]]);
+
+  // A long repeated list pushes the orders table onto later pages instead of overlapping it.
+  const many = Array.from({ length: 300 }, (_, i) => row(i, { items: [{ title: `Book ${i}`, qty: 2 }] }));
+  const big = await buildNotPickedPdf(many, { minDays: 2 });
+  assert.equal(big.repeated.length, 300);
+  assert.ok((await PDFDocument.load(big.bytes)).getPageCount() > 2);
+
+  const { _test: report } = require('../not-picked-up-report-scheduled');
+  const html = report.emailHtml({ count: 4, minDays: 2, oldestDays: 3, notBooked: 0, when: 'now', repeated: [{ title: 'Deep <Work>', qty: 3, orders: 2 }] });
+  assert.match(html, /Books in more than one copy \(1\)/);
+  assert.match(html, /Deep &lt;Work&gt;/);
+  assert.doesNotMatch(report.emailHtml({ count: 1, minDays: 2, oldestDays: 3, notBooked: 0, when: 'now', repeated: [] }), /more than one copy/);
+});

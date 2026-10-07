@@ -46,6 +46,26 @@ function itemsOf(order) {
     .filter((i) => i.title);
 }
 
+/**
+ * Books that appear more than once across Not Picked Up rows (each row carries
+ * `items`), most copies first: { title, qty, orders }. Titles are matched
+ * case-insensitively. Shared by the admin PDF, the report PDF and its email.
+ */
+function repeatedBooks(rows) {
+  const by = new Map();
+  for (const r of rows || []) {
+    for (const i of r.items || []) {
+      const key = String(i.title || '').toLowerCase();
+      if (!key) continue;
+      const cur = by.get(key) || { title: i.title, qty: 0, orders: 0 };
+      cur.qty += Number(i.qty) || 1;
+      cur.orders += 1;
+      by.set(key, cur);
+    }
+  }
+  return [...by.values()].filter((b) => b.qty > 1).sort((a, b) => b.qty - a.qty || a.title.localeCompare(b.title));
+}
+
 function booksOf(order) {
   return (Array.isArray(order.cart_items) ? order.cart_items : [])
     .map((i) => {
@@ -219,4 +239,4 @@ function summarize(rows) {
   return counts;
 }
 
-module.exports = { classify, summarize, paymentLabel, booksOf, itemsOf, withOriginal, originalPaymentKind, refundOnCancel, UNBOOKED, DEFAULT_MIN_HOURS };
+module.exports = { classify, summarize, paymentLabel, booksOf, itemsOf, repeatedBooks, withOriginal, originalPaymentKind, refundOnCancel, UNBOOKED, DEFAULT_MIN_HOURS };
