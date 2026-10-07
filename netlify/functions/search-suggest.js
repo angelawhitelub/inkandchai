@@ -94,7 +94,10 @@ exports.handler = async (event) => {
   if (personal) { headers['Cache-Control'] = 'private, no-store'; headers['Netlify-CDN-Cache-Control'] = 'private, no-store'; }
   try {
     const gone = await deletedSlugSet();
-    const picks = await discovery.discover(getCatalog(), prefs, gone).catch(() => discovery.choose(getCatalog(), [], prefs, gone));
+    // Suggestions must answer even when discovery cannot: its lookups are
+    // bounded, and this bounds the whole thing again.
+    const fallback = () => discovery.choose(getCatalog(), [], prefs, gone);
+    const picks = await discovery.withTimeout(discovery.discover(getCatalog(), prefs, gone).catch(fallback), 6000, null) || fallback();
     const clean = r => ({title:r.title,author:r.author,price:r.price,mrp:r.mrp>r.price?r.mrp:0,img:r.img,url:r.url});
     const sections = Object.fromEntries(Object.entries(picks).map(([k,v])=>[k,v.map(clean)]));
     if(q.length < 2)return {statusCode:200,headers,body:JSON.stringify({results:[],matched_count:null,...sections})};

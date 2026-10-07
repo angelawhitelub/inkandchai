@@ -2,7 +2,17 @@ const { createClient } = require('@supabase/supabase-js');
 const search = require('../../../public/js/book-search');
 const { findCandidates } = require('./search-candidates');
 const { proxifySupabaseImage } = require('./supabase-img');
-let cached, pending;
+// `cached` is plain data and safe to share between requests. An in-flight
+// promise is not: on Workers it belongs to the request that started it, and if
+// that request is cancelled the promise never settles -- every later search in
+// the isolate awaited it forever ("Finding your next read..." on 7 Oct 2026).
+let cached;
+const POPULAR_MS = 4000;
+const withTimeout = (promise, ms, fallback) => {
+  let timer;
+  return Promise.race([promise, new Promise((resolve) => { timer = setTimeout(() => resolve(fallback), ms); })])
+    .finally(() => clearTimeout(timer));
+};
 const slugOf = value => String(value || '').replace(/^\/product\//,'').replace(/\/$/,'').toLowerCase();
 const validSlug = value => /^[a-z0-9][a-z0-9-]{0,199}$/.test(value);
 function preferences(qp) {
@@ -17,8 +27,7 @@ function distinct(rows, excluded=new Set()) {
 }
 async function popular(catalog, db) {
   if(cached&&Date.now()-cached.at<300000)return cached;
-  if(pending)return pending;
-  pending=(async()=>{
+  return withTimeout((async()=>{
     let sold=[];
     try {
       const res=await fetch(`${process.env.URL||'https://inkandchai.in'}/.netlify/functions/homepage-merchandising`,{signal:AbortSignal.timeout(6000)});
@@ -34,8 +43,7 @@ async function popular(catalog, db) {
     const result={at:Date.now(),bestsellers:distinct(best)};
     if(best.length)cached=result;
     return result;
-  })();
-  try{return await pending;}finally{pending=null;}
+  })(),POPULAR_MS,cached||{at:0,bestsellers:[]});
 }
 function choose(catalog,bestsellers,prefs,gone=new Set()) {
   const available=distinct([...bestsellers,...catalog]).filter(r=>!gone.has(r.slug));
@@ -65,4 +73,4 @@ async function discover(catalog,prefs,gone) {
   }
   return choose([...extra,...catalog],bestsellers,prefs,gone);
 }
-module.exports={preferences,choose,discover,distinct,slugOf};
+module.exports={preferences,choose,discover,distinct,slugOf,withTimeout};
