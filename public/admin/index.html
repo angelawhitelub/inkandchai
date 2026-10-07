@@ -3591,9 +3591,25 @@ function exportNotPickedCsv() {
 
 // A printable sheet; the browser's "Save as PDF" turns it into the file. Built
 // as HTML rather than with a PDF library so Hindi/Urdu titles and ₹ render.
+// Books that appear more than once across the rows, most copies first.
+function npuRepeatedBooks(rows) {
+  const by = new Map();
+  for (const r of rows) {
+    for (const i of (r.items || [])) {
+      const key = i.title.toLowerCase();
+      const cur = by.get(key) || { title: i.title, qty: 0, orders: 0 };
+      cur.qty += Number(i.qty) || 1;
+      cur.orders += 1;
+      by.set(key, cur);
+    }
+  }
+  return [...by.values()].filter(b => b.qty > 1).sort((a, b) => b.qty - a.qty || a.title.localeCompare(b.title));
+}
+
 function exportNotPickedPdf() {
   const rows = npuExportRows();
   if (!rows.length) return;
+  const repeated = npuRepeatedBooks(npuTargetRows());
   const cols = [['order_id', 'Order'], ['placed', 'Placed'], ['age', 'Age'], ['books', 'Books'], ['stage', 'Stage'], ['courier', 'Courier'], ['awb', 'AWB'],
     ['last_scan', 'Last scan'], ['payment', 'Payment'], ['original_paid', 'Original paid'], ['amount_rs', '₹'], ['customer', 'Customer'], ['phone', 'Phone'], ['pincode', 'PIN'], ['refund_upi', 'Refund UPI']];
   const w = window.open('', '_blank');
@@ -3603,7 +3619,12 @@ function exportNotPickedPdf() {
     + '@page{size:A4 landscape;margin:10mm}body{font:10px/1.35 -apple-system,Segoe UI,Roboto,"Noto Sans",sans-serif;color:#111}'
     + 'h1{font-size:13px;margin:0 0 8px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:3px 4px;text-align:left;vertical-align:top}'
     + 'th{background:#eee}tr{page-break-inside:avoid}td.m{font-family:ui-monospace,Menlo,monospace;white-space:nowrap}</style></head><body>'
-    + '<h1>' + esc(title) + '</h1><table><thead><tr>' + cols.map(c => '<th>' + c[1] + '</th>').join('') + '</tr></thead><tbody>'
+    + '<h1>' + esc(title) + '</h1>'
+    + (repeated.length ? '<h2 style="font-size:12px;margin:0 0 4px">Books in more than one copy (' + repeated.length + ')</h2>'
+      + '<table style="width:auto;margin-bottom:10px"><thead><tr><th>Copies</th><th>Book</th><th>Orders</th></tr></thead><tbody>'
+      + repeated.map(b => '<tr><td style="text-align:right;font-weight:700">' + b.qty + '</td><td>' + esc(b.title) + '</td><td style="text-align:right">' + b.orders + '</td></tr>').join('')
+      + '</tbody></table>' : '')
+    + '<table><thead><tr>' + cols.map(c => '<th>' + c[1] + '</th>').join('') + '</tr></thead><tbody>'
     + rows.map(r => '<tr>' + cols.map(c => '<td' + (['order_id', 'awb', 'refund_upi'].includes(c[0]) ? ' class="m"' : '') + '>' + esc(r[c[0]]) + '</td>').join('') + '</tr>').join('')
     + '</tbody></table><script>window.onload=function(){setTimeout(function(){window.print()},200)}<\/script></body></html>');
   w.document.close();

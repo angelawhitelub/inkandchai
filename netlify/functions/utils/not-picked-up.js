@@ -39,6 +39,13 @@ function paymentLabel(order) {
   return isDefinitelyCod(order) ? 'cod' : 'prepaid';
 }
 
+/** The books as { title, qty } -- for counting, where a title may contain a comma. */
+function itemsOf(order) {
+  return (Array.isArray(order.cart_items) ? order.cart_items : [])
+    .map((i) => ({ title: String(i?.title || i?.name || '').replace(/\s+/g, ' ').trim(), qty: Math.max(1, Number(i?.qty || i?.quantity) || 1) }))
+    .filter((i) => i.title);
+}
+
 function booksOf(order) {
   return (Array.isArray(order.cart_items) ? order.cart_items : [])
     .map((i) => {
@@ -156,6 +163,7 @@ function classify(order, now = Date.now(), minHours = DEFAULT_MIN_HOURS) {
     customer_phone: order.customer_phone || '',
     pincode: pincodeOf(order.customer_address),
     books: booksOf(order),
+    items: itemsOf(order),
     replacement: replacementInfo(order),
     amount_rs: Math.round(Number(order.amount_paise || 0) / 100),
     payment: paymentLabel(order),
@@ -211,4 +219,4 @@ function summarize(rows) {
   return counts;
 }
 
-module.exports = { classify, summarize, paymentLabel, booksOf, withOriginal, originalPaymentKind, refundOnCancel, UNBOOKED, DEFAULT_MIN_HOURS };
+module.exports = { classify, summarize, paymentLabel, booksOf, itemsOf, withOriginal, originalPaymentKind, refundOnCancel, UNBOOKED, DEFAULT_MIN_HOURS };

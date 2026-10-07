@@ -138,3 +138,9 @@ test('refund on cancel: a missing-book replacement of a COD order is paid by UPI
   assert.equal(f.upi_id, 'akshita@oksbi');
   assert.equal(refundOnCancel(repl, { ...original, cart_items: [{ title: 'God of Wrath', qty: 1, price: 549, _missing: true }] }).upi_id, '');
 });
+
+test('itemsOf keeps titles whole and quantities numeric, for the repeated-books count', () => {
+  const { itemsOf } = require('./not-picked-up');
+  assert.deepEqual(itemsOf({ cart_items: [{ title: 'Atomic Habits, Hardcover', qty: 2 }, { name: '  Ikigai ' }, { _payment: {} }] }),
+    [{ title: 'Atomic Habits, Hardcover', qty: 2 }, { title: 'Ikigai', qty: 1 }]);
+});
