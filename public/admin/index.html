@@ -1083,8 +1083,10 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
       <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Import all unshipped orders into the NimbusPost Orders panel without choosing couriers or generating AWBs.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="pushAllToXpressbeesPanel(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel. Recent orders are collected automatically; this also queues the older ones. No courier is chosen and no AWB is generated.">Push to XpressBees Panel (No AWB)</button>
-      <button class="btn-green" onclick="downloadXpressbeesLabels(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Every XpressBees shipment in Ready to Pickup as one label PDF sorted for packing: pick list first, same-book orders grouped with the biggest quantities first, mixed orders after, the book names stamped under each label, and a blank page last. Read-only at XpressBees.">🏷️ XpressBees Labels (sorted)</button>
-      <button class="btn-outline" onclick="sendXpressbeesLabelsToTeam(this)" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="WhatsApp the sorted XpressBees label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send Labels to Team</button>
+      <button class="btn-green" onclick="downloadCourierLabels(this,'xpressbees')" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Every XpressBees shipment in Ready to Pickup as one label PDF sorted for packing: pick list first, same-book orders grouped with the biggest quantities first, mixed orders after, the book names stamped under each label, and a blank page last. Read-only at XpressBees.">🏷️ XpressBees Labels (sorted)</button>
+      <button class="btn-outline" onclick="sendCourierLabelsToTeam(this,'xpressbees')" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="WhatsApp the sorted XpressBees label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send XpressBees Labels to Team</button>
+      <button class="btn-green" onclick="downloadCourierLabels(this,'nimbuspost')" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Every NimbusPost shipment in Waiting for Pickup (DTDC, Delhivery…) as one label PDF sorted for packing: pick list first, same-book orders grouped with the biggest quantities first, mixed orders after, the book names stamped under each label, and a blank page last. Read-only at NimbusPost.">🏷️ NimbusPost Labels (sorted)</button>
+      <button class="btn-outline" onclick="sendCourierLabelsToTeam(this,'nimbuspost')" style="border-color:rgba(201,168,76,0.5);color:var(--gold);" title="WhatsApp the sorted NimbusPost label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send NimbusPost Labels to Team</button>
       <button class="btn-outline" onclick="downloadDtdcUpload(this)" style="border-color:rgba(255,204,0,0.55);color:#ffcc00;" title="Every unshipped order (no AWB, last 30 days) filled into DTDC's Bulk Upload template (sample-consignment-upload.xlsx): COD amount only on COD orders, the balance on partial COD. Upload it in the DTDC customer portal. Books nothing.">⬇ DTDC Bulk Upload (.xlsx)</button>
       <button class="btn-green" onclick="pushAllToIthinkPanel(this)" style="background:rgba(120,160,255,0.14);border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel. Shows a dry-run preview with the COD collectable total before anything is sent. No courier is chosen and no AWB is generated. A suffix is added to the order number sent to iThink so the batch is identifiable and does not collide with records already in the panel.">Push to iThink Panel (No AWB)</button>
       <button class="btn-green" onclick="pushServiceableToDelhivery(this)" style="background:rgba(181,107,18,0.12);border-color:rgba(181,107,18,0.55);color:var(--orange);" title="Book every unshipped order whose pincode Delhivery serves. Shows a preview first; each booked order gets a real AWB and is charged to the Delhivery wallet. Failures are grouped by cause with what to do next.">🚚 Book Serviceable on Delhivery (AWB)</button>
@@ -12495,19 +12497,24 @@ async function pushAllToNimbusPanel(btn) {
 // its own, which is how 133 orders reached the panel on 17 Sep with nobody
 // pressing anything. The button earns its place on the OLDER backlog, which is
 // invisible to XpressBees no matter how long you wait.
-// Ready-to-pickup XpressBees labels, sorted and stamped for packing
-// (admin-xpressbees-labels.js). Read-only at XpressBees.
-async function downloadXpressbeesLabels(btn) {
+// Ready-to-pickup labels, sorted and stamped for packing (admin-xpressbees-labels.js,
+// admin-nimbuspost-labels.js) and their WhatsApp send. Read-only at the courier.
+const LABEL_COURIERS = {
+  xpressbees: { name: 'XpressBees', labels: 'admin-xpressbees-labels', send: 'xpressbees-labels-send-scheduled' },
+  nimbuspost: { name: 'NimbusPost', labels: 'admin-nimbuspost-labels', send: 'nimbuspost-labels-send-scheduled' },
+};
+async function downloadCourierLabels(btn, courier) {
+  const c = LABEL_COURIERS[courier];
   const orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking XpressBees\u2026'; }
-  const url = '/.netlify/functions/admin-xpressbees-labels';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking ' + c.name + '\u2026'; }
+  const url = '/.netlify/functions/' + c.labels;
   try {
     const head = await adminFetch(url + '?format=json');
     const info = await head.json();
     if (!head.ok) throw new Error(info.error || ('HTTP ' + head.status));
-    if (!info.labels) { alert('No XpressBees shipments are waiting for pickup (last ' + info.days + ' days).'); return; }
-    const statuses = Object.entries(info.by_status || {}).map(([k, v]) => '  ' + k + ': ' + v).join('\n');
-    if (!confirm(info.labels + ' XpressBees labels are ready to pickup:\n' + statuses + '\n\nBuild the sorted label PDF now?')) return;
+    if (!info.labels) { alert('No ' + c.name + ' shipments are waiting for pickup' + (info.days ? ' (last ' + info.days + ' days).' : '.')); return; }
+    const statuses = Object.entries(info.by_status || info.by_courier || {}).map(([k, v]) => '  ' + k + ': ' + v).join('\n');
+    if (!confirm(info.labels + ' ' + c.name + ' labels are ready to pickup:\n' + statuses + '\n\nBuild the sorted label PDF now?')) return;
 
     if (btn) btn.innerHTML = '<span class="spinner"></span>Building ' + info.labels + ' labels\u2026';
     const res = await adminFetch(url);
@@ -12516,7 +12523,7 @@ async function downloadXpressbeesLabels(btn) {
       throw new Error(data.error || data.message || ('HTTP ' + res.status));
     }
     const blob = await res.blob();
-    const name = ((res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || 'xpressbees_labels_sorted.pdf';
+    const name = ((res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || courier + '_labels_sorted.pdf';
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = name;
@@ -12530,7 +12537,7 @@ async function downloadXpressbeesLabels(btn) {
       res.headers.get('X-Label-Mixed') + ' mixed orders' +
       (unread ? '\n\n\u26a0\ufe0f ' + unread + ' label(s) could not be read \u2014 they are at the end, check their item table by hand.' : ''));
   } catch (err) {
-    alert('XpressBees labels failed:\n\n' + err.message);
+    alert(c.name + ' labels failed:\n\n' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
@@ -12563,10 +12570,11 @@ async function downloadDtdcUpload(btn) {
   }
 }
 
-// WhatsApp the sorted labels to the packing team (xpressbees-labels-send-scheduled.js).
-async function sendXpressbeesLabelsToTeam(btn) {
+// WhatsApp the sorted labels to the packing team (*-labels-send-scheduled.js).
+async function sendCourierLabelsToTeam(btn, courier) {
+  const c = LABEL_COURIERS[courier];
   const orig = btn ? btn.innerHTML : '';
-  const url = '/.netlify/functions/xpressbees-labels-send-scheduled';
+  const url = '/.netlify/functions/' + c.send;
   const post = async (body) => {
     const res = await adminFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
@@ -12579,10 +12587,10 @@ async function sendXpressbeesLabelsToTeam(btn) {
     if (dry.reason) { alert(dry.reason); return; }
     let all = false;
     if (!dry.new_labels) {
-      if (!dry.ready) { alert('No XpressBees labels are waiting for pickup.'); return; }
-      if (!confirm('All ' + dry.ready + ' ready labels were already sent to the team.\n\nSend ALL of them again?')) return;
+      if (!dry.ready) { alert('No ' + c.name + ' labels are waiting for pickup.'); return; }
+      if (!confirm('All ' + dry.ready + ' ready ' + c.name + ' labels were already sent to the team.\n\nSend ALL of them again?')) return;
       all = true;
-    } else if (!confirm('WhatsApp ' + dry.new_labels + ' new label(s) to:\n  ' + dry.would_whatsapp.join('\n  ') +
+    } else if (!confirm('WhatsApp ' + dry.new_labels + ' new ' + c.name + ' label(s) to:\n  ' + dry.would_whatsapp.join('\n  ') +
       (dry.already_sent ? '\n\n(' + dry.already_sent + ' ready label(s) were sent before and are left out.)' : '') + '\n\nSend now?')) return;
     if (btn) btn.innerHTML = '<span class="spinner"></span>Sending\u2026';
     const r = await post({ all });
@@ -12590,7 +12598,7 @@ async function sendXpressbeesLabelsToTeam(btn) {
     alert((r.sent ? 'Sent ' + r.labels + ' labels \u00b7 ' + r.units + ' books' : 'NOT sent' + (r.reason ? ': ' + r.reason : '')) +
       (lines.length ? '\n\n' + lines.join('\n') : ''));
   } catch (err) {
-    alert('Sending labels failed:\n\n' + err.message);
+    alert('Sending ' + c.name + ' labels failed:\n\n' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }

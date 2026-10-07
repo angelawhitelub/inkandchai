@@ -79,7 +79,7 @@ crons = [
   "30 13 * * 2,5", # whatsapp-broadcast-scheduled
   "0 22 * * *",     # bestseller-agent-scheduled
   "30 3 * * *",    # xpressbees-queue-cleanup-scheduled
-  "30 3,8 * * *",  # xpressbees-labels-send-scheduled (09:00 + 14:00 IST)
+  "30 3,8 * * *",  # xpressbees- + nimbuspost-labels-send-scheduled (09:00 + 14:00 IST)
 ]
 
 # The handlers build data-file paths with path.join(__dirname, ...), which does

@@ -472,3 +472,7 @@
 # (internal, never customers; only labels not sent before)
 [functions."xpressbees-labels-send-scheduled"]
   schedule = "30 3,8 * * *"
+
+# Sorted NimbusPost labels (Waiting for Pickup) to the packing team, same times
+[functions."nimbuspost-labels-send-scheduled"]
+  schedule = "30 3,8 * * *"

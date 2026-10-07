@@ -124,9 +124,21 @@ test('builds pick list, labels in packing order with stamps, blank page last', a
   assert.equal(readPage(pages[5]).texts.length, 0);
 });
 
-test('refuses to build when a page does not show the AWB it was requested for', async () => {
+test('matches pages to AWBs by what is printed, so a reordered PDF still stamps the right label', async () => {
+  // NimbusPost need not return pages in request order.
+  const bytes = await labelPdf([LABELS[1], LABELS[0]]);
+  const { pdf, summary } = await buildSortedLabels([{ bytes, awbs: ['1001', '1002'] }]);
+  assert.equal(summary.labels, 2);
+  const pages = (await PDFDocument.load(pdf)).getPages();
+  // Book Y x3 (1002) sorts before Book X x1 (1001).
+  assert.deepEqual(pages.slice(1, 3).map(awbOn), ['1002', '1001']);
+});
+
+test('refuses to build when a page does not show any AWB it was requested for, or repeats one', async () => {
   const bytes = await labelPdf(LABELS.slice(0, 2));
-  await assert.rejects(buildSortedLabels([{ bytes, awbs: ['1002', '1001'] }]), /does not show AWB 1002/);
+  await assert.rejects(buildSortedLabels([{ bytes, awbs: ['1002', '1009'] }]), /does not show AWB 1002/);
+  const twice = await labelPdf([LABELS[0], LABELS[0]]);
+  await assert.rejects(buildSortedLabels([{ bytes: twice, awbs: ['1001', '1002'] }]), /page 2 of a batch does not show AWB 1002/);
 });
 
 test('refuses to build when XpressBees returns the wrong number of pages', async () => {
@@ -239,7 +251,7 @@ test('sends only labels not sent before, and remembers them once delivered', asy
   const kv = fakeKv({ [send.SENT_KEY]: JSON.stringify({ 1001: new Date().toISOString() }) });
   const wa = fakeWa();
   const xb = xbWithLabels(['1001', '1002', '1003']);
-  const r = await send.sendLabels({}, { kv, wa, xb, phones: ['919811690850', '919718883454'] });
+  const r = await send.sendLabels({}, { kv, wa, courier: xb, phones: ['919811690850', '919718883454'] });
   assert.equal(r.sent, true);
   assert.equal(r.labels, 2);
   assert.deepEqual(xb.asked, ['1002,1003']);
@@ -248,19 +260,19 @@ test('sends only labels not sent before, and remembers them once delivered', asy
   assert.deepEqual(Object.keys(JSON.parse(kv.store.get(send.SENT_KEY))).sort(), ['1001', '1002', '1003']);
 
   // Next run: nothing new, nothing sent.
-  const again = await send.sendLabels({}, { kv, wa: fakeWa(), xb: xbWithLabels(['1001', '1002', '1003']), phones: ['919811690850'] });
+  const again = await send.sendLabels({}, { kv, wa: fakeWa(), courier: xbWithLabels(['1001', '1002', '1003']), phones: ['919811690850'] });
   assert.equal(again.sent, false);
   assert.equal(again.reason, 'no new labels');
 });
 
 test('falls back to a plain PDF without the template; marks nothing when no number got it', async () => {
   const kv = fakeKv();
-  const viaDoc = await send.sendLabels({}, { kv, wa: fakeWa({ template: false }), xb: xbWithLabels(['1001']), phones: ['919811690850'] });
+  const viaDoc = await send.sendLabels({}, { kv, wa: fakeWa({ template: false }), courier: xbWithLabels(['1001']), phones: ['919811690850'] });
   assert.equal(viaDoc.whatsapp[0].via, 'document');
   assert.equal(viaDoc.marked, true);
 
   const kv2 = fakeKv();
-  const none = await send.sendLabels({}, { kv: kv2, wa: fakeWa({ template: false, document: false }), xb: xbWithLabels(['1001']), phones: ['919811690850'] });
+  const none = await send.sendLabels({}, { kv: kv2, wa: fakeWa({ template: false, document: false }), courier: xbWithLabels(['1001']), phones: ['919811690850'] });
   assert.equal(none.sent, false);
   assert.match(none.whatsapp[0].error, /24 h/);
   assert.equal(kv2.store.size, 0, 'a failed send is retried next run');
@@ -269,15 +281,88 @@ test('falls back to a plain PDF without the template; marks nothing when no numb
 test('dry run sends nothing; all=true includes labels sent before', async () => {
   const kv = fakeKv({ [send.SENT_KEY]: JSON.stringify({ 1001: new Date().toISOString() }) });
   const wa = fakeWa();
-  const dry = await send.sendLabels({ dryRun: true }, { kv, wa, xb: xbWithLabels(['1001', '1002']), phones: ['919811690850'] });
+  const dry = await send.sendLabels({ dryRun: true }, { kv, wa, courier: xbWithLabels(['1001', '1002']), phones: ['919811690850'] });
   assert.deepEqual({ ready: dry.ready, new_labels: dry.new_labels, already_sent: dry.already_sent }, { ready: 2, new_labels: 1, already_sent: 1 });
   assert.equal(wa.sent.length, 0);
   const xb = xbWithLabels(['1001', '1002']);
-  await send.sendLabels({ all: true }, { kv, wa, xb, phones: ['919811690850'] });
+  await send.sendLabels({ all: true }, { kv, wa, courier: xb, phones: ['919811690850'] });
   assert.deepEqual(xb.asked, ['1001,1002']);
 });
 
 test('no phones configured: nothing is built or sent', async () => {
-  const r = await send.sendLabels({}, { kv: fakeKv(), wa: fakeWa(), xb: xbWithLabels(['1001']), phones: [] });
+  const r = await send.sendLabels({}, { kv: fakeKv(), wa: fakeWa(), courier: xbWithLabels(['1001']), phones: [] });
   assert.equal(r.sent, false);
+});
+
+// ── NimbusPost: the panel API and the WhatsApp send ─────────────────────────
+
+const { _test: np } = require('../admin-nimbuspost-labels');
+const { _test: npSend } = require('../nimbuspost-labels-send-scheduled');
+
+/** NimbusPost with `awbs` pending pickup (shipment id = 'S' + awb); label PDFs come back REVERSED. */
+function fakeNp(awbs, { extra = [], labelUrl = null, rejectAlways = false } = {}) {
+  const calls = [];
+  const logins = [];
+  const recs = [...awbs.map((a) => ({ id: `S${a}`, awb_number: a, ship_status: 'pending pickup', courier_name: 'DTDC Surface' })), ...extra];
+  return {
+    calls, logins,
+    login: async () => { logins.push(1); return `tok${logins.length}`; },
+    mapiFetch: async (path, opts) => {
+      calls.push({ path, opts });
+      if (rejectAlways) return { httpStatus: 401, data: { message: 'Unauthenticated' } };
+      if (path.startsWith('/shipment/list')) {
+        const q = new URLSearchParams(path.split('?')[1]);
+        const page = Number(q.get('page'));
+        const limit = Number(q.get('limit'));
+        return { httpStatus: 200, data: { status: true, data: { count: recs.length, records: recs.slice((page - 1) * limit, page * limit) } } };
+      }
+      const ids = opts.body.shipping_ids;
+      return { httpStatus: 200, data: { status: true, code: 200, data: labelUrl || `https://nimubs-assets.s3.amazonaws.com/labels/${ids.join(',')}.pdf` } };
+    },
+    fetch: async (url) => {
+      const ids = decodeURIComponent(url.split('/labels/')[1].replace('.pdf', '')).split(',');
+      const bytes = await labelPdf(ids.reverse().map((id, i) => ({ awb: id.slice(1), orderNo: `IC-${id}`, items: [{ name: `Book ${i % 2}`, qty: 1 }] })));
+      return { ok: true, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+    },
+  };
+}
+
+test('NimbusPost: lists pending pickup by POST across pages, oldest first, skipping other statuses', async () => {
+  const awbs = Array.from({ length: 130 }, (_, i) => `7D${1000 + i}`);
+  const n = fakeNp(awbs, { extra: [{ id: 'X1', awb_number: '9999', ship_status: 'in transit' }, { id: 'X2', awb_number: '', ship_status: 'pending pickup' }] });
+  const out = await np.run({ summaryOnly: true }, n);
+  assert.equal(out.awbs.length, 130);
+  assert.equal(out.awbs[0], '7D1129', 'panel lists newest first; we pack oldest first');
+  const lists = n.calls.filter((c) => c.path.startsWith('/shipment/list'));
+  assert.equal(lists.length, 2);
+  assert.deepEqual(lists[0].opts.body, { ship_status_in: 'pending pickup', applied_tags: '' });
+  assert.equal(n.logins.length, 1, 'one login per run');
+});
+
+test('NimbusPost: labels by shipment id 50 at a time, pages matched by AWB, S3 URL only', async () => {
+  const awbs = Array.from({ length: 60 }, (_, i) => `7D${1000 + i}`);
+  const n = fakeNp(awbs);
+  const out = await np.run({}, n);
+  assert.equal(out.summary.labels, 60);
+  const label = n.calls.filter((c) => c.path === '/pricing/get-third-party-response');
+  assert.deepEqual(label.map((c) => c.opts.body.shipping_ids.length), [50, 10]);
+  assert.equal(label[0].opts.body.url, 'api/Ivr/generate_label');
+  assert.equal(label[0].opts.body.shipping_ids[0], 'S7D1059');
+
+  const evil = fakeNp(['7D1'], { labelUrl: 'https://evil.example/x.pdf' });
+  await assert.rejects(np.run({}, { ...evil, fetch: async () => assert.fail('must not fetch') }), /label download failed/);
+  await assert.rejects(np.run({ summaryOnly: true }, fakeNp(['7D1'], { rejectAlways: true })), /refused the API login/);
+});
+
+test('NimbusPost: WhatsApp send uses its own sent list and names the courier', async () => {
+  assert.equal(npSend.SENT_KEY, 'np-labels-sent:v1');
+  assert.notEqual(npSend.SENT_KEY, send.SENT_KEY);
+  const kv = fakeKv({ [npSend.SENT_KEY]: JSON.stringify({ '7D1': new Date().toISOString() }) });
+  const wa = fakeWa();
+  const r = await npSend.sendLabels({}, { kv, wa, courier: fakeNp(['7D1', '7D2', '7D3']), phones: ['919811690850'] });
+  assert.equal(r.sent, true);
+  assert.equal(r.labels, 2);
+  assert.match(wa.sent[0].params[0], /\(NimbusPost\)$/);
+  assert.match(wa.sent[0].headerDocument.filename, /^nimbuspost_labels_2_sorted_/);
+  assert.deepEqual(Object.keys(JSON.parse(kv.store.get(npSend.SENT_KEY))).sort(), ['7D1', '7D2', '7D3']);
 });

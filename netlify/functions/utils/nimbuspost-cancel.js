@@ -368,7 +368,7 @@ async function trackNimbusShipments(awbs) {
 }
 
 module.exports = {
-  cancelNimbusShipment, cancelNimbusOrder, inspectNimbusOrder,
+  npAuthenticate, cancelNimbusShipment, cancelNimbusOrder, inspectNimbusOrder,
   listNimbusOrders, rowIsCancelled, shipmentStatusFromRow, trackNimbusShipments,
   orderNumberFromRow, awbFromRow, orderIdFromRow,
 };

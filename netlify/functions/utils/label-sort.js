@@ -16,10 +16,11 @@
  * is `BT x y Td (UTF-16BE) Tj ET`, so the text and its position come straight
  * out of the content stream with no PDF text engine.
  *
- * Each page must contain the AWB it was requested for, or the build stops: the
- * stamp is what gets packed, and a stamp on the wrong label sends the wrong
- * books. (XpressBees returns pages in request order -- 265/265 checked on
- * 6 Oct 2026 -- but that is an observation, not a promise.)
+ * Each page must contain an AWB it was requested for (each AWB on one page
+ * only), or the build stops: the stamp is what gets packed, and a stamp on the
+ * wrong label sends the wrong books. (XpressBees returns pages in request
+ * order -- 265/265 checked on 6 Oct 2026 -- but that is an observation, not a
+ * promise.) NimbusPost's labels are mPDF too and parse the same way.
  */
 'use strict';
 
@@ -343,8 +344,8 @@ function drawPickList(out, sorted, { width, height, fonts, title }) {
 }
 
 /**
- * sources: [{ bytes, awbs }] -- each a label PDF and the AWBs it was asked for,
- * in order. Returns { pdf: Uint8Array, summary }.
+ * sources: [{ bytes, awbs }] -- each a label PDF and the AWBs it was asked for
+ * (pages in any order). Returns { pdf: Uint8Array, summary }.
  */
 async function buildSortedLabels(sources, { date = new Date() } = {}) {
   const out = await PDFDocument.create();
@@ -355,17 +356,23 @@ async function buildSortedLabels(sources, { date = new Date() } = {}) {
     const doc = await PDFDocument.load(src.bytes, { updateMetadata: false });
     const pages = doc.getPages();
     if (pages.length !== src.awbs.length) {
-      throw new Error(`XpressBees returned ${pages.length} label pages for ${src.awbs.length} AWBs; nothing was built`);
+      throw new Error(`The courier returned ${pages.length} label pages for ${src.awbs.length} AWBs; nothing was built`);
     }
     // One copy call per source: XpressBees shares one resource dictionary
     // across every page, and copying page by page duplicates it each time.
     const copied = await out.copyPages(doc, pages.map((_, i) => i));
+    // XpressBees keeps request order; NimbusPost need not. Each page must show
+    // exactly one requested AWB not already taken by another page.
+    const wanted = new Set(src.awbs.map(String));
+    const taken = new Set();
     pages.forEach((p, i) => {
-      const awb = String(src.awbs[i]);
       const read = readPage(p);
-      if (!read.texts.some((t) => t.t === awb)) {
-        throw new Error(`Label page ${i + 1} of a batch does not show AWB ${awb}; nothing was built`);
+      const shown = [...new Set(read.texts.map((t) => t.t).filter((t) => wanted.has(t) && !taken.has(t)))];
+      const awb = shown.includes(String(src.awbs[i])) ? String(src.awbs[i]) : (shown.length === 1 ? shown[0] : null);
+      if (!awb) {
+        throw new Error(`Label page ${i + 1} of a batch does not show AWB ${src.awbs[i]}; nothing was built`);
       }
+      taken.add(awb);
       if (!size) size = { width: read.width, height: read.height };
       labels.push({ awb, page: copied[i], contentBottom: read.contentBottom, ...parseLabel(read.texts, read.segs) });
     });
