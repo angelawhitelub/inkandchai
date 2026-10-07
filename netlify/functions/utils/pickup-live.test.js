@@ -57,6 +57,9 @@ test('a courier cancel counts only on an explicit success', async () => {
   assert.equal((await cancelAtCourier(order, { channel: 'ithink' }, { fetch: reply({ data: { 1: { status: 'Success', remark: 'Cancelled', refnum: '21025863355971' } } }) })).ok, true);
   assert.equal((await cancelAtCourier(order, { channel: 'ithink' }, { fetch: reply({ data: { 1: { status: 'Failed', remark: 'Already picked up' } } }) })).ok, false);
   assert.equal((await cancelAtCourier(order, { channel: 'ithink' }, { fetch: reply({ status: 'error', html_message: 'Invalid token' }) })).ok, false);
+  const refused = await cancelAtCourier(order, { channel: 'ithink' }, { fetch: reply({ status: 'error', html_message: '<p>AWB cannot be cancelled</p>' }) });
+  assert.equal(refused.ok, false);
+  assert.match(refused.message, /: AWB cannot be cancelled$/);
   assert.equal((await cancelAtCourier(order, { channel: 'delhivery' }, { fetch: reply({ status: true, remark: 'Shipment has been cancelled' }) })).ok, true);
   assert.equal((await cancelAtCourier(order, { channel: 'delhivery' }, { fetch: reply({ status: false, remark: 'not allowed' }) })).ok, false);
   assert.equal((await cancelAtCourier(order, { channel: null })).ok, false);

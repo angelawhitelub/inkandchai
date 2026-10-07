@@ -21,6 +21,10 @@
  *                       there, PhonePe by the auto-refund in
  *                       notifyOrderCancelled; cancellation email + WhatsApp)
  *
+ * A courier that still says "not picked up" but refuses the cancel: returned
+ * as courier_refused. With confirm_manual it is cancelled and refunded anyway
+ * -- the admin is confirming the parcel will not be handed over.
+ *
  * No courier answer ("unknown"), or a panel we cannot reach (an order pushed to
  * iThink / the XpressBees panel with no AWB): returned as needs_manual. Only
  * with confirm_manual -- the admin saying they cancelled it in the courier
@@ -99,8 +103,12 @@ async function handleOne(event, sb, order, opts) {
     }
     if (live.state === 'waiting') {
       const c = await cancelAtCourier(order, live);
-      if (!c.ok) return { ...base, outcome: 'skipped', reason: c.message, live };
-      stop = c.message;
+      // The courier still says not picked up but refused to void the AWB. That
+      // is not a pickup, so the order must not sit in this tab forever: the
+      // admin can confirm the parcel is being kept back (or voided in the
+      // courier's own panel) and cancel it here anyway.
+      if (!c.ok && !opts.confirmManual) return { ...base, outcome: 'courier_refused', reason: c.message, refund, live };
+      stop = c.ok ? c.message : `admin confirmed the parcel is kept back; ${c.message}`;
     } else {
       stop = live.state === 'cancelled' ? `courier had already voided ${awb}` : 'admin confirmed it was cancelled in the courier panel';
     }

@@ -258,7 +258,9 @@ async function cancelIthink(awb, fetchFn = fetch) {
   const mine = entries.find((e) => e && String(e.refnum || e.awb_no || e.awb || awb) === String(awb)) || entries[0];
   const words = String((mine && (mine.status || '')) || '') + ' ' + String((mine && (mine.remark || mine.message || '')) || '');
   const ok = !!mine && /success/i.test(words) && !/fail|not|unable|error/i.test(String(mine.status || ''));
-  return { ok, message: ok ? `iThink cancelled ${awb}.` : `iThink did not confirm cancelling ${awb}: ${words.trim() || JSON.stringify(data).slice(0, 160)}` };
+  // An outright refusal comes back as { status: 'error', html_message: '<p>…</p>' }.
+  const said = words.trim() || String((data && (data.html_message || data.message)) || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return { ok, message: ok ? `iThink cancelled ${awb}.` : `iThink did not confirm cancelling ${awb}: ${(said || JSON.stringify(data)).slice(0, 200)}` };
 }
 
 async function cancelDelhivery(awb, fetchFn = fetch) {

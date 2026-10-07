@@ -3706,6 +3706,23 @@ async function cancelNotPickedSelected(btn, onlyRows) {
       btn.innerHTML = 'Cancelling ' + Math.min(i + 5, todo.length) + '/' + todo.length + '…';
       done.push(...await call(todo.slice(i, i + 5), manual ? { confirm_manual: true } : {}));
     }
+    // The courier still says "not picked up" but would not void the AWB.
+    const refused = done.filter(d => d.outcome === 'courier_refused');
+    if (refused.length) {
+      const refusedRs = refused.reduce((s, p) => s + Number(p.refund && p.refund.amount_rs || 0), 0);
+      if (confirm(refused.length + ' order(s): the courier still says NOT picked up, but refused to cancel the AWB:\n'
+          + refused.slice(0, 10).map(p => '  ' + p.order_id + ' — ' + p.reason).join('\n') + (refused.length > 10 ? '\n  …' : '')
+          + '\n\nThe AWB stays open at the courier, so do NOT hand these parcels over (or cancel them in the courier panel).'
+          + '\n\nOK cancels them here anyway' + (refusedRs ? ' and refunds ₹' + refusedRs.toLocaleString('en-IN') : '') + ', with the customer email and WhatsApp. Cancel leaves them in this tab.')) {
+        const ids = refused.map(p => p.id);
+        const again = [];
+        for (let i = 0; i < ids.length; i += 5) {
+          btn.innerHTML = 'Cancelling ' + Math.min(i + 5, ids.length) + '/' + ids.length + '…';
+          again.push(...await call(ids.slice(i, i + 5), { confirm_manual: true }));
+        }
+        for (const a of again) { const k = done.findIndex(d => d.id === a.id); if (k >= 0) done[k] = a; else done.push(a); }
+      }
+    }
     const ok = done.filter(d => d.outcome === 'cancelled');
     const bad = done.filter(d => d.outcome !== 'cancelled');
     msg.style.color = 'var(--cream-dim)';
