@@ -290,6 +290,51 @@ function appendHistory(phone, role, content) {
   conversationHistory.set(phone, hist);
 }
 
+// The Map above lives in ONE Worker isolate, and Cloudflare runs many, short-
+// lived. A reply a few minutes later usually lands on an isolate that has never
+// seen this customer, so the model got the new message with no conversation:
+// "One book is missing" → "which book?" → "Everything i know about love" was
+// answered with a summary of that book. bot_messages (what the Bot Inbox
+// shows) is the real conversation; read it before every reply.
+const HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+async function loadHistory(phone, deps = {}) {
+  try {
+    const db = deps.supabase || createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const since = new Date((deps.now || Date.now()) - HISTORY_WINDOW_MS).toISOString();
+    const { data, error } = await db.from('bot_messages')
+      .select('role, message, created_at')
+      .eq('customer_phone', phone)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(MAX_HISTORY);
+    if (error) throw error;
+    return (data || []).slice().reverse()
+      .filter((m) => String(m.message || '').trim())
+      .map((m) => ({
+        role: String(m.role || '').toLowerCase() === 'user' ? 'user' : 'assistant',
+        content: String(m.message).slice(0, 2000),
+      }));
+  } catch (e) {
+    console.warn('[history] load failed, using this isolate\'s memory:', e.message);
+    return null;
+  }
+}
+
+/**
+ * The stored conversation plus the message being answered. The inbound message
+ * is already stored, and a retry answers several stored messages joined into
+ * one, so trailing customer rows the current text already contains are dropped
+ * rather than sent twice.
+ */
+function historyWithCurrent(stored, userMessage) {
+  const hist = [...stored];
+  while (hist.length && hist[hist.length - 1].role === 'user'
+    && String(userMessage).includes(hist[hist.length - 1].content.trim())) hist.pop();
+  hist.push({ role: 'user', content: userMessage });
+  return hist.slice(-MAX_HISTORY);
+}
+
 // ── Placeholder text for a message the bot cannot read ───────────────────────
 // The Bot Inbox shows text only, so a photo or voice note has to be recorded as
 // something. Without this the thread just skips it and appears to start
@@ -744,6 +789,8 @@ async function buildOrderContext(from, userText) {
   return [wrongCod, rest, returns, botOrders].filter(Boolean).join('\n\n');
 }
 
+const ORDER_QUERY_RE = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book|refund|refnd|cancel|return|wapas|paisa|paise|payment|money|amount|credit|utr|reference|paid|prepaid|twice|dobara|double|cash|cod|charge|vasool|missing|incomplete|nahi\s*aa|nhi\s*aa|nahi\s*mil|nhi\s*mil|only\s*got|received\s*only|got\s*only|short/i;
+
 async function buildOrderContextBody(from, userText) {
   const orderId = extractOrderId(userText);
   if (orderId) {
@@ -762,7 +809,16 @@ async function buildOrderContextBody(from, userText) {
   // NO order context attached — so the bot could not see that the refund was
   // already issued, and answered with generic reassurance instead of the
   // reference number sitting in the row.
-  const isOrderQuery = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book|refund|refnd|cancel|return|wapas|paisa|paise|payment|money|amount|credit|utr|reference|paid|prepaid|twice|dobara|double|cash|cod|charge|vasool|missing|incomplete|nahi\s*aa|nhi\s*aa|nahi\s*mil|nhi\s*mil|only\s*got|received\s*only|got\s*only|short/i.test(userText);
+  //
+  // The message on its own is not enough: "Everything i know about love" is an
+  // answer to "which book is missing?", and without the order the model took it
+  // for a shopping question. Anything order-related the customer said in the
+  // last 24 hours counts too.
+  let isOrderQuery = ORDER_QUERY_RE.test(userText);
+  if (!isOrderQuery) {
+    const earlier = await loadHistory(from);
+    isOrderQuery = !!earlier && earlier.some((m) => m.role === 'user' && ORDER_QUERY_RE.test(m.content));
+  }
   if (!isOrderQuery) return '';
   const orders = await lookupOrdersByPhone(from);
   if (!orders.length) return '';
@@ -1047,7 +1103,9 @@ function buildSystemContent(extraInstructions, known, extraContext) {
 
 // ── Ask OpenAI (with order-intake tool support) ──────────────────────────────
 async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = null) {
-  appendHistory(phone, 'user', userMessage);
+  const stored = await loadHistory(phone);
+  if (stored) conversationHistory.set(phone, historyWithCurrent(stored, userMessage));
+  else appendHistory(phone, 'user', userMessage);
 
   const extraInstructions = await getBotExtraInstructions();
   // Put the admin's custom instructions at the TOP and mark them authoritative,
@@ -1995,5 +2053,5 @@ async function handleInboundMessage(msg, value) {
 // Shared with the admin-only missed-reply recovery function. Keeping these
 // internals here ensures live replies and retries use exactly the same prompt,
 // order lookup, WhatsApp sender selection, and persistence rules.
-exports._internal = { buildSystemContent, callOpenAIChat, formatOrderContext, getBotExtraInstructions, OPENAI_TOOLS, askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
+exports._internal = { loadHistory, historyWithCurrent, ORDER_QUERY_RE, buildSystemContent, callOpenAIChat, formatOrderContext, getBotExtraInstructions, OPENAI_TOOLS, askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
   describeNonText, collectInboundMessages, logStatusUpdates, buttonLabelOf, handleInboundMessage, processedMsgIds };
