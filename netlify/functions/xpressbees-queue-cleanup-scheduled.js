@@ -8,7 +8,8 @@
  *
  * This runs xpressbees-order-cancel -- the same endpoint, with its three
  * guards, none bypassable: the order must be carried by some courier on our
- * side, the panel row must be an unbooked 'new' row with no waybill, and rows
+ * side (or, since 9 Oct, be cancelled/refunded here with no AWB -- it will
+ * never ship, and its row otherwise sits in Pending forever), the panel row must be an unbooked 'new' row with no waybill, and rows
  * already cancelled are skipped. A booked XpressBees shipment is never touched.
  * Nothing is sent to customers and our own orders are not changed.
  *
@@ -53,7 +54,7 @@ async function defaultAlertOwner(text) {
 async function runCleanup(deps = {}, { dryRun = false } = {}) {
   const cancel = deps.cancel || defaultCancel;
   const alertOwner = deps.alertOwner || defaultAlertOwner;
-  const r = await cancel({ dry_run: dryRun, any_courier: true, limit: PER_RUN });
+  const r = await cancel({ dry_run: dryRun, any_courier: true, closed_here: true, limit: PER_RUN });
   if (r.statusCode !== 200) {
     const msg = String(r.data.error || `HTTP ${r.statusCode}`).slice(0, 300);
     if (!dryRun) await alertOwner(`⚠️ XpressBees panel cleanup failed: ${msg}`);

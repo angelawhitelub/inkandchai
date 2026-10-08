@@ -16,7 +16,7 @@ test('runs the guarded cancel for any courier, and stays quiet when all goes wel
     { orders: ['IC-1'], ok: true }, { orders: ['IC-2'], ok: true }] } });
   const alert = spy();
   const out = await runCleanup({ cancel, alertOwner: alert });
-  assert.deepEqual(cancel.calls[0], { dry_run: false, any_courier: true, limit: 100 });
+  assert.deepEqual(cancel.calls[0], { dry_run: false, any_courier: true, closed_here: true, limit: 100 });
   assert.deepEqual(out.cancelled, ['IC-1', 'IC-2']);
   assert.equal(alert.calls.length, 0);
 });

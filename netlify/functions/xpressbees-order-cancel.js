@@ -4,6 +4,7 @@
  *
  * Body: { dry_run: true,
  *         order_ids: ["IC-..."] | all_delhivery_today: true | any_courier: true,
+ *         closed_here: true,
  *         limit: 50, endpoint: "/orders/cancel", probe: false }
  * Headers: X-Admin-Key / X-Admin-Token
  *
@@ -20,6 +21,14 @@
  * any_courier: true widens guard 1 from "Delhivery is carrying it" to "SOME
  * courier is carrying it" -- a tracking_id on an order that is not cancelled.
  * Every other panel row is left alone, and guards 2 and 3 are unchanged.
+ *
+ * closed_here: true (with any_courier) also clears rows for orders that will
+ * never ship: cancelled or refunded here, with no tracking_id. A cancelled
+ * order leaves our feed, but the importer never drops a row it already
+ * pulled, so it sat in Pending with a live Ship button -- three cancelled
+ * orders and a refunded one on 9 Oct. A cancelled order WITH an AWB is still
+ * only reported (left_alone.cancelled_here). XpressBees keeps a cancelled
+ * order number reserved, so an order restored later goes back with a suffix.
  *
  * THREE GUARDS, none of them bypassable by any flag:
  *
@@ -99,6 +108,11 @@ const hasAwb = (row) => panelAwb(row) !== '';
 // else) is a shipment whether or not an AWB field is filled in.
 const isQueued = (row) => String(row.status || '').trim().toLowerCase() === 'new';
 
+/** Will never ship: cancelled or refunded here, and no AWB was ever put on it. */
+const CLOSED_STATUSES = new Set(['cancelled', 'refunded', 'refund_pending', 'refund_failed']);
+const isClosedUnshipped = (o) => CLOSED_STATUSES.has(String(o.status || '').toLowerCase())
+  && !String(o.tracking_id || '').trim();
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   const block = requireAdmin(event, CORS);
@@ -116,6 +130,7 @@ exports.handler = async (event) => {
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const anyCourier = body.any_courier === true;
+  const closedHere = anyCourier && body.closed_here === true;
 
   // ---- their side: read the panel ----
   const seen = new Set();
@@ -144,6 +159,7 @@ exports.handler = async (event) => {
 
   // ---- our side: which of those orders is a courier already carrying? ----
   let carried = new Map();
+  let closed = new Map();   // closed_here: orders that will never ship
   const leftAlone = { cancelled_here: [], not_shipped_here: [], not_in_our_orders: [] };
   if (anyCourier) {
     // Ask only about the orders actually queued there (tens to hundreds), not
@@ -164,7 +180,8 @@ exports.handler = async (event) => {
         found.add(num);
         // An AWB on an order we cancelled is a booking that never went out --
         // not "already shipped". Report it, never act on it.
-        if (String(o.status) === 'cancelled') leftAlone.cancelled_here.push(num);
+        if (closedHere && isClosedUnshipped(o)) closed.set(num, o);
+        else if (String(o.status) === 'cancelled') leftAlone.cancelled_here.push(num);
         else if (!String(o.tracking_id || '').trim()) leftAlone.not_shipped_here.push(num);
         else carried.set(num, o);
       }
@@ -194,8 +211,9 @@ exports.handler = async (event) => {
   // An explicit list narrows the set; it can never widen past guard 1.
   if (Array.isArray(body.order_ids) && body.order_ids.length) {
     const want = new Set(body.order_ids.map((s) => String(s).trim().toUpperCase()));
-    const refusedNotCarried = [...want].filter((id) => !carried.has(id));
+    const refusedNotCarried = [...want].filter((id) => !carried.has(id) && !closed.has(id));
     carried = new Map([...carried].filter(([id]) => want.has(id)));
+    closed = new Map([...closed].filter(([id]) => want.has(id)));
     if (refusedNotCarried.length && body.strict !== false) {
       return json(400, {
         error: `some ids are not carried by ${anyCourier ? 'any courier' : 'Delhivery'}; refusing the whole batch`,
@@ -209,18 +227,20 @@ exports.handler = async (event) => {
   const skipped = { already_cancelled: [], has_awb: [], booked: [] };
   for (const row of panel) {
     const base = baseOrderNumber(row.order_number);
-    if (!carried.has(base)) continue;
+    const ours = carried.get(base) || closed.get(base);
+    if (!ours) continue;
     if (isCancelled(row)) { skipped.already_cancelled.push(base); continue; }
-    if (hasAwb(row))      { skipped.has_awb.push({ order: base, awb: panelAwb(row), our_awb: carried.get(base).tracking_id, our_courier: carried.get(base).courier_name }); continue; }
-    if (!isQueued(row))   { skipped.booked.push({ order: base, status: row.status, our_awb: carried.get(base).tracking_id, our_courier: carried.get(base).courier_name }); continue; }
+    if (hasAwb(row))      { skipped.has_awb.push({ order: base, awb: panelAwb(row), our_awb: ours.tracking_id, our_courier: ours.courier_name }); continue; }
+    if (!isQueued(row))   { skipped.booked.push({ order: base, status: row.status, our_awb: ours.tracking_id, our_courier: ours.courier_name }); continue; }
     targets.push({
       order: base,
       panel_id: String(row.id),
       status: row.status,
       amount: row.order_amount,
       payment: row.payment_method,
-      carried_by: carried.get(base).courier_name || '',
-      our_status: carried.get(base).status,
+      carried_by: carried.has(base) ? (ours.courier_name || '') : '',
+      reason: carried.has(base) ? 'carried_elsewhere' : 'closed_here',
+      our_status: ours.status,
     });
   }
   targets.sort((a, b) => (a.order < b.order ? -1 : 1));
@@ -236,6 +256,7 @@ exports.handler = async (event) => {
     panel_rows_read: panel.length,
     mode: anyCourier ? 'any_courier' : 'delhivery',
     carried: carried.size,
+    closed_here: closed.size,
     to_cancel: plan.length,
     skipped_already_cancelled: skipped.already_cancelled.length,
     skipped_has_awb: skipped.has_awb.length,
