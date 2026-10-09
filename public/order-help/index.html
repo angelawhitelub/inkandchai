@@ -76,7 +76,7 @@ function render(d) {
   $('books').innerHTML = d.books.map((b) =>
     '<label class="book">'
     + (d.can_remove_book && !d.request ? '<input type="radio" name="book" value="' + b.index + '">' : '')
-    + '<span class="t">' + esc(b.title) + '<br><span class="q">Qty ' + b.qty + (b.price ? ' · ₹' + b.price : '') + '</span></span></label>'
+    + '<span class="t">' + esc(b.title) + '<br><span class="q">Qty ' + b.qty + (b.price ? ' · ₹' + Math.round(b.price) : '') + '</span></span></label>'
   ).join('');
   document.querySelectorAll('input[name="book"]').forEach((r) => r.addEventListener('change', () => { $('removeBtn').disabled = false; }));
   $('removeBox').classList.toggle('hidden', !d.can_remove_book);

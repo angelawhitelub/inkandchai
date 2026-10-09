@@ -112,7 +112,7 @@ exports.handler = async (event = {}) => {
       const b = books.find((x) => x.index === Number(input.book));
       if (!b) return json(400, { error: 'Please choose the book to remove.' });
       if (books.length < 2) return json(400, { error: 'This order has only one book; please request cancellation instead.' });
-      note = `Out-of-stock delay: customer asks to REMOVE "${b.title}"${b.qty > 1 ? ` ×${b.qty}` : ''} (₹${b.price}) and ship the rest.`
+      note = `Out-of-stock delay: customer asks to REMOVE "${b.title}"${b.qty > 1 ? ` ×${b.qty}` : ''} (₹${Math.round(b.price)}) and ship the rest.`
         + (order.tracking_id ? ' The booked AWB still carries the old amount — rebook after removing.' : '');
     } else {
       return json(400, { error: 'Unknown request.' });
