@@ -5145,6 +5145,11 @@ async function fetchOrdersPage(pageNum, limit, filterSnapshot = currentFilter) {
 // visible orders. This prevents overlapping timers from rolling the table back.
 let ordersFetchGeneration = 0;
 
+// Orders a courier update touched since this time, whatever their age (see
+// fetchChangedOrders). Set when a full load succeeds, advanced by each poll.
+let changedPollSince = null;
+const CHANGED_POLL_OVERLAP_MS = 2 * 60 * 1000;   // clock skew + slow webhooks
+
 /**
  * How many COMPLETE order loads are in flight.
  *
@@ -5160,6 +5165,7 @@ let ordersFullLoadsInFlight = 0;
 
 async function fetchOrders(reset = false) {
   const fetchGeneration = ++ordersFetchGeneration;
+  const loadStartedAt = Date.now();
   ordersFullLoadsInFlight++;
   if (reset) { page = 1; tablePage = 1; }
   const btn     = document.getElementById('refreshBtn');
@@ -5317,6 +5323,8 @@ async function fetchOrders(reset = false) {
 
     allOrders = combined;
     hasMore = false;
+    // The poll's changed-orders window starts where this load began.
+    changedPollSince = new Date(loadStartedAt - CHANGED_POLL_OVERLAP_MS).toISOString();
     // Not "fully loaded" when pages are missing. Filters, counts and exports
     // all read this, and claiming completeness over a short set is how a
     // dashboard reports numbers that are quietly wrong.
@@ -5366,6 +5374,17 @@ async function fetchOrders(reset = false) {
   }
 }
 
+/** get-orders?changed_since: older orders whose courier status moved. */
+async function fetchChangedOrders(sinceIso) {
+  const params = new URLSearchParams({ page: 1, limit: PAGE, changed_since: sinceIso });
+  const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
+    headers: { 'X-Admin-Key': adminKey },
+  });
+  if (res.status === 401) throw new Error('UNAUTHORIZED');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()).orders || [];
+}
+
 // ── Incremental refresh, used by the 90-second poll ─────────────────────────
 // fetchOrders(true) downloads the COMPLETE order set: at ~8,600 orders and
 // PAGE=500 that is 18 requests, every 90 seconds, for as long as the Orders tab
@@ -5377,9 +5396,11 @@ async function fetchOrders(reset = false) {
 // orders, and the status changes that webhooks and admins actually produce.
 // Fetching that one page and merging by id costs 1 request instead of 18.
 //
-// Deliberately NOT a full replacement for fetchOrders: an old order changed by
-// something outside this browser still needs the ↻ Refresh button, which
-// remains a complete reload. This keeps the table live, not authoritative.
+// Page 1 alone missed old orders: IC-20261001-XOYAW was delivered on 8 Oct and
+// an open tab kept showing it Out for Delivery. So the poll also asks for
+// orders a courier update touched since the last poll (fetchChangedOrders) and
+// swaps those in place. A change that no courier timestamp records -- an admin
+// edit in another browser -- still needs the ↻ Refresh button.
 async function refreshRecentOrders() {
   if (!allOrders.length) return fetchOrders(true);   // nothing to merge into
   // A full load already fetches page 1, and more besides. Polling underneath it
@@ -5394,7 +5415,15 @@ async function refreshRecentOrders() {
   // poll from overwriting a newer manual refresh, which is all it was for.
   const fetchGeneration = ordersFetchGeneration;
   try {
+    const pollStartedAt = Date.now();
     const data = await fetchOrdersPage(1, PAGE, '');
+    // Best effort: a failure here leaves the window where it was, so the next
+    // poll asks again for the same span.
+    let moved = null;
+    if (changedPollSince) {
+      try { moved = await fetchChangedOrders(changedPollSince); }
+      catch (e) { if (String(e.message) === 'UNAUTHORIZED') return; console.warn('[orders] changed-orders poll failed:', e.message); }
+    }
     if (fetchGeneration !== ordersFetchGeneration) return;
 
     const fresh = data.orders || [];
@@ -5402,11 +5431,20 @@ async function refreshRecentOrders() {
     serverTotal = data.total ?? serverTotal;
 
     const freshIds = new Set(fresh.map(o => String(o.id)));
-    const merged = fresh.concat(allOrders.filter(o => !freshIds.has(String(o.id))));
+    const movedById = new Map((moved || []).filter(o => !freshIds.has(String(o.id))).map(o => [String(o.id), o]));
+    let olderMoved = false;
+    const rest = allOrders.filter(o => !freshIds.has(String(o.id))).map(o => {
+      const m = movedById.get(String(o.id));
+      if (!m) return o;
+      if (m.status !== o.status || m.tracking_id !== o.tracking_id || m.last_courier_status !== o.last_courier_status) olderMoved = true;
+      return m;
+    });
+    const merged = fresh.concat(rest);
+    if (moved) changedPollSince = new Date(pollStartedAt - CHANGED_POLL_OVERLAP_MS).toISOString();
 
     // Skip the re-render when nothing actually moved — the common case on a
     // quiet night, and re-rendering steals focus from whatever is open.
-    const changed = merged.length !== allOrders.length
+    const changed = olderMoved || merged.length !== allOrders.length
       || fresh.some((o, i) => {
         const prev = allOrders[i];
         return !prev || String(prev.id) !== String(o.id) || prev.status !== o.status
