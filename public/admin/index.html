@@ -5374,15 +5374,26 @@ async function fetchOrders(reset = false) {
   }
 }
 
-/** get-orders?changed_since: older orders whose courier status moved. */
+/**
+ * get-orders?changed_since: older orders whose courier status moved. Paged: a
+ * laptop that slept for hours comes back to a window of several hundred (792
+ * in a 25-hour window on 9 Oct). Past the cap, the ↻ Refresh button.
+ */
+const CHANGED_POLL_MAX_PAGES = 4;
 async function fetchChangedOrders(sinceIso) {
-  const params = new URLSearchParams({ page: 1, limit: PAGE, changed_since: sinceIso });
-  const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
-    headers: { 'X-Admin-Key': adminKey },
-  });
-  if (res.status === 401) throw new Error('UNAUTHORIZED');
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()).orders || [];
+  const out = [];
+  for (let p = 1; p <= CHANGED_POLL_MAX_PAGES; p++) {
+    const params = new URLSearchParams({ page: p, limit: PAGE, changed_since: sinceIso });
+    const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
+      headers: { 'X-Admin-Key': adminKey },
+    });
+    if (res.status === 401) throw new Error('UNAUTHORIZED');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = (await res.json()).orders || [];
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
 }
 
 // ── Incremental refresh, used by the 90-second poll ─────────────────────────
