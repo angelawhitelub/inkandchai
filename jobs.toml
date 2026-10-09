@@ -476,3 +476,8 @@
 # Sorted NimbusPost labels (Waiting for Pickup) to the packing team, same times
 [functions."nimbuspost-labels-send-scheduled"]
   schedule = "30 3,8 * * *"
+
+# "A book in your order is out of stock" to customers whose booked order the
+# courier has not picked up 3+ days after ordering. Off until STOCK_DELAY_NOTIFY=on.
+[functions."stock-delay-notify-scheduled"]
+  schedule = "0 7 * * *"

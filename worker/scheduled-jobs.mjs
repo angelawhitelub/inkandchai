@@ -38,6 +38,7 @@ export const ENABLED_JOBS = new Set([
   'return-tracking-scheduled',
   'xpressbees-labels-send-scheduled',
   'nimbuspost-labels-send-scheduled',
+  'stock-delay-notify-scheduled',
   'deploy-drift-check',
   // money safety nets
   'phonepe-payment-sweep-scheduled',

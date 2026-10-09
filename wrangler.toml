@@ -80,6 +80,7 @@ crons = [
   "0 22 * * *",     # bestseller-agent-scheduled
   "30 3 * * *",    # xpressbees-queue-cleanup-scheduled
   "30 3,8 * * *",  # xpressbees- + nimbuspost-labels-send-scheduled (09:00 + 14:00 IST)
+  "0 7 * * *",     # stock-delay-notify-scheduled (12:30 IST; STOCK_DELAY_NOTIFY gates it)
 ]
 
 # The handlers build data-file paths with path.join(__dirname, ...), which does
@@ -107,6 +108,11 @@ RTO_AUTO_REFUND_MAX_PER_RUN = "25"
 # Daily cancel of XpressBees panel queue rows for orders another courier already
 # carries (xpressbees-queue-cleanup-scheduled). Unbooked rows only. "off" stops it.
 XPRESSBEES_QUEUE_CLEANUP = "on"
+
+# Customer notice "a book in your order is out of stock" for booked orders the
+# courier has not picked up 3+ days after ordering (stock-delay-notify-scheduled).
+# Customer-facing: "on" only after a dry run from the admin has been reviewed.
+STOCK_DELAY_NOTIFY = "off"
 
 # Support tickets (inkandchai.in/support/). The hourly watchdog that tells a
 # customer their ticket is taking longer than 24-48 h ("off" stops it), and

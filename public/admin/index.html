@@ -2334,6 +2334,7 @@ select,input,textarea{font-size:1rem;}
         <button class="btn-outline" onclick="exportNotPickedCsv()" title="Selected rows, or every row shown">⬇ CSV</button>
         <button class="btn-outline" onclick="exportNotPickedPdf()" title="Selected rows, or every row shown — opens a print sheet; choose Save as PDF">⬇ PDF</button>
         <button class="btn-outline" onclick="sendNotPickedReport(this)" title="The daily 10 AM report, now: a PDF of everything not picked up for the chosen number of days, oldest first, by email and WhatsApp to the report recipients">📨 Send report now</button>
+        <button class="btn-outline" onclick="sendStockDelayNotices(this)" title="Customers whose booked order the courier has not picked up 3+ days after ordering, and the courier confirms is still waiting: email + WhatsApp that a book is out of stock with us and our supplier, with a link to request cancelling the order or removing the book. Shows the list first; sends nothing until you confirm. Each order is told once.">📣 Out-of-stock notices</button>
       </div>
     </div>
     <div id="npuBulkBar" style="display:none;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.7rem;padding:.55rem .8rem;border:1px solid rgba(224,96,96,.35);border-radius:8px;background:rgba(224,96,96,.06);font-size:.72rem;">
@@ -3673,6 +3674,43 @@ async function sendNotPickedReport(btn) {
       + ((r.whatsapp || []).length ? ' · WhatsApp: ' + r.whatsapp.map(w => (w.ok ? '✓ +' : '✗ +') + esc(w.to) + (w.ok ? '' : ' (' + esc(w.error || 'failed') + ')')).join(', ') : '');
   } catch (e) {
     alert('Report failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+// "A book in your order is out of stock" to customers (stock-delay-notify-scheduled).
+// Always previews first; the daily run is gated by STOCK_DELAY_NOTIFY.
+async function sendStockDelayNotices(btn) {
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  const call = async (body) => {
+    const res = await adminFetch('/.netlify/functions/stock-delay-notify-scheduled', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    return data;
+  };
+  try {
+    btn.innerHTML = 'Asking couriers…';
+    const plan = await call({ dry_run: true });
+    const skipped = Object.entries(plan.skipped || {}).map(([k, v]) => '  ' + k + ': ' + v).join('\n');
+    if (!plan.due) { alert('No customer is due a notice right now.' + (skipped ? '\n\nNot notified:\n' + skipped : '')); return; }
+    const lines = plan.orders.slice(0, 25).map(o => '  ' + o.order + ' — ' + o.book + (o.email ? ' ✉' : '') + (o.whatsapp ? ' 📱' : ''));
+    if (!confirm(plan.due + ' customer(s) will be told a book is out of stock:\n' + lines.join('\n')
+      + (plan.due > 25 ? '\n  … and ' + (plan.due - 25) + ' more' : '')
+      + '\n\nDaily run: ' + (plan.enabled ? 'ON (12:30 IST)' : 'OFF — only this manual send') + '\n\nSend now?')) return;
+    btn.innerHTML = 'Sending…';
+    const r = await call({ dry_run: false, order_ids: plan.orders.map(o => o.order) });
+    const failed = (r.results || []).filter(x => !x.ok).map(x => x.order);
+    const viaText = (r.results || []).filter(x => x.whatsapp === 'text').length;
+    alert('Notified ' + r.notified + ' of ' + r.due + '.'
+      + (viaText ? '\n' + viaText + ' WhatsApp(s) went as plain text — the order_stock_delay template is not approved yet, so those reach only numbers that messaged us in 24 h (the email still went).' : '')
+      + (failed.length ? '\nNot delivered: ' + failed.join(', ') : ''));
+  } catch (e) {
+    alert('Out-of-stock notices failed: ' + e.message);
   } finally {
     btn.disabled = false;
     btn.innerHTML = original;
