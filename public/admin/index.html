@@ -2873,6 +2873,29 @@ select,input,textarea{font-size:1rem;}
     <div id="bookReqList" style="display:flex;flex-direction:column;gap:0.7rem;">
       <div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;">Loading…</div>
     </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin:2rem 0 0.8rem;padding-top:1.2rem;border-top:1px solid var(--border,rgba(201,168,76,0.25));">
+      <div>
+        <h2 style="margin:0;font-size:1.1rem;">🔎 Requested from Website Search</h2>
+        <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;">Books customers could not find on the site and asked us to get (search → “Request this book”). Nothing is sent to them automatically.</div>
+      </div>
+      <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+        <select id="siteReqFilter" onchange="fetchSiteBookRequests()" style="font-size:0.72rem;padding:0.35rem 0.5rem;">
+          <option value="open">Open (new + sourcing)</option>
+          <option value="new">New</option>
+          <option value="sourcing">Sourcing</option>
+          <option value="added">Added to site</option>
+          <option value="unavailable">Unavailable</option>
+          <option value="closed">Closed</option>
+          <option value="">All</option>
+        </select>
+        <button class="btn-outline" onclick="fetchSiteBookRequests()">↻ Refresh</button>
+      </div>
+    </div>
+    <div id="siteReqDemand" style="margin-bottom:0.8rem;"></div>
+    <div id="siteReqList" style="display:flex;flex-direction:column;gap:0.7rem;">
+      <div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;">Loading…</div>
+    </div>
   </div><!-- /tab-bookreq -->
 
   <!-- ═══ BESTSELLERS TAB ═══ -->
@@ -4330,14 +4353,14 @@ function teachInkAi(question) {
 async function fetchBookRequests() {
   const list = document.getElementById('bookReqList');
   if (!list) return;
+  fetchSiteBookRequests();
   try {
     const res = await fetch('/.netlify/functions/get-book-requests', { headers: { 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' } });
     const data = await res.json();
     const reqs = data.requests || [];
     window._bookReqById = Object.fromEntries(reqs.map(r => [String(r.id), r]));
-    const newCount = reqs.filter(r => r.status === 'new').length;
-    const badge = document.getElementById('bookReqBadge');
-    if (badge) { badge.textContent = newCount; badge.style.display = newCount ? '' : 'none'; }
+    window._botReqNew = reqs.filter(r => r.status === 'new').length;
+    updateBookReqBadge();
     if (!reqs.length) {
       list.innerHTML = '<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;padding:1rem 0;">No book requests yet. When a customer orders via the WhatsApp bot, it shows up here.</div>';
       return;
@@ -4386,6 +4409,93 @@ async function setBookReqStatus(id, status) {
       body: JSON.stringify({ id, status }),
     });
     fetchBookRequests();
+  } catch (e) { alert('Update failed: ' + e.message); }
+}
+// Both kinds of request count towards the tab badge.
+function updateBookReqBadge() {
+  const n = (window._botReqNew || 0) + (window._siteReqNew || 0);
+  const badge = document.getElementById('bookReqBadge');
+  if (badge) { badge.textContent = n; badge.style.display = n ? '' : 'none'; }
+}
+
+// ── Website "Request a book" (site-book-request.js) ─────────────────────────
+const SITE_REQ_STATUS = { new: '#5d9b55', sourcing: '#c9a84c', added: '#3f8fc9', unavailable: '#c93636', closed: '#8a7a62' };
+async function fetchSiteBookRequests() {
+  const list = document.getElementById('siteReqList');
+  const demandBox = document.getElementById('siteReqDemand');
+  if (!list) return;
+  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const filter = document.getElementById('siteReqFilter')?.value ?? 'open';
+  try {
+    const res = await adminFetch('/.netlify/functions/site-book-request' + (filter ? '?status=' + encodeURIComponent(filter) : ''));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (data.table_missing) {
+      demandBox.innerHTML = '';
+      list.innerHTML = '<div style="color:#c98a36;font-size:0.8rem;">The site_book_requests table does not exist yet — run sql/site_book_requests.sql in Supabase.</div>';
+      return;
+    }
+    const rows = data.requests || [];
+    if (filter === 'open' || filter === 'new') { window._siteReqNew = rows.filter(r => r.status === 'new').length; updateBookReqBadge(); }
+    const multi = (data.demand || []).filter(d => d.customers > 1).slice(0, 12);
+    demandBox.innerHTML = multi.length
+      ? '<div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-bottom:0.35rem;">Most wanted (customers asking):</div><div style="display:flex;flex-wrap:wrap;gap:0.35rem;">'
+        + multi.map(d => `<span style="font-size:0.72rem;border:1px solid var(--border,rgba(201,168,76,0.25));border-radius:999px;padding:2px 10px;">${esc(d.title)} <strong style="color:var(--gold,#c9a84c);">×${d.customers}</strong></span>`).join('') + '</div>'
+      : '';
+    if (!rows.length) {
+      list.innerHTML = '<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;padding:0.5rem 0;">No requests here yet.</div>';
+      return;
+    }
+    list.innerHTML = rows.map(r => {
+      const when = new Date(r.created_at).toLocaleString('en-IN', { timeZone:'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+      const st = r.status || 'new', col = SITE_REQ_STATUS[st] || '#8a7a62';
+      const first = String(r.customer_name || '').trim().split(/\s+/)[0] || '';
+      const waText = st === 'added'
+        ? `Hi ${first}, good news from Ink & Chai! "${r.title}" that you asked for is now available on our website: https://inkandchai.in/?q=${encodeURIComponent(r.title)}`
+        : `Hi ${first}, this is Ink & Chai about the book you requested, "${r.title}". `;
+      const btn = (s, label) => st === s ? '' : `<button class="btn-outline" style="padding:0.4rem 0.8rem;font-size:0.58rem;" onclick="setSiteReqStatus(${Number(r.id)},'${s}')">${label}</button>`;
+      return `<div style="border:1px solid var(--border,rgba(201,168,76,0.25));border-radius:12px;padding:0.9rem 1.05rem;background:var(--bg2,#1a1613);">
+        <div style="display:flex;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;align-items:baseline;">
+          <strong style="color:var(--gold,#c9a84c);font-size:0.95rem;">📚 ${esc(r.title)}${r.author ? ` <span style="font-weight:400;color:var(--cream-dim,#8a7a62);font-size:0.8rem;">by ${esc(r.author)}</span>` : ''}</strong>
+          <span style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.1em;color:${col};border:1px solid ${col};border-radius:999px;padding:1px 8px;">${esc(st)}</span>
+        </div>
+        <div style="font-size:0.8rem;margin-top:0.45rem;line-height:1.6;">
+          <div>👤 ${esc(r.customer_name || '—')}${r.phone ? ` · 📞 <a href="https://wa.me/91${esc(r.phone)}" target="_blank" style="color:var(--gold,#c9a84c);">+91 ${esc(r.phone)}</a>` : ''}${r.email ? ` · ✉️ <a href="mailto:${esc(r.email)}" style="color:var(--gold,#c9a84c);">${esc(r.email)}</a>` : ''}</div>
+          ${r.note ? `<div>📝 ${esc(r.note)}</div>` : ''}
+          <div style="color:var(--cream-dim,#8a7a62);font-size:0.72rem;">${when}${r.request_count > 1 ? ` · asked ${Number(r.request_count)} times` : ''}${r.search_query && r.search_query !== r.title ? ` · searched “${esc(r.search_query)}”` : ''}</div>
+          ${r.admin_note ? `<div style="color:var(--cream-dim,#8a7a62);">🗒 ${esc(r.admin_note)}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:0.4rem;margin-top:0.6rem;flex-wrap:wrap;">
+          ${r.phone ? `<a href="https://wa.me/91${esc(r.phone)}?text=${encodeURIComponent(waText)}" target="_blank" class="btn-outline" style="padding:0.4rem 0.8rem;font-size:0.58rem;text-decoration:none;">💬 WhatsApp</a>` : ''}
+          ${btn('sourcing','🔍 Sourcing')}${btn('added','✅ Added to site')}${btn('unavailable','✕ Unavailable')}${btn('closed','Close')}
+          <button class="btn-outline" style="padding:0.4rem 0.8rem;font-size:0.58rem;" onclick="setSiteReqNote(${Number(r.id)})">🗒 Note</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = '<div style="color:#c93636;font-size:0.8rem;">Could not load website requests: ' + String(e.message).replace(/</g,'&lt;') + '</div>';
+  }
+}
+async function setSiteReqStatus(id, status) {
+  try {
+    const res = await adminFetch('/.netlify/functions/site-book-request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    fetchSiteBookRequests();
+  } catch (e) { alert('Update failed: ' + e.message); }
+}
+async function setSiteReqNote(id) {
+  const note = prompt('Note for this request (shown only here):');
+  if (note === null) return;
+  try {
+    const res = await adminFetch('/.netlify/functions/site-book-request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, admin_note: note }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    fetchSiteBookRequests();
   } catch (e) { alert('Update failed: ' + e.message); }
 }
 // ── Bestsellers (agent drafts → review queue) ───────────────────────────────

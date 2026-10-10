@@ -44,8 +44,75 @@
   .sugg-chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 8px}.sugg-box button.sugg-chip{font:inherit;font-size:12px;padding:7px 10px;min-height:32px;border:1px solid #d5d1c6;border-radius:20px;background:#f8f5ed;color:#394536;letter-spacing:0;cursor:pointer;text-transform:none}
   .sugg-settings{display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-top:1px solid #e5e0d5;padding:10px 14px;background:#f8f6f0}.sugg-box .sugg-settings button,.sugg-settings a{font:inherit;font-size:11px;line-height:1.4;color:#596451;border:0;background:none;padding:4px 0;min-height:24px;letter-spacing:0;text-transform:none;text-decoration:underline;cursor:pointer}
   @media(max-width:600px){.sugg-t,.sugg-p{font-size:14px}.sugg-row{padding:9px 11px;gap:9px}.sugg-box{max-height:65dvh;border-radius:12px}.sugg-settings{gap:12px}}
+  .sugg-box button.sugg-request{display:block;width:calc(100% - 28px);margin:6px 14px 10px;padding:11px 14px;min-height:44px;border:1px dashed #b58a3c;border-radius:12px;background:#fbf4e4;color:#63461d;font:inherit;font-size:13px;font-weight:650;letter-spacing:0;text-transform:none;text-align:left;cursor:pointer;line-height:1.4}
+  .sugg-box button.sugg-request:hover{background:#f5e9cf}.sugg-request small{display:block;font-weight:500;color:#6f6455;font-size:12px;margin-top:2px}
+  .breq-back{position:fixed;inset:0;z-index:100000;background:#1d17128c;display:flex;align-items:center;justify-content:center;padding:16px;font-family:var(--font-sans,system-ui)}
+  .breq{background:#fffdf8;color:#252b2b;border-radius:16px;width:100%;max-width:440px;max-height:calc(100dvh - 32px);overflow:auto;padding:20px 18px 18px;box-shadow:0 20px 50px #241b1840;text-align:left}
+  .breq h2{margin:0 0 4px;font-size:18px;line-height:1.3;font-weight:700;color:#252b2b;font-family:inherit}.breq p{margin:0 0 12px;font-size:13px;line-height:1.5;color:#5b635c}
+  .breq label{display:block;font-size:12px;font-weight:650;color:#3e4a3d;margin:10px 0 4px}.breq label span{font-weight:400;color:#7a7f78}
+  .breq input,.breq textarea{display:block;width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:10px 12px;border:1px solid #d5d1c6;border-radius:10px;background:#fff;color:#252b2b}
+  .breq textarea{min-height:64px;resize:vertical}.breq input:focus,.breq textarea:focus{outline:2px solid #c9a84c;outline-offset:0;border-color:#c9a84c}
+  .breq .breq-row{display:flex;gap:10px}.breq .breq-row>div{flex:1;min-width:0}
+  .breq .breq-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .breq-actions{display:flex;gap:10px;margin-top:16px}.breq-actions button{flex:1;font:inherit;font-size:14px;font-weight:700;min-height:46px;border-radius:12px;cursor:pointer;letter-spacing:0;text-transform:none}
+  .breq-send{background:#2f4a3a;color:#fff;border:1px solid #2f4a3a}.breq-send:disabled{opacity:.6;cursor:default}.breq-cancel{background:transparent;color:#4b5548;border:1px solid #d5d1c6}
+  .breq-msg{margin-top:12px;font-size:13px;line-height:1.5}.breq-msg.err{color:#a3322a}.breq-msg.ok{color:#2f6b3a}
+  @media(max-width:420px){.breq .breq-row{flex-direction:column;gap:0}}
   `;
   const style=document.createElement('style');style.textContent=css;document.head.appendChild(style);
+  // ── "Request a book we don't have" ─────────────────────────────────────
+  // Saved by /.netlify/functions/site-book-request (admin → 📥 Book Requests).
+  let reqBack=null,reqReturn=null;
+  function savedContact(){try{const a=JSON.parse(localStorage.getItem('iac_saved_address')||'null');return a&&typeof a==='object'?a:{};}catch{return {};}}
+  function closeRequest(){if(!reqBack)return;reqBack.remove();reqBack=null;document.documentElement.style.overflow='';try{reqReturn?.focus();}catch{}}
+  function openRequest(q,source){
+    closeRequest();reqReturn=document.activeElement;
+    const c=savedContact(),title=String(q||'').trim().slice(0,200);
+    reqBack=document.createElement('div');reqBack.className='breq-back';
+    reqBack.innerHTML='<form class="breq" role="dialog" aria-modal="true" aria-labelledby="breqTitle" novalidate>'
+      +'<h2 id="breqTitle">Request a book</h2><p>Can’t find it on our site? Tell us the book and we’ll try to get it for you. We’ll message you if we can.</p>'
+      +'<label for="breqBook">Book title</label><input id="breqBook" name="title" maxlength="200" required value="'+esc(title)+'">'
+      +'<label for="breqAuthor">Author <span>(optional)</span></label><input id="breqAuthor" name="author" maxlength="120">'
+      +'<label for="breqName">Your name</label><input id="breqName" name="name" maxlength="80" autocomplete="name" value="'+esc(c.name||'')+'">'
+      +'<div class="breq-row"><div><label for="breqPhone">WhatsApp number</label><input id="breqPhone" name="phone" type="tel" inputmode="numeric" maxlength="14" autocomplete="tel" value="'+esc(c.phone||'')+'"></div>'
+      +'<div><label for="breqEmail">Email <span>(optional)</span></label><input id="breqEmail" name="email" type="email" maxlength="120" autocomplete="email" value="'+esc(c.email||'')+'"></div></div>'
+      +'<label for="breqNote">Anything else? <span>(edition, language, quantity)</span></label><textarea id="breqNote" name="note" maxlength="500"></textarea>'
+      +'<div class="breq-hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>'
+      +'<div class="breq-actions"><button type="button" class="breq-cancel">Cancel</button><button type="submit" class="breq-send">Send request</button></div>'
+      +'<div class="breq-msg" role="status" aria-live="polite"></div></form>';
+    document.body.appendChild(reqBack);document.documentElement.style.overflow='hidden';
+    const f=reqBack.querySelector('form'),msg=f.querySelector('.breq-msg'),send=f.querySelector('.breq-send'),el=id=>f.querySelector('#breq'+id);
+    const say=(t,k)=>{msg.textContent=t;msg.className='breq-msg '+(k||'');};
+    reqBack.addEventListener('click',e=>{if(e.target===reqBack||e.target.closest('.breq-cancel'))closeRequest();});
+    reqBack.addEventListener('keydown',e=>{
+      if(e.key==='Escape'){e.preventDefault();closeRequest();return;}
+      if(e.key!=='Tab')return;
+      const items=[...f.querySelectorAll('input:not([tabindex="-1"]),textarea,button')].filter(x=>!x.disabled&&x.offsetParent!==null);
+      if(!items.length)return;const first=items[0],last=items[items.length-1];
+      if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+    });
+    f.addEventListener('submit',async e=>{
+      e.preventDefault();
+      const v=Object.fromEntries(new FormData(f).entries());
+      v.title=String(v.title||'').trim();v.phone=String(v.phone||'').trim();v.email=String(v.email||'').trim();
+      if(v.title.length<2){say('Please enter the book’s title.','err');el('Book').focus();return;}
+      const digits=v.phone.replace(/\D/g,'').replace(/^(91|0)(?=\d{10}$)/,'');
+      if(v.phone&&!/^[6-9]\d{9}$/.test(digits)){say('Please enter a valid 10-digit mobile number.','err');el('Phone').focus();return;}
+      if(!v.phone&&!v.email){say('Please add your WhatsApp number or email so we can tell you when we have it.','err');el('Phone').focus();return;}
+      send.disabled=true;send.textContent='Sending…';say('');
+      try{
+        const res=await fetch('/.netlify/functions/site-book-request',{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({...v,q:String(q||'').slice(0,120),source,page_url:location.pathname})});
+        const d=await res.json().catch(()=>({}));
+        if(!res.ok||!d.ok)throw Error(d.error||'Could not send your request. Please try again.');
+        f.querySelectorAll('input,textarea,.breq-send').forEach(x=>{x.disabled=true;});
+        send.textContent='Sent';
+        say('Thank you! We’ve noted your request for “'+v.title+'”. We’ll '+(v.phone?'WhatsApp':'email')+' you if we can get it.','ok');
+        const cancel=f.querySelector('.breq-cancel');cancel.textContent='Close';cancel.focus();
+      }catch(err){say(err.message,'err');send.disabled=false;send.textContent='Send request';}
+    });
+    (title?(el('Name').value?(el('Phone').value?el('Author'):el('Phone')):el('Name')):el('Book')).focus();
+  }
   function init(input){
     if(controllers.has(input))return controllers.get(input);
     const overlay=input.id==='srchInput',form=input.closest('form'),host=overlay?document.getElementById('srchResults'):document.createElement('div');
@@ -72,9 +139,13 @@
         if(!html)html='<div class="sugg-info">Search for a book, author or topic to find your next read.</div>';
       }else{
         html+=section('Matching books',data.results,6);
+        const none=!data.results?.length&&!data.warning&&!data.partial;
+        const ask='<button type="button" class="sugg-request" data-request>'+(none?'Request “'+esc(q)+'”':'Can’t find the book you want? Request it')+'<small>'+(none?'We don’t have it yet. Tell us and we’ll try to get it for you.':'Tell us the title and we’ll try to get it for you.')+'</small></button>';
         if(!data.results?.length)html+='<div class="sugg-info">'+(data.warning||data.partial?'Some search results could not load. Try again or browse the catalogue.':'No close match for “'+esc(q)+'” yet. Try an author or fewer words, or explore these books.')+'</div>';
+        if(none)html+=ask;
         if((data.results||[]).length<4)html+=section('You may also like',data.for_you,3)+section('Bestsellers this month',data.bestsellers,4)+section('Explore books',data.featured,3);
         html+='<a class="sugg-foot" href="/?q='+encodeURIComponent(q)+'" data-all>See all results for “'+esc(q)+'” →</a>';
+        if(!none)html+=ask;
       }
       host.innerHTML=html+settings();host.style.display='block';input.setAttribute('aria-expanded','true');
       host.querySelectorAll('.sugg-row').forEach((r,i)=>r.id=id+'-'+i);
@@ -116,6 +187,7 @@
       const target=e.target.closest('a,button');if(!target)return;
       if(target.hasAttribute('data-clear')){profile={searches:[],viewed:[]};try{localStorage.removeItem('iac_searches');localStorage.removeItem('iac_viewed');}catch{}save();cache.clear();input.focus();show();return;}
       if(target.hasAttribute('data-private')){privateMode=!privateMode;try{localStorage.setItem(PRIVATE,privateMode?'1':'0');}catch{}cache.clear();input.focus();show();return;}
+      if(target.hasAttribute('data-request')){const q=input.value.trim()||lastQuery;close();openRequest(q,source);return;}
       if(target.hasAttribute('data-query')){input.value=target.dataset.query;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();return;}
       if(target.classList.contains('sugg-row')){commit();event('click',input.value.trim(),lastCount,source,target.getAttribute('href'));}
       if(target.hasAttribute('data-all')){commit();if(overlay&&window.srchShowAll){e.preventDefault();close();window.srchShowAll();}}
@@ -124,7 +196,7 @@
     input.addEventListener('blur',()=>setTimeout(()=>{if(!host.contains(document.activeElement)&&document.activeElement!==input)close();},150));
     const ctl={show,close,commit};controllers.set(input,ctl);return ctl;
   }
-  window.InkSearch={showOverlay(q){const input=document.getElementById('srchInput');if(input)init(input)?.show(q);},record(q,count,source='home'){rememberQuery(q);event('search',q,count,source);}};
+  window.InkSearch={requestBook(q,source='other'){openRequest(q,source);},showOverlay(q){const input=document.getElementById('srchInput');if(input)init(input)?.show(q);},record(q,count,source='home'){rememberQuery(q);event('search',q,count,source);}};
   function boot(){document.querySelectorAll('form.nav-search input[name="q"],form.pdp-search input[name="q"],#searchInput,#srchInput,#searchForm #q').forEach(init);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
