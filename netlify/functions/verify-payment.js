@@ -16,6 +16,7 @@ const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
+const { markBrowserReturned } = require('./utils/razorpay-browser-mark');
 
 // Authoritative amount comes from Razorpay, not the browser.
 async function fetchRazorpayOrderAmount(orderId) {
@@ -210,6 +211,46 @@ exports.handler = async (event, context) => {
     cart_items:       cart,
   };
 
+  // The owner's order email. Also sent when razorpay-webhook saved the order
+  // first, which on Cloudflare is nearly every time: the webhook then holds
+  // back its "recovered" alert (utils/razorpay-browser-mark).
+  const sendOwnerEmail = (orderId) => sendEmail({
+    to: process.env.STORE_OWNER_EMAIL,
+    subject: isPartial
+      ? `💰 Partial COD Order — ₹${paidTotal.toLocaleString('en-IN')} paid · collect ₹${balanceDue.toLocaleString('en-IN')}`
+      : `💳 New Online Order — ₹${paidTotal.toLocaleString('en-IN')} (${razorpay_payment_id})`,
+    html: emailBase(`
+      <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">${isPartial ? 'New Partial COD Order' : 'New Online Payment Received'}</h2>
+      <p style="color:#a09080;margin-bottom:16px;">
+        Order ID: <strong style="color:#c9a84c;">${orderId}</strong><br/>
+        Razorpay Payment ID: <strong style="color:#c9a84c;">${razorpay_payment_id}</strong>
+      </p>
+      <table style="font-size:14px;line-height:1.8;color:#f0e8d8;">
+        <tr><td style="color:#a09080;padding-right:16px;">Name</td><td>${customer?.name||'—'}</td></tr>
+        <tr><td style="color:#a09080;padding-right:16px;">Phone</td><td>${customer?.phone||'—'}</td></tr>
+        <tr><td style="color:#a09080;padding-right:16px;">Email</td><td>${customer?.email||'—'}</td></tr>
+        <tr><td style="color:#a09080;padding-right:16px;">Address</td><td>${customer?.address||'—'}</td></tr>
+      </table>
+      ${cartTable(cart, shipFee, discountRupees, couponCode)}
+      ${isPartial ? `<p style="color:#c9a84c;font-size:13px;background:#1c1916;padding:10px 14px;">Customer paid ₹${paidTotal.toLocaleString('en-IN')} now. Collect ₹${balanceDue.toLocaleString('en-IN')} on delivery. Full order value: ₹${fullTotal.toLocaleString('en-IN')}.</p>` : `<p style="color:#6dbf6d;font-size:13px;">✅ Payment confirmed. Ready to ship!</p>`}
+    `),
+  });
+
+  // The webhook saved the order and told the customer; what only the browser
+  // knows is still ours to do: the Google Ads click, the scratch-card coupon
+  // it used, and the owner's ordinary order email.
+  const finishDeduped = async (supabase, orderId) => {
+    await markBrowserReturned(razorpay_payment_id);
+    await recordAdClick(supabase, orderId, body.ad_click);
+    if (coupon) {
+      await redeemScratchCardForOrder(supabase, coupon, orderId)
+        .catch(e => console.error('[ScratchCard] redeem failed (non-fatal):', e.message));
+    }
+    if (process.env.STORE_OWNER_EMAIL && cart?.length) {
+      await sendOwnerEmail(orderId).catch(e => console.error('[verify-payment] owner email failed:', e.message));
+    }
+  };
+
   // Set once the row is safely in the database, so a throw from any of the
   // follow-up work inside the same try (scratch cards, Shiprocket) does not
   // park a copy of an order that already exists.
@@ -244,6 +285,7 @@ exports.handler = async (event, context) => {
       if (customer?.phone)   upd.customer_phone   = customer.phone;
       if (customer?.address) upd.customer_address = customer.address;
       await supabase.from('orders').update(upd).eq('id', existingOrder.id);
+      await finishDeduped(supabase, existingOrder.razorpay_order_id);
       return {
         statusCode: 200,
         headers: CORS,
@@ -263,6 +305,7 @@ exports.handler = async (event, context) => {
         const { data: row } = await supabase
           .from('orders').select('razorpay_order_id')
           .eq('razorpay_payment_id', razorpay_payment_id).maybeSingle();
+        if (row?.razorpay_order_id) await finishDeduped(supabase, row.razorpay_order_id);
         return {
           statusCode: 200, headers: CORS,
           body: JSON.stringify({ success: true, order_id: row?.razorpay_order_id || inkOrderId, payment_id: razorpay_payment_id, deduped: true }),
@@ -332,29 +375,7 @@ exports.handler = async (event, context) => {
 
   // ── 3. Email YOU (store owner) ────────────────────────────────────────────
   const ownerEmail = process.env.STORE_OWNER_EMAIL;
-  if (ownerEmail && cart?.length) {
-    await sendEmail({
-      to: ownerEmail,
-      subject: isPartial
-        ? `💰 Partial COD Order — ₹${paidTotal.toLocaleString('en-IN')} paid · collect ₹${balanceDue.toLocaleString('en-IN')}`
-        : `💳 New Online Order — ₹${paidTotal.toLocaleString('en-IN')} (${razorpay_payment_id})`,
-      html: emailBase(`
-        <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">${isPartial ? 'New Partial COD Order' : 'New Online Payment Received'}</h2>
-        <p style="color:#a09080;margin-bottom:16px;">
-          Order ID: <strong style="color:#c9a84c;">${inkOrderId}</strong><br/>
-          Razorpay Payment ID: <strong style="color:#c9a84c;">${razorpay_payment_id}</strong>
-        </p>
-        <table style="font-size:14px;line-height:1.8;color:#f0e8d8;">
-          <tr><td style="color:#a09080;padding-right:16px;">Name</td><td>${customer?.name||'—'}</td></tr>
-          <tr><td style="color:#a09080;padding-right:16px;">Phone</td><td>${customer?.phone||'—'}</td></tr>
-          <tr><td style="color:#a09080;padding-right:16px;">Email</td><td>${customer?.email||'—'}</td></tr>
-          <tr><td style="color:#a09080;padding-right:16px;">Address</td><td>${customer?.address||'—'}</td></tr>
-        </table>
-        ${cartTable(cart, shipFee, discountRupees, couponCode)}
-        ${isPartial ? `<p style="color:#c9a84c;font-size:13px;background:#1c1916;padding:10px 14px;">Customer paid ₹${paidTotal.toLocaleString('en-IN')} now. Collect ₹${balanceDue.toLocaleString('en-IN')} on delivery. Full order value: ₹${fullTotal.toLocaleString('en-IN')}.</p>` : `<p style="color:#6dbf6d;font-size:13px;">✅ Payment confirmed. Ready to ship!</p>`}
-      `),
-    });
-  }
+  if (ownerEmail && cart?.length) await sendOwnerEmail(inkOrderId);
 
   // ── 4. Confirmation email to CUSTOMER ─────────────────────────────────────
   if (customer?.email && cart?.length) {
