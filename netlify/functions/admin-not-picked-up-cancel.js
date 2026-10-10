@@ -184,3 +184,7 @@ exports.handler = async (event) => {
     return json(500, { error: e.message });
   }
 };
+
+// The customer's own cancel of an order not picked up in 10 days
+// (cancel-unpicked-order.js) runs this same per-order flow.
+exports.handleOne = handleOne;

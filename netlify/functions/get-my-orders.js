@@ -10,6 +10,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
 const { quoteLateCancel } = require('./utils/prepaid-late-cancel');
+const { quoteUnpickedCancel } = require('./utils/unpicked-cancel');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -151,8 +152,15 @@ exports.handler = async (event) => {
         // Offered only once sql/orders_late_cancel.sql has run: select('*')
         // carries the column (as null) from then on, and before it the
         // endpoint would refuse every click.
+        // Paid, and the courier has not picked it up 10+ days after ordering:
+        // full refund (utils/unpicked-cancel). Offered instead of the late
+        // cancel, which would keep shipping back.
+        const uc = quoteUnpickedCancel(o);
+        if (uc.eligible) {
+          o.unpicked_cancel = { refund_paise: uc.refundPaise, partial_cod: uc.partialCod };
+        }
         const lc = quoteLateCancel(o);
-        if (lc.eligible && 'late_cancel_at' in o) {
+        if (!uc.eligible && lc.eligible && 'late_cancel_at' in o) {
           o.late_cancel = { refund_paise: lc.refundPaise, deduction_paise: lc.deductionPaise,
                             books: lc.books, slab_kg: lc.slabKg, has_awb: lc.hasAwb };
         }

@@ -1575,7 +1575,7 @@ window.IACClaimEvidence = {
                </div>` : ''}
           ${addressUpdateBlock(o)}
           ${orderTrackingBlock(o)}
-          ${(() => { const c = cancelOrderBlock(o); return c || lateCancelBlock(o) || requestCancellationBlock(o); })()}
+          ${(() => { const c = unpickedCancelBlock(o) || cancelOrderBlock(o); return c || lateCancelBlock(o) || requestCancellationBlock(o); })()}
           ${returnRequestBlock(o)}
           ${replacementRequestBlock(o)}
           ${invoiceDownloadBlock(o)}
@@ -2100,6 +2100,65 @@ window.IACClaimEvidence = {
       alert('Could not cancel order: ' + err.message);
       if (btn) { btn.disabled = false; btn.textContent = isPrepaid ? 'Cancel & Refund' : 'Cancel Order'; }
     }
+  };
+
+  // ── Not picked up 10+ days after ordering ───────────────────────────────────
+  // A paid order (prepaid, or partial COD's advance) the courier has not
+  // collected: cancel with a full refund. Offered by the server
+  // (get-my-orders → order.unpicked_cancel, utils/unpicked-cancel.js), and
+  // cancel-unpicked-order asks the courier live before any money moves.
+  const UNPICKED_NOTE = 'Customer cancel: not picked up';
+  function unpickedCancelBlock(order) {
+    const status = String(order.status || '').toLowerCase();
+    const row = (inner) => `
+      <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                  display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">${inner}</div>`;
+    if (String(order.cancellation_request_note || '').startsWith(UNPICKED_NOTE)
+        && !['cancelled', 'refunded', 'refund_pending', 'refund_failed', 'partially_refunded', 'delivered'].includes(status)) {
+      return row(`
+        <div style="font-size:0.6rem;color:#e8a030;line-height:1.6;">
+          <span style="letter-spacing:0.14em;text-transform:uppercase;">Cancellation received</span>
+          <span style="display:block;margin-top:0.25rem;color:#a09080;">Our team is stopping the parcel with the courier and will send your full refund within 24 hours.</span>
+        </div>`);
+    }
+    const uc = order.unpicked_cancel;
+    if (!uc) return '';
+    const what = uc.partial_cod ? 'your advance of' : 'a full refund of';
+    return row(`
+        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
+          Sorry — the courier still hasn't collected this order.
+          <span style="display:block;margin-top:0.2rem;color:#e8a030;">You can cancel it and get ${what} ${inrPaise(uc.refund_paise)} back.</span>
+        </div>
+        <button onclick="iacUnpickedCancel('${escJs(order.id)}')"
+          id="unpicked-cancel-btn-${escJs(order.id)}"
+          data-refund="${Number(uc.refund_paise) || 0}"
+          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                 padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,112,112,0.4);
+                 color:#e87070;cursor:pointer;transition:all 0.2s;">
+          Cancel &amp; Refund
+        </button>`);
+  }
+
+  window.iacUnpickedCancel = async function (orderId) {
+    const btn = document.getElementById(`unpicked-cancel-btn-${orderId}`);
+    const refund = Number(btn?.dataset.refund || 0);
+    if (!confirm(`Cancel this order?\n\nThe courier hasn't picked it up yet, so you'll get ${inrPaise(refund)} back in full to your original payment method. This cannot be undone.`)) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
+    try {
+      const sb = getSB();
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('/.netlify/functions/cancel-unpicked-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ order_id: orderId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Cancellation failed');
+      alert(json.message || 'Order cancelled.');
+    } catch (err) {
+      alert(err.message);
+    }
+    await openMyOrders().catch(() => {});
   };
 
   // ── Prepaid cancellation after the 30-minute window ─────────────────────────
