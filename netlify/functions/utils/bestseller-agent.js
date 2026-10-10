@@ -823,6 +823,7 @@ module.exports = {
   crosswordLookup,
   findCover,
   draftCopy,
+  fetchText,
   runAgent,
   isbn13Valid,
 };

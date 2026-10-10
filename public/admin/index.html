@@ -131,6 +131,12 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .copy-hit b{display:block;font-size:0.8rem;font-weight:600;color:var(--white);}
 .copy-hit span{font-size:0.68rem;color:var(--cream-dim);}
 #copyListingBanner{margin-top:0.6rem;font-size:0.74rem;line-height:1.55;color:var(--green);}
+.amazon-fill-row{display:flex;gap:.5rem;}
+.amazon-fill-row input{flex:1;}
+.amazon-fill-row button{white-space:nowrap;font-family:'Manrope',sans-serif;font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;padding:0 1rem;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.5);color:var(--gold);cursor:pointer;}
+.amazon-fill-row button:disabled{opacity:.6;cursor:wait;}
+#amazonFillMsg{margin-top:.6rem;font-size:.74rem;line-height:1.55;color:var(--cream-dim);}
+#amazonFillMsg ul{margin:.3rem 0 0 1.1rem;padding:0;}
 .override-pill{display:inline-block;font-size:0.58rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--green);border:1px solid rgba(35,122,59,0.3);padding:0.18rem 0.5rem;margin-left:0.35rem;}
 .creator-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
 .creator-grid .wide{grid-column:1/-1;}
@@ -1549,6 +1555,14 @@ select,input,textarea{font-size:1rem;}
       <div class="mini-actions">
         <button class="btn-outline" onclick="clearCreateProductForm()">Clear Form</button>
       </div>
+    </div>
+    <div class="copy-listing-box">
+      <label for="amazonFillUrl">🛒 Fill from an Amazon link <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— paste an amazon.in book page. Fills every detail, price (MRP − 40%) and fresh AI copy. The cover is left for you; nothing is saved until you press Create.</span></label>
+      <div class="amazon-fill-row">
+        <input id="amazonFillUrl" autocomplete="off" placeholder="https://www.amazon.in/…/dp/1805335391/…" onkeydown="if(event.key==='Enter'){event.preventDefault();fillFromAmazon();}"/>
+        <button type="button" id="amazonFillBtn" onclick="fillFromAmazon()">Fill form</button>
+      </div>
+      <div id="amazonFillMsg" style="display:none;"></div>
     </div>
     <div class="copy-listing-box">
       <label for="copyListingSearch">📋 Copy from an existing listing <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— optional. Fills this form with its details and images; nothing is saved until you press Create.</span></label>
@@ -7751,6 +7765,75 @@ function fillCreateFormFromListing(src) {
     title.scrollIntoView({ behavior: 'smooth', block: 'center' });
     title.focus({ preventScroll: true });
     title.select();
+  }
+}
+
+// ── Fill the create form from an Amazon.in link ──────────────────────────────
+// admin-amazon-listing reads the page (the bestseller agent's parser): facts,
+// MRP, price at MRP − 40%, category, a duplicate check and fresh AI copy. The
+// cover and gallery are never filled -- Amazon's images are not ours to use.
+async function fillFromAmazon() {
+  const input = document.getElementById('amazonFillUrl');
+  const btn = document.getElementById('amazonFillBtn');
+  const msg = document.getElementById('amazonFillMsg');
+  const url = (input?.value || '').trim();
+  const say = (html, color) => { msg.style.display = ''; msg.style.color = color || 'var(--cream-dim)'; msg.innerHTML = html; };
+  if (!url) { say('Paste an Amazon book link first.', '#e8a030'); input?.focus(); return; }
+
+  const hasWork = ['newProdTitle', 'newProdDescription', 'newProdPrice']
+    .some(id => (document.getElementById(id)?.value || '').trim());
+  if (hasWork && !confirm('The Create Listing form already has details in it.\n\nReplace them with the Amazon book?')) return;
+
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Reading…';
+  say('Reading the Amazon page and drafting the description — about 10–20 seconds.');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-amazon-listing', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.fields) throw new Error(data.error || `HTTP ${res.status}`);
+
+    clearCreateProductForm();
+    const f = data.fields;
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v === null || v === undefined) ? '' : String(v); };
+    set('newProdTitle', f.title);
+    set('newProdAuthor', f.author);
+    set('newProdCategory', f.category);
+    set('newProdPrice', f.price_inr);
+    set('newProdOriginalPrice', f.original_price_inr);
+    set('newProdPublisher', f.publisher);
+    set('newProdIsbn', f.isbn);
+    set('newProdFormat', f.format);
+    set('newProdLanguage', f.language);
+    set('newProdPages', f.pages);
+    set('newProdDimensions', f.dimensions);
+    set('newProdWeight', f.weight_grams);
+    set('newProdPublished', f.published_on);
+    set('newProdReadingAge', f.reading_age);
+    set('newProdDescription', f.description);
+    set('newProdAuthorBio', f.author_bio);
+    set('newProdTags', f.tags);
+    set('newProdSeoTitle', f.seo_title);
+    set('newProdMetaDescription', f.meta_description);
+
+    const notes = [];
+    if (data.duplicate) {
+      notes.push((data.duplicate.kind === 'exact' ? '<strong style="color:#e06060;">Already listed:</strong> ' : '<strong style="color:#e8a030;">Possibly already listed:</strong> ')
+        + '<a href="/product/' + encodeURIComponent(data.duplicate.slug) + '/" target="_blank" rel="noopener">' + esc(data.duplicate.title) + '</a>');
+    }
+    (data.warnings || []).forEach(w => notes.push(esc(w)));
+    notes.push('<span style="color:var(--orange);">Add the cover image below</span> — it is not taken from Amazon.');
+    say('✓ Filled from Amazon (' + esc(data.asin) + '): ' + esc(f.title || '')
+      + (f.original_price_inr ? ' · MRP ₹' + esc(f.original_price_inr) + ' → ₹' + esc(f.price_inr) : '')
+      + '<ul>' + notes.map(n => '<li>' + n + '</li>').join('') + '</ul>', 'var(--green)');
+    input.value = '';
+    const cover = document.getElementById('newProdImageUrl');
+    if (cover) cover.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (e) {
+    say(esc(e.message), '#e06060');
+  } finally {
+    btn.disabled = false; btn.textContent = old;
   }
 }
 

@@ -94,3 +94,6 @@ exports.handler = async (event = {}) => {
     return json(500, { error: e.message });
   }
 };
+
+// Also used by admin-amazon-listing for its duplicate check.
+exports.loadCatalogue = loadCatalogue;
