@@ -42,3 +42,11 @@ test('the product page shows the count from 10 sold', () => {
   assert.match(soldLine(129), /🔥 129 sold/);
   assert.match(soldLine(1500), /1,500 sold/);
 });
+
+test('Reader Bestsellers keeps the month order but shows lifetime units', () => {
+  const { withLifetimeCounts } = require('../homepage-merchandising')._test;
+  const month = [{ slug: 'New-Hit', title: 'New Hit', qty: 40 }, { slug: 'classic', title: 'Classic', qty: 12 }, { slug: '', title: 'No Slug', qty: 5 }];
+  const out = withLifetimeCounts(month, { counts: { 'new-hit': 55, classic: 515 } });
+  assert.deepEqual(out.map((r) => [r.title, r.qty, r.month_qty]), [['New Hit', 55, 40], ['Classic', 515, 12], ['No Slug', 5, 5]]);
+  assert.deepEqual(withLifetimeCounts(month, null).map((r) => r.qty), [40, 12, 5], 'before the first run: month numbers');
+});
