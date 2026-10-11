@@ -5745,7 +5745,10 @@ function linkedRecordsFor(order) {
     };
     for (const o of allOrders) {
       const orig = replacementOriginalId(o);
-      if (orig) add(orig, { kind: 'replacement', id: o.razorpay_order_id || o.id, rowId: o.id, status: o.status || '' });
+      if (orig) {
+        const meta = (o.cart_items || []).find(i => i && i._replacement)?._replacement;
+        add(orig, { kind: 'replacement', id: o.razorpay_order_id || o.id, rowId: o.id, status: o.status || '', meta });
+      }
     }
     for (const r of allReturns()) {
       add(r.order_display_id || r.order_id, { kind: 'return', id: r.order_display_id || r.order_id, status: r.status || 'pending' });
@@ -5768,8 +5771,25 @@ function linkedRecordsHtml(order) {
       : ' onclick="event.preventDefault(); switchTab(\'returns\')" href="#"';
     return `<a${jump} title="${label} raised against this order — click to open"
       style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;background:rgba(${colour},0.12);border:1px solid rgba(${colour},0.4);color:rgb(${colour});font-weight:600;text-decoration:none;">
-      ${label}${l.kind === 'replacement' ? ` · ${esc(String(l.id))}` : ''}${status ? ` · ${esc(status)}` : ''}</a>`;
+      ${label}${l.kind === 'replacement' ? ` · ${esc(String(l.id))}` : ''}${status ? ` · ${esc(status)}` : ''}</a>${l.kind === 'replacement' ? replacementReasonHtml(l.meta) : ''}`;
   }).join('');
+}
+
+// Why a replacement was sent, readable in the Orders table on both the
+// replacement row and the original's row. It used to live only in a hover
+// tooltip on the replacement badge.
+function replacementReasonText(meta) {
+  if (!meta) return '';
+  return String(meta.reason_label || meta.reason || '').replace(/_/g, ' ').trim();
+}
+
+function replacementReasonHtml(meta) {
+  const reason = replacementReasonText(meta);
+  const note = String(meta?.note || '').replace(/\s+/g, ' ').trim();
+  if (!reason && !note) return '';
+  const shortNote = note.length > 140 ? note.slice(0, 140) + '…' : note;
+  return `<div title="${esc(note || reason)}" style="margin-top:3px;max-width:240px;font-size:0.62rem;line-height:1.35;color:#9fd49f;white-space:normal;">
+    <strong style="font-weight:600;">Reason:</strong> ${esc(reason || '—')}${shortNote ? `<span style="color:var(--cream-dim);"> — ${esc(shortNote)}</span>` : ''}</div>`;
 }
 
 // Put a value in the orders search box and run the filter. Used by every
@@ -6465,13 +6485,13 @@ function _drawTable() {
         <div class="order-id">${esc(o.razorpay_order_id || o.id || '—')}</div>
         ${o.razorpay_payment_id ? `<div class="pay-id">${esc(o.razorpay_payment_id)}</div>` : ''}
         ${/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || '')) ? `<div title="Contains Crossword-migrated genuine-tag book(s)" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.4);color:#c9a84c;font-weight:600;">📚 Crossword</div>` : ''}
-        ${o.source === 'replacement' ? (() => {
-          const meta = Array.isArray(o.cart_items) && o.cart_items[0]?._replacement;
+        ${isReplacement ? (() => {
+          const meta = items.find(i => i && i._replacement)?._replacement;
           const orig = meta?.original_order_id ? esc(meta.original_order_id) : '';
-          const reasonLabel = meta?.reason_label ? esc(meta.reason_label) : '';
+          const reasonLabel = esc(replacementReasonText(meta));
           // The jump used to target #searchInput, which does not exist — the
           // link threw and nothing happened. The search box is #searchBox.
-          return `<div title="Replacement of ${orig}${reasonLabel ? ' — ' + reasonLabel : ''}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;font-weight:600;">🔄 Replacement${orig ? ` · <a href="#" onclick="event.preventDefault(); searchOrders('${orig}')" style="color:#6dbf6d;text-decoration:underline;">${orig}</a>` : ''}${meta?.reported_via === 'whatsapp' ? ' · <span title="Filed by the WhatsApp bot from the customer\'s chat — check Bot Inbox">💬 bot</span>' : ''}</div>`;
+          return `<div title="Replacement of ${orig}${reasonLabel ? ' — ' + reasonLabel : ''}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;font-weight:600;">🔄 Replacement${orig ? ` · <a href="#" onclick="event.preventDefault(); searchOrders('${orig}')" style="color:#6dbf6d;text-decoration:underline;">${orig}</a>` : ''}${meta?.reported_via === 'whatsapp' ? ' · <span title="Filed by the WhatsApp bot from the customer\'s chat — check Bot Inbox">💬 bot</span>' : ''}</div>${replacementReasonHtml(meta)}`;
         })() : ''}
         ${o.late_cancel_at ? (() => {
           // Customer cancelled a prepaid order after the 30-minute window
