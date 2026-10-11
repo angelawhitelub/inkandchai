@@ -1313,8 +1313,26 @@ window.IACClaimEvidence = {
   // "picked" — unanchored to "picked up" — is the status NimbusPost really
   // sends first, and its absence here is half of why a picked-up parcel still
   // offered a Cancel button.
+  //
+  // last_courier_status is the courier's own word for bookings that send no
+  // scans (iThink, Amazon Shipping...). Twin of pickupState() in
+  // netlify/functions/utils/pickup-live.js: anything that is not a "waiting"
+  // phrase, a cancellation or an error counts as moved. Without it a parcel
+  // Amazon had delivered still showed Cancel (IC-20260919-IUPN2).
+  const COURIER_WAITING = new Set(['manifested', 'not picked', 'not picked up', 'pickup pending', 'pending pickup',
+    'pickup scheduled', 'pickup not done', 'pickup rescheduled', 'pickup exception', 'pickup failed', 'booked',
+    'awb assigned', 'awb generated', 'ready to ship', 'new', 'open', 'data received', 'shipment booked',
+    'order placed', 'awaiting pickup', 'manifest generated', 'pickup generated', 'out for pickup']);
+  function courierSaysMoved(raw) {
+    const s = String(raw || '').toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!s || /not found|invalid|no data|no record|error|unauthori[sz]ed|lookup failed/.test(s)) return false;
+    if (/cancel/.test(s) && !/rto|return/.test(s)) return false;
+    return !COURIER_WAITING.has(s);
+  }
+
   function shipmentHasMoved(order) {
-    if (order?.shipment_moved_at || isNimbusInTransit(order)) return true;
+    if (order?.shipment_moved_at || order?.delivered_at || isNimbusInTransit(order)) return true;
+    if (courierSaysMoved(order?.last_courier_status)) return true;
     const raw = String(order?.last_nimbuspost_status || '').toLowerCase().trim();
     return /^(?:picked|pickup done|shipped|dispatched|out[ _-]?for[ _-]?delivery|ofd|delivered|rto|return to origin|undelivered|ndr|delivery (?:failed|attempt failed|exception)|lost)/.test(raw);
   }
