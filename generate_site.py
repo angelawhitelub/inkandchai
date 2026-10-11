@@ -4527,6 +4527,44 @@ _BOOK_CARD_JS = r"""
     return (off < MIN_WORTH_SHOWING || off > MAX_CREDIBLE_OFF) ? 0 : off;
   }
 
+  /* Lifetime units sold ("🔥 445 sold"), for books with 10+ sold: the same
+     number the product page and Reader Bestsellers show. Loaded once per page
+     from sold-counts; cards drawn before it arrives are filled in after. */
+  var SOLD_KEY = 'iac_sold_counts';
+  var soldCounts = null;
+  try { soldCounts = JSON.parse(sessionStorage.getItem(SOLD_KEY) || 'null'); } catch (e) {}
+
+  function soldLine(b) {
+    var n = soldCounts && b && b.slug ? soldCounts[String(b.slug).toLowerCase()] : 0;
+    return n ? '<div class="iac-sold" style="font-size:.72rem;font-weight:600;color:#c4621a;margin:.15rem 0 .1rem;">'
+      + '🔥 ' + Number(n).toLocaleString('en-IN') + ' sold</div>' : '';
+  }
+
+  function fillSoldLines(root) {
+    if (!soldCounts) return;
+    var cards = (root || document).querySelectorAll('a.book-card[href^="/product/"]');
+    for (var i = 0; i < cards.length; i++) {
+      var a = cards[i];
+      if (a.querySelector('.iac-sold') || a.getAttribute('data-no-sold')) continue;
+      var m = (a.getAttribute('href') || '').match(/^\/product\/([^/?#]+)/);
+      var slug = '';
+      try { slug = m ? decodeURIComponent(m[1]) : ''; } catch (e) { slug = m ? m[1] : ''; }
+      var html = soldLine({ slug: slug });
+      var author = a.querySelector('.book-author');
+      if (html && author) author.insertAdjacentHTML('afterend', html);
+    }
+  }
+  window.iacFillSoldLines = fillSoldLines;
+
+  if (window.fetch) {
+    fetch('/.netlify/functions/sold-counts').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (!d || !d.counts) return;
+      soldCounts = d.counts;
+      try { sessionStorage.setItem(SOLD_KEY, JSON.stringify(soldCounts)); } catch (e) {}
+      fillSoldLines();
+    }).catch(function () {});
+  }
+
   function isSold(b) {
     return !!b && b.stock !== null && b.stock !== undefined && Number(b.stock) <= 0;
   }
@@ -4597,8 +4635,12 @@ _BOOK_CARD_JS = r"""
         + (qty ? qty : '+') + '</button>';
     }
 
+    // A caller's own "N sold" badge (Reader Bestsellers) already says it.
+    var noSold = /sold/i.test(String(opts.badge || ''));
+
     return '<a class="book-card' + (opts.className ? ' ' + esc(opts.className) : '') + '"'
-      + ' href="/product/' + esc(b.slug) + '/" style="text-decoration:none;color:inherit;display:block;">'
+      + ' href="/product/' + esc(b.slug) + '/"' + (noSold ? ' data-no-sold="1"' : '')
+      + ' style="text-decoration:none;color:inherit;display:block;">'
       + '<div class="book-cover" style="position:relative;">'
       +   (badges ? '<span class="iac-badges">' + badges + '</span>' : '')
       +   '<img src="' + esc(b.img || '') + '" alt="' + esc(b.t) + '" loading="lazy" onerror="this.style.display=\'none\'"/>'
@@ -4606,6 +4648,7 @@ _BOOK_CARD_JS = r"""
       + '</div>'
       + '<div class="book-name">' + esc(b.t) + '</div>'
       + '<div class="book-author">' + esc(b.a || '') + '</div>'
+      + (noSold ? '' : soldLine(b))
       + '<div class="iac-meta">'
       +   '<span class="book-price">' + esc(b.p) + (b.op ? '<span class="iac-orig">' + esc(b.op) + '</span>' : '') + '</span>'
       +   (b.cat ? '<span class="iac-cat">' + esc(b.cat) + '</span>' : '')
