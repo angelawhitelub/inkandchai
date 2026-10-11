@@ -198,6 +198,7 @@ exports.handler = async (event) => {
     const check = await checkAuthor(
       {
         title, given: str(body.author, 120), suggested: str(out.author, 120),
+        publisher: str(body.publisher, 120), isbn: str(body.isbn, 40),
         whoWrote: () => askWhoWrote(
           { title, publisher: str(body.publisher, 120), isbn: str(body.isbn, 40), language: str(body.language, 40) },
           { apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_LISTING_MODEL || 'gpt-4.1' },

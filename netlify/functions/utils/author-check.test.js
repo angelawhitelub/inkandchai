@@ -10,6 +10,10 @@ function openLibrary({ down = false } = {}) {
   return async (url) => {
     if (down) throw new Error('offline');
     const q = new URL(url).searchParams;
+    if (q.get('publisher') === 'Poisoned Pen Press' || q.get('q') === 'isbn:9781464249648') {
+      return { ok: true, json: async () => ({ docs: [{ title: 'The Witch', author_name: ['Freida McFadden'] }] }) };
+    }
+    if (!q.get('title')) return { ok: true, json: async () => ({ docs: [] }) };
     const title = q.get('title').toLowerCase();
     const author = q.get('author').toLowerCase();
     const authors = (LIBRARY[title] || []).filter((a) => a.toLowerCase().split(' ').pop() === author.split(' ').pop());
@@ -58,4 +62,13 @@ test('when the AI just repeats a wrong author, an unanchored question and the da
     { fetchImpl: openLibrary() });
   assert.equal(asked2, 0);
   assert.equal(ok.author, 'Lynn Painter');
+});
+
+test('the database names the author by ISBN or publisher, even when no AI knows the book', async () => {
+  const noIdea = async () => '';
+  for (const extra of [{ publisher: 'Poisoned Pen Press' }, { isbn: '978-1464249648' }]) {
+    const r = await checkAuthor({ title: WITCH, given: 'Ruth Ware', suggested: 'Ruth Ware', whoWrote: noIdea, ...extra }, { fetchImpl: openLibrary() });
+    assert.equal(r.author, 'Freida McFadden', JSON.stringify(extra));
+    assert.equal(r.status, 'corrected');
+  }
 });

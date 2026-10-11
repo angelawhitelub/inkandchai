@@ -67,6 +67,36 @@ async function databaseLists(title, author, { fetchImpl = fetch, googleKey } = {
 }
 
 /**
+ * The author a book database gives for this exact book, found by ISBN or by
+ * title + publisher (title alone is ambiguous: Open Library's only exact "The
+ * Witch" is Ronald Hutton's history book). '' unless exactly one author answers.
+ */
+async function databaseAuthor({ title, publisher, isbn }, { fetchImpl = fetch } = {}) {
+  const want = coreTitle(title);
+  const isbn13 = String(isbn || '').replace(/[^0-9Xx]/g, '');
+  const core = String(title).split(/\s*[:|([]\s*/)[0].replace(/\s+by\s+.+$/i, '').trim();
+  let params;
+  if (isbn13.length === 10 || isbn13.length === 13) params = { q: `isbn:${isbn13}` };
+  else if (String(publisher || '').trim() && core) params = { title: core, publisher: String(publisher).trim() };
+  else return '';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetchImpl(`https://openlibrary.org/search.json?${new URLSearchParams({ ...params, fields: 'title,author_name', limit: '10' })}`,
+      { headers: { Accept: 'application/json' }, signal: controller.signal });
+    if (!res.ok) return '';
+    const docs = ((await res.json()).docs || []).filter((d) => coreTitle(d.title) === want && (d.author_name || []).length);
+    const names = new Map();
+    for (const d of docs) { const n = d.author_name[0]; names.set(surname(n), n); }
+    return names.size === 1 ? [...names.values()][0] : '';
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Who wrote this book, asked without the typed author in the question. The
  * listing model, told "Author: Ruth Ware", simply agreed; this one has nothing
  * to agree with. Its answer is still only a suggestion for checkAuthor.
@@ -112,12 +142,17 @@ async function askWhoWrote({ title, publisher, isbn, language }, { fetchImpl = f
  *             title -- the case where a wrong author would otherwise survive.
  * @returns {{ author: string, status: 'same'|'filled'|'corrected'|'kept'|'unconfirmed', note: string }}
  */
-async function checkAuthor({ title, given, suggested, whoWrote }, opts = {}) {
+async function checkAuthor({ title, given, suggested, whoWrote, publisher, isbn }, opts = {}) {
   const g = String(given || '').replace(/\s+/g, ' ').trim();
   let s = String(suggested || '').replace(/\s+/g, ' ').trim();
-  if (g && (!s || samePerson(g, s)) && whoWrote) {
+  if (g && (!s || samePerson(g, s))) {
     if ((await databaseLists(title, g, opts).catch(() => null)) === false) {
-      const other = await whoWrote().catch(() => '');
+      // The database's own answer for this edition outranks any model.
+      const listed = await databaseAuthor({ title, publisher, isbn }, opts).catch(() => '');
+      if (listed && !samePerson(listed, g)) {
+        return { author: listed, status: 'corrected', note: `Author corrected: "${g}" → "${listed}" (Open Library lists ${listed} for this ${isbn ? 'ISBN' : 'title and publisher'}).` };
+      }
+      const other = whoWrote ? await whoWrote().catch(() => '') : '';
       if (other && !samePerson(other, g)) s = other;
     }
   }
@@ -137,4 +172,4 @@ async function checkAuthor({ title, given, suggested, whoWrote }, opts = {}) {
   return { author: g, status: 'unconfirmed', note: `The AI thinks the author is "${s}", not "${g}". No book database confirms it, so it was not changed — check the cover.` };
 }
 
-module.exports = { checkAuthor, askWhoWrote, databaseLists, samePerson, coreTitle };
+module.exports = { checkAuthor, askWhoWrote, databaseAuthor, databaseLists, samePerson, coreTitle };
