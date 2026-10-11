@@ -25,6 +25,7 @@ import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, 
 import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
 import soldOutUtil from '../netlify/functions/utils/sold-out.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
+import newArrivals from '../netlify/functions/utils/new-arrivals.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
@@ -566,6 +567,37 @@ async function sitemapWithCustom(request, env, ctx, origin) {
   return new Response(xml, { status: 200, headers });
 }
 
+// /new-arrivals/ and /new-arrivals-2026/ are baked from the catalogue, so books
+// created in the admin never showed there. The newest ones go first in the
+// grid (utils/new-arrivals). A failed read serves the baked page unchanged.
+const ARRIVALS_TTL_MS = 5 * 60_000;
+let _arrivals = null;
+let _arrivalsAt = 0;
+
+async function newArrivalsPage(request, env, ctx, origin) {
+  const asset = await env.ASSETS.fetch(request);
+  if (request.method !== 'GET' || asset.status !== 200
+      || !/text\/html/i.test(asset.headers.get('content-type') || '')) return asset;
+  const now = Date.now();
+  if (!_arrivals || now - _arrivalsAt > ARRIVALS_TTL_MS) {
+    try {
+      const res = await runHandler('new-arrivals-custom', new Request(`${origin}${FN_PREFIX}new-arrivals-custom`), env, ctx);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const doc = await res.json();
+      _arrivals = Array.isArray(doc.books) ? doc.books : [];
+      _arrivalsAt = now;
+    } catch (err) {
+      console.warn('[new-arrivals] read failed:', err && err.message);
+      if (!_arrivals) return asset;
+    }
+  }
+  const { html, added } = newArrivals.injectNewArrivals(await asset.text(), _arrivals, { deleted: await deletedSlugs(env) });
+  const headers = new Headers(asset.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  headers.set('X-New-Arrivals-Added', String(added));
+  return new Response(html, { status: 200, headers });
+}
+
 function gonePage(slug) {
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -675,6 +707,7 @@ export default {
 
     if (url.pathname === '/feed.xml') return soldOutFeed(request, env, ctx, url.origin);
     if (url.pathname === '/sitemap.xml') return sitemapWithCustom(request, env, ctx, url.origin);
+    if (/^\/new-arrivals(?:-2026)?\/?$/.test(url.pathname)) return newArrivalsPage(request, env, ctx, url.origin);
 
     const assetResponse = await env.ASSETS.fetch(request);
 
