@@ -44,3 +44,18 @@ test('spelling, case and order fixes need no lookup; an empty author is filled',
   assert.equal((await checkAuthor({ title: 'X', given: '', suggested: 'Lynn Painter' }, { fetchImpl: never })).status, 'filled');
   assert.ok(samePerson('Saint-Exupéry Antoine de', 'Antoine de Saint-Exupery'));
 });
+
+test('when the AI just repeats a wrong author, an unanchored question and the database fix it', async () => {
+  let asked = 0;
+  const r = await checkAuthor({ title: WITCH, given: 'Ruth Ware', suggested: 'Ruth Ware', whoWrote: async () => { asked++; return 'Freida McFadden'; } },
+    { fetchImpl: openLibrary() });
+  assert.equal(asked, 1);
+  assert.equal(r.status, 'corrected');
+  assert.equal(r.author, 'Freida McFadden');
+  // A right author is never second-guessed: the database lists it, so no question is asked.
+  let asked2 = 0;
+  const ok = await checkAuthor({ title: 'Trust Fall', given: 'Lynn Painter', suggested: 'Lynn Painter', whoWrote: async () => { asked2++; return 'X'; } },
+    { fetchImpl: openLibrary() });
+  assert.equal(asked2, 0);
+  assert.equal(ok.author, 'Lynn Painter');
+});

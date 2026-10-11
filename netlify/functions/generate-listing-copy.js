@@ -39,7 +39,7 @@
 const { requireAdmin } = require('./utils/admin-auth');
 const { findIsbn } = require('./utils/isbn-lookup');
 const { displayTitle } = require('./utils/listing-title');
-const { checkAuthor } = require('./utils/author-check');
+const { checkAuthor, askWhoWrote } = require('./utils/author-check');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -196,7 +196,13 @@ exports.handler = async (event) => {
     // A different author than the one typed is taken only when a book
     // database confirms it (utils/author-check); the model alone is not enough.
     const check = await checkAuthor(
-      { title, given: str(body.author, 120), suggested: str(out.author, 120) },
+      {
+        title, given: str(body.author, 120), suggested: str(out.author, 120),
+        whoWrote: () => askWhoWrote(
+          { title, publisher: str(body.publisher, 120), isbn: str(body.isbn, 40), language: str(body.language, 40) },
+          { apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_LISTING_MODEL || 'gpt-4.1' },
+        ),
+      },
       { googleKey: process.env.GOOGLE_BOOKS_API_KEY },
     );
     const author = check.author;
