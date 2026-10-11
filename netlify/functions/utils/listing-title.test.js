@@ -6,7 +6,7 @@ const { displayTitle } = require('./listing-title');
 
 test('marketing subtitle goes, author comes in', () => {
   assert.equal(displayTitle('Trust Fall: From the no. 1 bestselling author of Better than the Movies', 'Lynn Painter'), 'Trust Fall by Lynn Painter');
-  assert.equal(displayTitle('The Witch: The haunting new thriller from the #1 Sunday Times bestselling author', 'Ruth Ware'), 'The Witch by Ruth Ware');
+  assert.equal(displayTitle('The Witch: The haunting new thriller from the #1 Sunday Times bestselling author', 'Freida McFadden'), 'The Witch by Freida McFadden');
   assert.equal(displayTitle('Strange Pictures: The Japanese Mystery Sensation', 'Uketsu'), 'Strange Pictures by Uketsu');
 });
 
