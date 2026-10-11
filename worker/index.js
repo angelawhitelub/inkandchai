@@ -24,6 +24,7 @@ export { SpendGuard } from './spend-guard.js';
 import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable } from './cache-policy.mjs';
 import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
 import soldOutUtil from '../netlify/functions/utils/sold-out.js';
+import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
@@ -534,6 +535,37 @@ async function soldOutFeed(request, env, ctx, origin) {
   return new Response(xml, { status: 200, headers });
 }
 
+// sitemap.xml is baked from the catalogue; the books created in the admin
+// (custom_products) are appended here, so Google finds them without a site
+// build. utils/custom-sitemap. A failed read serves the baked file unchanged.
+const SITEMAP_TTL_MS = 10 * 60_000;
+let _customUrls = null;
+let _customUrlsAt = 0;
+
+async function sitemapWithCustom(request, env, ctx, origin) {
+  const asset = await env.ASSETS.fetch(request);
+  if (request.method !== 'GET' || asset.status !== 200) return asset;
+  const now = Date.now();
+  if (!_customUrls || now - _customUrlsAt > SITEMAP_TTL_MS) {
+    try {
+      const res = await runHandler('custom-products-sitemap', new Request(`${origin}${FN_PREFIX}custom-products-sitemap`), env, ctx);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const doc = await res.json();
+      _customUrls = Array.isArray(doc.urls) ? doc.urls : [];
+      _customUrlsAt = now;
+    } catch (err) {
+      console.warn('[sitemap] custom products read failed:', err && err.message);
+      if (!_customUrls) return asset;
+    }
+  }
+  const { xml, added } = customSitemap.mergeSitemap(await asset.text(), _customUrls, { deleted: await deletedSlugs(env) });
+  const headers = new Headers(asset.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  headers.set('Content-Type', 'application/xml; charset=utf-8');
+  headers.set('X-Custom-Products', String(added));
+  return new Response(xml, { status: 200, headers });
+}
+
 function gonePage(slug) {
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -642,6 +674,7 @@ export default {
     }
 
     if (url.pathname === '/feed.xml') return soldOutFeed(request, env, ctx, url.origin);
+    if (url.pathname === '/sitemap.xml') return sitemapWithCustom(request, env, ctx, url.origin);
 
     const assetResponse = await env.ASSETS.fetch(request);
 

@@ -1653,7 +1653,7 @@ select,input,textarea{font-size:1rem;}
         </label>
         <textarea id="newProdBrief" rows="2" placeholder="Optional — tell the AI what this description must mention. E.g. &quot;Tamil translation, not the English original. Mention it is the 2024 reprint and the box has all 3 volumes.&quot;"
           style="margin-bottom:.5rem;"></textarea>
-        <p class="hint" style="margin:-.2rem 0 .6rem;">The model only knows the title and author. Anything specific to <em>this</em> copy — edition, translator, what is in the set — has to come from you.</p>
+        <p class="hint" style="margin:-.2rem 0 .6rem;">The model only knows the title and author. Anything specific to <em>this</em> copy — edition, translator, what is in the set — has to come from you. It also tidies the title to “Title by Author” (marketing subtitles removed, as Google is sent), corrects the author's name and fills the language — every change is listed before you save.</p>
         <textarea id="newProdDescription" placeholder="Write the book description customers should see on the product detail page."></textarea>
         <p class="hint" style="margin-top:.4rem;">Formatting: <code>**bold**</code> · <code>*italic*</code> · <code>## Heading</code> · <code>- bullet</code> · blank line = new paragraph.</p>
       </div>
@@ -7916,6 +7916,25 @@ function copyListingBySlug(slug) {
 // it `fill` when a book database lists it for this title; a web-only answer is
 // reported, never typed in -- a wrong ISBN becomes a wrong GTIN at Google.
 // Only an empty box is filled, so a number typed while the draft ran survives.
+// Title, author and language from an AI draft. Filled only where the draft
+// differs, and every change is named in the message, so nothing is replaced
+// unseen. The title is "Title by Author" with marketing subtitles removed --
+// the same rule the product page and the Google feeds apply.
+function applyDraftDetails(ids, data) {
+  const changes = [];
+  for (const [key, id, label] of [['title', ids.title, 'Title'], ['author', ids.author, 'Author'], ['language', ids.language, 'Language']]) {
+    const el = document.getElementById(id);
+    const next = String((data && data[key]) || '').trim();
+    if (!el || !next) continue;
+    const cur = el.value.trim();
+    if (cur === next) continue;
+    el.value = next;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    changes.push(cur ? `${label}: "${cur}" → "${next}"` : `${label}: "${next}"`);
+  }
+  return changes.length ? ' Updated ' + changes.join('; ') + '.' : '';
+}
+
 function applyDraftIsbn(inputId, r) {
   if (!r) return '';
   const el = document.getElementById(inputId);
@@ -7981,11 +8000,12 @@ async function generateListingCopy() {
     set('newProdSeoTitle', data.seo_title);
     set('newProdMetaDescription', data.meta_description);
     const isbnNote = applyDraftIsbn('newProdIsbn', data.isbn);
+    const detailNote = applyDraftDetails({ title: 'newProdTitle', author: 'newProdAuthor', language: 'newProdLanguage' }, data);
 
     // Character counts, because these two are the fields Google truncates and
     // the model treats the limits as a suggestion.
     const t = (data.seo_title || '').length, m = (data.meta_description || '').length;
-    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.${isbnNote}`, '#6dbf6d');
+    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.${detailNote}${isbnNote}`, '#6dbf6d');
   } catch (e) {
     say(e.message, '#e06060');
   } finally {
@@ -10730,11 +10750,12 @@ async function generateProductCopy() {
     set('prodSeoTitle', data.seo_title);
     set('prodMetaDescription', data.meta_description);
     const isbnNote = applyDraftIsbn('prodIsbn', data.isbn);
+    const detailNote = applyDraftDetails({ title: 'prodTitle', author: 'prodAuthor', language: 'prodLanguage' }, data);
 
     // Same counts the Create form shows: these are the two Google truncates,
     // and the model treats the limits as a suggestion.
     const t = (data.seo_title || '').length, m = (data.meta_description || '').length;
-    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.${isbnNote}`, '#6dbf6d');
+    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.${detailNote}${isbnNote}`, '#6dbf6d');
   } catch (err) {
     say(err.message || 'Drafting failed.', '#c96a6a');
   } finally {

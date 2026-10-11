@@ -5,6 +5,7 @@ const { applySiteTheme } = require('./utils/site-theme');
 const { withBadgeTag, selectTolerant } = require('./utils/publisher-sourced');
 const { bookDetailRows, schemaBookDetails, SCHEMA_BOOK_FORMATS, SCHEMA_LANGUAGES } = require('./utils/book-details');
 const { fetchSettings } = require('./utils/product-settings');
+const { displayTitle } = require('./utils/listing-title');
 
 // The badge used to claim "flat 22.5% off" for every publisher-sourced title.
 // That held for the bulk import and stopped holding the moment the badge could
@@ -798,6 +799,9 @@ exports.handler = async (event) => {
     // override row and is unaffected by "Disable Override".
     const settings = (await fetchSettings(supabase, [slug]))[String(slug).toLowerCase()] || null;
     const product = applySettings(applyOverride(data, override), settings);
+    // "Title by Author", no marketing subtitle -- the same title both custom
+    // feeds send Google (utils/listing-title), so the two never disagree.
+    product.title = displayTitle(product.title, product.author);
 
     return {
       statusCode: 200,

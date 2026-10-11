@@ -28,13 +28,17 @@
  *   find_isbn optional   default true; when the listing has no ISBN yet, one is
  *                        looked up alongside the copy (utils/isbn-lookup.js)
  *
- * Returns { description, author_bio, tags, seo_title, meta_description, isbn? }.
+ * Returns { title, author, language, description, author_bio, tags, seo_title,
+ * meta_description, isbn? }. title is the clean listing title ("Title by
+ * Author", no marketing subtitle; utils/listing-title has the last word), and
+ * author / language are corrections the admin form fills in for review.
  * `isbn` is { isbn, status, fill, publisher, source, source_url, reason, notes }
  * -- the admin only drops it into the form when `fill` is true.
  */
 
 const { requireAdmin } = require('./utils/admin-auth');
 const { findIsbn } = require('./utils/isbn-lookup');
+const { displayTitle } = require('./utils/listing-title');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -63,6 +67,21 @@ const multiline = (v, max = 4000) => String(v == null ? '' : v)
 const SYSTEM_PROMPT = `You write product copy for Ink & Chai, an Indian online bookstore selling English and Hindi books.
 
 Return ONLY a JSON object with exactly these keys:
+  title             The listing title: "<Book title> by <Author>".
+                    Keep what identifies THIS copy: series name and number,
+                    volume, edition, language edition ("Hindi Edition"), and a
+                    combo's list of books. Remove marketing: bestseller claims,
+                    "from the author of ...", "now a Netflix series", award
+                    lines, review blurbs. Keep a real subtitle only when it is
+                    short and part of the published title. Normal title case,
+                    never ALL CAPS. Under 120 characters. For a combo or box
+                    set, do not add "by".
+  author            The author's name, spelled correctly in normal case, given
+                    name first ("Lynn Painter", not "PAINTER LYNN"). Return the
+                    given author unchanged when it is already right. If none is
+                    given and you are not sure which book this is, "".
+  language          The book's language ("English", "Hindi", ...). The given
+                    language unless it is clearly wrong; "" if unknown.
   description       Markdown. 120-200 words. What the book is about and who it is for.
                     Use "## " headings and "- " bullets where they genuinely help.
                     Blank line between paragraphs.
@@ -153,7 +172,7 @@ exports.handler = async (event) => {
           // Low but not zero: these are five short creative fields, and a
           // regenerate that returns the identical text is useless to the admin.
           temperature: 0.6,
-          max_tokens: 1200,
+          max_tokens: 1400,
         }),
         signal: controller.signal,
       });
@@ -170,7 +189,14 @@ exports.handler = async (event) => {
 
     // Clamp to the DB/attribute limits the save path enforces, so a long draft
     // can never be silently truncated later.
+    // The model's title, cleaned by the same rule the product page and feeds
+    // apply, so what the admin saves is what Google is sent.
+    const author = str(out.author, 120) || str(body.author, 120);
+    const draftTitle = displayTitle(str(out.title, 200) || title, author);
     return json(200, {
+      title: draftTitle,
+      author,
+      language: str(out.language, 40),
       description: multiline(out.description, 6000),
       author_bio: multiline(out.author_bio, 2000),
       tags: str(out.tags, 400),

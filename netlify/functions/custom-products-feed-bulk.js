@@ -27,6 +27,7 @@ const crypto = require('crypto');
 const { skipFromFeed } = require('./utils/feed-image-filter');
 const { identifierXml } = require('./utils/gtin');
 const { feedId } = require('./utils/feed-id');
+const { displayTitle } = require('./utils/listing-title');
 
 const SITE = 'https://inkandchai.in';
 const BRAND = 'Ink & Chai';
@@ -139,7 +140,7 @@ exports.handler = async (event) => {
       const idTag = identifierXml(p.isbn);
       return `    <item>
       <g:id>${xmlEscape(feedId(p.slug))}</g:id>
-      <g:title>${xmlEscape(p.title)}</g:title>
+      <g:title>${xmlEscape(displayTitle(p.title, p.author))}</g:title>
       <g:description>${xmlEscape(desc)}</g:description>
       <g:link>${xmlEscape(link)}</g:link>
       <g:image_link>${xmlEscape(p.image_url)}</g:image_link>

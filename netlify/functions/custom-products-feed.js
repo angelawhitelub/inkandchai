@@ -17,6 +17,7 @@ const crypto = require('crypto');
 const { skipFromFeed } = require('./utils/feed-image-filter');
 const { identifierXml } = require('./utils/gtin');
 const { feedId } = require('./utils/feed-id');
+const { displayTitle } = require('./utils/listing-title');
 
 const SITE = 'https://inkandchai.in';
 const BRAND = 'Ink & Chai';
@@ -96,7 +97,7 @@ exports.handler = async () => {
     for (let from = 0; from < productSlugs.length; from += 100) {
       const { data, error } = await supabase
         .from('product_overrides')
-        .select('slug,price_inr,original_price_inr,is_active')
+        .select('slug,title,author,price_inr,original_price_inr,is_active')
         .in('slug', productSlugs.slice(from, from + 100));
       if (error) throw error;
       overrideRows.push(...(data || []));
@@ -107,6 +108,9 @@ exports.handler = async () => {
       if (!override || override.is_active === false) return;
       if (override.price_inr != null) product.price_inr = override.price_inr;
       if (override.original_price_inr != null) product.original_price_inr = override.original_price_inr;
+      // product-page.js shows the override's title and author; so must this.
+      if (override.title) product.title = override.title;
+      if (override.author) product.author = override.author;
     });
 
     // The admin's manual stock (product_overrides.stock_qty <= 0): the page shows
@@ -134,7 +138,7 @@ exports.handler = async () => {
       const idTag = identifierXml(p.isbn);
       return `    <item>
       <g:id>${xmlEscape(feedId(p.slug))}</g:id>
-      <g:title>${xmlEscape(p.title)}</g:title>
+      <g:title>${xmlEscape(displayTitle(p.title, p.author))}</g:title>
       <g:description>${xmlEscape(desc)}</g:description>
       <g:link>${xmlEscape(link)}</g:link>
       <g:image_link>${xmlEscape(p.image_url)}</g:image_link>
