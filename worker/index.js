@@ -26,6 +26,7 @@ import catalogRender from '../netlify/functions/utils/catalog-content-render.js'
 import soldOutUtil from '../netlify/functions/utils/sold-out.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
 import newArrivals from '../netlify/functions/utils/new-arrivals.js';
+import lifetimeSales from '../netlify/functions/utils/lifetime-sales.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
@@ -598,6 +599,24 @@ async function newArrivalsPage(request, env, ctx, origin) {
   return new Response(html, { status: 200, headers });
 }
 
+// "🔥 N sold" under the stock line of a bestseller's product page (lifetime
+// units, utils/lifetime-sales; shown from SHOW_ON_PAGE_MIN). A failed read
+// leaves the page as it was.
+async function withSoldCount(response, slug) {
+  if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  const doc = await lifetimeSales.readLifetimeSales();
+  const line = lifetimeSales.soldLine(doc && doc.counts ? doc.counts[String(slug).toLowerCase()] : 0);
+  if (!line) return response;
+  let done = false;
+  const out = new HTMLRewriter()
+    .on('span.stock', { element(el) { if (!done) { el.after(line, { html: true }); done = true; } } })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('content-length');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
 function gonePage(slug) {
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -719,7 +738,7 @@ export default {
       const entry = (await catalogContent(env))[contentSlug];
       let page = entry ? rewriteCatalogPage(assetResponse, entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
-      return page;
+      return withSoldCount(page, contentSlug);
     }
 
     // Admin-created products have no generated page: the catalogue books are
@@ -732,9 +751,9 @@ export default {
         const slug = decodeURIComponent(product[1]);
         const rendered = await runHandler('product-page', withQuery(request, { slug }), env, ctx);
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return markSoldOutPage(rendered);
+          return withSoldCount(markSoldOutPage(rendered), slug);
         }
-        if (rendered.status !== 404) return rendered;
+        if (rendered.status !== 404) return withSoldCount(rendered, slug);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a

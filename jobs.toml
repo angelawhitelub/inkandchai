@@ -32,6 +32,11 @@
   schedule = "@hourly"
 
 # Daily unshipped orders CSV report — runs at 9 PM IST (15:30 UTC) every day
+[functions."lifetime-sales-scheduled"]
+  # Lifetime units sold per book -> KV, for Reader Bestsellers and the product
+  # page "N sold" line (utils/lifetime-sales). Read-only on orders.
+  schedule = "0 * * * *"
+
 [functions."daily-unshipped-report"]
   schedule = "30 15 * * *"
 

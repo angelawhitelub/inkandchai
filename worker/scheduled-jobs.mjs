@@ -57,6 +57,7 @@ export const ENABLED_JOBS = new Set([
   'whatsapp-broadcast-oneoff',
   // catalogue
   'bestseller-agent-scheduled',
+  'lifetime-sales-scheduled',
   // auto-mark-delivered is deliberately absent: delivered now comes from the
   // NimbusPost webhook. Run it by hand if orders stick in out_for_delivery.
 ]);

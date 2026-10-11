@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
+const { readLifetimeSales } = require('./utils/lifetime-sales');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -86,8 +87,11 @@ exports.handler = async (event) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    // Reader Bestsellers: lifetime units sold (lifetime-sales-scheduled, hourly).
+    // This month's orders are only read if that has never been published.
+    const lifetime = await readLifetimeSales();
     const [orders, productsResult] = await Promise.all([
-      monthOrders(supabase),
+      lifetime && Array.isArray(lifetime.top) && lifetime.top.length ? Promise.resolve(null) : monthOrders(supabase),
       supabase
         .from('custom_products')
         .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,publisher,isbn,tags,is_active,created_at,updated_at')
@@ -118,9 +122,9 @@ exports.handler = async (event) => {
       headers,
       body: JSON.stringify({
         generated_at: new Date().toISOString(),
-        period: 'this_month',
+        period: orders ? 'this_month' : 'lifetime',
         new_arrivals: newArrivals,
-        bestsellers: aggregateBestsellers(orders),
+        bestsellers: orders ? aggregateBestsellers(orders) : lifetime.top,
       }),
     };
   } catch (error) {
