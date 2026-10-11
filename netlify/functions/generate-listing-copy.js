@@ -39,6 +39,7 @@
 const { requireAdmin } = require('./utils/admin-auth');
 const { findIsbn } = require('./utils/isbn-lookup');
 const { displayTitle } = require('./utils/listing-title');
+const { checkAuthor } = require('./utils/author-check');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -76,10 +77,11 @@ Return ONLY a JSON object with exactly these keys:
                     short and part of the published title. Normal title case,
                     never ALL CAPS. Under 120 characters. For a combo or box
                     set, do not add "by".
-  author            The author's name, spelled correctly in normal case, given
-                    name first ("Lynn Painter", not "PAINTER LYNN"). Return the
-                    given author unchanged when it is already right. If none is
-                    given and you are not sure which book this is, "".
+  author            Who actually wrote this book, spelled correctly in normal
+                    case, given name first ("Lynn Painter", not "PAINTER LYNN").
+                    If the given author did not write this book and you know
+                    who did, return the real author. If you are not sure,
+                    return the given author unchanged (or "" if none given).
   language          The book's language ("English", "Hindi", ...). The given
                     language unless it is clearly wrong; "" if unknown.
   description       Markdown. 120-200 words. What the book is about and who it is for.
@@ -191,11 +193,20 @@ exports.handler = async (event) => {
     // can never be silently truncated later.
     // The model's title, cleaned by the same rule the product page and feeds
     // apply, so what the admin saves is what Google is sent.
-    const author = str(out.author, 120) || str(body.author, 120);
-    const draftTitle = displayTitle(str(out.title, 200) || title, author);
+    // A different author than the one typed is taken only when a book
+    // database confirms it (utils/author-check); the model alone is not enough.
+    const check = await checkAuthor(
+      { title, given: str(body.author, 120), suggested: str(out.author, 120) },
+      { googleKey: process.env.GOOGLE_BOOKS_API_KEY },
+    );
+    const author = check.author;
+    // The model's title names the model's author; rebuild it around the one kept.
+    const draftTitle = displayTitle((str(out.title, 200) || title).replace(/\s+by\s+[^:|()[\]+]+$/i, ''), author);
     return json(200, {
       title: draftTitle,
       author,
+      author_check: check.status,
+      author_note: check.note,
       language: str(out.language, 40),
       description: multiline(out.description, 6000),
       author_bio: multiline(out.author_bio, 2000),

@@ -8005,7 +8005,7 @@ async function generateListingCopy() {
     // Character counts, because these two are the fields Google truncates and
     // the model treats the limits as a suggestion.
     const t = (data.seo_title || '').length, m = (data.meta_description || '').length;
-    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.${detailNote}${isbnNote}`, '#6dbf6d');
+    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.${detailNote}${data.author_note ? ' ' + data.author_note : ''}${isbnNote}`, data.author_check === 'unconfirmed' ? '#e8a030' : '#6dbf6d');
   } catch (e) {
     say(e.message, '#e06060');
   } finally {
@@ -10755,7 +10755,7 @@ async function generateProductCopy() {
     // Same counts the Create form shows: these are the two Google truncates,
     // and the model treats the limits as a suggestion.
     const t = (data.seo_title || '').length, m = (data.meta_description || '').length;
-    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.${detailNote}${isbnNote}`, '#6dbf6d');
+    say(`Draft ready — read it before saving. SEO title ${t} chars, meta ${m} chars.${detailNote}${data.author_note ? ' ' + data.author_note : ''}${isbnNote}`, data.author_check === 'unconfirmed' ? '#e8a030' : '#6dbf6d');
   } catch (err) {
     say(err.message || 'Drafting failed.', '#c96a6a');
   } finally {
