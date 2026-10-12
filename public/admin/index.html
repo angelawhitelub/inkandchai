@@ -6557,6 +6557,7 @@ function _drawTable() {
         ${isNimbusInTransit(o) ? `<div title="Latest NimbusPost status: ${esc(o.last_nimbuspost_status || 'in transit')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(77,184,255,0.1);border:1px solid rgba(77,184,255,0.45);color:#4db8ff;">🚚 In transit</div>` : ''}
         ${(o.cancellation_requested_at && !['cancelled','refunded','refund_pending','partially_refunded'].includes(String(o.status||'').toLowerCase())) ? `<div title="Customer requested cancellation on ${esc(String(o.cancellation_requested_at).slice(0,16).replace('T',' '))}${o.cancellation_request_note ? ' — “' + esc(o.cancellation_request_note) + '”' : ''}. This is a request only — nothing was auto-cancelled." style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(232,160,48,0.14);border:1px solid rgba(232,160,48,0.6);color:var(--orange);font-weight:700;">⏳ Cancellation requested</div>` : ''}
         ${o.cancellation_source === 'stale_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no courier movement for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · stale COD 7d</div>` : ''}
+        ${o.cancellation_source === 'admin' && o.cancellation_reason ? `<div title="${esc(o.cancellation_reason)}" style="display:block;max-width:220px;margin-top:0.35rem;padding:2px 7px;font-size:0.55rem;line-height:1.4;white-space:normal;background:rgba(224,96,96,0.08);border:1px solid rgba(224,96,96,0.35);color:var(--red);">Cancelled · ${esc(o.cancellation_reason)}</div>` : ''}
         ${o.cancellation_source === 'no_awb_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no AWB assigned before the auto-cancel threshold')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · no AWB</div>` : ''}
         ${(String(o.status||'').toLowerCase() === 'cancelled' && isCourierCancelled(o)) ? `<div title="NimbusPost marked this shipment cancelled — the courier never picked it up. Courier status: ${esc(o.last_nimbuspost_status || 'cancelled')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Courier cancelled · not picked up</div>` : ''}
         <br/>
@@ -6743,6 +6744,80 @@ function closeShipModal(confirmed) {
   _shipResolve = null;
 }
 
+// ── Cancel reason modal ────────────────────────────────────────────────────
+// Every manual cancel says why, because the reason picks the customer's email
+// and WhatsApp (utils/cancel-reasons.js). Before this they were all told the
+// book was out of stock, including people whose address was just incomplete.
+const CANCEL_REASON_OPTIONS = [
+  { code: 'out_of_stock',          label: 'No inventory / out of stock',  hint: 'Apologises: the supplier had no stock. Asks them to order again later.' },
+  { code: 'incomplete_address',    label: 'Incomplete or wrong address', hint: 'Asks them to order again with the full address and pincode.' },
+  { code: 'unserviceable_pincode', label: 'Pincode not serviceable',      hint: 'Names their pincode; suggests ordering to another address.' },
+  { code: 'customer_request',      label: 'Customer asked to cancel',     hint: '"Cancelled as you requested."' },
+  { code: 'other',                 label: 'Other — write the reason',     hint: 'Your text below is shown to the customer as-is.' },
+];
+let _cancelResolve = null;
+
+(function injectCancelModal() {
+  const modal = document.createElement('div');
+  modal.id = 'cancelReasonModal';
+  modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:#1c1916;border:1px solid rgba(232,112,112,0.35);padding:1.6rem 1.8rem;width:min(460px,92vw);max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+      <h3 style="margin:0 0 0.3rem;font-family:serif;font-weight:400;font-size:1.2rem;color:#f0e8d8;">Cancel order</h3>
+      <div id="cancelReasonOrder" style="font-size:0.72rem;color:#a09080;margin-bottom:1rem;"></div>
+      <div style="font-size:0.65rem;letter-spacing:0.15em;text-transform:uppercase;color:#a09080;margin-bottom:0.5rem;">Reason (the customer is emailed and WhatsApped this)</div>
+      ${CANCEL_REASON_OPTIONS.map(o => `
+        <label style="display:block;padding:0.55rem 0.7rem;margin-bottom:0.35rem;border:1px solid rgba(201,168,76,0.18);cursor:pointer;">
+          <input type="radio" name="cancelReason" value="${o.code}" style="margin-right:0.5rem;" onchange="cancelReasonChanged()"/>
+          <span style="color:#f0e8d8;font-size:0.82rem;">${o.label}</span>
+          <div style="color:#a09080;font-size:0.66rem;margin:0.2rem 0 0 1.5rem;line-height:1.4;">${o.hint}</div>
+        </label>`).join('')}
+      <textarea id="cancelReasonNote" rows="2" maxlength="300" placeholder="Optional note (required for Other) — shown to the customer"
+        style="width:100%;box-sizing:border-box;background:#141210;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.6rem 0.8rem;font-size:0.8rem;margin:0.5rem 0 0.4rem;outline:none;resize:vertical;"></textarea>
+      <div id="cancelReasonErr" style="color:#e87070;font-size:0.72rem;min-height:1rem;margin-bottom:0.6rem;"></div>
+      <div style="display:flex;gap:0.8rem;justify-content:flex-end;">
+        <button onclick="closeCancelModal(false)" style="background:transparent;border:1px solid rgba(201,168,76,0.3);color:#a09080;padding:0.6rem 1.2rem;cursor:pointer;font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;">Keep order</button>
+        <button onclick="closeCancelModal(true)" style="background:#e87070;border:none;color:#0d0b08;padding:0.6rem 1.4rem;cursor:pointer;font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;font-weight:600;">Cancel &amp; notify customer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeCancelModal(false); });
+})();
+
+function cancelReasonChanged() {
+  document.getElementById('cancelReasonErr').textContent = '';
+}
+
+function openCancelModal(order) {
+  const modal = document.getElementById('cancelReasonModal');
+  modal.querySelectorAll('input[name=cancelReason]').forEach(r => { r.checked = false; });
+  document.getElementById('cancelReasonNote').value = '';
+  document.getElementById('cancelReasonErr').textContent = '';
+  const paid = order && (order.razorpay_payment_id || Number(order.advance_paid_paise || 0) > 0);
+  document.getElementById('cancelReasonOrder').textContent = order
+    ? `${order.razorpay_order_id || order.id} · ${order.customer_name || ''}${paid ? ' · prepaid — refunded automatically' : ''}`
+    : '';
+  modal.style.display = 'flex';
+  return new Promise(resolve => { _cancelResolve = resolve; });
+}
+
+function closeCancelModal(confirmed) {
+  const modal = document.getElementById('cancelReasonModal');
+  if (confirmed) {
+    const picked = modal.querySelector('input[name=cancelReason]:checked');
+    const note = document.getElementById('cancelReasonNote').value.trim();
+    const err = document.getElementById('cancelReasonErr');
+    if (!picked) { err.textContent = 'Pick a reason first.'; return; }
+    if (picked.value === 'other' && !note) { err.textContent = 'Write the reason — the customer will read it.'; return; }
+    modal.style.display = 'none';
+    if (_cancelResolve) _cancelResolve({ cancel_reason: picked.value, cancel_note: note });
+  } else {
+    modal.style.display = 'none';
+    if (_cancelResolve) _cancelResolve(null);
+  }
+  _cancelResolve = null;
+}
+
 // Manually switch an order between COD and Prepaid. Prepaid → asks whether the
 // customer has actually paid yet (paid = counts as revenue now; awaiting = will
 // pay before shipping). COD → clears any prepaid markers.
@@ -6792,6 +6867,13 @@ async function updateStatus(id, status) {
     }
   }
 
+  let cancelFields = {};
+  if (status === 'cancelled') {
+    const picked = await openCancelModal(allOrders.find(o => o.id === id));
+    if (!picked) { applyFilters(); return; }   // revert the select
+    cancelFields = picked;
+  }
+
   let tracking_id = '', courier_name = '';
   if (status === 'shipped') {
     const result = await openShipModal();
@@ -6809,7 +6891,7 @@ async function updateStatus(id, status) {
     const res = await fetch('/.netlify/functions/update-order-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
-      body: JSON.stringify({ id, status, tracking_id, courier_name }),
+      body: JSON.stringify({ id, status, tracking_id, courier_name, ...cancelFields }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -6817,6 +6899,12 @@ async function updateStatus(id, status) {
     }
     const data = await res.json();
     const ord = allOrders.find(o => o.id === id);
+    if (ord && cancelFields.cancel_reason) {
+      const opt = CANCEL_REASON_OPTIONS.find(o => o.code === cancelFields.cancel_reason);
+      ord.cancellation_reason = (opt ? opt.label.replace(/ — write the reason$/, '') : cancelFields.cancel_reason)
+        + (cancelFields.cancel_note ? ': ' + cancelFields.cancel_note : '');
+      ord.cancellation_source = 'admin';
+    }
     if (ord) {
       ord.status = status;
       if (tracking_id)  ord.tracking_id  = tracking_id;
@@ -11109,7 +11197,9 @@ async function bulkUpdateFromFile(file) {
       const tracking_id = pick(row, ['tracking_id','tracking','awb','awb_number','awb_no','tracking_number','waybill']);
       const courier_name = pick(row, ['courier_name','courier','shipping_partner','carrier']);
       const status = normalizeStatus(pick(row, ['status','order_status']), !!tracking_id);
-      return { order_id, status, tracking_id, courier_name };
+      const cancel_reason = pick(row, ['cancel_reason','cancellation_reason']);
+      const cancel_note = pick(row, ['cancel_note']);
+      return { order_id, status, tracking_id, courier_name, ...(cancel_reason ? { cancel_reason, cancel_note } : {}) };
     }).filter(r => r.order_id && r.status);
 
     if (!rows.length) {

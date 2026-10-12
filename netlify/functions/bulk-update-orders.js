@@ -32,6 +32,7 @@ const { requireAdmin } = require('./utils/admin-auth');
 const { buildTrackingUrl } = require('./utils/tracking-url');
 const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-shipment-cancel');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const { readCancelReason } = require('./utils/cancel-reasons');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -157,6 +158,8 @@ exports.handler = async (event) => {
       status:      text(raw.status).toLowerCase(),
       trackingId:  text(raw.tracking_id || raw.awb || raw.tracking_number),
       courierName: text(raw.courier_name || raw.courier || raw.carrier),
+      // Per row, else one for the whole request (utils/cancel-reasons).
+      cancelReason: readCancelReason(raw.cancel_reason || body.cancel_reason, raw.cancel_note || body.cancel_note),
     }));
 
     // ── 2. Batch-fetch all orders in TWO queries (UUIDs + IC-* IDs) ──────────
@@ -203,9 +206,13 @@ exports.handler = async (event) => {
     let skippedNoOp = 0;
     const shippedAt  = new Date().toISOString();
 
-    for (const { orderId, status, trackingId, courierName } of rows) {
+    for (const { orderId, status, trackingId, courierName, cancelReason } of rows) {
       if (!orderId) {
         results.push({ success: false, order_id: orderId, error: 'Missing order_id' });
+        continue;
+      }
+      if (status === 'cancelled' && cancelReason && cancelReason.error) {
+        results.push({ success: false, order_id: orderId, error: cancelReason.error });
         continue;
       }
       if (!VALID_STATUSES.includes(status)) {
@@ -234,6 +241,9 @@ exports.handler = async (event) => {
         if (silent) {
           payload.cancellation_reason = silentReason;
           payload.cancellation_source = 'admin_silent';
+        } else if (cancelReason) {
+          payload.cancellation_reason = cancelReason.note ? `${cancelReason.label}: ${cancelReason.note}` : cancelReason.label;
+          payload.cancellation_source = 'admin';
         }
       }
 
@@ -329,6 +339,7 @@ exports.handler = async (event) => {
         await notifyOrderCancelled(saved, {
           reason: 'Your order status was updated to cancelled.',
           skipOwnerEmail,
+          ...(cancelReason ? { kind: cancelReason.kind, note: cancelReason.note, reasonLabel: cancelReason.label } : {}),
         });
         cancellationsNotified++;
       }
