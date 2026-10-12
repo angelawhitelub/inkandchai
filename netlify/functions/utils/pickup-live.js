@@ -146,7 +146,13 @@ async function trackNimbus(awbs, deps = {}) {
   for (const row of rows) {
     const awb = String(row?.awb_number || row?.awb || np.awbFromRow?.(row) || '').trim();
     const status = np.shipmentStatusFromRow ? np.shipmentStatusFromRow(row) : String(row?.status || '');
-    if (awb && status) out.set(awb, { status, detail: '' });
+    // The delivery scan's own time when there is one, else the latest event's.
+    const history = Array.isArray(row?.history) ? row.history : [];
+    const dl = /deliver/i.test(status) && !/undeliver|rto/i.test(status)
+      ? history.find((h) => /^(?:delivered|dl)$/i.test(String(h?.status_code || h?.status || '').trim()))
+      : null;
+    const at = scanTime((dl && dl.event_time) || row?.event_time);
+    if (awb && status) out.set(awb, { status, detail: '', ...(at ? { at } : {}) });
   }
   return out;
 }

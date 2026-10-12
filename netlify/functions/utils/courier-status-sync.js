@@ -21,6 +21,7 @@
 const { interpret, SYNCABLE, TERMINAL, RANK } = require('./xpressbees-status');
 
 const MOVES_STATUS = new Set(['delivered', 'out_for_delivery']);
+const RECENT_MS = 10 * 86400000;
 
 /**
  * @param {object} order  id, status, shipment_moved_at, delivered_at
@@ -46,9 +47,15 @@ function planUpdate(order, live, now) {
 
   fields.status = target;
   if (target === 'delivered') {
+    // The courier's scan time. Without one, "now" is only a fair guess for a
+    // recent parcel: an August parcel stamped today would be asked for a review
+    // and get a fresh replacement window. Those stay blank (the replacement
+    // form sends a blank-date order to support).
     const at = live.at && Date.parse(live.at) <= Date.parse(now) ? live.at : null;
-    fields.delivered_at = order.delivered_at || at || now;
-    fields.shipment_moved_at = order.shipment_moved_at || fields.delivered_at;
+    const recent = order.shipped_at && Date.parse(now) - Date.parse(order.shipped_at) <= RECENT_MS;
+    const when = order.delivered_at || at || (recent ? now : null);
+    if (when) fields.delivered_at = when;
+    fields.shipment_moved_at = order.shipment_moved_at || when || now;
   }
   return { fields, to: target };
 }

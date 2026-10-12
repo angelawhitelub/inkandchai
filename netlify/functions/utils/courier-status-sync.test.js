@@ -15,9 +15,15 @@ test('IC-20260919-IUPN2: Amazon says Delivered -> delivered, on the day Amazon d
   assert.equal(fields.last_courier_status, 'Delivered');
 });
 
-test('no courier time -> now; a time in the future is not trusted', () => {
-  assert.equal(planUpdate({ status: 'shipped' }, { status: 'Delivered', state: 'moved' }, NOW).fields.delivered_at, NOW);
-  assert.equal(planUpdate({ status: 'shipped' }, { status: 'Delivered', state: 'moved', at: '2027-01-01T00:00:00Z' }, NOW).fields.delivered_at, NOW);
+test('no courier time: now for a recent parcel, blank for an old one; a future time is not trusted', () => {
+  const recent = { status: 'shipped', shipped_at: '2026-10-08T00:00:00Z' };
+  const old = { status: 'shipped', shipped_at: '2026-08-20T00:00:00Z' };
+  assert.equal(planUpdate(recent, { status: 'Delivered', state: 'moved' }, NOW).fields.delivered_at, NOW);
+  assert.equal(planUpdate(recent, { status: 'Delivered', state: 'moved', at: '2027-01-01T00:00:00Z' }, NOW).fields.delivered_at, NOW);
+  const o = planUpdate(old, { status: 'delivered', state: 'moved' }, NOW);
+  assert.equal(o.to, 'delivered');
+  assert.equal('delivered_at' in o.fields, false, 'an August parcel is not stamped as delivered today');
+  assert.equal(planUpdate(old, { status: 'Delivered', state: 'moved', at: '2026-08-25T08:00:00.000Z' }, NOW).fields.delivered_at, '2026-08-25T08:00:00.000Z');
 });
 
 test('out for delivery moves forward; in transit only stamps movement', () => {

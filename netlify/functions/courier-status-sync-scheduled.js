@@ -48,7 +48,7 @@ async function run(supabase, { limit = DEFAULT_LIMIT, dryRun = false, check = ch
     const answer = live.get(o.id);
     if (!answer || answer.state === 'unknown') unknown++;
     const { fields, to } = planUpdate(o, answer, stamp);
-    if (to) changes.push({ order: o.razorpay_order_id || o.id, courier: o.courier_name, from: o.status, to, courier_says: answer.status, delivered_at: fields.delivered_at });
+    if (to) changes.push({ order: o.razorpay_order_id || o.id, courier: o.courier_name, from: o.status, to, courier_says: answer.status, delivered_at: fields.delivered_at || null });
     if (dryRun) continue;
     const { error: upErr } = await supabase.from('orders').update(fields).eq('id', o.id).in('status', SYNCABLE);
     if (upErr) failed.push({ order: o.razorpay_order_id || o.id, error: upErr.message });
