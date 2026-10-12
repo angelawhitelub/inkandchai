@@ -39,3 +39,43 @@ test('the full email for an address cancellation has no out-of-stock paragraph',
   assert.doesNotMatch(html, /Stock does come back/);
   assert.match(html, /not charged/);
 });
+
+test('each WhatsApp template gets exactly the variables its approved body has', async () => {
+  const path = require('path');
+  const sent = [];
+  const stub = (file, exports) => {
+    const id = require.resolve(path.join(__dirname, file));
+    require.cache[id] = { id, filename: id, loaded: true, exports };
+  };
+  stub('./whatsapp.js', { sendWhatsApp: async (m) => { sent.push(m); return { ok: true }; } });
+  stub('./email.js', { sendEmail: async () => ({ ok: true }) });
+  delete require.cache[require.resolve('./order-cancelled-notification')];
+  const { notifyOrderCancelled } = require('./order-cancelled-notification');
+  const env = { ...process.env };
+  Object.assign(process.env, {
+    WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE: 'order_cancelled_stock', WHATSAPP_ORDER_CANCELLED_V2: '1',
+    WHATSAPP_ORDER_CANCELLED_ADDRESS_TEMPLATE: 'order_cancelled_address', WHATSAPP_ORDER_CANCELLED_PINCODE_TEMPLATE: 'order_cancelled_pincode',
+  });
+  delete process.env.WHATSAPP_ORDER_CANCELLED_OTHER_TEMPLATE;
+  delete process.env.STORE_OWNER_EMAIL;
+  const order = { razorpay_order_id: 'IC-1', customer_name: 'Asha K', customer_phone: '9999999999', customer_address: 'X, Agartala 799001', cart_items: [{ title: 'Book', qty: 1 }] };
+  try {
+    const counts = {};
+    for (const kind of ['store', 'customer', 'address', 'pincode', 'other']) {
+      sent.length = 0;
+      const r = await notifyOrderCancelled(order, { kind, note: kind === 'other' ? 'Recalled' : '', skipRefund: true, skipEmail: true });
+      counts[kind] = sent[0] ? `${sent[0].template}:${sent[0].params.length}` : `skipped:${r.whatsapp_skipped}`;
+      if (kind === 'pincode') assert.equal(sent[0].params[2], '799001');
+      if (kind === 'address') assert.doesNotMatch(sent[0].params[3], /\.$/, 'body already ends "{{4}}."');
+    }
+    assert.deepEqual(counts, {
+      store: 'order_cancelled_stock:3',
+      customer: 'order_cancelled:4',
+      address: 'order_cancelled_address:4',
+      pincode: 'order_cancelled_pincode:4',
+      other: 'skipped:no other template configured',
+    });
+  } finally {
+    process.env = env;
+  }
+});

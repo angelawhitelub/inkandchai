@@ -512,7 +512,8 @@ async function notifyOrderCancelled(order, opts = {}) {
     };
     if (kind in reasonTemplates) {
       const tpl = reasonTemplates[kind];
-      const refundLine = refundSentenceShort(order, result.refund, opts);
+      // These bodies end "{{4}}." -- drop our own full stop or it reads "..".
+      const refundLine = refundSentenceShort(order, result.refund, opts).replace(/\.\s*$/, '');
       const third = kind === 'address' ? bookListShort(order)
         : kind === 'pincode' ? (pincodeOf(order) || 'your pincode')
         : String(opts.note || '').replace(/\s+/g, ' ').trim().slice(0, 300);
@@ -529,12 +530,19 @@ async function notifyOrderCancelled(order, opts = {}) {
     const stockTemplate = process.env.WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE;
     const useStock = kind === 'store' && !!stockTemplate;
     const v2 = /^(1|true|yes)$/i.test(String(process.env.WHATSAPP_ORDER_CANCELLED_V2 || ''));
+    // Approved bodies, read off WhatsApp Manager on 13 Oct 2026:
+    //   order_cancelled_stock  3 variables: name, order id, refund line
+    //   order_cancelled        4 variables: name, order id, books, refund line
+    // order_cancelled had been edited to 4 while V2 was never set, so every
+    // send of it since 29 Aug went out with 2 and Meta rejected all of them.
     await sendWhatsApp({
       to: order.customer_phone,
       template: useStock ? stockTemplate : (process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE || 'order_cancelled'),
-      params: (useStock || v2)
-        ? [firstName, id, bookListShort(order), refundSentenceShort(order, result.refund, opts)]
-        : [firstName, id],
+      params: useStock
+        ? [firstName, id, refundSentenceShort(order, result.refund, opts)]
+        : v2
+          ? [firstName, id, bookListShort(order), refundSentenceShort(order, result.refund, opts)]
+          : [firstName, id],
     });
     result.whatsapp = true;
     result.whatsapp_template = useStock ? 'stock' : 'default';
