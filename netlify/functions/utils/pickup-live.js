@@ -44,6 +44,20 @@ const NOT_A_STATUS = /not found|invalid|no data|no record|error|unauthori[sz]ed|
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 
+// When the courier says the latest scan happened, as ISO, or null. Indian
+// courier APIs give local time with no zone, so a bare time is read as IST.
+//   "2026-09-24T15:24:31.123" / "2026-09-24 15:24:31" / "Sep 24, 2026, 3:24:31 PM"
+function scanTime(raw) {
+  const s = String(raw || '').replace(/[\u202f\u00a0]/g, ' ').trim();
+  if (!s) return null;
+  let ms = NaN;
+  const iso = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?$/);
+  if (iso) ms = Date.parse(`${iso[1]}T${iso[2].length === 5 ? `${iso[2]}:00` : iso[2]}+05:30`);
+  else if (/^[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{1,2}:\d{2}(?::\d{2})? [AP]M$/.test(s)) ms = Date.parse(`${s} GMT+0530`);
+  else if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) ms = Date.parse(s);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
 function pickupState(status) {
   const s = norm(status);
   if (!s || NOT_A_STATUS.test(s)) return 'unknown';
@@ -83,7 +97,7 @@ async function trackDelhivery(awbs, fetchFn = fetch) {
         // An unpicked shipment that is cancelled stays "Manifested"; only the
         // instructions say so.
         const cancelled = /cancel/i.test(String(st.Instructions || '')) && /manifest/i.test(String(st.Status || ''));
-        out.set(awb, { status: cancelled ? 'Cancelled' : String(st.Status || ''), detail: String(st.Instructions || '').slice(0, 120) });
+        out.set(awb, { status: cancelled ? 'Cancelled' : String(st.Status || ''), detail: String(st.Instructions || '').slice(0, 120), at: scanTime(st.StatusDateTime) });
       }
     } catch (_) { /* that chunk stays unknown */ }
   }
@@ -114,7 +128,7 @@ async function trackIthink(awbs, fetchFn = fetch) {
         const status = String(rec.current_status || rec.current_status_code || '');
         if (awb && status) {
           const last = rec.last_scan_details || {};
-          out.set(awb, { status, detail: String(last.status || last.scan_location || rec.courier || '').slice(0, 120) });
+          out.set(awb, { status, detail: String(last.status || last.scan_location || rec.courier || '').slice(0, 120), at: scanTime(last.status_date_time) });
         }
       }
     } catch (_) { /* unknown */ }
@@ -157,7 +171,8 @@ function amazonState(json) {
   if (codes.length && codes.every((c) => AMAZON_PRE_PICKUP.test(c))) return { status: 'Not Picked', detail: summary || 'label created' };
   // Past pickup. Say what Amazon says, but never a phrase that reads as waiting.
   const words = summary && !WAITING.has(norm(summary)) ? summary : `In transit (${codes[codes.length - 1] || 'scanned'})`;
-  return { status: words, detail: codes[codes.length - 1] || '' };
+  const latest = events[events.length - 1] || {};
+  return { status: words, detail: codes[codes.length - 1] || '', at: scanTime(latest.eventTime) };
 }
 
 async function trackAmazon(awbs, fetchFn = fetch) {
@@ -236,7 +251,7 @@ async function checkPickups(orders, deps = {}) {
       if (rec) { hit = { channel: c, ...rec }; break; }
     }
     out.set(o.id, hit
-      ? { awb, channel: hit.channel, status: hit.status, detail: hit.detail, state: pickupState(hit.status) }
+      ? { awb, channel: hit.channel, status: hit.status, detail: hit.detail, state: pickupState(hit.status), ...(hit.at ? { at: hit.at } : {}) }
       : { awb, channel: null, status: '', detail: '', state: 'unknown' });
   }
   return out;
@@ -304,4 +319,4 @@ async function cancelAtCourier(order, live, deps = {}) {
   }
 }
 
-module.exports = { checkPickups, cancelAtCourier, pickupState, channelsFor, amazonState, trackDelhivery, trackIthink, ITHINK_TRACK_URL };
+module.exports = { checkPickups, cancelAtCourier, pickupState, channelsFor, amazonState, trackDelhivery, trackIthink, scanTime, ITHINK_TRACK_URL };

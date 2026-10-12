@@ -76,7 +76,7 @@ crons = [
   "15 * * * *",    # auto-cancel-stale-cod (phonepe-reconcile-refunds shares this
                    # trigger and is held off by ENABLED_JOBS in worker/scheduled-jobs.mjs)
   "0 * * * *",     # auto-recover-carts, deploy-drift-check, lifetime-sales-scheduled, support-ticket-sla-scheduled,
-                   # return-tracking-scheduled
+                   # return-tracking-scheduled, courier-status-sync-scheduled
   "30 15 * * *",   # daily-unshipped-report
   "*/2 * * * *",   # bot-order-followup-background
   "*/15 * * * *",  # auto-push-replacements-scheduled

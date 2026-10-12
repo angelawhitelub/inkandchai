@@ -32,6 +32,12 @@
   schedule = "@hourly"
 
 # Daily unshipped orders CSV report — runs at 9 PM IST (15:30 UTC) every day
+[functions."courier-status-sync-scheduled"]
+  # Amazon / iThink / NimbusPost-DTDC bookings send no scans, so they froze at
+  # "shipped". Hourly, 80 orders a run, least recently checked first: moves them
+  # to out_for_delivery / delivered from the courier's own tracking. No messages.
+  schedule = "0 * * * *"
+
 [functions."lifetime-sales-scheduled"]
   # Lifetime units sold per book -> KV, for Reader Bestsellers and the product
   # page "N sold" line (utils/lifetime-sales). Read-only on orders.
