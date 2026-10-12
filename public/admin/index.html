@@ -5783,13 +5783,26 @@ function replacementReasonText(meta) {
   return String(meta.reason_label || meta.reason || '').replace(/_/g, ' ').trim();
 }
 
+// The customer's own words. Missing-book reports keep them in
+// customer_comment and put a system line ("Auto-created from the customer's
+// missing-book report.") in note; the replacement form puts them in note.
+const SYSTEM_REPLACEMENT_NOTE = /^(?:auto-created\b|created manually by the store team)/i;
+function replacementCustomerComment(meta) {
+  const clean = (v) => String(v || '').replace(/\s+/g, ' ').trim();
+  const comment = clean(meta?.customer_comment);
+  if (comment) return comment;
+  const note = clean(meta?.note);
+  return note && !SYSTEM_REPLACEMENT_NOTE.test(note) ? note : '';
+}
+
 function replacementReasonHtml(meta) {
   const reason = replacementReasonText(meta);
-  const note = String(meta?.note || '').replace(/\s+/g, ' ').trim();
-  if (!reason && !note) return '';
-  const shortNote = note.length > 140 ? note.slice(0, 140) + '…' : note;
-  return `<div title="${esc(note || reason)}" style="margin-top:3px;max-width:240px;font-size:0.62rem;line-height:1.35;color:#9fd49f;white-space:normal;">
-    <strong style="font-weight:600;">Reason:</strong> ${esc(reason || '—')}${shortNote ? `<span style="color:var(--cream-dim);"> — ${esc(shortNote)}</span>` : ''}</div>`;
+  const comment = replacementCustomerComment(meta);
+  if (!reason && !comment) return '';
+  const short = comment.length > 160 ? comment.slice(0, 160) + '…' : comment;
+  return `<div title="${esc(comment || reason)}" style="margin-top:3px;max-width:260px;font-size:0.62rem;line-height:1.35;color:#9fd49f;white-space:normal;">
+    <strong style="font-weight:600;">Reason:</strong> ${esc(reason || '—')}</div>
+    <div style="margin-top:2px;max-width:260px;font-size:0.62rem;line-height:1.35;white-space:normal;color:${short ? 'var(--cream)' : 'var(--cream-dim)'};">${short ? `💬 “${esc(short)}”` : '<em>No comment from the customer</em>'}</div>`;
 }
 
 // Put a value in the orders search box and run the filter. Used by every
