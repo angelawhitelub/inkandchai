@@ -10,6 +10,8 @@
  * Body:
  *   { order_id: "IC-..." }                 one order
  *   { order_ids: ["IC-...", ...] }         many
+ *   { action: "candidates", days: 30 }     list what is bookable now, book nothing
+ *                                          (the admin "Book on XpressBees" button)
  *   { dry_run: true }                      build + quote, book nothing
  *   { action: "serviceability" }           rates for the first order only
  *   { courier_id: 1 }                      force a courier
@@ -32,6 +34,36 @@ const { isReplacementOrder } = require('./utils/replacement-order');
 const { classifyShipmentMoney, parseCartItems } = require('./utils/shipment-money');
 const xb = require('./utils/xpressbees');
 const { sendShippedNotification } = require('./utils/shipped-notification');
+const { classifyXbError, availableServices } = require('./utils/xpressbees-errors');
+
+// Same list the XpressBees feed ships from. Anything else (cancelled,
+// shipped, refunded, payment still pending) must never get an AWB.
+const BOOKABLE_STATUSES = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending'];
+// The customer may still cancel a fresh order on the website.
+const FRESH_MS = 30 * 60 * 1000;
+
+/**
+ * Why an order must not be booked right now, or null. Checked on the row read
+ * at booking time, not on what the admin screen loaded minutes earlier: on
+ * 13 Oct this endpoint booked whatever ids it was handed, status unseen.
+ */
+function bookingHold(order, now = Date.now()) {
+  const status = String(order.status || '');
+  if (!BOOKABLE_STATUSES.includes(status)) return { kind: 'status', reason: `status is "${status}", not an order waiting to ship` };
+  if (order.cancellation_requested_at) return { kind: 'cancel_requested', reason: 'the customer asked to cancel' };
+  const age = now - Date.parse(order.created_at || 0);
+  if (age >= 0 && age < FRESH_MS) {
+    return { kind: 'fresh', reason: `placed ${Math.max(1, Math.round(age / 60000))} min ago; the customer can still cancel for 30 min` };
+  }
+  return null;
+}
+
+/** What failed, why, and what to do: the admin screen groups by kind. */
+function describeFailure(orderId, message, extra = {}) {
+  const c = classifyXbError(message);
+  const available = c.kind === 'no_service' ? availableServices(message) : undefined;
+  return { order_id: orderId, error: message, ...c, ...(available ? { available } : {}), ...extra };
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -195,8 +227,36 @@ exports.handler = async (event) => {
   let body;
   try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Invalid JSON' }); }
 
+  // Everything bookable right now, for the admin preview. Books nothing.
+  if (body.action === 'candidates') {
+    try {
+      const days = Math.min(120, Math.max(1, parseInt(body.days, 10) || 30));
+      const since = new Date(Date.now() - days * 86400000).toISOString();
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const { data, error } = await supabase.from('orders')
+        .select('id, razorpay_order_id, status, created_at, tracking_id, cancellation_requested_at, source, customer_name, amount_paise')
+        .in('status', BOOKABLE_STATUSES)
+        .is('tracking_id', null)
+        .gte('created_at', since)
+        .order('created_at', { ascending: true })
+        .limit(1000);
+      if (error) throw error;
+      const ready = [], held = [];
+      for (const o of data || []) {
+        if (o.source === 'paperbound') continue;
+        const hold = bookingHold(o);
+        const row = { order_id: o.razorpay_order_id || o.id, created_at: o.created_at, status: o.status, customer: o.customer_name || '' };
+        if (hold) held.push({ ...row, ...hold }); else ready.push(row);
+      }
+      return json(200, { days, ready, held });
+    } catch (err) {
+      return json(500, { error: `Could not list orders: ${err.message || err}` });
+    }
+  }
+
   const ids = body.order_ids || (body.order_id ? [body.order_id] : []);
   if (!ids.length) return json(400, { error: 'Provide order_id or order_ids' });
+  if (ids.length > 25) return json(400, { error: `At most 25 orders per call (got ${ids.length}); send them in batches.` });
 
   const suffix = String(body.suffix || '');
   if (suffix && !/^[A-Za-z0-9_-]{1,8}$/.test(suffix)) {
@@ -211,6 +271,8 @@ exports.handler = async (event) => {
     const { data: orders, error } = await supabase.from('orders').select('*').in('razorpay_order_id', ids);
     if (error) throw error;
     if (!orders?.length) return json(404, { error: 'No orders found for given IDs' });
+    const found = new Set(orders.map(o => String(o.razorpay_order_id || o.id)));
+    const missing = ids.filter(id => !found.has(String(id)));
 
     const pickupPincode = xb.pickupFromEnv().pincode;
 
@@ -232,13 +294,25 @@ exports.handler = async (event) => {
     }
 
     const booked = [], skipped = [], failed = [];
+    for (const id of missing) skipped.push({ order_id: id, kind: 'missing', reason: 'no such order' });
+    // After a wallet refusal every later booking fails the same way; stop
+    // rather than pile up identical errors.
+    let walletEmpty = false;
 
     for (const order of orders) {
       const orderId = order.razorpay_order_id || order.id;
       // cancel_existing is a re-book by definition, so it implies force.
       const force = !!body.force || !!body.cancel_existing;
       if (order.tracking_id && !force) {
-        skipped.push({ order_id: orderId, reason: `already has tracking ${order.tracking_id}` });
+        skipped.push({ order_id: orderId, kind: 'has_awb', reason: `already has tracking ${order.tracking_id}` });
+        continue;
+      }
+      if (!force) {
+        const hold = bookingHold(order);
+        if (hold) { skipped.push({ order_id: orderId, ...hold }); continue; }
+      }
+      if (walletEmpty) {
+        skipped.push({ order_id: orderId, kind: 'wallet_stop', reason: 'not attempted: the XpressBees wallet ran out on an earlier order' });
         continue;
       }
       let cancelled = null;
@@ -275,7 +349,7 @@ exports.handler = async (event) => {
         if (!courier) throw new Error(`No XpressBees service is serviceable for pincode ${built._meta.pincode}`);
 
         if (body.dry_run) {
-          booked.push({ ...built._meta, dry_run: true,
+          booked.push({ ...built._meta, dry_run: true, courier_charges: courier.total_charges,
             courier: { id: courier.id, name: courier.name, total_charges: courier.total_charges },
             payload: built.payload });
           continue;
@@ -320,11 +394,11 @@ exports.handler = async (event) => {
         // A cancel that succeeded before a book that failed leaves the order
         // with NO live AWB. Say so loudly: it is not shipped and nothing else
         // will notice on its own.
-        failed.push({
-          order_id: orderId,
-          error: String(err.message || err),
+        const f = describeFailure(orderId, String(err.message || err), {
           cancelled_awb_now_void: cancelled ? cancelled.awb : undefined,
         });
+        if (f.kind === 'wallet') walletEmpty = true;
+        failed.push(f);
       }
     }
 
@@ -344,5 +418,7 @@ exports.handler = async (event) => {
 };
 
 module.exports.CANCELLABLE   = CANCELLABLE;
+module.exports.bookingHold   = bookingHold;
+module.exports.describeFailure = describeFailure;
 module.exports.buildOrder    = buildOrder;
 module.exports.chooseCourier = chooseCourier;

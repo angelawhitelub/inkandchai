@@ -1095,6 +1095,7 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-outline" onclick="sendCourierLabelsToTeam(this,'nimbuspost')" style="border-color:rgba(201,168,76,0.5);color:var(--gold);" title="WhatsApp the sorted NimbusPost label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send NimbusPost Labels to Team</button>
       <button class="btn-outline" onclick="downloadDtdcUpload(this)" style="border-color:rgba(255,204,0,0.55);color:#ffcc00;" title="Every unshipped order (no AWB, last 30 days) filled into DTDC's Bulk Upload template (sample-consignment-upload.xlsx): COD amount only on COD orders, the balance on partial COD. Upload it in the DTDC customer portal. Books nothing.">⬇ DTDC Bulk Upload (.xlsx)</button>
       <button class="btn-green" onclick="pushAllToIthinkPanel(this)" style="background:rgba(120,160,255,0.14);border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel. Shows a dry-run preview with the COD collectable total before anything is sent. No courier is chosen and no AWB is generated. A suffix is added to the order number sent to iThink so the batch is identifiable and does not collide with records already in the panel.">Push to iThink Panel (No AWB)</button>
+      <button class="btn-green" onclick="xbBookOpen()" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Book orders on XpressBees through the Custom API: real AWBs, charged to the XpressBees wallet, customer notified. Uses the ticked orders, or every unshipped order. Preview with prices first; failures grouped by cause with what to do.">🐝 Book on XpressBees (API, AWB)</button>
       <button class="btn-green" onclick="pushServiceableToDelhivery(this)" style="background:rgba(181,107,18,0.12);border-color:rgba(181,107,18,0.55);color:var(--orange);" title="Book every unshipped order whose pincode Delhivery serves. Shows a preview first; each booked order gets a real AWB and is charged to the Delhivery wallet. Failures are grouped by cause with what to do next.">🚚 Book Serviceable on Delhivery (AWB)</button>
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
       <button class="btn-outline" onclick="syncNimbusAwbs(this)" title="Pull AWBs assigned inside the NimbusPost panel back onto your orders, flip them to shipped, and notify customers. Also runs automatically every 15 minutes.">🔄 Sync AWBs from NimbusPost</button>
@@ -1304,6 +1305,9 @@ select,input,textarea{font-size:1rem;}
     </button>
     <button class="btn-outline" onclick="pushAllToIthinkPanel(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel (dry-run preview first, no courier, no AWB)">
       Push to iThink Panel (No AWB)
+    </button>
+    <button class="btn-outline" onclick="xbBookOpen()" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Book ticked or all unshipped orders on XpressBees via the API (preview with prices first, real AWBs, customer notified)">
+      🐝 Book on XpressBees (API)
     </button>
     <button class="btn-outline" onclick="pushServiceableToDelhivery(this)" style="padding:0.45rem 1rem;font-size:0.58rem;margin-left:0.2rem;border-color:rgba(181,107,18,0.55);color:var(--orange);" title="Book unshipped orders on Delhivery (serviceable pincodes only, preview first, real AWBs)">
       🚚 Book on Delhivery (AWB)
@@ -13509,6 +13513,294 @@ async function dlRunPush(includeShiprocket, expected) {
   '</div>';
 
   dlModal(h);
+}
+
+// ── XpressBees: book through the Custom API (real AWBs) ─────────────────────
+//
+// For when the Sales Channel importer is not pulling orders (13 Oct 2026: its
+// queue stopped and the panel froze). This books straight through
+// xpressbees-ship: each order gets a real AWB, the wallet is charged, and the
+// customer gets the shipped WhatsApp + email.
+//
+// Same shape as the Delhivery button: choose, preview (books nothing), book in
+// small batches, then every outcome grouped by cause with what to do. The
+// server re-checks every order at booking time (still waiting to ship, no AWB,
+// no cancel request, older than 30 minutes), so a stale screen cannot book a
+// cancelled order. XpressBees itself refuses an order number it already holds,
+// which is what stops an order imported into the panel being booked twice.
+let xbbActive = false;
+let xbbState = null;
+// "Surface Xpressbees 0.5 K.G" in XpressBees' courier list.
+const XBB_SURFACE_05 = '1';
+const XBB_GROUP_ORDER = ['wallet', 'auth', 'network', 'in_panel', 'no_service', 'pincode', 'address', 'phone', 'other'];
+
+function xbbModal(html) {
+  let m = document.getElementById('xbBookModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'xbBookModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:10800;padding:1rem;';
+    document.body.appendChild(m);
+  }
+  m.innerHTML =
+    '<div style="background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow);width:min(780px,96vw);max-height:90vh;overflow-y:auto;padding:1.6rem 1.6rem 1.3rem;position:relative;color:var(--cream);font-size:0.8rem;line-height:1.6;">' +
+      '<button type="button" onclick="xbbClose()" aria-label="Close" style="position:absolute;top:0.6rem;right:0.6rem;background:transparent;border:1px solid var(--border);width:32px;height:32px;border-radius:50%;cursor:pointer;color:var(--cream-dim);font-size:0.9rem;">✕</button>' +
+      html +
+    '</div>';
+}
+function xbbClose() {
+  if (xbbActive) return;                       // never hide a run that is still booking
+  document.getElementById('xbBookModal')?.remove();
+}
+const XBB_H = (t) => '<h2 style="' + DL_H + '">' + t + '</h2>';
+
+async function xbbCall(body) {
+  let res, text;
+  try {
+    res = await fetch('/.netlify/functions/xpressbees-ship', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' },
+      body: JSON.stringify(body),
+    });
+    text = await res.text();
+  } catch (e) {
+    const err = new Error('Could not reach the server: ' + (e.message || e));
+    err.transport = true;
+    throw err;
+  }
+  let data;
+  try { data = JSON.parse(text); } catch { data = null; }
+  if (!res.ok || !data) {
+    const err = new Error((data && data.error) || ('HTTP ' + res.status + (text ? ' — ' + text.slice(0, 300) : '')));
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+const XBB_HOLD_TEXT = {
+  fresh: 'Placed under 30 minutes ago (customer can still cancel)',
+  cancel_requested: 'Customer asked to cancel',
+  status: 'No longer waiting to ship',
+  has_awb: 'Already has an AWB',
+  missing: 'Order not found',
+  wallet_stop: 'Not attempted: wallet ran out earlier in the run',
+  not_attempted: 'Not attempted: the run stopped before reaching them',
+};
+
+function xbbGroupedFailures(failed) {
+  const groups = {};
+  for (const f of failed) (groups[f.kind || 'other'] = groups[f.kind || 'other'] || []).push(f);
+  return Object.keys(groups)
+    .sort((a, b) => XBB_GROUP_ORDER.indexOf(a) - XBB_GROUP_ORDER.indexOf(b))
+    .map(k => {
+      const rows = groups[k];
+      return '<div style="border:1px solid rgba(201,54,54,0.4);background:rgba(201,54,54,0.05);padding:0.8rem 1rem;margin-top:0.9rem;">' +
+        '<div style="color:var(--red);font-weight:700;">' + dlEsc(rows[0].title || 'XpressBees refused the order') + ' — ' + rows.length + ' order(s)</div>' +
+        '<div style="font-size:0.74rem;margin:0.25rem 0 0.5rem;">' + dlEsc(rows[0].action || '') + '</div>' +
+        dlOrderList(rows, r =>
+          '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
+          '<span style="color:var(--cream-dim);">' +
+            (r.available && r.available.length ? 'Offered here: ' + dlEsc(r.available.map(a => a.name).join(', ')) : dlEsc(String(r.error || '').replace(/^XpressBees (booking|serviceability) failed( for \d+)?:\s*/, '').slice(0, 140))) +
+          '</span>') +
+        '<details style="margin-top:0.4rem;"><summary style="cursor:pointer;font-size:0.68rem;color:var(--cream-dim);">XpressBees’ exact response</summary>' +
+          '<pre style="' + DL_MONO + 'font-size:0.66rem;white-space:pre-wrap;word-break:break-word;margin:0.4rem 0 0;color:var(--cream-dim);">' +
+            dlEsc(rows.map(r => r.order_id + ': ' + r.error).join('\n')) +
+          '</pre></details>' +
+      '</div>';
+    }).join('');
+}
+
+function xbbHeldList(skipped) {
+  if (!skipped.length) return '';
+  const groups = {};
+  for (const s of skipped) (groups[s.kind || 'other'] = groups[s.kind || 'other'] || []).push(s);
+  return '<div style="' + DL_SEC + 'color:var(--cream-dim);">Not sent (' + skipped.length + ')</div>' +
+    Object.entries(groups).map(([k, rows]) =>
+      '<details style="margin-top:0.3rem;"><summary style="cursor:pointer;font-size:0.74rem;">' + dlEsc(XBB_HOLD_TEXT[k] || k) + ' — ' + rows.length + '</summary>' +
+        dlOrderList(rows, r =>
+          '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
+          '<span style="color:var(--cream-dim);">' + dlEsc(r.reason || '') + '</span>') +
+      '</details>').join('');
+}
+
+// Step 1: choose what to book and on which service.
+function xbBookOpen() {
+  if (xbbActive) { alert('An XpressBees booking is already running. Please wait for it to finish.'); return; }
+  const selected = getSelectedOrders().map(o => o.razorpay_order_id || o.id).filter(Boolean);
+  const radio = (name, value, checked, label, hint) =>
+    '<label style="display:flex;gap:0.6rem;align-items:flex-start;cursor:pointer;border:1px solid var(--border);padding:0.6rem 0.8rem;margin-bottom:0.4rem;">' +
+      '<input type="radio" name="' + name + '" value="' + value + '" ' + (checked ? 'checked' : '') + ' style="margin-top:0.25rem;">' +
+      '<span>' + label + (hint ? '<br><span style="color:var(--cream-dim);font-size:0.72rem;">' + hint + '</span>' : '') + '</span></label>';
+  xbbModal(XBB_H('Book on XpressBees (API)') +
+    '<p style="color:var(--cream-dim);font-size:0.74rem;margin:0 0 0.8rem;">This <b>books real shipments</b> through the XpressBees Custom API: each order gets an AWB, the XpressBees wallet is charged, and the customer is sent the shipped WhatsApp + email. You will see a preview with the cost before anything is booked.</p>' +
+    '<div style="' + DL_SEC + '">Which orders</div>' +
+    (selected.length ? radio('xbbScope', 'selected', true, 'The ' + selected.length + ' order(s) ticked in the table') : '') +
+    radio('xbbScope', 'all', !selected.length, 'Every unshipped order from the last <input id="xbbDays" type="number" min="1" max="120" value="30" style="width:3.5rem;background:var(--bg2);color:var(--cream);border:1px solid var(--border);padding:0 0.3rem;"> days', 'No AWB yet, still waiting to ship. Orders placed in the last 30 minutes are held back.') +
+    '<div style="' + DL_SEC + '">Service</div>' +
+    radio('xbbService', 'surface', true, 'Surface Xpressbees 0.5 kg only (recommended)', 'Orders where it is not offered are listed, with what is offered, and not booked.') +
+    radio('xbbService', 'cheapest', false, 'Cheapest XpressBees service available', 'Can pick a 10 kg or Air service where Surface 0.5 kg is not offered — often ₹190+ per parcel. The preview shows the price of each.') +
+    '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.1rem;">' +
+      '<button class="btn-outline" onclick="xbbClose()">Cancel</button>' +
+      '<button class="btn-green" onclick="xbbPreview()">Check prices (books nothing)</button>' +
+    '</div>');
+  xbbState = { selected };
+}
+
+// Step 2: dry run in batches; books nothing.
+async function xbbPreview() {
+  const scope = document.querySelector('input[name=xbbScope]:checked')?.value || 'all';
+  const service = document.querySelector('input[name=xbbService]:checked')?.value || 'surface';
+  const days = parseInt(document.getElementById('xbbDays')?.value, 10) || 30;
+  const courierId = service === 'surface' ? XBB_SURFACE_05 : undefined;
+  const st = xbbState = { ...xbbState, scope, service, days, courierId, ready: [], failed: [], skipped: [] };
+
+  xbbModal(XBB_H('Book on XpressBees (API)') + '<p style="color:var(--cream-dim);"><span class="spinner"></span>Finding orders…</p>');
+  let ids;
+  try {
+    if (scope === 'selected') {
+      ids = st.selected.slice();
+    } else {
+      const c = await xbbCall({ action: 'candidates', days });
+      ids = (c.ready || []).map(r => r.order_id);
+      st.skipped.push(...(c.held || []).map(h => ({ order_id: h.order_id, kind: h.kind, reason: h.reason })));
+    }
+  } catch (e) {
+    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Could not load the orders', e.message, 'Nothing was sent to XpressBees.') +
+      '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="xbbClose()">Close</button></div>');
+    return;
+  }
+
+  for (let i = 0; i < ids.length; i += 10) {
+    xbbModal(XBB_H('Book on XpressBees (API)') +
+      '<p style="color:var(--cream-dim);"><span class="spinner"></span>Asking XpressBees for prices… ' + Math.min(i, ids.length) + ' of ' + ids.length + '</p>' +
+      '<p style="color:var(--cream-dim);font-size:0.72rem;">Nothing is booked in this step.</p>');
+    try {
+      const d = await xbbCall({ order_ids: ids.slice(i, i + 10), dry_run: true, ...(courierId ? { courier_id: courierId } : {}) });
+      st.ready.push(...(d.booked || []));
+      st.failed.push(...(d.failed || []));
+      st.skipped.push(...(d.skipped || []));
+    } catch (e) {
+      xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('The preview stopped', e.message, 'Nothing was booked. Try again in a minute.') +
+        '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="xbbClose()">Close</button></div>');
+      return;
+    }
+  }
+
+  const ready = st.ready;
+  const cod = ready.filter(r => Number(r.collectable) > 0);
+  const freight = ready.reduce((t, r) => t + (Number(r.courier_charges) || 0), 0);
+  const services = {};
+  ready.forEach(r => { const n = r.courier?.name || 'XpressBees'; services[n] = (services[n] || 0) + 1; });
+
+  let h = XBB_H('Book on XpressBees (API) — preview') +
+    '<p style="color:var(--cream-dim);font-size:0.74rem;margin:0 0 0.6rem;">Nothing has been booked yet.</p>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.6rem;margin:0.6rem 0;">' +
+      '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.5rem;color:var(--green);">' + ready.length + '</div><div style="font-size:0.66rem;color:var(--cream-dim);">ready to book</div></div>' +
+      '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.1rem;">' + dlRupees(Math.round(freight)) + '</div><div style="font-size:0.66rem;color:var(--cream-dim);">freight from the wallet</div></div>' +
+      '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.1rem;">' + cod.length + ' COD</div><div style="font-size:0.66rem;color:var(--cream-dim);">' + dlRupees(cod.reduce((t, r) => t + Number(r.collectable || 0), 0)) + ' collected at the door</div></div>' +
+      '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.1rem;">' + (ready.length - cod.length) + ' prepaid</div><div style="font-size:0.66rem;color:var(--cream-dim);">nothing to collect</div></div>' +
+    '</div>' +
+    (ready.length ? '<div style="font-size:0.72rem;color:var(--cream-dim);">Service: ' + dlEsc(Object.entries(services).map(([n, c]) => c + ' × ' + n).join(', ')) + '. Make sure the XpressBees wallet holds at least ' + dlRupees(Math.round(freight)) + '; if it runs out, the rest are left unbooked and listed.</div>' : '');
+
+  if (ready.length) {
+    h += '<details style="margin-top:0.6rem;"><summary style="cursor:pointer;font-size:0.72rem;color:var(--cream-dim);">Show the ' + ready.length + ' order(s) that will be booked</summary>' +
+      dlOrderList(ready, r =>
+        '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
+        '<span style="min-width:4rem;">' + dlEsc(r.pincode) + '</span>' +
+        '<span style="min-width:7rem;">' + (Number(r.collectable) > 0 ? 'COD ' + dlRupees(r.collectable) : 'Prepaid') + '</span>' +
+        '<span style="color:var(--cream-dim);">' + dlEsc(r.courier?.name || '') + ' · ' + dlRupees(r.courier_charges) + '</span>') +
+    '</details>';
+  }
+  if (st.failed.length) h += '<div style="' + DL_SEC + 'color:var(--red);">Will not be booked (' + st.failed.length + ')</div>' + xbbGroupedFailures(st.failed);
+  h += xbbHeldList(st.skipped);
+
+  h += '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.3rem;flex-wrap:wrap;">' +
+    '<button class="btn-outline" onclick="xbBookOpen()">Back</button>' +
+    '<button class="btn-outline" onclick="xbbClose()">Cancel</button>' +
+    (ready.length
+      ? '<button class="btn-green" onclick="xbbBook()" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;">Book ' + ready.length + ' on XpressBees · ' + dlRupees(Math.round(freight)) + '</button>'
+      : '<button class="btn-green" disabled style="opacity:0.5;cursor:not-allowed;">Nothing to book</button>') +
+  '</div>';
+  xbbModal(h);
+}
+
+// Step 3: book in batches of 5 and show every outcome.
+async function xbbBook() {
+  const st = xbbState;
+  if (xbbActive || !st || !st.ready.length) return;
+  if (!confirm('Book ' + st.ready.length + ' order(s) on XpressBees now?\n\nEach gets a real AWB, the wallet is charged, and the customer is notified. This cannot be undone from here.')) return;
+  xbbActive = true;
+  const ids = st.ready.map(r => r.order_id);
+  const out = { booked: [], failed: [], skipped: [], unknown: [] };
+  let stopped = '';
+
+  for (let i = 0; i < ids.length; i += 5) {
+    xbbModal(XBB_H('Booking on XpressBees…') +
+      '<p style="color:var(--cream-dim);"><span class="spinner"></span>' + Math.min(i, ids.length) + ' of ' + ids.length + ' sent · ✅ ' + out.booked.length + ' booked · ❌ ' + out.failed.length + ' failed</p>' +
+      '<p style="color:var(--cream-dim);font-size:0.72rem;">Do not close this tab.</p>');
+    const batch = ids.slice(i, i + 5);
+    try {
+      const d = await xbbCall({ order_ids: batch, ...(st.courierId ? { courier_id: st.courierId } : {}) });
+      out.booked.push(...(d.booked || []));
+      out.failed.push(...(d.failed || []));
+      out.skipped.push(...(d.skipped || []));
+      if ((d.failed || []).some(f => f.kind === 'wallet')) { stopped = 'wallet'; break; }
+      if ((d.failed || []).some(f => f.kind === 'auth')) { stopped = 'auth'; break; }
+    } catch (e) {
+      // No answer: these may or may not have been booked.
+      out.unknown.push(...batch);
+      stopped = 'transport';
+      out.error = e.message;
+      break;
+    }
+  }
+  const sent = new Set([...out.booked, ...out.failed, ...out.skipped].map(r => r.order_id).concat(out.unknown));
+  const notAttempted = ids.filter(id => !sent.has(id));
+  xbbActive = false;
+
+  const notSaved = out.booked.filter(b => b.db_updated === false);
+  const notNotified = out.booked.filter(b => b.notified && !b.notified.whatsapp && !b.notified.email && !b.notified.skipped);
+  const freight = out.booked.reduce((t, b) => t + (Number(b.courier_charges) || 0), 0);
+
+  let h = XBB_H('XpressBees booking finished') +
+    '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:0.9rem;margin:0.3rem 0 0.6rem;">' +
+      '<span style="color:var(--green);">✅ Booked <b>' + out.booked.length + '</b> · ' + dlRupees(Math.round(freight)) + '</span>' +
+      '<span style="color:' + (out.failed.length ? 'var(--red)' : 'var(--cream-dim)') + ';">❌ Failed <b>' + out.failed.length + '</b></span>' +
+      '<span style="color:var(--cream-dim);">⏭ Not sent <b>' + (out.skipped.length + notAttempted.length) + '</b></span>' +
+    '</div>';
+
+  if (stopped === 'transport') {
+    h += dlErrorBox('No answer from the server — stopped', out.error + '\n\nOutcome unknown for: ' + out.unknown.join(', '),
+      'These may or may not have been booked. Open this button again and preview: any that got an AWB are skipped, and XpressBees refuses an order number it already holds, so nothing is booked twice.');
+  }
+  if (stopped === 'wallet') h += dlErrorBox('Stopped: the XpressBees wallet ran out', notAttempted.length + ' order(s) were not attempted.', 'Recharge the wallet, then run this again for the rest.');
+  if (stopped === 'auth') h += dlErrorBox('Stopped: could not sign in to XpressBees', 'Check the XPRESSBEES_EMAIL / XPRESSBEES_PASSWORD Worker secrets.', notAttempted.length + ' order(s) were not attempted.');
+  if (notSaved.length) {
+    h += dlErrorBox(notSaved.length + ' booked at XpressBees but NOT saved here',
+      notSaved.map(b => b.order_id + '  →  AWB ' + b.awb).join('\n'),
+      'These parcels exist at XpressBees. Put the AWBs on the orders by hand (Update status → Shipped) before booking again.');
+  }
+  if (notNotified.length) {
+    h += dlErrorBox(notNotified.length + ' customer(s) were not notified', notNotified.map(b => b.order_id).join(', '),
+      'The booking is fine. Resend the shipped message from the order, or ask to run admin-resend-shipped for these.');
+  }
+  if (out.failed.length) h += xbbGroupedFailures(out.failed);
+
+  if (out.booked.length) {
+    h += '<div style="' + DL_SEC + 'color:var(--green);">Booked (' + out.booked.length + ')</div>' +
+      dlOrderList(out.booked, b =>
+        '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(b.order_id) + '</span>' +
+        '<span style="' + DL_MONO + 'min-width:9.5rem;">' + dlEsc(b.awb) + '</span>' +
+        '<span style="min-width:5rem;">' + (Number(b.collectable) > 0 ? 'COD ' + dlRupees(b.collectable) : 'Prepaid') + '</span>' +
+        '<span style="color:var(--cream-dim);">' + dlRupees(b.courier_charges) + ' · ' +
+          (b.notified && (b.notified.whatsapp || b.notified.email) ? '📲 notified' : (b.notified && b.notified.skipped ? 'already notified' : '⚠ not notified')) + '</span>');
+  }
+  h += xbbHeldList(out.skipped.concat(notAttempted.map(id => ({ order_id: id, kind: stopped === 'wallet' ? 'wallet_stop' : 'not_attempted', reason: 'not attempted' }))));
+  h += '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.3rem;">' +
+    '<button class="btn-green" onclick="xbbClose()">Done</button></div>';
+  xbbModal(h);
+  try { selectedOrderIds.clear(); await refreshRecentOrders(); } catch (e) { /* the table refreshes on its own */ }
 }
 
 // ── NimbusPost: push ONE order to the panel, no courier, no AWB ─────────────
