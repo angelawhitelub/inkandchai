@@ -31,6 +31,7 @@ const { requireAdmin } = require('./utils/admin-auth');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { classifyShipmentMoney, parseCartItems } = require('./utils/shipment-money');
 const xb = require('./utils/xpressbees');
+const { sendShippedNotification } = require('./utils/shipped-notification');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -169,6 +170,21 @@ async function buildOrder(order, suffix = '') {
   };
 }
 
+async function notifyShipped(supabase, order) {
+  const claim = await supabase.from('orders')
+    .update({ shipped_notified_at: new Date().toISOString() })
+    .eq('id', order.id).is('shipped_notified_at', null).select('id');
+  if (!claim.error && !(claim.data && claim.data.length)) return { skipped: 'already notified' };
+  const sent = await sendShippedNotification(order, {
+    awb: order.tracking_id, courier: order.courier_name, trackingUrl: order.tracking_url,
+  }).catch((e) => ({ error: e.message }));
+  // Nothing reached the customer: release the claim so admin-resend-shipped can retry.
+  if (!claim.error && !(sent.whatsapp?.ok || sent.email?.ok)) {
+    await supabase.from('orders').update({ shipped_notified_at: null }).eq('id', order.id);
+  }
+  return { whatsapp: !!sent.whatsapp?.ok, email: !!sent.email?.ok, ...(sent.error ? { error: sent.error } : {}) };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST')    return json(405, { error: 'Method not allowed' });
@@ -281,6 +297,12 @@ exports.handler = async (event) => {
         const { error: updErr } = await supabase.from('orders').update(update).eq('id', order.id);
         if (updErr) console.warn(`[xpressbees-ship] ${orderId} booked as ${awb} but Supabase update failed:`, updErr.message);
 
+        // Every booking tells the customer, like every other way an order
+        // becomes shipped. 13 Oct 2026: 32 orders were booked through here and
+        // nobody heard a thing. Fire-once on shipped_notified_at, the same claim
+        // admin-resend-shipped uses, so a re-book cannot message twice.
+        const notified = updErr ? { skipped: 'order not updated' } : await notifyShipped(supabase, { ...order, ...update });
+
         booked.push({
           order_id: orderId, awb,
           booked_as: built._meta.booked_as,
@@ -292,6 +314,7 @@ exports.handler = async (event) => {
           shipment_id: res.shipment_id || null,
           tracking_url: update.tracking_url,
           db_updated: !updErr,
+          notified,
         });
       } catch (err) {
         // A cancel that succeeded before a book that failed leaves the order
