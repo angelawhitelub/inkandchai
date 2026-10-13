@@ -458,6 +458,26 @@ function prepaidPolicy(raw = process.env.WOO_FEED_PREPAID) {
   return { raw: text, all: false, ids: new Set(text.split(/[\s,]+/).filter(Boolean).map((id) => id.toUpperCase())) };
 }
 
+/**
+ * The order the feed lists orders in: the client's `order`, defaulting to
+ * desc as real WooCommerce does, by the moment the order entered the feed --
+ * created_at, or the admin "push to XpressBees" stamp when that is later, so a
+ * re-offered old order surfaces with the new ones.
+ *
+ * XpressBees's importer asks `page=1&per_page=100&order=desc&orderby=date` and
+ * never reads page 2. This used to ignore `order` and list oldest first, which
+ * was right only while the panel was catching up on a backlog. On 13 Oct 2026
+ * the panel had 107 orders waiting to be booked, all still in the feed, so
+ * page 1 filled up with orders it already had and the 72 newest (everything
+ * after 1 a.m.) never reached it however often Refresh was pressed. Newest
+ * first, the orders it already has are the ones that fall off the page.
+ */
+function feedOrder(rows, order) {
+  const at = (r) => Math.max(Date.parse(r.created_at) || 0, Date.parse(r.xpressbees_feed_at) || 0);
+  const dir = String(order || '').toLowerCase() === 'asc' ? 1 : -1;
+  return rows.slice().sort((a, b) => dir * (at(a) - at(b)));
+}
+
 function feedAdmits(order, policy = prepaidPolicy()) {
   const role = feedRole(order);
   if (role === 'cod') return true;
@@ -469,10 +489,9 @@ function feedAdmits(order, policy = prepaidPolicy()) {
 async function loadOrders(supabase) {
   const since = process.env.WOO_FEED_SINCE || DEFAULT_SINCE;
 
-  // OLDEST FIRST. XpressBees's importer takes one page and does not follow
-  // X-WP-TotalPages: the first sync pulled exactly 100 of 157 and stopped.
-  // A shipping queue should drain oldest-first anyway, so the orders that
-  // have waited longest are the ones that make it into that single page.
+  // NEWEST FIRST, so the row limit can only ever drop the oldest candidates
+  // (which the importer took long ago). The handler then orders the page the
+  // way the client asked -- see feedOrder.
   const base = () => supabase
     .from('orders')
     .select('*')
@@ -485,7 +504,7 @@ async function loadOrders(supabase) {
     // book it a second time. Delhivery's create.json returns the waybill in the
     // same call, which makes that window the normal case rather than a rarity.
     .is('tracking_id', null)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(500);
 
   // Two ways in: recent enough, OR an operator pressed "push to XpressBees" on
@@ -738,7 +757,7 @@ exports.feedAdmits = feedAdmits;
 exports.toWooOrder = toWooOrder;
 exports.isPaymentPending = isPaymentPending;
 exports.UNSHIPPED_STATUSES = UNSHIPPED_STATUSES;
-exports.__test = { toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, prepaidGateway, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, applyBooking, bookingFromPush, dtdcAwb, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
+exports.__test = { feedOrder, toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, prepaidGateway, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, applyBooking, bookingFromPush, dtdcAwb, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
 
 exports.handler = async (event) => {
   const path = String(event.path || '').replace(/\/+$/, '') || '/wp-json';
@@ -968,7 +987,8 @@ exports.handler = async (event) => {
   const skipped = [];
   const withheld = [];
   const policy = prepaidPolicy();
-  for (const row of rows) {
+  const q = event.queryStringParameters || {};
+  for (const row of feedOrder(rows, q.order)) {
     // COD-only channel, unless WOO_FEED_PREPAID admits this order. See feedAdmits.
     if (!feedAdmits(row, policy)) { withheld.push(row.razorpay_order_id || row.id); continue; }
     try { built.push(await toWooOrder(row)); }
@@ -988,7 +1008,6 @@ exports.handler = async (event) => {
                : wpError('woocommerce_rest_shop_order_invalid_id', 'Invalid ID.', 404);
   }
 
-  const q = event.queryStringParameters || {};
   // WooCommerce caps per_page at 100; this one does not, because the importer
   // only ever reads one page and a cap is what truncated the first sync. A
   // client asking for more now gets more, and one asking for 100 is unaffected.

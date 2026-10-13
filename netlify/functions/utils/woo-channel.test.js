@@ -237,7 +237,23 @@ test('the feed defaults to a page big enough for a full sync', () => {
   const src = require('node:fs').readFileSync(require.resolve('../woo-channel'), 'utf8');
   assert.match(src, /parseInt\(q\.per_page \|\| '100'/, 'default page must not be 20');
   assert.match(src, /Math\.min\(250,/, 'cap must exceed one window of orders');
-  assert.match(src, /ascending: true/, 'oldest orders must win the single page');
+  assert.match(src, /ascending: false/, 'the row limit must drop the oldest orders, not the newest');
+});
+
+test('the feed lists newest first unless asked for asc, so new orders always make page 1', () => {
+  // 13 Oct 2026: 172 orders in the feed, oldest first, importer reads 100 --
+  // the 72 newest never reached the panel.
+  const { feedOrder } = require('../woo-channel').__test;
+  const rows = [
+    { id: 'old', created_at: '2026-10-08T00:00:00Z' },
+    { id: 'pushed', created_at: '2026-09-20T00:00:00Z', xpressbees_feed_at: '2026-10-13T09:00:00Z' },
+    { id: 'new', created_at: '2026-10-13T10:00:00Z' },
+    { id: 'mid', created_at: '2026-10-12T00:00:00Z' },
+  ];
+  assert.deepEqual(feedOrder(rows, 'desc').map((r) => r.id), ['new', 'pushed', 'mid', 'old']);
+  assert.deepEqual(feedOrder(rows, undefined).map((r) => r.id), ['new', 'pushed', 'mid', 'old'], 'WooCommerce defaults to desc');
+  assert.deepEqual(feedOrder(rows, 'ASC').map((r) => r.id), ['old', 'mid', 'pushed', 'new']);
+  assert.equal(rows[0].id, 'old', 'input not mutated');
 });
 
 // ── Status push-back ───────────────────────────────────────────────────────
