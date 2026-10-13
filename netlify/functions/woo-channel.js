@@ -180,6 +180,11 @@ function readCredentials(event) {
 // a booking pushed back with it means (courier name, which payloads count).
 const CLIENTS = [
   { client: 'xpressbees', key: 'WOO_CONSUMER_KEY', secret: 'WOO_CONSUMER_SECRET' },
+  // A second XpressBees pair, so the channel can be reconnected with fresh
+  // keys while the old connection keeps pushing status updates (XpressBees
+  // never retries a refused push). 14 Oct 2026: the old pair was lost and the
+  // channel's import queue had stalled. Drop the old pair once the new works.
+  { client: 'xpressbees', key: 'WOO_XB_NEW_CONSUMER_KEY', secret: 'WOO_XB_NEW_CONSUMER_SECRET' },
   { client: 'dtdc', key: 'WOO_DTDC_CONSUMER_KEY', secret: 'WOO_DTDC_CONSUMER_SECRET' },
 ];
 

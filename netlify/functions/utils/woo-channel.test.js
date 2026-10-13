@@ -672,3 +672,22 @@ test('shipment-tracking and webhook routes still require a key pair', async () =
     assert.equal(res.statusCode, 401, path);
   }
 }));
+
+test('a second XpressBees key pair authenticates as xpressbees, alongside the first', () => {
+  const { authorize } = require('../woo-channel').__test;
+  const saved = { ...process.env };
+  Object.assign(process.env, {
+    WOO_CONSUMER_KEY: 'ck_old', WOO_CONSUMER_SECRET: 'cs_old',
+    WOO_XB_NEW_CONSUMER_KEY: 'ck_new', WOO_XB_NEW_CONSUMER_SECRET: 'cs_new',
+  });
+  try {
+    const basic = (k, s) => ({ headers: { authorization: 'Basic ' + Buffer.from(`${k}:${s}`).toString('base64') } });
+    assert.equal(authorize(basic('ck_old', 'cs_old')).client, 'xpressbees');
+    assert.equal(authorize(basic('ck_new', 'cs_new')).client, 'xpressbees');
+    assert.equal(authorize(basic('ck_new', 'cs_old')).ok, false, 'halves of different pairs must not mix');
+  } finally {
+    for (const k of ['WOO_CONSUMER_KEY', 'WOO_CONSUMER_SECRET', 'WOO_XB_NEW_CONSUMER_KEY', 'WOO_XB_NEW_CONSUMER_SECRET']) {
+      if (k in saved) process.env[k] = saved[k]; else delete process.env[k];
+    }
+  }
+});
