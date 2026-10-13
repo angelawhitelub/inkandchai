@@ -13601,7 +13601,7 @@ function xbbGroupedFailures(failed) {
         dlOrderList(rows, r =>
           '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
           '<span style="color:var(--cream-dim);">' +
-            (r.available && r.available.length ? 'Offered here: ' + dlEsc(r.available.map(a => a.name).join(', ')) : dlEsc(String(r.error || '').replace(/^XpressBees (booking|serviceability) failed( for \d+)?:\s*/, '').slice(0, 140))) +
+            (r.available && r.available.length ? 'Offered here: ' + dlEsc(r.available.map(a => a.name).join(', ')) : dlEsc(String(r.error || '').replace(/^XpressBees (booking|serviceability) failed( for \d+)?:\s*/, '').replace(/^\{"status":false,"data":"(.*)"\}$/, '$1').slice(0, 140))) +
           '</span>') +
         '<details style="margin-top:0.4rem;"><summary style="cursor:pointer;font-size:0.68rem;color:var(--cream-dim);">XpressBees’ exact response</summary>' +
           '<pre style="' + DL_MONO + 'font-size:0.66rem;white-space:pre-wrap;word-break:break-word;margin:0.4rem 0 0;color:var(--cream-dim);">' +
