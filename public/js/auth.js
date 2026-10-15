@@ -2180,11 +2180,11 @@ window.IACClaimEvidence = {
   };
 
   // ── Prepaid cancellation after the 30-minute window ─────────────────────────
-  // Offered until the parcel is out for delivery. The terms come from the
-  // server (get-my-orders → order.late_cancel, computed by
+  // Offered once the courier has picked the parcel up, until it is out for
+  // delivery; never between the 30-minute window and pickup. The terms come
+  // from the server (get-my-orders → order.late_cancel, computed by
   // utils/prepaid-late-cancel.js), so the amount on the button is the amount
-  // cancel-prepaid-order refunds. Before an AWB it is the full amount; after,
-  // shipping is kept back (₹74 per 0.5 kg).
+  // cancel-prepaid-order refunds: shipping kept back (₹74 per 0.5 kg).
   function inrPaise(p) {
     return '₹' + (Number(p || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 });
   }
@@ -2228,7 +2228,7 @@ window.IACClaimEvidence = {
     const refund = Number(btn?.dataset.refund || 0);
     const deduction = Number(btn?.dataset.deduction || 0);
     const msg = deduction
-      ? `Cancel this order?\n\nYour order has already been booked with the courier, so the shipping charge of ${inrPaise(deduction)} is kept back and ${inrPaise(refund)} is refunded to your original payment method.\n\nIf the parcel is already on its way, the refund is sent once the courier confirms it is coming back. This cannot be undone.`
+      ? `Cancel this order?\n\nThe courier has already picked up your parcel, so the shipping charge of ${inrPaise(deduction)} is kept back and ${inrPaise(refund)} is refunded to your original payment method.\n\nWe'll ask the courier to bring it back, and the refund is sent once the courier confirms it is returning. This cannot be undone.`
       : `Cancel this order?\n\nYou'll get a full refund of ${inrPaise(refund)} to your original payment method. This cannot be undone.`;
     if (!confirm(msg)) return;
     if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }

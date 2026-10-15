@@ -1,10 +1,16 @@
 /**
- * Prepaid cancellation after the 30-minute window, up to out-for-delivery.
+ * Prepaid cancellation after the 30-minute window: picked up, not yet out for
+ * delivery.
  *
- * THE RULE (owner's decision, 28 Sep 2026)
- * ----------------------------------------
- *   no AWB yet          -> cancelled, FULL refund
- *   AWB booked          -> cancelled, refund minus shipping: Rs 74 per 0.5 kg
+ * THE RULE (owner's decision, 15 Oct 2026; replaces 28 Sep)
+ * ---------------------------------------------------------
+ *   first 30 minutes    -> cancel-order.js, FULL refund (not this file)
+ *   not picked up yet   -> NOT cancellable here, AWB or not. The 28 Sep rule
+ *                          let these cancel with shipping kept, and kept
+ *                          Rs 740 off IC-CW-20261010-ZO6K3 for a parcel
+ *                          XpressBees never collected. The 10-day unpicked
+ *                          cancel (utils/unpicked-cancel.js) still applies.
+ *   picked up           -> cancelled, refund minus shipping: Rs 74 per 0.5 kg
  *                          slab, slab from the number of books
  *                            1 book = 0.5 kg  Rs 74     5-6 = 3 kg  Rs 444
  *                            2      = 1 kg    Rs 148    7-8 = 4 kg  Rs 592
@@ -12,13 +18,20 @@
  *   out for delivery,   -> not cancellable ("Cancellation expired")
  *   delivered, RTO
  *
+ * "Picked up" is what we have on record: shipment_moved_at, or courier text
+ * that is not a waiting-for-pickup phrase (utils/pickup-live.js). Couriers that
+ * send no scans read as not picked up, so the customer is refused, never
+ * charged shipping for a parcel that may still be on our shelf. If the courier
+ * then cancels the AWB as not yet collected, nothing is kept.
+ *
  * WHEN THE MONEY MOVES
  * --------------------
  * Only once the courier has accepted that the parcel is not going to the
  * customer. Refunding first and hoping the parcel comes back is how a customer
  * ends up with the books AND the money.
  *
- *   XpressBees, not picked up  -> /shipments2/cancel, then refund at once
+ *   XpressBees, live state     -> /shipments2/cancel, then FULL refund at once
+ *   still pre-pickup              (our record said picked up; the courier wins)
  *   NimbusPost-booked, Delhivery direct
  *                              -> their cancel API (an in-transit cancel is an
  *                                 RTO at the courier), refund once it accepts
@@ -39,6 +52,7 @@
 
 const { parcelTier } = require('./parcel-tier');
 const { interpret } = require('./xpressbees-status');
+const { pickupState } = require('./pickup-live');
 
 const SLAB_PAISE = 7400;
 const MAX_SLABS = 10;                     // 5 kg
@@ -111,6 +125,15 @@ function courierStage(order) {
   return null;
 }
 
+/** Has the courier collected the parcel, by what we have on record? */
+function pickedUp(order) {
+  if (order?.shipment_moved_at) return true;
+  return [order?.last_courier_status, order?.last_nimbuspost_status]
+    .some((raw) => pickupState(raw) === 'moved');
+}
+
+const NOT_PICKED_MESSAGE = 'Orders can be cancelled within 30 minutes of ordering. This one is being prepared for dispatch, so it can no longer be cancelled.';
+
 /**
  * Can this order be cancelled here, and on what terms? Pure: no I/O.
  * @returns {{eligible:true, hasAwb, books, slabKg, deductionPaise, refundPaise}
@@ -139,11 +162,9 @@ function quoteLateCancel(order, now = Date.now()) {
   if (!hasAwb && created && now - created <= INSTANT_WINDOW_MS) {
     return no('instant_window', 'Use Cancel & Refund — this order is still inside its 30-minute window.');
   }
+  if (!hasAwb || !pickedUp(order)) return no('not_picked_up', NOT_PICKED_MESSAGE);
 
   const amount = Number(order.amount_paise);
-  if (!hasAwb) {
-    return { eligible: true, hasAwb, books: shippingDeduction(order).books, slabKg: 0, deductionPaise: 0, refundPaise: amount };
-  }
   const d = shippingDeduction(order);
   const refund = amount - d.paise;
   if (refund <= 0) return no('nothing_to_refund', 'The shipping charge is more than this order is worth. Please contact us.');
@@ -306,7 +327,7 @@ function customerEmailHtml(order, q, outcome) {
       <h2 style="color:#f0e8d8;font-size:20px;font-weight:400;">Order cancelled</h2>
       <p style="color:#a09080;line-height:1.8;">Hi ${first}, order <strong style="color:#c9a84c;">${displayIdOf(order)}</strong> has been cancelled as you asked.</p>
       <table style="width:100%;border-collapse:collapse;font-size:14px;margin:18px 0;">${lines}</table>
-      ${q.deductionPaise ? `<p style="color:#a09080;font-size:13px;line-height:1.7;">The order had already been booked with the courier, so the shipping charge is kept back: ₹74 for every 0.5 kg the parcel weighs.</p>` : ''}
+      ${q.deductionPaise ? `<p style="color:#a09080;font-size:13px;line-height:1.7;">The courier had already picked up the parcel, so the shipping charge is kept back: ₹74 for every 0.5 kg the parcel weighs.</p>` : ''}
       <div style="background:#1c1916;border-left:3px solid #6dbf6d;padding:14px 18px;margin:18px 0;">
         <p style="color:#f0e8d8;margin:0;font-size:14px;line-height:1.7;">${when}</p>
       </div>
@@ -336,7 +357,7 @@ function ownerEmail(order, q, stop, refund) {
       <tr><td style="padding:3px 12px 3px 0;color:#666;">Order</td><td>${id} · ${order.status}</td></tr>
       <tr><td style="padding:3px 12px 3px 0;color:#666;">Customer</td><td>${order.customer_name || ''} · ${order.customer_phone || ''} · ${order.customer_email || ''}</td></tr>
       <tr><td style="padding:3px 12px 3px 0;color:#666;">Paid</td><td>${rs(order.amount_paise)} (${order.razorpay_payment_id || '—'})</td></tr>
-      <tr><td style="padding:3px 12px 3px 0;color:#666;">Kept</td><td>${rs(q.deductionPaise)}${q.deductionPaise ? ` — ${q.books} book(s), ${q.slabKg} kg` : ' (no AWB, full refund)'}</td></tr>
+      <tr><td style="padding:3px 12px 3px 0;color:#666;">Kept</td><td>${rs(q.deductionPaise)}${q.deductionPaise ? ` — ${q.books} book(s), ${q.slabKg} kg` : ' (courier had not picked up, full refund)'}</td></tr>
       <tr><td style="padding:3px 12px 3px 0;color:#666;">Refund</td><td>${rs(q.refundPaise)}${refund ? ` — ${refund.ok ? (refund.completed ? 'completed' : 'accepted, pending at gateway') : 'FAILED'}` : ' — waiting for the return'}</td></tr>
       <tr><td style="padding:3px 12px 3px 0;color:#666;">Courier</td><td>${stop ? `${stop.how}: ${stop.detail}` : 'no AWB — nothing booked'}</td></tr>
     </table>
@@ -408,13 +429,12 @@ async function executeLateCancel(supabase, order, opts = {}, overrides = {}) {
     cancellation_fee_paise: q.deductionPaise,
     refund_amount_paise: q.refundPaise,
     cancellation_source: 'customer_late',
-    cancellation_reason: q.hasAwb ? 'Customer cancelled after dispatch (shipping deducted)' : 'Customer cancelled before dispatch',
+    cancellation_reason: 'Customer cancelled after pickup (shipping deducted)',
   };
-  if (!q.hasAwb) Object.assign(claim, { status: 'cancelled', cancelled_at: at });
-  let query = supabase.from('orders').update(claim)
-    .eq('id', order.id).is('late_cancel_at', null).in('status', OPEN_STATUSES);
-  query = q.hasAwb ? query.eq('tracking_id', order.tracking_id) : query.is('tracking_id', null);
-  const { data: claimed, error } = await query.select('id').maybeSingle();
+  const { data: claimed, error } = await supabase.from('orders').update(claim)
+    .eq('id', order.id).is('late_cancel_at', null).in('status', OPEN_STATUSES)
+    .eq('tracking_id', order.tracking_id)
+    .select('id').maybeSingle();
   if (error) {
     console.error('[late-cancel] claim failed:', error.message);
     return { ok: false, status: 503, message: /late_cancel/.test(error.message || '')
@@ -424,17 +444,6 @@ async function executeLateCancel(supabase, order, opts = {}, overrides = {}) {
   if (!claimed) return { ok: false, status: 409, message: 'This order changed while cancelling. Refresh your orders to see its latest status.' };
 
   let row = { ...order, ...claim };
-
-  // No AWB: nothing is with a courier. Clear the panel row and pay it all back.
-  if (!q.hasAwb) {
-    const np = await deps.cancelNimbusOrder(displayIdOf(order)).catch((e) => ({ ok: false, error: e.message }));
-    if (!np.ok) console.warn(`[late-cancel] ${displayIdOf(order)} NimbusPost panel order not cancelled: ${np.error}`);
-    await notifyCustomer(row, q, 'refund', deps);
-    const refund = await issueLateCancelRefund(supabase, row, deps);
-    await notifyOwner(row, q, null, refund, deps);
-    return { ok: true, status: 200, outcome: 'refund', refund, refund_paise: q.refundPaise, deduction_paise: 0,
-             message: `Order cancelled. Your full refund of ${rs(q.refundPaise)} is on its way.` };
-  }
 
   const stop = await stopShipment(row, deps);
 
@@ -457,14 +466,25 @@ async function executeLateCancel(supabase, order, opts = {}, overrides = {}) {
   }
 
   // The courier accepted: the parcel is not going to the customer.
-  if (stop.how === 'xpressbees_cancel') await deps.recordCourierCancel(supabase, order.id, { action: 'cancelled' });
-  await supabase.from('orders').update({ status: 'cancelled', cancelled_at: at }).eq('id', order.id);
-  row = { ...row, status: 'cancelled', cancelled_at: at };
-  await notifyCustomer(row, q, 'refund', deps);
+  // XpressBees only cancels an AWB it has not collected, so our record was
+  // behind and nothing was shipped: no shipping is kept.
+  const fields = { status: 'cancelled', cancelled_at: at };
+  let terms = q;
+  if (stop.how === 'xpressbees_cancel') {
+    await deps.recordCourierCancel(supabase, order.id, { action: 'cancelled' });
+    terms = { ...q, deductionPaise: 0, refundPaise: Number(order.amount_paise) };
+    Object.assign(fields, { cancellation_fee_paise: 0, refund_amount_paise: terms.refundPaise,
+                            cancellation_reason: 'Customer cancelled; courier had not picked up (full refund)' });
+  }
+  await supabase.from('orders').update(fields).eq('id', order.id);
+  row = { ...row, ...fields };
+  await notifyCustomer(row, terms, 'refund', deps);
   const refund = await issueLateCancelRefund(supabase, row, deps);
-  await notifyOwner(row, q, stop, refund, deps);
-  return { ok: true, status: 200, outcome: 'refund', refund, refund_paise: q.refundPaise, deduction_paise: q.deductionPaise,
-           message: `Order cancelled. Your refund of ${rs(q.refundPaise)} (after ${rs(q.deductionPaise)} shipping) is on its way.` };
+  await notifyOwner(row, terms, stop, refund, deps);
+  return { ok: true, status: 200, outcome: 'refund', refund, refund_paise: terms.refundPaise, deduction_paise: terms.deductionPaise,
+           message: terms.deductionPaise
+             ? `Order cancelled. Your refund of ${rs(terms.refundPaise)} (after ${rs(terms.deductionPaise)} shipping) is on its way.`
+             : `Order cancelled. Your full refund of ${rs(terms.refundPaise)} is on its way.` };
 }
 
 // ── The return, seen later ──────────────────────────────────────────────────
@@ -529,6 +549,6 @@ async function sweepAwaitingReturn(supabase, opts = {}, overrides = {}) {
 
 module.exports = {
   quoteLateCancel, executeLateCancel, sweepAwaitingReturn, issueLateCancelRefund,
-  shippingDeduction, halfKgSlabs, isPurePrepaid, courierStage, cancelDelhiveryWaybill,
+  shippingDeduction, halfKgSlabs, isPurePrepaid, courierStage, pickedUp, cancelDelhiveryWaybill,
   SLAB_PAISE, OPEN_STATUSES,
 };

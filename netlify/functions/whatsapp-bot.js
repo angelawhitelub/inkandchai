@@ -99,7 +99,7 @@ ORDER CANCELLATION — "cancel my order" / "order cancel karna hai":
 - Flow: (1) When they ask to cancel, reply asking them to confirm — name the order if you know it, e.g. "Just to confirm, you'd like to cancel order IC-… for <book>? Reply YES to confirm and I'll cancel it right away." (2) ONLY after they reply yes/haan/confirm/cancel it, call the cancel_order tool (pass their Order ID if they gave one; otherwise it cancels their most recent still-cancellable order). (3) Relay the tool's result message to the customer.
 - If they say no / changed their mind, do NOT cancel — reassure them the order stays as-is.
 - After a successful cancel: for PREPAID/online orders a refund is issued AUTOMATICALLY to their original payment method (reflects in 2–3 business days) — they do NOT need to email anyone. For COD orders nothing was paid, so nothing to refund.
-- PREPAID orders can be cancelled until they are OUT FOR DELIVERY. Before it is booked with a courier the refund is in full; once booked, the shipping charge is kept (₹74 per 0.5 kg — ₹74 for one book, ₹148 for two, ₹296 for 3–4) and the rest is refunded. For those the tool first answers with error "needs-deduction-consent" and the exact amounts — relay them word for word, ask them to reply YES to cancel on those terms, and ONLY after that YES call cancel_order again with accept_deduction: true. Never call it with accept_deduction on the first confirmation, and never quote your own figures — only the tool's.
+- PREPAID orders can be cancelled within 30 minutes of ordering (full refund), or once the courier has PICKED UP the parcel and until it is OUT FOR DELIVERY — then the shipping charge is kept (₹74 per 0.5 kg — ₹74 for one book, ₹148 for two, ₹296 for 3–4) and the rest is refunded. In between (after 30 minutes, not yet picked up) they cannot be cancelled: relay the tool's message, and remind them of the 10-day automatic cancel and full refund if we can't dispatch it. For those the tool first answers with error "needs-deduction-consent" and the exact amounts — relay them word for word, ask them to reply YES to cancel on those terms, and ONLY after that YES call cancel_order again with accept_deduction: true. Never call it with accept_deduction on the first confirmation, and never quote your own figures — only the tool's.
 - If the parcel had already left, the refund goes out automatically once the courier confirms it is coming back; tell them to refuse the delivery if it reaches them first.
 - COD orders can only be cancelled before dispatch. Out for delivery or delivered: the tool will say so — explain that we don't take returns, but if the book arrives defective, misprinted, wrong or missing we replace it free (see REPLACEMENTS).
 - Never claim an order is cancelled unless the cancel_order tool returned success.
@@ -1527,13 +1527,19 @@ async function cancelOrderViaBot(phone, args = {}) {
         return {
           ok: false, error: 'needs-deduction-consent', order_id: oid,
           refund_rs: late.refundPaise / 100, deduction_rs: late.deductionPaise / 100,
-          message: `Order ${oid} has already been booked with the courier, so if you cancel now the shipping charge of ₹${late.deductionPaise / 100} (${late.slabKg} kg) is kept and ₹${late.refundPaise / 100} is refunded to your original payment method. If the parcel has already left, the refund is sent once the courier confirms it is coming back. Reply YES to cancel on these terms.`,
+          message: `Order ${oid} has already been picked up by the courier, so if you cancel now the shipping charge of ₹${late.deductionPaise / 100} (${late.slabKg} kg) is kept and ₹${late.refundPaise / 100} is refunded to your original payment method. We'll ask the courier to bring it back, and the refund is sent once the courier confirms it is returning. Reply YES to cancel on these terms.`,
         };
       }
       const r = await executeLateCancel(supabase, target);
       return r.ok
         ? { ok: true, order_id: oid, was_prepaid: true, outcome: r.outcome, message: `Done — ${r.message} We've sent the details to your email too. 💛` }
         : { ok: false, error: r.reason || 'late-cancel-failed', message: r.message };
+    }
+    // Past 30 minutes and not yet picked up: no cancel (owner, 15 Oct 2026).
+    // Without this it would fall to the "already dispatched" refusal below.
+    if (late.reason === 'not_picked_up' && 'late_cancel_at' in target) {
+      return { ok: false, error: 'cancellation-window-expired', order_id: target.razorpay_order_id,
+               message: `Order ${target.razorpay_order_id}: ${late.message}` };
     }
 
     // Guard: already shipped or delivered → cannot cancel.

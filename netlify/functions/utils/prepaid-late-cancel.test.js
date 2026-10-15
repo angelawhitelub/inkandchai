@@ -57,6 +57,7 @@ const order = (over = {}) => ({
   courier_name: 'Xpressbees',
   tracking_id: AWB,
   created_at: new Date(NOW - 30 * HOUR).toISOString(),
+  shipment_moved_at: new Date(NOW - 20 * HOUR).toISOString(),
   customer_name: 'Riya Sharma',
   customer_email: 'riya@example.com',
   customer_phone: '9876543210',
@@ -102,10 +103,8 @@ test('who can cancel here, and on what terms', () => {
     (({ eligible, deductionPaise, refundPaise }) => ({ eligible, deductionPaise, refundPaise }))(quoteLateCancel(order(), NOW)),
     { eligible: true, deductionPaise: 7400, refundPaise: 32500 });
 
-  const unbooked = quoteLateCancel(order({ status: 'paid', tracking_id: null, courier_name: null }), NOW);
-  assert.equal(unbooked.eligible, true);
-  assert.equal(unbooked.deductionPaise, 0);
-  assert.equal(unbooked.refundPaise, 39900);
+  // Picked up by the courier's words alone, with no movement stamp.
+  assert.equal(quoteLateCancel(order({ shipment_moved_at: null, last_nimbuspost_status: 'In Transit' }), NOW).eligible, true);
 
   const refusals = [
     [{ status: 'paid', tracking_id: null, created_at: new Date(NOW - 10 * 60000).toISOString() }, 'instant_window'],
@@ -120,36 +119,55 @@ test('who can cancel here, and on what terms', () => {
     [{ source: 'replacement', razorpay_order_id: 'IC-R-20260926-ZZZZZ' }, 'not_prepaid'],
     [{ late_cancel_at: new Date(NOW).toISOString() }, 'already_requested'],
     [{ amount_paise: 7000 }, 'nothing_to_refund'],
+    // Not picked up: past 30 minutes there is no cancel at all (owner, 15 Oct 2026).
+    [{ status: 'paid', tracking_id: null, courier_name: null }, 'not_picked_up'],
+    [{ shipment_moved_at: null }, 'not_picked_up'],
+    [{ shipment_moved_at: null, last_courier_status: 'pending pickup' }, 'not_picked_up'],
+    [{ shipment_moved_at: null, last_courier_status: 'Pickup Not Done' }, 'not_picked_up'],
+    [{ shipment_moved_at: null, last_nimbuspost_status: 'Out For Pickup' }, 'not_picked_up'],
   ];
   for (const [over, reason] of refusals) {
     assert.equal(quoteLateCancel(order(over), NOW).reason, reason, JSON.stringify(over));
   }
 });
 
-test('no AWB past 30 minutes: cancelled at once, panel row cleared, full refund', async () => {
-  const db = fakeDb(order({ status: 'paid', tracking_id: null, courier_name: null }));
-  const d = deps();
-  const r = await executeLateCancel(db, db.row, { now: NOW }, d);
-  assert.equal(r.ok, true, r.message);
-  assert.equal(d.npOrder, 1);
-  assert.deepEqual(d.refunds, [{ gateway: 'phonepe', amount: 39900 }]);
-  assert.equal(db.row.status, 'refunded');
-  assert.equal(db.row.late_cancel_state, 'refunded');
-  assert.equal(d.notified.length, 1);
-  assert.ok(d.emails.some((e) => e.to === 'riya@example.com'));
-  assert.equal(d.wa.length, 1);
+test('not picked up past 30 minutes: refused, nothing written, nobody called', async () => {
+  for (const over of [{ status: 'paid', tracking_id: null, courier_name: null }, { shipment_moved_at: null, last_courier_status: 'pending pickup' }]) {
+    const db = fakeDb(order(over));
+    const d = deps();
+    const r = await executeLateCancel(db, db.row, { now: NOW }, d);
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'not_picked_up');
+    assert.match(r.message, /within 30 minutes/);
+    assert.equal(db.updates.length, 0);
+    assert.equal(d.refunds.length + d.xbCalls + d.npCalls + d.npOrder + d.emails.length + d.wa.length, 0);
+  }
 });
 
-test('XpressBees not picked up: AWB cancelled, refund minus shipping straight away', async () => {
+test('record says picked up but XpressBees cancels the AWB as uncollected: full refund, no shipping kept', async () => {
   const db = fakeDb(order({ razorpay_payment_id: 'pay_ABC' }));
   const d = deps({ xb: 'cancelled' });
   const r = await executeLateCancel(db, db.row, { now: NOW }, d);
   assert.equal(r.outcome, 'refund');
-  assert.deepEqual(d.refunds, [{ gateway: 'razorpay', amount: 32500 }]);
+  assert.equal(r.deduction_paise, 0);
+  assert.deepEqual(d.refunds, [{ gateway: 'razorpay', amount: 39900 }]);
+  assert.equal(db.row.status, 'refunded');
+  assert.equal(db.row.cancellation_fee_paise, 0);
+  assert.equal(db.row.refund_amount_paise, 39900);
+  assert.equal(d.npCalls, 0);
+  const customer = d.emails.find((e) => e.to === 'riya@example.com');
+  assert.match(customer.html, /full amount/);
+  assert.doesNotMatch(customer.html, /Shipping charge/);
+});
+
+test('picked up, NimbusPost accepts the cancel (an RTO): refund minus shipping', async () => {
+  const db = fakeDb(order({ courier_name: 'Delhivery', tracking_id: '21025863355913' }));
+  const d = deps({ np: { ok: true } });
+  const r = await executeLateCancel(db, db.row, { now: NOW }, d);
+  assert.equal(r.outcome, 'refund');
+  assert.deepEqual(d.refunds, [{ gateway: 'phonepe', amount: 32500 }]);
   assert.equal(db.row.status, 'partially_refunded');
   assert.equal(db.row.cancellation_fee_paise, 7400);
-  assert.equal(db.row.refund_amount_paise, 32500);
-  assert.equal(d.npCalls, 0);
 });
 
 test('XpressBees already picked up: no refund yet, owner told to raise the RTO', async () => {

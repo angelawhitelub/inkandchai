@@ -5,9 +5,10 @@
  * Body: { order_id: "<orders.id uuid>" }            cancel it
  *       { order_id: "<orders.id uuid>", quote: true } only say what it would cost
  *
- * A prepaid customer cancelling after the 30-minute window, up to out for
- * delivery. Before an AWB: full refund. After: refund minus shipping (Rs 74
- * per 0.5 kg slab), and the courier is asked to stop the parcel. The rules and
+ * A prepaid customer cancelling after the 30-minute window: only once the
+ * courier has picked the parcel up, up to out for delivery. Refund minus
+ * shipping (Rs 74 per 0.5 kg slab), and the courier is asked to stop the
+ * parcel. Not picked up yet: refused (owner, 15 Oct 2026). The rules and
  * the courier/refund ordering live in utils/prepaid-late-cancel.js.
  *
  * cancel-order.js (30-minute prepaid, COD before pickup) is untouched and
