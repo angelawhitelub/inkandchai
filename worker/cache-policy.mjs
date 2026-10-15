@@ -121,3 +121,67 @@ export function isStorable(response) {
   if (vary.includes('*') || vary.includes('cookie') || vary.includes('authorization')) return false;
   return true;
 }
+
+/**
+ * Last-good copies of admin-created product pages, served when rendering fails.
+ *
+ * Those ~1,100 pages are rendered per request from Supabase (product-page.js).
+ * The five-minute edge copy above almost never helps a crawler: Google visits
+ * each page every few days, so nearly every crawl is a cache miss. From 13 Oct
+ * 2026 the database stalled every morning (09:30-12:30 IST) under Google's
+ * heaviest crawl, product-page answered 503 or hung for minutes, and Merchant
+ * Center disapproved 44 products as "Product page unavailable".
+ *
+ * So every good render also refreshes a long-lived copy under a separate key,
+ * and a 5xx or a render slower than STALE_AFTER_MS is answered from that copy
+ * instead. A 404 (product deactivated or deleted) is passed through untouched:
+ * a removed book must never come back from a backup.
+ */
+export const STALE_TTL = 30 * 24 * 60 * 60;
+export const STALE_AFTER_MS = 8000;
+
+export function staleProductKey(origin, slug) {
+  const s = encodeURIComponent(String(slug || '').toLowerCase());
+  return new Request(`${origin}/__last-good/product/${s}/`, { method: 'GET' });
+}
+
+/**
+ * render(): Promise<Response>. cache: { match(key), put(key, res) }.
+ * waitUntil keeps the backup write (and a slow render) alive past the reply.
+ * @returns {Promise<Response>} with X-Product-Source: fresh | last-good
+ */
+export async function renderWithLastGood(render, { cache, key, waitUntil, timeoutMs = STALE_AFTER_MS }) {
+  const pending = Promise.resolve().then(render);
+  let timer;
+  const slow = new Promise((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs); });
+  let res = await Promise.race([pending.catch(() => null), slow]);
+  clearTimeout(timer);
+
+  if (res && res.status === 200) {
+    const copy = res.clone();
+    const stored = new Response(copy.body, copy);
+    stored.headers.set('Cache-Control', `public, max-age=${STALE_TTL}`);
+    stored.headers.delete('Set-Cookie');
+    waitUntil(Promise.resolve(cache.put(key, stored)).catch(() => {}));
+    return res;
+  }
+  if (res && res.status < 500) return res;          // 404 and friends: the truth
+
+  const backup = await Promise.resolve(cache.match(key)).catch(() => null);
+  if (backup) {
+    // A slow render still finishes in the background and refreshes the copy.
+    if (!res) waitUntil(pending.then((late) => {
+      if (late && late.status === 200) {
+        const stored = new Response(late.body, late);
+        stored.headers.set('Cache-Control', `public, max-age=${STALE_TTL}`);
+        return cache.put(key, stored);
+      }
+    }).catch(() => {}));
+    const out = new Response(backup.body, backup);
+    out.headers.set('Cache-Control', 'public, max-age=0, must-revalidate');
+    out.headers.set('X-Product-Source', 'last-good');
+    return out;
+  }
+  // No copy yet in this location: the real answer, however long it takes.
+  return res || pending;
+}

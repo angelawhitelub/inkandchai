@@ -21,7 +21,7 @@ import * as bindingsNs from './shims/runtime-bindings.js';
 export { RateLimiter } from './rate-limiter.js';
 export { ClaimGuard } from './claim-guard.js';
 export { SpendGuard } from './spend-guard.js';
-import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable } from './cache-policy.mjs';
+import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable, staleProductKey, renderWithLastGood } from './cache-policy.mjs';
 import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
 import soldOutUtil from '../netlify/functions/utils/sold-out.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
@@ -749,7 +749,12 @@ export default {
       const product = url.pathname.match(/^\/product\/([^/]+)\/?$/);
       if (product) {
         const slug = decodeURIComponent(product[1]);
-        const rendered = await runHandler('product-page', withQuery(request, { slug }), env, ctx);
+        // A database stall must not reach the customer or Google as a 503 or a
+        // hang: serve the last good copy (cache-policy.mjs renderWithLastGood).
+        const rendered = await renderWithLastGood(
+          () => runHandler('product-page', withQuery(request, { slug }), env, ctx),
+          { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
+        );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
           return withSoldCount(markSoldOutPage(rendered), slug);
         }
