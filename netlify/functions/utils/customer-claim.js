@@ -37,17 +37,22 @@ async function beginClaim(sb, order, photos, { allowRecordedReport = false } = {
       .eq('cart_items->0->_replacement->>original_order_id',String(order.razorpay_order_id || order.id)).limit(1);
     if (prior.error) throw fail(503, 'Could not check previous requests. Please try again.');
     if (prior.data?.length) throw duplicate();
-    const urls = [];
-    for (const image of images) {
-      const path = `replacement-photos/${token}-${urls.length}.${image.type === 'jpeg' ? 'jpg' : image.type}`;
-      const bucket = sb.storage.from('product-images');
-      const result = await bucket.upload(path,image.bytes,{contentType:image.contentType,upsert:false});
-      if (result.error) throw fail(503, 'Photo upload failed. No request was created. Please try again.');
-      const url = bucket.getPublicUrl(path).data?.publicUrl;
-      if (!url) throw fail(503, 'Could not save the photo evidence. Please try again.');
-      urls.push(url);
-    }
+    const urls = await storeEvidence(sb, images, token);
     return { photos:urls, complete:()=>action('complete'), release:()=>action('release') };
   } catch (error) { await action('release'); throw error; }
 }
-module.exports = { evidence, beginClaim };
+/** Upload validated images (from evidence()) and return their public URLs. */
+async function storeEvidence(sb, images, token = randomUUID()) {
+  const urls = [];
+  for (const image of images) {
+    const path = `replacement-photos/${token}-${urls.length}.${image.type === 'jpeg' ? 'jpg' : image.type}`;
+    const bucket = sb.storage.from('product-images');
+    const result = await bucket.upload(path,image.bytes,{contentType:image.contentType,upsert:false});
+    if (result.error) throw fail(503, 'Photo upload failed. No request was created. Please try again.');
+    const url = bucket.getPublicUrl(path).data?.publicUrl;
+    if (!url) throw fail(503, 'Could not save the photo evidence. Please try again.');
+    urls.push(url);
+  }
+  return urls;
+}
+module.exports = { evidence, beginClaim, storeEvidence };
