@@ -2016,6 +2016,23 @@ select,input,textarea{font-size:1rem;}
             </div>
             <p class="hint" id="prodSampleMsg" style="margin-top:.65rem;"></p>
           </details>
+          <details id="prodMarketplaceEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(201,168,76,.035);">
+            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">Also on Amazon / Flipkart</summary>
+            <p class="hint" style="margin:.65rem 0 0;">Paste this title's listing on our Amazon or Flipkart store. The product page then shows <strong>"You can also buy from our Amazon &amp; Flipkart store"</strong> under Buy Now, with a button for each link that is set. Leave a box empty to hide that button.</p>
+            <p class="hint" id="prodMarketplaceCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
+            <div class="form-row" style="margin:.75rem 0 0;">
+              <label>Amazon listing URL</label>
+              <input type="url" id="prodAmazonUrl" placeholder="https://www.amazon.in/dp/…" autocomplete="off"/>
+            </div>
+            <div class="form-row" style="margin:.6rem 0 0;">
+              <label>Flipkart listing URL</label>
+              <input type="url" id="prodFlipkartUrl" placeholder="https://www.flipkart.com/…/p/itm…" autocomplete="off"/>
+            </div>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;">
+              <button class="btn-green" type="button" id="prodMarketplaceSaveBtn" onclick="saveMarketplaceLinks()">Save Store Links</button>
+            </div>
+            <p class="hint" id="prodMarketplaceMsg" style="margin-top:.65rem;"></p>
+          </details>
           <div style="display:flex;gap:1.2rem;margin-top:0.4rem;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.64rem;color:var(--cream-dim);">
               <input type="checkbox" id="prodActive" checked style="accent-color:var(--green);"/> Override active
@@ -8986,6 +9003,7 @@ function selectProduct(slug) {
   }
   loadAplusEditor(row);
   loadProductSampleEditor(row);
+  loadMarketplaceLinksEditor(row);
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
 }
@@ -9640,6 +9658,66 @@ async function previewAplusBlockImage(index, fileList) {
   aplusEditorBlocks[index].image_url = await window.iacImageToWebp(file);
   renderAplusBlocks();
   if (msg) msg.textContent = `Module ${index + 1} image ready. Save A+ Content to publish it.`;
+}
+
+// ── Also on Amazon / Flipkart ──────────────────────────────────────────────
+// Per-title store links; the product page shows a button for each one set.
+function setMarketplaceUi(links, note) {
+  const amz = document.getElementById('prodAmazonUrl');
+  const fk = document.getElementById('prodFlipkartUrl');
+  const cur = document.getElementById('prodMarketplaceCurrent');
+  if (amz) amz.value = links?.amazon_url || '';
+  if (fk) fk.value = links?.flipkart_url || '';
+  if (cur) {
+    const live = [links?.amazon_url && 'Amazon', links?.flipkart_url && 'Flipkart'].filter(Boolean);
+    cur.textContent = live.length ? `✅ Live on the product page: ${live.join(' & ')}` : (note || 'No store links yet.');
+  }
+}
+
+async function loadMarketplaceLinksEditor(row) {
+  const msg = document.getElementById('prodMarketplaceMsg');
+  if (msg) msg.textContent = '';
+  setMarketplaceUi(null, 'Checking for store links…');
+  if (!row?.slug) return;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-marketplace-links?slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setMarketplaceUi(data.links, data.migration ? '⚠ ' + data.migration : 'No store links yet.');
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setMarketplaceUi(null, 'Could not load the store links: ' + e.message);
+  }
+}
+
+async function saveMarketplaceLinks() {
+  const slug = selectedProduct?.slug;
+  const msg = document.getElementById('prodMarketplaceMsg');
+  const btn = document.getElementById('prodMarketplaceSaveBtn');
+  if (!slug) { if (msg) msg.textContent = 'Select a product first.'; return; }
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-marketplace-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug,
+        amazon_url: document.getElementById('prodAmazonUrl')?.value || '',
+        flipkart_url: document.getElementById('prodFlipkartUrl')?.value || '',
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (selectedProduct?.slug === slug) setMarketplaceUi(data.links);
+    if (msg) msg.textContent = data.links
+      ? `Saved. The buttons show on the product page${data.cache_purged ? ' now' : ' within ~5 minutes'}.`
+      : 'Store links removed from this product page.';
+  } catch (e) {
+    if (msg) msg.textContent = 'Could not save: ' + e.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ── Read sample (PDF) ──────────────────────────────────────────────────────

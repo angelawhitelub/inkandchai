@@ -473,6 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateCartUI();
   initAplusContent();
   initReadSample();
+  initMarketplaceLinks();
   initProductCouponBadge();
   initFrequentlyBoughtTogether();
 
@@ -563,6 +564,22 @@ function initReadSample() {
   const script = document.createElement('script');
   script.id = 'iac-read-sample-js';
   script.src = '/js/read-sample.js';
+  script.defer = true;
+  document.head.appendChild(script);
+}
+
+// ── Also on Amazon / Flipkart ──────────────────────────────────────────────
+// Store links set per book in the admin product editor. marketplace-links.js
+// asks whether this book has any and only then adds the buttons.
+function initMarketplaceLinks() {
+  if (!isProductDetailPage()) return;
+  if (document.getElementById('iac-marketplace-links-js')) {
+    if (window.IACMarketplaceLinks) window.IACMarketplaceLinks.init();
+    return;
+  }
+  const script = document.createElement('script');
+  script.id = 'iac-marketplace-links-js';
+  script.src = '/js/marketplace-links.js';
   script.defer = true;
   document.head.appendChild(script);
 }
