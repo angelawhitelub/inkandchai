@@ -1074,7 +1074,7 @@ select,input,textarea{font-size:1rem;}
 
     <!-- Top books this month -->
     <div class="stat-card" style="padding:1.2rem 1.4rem;margin-top:1rem;">
-      <div class="stat-label" style="margin-bottom:0.8rem;">🏆 Top Books This Month</div>
+      <div class="stat-label" style="margin-bottom:0.8rem;">🏆 Top Books Today</div>
       <div id="topBooksChart" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.5rem;"></div>
     </div>
   </div>
@@ -6054,9 +6054,13 @@ function updateAnalytics() {
       }).join('');
   }
 
-  // ── Top books this month ───────────────────────────────────────────────────
+  // ── Top books today (since midnight IST) ───────────────────────────────────
+  // IST, not todayStr: todayStr is the UTC date, which until 05:30 IST is still
+  // yesterday and would show the previous day's books.
+  const IST_MS = 330 * 60 * 1000;
+  const istDayStart = new Date(Math.floor((Date.now() + IST_MS) / 86400000) * 86400000 - IST_MS);
   const bookCounts = {};
-  monthOrders.forEach(o => {
+  paidOrders.filter(o => orderDate(o) >= istDayStart).forEach(o => {
     (Array.isArray(o.cart_items) ? o.cart_items : []).forEach(item => {
       const t = item.title || item.name || '';
       if (!t) return;
@@ -6070,7 +6074,7 @@ function updateAnalytics() {
   const topEl    = document.getElementById('topBooksChart');
   if (topEl) {
     if (topBooks.length === 0) {
-      topEl.innerHTML = '<p style="color:var(--cream-dim);font-size:0.7rem;">No data for this month yet.</p>';
+      topEl.innerHTML = '<p style="color:var(--cream-dim);font-size:0.7rem;">No books sold yet today.</p>';
     } else {
       topEl.innerHTML = topBooks.map(([title, data], i) => {
         const pct = Math.round(data.qty / maxQty * 100);
