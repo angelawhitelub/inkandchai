@@ -50,3 +50,23 @@ test('Reader Bestsellers keeps the month order but shows lifetime units', () => 
   assert.deepEqual(out.map((r) => [r.title, r.qty, r.month_qty]), [['New Hit', 55, 40], ['Classic', 515, 12], ['No Slug', 5, 5]]);
   assert.deepEqual(withLifetimeCounts(month, null).map((r) => r.qty), [40, 12, 5], 'before the first run: month numbers');
 });
+
+const { carriedCounts, unitsSold, cleanSalesSlug } = require('./lifetime-sales');
+
+test('a duplicated listing carries its original\'s units, down a chain, never in a loop', () => {
+  const counts = { orig: 40, copy: 3, 'copy-2': 1, a: 5, b: 7 };
+  const lineage = new Map([
+    ['copy', 'orig'],          // duplicate
+    ['copy-2', 'copy'],        // duplicate of the duplicate: orig + copy
+    ['a', 'b'], ['b', 'a'],    // a loop counts each other once, not forever
+    ['fresh', 'nothing-sold'], // original with no sales: nothing carried
+  ]);
+  assert.deepEqual(carriedCounts(counts, lineage), { copy: 40, 'copy-2': 43, a: 7, b: 5 });
+  const doc = { counts, carried: carriedCounts(counts, lineage) };
+  assert.equal(unitsSold(doc, 'Copy'), 43, 'own 3 + carried 40, any case');
+  assert.equal(unitsSold(doc, 'orig'), 40, 'the original is unchanged');
+  assert.equal(unitsSold(doc, 'fresh'), 0);
+  assert.equal(unitsSold({ counts }, 'copy'), 3, 'a document published before this change still reads');
+  assert.equal(cleanSalesSlug(' Can-T-Hurt '), 'can-t-hurt');
+  assert.equal(cleanSalesSlug('a/b'), '');
+});

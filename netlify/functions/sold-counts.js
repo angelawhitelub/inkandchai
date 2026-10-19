@@ -4,17 +4,20 @@
  *
  * { counts: { slug: units } } -- lifetime units sold for books with at least
  * SHOW_ON_PAGE_MIN, for the "🔥 N sold" line on book cards (book-card JS).
- * Same numbers as the product page line and Reader Bestsellers badges
- * (utils/lifetime-sales, refreshed hourly).
+ * Same numbers as the product page line (utils/lifetime-sales, refreshed
+ * hourly); a duplicated listing includes its original's units.
  */
 
-const { readLifetimeSales, SHOW_ON_PAGE_MIN } = require('./utils/lifetime-sales');
+const { readLifetimeSales, unitsSold, SHOW_ON_PAGE_MIN } = require('./utils/lifetime-sales');
 
 exports.handler = async () => {
   const doc = await readLifetimeSales();
   const counts = {};
-  for (const [slug, n] of Object.entries((doc && doc.counts) || {})) {
-    if (Number(n) >= SHOW_ON_PAGE_MIN) counts[slug] = Number(n);
+  // A duplicated listing shows its original's units too (doc.carried).
+  const slugs = new Set([...Object.keys((doc && doc.counts) || {}), ...Object.keys((doc && doc.carried) || {})]);
+  for (const slug of slugs) {
+    const n = unitsSold(doc, slug);
+    if (n >= SHOW_ON_PAGE_MIN) counts[slug] = n;
   }
   return {
     statusCode: 200,

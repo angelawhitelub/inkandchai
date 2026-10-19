@@ -107,6 +107,39 @@ async function readLifetimeSales() {
   return _doc;
 }
 
+/** A listing slug as the counts key it: trimmed, lower-case, one path segment. '' when unusable. */
+function cleanSalesSlug(value) {
+  const s = String(value || '').trim().toLowerCase();
+  return s && s.length <= 200 && !/[\s/?#]/.test(s) ? s : '';
+}
+
+/**
+ * Units a duplicated listing carries from the listing(s) it was copied from.
+ * `lineage` maps copy slug → original slug (custom_products.sales_from_slug);
+ * a copy of a copy carries the whole chain. Cycles and self-links are ignored.
+ * Returns { copySlug: units } for copies whose originals have sold anything.
+ */
+function carriedCounts(counts, lineage) {
+  const carried = {};
+  for (const [copy, first] of lineage || []) {
+    const seen = new Set([copy]);
+    let units = 0;
+    for (let from = first; from && !seen.has(from) && seen.size <= 10; from = lineage.get(from)) {
+      seen.add(from);
+      units += Number(counts && counts[from]) || 0;
+    }
+    if (units > 0) carried[copy] = units;
+  }
+  return carried;
+}
+
+/** Units the storefront shows for a slug: its own sales plus any it carries. */
+function unitsSold(doc, slug) {
+  const key = String(slug || '').toLowerCase();
+  if (!doc || !key) return 0;
+  return (Number(doc.counts && doc.counts[key]) || 0) + (Number(doc.carried && doc.carried[key]) || 0);
+}
+
 /** The product-page line, or '' below the threshold. */
 function soldLine(units) {
   const n = Math.floor(Number(units) || 0);
@@ -117,5 +150,6 @@ function soldLine(units) {
 
 module.exports = {
   countLifetimeSales, newTally, addOrders, finishTally, publishLifetimeSales, readLifetimeSales, soldLine, titleKey,
+  cleanSalesSlug, carriedCounts, unitsSold,
   SOLD_STATUSES, SHOW_ON_PAGE_MIN, STORE, KEY,
 };

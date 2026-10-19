@@ -1,6 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { purgeCacheTags } = require('./utils/purge-cache');
 const { requireAdmin } = require('./utils/admin-auth');
+const { cleanSalesSlug } = require('./utils/lifetime-sales');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -187,6 +188,12 @@ exports.handler = async (event) => {
     if (body.edition !== undefined) payload.edition = cleanText(body.edition, 80);
     if (body.published_on !== undefined) payload.published_on = cleanText(body.published_on, 40);
     if (body.reading_age !== undefined) payload.reading_age = cleanText(body.reading_age, 40);
+    // Duplicated listing: the "🔥 N sold" line counts the original's sales too
+    // (lifetime-sales-scheduled). Omitted preserves; '' or null clears.
+    if (body.sales_from_slug !== undefined) {
+      const from = cleanSalesSlug(body.sales_from_slug);
+      payload.sales_from_slug = from && from !== productSlug.toLowerCase() ? from : null;
+    }
     // Preserve an existing gallery when this update only changes listing data.
     // Supplying an explicit array (including []) still replaces/clears it.
     if (galleryImages !== undefined) payload.gallery_images = galleryImages;
@@ -210,6 +217,7 @@ exports.handler = async (event) => {
       { key: 'edition', fix: 'run sql/custom_products_book_details.sql' },
       { key: 'published_on', fix: 'run sql/custom_products_book_details.sql' },
       { key: 'reading_age', fix: 'run sql/custom_products_book_details.sql' },
+      { key: 'sales_from_slug', fix: 'run sql/custom_products_sales_from_slug.sql' },
     ];
     const dropped = [];
     let retryPayload = payload;

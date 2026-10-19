@@ -2016,6 +2016,19 @@ select,input,textarea{font-size:1rem;}
             </div>
             <p class="hint" id="prodSampleMsg" style="margin-top:.65rem;"></p>
           </details>
+          <details id="prodSalesLineageEditor" style="display:none;margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(232,160,48,.04);">
+            <summary style="cursor:pointer;color:#e8a030;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔥 Sold count from the original listing</summary>
+            <p class="hint" style="margin:.65rem 0 0;">For a duplicated listing: the product page's <strong>"🔥 N sold"</strong> line adds the original listing's sales to this page's own. Duplicates made with <em>Duplicate as New Listing</em> get this automatically; use this box for older copies. Shown from 10 sold; updates within the hour.</p>
+            <p class="hint" id="prodSalesLineageCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
+            <div class="form-row" style="margin:.75rem 0 0;">
+              <label>Original listing (slug or /product/… link)</label>
+              <input id="prodSalesFrom" placeholder="e.g. can-t-hurt-me-hindi-me-hi" autocomplete="off"/>
+            </div>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;">
+              <button class="btn-green" type="button" id="prodSalesFromSaveBtn" onclick="saveSalesLineage()">Save</button>
+            </div>
+            <p class="hint" id="prodSalesLineageMsg" style="margin-top:.65rem;"></p>
+          </details>
           <details id="prodMarketplaceEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(201,168,76,.035);">
             <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">Also on Amazon / Flipkart</summary>
             <p class="hint" style="margin:.65rem 0 0;">Paste this title's listing on our Amazon or Flipkart store. The product page then shows <strong>"You can also buy from our Amazon &amp; Flipkart store"</strong> under Buy Now, with a button for each link that is set. Leave a box empty to hide that button.</p>
@@ -7863,7 +7876,12 @@ function clearCreateProductForm() {
   if (msg) msg.textContent = 'New listings appear in catalogue/search after refresh and have a direct `/product/.../` URL immediately.';
   const banner = document.getElementById('copyListingBanner');
   if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
+  copySourceSlug = '';
 }
+
+// The listing the create form was copied from. Sent as sales_from_slug so the
+// new page's "🔥 N sold" line includes the original's sales (lifetime-sales).
+let copySourceSlug = '';
 
 // ── Copy an existing listing into the create form ────────────────────────────
 // For a new edition, a Hindi version, a combo built from one book: most of the
@@ -7955,9 +7973,12 @@ function fillCreateFormFromListing(src) {
     banner.innerHTML = '✓ Copied from <a href="/product/' + encodeURIComponent(src.slug) + '/" target="_blank" rel="noopener">' + esc(src.from_title || src.title || src.slug) + '</a>'
       + ' — details, price, description, SEO and ' + (src.image_url ? 'cover' : 'no cover') + (n ? ' + ' + n + ' gallery image' + (n === 1 ? '' : 's') : '') + '.'
       + '<br><span style="color:var(--orange);">Change what is different — title, edition, price, cover — and add the ISBN (not copied, so the two listings never share one). '
-      + 'The original listing is not changed; Create always makes a new page.</span>';
+      + 'The original listing is not changed; Create always makes a new page.</span>'
+      + '<br><label style="display:inline-flex;align-items:center;gap:.4rem;margin-top:.35rem;color:var(--cream);cursor:pointer;">'
+      + '<input type="checkbox" id="copyCarrySales" checked style="accent-color:var(--green);"/> Show the original\'s 🔥 sold count on the new page too (its sales + the new page\'s own)</label>';
     banner.style.display = '';
   }
+  copySourceSlug = String(src.slug || '');
 
   switchTab('create');
   const title = document.getElementById('newProdTitle');
@@ -8438,6 +8459,7 @@ async function createProductListing() {
     image_data_url: newProductImageDataUrl || document.getElementById('newProdImageUrl').value.trim(),
     is_active: true,
   };
+  if (copySourceSlug && document.getElementById('copyCarrySales')?.checked) payload.sales_from_slug = copySourceSlug;
 
   const galleryImageUrls = document.getElementById('newProdGalleryUrls').value
     .split(/[\n,]+/)
@@ -8467,7 +8489,11 @@ async function createProductListing() {
     createdProductUrl = data.url || ('/product/' + payload.slug + '/');
     const openBtn = document.getElementById('openCreatedProductBtn');
     if (openBtn) openBtn.style.display = '';
-    if (msg) msg.innerHTML = `Created: <a href="${esc(createdProductUrl)}" target="_blank" rel="noopener">${esc(createdProductUrl)}</a>`;
+    if (msg) msg.innerHTML = `Created: <a href="${esc(createdProductUrl)}" target="_blank" rel="noopener">${esc(createdProductUrl)}</a>`
+      + (data.warning ? `<br><span style="color:#e8a030;">${esc(data.warning)}</span>` : '')
+      + (payload.sales_from_slug && !data.warning ? '<br>🔥 The original\'s sold count appears on the new page within a few minutes.' : '');
+    // Recount now rather than at the top of the hour, so the carried count shows.
+    if (payload.sales_from_slug && !data.warning) adminFetch('/.netlify/functions/lifetime-sales-scheduled', { method: 'POST' }).catch(() => {});
     await fetchProducts();
   } catch (err) {
     if (msg) msg.textContent = 'Could not create listing: ' + err.message;
@@ -9058,6 +9084,7 @@ function selectProduct(slug) {
   loadAplusEditor(row);
   loadProductSampleEditor(row);
   loadMarketplaceLinksEditor(row);
+  loadSalesLineageEditor(row);
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
 }
@@ -9725,6 +9752,72 @@ function setMarketplaceUi(links, note) {
   if (cur) {
     const live = [links?.amazon_url && 'Amazon', links?.flipkart_url && 'Flipkart'].filter(Boolean);
     cur.textContent = live.length ? `✅ Live on the product page: ${live.join(' & ')}` : (note || 'No store links yet.');
+  }
+}
+
+// ── Sold count carried from the original listing (admin-sales-lineage) ───────
+function setSalesLineageUi(d, note) {
+  const box = document.getElementById('prodSalesLineageEditor');
+  const cur = document.getElementById('prodSalesLineageCurrent');
+  const input = document.getElementById('prodSalesFrom');
+  if (!box) return;
+  // Only admin-created listings can be duplicates; baked catalogue pages never are.
+  box.style.display = d && !d.custom ? 'none' : '';
+  if (input) input.value = (d && d.from_slug) || '';
+  if (cur) {
+    const n = (v) => Number(v || 0).toLocaleString('en-IN');
+    cur.innerHTML = note ? esc(note) : !d ? '' : d.from_slug
+      ? `Carrying <a href="/product/${encodeURIComponent(d.from_slug)}/" target="_blank" rel="noopener">${esc(d.from_slug)}</a> (${n(d.from_units)} sold). `
+        + `This page: ${n(d.own)} own + ${n(d.carried)} carried = <strong>${n(d.shown)}</strong>${d.shown >= 10 ? ' shown' : ' (badge shows from 10)'}.`
+        + (d.from_units && !d.carried ? ' The carried count appears after the next hourly recount.' : '')
+      : `Not linked. This page has sold ${n(d.own)} on its own.`;
+  }
+}
+
+async function loadSalesLineageEditor(row) {
+  const msg = document.getElementById('prodSalesLineageMsg');
+  if (msg) msg.textContent = '';
+  const isCustom = String(row?.shopify_id || '').startsWith('CUSTOM:');
+  const box = document.getElementById('prodSalesLineageEditor');
+  if (box) box.style.display = isCustom ? '' : 'none';
+  if (!row?.slug || !isCustom) return;
+  setSalesLineageUi(null, 'Checking…');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-sales-lineage?slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setSalesLineageUi(data, data.migration ? '⚠ ' + data.migration : '');
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setSalesLineageUi(null, 'Could not load: ' + e.message);
+  }
+}
+
+async function saveSalesLineage() {
+  const slug = selectedProduct?.slug;
+  const msg = document.getElementById('prodSalesLineageMsg');
+  const btn = document.getElementById('prodSalesFromSaveBtn');
+  if (!slug) { if (msg) msg.textContent = 'Select a product first.'; return; }
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-sales-lineage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, from_slug: document.getElementById('prodSalesFrom')?.value || '' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (selectedProduct?.slug === slug) setSalesLineageUi(data);
+    if (msg) msg.textContent = data.from_slug ? 'Saved. Recounting now — the product page updates within a few minutes.' : 'Unlinked. Recounting now.';
+    // Recount now rather than at the top of the hour.
+    adminFetch('/.netlify/functions/lifetime-sales-scheduled', { method: 'POST' })
+      .then(() => (selectedProduct?.slug === slug ? loadSalesLineageEditor(selectedProduct) : null))
+      .catch(() => {});
+  } catch (e) {
+    if (msg) msg.textContent = 'Could not save: ' + e.message;
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

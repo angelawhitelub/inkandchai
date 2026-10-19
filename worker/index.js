@@ -605,7 +605,8 @@ async function newArrivalsPage(request, env, ctx, origin) {
 async function withSoldCount(response, slug) {
   if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
   const doc = await lifetimeSales.readLifetimeSales();
-  const line = lifetimeSales.soldLine(doc && doc.counts ? doc.counts[String(slug).toLowerCase()] : 0);
+  // unitsSold adds what a duplicated listing carries from its original.
+  const line = lifetimeSales.soldLine(lifetimeSales.unitsSold(doc, slug));
   if (!line) return response;
   let done = false;
   const out = new HTMLRewriter()
