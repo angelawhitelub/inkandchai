@@ -2774,6 +2774,58 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-outline" onclick="loadProfit()">↻ Refresh</button>
     </div>
 
+    <div id="dpBox" style="border:1px solid var(--border);border-radius:14px;padding:1rem 1.1rem;margin-bottom:1.6rem;background:rgba(201,168,76,.035);">
+      <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;justify-content:space-between;">
+        <h3 class="section-title" style="margin:0;">📅 Daily profit — real ad spend</h3>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+          <select id="dpDays" onchange="loadDailyProfit()" style="padding:.35rem;">
+            <option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="60">60 days</option>
+          </select>
+          <button class="btn-outline" type="button" onclick="loadDailyProfit()">↻ Refresh</button>
+          <button class="btn-outline" type="button" id="dpSyncBtn" onclick="loadDailyProfit('meta')">Sync Meta now</button>
+        </div>
+      </div>
+      <p id="dpConn" style="font-size:.72rem;color:var(--cream-dim,#8a7a62);margin:.6rem 0 0;line-height:1.6;"></p>
+      <div class="stats-row" id="dpToday" style="margin-top:.8rem;"></div>
+      <div style="overflow-x:auto;margin-top:.6rem;">
+        <table style="width:100%;border-collapse:collapse;font-size:.76rem;min-width:820px;">
+          <thead><tr style="text-align:right;">
+            <th style="text-align:left;padding:.45rem;">Day</th>
+            <th style="padding:.45rem;">Orders</th>
+            <th style="padding:.45rem;">COD / Prepaid</th>
+            <th style="padding:.45rem;">Order value</th>
+            <th style="padding:.45rem;" title="Delivered orders at their real value; orders still in flight at value × their delivery rate">Expected revenue</th>
+            <th style="padding:.45rem;">Google Ads</th>
+            <th style="padding:.45rem;">Meta</th>
+            <th style="padding:.45rem;">Ad ₹/order</th>
+            <th style="padding:.45rem;">Shipping</th>
+            <th style="padding:.45rem;">Stock</th>
+            <th style="padding:.45rem;">Net profit</th>
+          </tr></thead>
+          <tbody id="dpRows"><tr><td colspan="11" style="padding:.6rem;color:var(--cream-dim);">Loading…</td></tr></tbody>
+          <tfoot id="dpFoot"></tfoot>
+        </table>
+      </div>
+      <p id="dpNote" style="font-size:.68rem;color:var(--cream-dim,#8a7a62);margin-top:.8rem;line-height:1.6;"></p>
+      <details id="dpSetup" style="margin-top:.6rem;font-size:.74rem;">
+        <summary style="cursor:pointer;color:var(--gold);font-weight:700;">Connect Google Ads &amp; Meta</summary>
+        <div style="line-height:1.7;margin-top:.5rem;">
+          <p><strong>Google Ads</strong> (each account you advertise from):</p>
+          <ol style="margin:.2rem 0 .8rem 1.2rem;">
+            <li>Cloudflare → Workers &amp; Pages → <code>inkandchai</code> → Settings → Variables and Secrets → add a <strong>Secret</strong> named <code>AD_SPEND_KEY</code> with a long random value (keep a copy).</li>
+            <li>Google Ads → Tools → Bulk actions → <strong>Scripts</strong> → ＋ New script. Paste <a href="/admin/google-ads-spend.gs.txt" target="_blank" rel="noopener" style="color:var(--gold);">this script</a> and put your key in <code>AD_SPEND_KEY</code>.</li>
+            <li>Authorize → Preview (the log should say <code>200 {"ok":true…}</code>) → Save → Frequency <strong>Hourly</strong>.</li>
+          </ol>
+          <p><strong>Meta</strong>:</p>
+          <ol style="margin:.2rem 0 0 1.2rem;">
+            <li>Business Settings → Users → <strong>System users</strong> → add one (Employee) → Assign assets → your ad account(s), <em>View performance</em> only.</li>
+            <li>Generate token → permission <strong>ads_read</strong> only (no WhatsApp permissions).</li>
+            <li>Add Worker secrets <code>META_ADS_TOKEN</code> (the token) and <code>META_AD_ACCOUNT_IDS</code> (the ad account number(s), comma-separated), then press <em>Sync Meta now</em>.</li>
+          </ol>
+        </div>
+      </details>
+    </div>
+
     <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:1rem;">
       <span class="section-title">Period:</span>
       <button class="filter-btn pft-range" data-days="7"   onclick="pftRange(this,7)">7D</button>
@@ -2787,6 +2839,8 @@ select,input,textarea{font-size:1rem;}
     <div style="display:flex;flex-wrap:wrap;gap:.9rem;align-items:flex-end;margin-bottom:1.2rem;">
       <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);">Google Ads / order ₹<br>
         <input type="number" id="pftAd" value="92" min="0" step="1" style="padding:.4rem;width:110px;" onchange="loadProfit()"></label>
+      <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);display:flex;align-items:center;gap:.35rem;align-self:center;">
+        <input type="checkbox" id="pftActual" checked onchange="loadProfit()"> Use real ad spend when connected</label>
       <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);">Shipping / parcel ₹<br>
         <input type="number" id="pftShip" value="62" min="0" step="1" style="padding:.4rem;width:110px;" onchange="loadProfit()"></label>
       <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);">Cost per book ₹<br>
@@ -16838,6 +16892,97 @@ async function issueRtoRefund(btn, orderId, gateway) {
   }
 }
 
+// ═══════════════ DAILY PROFIT ═══════════════
+// Real ad spend per day (Google Ads script + Meta API, in ad_spend_daily)
+// against that day's orders. Orders still in flight are valued by the average
+// outcome of past orders of the same payment kind — see utils/daily-profit.js.
+let _dpSeq = 0;
+
+async function loadDailyProfit(sync) {
+  const rowsEl = document.getElementById('dpRows');
+  if (!rowsEl) return;
+  const seq = ++_dpSeq;
+  const days = document.getElementById('dpDays')?.value || 14;
+  const ship = document.getElementById('pftShip')?.value || 62;
+  const book = document.getElementById('pftBook')?.value || 80;
+  const ad = document.getElementById('pftAd')?.value || 92;
+  const syncBtn = document.getElementById('dpSyncBtn');
+  if (sync && syncBtn) { syncBtn.disabled = true; syncBtn.textContent = 'Syncing Meta…'; }
+  try {
+    const qs = `days=${days}&ship=${ship}&book=${book}&ad=${ad}` + (sync ? `&sync=${sync}` : '');
+    const res = await adminFetch('/.netlify/functions/daily-profit?' + qs);
+    const d = await res.json();
+    if (seq !== _dpSeq) return;
+    if (!res.ok || !d.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    renderDailyProfit(d);
+  } catch (e) {
+    if (seq !== _dpSeq) return;
+    rowsEl.innerHTML = `<tr><td colspan="11" style="padding:.6rem;color:var(--red);">Could not load daily profit: ${esc(e.message)}</td></tr>`;
+  } finally {
+    if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = 'Sync Meta now'; }
+  }
+}
+
+function renderDailyProfit(d) {
+  const rs = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
+  const signed = (n) => (n < 0 ? '−' : '') + rs(Math.abs(n));
+  const c = d.connected;
+  const fmtDay = (day) => new Date(day + 'T00:00:00Z').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+  const conn = [];
+  if (c.table_missing) conn.push('⚠ Run <code>sql/ad_spend_daily.sql</code> in Supabase first.');
+  conn.push(c.google ? `✅ Google Ads connected (data from ${esc(c.google.since)})` : (c.google_key_configured ? '⏳ Google Ads: key set, waiting for the script’s first run' : '⚪ Google Ads not connected'));
+  conn.push(c.meta ? `✅ Meta connected (data from ${esc(c.meta.since)})` : (c.meta_configured ? '⏳ Meta: token set, press Sync Meta now' : '⚪ Meta not connected'));
+  if (d.sync) {
+    const bad = (d.sync.results || []).filter(r => r.error);
+    conn.push(d.sync.skipped ? `Meta sync skipped: ${esc(d.sync.skipped)}`
+      : bad.length ? `<span style="color:var(--red);">Meta sync failed: ${esc(bad.map(r => r.error).join('; '))}</span>`
+      : `Meta synced ${esc(d.sync.since)} → ${esc(d.sync.until)}`);
+  }
+  document.getElementById('dpConn').innerHTML = conn.join(' · ');
+
+  const t = d.days[0];
+  const card = (label, value, colour, sub) => `<div class="stat-card" style="cursor:default;"><div class="stat-label">${label}</div>
+     <div class="stat-val" style="font-size:1.5rem;${colour ? 'color:' + colour : ''}">${value}</div>${sub ? `<div style="font-size:.66rem;color:var(--cream-dim);margin-top:.2rem;">${sub}</div>` : ''}</div>`;
+  document.getElementById('dpToday').innerHTML = t ? [
+    card('Today’s orders', t.orders.toLocaleString('en-IN'), '', `${t.cod} COD · ${t.prepaid} prepaid`),
+    card('Expected revenue', rs(t.revenue), '', `of ${rs(t.order_value)} ordered`),
+    card('Ad spend today', rs(t.ads), 'var(--red)', t.ads_source === 'actual' ? `Google ${rs(t.ads_google)} · Meta ${rs(t.ads_meta)}` : 'estimated from your average'),
+    card('Expected profit today', signed(t.net), t.net >= 0 ? 'var(--green)' : 'var(--red)', t.ads_per_order != null ? `ads ${rs(t.ads_per_order)} per order` : ''),
+  ].join('') : '';
+
+  const cell = (v, colour) => `<td style="padding:.45rem;${colour ? 'color:' + colour + ';' : ''}">${v}</td>`;
+  document.getElementById('dpRows').innerHTML = d.days.map(r => `<tr style="text-align:right;border-top:1px solid var(--border);">
+      <td style="text-align:left;padding:.45rem;white-space:nowrap;">${fmtDay(r.day)}${r.ads_source === 'average' ? ' <span title="No ad spend data for this day — your average per order is used" style="color:var(--cream-dim);">≈</span>' : ''}</td>
+      ${cell(r.orders.toLocaleString('en-IN'))}
+      ${cell(`${r.cod} / ${r.prepaid}`)}
+      ${cell(rs(r.order_value))}
+      ${cell(rs(r.revenue))}
+      ${cell(r.ads_source === 'actual' ? '−' + rs(r.ads_google) : '—', 'var(--red)')}
+      ${cell(r.ads_source === 'actual' ? '−' + rs(r.ads_meta) : '—', 'var(--red)')}
+      ${cell(r.ads_per_order != null ? rs(r.ads_per_order) : '—')}
+      ${cell('−' + rs(r.shipping), 'var(--red)')}
+      ${cell('−' + rs(r.cogs), 'var(--red)')}
+      <td style="padding:.45rem;font-weight:600;color:${r.net >= 0 ? 'var(--green)' : 'var(--red)'};">${signed(r.net)}</td>
+    </tr>`).join('');
+
+  const T = d.totals;
+  document.getElementById('dpFoot').innerHTML = `<tr style="text-align:right;border-top:2px solid var(--border);font-weight:600;">
+    <td style="text-align:left;padding:.5rem .45rem;">Total</td>${cell(T.orders.toLocaleString('en-IN'))}${cell('')}${cell(rs(T.order_value))}${cell(rs(T.revenue))}
+    ${cell('−' + rs(T.ads_google), 'var(--red)')}${cell('−' + rs(T.ads_meta), 'var(--red)')}${cell(T.ads_per_order != null ? rs(T.ads_per_order) : '—')}
+    ${cell('−' + rs(T.shipping), 'var(--red)')}${cell('−' + rs(T.cogs), 'var(--red)')}
+    <td style="padding:.5rem .45rem;color:${T.net >= 0 ? 'var(--green)' : 'var(--red)'};">${signed(T.net)}</td></tr>`;
+
+  const a = d.averages;
+  const pct = (x) => Math.round(x * 100) + '%';
+  document.getElementById('dpNote').innerHTML =
+    `Orders still in flight are valued by what past orders (${a.window_days[0]}–${a.window_days[1]} days old) of the same kind turned into: ` +
+    `<strong>COD</strong> ${pct(a.cod.p_delivered)} delivered, ${pct(a.cod.p_rto)} RTO, ${pct(a.cod.p_cancelled)} cancelled/refunded; ` +
+    `<strong>prepaid</strong> ${pct(a.prepaid.p_delivered)} delivered, ${pct(a.prepaid.p_rto)} RTO. ` +
+    `Delivered, returned and cancelled orders use what actually happened. Shipping ₹${d.rates.shippingPerOrder}/parcel (RTO twice), stock ₹${d.rates.bookCost}/book. ` +
+    `Days marked ≈ have no ad spend data and use your ₹${d.rates.adCostPerOrder}/order average. Today’s spend keeps rising until midnight.`;
+}
+
 // ═══════════════ PROFIT TAB ═══════════════
 // Net profit from real orders, costed with the owner's per-order averages.
 // Every figure on the panel comes from profit-report, which paginates past
@@ -16867,13 +17012,15 @@ async function loadProfit() {
 
   // Range switches can be clicked faster than an all-time fetch returns; only
   // the newest request is allowed to paint.
+  loadDailyProfit();
   const seq = ++_pftSeq;
   status.textContent = 'Crunching every order in the period…';
   head.style.display = 'none';
   body.style.display = 'none';
 
   try {
-    const qs = `days=${encodeURIComponent(pftDays)}&ad=${ad}&ship=${ship}&book=${book}`;
+    const actual = document.getElementById('pftActual')?.checked ? '&actual=1' : '';
+    const qs = `days=${encodeURIComponent(pftDays)}&ad=${ad}&ship=${ship}&book=${book}${actual}`;
     const res = await adminFetch('/.netlify/functions/profit-report?' + qs);
     const data = await res.json();
     if (seq !== _pftSeq) return;
@@ -16947,7 +17094,10 @@ function renderProfit(d) {
     (d.truncated ? ' <span style="color:var(--red);">— row limit hit, figures incomplete</span>' : '');
 
   document.getElementById('pftNote').textContent =
-    `Ads charged at ₹${d.rates.adCostPerOrder} on ${d.rates_applied_to.ads}. ` +
+    (d.ads_source === 'actual'
+      ? `Ads: real spend ${pftRs(d.ads_actual.total)} (Google ${pftRs(d.ads_actual.google)}, Meta ${pftRs(d.ads_actual.meta)}) ÷ ${d.orders_counted.toLocaleString('en-IN')} orders = ₹${Math.round(d.rates.adCostPerOrder)} per order, on ${d.rates_applied_to.ads}. `
+      : `Ads charged at your average of ₹${Math.round(d.rates.adCostPerOrder)} on ${d.rates_applied_to.ads}` +
+        (d.ads_actual ? ` (real spend data only starts ${Object.values(d.ads_actual.first_day).sort().pop()}, so it cannot cover this whole period)` : '') + '. ') +
     `Shipping at ₹${d.rates.shippingPerOrder}: ${d.rates_applied_to.shipping}. ` +
     `Stock at ₹${d.rates.bookCost} per book, ${d.rates_applied_to.books}. ` +
     `Partial-COD orders count the full value once delivered, not just the 10% advance. ` +

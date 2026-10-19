@@ -1,0 +1,50 @@
+/**
+ * Ink & Chai — daily ad spend → admin Net Profit tab.
+ *
+ * Paste into Google Ads: Tools → Bulk actions → Scripts → + New script.
+ * Put your AD_SPEND_KEY below, press Authorize, then Preview once, then set
+ * Frequency to Hourly. Do this in EACH Google Ads account you run ads from.
+ *
+ * It only READS this account's cost per day (last 90 days, today included)
+ * and sends those numbers to inkandchai.in. It changes nothing in Google Ads.
+ */
+var AD_SPEND_KEY = 'PASTE_YOUR_AD_SPEND_KEY_HERE';
+var ENDPOINT = 'https://inkandchai.in/.netlify/functions/ad-spend-ingest';
+var DAYS = 90;
+
+function main() {
+  var account = AdsApp.currentAccount();
+  var tz = account.getTimeZone();
+  var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var start = Utilities.formatDate(new Date(Date.now() - (DAYS - 1) * 86400000), tz, 'yyyy-MM-dd');
+
+  var query = 'SELECT segments.date, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions ' +
+              'FROM customer WHERE segments.date BETWEEN "' + start + '" AND "' + today + '"';
+  var rows = [];
+  var it = AdsApp.search(query);
+  while (it.hasNext()) {
+    var r = it.next();
+    rows.push({
+      date: r.segments.date,
+      cost: Number(r.metrics.costMicros || 0) / 1e6,
+      clicks: Number(r.metrics.clicks || 0),
+      impressions: Number(r.metrics.impressions || 0),
+      conversions: Number(r.metrics.conversions || 0)
+    });
+  }
+  if (!rows.length) { Logger.log('No spend in the last ' + DAYS + ' days.'); return; }
+
+  var res = UrlFetchApp.fetch(ENDPOINT, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'X-Ad-Spend-Key': AD_SPEND_KEY },
+    payload: JSON.stringify({
+      platform: 'google',
+      account: account.getCustomerId(),
+      currency: account.getCurrencyCode(),
+      rows: rows
+    }),
+    muteHttpExceptions: true
+  });
+  Logger.log(res.getResponseCode() + ' ' + res.getContentText());
+}

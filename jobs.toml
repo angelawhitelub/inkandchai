@@ -38,6 +38,12 @@
   # to out_for_delivery / delivered from the courier's own tracking. No messages.
   schedule = "0 * * * *"
 
+[functions."meta-ad-spend-scheduled"]
+  # Meta Marketing API daily spend -> ad_spend_daily, for the Net Profit tab's
+  # daily view. Read-only on Meta; skips quietly until META_ADS_TOKEN and
+  # META_AD_ACCOUNT_IDS are set.
+  schedule = "0 * * * *"
+
 [functions."lifetime-sales-scheduled"]
   # Lifetime units sold per book -> KV, for Reader Bestsellers and the product
   # page "N sold" line (utils/lifetime-sales). Read-only on orders.
