@@ -75,7 +75,6 @@ test('outcome averages come from finished orders 20-80 days old, per payment kin
   assert.equal(a.cod.p_delivered, 0.6);
   assert.equal(a.cod.p_rto, 0.25);
   assert.equal(a.cod.p_cancelled, 0.15);
-  assert.equal(Math.round(a.cod.p_delivered_if_shipped * 1000) / 1000, 0.706);
   assert.equal(a.prepaid.p_delivered, 0.96);
   assert.equal(D.payKind(prepaid({ status: 'delivered' })), 'prepaid');
   assert.equal(D.payKind(cod({ status: 'delivered', shipment_payment_type: 'cod' })), 'cod');
@@ -123,6 +122,23 @@ test('a day with no spend data uses the average, and finished orders use what ha
   assert.equal(row.shipping, 62);          // cancelled ships nothing
   assert.equal(row.cogs, 80);
   assert.equal(row.settled, 2);
+});
+
+test('in transit: AWB-only orders use AWB-stage rates, picked-up ones the picked-up rates', () => {
+  const h = [];
+  // 100 COD with an AWB: 60 delivered (picked up), 20 RTO (picked up), 20 cancelled before pickup.
+  for (let i = 0; i < 60; i++) h.push(cod({ status: 'delivered', tracking_id: 'A', shipment_moved_at: 'x', created_at: daysAgo(30) }));
+  for (let i = 0; i < 20; i++) h.push(cod({ status: 'rto', tracking_id: 'A', shipment_moved_at: 'x', created_at: daysAgo(30) }));
+  for (let i = 0; i < 20; i++) h.push(cod({ status: 'cancelled', tracking_id: 'A', created_at: daysAgo(30) }));
+  const a = D.outcomeAverages(h, NOW);
+  assert.equal(a.cod_awb.p_delivered, 0.6);
+  assert.equal(a.cod_moved.p_delivered, 0.75);
+  const r = { shippingPerOrder: 62, bookCost: 80 };
+  const booked = D.expectedOrder(cod({ tracking_id: 'B', created_at: daysAgo(0) }), a, r);
+  assert.equal(booked.bucket, 'in_transit');
+  assert.equal(booked.revenue, 240);
+  const picked = D.expectedOrder(cod({ status: 'shipped', tracking_id: 'B', shipment_moved_at: 'y', created_at: daysAgo(0) }), a, r);
+  assert.equal(picked.revenue, 300);
 });
 
 test('a replacement earns nothing but still costs the parcel and the book', () => {

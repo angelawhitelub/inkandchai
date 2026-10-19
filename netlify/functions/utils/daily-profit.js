@@ -13,9 +13,12 @@
  * differently (a prepaid parcel is rarely refused, a COD one often is) -- and
  * the rates come from orders old enough to have finished: 20 to 80 days.
  *
- *   not shipped yet   value × P(delivered); shipping × (P(delivered) + 2·P(RTO));
+ *   no AWB yet        value × P(delivered); shipping × (P(delivered) + 2·P(RTO));
  *                     stock × P(delivered)
- *   in transit        the same, with P(delivered | shipped)
+ *   AWB, not picked   the same, with the rates of orders that got an AWB --
+ *                     those still get cancelled before pickup (42 of 755
+ *                     finished Sep orders with an AWB ended cancelled)
+ *   picked up         the same, with the rates of orders the courier collected
  *   finished          what actually happened (profit-model's revenue and costs)
  *
  * Ad spend is the platforms' own figure for that IST day when we have it, and
@@ -53,35 +56,45 @@ function orderValue(order) {
 
 function rates(counts) {
   const finished = counts.delivered + counts.rto + counts.cancelled + counts.refunded;
-  const shipped = counts.delivered + counts.rto;
   return {
     sample: finished,
     p_delivered: finished ? counts.delivered / finished : 0,
     p_rto: finished ? counts.rto / finished : 0,
     p_cancelled: finished ? (counts.cancelled + counts.refunded) / finished : 0,
-    p_delivered_if_shipped: shipped ? counts.delivered / shipped : 0,
   };
 }
+
+const zero = () => ({ delivered: 0, rto: 0, cancelled: 0, refunded: 0 });
 
 /** Outcome rates by payment kind, from orders old enough to have finished. */
 function outcomeAverages(orders, now = Date.now()) {
   const lo = now - MATURE_MAX_DAYS * 86400000;
   const hi = now - MATURE_MIN_DAYS * 86400000;
-  const zero = () => ({ delivered: 0, rto: 0, cancelled: 0, refunded: 0 });
-  const counts = { cod: zero(), prepaid: zero(), all: zero() };
+  // stage → kind → outcome counts. "awb" and "moved" are subsets of "any".
+  const stages = ['any', 'awb', 'moved'];
+  const counts = Object.fromEntries(stages.map((st) => [st, { cod: zero(), prepaid: zero(), all: zero() }]));
   for (const o of orders || []) {
     const t = Date.parse(o.created_at);
     if (!(t >= lo && t < hi)) continue;
     const kind = payKind(o);
     if (kind === 'replacement') continue;
     const bucket = classify(o);
-    if (!(bucket in counts.all)) continue;   // still in transit / unshipped after 20 days: not evidence
-    counts[kind][bucket] += 1;
-    counts.all[bucket] += 1;
+    if (!(bucket in counts.any.all)) continue;   // still in transit / unshipped after 20 days: not evidence
+    const at = ['any'];
+    if (o.tracking_id) at.push('awb');
+    if (o.shipment_moved_at) at.push('moved');
+    for (const st of at) { counts[st][kind][bucket] += 1; counts[st].all[bucket] += 1; }
   }
-  const all = rates(counts.all);
-  const pick = (k) => { const r = rates(counts[k]); return r.sample >= MIN_SAMPLE ? r : { ...all, fallback: true }; };
-  return { cod: pick('cod'), prepaid: pick('prepaid'), all, window_days: [MATURE_MIN_DAYS, MATURE_MAX_DAYS] };
+  const out = { window_days: [MATURE_MIN_DAYS, MATURE_MAX_DAYS] };
+  for (const st of stages) {
+    const all = rates(counts[st].all);
+    const pick = (k) => { const r = rates(counts[st][k]); return r.sample >= MIN_SAMPLE ? r : { ...all, fallback: true }; };
+    const key = st === 'any' ? '' : `_${st}`;
+    out[`cod${key}`] = pick('cod');
+    out[`prepaid${key}`] = pick('prepaid');
+    out[`all${key}`] = all;
+  }
+  return out;
 }
 
 /** Expected revenue and non-ad costs of one order. */
@@ -97,9 +110,10 @@ function expectedOrder(order, avgs, r) {
     // Sent free: no revenue whatever happens, but the parcel and the books go.
     return { bucket, kind, units, revenue: 0, shipping: r.shippingPerOrder, cogs: r.bookCost * units, settled: false };
   }
-  const a = avgs[kind] || avgs.all;
-  const pDel = bucket === 'in_transit' ? a.p_delivered_if_shipped : a.p_delivered;
-  const pRto = bucket === 'in_transit' ? 1 - a.p_delivered_if_shipped : a.p_rto;
+  const stage = bucket !== 'in_transit' ? '' : (order.shipment_moved_at ? '_moved' : '_awb');
+  const a = avgs[kind + stage] || avgs['all' + stage] || avgs.all;
+  const pDel = a.p_delivered;
+  const pRto = a.p_rto;
   return {
     bucket, kind, units,
     revenue: orderValue(order) * pDel,

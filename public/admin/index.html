@@ -16979,6 +16979,7 @@ function renderDailyProfit(d) {
     `Orders still in flight are valued by what past orders (${a.window_days[0]}–${a.window_days[1]} days old) of the same kind turned into: ` +
     `<strong>COD</strong> ${pct(a.cod.p_delivered)} delivered, ${pct(a.cod.p_rto)} RTO, ${pct(a.cod.p_cancelled)} cancelled/refunded; ` +
     `<strong>prepaid</strong> ${pct(a.prepaid.p_delivered)} delivered, ${pct(a.prepaid.p_rto)} RTO. ` +
+    `Once an AWB is assigned, COD delivers ${pct(a.cod_awb.p_delivered)} (cancellations before pickup included), and ${pct(a.cod_moved.p_delivered)} once the courier has picked it up. ` +
     `Delivered, returned and cancelled orders use what actually happened. Shipping ₹${d.rates.shippingPerOrder}/parcel (RTO twice), stock ₹${d.rates.bookCost}/book. ` +
     `Days marked ≈ have no ad spend data and use your ₹${d.rates.adCostPerOrder}/order average. Today’s spend keeps rising until midnight.`;
 }

@@ -56,7 +56,7 @@ exports.handler = async (event) => {
     const orders = [];
     for (let from = 0; from < 60000; from += PAGE) {
       const { data, error } = await db.from('orders')
-        .select('razorpay_order_id,status,amount_paise,advance_paid_paise,razorpay_payment_id,shipment_payment_type,source,cart_items,tracking_id,last_nimbuspost_status,created_at')
+        .select('razorpay_order_id,status,amount_paise,advance_paid_paise,razorpay_payment_id,shipment_payment_type,source,cart_items,tracking_id,shipment_moved_at,last_nimbuspost_status,created_at')
         .or('source.is.null,source.neq.paperbound')
         .gte('created_at', since)
         .order('created_at', { ascending: false })
