@@ -422,7 +422,7 @@ gtag('js', new Date());
 gtag('config', 'G-ZPZDFWMDP6');
 </script>
 <!-- End Google Analytics 4 -->
-<!--IAC-THEME--><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"/><link rel="stylesheet" href="/css/theme-886fa54b.css"/><script src="/js/site-feedback.js" defer></script><script src="/js/ad-click.js" defer></script><!--/IAC-THEME-->
+<!--IAC-THEME--><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"/><link rel="stylesheet" href="/css/theme-886fa54b.css"/><script src="/js/site-feedback.js" defer></script><script src="/js/ad-click.js" defer></script><script src="/js/festive-sale.js" defer></script><!--/IAC-THEME-->
 </head>
 <body>
 <nav>
@@ -766,8 +766,22 @@ function freedomIsLive() {
   return Date.now() <= new Date(COUPONS.FREEDOM.expiresAt).getTime();
 }
 
+// Dussehra & Diwali Sale: 10% off every order above ₹399, every payment mode,
+// automatic. MUST match FESTIVE10 in netlify/functions/utils/site-sale.js, the
+// till -- a total that differs from the server's is refused with a 409.
+const FESTIVE_SALE = { code: 'FESTIVE10', percent: 10, threshold: 399, startsAt: '2026-10-19T18:30:00Z', endsAt: '2026-11-10T18:29:59Z' };
+function festiveIsLive() {
+  const t = Date.now();
+  return t >= new Date(FESTIVE_SALE.startsAt).getTime() && t <= new Date(FESTIVE_SALE.endsAt).getTime();
+}
+function festiveSaleDiscount(subtotal) {
+  if (!festiveIsLive() || !(subtotal > FESTIVE_SALE.threshold)) return { code: '', discount: 0, message: '' };
+  return { code: FESTIVE_SALE.code, discount: Math.floor(subtotal * FESTIVE_SALE.percent / 100), message: '🪔 Dussehra & Diwali Sale — 10% off applied automatically.' };
+}
+
 /** The hint under the coupon box, which must not promise an ended sale. */
 function defaultCouponHint() {
+  if (festiveIsLive()) return '🪔 Dussehra & Diwali Sale: 10% off applies automatically when your subtotal is above ₹399. A prepaid code that saves more is used instead.';
   return freedomIsLive()
     ? '🇮🇳 Add books until the subtotal is above ₹399 and FREEDOM will apply 15% off automatically.'
     : 'Prepaid orders unlock the offers above. Pick one, or enter a private code.';
@@ -799,6 +813,19 @@ function couponDiscount(cart, method = 'online') {
     const discount = Math.floor(subtotal * freedom.value / 100);
     return { code: 'FREEDOM', discount, message: '🇮🇳 FREEDOM automatically applied — 15% off your books.' };
   }
+
+  // Dussehra & Diwali Sale: automatic and never stacked. A chosen code wins
+  // only on a prepaid order where it saves more (the server does the same).
+  const festive = festiveSaleDiscount(subtotal);
+  if (festive.discount > 0) {
+    if (method === 'cod') return festive;
+    const chosen = chosenCouponDiscount(cart, method, subtotal, code);
+    return chosen.discount > festive.discount ? chosen : festive;
+  }
+  return chosenCouponDiscount(cart, method, subtotal, code);
+}
+
+function chosenCouponDiscount(cart, method, subtotal, code) {
 
   // ── Scratch card path ───────────────────────────────────────────────────
   if (code.startsWith('SCRATCH-') && appliedScratchCard && appliedScratchCard.code === code) {
@@ -849,15 +876,15 @@ function orderTotals(cart, method = 'online') {
 }
 function partialPaymentTotals(cart) {
   // Partial COD: COD handling fee is WAIVED as the incentive to pre-pay 10%.
-  // FREEDOM is the one coupon valid on partial COD as well as every other mode.
+  // A site-wide sale (FREEDOM, FESTIVE10) is the one discount valid on partial COD.
   const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal);
   const coupon = couponDiscount(cart, 'cod');
-  const discount = coupon.code === 'FREEDOM' ? coupon.discount : 0;
+  const discount = (coupon.code === 'FREEDOM' || coupon.code === FESTIVE_SALE.code) ? coupon.discount : 0;
   const total = Math.max(1, subtotal + shipping - discount);
   const eligible = total >= PARTIAL_PAYMENT_THRESHOLD;
   const deposit = eligible ? Math.max(1, Math.ceil(total * PARTIAL_PAYMENT_RATE)) : 0;
-  return { subtotal, shipping, codFee: 0, discount, couponCode: discount ? 'FREEDOM' : '', couponMessage: discount ? coupon.message : '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
+  return { subtotal, shipping, codFee: 0, discount, couponCode: discount ? coupon.code : '', couponMessage: discount ? coupon.message : '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
 }
 // True when the cart contains any item flagged _no_cod — the full crossword.in
 // catalogue import (tag 'no-cod'). Those titles disable Cash on Delivery and

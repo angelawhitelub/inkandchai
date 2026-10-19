@@ -18,7 +18,7 @@ const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricin
 const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
-const { freedomSaleDiscount } = require('./utils/freedom-sale');
+const { siteSaleDiscount } = require('./utils/site-sale');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
 
 const CORS = {
@@ -57,7 +57,7 @@ function cartTable(cart, shippingFee, codFee = 0, discount = 0, coupon = '') {
           <td style="padding:8px 12px;text-align:right;color:#f0e8d8;">₹${subtotal.toLocaleString('en-IN')}</td>
         </tr>
         ${safeDiscount > 0 ? `<tr>
-          <td colspan="2" style="padding:8px 12px;color:#a09080;">Freedom Sale (${coupon})</td>
+          <td colspan="2" style="padding:8px 12px;color:#a09080;">Sale discount (${coupon})</td>
           <td style="padding:8px 12px;text-align:right;color:#6dbf6d;">- ₹${safeDiscount.toLocaleString('en-IN')}</td>
         </tr>` : ''}
         ${safeCodFee > 0 ? `<tr>
@@ -169,7 +169,7 @@ exports.handler = async (event, context) => {
   const subtotal = priced.subtotal;
   const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   const codFee   = subtotal >= COD_FEE_WAIVER_THRESHOLD ? 0 : COD_HANDLING_FEE;
-  const couponInfo = freedomSaleDiscount(subtotal);
+  const couponInfo = siteSaleDiscount(subtotal);
   const total    = Math.max(1, subtotal + shipping + codFee - couponInfo.discount);
   if (couponInfo.code && cart[0]) {
     cart[0]._coupon = { code: couponInfo.code, discount: couponInfo.discount, source: couponInfo.source };
