@@ -445,7 +445,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
       ? trustBadge(ICON.cash, 'Partial COD', 'Pay 10% now, rest on delivery')
       : trustBadge(ICON.cash, 'Cash on delivery', 'Pay when it arrives')}${trustBadge(ICON.card, 'UPI, cards, net banking', 'Secure checkout')}${trustBadge(ICON.shield, '7-day replacement', 'Damaged or wrong book')}</div>
     ${noCod ? `
-    <div style="border:1px solid rgba(214,184,94,0.4);background:rgba(214,184,94,0.07);padding:0.85rem 1.05rem;border-radius:14px;margin:0.9rem 0;font-size:0.76rem;color:var(--cream);line-height:1.6;">
+    <div data-cod-off="1" style="border:1px solid rgba(214,184,94,0.4);background:rgba(214,184,94,0.07);padding:0.85rem 1.05rem;border-radius:14px;margin:0.9rem 0;font-size:0.76rem;color:var(--cream);line-height:1.6;">
       <strong style="color:var(--gold-light);">Cash on Delivery isn't available on this title.</strong>
       We recommend <strong>Partial COD</strong> — pay just <strong>10% now</strong> to confirm your order and the balance on delivery. Full prepaid (UPI/cards) also works.
     </div>` : ''}

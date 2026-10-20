@@ -8669,6 +8669,31 @@ function partialPaymentTotals(cart) {
 function cartHasNoCod(cart) {
   return Array.isArray(cart) && cart.some(i => i && i._no_cod === true);
 }
+// Books whose Cash on Delivery the admin switched off, with the reason
+// (product_cod_rules via cod-off-slugs). Flags the cart lines so the COD button
+// is off before the customer tries; cod-order refuses them regardless. Only
+// lines flagged by a rule (they carry _cod_note) are ever un-flagged here, so
+// the crossword import's no-cod tag is left alone.
+async function loadCodRules() {
+  try {
+    const res = await fetch('/.netlify/functions/cod-off-slugs');
+    if (!res.ok) return;
+    const rules = (await res.json()).rules || {};
+    const cart = getCart();
+    let changed = false;
+    for (const item of cart) {
+      const note = rules[String(couponItemSlug(item) || '').toLowerCase()];
+      if (note) {
+        if (item._no_cod !== true || item._cod_note !== note) { item._no_cod = true; item._cod_note = note; changed = true; }
+      } else if (item && item._cod_note) {
+        delete item._cod_note; delete item._no_cod; changed = true;
+      }
+    }
+    if (changed) { saveCart(cart); renderSummary(); }
+  } catch (_) {
+    // cod-order enforces the rule anyway.
+  }
+}
 // How far this cart is from qualifying for COD, in rupees. 0 means it qualifies.
 // THREE places decide whether the COD button is live — this renderer, the
 // shipping-restriction recheck, and setLoading — and each recomputes the flag
@@ -9036,7 +9061,10 @@ function renderSummary() {
       btnCOD.style.opacity = '0.5';
       btnCOD.style.cursor = 'not-allowed';
       if (codNote) {
-        codNote.innerHTML = `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
+        const ruled = cart.find(i => i && i._no_cod === true && i._cod_note);
+        codNote.innerHTML = ruled
+          ? `<strong style="color:var(--gold);">${esc(ruled.title || 'This title')}</strong>: ${esc(ruled._cod_note)}`
+          : `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
       }
     } else {
     btnCOD.textContent = `🚚 Cash on Delivery — ₹${codTotals.total.toLocaleString('en-IN')}`;
@@ -10329,6 +10357,7 @@ window.addrShowNewForm = function() {
 // ── Init ───────────────────────────────────────────────────────────────────
 loadManagedPromotions().then(() => loadProductCoupons(getCart())).then(renderSummary);
 renderSummary();
+loadCodRules();
 
 // When returning to checkout — including bfcache back/forward from a payment
 // page (PhonePe redirect, Razorpay) — clear any stuck loading state and repaint

@@ -2016,6 +2016,24 @@ select,input,textarea{font-size:1rem;}
             </div>
             <p class="hint" id="prodSampleMsg" style="margin-top:.65rem;"></p>
           </details>
+          <details id="prodCodEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(224,80,80,.035);">
+            <summary style="cursor:pointer;color:#e07060;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🚫 Cash on Delivery for this book</summary>
+            <p class="hint" style="margin:.65rem 0 0;">Switch COD off for a title you only get from the publisher on demand. Customers can still order it with <strong>Pay 10% Now</strong> (partial COD) or full prepaid. The message below shows on the product page and at checkout, and a COD order with this book is refused.</p>
+            <p class="hint" id="prodCodCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
+            <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
+              <input type="checkbox" id="prodCodDisabled" style="accent-color:#e05040;"/> Disable Cash on Delivery for this book
+            </label>
+            <div class="form-row" style="margin:.6rem 0 0;">
+              <label>Message to customers (blank = default)</label>
+              <textarea id="prodCodNote" rows="3" maxlength="400" style="width:100%;"></textarea>
+            </div>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-green" type="button" id="prodCodSaveBtn" onclick="saveCodRule()">Save COD Setting</button>
+              <button class="btn-outline" type="button" onclick="listCodRules()">List all COD-off books</button>
+            </div>
+            <p class="hint" id="prodCodMsg" style="margin-top:.65rem;"></p>
+            <div id="prodCodList" class="hint" style="margin-top:.4rem;"></div>
+          </details>
           <details id="prodSalesLineageEditor" style="display:none;margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(232,160,48,.04);">
             <summary style="cursor:pointer;color:#e8a030;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔥 Sold count from the original listing</summary>
             <p class="hint" style="margin:.65rem 0 0;">For a duplicated listing: the product page's <strong>"🔥 N sold"</strong> line adds the original listing's sales to this page's own. Duplicates made with <em>Duplicate as New Listing</em> get this automatically; use this box for older copies. Shown from 10 sold; updates within the hour.</p>
@@ -9085,6 +9103,7 @@ function selectProduct(slug) {
   loadProductSampleEditor(row);
   loadMarketplaceLinksEditor(row);
   loadSalesLineageEditor(row);
+  loadCodRuleEditor(row);
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
 }
@@ -9752,6 +9771,84 @@ function setMarketplaceUi(links, note) {
   if (cur) {
     const live = [links?.amazon_url && 'Amazon', links?.flipkart_url && 'Flipkart'].filter(Boolean);
     cur.textContent = live.length ? `✅ Live on the product page: ${live.join(' & ')}` : (note || 'No store links yet.');
+  }
+}
+
+// ── Cash on Delivery off per book (admin-cod-rules) ──────────────────────────
+let codDefaultNote = '';
+function setCodUi(rule, note) {
+  const cb = document.getElementById('prodCodDisabled');
+  const ta = document.getElementById('prodCodNote');
+  const cur = document.getElementById('prodCodCurrent');
+  if (cb) cb.checked = !!rule;
+  if (ta) { ta.value = (rule && rule.note) || ''; ta.placeholder = codDefaultNote || ''; }
+  if (cur) cur.innerHTML = note ? esc(note) : rule
+    ? '<strong style="color:#e07060;">COD is OFF</strong> for this book — customers see: “' + esc(rule.note || codDefaultNote) + '”'
+    : 'COD is on for this book.';
+}
+
+async function loadCodRuleEditor(row) {
+  const msg = document.getElementById('prodCodMsg');
+  if (msg) msg.textContent = '';
+  const list = document.getElementById('prodCodList');
+  if (list) list.innerHTML = '';
+  if (!row?.slug) return;
+  setCodUi(null, 'Checking…');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-cod-rules?slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    codDefaultNote = data.default_note || codDefaultNote;
+    setCodUi(data.rule, data.migration ? '⚠ ' + data.migration : '');
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setCodUi(null, 'Could not load: ' + e.message);
+  }
+}
+
+async function saveCodRule() {
+  const slug = selectedProduct?.slug;
+  const msg = document.getElementById('prodCodMsg');
+  const btn = document.getElementById('prodCodSaveBtn');
+  if (!slug) { if (msg) msg.textContent = 'Select a product first.'; return; }
+  const off = !!document.getElementById('prodCodDisabled')?.checked;
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-cod-rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, cod_disabled: off, note: document.getElementById('prodCodNote')?.value || '' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    codDefaultNote = data.default_note || codDefaultNote;
+    if (selectedProduct?.slug === slug) setCodUi(data.rule);
+    if (msg) msg.textContent = data.rule
+      ? 'Saved — COD is off. The product page and checkout show the message within about a minute; COD orders with this book are refused now.'
+      : 'Saved — COD is back on for this book (product page updates within about a minute).';
+  } catch (e) {
+    if (msg) msg.textContent = 'Could not save: ' + e.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function listCodRules() {
+  const box = document.getElementById('prodCodList');
+  if (!box) return;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-cod-rules');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const slugs = Object.keys(data.rules || {}).sort();
+    box.innerHTML = slugs.length
+      ? '<strong>' + slugs.length + ' book' + (slugs.length === 1 ? '' : 's') + ' with COD off:</strong><br>'
+        + slugs.map(s => '<a href="/product/' + encodeURIComponent(s) + '/" target="_blank" rel="noopener">' + esc(s) + '</a>').join('<br>')
+      : 'No books have COD switched off here. (Crossword-imported titles use the no-cod tag instead.)';
+  } catch (e) {
+    box.textContent = 'Could not list: ' + e.message;
   }
 }
 

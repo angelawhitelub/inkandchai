@@ -144,11 +144,16 @@ exports.handler = async (event, context) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
   }
 
-  // Server-side COD guard: the full crossword.in catalogue import disables COD.
+  // Server-side COD guard: the crossword.in import (no-cod tag) and books the
+  // admin switched off (utils/cod-rules) both arrive here as _no_cod.
   // Reject even if the client UI was bypassed — steer to partial COD / prepaid.
   if (cartHasNoCod(cart)) {
+    // A book switched off in the admin carries the owner's reason (utils/cod-rules).
+    const ruled = cart.find(i => i && i._no_cod === true && i._cod_note);
     return { statusCode: 400, headers: CORS, body: JSON.stringify({
-      error: 'Cash on Delivery is not available for one or more titles in your cart. Please choose Partial COD (pay 10% now) or prepaid checkout.',
+      error: ruled
+        ? `"${ruled.title || 'One title'}": ${ruled._cod_note}`
+        : 'Cash on Delivery is not available for one or more titles in your cart. Please choose Partial COD (pay 10% now) or prepaid checkout.',
       code: 'cod_disabled',
     }) };
   }

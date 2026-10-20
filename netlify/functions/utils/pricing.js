@@ -9,6 +9,7 @@
  * Items that resolve to no price are dropped and surfaced in `dropped[]`.
  */
 
+const { codRulesFor } = require('./cod-rules');
 const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipping-restrictions');
 const { grantMap, feedOfferId } = require('./google-discount');
 const { selectTolerant } = require('./publisher-sourced');
@@ -262,6 +263,14 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
     } else {
       dropped.push({ reason: 'not_in_catalogue', slug, item: raw });
     }
+  }
+
+  // Cash on Delivery switched off per book from the admin (utils/cod-rules).
+  // cod-order refuses any cart holding one; partial COD and prepaid stay open.
+  const codRules = resolved.length && supabase ? await codRulesFor(supabase, resolved.map((i) => i.slug)) : {};
+  for (const item of resolved) {
+    const note = codRules[String(item.slug || '').toLowerCase()];
+    if (note) { item._no_cod = true; item._cod_note = note; }
   }
 
   // The Merchant Center id for each line. Google Ads "conversions with cart

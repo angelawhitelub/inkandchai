@@ -27,6 +27,7 @@ import soldOutUtil from '../netlify/functions/utils/sold-out.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
 import newArrivals from '../netlify/functions/utils/new-arrivals.js';
 import lifetimeSales from '../netlify/functions/utils/lifetime-sales.js';
+import codRules from '../netlify/functions/utils/cod-rules.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
@@ -501,6 +502,48 @@ async function soldOutSet(env, ctx, origin) {
   return _soldSet;
 }
 
+// Books whose Cash on Delivery the admin switched off, with the customer-facing
+// reason (utils/cod-rules, via cod-off-slugs). Same shape as soldOutSet.
+const COD_TTL_MS = 60_000;
+let _codOff = null;
+let _codOffAt = 0;
+async function codOffRules(env, ctx, origin) {
+  const now = Date.now();
+  if (_codOff && now - _codOffAt < COD_TTL_MS) return _codOff;
+  try {
+    const res = await runHandler('cod-off-slugs', new Request(`${origin}${FN_PREFIX}cod-off-slugs`), env, ctx);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const doc = await res.json();
+    _codOff = new Map(Object.entries((doc && doc.rules) || {}).map(([k, v]) => [String(k).toLowerCase(), String(v || '')]));
+    _codOffAt = now;
+  } catch (err) {
+    console.warn('[cod-off] read failed:', err && err.message);
+    if (!_codOff) { _codOff = new Map(); _codOffAt = now - COD_TTL_MS + 10_000; }
+  }
+  return _codOff;
+}
+
+// The product page of a COD-off book: the "Cash on delivery" badge becomes
+// "Partial COD" and the reason goes under the badges. Any notice the page
+// already had (the no-cod tag, product-page.js) is replaced, never doubled.
+async function withCodRule(response, slug, env, ctx, origin) {
+  if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  const note = (await codOffRules(env, ctx, origin)).get(String(slug || '').toLowerCase());
+  if (!note) return response;
+  let placed = false;
+  const out = new HTMLRewriter()
+    .on('[data-cod-off]', { element(el) { el.remove(); } })
+    .on('div.trust', { element(el) { if (!placed) { el.after(codRules.codOffNoticeHtml(note), { html: true }); placed = true; } } })
+    .on('div.trust .tt b', { text(t) { if (/Cash on delivery/i.test(t.text)) t.replace(t.text.replace(/Cash on delivery/i, 'Partial COD')); } })
+    .on('div.trust .tt i', { text(t) { if (/Pay when it arrives/i.test(t.text)) t.replace(t.text.replace(/Pay when it arrives/i, 'Pay 10% now, rest on delivery')); } })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('content-length');
+  headers.set('X-Cod-Off', '1');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
 function markSoldOutPage(response) {
   let ldBuf = '';
   const out = new HTMLRewriter()
@@ -739,6 +782,7 @@ export default {
       const entry = (await catalogContent(env))[contentSlug];
       let page = entry ? rewriteCatalogPage(assetResponse, entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
+      page = await withCodRule(page, contentSlug, env, ctx, url.origin);
       return withSoldCount(page, contentSlug);
     }
 
@@ -757,9 +801,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withSoldCount(markSoldOutPage(rendered), slug);
+          return withSoldCount(await withCodRule(markSoldOutPage(rendered), slug, env, ctx, url.origin), slug);
         }
-        if (rendered.status !== 404) return withSoldCount(rendered, slug);
+        if (rendered.status !== 404) return withSoldCount(await withCodRule(rendered, slug, env, ctx, url.origin), slug);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a
