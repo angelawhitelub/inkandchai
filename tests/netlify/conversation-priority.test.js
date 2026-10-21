@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict');
-const {category,canAutoClose,contextFor,categorizeConversations,isClosureCandidate}=require('../../netlify/functions/utils/conversation-priority');
+const {category,refundIssue,canAutoClose,contextFor,categorizeConversations,isClosureCandidate}=require('../../netlify/functions/utils/conversation-priority');
 const msg=(message,role='user')=>({role,message,created_at:new Date().toISOString()});
 const history=(question,reply='Here is your tracking information.',ack='Thanks')=>[msg(question),msg(reply,'bot'),msg(ack)];
 const original={razorpay_order_id:'IC-1',status:'delivered',cart_items:[{title:'Book A',_missing:true}]};
@@ -48,4 +48,13 @@ test('persisted conversations close on confirmation, stay closed on bot follow-u
  await scope.persistMessage('919876543210','bot','Happy to help!');assert.equal(conv.status,'resolved');
  await scope.persistMessage('919876543210','user','A book is missing');assert.equal(conv.status,'active');assert.equal(conv.unread_count,1);
  conv.human_takeover=true;await scope.persistMessage('919876543210','bot','Checking');await scope.persistMessage('919876543210','user','My issue is resolved');assert.equal(conv.status,'active');
+});
+test('the Refunds filter catches money claims from the customer, not the bot',()=>{
+ for(const q of ['my missing book replacement got cancelled, where is my money','books returned but refund not issued','I want to cancel my order and get refund','RTO ho gaya paise wapas kab milenge','return picked up 3 days ago still no refund','order cancel kar do'])
+  assert.equal(refundIssue([msg(q)]).refund_issue,true,q);
+ for(const q of ['where is my order','book is damaged, need replacement','is COD available'])assert.equal(refundIssue([msg(q)]).refund_issue,false,q);
+ assert.equal(refundIssue([msg('where is my order'),msg('Refunds are issued once the parcel reaches us','bot')]).refund_issue,false);
+ assert.match(refundIssue([msg('hello'),msg('refund not received yet')]).refund_reason,/refund not received yet/);
+ assert.equal(refundIssue([],[replacement('cancelled')]).refund_reason,'Missing-book replacement cancelled — verify outstanding refund');
+ assert.equal(refundIssue([],[{status:'refund_failed'}]).refund_issue,true);
 });

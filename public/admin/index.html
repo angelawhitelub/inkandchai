@@ -2956,6 +2956,8 @@ select,input,textarea{font-size:1rem;}
           <button class="inbox-filter-btn"         data-filter="active"   onclick="setInboxFilter('active',this)">Active</button>
           <button class="inbox-filter-btn"         data-filter="takeover" onclick="setInboxFilter('takeover',this)">Human</button>
           <button class="inbox-filter-btn"         data-filter="resolved" onclick="setInboxFilter('resolved',this)">Resolved</button>
+          <button class="inbox-filter-btn"         data-filter="refunds"  onclick="setInboxFilter('refunds',this)" id="inboxRefundsBtn"
+            title="Open chats where the customer is claiming money: refund not received, cancel and refund, returned (RTO) parcel, cancelled missing-book replacement">💸 Refunds</button>
         </div>
         <div id="inboxConvList"><div style="padding:1.5rem;color:var(--cream-dim);font-size:0.8rem;">Loading conversations…</div></div>
       </div>
@@ -18162,6 +18164,11 @@ function renderInboxList() {
   if (inboxFilter === 'active')   convs = convs.filter(c => c.status !== 'resolved');
   if (inboxFilter === 'takeover') convs = convs.filter(c => c.human_takeover);
   if (inboxFilter === 'resolved') convs = convs.filter(c => c.status === 'resolved');
+  // Open money claims (utils/conversation-priority.js refundIssue).
+  const refundConvs = inboxConversations.filter(c => c.refund_issue && c.status !== 'resolved');
+  const refundsBtn = document.getElementById('inboxRefundsBtn');
+  if (refundsBtn) refundsBtn.textContent = `💸 Refunds${refundConvs.length ? ` (${refundConvs.length})` : ''}`;
+  if (inboxFilter === 'refunds')  convs = convs.filter(c => c.refund_issue && c.status !== 'resolved');
   if (inboxSearch) {
     const digits = inboxSearch.replace(/\D/g, '');
     convs = convs.filter(c => {
@@ -18173,7 +18180,7 @@ function renderInboxList() {
   }
 
   if (!convs.length) {
-    list.innerHTML = '<div style="padding:1.5rem;color:var(--cream-dim);font-size:0.8rem;">No conversations yet.</div>';
+    list.innerHTML = `<div style="padding:1.5rem;color:var(--cream-dim);font-size:0.8rem;">${inboxFilter === 'refunds' ? 'No open refund claims.' : 'No conversations yet.'}</div>`;
     return;
   }
 
@@ -18185,13 +18192,16 @@ function renderInboxList() {
     const unread  = c.unread_count > 0 ? `<span class="inbox-unread">${c.unread_count}</span>` : '';
     const taken   = c.human_takeover ? `<span class="inbox-takeover-badge">You</span>` : '';
     const resolved= c.status === 'resolved' ? `<span class="inbox-resolved-badge">Done</span>` : '';
+    const money   = c.refund_issue && c.status !== 'resolved' ? ` <span title="${esc(c.refund_reason || 'Refund claim')}">💸</span>` : '';
+    const why     = inboxFilter === 'refunds' && c.refund_reason
+      ? `<div class="inbox-conv-preview" style="color:var(--gold);">💸 ${esc(c.refund_reason)}</div>` : '';
     const active  = phone === activeInboxPhone ? ' active' : '';
     return `<div class="inbox-conv${active}" onclick="loadThread('${esc(phone)}')" data-phone="${esc(phone)}">
       <div class="inbox-conv-meta">
-        <span class="inbox-conv-name">${esc(name)}${taken}${resolved}</span>
+        <span class="inbox-conv-name">${esc(name)}${taken}${resolved}${money}</span>
         <span class="inbox-conv-time">${time} ${unread}</span>
       </div>
-      <div class="inbox-conv-preview">${esc(preview)}</div>
+      <div class="inbox-conv-preview">${esc(preview)}</div>${why}
     </div>`;
   }).join('');
 }

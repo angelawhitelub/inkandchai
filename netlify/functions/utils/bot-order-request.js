@@ -19,6 +19,8 @@
  * without Supabase, Razorpay or WhatsApp.
  */
 
+const { siteSaleDiscount } = require('./site-sale');
+
 const DRAFT = 'awaiting_confirmation';
 const DISCARDED = 'draft_discarded';
 // Statuses of a request that has been placed and not closed/cancelled.
@@ -113,6 +115,16 @@ async function recentRequests(db, phone, sinceMs, nowMs) {
 
 function rupees(paise) { return Math.round(Number(paise || 0) / 100); }
 
+// The site-wide sale (utils/site-sale.js) on a bot order, so a chat order costs
+// what the same books cost at checkout. `at` is when the draft was priced: the
+// confirmation re-prices only for the breakdown and must match the stored total.
+function withSiteSale(pricing, at) {
+  const sale = siteSaleDiscount(pricing.subtotalRs, at);
+  if (!sale.discount) return pricing;
+  const totalRs = pricing.totalRs - sale.discount;
+  return { ...pricing, saleRs: sale.discount, saleLabel: sale.label, totalRs, totalPaise: totalRs * 100 };
+}
+
 async function priceSafely(priceBooksList, books) {
   try {
     return await priceBooksList(books, UNMATCHED_BOOK_FALLBACK_RS);
@@ -159,7 +171,7 @@ async function draftOrderRequest(deps, phone, args) {
     };
   }
 
-  const pricing = await priceSafely(deps.priceBooksList, f.books);
+  const pricing = withSiteSale(await priceSafely(deps.priceBooksList, f.books), nowMs);
   const draft = rows.find((r) => r.status === DRAFT && nowMs - new Date(r.created_at).getTime() < DRAFT_TTL_MS);
   const values = {
     customer_name: f.customerName,
@@ -199,6 +211,7 @@ async function draftOrderRequest(deps, phone, args) {
       address: f.address,
       payment_mode: f.paymentMode,
       subtotal_rs: pricing.subtotalRs,
+      ...(pricing.saleRs ? { sale_discount_rs: pricing.saleRs, sale: pricing.saleLabel } : {}),
       shipping_rs: pricing.shippingRs,
       total_rs: pricing.totalRs,
     },
@@ -221,8 +234,9 @@ function draftReplyDecision(text) {
 
 function placedMessage(row, pricing, paymentLink) {
   const total = rupees(row.amount_paise);
-  const breakdown = pricing && pricing.shippingRs
-    ? ` (books ₹${pricing.subtotalRs} + shipping ₹${pricing.shippingRs})`
+  const sale = pricing && pricing.saleRs ? ` − ${pricing.saleLabel} ₹${pricing.saleRs}` : '';
+  const breakdown = pricing && (pricing.shippingRs || pricing.saleRs)
+    ? ` (books ₹${pricing.subtotalRs}${sale}${pricing.shippingRs ? ` + shipping ₹${pricing.shippingRs}` : ''})`
     : '';
   if (row.payment_mode === 'prepaid') {
     return paymentLink
@@ -267,7 +281,7 @@ async function confirmDraftOrder(deps, phone, decision) {
   if (claimErr) { console.error('confirmDraftOrder claim:', claimErr.message); return null; }
   if (!claimed || !claimed.length) return { handled: true, order_id: row.order_id, reply: null };
 
-  const pricing = await priceSafely(deps.priceBooksList, row.books);
+  const pricing = withSiteSale(await priceSafely(deps.priceBooksList, row.books), new Date(row.created_at).getTime());
 
   let paymentLink = '';
   let linkError = '';

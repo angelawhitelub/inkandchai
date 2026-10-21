@@ -25,6 +25,20 @@ function orderProblem(orders=[]) {
   }
   return '';
 }
+// Money claims for the inbox's Refunds filter: a refund asked for or not yet
+// received, a cancel-and-refund, a returned (RTO) parcel, a cancelled
+// replacement. Customer messages only -- the bot's own replies mention refunds
+// constantly.
+const REFUND = /\b(?:refund(?:ed|s)?|money back|paisa wapas|paise wapas|paise (?:kab|nahi) (?:aaye|aayenge|mile)|amount (?:not |nahi )?(?:credited|received|returned|wapas)|cancel(?:led|ed|lation)?|cancle|returned|return (?:picked|pickup|parcel|ho gaya|kar diya)|rto|replacement (?:got |was |is |has been )?cancel(?:led|ed)?)\b/i;
+const MONEY_PROBLEMS = new Set(['Missing-book replacement cancelled — verify outstanding refund','Cancelled order needs follow-up','Refund still pending or failed']);
+function refundIssue(messages=[],orders=[]) {
+  const problem=orderProblem(orders);
+  if(MONEY_PROBLEMS.has(problem))return {refund_issue:true,refund_reason:problem};
+  const said=[...messages].reverse().find(m=>user(m)&&REFUND.test(String(m.message||'')));
+  if(!said)return {refund_issue:false,refund_reason:''};
+  const text=String(said.message).replace(/\s+/g,' ').trim();
+  return {refund_issue:true,refund_reason:`Customer: “${text.length>90?text.slice(0,87)+'…':text}”`};
+}
 const isClosureCandidate = message => !NEGATIVE.test(normal(message)) && (ACK.test(normal(message)) || CONFIRMED.test(normal(message)));
 function canAutoClose(conv,messages,orders=[]) {
   if(conv.human_takeover||orderProblem(orders))return false;
@@ -73,7 +87,10 @@ async function categorizeConversations(db,convs){
       if(result.error)return convs.map(c=>({...c,...(c.status==='resolved'?{category:'closed',category_reason:'Conversation closed'}:{category:'attention',category_reason:'Priority checks unavailable — review manually'})}));target.push(...(result.data||[]));if((result.data||[]).length<1000)break;
     }
   }
-  const categories=new Map(convs.map(c=>[key(c.customer_phone),category(c,messages.filter(m=>key(m.customer_phone)===key(c.customer_phone)),orders.filter(o=>key(o.customer_phone)===key(c.customer_phone)))]));
+  const categories=new Map(convs.map(c=>{
+    const mine=messages.filter(m=>key(m.customer_phone)===key(c.customer_phone)),theirs=orders.filter(o=>key(o.customer_phone)===key(c.customer_phone));
+    return [key(c.customer_phone),{...category(c,mine,theirs),...refundIssue(mine,theirs)}];
+  }));
   cached={signature,at:Date.now(),categories};return convs.map(c=>({...c,...categories.get(key(c.customer_phone))}));
 }
-module.exports={category,canAutoClose,contextFor,categorizeConversations,ACK,isClosureCandidate};
+module.exports={category,refundIssue,canAutoClose,contextFor,categorizeConversations,ACK,isClosureCandidate};
