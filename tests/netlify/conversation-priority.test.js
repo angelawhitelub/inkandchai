@@ -57,4 +57,5 @@ test('the Refunds filter catches money claims from the customer, not the bot',()
  assert.match(refundIssue([msg('hello'),msg('refund not received yet')]).refund_reason,/refund not received yet/);
  assert.equal(refundIssue([],[replacement('cancelled')]).refund_reason,'Missing-book replacement cancelled — verify outstanding refund');
  assert.equal(refundIssue([],[{status:'refund_failed'}]).refund_issue,true);
+ assert.equal(refundIssue([msg('where is my order')],[{status:'cancelled'}]).refund_issue,false,'a cancelled order alone is not a claim');
 });

@@ -30,7 +30,9 @@ function orderProblem(orders=[]) {
 // replacement. Customer messages only -- the bot's own replies mention refunds
 // constantly.
 const REFUND = /\b(?:refund(?:ed|s)?|money back|paisa wapas|paise wapas|paise (?:kab|nahi) (?:aaye|aayenge|mile)|amount (?:not |nahi )?(?:credited|received|returned|wapas)|cancel(?:led|ed|lation)?|cancle|returned|return (?:picked|pickup|parcel|ho gaya|kar diya)|rto|replacement (?:got |was |is |has been )?cancel(?:led|ed)?)\b/i;
-const MONEY_PROBLEMS = new Set(['Missing-book replacement cancelled — verify outstanding refund','Cancelled order needs follow-up','Refund still pending or failed']);
+// Order states that are a money problem on their own. A plain cancelled order is
+// not: most are COD or already refunded, so it needs the customer to ask.
+const MONEY_PROBLEMS = new Set(['Missing-book replacement cancelled — verify outstanding refund','Refund still pending or failed']);
 function refundIssue(messages=[],orders=[]) {
   const problem=orderProblem(orders);
   if(MONEY_PROBLEMS.has(problem))return {refund_issue:true,refund_reason:problem};
