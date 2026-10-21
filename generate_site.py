@@ -8306,6 +8306,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
           </div>
         </div>
         <div id="pinMsg" class="pin-msg"></div>
+        <div id="pinMismatch" role="alert" style="display:none;margin-top:8px;padding:10px 12px;border:1px solid #c9a84c;border-radius:8px;background:rgba(201,168,76,.08);font-size:.85rem;line-height:1.45"></div>
         <div id="shippingRestrictionMsg" style="display:none;margin:.65rem 0 1rem;padding:.85rem 1rem;border:1px solid rgba(224,80,80,.55);border-radius:14px;background:rgba(224,80,80,.09);color:#f09a8c;font-size:.7rem;line-height:1.6;"></div>
 
         <div id="paymentBlock">
@@ -9200,6 +9201,55 @@ function clearShippingRestrictionUi() {
   applyShippingRestrictionUi();
 }
 
+// ── Address pincode vs the Pincode box ─────────────────────────────────────
+// The address box and the Pincode box are joined into one line, so a customer
+// who typed their pincode in both, with different digits, shipped as
+// "…, 560067, Bengaluru, Karnataka, 560066" and the courier had to guess.
+// Ask which one is right before any payment button goes through.
+const _pinIgnored = new Set();
+function addrPins(text) {
+  const out = []; const re = /(^|\\D)([1-9]\\d{5})(?=\\D|$)/g; let m;
+  while ((m = re.exec(String(text || '')))) out.push(m[2]);
+  return out;
+}
+function checkPinMismatch() {
+  const box = document.getElementById('pinMismatch');
+  const pin = (document.getElementById('ch-pin')?.value || '').replace(/\\D/g, '');
+  const other = pin.length === 6
+    ? (addrPins(document.getElementById('ch-addr')?.value).find(p => p !== pin && !_pinIgnored.has(p)) || '')
+    : '';
+  if (!box) return other;
+  if (!other) { box.style.display = 'none'; box.innerHTML = ''; return ''; }
+  const btn = 'background:#c9a84c;color:#1a1410;border:0;border-radius:6px;padding:7px 12px;font-weight:600;cursor:pointer;margin:8px 8px 0 0;font-size:.85rem';
+  box.innerHTML = `⚠ Your address says pincode <b>${other}</b> but the Pincode box says <b>${pin}</b>. Which one is correct?<br>`
+    + `<button type="button" style="${btn}" onclick="usePinFromAddr('${other}')">Use ${other}</button>`
+    + `<button type="button" style="${btn}" onclick="keepBoxPin('${other}')">Use ${pin}</button><br>`
+    + `<a href="#" style="display:inline-block;margin-top:8px;color:inherit;opacity:.75;font-size:.8rem" onclick="ignoreAddrPin('${other}');return false">${other} is not a pincode (e.g. a house number)</a>`;
+  box.style.display = '';
+  return other;
+}
+function usePinFromAddr(p) {
+  const el = document.getElementById('ch-pin');
+  if (!el) return;
+  el.value = p;
+  handlePin(p);
+}
+function keepBoxPin(p) {
+  const el = document.getElementById('ch-addr');
+  if (!el) return;
+  const re = new RegExp('(^|[^0-9])[\\\\s,\\\\-–]*(?:pin\\\\s*code|pincode|pin)?\\\\s*[:\\\\-–]?\\\\s*' + p + '(?![0-9])', 'gi');
+  el.value = el.value.replace(re, '$1, ')
+    .replace(/[ \\t]*,([ \\t]*,)+/g, ',')
+    .replace(/^[ \\t]*,[ \\t]*/gm, '').replace(/[ \\t]*,[ \\t]*$/gm, '')
+    .trim();
+  checkPinMismatch();
+}
+function ignoreAddrPin(p) {
+  _pinIgnored.add(p);
+  checkPinMismatch();
+}
+document.getElementById('ch-addr')?.addEventListener('change', checkPinMismatch);
+
 function handlePin(val) {
   const msg = document.getElementById('pinMsg');
   const cityCol  = document.querySelector('.ch-city-col');
@@ -9207,6 +9257,7 @@ function handlePin(val) {
   clearTimeout(_pinTimer);
   val = val.replace(/\\D/g,'');
   clearShippingRestrictionUi();
+  checkPinMismatch();
   if (val.length < 6) {
     msg.textContent = ''; msg.style.color = '';
     // Show city/state inputs again so manual edit works while typing.
@@ -9328,6 +9379,8 @@ function collectAddr() {
   if (!/^\\S+@\\S+\\.\\S+$/.test(email)) { return failField('ch-email', 'Please enter a valid email address.'); }
   if (!addr)             { return failField('ch-addr', 'Please enter your delivery address.'); }
   if (pin.length !== 6)  { return failField('ch-pin', 'Please enter a valid 6-digit pincode.'); }
+  const clash = checkPinMismatch();
+  if (clash) { return failField('ch-pin', `Your address mentions pincode ${clash} but the Pincode box says ${pin}. Please tap the one that is correct (just below the Pincode box).`); }
   // Deliberately no client-side existence block: India Post's dataset is
   // incomplete and would turn away real customers. The order endpoints refuse
   // only pincodes NO courier serves, and their error surfaces here.
