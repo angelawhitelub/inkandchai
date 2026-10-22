@@ -15,6 +15,9 @@ const path = require('path');
 const fs   = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const { makeSlug } = require('./utils/pricing');
+const search = require('../../public/js/book-search');
+const { findCandidates } = require('./utils/search-candidates');
+const discovery = require('./utils/search-discovery');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,7 +37,7 @@ function absImg(u) {
   if (s.startsWith('http')) return proxifySupabaseImage(s);
   return 'https://inkandchai.in' + (s.startsWith('/') ? s : '/' + s);
 }
-function norm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim(); }
+const norm = search.normalize;
 
 // ── Static catalogue index (built once per cold start) ───────────────────────
 let _catalog = null;
@@ -56,6 +59,7 @@ function getCatalog() {
     const slug = makeSlug(b.title || '', b.shopify_id || '').toLowerCase();
     if (!slug) continue;
     _catalog.push({
+      slug, category: String(b.category || ''), isbn: String(b.isbn || ''),
       title: String(b.title).slice(0, 200),
       author: String(b.author || ''),
       price,
@@ -68,27 +72,15 @@ function getCatalog() {
   return _catalog;
 }
 
-function scoreMatch(hay, title, q) {
-  if (hay.startsWith(q)) return 100;                 // title starts with query
-  if (title.toLowerCase().startsWith(q)) return 95;
-  const idx = hay.indexOf(q);
-  if (idx === 0) return 90;
-  if (idx > 0) return 60 - Math.min(40, idx);        // earlier match = better
-  // all words present?
-  const words = q.split(' ').filter(Boolean);
-  if (words.length > 1 && words.every(w => hay.includes(w))) return 40;
-  return -1;
-}
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'GET') return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'GET only' }) };
 
-  const q = norm((event.queryStringParameters || {}).q || '');
+  const q = search.canonical(String((event.queryStringParameters || {}).q || '').slice(0,120));
   const limit = Math.min(12, Math.max(1, parseInt((event.queryStringParameters || {}).limit || '8', 10) || 8));
-  if (q.length < 2) {
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ results: [] }) };
-  }
+  const prefs = discovery.preferences(event.queryStringParameters || {});
+  const personal = prefs.viewed.length || prefs.interests.length;
 
   const headers = {
     ...CORS,
@@ -99,26 +91,30 @@ exports.handler = async (event) => {
     'Netlify-Cache-Tag': 'products',
   };
 
+  if (personal) { headers['Cache-Control'] = 'private, no-store'; headers['Netlify-CDN-Cache-Control'] = 'private, no-store'; }
   try {
+    const gone = await deletedSlugSet();
+    // Suggestions must answer even when discovery cannot: its lookups are
+    // bounded, and this bounds the whole thing again.
+    const fallback = () => discovery.choose(getCatalog(), [], prefs, gone);
+    const picks = await discovery.withTimeout(discovery.discover(getCatalog(), prefs, gone).catch(fallback), 6000, null) || fallback();
+    const clean = r => ({title:r.title,author:r.author,price:r.price,mrp:r.mrp>r.price?r.mrp:0,img:r.img,url:r.url});
+    const sections = Object.fromEntries(Object.entries(picks).map(([k,v])=>[k,v.map(clean)]));
+    if(q.length < 2)return {statusCode:200,headers,body:JSON.stringify({results:[],matched_count:null,...sections})};
     // 1) Static catalogue (in-memory, no egress)
     const scored = [];
+    let complete = true;
     for (const b of getCatalog()) {
-      const s = scoreMatch(b._hay, b.title, q);
-      if (s >= 0) scored.push({ ...b, _score: s });
+      const s = search.score(b, q);
+      if (s > 0) scored.push({ ...b, _score: s });
     }
 
     // 2) custom_products (Supabase) — title match, capped
     if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
       try {
         const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-        const safe = q.replace(/[%,()]/g, ' ').trim();
-        if (safe) {
-          const { data } = await supabase
-            .from('custom_products')
-            .select('slug,title,author,price_inr,original_price_inr,image_url')
-            .eq('is_active', true)
-            .ilike('title', `%${safe}%`)
-            .limit(12);
+        {
+          const data = await findCandidates(supabase, q);
           for (const r of (data || [])) {
             const price = parseFloat(r.price_inr || 0) || 0;
             if (!r.title || price <= 0) continue;
@@ -130,25 +126,25 @@ exports.handler = async (event) => {
               mrp: parseFloat(r.original_price_inr || 0) || 0,
               img: absImg(r.image_url),
               url: `/product/${r.slug}/`,
-              _score: scoreMatch(hay, r.title, q),
+              _score: search.score(r, q),
             });
           }
         }
-      } catch (e) { console.warn('search-suggest custom_products:', e.message); }
+      } catch (e) { complete = false; console.warn('search-suggest custom_products:', e.message); }
     }
 
     // Rank, de-dupe by url, drop pages taken down in admin (the baked
     // catalogue still lists them until the next regeneration), take top N
     const seen = new Set();
-    const gone = await deletedSlugSet();
     const slugOf = (url) => url.replace(/^\/product\//, '').replace(/\/$/, '').toLowerCase();
-    const results = scored
-      .sort((a, b) => b._score - a._score)
-      .filter(r => { if (seen.has(r.url) || gone.has(slugOf(r.url))) return false; seen.add(r.url); return true; })
-      .slice(0, limit)
+    const ranked = scored
+      .filter(r => r._score > 0)
+      .sort((a, b) => b._score - a._score || picks.bestsellers.some(r=>r.url===b.url)-picks.bestsellers.some(r=>r.url===a.url))
+      .filter(r => { if (seen.has(r.url) || gone.has(slugOf(r.url))) return false; seen.add(r.url); return true; });
+    const results = ranked.slice(0, limit)
       .map(({ title, author, price, mrp, img, url }) => ({ title, author, price, mrp: mrp > price ? mrp : 0, img, url }));
 
-    return { statusCode: 200, headers, body: JSON.stringify({ results }) };
+    return { statusCode: 200, headers, body: JSON.stringify({ results, matched_count:complete?ranked.length:null, partial:!complete, ...sections }) };
   } catch (err) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ results: [], warning: err.message }) };
   }

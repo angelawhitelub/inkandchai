@@ -20,8 +20,9 @@ const { resolveCartPrices } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
+const { orderShipping } = require('./utils/free-delivery');
 const { resolveProductCoupon } = require('./utils/product-coupons');
-const { freedomSaleDiscount } = require('./utils/freedom-sale');
+const { siteSaleDiscount, betterOfSale } = require('./utils/site-sale');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -29,8 +30,7 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-const FREE_SHIPPING_THRESHOLD = 499;
-const SHIPPING_FEE = 40;
+// Shipping: utils/free-delivery orderShipping (₹40 below ₹499, free with a free-delivery book).
 
 const COUPONS = {
   INKLOVE10:  { type: 'percent', value: 10, minSubtotal: 499  },
@@ -54,12 +54,16 @@ function staticCouponDiscount(subtotal, rawCode) {
   return { code, discount: Math.max(0, discount) };
 }
 
-async function resolveCoupon(supabase, cart, subtotal, rawCode) {
-  // Independence Day offer is automatic, applies to every payment mode, and
-  // replaces rather than stacks with any manually selected coupon.
-  const freedomHit = freedomSaleDiscount(subtotal);
-  if (freedomHit.discount > 0) return freedomHit;
+async function resolveCoupon(supabase, cart, subtotal, rawCode, { saleOnly = false } = {}) {
+  // A site-wide sale (utils/site-sale) is automatic on every payment mode and
+  // never stacks with a code: the customer gets whichever is worth more.
+  // Partial COD takes only the sale.
+  const saleHit = siteSaleDiscount(subtotal);
+  if (saleOnly) return saleHit;
+  return betterOfSale(saleHit, await resolveChosenCoupon(supabase, cart, subtotal, rawCode));
+}
 
+async function resolveChosenCoupon(supabase, cart, subtotal, rawCode) {
   const staticHit = staticCouponDiscount(subtotal, rawCode);
   if (staticHit.discount > 0) return { ...staticHit, source: 'static' };
 
@@ -122,10 +126,10 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
     }
 
-    const shipping   = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-    const couponInfo = await resolveCoupon(supabase, cart, subtotal, rawCoupon);
+    const shipping   = orderShipping(cart, subtotal);
     const isPartial  = payment_mode === 'partial_cod';
-    const partialDiscount = couponInfo.source === 'freedom_sale' ? couponInfo.discount : 0;
+    const couponInfo = await resolveCoupon(supabase, cart, subtotal, rawCoupon, { saleOnly: isPartial });
+    const partialDiscount = couponInfo.source === 'site_sale' ? couponInfo.discount : 0;
     const appliedDiscount = isPartial ? partialDiscount : couponInfo.discount;
     const fullTotal  = Math.max(1, subtotal + shipping - appliedDiscount);
     const charged    = isPartial ? Math.max(1, Math.ceil(fullTotal * 0.10)) : fullTotal;

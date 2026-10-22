@@ -49,6 +49,7 @@ async function sendWhatsApp({
   lang = 'en',
   urlButtonParam = null,
   headerImageUrl = null,
+  headerDocument = null,
   marketing = false,
 }) {
   const token = process.env.WHATSAPP_TOKEN;
@@ -69,6 +70,17 @@ async function sendWhatsApp({
     components.push({
       type: 'header',
       parameters: [{ type: 'image', image: { link: String(headerImageUrl) } }],
+    });
+  }
+  if (headerDocument && (headerDocument.id || headerDocument.link)) {
+    // A template whose header is a DOCUMENT: an uploaded media id (uploadMedia)
+    // or a public link, plus the filename the recipient sees.
+    components.push({
+      type: 'header',
+      parameters: [{ type: 'document', document: {
+        ...(headerDocument.id ? { id: String(headerDocument.id) } : { link: String(headerDocument.link) }),
+        ...(headerDocument.filename ? { filename: String(headerDocument.filename) } : {}),
+      } }],
     });
   }
   if (bodyParams.length > 0) components.push({ type: 'body', parameters: bodyParams });
@@ -148,4 +160,61 @@ async function sendText(to, text) {
   }
 }
 
-module.exports = { sendWhatsApp, sendText, normalizePhone };
+/**
+ * Upload a file to WhatsApp's media store; returns { ok, id } for a template's
+ * document header or sendDocument. Media ids last 30 days. Never throws.
+ */
+async function uploadMedia(bytes, { mime = 'application/pdf', filename = 'file.pdf' } = {}) {
+  const token = process.env.WHATSAPP_TOKEN;
+  if (!token) return { ok: false, skipped: true };
+  try {
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', mime);
+    form.append('file', new Blob([bytes], { type: mime }), filename);
+    const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${PHONE_ID}/media`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.id) {
+      console.error(`WhatsApp media upload error ${res.status}:`, JSON.stringify(data?.error || data));
+      return { ok: false, status: res.status, data };
+    }
+    return { ok: true, id: data.id };
+  } catch (err) {
+    console.error('uploadMedia exception:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * Send a free-form document message. Like sendText, only delivered inside the
+ * 24-hour window (the recipient messaged us in the last day). Never throws.
+ */
+async function sendDocument(to, { id, filename, caption = '' }) {
+  const token = process.env.WHATSAPP_TOKEN;
+  if (!token) return { ok: false, skipped: true };
+  const phone = normalizePhone(to);
+  if (!phone) return { ok: false, skipped: true };
+  try {
+    const res = await fetch(MESSAGE_BASE_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp', to: phone, type: 'document',
+        document: { id: String(id), ...(filename ? { filename } : {}), ...(caption ? { caption: String(caption).slice(0, 1024) } : {}) },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error(`WhatsApp document error ${res.status} → ${phone}:`, JSON.stringify(data?.error || data));
+      return { ok: false, status: res.status, data };
+    }
+    return { ok: true, status: res.status, data };
+  } catch (err) {
+    console.error('sendDocument exception:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+module.exports = { sendWhatsApp, sendText, sendDocument, uploadMedia, normalizePhone };

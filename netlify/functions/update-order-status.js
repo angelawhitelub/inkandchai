@@ -19,8 +19,10 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-shipment-cancel');
 const { buildTrackingUrl } = require('./utils/tracking-url');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const { readCancelReason } = require('./utils/cancel-reasons');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
 const { sendRefundInitiated } = require('./utils/refund-notifications');
 
@@ -99,6 +101,13 @@ exports.handler = async (event) => {
   const { id, status, tracking_id, courier_name } = body;
   if (!id || !status) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing id or status' }) };
   if (!VALID_STATUSES.includes(status)) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid status' }) };
+  // Why the store cancelled it (admin reason picker). Optional for callers that
+  // predate it; they keep the old out-of-stock message.
+  const cancelReason = status === 'cancelled' ? readCancelReason(body.cancel_reason, body.cancel_note) : null;
+  if (cancelReason && cancelReason.error) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: cancelReason.error }) };
+  const reasonOpts = cancelReason
+    ? { kind: cancelReason.kind, note: cancelReason.note, reasonLabel: cancelReason.label }
+    : {};
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -127,6 +136,15 @@ exports.handler = async (event) => {
     {
       const { error: updErr } = await supabase.from('orders').update({ status }).eq('id', id);
       if (updErr) throw updErr;
+    }
+    // Record the reason beside it; a missing column must not undo the cancel.
+    if (cancelReason && previousOrder.status !== 'cancelled') {
+      const { error: rErr } = await supabase.from('orders').update({
+        cancelled_at: new Date().toISOString(),
+        cancellation_reason: cancelReason.note ? `${cancelReason.label}: ${cancelReason.note}` : cancelReason.label,
+        cancellation_source: 'admin',
+      }).eq('id', id);
+      if (rErr) console.warn('[update-order-status] cancellation reason not saved:', rErr.message);
     }
 
     let trackingUrl = '';
@@ -188,6 +206,14 @@ exports.handler = async (event) => {
       }
     }
 
+    // Cancel the courier shipment too, while it can still be stopped. Reported
+    // back rather than thrown: the order is already cancelled at this point.
+    let courierCancel = null;
+    if (status === 'cancelled' && previousOrder.status !== 'cancelled' && previousOrder.tracking_id) {
+      courierCancel = await cancelCourierShipment(previousOrder);
+      await recordCourierCancel(supabase, id, courierCancel);
+    }
+
     let refundInfo = null;
     if (status === 'cancelled' && previousOrder.status !== 'cancelled') {
       const paymentId = previousOrder.razorpay_payment_id || '';
@@ -211,7 +237,7 @@ exports.handler = async (event) => {
           await supabase.from('orders').update({ status: 'refunded' }).eq('id', id);
           refundInfo = { provider: 'razorpay', status: 'refunded', refund_id: refund.id, amount: amountPaise / 100 };
           const note = `💳 Refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} has been initiated to your original payment method — usually reflects within 2–3 business days. Refund ID: ${refund.id}.`;
-          await notifyOrderCancelled({ ...previousOrder, status: 'refunded' }, { reason: note });
+          await notifyOrderCancelled({ ...previousOrder, status: 'refunded' }, { reason: note, ...reasonOpts });
           // Refund-initiated WhatsApp + email — shared with the PhonePe flow so
           // wording/timeline is consistent. Dedup-guarded by refund_notified_at.
           await sendRefundInitiated(previousOrder, amountPaise, { supabase })
@@ -228,12 +254,14 @@ exports.handler = async (event) => {
             html: `<p>Auto-refund on cancel failed for <strong>${previousOrder.razorpay_order_id || previousOrder.id}</strong> (payment ${paymentId}, ₹${(amountPaise/100).toLocaleString('en-IN')}).</p><p>Error: ${err.message}</p><p>Refund manually from the Razorpay dashboard.</p>`,
           }).catch(() => {});
           await notifyOrderCancelled({ ...previousOrder, status: 'refund_pending' }, {
+            ...reasonOpts,
             reason: `⏳ Your refund of ₹${(amountPaise / 100).toLocaleString('en-IN')} is being processed and will reach you within 3–5 business days.`,
           });
         }
       } else {
         await notifyOrderCancelled({ ...previousOrder, status: 'cancelled' }, {
           reason: 'Your order status was updated to cancelled.',
+          ...reasonOpts,
         });
       }
     }
@@ -241,6 +269,7 @@ exports.handler = async (event) => {
     const result = { success: true, tracking_url: trackingUrl || null };
     if (refundInfo) result.refund = refundInfo;
     if (trackingWarning) result.warning = trackingWarning;
+    if (courierCancel && courierCancel.action !== 'none') result.courier = courierCancel;
     return { statusCode: 200, headers: CORS, body: JSON.stringify(result) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };

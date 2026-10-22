@@ -33,6 +33,7 @@
  */
 
 const { getStore, connectLambda } = require('@netlify/blobs');
+const { existingOrderIds } = require('./existing-order-ids');
 
 const STORE_NAME = 'lost-orders';
 const MIRROR_STORE_NAME = 'orders-mirror';
@@ -229,6 +230,7 @@ async function reconcileWithStore(store, supabase, { days = MIRROR_RECONCILE_DAY
 
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
+  const candidates = [];
   for (const b of (listing?.blobs || []).slice(0, limit)) {
     let entry;
     try { entry = await store.get(b.key, { type: 'json' }); }
@@ -242,11 +244,18 @@ async function reconcileWithStore(store, supabase, { days = MIRROR_RECONCILE_DAY
     const orderId = entry.row.razorpay_order_id;
     if (!orderId) continue;
     out.checked++;
+    candidates.push(entry);
+  }
 
-    const { data: row, error } = await supabase
-      .from('orders').select('id').eq('razorpay_order_id', orderId).maybeSingle();
-    if (error) { out.failed++; out.errors.push(`${orderId}: lookup ${error.message}`); continue; }
-    if (row) { out.present++; continue; }
+  // One query per 200 orders, not one per order: this runs every five minutes
+  // over up to 500 entries, and the per-order lookup was 6.4M of the
+  // database's ~9M requests by 29 Sep 2026.
+  const present = await existingOrderIds(supabase, candidates.map(e => e.row.razorpay_order_id));
+  if (present.error) { out.failed += candidates.length; out.errors.push(`lookup ${present.error}`); return out; }
+
+  for (const entry of candidates) {
+    const orderId = entry.row.razorpay_order_id;
+    if (present.ids.has(orderId)) { out.present++; continue; }
 
     out.missing.push(orderId);
     if (dryRun) continue;

@@ -42,3 +42,32 @@ test('partial/prepaid cancellation age uses the same 30-minute boundary', () => 
   assert.equal(cancellationAge({ created_at: new Date(now - PREPAID_WINDOW_MS - 1).toISOString() }, now).ageMs > PREPAID_WINDOW_MS, true);
   assert.equal(cancellationAge({}, now).ageMs, Number.POSITIVE_INFINITY);
 });
+
+// IC-20260919-IUPN2: Amazon Shipping via iThink, no scans to us, delivered
+// 24 Sep, last_courier_status "Delivered" from 3 Oct -- and still cancelled
+// from the website on 7 Oct because only NimbusPost was asked.
+test("the courier's own last word (iThink / Amazon bookings) blocks cancellation", () => {
+  assert.equal(shipmentHasMoved({ status: 'shipped', tracking_id: '372685510045', last_courier_status: 'Delivered' }), true);
+  assert.equal(shipmentHasMoved({ last_courier_status: 'In Transit' }), true);
+  assert.equal(shipmentHasMoved({ delivered_at: '2026-09-24T15:00:00Z' }), true);
+  assert.equal(shipmentHasMoved({ last_courier_status: 'Pickup Scheduled' }), false, 'still waiting at our end');
+  assert.equal(shipmentHasMoved({ last_courier_status: 'lookup failed: timeout' }), false, 'an error is not a scan');
+  assert.equal(shipmentHasMoved({ last_courier_status: 'Cancelled' }), false);
+});
+
+test('live check asks every courier, not just NimbusPost', async () => {
+  const { liveMovement } = require('../../netlify/functions/cancel-order')._test;
+  const order = { id: 'o1', tracking_id: '372685510045', courier_name: 'Amazon Shipping' };
+  const npUnknown = async () => ({ moved: null, status: '', error: 'awb not in response' });
+  const amazon = (state, status) => async () => new Map([['o1', { state, status }]]);
+
+  assert.deepEqual(await liveMovement(order, { npShipmentMoved: npUnknown, checkPickups: amazon('moved', 'Delivered') }),
+    { moved: true, status: 'Delivered' });
+  assert.equal((await liveMovement(order, { npShipmentMoved: npUnknown, checkPickups: amazon('waiting', 'Pickup Scheduled') })).moved, false);
+  assert.equal((await liveMovement(order, { npShipmentMoved: npUnknown, checkPickups: amazon('unknown', '') })).moved, null,
+    'nobody knows: unchanged behaviour (allowed on local state)');
+  assert.equal((await liveMovement(order, { npShipmentMoved: async () => ({ moved: true, status: 'picked' }), checkPickups: amazon('unknown', '') })).moved, true);
+  assert.equal((await liveMovement(order, { npShipmentMoved: npUnknown, checkPickups: async () => { throw new Error('down'); } })).moved, null);
+  assert.equal((await liveMovement(order, { timeoutMs: 20, npShipmentMoved: () => new Promise(() => {}), checkPickups: amazon('moved', 'Delivered') })).moved, true,
+    'a hung NimbusPost does not hide the other courier');
+});

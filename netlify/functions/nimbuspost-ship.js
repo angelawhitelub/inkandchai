@@ -29,6 +29,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier } = require('./utils/nimbuspost-import');
 const { requireAdmin } = require('./utils/admin-auth');
+const { ensureOrderAddress } = require('./utils/address-fixer');
 const { isReplacementOrder } = require('./utils/replacement-order');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
@@ -226,6 +227,7 @@ async function npCreateShipment(token, payload) {
 
 // ── Core: ship a single order ──────────────────────────────────────────────
 async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
+  const addressFix = await ensureOrderAddress(supabase, order);
   const orderId = order.razorpay_order_id || order.id;
   const { addr1, addr2, city, state, pincode } = parseAddress(order.customer_address || '');
 
@@ -397,7 +399,8 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
 
   if (updErr) console.warn('Supabase update warning:', updErr.message);
 
-  return { order_id: orderId, awb, courier_name: courier_name || courierName, tracking_url: trackingUrl };
+  return { order_id: orderId, awb, courier_name: courier_name || courierName, tracking_url: trackingUrl,
+    ...(addressFix.status === 'fixed' ? { corrected_address: order.customer_address, address_fix_reason: addressFix.reason } : {}) };
 }
 
 // ── CORS / auth helpers ───────────────────────────────────────────────────

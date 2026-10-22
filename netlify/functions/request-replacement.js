@@ -7,24 +7,30 @@
  * customer over email + WhatsApp and the store owner over email.
  *
  * Body:
- *   { original_order_id, reason, note?, photos? }
+ *   { original_order_id, reason, note, photos?, items?, q? }
+ *     items:  optional [{title, qty}] — only these books are re-shipped
+ *             (default: the whole order, as before)
+ *     q:      the order's email or phone, for the logged-out Track Order page
  *     reason: one of REASONS below
- *     note:   optional plaintext, max 500 chars
- *     photos: optional array of base64 data-URLs (max 3, max 2 MB each).
+ *     note:   required plaintext, max 500 chars
+ *     photos: required array of base64 data-URLs (max 3, max 2 MB each).
  *             Uploaded to product-images bucket under replacement-photos/.
  *
- * Auth: requires the Supabase JWT (Authorization: Bearer <token>) — the
- * authed user must own the original order (match by email OR phone).
+ * Auth: the Supabase JWT (Authorization: Bearer <token>) of a user who owns
+ * the order (email OR phone), or — from Track Order — `q`, the email/phone used
+ * at checkout, checked the same way as track-order and report-missing-books.
  *
  * Guards:
  *   - original must be `delivered` (or recently shipped — store policy)
  *   - within REPLACEMENT_WINDOW_DAYS of delivery
- *   - only ONE replacement request per customer (prevents repeat requests)
+ *   - only ONE replacement or missing-book request per original order (prevents repeat requests)
  */
 
+const { beginClaim } = require('./utils/customer-claim');
 const { createClient } = require('@supabase/supabase-js');
 const { sendEmail }    = require('./utils/email');
 const { sendWhatsApp } = require('./utils/whatsapp');
+const { matchMissingItems } = require('./utils/missing-book-report');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -33,17 +39,22 @@ const CORS = {
 };
 
 const REPLACEMENT_WINDOW_DAYS = 7;
+// What the customer can pick today: defective (misprint, missing/torn pages,
+// binding, damaged) and wrong_book. A missing book goes to report-missing-books.
+// The older ids stay accepted so a cached page still works.
 const REASONS = new Set([
-  'damaged',         // delivered damaged
+  'defective',       // misprint, missing/torn pages, binding fault, damaged copy
   'wrong_book',      // wrong title sent
-  'missing_pages',   // print/binding defect
-  'missing_item',    // multi-book order, one missing
-  'incomplete_set',  // combo pack, partial
-  'other',
+  'damaged',         // legacy
+  'missing_pages',   // legacy
+  'missing_item',    // legacy
+  'incomplete_set',  // legacy
+  'other',           // legacy
 ]);
 const REASON_LABEL = {
-  damaged: 'Damaged in transit',
+  defective: 'Defective book / misprint',
   wrong_book: 'Wrong book delivered',
+  damaged: 'Damaged in transit',
   missing_pages: 'Missing/printing defect',
   missing_item: 'Item missing from package',
   incomplete_set: 'Incomplete combo set',
@@ -53,21 +64,8 @@ const REASON_LABEL = {
 function last10(p) { return String(p || '').replace(/\D/g, '').slice(-10); }
 function json(code, body) { return { statusCode: code, headers: CORS, body: JSON.stringify(body) }; }
 
-async function uploadPhoto(sb, dataUrl, slugPrefix) {
-  const m = String(dataUrl || '').match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/i);
-  if (!m) return null;
-  const ct = m[1].toLowerCase();
-  const ext = ct === 'image/png' ? 'png' : ct === 'image/webp' ? 'webp' : 'jpg';
-  const buf = Buffer.from(m[2], 'base64');
-  if (buf.length < 200 || buf.length > 2_000_000) return null;       // 200B–2MB
-  const path = `replacement-photos/${slugPrefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
-  const up = await sb.storage.from('product-images').upload(path, buf, { contentType: ct, upsert: false });
-  if (up.error) return null;
-  return sb.storage.from('product-images').getPublicUrl(path).data.publicUrl;
-}
-
 function buildOwnerEmailHtml(orig, repl, reasonLabel, note, photos) {
-  const items = (orig.cart_items || []).map(i => `<li>${(i.title || 'Book').replace(/[<>]/g,'')} × ${i.qty || 1}</li>`).join('');
+  const items = (repl.cart_items || orig.cart_items || []).map(i => `<li>${(i.title || 'Book').replace(/[<>]/g,'')} × ${i.qty || 1}</li>`).join('');
   const photoHtml = (photos || []).slice(0,3).map(u => `<a href="${u}" target="_blank"><img src="${u}" style="max-width:140px;border:1px solid #2a2a2a;margin-right:6px;margin-top:6px;"/></a>`).join('');
   return `<div style="font-family:Georgia,serif;color:#f0e8d8;background:#0d0b08;padding:24px;max-width:560px;margin:0 auto;">
     <h2 style="color:#c9a84c;font-weight:400;margin:0 0 8px;">🔄 Replacement requested</h2>
@@ -127,24 +125,27 @@ exports.handler = async (event) => {
     return json(400, { error: `Please describe the problem (at least ${MIN_NOTE} characters) so we know what happened.` });
   }
 
-  // ── Auth: signed-in customer only ────────────────────────────────────────
+  // ── Auth: signed-in customer, or the order's email/phone ────────────────
   const authHeader = event.headers.authorization || event.headers.Authorization || '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-  if (!token) return json(401, { error: 'Sign in to request a replacement' });
+  const proof = String(body.q || '').trim();
+  if (!token && !proof) return json(401, { error: 'Sign in, or enter the email or phone used on the order, to request a replacement' });
 
   const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  let user;
-  try {
-    const { data, error } = await sb.auth.getUser(token);
-    if (error || !data?.user) throw error || new Error('no_user');
-    user = data.user;
-  } catch {
-    return json(401, { error: 'Invalid session — sign in again' });
+  let user = null;
+  if (token) {
+    try {
+      const { data, error } = await sb.auth.getUser(token);
+      if (error || !data?.user) throw error || new Error('no_user');
+      user = data.user;
+    } catch {
+      return json(401, { error: 'Invalid session — sign in again' });
+    }
   }
-  const userEmail = (user.email || '').toLowerCase();
-  const userPhone10 = last10(user.user_metadata?.phone || user.phone || '');
+  const userEmail = user ? (user.email || '').toLowerCase() : '';
+  const userPhone10 = user ? last10(user.user_metadata?.phone || user.phone || '') : '';
 
   // ── Fetch original order ─────────────────────────────────────────────────
   const cleanId = String(original_order_id).trim();
@@ -156,6 +157,10 @@ exports.handler = async (event) => {
       .eq('razorpay_order_id', cleanId).maybeSingle();
     orig = data || null;
   }
+  if (!orig && /^IC-/i.test(cleanId)) {
+    const { data } = await sb.from('orders').select('*').ilike('razorpay_order_id', cleanId).limit(1).maybeSingle();
+    orig = data || null;
+  }
   if (!orig && /^[0-9a-f-]{36}$/i.test(cleanId)) {
     const { data } = await sb.from('orders').select('*').eq('id', cleanId).maybeSingle();
     orig = data || null;
@@ -163,9 +168,19 @@ exports.handler = async (event) => {
   if (!orig) return json(404, { error: 'Order not found' });
 
   // Ownership
-  const ownsByEmail = userEmail && orig.customer_email && userEmail === orig.customer_email.toLowerCase();
-  const ownsByPhone = userPhone10 && orig.customer_phone && userPhone10 === last10(orig.customer_phone);
-  if (!ownsByEmail && !ownsByPhone) return json(403, { error: 'This order is not yours' });
+  let owns = false;
+  if (user) {
+    const ownsByEmail = userEmail && orig.customer_email && userEmail === orig.customer_email.toLowerCase();
+    const ownsByPhone = userPhone10 && orig.customer_phone && userPhone10 === last10(orig.customer_phone);
+    owns = !!(ownsByEmail || ownsByPhone);
+  }
+  if (!owns && proof) {
+    const pn = proof.toLowerCase().replace(/\s+/g, '');
+    const pd = last10(pn);
+    owns = !!((orig.customer_email && orig.customer_email.toLowerCase().replace(/\s+/g, '') === pn)
+      || (pd.length === 10 && orig.customer_phone && last10(orig.customer_phone) === pd));
+  }
+  if (!owns) return json(403, { error: user ? 'This order is not yours' : 'Email or phone does not match this order.' });
 
   // Status + window
   const status = String(orig.status || '').toLowerCase();
@@ -175,58 +190,22 @@ exports.handler = async (event) => {
   const windowMs = REPLACEMENT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   if (ageMs > windowMs) return json(400, { error: `Replacement window (${REPLACEMENT_WINDOW_DAYS} days) has closed` });
 
-  // Only one replacement per original (clearer error for an exact repeat).
-  const { data: prior } = await sb.from('orders')
-    .select('razorpay_order_id').eq('source', 'replacement')
-    .ilike('cart_items', `%${orig.razorpay_order_id}%`).limit(1);
-  if (prior && prior.length) {
-    return json(409, { error: 'A replacement was already created for this order: ' + prior[0].razorpay_order_id });
+  // Which books? Matched against the order itself; anything not on it is refused.
+  let picked = null;
+  if (Array.isArray(body.items) && body.items.length) {
+    const requested = body.items.slice(0, 50)
+      .map((m) => ({ title: String((m && m.title) || '').trim(), qty: Number.isFinite(Number(m && m.qty)) && Number(m.qty) > 0 ? Math.floor(Number(m.qty)) : null }))
+      .filter((m) => m.title);
+    const match = matchMissingItems(orig, requested);
+    if (match.unmatched.length) return json(400, { error: 'These are not on this order: ' + match.unmatched.join(', ') });
+    if (!match.valid.length) return json(400, { error: 'Choose the book(s) that need replacing.' });
+    picked = match.valid.map((v) => ({ title: v.title, qty: v.qty }));
   }
 
-  // Only one replacement request per customer, across all of their orders.
-  // Check on the server so the restriction cannot be bypassed by changing the
-  // storefront. New replacement rows always carry user_id; email and phone
-  // checks cover older rows and customers whose order predates account linking.
-  const identityChecks = [
-    sb.from('orders').select('razorpay_order_id').eq('source', 'replacement').eq('user_id', user.id).limit(1),
-  ];
-  const identityEmails = [...new Set([userEmail, String(orig.customer_email || '').trim().toLowerCase()].filter(Boolean))];
-  identityEmails.forEach(email => {
-    identityChecks.push(
-      sb.from('orders').select('razorpay_order_id').eq('source', 'replacement').ilike('customer_email', email).limit(1)
-    );
-  });
-  const identityPhones = [...new Set([
-    String(user.user_metadata?.phone || user.phone || '').trim(),
-    String(orig.customer_phone || '').trim(),
-  ].filter(Boolean))];
-  identityPhones.forEach(phone => {
-    identityChecks.push(
-      sb.from('orders').select('razorpay_order_id').eq('source', 'replacement').eq('customer_phone', phone).limit(1)
-    );
-  });
-
-  const customerChecks = await Promise.all(identityChecks);
-  const checkError = customerChecks.find(result => result.error)?.error;
-  if (checkError) {
-    console.error('[replacement] duplicate-customer check:', checkError.message);
-    return json(500, { error: 'Could not verify replacement eligibility — please try again' });
-  }
-  const priorCustomerRequest = customerChecks.flatMap(result => result.data || [])[0];
-  if (priorCustomerRequest) {
-    return json(409, {
-      error: `A replacement request has already been used by this customer (${priorCustomerRequest.razorpay_order_id}). Only one replacement request is allowed per customer.`,
-    });
-  }
-
-  // ── Upload photos (best-effort) ──────────────────────────────────────────
-  const photoUrls = [];
-  if (Array.isArray(photos) && photos.length) {
-    for (const p of photos.slice(0, 3)) {
-      const u = await uploadPhoto(sb, p, orig.razorpay_order_id);
-      if (u) photoUrls.push(u);
-    }
-  }
+  let claim;
+  try { claim = await beginClaim(sb, orig, photos); }
+  catch (error) { return json(error.statusCode || 503, { error: error.message }); }
+  const photoUrls = claim.photos;
 
   // ── Build the replacement order row ──────────────────────────────────────
   const now = new Date();
@@ -247,8 +226,18 @@ exports.handler = async (event) => {
   // onto the replacement makes the replacement look like a fresh report of a
   // book nobody is re-shipping, and the Missing Books tab would list it as
   // money owed. The original keeps its own record; this cart is just goods.
-  const cartCopy = JSON.parse(JSON.stringify(Array.isArray(orig.cart_items) ? orig.cart_items : []))
-    .map(({ _missing, _missing_at, _missing_qty, _missing_comment, _refund_upi_id, _replacement, ...it }) => it);
+  let cartCopy = JSON.parse(JSON.stringify(Array.isArray(orig.cart_items) ? orig.cart_items : []))
+    .map(({ _missing, _missing_at, _missing_qty, _missing_photos, _missing_comment, _refund_upi_id, _replacement, ...it }) => it);
+  // Only the books the customer picked, at the quantity they picked (capped at
+  // what was ordered). Metadata-only rows (no title) are dropped with the rest.
+  if (picked) {
+    const want = new Map(picked.map((p) => [p.title.toLowerCase(), p.qty]));
+    cartCopy = cartCopy
+      .filter((it) => want.has(String(it.title || it.name || '').trim().toLowerCase()))
+      .map((it) => { const k = String(it.title || it.name || '').trim().toLowerCase(); const q = want.get(k); want.delete(k); return q ? { ...it, qty: q } : null; })
+      .filter(Boolean);
+    if (!cartCopy.length) return json(400, { error: 'Choose the book(s) that need replacing.' });
+  }
   if (cartCopy.length) {
     cartCopy[0]._replacement = {
       original_order_id: orig.razorpay_order_id,
@@ -271,12 +260,13 @@ exports.handler = async (event) => {
     customer_phone:      orig.customer_phone || '',
     customer_address:    orig.customer_address || '',
     cart_items:          cartCopy,
-    user_id:             user.id,
+    user_id:             (user && user.id) || orig.user_id || null,
     source:              'replacement',
   };
 
   const { data: inserted, error: insErr } = await sb.from('orders').insert(replRow).select().single();
-  if (insErr) return json(500, { error: 'Failed to create replacement order: ' + insErr.message });
+  if (insErr) { await claim.release(); return json(500, { error: 'Failed to create replacement order: ' + insErr.message }); }
+  await claim.complete();
 
   // ── Notifications (non-fatal) ────────────────────────────────────────────
   const reasonLabel = REASON_LABEL[reason] || reason;

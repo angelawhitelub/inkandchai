@@ -2,8 +2,10 @@
  * Netlify Function: request-cancellation
  * POST /.netlify/functions/request-cancellation   { order_id, reason? }
  *
- * Customer-facing "please cancel this" REQUEST — available at any live status
- * (including in-transit / shipped / out-for-delivery) for BOTH COD and prepaid.
+ * RETIRED. Customers can no longer request a cancellation: My Orders shows
+ * "Cancellation expired" wherever the instant cancel (cancel-order.js) is not
+ * available, and this endpoint refuses every request after the ownership check.
+ * It used to record a request and alert the owner at any live status.
  *
  * CRITICAL: this is a REQUEST ONLY. It does NOT:
  *   - change order.status,
@@ -26,6 +28,11 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Content-Type': 'application/json',
 };
+
+// Shipped: the parcel is with the courier and cancellation has expired.
+const SHIPPED = new Set(['shipped', 'in_transit', 'out_for_delivery', 'rto', 'undelivered', 'lost']);
+const hasShipped = (o) => SHIPPED.has(String(o.status || '').toLowerCase())
+  || !!o.tracking_id || !!o.shipment_moved_at;
 
 // Statuses where a cancellation request makes no sense. Delivered is excluded on
 // purpose — that's a RETURN, not a cancellation — and the message says so.
@@ -90,6 +97,14 @@ exports.handler = async (event) => {
   if (status === 'delivered') {
     return json(422, { error: 'This order has already been delivered. Please use the Return option instead.' });
   }
+  // Customers can no longer request a cancellation at all. Everything below
+  // this line is kept only so the history of the old flow is readable.
+  return json(422, {
+    error: hasShipped(order)
+      ? 'Cancellation has expired — this order has already been shipped. If there is a problem once it arrives, you can request a return.'
+      : 'Cancellation has expired for this order. If there is a problem once it arrives, you can request a return.',
+    expired: true,
+  });
 
   // Idempotent: don't spam the owner if they already asked.
   if (order.cancellation_requested_at) {

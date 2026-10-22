@@ -74,11 +74,13 @@ test('the prompt forbids collecting payout details in chat', () => {
   assert.match(STORE_FACTS, /Never ask for, accept, or repeat a UPI ID, bank account number, IFSC/);
 });
 
-test('the prompt carries the refund routes the code actually implements', () => {
-  assert.match(STORE_FACTS, /whole amount — deposit and cash together — as ONE transfer/);
-  assert.match(STORE_FACTS, /₹50 bonus/);
+test('the prompt carries the replacement and refund routes the code actually implements', () => {
+  // Returns were retired: replacement only, for defective, wrong or missing books.
+  assert.match(STORE_FACTS, /we do NOT take returns/);
+  assert.match(STORE_FACTS, /defective book \/ misprint/);
+  assert.match(STORE_FACTS, /Defective or wrong book: within 7 days of delivery/);
+  assert.doesNotMatch(STORE_FACTS, /store credit|₹50 bonus/i);
   assert.match(STORE_FACTS, /within 30 minutes/);
-  assert.match(STORE_FACTS, /7 days from delivery/i);
 });
 
 test('the prompt tells it to answer, not to punt', () => {
@@ -97,7 +99,8 @@ test('escalation is a closed list, not a mood', () => {
   // The three routes that must stay self-service, because each is faster than
   // a 48-hour queue.
   assert.match(STORE_FACTS, /A failed or disputed delivery → the courier/);
-  assert.match(STORE_FACTS, /Request Return, free pickup/);
+  assert.match(STORE_FACTS, /Need a replacement\? → free replacement/);
+  assert.doesNotMatch(STORE_FACTS, /Request Return/);
   assert.match(STORE_FACTS, /inkandchai\.in\/track with their Order ID/);
 });
 

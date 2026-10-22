@@ -210,7 +210,7 @@ function buildAdjustmentRows(orders, options = {}) {
   const newest = now.getTime() - minAgeHours * HOUR_MS;
 
   const skipped = {
-    status: 0, source: 0, never_converted: 0,
+    status: 0, source: 0, never_converted: 0, no_ad_click: 0,
     too_old: 0, too_recent: 0, no_order_id: 0, duplicate: 0, suppressed: 0,
   };
   const seen = new Set();
@@ -222,6 +222,11 @@ function buildAdjustmentRows(orders, options = {}) {
     if (NON_CONVERTING_PREFIX.test(String(order.razorpay_order_id || ''))) {
       skipped.never_converted++; continue;
     }
+    // Checkout saw no Google Ads click, so Google never recorded a conversion
+    // for this order and a retraction can only be rejected. Only the explicit
+    // 'none' counts: null means "not recorded" and is still retracted. See
+    // utils/ad-click.js.
+    if (order.ad_click === 'none') { skipped.no_ad_click++; continue; }
 
     const created = new Date(order.created_at).getTime();
     if (!Number.isFinite(created) || created < oldest) { skipped.too_old++; continue; }

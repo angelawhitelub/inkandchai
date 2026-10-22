@@ -24,9 +24,11 @@ const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
+const { orderShipping } = require('./utils/free-delivery');
 const { resolveProductCoupon } = require('./utils/product-coupons');
-const { freedomSaleDiscount } = require('./utils/freedom-sale');
+const { siteSaleDiscount, betterOfSale } = require('./utils/site-sale');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
+const { recordAdClick } = require('./utils/ad-click');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
 
 const CORS = {
@@ -35,8 +37,7 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-const FREE_SHIPPING_THRESHOLD = 499;
-const SHIPPING_FEE = 40;
+// Shipping: utils/free-delivery orderShipping (₹40 below ₹499, free with a free-delivery book).
 
 function normalizeCouponCode(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -61,11 +62,16 @@ function couponDiscount(subtotal, code) {
   return { code: normalized, discount: Math.max(0, discount) };
 }
 
-// Check static COUPONS first, then fall back to user-earned scratch cards
-async function resolveCouponDiscount(supabase, cart, subtotal, rawCode) {
-  const freedomResult = freedomSaleDiscount(subtotal);
-  if (freedomResult.discount > 0) return freedomResult;
+// A site-wide sale (utils/site-sale) is automatic and never stacks with a code:
+// the customer gets whichever is worth more. Partial COD takes only the sale.
+async function resolveCouponDiscount(supabase, cart, subtotal, rawCode, { saleOnly = false } = {}) {
+  const saleResult = siteSaleDiscount(subtotal);
+  if (saleOnly) return saleResult;
+  return betterOfSale(saleResult, await resolveChosenCoupon(supabase, cart, subtotal, rawCode));
+}
 
+// Check static COUPONS first, then fall back to user-earned scratch cards
+async function resolveChosenCoupon(supabase, cart, subtotal, rawCode) {
   // Static check
   const staticResult = couponDiscount(subtotal, rawCode);
   if (staticResult.discount > 0) return { ...staticResult, source: 'static' };
@@ -173,10 +179,10 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
   }
   const subtotal    = priced.subtotal;
-  const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-  let couponInfo    = await resolveCouponDiscount(_supabaseForCoupon, cart, subtotal, coupon);
+  const shipping    = orderShipping(cart, subtotal);
   const meta        = paymentMeta(cart);
   const isPartial   = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
+  let couponInfo    = await resolveCouponDiscount(_supabaseForCoupon, cart, subtotal, coupon, { saleOnly: isPartial });
 
   // Generate order id early so we can atomically claim a scratch card to it.
   // IC-CW- prefix for Crossword-migrated genuine-tag carts (publisher-sourced).
@@ -189,7 +195,7 @@ exports.handler = async (event) => {
     if (!claim.claimed) couponInfo = { code: '', discount: 0 };
   }
 
-  const partialDiscount = couponInfo.source === 'freedom_sale' ? couponInfo.discount : 0;
+  const partialDiscount = couponInfo.source === 'site_sale' ? couponInfo.discount : 0;
   const appliedDiscount = isPartial ? partialDiscount : couponInfo.discount;
   const fullTotal   = Math.max(1, subtotal + shipping - appliedDiscount);
   const deposit     = isPartial ? Math.max(1, Math.ceil(fullTotal * 0.10)) : fullTotal;
@@ -269,6 +275,8 @@ exports.handler = async (event) => {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { error: dbErr } = await supabase.from('orders').insert(orderRow);
+    // Google Ads click or not, for the retraction feed. Never affects the order.
+    if (!dbErr) await recordAdClick(supabase, orderRow.razorpay_order_id, body.ad_click);
     // Marketing consent, if the customer ticked the box. Never blocks the order.
     if (customer && customer.whatsapp_optin) {
       await recordMarketingOptIn(supabase, customer.phone, 'checkout_phonepe');

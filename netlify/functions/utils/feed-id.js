@@ -66,4 +66,30 @@ function legacyFeedId(slug) {
   return 'cp-' + crypto.createHash('sha1').update(s).digest('hex').slice(0, 20);
 }
 
-module.exports = { feedId, legacyFeedId, MAX_ID_LEN, MAX_SLUG_LEN };
+/**
+ * The `g:id` a baked catalogue book carries in /feed.xml -- a port of the rule
+ * in generate_site.py, which writes that feed. The bare slug; when it is over
+ * 50 characters, the title part is cut and the trailing shopify-id suffix kept,
+ * so two books never collide:
+ *
+ *   prefix, suffix = slug.rsplit("-", 1)
+ *   prefix[:50 - 1 - len(suffix)].rstrip("-") + "-" + suffix
+ *
+ * Kept byte-for-byte with the Python: the admin shows this as the book's Google
+ * item id, and an id that differs from the feed's by one character finds
+ * nothing in Merchant Center.
+ */
+function catalogueFeedId(slug) {
+  const s = String(slug == null ? '' : slug);
+  if (s.length <= MAX_ID_LEN) return s;
+  const cut = s.lastIndexOf('-');
+  if (cut < 0) return s.slice(0, MAX_ID_LEN);
+  const prefix = s.slice(0, cut);
+  const suffix = s.slice(cut + 1);
+  const maxPrefix = MAX_ID_LEN - 1 - suffix.length;
+  // Python slicing with a negative bound counts from the end; mirror it.
+  const cutPrefix = maxPrefix >= 0 ? prefix.slice(0, maxPrefix) : prefix.slice(0, Math.max(0, prefix.length + maxPrefix));
+  return cutPrefix.replace(/-+$/, '') + '-' + suffix;
+}
+
+module.exports = { feedId, legacyFeedId, catalogueFeedId, MAX_ID_LEN, MAX_SLUG_LEN };

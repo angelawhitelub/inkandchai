@@ -25,10 +25,21 @@
  *                        in the box, translator, why this printing differs).
  *                        The model has no way to know any of that.
  *
- * Returns { description, author_bio, tags, seo_title, meta_description }.
+ *   find_isbn optional   default true; when the listing has no ISBN yet, one is
+ *                        looked up alongside the copy (utils/isbn-lookup.js)
+ *
+ * Returns { title, author, language, description, author_bio, tags, seo_title,
+ * meta_description, isbn? }. title is the clean listing title ("Title by
+ * Author", no marketing subtitle; utils/listing-title has the last word), and
+ * author / language are corrections the admin form fills in for review.
+ * `isbn` is { isbn, status, fill, publisher, source, source_url, reason, notes }
+ * -- the admin only drops it into the form when `fill` is true.
  */
 
 const { requireAdmin } = require('./utils/admin-auth');
+const { findIsbn } = require('./utils/isbn-lookup');
+const { displayTitle } = require('./utils/listing-title');
+const { checkAuthor, askWhoWrote } = require('./utils/author-check');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -57,6 +68,22 @@ const multiline = (v, max = 4000) => String(v == null ? '' : v)
 const SYSTEM_PROMPT = `You write product copy for Ink & Chai, an Indian online bookstore selling English and Hindi books.
 
 Return ONLY a JSON object with exactly these keys:
+  title             The listing title: "<Book title> by <Author>".
+                    Keep what identifies THIS copy: series name and number,
+                    volume, edition, language edition ("Hindi Edition"), and a
+                    combo's list of books. Remove marketing: bestseller claims,
+                    "from the author of ...", "now a Netflix series", award
+                    lines, review blurbs. Keep a real subtitle only when it is
+                    short and part of the published title. Normal title case,
+                    never ALL CAPS. Under 120 characters. For a combo or box
+                    set, do not add "by".
+  author            Who actually wrote this book, spelled correctly in normal
+                    case, given name first ("Lynn Painter", not "PAINTER LYNN").
+                    If the given author did not write this book and you know
+                    who did, return the real author. If you are not sure,
+                    return the given author unchanged (or "" if none given).
+  language          The book's language ("English", "Hindi", ...). The given
+                    language unless it is clearly wrong; "" if unknown.
   description       Markdown. 120-200 words. What the book is about and who it is for.
                     Use "## " headings and "- " bullets where they genuinely help.
                     Blank line between paragraphs.
@@ -118,6 +145,12 @@ exports.handler = async (event) => {
     body.original_price_inr ? `MRP: Rs ${str(body.original_price_inr, 20)}` : null,
   ].filter(Boolean).join('\n');
 
+  // Runs alongside the copy request, so it costs no extra wait. Never rejects.
+  const wantIsbn = !str(body.isbn, 40) && body.find_isbn !== false;
+  const isbnLookup = wantIsbn
+    ? findIsbn({ title, author: body.author, publisher: body.publisher, language: body.language }).catch((e) => ({ status: 'none', fill: false, isbn: '', notes: [e.message] }))
+    : Promise.resolve(null);
+
   try {
     // Bounded so a hung upstream can't hold a Netlify function open to its limit.
     const controller = new AbortController();
@@ -128,7 +161,7 @@ exports.handler = async (event) => {
         method: 'POST',
         headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: process.env.OPENAI_LISTING_MODEL || process.env.OPENAI_MODEL || 'gpt-4o',
+          model: process.env.OPENAI_LISTING_MODEL || 'gpt-4.1',
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
             {
@@ -141,7 +174,7 @@ exports.handler = async (event) => {
           // Low but not zero: these are five short creative fields, and a
           // regenerate that returns the identical text is useless to the admin.
           temperature: 0.6,
-          max_tokens: 1200,
+          max_tokens: 1400,
         }),
         signal: controller.signal,
       });
@@ -158,13 +191,37 @@ exports.handler = async (event) => {
 
     // Clamp to the DB/attribute limits the save path enforces, so a long draft
     // can never be silently truncated later.
+    // The model's title, cleaned by the same rule the product page and feeds
+    // apply, so what the admin saves is what Google is sent.
+    // A different author than the one typed is taken only when a book
+    // database confirms it (utils/author-check); the model alone is not enough.
+    const check = await checkAuthor(
+      {
+        title, given: str(body.author, 120), suggested: str(out.author, 120),
+        publisher: str(body.publisher, 120), isbn: str(body.isbn, 40),
+        whoWrote: () => askWhoWrote(
+          { title, publisher: str(body.publisher, 120), isbn: str(body.isbn, 40), language: str(body.language, 40) },
+          { apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_LISTING_MODEL || 'gpt-4.1' },
+        ),
+      },
+      { googleKey: process.env.GOOGLE_BOOKS_API_KEY },
+    );
+    const author = check.author;
+    // The model's title names the model's author; rebuild it around the one kept.
+    const draftTitle = displayTitle((str(out.title, 200) || title).replace(/\s+by\s+[^:|()[\]+]+$/i, ''), author);
     return json(200, {
+      title: draftTitle,
+      author,
+      author_check: check.status,
+      author_note: check.note,
+      language: str(out.language, 40),
       description: multiline(out.description, 6000),
       author_bio: multiline(out.author_bio, 2000),
       tags: str(out.tags, 400),
       seo_title: str(out.seo_title, 220),
       meta_description: str(out.meta_description, 300),
       model: ai.model || null,
+      isbn: await isbnLookup,
     });
   } catch (err) {
     const msg = err.name === 'AbortError' ? 'The model took too long to respond. Try again.' : err.message;

@@ -4,6 +4,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { issuePhonePeRefund } = require('./phonepe-refund-core');
 const { issueRazorpayRefund, fetchRazorpayRefundStatus } = require('./razorpay-refund');
 const { notifyOwnerRefund } = require('./refund-notifications');
+const { pincodeOf } = require('./cancel-reasons');
 
 function moneyFromPaise(paise) {
   const amount = Number(paise || 0) / 100;
@@ -104,15 +105,53 @@ function bookListShort(order, maxChars = 220) {
 //   store          we cancelled it -- no stock, or the courier cancelled the
 //                  shipment and we could not re-book
 //   payment_failed the payment never completed, so nothing was ever charged
+//   address        we cancelled: the delivery address was incomplete
+//   pincode        we cancelled: no courier delivers to that pincode
+//   other          we cancelled for a reason the admin typed (opts.note)
+// The last three come from the admin's reason picker (utils/cancel-reasons).
+const KINDS = ['customer', 'store', 'payment_failed', 'address', 'pincode', 'other'];
 function cancellationKind(opts = {}) {
   if (opts.paymentFailed) return 'payment_failed';
   const kind = String(opts.kind || '').toLowerCase();
-  return ['customer', 'store', 'payment_failed'].includes(kind) ? kind : 'store';
+  if (kind === 'other' && !String(opts.note || '').trim()) return 'store';
+  return KINDS.includes(kind) ? kind : 'store';
 }
 
 // Headline + body for each. The refund box and the book table are shared, and
 // appended by orderCancelledEmailHtml after this.
-function cancellationCopy(kind, firstName) {
+function cancellationCopy(kind, firstName, extra = {}) {
+  const htmlEsc = (v) => String(v || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  if (kind === 'address') {
+    return {
+      heading: 'Your order was cancelled \u2014 the address was incomplete',
+      body: `Hi ${firstName}, we had to cancel your Ink &amp; Chai order because the delivery address was `
+        + `incomplete or unclear, and the courier cannot accept a parcel without a full address.`,
+      cta: 'Order again',
+      tail: `Please place the order again with the complete address: house or flat number, building, `
+        + `street, area, a landmark, city and the correct 6-digit pincode. Reply to this email or message `
+        + `us on WhatsApp if you'd like help.`,
+    };
+  }
+  if (kind === 'pincode') {
+    const pin = extra.pincode ? ` <strong>${htmlEsc(extra.pincode)}</strong>` : '';
+    return {
+      heading: 'Your order was cancelled \u2014 we can\u2019t deliver to this pincode yet',
+      body: `Hi ${firstName}, we had to cancel your Ink &amp; Chai order because none of our courier partners `
+        + `deliver to your pincode${pin} at the moment.`,
+      cta: 'Order again',
+      tail: `If you have another address in a different area \u2014 work, family or a friend \u2014 please place `
+        + `the order again with that address. Reply to this email or message us on WhatsApp if you'd like help.`,
+    };
+  }
+  if (kind === 'other' && extra.note) {
+    return {
+      heading: 'Your order has been cancelled',
+      body: `Hi ${firstName}, we had to cancel your Ink &amp; Chai order. ${htmlEsc(extra.note)}`,
+      cta: 'Browse books',
+      tail: `We're sorry for the trouble. If you have any questions, just reply to this email or `
+        + `message us on WhatsApp.`,
+    };
+  }
   if (kind === 'customer') {
     return {
       heading: 'Your order has been cancelled',
@@ -148,6 +187,9 @@ function cancellationCopy(kind, firstName) {
 function subjectFor(kind, id) {
   if (kind === 'customer') return `Order ${id} cancelled as requested`;
   if (kind === 'payment_failed') return `Payment didn't go through — order ${id} cancelled`;
+  if (kind === 'address') return `Order ${id} cancelled — incomplete delivery address`;
+  if (kind === 'pincode') return `Order ${id} cancelled — pincode not serviceable`;
+  if (kind === 'other') return `Order ${id} has been cancelled`;
   return `Sorry — order ${id} was cancelled (out of stock)`;
 }
 
@@ -179,7 +221,8 @@ function orderCancelledEmailHtml(order, refund, opts = {}) {
   const firstUrl = items.map(i => i.url || i.id || '').find(u => String(u).startsWith('/product/'));
   const reorderUrl = firstUrl ? `https://inkandchai.in${firstUrl}` : 'https://inkandchai.in/books/';
   const kind = cancellationKind(opts);
-  const copy = cancellationCopy(kind, String(order.customer_name || 'there').split(' ')[0]);
+  const copy = cancellationCopy(kind, String(order.customer_name || 'there').split(' ')[0],
+    { pincode: pincodeOf(order), note: opts.note });
 
   return `
     <div style="background:#0d0b08;color:#f0e8d8;font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:32px;">
@@ -242,6 +285,13 @@ async function maybeAutoRefund(order) {
   // status 'cancelled'/'paid', never 'rto', so this doesn't block those.
   if (String(row.status || '').toLowerCase() === 'rto') {
     return { skipped: 'rto-no-auto-refund' };
+  }
+  // A customer who cancelled after dispatch is owed the paid amount MINUS
+  // shipping (refund_amount_paise), and utils/prepaid-late-cancel.js pays it.
+  // Any other cancellation of the same order -- admin, courier -- must not pay
+  // the full amount on top.
+  if (row.late_cancel_at) {
+    return { skipped: 'late-cancel-owns-refund' };
   }
   const pid = row.razorpay_payment_id || '';
   if (!pid) return { skipped: 'no-payment-id' };
@@ -451,19 +501,54 @@ async function notifyOrderCancelled(order, opts = {}) {
     //     variables are sent only once WHATSAPP_ORDER_CANCELLED_V2 is set.
     // Until each flag is set, that path keeps sending the body Meta has approved.
     const kind = cancellationKind(opts);
+    // Address / pincode / other each have their own template, used once its
+    // name is set (Meta approves it first). Until then those customers get
+    // the email only -- the stock or "as requested" WhatsApp would tell them
+    // something untrue.
+    const reasonTemplates = {
+      address: process.env.WHATSAPP_ORDER_CANCELLED_ADDRESS_TEMPLATE,
+      pincode: process.env.WHATSAPP_ORDER_CANCELLED_PINCODE_TEMPLATE,
+      other: process.env.WHATSAPP_ORDER_CANCELLED_OTHER_TEMPLATE,
+    };
+    if (kind in reasonTemplates) {
+      const tpl = reasonTemplates[kind];
+      // These bodies end "{{4}}." -- drop our own full stop or it reads "..".
+      const refundLine = refundSentenceShort(order, result.refund, opts).replace(/\.\s*$/, '');
+      const third = kind === 'address' ? bookListShort(order)
+        : kind === 'pincode' ? (pincodeOf(order) || 'your pincode')
+        : String(opts.note || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+      if (tpl) {
+        const sent = await sendWhatsApp({ to: order.customer_phone, template: tpl, params: [firstName, id, third, refundLine] });
+        result.whatsapp = !!(sent && sent.ok !== false);
+        result.whatsapp_template = kind;
+      } else {
+        result.whatsapp = false;
+        result.whatsapp_skipped = `no ${kind} template configured`;
+      }
+      return finishOwner();
+    }
     const stockTemplate = process.env.WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE;
     const useStock = kind === 'store' && !!stockTemplate;
     const v2 = /^(1|true|yes)$/i.test(String(process.env.WHATSAPP_ORDER_CANCELLED_V2 || ''));
+    // Approved bodies, read off WhatsApp Manager on 13 Oct 2026:
+    //   order_cancelled_stock  3 variables: name, order id, refund line
+    //   order_cancelled        4 variables: name, order id, books, refund line
+    // order_cancelled had been edited to 4 while V2 was never set, so every
+    // send of it since 29 Aug went out with 2 and Meta rejected all of them.
     await sendWhatsApp({
       to: order.customer_phone,
       template: useStock ? stockTemplate : (process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE || 'order_cancelled'),
-      params: (useStock || v2)
-        ? [firstName, id, bookListShort(order), refundSentenceShort(order, result.refund, opts)]
-        : [firstName, id],
+      params: useStock
+        ? [firstName, id, refundSentenceShort(order, result.refund, opts)]
+        : v2
+          ? [firstName, id, bookListShort(order), refundSentenceShort(order, result.refund, opts)]
+          : [firstName, id],
     });
     result.whatsapp = true;
     result.whatsapp_template = useStock ? 'stock' : 'default';
   }
+
+  return finishOwner();
 
   // Owner notification — same pattern as the "new order" email so the store
   // owner sees every cancellation in their inbox alongside new orders.
@@ -471,22 +556,23 @@ async function notifyOrderCancelled(order, opts = {}) {
   // are just abandoned/failed checkouts where nothing was ever captured, and
   // emailing the owner about every failed payment is noise. The customer-facing
   // notification still goes out as normal.
-  const ownerEmail = process.env.STORE_OWNER_EMAIL;
-  if (ownerEmail && !opts.skipOwnerEmail && !opts.paymentFailed) {
-    try {
-      const total = moneyFromPaise(order.amount_paise);
-      const sent = await sendEmail({
-        to: ownerEmail,
-        subject: `❌ Order Cancelled ${id}${total ? ` — ${total}` : ''}`,
-        html: ownerCancelledEmailHtml(order, reason, result.refund),
-      });
-      result.ownerEmail = !!sent?.ok;
-    } catch (e) {
-      console.error('[notifyOrderCancelled] owner email:', e.message);
+  async function finishOwner() {
+    const ownerEmail = process.env.STORE_OWNER_EMAIL;
+    if (ownerEmail && !opts.skipOwnerEmail && !opts.paymentFailed) {
+      try {
+        const total = moneyFromPaise(order.amount_paise);
+        const sent = await sendEmail({
+          to: ownerEmail,
+          subject: `❌ Order Cancelled ${id}${total ? ` — ${total}` : ''}`,
+          html: ownerCancelledEmailHtml(order, opts.reasonLabel ? `${opts.reasonLabel}${opts.note ? ` — ${opts.note}` : ''}. ${reason}` : reason, result.refund),
+        });
+        result.ownerEmail = !!sent?.ok;
+      } catch (e) {
+        console.error('[notifyOrderCancelled] owner email:', e.message);
+      }
     }
+    return result;
   }
-
-  return result;
 }
 
 module.exports = { notifyOrderCancelled, refundSentence, refundSentenceShort, bookListShort, cancellationKind, cancellationCopy };

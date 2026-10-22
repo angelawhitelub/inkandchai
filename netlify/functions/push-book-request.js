@@ -17,6 +17,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { pushBotOrder } = require('./utils/push-bot-order');
+const { HIDDEN_STATUSES } = require('./utils/bot-order-request');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -49,6 +50,9 @@ exports.handler = async (event) => {
       .from('bot_order_requests').select('*').eq('id', id).maybeSingle();
     if (reqErr) throw reqErr;
     if (!req) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Request not found' }) };
+    if (HIDDEN_STATUSES.includes(req.status)) {
+      return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'The customer has not confirmed this order on WhatsApp yet.' }) };
+    }
 
     const result = await pushBotOrder(supabase, req, { amountRupees, paymentMode });
     if (!result.ok) {

@@ -25,6 +25,7 @@ const { notifyOrderCancelled } = require('./utils/order-cancelled-notification')
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
 const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 const { npShipmentMoved, statusImpliesMovement } = require('./utils/nimbuspost-track');
+const { checkPickups, pickupState } = require('./utils/pickup-live');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -65,9 +66,41 @@ function cancellationAge(order, now = Date.now()) {
 // status NimbusPost actually sends first, and the one this file's old pattern
 // missed because it only listed "picked up". See npShipmentMoved() at the
 // cancellation site for the check that does not depend on a webhook at all.
+//
+// last_courier_status is the courier's own word for bookings that send us no
+// scans (iThink, Amazon Shipping, Delhivery...), written by the Not Picked Up
+// job and the pickup-live check. Ignoring it let IC-20260919-IUPN2 -- Amazon
+// Shipping, delivered 24 Sep, last_courier_status "Delivered" since 3 Oct --
+// be cancelled from the website on 7 Oct, and the customer got a "cancelled as
+// you requested" email for a book she had in her hands.
 function shipmentHasMoved(order) {
-  if (order?.shipment_moved_at) return true;
-  return statusImpliesMovement(order?.last_nimbuspost_status);
+  if (order?.shipment_moved_at || order?.delivered_at) return true;
+  if (statusImpliesMovement(order?.last_nimbuspost_status)) return true;
+  return !!order?.last_courier_status && pickupState(order.last_courier_status) === 'moved';
+}
+
+// Ask every system that might know the AWB, not just NimbusPost. NimbusPost
+// does not know iThink/Amazon AWBs, so asking it alone always came back
+// "unknown" for them and the cancellation went through on local state.
+//   moved true   any courier says it has moved -> refuse
+//   moved false  a courier answered and it is still waiting
+//   moved null   nobody could tell (kept as before: allowed on local state)
+async function liveMovement(order, deps = {}) {
+  const np = deps.npShipmentMoved || npShipmentMoved;
+  const check = deps.checkPickups || checkPickups;
+  const timeoutMs = deps.timeoutMs || 8000;
+  const within = (p, fallback) => Promise.race([
+    Promise.resolve(p).catch(() => fallback),
+    new Promise((r) => setTimeout(() => r(fallback), timeoutMs)),
+  ]);
+  const [npLive, other] = await Promise.all([
+    within(np(order.tracking_id), { moved: null, status: '', error: 'timeout' }),
+    within(Promise.resolve(check([order], deps)).then((m) => m.get(order.id)), null),
+  ]);
+  if (npLive?.moved === true) return { moved: true, status: npLive.status };
+  if (other?.state === 'moved') return { moved: true, status: other.status };
+  if (npLive?.moved === false || (other && other.state !== 'unknown')) return { moved: false, status: other?.status || npLive?.status || '' };
+  return { moved: null, status: '', error: npLive?.error || 'no courier answered' };
 }
 
 // Has the customer's money actually been taken? Nothing captured means
@@ -267,7 +300,7 @@ exports.handler = async (event) => {
     // timeout) still falls through to allowing the cancellation — the previous
     // behaviour, so a NimbusPost outage cannot trap customers in orders.
     if (order.tracking_id) {
-      const live = await npShipmentMoved(order.tracking_id);
+      const live = await liveMovement(order);
       if (live.moved === true) {
         // Persist it, or the Cancel button stays on screen and the customer
         // keeps hitting a wall with no idea why.
@@ -275,7 +308,8 @@ exports.handler = async (event) => {
           // The courier's own event_time carries no timezone, so stamping it
           // would be a guess. This column is read as a flag, not a clock.
           shipment_moved_at: new Date().toISOString(),
-          last_nimbuspost_status: String(live.status || 'picked').slice(0, 200),
+          last_courier_status: String(live.status || 'picked').slice(0, 200),
+          last_courier_status_at: new Date().toISOString(),
         }).eq('id', order_id);
         return {
           statusCode: 422, headers: CORS,
@@ -283,7 +317,7 @@ exports.handler = async (event) => {
         };
       }
       if (live.moved === null) {
-        console.warn(`[cancel-order] live NimbusPost check inconclusive for AWB ${order.tracking_id} (${live.error}) — allowing cancellation on local state`);
+        console.warn(`[cancel-order] live courier check inconclusive for AWB ${order.tracking_id} (${live.error}) — allowing cancellation on local state`);
       }
     }
 
@@ -435,4 +469,4 @@ exports.handler = async (event) => {
   return { statusCode: 422, headers: CORS, body: JSON.stringify({ error: 'This order cannot be cancelled.' }) };
 };
 
-exports._test = { shipmentHasMoved, isPartialCod, cancellationAge, PREPAID_WINDOW_MS };
+exports._test = { shipmentHasMoved, liveMovement, isPartialCod, cancellationAge, PREPAID_WINDOW_MS };

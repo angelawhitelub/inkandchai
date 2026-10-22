@@ -1,0 +1,100 @@
+/* Admin reading surfaces. Loaded last so legacy small-type rules cannot win. */
+:root{
+  --bg:#eef1f4;
+  --bg2:#f5f7f9;
+  --bg3:#fff;
+  --card:#fff;
+  --cream:#1f2933;
+  --cream-dim:#435160;
+  --white:#17212b;
+  --gold:#344e41;
+  --gold-light:#263e31;
+  --gold-dim:#43594b;
+  --green:#176237;
+  --orange:#854500;
+  --red:#a92530;
+  --border:#c8d0d8;
+  --shadow:0 3px 14px rgba(25,39,52,.055);
+  --shadow-soft:0 2px 8px rgba(25,39,52,.04);
+}
+body{background:var(--bg);color:var(--cream);font-weight:500;line-height:1.65;}
+body>nav{background:#fff;}
+.admin-section.active{animation:none;}
+.product-panel,.abandoned-panel,.stat-card,.export-bar,.tbl-wrap{background:#fff;}
+.product-list,.product-editor{background:var(--bg2);}
+.product-row{grid-template-columns:46px minmax(0,1fr) auto;border-bottom-color:var(--border);}
+.product-row>div{min-width:0;}
+.product-row:hover,.product-row.active{background:#e9f1eb;}
+.product-row-title{font-size:max(18px,1rem);font-weight:700;line-height:1.5;overflow-wrap:anywhere;}
+.product-row-meta{font-size:max(16px,.9rem);line-height:1.6;color:var(--cream-dim);overflow-wrap:anywhere;}
+.product-head p,.abandoned-head p,.focus-panel p,.subtitle,.lead-empty{font-size:max(16px,.95rem);font-weight:500;line-height:1.65;}
+.product-head p,.abandoned-head p{max-width:90ch;}
+.hint,.image-preview span,.login-privacy,.remember-row small{font-size:max(15px,.88rem);line-height:1.65;color:var(--cream-dim);font-weight:500;}
+.admin-tab,.btn-gold,.btn-outline,.btn-green,.btn-danger,.filter-btn,.sub-btn,.load-more-btn,.inbox-filter-btn{
+  font-size:max(16px,.9rem)!important;letter-spacing:0;text-transform:none;line-height:1.45;min-height:46px;
+}
+.admin-tab{flex-shrink:0;}
+.btn-outline{color:#344e41;border-color:#9daaaf;}
+.btn-green{background:#e9f4ed;color:#176237;border-color:#93b6a0;}
+.btn-green:hover{background:#176237;color:#fff;}
+.btn-danger{background:#fff0f0;color:#a92530;border-color:#d09298;}
+.btn-danger:hover{background:#a92530;color:#fff;}
+.form-row label,.section-title,.export-label,.stat-label,.sub-label,.chip{
+  font-size:max(15px,.85rem);letter-spacing:.015em;text-transform:none;line-height:1.5;color:var(--cream-dim);
+}
+.form-row input,.form-row textarea,.form-row select,.search-box,.status-sel,input[type="date"],.thread-input{
+  font-size:max(16px,1rem);color:var(--cream);background:#fff;border-color:#9daab6;font-weight:500;
+}
+:where(input,textarea)::placeholder{color:#536273;opacity:1;}
+:where(button,a,input,textarea,select,[tabindex]):focus-visible{outline:3px solid #245b9b;outline-offset:3px;}
+th,.mini-table th{font-size:max(15px,.85rem);letter-spacing:.015em;text-transform:none;background:#e9eef2;color:#334451;}
+td,.mini-table td{font-size:max(16px,.95rem);line-height:1.65;color:var(--cream);}
+tr:hover td{background:#f1f5f8;}
+tr.selected-row td{background:#e9f4ed;}
+.order-id,.pay-id,.cust-sub,.items-cell,.items-cell .item-line .it-price,.items-cell .items-subtotal,.amount-sub,.orders-pagination-info{
+  font-size:max(15px,.9rem);line-height:1.6;color:var(--cream-dim);
+}
+.badge,.method-badge,.override-pill{font-size:max(14px,.8rem);letter-spacing:.015em;text-transform:none;white-space:normal;}
+#removedList .override-pill{color:#923521!important;background:#fff1eb;border-color:#c99584!important;}
+#statInTransit{color:#17629a!important;}
+#statRefunded{color:var(--cream-dim)!important;}
+#statusBreakdown,#kpiTodayOrders,#kpiWeekOrders,#kpiMonthOrders,#kpiAOVsub,#chartPeak,#revenueChartLabels{
+  font-size:max(15px,.85rem)!important;color:var(--cream-dim)!important;
+}
+/* Legacy panels embed tiny sizes in their markup. Raise only that small-type
+   range, preserving headings, totals and chart geometry. */
+#dashboard :is([style*="font-size:.5"],[style*="font-size:0.5"],
+  [style*="font-size:.6"],[style*="font-size:0.6"],
+  [style*="font-size:.7"],[style*="font-size:0.7"],
+  [style*="font-size:.8"],[style*="font-size:0.8"]){
+  font-size:max(15px,.9rem)!important;letter-spacing:.015em;
+}
+#ordersBody td [style*="font-size"],#ordersBody td button{font-size:max(15px,.9rem)!important;}
+#ordersBody td button{letter-spacing:0!important;}
+#ordersBody td button[style*="color:#6dbf6d"]{color:#176237!important;}
+#ordersBody td button[style*="color:#e06060"]{color:#a92530!important;}
+#ordersBody td button[style*="color:#a275d6"]{color:#65369b!important;}
+.fontzoom button{height:44px;min-width:44px;}
+.fontzoom .fz-val{font-size:14px;min-width:58px;}
+.fontzoom .fz-minus{font-size:16px;}
+.fontzoom .fz-plus{font-size:19px;}
+.order-search label{font-size:max(16px,.9rem);}
+.order-search p{font-size:max(15px,.85rem);}
+@media screen and (max-width:760px){
+  .product-row{grid-template-columns:42px minmax(0,1fr);}
+  .product-row>.btn-green{grid-column:2;justify-self:start;}
+  .product-row-price{grid-column:2;}
+  #ordersBody>tr>td[data-label]::before{font-size:max(14px,.8rem);}
+  #ordersBody .cust-sub,#ordersBody .order-id,#ordersBody .pay-id,#ordersBody .items-cell .it-price{font-size:max(15px,.9rem);}
+  #ordersBody .badge,#ordersBody .method-badge{font-size:max(14px,.85rem);}
+}
+
+@media screen and (max-width:820px){
+  :is(#ordersTableSection,#replacementsTableSection,#returnsTableSection,#npCancelledSection) tbody td{white-space:normal!important;}
+  :is(#ordersTableSection,#replacementsTableSection,#returnsTableSection,#npCancelledSection) tbody td::before{font-size:max(14px,.8rem);letter-spacing:.015em;}
+  :is(#ordersTableSection,#replacementsTableSection,#returnsTableSection,#npCancelledSection) tbody td:is(.addr-cell,[data-label="Actions"]) button{font-size:max(15px,.9rem)!important;letter-spacing:0!important;}
+}
+
+/* Grid tracks must shrink when the reader increases text size. */
+.stats-row{grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));}
+.stat-card{min-width:0;overflow-wrap:anywhere;}

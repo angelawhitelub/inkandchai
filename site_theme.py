@@ -13,8 +13,9 @@ Two ways in:
     theme change that should not wait on (or risk) a full rebuild.
 
 The same fenced block also loads public/js/site-feedback.js, the 5-star
-"how was the website / how was ordering" card, because it has to reach exactly
-the same set of pages.
+"how was the website / how was ordering" card, and public/js/festive-sale.js,
+the sale bar and timers, because they have to reach exactly the same set of
+pages.
 
 Everything this writes into a page sits inside an IAC-THEME fence and is
 stripped before it is written again, so re-running is always safe.
@@ -73,7 +74,9 @@ def theme_tag(href: str) -> str:
         + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>'
         + f'<link rel="stylesheet" href="{FONTS_URL}"/>'
         + f'<link rel="stylesheet" href="{href}"/>'
-        + '<script src="/js/site-feedback.js" defer></script>'
+        + '<script src="/js/site-feedback.js" defer></script><script src="/js/ad-click.js" defer></script>'
+        # Dussehra & Diwali Sale bar, hero and timers; inert outside 20 Oct–10 Nov 2026.
+        + '<script src="/js/festive-sale.js" defer></script>'
         + _CLOSE
     )
 

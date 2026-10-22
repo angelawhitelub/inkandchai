@@ -180,6 +180,9 @@ exports.handler = async (event) => {
           refund_upi_required: isDefinitelyCod(data),
           placed_at:       data.created_at,
           shipped_at:      data.shipped_at,
+          delivered_at:    data.delivered_at || null,
+          // The replacement form: free replacements are not replaced again here.
+          is_replacement:  String(data.source || '').toLowerCase() === 'replacement' || /^IC-R-/i.test(String(data.razorpay_order_id || '')),
           courier_name:    data.courier_name,
           tracking_id:     data.tracking_id,
           tracking_url:    data.tracking_url,

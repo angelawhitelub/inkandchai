@@ -61,7 +61,29 @@ function pinMatches(rule, pin) {
   return value === String(pin || '');
 }
 
+/**
+ * A sold-out book in a server-resolved cart (resolveCartPrices sets _sold_out).
+ * Checked here because every order path -- COD, PhonePe, Razorpay -- and the
+ * checkout's own pre-check (check-product-shipping) already refuse a cart this
+ * function blocks, and show its `error` to the customer.
+ */
+function findSoldOut(cart) {
+  const sold = (Array.isArray(cart) ? cart : []).filter((i) => i && i._sold_out === true);
+  if (!sold.length) return { blocked: false };
+  const titles = sold.map((i) => i.title || 'A book in your cart');
+  const many = sold.length > 1;
+  return {
+    blocked: true,
+    code: 'product_sold_out',
+    title: titles[0],
+    sold_out: sold.map((i) => ({ slug: i.slug, title: i.title || '' })),
+    error: `${titles.join(', ')} ${many ? 'are' : 'is'} sold out. Please remove ${many ? 'them' : 'it'} from your cart to continue.`,
+  };
+}
+
 function findShippingRestriction(cart, customer) {
+  const soldOut = findSoldOut(cart);
+  if (soldOut.blocked) return soldOut;
   const pin = extractPincode(customer);
   const pinState = stateFromPincode(pin);
   const address = `-${normalizeState(`${customer?.state || ''} ${customer?.address || ''}`)}-`;
@@ -91,6 +113,7 @@ module.exports = {
   parseShippingRestrictionTags,
   normalizeShippingRule,
   findShippingRestriction,
+  findSoldOut,
   normalizeState,
   stateFromPincode,
 };

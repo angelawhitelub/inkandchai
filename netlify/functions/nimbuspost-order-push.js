@@ -1,3 +1,4 @@
+const { ensureOrderAddress } = require('./utils/address-fixer');
 /**
  * Push website orders into the NimbusPost panel without assigning a courier or
  * generating an AWB. Uses NimbusPost's custom-order API (not Partners API).
@@ -24,6 +25,7 @@ const { sanitizeForCourier } = require('./utils/nimbuspost-import');
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { requireAdmin } = require('./utils/admin-auth');
 const { isReplacementOrder } = require('./utils/replacement-order');
+const { bookedElsewhere } = require('./utils/nimbus-push-once');
 
 const NP_ORDER_URL = 'https://ship.nimbuspost.com/api/orders/create';
 const NP_ORDERS_URL = 'https://ship.nimbuspost.com/api/orders';
@@ -333,6 +335,7 @@ async function suffixRun({ body, orders, apiKey, supabase }) {
   const results = [];
   for (const p of plan) {
     try {
+      await ensureOrderAddress(supabase, p.order);
       await pushOrder({ ...p.order, razorpay_order_id: p.number }, apiKey);
       await supabase.from('orders').update({ nimbus_pushed_at: new Date().toISOString() }).eq('id', p.order.id);
       results.push({ order: p.order.razorpay_order_id, pushed_as: p.number, ok: true });
@@ -394,9 +397,20 @@ exports.handler = async (event) => {
       dedupWarning = `Duplicate pre-check skipped (${String(err.message || err).slice(0, 160)}). Orders were still pushed.`;
       console.warn('[nimbuspost-order-push] preflight skipped:', err.message);
     }
-    const summary = { pushed: 0, skipped: 0, failed: 0, errors: [] };
+    const summary = { pushed: 0, skipped: 0, failed: 0, errors: [], booked_elsewhere: [] };
+    // Only a named order can be forced past the other-courier check, and only
+    // after the admin has been warned about that order specifically.
+    const forceElsewhere = body.include_booked_elsewhere === true && !body.all_unshipped;
     for (const order of orders || []) {
       const orderNumber = normalizeOrderNumber(order.razorpay_order_id || order.id);
+
+      // Pushed to iThink or queued for XpressBees, with its AWB not back yet:
+      // pushing it here too is how IC-20260914-9VP7A shipped three times.
+      const elsewhere = bookedElsewhere(order);
+      if (elsewhere && !forceElsewhere) {
+        summary.booked_elsewhere.push(`${order.razorpay_order_id || order.id}: ${elsewhere}`);
+        continue;
+      }
 
       // Primary, deterministic dedup: once we've pushed an order we stamp
       // nimbus_pushed_at on our own row, so a re-push is skipped regardless of
@@ -411,6 +425,7 @@ exports.handler = async (event) => {
       }
 
       try {
+        await ensureOrderAddress(supabase, order);
         await pushOrder(order, apiKey);
         summary.pushed++;
         // Also protects against repeated rows in this same request.

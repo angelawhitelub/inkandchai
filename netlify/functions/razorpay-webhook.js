@@ -23,6 +23,7 @@ const { makeOrderId } = require('./utils/pricing');
 const { mirrorOrder, stashLostOrder } = require('./utils/order-fallback');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
 const { grantEbook } = require('./utils/ebook-grant');
+const { alertUnlessBrowserReturned } = require('./utils/razorpay-browser-mark');
 
 const CORS = { 'Content-Type': 'application/json' };
 
@@ -374,10 +375,13 @@ exports.handler = async (event, context) => {
   }
 
   // ── Notify store owner ───────────────────────────────────────────────────
+  // Only a real recovery. This webhook nearly always beats the browser, so the
+  // alert waits; if verify-payment arrives meanwhile it sends the ordinary
+  // "New Online Order" email instead (utils/razorpay-browser-mark).
   const ownerEmail = process.env.STORE_OWNER_EMAIL;
   if (ownerEmail) {
     const amtDisplay = `₹${(amount_paise / 100).toLocaleString('en-IN')}`;
-    await sendEmail({
+    afterResponse(context, alertUnlessBrowserReturned(razorpay_payment_id, () => sendEmail({
       to: ownerEmail,
       subject: `⚡ Recovered Payment — ${inkOrderId} · ${amtDisplay}${isPartial ? ` (partial COD · collect ₹${balanceRs.toLocaleString('en-IN')})` : ''}`,
       html: emailBase(`
@@ -399,7 +403,7 @@ exports.handler = async (event, context) => {
           ? `<p style="color:#c9a84c;font-size:13px;background:#1c1916;padding:10px 14px;margin-top:16px;">💰 Partial COD — customer paid ₹${depositRs.toLocaleString('en-IN')} now. Collect <strong>₹${balanceRs.toLocaleString('en-IN')}</strong> on delivery. Full order value ₹${fullTotalRs.toLocaleString('en-IN')}.</p>`
           : `<p style="color:#6dbf6d;font-size:13px;margin-top:16px;">✅ Order is confirmed and ready to ship.</p>`}
       `),
-    });
+    })), 'owner recovery alert');
   }
 
   // ── Notify customer (WhatsApp first, email as a safety net when available) ─

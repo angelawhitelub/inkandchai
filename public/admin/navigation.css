@@ -1,0 +1,35 @@
+/* Compact navigation shared by mouse, keyboard and touch. */
+#adminTabBar.grouped-nav{position:relative;z-index:30;width:100%;max-width:100%;overflow:visible;justify-content:flex-start;align-items:center;gap:.3rem;padding:.4rem;border:1px solid #d8e0e5;border-radius:18px;background:#fff;box-shadow:0 3px 12px #172b3a06;}
+.admin-nav-group{position:relative;min-width:0;}
+.admin-nav-group[hidden]{display:none!important;}
+.admin-nav-trigger,#adminTabBar .admin-inbox-link{display:flex;align-items:center;justify-content:center;gap:.5rem;min-height:48px;padding:.65rem .85rem;border:1px solid transparent;border-radius:12px;background:transparent;color:#435160;font:700 max(16px,.9rem)/1.4 'Manrope',sans-serif;letter-spacing:0;text-align:left;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s;}
+.admin-nav-trigger>svg,#adminTabBar .admin-inbox-link>svg{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.admin-nav-trigger .nav-chevron{width:13px;height:13px;opacity:.7;transition:transform .15s;}
+.admin-nav-trigger[aria-expanded="true"] .nav-chevron{transform:rotate(180deg);}
+.admin-nav-trigger:hover,.admin-nav-group.is-open>.admin-nav-trigger,#adminTabBar .admin-inbox-link:hover{background:#edf3ef;color:#294b38;transform:none;}
+.admin-nav-group.has-active>.admin-nav-trigger{background:#344e41;color:#fff;box-shadow:0 2px 5px #243e3020;}
+#adminTabBar .admin-inbox-link{margin-left:auto;color:#344e41;background:#f1f6f3;text-decoration:none;}
+.admin-group-count{display:inline-flex;align-items:center;justify-content:center;min-width:21px;height:21px;padding:0 5px;border-radius:7px;background:#f9ebd6;color:#80480b;font-size:.68rem;line-height:1;font-weight:800;}
+.admin-group-count[hidden]{display:none;}
+.has-active .admin-group-count{background:#fff;color:#344e41;}
+.admin-nav-menu{position:absolute;top:calc(100% + 9px);left:var(--menu-shift,0px);z-index:40;width:max-content;min-width:260px;max-width:min(360px,calc(100vw - 32px));max-height:min(70vh,600px);overflow-y:auto;padding:.6rem;border:1px solid #d4ded7;border-radius:16px;background:#fff;box-shadow:0 14px 40px #1c352422,0 2px 5px #1c352408;}
+.admin-nav-menu[hidden]{display:none;}
+.admin-menu-title{padding:.35rem .7rem .55rem;color:#647168;font-size:.7rem;font-weight:800;letter-spacing:.055em;text-transform:uppercase;}
+#adminTabBar .admin-nav-menu .admin-tab{display:flex;width:100%;min-height:44px;padding:.6rem .7rem;gap:.5rem;margin:0;border:0;border-radius:9px;background:transparent;color:#35423d;box-shadow:none;transform:none;text-align:left;white-space:normal;}
+#adminTabBar .admin-nav-menu .admin-tab:hover{background:#f0f5f2;color:#233e30;}
+#adminTabBar .admin-nav-menu .admin-tab.active{background:#e5efe8;color:#244b34;}
+#adminTabBar .admin-nav-menu .admin-tab.active::after{content:'✓';margin-left:auto;font-size:1rem;}
+#adminTabBar .admin-nav-menu .admin-tab>span[id]{margin-left:auto!important;font-size:.7rem!important;line-height:1.6!important;min-width:20px;text-align:center;}
+.admin-menu-divider{height:1px;margin:.45rem .65rem;background:#e5ebe7;}
+@media(max-width:1100px){#adminTabBar.grouped-nav{gap:.25rem}.admin-nav-trigger,#adminTabBar .admin-inbox-link{padding:.6rem .65rem;}}
+@media(max-width:760px){
+  #adminTabBar.grouped-nav{flex-wrap:wrap;align-items:stretch;gap:.4rem;padding:.5rem;border-radius:16px;}
+  .admin-nav-group{position:static;display:flex;flex:1 1 calc(50% - .4rem);min-width:min(100%,9rem);}
+  .admin-nav-trigger{position:relative;width:100%;height:100%;justify-content:flex-start;padding:.65rem .6rem;border-color:#e4eae6;white-space:normal;}
+  .admin-nav-trigger .nav-chevron{margin-left:auto;}
+  .admin-nav-trigger>span:not(.admin-group-count){min-width:0;}
+  .admin-nav-trigger .admin-group-count{position:absolute;top:-5px;right:8px;box-shadow:0 0 0 2px #fff;}
+  #adminTabBar .admin-inbox-link{flex:1 1 100%;margin:0;}
+  .admin-nav-menu{top:calc(100% + 6px);left:0;width:100%;max-width:100%;min-width:0;max-height:55dvh;}
+}
+@media(prefers-reduced-motion:reduce){.admin-nav-trigger,.nav-chevron{transition:none!important;}}

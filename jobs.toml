@@ -32,6 +32,23 @@
   schedule = "@hourly"
 
 # Daily unshipped orders CSV report — runs at 9 PM IST (15:30 UTC) every day
+[functions."courier-status-sync-scheduled"]
+  # Amazon / iThink / NimbusPost-DTDC bookings send no scans, so they froze at
+  # "shipped". Hourly, 80 orders a run, least recently checked first: moves them
+  # to out_for_delivery / delivered from the courier's own tracking. No messages.
+  schedule = "0 * * * *"
+
+[functions."meta-ad-spend-scheduled"]
+  # Meta Marketing API daily spend -> ad_spend_daily, for the Net Profit tab's
+  # daily view. Read-only on Meta; skips quietly until META_ADS_TOKEN and
+  # META_AD_ACCOUNT_IDS are set.
+  schedule = "0 * * * *"
+
+[functions."lifetime-sales-scheduled"]
+  # Lifetime units sold per book -> KV, for Reader Bestsellers and the product
+  # page "N sold" line (utils/lifetime-sales). Read-only on orders.
+  schedule = "0 * * * *"
+
 [functions."daily-unshipped-report"]
   schedule = "30 15 * * *"
 
@@ -98,6 +115,13 @@
 [functions."phonepe-retry-refunds-scheduled"]
   schedule = "30 7-12 * * *"
 
+# Prepaid RTO refunds (paid minus both shipping legs), only once the courier's
+# live tracking shows the parcel delivered back to us. Same afternoon slot as
+# the retries, when PhonePe has the day's takings to refund from. Switched by
+# RTO_AUTO_REFUND in wrangler.toml [vars].
+[functions."rto-auto-refund-scheduled"]
+  schedule = "30 7-12 * * *"
+
 # READ-ONLY refund reconciliation, hourly around the clock. Refunds complete at
 # any hour; this flips PENDING → refunded and notifies the customer as soon as
 # PhonePe confirms, instead of waiting for the afternoon re-issue window above
@@ -152,6 +176,10 @@
 # Deliberately daily and capped rather than hourly: these are utility-template
 # WhatsApps to real customers, and one badly-timed burst costs us the number.
 [functions."request-reviews-scheduled"]
+  schedule = "30 4 * * *"
+
+# Not Picked Up PDF to the ops numbers/emails — 10:00 IST daily (internal, never customers)
+[functions."not-picked-up-report-scheduled"]
   schedule = "30 4 * * *"
 
 [functions."deploy-drift-check"]
@@ -431,3 +459,42 @@
 # requests never fire for any of them. Every 15 minutes, 120 orders a run.
 [functions."xpressbees-status-sync-scheduled"]
   schedule = "*/15 * * * *"
+
+# Bestseller agent: once a day at 22:00 UTC (03:30 IST), read the Amazon.in
+# bestseller lists and draft up to 30 books we do not sell into the admin
+# "Bestsellers" review queue. Publishes nothing; every draft needs approval.
+[functions."bestseller-agent-scheduled"]
+  schedule = "0 22 * * *"
+
+# Daily 09:00 IST: cancel XpressBees panel queue rows for orders another courier
+# already carries (the channel importer keeps pulling them in). Only unbooked
+# 'new' rows; see xpressbees-order-cancel. Switched by XPRESSBEES_QUEUE_CLEANUP.
+[functions."xpressbees-queue-cleanup-scheduled"]
+  schedule = "30 3 * * *"
+
+# Hourly: the support-ticket promise (reply in 24 h, resolve in 48 h). Tells the
+# customer when a ticket is taking longer than expected and nudges the owner
+# about unanswered ones. See support-ticket-sla-scheduled; SUPPORT_TICKET_SLA.
+[functions."support-ticket-sla-scheduled"]
+  schedule = "0 * * * *"
+
+# Reverse-pickup tracking for customer returns, hourly. Backfills AWBs NimbusPost
+# assigned to R-RET-… bookings, saves each return's latest scan for the Returns
+# panel and the WhatsApp bot, and alerts the owner once when a return is
+# delivered back. Moves no money and messages no customer.
+[functions."return-tracking-scheduled"]
+  schedule = "0 * * * *"
+
+# Sorted XpressBees labels to the packing team on WhatsApp — 09:00 and 14:00 IST
+# (internal, never customers; only labels not sent before)
+[functions."xpressbees-labels-send-scheduled"]
+  schedule = "30 3,8 * * *"
+
+# Sorted NimbusPost labels (Waiting for Pickup) to the packing team, same times
+[functions."nimbuspost-labels-send-scheduled"]
+  schedule = "30 3,8 * * *"
+
+# "A book in your order is out of stock" to customers whose booked order the
+# courier has not picked up 3+ days after ordering. Off until STOCK_DELAY_NOTIFY=on.
+[functions."stock-delay-notify-scheduled"]
+  schedule = "0 7 * * *"

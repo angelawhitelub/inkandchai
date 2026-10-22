@@ -15,6 +15,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { computeProfit, DEFAULT_RATES } = require('./utils/profit-model');
+const AdSpend = require('./utils/ad-spend');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -72,6 +73,24 @@ exports.handler = async (event) => {
       if (from + PAGE >= MAX_ROWS) truncated = true;
     }
 
+    // Real spend from Google Ads / Meta (ad_spend_daily). With ?actual=1 and a
+    // connected platform whose figures reach back to the start of the range,
+    // the per-order ad cost becomes the real average: spend ÷ orders.
+    const firstDays = await AdSpend.coverage(supabase);
+    const platforms = Object.keys(firstDays);
+    const sinceDay = since ? AdSpend.istDay(since) : null;
+    const spend = platforms.length ? await AdSpend.fetchSpend(supabase, sinceDay, AdSpend.istDay()) : null;
+    const covers = !!sinceDay && platforms.length > 0 && platforms.every((p) => firstDays[p] <= sinceDay);
+    let adsActual = null;
+    if (spend && spend.available) {
+      adsActual = {
+        google: Math.round(spend.total.google), meta: Math.round(spend.total.meta), total: Math.round(spend.total.total),
+        platforms, first_day: firstDays, covers_range: covers,
+        per_order: orders.length ? Math.round((spend.total.total / orders.length) * 100) / 100 : null,
+      };
+      if (q.actual === '1' && covers && orders.length) rates.adCostPerOrder = spend.total.total / orders.length;
+    }
+
     const report = computeProfit(orders, rates);
 
     return {
@@ -83,6 +102,8 @@ exports.handler = async (event) => {
         orders_counted: orders.length,
         truncated,
         ...report,
+        ads_actual: adsActual,
+        ads_source: adsActual && q.actual === '1' && adsActual.covers_range ? 'actual' : 'average',
       }),
     };
   } catch (err) {

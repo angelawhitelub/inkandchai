@@ -10,6 +10,7 @@ const { afterResponse } = require('./utils/after-response');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail }    = require('./utils/email');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
+const { recordAdClick } = require('./utils/ad-click');
 const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
 const { nimbusAutoPushOn } = require('./utils/nimbus-push-once');
@@ -17,7 +18,8 @@ const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricin
 const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
-const { freedomSaleDiscount } = require('./utils/freedom-sale');
+const { orderShipping } = require('./utils/free-delivery');
+const { siteSaleDiscount } = require('./utils/site-sale');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
 
 const CORS = {
@@ -56,7 +58,7 @@ function cartTable(cart, shippingFee, codFee = 0, discount = 0, coupon = '') {
           <td style="padding:8px 12px;text-align:right;color:#f0e8d8;">₹${subtotal.toLocaleString('en-IN')}</td>
         </tr>
         ${safeDiscount > 0 ? `<tr>
-          <td colspan="2" style="padding:8px 12px;color:#a09080;">Freedom Sale (${coupon})</td>
+          <td colspan="2" style="padding:8px 12px;color:#a09080;">Sale discount (${coupon})</td>
           <td style="padding:8px 12px;text-align:right;color:#6dbf6d;">- ₹${safeDiscount.toLocaleString('en-IN')}</td>
         </tr>` : ''}
         ${safeCodFee > 0 ? `<tr>
@@ -108,11 +110,9 @@ exports.handler = async (event, context) => {
     if (bad) return { statusCode: 400, headers: CORS, body: JSON.stringify(bad) };
   }
 
-  // Shipping rules — must match cart.js + checkout. Calculate server-side
-  // defensively rather than trusting client input. Prices come from the
-  // catalogue, NEVER from cart items (the browser is hostile).
-  const FREE_SHIPPING_THRESHOLD = 499;
-  const SHIPPING_FEE = 40;
+  // Shipping (utils/free-delivery orderShipping) and fees — must match cart.js +
+  // checkout. Calculated server-side rather than trusting client input. Prices
+  // come from the catalogue, NEVER from cart items (the browser is hostile).
   const COD_HANDLING_FEE = 20;            // matches generate_site.py CHECKOUT_HTML
   const COD_FEE_WAIVER_THRESHOLD = 999;   // fee waived on subtotal >= ₹999
   // Minimum item value for COD. Mirrors COD_MIN_SUBTOTAL in generate_site.py,
@@ -143,11 +143,16 @@ exports.handler = async (event, context) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
   }
 
-  // Server-side COD guard: the full crossword.in catalogue import disables COD.
+  // Server-side COD guard: the crossword.in import (no-cod tag) and books the
+  // admin switched off (utils/cod-rules) both arrive here as _no_cod.
   // Reject even if the client UI was bypassed — steer to partial COD / prepaid.
   if (cartHasNoCod(cart)) {
+    // A book switched off in the admin carries the owner's reason (utils/cod-rules).
+    const ruled = cart.find(i => i && i._no_cod === true && i._cod_note);
     return { statusCode: 400, headers: CORS, body: JSON.stringify({
-      error: 'Cash on Delivery is not available for one or more titles in your cart. Please choose Partial COD (pay 10% now) or prepaid checkout.',
+      error: ruled
+        ? `"${ruled.title || 'One title'}": ${ruled._cod_note}`
+        : 'Cash on Delivery is not available for one or more titles in your cart. Please choose Partial COD (pay 10% now) or prepaid checkout.',
       code: 'cod_disabled',
     }) };
   }
@@ -166,9 +171,9 @@ exports.handler = async (event, context) => {
   // Order ID — IC-CW-... for Crossword-migrated genuine-tag carts, IC-... otherwise.
   const orderId = await makeOrderId('IC', cart);
   const subtotal = priced.subtotal;
-  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  const shipping = orderShipping(cart, subtotal);
   const codFee   = subtotal >= COD_FEE_WAIVER_THRESHOLD ? 0 : COD_HANDLING_FEE;
-  const couponInfo = freedomSaleDiscount(subtotal);
+  const couponInfo = siteSaleDiscount(subtotal);
   const total    = Math.max(1, subtotal + shipping + codFee - couponInfo.discount);
   if (couponInfo.code && cart[0]) {
     cart[0]._coupon = { code: couponInfo.code, discount: couponInfo.discount, source: couponInfo.source };
@@ -234,6 +239,8 @@ exports.handler = async (event, context) => {
     }
 
     const { error } = await supabase.from('orders').insert(orderRow);
+    // Google Ads click or not, for the retraction feed. Never affects the order.
+    if (!error) await recordAdClick(supabase, orderRow.razorpay_order_id, body.ad_click);
     // Marketing consent, if the customer ticked the box. Never blocks the order.
     if (customer && customer.whatsapp_optin) {
       await recordMarketingOptIn(supabase, customer.phone, 'checkout_cod');

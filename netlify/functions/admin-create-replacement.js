@@ -22,7 +22,13 @@
  *   reason_label human-readable label shown in the admin Replacements tab
  *   note         internal note / what the customer said
  *   notify       email the customer (default true)
- *   force        allow a second replacement for the same original order
+ *   photos       optional, up to 3 evidence images as base64 data URLs
+ *
+ * Admins may create as many replacements per order as they need (owner,
+ * 16 Oct 2026) and photos are optional for them. The one-request-per-order
+ * rule and required photos stay on the CUSTOMER flows (utils/customer-claim
+ * beginClaim). The only server-side block here is a double submit: the same
+ * books for the same order within DOUBLE_SUBMIT_MS.
  *
  * Produces exactly the same row shape as the customer flow — status
  * replacement_pending, source 'replacement', _replacement meta on cart_items[0]
@@ -36,6 +42,7 @@
  * prepaid for replacements, so nothing is ever collected at the door.
  */
 
+const { evidence, storeEvidence } = require('./utils/customer-claim');
 const { createClient } = require('@supabase/supabase-js');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
@@ -48,6 +55,20 @@ const CORS = {
 };
 
 const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stringify(body) });
+const DOUBLE_SUBMIT_MS = 2 * 60 * 1000;
+
+/** "title×qty" lines, sorted: what makes two replacements the same parcel. */
+function cartSignature(cart) {
+  return (Array.isArray(cart) ? cart : [])
+    .map((i) => `${String(i.title || i.name || '').trim().toLowerCase()}×${Math.max(1, Number(i.qty || i.quantity) || 1)}`)
+    .sort().join('|');
+}
+
+/** A replacement with the same books for the same order created moments ago. */
+function recentTwin(rows, cart, now = Date.now()) {
+  const sig = cartSignature(cart);
+  return (rows || []).find((r) => now - Date.parse(r.created_at || 0) < DOUBLE_SUBMIT_MS && cartSignature(r.cart_items) === sig) || null;
+}
 const clean = (v, max = 400) => String(v == null ? '' : v).trim().slice(0, max);
 
 function replacementId(originalId) {
@@ -121,23 +142,6 @@ exports.handler = async (event) => {
       return json(400, { error: 'This is already a replacement order — create the replacement against the original.' });
     }
 
-    // Second replacement for the same original is possible (two separate
-    // incidents) but is far more often a double-click or a duplicate report, so
-    // it takes an explicit force.
-    const { data: existing } = await supabase
-      .from('orders')
-      .select('razorpay_order_id, created_at')
-      .eq('source', 'replacement')
-      .eq('cart_items->0->_replacement->>original_order_id', String(order.razorpay_order_id || order.id))
-      .limit(5);
-    if (existing?.length && !body.force) {
-      return json(409, {
-        error: `This order already has a replacement (${existing.map(e => e.razorpay_order_id).join(', ')}). Re-submit with force to create another.`,
-        existing: existing.map(e => e.razorpay_order_id),
-        needs_force: true,
-      });
-    }
-
     const originalCart = Array.isArray(order.cart_items) ? order.cart_items : [];
     const cart = [];
     for (const sel of body.items) {
@@ -147,7 +151,7 @@ exports.handler = async (event) => {
       const orderedQty = Math.max(1, Number(src.qty || src.quantity || 1));
       const qty = Math.min(orderedQty, Math.max(1, Number(sel.qty) || 1));
       // Strip the customer-report flags so the replacement cart is clean.
-      const { _missing, _missing_at, _missing_qty, _replacement, ...rest } = src;
+      const { _missing, _missing_at, _missing_qty, _missing_photos, _replacement, ...rest } = src;
       cart.push({
         ...rest,
         qty,
@@ -159,6 +163,18 @@ exports.handler = async (event) => {
     }
     if (!cart.length) return json(400, { error: 'No valid books selected' });
 
+    const images = Array.isArray(body.photos) && body.photos.length ? evidence(body.photos) : [];
+    const originalId = String(order.razorpay_order_id || order.id);
+    const { data: earlier, error: earlierErr } = await supabase.from('orders')
+      .select('razorpay_order_id,created_at,cart_items').eq('source', 'replacement')
+      .eq('cart_items->0->_replacement->>original_order_id', originalId)
+      .order('created_at', { ascending: false }).limit(20);
+    if (earlierErr) return json(503, { error: 'Could not check earlier replacements. Please try again.' });
+    const twin = recentTwin(earlier, cart);
+    if (twin) {
+      return json(409, { error: `Replacement ${twin.razorpay_order_id} with these same books was created moments ago. Refresh the orders list before creating another.` });
+    }
+    const photos = images.length ? await storeEvidence(supabase, images) : [];
     const amountRs = Math.max(0, Math.round((Number(body.amount_rs) || 0) * 100) / 100);
     const replId = replacementId(order.razorpay_order_id);
     cart[0]._replacement = {
@@ -167,6 +183,7 @@ exports.handler = async (event) => {
       reason_label: clean(body.reason_label, 120) || 'Item missing from package',
       note: clean(body.note, 1000) || 'Created manually by the store team.',
       created_by: 'admin',
+      photos,
       requested_at: new Date().toISOString(),
     };
 
@@ -228,10 +245,11 @@ exports.handler = async (event) => {
       emailed,
       pushed_to_nimbus: !!push.pushed,
       push_reason: push.pushed ? undefined : (push.error || push.reason),
-      duplicate_of: existing?.length ? existing.map(e => e.razorpay_order_id) : undefined,
     });
   } catch (err) {
     console.error('admin-create-replacement error:', err);
-    return json(500, { error: err.message });
+    return json(err.statusCode || 500, { error: err.message });
   }
 };
+
+exports.__test = { cartSignature, recentTwin };

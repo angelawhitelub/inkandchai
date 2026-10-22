@@ -47,6 +47,9 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:400;color
 .checkout-qty-row{display:flex;align-items:center;gap:0.55rem;margin-top:0.55rem;flex-wrap:wrap;}
 .checkout-qty-btn{width:28px;height:28px;border:1px solid var(--border);background:var(--bg2);color:var(--cream);font-size:1rem;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
 .checkout-qty-btn:hover{border-color:var(--gold);color:var(--gold);}
+/* Remove at checkout: - stops at 1, so without this a book could only leave the basket from the cart drawer. */
+.checkout-remove{margin-left:.6rem;background:none;border:0;padding:.2rem 0;color:var(--muted,#a09080);font-size:.78rem;text-decoration:underline;cursor:pointer}
+.checkout-remove:hover{color:var(--gold)}
 .checkout-qty-num{min-width:24px;text-align:center;color:var(--cream);font-size:0.78rem;font-weight:500;}
 .checkout-remove{border:none;background:transparent;color:#c97a7a;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;margin-left:0.2rem;}
 .checkout-remove:hover{color:#e06060;}
@@ -419,7 +422,7 @@ gtag('js', new Date());
 gtag('config', 'G-ZPZDFWMDP6');
 </script>
 <!-- End Google Analytics 4 -->
-<!--IAC-THEME--><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"/><link rel="stylesheet" href="/css/theme-886fa54b.css"/><script src="/js/site-feedback.js" defer></script><!--/IAC-THEME-->
+<!--IAC-THEME--><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"/><link rel="stylesheet" href="/css/theme-886fa54b.css"/><script src="/js/site-feedback.js" defer></script><script src="/js/ad-click.js" defer></script><script src="/js/festive-sale.js" defer></script><!--/IAC-THEME-->
 </head>
 <body>
 <nav>
@@ -511,6 +514,7 @@ gtag('config', 'G-ZPZDFWMDP6');
           </div>
         </div>
         <div id="pinMsg" class="pin-msg"></div>
+        <div id="pinMismatch" role="alert" style="display:none;margin-top:8px;padding:10px 12px;border:1px solid #c9a84c;border-radius:8px;background:rgba(201,168,76,.08);font-size:.85rem;line-height:1.45"></div>
         <div id="shippingRestrictionMsg" style="display:none;margin:.65rem 0 1rem;padding:.85rem 1rem;border:1px solid rgba(224,80,80,.55);border-radius:14px;background:rgba(224,80,80,.09);color:#f09a8c;font-size:.7rem;line-height:1.6;"></div>
 
         <div id="paymentBlock">
@@ -567,7 +571,7 @@ gtag('config', 'G-ZPZDFWMDP6');
         <div class="trust-row">
           <span>🔒 Secure checkout</span>
           <span>🚀 Pan-India delivery</span>
-          <span>↩ 7-day returns</span>
+          <span>🔄 7-day free replacement</span>
         </div>
 
         <!-- Directly under the trust row, because "what if I need to send this
@@ -575,7 +579,7 @@ gtag('config', 'G-ZPZDFWMDP6');
              paying. A sheet, not a link: navigating away here loses the order. -->
         <div style="text-align:center;margin-top:0.7rem;">
           <button type="button" class="pol-trigger" data-policy-sheet="refunds"
-                  aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
+                  aria-haspopup="dialog">🛡 Replacements &amp; refunds</button>
         </div>
 
       </div>
@@ -625,7 +629,7 @@ gtag('config', 'G-ZPZDFWMDP6');
   <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.35rem;">
     <a href="/ebooks/" style="color:var(--cream-dim,#a09080);text-decoration:none;">eBooks</a>
     <a href="/shipping-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Shipping</a>
-    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Returns</a>
+    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Replacements</a>
     <a href="/refund-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Refunds</a>
     <a href="/terms/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Terms</a>
     <a href="/privacy-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Privacy</a>
@@ -737,7 +741,11 @@ function loadScratchState() {
   try { return JSON.parse(localStorage.getItem(SCRATCH_KEY) || 'null'); } catch { return null; }
 }
 let appliedScratchCard = loadScratchState(); // {code, value_paise, min_subtotal_paise, expires_at} or null
-function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE; }
+// Free from ₹499, or when the cart holds a book the admin set to ship free
+// (loadFreeDelivery flags it; utils/free-delivery orderShipping decides the same).
+function calcShipping(subtotal, cart = getCart()) {
+  return subtotal >= FREE_SHIPPING_THRESHOLD || cart.some(i => i && i._free_delivery === true) ? 0 : SHIPPING_FEE;
+}
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
 function cartSubtotal(cart) { return cart.reduce((s, i) => s + itemPrice(i) * itemQty(i), 0); }
@@ -763,8 +771,22 @@ function freedomIsLive() {
   return Date.now() <= new Date(COUPONS.FREEDOM.expiresAt).getTime();
 }
 
+// Dussehra & Diwali Sale: 10% off every order above ₹399, every payment mode,
+// automatic. MUST match FESTIVE10 in netlify/functions/utils/site-sale.js, the
+// till -- a total that differs from the server's is refused with a 409.
+const FESTIVE_SALE = { code: 'FESTIVE10', percent: 10, threshold: 399, startsAt: '2026-10-19T18:30:00Z', endsAt: '2026-11-10T18:29:59Z' };
+function festiveIsLive() {
+  const t = Date.now();
+  return t >= new Date(FESTIVE_SALE.startsAt).getTime() && t <= new Date(FESTIVE_SALE.endsAt).getTime();
+}
+function festiveSaleDiscount(subtotal) {
+  if (!festiveIsLive() || !(subtotal > FESTIVE_SALE.threshold)) return { code: '', discount: 0, message: '' };
+  return { code: FESTIVE_SALE.code, discount: Math.floor(subtotal * FESTIVE_SALE.percent / 100), message: '🪔 Dussehra & Diwali Sale — 10% off applied automatically.' };
+}
+
 /** The hint under the coupon box, which must not promise an ended sale. */
 function defaultCouponHint() {
+  if (festiveIsLive()) return '🪔 Dussehra & Diwali Sale: 10% off applies automatically when your subtotal is above ₹399. A prepaid code that saves more is used instead.';
   return freedomIsLive()
     ? '🇮🇳 Add books until the subtotal is above ₹399 and FREEDOM will apply 15% off automatically.'
     : 'Prepaid orders unlock the offers above. Pick one, or enter a private code.';
@@ -796,6 +818,19 @@ function couponDiscount(cart, method = 'online') {
     const discount = Math.floor(subtotal * freedom.value / 100);
     return { code: 'FREEDOM', discount, message: '🇮🇳 FREEDOM automatically applied — 15% off your books.' };
   }
+
+  // Dussehra & Diwali Sale: automatic and never stacked. A chosen code wins
+  // only on a prepaid order where it saves more (the server does the same).
+  const festive = festiveSaleDiscount(subtotal);
+  if (festive.discount > 0) {
+    if (method === 'cod') return festive;
+    const chosen = chosenCouponDiscount(cart, method, subtotal, code);
+    return chosen.discount > festive.discount ? chosen : festive;
+  }
+  return chosenCouponDiscount(cart, method, subtotal, code);
+}
+
+function chosenCouponDiscount(cart, method, subtotal, code) {
 
   // ── Scratch card path ───────────────────────────────────────────────────
   if (code.startsWith('SCRATCH-') && appliedScratchCard && appliedScratchCard.code === code) {
@@ -837,7 +872,7 @@ function couponDiscount(cart, method = 'online') {
 }
 function orderTotals(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
+  const shipping = calcShipping(subtotal, cart);
   const coupon = couponDiscount(cart, method);
   // COD fee waived on subtotal >= ₹999 (pushes customers to add more to cart)
   const codFee  = (method === 'cod' && subtotal < COD_FEE_WAIVER_THRESHOLD) ? COD_HANDLING_FEE : 0;
@@ -846,15 +881,15 @@ function orderTotals(cart, method = 'online') {
 }
 function partialPaymentTotals(cart) {
   // Partial COD: COD handling fee is WAIVED as the incentive to pre-pay 10%.
-  // FREEDOM is the one coupon valid on partial COD as well as every other mode.
+  // A site-wide sale (FREEDOM, FESTIVE10) is the one discount valid on partial COD.
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
+  const shipping = calcShipping(subtotal, cart);
   const coupon = couponDiscount(cart, 'cod');
-  const discount = coupon.code === 'FREEDOM' ? coupon.discount : 0;
+  const discount = (coupon.code === 'FREEDOM' || coupon.code === FESTIVE_SALE.code) ? coupon.discount : 0;
   const total = Math.max(1, subtotal + shipping - discount);
   const eligible = total >= PARTIAL_PAYMENT_THRESHOLD;
   const deposit = eligible ? Math.max(1, Math.ceil(total * PARTIAL_PAYMENT_RATE)) : 0;
-  return { subtotal, shipping, codFee: 0, discount, couponCode: discount ? 'FREEDOM' : '', couponMessage: discount ? coupon.message : '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
+  return { subtotal, shipping, codFee: 0, discount, couponCode: discount ? coupon.code : '', couponMessage: discount ? coupon.message : '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
 }
 // True when the cart contains any item flagged _no_cod — the full crossword.in
 // catalogue import (tag 'no-cod'). Those titles disable Cash on Delivery and
@@ -862,6 +897,53 @@ function partialPaymentTotals(cart) {
 // is stamped onto the cart item at add-to-cart time (product-page.js / catalog).
 function cartHasNoCod(cart) {
   return Array.isArray(cart) && cart.some(i => i && i._no_cod === true);
+}
+// Books whose Cash on Delivery the admin switched off, with the reason
+// (product_cod_rules via cod-off-slugs). Flags the cart lines so the COD button
+// is off before the customer tries; cod-order refuses them regardless. Only
+// lines flagged by a rule (they carry _cod_note) are ever un-flagged here, so
+// the crossword import's no-cod tag is left alone.
+async function loadCodRules() {
+  try {
+    const res = await fetch('/.netlify/functions/cod-off-slugs');
+    if (!res.ok) return;
+    const rules = (await res.json()).rules || {};
+    const cart = getCart();
+    let changed = false;
+    for (const item of cart) {
+      const note = rules[String(couponItemSlug(item) || '').toLowerCase()];
+      if (note) {
+        if (item._no_cod !== true || item._cod_note !== note) { item._no_cod = true; item._cod_note = note; changed = true; }
+      } else if (item && item._cod_note) {
+        delete item._cod_note; delete item._no_cod; changed = true;
+      }
+    }
+    if (changed) { saveCart(cart); renderSummary(); }
+  } catch (_) {
+    // cod-order enforces the rule anyway.
+  }
+}
+// Books the admin set to ship free (free-delivery-slugs). The flag lives on the
+// cart line like _no_cod; the order functions re-derive it, so submitOrder waits
+// for this before pricing, or a stale flag would answer with "price changed".
+let _freeDeliveryReady = Promise.resolve();
+async function loadFreeDelivery() {
+  try {
+    const res = await fetch('/.netlify/functions/free-delivery-slugs');
+    if (!res.ok) return;
+    const free = new Set(((await res.json()).slugs || []).map(s => String(s).toLowerCase()));
+    const cart = getCart();
+    let changed = false;
+    for (const item of cart) {
+      if (!item) continue;
+      const on = free.has(String(couponItemSlug(item) || '').toLowerCase());
+      if (on && item._free_delivery !== true) { item._free_delivery = true; changed = true; }
+      if (!on && item._free_delivery) { delete item._free_delivery; changed = true; }
+    }
+    if (changed) { saveCart(cart); renderSummary(); }
+  } catch (_) {
+    // The order functions decide the charge anyway.
+  }
 }
 // How far this cart is from qualifying for COD, in rupees. 0 means it qualifies.
 // THREE places decide whether the COD button is live — this renderer, the
@@ -1165,6 +1247,7 @@ function renderSummary() {
           <button type="button" class="checkout-qty-btn" onclick="updateCheckoutQty(${idx}, -1)" aria-label="Decrease quantity">-</button>
           <span class="checkout-qty-num">Qty ${itemQty(i)}</span>
           <button type="button" class="checkout-qty-btn" onclick="updateCheckoutQty(${idx}, 1)" aria-label="Increase quantity">+</button>
+          <button type="button" class="checkout-remove" onclick="removeCheckoutItem(${idx})" aria-label="Remove this book">Remove</button>
         </div>
       </div>
     </div>`).join('') + `
@@ -1180,7 +1263,8 @@ function renderSummary() {
       <span class="summary-line-label">Shipping (Delhivery)</span>
       <span class="summary-line-value" style="color:${shipping === 0 ? '#5d9b55' : 'var(--cream)'};">${shipping === 0 ? 'FREE' : '₹' + shipping}</span>
     </div>
-    ${shipping > 0 ? `<div style="font-size:0.6rem;color:var(--gold);letter-spacing:0.05em;padding:0 0 0.6rem;">💡 Add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more to qualify for free shipping</div>` : ''}`;
+    ${shipping > 0 ? `<div style="font-size:0.6rem;color:var(--gold);letter-spacing:0.05em;padding:0 0 0.6rem;">💡 Add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more to qualify for free shipping</div>` : ''}
+    ${shipping === 0 && subtotal < FREE_SHIPPING_THRESHOLD ? `<div style="font-size:0.6rem;color:#5d9b55;letter-spacing:0.05em;padding:0 0 0.6rem;">🚚 Free delivery — a book in your order ships free</div>` : ''}`;
 
   totalEl.textContent = '₹' + grand.toLocaleString('en-IN');
   totalRow.style.display = 'flex';
@@ -1229,7 +1313,10 @@ function renderSummary() {
       btnCOD.style.opacity = '0.5';
       btnCOD.style.cursor = 'not-allowed';
       if (codNote) {
-        codNote.innerHTML = `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
+        const ruled = cart.find(i => i && i._no_cod === true && i._cod_note);
+        codNote.innerHTML = ruled
+          ? `<strong style="color:var(--gold);">${esc(ruled.title || 'This title')}</strong>: ${esc(ruled._cod_note)}`
+          : `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
       }
     } else {
     btnCOD.textContent = `🚚 Cash on Delivery — ₹${codTotals.total.toLocaleString('en-IN')}`;
@@ -1283,7 +1370,7 @@ async function saveAbandonedCheckout(status = 'open', orderId = '') {
   const customer = collectPartialAddr();
   if (!cart.length || !(customer.email || customer.phone || customer.name)) return;
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
+  const shipping = calcShipping(subtotal, cart);
   try {
     await fetch('/.netlify/functions/save-abandoned-checkout', {
       method: 'POST',
@@ -1365,6 +1452,55 @@ function clearShippingRestrictionUi() {
   applyShippingRestrictionUi();
 }
 
+// ── Address pincode vs the Pincode box ─────────────────────────────────────
+// The address box and the Pincode box are joined into one line, so a customer
+// who typed their pincode in both, with different digits, shipped as
+// "…, 560067, Bengaluru, Karnataka, 560066" and the courier had to guess.
+// Ask which one is right before any payment button goes through.
+const _pinIgnored = new Set();
+function addrPins(text) {
+  const out = []; const re = /(^|\D)([1-9]\d{5})(?=\D|$)/g; let m;
+  while ((m = re.exec(String(text || '')))) out.push(m[2]);
+  return out;
+}
+function checkPinMismatch() {
+  const box = document.getElementById('pinMismatch');
+  const pin = (document.getElementById('ch-pin')?.value || '').replace(/\D/g, '');
+  const other = pin.length === 6
+    ? (addrPins(document.getElementById('ch-addr')?.value).find(p => p !== pin && !_pinIgnored.has(p)) || '')
+    : '';
+  if (!box) return other;
+  if (!other) { box.style.display = 'none'; box.innerHTML = ''; return ''; }
+  const btn = 'background:#c9a84c;color:#1a1410;border:0;border-radius:6px;padding:7px 12px;font-weight:600;cursor:pointer;margin:8px 8px 0 0;font-size:.85rem';
+  box.innerHTML = `⚠ Your address says pincode <b>${other}</b> but the Pincode box says <b>${pin}</b>. Which one is correct?<br>`
+    + `<button type="button" style="${btn}" onclick="usePinFromAddr('${other}')">Use ${other}</button>`
+    + `<button type="button" style="${btn}" onclick="keepBoxPin('${other}')">Use ${pin}</button><br>`
+    + `<a href="#" style="display:inline-block;margin-top:8px;color:inherit;opacity:.75;font-size:.8rem" onclick="ignoreAddrPin('${other}');return false">${other} is not a pincode (e.g. a house number)</a>`;
+  box.style.display = '';
+  return other;
+}
+function usePinFromAddr(p) {
+  const el = document.getElementById('ch-pin');
+  if (!el) return;
+  el.value = p;
+  handlePin(p);
+}
+function keepBoxPin(p) {
+  const el = document.getElementById('ch-addr');
+  if (!el) return;
+  const re = new RegExp('(^|[^0-9])[\\s,\\-–]*(?:pin\\s*code|pincode|pin)?\\s*[:\\-–]?\\s*' + p + '(?![0-9])', 'gi');
+  el.value = el.value.replace(re, '$1, ')
+    .replace(/[ \t]*,([ \t]*,)+/g, ',')
+    .replace(/^[ \t]*,[ \t]*/gm, '').replace(/[ \t]*,[ \t]*$/gm, '')
+    .trim();
+  checkPinMismatch();
+}
+function ignoreAddrPin(p) {
+  _pinIgnored.add(p);
+  checkPinMismatch();
+}
+document.getElementById('ch-addr')?.addEventListener('change', checkPinMismatch);
+
 function handlePin(val) {
   const msg = document.getElementById('pinMsg');
   const cityCol  = document.querySelector('.ch-city-col');
@@ -1372,6 +1508,7 @@ function handlePin(val) {
   clearTimeout(_pinTimer);
   val = val.replace(/\D/g,'');
   clearShippingRestrictionUi();
+  checkPinMismatch();
   if (val.length < 6) {
     msg.textContent = ''; msg.style.color = '';
     // Show city/state inputs again so manual edit works while typing.
@@ -1493,6 +1630,8 @@ function collectAddr() {
   if (!/^\S+@\S+\.\S+$/.test(email)) { return failField('ch-email', 'Please enter a valid email address.'); }
   if (!addr)             { return failField('ch-addr', 'Please enter your delivery address.'); }
   if (pin.length !== 6)  { return failField('ch-pin', 'Please enter a valid 6-digit pincode.'); }
+  const clash = checkPinMismatch();
+  if (clash) { return failField('ch-pin', `Your address mentions pincode ${clash} but the Pincode box says ${pin}. Please tap the one that is correct (just below the Pincode box).`); }
   // Deliberately no client-side existence block: India Post's dataset is
   // incomplete and would turn away real customers. The order endpoints refuse
   // only pincodes NO courier serves, and their error surfaces here.
@@ -1602,6 +1741,7 @@ document.addEventListener('change', e => {
 
 // ── Main submit ────────────────────────────────────────────────────────────
 async function submitOrder(method) {
+  await _freeDeliveryReady;
   if (_shippingRestrictionBlocked) {
     alert(_shippingRestrictionText || 'A product in your cart cannot be delivered to this pincode.');
     return;
@@ -1685,6 +1825,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
         payment_mode: isPartial ? 'partial_cod' : 'online',
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
+        ad_click: (window.iacAdClick ? window.iacAdClick() : null),
       }),
     });
     const data = await res.json();
@@ -1779,6 +1920,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
               discount: isPartial ? 0 : totals.discount,
               discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
               payment_mode: isPartial ? 'partial_cod' : 'online',
+              ad_click: (window.iacAdClick ? window.iacAdClick() : null),
             }),
           });
           const verifiedOrder = await vRes.json().catch(() => ({}));
@@ -1843,6 +1985,7 @@ async function doCOD(addr) {
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
         amount: totals.total, shipping: totals.shipping,
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
+        ad_click: (window.iacAdClick ? window.iacAdClick() : null),
       }),
     });
     const data = await res.json();
@@ -2519,6 +2662,8 @@ window.addrShowNewForm = function() {
 // ── Init ───────────────────────────────────────────────────────────────────
 loadManagedPromotions().then(() => loadProductCoupons(getCart())).then(renderSummary);
 renderSummary();
+loadCodRules();
+_freeDeliveryReady = loadFreeDelivery();
 
 // When returning to checkout — including bfcache back/forward from a payment
 // page (PhonePe redirect, Razorpay) — clear any stuck loading state and repaint

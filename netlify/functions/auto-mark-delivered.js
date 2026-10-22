@@ -75,11 +75,11 @@ async function notifyDelivered(order) {
             <p>We hope you love your books! If you have a moment, would you mind <a href="${reviewUrl}" style="color:#8a6a1f;">leaving a quick review</a>?</p>
             <hr style="border:none;border-top:1px solid #eadfca;margin:24px 0;"/>
             <p style="font-size:13px;color:#5a4a38;">
-              <strong>Got the wrong book? Not happy with the condition?</strong><br/>
-              You have <strong>7 days</strong> from today to initiate a return directly from your <a href="https://inkandchai.in/" style="color:#8a6a1f;">My Orders</a> page.
-              Refunds are processed automatically once we receive the returned book.
+              <strong>Defective copy, misprint, wrong book or a book missing?</strong><br/>
+              We'll replace it free. Open your order on the <a href="https://inkandchai.in/track/?id=${encodeURIComponent(orderId)}" style="color:#8a6a1f;">Track Order</a> page or in My Orders and choose <em>Need a replacement?</em> —
+              defective or wrong books within <strong>7 days</strong> of today.
             </p>
-            <p style="font-size:12px;color:#8a7a62;margin-top:24px;">Ink &amp; Chai · <a href="${returnsUrl}" style="color:#8a6a1f;">Return Policy</a> · support@inkandchai.in</p>
+            <p style="font-size:12px;color:#8a7a62;margin-top:24px;">Ink &amp; Chai · <a href="${returnsUrl}" style="color:#8a6a1f;">Replacement Policy</a> · support@inkandchai.in</p>
           </div>`,
       }).catch(e => console.warn('[auto-deliver] Email failed:', e.message))
     );

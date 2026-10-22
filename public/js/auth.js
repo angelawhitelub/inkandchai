@@ -1,3 +1,25 @@
+window.IACClaimEvidence = {
+  async read(input, transform) {
+    const files = Array.from(input?.files || []);
+    if (!files.length || files.length > 3) throw new Error('Attach 1–3 photos of the parcel, shipping label and received books.');
+    return Promise.all(files.map(async file => {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > (transform ? 20000000 : 2000000) || file.size < 200)
+        throw new Error('Use JPEG, PNG or WebP photos, up to 2 MB each.');
+      if (transform) {
+        const value = await transform(file);
+        if (value.length > 2666700) throw new Error('The photo is still too large. Please choose a smaller image.');
+        return value;
+      }
+      return new Promise((resolve,reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Could not read a photo. Please select it again.'));
+        reader.readAsDataURL(file);
+      });
+    }));
+  }
+};
+
 /**
  * auth.js — Ink & Chai user accounts
  * Requires: window.SUPABASE_URL, window.SUPABASE_ANON_KEY
@@ -1291,8 +1313,26 @@
   // "picked" — unanchored to "picked up" — is the status NimbusPost really
   // sends first, and its absence here is half of why a picked-up parcel still
   // offered a Cancel button.
+  //
+  // last_courier_status is the courier's own word for bookings that send no
+  // scans (iThink, Amazon Shipping...). Twin of pickupState() in
+  // netlify/functions/utils/pickup-live.js: anything that is not a "waiting"
+  // phrase, a cancellation or an error counts as moved. Without it a parcel
+  // Amazon had delivered still showed Cancel (IC-20260919-IUPN2).
+  const COURIER_WAITING = new Set(['manifested', 'not picked', 'not picked up', 'pickup pending', 'pending pickup',
+    'pickup scheduled', 'pickup not done', 'pickup rescheduled', 'pickup exception', 'pickup failed', 'booked',
+    'awb assigned', 'awb generated', 'ready to ship', 'new', 'open', 'data received', 'shipment booked',
+    'order placed', 'awaiting pickup', 'manifest generated', 'pickup generated', 'out for pickup']);
+  function courierSaysMoved(raw) {
+    const s = String(raw || '').toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!s || /not found|invalid|no data|no record|error|unauthori[sz]ed|lookup failed/.test(s)) return false;
+    if (/cancel/.test(s) && !/rto|return/.test(s)) return false;
+    return !COURIER_WAITING.has(s);
+  }
+
   function shipmentHasMoved(order) {
-    if (order?.shipment_moved_at || isNimbusInTransit(order)) return true;
+    if (order?.shipment_moved_at || order?.delivered_at || isNimbusInTransit(order)) return true;
+    if (courierSaysMoved(order?.last_courier_status)) return true;
     const raw = String(order?.last_nimbuspost_status || '').toLowerCase().trim();
     return /^(?:picked|pickup done|shipped|dispatched|out[ _-]?for[ _-]?delivery|ofd|delivered|rto|return to origin|undelivered|ndr|delivery (?:failed|attempt failed|exception)|lost)/.test(raw);
   }
@@ -1553,9 +1593,9 @@
                </div>` : ''}
           ${addressUpdateBlock(o)}
           ${orderTrackingBlock(o)}
-          ${(() => { const c = cancelOrderBlock(o); return c || requestCancellationBlock(o); })()}
+          ${(() => { const c = unpickedCancelBlock(o) || cancelOrderBlock(o); return c || lateCancelBlock(o) || requestCancellationBlock(o); })()}
           ${returnRequestBlock(o)}
-          ${missingBookBlock(o)}
+          ${replacementRequestBlock(o)}
           ${invoiceDownloadBlock(o)}
         </div>`;
     }).join('');
@@ -2080,14 +2120,162 @@
     }
   };
 
-  // ── Request cancellation (in-transit / any live status, COD or prepaid) ──────
-  // Shown only when the instant-cancel block above is NOT available. This is a
-  // REQUEST — it never cancels or refunds; it alerts the team to act manually.
+  // ── Not picked up 10+ days after ordering ───────────────────────────────────
+  // A paid order (prepaid, or partial COD's advance) the courier has not
+  // collected: cancel with a full refund. Offered by the server
+  // (get-my-orders → order.unpicked_cancel, utils/unpicked-cancel.js), and
+  // cancel-unpicked-order asks the courier live before any money moves.
+  const UNPICKED_NOTE = 'Customer cancel: not picked up';
+  function unpickedCancelBlock(order) {
+    const status = String(order.status || '').toLowerCase();
+    const row = (inner) => `
+      <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                  display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">${inner}</div>`;
+    if (String(order.cancellation_request_note || '').startsWith(UNPICKED_NOTE)
+        && !['cancelled', 'refunded', 'refund_pending', 'refund_failed', 'partially_refunded', 'delivered'].includes(status)) {
+      return row(`
+        <div style="font-size:0.6rem;color:#e8a030;line-height:1.6;">
+          <span style="letter-spacing:0.14em;text-transform:uppercase;">Cancellation received</span>
+          <span style="display:block;margin-top:0.25rem;color:#a09080;">Our team is stopping the parcel with the courier and will send your full refund within 24 hours.</span>
+        </div>`);
+    }
+    const uc = order.unpicked_cancel;
+    if (!uc) return '';
+    const what = uc.partial_cod ? 'your advance of' : 'a full refund of';
+    return row(`
+        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
+          Sorry — the courier still hasn't collected this order.
+          <span style="display:block;margin-top:0.2rem;color:#e8a030;">You can cancel it and get ${what} ${inrPaise(uc.refund_paise)} back.</span>
+        </div>
+        <button onclick="iacUnpickedCancel('${escJs(order.id)}')"
+          id="unpicked-cancel-btn-${escJs(order.id)}"
+          data-refund="${Number(uc.refund_paise) || 0}"
+          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                 padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,112,112,0.4);
+                 color:#e87070;cursor:pointer;transition:all 0.2s;">
+          Cancel &amp; Refund
+        </button>`);
+  }
+
+  window.iacUnpickedCancel = async function (orderId) {
+    const btn = document.getElementById(`unpicked-cancel-btn-${orderId}`);
+    const refund = Number(btn?.dataset.refund || 0);
+    if (!confirm(`Cancel this order?\n\nThe courier hasn't picked it up yet, so you'll get ${inrPaise(refund)} back in full to your original payment method. This cannot be undone.`)) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
+    try {
+      const sb = getSB();
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('/.netlify/functions/cancel-unpicked-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ order_id: orderId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Cancellation failed');
+      alert(json.message || 'Order cancelled.');
+    } catch (err) {
+      alert(err.message);
+    }
+    await openMyOrders().catch(() => {});
+  };
+
+  // ── Prepaid cancellation after the 30-minute window ─────────────────────────
+  // Offered once the courier has picked the parcel up, until it is out for
+  // delivery; never between the 30-minute window and pickup. The terms come
+  // from the server (get-my-orders → order.late_cancel, computed by
+  // utils/prepaid-late-cancel.js), so the amount on the button is the amount
+  // cancel-prepaid-order refunds: shipping kept back (₹74 per 0.5 kg).
+  function inrPaise(p) {
+    return '₹' + (Number(p || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  }
+
+  function lateCancelBlock(order) {
+    const row = (inner) => `
+      <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
+                  display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">${inner}</div>`;
+
+    if (order.late_cancel_state === 'awaiting_return') {
+      return row(`
+        <div style="font-size:0.6rem;color:#e8a030;line-height:1.6;">
+          <span style="letter-spacing:0.14em;text-transform:uppercase;">Cancelled</span>
+          <span style="display:block;margin-top:0.25rem;color:#a09080;">We've asked the courier to return your parcel. Your refund of
+          ${inrPaise(order.refund_amount_paise)} is sent automatically once it's on its way back. If it reaches you first, please refuse the delivery.</span>
+        </div>`);
+    }
+
+    const lc = order.late_cancel;
+    if (!lc) return '';
+    const terms = lc.deduction_paise
+      ? `Refund ${inrPaise(lc.refund_paise)} · ${inrPaise(lc.deduction_paise)} shipping kept (${lc.slab_kg} kg)`
+      : `Full refund of ${inrPaise(lc.refund_paise)}`;
+    return row(`
+        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
+          Changed your mind? You can cancel until it's out for delivery.
+          <span style="display:block;margin-top:0.2rem;color:#e8a030;">${terms}</span>
+        </div>
+        <button onclick="iacLateCancel('${escJs(order.id)}')"
+          id="late-cancel-btn-${escJs(order.id)}"
+          data-refund="${Number(lc.refund_paise) || 0}" data-deduction="${Number(lc.deduction_paise) || 0}"
+          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                 padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,112,112,0.4);
+                 color:#e87070;cursor:pointer;transition:all 0.2s;">
+          Cancel Order
+        </button>`);
+  }
+
+  window.iacLateCancel = async function (orderId) {
+    const btn = document.getElementById(`late-cancel-btn-${orderId}`);
+    const refund = Number(btn?.dataset.refund || 0);
+    const deduction = Number(btn?.dataset.deduction || 0);
+    const msg = deduction
+      ? `Cancel this order?\n\nThe courier has already picked up your parcel, so the shipping charge of ${inrPaise(deduction)} is kept back and ${inrPaise(refund)} is refunded to your original payment method.\n\nWe'll ask the courier to bring it back, and the refund is sent once the courier confirms it is returning. This cannot be undone.`
+      : `Cancel this order?\n\nYou'll get a full refund of ${inrPaise(refund)} to your original payment method. This cannot be undone.`;
+    if (!confirm(msg)) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
+    try {
+      const sb = getSB();
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('/.netlify/functions/cancel-prepaid-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ order_id: orderId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Cancellation failed');
+      alert(json.message || 'Order cancelled.');
+      await openMyOrders();
+    } catch (err) {
+      alert('Could not cancel order: ' + err.message);
+      if (btn) { btn.disabled = false; btn.textContent = 'Cancel Order'; }
+      await openMyOrders().catch(() => {});
+    }
+  };
+
+  // ── No cancellation requests ─────────────────────────────────────────────────
+  // Shown only when the instant-cancel block above is NOT available (prepaid
+  // past its 30-minute window, or anything that has shipped). There used to be
+  // a "Request Cancellation" button here that alerted the team; customers can
+  // no longer request one at all, so the card just says the window is closed.
+  // request-cancellation.js refuses every request server-side as well. The
+  // instant cancel above (prepaid 30 min, COD before pickup) is untouched.
+  const SHIPPED_FOR_REQUEST = ['shipped', 'in_transit', 'out_for_delivery', 'rto', 'undelivered', 'lost'];
+  function orderHasShipped(order) {
+    const status = String(order.status || '').toLowerCase();
+    return SHIPPED_FOR_REQUEST.includes(status) || !!order.tracking_id || shipmentHasMoved(order);
+  }
+
   function requestCancellationBlock(order) {
     const status = String(order.status || '').toLowerCase();
 
-    // Already asked — show a calm "under review" state, no button.
-    if (order.cancellation_requested_at) {
+    // Terminal states: nothing to say. Delivered uses the Return flow instead.
+    const NO_REQUEST = ['cancelled', 'refunded', 'refund_pending', 'refund_failed',
+                        'partially_refunded', 'delivered'];
+    if (NO_REQUEST.includes(status)) return '';
+
+    const shipped = orderHasShipped(order);
+    // A request sent before this change is still with the team: say so, until
+    // the order ships.
+    if (!shipped && order.cancellation_requested_at) {
       return `
         <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
                     font-size:0.6rem;color:#e8a030;line-height:1.6;">
@@ -2095,73 +2283,17 @@
         </div>`;
     }
 
-    // Terminal / non-requestable states: nothing to request.
-    // Delivered uses the Return flow (rendered separately), so skip it here too.
-    const NO_REQUEST = ['cancelled', 'refunded', 'refund_pending', 'refund_failed',
-                        'partially_refunded', 'delivered'];
-    if (NO_REQUEST.includes(status)) return '';
-
     return `
       <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
-                  display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">
-        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
-          Need to cancel? Send us a request — we'll review it.
-        </div>
-        <button onclick="iacRequestCancellation('${escJs(order.id)}')"
-          id="reqcancel-btn-${escJs(order.id)}"
-          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
-                 padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,168,48,0.5);
-                 color:#e8a030;cursor:pointer;transition:all 0.2s;">
-          Request Cancellation
-        </button>
+                  font-size:0.6rem;color:#a09080;line-height:1.6;">
+        <span style="letter-spacing:0.14em;text-transform:uppercase;color:#e06060;">Cancellation expired</span>
+        <span style="display:block;margin-top:0.25rem;">${shipped
+          ? 'Your order has been shipped, so it can no longer be cancelled. If there is a problem once it arrives, you can request a return.'
+          : 'The cancellation window for this order has closed, and it is being prepared for dispatch. If there is a problem once it arrives, you can request a return.'}</span>
       </div>`;
   }
 
-  window.iacRequestCancellation = async function (orderId) {
-    const reason = prompt('Tell us briefly why you\'d like to cancel (optional). We\'ll review your request — the order will not be cancelled automatically.');
-    if (reason === null) return; // user hit Cancel on the prompt
-
-    const btn = document.getElementById(`reqcancel-btn-${orderId}`);
-    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-
-    try {
-      const sb = getSB();
-      const { data: { session } } = await sb.auth.getSession();
-      const token = session?.access_token || '';
-
-      const res = await fetch('/.netlify/functions/request-cancellation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ order_id: orderId, reason: String(reason || '').trim() }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Request failed');
-
-      alert(json.message || 'Your cancellation request has been sent. The order is not cancelled yet — we\'ll review it.');
-      await openMyOrders();
-    } catch (err) {
-      alert('Could not send request: ' + err.message);
-      if (btn) { btn.disabled = false; btn.textContent = 'Request Cancellation'; }
-    }
-  };
-
-  function returnWindowInfo(order) {
-    const status = String(order.status || '').toLowerCase();
-    // Returns only allowed AFTER delivery — not for shipped/in-transit orders
-    if (status !== 'delivered') return { eligible: false, daysLeft: 0, reason: 'not_delivered' };
-    if (['cancelled', 'refunded'].includes(status)) return { eligible: false, daysLeft: 0, reason: 'cancelled' };
-    // Window starts from delivery date
-    const anchorTime = order.delivered_at ? new Date(order.delivered_at).getTime() : NaN;
-    if (!Number.isFinite(anchorTime)) return { eligible: false, daysLeft: 0, reason: 'no_delivery_date' };
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
-    const msLeft = anchorTime + sevenDays - Date.now();
-    const eligible = msLeft >= 0;
-    return { eligible, daysLeft: Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000))), reason: eligible ? 'ok' : 'expired' };
-  }
-
   function returnRequestBlock(order) {
-    const status = String(order.status || '').toLowerCase();
-
     // ── Return already submitted ─────────────────────────────────────────────
     if (order.return_request_status) {
       const rstatus = order.return_request_status;
@@ -2195,71 +2327,12 @@
         </div>`;
     }
 
-    // ── Not delivered yet — no return option ────────────────────────────────
-    if (status !== 'delivered') {
-      // Only show a note for shipped/in-transit orders (not for pending/paid which are pre-shipment)
-      if (['shipped', 'out_for_delivery'].includes(status)) {
-        return `
-          <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid rgba(201,168,76,0.08);
-                      font-size:0.58rem;color:#7a6330;letter-spacing:0.06em;line-height:1.6;">
-            Return option available after delivery
-          </div>`;
-      }
-      return '';
-    }
-
-    // ── Delivered — check window ─────────────────────────────────────────────
-    const info = returnWindowInfo(order);
-    if (!info.eligible) {
-      return `
-        <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid rgba(201,168,76,0.08);
-                    font-size:0.58rem;color:#7a6330;letter-spacing:0.08em;line-height:1.6;text-transform:uppercase;">
-          Return window closed
-        </div>`;
-    }
-
-    // If a replacement already exists for this order, surface its status.
-    if (order.replacement_order_id) {
-      return `
-        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
-          <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
-                       padding:0.28rem 0.7rem;border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;">
-            🔄 Replacement created
-          </span>
-          <span style="font-size:0.62rem;color:#a09080;margin-left:0.5rem;">
-            Order <strong style="color:#c9a84c;">${escHtml(order.replacement_order_id)}</strong> is on the way.
-          </span>
-        </div>`;
-    }
-
-    return `
-      <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);
-                  display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap;">
-        <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
-          7-day return window · ${info.daysLeft} day${info.daysLeft === 1 ? '' : 's'} left
-        </div>
-        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-          <button onclick="iacOpenReplacementModal('${escJs(order.id)}','${escJs(order.razorpay_order_id || order.id)}')"
-            style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
-                   padding:0.65rem 1rem;background:rgba(109,191,109,0.08);border:1px solid rgba(109,191,109,0.4);
-                   color:#6dbf6d;cursor:pointer;">
-            🔄 Request Replacement
-          </button>
-          <button onclick="iacOpenReturnModal('${escJs(order.id)}')"
-            style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
-                   padding:0.65rem 1rem;background:transparent;border:1px solid rgba(201,168,76,0.35);
-                   color:#c9a84c;cursor:pointer;">
-            ↩ Initiate Return
-          </button>
-        </div>
-      </div>`;
+    // Returns are no longer offered; replacements are handled by
+    // replacementRequestBlock below. Only a return filed before the change is
+    // still shown, so the customer can follow it through.
+    return '';
   }
 
-  // ── Report a missing book (incomplete parcel) ─────────────────────────────
-  // Shown on shipped/delivered orders. The customer taps the book(s) that were
-  // missing from their parcel; report-missing-books verifies ownership (order
-  // id + checkout email/phone) and notifies the customer + owner.
-  const MISSING_REPORTABLE = ['shipped', 'out_for_delivery', 'delivered', 'rto', 'undelivered'];
   // ── Update delivery address (one-time, only before the order ships) ────────
   const ADDR_LOCKED_STATUSES = ['shipped','in_transit','out_for_delivery','delivered','rto','undelivered','lost','cancelled','refunded'];
   function canEditOrderAddress(order) {
@@ -2319,9 +2392,11 @@
     const editBtn = wrap.querySelector('button[data-oid]');
     const msg = wrap.querySelector('.addr-msg');
     const address = (wrap.querySelector('.addr-input')?.value || '').trim();
-    if (address.length < 12) {
+    if (address.length < 12 || !/\b[1-9]\d{5}\b/.test(address)) {
       msg.style.display = ''; msg.style.color = '#e06060';
-      msg.textContent = 'Please enter a complete address (with city and pincode).';
+      msg.textContent = address.length < 12
+        ? 'Please enter a complete address (with city and pincode).'
+        : 'Please include your 6-digit pincode in the address.';
       return;
     }
     const orig = btn.textContent;
@@ -2343,15 +2418,37 @@
     }
   };
 
-  function missingBookBlock(order) {
-    const status = String(order.status || '').toLowerCase();
-    if (!MISSING_REPORTABLE.includes(status)) return '';
-    const items = Array.isArray(order.cart_items) ? order.cart_items : [];
-    const lineItems = items
-      .map(i => ({ title: String(i.title || i.name || '').trim(), qty: Math.max(1, Number(i.qty) || 1) }))
-      .filter(i => i.title);
-    if (!lineItems.length) return '';
+  // ── Request a replacement ───────────────────────────────────────────────
+  // The store replaces, it does not take returns. One form, one dropdown:
+  //   defective  (misprint, torn/missing pages, binding)  → request-replacement
+  //   wrong_book                                           → request-replacement
+  //   missing    (book not in the parcel)                  → report-missing-books
+  // Defective and wrong book are open for 7 days after delivery; a missing book
+  // can be reported any time after delivery, as before.
+  const REPLACEMENT_WINDOW_DAYS = 7;
+  function replacementWindowInfo(order) {
+    const t = order.delivered_at ? new Date(order.delivered_at).getTime() : NaN;
+    if (!Number.isFinite(t)) return { eligible: false, daysLeft: 0 };
+    const msLeft = t + REPLACEMENT_WINDOW_DAYS * 86400000 - Date.now();
+    return { eligible: msLeft >= 0, daysLeft: Math.max(0, Math.ceil(msLeft / 86400000)) };
+  }
 
+  function replacementRequestBlock(order) {
+    const status = String(order.status || '').toLowerCase();
+    const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+
+    if (order.replacement_order_id) {
+      return `
+        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
+          <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
+                       padding:0.28rem 0.7rem;border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;">
+            🔄 Replacement created
+          </span>
+          <span style="font-size:0.62rem;color:#a09080;margin-left:0.5rem;">
+            Order <strong style="color:#c9a84c;">${escHtml(order.replacement_order_id)}</strong> is on the way.
+          </span>
+        </div>`;
+    }
     // Already reported — show a confirmation note instead of the form.
     if (items.some(i => i && i._missing)) {
       const flagged = items.filter(i => i && i._missing).map(i => i.title || i.name).filter(Boolean);
@@ -2366,42 +2463,149 @@
           </span>
         </div>`;
     }
+    if (status !== 'delivered' || order.return_request_status) return '';
+    // A free replacement is itself not replaced again from here.
+    if (isReplacementOrderClient(order)) return '';
 
+    const lineItems = items
+      .map(i => ({ title: String(i.title || i.name || '').trim(), qty: Math.max(1, Number(i.qty) || 1) }))
+      .filter(i => i.title);
+    if (!lineItems.length) return '';
+
+    const win = replacementWindowInfo(order);
+    const closedNote = win.eligible ? '' : ' (closed — 7 days after delivery)';
     const oid = order.razorpay_order_id || order.id;
     const q   = order.customer_email || order.customer_phone || '';
+    const field = 'width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.5rem 0.7rem;font-family:inherit;font-size:0.72rem;';
     return `
-      <div id="miss-wrap-${escJs(order.id)}" style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
-        <div style="font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.5rem;">Missing a book?</div>
-        <div style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-bottom:0.7rem;">
-          If your parcel arrived without one of these, tap the missing one(s) and let us know — we'll send it or refund you.
+      <div id="miss-wrap-${escJs(order.id)}" data-cod-upi="${escHtmlAttr(missUpiFieldHtml(order) ? '1' : '')}" style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
+        <div style="font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">🔄 Need a replacement?</div>
+        <div style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-bottom:0.6rem;">
+          We don't take returns, but we replace any book that arrived defective, misprinted, wrong or missing — free of charge.
+          ${win.eligible ? `<span style="color:#7a6330;">${win.daysLeft} day${win.daysLeft === 1 ? '' : 's'} left for defective or wrong books.</span>` : ''}
         </div>
-        <div class="miss-books" style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.7rem;">
-          ${lineItems.map(it => `
-            <div class="miss-row" data-title="${escHtmlAttr(it.title)}" data-max="${it.qty}" style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
-              <button type="button" data-on="0" onclick="iacToggleMissBook(this)"
-                style="flex:1;min-width:60%;text-align:left;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
-                       padding:0.55rem 0.8rem;font-size:0.74rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
-                <span style="display:inline-block;width:1.1rem;">☐</span> ${escHtml(it.title)}${it.qty > 1 ? ` <span style="color:#a09080;">(ordered ${it.qty})</span>` : ''}
-              </button>
-              ${it.qty > 1 ? `<label style="font-size:0.64rem;color:#a09080;display:flex;align-items:center;gap:0.25rem;">Qty
-                <select class="miss-qty" disabled style="background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.3rem;font-family:inherit;font-size:0.72rem;">
-                  ${Array.from({ length: it.qty }, (_, k) => k + 1).map(n => `<option value="${n}"${n === it.qty ? ' selected' : ''}>${n}</option>`).join('')}
-                </select></label>` : ''}
-            </div>`).join('')}
+        <select class="repl-reason" onchange="iacReplReasonChanged(this)" style="${field}font-size:0.76rem;padding:0.6rem 0.7rem;margin-bottom:0.6rem;">
+          <option value="">Choose a reason…</option>
+          <option value="defective"${win.eligible ? '' : ' disabled'}>Defective book / misprint${closedNote}</option>
+          <option value="wrong_book"${win.eligible ? '' : ' disabled'}>Wrong book received${closedNote}</option>
+          <option value="missing">Book missing from the parcel</option>
+        </select>
+        <div class="repl-body" style="display:none;">
+          <div class="repl-which" style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-bottom:0.5rem;">Tap the book(s) that need replacing.</div>
+          <div class="miss-books" style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.7rem;">
+            ${lineItems.map(it => `
+              <div class="miss-row" data-title="${escHtmlAttr(it.title)}" data-max="${it.qty}" style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+                <button type="button" data-on="0" onclick="iacToggleMissBook(this)"
+                  style="flex:1;min-width:60%;text-align:left;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
+                         padding:0.55rem 0.8rem;font-size:0.74rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
+                  <span style="display:inline-block;width:1.1rem;">☐</span> ${escHtml(it.title)}${it.qty > 1 ? ` <span style="color:#a09080;">(ordered ${it.qty})</span>` : ''}
+                </button>
+                ${it.qty > 1 ? `<label style="font-size:0.64rem;color:#a09080;display:flex;align-items:center;gap:0.25rem;">Qty
+                  <select class="miss-qty" disabled style="background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.3rem;font-family:inherit;font-size:0.72rem;">
+                    ${Array.from({ length: it.qty }, (_, k) => k + 1).map(n => `<option value="${n}"${n === it.qty ? ' selected' : ''}>${n}</option>`).join('')}
+                  </select></label>` : ''}
+              </div>`).join('')}
+          </div>
+          <div class="repl-upi-slot" style="display:none;">${missUpiFieldHtml(order)}</div>
+          <textarea class="miss-comment" rows="2" maxlength="500" required placeholder="Required — what happened? e.g. pages 40–56 are blank"
+            style="${field}resize:vertical;margin-bottom:0.6rem;"></textarea>
+          <div class="repl-photos-wrap" style="margin-bottom:0.6rem;">
+            <div style="font-size:0.6rem;color:#a09080;margin-bottom:0.3rem;">Photo evidence (required, 1–3 photos) — parcel, label and received books</div>
+            <input class="repl-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple required aria-required="true" style="width:100%;color:#a09080;font-size:0.7rem;"/>
+          </div>
+          <button data-oid="${escHtmlAttr(oid)}" data-q="${escHtmlAttr(q)}" onclick="iacSubmitReplacementRequest(this)"
+            style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
+                   padding:0.6rem 1rem;background:rgba(109,191,109,0.08);border:1px solid rgba(109,191,109,0.45);
+                   color:#6dbf6d;cursor:pointer;">
+            Request free replacement
+          </button>
+          <div class="miss-msg" style="margin-top:0.6rem;font-size:0.66rem;display:none;"></div>
         </div>
-        ${missUpiFieldHtml(order)}
-        <textarea class="miss-comment" rows="2" maxlength="1000" required placeholder="Required — what happened? e.g. the packet was open and one book was missing"
-          style="width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
-                 padding:0.5rem 0.7rem;font-family:inherit;font-size:0.72rem;resize:vertical;margin-bottom:0.6rem;"></textarea>
-        <button data-oid="${escHtmlAttr(oid)}" data-q="${escHtmlAttr(q)}" onclick="iacReportMissing(this)"
-          style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
-                 padding:0.6rem 1rem;background:rgba(232,160,48,0.1);border:1px solid rgba(232,160,48,0.45);
-                 color:#e8a030;cursor:pointer;">
-          Report missing book(s)
-        </button>
-        <div class="miss-msg" style="margin-top:0.6rem;font-size:0.66rem;display:none;"></div>
       </div>`;
   }
+
+  window.iacReplReasonChanged = function (sel) {
+    const wrap = sel.closest('[id^="miss-wrap-"]');
+    const r = sel.value;
+    wrap.querySelector('.repl-body').style.display = r ? '' : 'none';
+    wrap.querySelector('.repl-upi-slot').style.display = r === 'missing' ? '' : 'none';
+    wrap.querySelector('.repl-photos-wrap').style.display = '';
+    wrap.querySelector('.repl-which').textContent = r === 'missing'
+      ? 'Tap the book(s) that were missing from your parcel.'
+      : r === 'wrong_book' ? 'Tap the book(s) you ordered that were sent wrong.'
+      : 'Tap the book(s) that are defective or misprinted.';
+    wrap.querySelector('.miss-comment').placeholder = r === 'missing'
+      ? 'Required — what happened? e.g. the packet was open and one book was missing'
+      : r === 'wrong_book' ? 'Required — which book did you receive instead?'
+      : 'Required — what is wrong? e.g. pages 40–56 are blank, or the binding came apart';
+  };
+
+  // Phone photos are often several MB; the endpoint takes up to 2 MB each.
+  function iacShrinkPhoto(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(`"${file.name}" could not be read as an image.`)); };
+      img.src = url;
+    });
+  }
+
+  window.iacSubmitReplacementRequest = async function (btn) {
+    const wrap = btn.closest('[id^="miss-wrap-"]');
+    const reason = wrap.querySelector('.repl-reason').value;
+    if (reason === 'missing') return window.iacReportMissing(btn);
+    const msg = wrap.querySelector('.miss-msg');
+    const say = (t) => { msg.style.display = ''; msg.style.color = '#e06060'; msg.textContent = t; };
+    if (!reason) return say('Please choose a reason.');
+    const picked = [...wrap.querySelectorAll('.miss-books .miss-row')]
+      .filter(row => row.querySelector('button')?.dataset.on === '1')
+      .map(row => {
+        const max = Math.max(1, Number(row.dataset.max) || 1);
+        const qty = Math.min(max, Math.max(1, Number(row.querySelector('.miss-qty')?.value) || max));
+        return { title: row.dataset.title, qty };
+      });
+    if (!picked.length) return say('Please tap the book(s) that need replacing.');
+    const commentEl = wrap.querySelector('.miss-comment');
+    const note = (commentEl.value || '').trim();
+    if (note.length < 10) { commentEl.focus(); return say('Please tell us what happened (at least 10 characters).'); }
+
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Sending…';
+    msg.style.display = 'none';
+    try {
+      const photos = await window.IACClaimEvidence.read(wrap.querySelector('.repl-photos'), iacShrinkPhoto);
+      const sb = getSB();
+      let token = '';
+      try { token = (await sb?.auth.getSession())?.data?.session?.access_token || ''; } catch (e) {}
+      const res = await fetch('/.netlify/functions/request-replacement', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: `Bearer ${token}` } : {}),
+        body: JSON.stringify({ original_order_id: btn.dataset.oid, q: btn.dataset.q, reason, note, photos, items: picked }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || 'Could not request the replacement.');
+      wrap.innerHTML = `
+        <div style="padding-top:0.2rem;">
+          <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
+                       padding:0.28rem 0.7rem;border:1px solid rgba(109,191,109,0.4);color:#6dbf6d;">✓ Replacement requested</span>
+          <span style="font-size:0.62rem;color:#a09080;margin-left:0.5rem;line-height:1.5;">
+            📦 Free replacement order <strong style="color:#c9a84c;">${escHtml(data.replacement_order_id)}</strong> has been created — it ships at no charge.
+            Keep the original copy until it arrives, in case we need to inspect it.
+          </span>
+        </div>`;
+    } catch (e) {
+      say(e.message);
+      btn.disabled = false; btn.textContent = orig;
+    }
+  };
 
   // Mirrors netlify/functions/utils/order-payment-kind.js CLAUSE FOR CLAUSE, and
   // fails closed the same way: partial COD has a deposit captured online, so it
@@ -2434,7 +2638,7 @@
     if (status === 'cod_pending' || status === 'cod_awaiting_confirmation') return true;
     if (order?.payment_status) return false;
     if (String(order?.razorpay_payment_id || '').trim()) return false;
-    return status === 'shipped';
+    return status === 'shipped' || status === 'delivered';
   }
 
   // A COD parcel was never paid for online, so if the missing book cannot be
@@ -2444,7 +2648,10 @@
   // never comes, leaving the money owed for a book that never shipped with
   // nowhere to go. report-missing-books refuses the report without it.
   function missUpiFieldHtml(order) {
-    if (!isCodOrder(order)) return '';
+    // The server's flag (get-my-orders) wins; the mirror is only a fallback for
+    // a response from before the flag existed.
+    const required = ('refund_upi_required' in order) ? !!order.refund_upi_required : isCodOrder(order);
+    if (!required) return '';
     return `
       <div style="border:1px solid rgba(201,168,76,0.25);background:rgba(201,168,76,0.05);padding:0.6rem 0.7rem;margin-bottom:0.6rem;">
         <div style="font-size:0.62rem;color:#f0e8d8;margin-bottom:0.3rem;">Your UPI ID <span style="color:#e8a030;">(required)</span></div>
@@ -2515,15 +2722,29 @@
     btn.disabled = true; btn.textContent = 'Sending…';
     msg.style.display = 'none';
     try {
+      const photos = await window.IACClaimEvidence.read(wrap.querySelector('.repl-photos'), iacShrinkPhoto);
       const res = await fetch('/.netlify/functions/report-missing-books', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: btn.dataset.oid, q: btn.dataset.q, missing, comment: commentText,
+          id: btn.dataset.oid, q: btn.dataset.q, missing, photos, comment: commentText,
           upi_id: (upiEl?.value || '').trim(),
         }),
       });
       const json = await res.json().catch(() => ({}));
+      // The server insists on a UPI ID this page did not ask for. Put the box
+      // on screen rather than leave the customer reading about a field that is
+      // not there (they typed it into the comment instead).
+      if (json.need_upi && !wrap.querySelector('.miss-upi')) {
+        const holder = document.createElement('div');
+        holder.innerHTML = missUpiFieldHtml({ refund_upi_required: true });
+        wrap.querySelector('.miss-comment')?.before(holder.firstElementChild);
+        msg.style.display = ''; msg.style.color = '#e06060';
+        msg.textContent = 'Please add your UPI ID in the box above — this order was Cash on Delivery, so it is the only way we can refund you if the book cannot be arranged.';
+        wrap.querySelector('.miss-upi')?.focus();
+        btn.disabled = false; btn.textContent = orig;
+        return;
+      }
       if (!res.ok || !json.success) throw new Error(json.error || 'Could not submit your report.');
       wrap.innerHTML = `
         <div style="padding-top:0.2rem;">
@@ -2540,319 +2761,6 @@
       msg.style.display = ''; msg.style.color = '#e06060';
       msg.textContent = err.message;
       btn.disabled = false; btn.textContent = orig;
-    }
-  };
-
-  // ── Replacement modal ─────────────────────────────────────────────────────
-  window.iacOpenReplacementModal = function (orderRowId, displayOrderId) {
-    removeModal('iacReplacementModal');
-    const modal = document.createElement('div');
-    modal.id = 'iacReplacementModal';
-    modal.style.cssText = `
-      position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
-      display:flex;align-items:center;justify-content:center;z-index:10100;padding:1rem;`;
-    modal.innerHTML = `
-      <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);width:min(480px,96vw);padding:2rem;position:relative;max-height:90vh;overflow:auto;">
-        <button onclick="document.getElementById('iacReplacementModal')?.remove()"
-          style="position:absolute;top:1rem;right:1.1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
-        <h3 style="font-family:'Cormorant Garamond',serif;color:#c9a84c;font-weight:500;margin:0 0 0.5rem;font-size:1.4rem;">
-          🔄 Request Replacement
-        </h3>
-        <p style="color:#a09080;font-size:0.74rem;line-height:1.6;margin:0 0 1.3rem;">
-          For order <strong style="color:#c9a84c;">${escHtml(displayOrderId)}</strong>.
-          We'll ship a free replacement to the same address — no charge, no need to send the original back unless we ask.
-        </p>
-
-        <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">Reason *</label>
-        <select id="iacReplReason" style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.7rem;font-family:inherit;font-size:0.85rem;margin-bottom:1rem;">
-          <option value="">Choose a reason…</option>
-          <option value="damaged">Damaged in transit</option>
-          <option value="wrong_book">Wrong book delivered</option>
-          <option value="missing_pages">Missing pages / printing defect</option>
-          <option value="missing_item">Item missing from package</option>
-          <option value="incomplete_set">Incomplete combo set</option>
-          <option value="other">Other</option>
-        </select>
-
-        <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">What happened? <span style="color:#e8a030;">(required)</span></label>
-        <textarea id="iacReplNote" rows="3" maxlength="500" required placeholder="Required — tell us what was wrong, e.g. pages torn from page 40, or a different book was sent"
-          style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;padding:0.7rem;font-family:inherit;font-size:0.82rem;line-height:1.55;resize:vertical;margin-bottom:1rem;"></textarea>
-
-        <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">Photos (optional, up to 3)</label>
-        <input id="iacReplPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple
-          style="width:100%;color:#a09080;font-size:0.78rem;margin-bottom:0.4rem;"/>
-        <div id="iacReplPhotosPreview" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1.2rem;"></div>
-
-        <div id="iacReplMsg" style="font-size:0.75rem;color:#e8a030;margin-bottom:0.8rem;line-height:1.5;display:none;"></div>
-
-        <div style="display:flex;gap:0.6rem;justify-content:flex-end;">
-          <button onclick="document.getElementById('iacReplacementModal')?.remove()"
-            style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
-                   padding:0.7rem 1.1rem;background:transparent;border:1px solid rgba(160,144,128,0.3);color:#a09080;cursor:pointer;">
-            Cancel
-          </button>
-          <button id="iacReplSubmitBtn" onclick="iacSubmitReplacement('${escJs(orderRowId)}','${escJs(displayOrderId)}')"
-            style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
-                   padding:0.7rem 1.2rem;background:#6dbf6d;border:1px solid #6dbf6d;color:#0d0b08;cursor:pointer;font-weight:600;">
-            Submit Replacement Request
-          </button>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-
-    // Live photo previews
-    const fileInput = document.getElementById('iacReplPhotos');
-    const previewEl = document.getElementById('iacReplPhotosPreview');
-    fileInput.addEventListener('change', () => {
-      previewEl.innerHTML = '';
-      [...fileInput.files].slice(0,3).forEach(f => {
-        if (f.size > 2_000_000) return;
-        const reader = new FileReader();
-        reader.onload = e => {
-          const img = document.createElement('img');
-          img.src = e.target.result;
-          img.style.cssText = 'width:62px;height:62px;object-fit:cover;border:1px solid rgba(201,168,76,0.2);';
-          previewEl.appendChild(img);
-        };
-        reader.readAsDataURL(f);
-      });
-    });
-  };
-
-  window.iacSubmitReplacement = async function (orderRowId, displayOrderId) {
-    const sb = getSB();
-    const reason = document.getElementById('iacReplReason').value;
-    const note   = document.getElementById('iacReplNote').value.trim();
-    const fileInput = document.getElementById('iacReplPhotos');
-    const msg = document.getElementById('iacReplMsg');
-    const btn = document.getElementById('iacReplSubmitBtn');
-    const show = (text, color = '#e8a030') => { msg.textContent = text; msg.style.color = color; msg.style.display = ''; };
-    msg.style.display = 'none';
-
-    if (!sb || !currentUser) { show('Please sign in again — session expired.', '#e06060'); return; }
-    if (!reason) { show('Please choose a reason.'); return; }
-    // Required so every replacement carries the customer's account of the problem.
-    if (note.length < 10) {
-      show('Please describe what happened (at least 10 characters) so we know what went wrong.');
-      document.getElementById('iacReplNote')?.focus();
-      return;
-    }
-
-    // Read photos as data URLs (max 3, 2MB each)
-    const photos = [];
-    const files = [...(fileInput.files || [])].slice(0, 3);
-    for (const f of files) {
-      if (f.size > 2_000_000) { show(`"${f.name}" is over 2 MB — please resize and try again.`); return; }
-      photos.push(await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = e => res(e.target.result);
-        r.onerror = rej;
-        r.readAsDataURL(f);
-      }));
-    }
-
-    btn.disabled = true;
-    btn.textContent = 'Submitting…';
-    try {
-      const { data: { session } } = await sb.auth.getSession();
-      const token = session?.access_token || '';
-      const res = await fetch('/.netlify/functions/request-replacement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          original_order_id: displayOrderId,
-          reason, note, photos,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Replacement request failed');
-      show('✓ Replacement order created: ' + data.replacement_order_id + '. You will receive an email shortly.', '#6dbf6d');
-      setTimeout(() => { removeModal('iacReplacementModal'); loadMyOrders(); }, 2200);
-    } catch (e) {
-      show(e.message || 'Could not submit replacement.');
-      btn.disabled = false;
-      btn.textContent = 'Submit Replacement Request';
-    }
-  };
-
-  window.iacOpenReturnModal = function (orderId) {
-    removeModal('iacReturnModal');
-    const modal = document.createElement('div');
-    modal.id = 'iacReturnModal';
-    modal.style.cssText = `
-      position:fixed;inset:0;background:rgba(13,11,8,0.94);backdrop-filter:blur(10px);
-      display:flex;align-items:center;justify-content:center;z-index:10100;padding:1rem;
-    `;
-    const methodBtn = (m, title, sub) => `
-      <button type="button" data-method="${m}" onclick="iacPickRefundMethod('${m}')"
-        style="flex:1;min-width:150px;text-align:left;background:#141210;border:1px solid rgba(201,168,76,0.22);
-               color:#f0e8d8;padding:0.8rem 0.9rem;cursor:pointer;transition:all .18s;">
-        <div style="font-size:0.68rem;font-weight:600;color:#faf7f2;margin-bottom:0.2rem;">${title}</div>
-        <div style="font-size:0.58rem;color:#a09080;line-height:1.4;">${sub}</div>
-      </button>`;
-    modal.innerHTML = `
-      <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.22);width:min(480px,96vw);padding:2rem;position:relative;max-height:92vh;overflow:auto;">
-        <button onclick="document.getElementById('iacReturnModal')?.remove()"
-          style="position:absolute;top:1rem;right:1.1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
-        <div style="font-size:0.58rem;letter-spacing:0.3em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.6rem;">Return Request</div>
-        <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:#faf7f2;margin-bottom:0.8rem;">Tell us what went wrong</h3>
-        <p style="font-size:0.72rem;color:#a09080;line-height:1.7;margin-bottom:0.9rem;">Return requests are available within 7 days. We'll arrange pickup and process your refund.</p>
-        <textarea id="iacReturnReason" rows="3" placeholder="Reason for return"
-          style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.18);color:#f0e8d8;padding:0.8rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.78rem;outline:none;resize:vertical;"></textarea>
-
-        <div style="font-size:0.58rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin:1.1rem 0 0.6rem;">How would you like your refund?</div>
-        <div id="iacRefundMethods" style="display:flex;gap:0.6rem;flex-wrap:wrap;">
-          ${methodBtn('original', '↩ Original payment method', 'Back to your card / UPI / bank.')}
-          ${methodBtn('wallet', '👛 Ink &amp; Chai Wallet', 'Store credit + <b style="color:#6dbf6d;">₹50 extra</b>. Instant.')}
-        </div>
-
-        <div id="iacUpiWrap" style="display:none;margin-top:0.9rem;">
-          <p id="iacPayoutWhy" style="font-size:0.66rem;color:#a09080;line-height:1.7;margin:0 0 0.7rem;">
-            This order was paid in cash, so there is no card or UPI payment for us to reverse.
-            Tell us where to send the refund.
-          </p>
-          <label style="font-size:0.6rem;color:#a09080;display:block;margin-bottom:0.35rem;">Your UPI ID</label>
-          <input id="iacUpiInput" type="text" inputmode="email" placeholder="name@bank"
-            style="width:100%;background:#141210;border:1px solid rgba(201,168,76,0.28);color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;"/>
-          <div style="display:flex;align-items:center;gap:0.6rem;margin:0.8rem 0 0.2rem;">
-            <span style="flex:1;height:1px;background:rgba(201,168,76,0.18);"></span>
-            <span style="font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;color:#6f6252;">or bank transfer</span>
-            <span style="flex:1;height:1px;background:rgba(201,168,76,0.18);"></span>
-          </div>
-          <input id="iacBankAcc" type="text" inputmode="numeric" placeholder="Bank account number"
-            style="width:100%;margin-top:0.5rem;background:#141210;border:1px solid rgba(201,168,76,0.28);color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;"/>
-          <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
-            <input id="iacBankIfsc" type="text" placeholder="IFSC (e.g. HDFC0001234)" maxlength="11"
-              style="flex:1;min-width:0;background:#141210;border:1px solid rgba(201,168,76,0.28);color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;text-transform:uppercase;"/>
-            <input id="iacBankHolder" type="text" placeholder="Account holder name"
-              style="flex:1;min-width:0;background:#141210;border:1px solid rgba(201,168,76,0.28);color:#f0e8d8;padding:0.75rem 1rem;font-family:'Montserrat',sans-serif;font-size:0.8rem;outline:none;"/>
-          </div>
-          <p style="font-size:0.6rem;color:#6f6252;line-height:1.6;margin:0.6rem 0 0;">
-            Either one is enough — UPI is faster. We transfer once the returned book reaches us.
-          </p>
-        </div>
-
-        <button id="iacReturnSubmit" onclick="iacSubmitReturn('${escJs(orderId)}')"
-          style="width:100%;margin-top:1.1rem;font-family:'Montserrat',sans-serif;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;padding:0.95rem;background:#c9a84c;color:#0d0b08;border:none;cursor:pointer;font-weight:500;">
-          Submit Return Request
-        </button>
-        <p id="iacReturnMsg" style="font-size:0.7rem;margin-top:0.85rem;min-height:1.2em;text-align:center;"></p>
-      </div>`;
-    document.body.appendChild(modal);
-    modal.dataset.method = '';
-    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-    setTimeout(() => document.getElementById('iacReturnReason')?.focus(), 80);
-  };
-
-  // Highlight the chosen refund method; reveal UPI only for COD-original (the
-  // server confirms COD, but if it already told us via need_upi we keep it open).
-  window.iacPickRefundMethod = function (m) {
-    const modal = document.getElementById('iacReturnModal');
-    if (!modal) return;
-    modal.dataset.method = m;
-    modal.querySelectorAll('#iacRefundMethods button').forEach(b => {
-      const on = b.dataset.method === m;
-      b.style.borderColor = on ? '#c9a84c' : 'rgba(201,168,76,0.22)';
-      b.style.background = on ? 'rgba(201,168,76,0.12)' : '#141210';
-    });
-    // Wallet never needs UPI; hide it. For 'original' we wait for the server to
-    // tell us it's COD (need_upi) before showing the field.
-    if (m === 'wallet') {
-      const w = document.getElementById('iacUpiWrap'); if (w) w.style.display = 'none';
-    }
-  };
-
-  window.iacSubmitReturn = async function (orderId) {
-    const sb = getSB();
-    const btn = document.getElementById('iacReturnSubmit');
-    const msg = document.getElementById('iacReturnMsg');
-    const modal = document.getElementById('iacReturnModal');
-    const reason = document.getElementById('iacReturnReason')?.value.trim() || '';
-    const method = modal?.dataset.method || '';
-    const upiWrap = document.getElementById('iacUpiWrap');
-    const upiId = document.getElementById('iacUpiInput')?.value.trim() || '';
-    const bankAccount = document.getElementById('iacBankAcc')?.value.trim() || '';
-    const bankIfsc    = document.getElementById('iacBankIfsc')?.value.trim() || '';
-    const bankHolder  = document.getElementById('iacBankHolder')?.value.trim() || '';
-    if (!sb || !currentUser) {
-      if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please sign in again.'; }
-      return;
-    }
-    if (!method) {
-      if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Please choose how you\'d like your refund.'; }
-      return;
-    }
-    // Once the payout block is showing, one destination or the other is required.
-    // The server re-checks and is the real guard; this only saves a round trip.
-    if (upiWrap && upiWrap.style.display !== 'none' && !upiId && !(bankAccount || bankIfsc || bankHolder)) {
-      if (msg) { msg.style.color = '#e06060'; msg.textContent = 'Enter a UPI ID, or your bank account number and IFSC, so we can send the refund.'; }
-      document.getElementById('iacUpiInput')?.focus();
-      return;
-    }
-    btn.disabled = true;
-    btn.textContent = 'Submitting...';
-    if (msg) { msg.style.color = '#a09080'; msg.textContent = 'Sending request...'; }
-
-    // ── Demo mode: fake a success without calling the API ───────────────────
-    if (isDemoMode() && orderId === 'demo-order-1') {
-      setTimeout(() => {
-        if (msg) { msg.style.color = '#6dbf6d'; msg.textContent = '✓ Return request submitted. Our team will be in touch within 24 hours.'; }
-        btn.textContent = 'Submitted ✓';
-        setTimeout(() => { removeModal('iacReturnModal'); loadMyOrders(); }, 1500);
-      }, 700);
-      return;
-    }
-
-    try {
-      const { data: { session } } = await sb.auth.getSession();
-      const res = await fetch('/.netlify/functions/request-return', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token || ''}`,
-        },
-        body: JSON.stringify({
-          order_id: orderId, reason, refund_method: method,
-          upi_id: upiId, bank_account: bankAccount, bank_ifsc: bankIfsc, bank_holder: bankHolder,
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        // COD + original method → server asks for a UPI id. Reveal the field and
-        // let the customer submit again.
-        if (json.need_upi || json.need_payout) {
-          if (upiWrap) upiWrap.style.display = 'block';
-          const why = document.getElementById('iacPayoutWhy');
-          if (why && json.payment_type === 'partial_cod') {
-            why.textContent = 'This order was part-paid online and the rest in cash, so the card/UPI payment '
-              + 'only covers a fraction of it. Tell us where to send the full refund.';
-          }
-          if (msg) {
-            msg.style.color = '#c9a84c';
-            msg.textContent = json.error
-              || 'Tell us where to send the refund, then submit again.';
-          }
-          btn.disabled = false;
-          btn.textContent = 'Submit Return Request';
-          setTimeout(() => document.getElementById('iacUpiInput')?.focus(), 60);
-          return;
-        }
-        if (json.already_submitted) {
-          // Show inline message and close modal — no re-submit possible
-          if (msg) { msg.style.color = '#c9a84c'; msg.textContent = json.error; }
-          btn.disabled = true;
-          btn.textContent = 'Already Submitted';
-          setTimeout(() => { removeModal('iacReturnModal'); loadMyOrders(); }, 3000);
-          return;
-        }
-        throw new Error(json.error || 'Could not submit return request.');
-      }
-      if (msg) { msg.style.color = '#6dbf6d'; msg.textContent = json.message || 'Return request submitted.'; }
-      setTimeout(() => { removeModal('iacReturnModal'); loadMyOrders(); }, 1500);
-    } catch (err) {
-      if (msg) { msg.style.color = '#e06060'; msg.textContent = err.message || 'Could not submit return request.'; }
-      btn.disabled = false;
-      btn.textContent = 'Submit Return Request';
     }
   };
 

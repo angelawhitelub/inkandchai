@@ -63,11 +63,25 @@
  * because channel orders land unbooked), "all" admits prepaid and
  * replacement orders too. See feedAdmits.
  *
- * Env: WOO_CONSUMER_KEY, WOO_CONSUMER_SECRET, WOO_FEED_SINCE (ISO date),
+ * DTDC
+ * ----
+ * DTDC's customer portal (Shipsy) connects the same way, with its OWN key
+ * pair (WOO_DTDC_CONSUMER_KEY / _SECRET), so every request says which panel
+ * sent it. That matters only for writes: a booking pushed back with the DTDC
+ * pair is stored as courier DTDC, whatever the payload's meta says. Shipsy
+ * reports a booking either as an order update carrying the consignment number
+ * or through the Advanced Shipment Tracking API
+ * (POST /wp-json/wc-ast/v3/orders/{id}/shipment-trackings), which its setup
+ * guide tells stores to install; both are taken. See bookingFromPush.
+ *
+ * Env: WOO_CONSUMER_KEY, WOO_CONSUMER_SECRET (XpressBees),
+ *      WOO_DTDC_CONSUMER_KEY, WOO_DTDC_CONSUMER_SECRET (DTDC, optional),
+ *      WOO_FEED_SINCE (ISO date),
  *      WOO_FEED_PREPAID (unset = COD only; "all"; or order ids, comma-separated),
  *      SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
 
+const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-shipment-cancel');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier, sanitizeAddressText } = require('./utils/nimbuspost-import');
@@ -162,22 +176,40 @@ function readCredentials(event) {
   return { key: q.consumer_key || '', secret: q.consumer_secret || '' };
 }
 
+// One key pair per panel. The client a request authenticates as decides what
+// a booking pushed back with it means (courier name, which payloads count).
+const CLIENTS = [
+  { client: 'xpressbees', key: 'WOO_CONSUMER_KEY', secret: 'WOO_CONSUMER_SECRET' },
+  // A second XpressBees pair, so the channel can be reconnected with fresh
+  // keys while the old connection keeps pushing status updates (XpressBees
+  // never retries a refused push). 14 Oct 2026: the old pair was lost and the
+  // channel's import queue had stalled. Drop the old pair once the new works.
+  { client: 'xpressbees', key: 'WOO_XB_NEW_CONSUMER_KEY', secret: 'WOO_XB_NEW_CONSUMER_SECRET' },
+  { client: 'dtdc', key: 'WOO_DTDC_CONSUMER_KEY', secret: 'WOO_DTDC_CONSUMER_SECRET' },
+];
+
 function authorize(event) {
-  const wantKey = process.env.WOO_CONSUMER_KEY || '';
-  const wantSecret = process.env.WOO_CONSUMER_SECRET || '';
-  if (!wantKey || !wantSecret) {
+  const configured = CLIENTS
+    .map((c) => ({ client: c.client, key: process.env[c.key] || '', secret: process.env[c.secret] || '' }))
+    .filter((c) => c.key && c.secret);
+  if (!configured.length) {
     return { ok: false, res: wpError('woocommerce_rest_not_configured',
       'Store credentials are not configured.', 503) };
   }
   const got = readCredentials(event);
-  // Both compared every time, so a wrong key and a wrong secret cost the same.
-  const keyOk = safeEqual(got.key, wantKey);
-  const secretOk = safeEqual(got.secret, wantSecret);
-  if (!keyOk || !secretOk) {
+  // Every pair, both halves, compared every time, so which half was wrong (or
+  // which panel's pair was tried) cannot be told from the timing.
+  let match = null;
+  for (const c of configured) {
+    const keyOk = safeEqual(got.key, c.key);
+    const secretOk = safeEqual(got.secret, c.secret);
+    if (keyOk && secretOk && !match) match = c.client;
+  }
+  if (!match) {
     return { ok: false, res: wpError('woocommerce_rest_authentication_error',
       'Consumer key or secret is invalid.', 401) };
   }
-  return { ok: true };
+  return { ok: true, client: match };
 }
 
 /**
@@ -431,6 +463,26 @@ function prepaidPolicy(raw = process.env.WOO_FEED_PREPAID) {
   return { raw: text, all: false, ids: new Set(text.split(/[\s,]+/).filter(Boolean).map((id) => id.toUpperCase())) };
 }
 
+/**
+ * The order the feed lists orders in: the client's `order`, defaulting to
+ * desc as real WooCommerce does, by the moment the order entered the feed --
+ * created_at, or the admin "push to XpressBees" stamp when that is later, so a
+ * re-offered old order surfaces with the new ones.
+ *
+ * XpressBees's importer asks `page=1&per_page=100&order=desc&orderby=date` and
+ * never reads page 2. This used to ignore `order` and list oldest first, which
+ * was right only while the panel was catching up on a backlog. On 13 Oct 2026
+ * the panel had 107 orders waiting to be booked, all still in the feed, so
+ * page 1 filled up with orders it already had and the 72 newest (everything
+ * after 1 a.m.) never reached it however often Refresh was pressed. Newest
+ * first, the orders it already has are the ones that fall off the page.
+ */
+function feedOrder(rows, order) {
+  const at = (r) => Math.max(Date.parse(r.created_at) || 0, Date.parse(r.xpressbees_feed_at) || 0);
+  const dir = String(order || '').toLowerCase() === 'asc' ? 1 : -1;
+  return rows.slice().sort((a, b) => dir * (at(a) - at(b)));
+}
+
 function feedAdmits(order, policy = prepaidPolicy()) {
   const role = feedRole(order);
   if (role === 'cod') return true;
@@ -442,10 +494,9 @@ function feedAdmits(order, policy = prepaidPolicy()) {
 async function loadOrders(supabase) {
   const since = process.env.WOO_FEED_SINCE || DEFAULT_SINCE;
 
-  // OLDEST FIRST. XpressBees's importer takes one page and does not follow
-  // X-WP-TotalPages: the first sync pulled exactly 100 of 157 and stopped.
-  // A shipping queue should drain oldest-first anyway, so the orders that
-  // have waited longest are the ones that make it into that single page.
+  // NEWEST FIRST, so the row limit can only ever drop the oldest candidates
+  // (which the importer took long ago). The handler then orders the page the
+  // way the client asked -- see feedOrder.
   const base = () => supabase
     .from('orders')
     .select('*')
@@ -458,7 +509,7 @@ async function loadOrders(supabase) {
     // book it a second time. Delhivery's create.json returns the waybill in the
     // same call, which makes that window the normal case rather than a rarity.
     .is('tracking_id', null)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(500);
 
   // Two ways in: recent enough, OR an operator pressed "push to XpressBees" on
@@ -524,27 +575,113 @@ function metaValue(payload, key) {
  * reaches further back than WOO_FEED_SINCE. That bounds the candidates to the
  * same window we serve -- a few hundred rows -- whatever their status now is.
  */
+//
+// The window is walked in full, newest first, reading only the two id columns.
+// It used to be one `.limit(1000)` with no ORDER BY: once the window passed
+// 1,000 orders (around 27 Sept 2026) Postgres returned whichever 1,000 came
+// first on disk -- the OLDEST -- so the newest orders, exactly the ones being
+// booked, stopped matching. Their push-backs were dropped as "no order
+// matches", XpressBees does not retry, and 10 booked shipments sat in admin as
+// unshipped with no AWB (and bookable again with another courier).
+const RESOLVE_PAGE = 1000;
+
 async function resolveByWooId(supabase, wooId) {
   const since = process.env.WOO_FEED_SINCE || DEFAULT_SINCE;
-  const { data, error } = await supabase
-    .from('orders')
-    .select('id, razorpay_order_id, status, tracking_id, tracking_url, courier_name, '
-          + 'customer_name, customer_phone, customer_email, cart_items')
-    .gte('created_at', since)
-    .limit(1000);
-  if (error) throw new Error(`lookup failed: ${error.message}`);
   const want = Number(wooId);
-  return (data || []).find((o) => numericId(o.razorpay_order_id || o.id) === want) || null;
+  for (let from = 0; ; from += RESOLVE_PAGE) {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('id, razorpay_order_id')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, from + RESOLVE_PAGE - 1);
+    if (error) throw new Error(`lookup failed: ${error.message}`);
+    const hit = (data || []).find((o) => numericId(o.razorpay_order_id || o.id) === want);
+    if (hit) {
+      const { data: order, error: oErr } = await supabase
+        .from('orders')
+        .select('id, razorpay_order_id, status, tracking_id, tracking_url, courier_name, '
+              + 'customer_name, customer_phone, customer_email, cart_items')
+        .eq('id', hit.id)
+        .maybeSingle();
+      if (oErr) throw new Error(`lookup failed: ${oErr.message}`);
+      return order || null;
+    }
+    if (!data || data.length < RESOLVE_PAGE) return null;
+  }
 }
 
-async function applyPushBack(supabase, wooId, payload) {
+// Orders that must never go out. A booked push for one of these means the
+// panel booked an order after we cancelled it -- its queue row outlived the
+// cancellation (IC-R-20260925-2U7MB, IC-20260917-HH6WG). refund_pending and
+// refund_failed are cancellations owed money; they were not in TERMINAL, so a
+// push used to flip them to shipped.
+const NEVER_SHIP = ['cancelled', 'refunded', 'refund_pending', 'refund_failed'];
+
+// Where a DTDC (Shipsy) push may carry the consignment number. Its exact
+// payload has not been observed yet, so every place a WooCommerce shipping
+// integration conventionally puts one is read; the first plausible value wins.
+const DTDC_AWB_META = ['AWB Number', 'awb', 'awb_number', 'Tracking Number', 'tracking_number',
+  '_tracking_number', 'Consignment Number', 'consignment_number', 'cn_number', 'CN Number'];
+const AWB_SHAPE = /^[A-Za-z0-9-]{6,30}$/;
+
+function dtdcAwb(payload) {
+  const p = payload || {};
+  const candidates = [
+    p.tracking_number, p.awb, p.awb_number, p.consignment_number,
+    ...DTDC_AWB_META.map((k) => metaValue(p, k)),
+  ];
+  // Advanced Shipment Tracking keeps its items in this meta key.
+  const ast = (Array.isArray(p.meta_data) ? p.meta_data : [])
+    .find((m) => m && /^_?wc_shipment_tracking_items$/i.test(String(m.key || '')));
+  if (ast && Array.isArray(ast.value)) candidates.push(...ast.value.map((t) => t && t.tracking_number));
+  if (Array.isArray(p.shipment_trackings)) candidates.push(...p.shipment_trackings.map((t) => t && t.tracking_number));
+  return candidates.map((v) => String(v || '').trim()).find((v) => AWB_SHAPE.test(v)) || '';
+}
+
+/**
+ * What a push means, per panel: { awb, courier } for a booking, or { reason }
+ * for anything that is only recorded.
+ *
+ *   xpressbees  status "On Hold" (our Booked mapping) + meta "AWB Number".
+ *   dtdc        any push that carries a consignment number, except one that
+ *               says cancelled. The courier is DTDC because the DTDC key sent
+ *               it -- never a "Courier Name" meta, which defaults to Xpressbees.
+ */
+function bookingFromPush(payload, client = 'xpressbees') {
   const status = String((payload && payload.status) || '').trim().toLowerCase();
+  if (client === 'dtdc') {
+    if (/cancel|fail|rto|return/.test(status)) return { reason: `DTDC status "${status}" is recorded only` };
+    const awb = dtdcAwb(payload);
+    if (!awb) return { reason: `DTDC push with no consignment number (status "${status}") is recorded only` };
+    return { awb, courier: 'DTDC' };
+  }
+  if (status !== PUSH_BOOKED) return { reason: `status "${status}" is recorded only` };
   const awb = metaValue(payload, 'AWB Number');
-  const courier = metaValue(payload, 'Courier Name') || 'Xpressbees';
+  if (!awb) return { reason: 'booked but no AWB in meta_data' };
+  return { awb, courier: metaValue(payload, 'Courier Name') || 'Xpressbees' };
+}
 
-  if (status !== PUSH_BOOKED) return { applied: false, reason: `status "${status}" is recorded only` };
-  if (!awb) return { applied: false, reason: 'booked but no AWB in meta_data' };
+const courierKey = (c) => {
+  const k = String(c || '').toLowerCase().replace(/[^a-z]/g, '');
+  return /xpress|xbees/.test(k) ? 'xpressbees' : k;
+};
 
+async function defaultOwnerAlert(text) {
+  const phone = process.env.STORE_OWNER_PHONE;
+  if (!phone) return;
+  try { await require('./utils/whatsapp').sendText(phone, text); } catch (e) { console.warn('[woo-channel] owner alert:', e.message); }
+}
+
+async function applyPushBack(supabase, wooId, payload, deps = {}) {
+  const booking = bookingFromPush(payload, deps.client || 'xpressbees');
+  if (!booking.awb) return { applied: false, reason: booking.reason };
+  return applyBooking(supabase, wooId, booking, deps);
+}
+
+async function applyBooking(supabase, wooId, { awb, courier }, deps = {}) {
+  const ownerAlert = deps.ownerAlert || defaultOwnerAlert;
   const order = await resolveByWooId(supabase, wooId);
   if (!order) return { applied: false, reason: `no order matches woo id ${wooId}` };
 
@@ -553,6 +690,30 @@ async function applyPushBack(supabase, wooId, payload) {
   // Already carrying this AWB: nothing to do. Re-pushes are normal.
   if (String(order.tracking_id || '') === awb && order.status === 'shipped') {
     return { applied: false, order: orderNumber, reason: 'already shipped with this AWB' };
+  }
+
+  // Booked after we cancelled it: cancel the new AWB while it is still
+  // waiting for pickup, which a just-booked shipment always is.
+  if (NEVER_SHIP.includes(String(order.status || '').toLowerCase())) {
+    const courierCancel = await cancelCourierShipment({ tracking_id: awb, courier_name: courier }, deps);
+    await recordCourierCancel(supabase, order.id, courierCancel);
+    console.warn(`[woo-channel] ${orderNumber} is ${order.status} but was booked as ${awb}: ${courierCancel.action} ${courierCancel.message || ''}`);
+    // Only XpressBees can be cancelled from here; anyone else's booking of a
+    // cancelled order goes out unless a person stops it.
+    if (courierCancel.action !== 'cancelled' && courierCancel.action !== 'already_cancelled') {
+      await ownerAlert(`⚠️ Cancelled order booked\nOrder: ${orderNumber} (${order.status})\n${courier} AWB: ${awb}\n${courierCancel.message || 'Cancel this shipment in the courier panel.'}`);
+    }
+    return { applied: false, order: orderNumber, reason: `order is ${order.status}; shipment ${courierCancel.action}`, courier: courierCancel };
+  }
+
+  // Booked with a different courier already: two panels have the same order.
+  // Overwriting would orphan a live shipment (and its pickup) with nobody
+  // tracking it, so the first booking stands and a person picks which to cancel.
+  // The same courier sending a new AWB is a rebooking and goes through as before.
+  if (order.tracking_id && String(order.tracking_id) !== awb && courierKey(order.courier_name) !== courierKey(courier)) {
+    console.warn(`[woo-channel] ${orderNumber} double-booked: has ${order.courier_name || '?'} ${order.tracking_id}, ${courier} pushed ${awb}`);
+    await ownerAlert(`⚠️ Order booked twice\nOrder: ${orderNumber}\nAlready: ${order.courier_name || 'courier'} AWB ${order.tracking_id}\nNew: ${courier} AWB ${awb}\nCancel one of them in its panel. The order keeps the first AWB.`);
+    return { applied: false, order: orderNumber, reason: `already booked with ${order.courier_name || 'another courier'} ${order.tracking_id}; ${courier} ${awb} not applied` };
   }
 
   // Never walk an order backwards out of a later stage.
@@ -597,7 +758,11 @@ async function applyPushBack(supabase, wooId, payload) {
 // Exported so the money mapping can be tested without a live store: the
 // partial-COD total is the one number here that can overcharge a customer.
 exports.feedAdmits = feedAdmits;
-exports.__test = { toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, prepaidGateway, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
+// The DTDC bulk-upload sheet (admin-dtdc-upload) projects orders the same way.
+exports.toWooOrder = toWooOrder;
+exports.isPaymentPending = isPaymentPending;
+exports.UNSHIPPED_STATUSES = UNSHIPPED_STATUSES;
+exports.__test = { feedOrder, toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, prepaidGateway, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, applyBooking, bookingFromPush, dtdcAwb, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
 
 exports.handler = async (event) => {
   const path = String(event.path || '').replace(/\/+$/, '') || '/wp-json';
@@ -615,7 +780,7 @@ exports.handler = async (event) => {
       home: 'https://inkandchai.in',
       gmt_offset: '5.5',
       timezone_string: 'Asia/Kolkata',
-      namespaces: ['wp/v2', 'wc/v1', 'wc/v2', 'wc/v3'],
+      namespaces: ['wp/v2', 'wc/v1', 'wc/v2', 'wc/v3', 'wc-ast/v3'],
       authentication: [],
       routes: { '/wc/v3': { namespace: 'wc/v3', methods: ['GET'] } },
     });
@@ -656,9 +821,9 @@ exports.handler = async (event) => {
       const id = Number(String((r && r.path) || '').match(/orders\/(\d+)/)?.[1] || 0);
       const body = (r && r.body) || {};
       let result;
-      try { result = await applyPushBack(batchDb, id, body); }
+      try { result = await applyPushBack(batchDb, id, body, { client: batchAuth.client }); }
       catch (e) { result = { applied: false, reason: e.message }; }
-      console.log('[woo-channel] batch push-back result', JSON.stringify({ id, ...result }));
+      console.log('[woo-channel] batch push-back result', JSON.stringify({ id, client: batchAuth.client, ...result }));
       responses.push({ status: 200, headers: {}, body: { id, status: String(body.status || 'processing') } });
     }
     return json(200, { failed: false, responses });
@@ -699,6 +864,54 @@ exports.handler = async (event) => {
     return json(200, [], { 'X-WP-Total': '0', 'X-WP-TotalPages': '0' });
   }
 
+  // Advanced Shipment Tracking's REST API, which DTDC's (Shipsy's) guide has
+  // stores install so it can write the consignment number back:
+  //   POST /wp-json/wc-ast/v3/orders/{id}/shipment-trackings
+  //        { tracking_provider, tracking_number, date_shipped, status_shipped }
+  // (wc-shipment-tracking is the older namespace for the same thing.)
+  const astPath = path.match(/^\/wp-json\/(?:wc-ast|wc-shipment-tracking)\/v[123]\/orders\/(\d+)\/shipment-trackings(?:\/[^/]+)?$/);
+  if (astPath) {
+    const wooId = Number(astPath[1]);
+    if (method === 'GET') return json(200, []);
+    let payload = {};
+    try { payload = JSON.parse(event.body || '{}'); } catch { payload = {}; }
+    console.log('[woo-channel] shipment-tracking', JSON.stringify({ method, path, client: auth.client, payload }));
+    if (method !== 'POST') return json(200, {});
+    const awb = String(payload.tracking_number || '').trim();
+    let result;
+    if (auth.client !== 'dtdc') result = { applied: false, reason: `${auth.client} tracking items are recorded only` };
+    else if (!AWB_SHAPE.test(awb)) result = { applied: false, reason: 'no usable tracking_number' };
+    else {
+      const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      try { result = await applyBooking(db, wooId, { awb, courier: 'DTDC' }); }
+      catch (e) { result = { applied: false, reason: e.message }; }
+    }
+    console.log('[woo-channel] shipment-tracking result', JSON.stringify({ id: wooId, client: auth.client, ...result }));
+    return json(201, {
+      tracking_id: crypto.createHash('md5').update(`${wooId}:${awb}`).digest('hex'),
+      tracking_provider: String(payload.tracking_provider || 'DTDC'),
+      tracking_number: awb,
+      tracking_link: awb ? buildTrackingUrl({ courier: 'DTDC', awb }) : '',
+      date_shipped: String(payload.date_shipped || ''),
+    });
+  }
+
+  // Order notes and webhook registration: connectors call these while setting
+  // up. Nothing is stored and nothing is sent -- this store cannot push
+  // webhooks -- but each call is logged so what DTDC actually does is visible.
+  const notesPath = path.match(/^\/wp-json\/wc\/v[123]\/orders\/(\d+)\/notes(?:\/\d+)?$/);
+  const hooksPath = /^\/wp-json\/wc\/v[123]\/webhooks(?:\/\d+)?$/.test(path);
+  if (notesPath || hooksPath) {
+    if (method === 'GET') return json(200, []);
+    let payload = {};
+    try { payload = JSON.parse(event.body || '{}'); } catch { payload = { _unparsed: String(event.body || '').slice(0, 500) }; }
+    console.log(`[woo-channel] ${notesPath ? 'order-note' : 'webhook'} recorded only`, JSON.stringify({ method, path, client: auth.client, payload }));
+    const id = Number(String(Date.now()).slice(-9));
+    return json(method === 'POST' ? 201 : 200, notesPath
+      ? { id, note: String(payload.note || ''), customer_note: false, date_created: wooDate() }
+      : { id, name: String(payload.name || 'webhook'), status: 'active', topic: String(payload.topic || ''), delivery_url: String(payload.delivery_url || '') });
+  }
+
   const singleOrder = path.match(/^\/wp-json\/wc\/v[123]\/orders\/(\d+)$/);
   const orderList = /^\/wp-json\/wc\/v[123]\/orders$/.test(path);
   const orderBatch = /^\/wp-json\/wc\/v[123]\/orders\/batch$/.test(path);
@@ -736,6 +949,7 @@ exports.handler = async (event) => {
       path,
       content_type: h['content-type'] || h['Content-Type'] || '',
       user_agent: h['user-agent'] || h['User-Agent'] || '',
+      client: auth.client,
       payload,
     }));
 
@@ -747,9 +961,9 @@ exports.handler = async (event) => {
       for (const u of updates) {
         const id = Number(u && u.id) || 0;
         let result;
-        try { result = await applyPushBack(db, id, u || {}); }
+        try { result = await applyPushBack(db, id, u || {}, { client: auth.client }); }
         catch (e) { result = { applied: false, reason: e.message }; }
-        console.log('[woo-channel] push-back result', JSON.stringify({ id, ...result }));
+        console.log('[woo-channel] push-back result', JSON.stringify({ id, client: auth.client, ...result }));
         out.push({ id, status: String((u && u.status) || 'processing') });
       }
       return json(200, { update: out });
@@ -757,9 +971,9 @@ exports.handler = async (event) => {
 
     const wooId = Number(singleOrder[1]);
     let result;
-    try { result = await applyPushBack(db, wooId, payload); }
+    try { result = await applyPushBack(db, wooId, payload, { client: auth.client }); }
     catch (e) { result = { applied: false, reason: e.message }; }
-    console.log('[woo-channel] push-back result', JSON.stringify({ id: wooId, ...result }));
+    console.log('[woo-channel] push-back result', JSON.stringify({ id: wooId, client: auth.client, ...result }));
 
     // Always 200. A non-2xx makes XpressBees retry, and a retry cannot fix an
     // order we simply could not match -- it would just repeat forever.
@@ -778,7 +992,8 @@ exports.handler = async (event) => {
   const skipped = [];
   const withheld = [];
   const policy = prepaidPolicy();
-  for (const row of rows) {
+  const q = event.queryStringParameters || {};
+  for (const row of feedOrder(rows, q.order)) {
     // COD-only channel, unless WOO_FEED_PREPAID admits this order. See feedAdmits.
     if (!feedAdmits(row, policy)) { withheld.push(row.razorpay_order_id || row.id); continue; }
     try { built.push(await toWooOrder(row)); }
@@ -798,7 +1013,6 @@ exports.handler = async (event) => {
                : wpError('woocommerce_rest_shop_order_invalid_id', 'Invalid ID.', 404);
   }
 
-  const q = event.queryStringParameters || {};
   // WooCommerce caps per_page at 100; this one does not, because the importer
   // only ever reads one page and a cap is what truncated the first sync. A
   // client asking for more now gets more, and one asking for 100 is unaffected.

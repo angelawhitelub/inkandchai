@@ -237,6 +237,35 @@ if _deleted_path.exists():
         # that was deliberately taken down.
         print(f"WARNING: data/deleted_products.json unreadable ({_err}) — nothing excluded")
 
+# ── Admin-written copy for catalogue books ───────────────────────────────────
+# Admin-written catalogue copy and book details.
+# Saved in the admin (catalog_content, update-catalog-content.js) and applied
+# live by the Worker. Baking it in here as well puts it into feed.xml -- which
+# Google Shopping reads instead of the page -- and keeps it if KV is ever lost.
+# data/catalog_content.json mirrors the table; refresh it with
+#   node scripts/sync-catalog-content.mjs
+_content_path = Path(__file__).parent / "data" / "catalog_content.json"
+if _content_path.exists():
+    try:
+        _cc = json.loads(_content_path.read_text()).get("items", {}) or {}
+        _applied = 0
+        for _b in books:
+            _entry = _cc.get(make_slug(_b.get("title", ""), _b.get("shopify_id", "")).lower())
+            if not _entry:
+                continue
+            if (_entry.get("description") or "").strip():
+                _b["description"] = _entry["description"].strip()
+            # Publisher and ISBN are what the baked page and feed.xml print
+            # (a valid ISBN becomes g:gtin). The other details (pages, format…)
+            # have no slot in the baked template; the Worker adds those rows.
+            for _k in ("publisher", "isbn"):
+                if str(_entry.get(_k) or "").strip():
+                    _b[_k] = str(_entry[_k]).strip()
+            _applied += 1
+        print(f"Catalogue copy applied: {_applied} of {len(_cc)} saved")
+    except Exception as _err:                                   # noqa: BLE001
+        print(f"WARNING: data/catalog_content.json unreadable ({_err}) — feed descriptions used")
+
 if DELETED_SLUGS:
     _before = len(books)
     books = [b for b in books
@@ -537,41 +566,6 @@ BOOKS_LITE_TAG = f'<script src="/js/{_books_lite_file}"></script>'
 BOOKS_FULL_PRELOAD = f'<link rel="preload" as="script" href="/js/{_books_full_file}"/>'
 BOOKS_LITE_PRELOAD = f'<link rel="preload" as="script" href="/js/{_books_lite_file}"/>'
 
-recent_order_activity_path = Path(__file__).parent / "data" / "recent_order_activity.json"
-try:
-    recent_order_activity = json.loads(recent_order_activity_path.read_text()) if recent_order_activity_path.exists() else []
-except Exception:
-    recent_order_activity = []
-def _norm_activity_title(value):
-    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
-
-def _match_activity_book(title):
-    needle = _norm_activity_title(str(title or "").split("+")[0])
-    if not needle:
-        return None
-    for book in slim:
-        hay = _norm_activity_title(book.get("t", "") + " " + book.get("a", ""))
-        hay_prefix = hay[:38].strip()
-        if (len(needle) >= 6 and needle in hay) or (len(hay_prefix) >= 10 and hay_prefix in needle):
-            return book
-    words = [w for w in needle.split() if len(w) > 3][:4]
-    if len(words) >= 2:
-        for book in slim:
-            hay = _norm_activity_title(book.get("t", "") + " " + book.get("a", ""))
-            if all(w in hay for w in words):
-                return book
-    return None
-
-enriched_recent_order_activity = []
-for item in recent_order_activity:
-    matched = _match_activity_book(item.get("title", ""))
-    enriched_recent_order_activity.append({
-        "name": clean_text(item.get("name", "")),
-        "title": clean_text(item.get("title", "")),
-        "img": matched.get("img", "") if matched else "",
-        "url": matched.get("url", "") if matched else "",
-    })
-recent_order_activity_js = json.dumps(enriched_recent_order_activity, ensure_ascii=False)
 new_count = sum(b["n"] for b in slim)
 print(f"New arrivals (last {NEW_ARRIVAL_DAYS} days): {new_count}")
 
@@ -886,137 +880,9 @@ html:not([data-theme="light"]) .reader-activity-time{color:#a09080}
 @media(prefers-reduced-motion:reduce){.reader-activity-toast{transition:none}}
 """
 
-READER_ACTIVITY_JS = r"""
-<script>
-(function(){
-  const recentOrders = RECENT_ORDER_ACTIVITY_PLACEHOLDER;
-  const names = ['Aarav','Ananya','Riya','Kabir','Priya','Arjun','Meera','Ishaan','Neha','Rohan','Sanya','Aditya','Kavya','Rahul','Nisha','Vivaan'];
-  const cities = ['Delhi','Mumbai','Pune','Jaipur','Lucknow','Bengaluru','Hyderabad','Chandigarh','Ahmedabad','Indore','Kolkata','Surat'];
-  const browseActions = ['added to cart', 'is checking out', 'is browsing', 'is viewing'];
-  const orderActions = ['ordered', 'purchased'];
-  const times = ['just now','2 minutes ago','5 minutes ago','12 minutes ago','today','yesterday'];
-  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-  const esc = s => String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  function stopActivity(){
-    sessionStorage.setItem('iac_reader_activity_closed','1');
-    const el = document.getElementById('readerActivityToast');
-    if (el) {
-      el.classList.remove('show');
-      window.clearTimeout(el._hideTimer);
-    }
-  }
-  window.stopReaderActivity = stopActivity;
-  function booksPool(){
-    try {
-      if (typeof BOOKS === 'undefined' || !Array.isArray(BOOKS)) {
-        if (typeof currentItem !== 'undefined' && currentItem && currentItem.title && currentItem.img) {
-          return [{
-            t: currentItem.title,
-            a: currentItem.author || '',
-            img: currentItem.img,
-            url: currentItem.url && String(currentItem.url).startsWith('/product/') ? currentItem.url : location.pathname,
-            slug: ''
-          }];
-        }
-        return [];
-      }
-      return BOOKS.filter(b => b && b.t && b.img && (b.url || b.slug))
-        .filter(b => (b.n || /hindi|self help|romance|bestseller|combo/i.test((b.cat || '') + ' ' + b.t)))
-        .slice(0, 180);
-    } catch(e) { return []; }
-  }
-  function matchBook(title, pool){
-    const needle = norm(String(title || '').split('+')[0]);
-    if (!needle || !pool.length) return null;
-    return pool.find(b => norm(b.t).includes(needle) || needle.includes(norm(b.t).slice(0, 38))) ||
-      pool.find(b => {
-        const words = needle.split(' ').filter(w => w.length > 3).slice(0, 4);
-        const hay = norm(b.t + ' ' + (b.a || ''));
-        return words.length >= 2 && words.every(w => hay.includes(w));
-      }) || null;
-  }
-  function activityItem(pool){
-    if (Array.isArray(recentOrders) && recentOrders.length && Math.random() < 0.58) {
-      const order = pick(recentOrders);
-      const match = matchBook(order.title, pool) || pick(pool);
-      return {
-        name: order.name || pick(names),
-        city: 'India',
-        action: pick(orderActions),
-        title: order.title || match.t,
-        img: order.img || match.img,
-        url: order.url || match.url || ('/product/' + match.slug + '/'),
-        time: pick(['yesterday','today','12 minutes ago','5 minutes ago'])
-      };
-    }
-    const b = pick(pool);
-    return {
-      name: pick(names),
-      city: pick(cities),
-      action: pick(browseActions),
-      title: b.t,
-      img: b.img,
-      url: b.url || ('/product/' + b.slug + '/'),
-      time: pick(times)
-    };
-  }
-  function ensureToast(){
-    let el = document.getElementById('readerActivityToast');
-    if (el) return el;
-    el = document.createElement('aside');
-    el.id = 'readerActivityToast';
-    el.className = 'reader-activity-toast';
-    el.setAttribute('aria-live','polite');
-    el.setAttribute('aria-label','Reader activity');
-    document.body.appendChild(el);
-    return el;
-  }
-  function showActivity(){
-    if (sessionStorage.getItem('iac_reader_activity_closed') === '1') return;
-    const pool = booksPool();
-    if (!pool.length) return;
-    const item = activityItem(pool);
-    const el = ensureToast();
-    el.innerHTML = `
-      <img class="reader-activity-img" src="${esc(item.img)}" alt="" loading="lazy"/>
-      <div>
-        <div class="reader-activity-kicker">${esc(item.name)} from ${esc(item.city)} ${esc(item.action)}</div>
-        <div class="reader-activity-title">${esc(item.title)}</div>
-        <div class="reader-activity-time">${esc(item.time)}</div>
-      </div>
-      <button class="reader-activity-close" type="button" aria-label="Hide reader activity">×</button>`;
-    el.onclick = e => { if (!e.target.closest('button')) location.href = item.url; };
-    el.querySelector('button').onclick = e => {
-      e.stopPropagation();
-      el.classList.remove('show');
-      sessionStorage.setItem('iac_reader_activity_closed','1');
-    };
-    requestAnimationFrame(() => el.classList.add('show'));
-    window.clearTimeout(el._hideTimer);
-    el._hideTimer = window.setTimeout(() => el.classList.remove('show'), 6200);
-  }
-  function schedule(){
-    const delay = 12000 + Math.floor(Math.random() * 12000);
-    window.setTimeout(() => { showActivity(); schedule(); }, delay);
-  }
-  window.addEventListener('load', () => {
-    if (sessionStorage.getItem('iac_reader_activity_closed') === '1') return;
-    window.setTimeout(showActivity, 5200);
-    schedule();
-  });
-  document.addEventListener('click', event => {
-    const target = event.target.closest('button,a');
-    if (!target) return;
-    const onclick = target.getAttribute('onclick') || '';
-    const href = target.getAttribute('href') || '';
-    if (/buyNowBook|addBookToCart|checkout/i.test(onclick) || /\/checkout\/?/i.test(href)) {
-      stopActivity();
-    }
-  }, true);
-})();
-</script>
-"""
+READER_ACTIVITY_JS = '''
+<script defer src="/js/recent-purchases.js?v=20261006"></script>
+'''
 
 def with_reader_activity(html: str) -> str:
     # A few page-level refinement rules mention `.reader-activity-toast`
@@ -1025,8 +891,8 @@ def with_reader_activity(html: str) -> str:
     # component marker so a partial selector cannot suppress the real CSS.
     if "/* Animated reader activity notification */" not in html:
         html = html.replace("</style>", READER_ACTIVITY_CSS + "\n</style>", 1)
-    if "readerActivityToast" not in html:
-        html = html.replace("</body>", READER_ACTIVITY_JS.replace("RECENT_ORDER_ACTIVITY_PLACEHOLDER", recent_order_activity_js) + "\n</body>", 1)
+    if "/js/recent-purchases.js" not in html:
+        html = html.replace("</body>", READER_ACTIVITY_JS + "\n</body>", 1)
     html = with_page_loader(html)
     return html
 
@@ -1119,7 +985,7 @@ HTML = r"""<!DOCTYPE html>
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>Ink & Chai — Buy Books Online India · Hindi & English · Free Shipping above ₹499</title>
-<meta name="description" content="Buy books online in India — 25,000+ Hindi & English titles across fiction, romance, self-help and manga. Free shipping above ₹499, COD, 7-day returns." />
+<meta name="description" content="Buy books online in India — 25,000+ Hindi & English titles across fiction, romance, self-help and manga. Free shipping above ₹499, COD, 7-day free replacement." />
 <meta name="keywords" content="buy books online india, hindi books online, online bookstore india, self help books hindi, romance books, fiction books, manga books, ana huang books, david goggins hindi, robin sharma, robert kiyosaki, mythology books, books at 99, cash on delivery books, free shipping books india, ink and chai" />
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
 <meta name="author" content="Ink & Chai" />
@@ -1168,7 +1034,7 @@ HTML = r"""<!DOCTYPE html>
   "alternateName": "Ink and Chai",
   "url": "https://inkandchai.in",
   "logo": "https://inkandchai.in/images/og-default.jpg",
-  "description": "Online bookstore in India offering 25,000+ titles in Hindi and English. Free shipping above ₹499, cash on delivery available, 7-day returns.",
+  "description": "Online bookstore in India offering 25,000+ titles in Hindi and English. Free shipping above ₹499, cash on delivery available, 7-day free replacement.",
   "address": {
     "@type": "PostalAddress",
     "streetAddress": "2379 Kucha Mir Hashim, Turkman Gate",
@@ -2575,7 +2441,7 @@ html[data-theme="light"] .btn-primary{
         <a href="/terms/" role="menuitem"><span>Terms</span></a>
         <a href="/privacy-policy/" role="menuitem"><span>Privacy</span></a>
         <a href="/refund-policy/" role="menuitem"><span>Refund</span></a>
-        <a href="/return-policy/" role="menuitem"><span>Returns</span></a>
+        <a href="/return-policy/" role="menuitem"><span>Replacements</span></a>
         <a href="/shipping-policy/" role="menuitem"><span>Shipping</span></a>
       </div>
     </li>
@@ -3159,7 +3025,7 @@ html[data-theme="light"] .btn-primary{
       <div class="footer-col-title">Help &amp; Policies</div>
       <ul class="footer-links">
         <li><a href="/shipping-policy/">Shipping Policy</a></li>
-        <li><a href="/return-policy/">Return Policy</a></li>
+        <li><a href="/return-policy/">Replacement Policy</a></li>
         <li><a href="/refund-policy/">Refund Policy</a></li>
         <li><a href="/terms/">Terms &amp; Conditions</a></li>
         <li><a href="/privacy-policy/">Privacy Policy</a></li>
@@ -3207,7 +3073,8 @@ html[data-theme="light"] .btn-primary{
 <script src="/js/google-customer-reviews.js"></script>
 <script src="/js/checkout.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/search-suggest.js" defer></script>
+<script src="/js/book-search.js?v=20261002"></script>
+<script src="/js/search-suggest.js?v=20261005" defer></script>
 
 <script>
 // ── DATA ──────────────────────────────────────────────────────────────────
@@ -3573,43 +3440,9 @@ function fuzzyWordHit(word, field) {
 }
 
 function searchScore(book, rawQuery) {
-  const q = applySynonyms(normalizeSearchText(rawQuery));
-  if (!q) return 0;
-  const doc = bookSearchDoc(book);
-  const tokens = q.split(' ').filter(Boolean);
-  const aliases = searchAliases(q);
-  let score = 0;
-
-  if (aliases.some(a => doc.title === a || doc.isbn === a)) score += 900;
-  if (aliases.some(a => doc.title.startsWith(a))) score += 620;
-  if (aliases.some(a => doc.title.includes(a))) score += 420;
-  if (aliases.some(a => doc.author.includes(a))) score += 280;
-  if (aliases.some(a => doc.category.includes(a))) score += 150;
-  if (aliases.some(a => doc.publisher.includes(a) || doc.slug.includes(a))) score += 80;
-  if (aliases.some(a => doc.full.includes(a))) score += 60;
-
-  let matched = 0;
-  const titleWords  = doc.title.split(' ');
-  const authorWords = doc.author.split(' ');
-  for (const token of tokens) {
-    if (titleWords.some(w => w === token)) { score += 95; matched++; continue; }
-    // Prefix hit: typing "atom hab" finds "atomic habits"
-    if (token.length >= 3 && titleWords.some(w => w.startsWith(token))) { score += 80; matched++; continue; }
-    if (doc.title.includes(token)) { score += 70; matched++; continue; }
-    if (token.length >= 3 && authorWords.some(w => w.startsWith(token))) { score += 55; matched++; continue; }
-    if (doc.author.includes(token)) { score += 50; matched++; continue; }
-    if (doc.isbn.includes(token)) { score += 45; matched++; continue; }
-    if (doc.category.includes(token)) { score += 35; matched++; continue; }
-    if (doc.full.includes(token)) { score += 16; matched++; continue; }
-    if (fuzzyWordHit(token, doc.title) || fuzzyWordHit(token, doc.author)) { score += 10; matched++; }
-  }
-  if (tokens.length && matched < Math.ceil(tokens.length * 0.7)) return 0;
-  if (matched === tokens.length && tokens.length > 1) score += 110;
-
-  score += Math.min(trendScore(book), 120) * 0.35;
-  score += book.n ? 12 : 0;
-  score -= editionPenalty(book) * 2;
-  return score;
+  const relevance = window.IACBookSearch.score(book, rawQuery);
+  if (!relevance) return 0;
+  return relevance + Math.min(trendScore(book), 120) * 0.35 + (book.n ? 12 : 0) - editionPenalty(book) * 2;
 }
 
 function filteredBooks() {
@@ -3867,9 +3700,10 @@ function catalogFallbackSearch(rawQuery) {
     if (_catFetched.has(key)) return;
     _catFetched.set(key, true);
     try {
-      const res = await fetch('/.netlify/functions/catalog-search?per_page=24&q=' + encodeURIComponent(q));
-      if (!res.ok) return;
+      const res = await fetch('/.netlify/functions/catalog-search?v=20261002&per_page=24&q=' + encodeURIComponent(q));
+      if (!res.ok) throw new Error('Catalogue search failed');
       const data = await res.json();
+      if (data.warning) throw new Error(data.warning);
       const seen = new Set(BOOKS.map(b => String(b.slug || '').toLowerCase()));
       let added = 0;
       for (const r of (data.books || [])) {
@@ -3880,6 +3714,7 @@ function catalogFallbackSearch(rawQuery) {
         const book = customProductToBook({
           slug: r.slug,
           title: r.title,
+          author: r.author || '',
           price_inr: r.price,
           original_price_inr: r.original_price,
           image_url: r.img,
@@ -4041,6 +3876,7 @@ function highlightMatch(text, query) {
 }
 
 function renderSrchResults(query) {
+  if (window.InkSearch) { window.InkSearch.showOverlay(query); return; }
   const box = document.getElementById('srchResults');
   if (!box) return;
   _srchSel = -1;
@@ -4093,21 +3929,14 @@ function srchKey(e) {
     if (sel) { location.href = sel.getAttribute('href'); return; }
   }
   if (e.key === 'Enter') {
-    // Track search query for recommendation personalisation
-    const q = (document.getElementById('srchInput')?.value || '').trim();
-    if (q.length > 2) {
-      try {
-        const prev = JSON.parse(localStorage.getItem('iac_searches') || '[]');
-        const updated = [...prev.filter(s => s !== q), q].slice(-20);
-        localStorage.setItem('iac_searches', JSON.stringify(updated));
-      } catch(e) {}
-    }
+    window.InkSearch?.record((document.getElementById('srchInput')?.value || '').trim(), null, 'overlay');
     closeSiteSearch();
     document.getElementById('featured')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
 function srchQuick(query) {
+  window.InkSearch?.record(query, null, 'overlay');
   const srchIn = document.getElementById('srchInput');
   if (srchIn) srchIn.value = query;
   srchType();
@@ -4116,6 +3945,7 @@ function srchQuick(query) {
 }
 
 function quickSearch(query) {
+  window.InkSearch?.record(query, null, 'home');
   const input = document.getElementById('searchInput');
   input.value = query;
   currentQuery = query;
@@ -4697,6 +4527,44 @@ _BOOK_CARD_JS = r"""
     return (off < MIN_WORTH_SHOWING || off > MAX_CREDIBLE_OFF) ? 0 : off;
   }
 
+  /* Lifetime units sold ("🔥 445 sold"), for books with 10+ sold: the same
+     number the product page and Reader Bestsellers show. Loaded once per page
+     from sold-counts; cards drawn before it arrives are filled in after. */
+  var SOLD_KEY = 'iac_sold_counts';
+  var soldCounts = null;
+  try { soldCounts = JSON.parse(sessionStorage.getItem(SOLD_KEY) || 'null'); } catch (e) {}
+
+  function soldLine(b) {
+    var n = soldCounts && b && b.slug ? soldCounts[String(b.slug).toLowerCase()] : 0;
+    return n ? '<div class="iac-sold" style="font-size:.72rem;font-weight:600;color:#c4621a;margin:.15rem 0 .1rem;">'
+      + '🔥 ' + Number(n).toLocaleString('en-IN') + ' sold</div>' : '';
+  }
+
+  function fillSoldLines(root) {
+    if (!soldCounts) return;
+    var cards = (root || document).querySelectorAll('a.book-card[href^="/product/"]');
+    for (var i = 0; i < cards.length; i++) {
+      var a = cards[i];
+      if (a.querySelector('.iac-sold') || a.getAttribute('data-no-sold')) continue;
+      var m = (a.getAttribute('href') || '').match(/^\/product\/([^/?#]+)/);
+      var slug = '';
+      try { slug = m ? decodeURIComponent(m[1]) : ''; } catch (e) { slug = m ? m[1] : ''; }
+      var html = soldLine({ slug: slug });
+      var author = a.querySelector('.book-author');
+      if (html && author) author.insertAdjacentHTML('afterend', html);
+    }
+  }
+  window.iacFillSoldLines = fillSoldLines;
+
+  if (window.fetch) {
+    fetch('/.netlify/functions/sold-counts').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (!d || !d.counts) return;
+      soldCounts = d.counts;
+      try { sessionStorage.setItem(SOLD_KEY, JSON.stringify(soldCounts)); } catch (e) {}
+      fillSoldLines();
+    }).catch(function () {});
+  }
+
   function isSold(b) {
     return !!b && b.stock !== null && b.stock !== undefined && Number(b.stock) <= 0;
   }
@@ -4767,8 +4635,12 @@ _BOOK_CARD_JS = r"""
         + (qty ? qty : '+') + '</button>';
     }
 
+    // A caller's own "N sold" badge (Reader Bestsellers) already says it.
+    var noSold = /sold/i.test(String(opts.badge || ''));
+
     return '<a class="book-card' + (opts.className ? ' ' + esc(opts.className) : '') + '"'
-      + ' href="/product/' + esc(b.slug) + '/" style="text-decoration:none;color:inherit;display:block;">'
+      + ' href="/product/' + esc(b.slug) + '/"' + (noSold ? ' data-no-sold="1"' : '')
+      + ' style="text-decoration:none;color:inherit;display:block;">'
       + '<div class="book-cover" style="position:relative;">'
       +   (badges ? '<span class="iac-badges">' + badges + '</span>' : '')
       +   '<img src="' + esc(b.img || '') + '" alt="' + esc(b.t) + '" loading="lazy" onerror="this.style.display=\'none\'"/>'
@@ -4776,6 +4648,7 @@ _BOOK_CARD_JS = r"""
       + '</div>'
       + '<div class="book-name">' + esc(b.t) + '</div>'
       + '<div class="book-author">' + esc(b.a || '') + '</div>'
+      + (noSold ? '' : soldLine(b))
       + '<div class="iac-meta">'
       +   '<span class="book-price">' + esc(b.p) + (b.op ? '<span class="iac-orig">' + esc(b.op) + '</span>' : '') + '</span>'
       +   (b.cat ? '<span class="iac-cat">' + esc(b.cat) + '</span>' : '')
@@ -4932,7 +4805,7 @@ _BOOK_CARD_TAGS = (
     f'<script src="/js/{_bc_js_name}"></script>'
 )
 
-_bc_anchor = '<script src="/js/search-suggest.js" defer></script>'
+_bc_anchor = '<script src="/js/search-suggest.js?v=20261005" defer></script>'
 assert HTML.count(_bc_anchor) == 1, "homepage book-card anchor moved"
 HTML = HTML.replace(_bc_anchor, _bc_anchor + "\n" + _BOOK_CARD_TAGS, 1)
 
@@ -4987,7 +4860,7 @@ COMPACT_FOOTER = """<footer class="site-footer" style="text-align:center;padding
   <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.35rem;">
     <a href="/ebooks/" style="color:var(--cream-dim,#a09080);text-decoration:none;">eBooks</a>
     <a href="/shipping-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Shipping</a>
-    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Returns</a>
+    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Replacements</a>
     <a href="/refund-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Refunds</a>
     <a href="/terms/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Terms</a>
     <a href="/privacy-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Privacy</a>
@@ -5422,7 +5295,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
   <a href="/terms/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Terms &amp; Conditions</a>
   <a href="/privacy-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Privacy Policy</a>
   <a href="/refund-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Refund Policy</a>
-  <a href="/return-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Return Policy</a>
+  <a href="/return-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Replacement Policy</a>
   <a href="/shipping-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Shipping Policy</a>
 </div>
 
@@ -5849,7 +5722,7 @@ function trackProductView(b) {
 // ── Render product page ───────────────────────────────────────────────────
 function renderProduct(b) {
   const pageTitle = b.t + (b.a ? ' by ' + b.a : '') + ' — Buy Online at Ink & Chai';
-  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day easy returns.');
+  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day free replacement.');
   const canonical = 'https://inkandchai.in/product/' + b.slug + '/';
   const imgAbs = (b.img || '').startsWith('http') ? b.img : ('https://inkandchai.in' + (b.img || ''));
 
@@ -6037,7 +5910,7 @@ function renderProduct(b) {
              read a policy is how a cart gets abandoned. -->
         <div style="margin:0.55rem 0 0.2rem;">
           <button type="button" class="pol-trigger" data-policy-sheet="returns"
-                  aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
+                  aria-haspopup="dialog">🛡 Replacements &amp; refunds</button>
         </div>
 
         <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
@@ -6071,7 +5944,7 @@ function renderProduct(b) {
           ${b.pub  ? `<div class="prod-meta-item"><div class="prod-meta-label">Publisher</div><div class="prod-meta-val">${esc(b.pub)}</div></div>` : ''}
           ${b.isbn ? `<div class="prod-meta-item"><div class="prod-meta-label">ISBN</div><div class="prod-meta-val">${esc(b.isbn)}</div></div>` : ''}
           <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India · 2–5 days</div></div>
-          <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day easy returns · <a href="#" onclick="event.preventDefault();openReturnVideo();" style="color:var(--gold);text-decoration:underline;cursor:pointer;">▶ Watch how (30 sec)</a></div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Replacement</div><div class="prod-meta-val">Free if defective, wrong or missing · <a href="/return-policy/" style="color:var(--gold);text-decoration:underline;">How it works</a></div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">COD · UPI · Cards</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Sold by</div><div class="prod-meta-val">Ink &amp; Chai</div></div>
         </div>
@@ -6804,12 +6677,12 @@ def product_json_ld(book):
                 "shippingDestination": {"@type": "DefinedRegion", "addressCountry": "IN"},
                 "deliveryTime": {"@type": "ShippingDeliveryTime", "businessDays": {"@type": "QuantitativeValue", "minValue": 2, "maxValue": 5}},
             },
+            # No returns since 2026-10-02 — replacement only (defective,
+            # wrong or missing). Keep in step with Merchant Center.
             "hasMerchantReturnPolicy": {
                 "@type": "MerchantReturnPolicy",
                 "applicableCountry": "IN",
-                "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
-                "merchantReturnDays": 7,
-                "returnMethod": "https://schema.org/ReturnByMail",
+                "returnPolicyCategory": "https://schema.org/MerchantReturnNotPermitted",
             },
         },
     }
@@ -6881,10 +6754,10 @@ def product_faq_json_ld(book):
             },
             {
                 "@type": "Question",
-                "name": "What is the return policy?",
+                "name": "Can I return or replace a book?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "We offer a 7-day return window from the date of delivery. If the book arrives damaged, is the wrong title, or doesn't match the description, request a return from your My Orders page on inkandchai.in. Refunds are processed automatically once we receive the book back."
+                    "text": "We don't take returns, but we replace any book that arrives defective or misprinted, is the wrong title, or is missing from the parcel, free of charge. Request it from Track Order or My Orders on inkandchai.in, within 7 days of delivery for a defective or wrong book."
                 }
             },
             {
@@ -7576,11 +7449,11 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
     <div class="price-row"><span class="price" data-product-price="{price_num:g}" style="opacity:0;transition:opacity 0.15s">{price}</span>{f'<span class="orig" data-product-original-price="{orig_num:g}" style="opacity:0;transition:opacity 0.15s">{orig}</span>' if orig else ''}{f'<span class="save-badge" data-save-badge style="opacity:0;transition:opacity 0.15s">{save_pct}% off</span>' if save_pct else '<span class="save-badge" data-save-badge hidden></span>'}</div>
     {scarcity_badge_html if scarcity_badge_html else '<span class="stock">In Stock</span>'}
     <div id="staticShipBy"></div>
-    <div class="trust"><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></svg></span><span class="tt"><b>Delivery in 2-5 days</b><i>Shipped across India</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span><span class="tt"><b>Cash on delivery</b><i>Pay when it arrives</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/><path d="M6 14.5h4"/></svg></span><span class="tt"><b>UPI, cards, net banking</b><i>Secure checkout</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.3-3.1 7.7-7.5 9-4.4-1.3-7.5-4.7-7.5-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="tt"><b>7-day replacement</b><i><a href="#" onclick="event.preventDefault();openReturnVideo();" style="cursor:pointer">Watch how it works &#9654;</a></i></span></span></div>
+    <div class="trust"><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></svg></span><span class="tt"><b>Delivery in 2-5 days</b><i>Shipped across India</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span><span class="tt"><b>Cash on delivery</b><i>Pay when it arrives</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/><path d="M6 14.5h4"/></svg></span><span class="tt"><b>UPI, cards, net banking</b><i>Secure checkout</i></span></span><span><span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.3-3.1 7.7-7.5 9-4.4-1.3-7.5-4.7-7.5-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="tt"><b>7-day replacement</b><i><a href="/return-policy/" style="cursor:pointer">Defective, wrong or missing &#8594;</a></i></span></span></div>
     <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
     <div style="margin:0.55rem 0 0.2rem;">
       <button type="button" class="pol-trigger" data-policy-sheet="returns"
-              aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
+              aria-haspopup="dialog">🛡 Replacements &amp; refunds</button>
     </div>
     <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="insta-trust">
       <span class="insta-trust-icon">📸</span>
@@ -7650,7 +7523,7 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
 
 <script src="/js/cart.js"></script>
 <script src="/js/google-discount.js"></script>
-<script src="/js/search-suggest.js" defer></script>
+<script src="/js/search-suggest.js?v=20261005" defer></script>
 <script src="/js/summer-sale.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 <script>
@@ -7876,11 +7749,11 @@ function openReturnVideo() {{
   lb.innerHTML =
     '<div style="position:relative;width:min(820px,96vw);background:#0d0b08;border:1px solid rgba(201,168,76,0.3);border-radius:12px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.6);">'
     +   '<button onclick="closeReturnVideo()" aria-label="Close video" style="position:absolute;top:0.6rem;right:0.6rem;z-index:2;background:rgba(13,11,8,0.7);border:1px solid rgba(201,168,76,0.3);color:#c9a84c;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:1rem;line-height:1;">✕</button>'
-    +   '<div style="padding:1rem 1.4rem 0.4rem;font-family:Cormorant Garamond,serif;font-size:1.25rem;color:#c9a84c;font-style:italic;">How returns work — 30 seconds</div>'
+    +   '<div style="padding:1rem 1.4rem 0.4rem;font-family:Cormorant Garamond,serif;font-size:1.25rem;color:#c9a84c;font-style:italic;">How replacements work</div>'
     +   '<div style="position:relative;padding-bottom:56.25%;height:0;">'
     +     '<iframe src="https://embed.app.guidde.com/playbooks/1UdjQpZngy38d35GLotezC?mode=videoOnly" title="Returning a book on Ink &amp; Chai takes 30 seconds." frameborder="0" referrerpolicy="unsafe-url" allowfullscreen="true" allow="clipboard-write" sandbox="allow-popups allow-popups-to-escape-sandbox allow-scripts allow-forms allow-same-origin allow-presentation" style="position:absolute;top:0;left:0;width:100%;height:100%;"></iframe>'
     +   '</div>'
-    +   '<div style="padding:0.85rem 1.4rem;font-size:0.72rem;color:#a09080;text-align:center;">Prefer reading? <a href="/return-policy/" style="color:#c9a84c;text-decoration:underline;">Full return policy →</a></div>'
+    +   '<div style="padding:0.85rem 1.4rem;font-size:0.72rem;color:#a09080;text-align:center;">Prefer reading? <a href="/return-policy/" style="color:#c9a84c;text-decoration:underline;">Replacement policy →</a></div>'
     + '</div>';
   lb.addEventListener('click', e => {{ if (e.target === lb) closeReturnVideo(); }});
   document.body.appendChild(lb);
@@ -8160,6 +8033,9 @@ h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:400;color
 .checkout-qty-row{display:flex;align-items:center;gap:0.55rem;margin-top:0.55rem;flex-wrap:wrap;}
 .checkout-qty-btn{width:28px;height:28px;border:1px solid var(--border);background:var(--bg2);color:var(--cream);font-size:1rem;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
 .checkout-qty-btn:hover{border-color:var(--gold);color:var(--gold);}
+/* Remove at checkout: - stops at 1, so without this a book could only leave the basket from the cart drawer. */
+.checkout-remove{margin-left:.6rem;background:none;border:0;padding:.2rem 0;color:var(--muted,#a09080);font-size:.78rem;text-decoration:underline;cursor:pointer}
+.checkout-remove:hover{color:var(--gold)}
 .checkout-qty-num{min-width:24px;text-align:center;color:var(--cream);font-size:0.78rem;font-weight:500;}
 .checkout-remove{border:none;background:transparent;color:#c97a7a;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;margin-left:0.2rem;}
 .checkout-remove:hover{color:#e06060;}
@@ -8430,6 +8306,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
           </div>
         </div>
         <div id="pinMsg" class="pin-msg"></div>
+        <div id="pinMismatch" role="alert" style="display:none;margin-top:8px;padding:10px 12px;border:1px solid #c9a84c;border-radius:8px;background:rgba(201,168,76,.08);font-size:.85rem;line-height:1.45"></div>
         <div id="shippingRestrictionMsg" style="display:none;margin:.65rem 0 1rem;padding:.85rem 1rem;border:1px solid rgba(224,80,80,.55);border-radius:14px;background:rgba(224,80,80,.09);color:#f09a8c;font-size:.7rem;line-height:1.6;"></div>
 
         <div id="paymentBlock">
@@ -8486,7 +8363,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         <div class="trust-row">
           <span>🔒 Secure checkout</span>
           <span>🚀 Pan-India delivery</span>
-          <span>↩ 7-day returns</span>
+          <span>🔄 7-day free replacement</span>
         </div>
 
         <!-- Directly under the trust row, because "what if I need to send this
@@ -8494,7 +8371,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
              paying. A sheet, not a link: navigating away here loses the order. -->
         <div style="text-align:center;margin-top:0.7rem;">
           <button type="button" class="pol-trigger" data-policy-sheet="refunds"
-                  aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
+                  aria-haspopup="dialog">🛡 Replacements &amp; refunds</button>
         </div>
 
       </div>
@@ -8640,7 +8517,11 @@ function loadScratchState() {
   try { return JSON.parse(localStorage.getItem(SCRATCH_KEY) || 'null'); } catch { return null; }
 }
 let appliedScratchCard = loadScratchState(); // {code, value_paise, min_subtotal_paise, expires_at} or null
-function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE; }
+// Free from ₹499, or when the cart holds a book the admin set to ship free
+// (loadFreeDelivery flags it; utils/free-delivery orderShipping decides the same).
+function calcShipping(subtotal, cart = getCart()) {
+  return subtotal >= FREE_SHIPPING_THRESHOLD || cart.some(i => i && i._free_delivery === true) ? 0 : SHIPPING_FEE;
+}
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
 function cartSubtotal(cart) { return cart.reduce((s, i) => s + itemPrice(i) * itemQty(i), 0); }
@@ -8666,8 +8547,22 @@ function freedomIsLive() {
   return Date.now() <= new Date(COUPONS.FREEDOM.expiresAt).getTime();
 }
 
+// Dussehra & Diwali Sale: 10% off every order above ₹399, every payment mode,
+// automatic. MUST match FESTIVE10 in netlify/functions/utils/site-sale.js, the
+// till -- a total that differs from the server's is refused with a 409.
+const FESTIVE_SALE = { code: 'FESTIVE10', percent: 10, threshold: 399, startsAt: '2026-10-19T18:30:00Z', endsAt: '2026-11-10T18:29:59Z' };
+function festiveIsLive() {
+  const t = Date.now();
+  return t >= new Date(FESTIVE_SALE.startsAt).getTime() && t <= new Date(FESTIVE_SALE.endsAt).getTime();
+}
+function festiveSaleDiscount(subtotal) {
+  if (!festiveIsLive() || !(subtotal > FESTIVE_SALE.threshold)) return { code: '', discount: 0, message: '' };
+  return { code: FESTIVE_SALE.code, discount: Math.floor(subtotal * FESTIVE_SALE.percent / 100), message: '🪔 Dussehra & Diwali Sale — 10% off applied automatically.' };
+}
+
 /** The hint under the coupon box, which must not promise an ended sale. */
 function defaultCouponHint() {
+  if (festiveIsLive()) return '🪔 Dussehra & Diwali Sale: 10% off applies automatically when your subtotal is above ₹399. A prepaid code that saves more is used instead.';
   return freedomIsLive()
     ? '🇮🇳 Add books until the subtotal is above ₹399 and FREEDOM will apply 15% off automatically.'
     : 'Prepaid orders unlock the offers above. Pick one, or enter a private code.';
@@ -8699,6 +8594,19 @@ function couponDiscount(cart, method = 'online') {
     const discount = Math.floor(subtotal * freedom.value / 100);
     return { code: 'FREEDOM', discount, message: '🇮🇳 FREEDOM automatically applied — 15% off your books.' };
   }
+
+  // Dussehra & Diwali Sale: automatic and never stacked. A chosen code wins
+  // only on a prepaid order where it saves more (the server does the same).
+  const festive = festiveSaleDiscount(subtotal);
+  if (festive.discount > 0) {
+    if (method === 'cod') return festive;
+    const chosen = chosenCouponDiscount(cart, method, subtotal, code);
+    return chosen.discount > festive.discount ? chosen : festive;
+  }
+  return chosenCouponDiscount(cart, method, subtotal, code);
+}
+
+function chosenCouponDiscount(cart, method, subtotal, code) {
 
   // ── Scratch card path ───────────────────────────────────────────────────
   if (code.startsWith('SCRATCH-') && appliedScratchCard && appliedScratchCard.code === code) {
@@ -8740,7 +8648,7 @@ function couponDiscount(cart, method = 'online') {
 }
 function orderTotals(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
+  const shipping = calcShipping(subtotal, cart);
   const coupon = couponDiscount(cart, method);
   // COD fee waived on subtotal >= ₹999 (pushes customers to add more to cart)
   const codFee  = (method === 'cod' && subtotal < COD_FEE_WAIVER_THRESHOLD) ? COD_HANDLING_FEE : 0;
@@ -8749,15 +8657,15 @@ function orderTotals(cart, method = 'online') {
 }
 function partialPaymentTotals(cart) {
   // Partial COD: COD handling fee is WAIVED as the incentive to pre-pay 10%.
-  // FREEDOM is the one coupon valid on partial COD as well as every other mode.
+  // A site-wide sale (FREEDOM, FESTIVE10) is the one discount valid on partial COD.
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
+  const shipping = calcShipping(subtotal, cart);
   const coupon = couponDiscount(cart, 'cod');
-  const discount = coupon.code === 'FREEDOM' ? coupon.discount : 0;
+  const discount = (coupon.code === 'FREEDOM' || coupon.code === FESTIVE_SALE.code) ? coupon.discount : 0;
   const total = Math.max(1, subtotal + shipping - discount);
   const eligible = total >= PARTIAL_PAYMENT_THRESHOLD;
   const deposit = eligible ? Math.max(1, Math.ceil(total * PARTIAL_PAYMENT_RATE)) : 0;
-  return { subtotal, shipping, codFee: 0, discount, couponCode: discount ? 'FREEDOM' : '', couponMessage: discount ? coupon.message : '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
+  return { subtotal, shipping, codFee: 0, discount, couponCode: discount ? coupon.code : '', couponMessage: discount ? coupon.message : '', total, eligible, deposit, balance: Math.max(0, total - deposit), rate: PARTIAL_PAYMENT_RATE };
 }
 // True when the cart contains any item flagged _no_cod — the full crossword.in
 // catalogue import (tag 'no-cod'). Those titles disable Cash on Delivery and
@@ -8765,6 +8673,53 @@ function partialPaymentTotals(cart) {
 // is stamped onto the cart item at add-to-cart time (product-page.js / catalog).
 function cartHasNoCod(cart) {
   return Array.isArray(cart) && cart.some(i => i && i._no_cod === true);
+}
+// Books whose Cash on Delivery the admin switched off, with the reason
+// (product_cod_rules via cod-off-slugs). Flags the cart lines so the COD button
+// is off before the customer tries; cod-order refuses them regardless. Only
+// lines flagged by a rule (they carry _cod_note) are ever un-flagged here, so
+// the crossword import's no-cod tag is left alone.
+async function loadCodRules() {
+  try {
+    const res = await fetch('/.netlify/functions/cod-off-slugs');
+    if (!res.ok) return;
+    const rules = (await res.json()).rules || {};
+    const cart = getCart();
+    let changed = false;
+    for (const item of cart) {
+      const note = rules[String(couponItemSlug(item) || '').toLowerCase()];
+      if (note) {
+        if (item._no_cod !== true || item._cod_note !== note) { item._no_cod = true; item._cod_note = note; changed = true; }
+      } else if (item && item._cod_note) {
+        delete item._cod_note; delete item._no_cod; changed = true;
+      }
+    }
+    if (changed) { saveCart(cart); renderSummary(); }
+  } catch (_) {
+    // cod-order enforces the rule anyway.
+  }
+}
+// Books the admin set to ship free (free-delivery-slugs). The flag lives on the
+// cart line like _no_cod; the order functions re-derive it, so submitOrder waits
+// for this before pricing, or a stale flag would answer with "price changed".
+let _freeDeliveryReady = Promise.resolve();
+async function loadFreeDelivery() {
+  try {
+    const res = await fetch('/.netlify/functions/free-delivery-slugs');
+    if (!res.ok) return;
+    const free = new Set(((await res.json()).slugs || []).map(s => String(s).toLowerCase()));
+    const cart = getCart();
+    let changed = false;
+    for (const item of cart) {
+      if (!item) continue;
+      const on = free.has(String(couponItemSlug(item) || '').toLowerCase());
+      if (on && item._free_delivery !== true) { item._free_delivery = true; changed = true; }
+      if (!on && item._free_delivery) { delete item._free_delivery; changed = true; }
+    }
+    if (changed) { saveCart(cart); renderSummary(); }
+  } catch (_) {
+    // The order functions decide the charge anyway.
+  }
 }
 // How far this cart is from qualifying for COD, in rupees. 0 means it qualifies.
 // THREE places decide whether the COD button is live — this renderer, the
@@ -9068,6 +9023,7 @@ function renderSummary() {
           <button type="button" class="checkout-qty-btn" onclick="updateCheckoutQty(${idx}, -1)" aria-label="Decrease quantity">-</button>
           <span class="checkout-qty-num">Qty ${itemQty(i)}</span>
           <button type="button" class="checkout-qty-btn" onclick="updateCheckoutQty(${idx}, 1)" aria-label="Increase quantity">+</button>
+          <button type="button" class="checkout-remove" onclick="removeCheckoutItem(${idx})" aria-label="Remove this book">Remove</button>
         </div>
       </div>
     </div>`).join('') + `
@@ -9083,7 +9039,8 @@ function renderSummary() {
       <span class="summary-line-label">Shipping (Delhivery)</span>
       <span class="summary-line-value" style="color:${shipping === 0 ? '#5d9b55' : 'var(--cream)'};">${shipping === 0 ? 'FREE' : '₹' + shipping}</span>
     </div>
-    ${shipping > 0 ? `<div style="font-size:0.6rem;color:var(--gold);letter-spacing:0.05em;padding:0 0 0.6rem;">💡 Add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more to qualify for free shipping</div>` : ''}`;
+    ${shipping > 0 ? `<div style="font-size:0.6rem;color:var(--gold);letter-spacing:0.05em;padding:0 0 0.6rem;">💡 Add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more to qualify for free shipping</div>` : ''}
+    ${shipping === 0 && subtotal < FREE_SHIPPING_THRESHOLD ? `<div style="font-size:0.6rem;color:#5d9b55;letter-spacing:0.05em;padding:0 0 0.6rem;">🚚 Free delivery — a book in your order ships free</div>` : ''}`;
 
   totalEl.textContent = '₹' + grand.toLocaleString('en-IN');
   totalRow.style.display = 'flex';
@@ -9132,7 +9089,10 @@ function renderSummary() {
       btnCOD.style.opacity = '0.5';
       btnCOD.style.cursor = 'not-allowed';
       if (codNote) {
-        codNote.innerHTML = `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
+        const ruled = cart.find(i => i && i._no_cod === true && i._cod_note);
+        codNote.innerHTML = ruled
+          ? `<strong style="color:var(--gold);">${esc(ruled.title || 'This title')}</strong>: ${esc(ruled._cod_note)}`
+          : `Cash on Delivery isn't available for one or more titles in your cart. <strong style="color:var(--gold);">We recommend Pay 10% Now</strong> above — confirm your order with a small deposit and pay the rest on delivery. Full prepaid also works.`;
       }
     } else {
     btnCOD.textContent = `🚚 Cash on Delivery — ₹${codTotals.total.toLocaleString('en-IN')}`;
@@ -9186,7 +9146,7 @@ async function saveAbandonedCheckout(status = 'open', orderId = '') {
   const customer = collectPartialAddr();
   if (!cart.length || !(customer.email || customer.phone || customer.name)) return;
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
+  const shipping = calcShipping(subtotal, cart);
   try {
     await fetch('/.netlify/functions/save-abandoned-checkout', {
       method: 'POST',
@@ -9268,6 +9228,55 @@ function clearShippingRestrictionUi() {
   applyShippingRestrictionUi();
 }
 
+// ── Address pincode vs the Pincode box ─────────────────────────────────────
+// The address box and the Pincode box are joined into one line, so a customer
+// who typed their pincode in both, with different digits, shipped as
+// "…, 560067, Bengaluru, Karnataka, 560066" and the courier had to guess.
+// Ask which one is right before any payment button goes through.
+const _pinIgnored = new Set();
+function addrPins(text) {
+  const out = []; const re = /(^|\\D)([1-9]\\d{5})(?=\\D|$)/g; let m;
+  while ((m = re.exec(String(text || '')))) out.push(m[2]);
+  return out;
+}
+function checkPinMismatch() {
+  const box = document.getElementById('pinMismatch');
+  const pin = (document.getElementById('ch-pin')?.value || '').replace(/\\D/g, '');
+  const other = pin.length === 6
+    ? (addrPins(document.getElementById('ch-addr')?.value).find(p => p !== pin && !_pinIgnored.has(p)) || '')
+    : '';
+  if (!box) return other;
+  if (!other) { box.style.display = 'none'; box.innerHTML = ''; return ''; }
+  const btn = 'background:#c9a84c;color:#1a1410;border:0;border-radius:6px;padding:7px 12px;font-weight:600;cursor:pointer;margin:8px 8px 0 0;font-size:.85rem';
+  box.innerHTML = `⚠ Your address says pincode <b>${other}</b> but the Pincode box says <b>${pin}</b>. Which one is correct?<br>`
+    + `<button type="button" style="${btn}" onclick="usePinFromAddr('${other}')">Use ${other}</button>`
+    + `<button type="button" style="${btn}" onclick="keepBoxPin('${other}')">Use ${pin}</button><br>`
+    + `<a href="#" style="display:inline-block;margin-top:8px;color:inherit;opacity:.75;font-size:.8rem" onclick="ignoreAddrPin('${other}');return false">${other} is not a pincode (e.g. a house number)</a>`;
+  box.style.display = '';
+  return other;
+}
+function usePinFromAddr(p) {
+  const el = document.getElementById('ch-pin');
+  if (!el) return;
+  el.value = p;
+  handlePin(p);
+}
+function keepBoxPin(p) {
+  const el = document.getElementById('ch-addr');
+  if (!el) return;
+  const re = new RegExp('(^|[^0-9])[\\\\s,\\\\-–]*(?:pin\\\\s*code|pincode|pin)?\\\\s*[:\\\\-–]?\\\\s*' + p + '(?![0-9])', 'gi');
+  el.value = el.value.replace(re, '$1, ')
+    .replace(/[ \\t]*,([ \\t]*,)+/g, ',')
+    .replace(/^[ \\t]*,[ \\t]*/gm, '').replace(/[ \\t]*,[ \\t]*$/gm, '')
+    .trim();
+  checkPinMismatch();
+}
+function ignoreAddrPin(p) {
+  _pinIgnored.add(p);
+  checkPinMismatch();
+}
+document.getElementById('ch-addr')?.addEventListener('change', checkPinMismatch);
+
 function handlePin(val) {
   const msg = document.getElementById('pinMsg');
   const cityCol  = document.querySelector('.ch-city-col');
@@ -9275,6 +9284,7 @@ function handlePin(val) {
   clearTimeout(_pinTimer);
   val = val.replace(/\\D/g,'');
   clearShippingRestrictionUi();
+  checkPinMismatch();
   if (val.length < 6) {
     msg.textContent = ''; msg.style.color = '';
     // Show city/state inputs again so manual edit works while typing.
@@ -9396,6 +9406,8 @@ function collectAddr() {
   if (!/^\\S+@\\S+\\.\\S+$/.test(email)) { return failField('ch-email', 'Please enter a valid email address.'); }
   if (!addr)             { return failField('ch-addr', 'Please enter your delivery address.'); }
   if (pin.length !== 6)  { return failField('ch-pin', 'Please enter a valid 6-digit pincode.'); }
+  const clash = checkPinMismatch();
+  if (clash) { return failField('ch-pin', `Your address mentions pincode ${clash} but the Pincode box says ${pin}. Please tap the one that is correct (just below the Pincode box).`); }
   // Deliberately no client-side existence block: India Post's dataset is
   // incomplete and would turn away real customers. The order endpoints refuse
   // only pincodes NO courier serves, and their error surfaces here.
@@ -9505,6 +9517,7 @@ document.addEventListener('change', e => {
 
 // ── Main submit ────────────────────────────────────────────────────────────
 async function submitOrder(method) {
+  await _freeDeliveryReady;
   if (_shippingRestrictionBlocked) {
     alert(_shippingRestrictionText || 'A product in your cart cannot be delivered to this pincode.');
     return;
@@ -9588,6 +9601,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
         payment_mode: isPartial ? 'partial_cod' : 'online',
         coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
+        ad_click: (window.iacAdClick ? window.iacAdClick() : null),
       }),
     });
     const data = await res.json();
@@ -9682,6 +9696,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
               discount: isPartial ? 0 : totals.discount,
               discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
               payment_mode: isPartial ? 'partial_cod' : 'online',
+              ad_click: (window.iacAdClick ? window.iacAdClick() : null),
             }),
           });
           const verifiedOrder = await vRes.json().catch(() => ({}));
@@ -9746,6 +9761,7 @@ async function doCOD(addr) {
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
         amount: totals.total, shipping: totals.shipping,
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
+        ad_click: (window.iacAdClick ? window.iacAdClick() : null),
       }),
     });
     const data = await res.json();
@@ -10422,6 +10438,8 @@ window.addrShowNewForm = function() {
 // ── Init ───────────────────────────────────────────────────────────────────
 loadManagedPromotions().then(() => loadProductCoupons(getCart())).then(renderSummary);
 renderSummary();
+loadCodRules();
+_freeDeliveryReady = loadFreeDelivery();
 
 // When returning to checkout — including bfcache back/forward from a payment
 // page (PhonePe redirect, Razorpay) — clear any stuck loading state and repaint
@@ -11190,7 +11208,7 @@ for _author_name, _author_books in _author_pages:
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>{html_escape(_author_name)} — All {_book_count} Books Online India | Ink &amp; Chai</title>
-<meta name="description" content="Buy all {_book_count} books by {html_escape(_author_name)} online in India at Ink &amp; Chai. Free delivery above ₹499, cash on delivery, 7-day returns. Genuine paperbacks from the publisher."/>
+<meta name="description" content="Buy all {_book_count} books by {html_escape(_author_name)} online in India at Ink &amp; Chai. Free delivery above ₹499, cash on delivery, 7-day free replacement. Genuine paperbacks from the publisher."/>
 <meta name="robots" content="index,follow,max-image-preview:large"/>
 <link rel="canonical" href="{_author_canon}"/>
 <meta property="og:title" content="{html_escape(_author_name)} — All Books | Ink &amp; Chai"/>
@@ -11252,7 +11270,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
 <main>
   <div class="crumb"><a href="/">Home</a> / <a href="/">Authors</a> / {html_escape(_author_name)}</div>
   <h1>{html_escape(_author_name)}</h1>
-  <p class="subtitle">All <strong>{_book_count} books</strong> by {html_escape(_author_name)} available at Ink &amp; Chai. Pan-India delivery, free shipping above ₹499, cash on delivery, 7-day easy returns.</p>
+  <p class="subtitle">All <strong>{_book_count} books</strong> by {html_escape(_author_name)} available at Ink &amp; Chai. Pan-India delivery, free shipping above ₹499, cash on delivery, 7-day free replacement.</p>
 
   <div class="best-pick">
     <a href="{_best['url']}" class="best-pick-img"><img src="{_best.get('img','')}" alt="{html_escape(_best['t'])}" loading="lazy"/></a>
@@ -11278,7 +11296,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
     <details class="faq"><summary>How long does delivery take?</summary>
       <p>Standard delivery is 2–5 business days anywhere in India. We dispatch within 24 hours from our Delhi warehouse. Free shipping on orders above ₹499.</p></details>
     <details class="faq"><summary>Can I return a book if I don't like it?</summary>
-      <p>Yes — we offer a 7-day return window from the date of delivery. Refunds are processed automatically once we receive the book back. <a href="/return-policy/" style="color:var(--gold)">See return policy →</a></p></details>
+      <p>We don't take returns, but if a book arrives defective, misprinted, wrong or missing we replace it free. <a href="/return-policy/" style="color:var(--gold)">See replacement policy →</a></p></details>
   </div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse all books</a></footer>
@@ -11312,7 +11330,7 @@ _LANDING_PAGES = [
         "slug":  "best-romance-books-india",
         "title": "Best Romance Books in India — 2026 Edition",
         "h1":    "Best Romance Books in India",
-        "intro": "From slow-burn small-town love stories to dark contemporary romance and BookTok obsessions, here's our hand-picked collection of the romance novels Indian readers can't put down. Free pan-India shipping above ₹499, cash on delivery available, 7-day easy returns.",
+        "intro": "From slow-burn small-town love stories to dark contemporary romance and BookTok obsessions, here's our hand-picked collection of the romance novels Indian readers can't put down. Free pan-India shipping above ₹499, cash on delivery available, 7-day free replacement.",
         "body":  "Romance is the fastest-growing fiction category in India, and for good reason — these books deliver the swoon, tension, and emotional payoff that no other genre matches. Our collection spans contemporary romance (think Colleen Hoover, Carley Fortune), dark romance (Ana Huang, Penelope Douglas), college and sports romance (Elle Kennedy's Off-Campus series), and Indian-set love stories. Every paperback is sourced directly from the publisher — no pirated copies, no photocopies, no scans. Pay online via UPI or cards for a guaranteed cashback scratch card (up to ₹200 off your next book), or choose cash on delivery and pay only when your book arrives.\n\nNot sure where to start? If you loved <em>It Ends With Us</em>, try <em>Our Perfect Storm</em> by Carley Fortune. If you devoured <em>Twisted Love</em>, <em>King of Gluttony</em> is Ana Huang's latest dark obsession. For college romance fans, <em>The Deal</em> kicks off Elle Kennedy's iconic Off-Campus series.",
         "filter": lambda b: _has_tag(b, "romance", "love story", "off-campus", "off campus", "smut"),
         "limit": 40,
@@ -11322,7 +11340,7 @@ _LANDING_PAGES = [
         "title": "Best Self-Help Books in India — 30 Life-Changing Reads",
         "h1":    "Best Self-Help Books in India",
         "intro": "The 30 self-help books that have actually changed lives — Atomic Habits, Rich Dad Poor Dad, The Psychology of Money, Think and Grow Rich, and more. Curated for serious readers, not gimmicks. Free shipping above ₹499. COD available.",
-        "body":  "Self-help is the most-read non-fiction category in India year after year. The reason: a good self-help book costs ₹300 and can shift your habits, finances, or mindset for life. Our curated list focuses on books with proven, measurable impact — not vague motivational slogans.\n\nFor habits and behaviour change: <em>Atomic Habits</em> by James Clear is the gold standard, used by Olympians and CEOs. For money mindset: <em>The Psychology of Money</em> by Morgan Housel reframes wealth as behaviour, not math. <em>Rich Dad Poor Dad</em> is still the entry point for understanding cash flow and assets. For deep focus and performance: <em>Can't Hurt Me</em> by David Goggins. For trading and investing: <em>The Disciplined Trader</em> by Mark Douglas, <em>The Intelligent Investor</em>, and Naval Ravikant's collected wisdom. Every book ships in 2-5 days pan-India. 7-day return window if it's not for you.",
+        "body":  "Self-help is the most-read non-fiction category in India year after year. The reason: a good self-help book costs ₹300 and can shift your habits, finances, or mindset for life. Our curated list focuses on books with proven, measurable impact — not vague motivational slogans.\n\nFor habits and behaviour change: <em>Atomic Habits</em> by James Clear is the gold standard, used by Olympians and CEOs. For money mindset: <em>The Psychology of Money</em> by Morgan Housel reframes wealth as behaviour, not math. <em>Rich Dad Poor Dad</em> is still the entry point for understanding cash flow and assets. For deep focus and performance: <em>Can't Hurt Me</em> by David Goggins. For trading and investing: <em>The Disciplined Trader</em> by Mark Douglas, <em>The Intelligent Investor</em>, and Naval Ravikant's collected wisdom. Every book ships in 2-5 days pan-India. Free replacement if a copy arrives defective, wrong or missing.",
         "filter": lambda b: _has_tag(b, "self-help", "self help", "habits", "mindset", "personal development", "productivity") or "self" in (b.get("cat") or "").lower(),
         "limit": 40,
     },
@@ -11507,7 +11525,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
     <span>🚚 Delivery in 2-5 days</span>
     <span>💵 Cash on delivery</span>
     <span>💳 UPI · Cards · Net banking</span>
-    <span>🛡 <a href="/return-policy/" style="color:inherit">7-day easy returns</a></span>
+    <span>🛡 <a href="/return-policy/" style="color:inherit">7-day free replacement</a></span>
   </div>
   <div class="lp-grid">{_grid}</div>
   <div class="body-copy">{_body.replace(chr(10) + chr(10), '</p><p style="margin-top:1rem">')}</div>
@@ -11647,7 +11665,7 @@ _CAT_TRUST = """  <div class="trust">
     <span>&#128666; Delivery in 2-5 days</span>
     <span>&#128181; Cash on delivery</span>
     <span>&#128179; UPI &middot; Cards &middot; Net banking</span>
-    <span>&#128737; <a href="/return-policy/" style="color:inherit">7-day easy returns</a></span>
+    <span>&#128737; <a href="/return-policy/" style="color:inherit">7-day free replacement</a></span>
   </div>"""
 
 

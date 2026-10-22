@@ -157,6 +157,16 @@ main{flex:1;min-height:0;display:flex}
   .view.active{flex-direction:column}
   .sidebar.hide-mobile{display:none}
 }
+.customer-details{padding:.6rem 1rem;border-bottom:1px solid var(--border);max-height:32vh;overflow:auto;background:#fff;font-size:.9rem;line-height:1.5}
+.customer-details summary{font-weight:700;cursor:pointer}.customer-details .order-detail{margin:.6rem 0;padding:.6rem;border:1px solid var(--border);border-radius:8px;overflow-wrap:anywhere}.history-status{padding:.4rem 1rem;font-size:.8rem;color:var(--cream-dim)}.customer-details p{margin:.3rem 0}
+.mobile-back{display:none}
+@media(max-width:820px){
+  body{height:100dvh}nav{padding:.5rem;gap:.4rem}.viewtab{padding:.4rem;font-size:.8rem}.nav-right{gap:.3rem}
+  .thread{display:none}body.in-thread .thread{display:flex}body.in-thread .sidebar{display:none}
+  .mobile-back{display:inline-block;margin-bottom:.3rem}.thead{padding:.5rem;flex-wrap:wrap;gap:.4rem}.tactions .btn{padding:.35rem;font-size:.65rem}
+  .customer-details{max-height:25vh}.msg{max-width:92%}.msgs{padding:.6rem}.composer{padding:.5rem}
+}
+.category-label{display:block;font-size:.73rem;font-weight:700;margin:.15rem 0}.cat-top{color:#b4232c}.cat-low{color:#236b45}.cat-attention{color:#905200}.cat-closed{color:#586574}
 </style>
 <!-- Applied in <head> so the saved size is on <html> before first paint. -->
 <script>
@@ -193,6 +203,9 @@ main{flex:1;min-height:0;display:flex}
   });
 })();
 </script>
+<link rel="stylesheet" href="/admin/inbox-layout.css?v=20261005"/>
+<link rel="stylesheet" href="/admin/inbox-summary.css?v=20261005"/>
+<script src="/admin/inbox-layout.js?v=20261005.2" defer></script>
 </head>
 <body>
 
@@ -211,6 +224,22 @@ main{flex:1;min-height:0;display:flex}
       <button type="button" class="fz-plus" id="fzPlus" aria-label="Increase text size"
               title="Larger text (Ctrl/⌘ + Shift + +)" onclick="bumpFontScale(__fzStep)">A+</button>
     </div>
+    <details class="inbox-layout" id="inboxLayout">
+      <summary class="btn" aria-controls="inboxLayoutPanel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg> Layout</summary>
+      <section class="inbox-layout-panel" id="inboxLayoutPanel" aria-label="Inbox layout settings">
+        <div class="layout-heading"><div><h2>Make room to read</h2><p>Adjust columns and blocks independently of text size.</p></div><button type="button" class="layout-close" id="closeInboxLayout" aria-label="Close layout settings">×</button></div>
+        <div class="layout-fields">
+          <div class="layout-field" data-layout-field="sidebar"><label for="layout-sidebar">Conversation column</label><div class="layout-value"><input type="number" id="layout-sidebar-value" aria-label="Conversation column in pixels" inputmode="numeric"/><span aria-hidden="true">px</span></div><input type="range" id="layout-sidebar" data-layout-setting="sidebar"/><small id="layout-sidebar-hint"></small></div>
+          <div class="layout-field" data-layout-field="rows"><label for="layout-rows">Conversation row height</label><div class="layout-value"><input type="number" id="layout-rows-value" aria-label="Conversation row height in pixels" inputmode="numeric"/><span aria-hidden="true">px</span></div><input type="range" id="layout-rows" data-layout-setting="rows"/><small id="layout-rows-hint"></small></div>
+          <div class="layout-field" data-layout-field="bubble"><label for="layout-bubble">Message block width</label><div class="layout-value"><input type="number" id="layout-bubble-value" aria-label="Message block width in percent" inputmode="numeric"/><span aria-hidden="true">%</span></div><input type="range" id="layout-bubble" data-layout-setting="bubble"/><small id="layout-bubble-hint"></small></div>
+          <div class="layout-field" data-layout-field="spacing"><label for="layout-spacing">Message spacing</label><div class="layout-value"><input type="number" id="layout-spacing-value" aria-label="Message spacing in pixels" inputmode="numeric"/><span aria-hidden="true">px</span></div><input type="range" id="layout-spacing" data-layout-setting="spacing"/><small id="layout-spacing-hint"></small></div>
+          <div class="layout-field" data-layout-field="details"><label for="layout-details">Customer details height</label><div class="layout-value"><input type="number" id="layout-details-value" aria-label="Customer details height in pixels" inputmode="numeric"/><span aria-hidden="true">px</span></div><input type="range" id="layout-details" data-layout-setting="details"/><small id="layout-details-hint"></small></div>
+          <div class="layout-field" data-layout-field="reply"><label for="layout-reply">Reply box height</label><div class="layout-value"><input type="number" id="layout-reply-value" aria-label="Reply box height in pixels" inputmode="numeric"/><span aria-hidden="true">px</span></div><input type="range" id="layout-reply" data-layout-setting="reply"/><small id="layout-reply-hint"></small></div>
+        </div>
+        <p class="layout-tip">Drag the divider between columns or the grips above the reply box and below customer details. Double-click a grip to reset that size.</p>
+        <div class="layout-footer"><span id="layoutSaveStatus" role="status">Saved on this browser</span><button type="button" class="btn" id="resetInboxLayout">Reset layout</button></div>
+      </section>
+    </details>
     <button class="btn" onclick="refreshAll()">↻ Refresh</button>
     <a class="btn" href="/admin/">← Admin</a>
   </div>
@@ -225,25 +254,35 @@ main{flex:1;min-height:0;display:flex}
         <div class="filters">
           <button class="fbtn active" onclick="setFilter('all',this)">All</button>
           <button class="fbtn" onclick="setFilter('unread',this)">Unread</button>
-          <button class="fbtn" onclick="setFilter('flagged',this)">🚨 Flagged</button>
+          <button class="fbtn" onclick="setFilter('top',this)">🔴 Top priority</button>
+          <button class="fbtn" onclick="setFilter('low',this)">Low priority</button>
+          <button class="fbtn" onclick="setFilter('attention',this)">Needs attention</button>
           <button class="fbtn" onclick="setFilter('takeover',this)">Human</button>
-          <button class="fbtn" onclick="setFilter('resolved',this)">Resolved</button>
+          <button class="fbtn" onclick="setFilter('closed',this)">Closed chats</button>
         </div>
       </div>
       <div class="convlist" id="convlist"><div class="spin">Loading…</div></div>
     </aside>
+    <div class="inbox-resize inbox-resize-column" id="inboxColumnGrip" role="separator" tabindex="0" aria-label="Resize conversation column" aria-orientation="vertical" aria-controls="sidebar" title="Drag to resize the conversation column · Double-click to reset"></div>
 
     <section class="thread" id="thread">
       <div class="empty" id="emptyState">Select a conversation</div>
       <div id="threadBody" style="display:none;flex:1;flex-direction:column;min-height:0">
         <div class="thead">
           <div>
-            <div class="name" id="tName">—</div>
+            <button class="btn mobile-back" onclick="backToConversations()">← Conversations</button><div class="name" id="tName">—</div>
             <div class="ph" id="tPhone">—</div>
           </div>
           <div class="tactions" id="tActions"></div>
         </div>
+        <details id="chatSummary" class="chat-summary" hidden><summary>AI summary <span id="summaryMeta"></span></summary><div id="summaryContent" aria-live="polite"></div><p id="summaryFreshness" class="summary-note"></p></details>
+        <div class="customer-block">
+        <details id="customerDetails" class="customer-details" open><summary>Customer &amp; orders</summary><div id="customerContent">Loading customer details…</div></details>
+        <div class="inbox-resize inbox-resize-row" id="inboxDetailsGrip" role="separator" tabindex="0" aria-label="Resize customer details" aria-orientation="horizontal" aria-controls="customerDetails" title="Drag to resize customer details · Double-click to reset"></div>
+        </div>
+        <div class="history-status"><span id="historyStatus" role="status"></span> <button class="btn" id="historyRetry" onclick="loadMessages(true)" hidden>Retry history</button></div>
         <div class="msgs" id="msgs"></div>
+        <div class="inbox-resize inbox-resize-row" id="inboxReplyGrip" role="separator" tabindex="0" aria-label="Resize reply box" aria-orientation="horizontal" aria-controls="reply" title="Drag up to enlarge the reply box · Double-click to reset"></div>
         <div class="composer">
           <textarea id="reply" rows="2" placeholder="Type a message — Enter sends, Shift+Enter for a new line"></textarea>
           <button class="btn gold" id="sendBtn" onclick="send()">Send</button>
@@ -348,6 +387,10 @@ let search        = '';
 let renderedIds   = new Set();   // message ids already in the DOM
 let lastSeenCount = 0;
 let sending       = false;
+let threadVersion = 0;
+let historyBusy = false;
+let allHistoryLoaded = false;
+const chatSummaries = new Map();
 
 function showView(v) {
   document.getElementById('view-inbox').classList.toggle('active', v === 'inbox');
@@ -390,14 +433,14 @@ function visibleConversations() {
   return conversations.filter(c => {
     if (filter === 'unread'   && !(c.unread_count > 0)) return false;
     if (filter === 'takeover' && !c.human_takeover)     return false;
-    if (filter === 'resolved' && c.status !== 'resolved') return false;
+    if (['top','low','attention','closed'].includes(filter) && c.category !== filter) return false;
     if (filter === 'flagged'  && !flaggedPhones.has(c.customer_phone)) return false;
     if (search) {
       const hay = (c.customer_phone + ' ' + (c.customer_name || '')).toLowerCase();
       if (!hay.includes(search)) return false;
     }
     return true;
-  });
+  }).sort((a,b)=>({top:0,attention:1,low:2,closed:3}[a.category]??1)-({top:0,attention:1,low:2,closed:3}[b.category]??1));
 }
 
 function renderList() {
@@ -415,10 +458,11 @@ function renderList() {
           <span class="who">${esc(label)}</span>
           <span class="when">${ago(c.last_message_at)}</span>
         </span>
+        <span class="category-label cat-${esc(c.category||'attention')}" title="${esc(c.category_reason||'')}">${esc(({top:'Top priority',low:'Low priority',attention:'Needs attention',closed:'Closed'})[c.category]||'Needs attention')}</span>
         <span class="prev">
           ${flag ? `<span class="badge b-${flag.severity}">${flag.severity === 'critical' ? '🚨' : '⚠'} ${flag.score}</span>` : ''}
           ${c.human_takeover ? '<span class="badge b-human">HUMAN</span>' : ''}
-          ${c.status === 'resolved' ? '<span class="badge b-resolved">DONE</span>' : ''}
+          ${c.status === 'resolved' ? '<span class="badge b-resolved">CLOSED</span>' : ''}
           <span class="prevtext">${esc((c.last_message || '').slice(0, 90))}</span>
           ${unread > 0 ? `<span class="unread">${unread > 99 ? '99+' : unread}</span>` : ''}
         </span>
@@ -440,25 +484,33 @@ function atBottom(box) { return box.scrollHeight - box.scrollTop - box.clientHei
 
 function messageEl(m) {
   const role = m.role === 'user' ? 'user' : (m.role === 'admin' ? 'admin' : 'bot');
-  const who  = role === 'user' ? 'Customer' : (role === 'admin' ? 'You' : 'Bot');
+  const who  = role === 'user' ? (document.getElementById('tName').textContent || 'Customer') : (role === 'admin' ? 'You' : 'Bot');
   const d = document.createElement('div');
   d.className = 'msg m-' + role;
+  d.dataset.ts = m.created_at || '';
   d.dataset.mid = m.id ?? (m.created_at + '|' + (m.message || '').slice(0, 24));
   d.innerHTML = `${esc(m.message || '')}<div class="meta">${who} · ${new Date(m.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</div>`;
   return d;
 }
 
+function backToConversations(){document.body.classList.remove('in-thread');}
+
 async function openThread(phone) {
+  document.body.classList.add('in-thread');
+  if(matchMedia('(max-width:820px)').matches)document.getElementById('customerDetails').open=false;
   activePhone = phone;
+  threadVersion++; historyBusy = false; allHistoryLoaded = false;
   renderedIds = new Set();
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('threadBody').style.display = 'flex';
   document.getElementById('msgs').innerHTML = '';
+  renderChatSummary(phone);
   const conv = conversations.find(c => c.customer_phone === phone) || {};
   document.getElementById('tName').textContent = conv.customer_name || phone;
   document.getElementById('tPhone').textContent = phone;
   renderActions(phone, conv);
   renderList();
+  loadCustomer(phone, threadVersion);
   await loadMessages(true);
   api('/.netlify/functions/bot-inbox', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -466,35 +518,108 @@ async function openThread(phone) {
   }).then(() => loadConversations()).catch(() => {});
 }
 
-async function loadMessages(forceScroll) {
-  if (!activePhone) return;
-  const phone = activePhone;
-  const res = await api('/.netlify/functions/bot-inbox?action=thread&phone=' + encodeURIComponent(phone));
-  const data = await res.json();
-  if (phone !== activePhone) return;              // reader moved on mid-request
-  const box = document.getElementById('msgs');
-  const wasAtBottom = forceScroll || atBottom(box);
-
-  // Drop optimistic bubbles once the real rows come back.
-  box.querySelectorAll('.msg.pending').forEach(n => n.remove());
-
-  let appended = 0;
-  for (const m of (data.messages || [])) {
-    const key = String(m.id ?? (m.created_at + '|' + (m.message || '').slice(0, 24)));
-    if (renderedIds.has(key)) continue;
-    renderedIds.add(key);
-    box.appendChild(messageEl(m));
-    appended++;
-  }
-  if (appended && wasAtBottom) box.scrollTop = box.scrollHeight;
+async function loadCustomer(phone, version) {
+  const target=document.getElementById('customerContent');target.textContent='Loading customer details…';
+  try {
+    const res=await api('/.netlify/functions/bot-inbox?action=customer&phone='+encodeURIComponent(phone));
+    if(!res.ok)throw new Error('Customer details unavailable');
+    const d=await res.json();if(version!==threadVersion)return;
+    if(d.name){document.getElementById('tName').textContent=d.name;const conv=conversations.find(c=>c.customer_phone===phone);if(conv)conv.customer_name=d.name;renderList();}
+    target.innerHTML=`<p><strong>${esc(d.name||'Name not on record')}</strong> · ${esc(phone)}</p>
+      ${d.email?`<p>${esc(d.email)}</p>`:''}${d.address?`<p>Latest order address: ${esc(d.address)}</p>`:''}
+      <p>${d.orders.length} linked order(s)</p>` + d.orders.map(o=>`<div class="order-detail"><strong>${esc(o.id)}</strong> · ${esc(o.status)} · ₹${esc(o.total)} · ${esc(new Date(o.date).toLocaleDateString('en-IN'))}
+      <div>${o.items.map(i=>esc(i.title)+' × '+esc(i.qty)).join('<br>')}</div>
+      ${o.tracking?`<div>${esc(o.courier)} · Tracking: ${esc(o.tracking)}</div>`:''}</div>`).join('');
+  }catch(e){if(version===threadVersion){target.textContent=e.message+' — refresh to retry.';}}
+}
+async function loadMessages(fullHistory) {
+  if (!activePhone || historyBusy) return;
+  fullHistory = fullHistory || !allHistoryLoaded;
+  const phone=activePhone,version=threadVersion,box=document.getElementById('msgs');
+  const status=document.getElementById('historyStatus'),retry=document.getElementById('historyRetry');
+  historyBusy=true;retry.hidden=true;
+  let offset=0,snapshot='',complete=false;
+  try {
+    do {
+      const res=await api('/.netlify/functions/bot-inbox?action=thread&phone='+encodeURIComponent(phone)+'&offset='+offset+(snapshot?'&snapshot='+encodeURIComponent(snapshot):''));
+      if(!res.ok)throw new Error('Could not load conversation history');
+      const data=await res.json();if(version!==threadVersion)return;
+      snapshot=data.snapshot;
+      const oldHeight=box.scrollHeight,oldTop=box.scrollTop,stick=atBottom(box)||(!renderedIds.size&&fullHistory);
+      box.querySelectorAll('.msg.pending').forEach(n=>n.remove());
+      let fresh=0;
+      for(const m of data.messages||[]){
+        const key=String(m.id??(m.created_at+'|'+m.message));if(renderedIds.has(key))continue;
+        renderedIds.add(key);fresh++;const el=messageEl(m);el.dataset.sort=m.created_at+'|'+String(m.id||'');
+        const next=[...box.children].find(n=>n.dataset.sort>el.dataset.sort);box.insertBefore(el,next||null);
+      }
+      if(stick)box.scrollTop=box.scrollHeight;else if(offset)box.scrollTop=oldTop+box.scrollHeight-oldHeight;
+      offset=data.next_offset;
+      complete=offset===null;
+      if(complete)allHistoryLoaded=true;
+      status.textContent=renderedIds.size+' saved messages loaded'+(complete?' · End of recorded history.':' · Loading history…');
+      // On refresh, page back until reaching messages already present (also catches >200 new messages).
+      if(!fullHistory&&fresh<(data.messages||[]).length)break;
+    }while(offset!==null);
+    if(!fullHistory)status.textContent=renderedIds.size+' saved messages loaded';
+  }catch(e){if(version===threadVersion){status.textContent=e.message+' — history may be incomplete.';retry.hidden=false;}}
+  finally{if(version===threadVersion){historyBusy=false;summaryFreshness();}}
 }
 
 function renderActions(phone, conv) {
   document.getElementById('tActions').innerHTML = `
+    <button type="button" class="btn" id="summariseBtn" onclick="summariseChat()">✨ Summarise</button>
     ${!conv.human_takeover ? `<button class="btn" onclick="act('takeover','${esc(phone)}')">🙋 Take over</button>` : ''}
     ${conv.human_takeover  ? `<button class="btn" onclick="act('release','${esc(phone)}')">🤖 Hand to bot</button>` : ''}
-    ${conv.status !== 'resolved' ? `<button class="btn green" onclick="act('resolve','${esc(phone)}')">✓ Resolve</button>` : ''}
+    ${conv.status === 'resolved' ? `<button class="btn" onclick="act('reopen','${esc(phone)}')">Reopen chat</button>` : `<button class="btn green" onclick="act('resolve','${esc(phone)}')">✓ Close chat</button>`}
     <a class="btn" target="_blank" rel="noopener" href="https://wa.me/${esc(phone)}">WhatsApp ↗</a>`;
+  syncSummaryButton(phone);
+}
+
+// Per-customer summary state never starts a request while opening or polling chats.
+function syncSummaryButton(phone) {
+  const button=document.getElementById('summariseBtn'),state=chatSummaries.get(phone);
+  if(!button)return;
+  button.disabled=!!state?.loading;
+  button.textContent=state?.loading?'Summarising…':state?.data?'✨ Summarise again':'✨ Summarise';
+}
+function summaryFreshness() {
+  const state=chatSummaries.get(activePhone),note=document.getElementById('summaryFreshness');
+  if(!note)return;
+  if(state?.error){note.textContent='Click Summarise to retry.';return;}
+  if(!state?.data){note.textContent='';return;}
+  const latest=[...document.querySelectorAll('#msgs .msg[data-ts]')].some(el=>Date.parse(el.dataset.ts)>Date.parse(state.data.meta.last_message_at));
+  note.textContent=latest?'New messages arrived. Click Summarise again to update.':'AI-assisted summary — check the conversation and records before taking action.';
+}
+function renderChatSummary(phone,expand=false) {
+  const box=document.getElementById('chatSummary'),content=document.getElementById('summaryContent'),meta=document.getElementById('summaryMeta'),state=chatSummaries.get(phone);
+  box.hidden=!state; if(!state){content.replaceChildren();meta.textContent='';return;}
+  if(expand)box.open=true;
+  syncSummaryButton(phone);
+  if(state.loading){document.getElementById('summaryFreshness').textContent='';meta.textContent='Working…';content.textContent='Reading this customer’s conversation and linked order records…';return;}
+  if(state.error){meta.textContent='Could not summarise';content.textContent=state.error;document.getElementById('summaryFreshness').textContent='Click Summarise to retry.';return;}
+  const {summary:s,meta:m}=state.data;
+  meta.textContent=m.message_count+' messages · '+new Date(m.generated_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+  const list=(title,items)=>items.length?'<section><h3>'+title+'</h3><ul>'+items.map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul></section>':'';
+  content.innerHTML='<p class="summary-issue">'+esc(s.issue)+'</p><p><strong>Customer wants:</strong> '+esc(s.requested_outcome)+'</p><p><strong>Current status:</strong> '+esc(s.current_status)+'</p>'
+    +(s.order_ids.length?'<p><strong>Relevant orders:</strong> '+s.order_ids.map(esc).join(', ')+'</p>':'')
+    +list('What happened',s.history)+list('Next steps',s.next_steps)+list('Needs verification',s.verify)
+    +((m.history_limited||m.orders_limited)?'<p class="summary-limit">This summary uses a limited portion of the records. Earlier messages or some order details may be excluded.</p>':'');
+  summaryFreshness();
+}
+async function summariseChat() {
+  // The only entry point that requests AI, invoked by the Summarise button.
+  const phone=activePhone;
+  if(!phone||chatSummaries.get(phone)?.loading)return;
+  chatSummaries.set(phone,{loading:true});renderChatSummary(phone,true);
+  try {
+    const res=await api('/.netlify/functions/bot-inbox',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'summarise',phone})});
+    const data=await res.json();
+    if(!res.ok||!data.summary)throw new Error(data.error||'Could not summarise this chat. Please try again.');
+    chatSummaries.set(phone,{data});
+  } catch(error) { chatSummaries.set(phone,{error:error.message}); }
+  // Responses belong to the customer who was clicked, even if staff switch chats.
+  if(activePhone===phone&&document.getElementById('chatSummary'))renderChatSummary(phone,true);
 }
 
 async function act(action, phone) {

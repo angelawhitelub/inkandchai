@@ -237,7 +237,23 @@ test('the feed defaults to a page big enough for a full sync', () => {
   const src = require('node:fs').readFileSync(require.resolve('../woo-channel'), 'utf8');
   assert.match(src, /parseInt\(q\.per_page \|\| '100'/, 'default page must not be 20');
   assert.match(src, /Math\.min\(250,/, 'cap must exceed one window of orders');
-  assert.match(src, /ascending: true/, 'oldest orders must win the single page');
+  assert.match(src, /ascending: false/, 'the row limit must drop the oldest orders, not the newest');
+});
+
+test('the feed lists newest first unless asked for asc, so new orders always make page 1', () => {
+  // 13 Oct 2026: 172 orders in the feed, oldest first, importer reads 100 --
+  // the 72 newest never reached the panel.
+  const { feedOrder } = require('../woo-channel').__test;
+  const rows = [
+    { id: 'old', created_at: '2026-10-08T00:00:00Z' },
+    { id: 'pushed', created_at: '2026-09-20T00:00:00Z', xpressbees_feed_at: '2026-10-13T09:00:00Z' },
+    { id: 'new', created_at: '2026-10-13T10:00:00Z' },
+    { id: 'mid', created_at: '2026-10-12T00:00:00Z' },
+  ];
+  assert.deepEqual(feedOrder(rows, 'desc').map((r) => r.id), ['new', 'pushed', 'mid', 'old']);
+  assert.deepEqual(feedOrder(rows, undefined).map((r) => r.id), ['new', 'pushed', 'mid', 'old'], 'WooCommerce defaults to desc');
+  assert.deepEqual(feedOrder(rows, 'ASC').map((r) => r.id), ['old', 'mid', 'pushed', 'new']);
+  assert.equal(rows[0].id, 'old', 'input not mutated');
 });
 
 // ── Status push-back ───────────────────────────────────────────────────────
@@ -249,12 +265,19 @@ const { applyPushBack, metaValue } = require('../woo-channel').__test;
 const ORDER_NO = 'IC-20260917-C6WPE';
 const WOO_ID = numericId(ORDER_NO);
 
-function stubDb(row, captured) {
+// A paging fake: `rows` is the whole lookup window, newest first, served in
+// .range() slices the way PostgREST does; .eq().maybeSingle() fetches one.
+function stubDb(rowOrRows, captured, reads = []) {
+  const rows = Array.isArray(rowOrRows) ? rowOrRows : (rowOrRows ? [rowOrRows] : []);
+  let byId = null;
   return {
-    from() { return this; },
+    from() { byId = null; return this; },
     select() { return this; },
     gte() { return this; },
-    limit() { return Promise.resolve({ data: row ? [row] : [], error: null }); },
+    order() { return this; },
+    range(a, b) { reads.push([a, b]); return Promise.resolve({ data: rows.slice(a, b + 1), error: null }); },
+    eq(col, v) { byId = v; return this; },
+    maybeSingle() { return Promise.resolve({ data: rows.find(r => r.id === byId) || null, error: null }); },
     update(payload) { captured.push(payload); return { eq: () => Promise.resolve({ error: null }) }; },
   };
 }
@@ -502,3 +525,169 @@ test('a non-empty batch still requires the consumer pair', async () => {
     assert.deepEqual(prepaidGateway('razorpay'), { slug: 'razorpay', title: 'razorpay' }, 'a slug alone is its own title');
   });
 }
+
+test('a push for an order beyond the first 1,000 in the window still matches', async () => {
+  // 27 Sept 2026: the window held ~1,060 orders and a single unordered
+  // .limit(1000) dropped the rest, so 10 booked orders never got their AWB.
+  const filler = Array.from({ length: 2400 }, (_, i) => ({ id: `f${i}`, razorpay_order_id: `IC-20260901-F${String(i).padStart(4, '0')}`, status: 'shipped' }));
+  const target = { id: 'uuid-far', razorpay_order_id: ORDER_NO, status: 'cod_pending' };
+  const captured = []; const reads = [];
+  const res = await applyPushBack(stubDb([...filler, target], captured, reads), WOO_ID, pushed('On Hold', '143449610845219'));
+  assert.equal(res.applied, true);
+  assert.equal(captured[0].tracking_id, '143449610845219');
+  assert.equal(reads.length, 3, 'walked all three pages');
+});
+
+test('an unknown woo id walks the window once and stops', async () => {
+  const filler = Array.from({ length: 1500 }, (_, i) => ({ id: `f${i}`, razorpay_order_id: `IC-20260901-G${i}`, status: 'paid' }));
+  const reads = [];
+  const res = await applyPushBack(stubDb(filler, [], reads), 12345, pushed('On Hold', '143449610845219'));
+  assert.equal(res.applied, false);
+  assert.match(res.reason, /no order matches/);
+  assert.equal(reads.length, 2);
+});
+
+test('a booking pushed for an order we cancelled is cancelled with XpressBees, not shipped', async () => {
+  // IC-R-20260925-2U7MB: cancelled here while its panel row was still queued;
+  // the row was booked anyway and the parcel went out for pickup.
+  for (const st of ['cancelled', 'refunded', 'refund_pending', 'refund_failed']) {
+    const captured = [];
+    const cancelledAwbs = [];
+    const xb = { track: async () => ({ status: 'pending pickup' }), cancel: async (awb) => { cancelledAwbs.push(awb); return 'ok'; } };
+    const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: st }, captured);
+    const res = await applyPushBack(db, WOO_ID, pushed('On Hold', '143449610819605'), { xb });
+    assert.equal(res.applied, false, st);
+    assert.equal(res.courier.action, 'cancelled', st);
+    assert.deepEqual(cancelledAwbs, ['143449610819605'], st);
+    assert.ok(!captured.some(c => c.status === 'shipped'), `${st} must not become shipped`);
+  }
+});
+
+// ── DTDC (Shipsy) on its own key pair ──────────────────────────────────────
+
+const { bookingFromPush, applyBooking } = require('../woo-channel').__test;
+
+function withEnv(vars, fn) {
+  const old = {};
+  for (const k of Object.keys(vars)) { old[k] = process.env[k]; process.env[k] = vars[k]; }
+  try { return fn(); } finally { for (const k of Object.keys(vars)) { if (old[k] === undefined) delete process.env[k]; else process.env[k] = old[k]; } }
+}
+const BOTH = { WOO_CONSUMER_KEY: 'ck_xb', WOO_CONSUMER_SECRET: 'cs_xb', WOO_DTDC_CONSUMER_KEY: 'ck_dt', WOO_DTDC_CONSUMER_SECRET: 'cs_dt' };
+const asKey = (key, secret) => ({ headers: {}, queryStringParameters: { consumer_key: key, consumer_secret: secret } });
+
+test('each panel authenticates as itself, and pairs cannot be mixed', () => withEnv(BOTH, () => {
+  assert.equal(authorize(asKey('ck_xb', 'cs_xb')).client, 'xpressbees');
+  assert.equal(authorize(asKey('ck_dt', 'cs_dt')).client, 'dtdc');
+  assert.equal(authorize(asKey('ck_dt', 'cs_xb')).ok, false);
+  assert.equal(authorize(asKey('ck_xb', 'cs_dt')).ok, false);
+}));
+
+test('the DTDC pair works without the XpressBees pair configured', () => withEnv(
+  { WOO_CONSUMER_KEY: '', WOO_CONSUMER_SECRET: '', WOO_DTDC_CONSUMER_KEY: 'ck_dt', WOO_DTDC_CONSUMER_SECRET: 'cs_dt' },
+  () => assert.equal(authorize(asKey('ck_dt', 'cs_dt')).client, 'dtdc'),
+));
+
+test('a DTDC push is a DTDC booking whatever its Courier Name meta says', () => {
+  const b = bookingFromPush({ status: 'processing', meta_data: [{ key: 'Courier Name', value: 'Xpressbees' }, { key: 'AWB Number', value: 'D12345678' }] }, 'dtdc');
+  assert.deepEqual(b, { awb: 'D12345678', courier: 'DTDC' });
+});
+
+test('DTDC consignment numbers are found where WooCommerce integrations put them', () => {
+  assert.equal(bookingFromPush({ status: 'completed', meta_data: [{ key: '_wc_shipment_tracking_items', value: [{ tracking_provider: 'DTDC', tracking_number: 'Z98765432' }] }] }, 'dtdc').awb, 'Z98765432');
+  assert.equal(bookingFromPush({ status: 'completed', meta_data: [{ key: 'consignment_number', value: 'V76512341' }] }, 'dtdc').awb, 'V76512341');
+  assert.equal(bookingFromPush({ status: 'on-hold', tracking_number: 'D11112222' }, 'dtdc').awb, 'D11112222');
+});
+
+test('DTDC cancel / RTO / no-number pushes are recorded only', () => {
+  for (const status of ['cancelled', 'RTO Delivered', 'RTO Initiated']) {
+    assert.ok(!bookingFromPush({ status, meta_data: [{ key: 'AWB Number', value: 'D12345678' }] }, 'dtdc').awb, status);
+  }
+  assert.ok(!bookingFromPush({ status: 'processing', meta_data: [] }, 'dtdc').awb);
+  assert.ok(!bookingFromPush({ status: 'processing', meta_data: [{ key: 'awb', value: 'x' }] }, 'dtdc').awb, 'too short to be an AWB');
+});
+
+test('the XpressBees pair keeps its exact old rule', () => {
+  assert.ok(!bookingFromPush({ status: 'processing', meta_data: [{ key: 'AWB Number', value: '143449610504655' }] }, 'xpressbees').awb);
+  assert.equal(bookingFromPush(pushed('On Hold', '143449610504655'), 'xpressbees').courier, 'Xpressbees');
+});
+
+test('a DTDC booking ships the order with a DTDC tracking link', async () => {
+  const captured = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'cod_pending' }, captured);
+  const res = await applyPushBack(db, WOO_ID, { status: 'processing', meta_data: [{ key: 'AWB Number', value: 'D12345678' }] }, { client: 'dtdc', ownerAlert: async () => assert.fail('no alert') });
+  assert.equal(res.applied, true, res.reason);
+  assert.equal(captured[0].courier_name, 'DTDC');
+  assert.equal(captured[0].tracking_id, 'D12345678');
+  assert.match(captured[0].tracking_url, /dtdc\.in/);
+});
+
+test('an order already booked with another courier is never overwritten, and the owner is told', async () => {
+  const captured = [];
+  const alerts = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'shipped', tracking_id: '143449610504655', courier_name: 'Xpressbees' }, captured);
+  const res = await applyBooking(db, WOO_ID, { awb: 'D12345678', courier: 'DTDC' }, { ownerAlert: async (t) => alerts.push(t) });
+  assert.equal(res.applied, false);
+  assert.equal(captured.length, 0);
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /booked twice/);
+  // And the other way round: XpressBees cannot overwrite a DTDC booking.
+  const db2 = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'shipped', tracking_id: 'D12345678', courier_name: 'DTDC' }, captured);
+  const res2 = await applyPushBack(db2, WOO_ID, pushed('On Hold', '143449610504655'), { ownerAlert: async (t) => alerts.push(t) });
+  assert.equal(res2.applied, false);
+  assert.equal(captured.length, 0);
+});
+
+test('the same courier rebooking with a new AWB still goes through', async () => {
+  const captured = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'shipped', tracking_id: '143449610500000', courier_name: 'XpressBees' }, captured);
+  const res = await applyPushBack(db, WOO_ID, pushed('On Hold', '143449610504655'), { ownerAlert: async () => assert.fail('no alert') });
+  assert.equal(res.applied, true, res.reason);
+});
+
+test('DTDC booking a cancelled order alerts the owner, since only XpressBees can be cancelled from here', async () => {
+  const captured = [];
+  const alerts = [];
+  const db = stubDb({ id: 'u', razorpay_order_id: ORDER_NO, status: 'cancelled' }, captured);
+  const res = await applyBooking(db, WOO_ID, { awb: 'D12345678', courier: 'DTDC' }, { ownerAlert: async (t) => alerts.push(t) });
+  assert.equal(res.applied, false);
+  assert.equal(res.courier.action, 'not_supported');
+  assert.match(alerts[0], /Cancelled order booked/);
+  assert.ok(!captured.some(c => c.status === 'shipped'));
+});
+
+test('shipment-tracking POST with the XpressBees pair is recorded, never applied', async () => withEnv(BOTH, async () => {
+  const { handler } = require('../woo-channel');
+  const res = await handler({
+    path: `/wp-json/wc-ast/v3/orders/${WOO_ID}/shipment-trackings`, httpMethod: 'POST', headers: {},
+    queryStringParameters: { consumer_key: 'ck_xb', consumer_secret: 'cs_xb' },
+    body: JSON.stringify({ tracking_provider: 'DTDC', tracking_number: 'D12345678' }),
+  });
+  assert.equal(res.statusCode, 201);
+}));
+
+test('shipment-tracking and webhook routes still require a key pair', async () => withEnv(BOTH, async () => {
+  const { handler } = require('../woo-channel');
+  for (const path of [`/wp-json/wc-ast/v3/orders/${WOO_ID}/shipment-trackings`, '/wp-json/wc/v3/webhooks', `/wp-json/wc/v3/orders/${WOO_ID}/notes`]) {
+    const res = await handler({ path, httpMethod: 'POST', headers: {}, queryStringParameters: {}, body: '{}' });
+    assert.equal(res.statusCode, 401, path);
+  }
+}));
+
+test('a second XpressBees key pair authenticates as xpressbees, alongside the first', () => {
+  const { authorize } = require('../woo-channel').__test;
+  const saved = { ...process.env };
+  Object.assign(process.env, {
+    WOO_CONSUMER_KEY: 'ck_old', WOO_CONSUMER_SECRET: 'cs_old',
+    WOO_XB_NEW_CONSUMER_KEY: 'ck_new', WOO_XB_NEW_CONSUMER_SECRET: 'cs_new',
+  });
+  try {
+    const basic = (k, s) => ({ headers: { authorization: 'Basic ' + Buffer.from(`${k}:${s}`).toString('base64') } });
+    assert.equal(authorize(basic('ck_old', 'cs_old')).client, 'xpressbees');
+    assert.equal(authorize(basic('ck_new', 'cs_new')).client, 'xpressbees');
+    assert.equal(authorize(basic('ck_new', 'cs_old')).ok, false, 'halves of different pairs must not mix');
+  } finally {
+    for (const k of ['WOO_CONSUMER_KEY', 'WOO_CONSUMER_SECRET', 'WOO_XB_NEW_CONSUMER_KEY', 'WOO_XB_NEW_CONSUMER_SECRET']) {
+      if (k in saved) process.env[k] = saved[k]; else delete process.env[k];
+    }
+  }
+});

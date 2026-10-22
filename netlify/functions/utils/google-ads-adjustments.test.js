@@ -218,3 +218,14 @@ test('junk in, nothing out', () => {
   assert.deepEqual(parseAdjustmentResults(null), { rejected: [], accepted: [] });
   assert.deepEqual(parseAdjustmentResults('no header here\njust,some,cells'), { rejected: [], accepted: [] });
 });
+
+test('skips orders checkout saw arrive without a Google Ads click', () => {
+  const { rows, skipped } = buildAdjustmentRows([
+    order({ razorpay_order_id: 'IC-NOCLICK', ad_click: 'none' }),
+    order({ razorpay_order_id: 'IC-CLICK', ad_click: 'gclid:Cj0KCQjwabcdef' }),
+    order({ razorpay_order_id: 'IC-OLD' }),                  // column absent: before the change
+    order({ razorpay_order_id: 'IC-UNKNOWN', ad_click: null }),
+  ], { now: NOW });
+  assert.deepEqual(rows.map(r => r.orderId).sort(), ['IC-CLICK', 'IC-OLD', 'IC-UNKNOWN']);
+  assert.equal(skipped.no_ad_click, 1);
+});

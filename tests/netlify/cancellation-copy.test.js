@@ -170,7 +170,8 @@ test('the two WhatsApp templates are separately gated', () => {
   // before its own flag is set.
   assert.match(notifier, /WHATSAPP_ORDER_CANCELLED_STOCK_TEMPLATE/);
   assert.match(notifier, /const useStock = kind === 'store' && !!stockTemplate;/);
-  assert.match(notifier, /params: \(useStock \|\| v2\)/);
+  // order_cancelled_stock's approved body has 3 variables, order_cancelled's 4.
+  assert.match(notifier, /params: useStock\s*\? \[firstName, id, refundSentenceShort/);
 });
 
 test('the subject line matches the body it introduces', () => {

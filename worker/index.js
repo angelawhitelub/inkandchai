@@ -19,8 +19,16 @@ import * as bindingsNs from './shims/runtime-bindings.js';
 // Durable Object class, exported so the runtime can construct it. See the file
 // for why the two lighter rate limiters did not hold.
 export { RateLimiter } from './rate-limiter.js';
+export { ClaimGuard } from './claim-guard.js';
 export { SpendGuard } from './spend-guard.js';
-import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable } from './cache-policy.mjs';
+import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable, staleProductKey, renderWithLastGood } from './cache-policy.mjs';
+import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
+import soldOutUtil from '../netlify/functions/utils/sold-out.js';
+import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
+import newArrivals from '../netlify/functions/utils/new-arrivals.js';
+import lifetimeSales from '../netlify/functions/utils/lifetime-sales.js';
+import codRules from '../netlify/functions/utils/cod-rules.js';
+import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
 
@@ -32,6 +40,8 @@ const CRON_OVERRIDES = {
   'phonepe-payment-sweep-scheduled': '*/5 * * * *',
 };
 const schedules = { ...declaredSchedules, ...CRON_OVERRIDES };
+// Cron jobs answer HTTP only to the owner; see worker/scheduled-jobs.mjs.
+const JOB_NAMES = scheduledJobNames(schedules, ENABLED_JOBS);
 const blobs = blobsNs.default || blobsNs;
 const bindings = bindingsNs.default || bindingsNs;
 
@@ -134,39 +144,6 @@ function toResponse(result) {
 }
 
 
-// Re-issue a request with extra query parameters, so a handler that expects
-// ?slug=/?page= still sees them when the value came from the path.
-// Which scheduled handlers may actually run. A cron expression fans out to
-// every handler registered against it, and several money-critical jobs share a
-// trigger (auto-cancel-stale-cod and phonepe-reconcile-refunds-scheduled are
-// both "15 * * * *"). Listing jobs explicitly means adding a trigger can never
-// silently start a job nobody asked for. To enable a job: add its name here AND
-// its cron to [triggers] in wrangler.toml.
-const ENABLED_JOBS = new Set([
-  // sync / reporting
-  'nimbuspost-awb-sync-scheduled',
-  'xpressbees-status-sync-scheduled',
-  'auto-recover-carts',
-  'daily-unshipped-report',
-  'deploy-drift-check',
-  // money safety nets
-  'phonepe-payment-sweep-scheduled',
-  'replay-lost-orders',
-  'auto-cancel-stale-cod',
-  'phonepe-reconcile-scheduled',
-  'phonepe-retry-refunds-scheduled',
-  'phonepe-reconcile-refunds-scheduled',
-  'auto-push-replacements-scheduled',
-  'nimbuspost-push-sweep-scheduled',
-  // customer messaging
-  'request-reviews-scheduled',
-  'bot-order-followup-background',
-  'whatsapp-broadcast-scheduled',
-  'whatsapp-broadcast-oneoff',
-  // auto-mark-delivered is deliberately absent: delivered now comes from the
-  // NimbusPost webhook. Run it by hand if orders stick in out_for_delivery.
-]);
-
 function noStore(response) {
   const r = new Response(response.body, response);
   r.headers.set('Cache-Control', 'no-store');
@@ -174,6 +151,8 @@ function noStore(response) {
   return r;
 }
 
+// Re-issue a request with extra query parameters, so a handler that expects
+// ?slug=/?page= still sees them when the value came from the path.
 function withQuery(request, params) {
   const url = new URL(request.url);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
@@ -407,6 +386,316 @@ async function deletedSlugs(env) {
   }
 }
 
+// ── Admin-written copy for catalogue books ───────────────────────────────────
+// The baked page carries the feed's description. When the admin has rewritten
+// it (netlify/functions/update-catalog-content.js), the saved copy is published
+// to KV and applied here as the page is served -- title, meta, "About this
+// book", author bio, JSON-LD -- so Google and customers both see it without a
+// site rebuild. Read at most once a minute per isolate, like deleted slugs; a
+// failed read serves the baked page unchanged.
+const CONTENT_TTL_MS = 60_000;
+let _contentMap = null;
+let _contentAt = 0;
+
+async function catalogContent(env) {
+  const now = Date.now();
+  if (_contentMap && now - _contentAt < CONTENT_TTL_MS) return _contentMap;
+  try {
+    const ns = env.ORDER_FALLBACK;
+    if (!ns) return _contentMap || {};
+    const doc = await ns.get('catalog:content-overrides', { type: 'json', cacheTtl: 60 });
+    _contentMap = (doc && doc.items && typeof doc.items === 'object') ? doc.items : {};
+    _contentAt = now;
+    return _contentMap;
+  } catch (err) {
+    console.warn('[catalog-content] KV read failed:', err && err.message);
+    return _contentMap || {};
+  }
+}
+
+function rewriteCatalogPage(response, entry) {
+  const rw = catalogRender.contentRewrite(entry);
+  if (!rw) return response;
+  let descDone = false;
+  let ldBuf = '';
+  let dtLabel = '';
+  const det = rw.details;
+  const rewriter = new HTMLRewriter()
+    .on('head', { element(el) { el.append(catalogRender.RICH_CSS, { html: true }); } })
+    .on('title', { element(el) { if (rw.title) el.setInnerContent(rw.title); } })
+    .on('meta[name="description"]', { element(el) { if (rw.meta) el.setAttribute('content', rw.meta); } })
+    .on('meta[property="og:description"]', { element(el) { if (rw.meta) el.setAttribute('content', rw.meta); } })
+    .on('div.desc', {
+      element(el) {
+        if (descDone) return;
+        descDone = true;
+        if (rw.descHtml) {
+          el.setAttribute('class', 'desc rich');
+          el.setInnerContent(catalogRender.descInner(rw), { html: true });
+        }
+        if (rw.bioHtml) el.after(catalogRender.bioBlock(rw), { html: true });
+      },
+    })
+    // Details table: HTMLRewriter streams, so remember the last <dt> label and
+    // act on the <dd> that follows it. Values go in as text (auto-escaped).
+    .on('div.details dl', { element(el) { if (det && det.lead) el.prepend(det.lead, { html: true }); } })
+    .on('div.details dt', {
+      element() { dtLabel = ''; },
+      text(chunk) { dtLabel += chunk.text; },
+    })
+    .on('div.details dd', {
+      element(el) {
+        if (!det) return;
+        const label = dtLabel.trim();
+        if (label === 'Publisher' && det.publisher) el.setInnerContent(det.publisher);
+        if (label === 'ISBN') {
+          if (det.isbn) el.setInnerContent(det.isbn);
+          if (det.tail) el.after(det.tail, { html: true });
+        }
+      },
+    })
+    .on('script[type="application/ld+json"]', {
+      text(chunk) {
+        ldBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = ldBuf;
+        ldBuf = '';
+        chunk.replace(catalogRender.patchJsonLd(whole, rw) || whole, { html: true });
+      },
+    });
+  // Drop the baked file's validators: an ETag here would let a browser
+  // revalidate against the static file and keep yesterday's rewritten copy.
+  const out = rewriter.transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('last-modified');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
+// ── Sold-out books ──────────────────────────────────────────────────────────
+// The admin's manual stock (product_overrides.stock_qty <= 0) turns a page's
+// Buy buttons into "Coming Soon" -- but only in the browser, after the page's
+// own fetch returns. Google read the baked page and feed.xml, both of which
+// say InStock, so Shopping kept advertising sold-out books and a quick tap on
+// Buy Now beat the fetch (6 Oct 2026). Here the page arrives already flagged
+// and its structured data says OutOfStock, and feed.xml says "out of stock".
+// The list is read at most once a minute per isolate; a failed read leaves
+// pages as baked (checkout still refuses the book: utils/pricing.js).
+const SOLD_TTL_MS = 60_000;
+let _soldSet = null;
+let _soldAt = 0;
+
+async function soldOutSet(env, ctx, origin) {
+  const now = Date.now();
+  if (_soldSet && now - _soldAt < SOLD_TTL_MS) return _soldSet;
+  try {
+    const res = await runHandler('sold-out-slugs', new Request(`${origin}${FN_PREFIX}sold-out-slugs`), env, ctx);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const doc = await res.json();
+    _soldSet = new Set((Array.isArray(doc.slugs) ? doc.slugs : []).map((x) => String(x || '').toLowerCase()));
+    _soldAt = now;
+  } catch (err) {
+    console.warn('[sold-out] read failed:', err && err.message);
+    // Keep the last good list; with none, retry in ~10s rather than on every request.
+    if (!_soldSet) { _soldSet = new Set(); _soldAt = now - SOLD_TTL_MS + 10_000; }
+  }
+  return _soldSet;
+}
+
+// Books whose Cash on Delivery the admin switched off, with the customer-facing
+// reason (utils/cod-rules, via cod-off-slugs). Same shape as soldOutSet.
+const COD_TTL_MS = 60_000;
+let _codOff = null;
+let _codOffAt = 0;
+async function codOffRules(env, ctx, origin) {
+  const now = Date.now();
+  if (_codOff && now - _codOffAt < COD_TTL_MS) return _codOff;
+  try {
+    const res = await runHandler('cod-off-slugs', new Request(`${origin}${FN_PREFIX}cod-off-slugs`), env, ctx);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const doc = await res.json();
+    _codOff = new Map(Object.entries((doc && doc.rules) || {}).map(([k, v]) => [String(k).toLowerCase(), String(v || '')]));
+    _codOffAt = now;
+  } catch (err) {
+    console.warn('[cod-off] read failed:', err && err.message);
+    if (!_codOff) { _codOff = new Map(); _codOffAt = now - COD_TTL_MS + 10_000; }
+  }
+  return _codOff;
+}
+
+// The product page of a COD-off book: the "Cash on delivery" badge becomes
+// "Partial COD" and the reason goes under the badges. Any notice the page
+// already had (the no-cod tag, product-page.js) is replaced, never doubled.
+async function withCodRule(response, slug, env, ctx, origin) {
+  if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  const note = (await codOffRules(env, ctx, origin)).get(String(slug || '').toLowerCase());
+  if (!note) return response;
+  let placed = false;
+  const out = new HTMLRewriter()
+    .on('[data-cod-off]', { element(el) { el.remove(); } })
+    .on('div.trust', { element(el) { if (!placed) { el.after(codRules.codOffNoticeHtml(note), { html: true }); placed = true; } } })
+    .on('div.trust .tt b', { text(t) { if (/Cash on delivery/i.test(t.text)) t.replace(t.text.replace(/Cash on delivery/i, 'Partial COD')); } })
+    .on('div.trust .tt i', { text(t) { if (/Pay when it arrives/i.test(t.text)) t.replace(t.text.replace(/Pay when it arrives/i, 'Pay 10% now, rest on delivery')); } })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('content-length');
+  headers.set('X-Cod-Off', '1');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
+// Books the admin set to ship free (utils/free-delivery, via free-delivery-slugs).
+// Same shape as codOffRules.
+let _freeDelivery = null;
+let _freeDeliveryAt = 0;
+async function freeDeliverySet(env, ctx, origin) {
+  const now = Date.now();
+  if (_freeDelivery && now - _freeDeliveryAt < COD_TTL_MS) return _freeDelivery;
+  try {
+    const res = await runHandler('free-delivery-slugs', new Request(`${origin}${FN_PREFIX}free-delivery-slugs`), env, ctx);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const doc = await res.json();
+    _freeDelivery = new Set(((doc && doc.slugs) || []).map((s) => String(s).toLowerCase()));
+    _freeDeliveryAt = now;
+  } catch (err) {
+    console.warn('[free-delivery] read failed:', err && err.message);
+    if (!_freeDelivery) { _freeDelivery = new Set(); _freeDeliveryAt = now - COD_TTL_MS + 10_000; }
+  }
+  return _freeDelivery;
+}
+
+// The product page of a free-delivery book: the delivery badge says so.
+async function withFreeDelivery(response, slug, env, ctx, origin) {
+  if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  if (!(await freeDeliverySet(env, ctx, origin)).has(String(slug || '').toLowerCase())) return response;
+  const out = new HTMLRewriter()
+    .on('div.trust .tt b', { text(t) { if (/Delivery in 2-5 days/i.test(t.text)) t.replace('🚚 FREE delivery'); } })
+    .on('div.trust .tt i', { text(t) { if (/Shipped across India/i.test(t.text)) t.replace('On your whole order · 2-5 days'); } })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('content-length');
+  headers.set('X-Free-Delivery', '1');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
+function markSoldOutPage(response) {
+  let ldBuf = '';
+  const out = new HTMLRewriter()
+    // Before any of the page's scripts: the buy handlers check this flag, so a
+    // tap before the override fetch returns is refused too.
+    .on('head', { element(el) { el.prepend('<script>window.__soldOut=true;</script>', { html: true }); } })
+    .on('span.stock', { element(el) { el.setInnerContent('Coming Soon'); } })
+    .on('script[type="application/ld+json"]', {
+      text(chunk) {
+        ldBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = ldBuf;
+        ldBuf = '';
+        chunk.replace(soldOutUtil.markJsonLdSoldOut(whole), { html: true });
+      },
+    })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('last-modified');
+  headers.set('X-Sold-Out', '1');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
+async function soldOutFeed(request, env, ctx, origin) {
+  const asset = await env.ASSETS.fetch(request);
+  if (request.method !== 'GET' || asset.status !== 200) return asset;
+  const sold = await soldOutSet(env, ctx, origin);
+  if (!sold.size) return asset;
+  const { xml, changed } = soldOutUtil.markFeedSoldOut(await asset.text(), sold);
+  const headers = new Headers(asset.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  headers.set('X-Sold-Out-Items', String(changed));
+  return new Response(xml, { status: 200, headers });
+}
+
+// sitemap.xml is baked from the catalogue; the books created in the admin
+// (custom_products) are appended here, so Google finds them without a site
+// build. utils/custom-sitemap. A failed read serves the baked file unchanged.
+const SITEMAP_TTL_MS = 10 * 60_000;
+let _customUrls = null;
+let _customUrlsAt = 0;
+
+async function sitemapWithCustom(request, env, ctx, origin) {
+  const asset = await env.ASSETS.fetch(request);
+  if (request.method !== 'GET' || asset.status !== 200) return asset;
+  const now = Date.now();
+  if (!_customUrls || now - _customUrlsAt > SITEMAP_TTL_MS) {
+    try {
+      const res = await runHandler('custom-products-sitemap', new Request(`${origin}${FN_PREFIX}custom-products-sitemap`), env, ctx);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const doc = await res.json();
+      _customUrls = Array.isArray(doc.urls) ? doc.urls : [];
+      _customUrlsAt = now;
+    } catch (err) {
+      console.warn('[sitemap] custom products read failed:', err && err.message);
+      if (!_customUrls) return asset;
+    }
+  }
+  const { xml, added } = customSitemap.mergeSitemap(await asset.text(), _customUrls, { deleted: await deletedSlugs(env) });
+  const headers = new Headers(asset.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  headers.set('Content-Type', 'application/xml; charset=utf-8');
+  headers.set('X-Custom-Products', String(added));
+  return new Response(xml, { status: 200, headers });
+}
+
+// /new-arrivals/ and /new-arrivals-2026/ are baked from the catalogue, so books
+// created in the admin never showed there. The newest ones go first in the
+// grid (utils/new-arrivals). A failed read serves the baked page unchanged.
+const ARRIVALS_TTL_MS = 5 * 60_000;
+let _arrivals = null;
+let _arrivalsAt = 0;
+
+async function newArrivalsPage(request, env, ctx, origin) {
+  const asset = await env.ASSETS.fetch(request);
+  if (request.method !== 'GET' || asset.status !== 200
+      || !/text\/html/i.test(asset.headers.get('content-type') || '')) return asset;
+  const now = Date.now();
+  if (!_arrivals || now - _arrivalsAt > ARRIVALS_TTL_MS) {
+    try {
+      const res = await runHandler('new-arrivals-custom', new Request(`${origin}${FN_PREFIX}new-arrivals-custom`), env, ctx);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const doc = await res.json();
+      _arrivals = Array.isArray(doc.books) ? doc.books : [];
+      _arrivalsAt = now;
+    } catch (err) {
+      console.warn('[new-arrivals] read failed:', err && err.message);
+      if (!_arrivals) return asset;
+    }
+  }
+  const { html, added } = newArrivals.injectNewArrivals(await asset.text(), _arrivals, { deleted: await deletedSlugs(env) });
+  const headers = new Headers(asset.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  headers.set('X-New-Arrivals-Added', String(added));
+  return new Response(html, { status: 200, headers });
+}
+
+// "🔥 N sold" under the stock line of a bestseller's product page (lifetime
+// units, utils/lifetime-sales; shown from SHOW_ON_PAGE_MIN). A failed read
+// leaves the page as it was.
+async function withSoldCount(response, slug) {
+  if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  const doc = await lifetimeSales.readLifetimeSales();
+  // unitsSold adds what a duplicated listing carries from its original.
+  const line = lifetimeSales.soldLine(lifetimeSales.unitsSold(doc, slug));
+  if (!line) return response;
+  let done = false;
+  const out = new HTMLRewriter()
+    .on('span.stock', { element(el) { if (!done) { el.after(line, { html: true }); done = true; } } })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('content-length');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
 function gonePage(slug) {
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -450,6 +739,10 @@ export default {
     }
     if (url.pathname.startsWith(FN_PREFIX)) {
       const name = url.pathname.slice(FN_PREFIX.length).replace(/\/+$/, '').split('/')[0];
+      // Here and not in runHandler: cron and in-process self-calls never pass
+      // through fetch(), so they keep working without a key.
+      const refused = refuseAnonymousJobRun(name, request, JOB_NAMES);
+      if (refused) return refused;
       return runHandler(name, request, env, ctx);
     }
 
@@ -502,7 +795,31 @@ export default {
       if (gone.has(deletedSlug)) return gonePage(deletedSlug);
     }
 
+    // The saved catalogue copy, for scripts/sync-catalog-content.mjs to bake
+    // into data/ at the next site build (and so into feed.xml).
+    if (url.pathname === '/catalog-content.json') {
+      return new Response(JSON.stringify({ items: await catalogContent(env) }), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+
+    if (url.pathname === '/feed.xml') return soldOutFeed(request, env, ctx, url.origin);
+    if (url.pathname === '/sitemap.xml') return sitemapWithCustom(request, env, ctx, url.origin);
+    if (/^\/new-arrivals(?:-2026)?\/?$/.test(url.pathname)) return newArrivalsPage(request, env, ctx, url.origin);
+
     const assetResponse = await env.ASSETS.fetch(request);
+
+    if (productPath && assetResponse.status === 200
+        && /text\/html/i.test(assetResponse.headers.get('content-type') || '')) {
+      let contentSlug = '';
+      try { contentSlug = decodeURIComponent(productPath[1]).toLowerCase(); }
+      catch { contentSlug = productPath[1].toLowerCase(); }
+      const entry = (await catalogContent(env))[contentSlug];
+      let page = entry ? rewriteCatalogPage(assetResponse, entry) : assetResponse;
+      if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
+      page = await withFreeDelivery(await withCodRule(page, contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
+      return withSoldCount(page, contentSlug);
+    }
 
     // Admin-created products have no generated page: the catalogue books are
     // static files, everything else is rendered by product-page. Try the static
@@ -512,8 +829,16 @@ export default {
       const product = url.pathname.match(/^\/product\/([^/]+)\/?$/);
       if (product) {
         const slug = decodeURIComponent(product[1]);
-        const rendered = await runHandler('product-page', withQuery(request, { slug }), env, ctx);
-        if (rendered.status !== 404) return rendered;
+        // A database stall must not reach the customer or Google as a 503 or a
+        // hang: serve the last good copy (cache-policy.mjs renderWithLastGood).
+        const rendered = await renderWithLastGood(
+          () => runHandler('product-page', withQuery(request, { slug }), env, ctx),
+          { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
+        );
+        if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
+          return withSoldCount(await withFreeDelivery(await withCodRule(markSoldOutPage(rendered), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
+        }
+        if (rendered.status !== 404) return withSoldCount(await withFreeDelivery(await withCodRule(rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a

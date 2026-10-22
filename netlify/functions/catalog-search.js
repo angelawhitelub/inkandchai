@@ -12,6 +12,9 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const search = require('../../public/js/book-search');
+const { findCandidates } = require('./utils/search-candidates');
+const { deletedSlugSet } = require('./utils/deleted-products');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 
 const CORS = {
@@ -41,31 +44,41 @@ exports.handler = async (event) => {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-    let query = supabase
-      .from('custom_products')
-      .select('slug,title,price_inr,original_price_inr,image_url,tags', { count: 'exact' })
-      .eq('is_active', true)
-      // The /books browse grid serves the big browse-only catalogues that are
-      // kept off the homepage feed: crossword.in + 99bookstores.
-      .or('tags.ilike.%crossword-catalog%,tags.ilike.%99bookstores-catalog%');
+    let data, count;
+    if(q) {
+      const gone=await deletedSlugSet();
+      let ranked=(await findCandidates(supabase,q,true))
+        .map(book=>({book,score:search.score(book,q)}))
+        .filter(r=>r.score>0&&!gone.has(String(r.book.slug).toLowerCase()));
+      if(sort==='price_asc')ranked.sort((a,b)=>Number(a.book.price_inr)-Number(b.book.price_inr));
+      else if(sort==='price_desc')ranked.sort((a,b)=>Number(b.book.price_inr)-Number(a.book.price_inr));
+      else if(sort==='title')ranked.sort((a,b)=>a.book.title.localeCompare(b.book.title));
+      else ranked.sort((a,b)=>b.score-a.score);
+      count=ranked.length;data=ranked.slice(from,to+1).map(r=>r.book);
+    } else {
+      let query = supabase
+        .from('custom_products')
+        .select('slug,title,price_inr,original_price_inr,image_url,tags', { count: 'exact' })
+        .eq('is_active', true)
+        // The /books browse grid serves the big browse-only catalogues that are
+        // kept off the homepage feed: crossword.in + 99bookstores.
+        .or('tags.ilike.%crossword-catalog%,tags.ilike.%99bookstores-catalog%');
 
-    if (q) {
-      // Escape PostgREST filter special chars in the user term.
-      const safe = q.replace(/[%,()]/g, ' ').trim();
-      if (safe) query = query.ilike('title', `%${safe}%`);
+      if (sort === 'price_asc')       query = query.order('price_inr', { ascending: true });
+      else if (sort === 'price_desc') query = query.order('price_inr', { ascending: false });
+      else if (sort === 'title')      query = query.order('title', { ascending: true });
+      else                            query = query.order('updated_at', { ascending: false });
+
+      const result = await query.range(from, to);
+      if (result.error) throw result.error;
+      data=result.data;count=result.count;
+
     }
-
-    if (sort === 'price_asc')       query = query.order('price_inr', { ascending: true });
-    else if (sort === 'price_desc') query = query.order('price_inr', { ascending: false });
-    else if (sort === 'title')      query = query.order('title', { ascending: true });
-    else                            query = query.order('updated_at', { ascending: false });
-
-    const { data, count, error } = await query.range(from, to);
-    if (error) throw error;
 
     const books = (data || []).map(r => ({
       slug: r.slug,
       title: r.title,
+      author: r.author || '',
       price: r.price_inr,
       original_price: r.original_price_inr || null,
       // Route supabase-hosted covers through the Netlify /spimg proxy — the

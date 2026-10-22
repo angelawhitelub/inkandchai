@@ -12,6 +12,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { HIDDEN_STATUSES } = require('./utils/bot-order-request');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -47,6 +48,8 @@ exports.handler = async (event) => {
     const { data, error } = await supabase
       .from('bot_order_requests')
       .select('*')
+      // Drafts the customer has not said YES to are not orders yet.
+      .not('status', 'in', `(${HIDDEN_STATUSES.join(',')})`)
       .order('created_at', { ascending: false })
       .limit(500);
     if (error) {

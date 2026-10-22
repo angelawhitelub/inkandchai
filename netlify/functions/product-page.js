@@ -1,9 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
 const SOCIAL_PROOF = require('../../data/social_proof.json').items || [];
 const { richText, plainText } = require('./utils/rich-text');
+const { applySiteTheme } = require('./utils/site-theme');
 const { withBadgeTag, selectTolerant } = require('./utils/publisher-sourced');
-const { bookDetailRows, schemaBookDetails } = require('./utils/book-details');
+const { bookDetailRows, schemaBookDetails, SCHEMA_BOOK_FORMATS, SCHEMA_LANGUAGES } = require('./utils/book-details');
 const { fetchSettings } = require('./utils/product-settings');
+const { displayTitle } = require('./utils/listing-title');
 
 // The badge used to claim "flat 22.5% off" for every publisher-sourced title.
 // That held for the bulk import and stopped holding the moment the badge could
@@ -31,25 +33,6 @@ function detailRows(product, after) {
     .map(row => `<dt>${esc(row.label)}</dt><dd>${esc(row.value)}</dd>`)
     .join('');
 }
-
-// schema.org has a fixed vocabulary of bookFormat values; anything outside it
-// is invalid structured data, so an unrecognised binding is simply omitted.
-const SCHEMA_BOOK_FORMATS = {
-  paperback: 'https://schema.org/Paperback',
-  hardcover: 'https://schema.org/Hardcover',
-  hardback: 'https://schema.org/Hardcover',
-  ebook: 'https://schema.org/EBook',
-  audiobook: 'https://schema.org/AudiobookFormat',
-  'graphic novel': 'https://schema.org/GraphicNovel',
-};
-
-// BCP-47 for the languages we actually stock; unknown values are omitted
-// rather than guessed at.
-const SCHEMA_LANGUAGES = {
-  english: 'en', hindi: 'hi', marathi: 'mr', bengali: 'bn', tamil: 'ta',
-  telugu: 'te', kannada: 'kn', malayalam: 'ml', gujarati: 'gu',
-  punjabi: 'pa', urdu: 'ur', odia: 'or', assamese: 'as', sanskrit: 'sa',
-};
 
 function publisherSourcedDiscount(product) {
   const num = v => Number(String(v == null ? '' : v).replace(/[^0-9.]/g, '')) || 0;
@@ -462,7 +445,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
       ? trustBadge(ICON.cash, 'Partial COD', 'Pay 10% now, rest on delivery')
       : trustBadge(ICON.cash, 'Cash on delivery', 'Pay when it arrives')}${trustBadge(ICON.card, 'UPI, cards, net banking', 'Secure checkout')}${trustBadge(ICON.shield, '7-day replacement', 'Damaged or wrong book')}</div>
     ${noCod ? `
-    <div style="border:1px solid rgba(214,184,94,0.4);background:rgba(214,184,94,0.07);padding:0.85rem 1.05rem;border-radius:14px;margin:0.9rem 0;font-size:0.76rem;color:var(--cream);line-height:1.6;">
+    <div data-cod-off="1" style="border:1px solid rgba(214,184,94,0.4);background:rgba(214,184,94,0.07);padding:0.85rem 1.05rem;border-radius:14px;margin:0.9rem 0;font-size:0.76rem;color:var(--cream);line-height:1.6;">
       <strong style="color:var(--gold-light);">Cash on Delivery isn't available on this title.</strong>
       We recommend <strong>Partial COD</strong> — pay just <strong>10% now</strong> to confirm your order and the balance on delivery. Full prepaid (UPI/cards) also works.
     </div>` : ''}
@@ -588,7 +571,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 <!-- Like the crawlable book pages, this one does not load auth.js, so the eBook
      button here links through to /ebooks/ rather than opening checkout. -->
 <script src="/js/ebooks.js" defer></script>
-<script src="/js/search-suggest.js" defer></script>
+<script src="/js/search-suggest.js?v=20261005" defer></script>
 <script>
 const currentItem = ${JSON.stringify({
     id: `/product/${product.slug}/`,
@@ -816,6 +799,9 @@ exports.handler = async (event) => {
     // override row and is unaffected by "Disable Override".
     const settings = (await fetchSettings(supabase, [slug]))[String(slug).toLowerCase()] || null;
     const product = applySettings(applyOverride(data, override), settings);
+    // "Title by Author", no marketing subtitle -- the same title both custom
+    // feeds send Google (utils/listing-title), so the two never disagree.
+    product.title = displayTitle(product.title, product.author);
 
     return {
       statusCode: 200,
@@ -829,7 +815,8 @@ exports.handler = async (event) => {
         // Purged the moment an admin save changes this (utils/purge-cache.js).
         'Netlify-Cache-Tag': 'products,aplus',
       },
-      body: productHtml(product, aplusContent || null),
+      // The site theme (fonts, theme CSS, site-feedback.js) baked pages carry.
+      body: applySiteTheme(productHtml(product, aplusContent || null)),
     };
   } catch (err) {
     if (err instanceof DatabaseDown || err?.name === 'DatabaseDown') {

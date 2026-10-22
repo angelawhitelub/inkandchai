@@ -118,7 +118,9 @@ exports.handler = async (event) => {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: process.env.INK_AI_MODEL || 'gpt-4o',
+        // Its own setting, not INK_AI_MODEL: drafting answers from hundreds of
+        // questions wants the stronger model even though the chat uses the small one.
+        model: process.env.INK_AI_IMPROVE_MODEL || 'gpt-4.1',
         response_format: { type: 'json_object' },
         temperature: 0.2,
         max_tokens: 3500,

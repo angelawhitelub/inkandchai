@@ -353,7 +353,9 @@ async function syncReassignedAwbs(supabase, awbMap, summary) {
   // 5 GB monthly allowance. It was essentially the entire overage.
   //
   // Matches are rare, so the full row is fetched per match instead, below.
-  const SCAN_COLS = 'id,razorpay_order_id,tracking_id,status';
+  // late_cancel_at: a customer cancel whose status later slid back to
+  // 'shipped' must still never be re-shipped (IC-20261006-HF8JF, 13 Oct 2026).
+  const SCAN_COLS = 'id,razorpay_order_id,tracking_id,status,late_cancel_at';
   const orders = [];
   for (let from = 0; from < 6000; from += 1000) {
     const { data, error } = await supabase
@@ -380,7 +382,7 @@ async function syncReassignedAwbs(supabase, awbMap, summary) {
 
     // Never act on an order whose money or delivery is already settled. Report
     // it so a human decides — silence here is how a refunded order gets shipped.
-    if (REVIEW_ONLY_STATUSES.includes(order.status)) {
+    if (REVIEW_ONLY_STATUSES.includes(order.status) || order.late_cancel_at) {
       summary.reawb_needs_review.push({
         order: order.razorpay_order_id || order.id,
         status: order.status,

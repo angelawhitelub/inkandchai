@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
+const { readLifetimeSales } = require('./utils/lifetime-sales');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -73,6 +74,19 @@ function aggregateBestsellers(orders) {
   return [...sold.values()].sort((a, b) => b.qty - a.qty || a.title.localeCompare(b.title)).slice(0, 24);
 }
 
+/**
+ * The month's list, each book's qty replaced by its lifetime units. A book the
+ * lifetime count does not know (no slug on the cart line) keeps its month qty,
+ * which can only understate. month_qty keeps the ranking's own number.
+ */
+function withLifetimeCounts(rows, lifetime) {
+  const counts = lifetime && lifetime.counts;
+  return rows.map((row) => {
+    const total = counts && row.slug ? Number(counts[String(row.slug).toLowerCase()]) || 0 : 0;
+    return { ...row, month_qty: row.qty, qty: Math.max(total, row.qty) };
+  });
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'GET') return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method Not Allowed' }) };
@@ -86,7 +100,9 @@ exports.handler = async (event) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const [orders, productsResult] = await Promise.all([
+    // Reader Bestsellers: this month's best sellers, in this month's order,
+    // badged with lifetime units sold (lifetime-sales-scheduled, hourly).
+    const [orders, productsResult, lifetime] = await Promise.all([
       monthOrders(supabase),
       supabase
         .from('custom_products')
@@ -96,6 +112,7 @@ exports.handler = async (event) => {
         .not('tags', 'ilike', '%99bookstores-catalog%')
         .order('created_at', { ascending: false })
         .limit(24),
+      readLifetimeSales(),
     ]);
     if (productsResult.error) throw productsResult.error;
 
@@ -119,8 +136,9 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         generated_at: new Date().toISOString(),
         period: 'this_month',
+        sold_count: lifetime ? 'lifetime' : 'this_month',
         new_arrivals: newArrivals,
-        bestsellers: aggregateBestsellers(orders),
+        bestsellers: withLifetimeCounts(aggregateBestsellers(orders), lifetime),
       }),
     };
   } catch (error) {
@@ -129,4 +147,4 @@ exports.handler = async (event) => {
   }
 };
 
-exports._test = { indiaMonthStart, slugFromItem, titleKey, aggregateBestsellers };
+exports._test = { indiaMonthStart, slugFromItem, titleKey, aggregateBestsellers, withLifetimeCounts };

@@ -20,11 +20,10 @@
  *
  * KNOWLEDGE
  * ---------
- * STORE_FACTS below is the summary; the canonical text lives on /return-policy/
+ * STORE_FACTS below is the summary; the canonical text lives on /return-policy/ (now the Replacement Policy)
  * and /refund-policy/, and the numbers here are the ones the code enforces --
- * a 7-day window from delivered_at (request-return.js), a 30-minute
- * cancellation window (cancel-order.js), Rs 50 of store credit valid 6 months
- * (utils/return-refund.js). On top of that it reads bot_settings
+ * a 7-day replacement window from delivered_at (request-replacement.js), a
+ * 30-minute cancellation window (cancel-order.js). On top of that it reads bot_settings
  * .extra_instructions, the same admin-editable FAQ the WhatsApp bot uses, so
  * the team has one place to add an answer and it appears in both.
  */
@@ -43,7 +42,10 @@ const { costMicros, monthKey, budgetMicros } = require('./utils/ink-ai-budget');
  * 0.001 and another reported 25 — a ceiling honoured on some requests and not
  * others, which is the failure mode this whole guard exists to avoid.
  */
-const model = () => process.env.INK_AI_MODEL || 'gpt-4o';
+// gpt-4.1-mini: Ink AI has no tools and answers from STORE_FACTS + the FAQ, so
+// the small model is enough, and it is about 6x cheaper than gpt-4o -- the
+// monthly budget goes that much further.
+const model = () => process.env.INK_AI_MODEL || 'gpt-4.1-mini';
 const budgetUsd = () => process.env.INK_AI_MONTHLY_BUDGET_USD || '25';
 const TABLE = 'ink_ai_conversations';
 const MAX_USER_CHARS = 700;   // a question, not an essay
@@ -98,16 +100,20 @@ IF A BOOK IS TAKING TIME
 - Listed does not mean on our shelf. Much of the catalogue is arranged from publishers on demand, and that sourcing happens before dispatch — so a 2-day delivery estimate is not a 2-day promise on a book we are still arranging.
 - If we cannot arrange it, the order is cancelled automatically within 10 days and a prepaid order is refunded in full, automatically. Nobody has to chase us.
 
-RETURNS — 7 days from delivery
-- My Orders → the order → Request Return. Our courier collects it free, usually within 48 hours.
-- Returnable: wrong book, damaged or torn pages, missing pages, or a book that is not what the page described.
+REPLACEMENTS — we do NOT take returns
+- There are no returns. We replace a book, free, for three reasons only: defective book / misprint (blank, missing, torn or repeated pages, binding fault, damaged copy), wrong book received, or a book missing from the parcel.
+- Change of mind is not covered. Say so kindly and plainly; do not invent exceptions.
+- How: inkandchai.in/track → Order ID + the email or phone used at checkout (or sign in → My Orders) → "Need a replacement?" → choose the reason in the dropdown → tap the book(s) → say what happened → attach 1–3 photos of the parcel, label and books received (required) → Request free replacement. One request per order.
+- Defective or wrong book: within 7 days of delivery. Missing book: once the order shows Delivered.
+- That creates a FREE replacement order straight away (its id starts with IC-R-). Nothing to pay, nothing to send back unless we ask — keep the original copy until the replacement arrives. Tracking comes by email and WhatsApp.
+- On a Cash on Delivery order the missing-book option also asks for a UPI ID. It is only used to refund that book's value if we cannot send it, because a cash payment cannot be reversed.
+- Or they can tell our WhatsApp assistant at https://wa.me/917678400508 about a missing book — it can file the report and create the replacement in the chat.
+- If NOTHING arrived at all, that is a delivery problem, not a missing book — use the delivery answer above.
+- Anything else wrong with an order: inkandchai.in/support raises a support ticket (reply within 24 hours).
 
-HOW A REFUND REACHES THEM
+HOW A REFUND REACHES THEM (cancellations, and a book we could not replace)
 - Paid online: back to the same card or account automatically, 2–4 business days.
-- Cash on Delivery: nothing was paid online, so we transfer it to a UPI ID or bank account they give us.
-- Partial COD: only the deposit was taken online, so we send the whole amount — deposit and cash together — as ONE transfer, never split in two.
-- Store credit: instant, with a ₹50 bonus on top, valid 6 months, no bank details needed.
-- For COD and Partial COD we ask for a UPI ID, or account number + IFSC + account-holder name, on the return form itself. Tell them to enter it THERE. Never ask for it in this chat.
+- Cash on Delivery: nothing was paid online, so we transfer it to a UPI ID they give us on the form. Never ask for it in this chat.
 
 CANCELLING
 - Cash on Delivery: any time before dispatch. Nothing was paid, so nothing to refund.
@@ -143,7 +149,8 @@ WHEN TO ESCALATE — only these three
 
 NOT escalations — these have a faster self-service answer, give it:
 - A failed or disputed delivery → the courier, via the SMS on their order phone number (above).
-- A damaged, wrong or missing book → My Orders → Request Return, free pickup, usually within 48 hours. Escalate only if they say they already tried and it did not work.
+- A defective, misprinted, wrong or missing book → Track Order or My Orders → Need a replacement? → free replacement, created instantly. Escalate only if they say they already tried and it did not work.
+- A book missing from the parcel → the "Missing a book?" report on inkandchai.in/track (above), which creates a free replacement at once.
 - "Where is my order" → inkandchai.in/track with their Order ID.
 Anything else at all — answer it.
 

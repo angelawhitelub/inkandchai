@@ -193,7 +193,7 @@ exports.handler = async (event) => {
   let out;
   try {
     out = await draft(books, { angle: one(body.angle, 40), brief: one(body.brief, 1200) },
-      process.env.OPENAI_BANNER_MODEL || process.env.OPENAI_MODEL || 'gpt-4o');
+      process.env.OPENAI_BANNER_MODEL || 'gpt-4.1');
   } catch (err) {
     const msg = err.name === 'AbortError' ? 'The model took too long to respond. Try again.' : err.message;
     console.error('[generate-banner-copy]', msg);

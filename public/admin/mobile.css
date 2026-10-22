@@ -1,0 +1,58 @@
+/* Phone layout layered after the existing admin theme. Desktop tables stay intact. */
+.mobile-section-picker{display:none;}
+.order-search{width:100%;min-width:0;margin:0 0 1rem;}
+.order-search label{display:block;font-size:.85rem;font-weight:700;margin-bottom:.4rem;color:var(--cream);}
+.order-search .search-box{display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box;}
+.order-search p{font-size:.75rem;color:var(--cream-dim);margin-top:.35rem;overflow-wrap:anywhere;}
+@media screen and (max-width:760px){
+  body>nav{gap:.65rem;padding:.75rem;}
+  .nav-right{width:100%;gap:.5rem;}
+  .nav-right>*{max-width:100%;}
+  .fontzoom button{min-width:44px;height:44px;}
+  main{padding:1rem .75rem 2rem;}
+  h1{font-size:clamp(1.8rem,8vw,2.4rem);overflow-wrap:anywhere;}
+  .dash-header{align-items:stretch;gap:.75rem;}
+  .dash-header>div{min-width:0;}
+  .mobile-section-picker:not([hidden]){display:block;margin:0 0 1rem;padding:.75rem;background:var(--bg3);border:1px solid var(--border);border-radius:12px;}
+  .mobile-section-picker label{display:block;font-size:.8rem;font-weight:700;margin-bottom:.35rem;}
+  .mobile-section-picker select{width:100%;min-width:0;min-height:48px;padding:.6rem;border:1px solid #a8b29f;border-radius:8px;background:#fff;color:var(--cream);}
+  /* Only replace the tab strip once its accessible picker is ready. */
+  .admin-tabs.mobile-picker-ready{display:none!important;}
+  .stats-row{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .stat-card,.stat-card.active{min-height:100px;padding:.8rem;}
+  .stat-label{font-size:.75rem;letter-spacing:.025em;}
+  .stat-val{font-size:clamp(1.6rem,7vw,2.2rem);overflow-wrap:anywhere;}
+  .product-panel,.abandoned-panel,.product-editor,.focus-panel{padding:.85rem;}
+  .product-panel,.abandoned-panel,.product-grid,.creator-grid,.product-grid>*,.creator-grid>*{min-width:0;max-width:100%;}
+  /* Existing editors and reports use inline desktop grids. Let them reflow. */
+  #dashboard [style*="grid-template-columns"]:not(.stats-row){grid-template-columns:minmax(0,1fr)!important;}
+  #dashboard [style*="grid-template-columns"]>*{min-width:0;}
+  .product-row{grid-template-columns:42px minmax(0,1fr) auto;gap:.5rem;padding:.65rem;}
+  .product-row-title,.product-row-meta,.image-preview span{overflow-wrap:anywhere;}
+  .image-preview{flex-wrap:wrap;}
+  .toolbar{flex-wrap:wrap;overflow-x:visible;}
+  .toolbar,.focus-actions,.mini-actions,.product-editor-actions{gap:.5rem;}
+  .toolbar>*,.focus-actions>*,.export-bar>*{max-width:100%;min-width:0;}
+  .toolbar .search-box{order:-1;flex:1 1 100%;min-width:0;}
+  .toolbar .section-title{flex-basis:100%;}
+  .toolbar .filter-btn{white-space:normal;flex:1 1 auto;}
+  .focus-actions,.focus-actions>button{width:100%;}
+  .filter-btn:not(.active){color:#42513c!important;border-color:#a8b29f!important;}
+  .filter-btn.active{color:#fff!important;}
+  .btn-gold,.btn-outline,.btn-green,.btn-danger,.filter-btn,.sub-btn{overflow-wrap:anywhere;white-space:normal;}
+  input:not([type="checkbox"]):not([type="radio"]),select,textarea{max-width:100%;min-width:0;font-size:max(16px,.95rem)!important;}
+  button,.sub-btn,.inbox-filter-btn{min-height:44px;}
+  .form-row label,.hint{overflow-wrap:anywhere;}
+  .tbl-wrap{max-width:100%;overscroll-behavior-x:contain;}
+  .tbl-wrap:not(#ordersTableSection):not(#replacementsTableSection):not(#returnsTableSection):not(#npCancelledTableWrap)::before{content:'Swipe sideways to see all columns →';display:block;position:sticky;left:0;width:fit-content;max-width:100%;padding:.65rem .8rem;font-size:.75rem;font-weight:600;color:var(--cream-dim);white-space:normal;}
+  .tbl-wrap.tbl-loading::before{content:'Loading…';}
+  .orders-pagination{border:1px solid var(--border);border-radius:12px;padding:.75rem;gap:.6rem;}
+  .orders-pagination-info{font-size:.8rem;}
+  .orders-pagination-actions{width:100%;gap:.4rem;}
+  .orders-pagination-actions button{font-size:.8rem;letter-spacing:0;}
+  #ordersPageLabel{min-width:0!important;font-size:.8rem!important;}
+  .empty{padding:2rem 1rem;}
+  #shipModal,#iacRefundModal,#iacReplModal,#iacEditModal,#iacReplacementItemsModal{padding:.5rem!important;}
+  :is(#shipModal,#iacRefundModal,#iacReplModal,#iacEditModal,#iacReplacementItemsModal)>div{min-width:0;max-width:100%!important;max-height:calc(100dvh - 1rem)!important;overflow:auto;padding:1rem!important;}
+  #shipModal>div>div:last-child{flex-wrap:wrap;}
+}
