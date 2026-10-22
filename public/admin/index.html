@@ -2034,6 +2034,20 @@ select,input,textarea{font-size:1rem;}
             <p class="hint" id="prodCodMsg" style="margin-top:.65rem;"></p>
             <div id="prodCodList" class="hint" style="margin-top:.4rem;"></div>
           </details>
+          <details id="prodFreeDeliveryEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(93,155,85,.05);">
+            <summary style="cursor:pointer;color:#5d9b55;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🚚 Free delivery for this book</summary>
+            <p class="hint" style="margin:.65rem 0 0;">Ships this book free. <strong>Any order containing it ships free</strong>, whatever the total (normally ₹40 below ₹499). The product page badge reads <em>“🚚 FREE delivery”</em>, and the cart, checkout and WhatsApp-bot orders charge ₹0 delivery.</p>
+            <p class="hint" id="prodFreeDeliveryCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
+            <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
+              <input type="checkbox" id="prodFreeDelivery" style="accent-color:#5d9b55;"/> Free delivery for this book
+            </label>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-green" type="button" id="prodFreeDeliverySaveBtn" onclick="saveFreeDelivery()">Save Delivery Setting</button>
+              <button class="btn-outline" type="button" onclick="listFreeDelivery()">List all free-delivery books</button>
+            </div>
+            <p class="hint" id="prodFreeDeliveryMsg" style="margin-top:.65rem;"></p>
+            <div id="prodFreeDeliveryList" class="hint" style="margin-top:.4rem;"></div>
+          </details>
           <details id="prodSalesLineageEditor" style="display:none;margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(232,160,48,.04);">
             <summary style="cursor:pointer;color:#e8a030;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔥 Sold count from the original listing</summary>
             <p class="hint" style="margin:.65rem 0 0;">For a duplicated listing: the product page's <strong>"🔥 N sold"</strong> line adds the original listing's sales to this page's own. Duplicates made with <em>Duplicate as New Listing</em> get this automatically; use this box for older copies. Shown from 10 sold; updates within the hour.</p>
@@ -9106,6 +9120,7 @@ function selectProduct(slug) {
   loadMarketplaceLinksEditor(row);
   loadSalesLineageEditor(row);
   loadCodRuleEditor(row);
+  loadFreeDeliveryEditor(row);
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
 }
@@ -9849,6 +9864,79 @@ async function listCodRules() {
       ? '<strong>' + slugs.length + ' book' + (slugs.length === 1 ? '' : 's') + ' with COD off:</strong><br>'
         + slugs.map(s => '<a href="/product/' + encodeURIComponent(s) + '/" target="_blank" rel="noopener">' + esc(s) + '</a>').join('<br>')
       : 'No books have COD switched off here. (Crossword-imported titles use the no-cod tag instead.)';
+  } catch (e) {
+    box.textContent = 'Could not list: ' + e.message;
+  }
+}
+
+// ── Free delivery per book (admin-free-delivery) ─────────────────────────────
+function setFreeDeliveryUi(free, note) {
+  const cb = document.getElementById('prodFreeDelivery');
+  const cur = document.getElementById('prodFreeDeliveryCurrent');
+  if (cb) cb.checked = !!free;
+  if (cur) cur.innerHTML = note ? esc(note) : free
+    ? '<strong style="color:#5d9b55;">Free delivery is ON</strong> — any order with this book ships free.'
+    : 'Normal delivery charge (₹40 below ₹499).';
+}
+
+async function loadFreeDeliveryEditor(row) {
+  const msg = document.getElementById('prodFreeDeliveryMsg');
+  if (msg) msg.textContent = '';
+  const list = document.getElementById('prodFreeDeliveryList');
+  if (list) list.innerHTML = '';
+  if (!row?.slug) return;
+  setFreeDeliveryUi(false, 'Checking…');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-free-delivery?slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setFreeDeliveryUi(data.free, data.migration ? '⚠ ' + data.migration : '');
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setFreeDeliveryUi(false, 'Could not load: ' + e.message);
+  }
+}
+
+async function saveFreeDelivery() {
+  const slug = selectedProduct?.slug;
+  const msg = document.getElementById('prodFreeDeliveryMsg');
+  const btn = document.getElementById('prodFreeDeliverySaveBtn');
+  if (!slug) { if (msg) msg.textContent = 'Select a product first.'; return; }
+  const on = !!document.getElementById('prodFreeDelivery')?.checked;
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-free-delivery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, free_delivery: on }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (selectedProduct?.slug === slug) setFreeDeliveryUi(data.free);
+    if (msg) msg.textContent = data.free
+      ? 'Saved — orders with this book ship free from now on. The product page badge updates within about a minute.'
+      : 'Saved — normal delivery charge again (product page updates within about a minute).';
+  } catch (e) {
+    if (msg) msg.textContent = 'Could not save: ' + e.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function listFreeDelivery() {
+  const box = document.getElementById('prodFreeDeliveryList');
+  if (!box) return;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-free-delivery');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const slugs = (data.slugs || []).slice().sort();
+    box.innerHTML = slugs.length
+      ? '<strong>' + slugs.length + ' book' + (slugs.length === 1 ? '' : 's') + ' with free delivery:</strong><br>'
+        + slugs.map(s => '<a href="/product/' + encodeURIComponent(s) + '/" target="_blank" rel="noopener">' + esc(s) + '</a>').join('<br>')
+      : 'No books have free delivery yet.';
   } catch (e) {
     box.textContent = 'Could not list: ' + e.message;
   }

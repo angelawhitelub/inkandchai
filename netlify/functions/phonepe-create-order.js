@@ -24,6 +24,7 @@ const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
+const { orderShipping } = require('./utils/free-delivery');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 const { siteSaleDiscount, betterOfSale } = require('./utils/site-sale');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
@@ -36,8 +37,7 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-const FREE_SHIPPING_THRESHOLD = 499;
-const SHIPPING_FEE = 40;
+// Shipping: utils/free-delivery orderShipping (₹40 below ₹499, free with a free-delivery book).
 
 function normalizeCouponCode(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -179,7 +179,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
   }
   const subtotal    = priced.subtotal;
-  const shipping    = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  const shipping    = orderShipping(cart, subtotal);
   const meta        = paymentMeta(cart);
   const isPartial   = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
   let couponInfo    = await resolveCouponDiscount(_supabaseForCoupon, cart, subtotal, coupon, { saleOnly: isPartial });

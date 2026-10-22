@@ -20,6 +20,7 @@
  */
 
 const { siteSaleDiscount } = require('./site-sale');
+const { freeDeliveryFor } = require('./free-delivery');
 
 const DRAFT = 'awaiting_confirmation';
 const DISCARDED = 'draft_discarded';
@@ -125,6 +126,18 @@ function withSiteSale(pricing, at) {
   return { ...pricing, saleRs: sale.discount, saleLabel: sale.label, totalRs, totalPaise: totalRs * 100 };
 }
 
+// A matched free-delivery book ships the whole chat order free, as at checkout
+// (utils/free-delivery). Any lookup failure keeps the normal charge.
+async function withFreeDelivery(db, pricing) {
+  const slugs = (pricing.items || []).map((i) => i && i.slug).filter(Boolean);
+  if (!pricing.shippingRs || !slugs.length) return pricing;
+  let free;
+  try { free = await freeDeliveryFor(db, slugs); } catch (e) { console.error('bot-order-request free delivery:', e.message); return pricing; }
+  if (!free.size) return pricing;
+  const totalRs = pricing.totalRs - pricing.shippingRs;
+  return { ...pricing, shippingRs: 0, freeDelivery: true, totalRs, totalPaise: totalRs * 100 };
+}
+
 async function priceSafely(priceBooksList, books) {
   try {
     return await priceBooksList(books, UNMATCHED_BOOK_FALLBACK_RS);
@@ -171,7 +184,7 @@ async function draftOrderRequest(deps, phone, args) {
     };
   }
 
-  const pricing = withSiteSale(await priceSafely(deps.priceBooksList, f.books), nowMs);
+  const pricing = withSiteSale(await withFreeDelivery(db, await priceSafely(deps.priceBooksList, f.books)), nowMs);
   const draft = rows.find((r) => r.status === DRAFT && nowMs - new Date(r.created_at).getTime() < DRAFT_TTL_MS);
   const values = {
     customer_name: f.customerName,
@@ -213,6 +226,7 @@ async function draftOrderRequest(deps, phone, args) {
       subtotal_rs: pricing.subtotalRs,
       ...(pricing.saleRs ? { sale_discount_rs: pricing.saleRs, sale: pricing.saleLabel } : {}),
       shipping_rs: pricing.shippingRs,
+      ...(pricing.freeDelivery ? { free_delivery: true } : {}),
       total_rs: pricing.totalRs,
     },
     other_open_orders: others,
@@ -235,8 +249,9 @@ function draftReplyDecision(text) {
 function placedMessage(row, pricing, paymentLink) {
   const total = rupees(row.amount_paise);
   const sale = pricing && pricing.saleRs ? ` − ${pricing.saleLabel} ₹${pricing.saleRs}` : '';
-  const breakdown = pricing && (pricing.shippingRs || pricing.saleRs)
-    ? ` (books ₹${pricing.subtotalRs}${sale}${pricing.shippingRs ? ` + shipping ₹${pricing.shippingRs}` : ''})`
+  const ship = pricing && pricing.shippingRs ? ` + shipping ₹${pricing.shippingRs}` : pricing && pricing.freeDelivery ? ' · free delivery 🚚' : '';
+  const breakdown = pricing && (pricing.shippingRs || pricing.saleRs || pricing.freeDelivery)
+    ? ` (books ₹${pricing.subtotalRs}${sale}${ship})`
     : '';
   if (row.payment_mode === 'prepaid') {
     return paymentLink
@@ -281,7 +296,7 @@ async function confirmDraftOrder(deps, phone, decision) {
   if (claimErr) { console.error('confirmDraftOrder claim:', claimErr.message); return null; }
   if (!claimed || !claimed.length) return { handled: true, order_id: row.order_id, reply: null };
 
-  const pricing = withSiteSale(await priceSafely(deps.priceBooksList, row.books), new Date(row.created_at).getTime());
+  const pricing = withSiteSale(await withFreeDelivery(db, await priceSafely(deps.priceBooksList, row.books)), new Date(row.created_at).getTime());
 
   let paymentLink = '';
   let linkError = '';

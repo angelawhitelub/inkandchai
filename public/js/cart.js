@@ -101,8 +101,27 @@ function clearCart() {
 // ── Shipping rules (must match server-side cod-order.js / verify-payment.js) ─
 const FREE_SHIPPING_THRESHOLD = 499;   // ₹499 → free shipping
 const SHIPPING_FEE            = 40;    // Below ₹499 → flat ₹40 Delhivery
+// Books the admin set to ship free (free-delivery-slugs, utils/free-delivery):
+// any one in the cart makes the whole order ship free. Fetched once per page,
+// and only once the cart has something in it.
+let _iacFreeDelivery = new Set();
+let _iacFreeDeliveryAsked = false;
+function iacHasFreeDelivery(cart) {
+  const items = cart || getCart();
+  if (!items.length) return false;
+  if (!_iacFreeDeliveryAsked) {
+    _iacFreeDeliveryAsked = true;
+    fetch('/.netlify/functions/free-delivery-slugs').then(r => r.ok ? r.json() : null).then(d => {
+      const slugs = (d && d.slugs) || [];
+      if (!slugs.length) return;
+      _iacFreeDelivery = new Set(slugs.map(s => String(s).toLowerCase()));
+      if (typeof updateCartUI === 'function') updateCartUI();
+    }).catch(() => {});
+  }
+  return items.some(i => _iacFreeDelivery.has(iacCartSlug(i)));
+}
 window.calcShipping = function(subtotal) {
-  return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  return subtotal >= FREE_SHIPPING_THRESHOLD || iacHasFreeDelivery() ? 0 : SHIPPING_FEE;
 };
 
 // ── UI helpers ─────────────────────────────────────────────────────────────
@@ -250,6 +269,12 @@ function cartRecHost() {
 // The free-delivery gap, drawn. Shown even at zero remaining, because "you have
 // free delivery" is the reward that makes the next nudge credible.
 function shipNudgeHtml(subtotal) {
+  if (subtotal < FREE_SHIPPING_THRESHOLD && iacHasFreeDelivery()) {
+    return `<div class="iac-ship-nudge is-free">
+      <div class="iac-ship-text">&#10003; Free delivery &mdash; a book in your cart ships free</div>
+      <div class="iac-ship-bar"><div class="iac-ship-fill" style="width:100%"></div></div>
+    </div>`;
+  }
   const need = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal);
   const pct = Math.max(0, Math.min(100, Math.round((subtotal / FREE_SHIPPING_THRESHOLD) * 100)));
   if (need <= 0) {

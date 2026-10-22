@@ -18,6 +18,7 @@ const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricin
 const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
+const { orderShipping } = require('./utils/free-delivery');
 const { siteSaleDiscount } = require('./utils/site-sale');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
 
@@ -109,11 +110,9 @@ exports.handler = async (event, context) => {
     if (bad) return { statusCode: 400, headers: CORS, body: JSON.stringify(bad) };
   }
 
-  // Shipping rules — must match cart.js + checkout. Calculate server-side
-  // defensively rather than trusting client input. Prices come from the
-  // catalogue, NEVER from cart items (the browser is hostile).
-  const FREE_SHIPPING_THRESHOLD = 499;
-  const SHIPPING_FEE = 40;
+  // Shipping (utils/free-delivery orderShipping) and fees — must match cart.js +
+  // checkout. Calculated server-side rather than trusting client input. Prices
+  // come from the catalogue, NEVER from cart items (the browser is hostile).
   const COD_HANDLING_FEE = 20;            // matches generate_site.py CHECKOUT_HTML
   const COD_FEE_WAIVER_THRESHOLD = 999;   // fee waived on subtotal >= ₹999
   // Minimum item value for COD. Mirrors COD_MIN_SUBTOTAL in generate_site.py,
@@ -172,7 +171,7 @@ exports.handler = async (event, context) => {
   // Order ID — IC-CW-... for Crossword-migrated genuine-tag carts, IC-... otherwise.
   const orderId = await makeOrderId('IC', cart);
   const subtotal = priced.subtotal;
-  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  const shipping = orderShipping(cart, subtotal);
   const codFee   = subtotal >= COD_FEE_WAIVER_THRESHOLD ? 0 : COD_HANDLING_FEE;
   const couponInfo = siteSaleDiscount(subtotal);
   const total    = Math.max(1, subtotal + shipping + codFee - couponInfo.discount);

@@ -544,6 +544,41 @@ async function withCodRule(response, slug, env, ctx, origin) {
   return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
 }
 
+// Books the admin set to ship free (utils/free-delivery, via free-delivery-slugs).
+// Same shape as codOffRules.
+let _freeDelivery = null;
+let _freeDeliveryAt = 0;
+async function freeDeliverySet(env, ctx, origin) {
+  const now = Date.now();
+  if (_freeDelivery && now - _freeDeliveryAt < COD_TTL_MS) return _freeDelivery;
+  try {
+    const res = await runHandler('free-delivery-slugs', new Request(`${origin}${FN_PREFIX}free-delivery-slugs`), env, ctx);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const doc = await res.json();
+    _freeDelivery = new Set(((doc && doc.slugs) || []).map((s) => String(s).toLowerCase()));
+    _freeDeliveryAt = now;
+  } catch (err) {
+    console.warn('[free-delivery] read failed:', err && err.message);
+    if (!_freeDelivery) { _freeDelivery = new Set(); _freeDeliveryAt = now - COD_TTL_MS + 10_000; }
+  }
+  return _freeDelivery;
+}
+
+// The product page of a free-delivery book: the delivery badge says so.
+async function withFreeDelivery(response, slug, env, ctx, origin) {
+  if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  if (!(await freeDeliverySet(env, ctx, origin)).has(String(slug || '').toLowerCase())) return response;
+  const out = new HTMLRewriter()
+    .on('div.trust .tt b', { text(t) { if (/Delivery in 2-5 days/i.test(t.text)) t.replace('🚚 FREE delivery'); } })
+    .on('div.trust .tt i', { text(t) { if (/Shipped across India/i.test(t.text)) t.replace('On your whole order · 2-5 days'); } })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('content-length');
+  headers.set('X-Free-Delivery', '1');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
 function markSoldOutPage(response) {
   let ldBuf = '';
   const out = new HTMLRewriter()
@@ -782,7 +817,7 @@ export default {
       const entry = (await catalogContent(env))[contentSlug];
       let page = entry ? rewriteCatalogPage(assetResponse, entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
-      page = await withCodRule(page, contentSlug, env, ctx, url.origin);
+      page = await withFreeDelivery(await withCodRule(page, contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
       return withSoldCount(page, contentSlug);
     }
 
@@ -801,9 +836,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withSoldCount(await withCodRule(markSoldOutPage(rendered), slug, env, ctx, url.origin), slug);
+          return withSoldCount(await withFreeDelivery(await withCodRule(markSoldOutPage(rendered), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
         }
-        if (rendered.status !== 404) return withSoldCount(await withCodRule(rendered, slug, env, ctx, url.origin), slug);
+        if (rendered.status !== 404) return withSoldCount(await withFreeDelivery(await withCodRule(rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a

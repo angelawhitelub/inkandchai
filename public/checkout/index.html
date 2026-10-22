@@ -741,7 +741,11 @@ function loadScratchState() {
   try { return JSON.parse(localStorage.getItem(SCRATCH_KEY) || 'null'); } catch { return null; }
 }
 let appliedScratchCard = loadScratchState(); // {code, value_paise, min_subtotal_paise, expires_at} or null
-function calcShipping(subtotal) { return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE; }
+// Free from ₹499, or when the cart holds a book the admin set to ship free
+// (loadFreeDelivery flags it; utils/free-delivery orderShipping decides the same).
+function calcShipping(subtotal, cart = getCart()) {
+  return subtotal >= FREE_SHIPPING_THRESHOLD || cart.some(i => i && i._free_delivery === true) ? 0 : SHIPPING_FEE;
+}
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
 function cartSubtotal(cart) { return cart.reduce((s, i) => s + itemPrice(i) * itemQty(i), 0); }
@@ -868,7 +872,7 @@ function chosenCouponDiscount(cart, method, subtotal, code) {
 }
 function orderTotals(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
+  const shipping = calcShipping(subtotal, cart);
   const coupon = couponDiscount(cart, method);
   // COD fee waived on subtotal >= ₹999 (pushes customers to add more to cart)
   const codFee  = (method === 'cod' && subtotal < COD_FEE_WAIVER_THRESHOLD) ? COD_HANDLING_FEE : 0;
@@ -879,7 +883,7 @@ function partialPaymentTotals(cart) {
   // Partial COD: COD handling fee is WAIVED as the incentive to pre-pay 10%.
   // A site-wide sale (FREEDOM, FESTIVE10) is the one discount valid on partial COD.
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
+  const shipping = calcShipping(subtotal, cart);
   const coupon = couponDiscount(cart, 'cod');
   const discount = (coupon.code === 'FREEDOM' || coupon.code === FESTIVE_SALE.code) ? coupon.discount : 0;
   const total = Math.max(1, subtotal + shipping - discount);
@@ -917,6 +921,28 @@ async function loadCodRules() {
     if (changed) { saveCart(cart); renderSummary(); }
   } catch (_) {
     // cod-order enforces the rule anyway.
+  }
+}
+// Books the admin set to ship free (free-delivery-slugs). The flag lives on the
+// cart line like _no_cod; the order functions re-derive it, so submitOrder waits
+// for this before pricing, or a stale flag would answer with "price changed".
+let _freeDeliveryReady = Promise.resolve();
+async function loadFreeDelivery() {
+  try {
+    const res = await fetch('/.netlify/functions/free-delivery-slugs');
+    if (!res.ok) return;
+    const free = new Set(((await res.json()).slugs || []).map(s => String(s).toLowerCase()));
+    const cart = getCart();
+    let changed = false;
+    for (const item of cart) {
+      if (!item) continue;
+      const on = free.has(String(couponItemSlug(item) || '').toLowerCase());
+      if (on && item._free_delivery !== true) { item._free_delivery = true; changed = true; }
+      if (!on && item._free_delivery) { delete item._free_delivery; changed = true; }
+    }
+    if (changed) { saveCart(cart); renderSummary(); }
+  } catch (_) {
+    // The order functions decide the charge anyway.
   }
 }
 // How far this cart is from qualifying for COD, in rupees. 0 means it qualifies.
@@ -1237,7 +1263,8 @@ function renderSummary() {
       <span class="summary-line-label">Shipping (Delhivery)</span>
       <span class="summary-line-value" style="color:${shipping === 0 ? '#5d9b55' : 'var(--cream)'};">${shipping === 0 ? 'FREE' : '₹' + shipping}</span>
     </div>
-    ${shipping > 0 ? `<div style="font-size:0.6rem;color:var(--gold);letter-spacing:0.05em;padding:0 0 0.6rem;">💡 Add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more to qualify for free shipping</div>` : ''}`;
+    ${shipping > 0 ? `<div style="font-size:0.6rem;color:var(--gold);letter-spacing:0.05em;padding:0 0 0.6rem;">💡 Add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more to qualify for free shipping</div>` : ''}
+    ${shipping === 0 && subtotal < FREE_SHIPPING_THRESHOLD ? `<div style="font-size:0.6rem;color:#5d9b55;letter-spacing:0.05em;padding:0 0 0.6rem;">🚚 Free delivery — a book in your order ships free</div>` : ''}`;
 
   totalEl.textContent = '₹' + grand.toLocaleString('en-IN');
   totalRow.style.display = 'flex';
@@ -1343,7 +1370,7 @@ async function saveAbandonedCheckout(status = 'open', orderId = '') {
   const customer = collectPartialAddr();
   if (!cart.length || !(customer.email || customer.phone || customer.name)) return;
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal);
+  const shipping = calcShipping(subtotal, cart);
   try {
     await fetch('/.netlify/functions/save-abandoned-checkout', {
       method: 'POST',
@@ -1714,6 +1741,7 @@ document.addEventListener('change', e => {
 
 // ── Main submit ────────────────────────────────────────────────────────────
 async function submitOrder(method) {
+  await _freeDeliveryReady;
   if (_shippingRestrictionBlocked) {
     alert(_shippingRestrictionText || 'A product in your cart cannot be delivered to this pincode.');
     return;
@@ -2635,6 +2663,7 @@ window.addrShowNewForm = function() {
 loadManagedPromotions().then(() => loadProductCoupons(getCart())).then(renderSummary);
 renderSummary();
 loadCodRules();
+_freeDeliveryReady = loadFreeDelivery();
 
 // When returning to checkout — including bfcache back/forward from a payment
 // page (PhonePe redirect, Razorpay) — clear any stuck loading state and repaint

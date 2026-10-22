@@ -10,6 +10,7 @@
  */
 
 const { codRulesFor } = require('./cod-rules');
+const { freeDeliveryFor } = require('./free-delivery');
 const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipping-restrictions');
 const { grantMap, feedOfferId } = require('./google-discount');
 const { selectTolerant } = require('./publisher-sourced');
@@ -271,6 +272,14 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   for (const item of resolved) {
     const note = codRules[String(item.slug || '').toLowerCase()];
     if (note) { item._no_cod = true; item._cod_note = note; }
+  }
+
+  // Free delivery switched on per book (utils/free-delivery): any one of them
+  // makes the whole order ship free. Whatever the browser sent is dropped.
+  const freeSlugs = resolved.length && supabase ? await freeDeliveryFor(supabase, resolved.map((i) => i.slug)) : new Set();
+  for (const item of resolved) {
+    if (freeSlugs.has(String(item.slug || '').toLowerCase())) item._free_delivery = true;
+    else delete item._free_delivery;
   }
 
   // The Merchant Center id for each line. Google Ads "conversions with cart

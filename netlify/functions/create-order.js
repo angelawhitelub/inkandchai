@@ -20,6 +20,7 @@ const { resolveCartPrices } = require('./utils/pricing');
 const { claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
+const { orderShipping } = require('./utils/free-delivery');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 const { siteSaleDiscount, betterOfSale } = require('./utils/site-sale');
 
@@ -29,8 +30,7 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-const FREE_SHIPPING_THRESHOLD = 499;
-const SHIPPING_FEE = 40;
+// Shipping: utils/free-delivery orderShipping (₹40 below ₹499, free with a free-delivery book).
 
 const COUPONS = {
   INKLOVE10:  { type: 'percent', value: 10, minSubtotal: 499  },
@@ -126,7 +126,7 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
     }
 
-    const shipping   = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+    const shipping   = orderShipping(cart, subtotal);
     const isPartial  = payment_mode === 'partial_cod';
     const couponInfo = await resolveCoupon(supabase, cart, subtotal, rawCoupon, { saleOnly: isPartial });
     const partialDiscount = couponInfo.source === 'site_sale' ? couponInfo.discount : 0;

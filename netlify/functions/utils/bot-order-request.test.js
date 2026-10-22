@@ -121,6 +121,22 @@ test('a chat order during the festive sale costs what checkout charges', async (
   assert.match(yes.reply, /₹490 \(books ₹500 − Dussehra & Diwali Sale 10% off ₹50 \+ shipping ₹40\)/);
 });
 
+test('a chat order with a free-delivery book ships free', async () => {
+  const db = fakeDb();
+  db.from = ((orig) => (t) => t === 'product_free_delivery'
+    ? { select: () => ({ or: async () => ({ data: [{ slug: 'free-book' }], error: null }) }) }
+    : orig(t))(db.from);
+  const { d } = deps(db, {
+    priceBooksList: async () => ({ items: [{ slug: 'free-book', price: 250 }], subtotalRs: 250, shippingRs: 40, totalRs: 290, totalPaise: 29000, unmatched: [] }),
+  });
+  const drafted = await draftOrderRequest(d, PHONE, ARGS);
+  assert.equal(drafted.summary.shipping_rs, 0);
+  assert.equal(drafted.summary.total_rs, 250);
+  assert.equal(drafted.summary.free_delivery, true);
+  const yes = await confirmDraftOrder(d, PHONE, 'confirm');
+  assert.match(yes.reply, /₹250 \(books ₹250 · free delivery/);
+});
+
 test('₹399 of books is not above ₹399, so no sale', async () => {
   const db = fakeDb();
   const { d } = deps(db, {

@@ -143,7 +143,7 @@ async function priceBooksList(rawBooksList, fallbackRs = 349) {
   for (const q of queries) {
     const hit = await lookupBook(q);
     if (hit) {
-      items.push({ query: q, matchedTitle: hit.title, price: hit.price, matched: true });
+      items.push({ query: q, matchedTitle: hit.title, price: hit.price, slug: hit.slug, matched: true });
     } else {
       items.push({ query: q, matchedTitle: q, price: fallbackRs, matched: false });
       unmatched.push(q);
