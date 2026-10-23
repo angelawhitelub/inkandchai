@@ -2372,6 +2372,17 @@ select,input,textarea{font-size:1rem;}
           <option value="closed">Closed</option>
           <option value="all">All</option>
         </select>
+        <select id="tkSort" onchange="tkSortChanged()" title="Sort by" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;">
+          <option value="urgent">Sort: most urgent</option>
+          <option value="newest">Sort: newest first</option>
+          <option value="oldest">Sort: oldest first</option>
+          <option value="overdue">Sort: most overdue</option>
+          <option value="unanswered">Sort: unanswered first</option>
+          <option value="customer">Sort: customer replied last</option>
+          <option value="priority">Sort: high priority first</option>
+          <option value="category">Sort: issue type</option>
+          <option value="name">Sort: customer name</option>
+        </select>
         <input id="tkSearch" placeholder="Search ticket, order, name, email…" onkeydown="if(event.key==='Enter')loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;min-width:220px;"/>
         <button class="btn-outline" onclick="loadTickets()">↻ Reload</button>
       </div>
@@ -3968,6 +3979,32 @@ async function cancelNotPickedSelected(btn, onlyRows) {
   }
 }
 
+// Sorting is done here on the list already loaded, so changing it is instant.
+let tkLoaded = null;
+const tkTime = (v) => (v ? new Date(v).getTime() : 0);
+const tkUnanswered = (t) => t.status === 'open' && !t.first_response_at;
+const TK_SORTS = {
+  urgent: (a, b) => (!!b.overdue - !!a.overdue) || ((b.priority === 'high') - (a.priority === 'high')) || (tkTime(a.due_at) - tkTime(b.due_at)),
+  newest: (a, b) => tkTime(b.created_at) - tkTime(a.created_at),
+  oldest: (a, b) => tkTime(a.created_at) - tkTime(b.created_at),
+  // Past the 48 h promise the longest first; the rest by how soon they fall due.
+  overdue: (a, b) => (!!b.overdue - !!a.overdue) || (tkTime(a.due_at) - tkTime(b.due_at)),
+  unanswered: (a, b) => (tkUnanswered(b) - tkUnanswered(a)) || (tkTime(a.created_at) - tkTime(b.created_at)),
+  customer: (a, b) => tkTime(b.last_customer_at || b.created_at) - tkTime(a.last_customer_at || a.created_at),
+  priority: (a, b) => ((b.priority === 'high') - (a.priority === 'high')) || (tkTime(b.created_at) - tkTime(a.created_at)),
+  category: (a, b) => String(a.category_label || '').localeCompare(String(b.category_label || '')) || (tkTime(a.created_at) - tkTime(b.created_at)),
+  name: (a, b) => String(a.customer_name || a.customer_email || '').localeCompare(String(b.customer_name || b.customer_email || ''), 'en', { sensitivity: 'base' }),
+};
+const TK_SORT_TEXT = { urgent: 'most urgent first', newest: 'newest first', oldest: 'oldest first', overdue: 'most overdue first',
+  unanswered: 'unanswered first', customer: 'latest customer reply first', priority: 'high priority first', category: 'by issue type', name: 'by customer name' };
+(function () {
+  try { const v = localStorage.getItem('tkSort'); const el = document.getElementById('tkSort'); if (v && TK_SORTS[v] && el) el.value = v; } catch (e) { /* default sort */ }
+})();
+function tkSortChanged() {
+  try { localStorage.setItem('tkSort', document.getElementById('tkSort').value); } catch (e) { /* not remembered */ }
+  if (tkLoaded) renderTicketList();
+}
+
 async function loadTickets() {
   const list = document.getElementById('tkList');
   const msg = document.getElementById('tkMsg');
@@ -3997,9 +4034,23 @@ async function loadTickets() {
       + (c.unanswered ? ' · <strong style="color:#e0a060;">' + c.unanswered + ' unanswered</strong>' : '');
     const b = document.getElementById('ticketsBadge');
     if (b) { b.textContent = c.active; b.style.background = c.overdue ? '#c93636' : '#c98a36'; b.style.display = c.active ? 'inline-block' : 'none'; }
-    if (!data.tickets.length) { msg.textContent = q ? 'No tickets match that search.' : 'No tickets here.'; return; }
-    msg.textContent = data.tickets.length + ' shown' + (status === 'active' ? ' — most urgent first' : ', newest first');
-    list.innerHTML = data.tickets.map(function (t) {
+    if (!data.tickets.length) { tkLoaded = null; msg.textContent = q ? 'No tickets match that search.' : 'No tickets here.'; return; }
+    tkLoaded = data.tickets;
+    renderTicketList();
+  } catch (e) {
+    msg.style.color = '#e06060';
+    msg.textContent = 'Could not load tickets: ' + e.message;
+  }
+}
+
+function renderTicketList() {
+  const list = document.getElementById('tkList');
+  const msg = document.getElementById('tkMsg');
+  const sortBy = TK_SORTS[document.getElementById('tkSort')?.value] ? document.getElementById('tkSort').value : 'urgent';
+  const rows = tkLoaded.slice().sort(TK_SORTS[sortBy]);
+  msg.textContent = rows.length + ' shown — ' + TK_SORT_TEXT[sortBy];
+  {
+    list.innerHTML = rows.map(function (t) {
       const border = t.overdue ? 'rgba(224,96,96,.55)' : t.status === 'open' && !t.first_response_at ? 'rgba(224,176,96,.45)' : 'var(--border)';
       return '<div onclick="openTicket(\'' + esc(t.id) + '\')" style="cursor:pointer;border:1px solid ' + border + ';border-radius:12px;padding:.8rem 1rem;margin-bottom:.6rem;">'
         + '<div style="display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:center;">'
@@ -4015,9 +4066,6 @@ async function loadTickets() {
         + '<div style="font-size:.82rem;margin-top:.35rem;color:var(--cream);">' + esc(t.preview) + (t.preview && t.preview.length >= 140 ? '…' : '') + '</div>'
         + '</div>';
     }).join('');
-  } catch (e) {
-    msg.style.color = '#e06060';
-    msg.textContent = 'Could not load tickets: ' + e.message;
   }
 }
 
