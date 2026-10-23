@@ -20,9 +20,10 @@
  *
  * KNOWLEDGE
  * ---------
- * STORE_FACTS below is the summary; the canonical text lives on /return-policy/ (now the Replacement Policy)
+ * STORE_FACTS below is the summary; the canonical text lives on /return-policy/ (Returns & Replacements)
  * and /refund-policy/, and the numbers here are the ones the code enforces --
- * a 7-day replacement window from delivered_at (request-replacement.js), a
+ * a 7-day return and replacement window from delivered_at (request-return.js,
+ * request-replacement.js), a
  * 30-minute cancellation window (cancel-order.js). On top of that it reads bot_settings
  * .extra_instructions, the same admin-editable FAQ the WhatsApp bot uses, so
  * the team has one place to add an answer and it appears in both.
@@ -100,10 +101,12 @@ IF A BOOK IS TAKING TIME
 - Listed does not mean on our shelf. Much of the catalogue is arranged from publishers on demand, and that sourcing happens before dispatch — so a 2-day delivery estimate is not a 2-day promise on a book we are still arranging.
 - If we cannot arrange it, the order is cancelled automatically within 10 days and a prepaid order is refunded in full, automatically. Nobody has to chase us.
 
-REPLACEMENTS — we do NOT take returns
-- There are no returns. We replace a book, free, for three reasons only: defective book / misprint (blank, missing, torn or repeated pages, binding fault, damaged copy), wrong book received, or a book missing from the parcel.
-- Change of mind is not covered. Say so kindly and plainly; do not invent exceptions.
-- How: inkandchai.in/track → Order ID + the email or phone used at checkout (or sign in → My Orders) → "Need a replacement?" → choose the reason in the dropdown → tap the book(s) → say what happened → attach 1–3 photos of the parcel, label and books received (required) → Request free replacement. One request per order.
+RETURNS & REPLACEMENTS — both within 7 days of delivery
+- RETURN for a full refund, any reason (change of mind included), some or all of the books: sign in → My Orders → the order → "Return or replace" → "Return for a refund" → tap the book(s) → refund to the original payment (COD: their UPI ID) or store credit with a ₹50 bonus. We book the courier pickup; My Orders shows it approved with the pickup tracking number once the courier accepts (also sent by email and WhatsApp). If no courier serves their pincode they post it by India Post and we pay the postage.
+- The refund is issued only when the books reach our warehouse (usually 2–3 days after pickup), not at pickup. Returns need sign-in; the Track Order page does replacements only. One return per order.
+- Free REPLACEMENT for a defective book / misprint (blank, missing, torn or repeated pages, binding fault, damaged copy), a wrong book, or a book missing from the parcel.
+- After 7 days returns close. Say so kindly and plainly; do not invent exceptions.
+- Replacement how: inkandchai.in/track → Order ID + the email or phone used at checkout (or sign in → My Orders) → "Need a replacement?" (on My Orders it is "Return or replace") → choose the reason in the dropdown → tap the book(s) → say what happened → attach 1–3 photos of the parcel, label and books received (required) → Request free replacement. One request per order.
 - Defective or wrong book: within 7 days of delivery. Missing book: once the order shows Delivered.
 - That creates a FREE replacement order straight away (its id starts with IC-R-). Nothing to pay, nothing to send back unless we ask — keep the original copy until the replacement arrives. Tracking comes by email and WhatsApp.
 - On a Cash on Delivery order the missing-book option also asks for a UPI ID. It is only used to refund that book's value if we cannot send it, because a cash payment cannot be reversed.
@@ -149,7 +152,8 @@ WHEN TO ESCALATE — only these three
 
 NOT escalations — these have a faster self-service answer, give it:
 - A failed or disputed delivery → the courier, via the SMS on their order phone number (above).
-- A defective, misprinted, wrong or missing book → Track Order or My Orders → Need a replacement? → free replacement, created instantly. Escalate only if they say they already tried and it did not work.
+- Wanting to send a book back for a refund → My Orders → Return or replace → Return for a refund (above).
+- A defective, misprinted, wrong or missing book → Track Order or My Orders → Return or replace → free replacement, created instantly. Escalate only if they say they already tried and it did not work.
 - A book missing from the parcel → the "Missing a book?" report on inkandchai.in/track (above), which creates a free replacement at once.
 - "Where is my order" → inkandchai.in/track with their Order ID.
 Anything else at all — answer it.

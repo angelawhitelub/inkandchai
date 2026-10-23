@@ -650,7 +650,7 @@ function reportBlockHtml(o) {
   const field = 'width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.6rem 0.8rem;font-family:inherit;font-size:0.82rem;';
   return `<div class="r-section" id="reportSection" style="border-top:1px dashed var(--border);padding-top:1.2rem;">
     <div class="r-section-h">Need a replacement?</div>
-    <div class="r-row" style="color:var(--cream-dim);font-size:0.8rem;margin-bottom:0.9rem;line-height:1.6;">We don't take returns, but we replace any book that arrived defective, misprinted, wrong or missing — free of charge.${w.open && w.daysLeft != null ? ` <span style="color:var(--gold);">${w.daysLeft} day${w.daysLeft === 1 ? '' : 's'} left for defective or wrong books.</span>` : ''}</div>
+    <div class="r-row" style="color:var(--cream-dim);font-size:0.8rem;margin-bottom:0.9rem;line-height:1.6;">We replace any book that arrived defective, misprinted, wrong or missing — free of charge. To return a book for a refund instead, <a href="/?orders=1" style="color:var(--gold);">sign in</a> and use My Orders.${w.open && w.daysLeft != null ? ` <span style="color:var(--gold);">${w.daysLeft} day${w.daysLeft === 1 ? '' : 's'} left to return or replace.</span>` : ''}</div>
     <label for="replReason" style="display:block;font-size:0.72rem;color:var(--cream-dim);margin:0 0 0.4rem;">Reason <span style="color:#e8a030;">(required)</span></label>
     <select id="replReason" onchange="replReasonChanged()" style="${field}margin-bottom:1rem;">
       <option value="">Choose a reason…</option>

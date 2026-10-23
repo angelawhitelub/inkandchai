@@ -135,15 +135,34 @@ test('backfills an R-RET AWB only onto a pushed return without one', async () =>
   assert.equal(rows[1].awb, null);
 });
 
-test('alerts the owner once when a return is delivered back, and never moves money', async () => {
+test('a return delivered back with its refund waiting is settled once, through return-auto-refund', async () => {
+  const rows = [
+    { id: 'a', status: 'pickup_scheduled', awb: '555', order_display_id: 'IC-1', refund_status: 'awaiting_return_delivery', refund_amount_paise: 49900 },
+    { id: 'b', status: 'pickup_scheduled', awb: '556', order_display_id: 'IC-2', refund_status: 'manual_payout_pending', refund_amount_paise: 30000 },
+  ];
+  const settled = [];
+  const alerts = [];
+  const s = await job.refresh(fakeDb(rows), {
+    trackReturns: async () => new Map([['555', DELIVERED], ['556', DELIVERED]]),
+    settleRefund: async (awb) => { settled.push(awb); return { matched: true, refunded: true, provider: 'razorpay' }; },
+    ownerAlert: async (t) => alerts.push(t), awbMap: async () => new Map(),
+  });
+  assert.deepEqual(settled, ['555'], 'a COD payout is not settled here');
+  assert.deepEqual(s.refunded, ['IC-1 (razorpay)']);
+  assert.match(alerts[0], /was paid automatically/);
+  assert.match(alerts[0], /Manual payout of ₹300 is due/);
+});
+
+test('alerts the owner once when a return is delivered back', async () => {
   const rows = [{ id: 'a', status: 'pickup_scheduled', awb: '555', order_display_id: 'IC-1', refund_status: 'awaiting_return_delivery', refund_amount_paise: 49900 }];
   const db = fakeDb(rows);
   const alerts = [];
-  const deps = { trackReturns: async () => new Map([['555', DELIVERED]]), ownerAlert: async (t) => alerts.push(t), awbMap: async () => new Map() };
+  const deps = { trackReturns: async () => new Map([['555', DELIVERED]]), ownerAlert: async (t) => alerts.push(t), awbMap: async () => new Map(),
+    settleRefund: async () => ({ matched: false }) };
   const s1 = await job.refresh(db, deps);
   assert.deepEqual(s1.alerted, ['IC-1']);
   assert.equal(rows[0].return_delivered_at, DELIVERED.delivered_at);
-  assert.equal(rows[0].refund_status, 'awaiting_return_delivery');   // untouched
+  assert.equal(rows[0].refund_status, 'awaiting_return_delivery');   // nothing matched, nothing paid
   assert.match(alerts[0], /Return received/);
   // Received rows are not re-tracked, and the claim stops a second alert anyway.
   rows[0].return_delivered_at = null;

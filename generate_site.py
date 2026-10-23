@@ -985,7 +985,7 @@ HTML = r"""<!DOCTYPE html>
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>Ink & Chai — Buy Books Online India · Hindi & English · Free Shipping above ₹499</title>
-<meta name="description" content="Buy books online in India — 25,000+ Hindi & English titles across fiction, romance, self-help and manga. Free shipping above ₹499, COD, 7-day free replacement." />
+<meta name="description" content="Buy books online in India — 25,000+ Hindi & English titles across fiction, romance, self-help and manga. Free shipping above ₹499, COD, 7-day returns and free replacement." />
 <meta name="keywords" content="buy books online india, hindi books online, online bookstore india, self help books hindi, romance books, fiction books, manga books, ana huang books, david goggins hindi, robin sharma, robert kiyosaki, mythology books, books at 99, cash on delivery books, free shipping books india, ink and chai" />
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
 <meta name="author" content="Ink & Chai" />
@@ -1034,7 +1034,7 @@ HTML = r"""<!DOCTYPE html>
   "alternateName": "Ink and Chai",
   "url": "https://inkandchai.in",
   "logo": "https://inkandchai.in/images/og-default.jpg",
-  "description": "Online bookstore in India offering 25,000+ titles in Hindi and English. Free shipping above ₹499, cash on delivery available, 7-day free replacement.",
+  "description": "Online bookstore in India offering 25,000+ titles in Hindi and English. Free shipping above ₹499, cash on delivery available, 7-day returns and free replacement.",
   "address": {
     "@type": "PostalAddress",
     "streetAddress": "2379 Kucha Mir Hashim, Turkman Gate",
@@ -2441,7 +2441,7 @@ html[data-theme="light"] .btn-primary{
         <a href="/terms/" role="menuitem"><span>Terms</span></a>
         <a href="/privacy-policy/" role="menuitem"><span>Privacy</span></a>
         <a href="/refund-policy/" role="menuitem"><span>Refund</span></a>
-        <a href="/return-policy/" role="menuitem"><span>Replacements</span></a>
+        <a href="/return-policy/" role="menuitem"><span>Returns &amp; Replacements</span></a>
         <a href="/shipping-policy/" role="menuitem"><span>Shipping</span></a>
       </div>
     </li>
@@ -3025,7 +3025,7 @@ html[data-theme="light"] .btn-primary{
       <div class="footer-col-title">Help &amp; Policies</div>
       <ul class="footer-links">
         <li><a href="/shipping-policy/">Shipping Policy</a></li>
-        <li><a href="/return-policy/">Replacement Policy</a></li>
+        <li><a href="/return-policy/">Returns &amp; Replacements</a></li>
         <li><a href="/refund-policy/">Refund Policy</a></li>
         <li><a href="/terms/">Terms &amp; Conditions</a></li>
         <li><a href="/privacy-policy/">Privacy Policy</a></li>
@@ -4860,7 +4860,7 @@ COMPACT_FOOTER = """<footer class="site-footer" style="text-align:center;padding
   <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.35rem;">
     <a href="/ebooks/" style="color:var(--cream-dim,#a09080);text-decoration:none;">eBooks</a>
     <a href="/shipping-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Shipping</a>
-    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Replacements</a>
+    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Returns &amp; Replacements</a>
     <a href="/refund-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Refunds</a>
     <a href="/terms/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Terms</a>
     <a href="/privacy-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Privacy</a>
@@ -5295,7 +5295,7 @@ html[data-theme="light"] .fbt-box{background:var(--bg3)}
   <a href="/terms/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Terms &amp; Conditions</a>
   <a href="/privacy-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Privacy Policy</a>
   <a href="/refund-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Refund Policy</a>
-  <a href="/return-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Replacement Policy</a>
+  <a href="/return-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Returns &amp; Replacements</a>
   <a href="/shipping-policy/" style="font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#7a6330;text-decoration:none;" onmouseover="this.style.color='#c9a84c'" onmouseout="this.style.color='#7a6330'">Shipping Policy</a>
 </div>
 
@@ -5722,7 +5722,7 @@ function trackProductView(b) {
 // ── Render product page ───────────────────────────────────────────────────
 function renderProduct(b) {
   const pageTitle = b.t + (b.a ? ' by ' + b.a : '') + ' — Buy Online at Ink & Chai';
-  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day free replacement.');
+  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day returns and free replacement.');
   const canonical = 'https://inkandchai.in/product/' + b.slug + '/';
   const imgAbs = (b.img || '').startsWith('http') ? b.img : ('https://inkandchai.in' + (b.img || ''));
 
@@ -5910,7 +5910,7 @@ function renderProduct(b) {
              read a policy is how a cart gets abandoned. -->
         <div style="margin:0.55rem 0 0.2rem;">
           <button type="button" class="pol-trigger" data-policy-sheet="returns"
-                  aria-haspopup="dialog">🛡 Replacements &amp; refunds</button>
+                  aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
         </div>
 
         <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
@@ -5944,7 +5944,7 @@ function renderProduct(b) {
           ${b.pub  ? `<div class="prod-meta-item"><div class="prod-meta-label">Publisher</div><div class="prod-meta-val">${esc(b.pub)}</div></div>` : ''}
           ${b.isbn ? `<div class="prod-meta-item"><div class="prod-meta-label">ISBN</div><div class="prod-meta-val">${esc(b.isbn)}</div></div>` : ''}
           <div class="prod-meta-item"><div class="prod-meta-label">Delivery</div><div class="prod-meta-val">Pan-India · 2–5 days</div></div>
-          <div class="prod-meta-item"><div class="prod-meta-label">Replacement</div><div class="prod-meta-val">Free if defective, wrong or missing · <a href="/return-policy/" style="color:var(--gold);text-decoration:underline;">How it works</a></div></div>
+          <div class="prod-meta-item"><div class="prod-meta-label">Returns</div><div class="prod-meta-val">7-day returns · free replacement if defective, wrong or missing · <a href="/return-policy/" style="color:var(--gold);text-decoration:underline;">How it works</a></div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Payment</div><div class="prod-meta-val">COD · UPI · Cards</div></div>
           <div class="prod-meta-item"><div class="prod-meta-label">Sold by</div><div class="prod-meta-val">Ink &amp; Chai</div></div>
         </div>
@@ -6677,12 +6677,12 @@ def product_json_ld(book):
                 "shippingDestination": {"@type": "DefinedRegion", "addressCountry": "IN"},
                 "deliveryTime": {"@type": "ShippingDeliveryTime", "businessDays": {"@type": "QuantitativeValue", "minValue": 2, "maxValue": 5}},
             },
-            # No returns since 2026-10-02 — replacement only (defective,
-            # wrong or missing). Keep in step with Merchant Center.
+            # 7-day returns, free reverse pickup (back 2026-10-23, after
+            # replacement-only from 10-02). Keep in step with Merchant Center.
             "hasMerchantReturnPolicy": {
                 "@type": "MerchantReturnPolicy",
                 "applicableCountry": "IN",
-                "returnPolicyCategory": "https://schema.org/MerchantReturnNotPermitted",
+                "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow", "merchantReturnDays": 7, "returnMethod": "https://schema.org/ReturnByMail", "returnFees": "https://schema.org/FreeReturn",
             },
         },
     }
@@ -6757,7 +6757,7 @@ def product_faq_json_ld(book):
                 "name": "Can I return or replace a book?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "We don't take returns, but we replace any book that arrives defective or misprinted, is the wrong title, or is missing from the parcel, free of charge. Request it from Track Order or My Orders on inkandchai.in, within 7 days of delivery for a defective or wrong book."
+                    "text": "Yes. You can return any book within 7 days of delivery for a full refund: request it from My Orders on inkandchai.in and we collect it from you. A book that arrives defective, misprinted, wrong or missing can be replaced free of charge instead."
                 }
             },
             {
@@ -7453,7 +7453,7 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
     <div class="pdp-cred" aria-label="Store credibility"><span class="cred-chip">📦 25,000+ orders fulfilled</span></div>
     <div style="margin:0.55rem 0 0.2rem;">
       <button type="button" class="pol-trigger" data-policy-sheet="returns"
-              aria-haspopup="dialog">🛡 Replacements &amp; refunds</button>
+              aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
     </div>
     <a href="https://www.instagram.com/inkandchai.in/" target="_blank" rel="noopener" class="insta-trust">
       <span class="insta-trust-icon">📸</span>
@@ -8363,7 +8363,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
         <div class="trust-row">
           <span>🔒 Secure checkout</span>
           <span>🚀 Pan-India delivery</span>
-          <span>🔄 7-day free replacement</span>
+          <span>🔄 7-day returns and free replacement</span>
         </div>
 
         <!-- Directly under the trust row, because "what if I need to send this
@@ -8371,7 +8371,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
              paying. A sheet, not a link: navigating away here loses the order. -->
         <div style="text-align:center;margin-top:0.7rem;">
           <button type="button" class="pol-trigger" data-policy-sheet="refunds"
-                  aria-haspopup="dialog">🛡 Replacements &amp; refunds</button>
+                  aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
         </div>
 
       </div>
@@ -11208,7 +11208,7 @@ for _author_name, _author_books in _author_pages:
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>{html_escape(_author_name)} — All {_book_count} Books Online India | Ink &amp; Chai</title>
-<meta name="description" content="Buy all {_book_count} books by {html_escape(_author_name)} online in India at Ink &amp; Chai. Free delivery above ₹499, cash on delivery, 7-day free replacement. Genuine paperbacks from the publisher."/>
+<meta name="description" content="Buy all {_book_count} books by {html_escape(_author_name)} online in India at Ink &amp; Chai. Free delivery above ₹499, cash on delivery, 7-day returns and free replacement. Genuine paperbacks from the publisher."/>
 <meta name="robots" content="index,follow,max-image-preview:large"/>
 <link rel="canonical" href="{_author_canon}"/>
 <meta property="og:title" content="{html_escape(_author_name)} — All Books | Ink &amp; Chai"/>
@@ -11270,7 +11270,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
 <main>
   <div class="crumb"><a href="/">Home</a> / <a href="/">Authors</a> / {html_escape(_author_name)}</div>
   <h1>{html_escape(_author_name)}</h1>
-  <p class="subtitle">All <strong>{_book_count} books</strong> by {html_escape(_author_name)} available at Ink &amp; Chai. Pan-India delivery, free shipping above ₹499, cash on delivery, 7-day free replacement.</p>
+  <p class="subtitle">All <strong>{_book_count} books</strong> by {html_escape(_author_name)} available at Ink &amp; Chai. Pan-India delivery, free shipping above ₹499, cash on delivery, 7-day returns and free replacement.</p>
 
   <div class="best-pick">
     <a href="{_best['url']}" class="best-pick-img"><img src="{_best.get('img','')}" alt="{html_escape(_best['t'])}" loading="lazy"/></a>
@@ -11296,7 +11296,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
     <details class="faq"><summary>How long does delivery take?</summary>
       <p>Standard delivery is 2–5 business days anywhere in India. We dispatch within 24 hours from our Delhi warehouse. Free shipping on orders above ₹499.</p></details>
     <details class="faq"><summary>Can I return a book if I don't like it?</summary>
-      <p>We don't take returns, but if a book arrives defective, misprinted, wrong or missing we replace it free. <a href="/return-policy/" style="color:var(--gold)">See replacement policy →</a></p></details>
+      <p>Return any book within 7 days of delivery for a full refund, or get a free replacement if it arrives defective, misprinted, wrong or missing. <a href="/return-policy/" style="color:var(--gold)">See replacement policy →</a></p></details>
   </div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse all books</a></footer>
@@ -11330,7 +11330,7 @@ _LANDING_PAGES = [
         "slug":  "best-romance-books-india",
         "title": "Best Romance Books in India — 2026 Edition",
         "h1":    "Best Romance Books in India",
-        "intro": "From slow-burn small-town love stories to dark contemporary romance and BookTok obsessions, here's our hand-picked collection of the romance novels Indian readers can't put down. Free pan-India shipping above ₹499, cash on delivery available, 7-day free replacement.",
+        "intro": "From slow-burn small-town love stories to dark contemporary romance and BookTok obsessions, here's our hand-picked collection of the romance novels Indian readers can't put down. Free pan-India shipping above ₹499, cash on delivery available, 7-day returns and free replacement.",
         "body":  "Romance is the fastest-growing fiction category in India, and for good reason — these books deliver the swoon, tension, and emotional payoff that no other genre matches. Our collection spans contemporary romance (think Colleen Hoover, Carley Fortune), dark romance (Ana Huang, Penelope Douglas), college and sports romance (Elle Kennedy's Off-Campus series), and Indian-set love stories. Every paperback is sourced directly from the publisher — no pirated copies, no photocopies, no scans. Pay online via UPI or cards for a guaranteed cashback scratch card (up to ₹200 off your next book), or choose cash on delivery and pay only when your book arrives.\n\nNot sure where to start? If you loved <em>It Ends With Us</em>, try <em>Our Perfect Storm</em> by Carley Fortune. If you devoured <em>Twisted Love</em>, <em>King of Gluttony</em> is Ana Huang's latest dark obsession. For college romance fans, <em>The Deal</em> kicks off Elle Kennedy's iconic Off-Campus series.",
         "filter": lambda b: _has_tag(b, "romance", "love story", "off-campus", "off campus", "smut"),
         "limit": 40,
@@ -11525,7 +11525,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
     <span>🚚 Delivery in 2-5 days</span>
     <span>💵 Cash on delivery</span>
     <span>💳 UPI · Cards · Net banking</span>
-    <span>🛡 <a href="/return-policy/" style="color:inherit">7-day free replacement</a></span>
+    <span>🛡 <a href="/return-policy/" style="color:inherit">7-day returns and free replacement</a></span>
   </div>
   <div class="lp-grid">{_grid}</div>
   <div class="body-copy">{_body.replace(chr(10) + chr(10), '</p><p style="margin-top:1rem">')}</div>
@@ -11665,7 +11665,7 @@ _CAT_TRUST = """  <div class="trust">
     <span>&#128666; Delivery in 2-5 days</span>
     <span>&#128181; Cash on delivery</span>
     <span>&#128179; UPI &middot; Cards &middot; Net banking</span>
-    <span>&#128737; <a href="/return-policy/" style="color:inherit">7-day free replacement</a></span>
+    <span>&#128737; <a href="/return-policy/" style="color:inherit">7-day returns and free replacement</a></span>
   </div>"""
 
 

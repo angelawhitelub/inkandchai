@@ -17,9 +17,9 @@
  * nothing beyond this script.
  *
  * Content must stay in step with /return-policy/ and /refund-policy/. The
- * figures are the ones the code enforces: a 7-day replacement window from
- * delivered_at (request-replacement.js) and a 30-minute cancellation window for
- * prepaid and partial COD (cancel-order.js). Returns are no longer offered.
+ * figures are the ones the code enforces: a 7-day return and replacement window
+ * from delivered_at (request-return.js, request-replacement.js) and a 30-minute
+ * cancellation window for prepaid and partial COD (cancel-order.js).
  */
 (function () {
   'use strict';
@@ -81,16 +81,17 @@
   var HTML =
     '<div class="pol-grip"></div>' +
     '<div class="pol-head">' +
-      '<h2 id="polSheetTitle">Replacements &amp; refunds</h2>' +
+      '<h2 id="polSheetTitle">Returns, replacements &amp; refunds</h2>' +
       '<button class="pol-x" type="button" aria-label="Close">&#10005;</button>' +
     '</div>' +
     '<div class="pol-body">' +
 
-      '<h3 id="pol-returns">Replacements, not returns</h3>' +
-      '<p>We don\'t take returns. We replace, free of charge, any book that arrived ' +
-      '<strong>defective or misprinted</strong>, the <strong>wrong book</strong>, or a book <strong>missing</strong> from the parcel.</p>' +
-      '<p>Open <strong>My Orders</strong> or <strong>Track Order</strong>, choose the reason under <strong>Need a replacement?</strong> ' +
-      'and pick the book(s). Defective or wrong books: within <strong>7 days</strong> of delivery.</p>' +
+      '<h3 id="pol-returns">7-day returns and free replacements</h3>' +
+      '<p>Return any book within <strong>7 days</strong> of delivery for a full refund: sign in, open <strong>My Orders</strong>, ' +
+      'choose <strong>Return or replace</strong> → <strong>Return for a refund</strong> and pick the book(s). We collect it from you, ' +
+      'and refund you when it reaches us — or give store credit with a ₹50 bonus.</p>' +
+      '<p>We also replace, free of charge, any book that arrived <strong>defective or misprinted</strong>, the <strong>wrong book</strong>, ' +
+      'or a book <strong>missing</strong> from the parcel — from My Orders or Track Order, within <strong>7 days</strong> of delivery.</p>' +
 
       '<h3 id="pol-refunds">How your refund reaches you</h3>' +
       '<div class="pol-row"><b>Paid online</b><span>Straight back to the same card or account, automatically. 2–4 business days.</span></div>' +

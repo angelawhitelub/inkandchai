@@ -75,11 +75,12 @@ test('the prompt forbids collecting payout details in chat', () => {
 });
 
 test('the prompt carries the replacement and refund routes the code actually implements', () => {
-  // Returns were retired: replacement only, for defective, wrong or missing books.
-  assert.match(STORE_FACTS, /we do NOT take returns/);
+  // 7-day returns (back 2026-10-23) next to free replacements; the refund only on receipt.
+  assert.match(STORE_FACTS, /RETURNS & REPLACEMENTS — both within 7 days of delivery/);
+  assert.match(STORE_FACTS, /store credit with a ₹50 bonus/);
+  assert.match(STORE_FACTS, /issued only when the books reach our warehouse/);
   assert.match(STORE_FACTS, /defective book \/ misprint/);
   assert.match(STORE_FACTS, /Defective or wrong book: within 7 days of delivery/);
-  assert.doesNotMatch(STORE_FACTS, /store credit|₹50 bonus/i);
   assert.match(STORE_FACTS, /within 30 minutes/);
 });
 
@@ -99,7 +100,8 @@ test('escalation is a closed list, not a mood', () => {
   // The three routes that must stay self-service, because each is faster than
   // a 48-hour queue.
   assert.match(STORE_FACTS, /A failed or disputed delivery → the courier/);
-  assert.match(STORE_FACTS, /Need a replacement\? → free replacement/);
+  assert.match(STORE_FACTS, /Return or replace → free replacement/);
+  assert.match(STORE_FACTS, /RETURN for a full refund/);
   assert.doesNotMatch(STORE_FACTS, /Request Return/);
   assert.match(STORE_FACTS, /inkandchai\.in\/track with their Order ID/);
 });

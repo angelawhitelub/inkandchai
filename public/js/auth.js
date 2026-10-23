@@ -2293,44 +2293,57 @@ window.IACClaimEvidence = {
       </div>`;
   }
 
+  // ── A return on this order ──────────────────────────────────────────────
+  // From get-my-orders → order.return_request. Requested → approved (a courier
+  // accepted the pickup: AWB + tracking) → received back → refunded.
   function returnRequestBlock(order) {
-    // ── Return already submitted ─────────────────────────────────────────────
-    if (order.return_request_status) {
-      const rstatus = order.return_request_status;
-      const statusLabel = rstatus.replace(/_/g, ' ');
-      const isPending = rstatus === 'pending';
+    const r = order.return_request;
+    if (!r && !order.return_request_status) return '';
+    const rstatus = String((r && r.status) || order.return_request_status || '');
+    const rs = (p) => '₹' + Math.round((Number(p) || 0) / 100).toLocaleString('en-IN');
+    const badge = (text, colour) => `<span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.28rem 0.7rem;border:1px solid ${colour}66;color:${colour};">${text}</span>`;
+    const note = (html) => `<div style="font-size:0.66rem;color:#a09080;line-height:1.6;margin-top:0.5rem;">${html}</div>`;
+    const books = r && r.items && r.items.length
+      ? note('Returning: ' + r.items.map(i => escHtml(i.title) + (i.qty > 1 ? ' × ' + i.qty : '')).join(', ')) : '';
+    let head = '', body = '';
 
-      const statusColors = { pending: '#e8a030', approved: '#6dbf6d', rejected: '#e06060', processing: '#4db8ff' };
-      const badgeColor = statusColors[rstatus] || '#a09080';
-
-      return `
-        <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
-          <div style="display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;margin-bottom:${isPending ? '0.7rem' : '0'};">
-            <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;
-                         padding:0.28rem 0.7rem;border:1px solid ${badgeColor}44;color:${badgeColor};">
-              ↩ Return ${statusLabel}
-            </span>
-            <span style="font-size:0.62rem;color:#a09080;line-height:1.5;">
-              ${rstatus === 'pending' ? 'Our team will review and be in touch. Keep the package ready.' : ''}
-              ${rstatus === 'approved' ? 'Pickup has been arranged. Keep the package ready.' : ''}
-              ${rstatus === 'rejected' ? 'Return was not approved. Contact support for details.' : ''}
-              ${rstatus === 'processing' ? 'Pickup scheduled — handover to courier when they arrive.' : ''}
-            </span>
-          </div>
-          ${isPending ? `
-          <button onclick="iacCancelReturn('${escJs(order.id)}')"
-            style="font-family:'Montserrat',sans-serif;font-size:0.52rem;letter-spacing:0.14em;text-transform:uppercase;
-                   padding:0.4rem 0.8rem;background:transparent;border:1px solid rgba(224,96,96,0.4);
-                   color:#e06060;cursor:pointer;">
-            Cancel Return Request
-          </button>` : ''}
-        </div>`;
+    if (rstatus === 'rejected' || rstatus === 'cancelled') {
+      head = badge(rstatus === 'rejected' ? '↩ Return not approved' : '↩ Return cancelled', '#e06060');
+      body = rstatus === 'rejected' ? note('Please contact support for details.') : '';
+    } else if (rstatus === 'pending') {
+      head = badge('↩ Return requested', '#e8a030');
+      body = note('Our team will review it and be in touch. Keep the books ready.')
+        + `<button onclick="iacCancelReturn('${escJs(order.id)}')" style="margin-top:0.6rem;font-family:'Montserrat',sans-serif;font-size:0.52rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.4rem 0.8rem;background:transparent;border:1px solid rgba(224,96,96,0.4);color:#e06060;cursor:pointer;">Cancel Return Request</button>`;
+    } else if (!r) {
+      head = badge('↩ Return ' + escHtml(rstatus.replace(/_/g, ' ')), '#6dbf6d');
+    } else if (r.received_at || ['refunded', 'wallet_issued', 'refunding', 'manual_refund_pending'].includes(r.refund_status)) {
+      head = badge('✓ Return received', '#6dbf6d');
+      const amt = rs(r.refund_paise);
+      body = note(r.refund_status === 'refunded' ? `${amt} has been refunded to your original payment method. It can take 5–7 business days to show.`
+        : r.refund_status === 'wallet_issued' ? `Your store credit is ready${r.wallet_code ? `: <strong style="color:#c9a84c;font-family:monospace;">${escHtml(r.wallet_code)}</strong>` : ''} — check your email. Use it in the coupon box at checkout.`
+        : r.refund_status === 'manual_payout_pending' ? `We received your books. ${amt} is being transferred to the UPI/bank account you gave us.`
+        : `We received your books. Your refund of ${amt} is being processed.`);
+    } else if (r.awb || r.india_post) {
+      head = badge('✓ Return approved', '#6dbf6d');
+      if (r.india_post) {
+        body = note('No courier can collect from your pincode, so please send the books to us by India Post Speed Post — we pay the postage. The address and steps are in your email.');
+      } else {
+        const moving = ['picked_up', 'in_transit', 'out_for_delivery'].includes(r.tracking_stage);
+        body = note((moving ? 'Picked up — your return is on its way to us.' : `Pickup booked with ${escHtml(r.courier || 'our courier')}. Please keep the books packed; the courier will collect them.`)
+          + `<br>Pickup tracking no.: <strong style="color:#c9a84c;font-family:monospace;">${escHtml(r.awb)}</strong>`
+          + (r.tracking_url ? ` · <a href="${escHtmlAttr(r.tracking_url)}" target="_blank" rel="noopener" style="color:#c9a84c;">Track pickup</a>` : ''))
+          + note(r.refund_method === 'wallet'
+            ? `Your ${rs(r.refund_paise)} + ₹50 bonus store credit is emailed when the books reach us (usually 2–3 days after pickup).`
+            : `Your refund of ${rs(r.refund_paise)} is issued when the books reach us (usually 2–3 days after pickup), not at pickup.`);
+      }
+    } else {
+      head = badge('⏳ Return requested', '#e8a030');
+      body = note('We are booking a courier to collect the books. This page shows the pickup tracking number as soon as the courier accepts — we also send it by email and WhatsApp.');
     }
-
-    // Returns are no longer offered; replacements are handled by
-    // replacementRequestBlock below. Only a return filed before the change is
-    // still shown, so the customer can follow it through.
-    return '';
+    return `
+      <div style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
+        ${head}${books}${body}
+      </div>`;
   }
 
   // ── Update delivery address (one-time, only before the order ships) ────────
@@ -2479,13 +2492,14 @@ window.IACClaimEvidence = {
     const field = 'width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.5rem 0.7rem;font-family:inherit;font-size:0.72rem;';
     return `
       <div id="miss-wrap-${escJs(order.id)}" data-cod-upi="${escHtmlAttr(missUpiFieldHtml(order) ? '1' : '')}" style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
-        <div style="font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">🔄 Need a replacement?</div>
+        <div style="font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">↩ Return or replace</div>
         <div style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-bottom:0.6rem;">
-          We don't take returns, but we replace any book that arrived defective, misprinted, wrong or missing — free of charge.
-          ${win.eligible ? `<span style="color:#7a6330;">${win.daysLeft} day${win.daysLeft === 1 ? '' : 's'} left for defective or wrong books.</span>` : ''}
+          Return any book within 7 days of delivery for a full refund — we collect it from you. A defective, misprinted, wrong or missing book is replaced free of charge.
+          ${win.eligible ? `<span style="color:#7a6330;">${win.daysLeft} day${win.daysLeft === 1 ? '' : 's'} left to return or replace.</span>` : ''}
         </div>
         <select class="repl-reason" onchange="iacReplReasonChanged(this)" style="${field}font-size:0.76rem;padding:0.6rem 0.7rem;margin-bottom:0.6rem;">
-          <option value="">Choose a reason…</option>
+          <option value="">Choose what you need…</option>
+          <option value="return"${win.eligible ? '' : ' disabled'}>Return for a refund${closedNote}</option>
           <option value="defective"${win.eligible ? '' : ' disabled'}>Defective book / misprint${closedNote}</option>
           <option value="wrong_book"${win.eligible ? '' : ' disabled'}>Wrong book received${closedNote}</option>
           <option value="missing">Book missing from the parcel</option>
@@ -2507,13 +2521,14 @@ window.IACClaimEvidence = {
               </div>`).join('')}
           </div>
           <div class="repl-upi-slot" style="display:none;">${missUpiFieldHtml(order)}</div>
+          ${returnRefundFieldsHtml(order)}
           <textarea class="miss-comment" rows="2" maxlength="500" required placeholder="Required — what happened? e.g. pages 40–56 are blank"
             style="${field}resize:vertical;margin-bottom:0.6rem;"></textarea>
           <div class="repl-photos-wrap" style="margin-bottom:0.6rem;">
             <div style="font-size:0.6rem;color:#a09080;margin-bottom:0.3rem;">Photo evidence (required, 1–3 photos) — parcel, label and received books</div>
             <input class="repl-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple required aria-required="true" style="width:100%;color:#a09080;font-size:0.7rem;"/>
           </div>
-          <button data-oid="${escHtmlAttr(oid)}" data-q="${escHtmlAttr(q)}" onclick="iacSubmitReplacementRequest(this)"
+          <button class="repl-submit" data-id="${escHtmlAttr(order.id)}" data-oid="${escHtmlAttr(oid)}" data-q="${escHtmlAttr(q)}" onclick="iacSubmitReplacementRequest(this)"
             style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
                    padding:0.6rem 1rem;background:rgba(109,191,109,0.08);border:1px solid rgba(109,191,109,0.45);
                    color:#6dbf6d;cursor:pointer;">
@@ -2529,7 +2544,14 @@ window.IACClaimEvidence = {
     const r = sel.value;
     wrap.querySelector('.repl-body').style.display = r ? '' : 'none';
     wrap.querySelector('.repl-upi-slot').style.display = r === 'missing' ? '' : 'none';
-    wrap.querySelector('.repl-photos-wrap').style.display = '';
+    wrap.querySelector('.repl-photos-wrap').style.display = r === 'return' ? 'none' : '';
+    wrap.querySelector('.ret-refund').style.display = r === 'return' ? '' : 'none';
+    wrap.querySelector('.repl-submit').textContent = r === 'return' ? 'Request return & pickup' : 'Request free replacement';
+    if (r === 'return') {
+      wrap.querySelector('.repl-which').textContent = 'Tap the book(s) you want to return.';
+      wrap.querySelector('.miss-comment').placeholder = 'Optional — why are you returning it? It helps us improve.';
+      return;
+    }
     wrap.querySelector('.repl-which').textContent = r === 'missing'
       ? 'Tap the book(s) that were missing from your parcel.'
       : r === 'wrong_book' ? 'Tap the book(s) you ordered that were sent wrong.'
@@ -2558,9 +2580,87 @@ window.IACClaimEvidence = {
     });
   }
 
+  // How a return is refunded: back to the original payment, or store credit
+  // with a ₹50 bonus. A Cash on Delivery order has no online payment to
+  // reverse, so the original-method refund needs a UPI ID.
+  function returnRefundFieldsHtml(order) {
+    const cod = ('refund_upi_required' in order) ? !!order.refund_upi_required : isCodOrder(order);
+    const name = 'ret-method-' + escHtmlAttr(order.id);
+    const opt = (value, checked, label, hint) => `
+      <label style="display:flex;gap:0.5rem;align-items:flex-start;cursor:pointer;border:1px solid rgba(201,168,76,0.22);padding:0.5rem 0.7rem;margin-bottom:0.4rem;">
+        <input type="radio" name="${name}" value="${value}" ${checked ? 'checked' : ''} onchange="iacReturnMethodChanged(this)" style="margin-top:0.2rem;">
+        <span style="font-size:0.72rem;color:#f0e8d8;">${label}<br><span style="font-size:0.62rem;color:#a09080;">${hint}</span></span></label>`;
+    return `
+      <div class="ret-refund" data-cod="${cod ? '1' : ''}" style="display:none;margin-bottom:0.6rem;">
+        <div style="font-size:0.62rem;color:#a09080;margin-bottom:0.4rem;">How would you like your refund?</div>
+        ${opt('original', true, cod ? 'Refund to my UPI' : 'Refund to my original payment method', cod ? 'This was Cash on Delivery, so we transfer it to your UPI ID.' : 'Back to the card, UPI or wallet you paid with.')}
+        ${opt('wallet', false, 'Store credit + ₹50 bonus', 'A code for your next order, valid 6 months.')}
+        <div class="ret-upi-wrap" style="display:${cod ? '' : 'none'};margin-top:0.3rem;">
+          <input class="ret-upi" type="text" inputmode="email" autocomplete="off" maxlength="128" placeholder="Your UPI ID, e.g. 9876543210@ybl"
+            style="width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.45rem 0.6rem;font-family:inherit;font-size:0.72rem;"/>
+        </div>
+        <div style="font-size:0.6rem;color:#7a6330;line-height:1.5;margin-top:0.4rem;">The refund is issued when the books reach us — usually 2–3 days after the courier collects them.</div>
+      </div>`;
+  }
+
+  window.iacReturnMethodChanged = function (input) {
+    const box = input.closest('.ret-refund');
+    box.querySelector('.ret-upi-wrap').style.display = input.value === 'original' && box.dataset.cod ? '' : 'none';
+  };
+
+  window.iacSubmitReturn = async function (btn) {
+    const wrap = btn.closest('[id^="miss-wrap-"]');
+    const msg = wrap.querySelector('.miss-msg');
+    const say = (t) => { msg.style.display = ''; msg.style.color = '#e06060'; msg.textContent = t; };
+    const picked = [...wrap.querySelectorAll('.miss-books .miss-row')]
+      .filter(row => row.querySelector('button')?.dataset.on === '1')
+      .map(row => {
+        const max = Math.max(1, Number(row.dataset.max) || 1);
+        return { title: row.dataset.title, qty: Math.min(max, Math.max(1, Number(row.querySelector('.miss-qty')?.value) || max)) };
+      });
+    if (!picked.length) return say('Please tap the book(s) you want to return.');
+    const box = wrap.querySelector('.ret-refund');
+    const method = box.querySelector('input[type=radio]:checked')?.value || 'original';
+    const upi = (box.querySelector('.ret-upi')?.value || '').trim();
+    if (method === 'original' && box.dataset.cod && !upi) { box.querySelector('.ret-upi').focus(); return say('Please enter your UPI ID for the refund.'); }
+    const note = (wrap.querySelector('.miss-comment').value || '').trim();
+
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Sending…';
+    msg.style.display = 'none';
+    try {
+      const sb = getSB();
+      let token = '';
+      try { token = (await sb?.auth.getSession())?.data?.session?.access_token || ''; } catch (e) {}
+      if (!token) throw new Error('Please sign in again to request a return.');
+      const res = await fetch('/.netlify/functions/request-return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ order_id: btn.dataset.id, items: picked, reason: note || 'Returned within 7 days', refund_method: method, upi_id: upi }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        // Partial COD and other cases the server alone knows need a UPI ID.
+        if (data.need_upi) { box.dataset.cod = '1'; box.querySelector('.ret-upi-wrap').style.display = ''; }
+        throw new Error(data.error || 'Could not request the return.');
+      }
+      wrap.innerHTML = `
+        <div style="padding-top:0.2rem;">
+          <span style="font-size:0.56rem;letter-spacing:0.14em;text-transform:uppercase;padding:0.28rem 0.7rem;border:1px solid rgba(232,160,48,0.4);color:#e8a030;">⏳ Return requested</span>
+          <div style="font-size:0.66rem;color:#a09080;line-height:1.6;margin-top:0.5rem;">${escHtml(data.message || '')}</div>
+        </div>`;
+      // The pickup is booked in the background; show the AWB once it is.
+      setTimeout(() => { try { loadMyOrders(); } catch (e) {} }, 45000);
+    } catch (e) {
+      say(e.message);
+      btn.disabled = false; btn.textContent = orig;
+    }
+  };
+
   window.iacSubmitReplacementRequest = async function (btn) {
     const wrap = btn.closest('[id^="miss-wrap-"]');
     const reason = wrap.querySelector('.repl-reason').value;
+    if (reason === 'return') return window.iacSubmitReturn(btn);
     if (reason === 'missing') return window.iacReportMissing(btn);
     const msg = wrap.querySelector('.miss-msg');
     const say = (t) => { msg.style.display = ''; msg.style.color = '#e06060'; msg.textContent = t; };
