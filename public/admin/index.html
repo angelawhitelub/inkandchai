@@ -906,6 +906,7 @@ select,input,textarea{font-size:1rem;}
       <div class="admin-nav-menu" id="admin-menu-orders" hidden><p class="admin-menu-title">Orders & reporting</p>
         <a class="admin-tab" data-tab="orders" href="/admin/#orders" onclick="return adminTabClick(event,'orders')">📦 Orders</a>
         <a class="admin-tab owner-only" data-tab="tools" href="/admin/#tools" onclick="return adminTabClick(event,'tools')">🛠 Tools</a>
+        <a class="admin-tab" href="/admin/labels.html">🏷️ Sort Labels</a>
         <a class="admin-tab" data-tab="reports" href="/admin/#reports" onclick="return adminTabClick(event,'reports')">📊 Reports</a>
         <a class="admin-tab owner-only" data-tab="profit" href="/admin/#profit" onclick="return adminTabClick(event,'profit')">💰 Profit</a>
       </div>
@@ -2404,17 +2405,17 @@ select,input,textarea{font-size:1rem;}
         </div>
       </div>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-        <select id="npuBucket" onchange="renderNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;">
+        <select id="npuBucket" autocomplete="off" onchange="renderNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;">
           <option value="all">All</option>
           <option value="awaiting_pickup">Booked — awaiting pickup</option>
           <option value="not_booked">Not booked yet</option>
           <option value="confirmed">Courier confirms not picked up</option>
           <option value="courier_cancelled">Courier voided the AWB</option>
         </select>
-        <select id="npuPay" onchange="renderNotPicked()" title="Replacements are split by how the ORIGINAL order was paid: prepaid ones are refunded to the card/UPI automatically, COD ones need the customer's UPI ID" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;"><option value="">All payments</option></select>
-        <select id="npuCourier" onchange="renderNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;"><option value="">All couriers</option></select>
+        <select id="npuPay" autocomplete="off" onchange="renderNotPicked()" title="Replacements are split by how the ORIGINAL order was paid: prepaid ones are refunded to the card/UPI automatically, COD ones need the customer's UPI ID" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;"><option value="">All payments</option></select>
+        <select id="npuCourier" autocomplete="off" onchange="renderNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;"><option value="">All couriers</option></select>
         <label style="font-size:0.7rem;color:var(--cream-dim);">Older than
-          <select id="npuHours" onchange="loadNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.45rem 0.6rem;font-size:0.72rem;border-radius:6px;outline:none;">
+          <select id="npuHours" autocomplete="off" onchange="loadNotPicked()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.45rem 0.6rem;font-size:0.72rem;border-radius:6px;outline:none;">
             <option value="48" selected>2 days</option><option value="72">3 days</option><option value="120">5 days</option><option value="168">7 days</option>
           </select>
         </label>
@@ -3446,7 +3447,22 @@ let npuLive = {};          // order uuid → { state, status, channel }
 let npuSel = new Set();    // selected order uuids
 let npuAutoChecked = false;
 
-function npuHours() { return Number(document.getElementById('npuHours')?.value || 48); }
+// iOS Safari restores a <select>'s old state when the page is reopened, and a
+// restored value that matches none of the options leaves the box blank with
+// value ''. On the stage filter that hid every row ("showing 0" with 159
+// loaded). Any blank or unknown value goes back to the default option.
+function npuSelectValue(id) {
+  const sel = document.getElementById(id);
+  if (!sel) return '';
+  const known = [...sel.options].some(o => o.value === sel.value);
+  if (sel.selectedIndex < 0 || !known) {
+    const def = [...sel.options].find(o => o.defaultSelected) || sel.options[0];
+    if (def) sel.value = def.value;
+  }
+  return sel.value;
+}
+
+function npuHours() { return Number(npuSelectValue('npuHours') || 48); }
 
 async function refreshNotPickedBadge() {
   const b = document.getElementById('notPickedBadge');
@@ -3509,9 +3525,9 @@ function npuAge(h) {
 
 function npuVisibleRows() {
   if (!npuData) return [];
-  const bucket = document.getElementById('npuBucket').value;
-  const courier = document.getElementById('npuCourier').value;
-  const pay = document.getElementById('npuPay').value;
+  const bucket = npuSelectValue('npuBucket') || 'all';
+  const courier = npuSelectValue('npuCourier');
+  const pay = npuSelectValue('npuPay');
   const q = document.getElementById('npuSearch').value.trim().toLowerCase();
   return npuData.orders.filter(r =>
     (!pay || npuPayMatches(r, pay)) &&

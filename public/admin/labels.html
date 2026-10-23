@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>Label Sorter — Ink &amp; Chai</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Manrope:wght@300;500;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<style>
+:root{
+  --bg:#f1f3f5; --bg2:#f8f9fa; --bg3:#ffffff;
+  --cream:#20252b; --cream-dim:#4f5964;
+  --gold:#6d4c10; --gold-light:#8a6419;
+  --green:#176b35; --orange:#9b5207; --red:#b4232c;
+  --border:#cbd1d7; --shadow:0 8px 24px rgba(28,35,43,0.08);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--cream);font-family:'Manrope',sans-serif;font-weight:500;line-height:1.5;-webkit-font-smoothing:antialiased}
+nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+    padding:0.7rem 1.4rem;background:#fff;border-bottom:1px solid #c6ccd2}
+.logo{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--gold);text-decoration:none}
+.logo span{font-size:0.7rem;color:var(--cream-dim);font-weight:700;font-style:italic;margin-left:.4rem}
+main{max-width:860px;margin:0 auto;padding:1.5rem 1rem 3rem}
+.card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:1.2rem 1.3rem;margin-bottom:1rem;box-shadow:var(--shadow)}
+h2{font-family:'DM Serif Display',serif;font-weight:400;font-size:1.3rem;margin-bottom:.4rem}
+p.hint{color:var(--cream-dim);font-size:.88rem}
+label.row{display:flex;gap:.6rem;align-items:center;margin-top:.7rem;font-size:.9rem}
+select,input[type=file]{font-family:inherit;font-size:.9rem}
+.btn{font-family:inherit;font-size:0.8rem;letter-spacing:.08em;text-transform:uppercase;padding:.6rem 1.1rem;margin-top:1rem;
+     border:1px solid var(--gold);background:var(--gold);color:#fff;cursor:pointer;border-radius:6px;font-weight:700}
+.btn:hover{background:var(--gold-light)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+#status{margin-top:.8rem;font-size:.9rem;white-space:pre-wrap}
+#status.err{color:var(--red)}
+table{width:100%;border-collapse:collapse;font-size:.88rem;margin-top:.6rem}
+th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--cream-dim);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.warn{color:var(--orange)}
+</style>
+</head>
+<body>
+<nav>
+  <a class="logo" href="/admin/">Ink &amp; Chai <span>label sorter</span></a>
+  <a href="/admin/" style="color:var(--gold);font-weight:700;font-size:.85rem">← Admin</a>
+</nav>
+
+<main>
+  <div class="card">
+    <h2>Sort shipping labels</h2>
+    <p class="hint">Upload the label PDF downloaded from the courier panel (one label per page).
+      Each page is matched to its order by the AWB or IC- order number printed on it. The download:</p>
+    <p class="hint">• starts with a <b>picklist</b>: every book, its total quantity (highest first) and the label pages it is on;<br/>
+      • has the labels <b>sorted by product name</b>;<br/>
+      • has the <b>product name and quantity printed</b> on every label carrying more than one book.</p>
+
+    <label class="row">Label PDF(s) <input type="file" id="files" accept="application/pdf" multiple/></label>
+    <label class="row">Print product name
+      <select id="stampMode">
+        <option value="strip">in a strip added below the label (covers nothing)</option>
+        <option value="overlay">over the bottom edge of the label (keeps page size)</option>
+      </select>
+    </label>
+    <button class="btn" id="go" disabled>Sort &amp; download</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="card" id="resultCard" style="display:none">
+    <h2>Picklist</h2>
+    <table><thead><tr><th>Book</th><th class="num">Qty</th><th class="num">Label pages</th></tr></thead>
+      <tbody id="pickBody"></tbody></table>
+    <div id="unmatched"></div>
+  </div>
+</main>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// Auth — same as inbox.html: the admin login's httpOnly cookie authenticates
+// this standalone page; a session token from this tab is sent when present.
+// ═══════════════════════════════════════════════════════════════════════════
+const SESSION_KEY = 'iac_admin_session_v1';
+let adminToken = '';
+try {
+  const s = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
+  if (s && s.token && s.exp && Date.now() < s.exp) adminToken = s.token;
+} catch {}
+
+async function api(url, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {});
+  if (adminToken) headers['X-Admin-Token'] = adminToken;
+  const res = await fetch(url, { ...opts, headers, credentials: 'same-origin' });
+  if (res.status === 401) throw new Error('Session expired — log in on the admin panel, then reload this page.');
+  return res;
+}
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const $ = (id) => document.getElementById(id);
+function setStatus(msg, isErr) { $('status').textContent = msg; $('status').className = isErr ? 'err' : ''; }
+
+$('files').addEventListener('change', () => { $('go').disabled = !$('files').files.length; });
+$('go').addEventListener('click', () => run().catch(e => { console.error(e); setStatus(e.message, true); $('go').disabled = false; }));
+
+// ── Orders ──────────────────────────────────────────────────────────────────
+async function fetchOrders() {
+  const res = await api('/.netlify/functions/get-orders?page=1&limit=5000');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('Could not load orders (HTTP ' + res.status + ')'));
+  return data.orders || [];
+}
+
+function itemsOf(order) {
+  const items = Array.isArray(order.cart_items) ? order.cart_items : [];
+  return items
+    .map(i => ({ title: String(i.title || i.name || 'Untitled').trim(), qty: Math.max(1, Number(i.qty) || 1) }))
+    .sort((a, b) => a.title.localeCompare(b.title, 'en', { sensitivity: 'base' }));
+}
+
+const compact = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// A label page carries the AWB and usually our IC- order number. The IC- id is
+// tried first (exact format, no false hits), then every known AWB against the
+// page text with spacing/punctuation removed, since PDF text runs often split
+// a long number into pieces.
+function matchOrder(pageText, byOrderId, awbs) {
+  const ids = pageText.toUpperCase().match(/IC-\d{8}-[A-Z0-9]{5}/g) || [];
+  for (const id of ids) if (byOrderId.has(id)) return byOrderId.get(id);
+  const flat = compact(pageText);
+  let best = null;
+  for (const [awb, order] of awbs) {
+    if (flat.includes(awb) && (!best || awb.length > best[0].length)) best = [awb, order];
+  }
+  return best ? best[1] : null;
+}
+
+// ── PDF text ────────────────────────────────────────────────────────────────
+async function pageTexts(bytes) {
+  const doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+  const out = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const tc = await page.getTextContent();
+    out.push(tc.items.map(i => i.str).join(' '));
+  }
+  return out;
+}
+
+// Helvetica (a standard PDF font) only encodes WinAnsi; anything else would
+// throw while drawing, so it is folded to the nearest ASCII or dropped.
+function pdfSafe(s) {
+  return String(s || '')
+    .replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...')
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim() || '?';
+}
+
+function wrap(text, font, size, maxWidth) {
+  const words = pdfSafe(text).split(' ');
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    const next = line ? line + ' ' + w : w;
+    if (font.widthOfTextAtSize(next, size) <= maxWidth || !line) line = next;
+    else { lines.push(line); line = w; }
+  }
+  if (line) lines.push(line);
+  // A single word wider than the column is cut rather than overflowing.
+  return lines.map(l => {
+    while (l.length > 1 && font.widthOfTextAtSize(l, size) > maxWidth) l = l.slice(0, -1);
+    return l;
+  });
+}
+
+function pageRanges(nums) {
+  const s = [...new Set(nums)].sort((a, b) => a - b);
+  const parts = [];
+  for (let i = 0; i < s.length; i++) {
+    let j = i;
+    while (j + 1 < s.length && s[j + 1] === s[j] + 1) j++;
+    parts.push(j > i ? `${s[i]}-${s[j]}` : String(s[i]));
+    i = j;
+  }
+  return parts.join(', ');
+}
+
+// ── Main ────────────────────────────────────────────────────────────────────
+async function run() {
+  $('go').disabled = true;
+  $('resultCard').style.display = 'none';
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  setStatus('Loading orders…');
+  const orders = await fetchOrders();
+  const byOrderId = new Map();
+  const awbs = new Map();
+  for (const o of orders) {
+    if (o.razorpay_order_id) byOrderId.set(String(o.razorpay_order_id).toUpperCase(), o);
+    const awb = compact(o.tracking_id);
+    if (awb.length >= 8) awbs.set(awb, o);
+  }
+
+  // Every page of every uploaded file, with the order it belongs to.
+  const labels = [];
+  const sources = [];
+  for (const file of $('files').files) {
+    setStatus(`Reading ${file.name}…`);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const texts = await pageTexts(bytes);
+    const si = sources.push(src) - 1;
+    texts.forEach((text, i) => {
+      const order = matchOrder(text, byOrderId, awbs);
+      const items = order ? itemsOf(order) : [];
+      labels.push({
+        si, index: i, file: file.name, order, items,
+        units: items.reduce((s, it) => s + it.qty, 0),
+        key: items.length ? items.map(it => it.title).join(' + ') : '',
+      });
+    });
+  }
+  if (!labels.length) throw new Error('No pages found in the uploaded PDF.');
+
+  // Sort by product name. Labels that could not be matched go last, in their
+  // original order, so nothing is lost.
+  labels.sort((a, b) => {
+    if (!a.key !== !b.key) return a.key ? -1 : 1;
+    if (!a.key) return 0;
+    return a.key.localeCompare(b.key, 'en', { sensitivity: 'base' })
+      || String(a.order.razorpay_order_id).localeCompare(String(b.order.razorpay_order_id));
+  });
+
+  setStatus('Building PDF…');
+  const out = await PDFDocument.create();
+  const font = await out.embedFont(StandardFonts.Helvetica);
+  const bold = await out.embedFont(StandardFonts.HelveticaBold);
+
+  // Picklist page size follows the labels, so it prints on the same stock.
+  const first = sources[labels[0].si].getPage(labels[0].index);
+  const { width: PW, height: PH } = first.getSize();
+
+  // Totals per book, highest quantity first.
+  const totals = new Map();
+  for (const l of labels) for (const it of l.items) {
+    const t = totals.get(it.title) || { title: it.title, qty: 0, labels: [] };
+    t.qty += it.qty;
+    t.labels.push(l);
+    totals.set(it.title, t);
+  }
+  const pick = [...totals.values()].sort((a, b) => b.qty - a.qty || a.title.localeCompare(b.title));
+
+  // The picklist sits in front of the labels, so label page numbers depend on
+  // how many pages the picklist itself needs — lay it out until that settles.
+  const M = Math.max(14, Math.min(36, PW * 0.06));
+  const FS = PW < 400 ? 8 : 10;
+  const LH = FS * 1.3;
+  const qtyW = bold.widthOfTextAtSize('0000', FS);
+  const pagesW = Math.min(PW * 0.3, font.widthOfTextAtSize('000-000, 000-000', FS));
+  const titleW = PW - 2 * M - qtyW - pagesW - 16;
+  const unmatched = labels.filter(l => !l.key).length;
+
+  function layout(pickPages) {
+    const rows = pick.map(p => {
+      const pages = pageRanges(p.labels.map(l => pickPages + labels.indexOf(l) + 1));
+      const tl = wrap(p.title, font, FS, titleW);
+      const pl = wrap(pages, font, FS, pagesW);
+      return { p, tl, pl, h: Math.max(tl.length, pl.length) * LH + 4 };
+    });
+    const pagesOut = [[]];
+    let y = PH - M - FS * 1.6 - LH * 2;        // title + header row on every page
+    for (const r of rows) {
+      if (y - r.h < M + LH * 2 && pagesOut[pagesOut.length - 1].length) { pagesOut.push([]); y = PH - M - FS * 1.6 - LH * 2; }
+      pagesOut[pagesOut.length - 1].push(r);
+      y -= r.h;
+    }
+    return pagesOut;
+  }
+  let pickPages = 1, laid = layout(1);
+  for (let i = 0; i < 5 && laid.length !== pickPages; i++) { pickPages = laid.length; laid = layout(pickPages); }
+
+  const totalUnits = pick.reduce((s, p) => s + p.qty, 0);
+  laid.forEach((rows, pi) => {
+    const page = out.addPage([PW, PH]);
+    let y = PH - M - FS * 1.4;
+    page.drawText(pdfSafe(`Picklist - ${labels.length} labels, ${totalUnits} books`
+      + (laid.length > 1 ? ` (${pi + 1}/${laid.length})` : '')), { x: M, y, size: FS * 1.4, font: bold });
+    y -= LH * 1.6;
+    page.drawText('Book', { x: M, y, size: FS, font: bold });
+    page.drawText('Qty', { x: M + titleW + 8, y, size: FS, font: bold });
+    page.drawText('Label pages', { x: PW - M - pagesW, y, size: FS, font: bold });
+    y -= 4;
+    page.drawLine({ start: { x: M, y }, end: { x: PW - M, y }, thickness: 0.6 });
+    y -= LH;
+    for (const r of rows) {
+      r.tl.forEach((t, i) => page.drawText(t, { x: M, y: y - i * LH, size: FS, font }));
+      const q = String(r.p.qty);
+      page.drawText(q, { x: M + titleW + 8 + qtyW - bold.widthOfTextAtSize(q, FS), y, size: FS, font: bold });
+      r.pl.forEach((t, i) => page.drawText(t, { x: PW - M - pagesW, y: y - i * LH, size: FS, font }));
+      y -= r.h;
+      page.drawLine({ start: { x: M, y: y + LH - 2 }, end: { x: PW - M, y: y + LH - 2 }, thickness: 0.2, color: rgb(0.6, 0.6, 0.6) });
+    }
+    if (pi === laid.length - 1 && unmatched) {
+      page.drawText(pdfSafe(`${unmatched} label(s) not matched to an order - at the end, unsorted.`),
+        { x: M, y: Math.max(M, y - LH), size: FS, font: bold, color: rgb(0.7, 0.1, 0.1) });
+    }
+  });
+
+  // Labels, sorted, with product + qty printed where the parcel holds more than one book.
+  const strip = $('stampMode').value === 'strip';
+  for (let si = 0; si < sources.length; si++) {
+    const mine = labels.filter(l => l.si === si);
+    const copied = await out.copyPages(sources[si], mine.map(l => l.index));
+    mine.forEach((l, k) => { l.copied = copied[k]; });
+  }
+  for (const l of labels) {
+    const page = out.addPage(l.copied);
+    if (l.units <= 1) continue;
+    const { width: w } = page.getSize();
+    const box = page.getMediaBox();
+    const sfs = w < 400 ? 9 : 11;
+    const lines = l.items.flatMap(it => wrap(`${it.qty} x ${it.title}`, bold, sfs, w - 16));
+    lines.unshift(`${l.units} BOOKS IN THIS PARCEL:`);
+    const band = lines.length * sfs * 1.25 + 8;
+    if (strip) {
+      // Grow the page downwards and draw in the new space: nothing on the label is covered.
+      page.setMediaBox(box.x, box.y - band, box.width, box.height + band);
+      if (page.node.CropBox()) page.setCropBox(box.x, box.y - band, box.width, box.height + band);
+    }
+    const y0 = strip ? box.y - band : box.y;
+    page.drawRectangle({ x: box.x, y: y0, width: box.width, height: band, color: rgb(1, 1, 1), borderColor: rgb(0, 0, 0), borderWidth: 0.8 });
+    lines.forEach((t, i) => page.drawText(pdfSafe(t), {
+      x: box.x + 8, y: y0 + band - 4 - (i + 1) * sfs * 1.25 + sfs * 0.25, size: sfs, font: bold,
+    }));
+  }
+
+  const bytes = await out.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `labels-sorted-${new Date().toISOString().slice(0, 10)}.pdf`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+
+  // On-screen copy of the picklist, plus anything that needs a manual look.
+  $('pickBody').innerHTML = pick.map(p =>
+    `<tr><td>${esc(p.title)}</td><td class="num"><b>${p.qty}</b></td><td class="num">${esc(pageRanges(p.labels.map(l => pickPages + labels.indexOf(l) + 1)))}</td></tr>`).join('');
+  $('unmatched').innerHTML = unmatched
+    ? `<p class="warn" style="margin-top:.8rem">${unmatched} page(s) could not be matched to an order and were put at the end: `
+      + labels.filter(l => !l.key).map(l => esc(`${l.file} p.${l.index + 1}`)).join(', ') + '</p>'
+    : '';
+  $('resultCard').style.display = '';
+  setStatus(`Done — ${labels.length} labels sorted, picklist on ${pickPages} page(s). Download started.`);
+  $('go').disabled = false;
+}
+</script>
+</body>
+</html>
