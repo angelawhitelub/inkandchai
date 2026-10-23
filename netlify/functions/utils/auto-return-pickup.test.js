@@ -10,7 +10,7 @@ function ret(over = {}) {
 }
 
 /** return_requests with select/eq/is/or/update — enough for the job. */
-function fakeSupabase(row) {
+function fakeSupabase(row, { missing = [] } = {}) {
   const state = { row: row && { ...row }, updates: [] };
   function builder() {
     const q = { op: 'select', filters: [], payload: null, or: null };
@@ -18,6 +18,8 @@ function fakeSupabase(row) {
       && (!q.or || r.courier_name == null || r.courier_name !== INDIA_POST);
     const run = () => {
       if (q.op === 'update') {
+        const bad = missing.find((c) => c in q.payload);
+        if (bad) return { data: null, error: { message: `Could not find the '${bad}' column of 'return_requests' in the schema cache` } };
         const hit = match(state.row);
         if (hit) Object.assign(state.row, q.payload);
         state.updates.push(q.payload);
@@ -56,7 +58,7 @@ test('XpressBees is tried first and a booking there ends it', async () => {
   const notify = spy(), alert = spy();
   const out = await runReturnPickup({ supabase: fakeSupabase(ret()), processReturn, notifyCustomer: notify, alertOwner: alert, address: ADDR }, 'r1');
   assert.equal(out.outcome, 'xpressbees');
-  assert.deepEqual(processReturn.calls, [{ return_request_id: 'r1', action: 'xpressbees' }]);
+  assert.deepEqual(processReturn.calls, [{ return_request_id: 'r1', action: 'xpressbees', quiet_on_fail: true }]);
   assert.equal(notify.calls.length, 0);
 });
 
@@ -112,6 +114,18 @@ test('a booking that lands between the two attempts stops the fallback', async (
   assert.equal(out.outcome, 'skipped');
   assert.equal(processReturn.calls.length, 1);
   assert.equal(notify.calls.length, 0);
+});
+
+test('without the push-error columns the India Post claim still lands (2026-10-23)', async () => {
+  const db = fakeSupabase(ret(), { missing: ['last_push_error'] });
+  const processReturn = spyProcess([refused('xb said no'), refused('np said no')]);
+  const notify = spy(), alert = spy();
+  const out = await runReturnPickup({ supabase: db, processReturn, notifyCustomer: notify, alertOwner: alert, address: ADDR }, 'r1');
+  assert.equal(out.outcome, 'india_post');
+  assert.equal(db.state.row.courier_name, INDIA_POST);
+  assert.ok(processReturn.calls.every((c) => c.quiet_on_fail === true), 'process-return tells the customer nothing on a refusal');
+  assert.equal(notify.calls.length, 1);
+  assert.match(alert.calls[0][1], /xb said no[\s\S]*np said no/);
 });
 
 test('the India Post email names the address, the order and that we pay', () => {
