@@ -180,3 +180,13 @@ class_name = "ClaimGuard"
 [[migrations]]
 tag = "v3-customer-claims"
 new_sqlite_classes = ["ClaimGuard"]
+
+# The admin "Book on XpressBees (API)" run, held on the server so closing the
+# tab does not stop it (worker/xb-booking-job.js). One instance, one job.
+[[durable_objects.bindings]]
+name = "XB_BOOKING_JOB"
+class_name = "XbBookingJob"
+
+[[migrations]]
+tag = "v4-xb-booking-job"
+new_sqlite_classes = ["XbBookingJob"]

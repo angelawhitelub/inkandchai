@@ -13946,7 +13946,6 @@ async function dlRunPush(includeShiprocket, expected) {
 // no cancel request, older than 30 minutes), so a stale screen cannot book a
 // cancelled order. XpressBees itself refuses an order number it already holds,
 // which is what stops an order imported into the panel being booked twice.
-let xbbActive = false;
 let xbbState = null;
 // "Surface Xpressbees 0.5 K.G" in XpressBees' courier list.
 const XBB_SURFACE_05 = '1';
@@ -13966,8 +13965,9 @@ function xbbModal(html) {
       html +
     '</div>';
 }
+// Closing only hides the screen: a run lives on the server (xb-booking-job).
 function xbbClose() {
-  if (xbbActive) return;                       // never hide a run that is still booking
+  clearTimeout(xbbPollTimer);
   document.getElementById('xbBookModal')?.remove();
 }
 const XBB_H = (t) => '<h2 style="' + DL_H + '">' + t + '</h2>';
@@ -14042,9 +14042,19 @@ function xbbHeldList(skipped) {
       '</details>').join('');
 }
 
+// Opening shows the server's run if there is one — still going, or finished
+// and not yet cleared — and otherwise the chooser.
+async function xbBookOpen() {
+  xbbModal(XBB_H('Book on XpressBees (API)') + '<p style="color:var(--cream-dim);"><span class="spinner"></span>Checking for a run in progress…</p>');
+  let job = null;
+  try { job = (await xbbCall({ action: 'job_status' })).job; } catch (e) { /* no runner: the chooser still works and says so on start */ }
+  // A finished price check older than 6 hours is stale; start fresh.
+  if (job && !(job.state === 'done' && job.mode === 'preview' && Date.now() - (job.finished_at || 0) > 6 * 3600e3)) { xbbWatch(); return; }
+  xbbChooser();
+}
+
 // Step 1: choose what to book and on which service.
-function xbBookOpen() {
-  if (xbbActive) { alert('An XpressBees booking is already running. Please wait for it to finish.'); return; }
+function xbbChooser() {
   const selected = getSelectedOrders().map(o => o.razorpay_order_id || o.id).filter(Boolean);
   const radio = (name, value, checked, label, hint) =>
     '<label style="display:flex;gap:0.6rem;align-items:flex-start;cursor:pointer;border:1px solid var(--border);padding:0.6rem 0.8rem;margin-bottom:0.4rem;">' +
@@ -14065,54 +14075,75 @@ function xbBookOpen() {
   xbbState = { selected };
 }
 
-// Step 2: dry run in batches; books nothing.
+// Step 2: the price check runs on the server as a job (worker/xb-booking-job.js);
+// this tab only starts it and watches. Books nothing. Each order's check is
+// saved, so the booking that follows (or a second check) does not ask again.
 async function xbbPreview() {
   const scope = document.querySelector('input[name=xbbScope]:checked')?.value || 'all';
   const service = document.querySelector('input[name=xbbService]:checked')?.value || 'surface';
   const days = parseInt(document.getElementById('xbbDays')?.value, 10) || 30;
   const courierId = service === 'surface' ? XBB_SURFACE_05 : undefined;
-  const st = xbbState = { ...xbbState, scope, service, days, courierId, ready: [], failed: [], skipped: [] };
-
+  xbbState = { ...xbbState, scope, service, days, courierId };
   xbbModal(XBB_H('Book on XpressBees (API)') + '<p style="color:var(--cream-dim);"><span class="spinner"></span>Finding orders…</p>');
-  let ids;
   try {
-    if (scope === 'selected') {
-      ids = st.selected.slice();
-    } else {
-      const c = await xbbCall({ action: 'candidates', days });
-      ids = (c.ready || []).map(r => r.order_id);
-      st.skipped.push(...(c.held || []).map(h => ({ order_id: h.order_id, kind: h.kind, reason: h.reason })));
-    }
+    await xbbCall({ action: 'job_start', mode: 'preview', service, days,
+      ...(scope === 'selected' ? { order_ids: xbbState.selected } : {}), ...(courierId ? { courier_id: courierId } : {}) });
   } catch (e) {
-    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Could not load the orders', e.message, 'Nothing was sent to XpressBees.') +
+    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Could not start the price check', e.message, 'Nothing was sent to XpressBees.') +
       '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="xbbClose()">Close</button></div>');
     return;
   }
+  xbbWatch();
+}
 
-  for (let i = 0; i < ids.length; i += 10) {
-    xbbModal(XBB_H('Book on XpressBees (API)') +
-      '<p style="color:var(--cream-dim);"><span class="spinner"></span>Asking XpressBees for prices… ' + Math.min(i, ids.length) + ' of ' + ids.length + '</p>' +
-      '<p style="color:var(--cream-dim);font-size:0.72rem;">Nothing is booked in this step.</p>');
-    try {
-      const d = await xbbCall({ order_ids: ids.slice(i, i + 10), dry_run: true, ...(courierId ? { courier_id: courierId } : {}) });
-      st.ready.push(...(d.booked || []));
-      st.failed.push(...(d.failed || []));
-      st.skipped.push(...(d.skipped || []));
-    } catch (e) {
-      xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('The preview stopped', e.message, 'Nothing was booked. Try again in a minute.') +
-        '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="xbbClose()">Close</button></div>');
-      return;
-    }
+// Polls the job and draws whichever screen it is at. Stops when the modal is closed.
+let xbbPollTimer = null;
+async function xbbWatch() {
+  clearTimeout(xbbPollTimer);
+  if (!document.getElementById('xbBookModal')) return;
+  let job;
+  try { job = (await xbbCall({ action: 'job_status' })).job; }
+  catch (e) {
+    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Could not read the run', e.message,
+      'The run carries on at the server either way. Trying again in a few seconds…'));
+    xbbPollTimer = setTimeout(xbbWatch, 5000);
+    return;
   }
+  if (!document.getElementById('xbBookModal')) return;
+  if (!job) { xbbChooser(); return; }
+  if (job.state === 'running') {
+    const book = job.mode === 'book';
+    const total = job.order_ids.length;
+    xbbModal(XBB_H(book ? 'Booking on XpressBees…' : 'Book on XpressBees (API)') +
+      '<p style="color:var(--cream-dim);"><span class="spinner"></span>' +
+        (book ? Math.min(job.cursor, total) + ' of ' + total + ' sent · ✅ ' + job.booked.length + ' booked · ❌ ' + job.failed.length + ' failed'
+              : 'Asking XpressBees for prices… ' + Math.min(job.cursor, total) + ' of ' + total) + '</p>' +
+      (job.last_error ? '<p style="color:var(--red);font-size:0.72rem;">Retrying after: ' + dlEsc(job.last_error) + '</p>' : '') +
+      '<p style="color:var(--cream-dim);font-size:0.72rem;">' + (book
+        ? 'This runs on the server: you can close this tab or this window. The full result is emailed to you when it finishes.'
+        : 'Nothing is booked in this step. It runs on the server, so you can close this and come back — press the button again to see the prices.') + '</p>' +
+      '<div style="display:flex;justify-content:flex-end;margin-top:0.8rem;"><button class="btn-outline" onclick="xbbClose()">Close (keeps running)</button></div>');
+    xbbPollTimer = setTimeout(xbbWatch, 1500);
+    return;
+  }
+  if (job.mode === 'book') xbbRenderBooked(job); else xbbRenderPreview(job);
+}
 
+function xbbRenderPreview(job) {
+  const st = xbbState = { ...(xbbState || {}), courierId: job.courier_id || undefined, ready: job.booked, failed: job.failed, skipped: job.skipped };
   const ready = st.ready;
   const cod = ready.filter(r => Number(r.collectable) > 0);
   const freight = ready.reduce((t, r) => t + (Number(r.courier_charges) || 0), 0);
   const services = {};
   ready.forEach(r => { const n = r.courier?.name || 'XpressBees'; services[n] = (services[n] || 0) + 1; });
+  const saved = ready.filter(r => r.cached).length + st.failed.filter(f => f.cached).length;
+  const age = job.finished_at ? Math.round((Date.now() - job.finished_at) / 60000) : 0;
 
   let h = XBB_H('Book on XpressBees (API) — preview') +
-    '<p style="color:var(--cream-dim);font-size:0.74rem;margin:0 0 0.6rem;">Nothing has been booked yet.</p>' +
+    '<p style="color:var(--cream-dim);font-size:0.74rem;margin:0 0 0.6rem;">Nothing has been booked yet.' +
+      (age >= 2 ? ' Prices checked ' + age + ' min ago.' : '') + (saved ? ' ' + saved + ' order(s) came from saved price checks.' : '') + '</p>' +
+    (job.stop_reason === 'auth' ? dlErrorBox('Could not sign in to XpressBees', 'Check the XPRESSBEES_EMAIL / XPRESSBEES_PASSWORD Worker secrets.', 'The check stopped early.') : '') +
+    (job.stop_reason === 'error' ? dlErrorBox('The price check stopped', job.error || '', 'Press Back and run it again; orders already checked are saved.') : '') +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.6rem;margin:0.6rem 0;">' +
       '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.5rem;color:var(--green);">' + ready.length + '</div><div style="font-size:0.66rem;color:var(--cream-dim);">ready to book</div></div>' +
       '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.1rem;">' + dlRupees(Math.round(freight)) + '</div><div style="font-size:0.66rem;color:var(--cream-dim);">freight from the wallet</div></div>' +
@@ -14134,7 +14165,7 @@ async function xbbPreview() {
   h += xbbHeldList(st.skipped);
 
   h += '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.3rem;flex-wrap:wrap;">' +
-    '<button class="btn-outline" onclick="xbBookOpen()">Back</button>' +
+    '<button class="btn-outline" onclick="xbbStartOver()">Back</button>' +
     '<button class="btn-outline" onclick="xbbClose()">Cancel</button>' +
     (ready.length
       ? '<button class="btn-green" onclick="xbbBook()" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;">Book ' + ready.length + ' on XpressBees · ' + dlRupees(Math.round(freight)) + '</button>'
@@ -14143,54 +14174,48 @@ async function xbbPreview() {
   xbbModal(h);
 }
 
-// Step 3: book in batches of 5 and show every outcome.
+// Step 3: the booking runs on the server too; the tab may close at any time.
 async function xbbBook() {
   const st = xbbState;
-  if (xbbActive || !st || !st.ready.length) return;
-  if (!confirm('Book ' + st.ready.length + ' order(s) on XpressBees now?\n\nEach gets a real AWB, the wallet is charged, and the customer is notified. This cannot be undone from here.')) return;
-  xbbActive = true;
-  const ids = st.ready.map(r => r.order_id);
-  const out = { booked: [], failed: [], skipped: [], unknown: [] };
-  let stopped = '';
-
-  for (let i = 0; i < ids.length; i += 5) {
-    xbbModal(XBB_H('Booking on XpressBees…') +
-      '<p style="color:var(--cream-dim);"><span class="spinner"></span>' + Math.min(i, ids.length) + ' of ' + ids.length + ' sent · ✅ ' + out.booked.length + ' booked · ❌ ' + out.failed.length + ' failed</p>' +
-      '<p style="color:var(--cream-dim);font-size:0.72rem;">Do not close this tab.</p>');
-    const batch = ids.slice(i, i + 5);
-    try {
-      const d = await xbbCall({ order_ids: batch, ...(st.courierId ? { courier_id: st.courierId } : {}) });
-      out.booked.push(...(d.booked || []));
-      out.failed.push(...(d.failed || []));
-      out.skipped.push(...(d.skipped || []));
-      if ((d.failed || []).some(f => f.kind === 'wallet')) { stopped = 'wallet'; break; }
-      if ((d.failed || []).some(f => f.kind === 'auth')) { stopped = 'auth'; break; }
-    } catch (e) {
-      // No answer: these may or may not have been booked.
-      out.unknown.push(...batch);
-      stopped = 'transport';
-      out.error = e.message;
-      break;
-    }
+  if (!st || !st.ready || !st.ready.length) return;
+  if (!confirm('Book ' + st.ready.length + ' order(s) on XpressBees now?\n\nEach gets a real AWB, the wallet is charged, and the customer is notified. This cannot be undone from here.\n\nIt runs on the server: you can close the tab, and the result is emailed to you.')) return;
+  xbbModal(XBB_H('Booking on XpressBees…') + '<p style="color:var(--cream-dim);"><span class="spinner"></span>Starting…</p>');
+  try {
+    await xbbCall({ action: 'job_start', mode: 'book', order_ids: st.ready.map(r => r.order_id), ...(st.courierId ? { courier_id: st.courierId } : {}) });
+  } catch (e) {
+    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Could not start the booking', e.message, 'Nothing was booked.') +
+      '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="xbbClose()">Close</button></div>');
+    return;
   }
-  const sent = new Set([...out.booked, ...out.failed, ...out.skipped].map(r => r.order_id).concat(out.unknown));
-  const notAttempted = ids.filter(id => !sent.has(id));
-  xbbActive = false;
+  xbbWatch();
+}
 
+// A finished run: dismiss it (the server forgets it) and start from the chooser.
+async function xbbStartOver() {
+  try { await xbbCall({ action: 'job_dismiss' }); } catch (e) { /* a running job refuses; the chooser says so */ }
+  xbbChooser();
+}
+
+function xbbRenderBooked(job) {
+  const out = { booked: job.booked || [], failed: job.failed || [], skipped: job.skipped || [] };
+  const stopped = job.stop_reason || '';
+  const notAttempted = job.not_attempted || [];
   const notSaved = out.booked.filter(b => b.db_updated === false);
   const notNotified = out.booked.filter(b => b.notified && !b.notified.whatsapp && !b.notified.email && !b.notified.skipped);
   const freight = out.booked.reduce((t, b) => t + (Number(b.courier_charges) || 0), 0);
 
   let h = XBB_H('XpressBees booking finished') +
+    '<p style="color:var(--cream-dim);font-size:0.72rem;margin:0 0 0.4rem;">Started ' + dlEsc(new Date(job.started_at).toLocaleString('en-IN')) +
+      (job.email && job.email.sent ? ' · the result was emailed to you' : job.email && job.email.error ? ' · ⚠ the result email failed: ' + dlEsc(job.email.error) : '') + '</p>' +
     '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:0.9rem;margin:0.3rem 0 0.6rem;">' +
       '<span style="color:var(--green);">✅ Booked <b>' + out.booked.length + '</b> · ' + dlRupees(Math.round(freight)) + '</span>' +
       '<span style="color:' + (out.failed.length ? 'var(--red)' : 'var(--cream-dim)') + ';">❌ Failed <b>' + out.failed.length + '</b></span>' +
       '<span style="color:var(--cream-dim);">⏭ Not sent <b>' + (out.skipped.length + notAttempted.length) + '</b></span>' +
     '</div>';
 
-  if (stopped === 'transport') {
-    h += dlErrorBox('No answer from the server — stopped', out.error + '\n\nOutcome unknown for: ' + out.unknown.join(', '),
-      'These may or may not have been booked. Open this button again and preview: any that got an AWB are skipped, and XpressBees refuses an order number it already holds, so nothing is booked twice.');
+  if (stopped === 'error') {
+    h += dlErrorBox('The run stopped on an error', (job.error || '') + (notAttempted.length ? '\n\nNot attempted: ' + notAttempted.join(', ') : ''),
+      'Run the button again: any order that got an AWB is skipped, and XpressBees refuses an order number it already holds, so nothing is booked twice.');
   }
   if (stopped === 'wallet') h += dlErrorBox('Stopped: the XpressBees wallet ran out', notAttempted.length + ' order(s) were not attempted.', 'Recharge the wallet, then run this again for the rest.');
   if (stopped === 'auth') h += dlErrorBox('Stopped: could not sign in to XpressBees', 'Check the XPRESSBEES_EMAIL / XPRESSBEES_PASSWORD Worker secrets.', notAttempted.length + ' order(s) were not attempted.');
@@ -14216,9 +14241,10 @@ async function xbbBook() {
   }
   h += xbbHeldList(out.skipped.concat(notAttempted.map(id => ({ order_id: id, kind: stopped === 'wallet' ? 'wallet_stop' : 'not_attempted', reason: 'not attempted' }))));
   h += '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.3rem;">' +
+    '<button class="btn-outline" onclick="xbbStartOver()">New booking</button>' +
     '<button class="btn-green" onclick="xbbClose()">Done</button></div>';
   xbbModal(h);
-  try { selectedOrderIds.clear(); await refreshRecentOrders(); } catch (e) { /* the table refreshes on its own */ }
+  try { selectedOrderIds.clear(); refreshRecentOrders(); } catch (e) { /* the table refreshes on its own */ }
 }
 
 // ── NimbusPost: push ONE order to the panel, no courier, no AWB ─────────────

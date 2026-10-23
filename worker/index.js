@@ -21,6 +21,7 @@ import * as bindingsNs from './shims/runtime-bindings.js';
 export { RateLimiter } from './rate-limiter.js';
 export { ClaimGuard } from './claim-guard.js';
 export { SpendGuard } from './spend-guard.js';
+export { XbBookingJob } from './xb-booking-job.js';
 import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable, staleProductKey, renderWithLastGood } from './cache-policy.mjs';
 import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
 import soldOutUtil from '../netlify/functions/utils/sold-out.js';
