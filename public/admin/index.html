@@ -2355,24 +2355,32 @@ select,input,textarea{font-size:1rem;}
   </div><!-- /tab-returns -->
 
   <!-- ═══ ADMIN ACCESS TAB ═══ -->
+  <style>
+    /* Tickets are read line by line; the admin's pale secondary grey and
+       0.6–0.8rem text were too faint here (owner, 2026-10-25). */
+    #tab-tickets { --cream-dim:#3a3128; line-height:1.55; }
+    #tab-tickets textarea, #tab-tickets input, #tab-tickets select { font-size:0.95rem !important; color:var(--cream) !important; }
+    #tab-tickets textarea::placeholder, #tab-tickets input::placeholder { color:#7a6e62; }
+    #tab-tickets .btn-green, #tab-tickets .btn-outline { font-size:0.85rem; }
+  </style>
   <div class="admin-section" id="tab-tickets">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
       <div>
-        <h2 style="margin:0;font-size:1.1rem;">🎫 Support tickets</h2>
-        <div style="font-size:0.72rem;color:var(--cream-dim);margin-top:0.3rem;max-width:760px;line-height:1.6;">
+        <h2 style="margin:0;font-size:1.34rem;">🎫 Support tickets</h2>
+        <div style="font-size:0.88rem;color:var(--cream-dim);margin-top:0.3rem;max-width:760px;line-height:1.6;">
           Raised by customers at <a href="/support/" target="_blank" rel="noopener" style="color:var(--gold);">inkandchai.in/support</a> with their order ID.
           Promise: first reply within <strong>24 h</strong>, resolved within <strong>48 h</strong>. Past 48 h the customer is emailed that it is taking longer than expected
           (and so are you). <strong>Resolve &amp; close</strong> sends the customer your resolution and stops the clock.
         </div>
       </div>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-        <select id="tkStatus" onchange="loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;">
+        <select id="tkStatus" onchange="loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.88rem;border-radius:6px;outline:none;">
           <option value="active">Active (open + in progress)</option>
           <option value="waiting">Waiting on customer</option>
           <option value="closed">Closed</option>
           <option value="all">All</option>
         </select>
-        <select id="tkSort" onchange="tkSortChanged()" title="Sort by" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;">
+        <select id="tkSort" onchange="tkSortChanged()" title="Sort by" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.88rem;border-radius:6px;outline:none;">
           <option value="urgent">Sort: most urgent</option>
           <option value="newest">Sort: newest first</option>
           <option value="oldest">Sort: oldest first</option>
@@ -2383,12 +2391,12 @@ select,input,textarea{font-size:1rem;}
           <option value="category">Sort: issue type</option>
           <option value="name">Sort: customer name</option>
         </select>
-        <input id="tkSearch" placeholder="Search ticket, order, name, email…" onkeydown="if(event.key==='Enter')loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;min-width:220px;"/>
+        <input id="tkSearch" placeholder="Search ticket, order, name, email…" onkeydown="if(event.key==='Enter')loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.88rem;border-radius:6px;outline:none;min-width:220px;"/>
         <button class="btn-outline" onclick="loadTickets()">↻ Reload</button>
       </div>
     </div>
-    <div id="tkCounts" style="font-size:0.72rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
-    <div id="tkMsg" style="font-size:0.72rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
+    <div id="tkCounts" style="font-size:0.88rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
+    <div id="tkMsg" style="font-size:0.88rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
     <div id="tkList"></div>
     <div id="tkDetail" style="display:none;"></div>
   </div><!-- /tab-tickets -->
@@ -3395,7 +3403,7 @@ function tkDueText(t) {
 }
 
 function tkChip(label, colour) {
-  return '<span style="display:inline-block;border:1px solid ' + colour + ';color:' + colour + ';border-radius:999px;padding:.05rem .55rem;font-size:.62rem;letter-spacing:.06em;">' + esc(label) + '</span>';
+  return '<span style="display:inline-block;border:1px solid ' + colour + ';color:' + colour + ';border-radius:999px;padding:.05rem .55rem;font-size:0.76rem;letter-spacing:.06em;">' + esc(label) + '</span>';
 }
 
 async function refreshTicketBadge() {
@@ -4054,16 +4062,16 @@ function renderTicketList() {
       const border = t.overdue ? 'rgba(224,96,96,.55)' : t.status === 'open' && !t.first_response_at ? 'rgba(224,176,96,.45)' : 'var(--border)';
       return '<div onclick="openTicket(\'' + esc(t.id) + '\')" style="cursor:pointer;border:1px solid ' + border + ';border-radius:12px;padding:.8rem 1rem;margin-bottom:.6rem;">'
         + '<div style="display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:center;">'
-        +   '<div style="font-size:.78rem;"><strong style="color:var(--gold);">' + esc(t.ticket_no) + '</strong> · ' + esc(t.order_id) + ' · ' + esc(t.customer_name || t.customer_email || t.customer_phone || '')
+        +   '<div style="font-size:0.95rem;"><strong style="color:var(--gold);">' + esc(t.ticket_no) + '</strong> · ' + esc(t.order_id) + ' · ' + esc(t.customer_name || t.customer_email || t.customer_phone || '')
         +     (t.evidence_count ? ' · 📎 ' + t.evidence_count : '') + '</div>'
         +   '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">'
         +     (t.priority === 'high' ? tkChip('high priority', '#e06060') : '')
         +     (t.status === 'open' && !t.first_response_at ? tkChip('no reply yet', '#e0a060') : '')
         +     tkChip(TK_STATUS[t.status] || t.status, TK_COLOUR[t.status] || '#888')
-        +     '<span style="font-size:.7rem;">' + tkDueText(t) + '</span>'
+        +     '<span style="font-size:0.85rem;">' + tkDueText(t) + '</span>'
         +   '</div></div>'
-        + '<div style="font-size:.72rem;color:var(--cream-dim);margin-top:.35rem;">' + esc(t.category_label) + ' · opened ' + esc(new Date(t.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>'
-        + '<div style="font-size:.82rem;margin-top:.35rem;color:var(--cream);">' + esc(t.preview) + (t.preview && t.preview.length >= 140 ? '…' : '') + '</div>'
+        + '<div style="font-size:0.88rem;color:var(--cream-dim);margin-top:.35rem;">' + esc(t.category_label) + ' · opened ' + esc(new Date(t.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>'
+        + '<div style="font-size:1rem;margin-top:.35rem;color:var(--cream);">' + esc(t.preview) + (t.preview && t.preview.length >= 140 ? '…' : '') + '</div>'
         + '</div>';
     }).join('');
   }
@@ -4074,14 +4082,14 @@ async function openTicket(id) {
   tkOpenId = id;
   document.getElementById('tkList').style.display = 'none';
   box.style.display = '';
-  box.innerHTML = '<div style="color:var(--cream-dim);font-size:.8rem;">Loading ticket…</div>';
+  box.innerHTML = '<div style="color:var(--cream-dim);font-size:0.98rem;">Loading ticket…</div>';
   try {
     const res = await adminFetch(TK_API + '?id=' + encodeURIComponent(id));
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     renderTicketDetail(data);
   } catch (e) {
-    box.innerHTML = '<div style="color:#e06060;font-size:.8rem;">Could not open the ticket: ' + esc(e.message) + ' <button class="btn-outline" onclick="loadTickets()">← Back</button></div>';
+    box.innerHTML = '<div style="color:#e06060;font-size:0.98rem;">Could not open the ticket: ' + esc(e.message) + ' <button class="btn-outline" onclick="loadTickets()">← Back</button></div>';
   }
 }
 
@@ -4098,51 +4106,51 @@ function renderTicketDetail(d) {
   const evidence = (t.evidence || []).map(function (f, i) {
     return '<div class="tk-ev" data-i="' + i + '" data-type="' + esc(f.type) + '" style="width:120px;">'
       + '<div class="tk-ev-box" style="height:90px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg3);cursor:pointer;font-size:1.6rem;" onclick="tkOpenEvidence(this.parentNode)">'
-      + (/^image\//.test(f.type) ? '<span style="font-size:.7rem;color:var(--cream-dim);">loading…</span>' : (/^video\//.test(f.type) ? '🎬' : '📄')) + '</div>'
-      + '<div style="font-size:.62rem;color:var(--cream-dim);margin-top:.2rem;word-break:break-all;">' + esc(f.name) + '</div></div>';
+      + (/^image\//.test(f.type) ? '<span style="font-size:0.85rem;color:var(--cream-dim);">loading…</span>' : (/^video\//.test(f.type) ? '🎬' : '📄')) + '</div>'
+      + '<div style="font-size:0.76rem;color:var(--cream-dim);margin-top:.2rem;word-break:break-all;">' + esc(f.name) + '</div></div>';
   }).join('');
   const events = (d.events || []).map(function (e) {
     const who = e.actor === 'customer' ? 'Customer' : e.actor === 'staff' ? 'Staff' : 'System';
     const colour = e.internal ? '#c98a36' : e.actor === 'customer' ? 'var(--gold)' : e.actor === 'staff' ? '#5d9b55' : 'var(--cream-dim)';
-    const files = (e.attachments || []).length ? '<div style="font-size:.68rem;color:var(--cream-dim);margin-top:.2rem;">📎 ' + e.attachments.map(a => esc(a.name)).join(', ') + '</div>' : '';
+    const files = (e.attachments || []).length ? '<div style="font-size:0.83rem;color:var(--cream-dim);margin-top:.2rem;">📎 ' + e.attachments.map(a => esc(a.name)).join(', ') + '</div>' : '';
     return '<div style="border-left:3px solid ' + colour + ';padding:.4rem .8rem;margin:.5rem 0;' + (e.internal ? 'background:rgba(201,138,54,.07);' : '') + '">'
-      + '<div style="font-size:.65rem;color:var(--cream-dim);">' + (e.internal ? '🔒 internal note · ' : '') + '<strong style="color:' + colour + ';">' + who + '</strong> · ' + esc(new Date(e.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>'
-      + (e.body ? '<div style="font-size:.84rem;white-space:pre-wrap;margin-top:.15rem;">' + esc(e.body) + '</div>' : '') + files + '</div>';
+      + '<div style="font-size:0.79rem;color:var(--cream-dim);">' + (e.internal ? '🔒 internal note · ' : '') + '<strong style="color:' + colour + ';">' + who + '</strong> · ' + esc(new Date(e.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>'
+      + (e.body ? '<div style="font-size:1.02rem;white-space:pre-wrap;margin-top:.15rem;">' + esc(e.body) + '</div>' : '') + files + '</div>';
   }).join('');
-  const inputCss = 'width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:.55rem .7rem;font-size:.8rem;border-radius:8px;outline:none;';
+  const inputCss = 'width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:.55rem .7rem;font-size:0.98rem;border-radius:8px;outline:none;';
   box.innerHTML =
     '<button class="btn-outline" onclick="loadTickets()" style="margin-bottom:.8rem;">← All tickets</button>'
     + '<div style="border:1px solid var(--border);border-radius:14px;padding:1.1rem 1.2rem;">'
     +   '<div style="display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:center;">'
-    +     '<h3 style="margin:0;font-size:1rem;color:var(--gold);">' + esc(t.ticket_no) + ' — ' + esc(t.category_label) + '</h3>'
-    +     '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">' + (t.priority === 'high' ? tkChip('high priority', '#e06060') : '') + (t.overdue ? tkChip('OVERDUE', '#e06060') : '') + tkChip(TK_STATUS[t.status], TK_COLOUR[t.status]) + '<span style="font-size:.72rem;">' + tkDueText(t) + '</span></div>'
+    +     '<h3 style="margin:0;font-size:1.22rem;color:var(--gold);">' + esc(t.ticket_no) + ' — ' + esc(t.category_label) + '</h3>'
+    +     '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">' + (t.priority === 'high' ? tkChip('high priority', '#e06060') : '') + (t.overdue ? tkChip('OVERDUE', '#e06060') : '') + tkChip(TK_STATUS[t.status], TK_COLOUR[t.status]) + '<span style="font-size:0.88rem;">' + tkDueText(t) + '</span></div>'
     +   '</div>'
-    +   '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.9rem;margin-top:.9rem;font-size:.78rem;line-height:1.7;">'
-    +     '<div><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Customer</div>' + esc(t.customer_name || '—') + '<br/>' + esc(t.customer_email || '') + '<br/>' + esc(t.customer_phone || '')
+    +   '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.9rem;margin-top:.9rem;font-size:0.95rem;line-height:1.7;">'
+    +     '<div><div style="font-size:0.73rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Customer</div>' + esc(t.customer_name || '—') + '<br/>' + esc(t.customer_email || '') + '<br/>' + esc(t.customer_phone || '')
     +       (phone ? ' · <a href="https://wa.me/91' + phone + '" target="_blank" rel="noopener" style="color:var(--gold);">WhatsApp</a>' : '') + '</div>'
-    +     '<div><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Order</div>' + orderLine + '</div>'
-    +     '<div><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Timeline</div>Opened ' + esc(new Date(t.created_at).toLocaleString('en-IN')) + '<br/>Reply by ' + esc(new Date(t.respond_by).toLocaleString('en-IN')) + '<br/>Resolve by ' + esc(new Date(t.due_at).toLocaleString('en-IN'))
+    +     '<div><div style="font-size:0.73rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Order</div>' + orderLine + '</div>'
+    +     '<div><div style="font-size:0.73rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Timeline</div>Opened ' + esc(new Date(t.created_at).toLocaleString('en-IN')) + '<br/>Reply by ' + esc(new Date(t.respond_by).toLocaleString('en-IN')) + '<br/>Resolve by ' + esc(new Date(t.due_at).toLocaleString('en-IN'))
     +       (t.delay_notices ? '<br/><span style="color:#e0a060;">Customer told of delay ' + t.delay_notices + '×</span>' : '') + (t.reopened_count ? '<br/>Reopened ' + t.reopened_count + '×' : '') + '</div>'
     +   '</div>'
-    +   (evidence ? '<div style="margin-top:1rem;"><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:.4rem;">Evidence (click to open)</div><div style="display:flex;gap:.6rem;flex-wrap:wrap;">' + evidence + '</div></div>' : '')
-    +   (closed && t.resolution ? '<div style="margin-top:1rem;border-left:3px solid #5d9b55;padding:.5rem .9rem;background:rgba(93,155,85,.08);font-size:.82rem;white-space:pre-wrap;"><strong>Resolution:</strong> ' + esc(t.resolution) + '</div>' : '')
-    +   '<div style="margin-top:1rem;"><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Conversation</div>' + events + '</div>'
-    +   '<div id="tkDetailMsg" style="font-size:.74rem;margin:.8rem 0 .2rem;min-height:1em;"></div>'
+    +   (evidence ? '<div style="margin-top:1rem;"><div style="font-size:0.73rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:.4rem;">Evidence (click to open)</div><div style="display:flex;gap:.6rem;flex-wrap:wrap;">' + evidence + '</div></div>' : '')
+    +   (closed && t.resolution ? '<div style="margin-top:1rem;border-left:3px solid #5d9b55;padding:.5rem .9rem;background:rgba(93,155,85,.08);font-size:1rem;white-space:pre-wrap;"><strong>Resolution:</strong> ' + esc(t.resolution) + '</div>' : '')
+    +   '<div style="margin-top:1rem;"><div style="font-size:0.73rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Conversation</div>' + events + '</div>'
+    +   '<div id="tkDetailMsg" style="font-size:0.9rem;margin:.8rem 0 .2rem;min-height:1em;"></div>'
     +   (closed
         ? '<button class="btn-green" onclick="tkAct(\'reopen\', {})">Reopen ticket</button>'
         : '<div style="display:grid;gap:.9rem;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:.4rem;">'
-        +   '<div><div style="font-size:.66rem;font-weight:700;color:var(--gold);margin-bottom:.3rem;">Reply to customer (emails them)</div>'
+        +   '<div><div style="font-size:0.81rem;font-weight:700;color:var(--gold);margin-bottom:.3rem;">Reply to customer (emails them)</div>'
         +     '<textarea id="tkReply" rows="4" style="' + inputCss + '" placeholder="Your reply…"></textarea>'
         +     '<div style="display:flex;gap:.5rem;margin-top:.4rem;flex-wrap:wrap;align-items:center;">'
-        +       '<select id="tkReplyStatus" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:.4rem .6rem;font-size:.72rem;border-radius:6px;"><option value="in_progress">Then: in progress</option><option value="waiting_customer">Then: waiting on customer (pauses the clock)</option></select>'
+        +       '<select id="tkReplyStatus" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:.4rem .6rem;font-size:0.88rem;border-radius:6px;"><option value="in_progress">Then: in progress</option><option value="waiting_customer">Then: waiting on customer (pauses the clock)</option></select>'
         +       '<button class="btn-green" onclick="tkAct(\'reply\', {message: document.getElementById(\'tkReply\').value, status: document.getElementById(\'tkReplyStatus\').value}, this)">Send reply</button></div></div>'
-        +   '<div><div style="font-size:.66rem;font-weight:700;color:#c98a36;margin-bottom:.3rem;">🔒 Internal note (customer never sees it)</div>'
+        +   '<div><div style="font-size:0.81rem;font-weight:700;color:#c98a36;margin-bottom:.3rem;">🔒 Internal note (customer never sees it)</div>'
         +     '<textarea id="tkNote" rows="4" style="' + inputCss + '" placeholder="What you found, what you tried…"></textarea>'
         +     '<div style="margin-top:.4rem;display:flex;gap:.5rem;flex-wrap:wrap;"><button class="btn-outline" onclick="tkAct(\'note\', {body: document.getElementById(\'tkNote\').value}, this)">Add note</button>'
         +       (t.status !== 'open' ? '<button class="btn-outline" onclick="tkAct(\'status\', {status:\'open\'}, this)">Mark open</button>' : '')
         +       (t.status !== 'in_progress' ? '<button class="btn-outline" onclick="tkAct(\'status\', {status:\'in_progress\'}, this)">Mark in progress</button>' : '') + '</div></div>'
         +   '</div>'
-        +   '<div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:.9rem;"><div style="font-size:.66rem;font-weight:700;color:#5d9b55;margin-bottom:.3rem;">Resolve &amp; close — this text is emailed to the customer</div>'
+        +   '<div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:.9rem;"><div style="font-size:0.81rem;font-weight:700;color:#5d9b55;margin-bottom:.3rem;">Resolve &amp; close — this text is emailed to the customer</div>'
         +     '<textarea id="tkResolution" rows="3" style="' + inputCss + '" placeholder="What was done to fix it (e.g. replacement dispatched, AWB …; refund of ₹… initiated)"></textarea>'
         +     '<button class="btn-green" style="margin-top:.5rem;" onclick="tkClose(this)">✅ Resolve &amp; close ticket</button></div>')
     + '</div>';
@@ -4165,7 +4173,7 @@ async function tkPreviewEvidence(node) {
     const url = await tkEvidenceUrl(node);
     boxEl.innerHTML = '<img src="' + url + '" alt="" style="width:100%;height:100%;object-fit:cover;"/>';
   } catch (e) {
-    boxEl.innerHTML = '<span style="font-size:.65rem;color:#e06060;padding:.3rem;text-align:center;">' + esc(e.message) + '</span>';
+    boxEl.innerHTML = '<span style="font-size:0.79rem;color:#e06060;padding:.3rem;text-align:center;">' + esc(e.message) + '</span>';
   }
 }
 
