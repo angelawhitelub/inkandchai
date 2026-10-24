@@ -4,11 +4,11 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Contact Us — Ink &amp; Chai | Email &amp; WhatsApp Support</title>
-<meta name="description" content="Contact Ink &amp; Chai for order help, returns, refunds, or any question. Reach us by email at support@inkandchai.in or WhatsApp at +91 92171 75546, Monday–Friday 9 AM–6 PM IST."/>
+<meta name="description" content="Contact Ink &amp; Chai: WhatsApp support 24×7 on +91 92171 75546, calls 4–5 PM IST, email support@inkandchai.in, or raise a support ticket online — with or without an order."/>
 <meta name="robots" content="index,follow"/>
 <link rel="canonical" href="https://inkandchai.in/contact/"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet"/>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"ContactPage","name":"Contact Ink & Chai","url":"https://inkandchai.in/contact/","mainEntity":{"@type":"Organization","name":"Ink & Chai","url":"https://inkandchai.in","email":"support@inkandchai.in","contactPoint":[{"@type":"ContactPoint","contactType":"customer support","email":"support@inkandchai.in","telephone":"+91-9217175546","areaServed":"IN","availableLanguage":["English","Hindi"]}],"address":{"@type":"PostalAddress","streetAddress":"2379 Kucha Mir Hashim, Turkman Gate","addressLocality":"Delhi","addressRegion":"Delhi","postalCode":"110006","addressCountry":"IN"}}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"ContactPage","name":"Contact Ink & Chai","url":"https://inkandchai.in/contact/","mainEntity":{"@type":"Organization","name":"Ink & Chai","url":"https://inkandchai.in","email":"support@inkandchai.in","contactPoint":[{"@type":"ContactPoint","contactType":"customer support","email":"support@inkandchai.in","telephone":"+91-9217175546","areaServed":"IN","availableLanguage":["English","Hindi"],"hoursAvailable":{"@type":"OpeningHoursSpecification","dayOfWeek":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],"opens":"16:00","closes":"17:00"}}],"address":{"@type":"PostalAddress","streetAddress":"2379 Kucha Mir Hashim, Turkman Gate","addressLocality":"Delhi","addressRegion":"Delhi","postalCode":"110006","addressCountry":"IN"}}}</script>
 <style>
 :root{--bg:#0d0b08;--bg2:#141210;--bg3:#1c1916;--gold:#c9a84c;--gold-dim:#7a6330;--cream:#f0e8d8;--cream-dim:#a09080;--white:#faf7f2;--border:rgba(201,168,76,0.18)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -25,7 +25,24 @@ h2{font-family:'Cormorant Garamond',serif;font-size:1.45rem;font-weight:500;colo
 p{font-size:0.86rem;line-height:1.95;color:var(--cream-dim);margin-bottom:1rem;letter-spacing:0.01em;}
 strong{color:var(--cream);font-weight:500;}
 a{color:var(--gold);text-decoration:none;}a:hover{text-decoration:underline;}
-.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;margin:2rem 0;}
+.contact-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;margin:2rem 0;}
+.badge{display:inline-block;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;padding:0.25rem 0.55rem;border:1px solid var(--gold);color:var(--gold);margin-top:0.6rem;}
+.tk-form{background:var(--bg3);border:1px solid var(--border);padding:1.8rem;margin:1.2rem 0 2rem;}
+.tk-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+.tk-field{margin-bottom:1rem;}
+.tk-field label{display:block;font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.4rem;}
+.tk-field label em{font-style:normal;text-transform:none;letter-spacing:0;opacity:0.8;}
+.tk-field input,.tk-field select,.tk-field textarea{width:100%;font:inherit;font-size:0.92rem;padding:0.75rem 0.85rem;background:var(--bg2);color:var(--white);border:1px solid var(--border);border-radius:0;}
+.tk-field input:focus,.tk-field select:focus,.tk-field textarea:focus{outline:2px solid var(--gold);outline-offset:-1px;}
+.tk-field textarea{min-height:140px;resize:vertical;}
+.tk-field.bad input,.tk-field.bad select,.tk-field.bad textarea{border-color:#d0645a;}
+.tk-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;}
+.tk-submit{border:none;cursor:pointer;font-family:inherit;}
+.tk-submit[disabled]{opacity:0.6;cursor:wait;}
+.tk-msg{margin-top:1rem;font-size:0.86rem;line-height:1.7;display:none;padding:0.9rem 1rem;}
+.tk-msg.err{display:block;border-left:3px solid #d0645a;background:rgba(208,100,90,0.08);color:var(--cream);}
+.tk-msg.ok{display:block;border-left:3px solid #6dbf6d;background:rgba(109,191,109,0.08);color:var(--cream);}
+.tk-note{font-size:0.75rem;color:var(--cream-dim);margin-top:0.8rem;line-height:1.7;}
 .contact-card{background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--gold);padding:1.6rem 1.6rem;}
 .contact-card .ic{font-size:1.6rem;margin-bottom:0.6rem;}
 .contact-card .label{font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.4rem;}
@@ -36,7 +53,8 @@ a{color:var(--gold);text-decoration:none;}a:hover{text-decoration:underline;}
 .cta-btn:hover{text-decoration:none;filter:brightness(1.08);}
 footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-size:0.65rem;color:var(--gold-dim);letter-spacing:0.08em;}
 footer a{color:var(--gold-dim);}
-@media(max-width:600px){nav{padding:1rem 1.5rem;}main{padding:3rem 1.2rem 5rem;}h1{font-size:2.1rem;}.contact-grid{grid-template-columns:1fr;}}
+@media(max-width:820px){.contact-grid{grid-template-columns:1fr;}}
+@media(max-width:600px){nav{padding:1rem 1.5rem;}main{padding:3rem 1rem 5rem;}h1{font-size:2.1rem;}.tk-row{grid-template-columns:1fr;gap:0;}.tk-form{padding:1.2rem;}}
 </style>
 <!-- Google Analytics 4 -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZPZDFWMDP6"></script>
@@ -90,34 +108,69 @@ gtag('config', 'G-ZPZDFWMDP6');
   <h1>Contact Us</h1>
   <p class="meta">We're here to help &nbsp;·&nbsp; inkandchai.in</p>
 
-  <p>Have a question about an order, a return, a refund, or just want a book recommendation? We'd love to hear from you. Our team responds to every message, usually within a few hours during business hours.</p>
+  <p>Have a question about an order, a return, a refund, or just want a book recommendation? We'd love to hear from you. Pick whichever suits you below.</p>
 
   <div class="contact-grid">
+    <div class="contact-card">
+      <div class="ic">💬</div>
+      <div class="label">WhatsApp support</div>
+      <div class="val"><a href="https://wa.me/919217175546" target="_blank" rel="noopener">+91 92171 75546</a></div>
+      <div class="sub">Fastest way to reach us, any time of day.</div>
+      <span class="badge">Open 24×7</span><br/>
+      <a class="cta-btn" href="https://wa.me/919217175546" target="_blank" rel="noopener">Chat on WhatsApp →</a>
+    </div>
+    <div class="contact-card">
+      <div class="ic">📞</div>
+      <div class="label">Phone</div>
+      <div class="val"><a href="tel:+919217175546">+91 92171 75546</a></div>
+      <div class="sub">Calls are answered between 4 PM and 5 PM IST only. Outside that hour, please WhatsApp us.</div>
+      <span class="badge">Calls 4–5 PM only</span>
+    </div>
     <div class="contact-card">
       <div class="ic">📧</div>
       <div class="label">Email</div>
       <div class="val"><a href="mailto:support@inkandchai.in">support@inkandchai.in</a></div>
-      <div class="sub">Best for order help, returns, and detailed queries. We reply within 24 hours.</div>
-    </div>
-    <div class="contact-card">
-      <div class="ic">💬</div>
-      <div class="label">WhatsApp &amp; Phone</div>
-      <div class="val"><a href="https://wa.me/919217175546">+91 92171 75546</a></div>
-      <div class="sub">Fastest way to reach us. Tap to chat on WhatsApp.</div>
-      <a class="cta-btn" href="https://wa.me/919217175546" target="_blank" rel="noopener">Chat on WhatsApp →</a>
-    </div>
-    <div class="contact-card">
-      <div class="ic">🎫</div>
-      <div class="label">Raise a support ticket</div>
-      <div class="val"><a href="/support/">Report a problem with an order</a></div>
-      <div class="sub">Damaged, missing or late? Tell us with your order ID and photos. We reply within 24 hours and aim to resolve it within 48.</div>
-      <a class="cta-btn" href="/support/">Raise a ticket →</a>
+      <div class="sub">Best for detailed questions. We reply within 24 hours.</div>
     </div>
   </div>
 
-  <h2>Business hours</h2>
-  <p><strong>Monday – Friday:</strong> 9:00 AM – 6:00 PM IST<br/>
-  <strong>Saturday – Sunday:</strong> Limited support — we'll respond on the next business day.</p>
+  <h2 id="ticket">Raise a support ticket</h2>
+  <p>Anyone can write to us here, whether or not you've ordered. You'll get a ticket number by email or WhatsApp, a first reply within 24 hours, and you can follow it on the <a href="/support/">support page</a>.</p>
+
+  <form class="tk-form" id="tkForm" novalidate>
+    <div class="tk-row">
+      <div class="tk-field"><label for="tkName">Your name</label><input id="tkName" name="name" autocomplete="name" maxlength="80" required/></div>
+      <div class="tk-field"><label for="tkTopic">What is it about?</label>
+        <select id="tkTopic" name="category" required>
+          <option value="">Choose one…</option>
+          <option value="general">General question</option>
+          <option value="book_request">Book request or availability</option>
+          <option value="bulk_order">Bulk or institutional order</option>
+          <option value="not_received">Order not delivered / shipping delay</option>
+          <option value="damaged_wrong">Damaged, defective or wrong item</option>
+          <option value="missing_item">Item missing from the parcel</option>
+          <option value="refund_payment">Refund or payment issue</option>
+          <option value="return_replace">Return or replacement</option>
+          <option value="change_cancel">Change address or cancel order</option>
+          <option value="other">Something else</option>
+        </select></div>
+    </div>
+    <div class="tk-row">
+      <div class="tk-field"><label for="tkEmail">Email <em>(email or phone needed)</em></label><input id="tkEmail" name="email" type="email" autocomplete="email" maxlength="120"/></div>
+      <div class="tk-field"><label for="tkPhone">Mobile number</label><input id="tkPhone" name="phone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="16"/></div>
+    </div>
+    <div class="tk-field"><label for="tkOrder">Order ID <em>(optional, e.g. IC-20261020-AB12C)</em></label><input id="tkOrder" name="order_id" maxlength="64" autocomplete="off"/></div>
+    <div class="tk-field"><label for="tkMsg">Your message</label><textarea id="tkMsg" name="message" maxlength="3000" required placeholder="Tell us what you need. At least 20 characters."></textarea></div>
+    <div class="tk-hp" aria-hidden="true"><label for="tkWebsite">Website</label><input id="tkWebsite" name="website" tabindex="-1" autocomplete="off"/></div>
+    <button class="cta-btn tk-submit" id="tkSubmit" type="submit">Submit ticket →</button>
+    <div class="tk-msg" id="tkOut" role="status" aria-live="polite"></div>
+    <p class="tk-note">With an order ID, use the email or phone number you ordered with. Need to send photos of a damaged or wrong book? Raise the ticket on the <a href="/support/">support page</a>, which takes attachments.</p>
+  </form>
+
+  <h2>Support hours</h2>
+  <p><strong>WhatsApp:</strong> 24×7<br/>
+  <strong>Phone calls:</strong> 4:00 PM – 5:00 PM IST only<br/>
+  <strong>Email &amp; tickets:</strong> first reply within 24 hours</p>
 
   <h2>Our location</h2>
   <p>Ink &amp; Chai is an online bookstore operated from <strong>2379 Kucha Mir Hashim, Turkman Gate, Delhi – 110006, India</strong>. We ship pan-India from our Delhi warehouse. As an online-only retailer, we don't have a physical walk-in store, but our team is always reachable by email or WhatsApp.</p>
@@ -131,6 +184,40 @@ gtag('config', 'G-ZPZDFWMDP6');
   <p style="margin-top:2rem;font-size:0.8rem;">See also: <a href="/about/">About Us</a> · <a href="/shipping-policy/">Shipping Policy</a> · <a href="/return-policy/">Returns &amp; Replacements</a> · <a href="/refund-policy/">Refund Policy</a> · <a href="/terms/">Terms</a> · <a href="/privacy-policy/">Privacy</a></p>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/">Browse all books</a></footer>
+<script>
+(function () {
+  var form = document.getElementById('tkForm'); if (!form) return;
+  var out = document.getElementById('tkOut'), btn = document.getElementById('tkSubmit');
+  var FIELDS = { name: 'tkName', email: 'tkEmail', phone: 'tkPhone', category: 'tkTopic', message: 'tkMsg', order_id: 'tkOrder', contact: 'tkEmail' };
+  function show(kind, html) { out.className = 'tk-msg ' + kind; out.innerHTML = html; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    Array.prototype.forEach.call(form.querySelectorAll('.tk-field.bad'), function (f) { f.classList.remove('bad'); });
+    var v = function (id) { return document.getElementById(id).value.trim(); };
+    var body = { action: 'create_general', name: v('tkName'), email: v('tkEmail'), phone: v('tkPhone'), order_id: v('tkOrder'), category: v('tkTopic'), message: v('tkMsg'), website: v('tkWebsite') };
+    btn.disabled = true; btn.textContent = 'Sending…';
+    fetch('/.netlify/functions/support-ticket', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Something went wrong. Please try again.' }; }); })
+      .then(function (d) {
+        if (d && d.ok) {
+          form.querySelectorAll('input,select,textarea,button').forEach(function (el) { el.disabled = true; });
+          show('ok', '✅ Thank you! Your ticket number is <strong>' + esc(d.ticket_no) + '</strong>. We\'ll reply within 24 hours. <a href="/support/?t=' + encodeURIComponent(d.ticket_no) + '">View your ticket</a>');
+          btn.textContent = 'Ticket submitted';
+          return;
+        }
+        var id = d && d.field && FIELDS[d.field];
+        if (id) { var el = document.getElementById(id); el.closest('.tk-field').classList.add('bad'); el.focus(); }
+        show('err', esc((d && d.error) || 'Something went wrong. Please try again.') + (d && d.existing_ticket ? ' <a href="/support/?t=' + encodeURIComponent(d.existing_ticket) + '">Open ' + esc(d.existing_ticket) + '</a>' : ''));
+        btn.disabled = false; btn.textContent = 'Submit ticket →';
+      })
+      .catch(function () {
+        show('err', 'Could not reach us just now. Please check your connection, or WhatsApp us on <a href="https://wa.me/919217175546">+91 92171 75546</a>.');
+        btn.disabled = false; btn.textContent = 'Submit ticket →';
+      });
+  });
+})();
+</script>
 <script src="/js/ink-ai.js" defer></script>
 <!--IAC-SHELL--><!-- Cart drawer — injected by the app-shell pass; rendered by /js/cart.js -->
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>

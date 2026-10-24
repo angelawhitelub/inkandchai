@@ -45,6 +45,10 @@ const CATEGORIES = [
   { id: 'return_replace', label: 'Return or replacement', priority: 'normal' },
   { id: 'change_cancel', label: 'Change address or cancel order', priority: 'normal' },
   { id: 'other', label: 'Something else', priority: 'normal' },
+  // Raised from /contact/ by anyone, with or without an order.
+  { id: 'general', contactOnly: true, label: 'General question', priority: 'normal' },
+  { id: 'book_request', contactOnly: true, label: 'Book request or availability', priority: 'normal' },
+  { id: 'bulk_order', contactOnly: true, label: 'Bulk or institutional order', priority: 'normal' },
 ];
 const CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
 
@@ -94,6 +98,16 @@ function normTicketNo(value) {
   return m ? `TKT-${m[1]}` : '';
 }
 
+/**
+ * A ticket raised without an order (contact page) still needs a unique
+ * order_id: the column is NOT NULL and one open ticket per order_id is
+ * enforced by an index. ENQ-<ticket no> satisfies both.
+ */
+const ENQUIRY_PREFIX = 'ENQ-';
+const enquiryOrderId = (ticketNo) => `${ENQUIRY_PREFIX}${ticketNo}`;
+const isEnquiry = (t) => String((t && t.order_id) || '').startsWith(ENQUIRY_PREFIX);
+const orderOf = (t) => (isEnquiry(t) ? 'No order (general enquiry)' : t.order_id);
+
 const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
 
 /**
@@ -135,6 +149,30 @@ function parseNewTicket(body = {}) {
   const files = parseFileMetas(body.files);
   if (!files.ok) return { ok: false, field: 'files', error: files.error };
   return { ok: true, value: { orderId, contact, category, message, files: files.files } };
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/**
+ * The contact page's form: anyone, no order needed. Name plus an email or a
+ * phone to answer on. An order id, when given, makes it an ordinary order
+ * ticket (it must then match the contact, as on /support/).
+ */
+function parseGeneralTicket(body = {}) {
+  const name = String(body.name || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (name.length < 2) return { ok: false, field: 'name', error: 'Please tell us your name.' };
+  const email = String(body.email || '').trim().toLowerCase().slice(0, 120);
+  if (email && !EMAIL_RE.test(email)) return { ok: false, field: 'email', error: 'That email address does not look right.' };
+  const digits = String(body.phone || '').replace(/\D/g, '');
+  const phone = digits ? digits.slice(-10) : '';
+  if (digits && !/^[6-9]\d{9}$/.test(phone)) return { ok: false, field: 'phone', error: 'Please enter a 10-digit mobile number.' };
+  if (!email && !phone) return { ok: false, field: 'email', error: 'Please give us an email or a phone number so we can reply.' };
+  const category = CATEGORY_BY_ID[String(body.category || '')];
+  if (!category) return { ok: false, field: 'category', error: 'Please choose what your message is about.' };
+  const message = String(body.message || '').replace(/\r\n/g, '\n').trim();
+  if (message.length < MIN_MESSAGE) return { ok: false, field: 'message', error: `Please write a little more (at least ${MIN_MESSAGE} characters) so we can help the first time.` };
+  if (message.length > MAX_MESSAGE) return { ok: false, field: 'message', error: `Please keep the message under ${MAX_MESSAGE} characters.` };
+  return { ok: true, value: { name, email, phone, orderId: cleanOrderId(body.order_id), category, message } };
 }
 
 function parseFileMetas(list) {
@@ -227,7 +265,7 @@ function fmtWhen(value) {
 function publicTicket(ticket, events = [], now = Date.now()) {
   return {
     ticket_no: ticket.ticket_no,
-    order_id: ticket.order_id,
+    order_id: isEnquiry(ticket) ? null : ticket.order_id,
     category: ticket.category,
     category_label: (CATEGORY_BY_ID[ticket.category] || {}).label || 'Support',
     status: ticket.status,
@@ -276,7 +314,7 @@ function customerConfirmation(t) {
     subject: `We've got your request — ticket ${t.ticket_no}`,
     html: shell('We\'ve received your request', [
       p(`Hi ${firstName(t)}, thank you for telling us. Your ticket is open and our team will look into it.`),
-      box([['Ticket', `<strong style="color:#c9a84c;">${esc(t.ticket_no)}</strong>`], ['Order', esc(t.order_id)], ['Topic', esc((CATEGORY_BY_ID[t.category] || {}).label || '')],
+      box([['Ticket', `<strong style="color:#c9a84c;">${esc(t.ticket_no)}</strong>`], ['Order', esc(orderOf(t))], ['Topic', esc((CATEGORY_BY_ID[t.category] || {}).label || '')],
         ['First reply by', esc(fmtWhen(t.respond_by))], ['Resolution target', `within 24–48 hours (by ${esc(fmtWhen(t.due_at))})`]]),
       quote(t.message),
       p('If it is taking longer than that, we will tell you — you will not have to chase us. You can check the status or add more photos or details any time:'),
@@ -307,7 +345,7 @@ function customerDelay(t, now = Date.now()) {
     html: shell('This is taking longer than we promised', [
       p(`Hi ${firstName(t)}, we told you ticket <strong style="color:#c9a84c;">${esc(t.ticket_no)}</strong> would be resolved within 24–48 hours. It has been about ${hrs} hours, and we have not finished — we are sorry for the wait.`),
       p('It is still being worked on and has been flagged to the owner. You do not need to do anything; we will message you as soon as it is resolved.'),
-      box([['Ticket', esc(t.ticket_no)], ['Order', esc(t.order_id)], ['Opened', esc(fmtWhen(t.created_at))]]),
+      box([['Ticket', esc(t.ticket_no)], ['Order', esc(orderOf(t))], ['Opened', esc(fmtWhen(t.created_at))]]),
       p('If it is urgent, WhatsApp us on +91 92171 75546 and quote your ticket number.'),
       button(statusUrl(t), 'See the latest'),
     ].join('')),
@@ -333,12 +371,12 @@ function ownerNewTicket(t, order) {
     ? order.cart_items.filter((i) => i && i.title).map((i) => `${esc(i.title)} ×${esc(i.qty || 1)}`).join('<br/>') : '';
   const paid = order && order.razorpay_payment_id ? 'Prepaid' : 'COD / unpaid';
   return {
-    subject: `🎫 ${t.priority === 'high' ? '[HIGH] ' : ''}New ticket ${t.ticket_no} — ${(CATEGORY_BY_ID[t.category] || {}).label || t.category} (${t.order_id})`,
+    subject: `🎫 ${t.priority === 'high' ? '[HIGH] ' : ''}New ticket ${t.ticket_no} — ${(CATEGORY_BY_ID[t.category] || {}).label || t.category} (${orderOf(t)})`,
     html: shell(`New support ticket ${esc(t.ticket_no)}`, [
       box([
         ['Customer', `${esc(t.customer_name || '—')}<br/>${esc(t.customer_email || '')}<br/>${esc(t.customer_phone || '')}`],
         ['Topic', `${esc((CATEGORY_BY_ID[t.category] || {}).label || t.category)}${t.priority === 'high' ? ' · <strong style="color:#e07060;">high priority</strong>' : ''}`],
-        ['Order', `${esc(t.order_id)}${order ? ` · ${esc(order.status || '')} · ${esc(paid)} · ₹${esc(Math.round((Number(order.amount_paise) || 0) / 100))}` : ''}`],
+        ['Order', `${esc(orderOf(t))}${order ? ` · ${esc(order.status || '')} · ${esc(paid)} · ₹${esc(Math.round((Number(order.amount_paise) || 0) / 100))}` : ''}`],
         order && order.tracking_id ? ['Shipment', `${esc(order.courier_name || '')} ${esc(order.tracking_id)}`] : null,
         items ? ['Items', items] : null,
         ['Evidence', t.evidence && t.evidence.length ? `${t.evidence.length} file(s)` : 'none attached'],
@@ -353,9 +391,9 @@ function ownerNewTicket(t, order) {
 
 function ownerEvidence(t, extra) {
   return {
-    subject: `📎 Evidence added to ${t.ticket_no} (${t.order_id})`,
+    subject: `📎 Evidence added to ${t.ticket_no} (${orderOf(t)})`,
     html: shell(`Evidence added to ${esc(t.ticket_no)}`, [
-      p(`${esc(t.customer_name || 'The customer')} attached ${extra.files.length} file(s) to ticket ${esc(t.ticket_no)} (order ${esc(t.order_id)}).`),
+      p(`${esc(t.customer_name || 'The customer')} attached ${extra.files.length} file(s) to ticket ${esc(t.ticket_no)} (order ${esc(orderOf(t))}).`),
       `<ul style="color:#cfc4b2;font-size:13.5px;line-height:1.8;">${extra.files.map((f) => `<li>${esc(f.name)} <span style="color:#a09080;">(${esc(evidenceKind(f.type))}, ${(f.size / 1048576).toFixed(1)} MB${f.attached ? ', attached to this email' : ''})</span></li>`).join('')}</ul>`,
       p('Images that fit are attached; videos and large files open from the ticket in admin.'),
       button(ownerAdminUrl(), 'Open in admin'),
@@ -365,7 +403,7 @@ function ownerEvidence(t, extra) {
 
 function ownerCustomerReply(t, message, files = []) {
   return {
-    subject: `💬 Customer replied on ${t.ticket_no} (${t.order_id})${t.status === 'closed' ? ' — REOPENED' : ''}`,
+    subject: `💬 Customer replied on ${t.ticket_no} (${orderOf(t)})${t.status === 'closed' ? ' — REOPENED' : ''}`,
     html: shell(`${esc(t.customer_name || 'Customer')} replied on ${esc(t.ticket_no)}`, [
       quote(message),
       files.length ? p(`${files.length} file(s) attached — see them in admin.`) : '',
@@ -377,10 +415,10 @@ function ownerCustomerReply(t, message, files = []) {
 function ownerOverdue(t, now = Date.now()) {
   const hrs = Math.round((now - (ms(t.created_at) || now)) / HOUR);
   return {
-    subject: `⏰ OVERDUE ticket ${t.ticket_no} — ${hrs}h open (${t.order_id})`,
+    subject: `⏰ OVERDUE ticket ${t.ticket_no} — ${hrs}h open (${orderOf(t)})`,
     html: shell(`Ticket ${esc(t.ticket_no)} is past its 48-hour target`, [
       p(`The customer has been told it is taking longer than expected. It has been open about <strong>${hrs} hours</strong>.`),
-      box([['Customer', esc(t.customer_name || t.customer_email || t.customer_phone || '')], ['Order', esc(t.order_id)], ['Topic', esc((CATEGORY_BY_ID[t.category] || {}).label || '')], ['Status', esc(STATUS_LABEL[t.status] || t.status)]]),
+      box([['Customer', esc(t.customer_name || t.customer_email || t.customer_phone || '')], ['Order', esc(orderOf(t))], ['Topic', esc((CATEGORY_BY_ID[t.category] || {}).label || '')], ['Status', esc(STATUS_LABEL[t.status] || t.status)]]),
       quote(t.message),
       button(ownerAdminUrl(), 'Resolve it now'),
     ].join('')),
@@ -389,7 +427,7 @@ function ownerOverdue(t, now = Date.now()) {
 
 function ownerNudge(t) {
   return {
-    subject: `⏳ No reply yet on ${t.ticket_no} — 24h target passed (${t.order_id})`,
+    subject: `⏳ No reply yet on ${t.ticket_no} — 24h target passed (${orderOf(t)})`,
     html: shell(`Nobody has answered ${esc(t.ticket_no)} yet`, [
       p('This ticket was promised a first reply within 24 hours, and none has been sent.'),
       quote(t.message),
@@ -409,7 +447,8 @@ module.exports = {
   OWNER_EMAIL_DEFAULT, RESPOND_HOURS, RESOLVE_HOURS, DELAY_REPEAT_HOURS, MAX_DELAY_NOTICES, REOPEN_WINDOW_DAYS,
   MAX_OPEN_PER_ORDER, MIN_MESSAGE, MAX_MESSAGE, MAX_FILES_PER_SUBMISSION, MAX_FILES_PER_TICKET,
   CATEGORIES, CATEGORY_BY_ID, STATUSES, STATUS_LABEL, ACTIVE, EVIDENCE_TYPES,
-  ownerEmail, newTicketNo, normTicketNo, contactMatches, cleanOrderId, parseNewTicket, parseFileMetas, cleanFileName,
+  ownerEmail, newTicketNo, normTicketNo, contactMatches, cleanOrderId, parseNewTicket, parseGeneralTicket, parseFileMetas, cleanFileName,
+  enquiryOrderId, isEnquiry, orderOf,
   evidenceKey, isEvidenceKeyFor, evidenceKind, slaDates, delayNoticeDue, ownerNudgeDue, isOverdue, canReopen,
   publicTicket, fmtWhen,
   customerConfirmation, customerReply, customerDelay, customerClosed,

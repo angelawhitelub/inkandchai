@@ -6,13 +6,17 @@
  *
  *   create   { order_id, contact, category, message, files?:[{name,type,size}], website? }
  *              → { ticket_no, respond_by, due_at, uploads:[{key,upload_url,...}] }
+ *   create_general { name, email?, phone?, order_id?, category, message, website? }
+ *              the /contact/ form: anyone, order optional → { ticket_no, ... }
  *   attach   { ticket_no, contact, files:[{key,name,type}] }   after the PUTs finish
  *   sign     { ticket_no, contact, files:[{name,type,size}] }  more upload URLs
  *   lookup   { ticket_no, contact }                            → the ticket and its timeline
  *   find     { order_id, contact }                             → tickets on an order
  *   reply    { ticket_no, contact, message, files? }           also reopens within 7 days
  *
- * The order id is mandatory and `contact` (the order's email or phone) is what
+ * Either way, one new ticket per connection per SUPPORT_TICKET_IP_HOURS (24).
+ *
+ * For `create` the order id is mandatory and `contact` (the order's email or phone) is what
  * proves it is theirs -- the same rule as track-order. Evidence goes browser →
  * private R2 bucket directly (presigned, bound to the ticket); nothing is
  * readable without an admin session.
@@ -61,7 +65,8 @@ async function handle(event, injected) {
   const deps = injected || D.realDeps();
   try {
     switch (body.action) {
-      case 'create': return reply(await A.createTicket(deps, body, { ipHash: D.ipHash(ip) }), allowed);
+      case 'create': return reply(await A.createTicket(deps, body, { ipHash: ip === 'unknown' ? null : D.ipHash(ip) }), allowed);
+      case 'create_general': return reply(await A.createGeneralTicket(deps, body, { ipHash: ip === 'unknown' ? null : D.ipHash(ip) }), allowed);
       case 'attach': return reply(await A.attachEvidence(deps, body), allowed);
       case 'sign': return reply(await A.signMore(deps, body), allowed);
       case 'lookup': return reply(await A.lookupTicket(deps, body), allowed);

@@ -4062,7 +4062,7 @@ function renderTicketList() {
       const border = t.overdue ? 'rgba(224,96,96,.55)' : t.status === 'open' && !t.first_response_at ? 'rgba(224,176,96,.45)' : 'var(--border)';
       return '<div onclick="openTicket(\'' + esc(t.id) + '\')" style="cursor:pointer;border:1px solid ' + border + ';border-radius:12px;padding:.8rem 1rem;margin-bottom:.6rem;">'
         + '<div style="display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:center;">'
-        +   '<div style="font-size:0.95rem;"><strong style="color:var(--gold);">' + esc(t.ticket_no) + '</strong> · ' + esc(t.order_id) + ' · ' + esc(t.customer_name || t.customer_email || t.customer_phone || '')
+        +   '<div style="font-size:0.95rem;"><strong style="color:var(--gold);">' + esc(t.ticket_no) + '</strong> · ' + esc(tkOrderLabel(t)) + ' · ' + esc(t.customer_name || t.customer_email || t.customer_phone || '')
         +     (t.evidence_count ? ' · 📎 ' + t.evidence_count : '') + '</div>'
         +   '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">'
         +     (t.priority === 'high' ? tkChip('high priority', '#e06060') : '')
@@ -4093,6 +4093,9 @@ async function openTicket(id) {
   }
 }
 
+// Contact-page tickets have no order; their order_id is ENQ-<ticket no>.
+function tkOrderLabel(t) { return /^ENQ-/.test(t.order_id || '') ? 'General enquiry' : (t.order_id || ''); }
+
 function renderTicketDetail(d) {
   const t = d.ticket, o = d.order, box = document.getElementById('tkDetail');
   const phone = String(t.customer_phone || '').replace(/\D/g, '').slice(-10);
@@ -4101,6 +4104,7 @@ function renderTicketDetail(d) {
       + (o.courier ? ' · ' + esc(o.courier) + ' ' + esc(o.awb || '') : '')
       + (o.refund_state ? ' · refund: ' + esc(o.refund_state) : '')
       + (o.items.length ? '<br/>' + o.items.map(i => esc(i.title) + ' ×' + esc(String(i.qty))).join('; ') : '')
+    : /^ENQ-/.test(t.order_id || '') ? 'No order — general enquiry from the contact page'
     : esc(t.order_id) + ' <span style="color:#e0a060;">(order not found)</span>';
   const closed = t.status === 'closed';
   const evidence = (t.evidence || []).map(function (f, i) {

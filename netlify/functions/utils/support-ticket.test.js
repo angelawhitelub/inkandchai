@@ -537,5 +537,83 @@ test('the support page offers exactly the categories the server accepts', () => 
   const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../../public/support/index.html'), 'utf8');
   const form = html.slice(html.indexOf('id="spForm"'), html.indexOf('id="spDone"'));
   const offered = [...form.matchAll(/<option value="([a-z_]+)">/g)].map((m) => m[1]);
-  assert.deepEqual(offered.sort(), T.CATEGORIES.map((c) => c.id).sort());
+  assert.deepEqual(offered.sort(), T.CATEGORIES.filter((c) => !c.contactOnly).map((c) => c.id).sort());
 });
+
+test('the contact page offers every category the server accepts', () => {
+  const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../../public/contact/index.html'), 'utf8');
+  const form = html.slice(html.indexOf('id="tkForm"'), html.indexOf('</form>', html.indexOf('id="tkForm"')));
+  const offered = [...form.matchAll(/<option value="([a-z_]+)">/g)].map((m) => m[1]);
+  assert.deepEqual(offered.sort(), T.CATEGORIES.map((c) => c.id).sort());
+  assert.match(html, /create_general/);
+});
+
+// ── contact page: tickets without an order, one per connection per day ────────
+
+{
+  const Tk = T;
+
+  function enquiryDb(existing = []) {
+    const tickets = existing.map((r) => ({ ...r }));
+    const events = [];
+    function from(table) {
+      const q = { op: 'select', filters: [], payload: null, single: false };
+      const rows = () => (table === 'support_tickets' ? tickets : events);
+      const match = (r) => q.filters.every(([c, k, v]) => (k === 'eq' ? r[c] === v : k === 'gte' ? String(r[c]) >= v : k === 'in' ? v.includes(r[c]) : true));
+      const run = () => {
+        if (q.op === 'insert') { const row = { id: `t${rows().length + 1}`, ...q.payload }; rows().push(row); return { data: q.single ? row : [row], error: null }; }
+        return { data: rows().filter(match), error: null };
+      };
+      const api = {
+        select() { return api; }, eq(c, v) { q.filters.push([c, 'eq', v]); return api; }, gte(c, v) { q.filters.push([c, 'gte', v]); return api; },
+        in(c, v) { q.filters.push([c, 'in', v]); return api; }, limit() { return api; }, order() { return api; },
+        single() { q.single = true; return api; }, maybeSingle() { q.single = true; return api; },
+        insert(p) { q.op = 'insert'; q.payload = p; return api; },
+        then(res, rej) { return Promise.resolve(run()).then(res, rej); },
+      };
+      return api;
+    }
+    return { from, tickets };
+  }
+  const deps = (db, sent) => ({ db, now: () => Date.parse('2026-10-25T06:00:00Z'), sendEmail: async (m) => sent.push(m), sendWhatsApp: async () => ({ ok: true }), whatsappOn: false, ownerEmail: 'owner@example.com' });
+  const body = { name: 'Asha', email: 'asha@example.com', category: 'book_request', message: 'Do you have Ghachar Ghochar in Kannada please?' };
+
+  test('contact page: a ticket with no order is stored as ENQ-<ticket no>', async () => {
+    const db = enquiryDb(); const sent = [];
+    const r = await A.createGeneralTicket(deps(db, sent), body, { ipHash: 'aaa' });
+    assert.equal(r.status, 200);
+    const t = db.tickets[0];
+    assert.equal(t.order_id, `ENQ-${r.body.ticket_no}`);
+    assert.equal(t.customer_email, 'asha@example.com');
+    assert.equal(Tk.publicTicket(t).order_id, null);
+    assert.ok(sent.some((m) => /General enquiry|No order/.test(m.html)));
+    assert.ok(!sent.some((m) => /ENQ-/.test(m.subject)));
+  });
+
+  test('contact page: needs a name and an email or phone', () => {
+    assert.equal(Tk.parseGeneralTicket({ ...body, name: '' }).field, 'name');
+    assert.equal(Tk.parseGeneralTicket({ ...body, email: '' }).field, 'email');
+    assert.equal(Tk.parseGeneralTicket({ ...body, email: '', phone: '98765 43210' }).ok, true);
+    assert.equal(Tk.parseGeneralTicket({ ...body, email: '', phone: '12345' }).field, 'phone');
+    assert.equal(Tk.parseGeneralTicket({ ...body, email: 'nope' }).field, 'email');
+  });
+
+  test('one ticket per connection per 24 h, from either form', async () => {
+    const db = enquiryDb([{ id: 'x', ticket_no: 'TKT-OLD111', order_id: 'ENQ-TKT-OLD111', source_ip_hash: 'aaa', created_at: '2026-10-24T09:00:00Z', status: 'closed' }]);
+    const sent = [];
+    const same = await A.createGeneralTicket(deps(db, sent), body, { ipHash: 'aaa' });
+    assert.equal(same.status, 429);
+    assert.equal(db.tickets.length, 1);
+    const other = await A.createGeneralTicket(deps(db, sent), body, { ipHash: 'bbb' });
+    assert.equal(other.status, 200);
+    const order = await A.createTicket(deps(db, sent), { order_id: 'IC-1', contact: 'a@b.c', category: 'other', message: 'x'.repeat(30) }, { ipHash: 'bbb' });
+    assert.notEqual(order.status, 200);   // the order lookup or the IP rule refuses; nothing new saved
+    assert.equal(db.tickets.length, 2);
+  });
+
+  test('older than 24 h from the same connection is allowed', async () => {
+    const db = enquiryDb([{ id: 'x', ticket_no: 'TKT-OLD111', order_id: 'ENQ-TKT-OLD111', source_ip_hash: 'aaa', created_at: '2026-10-24T05:59:00Z', status: 'open' }]);
+    const r = await A.createGeneralTicket(deps(db, []), body, { ipHash: 'aaa' });
+    assert.equal(r.status, 200);
+  });
+}
