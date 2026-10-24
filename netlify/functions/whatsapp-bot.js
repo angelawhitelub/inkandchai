@@ -28,6 +28,7 @@ const { chatPayload, currentBotModel, FALLBACK_MODEL } = require('./utils/bot-mo
 const { returnsContext } = require('./utils/return-bot-context');
 const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
+const rtoReship = require('./utils/rto-reship');
 const { draftOrderRequest, confirmDraftOrder, draftReplyDecision, botOrdersContext, lookupBotRequest, describeRequest } = require('./utils/bot-order-request');
 const {
   findAwaitingOrders, applyRecoveredDetails, isAwaitingDetails,
@@ -1863,6 +1864,28 @@ async function handleDraftOrderReply(from, decision, senderPhoneId) {
 }
 
 // ── Extract Order ID from message ─────────────────────────────────────────────
+// ── RTO re-ship offer reply ──────────────────────────────────────────────────
+// YES → confirm the address → free replacement order; NO → refund once the
+// parcel is back. Returns true when it answered (the AI then stays out).
+async function handleRtoOfferReply(from, text, offer, senderPhoneId, customerName) {
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const ownerAlert = async (t) => {
+      const owner = process.env.STORE_OWNER_PHONE;
+      if (owner) await sendReply(owner, t).catch(() => {});
+    };
+    const out = await rtoReship.handleOfferReply({ supabase, ownerAlert }, from, text, { offer });
+    if (!out.handled) return false;
+    await sendReply(from, out.reply, senderPhoneId);
+    await persistMessage(from, 'bot', out.reply, customerName, senderPhoneId);
+    console.log(`[RTO-RESHIP] ${from} -> ${offer.razorpay_order_id}${out.replacement_id ? ` -> ${out.replacement_id}` : ''}`);
+    return true;
+  } catch (e) {
+    console.error('handleRtoOfferReply error:', e.message);
+    return false;
+  }
+}
+
 function extractOrderId(text) {
   // IC-W- (WhatsApp), IC-CW- (Crossword) and IC-R- (replacement) ids too — the
   // bot used to answer "not our format" to the ids it had issued itself.
@@ -1966,6 +1989,10 @@ async function handleInboundMessage(msg, value) {
     } else if (msg.type === 'interactive') {
       // Button/list replies
       userText = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
+    } else if (msg.type === 'button') {
+      // A template's quick-reply tap (e.g. the RTO re-ship offer). Read as the
+      // text on the button, not declined as a non-text message.
+      userText = buttonLabelOf(msg);
     } else {
       // Photo, voice note, document… The bot can't read it, but it must still be
       // recorded: this used to return before persisting, so a customer who opened
@@ -2032,10 +2059,20 @@ async function handleInboundMessage(msg, value) {
       return;
     }
 
+    // ── Reply to the RTO re-ship offer (utils/rto-reship.js) ──────────────────
+    // Decided in code, like a drafted order. A tap on the offer's own buttons
+    // goes first; a typed YES goes to a just-drafted order first, because that
+    // is the conversation the customer is in.
+    const rtoOffer = await rtoReship.findOpenOffer(
+      createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), from);
+    const tapped = msg.type === 'button' || msg.type === 'interactive';
+    if (rtoOffer && tapped && await handleRtoOfferReply(from, userText, rtoOffer, recvPhoneId, customerName)) return;
+
     // ── YES/NO to an order the bot just drafted ──────────────────────────────
     // Placing an order is decided here, in code — never by the model.
     const draftDecision = draftReplyDecision(userText);
     if (draftDecision && await handleDraftOrderReply(from, draftDecision, recvPhoneId)) return;
+    if (rtoOffer && !tapped && await handleRtoOfferReply(from, userText, rtoOffer, recvPhoneId, customerName)) return;
 
     // ── Short YES/NO reply to the 5-min bot-order confirmation ping ──────────
     // Only act on it if a follow-up was actually sent for this customer, so a
@@ -2052,7 +2089,8 @@ async function handleInboundMessage(msg, value) {
     }
 
     // ── Check order context by ID or customer phone ──────────────────────────
-    const extraContext = await buildOrderContext(from, userText);
+    const extraContext = [rtoOffer ? rtoReship.offerContext(rtoOffer) : '', await buildOrderContext(from, userText)]
+      .filter(Boolean).join('\n\n');
 
     // ── Get AI reply ──────────────────────────────────────────────────────────
     let reply = await askOpenAI(from, userText, extraContext, recvPhoneId);

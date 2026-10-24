@@ -224,3 +224,60 @@ test('a big bundle is left for the owner to price', async () => {
   assert.equal(refund.calls.length, 0);
   assert.match(s.skipped[0].reason, /14-book parcel/);
 });
+
+// ── the RTO re-ship offer hold (utils/rto-reship.js) ────────────────────────
+
+test('re-ship offer unanswered: waits 48 h from first seeing it back, then refunds', async () => {
+  const offered = { rto_offer_sent_at: '2026-10-20T10:00:00Z', rto_offer_state: 'sent' };
+  const supabase = fakeSupabase([order(offered)]);
+  const refund = refundSpy();
+  const deps = (t) => ({ supabase, refund, ownerAlert: noAlert, xbTrack: async () => XB_BACK, npTrackMany: async () => new Map(), now: () => t });
+  const t0 = Date.parse('2026-10-25T08:00:00Z');
+
+  const s1 = await runAutoRefund(deps(t0), {});
+  assert.equal(refund.calls.length, 0);
+  assert.match(s1.waiting[0].reason, /re-ship offer/);
+  assert.equal(supabase.rows[0].rto_back_at, new Date(t0).toISOString());
+
+  const s2 = await runAutoRefund(deps(t0 + 47 * 3600000), {});
+  assert.equal(refund.calls.length, 0);
+  assert.match(s2.waiting[0].reason, /until 2026-10-27T08:00/);
+
+  await runAutoRefund(deps(t0 + 48 * 3600000), {});
+  assert.equal(refund.calls.length, 1);
+});
+
+test('re-ship offer answered NO: refunds at once; a dry run never stamps rto_back_at', async () => {
+  const supabase = fakeSupabase([order({ rto_offer_sent_at: '2026-10-20T10:00:00Z', rto_offer_state: 'refund' })]);
+  const refund = refundSpy();
+  await runAutoRefund({ supabase, refund, ownerAlert: noAlert, xbTrack: async () => XB_BACK, npTrackMany: async () => new Map() }, {});
+  assert.equal(refund.calls.length, 1);
+
+  const open = fakeSupabase([order({ rto_offer_sent_at: '2026-10-20T10:00:00Z', rto_offer_state: 'confirm_address' })]);
+  await runAutoRefund({ supabase: open, refund, ownerAlert: noAlert, xbTrack: async () => XB_BACK, npTrackMany: async () => new Map() }, { dryRun: true });
+  assert.equal(open.rows[0].rto_back_at, undefined);
+});
+
+test('before the re-ship SQL is run, the job reads the old columns and refunds as before', async () => {
+  const inner = fakeSupabase([order()]);
+  let first = true;
+  const supabase = { ...inner, from(t) {
+    const b = inner.from(t);
+    const sel = b.select;
+    b.select = (cols) => {
+      if (first && /rto_offer_state/.test(cols || '')) {
+        first = false;
+        const err = { data: null, error: { message: 'column orders.rto_offer_sent_at does not exist' } };
+        const chain = { eq: () => chain, is: () => chain, gte: () => chain, order: () => chain, range: () => chain,
+          then: (res, rej) => Promise.resolve(err).then(res, rej) };
+        return chain;
+      }
+      return sel(cols);
+    };
+    return b;
+  } };
+  const refund = refundSpy();
+  const s = await runAutoRefund({ supabase, refund, ownerAlert: noAlert, xbTrack: async () => XB_BACK, npTrackMany: async () => new Map() }, {});
+  assert.equal(first, false);
+  assert.equal(s.refunded.length, 1);
+});
