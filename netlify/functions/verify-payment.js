@@ -15,6 +15,7 @@ const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
+const { freeByAmount } = require('./utils/free-delivery');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
 const { markBrowserReturned } = require('./utils/razorpay-browser-mark');
 
@@ -125,7 +126,7 @@ exports.handler = async (event, context) => {
   const subtotalRupees = cart ? cart.reduce((s,i)=>s+i.price*i.qty,0) : 0;
   const shipFee = (typeof shipping === 'number')
     ? shipping
-    : (subtotalRupees >= 499 ? 0 : 40);
+    : (freeByAmount(subtotalRupees, payment_mode === 'partial_cod' ? 'cod' : 'prepaid') ? 0 : 40);
 
   // ── 1. Verify signature ───────────────────────────────────────────────────
   const expectedSig = crypto

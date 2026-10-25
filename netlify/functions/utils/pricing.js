@@ -15,6 +15,7 @@ const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipp
 const { grantMap, feedOfferId } = require('./google-discount');
 const { selectTolerant } = require('./publisher-sourced');
 const { fetchSettings } = require('./product-settings');
+const { releasesFor } = require('./release-date');
 
 // Hardcoded slug overrides — MUST stay in sync with `make_slug` in generate_site.py.
 // (Combo packs ship under hand-picked slugs that don't follow the auto-slug rule.)
@@ -280,6 +281,16 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   for (const item of resolved) {
     if (freeSlugs.has(String(item.slug || '').toLowerCase())) item._free_delivery = true;
     else delete item._free_delivery;
+  }
+
+  // Pre-orders (utils/release-date): the line carries its release day, so the
+  // saved order says which books cannot ship before then. Server-decided like
+  // _free_delivery; it never changes the price.
+  const releases = resolved.length && supabase ? await releasesFor(supabase, resolved.map((i) => i.slug)) : {};
+  for (const item of resolved) {
+    const iso = releases[String(item.slug || '').toLowerCase()];
+    if (iso) item._release = iso;
+    else delete item._release;
   }
 
   // The Merchant Center id for each line. Google Ads "conversions with cart

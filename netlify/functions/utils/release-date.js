@@ -69,4 +69,54 @@ function releaseScriptTags(isoDate) {
   return `<script>window.__iacRelease=${JSON.stringify(isoDate)};</script><script src="/js/release-date.js?v=20261026b"></script>`;
 }
 
-module.exports = { parseReleaseDate, isUpcoming, upcomingRelease, releaseScriptTags, todayIST, dayNumber };
+// ── Which books are pre-orders right now ────────────────────────────────────
+// The date lives in custom_products.published_on (admin-added books) and in
+// catalog_content.published_on (catalogue books the admin edited). Both are
+// free text, so the database can only narrow by year; the parse decides.
+const TABLES = ['custom_products', 'catalog_content'];
+const quiet = (error) => /published_on|catalog_content|does not exist|schema cache/i.test(String(error && error.message));
+
+function collect(out, rows, now) {
+  for (const row of rows || []) {
+    const iso = upcomingRelease(row && row.published_on, now);
+    const slug = String((row && row.slug) || '').trim().toLowerCase();
+    // Two rows for one slug: the later release is the one to wait for.
+    if (iso && slug && (!out[slug] || out[slug] < iso)) out[slug] = iso;
+  }
+}
+
+/** { slug: 'YYYY-MM-DD' } for the pre-orders among `slugs`. Never throws. */
+async function releasesFor(db, slugs, now = Date.now()) {
+  const list = [...new Set((slugs || []).map((s) => String(s || '').trim().toLowerCase()).filter(Boolean))];
+  const out = {};
+  if (!db || !list.length) return out;
+  const filter = list.map((s) => `slug.ilike.${s}`).join(',');
+  await Promise.all(TABLES.map(async (table) => {
+    try {
+      const { data, error } = await db.from(table).select('slug,published_on').or(filter);
+      if (error) { if (!quiet(error)) console.error(`[release-date] ${table}:`, error.message); return; }
+      collect(out, data, now);
+    } catch (e) { console.error(`[release-date] ${table}:`, e.message); }
+  }));
+  return out;
+}
+
+/** Every pre-order in the shop: { slug: 'YYYY-MM-DD' }. */
+async function allReleases(db, now = Date.now()) {
+  const year = new Date(now + IST_OFFSET_MS).getUTCFullYear();
+  const years = [year, year + 1, year + 2].map((y) => `published_on.ilike.%${y}%`).join(',');
+  const out = {};
+  for (const table of TABLES) {
+    for (let from = 0; from < 20000; from += 1000) {
+      const { data, error } = await db.from(table).select('slug,published_on').or(years).order('slug').range(from, from + 999);
+      if (error) { if (quiet(error)) break; throw new Error(error.message); }
+      collect(out, data, now);
+      if (!data || data.length < 1000) break;
+    }
+  }
+  return out;
+}
+
+module.exports = {
+  parseReleaseDate, isUpcoming, upcomingRelease, releaseScriptTags, todayIST, dayNumber, releasesFor, allReleases,
+};

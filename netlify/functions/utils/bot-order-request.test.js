@@ -112,13 +112,28 @@ test('a chat order during the festive sale costs what checkout charges', async (
     createPaymentLink: async (o) => { amount = o.amountPaise; return { short_url: 'https://rzp.io/x', id: 'plink_1' }; },
   });
   const drafted = await draftOrderRequest(d, PHONE, { ...ARGS, payment_mode: 'prepaid' });
+  // Prepaid above ₹399 also ships free (utils/free-delivery), so ₹500 − ₹50.
   assert.equal(drafted.summary.sale_discount_rs, 50);
-  assert.equal(drafted.summary.total_rs, 490);
-  assert.equal(db.table[0].amount_paise, 49000);
+  assert.equal(drafted.summary.total_rs, 450);
+  assert.equal(db.table[0].amount_paise, 45000);
   db.table[0].created_at = festive.toISOString();
   const yes = await confirmDraftOrder(d, PHONE, 'confirm');
-  assert.equal(amount, 49000, 'the payment link asks for the sale price');
-  assert.match(yes.reply, /₹490 \(books ₹500 − Dussehra & Diwali Sale 10% off ₹50 \+ shipping ₹40\)/);
+  assert.equal(amount, 45000, 'the payment link asks for the sale price');
+  assert.match(yes.reply, /₹450 \(books ₹500 − Dussehra & Diwali Sale 10% off ₹50/);
+  assert.doesNotMatch(yes.reply, /shipping ₹40/);
+});
+
+test('a COD chat order still pays shipping below ₹499; prepaid above ₹399 does not', async () => {
+  for (const [mode, total] of [['cod', 490], ['prepaid', 450]]) {
+    const db = fakeDb();
+    const { d } = deps(db, {
+      now: () => new Date('2026-10-25T08:00:00Z'),
+      priceBooksList: async () => ({ items: [], subtotalRs: 450, shippingRs: 40, totalRs: 490, totalPaise: 49000, unmatched: [] }),
+    });
+    const drafted = await draftOrderRequest(d, PHONE, { ...ARGS, payment_mode: mode });
+    // ₹450 also earns the festive 10% (₹45) — subtract it from both.
+    assert.equal(drafted.summary.total_rs, total - 45, mode);
+  }
 });
 
 test('a chat order with a free-delivery book ships free', async () => {

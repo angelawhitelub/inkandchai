@@ -8490,7 +8490,9 @@ function checkoutSessionId() {
   return id;
 }
 
-// Shipping rules — must match cart.js + server functions
+// Shipping rules — must match cart.js + server functions (utils/free-delivery):
+// prepaid ships free ABOVE ₹399 (₹400 qualifies), COD and partial COD from ₹499.
+const PREPAID_FREE_ABOVE = 399;
 const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
 const COD_HANDLING_FEE = 20;  // extra ₹20 charged on COD orders to cover RTO risk + courier surcharge
@@ -8520,10 +8522,25 @@ function loadScratchState() {
   try { return JSON.parse(localStorage.getItem(SCRATCH_KEY) || 'null'); } catch { return null; }
 }
 let appliedScratchCard = loadScratchState(); // {code, value_paise, min_subtotal_paise, expires_at} or null
-// Free from ₹499, or when the cart holds a book the admin set to ship free
-// (loadFreeDelivery flags it; utils/free-delivery orderShipping decides the same).
-function calcShipping(subtotal, cart = getCart()) {
-  return subtotal >= FREE_SHIPPING_THRESHOLD || cart.some(i => i && i._free_delivery === true) ? 0 : SHIPPING_FEE;
+// Free above ₹399 on Pay Now ('online'), from ₹499 on COD / partial COD, or when
+// the cart holds a book the admin set to ship free (loadFreeDelivery flags it;
+// utils/free-delivery orderShipping decides the same).
+function freeByAmount(subtotal, method) {
+  return method === 'online' ? subtotal > PREPAID_FREE_ABOVE : subtotal >= FREE_SHIPPING_THRESHOLD;
+}
+function calcShipping(subtotal, cart = getCart(), method = 'cod') {
+  return freeByAmount(subtotal, method) || cart.some(i => i && i._free_delivery === true) ? 0 : SHIPPING_FEE;
+}
+// The free-delivery line under the summary: what each way of paying costs.
+function shippingNoteHtml(cart, subtotal) {
+  const bookFree = cart.some(i => i && i._free_delivery === true);
+  const style = 'font-size:0.62rem;letter-spacing:0.03em;line-height:1.5;padding:0 0 0.6rem;';
+  if (bookFree && !freeByAmount(subtotal, 'cod')) return `<div style="${style}color:#5d9b55;">🚚 Free delivery — a book in your order ships free</div>`;
+  if (freeByAmount(subtotal, 'cod')) return `<div style="${style}color:#5d9b55;">🚚 Free delivery on this order — prepaid or Cash on Delivery</div>`;
+  if (freeByAmount(subtotal, 'online')) {
+    return `<div style="${style}color:#5d9b55;">🚚 <strong>Free delivery with Pay Now</strong> (prepaid above ₹${PREPAID_FREE_ABOVE}). Cash on Delivery adds ₹${SHIPPING_FEE} below ₹${FREE_SHIPPING_THRESHOLD} — add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more for free COD delivery.</div>`;
+  }
+  return `<div style="${style}color:var(--gold);">💡 Add ₹${(PREPAID_FREE_ABOVE + 1 - subtotal).toLocaleString('en-IN')} more for <strong>free delivery on prepaid</strong> (above ₹${PREPAID_FREE_ABOVE}), or ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more on Cash on Delivery (₹${FREE_SHIPPING_THRESHOLD}+).</div>`;
 }
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
@@ -8651,7 +8668,7 @@ function chosenCouponDiscount(cart, method, subtotal, code) {
 }
 function orderTotals(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal, cart);
+  const shipping = calcShipping(subtotal, cart, method);
   const coupon = couponDiscount(cart, method);
   // COD fee waived on subtotal >= ₹999 (pushes customers to add more to cart)
   const codFee  = (method === 'cod' && subtotal < COD_FEE_WAIVER_THRESHOLD) ? COD_HANDLING_FEE : 0;
@@ -8722,6 +8739,38 @@ async function loadFreeDelivery() {
     if (changed) { saveCart(cart); renderSummary(); }
   } catch (_) {
     // The order functions decide the charge anyway.
+  }
+}
+// Pre-orders (preorder-slugs): the line carries its release day as _release,
+// shown on the line and in the summary. utils/pricing stamps the same date on
+// the saved order; it never changes the price.
+function preorderTodayIST() { return new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10); }
+function itemRelease(i) {
+  const iso = i && /^\\d{4}-\\d{2}-\\d{2}$/.test(String(i._release || '')) ? i._release : '';
+  return iso && iso > preorderTodayIST() ? iso : '';
+}
+function fmtRelease(iso, long) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-IN', long
+    ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }
+    : { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)));
+}
+async function loadPreorders() {
+  try {
+    const res = await fetch('/.netlify/functions/preorder-slugs');
+    if (!res.ok) return;
+    const releases = (await res.json()).releases || {};
+    const cart = getCart();
+    let changed = false;
+    for (const item of cart) {
+      if (!item) continue;
+      const iso = releases[String(couponItemSlug(item) || '').toLowerCase()] || '';
+      if (iso && item._release !== iso) { item._release = iso; changed = true; }
+      if (!iso && item._release) { delete item._release; changed = true; }
+    }
+    if (changed) { saveCart(cart); renderSummary(); }
+  } catch (_) {
+    // Display only: the order records the release day server-side anyway.
   }
 }
 // How far this cart is from qualifying for COD, in rupees. 0 means it qualifies.
@@ -8962,6 +9011,17 @@ function reportInitiateCheckout(cart, total) {
   });
 }
 
+// The latest release in the cart decides when the order can leave.
+function preorderNotice(cart) {
+  const dates = cart.map(itemRelease).filter(Boolean).sort();
+  if (!dates.length) return '';
+  const last = dates[dates.length - 1];
+  const all = dates.length === cart.length;
+  return `<div class="preorder-note" data-preorder-note style="font-size:0.7rem;line-height:1.55;color:var(--cream);border:1px solid rgba(232,160,48,0.45);background:rgba(232,160,48,0.08);border-radius:10px;padding:0.65rem 0.8rem;margin:0 0 0.7rem;">`
+    + `<strong style="color:#e8a030;">📅 ${all ? 'Pre-order' : 'Your order includes a pre-order'}</strong><br>`
+    + (all ? 'It releases on ' : 'Everything ships together once it releases on ')
+    + `<strong>${fmtRelease(last, true)}</strong>. We dispatch it then and send tracking as soon as it ships.</div>`;
+}
 function renderSummary() {
   // Cheap and idempotent, and renderSummary is the one function that always
   // runs before the coupon box is shown.
@@ -9017,6 +9077,7 @@ function renderSummary() {
       <div class="item-info">
         <div class="item-title">${esc(i.title)}</div>
         ${i.author ? `<div class="item-author">${esc(i.author)}</div>` : ''}
+        ${itemRelease(i) ? `<div class="item-preorder" style="font-size:0.66rem;color:#e8a030;font-weight:700;margin:0.15rem 0;">📅 Pre-order · releases ${fmtRelease(itemRelease(i))}</div>` : ''}
         <div class="item-qty-price">
           <span>₹${itemPrice(i).toLocaleString('en-IN')} each</span>
           &nbsp;·&nbsp;
@@ -9039,11 +9100,11 @@ function renderSummary() {
       <span class="summary-line-value">- ₹${discount.toLocaleString('en-IN')}</span>
     </div>` : ''}
     <div class="summary-line" style="padding-bottom:0.7rem;">
-      <span class="summary-line-label">Shipping (Delhivery)</span>
+      <span class="summary-line-label">Shipping${shipping === 0 && !freeByAmount(subtotal, 'cod') && !cart.some(i => i && i._free_delivery === true) ? ' (Pay Now)' : ''}</span>
       <span class="summary-line-value" style="color:${shipping === 0 ? '#5d9b55' : 'var(--cream)'};">${shipping === 0 ? 'FREE' : '₹' + shipping}</span>
     </div>
-    ${shipping > 0 ? `<div style="font-size:0.6rem;color:var(--gold);letter-spacing:0.05em;padding:0 0 0.6rem;">💡 Add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more to qualify for free shipping</div>` : ''}
-    ${shipping === 0 && subtotal < FREE_SHIPPING_THRESHOLD ? `<div style="font-size:0.6rem;color:#5d9b55;letter-spacing:0.05em;padding:0 0 0.6rem;">🚚 Free delivery — a book in your order ships free</div>` : ''}`;
+    ${shippingNoteHtml(cart, subtotal)}
+    ${preorderNotice(cart)}`;
 
   totalEl.textContent = '₹' + grand.toLocaleString('en-IN');
   totalRow.style.display = 'flex';
@@ -10443,6 +10504,7 @@ loadManagedPromotions().then(() => loadProductCoupons(getCart())).then(renderSum
 renderSummary();
 loadCodRules();
 _freeDeliveryReady = loadFreeDelivery();
+loadPreorders();
 
 // When returning to checkout — including bfcache back/forward from a payment
 // page (PhonePe redirect, Razorpay) — clear any stuck loading state and repaint

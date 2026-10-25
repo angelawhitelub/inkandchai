@@ -15,8 +15,26 @@
 const { cleanSlug } = require('./cod-rules');
 
 const TABLE = 'product_free_delivery';
-const FREE_SHIPPING_THRESHOLD = 499;
+// Order-level free delivery depends on how the order is paid (owner, 26 Oct
+// 2026): prepaid ships free ABOVE ₹399 (strict, like the site sale: ₹399 pays
+// shipping, ₹400 does not), Cash on Delivery -- partial COD included -- from
+// ₹499. FREE_SHIPPING_THRESHOLD stays the COD figure for older callers.
+const PREPAID_FREE_ABOVE = 399;
+const COD_FREE_FROM = 499;
+const FREE_SHIPPING_THRESHOLD = COD_FREE_FROM;
 const SHIPPING_FEE = 40;
+
+/** 'prepaid' for a fully paid-online order, else 'cod' (COD and partial COD). */
+function shippingMode(paymentMode) {
+  const m = String(paymentMode || '').toLowerCase();
+  return m === 'prepaid' || m === 'online' || m === 'razorpay' || m === 'phonepe' ? 'prepaid' : 'cod';
+}
+
+/** True when the subtotal alone earns free delivery for this payment mode. */
+function freeByAmount(subtotal, mode) {
+  const s = Number(subtotal) || 0;
+  return shippingMode(mode) === 'prepaid' ? s > PREPAID_FREE_ABOVE : s >= COD_FREE_FROM;
+}
 
 function isMissingTable(error) {
   const msg = String((error && error.message) || '');
@@ -51,11 +69,17 @@ async function allFreeDelivery(db) {
   return out;
 }
 
-/** Shipping in rupees for a priced cart: free from ₹499, or with any free-delivery book. */
-function orderShipping(cart, subtotal) {
-  if (Number(subtotal) >= FREE_SHIPPING_THRESHOLD) return 0;
+/**
+ * Shipping in rupees for a priced cart: free above ₹399 prepaid / from ₹499 on
+ * COD, or with any free-delivery book. `mode` defaults to COD, the dearer rule.
+ */
+function orderShipping(cart, subtotal, mode = 'cod') {
+  if (freeByAmount(subtotal, mode)) return 0;
   if ((cart || []).some((i) => i && i._free_delivery === true)) return 0;
   return SHIPPING_FEE;
 }
 
-module.exports = { TABLE, FREE_SHIPPING_THRESHOLD, SHIPPING_FEE, isMissingTable, freeDeliveryFor, allFreeDelivery, orderShipping };
+module.exports = {
+  TABLE, FREE_SHIPPING_THRESHOLD, PREPAID_FREE_ABOVE, COD_FREE_FROM, SHIPPING_FEE,
+  isMissingTable, freeDeliveryFor, allFreeDelivery, orderShipping, shippingMode, freeByAmount,
+};

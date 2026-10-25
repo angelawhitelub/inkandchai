@@ -487,6 +487,39 @@ function withRelease(response, entry) {
     .transform(response);
 }
 
+// ── Free-delivery copy on product pages ─────────────────────────────────────
+// Free delivery depends on how the order is paid (utils/free-delivery): prepaid
+// above ₹399, Cash on Delivery from ₹499. ~2,700 baked pages still say
+// "Free delivery on ₹499+" in the promo bar and their FAQ data, and they are
+// never regenerated locally, so the copy is set here for every product page.
+const SHIP_NOTE_HTML = '<div class="ship-free-note" data-ship-note style="margin:0.6rem 0 0.2rem;font-size:0.74rem;line-height:1.55;color:var(--cream);">'
+  + '🚚 <strong>Free delivery</strong> on prepaid orders above ₹399 · Cash on Delivery orders ship free from ₹499 (₹40 below)</div>';
+const PROMO_HTML = '<strong>Free delivery: prepaid above ₹399 · COD ₹499+</strong> · Prepaid offers up to <strong>15% off</strong> · COD available';
+const OLD_FAQ_SHIPPING = 'Free shipping applies on orders above ₹499.';
+const NEW_FAQ_SHIPPING = 'Free shipping applies on prepaid orders above ₹399 and on cash-on-delivery orders of ₹499 or more.';
+function withShippingCopy(response) {
+  let noted = false;
+  let ldBuf = '';
+  const out = new HTMLRewriter()
+    .on('div.promo', { element(el) { el.setInnerContent(PROMO_HTML, { html: true }); } })
+    .on('div.trust', { element(el) { if (!noted) { el.after(SHIP_NOTE_HTML, { html: true }); noted = true; } } })
+    .on('script[type="application/ld+json"]', {
+      text(chunk) {
+        ldBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = ldBuf;
+        ldBuf = '';
+        chunk.replace(whole.split(OLD_FAQ_SHIPPING).join(NEW_FAQ_SHIPPING), { html: true });
+      },
+    })
+    .transform(response);
+  // The baked file's ETag would let a browser revalidate to a copy with the old wording.
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('last-modified');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
 // ── Sold-out books ──────────────────────────────────────────────────────────
 // The admin's manual stock (product_overrides.stock_qty <= 0) turns a page's
 // Buy buttons into "Coming Soon" -- but only in the browser, after the page's
@@ -832,7 +865,7 @@ export default {
       const entry = (await catalogContent(env))[contentSlug];
       let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
-      page = await withFreeDelivery(await withCodRule(page, contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
+      page = await withFreeDelivery(await withCodRule(withShippingCopy(page), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
       return withSoldCount(page, contentSlug);
     }
 
@@ -851,9 +884,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withSoldCount(await withFreeDelivery(await withCodRule(markSoldOutPage(rendered), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
+          return withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
         }
-        if (rendered.status !== 404) return withSoldCount(await withFreeDelivery(await withCodRule(rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
+        if (rendered.status !== 404) return withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a

@@ -425,7 +425,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
 </style>
 </head>
 <body>
-<div class="promo"><strong>Free delivery on ₹499+</strong> · Prepaid offers available · COD available</div>
+<div class="promo"><strong>Free delivery: prepaid above ₹399 · COD ₹499+</strong> · Prepaid offers available · COD available</div>
 <nav><a class="logo" href="/">Ink &amp; Chai</a><form class="nav-search" action="/" method="get" role="search"><input type="search" name="q" placeholder="Search books&hellip;" aria-label="Search books" autocomplete="off"/><button type="submit" aria-label="Search">&#128269;</button></form><a class="back" href="/books/">All Books</a><button class="theme-btn" onclick="(function(){var d=document.documentElement;var light=d.getAttribute('data-theme')==='light';if(light){d.removeAttribute('data-theme')}else{d.setAttribute('data-theme','light')}try{localStorage.setItem('iac_theme',light?'dark':'light')}catch(e){}})()" title="Toggle theme" aria-label="Toggle light or dark theme">&#9788;</button></nav>
 <main class="wrap">
   <section class="cover">${galleryImgs.length > 1 ? `<div class="gallery">

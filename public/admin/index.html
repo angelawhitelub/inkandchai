@@ -1139,6 +1139,7 @@ select,input,textarea{font-size:1rem;}
     <button class="filter-btn" data-status="paid" onclick="setFilter(this,'paid')">Paid Online</button>
     <button class="filter-btn" data-status="replacement_pending" onclick="setFilter(this,'replacement_pending')" style="border-color:rgba(109,191,109,0.5);color:#6dbf6d;">🔄 Replacement</button>
     <button class="filter-btn" data-status="cw_only" onclick="setFilter(this,'cw_only')" style="border-color:rgba(201,168,76,0.5);color:#c9a84c;" title="Orders containing Crossword-migrated genuine-tag books (IC-CW-…)">📚 Crossword</button>
+    <button class="filter-btn" data-status="preorder_waiting" onclick="setFilter(this,'preorder_waiting')" style="border-color:rgba(232,160,48,0.5);color:#e8a030;" title="Open orders holding a book whose release day is still ahead — do not ship before it">📅 Pre-orders</button>
     <button class="filter-btn" data-status="cancelled" onclick="setFilter(this,'cancelled')">Cancelled</button>
     <button class="filter-btn" data-status="cancel_requested" onclick="setFilter(this,'cancel_requested')" style="border-color:rgba(232,160,48,0.5);color:var(--orange);" title="Live orders where the customer requested cancellation (request only — not yet cancelled)">⏳ Cancel Requests</button>
     <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
@@ -5485,7 +5486,7 @@ async function fetchOrdersPage(pageNum, limit, filterSnapshot = currentFilter) {
     // them to refund_pending → refunded/refund_failed. Fetch the whole family or
     // the tab shows COD orders only.
     params.set('statuses', CANCELLED_FAMILY.join(','));
-  } else if (filterSnapshot && filterSnapshot !== '__unshipped' && filterSnapshot !== '__in_transit' && filterSnapshot !== 'partial_cod_pending' && filterSnapshot !== 'online_pending' && filterSnapshot !== 'cw_only' && filterSnapshot !== 'cancel_requested') {
+  } else if (filterSnapshot && filterSnapshot !== '__unshipped' && filterSnapshot !== '__in_transit' && filterSnapshot !== 'partial_cod_pending' && filterSnapshot !== 'online_pending' && filterSnapshot !== 'cw_only' && filterSnapshot !== 'preorder_waiting' && filterSnapshot !== 'cancel_requested') {
     params.set('status', filterSnapshot);
   }
   const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
@@ -6558,6 +6559,10 @@ function applyFilters() {
     if (currentFilter === 'partial_cod_pending' && !isPartialOrder(o)) return false;
     if (currentFilter === 'online_pending' && !isPendingOnlineOrder(o)) return false;
     if (currentFilter === 'cancel_requested' && !hasOpenCancelRequest(o)) return false;
+    if (currentFilter === 'preorder_waiting') {
+      if (!orderPreorder(o).waiting) return false;
+      if (['cancelled', 'refunded', 'refund_pending'].includes(String(o.status || '').toLowerCase())) return false;
+    }
     if (currentFilter === 'cw_only') {
       if (!/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || ''))) return false;
       // Keep the Crossword tab to actionable orders — hide cancelled/refunded.
@@ -6699,6 +6704,7 @@ function _drawTable() {
       <td data-label="Order" data-card-head>
         <div class="order-id">${esc(o.razorpay_order_id || o.id || '—')}</div>
         ${o.razorpay_payment_id ? `<div class="pay-id">${esc(o.razorpay_payment_id)}</div>` : ''}
+        ${preorderBadgeHtml(o)}
         ${/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || '')) ? `<div title="Contains Crossword-migrated genuine-tag book(s)" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.4);color:#c9a84c;font-weight:600;">📚 Crossword</div>` : ''}
         ${isReplacement ? (() => {
           const meta = items.find(i => i && i._replacement)?._replacement;
@@ -10017,6 +10023,27 @@ async function listFreeDelivery() {
   } catch (e) {
     box.textContent = 'Could not list: ' + e.message;
   }
+}
+
+// ── Pre-orders (utils/release-date) ──────────────────────────────────────────
+// utils/pricing stamps each pre-order line with its release day (_release) when
+// the order is placed. The latest one decides when the parcel can leave.
+function orderPreorder(o) {
+  const items = Array.isArray(o && o.cart_items) ? o.cart_items : [];
+  const dates = items.map(i => String((i && i._release) || '')).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  const release = dates[dates.length - 1] || '';
+  const today = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10);
+  const titles = items.filter(i => i && i._release).map(i => i.title || i.slug || '').filter(Boolean);
+  return { release, waiting: !!release && release > today, titles };
+}
+function preorderBadgeHtml(o) {
+  const p = orderPreorder(o);
+  if (!p.release) return '';
+  const [y, m, d] = p.release.split('-').map(Number);
+  const when = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const col = p.waiting ? '#e8a030' : '#a09080';
+  const label = p.waiting ? `Pre-order · ship on/after ${when}` : `Pre-order · released ${when}`;
+  return `<div title="${esc('Pre-order: ' + p.titles.join(', '))}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(232,160,48,${p.waiting ? '0.12' : '0.04'});border:1px solid ${col};color:${col};font-weight:600;">📅 ${label}</div>`;
 }
 
 // ── Hide from site search (admin-search-hidden) ──────────────────────────────

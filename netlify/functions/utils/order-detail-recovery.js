@@ -22,6 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lookupBook } = require('./book-lookup');
+const { freeByAmount } = require('./free-delivery');
 
 // Written into customer_address by the recovery script so the admin panel shows
 // why the order looks half-finished. An order is identified as awaiting details
@@ -138,7 +139,12 @@ async function priceAgainstPayment(booksText, order) {
   }
 
   const goodsRs = items.reduce((s, i) => s + i.price * i.qty, 0);
-  const shippingRs = goodsRs >= FREE_SHIPPING_FROM_RS ? 0 : SHIPPING_RS;
+  // Fully prepaid orders ship free above ₹399 since 26 Oct 2026 (utils/free-
+  // delivery); older ones were charged below ₹499. Either is a real charge, so
+  // the one that lands on the payment is the one that was used.
+  const codShip = goodsRs >= FREE_SHIPPING_FROM_RS ? 0 : SHIPPING_RS;
+  const prepaidShip = freeByAmount(goodsRs, 'prepaid') ? 0 : SHIPPING_RS;
+  const shippingRs = !isPartial && Math.abs(goodsRs + prepaidShip - paidRs) < 0.01 ? prepaidShip : codShip;
   const fullTotalRs = goodsRs + shippingRs;
   // A partial-COD customer paid a tenth of the order, so that is what the
   // arithmetic has to land on. Same rounding the checkout uses.

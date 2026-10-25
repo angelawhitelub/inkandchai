@@ -30,7 +30,8 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-// Shipping: utils/free-delivery orderShipping (₹40 below ₹499, free with a free-delivery book).
+// Shipping: utils/free-delivery orderShipping (₹40 unless prepaid above ₹399 /
+// partial COD from ₹499, free with a free-delivery book).
 
 const COUPONS = {
   INKLOVE10:  { type: 'percent', value: 10, minSubtotal: 499  },
@@ -126,8 +127,9 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
     }
 
-    const shipping   = orderShipping(cart, subtotal);
     const isPartial  = payment_mode === 'partial_cod';
+    // Partial COD is a COD order (free from ₹499); full prepaid is free above ₹399.
+    const shipping   = orderShipping(cart, subtotal, isPartial ? 'cod' : 'prepaid');
     const couponInfo = await resolveCoupon(supabase, cart, subtotal, rawCoupon, { saleOnly: isPartial });
     const partialDiscount = couponInfo.source === 'site_sale' ? couponInfo.discount : 0;
     const appliedDiscount = isPartial ? partialDiscount : couponInfo.discount;

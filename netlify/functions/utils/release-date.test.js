@@ -63,3 +63,39 @@ test('page plan: released or unparseable dates leave the page alone', () => {
 test('the page formats the release day with weekday and year', () => {
   assert.equal(page.fmt(day('2026-10-27'), 'long'), 'Tuesday, 27 October 2026');
 });
+
+function fakeDb(tables) {
+  return {
+    from: (t) => {
+      const q = {
+        select: () => q, order: () => q,
+        or: () => q,
+        range: async () => (tables[t] instanceof Error ? { error: tables[t] } : { data: tables[t] || [] }),
+        then: (res, rej) => Promise.resolve(tables[t] instanceof Error ? { error: tables[t] } : { data: tables[t] || [] }).then(res, rej),
+      };
+      return q;
+    },
+  };
+}
+
+test('releasesFor and allReleases keep only upcoming full dates, latest wins', async () => {
+  const db = fakeDb({
+    custom_products: [
+      { slug: 'New-Book', published_on: '27 October 2026' },
+      { slug: 'old-book', published_on: '3 March 2024' },
+      { slug: 'vague', published_on: 'November 2026' },
+    ],
+    catalog_content: [{ slug: 'new-book', published_on: '2026-11-05' }],
+  });
+  assert.deepEqual(await R.releasesFor(db, ['new-book', 'old-book', 'vague'], MORNING), { 'new-book': '2026-11-05' });
+  assert.deepEqual(await R.allReleases(db, MORNING), { 'new-book': '2026-11-05' });
+});
+
+test('a missing catalog_content table does not break the lookup', async () => {
+  const db = fakeDb({
+    custom_products: [{ slug: 'a', published_on: '27/10/2026' }],
+    catalog_content: new Error('relation "catalog_content" does not exist'),
+  });
+  assert.deepEqual(await R.releasesFor(db, ['a'], MORNING), { a: '2026-10-27' });
+  assert.deepEqual(await R.allReleases(db, MORNING), { a: '2026-10-27' });
+});

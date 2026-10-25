@@ -32,3 +32,21 @@ test('lookup is case-insensitive; before the migration nothing ships free and no
   assert.equal((await F.freeDeliveryFor(missing, ['rare-book'])).size, 0);
   assert.equal((await F.freeDeliveryFor(null, ['rare-book'])).size, 0);
 });
+
+test('free delivery depends on how the order is paid', () => {
+  const { orderShipping, freeByAmount, shippingMode } = require('./free-delivery');
+  // Prepaid: strictly above ₹399.
+  assert.equal(orderShipping([], 399, 'prepaid'), 40);
+  assert.equal(orderShipping([], 400, 'prepaid'), 0);
+  // COD (and partial COD): from ₹499.
+  assert.equal(orderShipping([], 498, 'cod'), 40);
+  assert.equal(orderShipping([], 499, 'cod'), 0);
+  assert.equal(orderShipping([], 450, 'partial_cod'), 40);
+  // No mode = the dearer COD rule.
+  assert.equal(orderShipping([], 450), 40);
+  // A free-delivery book still ships the whole order free on either.
+  assert.equal(orderShipping([{ _free_delivery: true }], 100, 'cod'), 0);
+  assert.equal(shippingMode('online'), 'prepaid');
+  assert.equal(shippingMode('partial_cod'), 'cod');
+  assert.equal(freeByAmount(400, 'prepaid'), true);
+});

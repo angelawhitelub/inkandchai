@@ -61,7 +61,7 @@ PERSONALITY:
 
 ABOUT INK & CHAI:
 - We sell fiction, non-fiction, self-help, Hindi books and more at 40-60% off MRP
-- Free shipping on orders above ₹499, else ₹40 flat
+- Free delivery on PREPAID orders above ₹399, and on Cash on Delivery (incl. 10% now + 90% on delivery) orders of ₹499 or more; otherwise ₹40 flat
 - Pan-India delivery via Delhivery courier
 - Payment: PhonePe, Razorpay (UPI/cards), Cash on Delivery, or 10% now + 90% on delivery
 - Website: inkandchai.in
@@ -295,7 +295,7 @@ PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book r
 - If they change something (a book, the address, the payment mode), call submit_order_request again with the corrected values — it updates the same pending order — and ask for YES again.
 - If the tool returns already_placed, that order EXISTS. Tell them their order <order_id> is already placed (and share the payment_link if one is returned). NEVER try to place it again.
 - A customer asking "is my order placed?", "did it go through?", or re-sending their earlier message is NOT a new order. Answer from WHATSAPP ORDERS ON THIS NUMBER in the order context; never call submit_order_request to check.
-- If shipping_rs is 0 (free shipping over ₹499), skip the "+ shipping" part and just say "Total ₹<total_rs>".
+- If shipping_rs is 0 (free delivery), skip the "+ shipping" part and just say "Total ₹<total_rs>".
 - Do NOT invent a payment link, total, or amount if the tool did not return one.`;
 
 // ── Per-user conversation memory (in-memory cache + Supabase persistence) ────
