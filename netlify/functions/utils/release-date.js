@@ -66,7 +66,7 @@ function upcomingRelease(publishedOn, now = Date.now()) {
 
 /** Tags the Worker appends to a page with an upcoming release. */
 function releaseScriptTags(isoDate) {
-  return `<script>window.__iacRelease=${JSON.stringify(isoDate)};</script><script src="/js/release-date.js?v=20261026"></script>`;
+  return `<script>window.__iacRelease=${JSON.stringify(isoDate)};</script><script src="/js/release-date.js?v=20261026b"></script>`;
 }
 
 module.exports = { parseReleaseDate, isUpcoming, upcomingRelease, releaseScriptTags, todayIST, dayNumber };

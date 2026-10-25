@@ -64,7 +64,7 @@
   function shipByEl() { return doc.getElementById('staticShipBy') || doc.getElementById('shipBy'); }
 
   function notice(p) {
-    var when = p.daysToRelease === 1 ? 'tomorrow, ' + fmt(p.release, 'long') : fmt(p.release, 'long');
+    var when = (p.daysToRelease === 1 ? 'tomorrow, ' : 'on ') + fmt(p.release, 'long');
     var dispatch = p.handling > 0
       ? 'we dispatch it within ' + p.handling + ' ' + (p.handling === 1 ? 'day' : 'days') + ' of release'
       : 'we dispatch it on release day';
@@ -73,7 +73,7 @@
       + 'border-radius:14px;margin:0.8rem 0;display:flex;gap:0.8rem;align-items:flex-start;">'
       + '<div style="font-size:1.45rem;line-height:1;">📅</div><div>'
       + '<div style="font-size:0.58rem;letter-spacing:0.26em;text-transform:uppercase;color:#e8a030;font-weight:700;margin-bottom:0.35rem;">Pre-order</div>'
-      + '<div style="font-size:0.88rem;color:var(--cream);line-height:1.5;font-weight:600;">This title releases on ' + when + '</div>'
+      + '<div style="font-size:0.88rem;color:var(--cream);line-height:1.5;font-weight:600;">This title releases ' + when + '</div>'
       + '<div style="font-size:0.74rem;color:var(--muted);line-height:1.6;margin-top:0.3rem;">Order now to reserve your copy — '
       + dispatch + ', and you get tracking as soon as it ships.</div>'
       + '</div></div>';
