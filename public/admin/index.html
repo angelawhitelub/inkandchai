@@ -1635,7 +1635,7 @@ select,input,textarea{font-size:1rem;}
           </div>
           <div>
             <label style="display:block;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem;">Published</label>
-            <input id="newProdPublished" maxlength="40" placeholder="March 2024"/>
+            <input id="newProdPublished" maxlength="40" placeholder="March 2024" title="A full future date (27 October 2026) makes the book a pre-order."/>
           </div>
           <div>
             <label style="display:block;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem;">Reading age</label>
@@ -1643,6 +1643,7 @@ select,input,textarea{font-size:1rem;}
           </div>
         </div>
         <p class="hint" style="margin-top:.5rem;">Weight is in grams and prints as kg above 1000. Dimensions are shown exactly as typed, so any unit is fine. These are facts about the physical copy, so <strong>✨ Draft with AI never fills them</strong> — it would be guessing. Take them off the back cover or the listing you sourced the book from.</p>
+        <p class="hint" style="margin-top:.4rem;"><strong>📅 Pre-orders:</strong> put a full date that is still ahead in <strong>Published</strong> (e.g. <em>27 October 2026</em>, <em>2026-10-27</em> or <em>27/10/2026</em>). Until that day the product page says <strong>“Pre-order · Releases on …”</strong>, and the ship-by and delivery dates start from the release day plus any handling time. From release day it is a normal listing again. A month or year alone (“March 2024”) never makes a pre-order.</p>
       </div>
       <div class="form-row wide">
         <label style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
@@ -1859,12 +1860,13 @@ select,input,textarea{font-size:1rem;}
               </div>
               <div class="form-row">
                 <label>Published</label>
-                <input id="prodPublished" maxlength="40" placeholder="March 2024" title="Type it as the copyright page has it. Blank hides the row."/>
+                <input id="prodPublished" maxlength="40" placeholder="March 2024" title="Type it as the copyright page has it. A full future date (27 October 2026) makes the book a pre-order. Blank hides the row."/>
               </div>
               <div class="form-row">
                 <label>Reading age</label>
                 <input id="prodReadingAge" maxlength="40" placeholder="8-12 years" title="Mainly for children's books. Blank hides the row."/>
               </div>
+              <p class="hint" style="grid-column:1/-1;margin:.2rem 0 0;"><strong>📅 Pre-order:</strong> a full date still ahead in <strong>Published</strong> (<em>27 October 2026</em>, <em>2026-10-27</em>, <em>27/10/2026</em>) shows “Pre-order · Releases on …” on the product page, and ship-by / delivery dates start from that day plus the handling time. It turns back into a normal listing on release day by itself.</p>
 <datalist id="bookDimensionOptions"><option>19.8 x 12.9 x 2 cm</option><option>21.6 x 14 x 2.1 cm</option><option>23.4 x 15.6 x 2.5 cm</option><option>20.3 x 25.4 x 1 cm</option></datalist>
 <datalist id="bookFormatOptions"><option>Paperback</option><option>Hardcover</option><option>Boxed Set</option><option>Board Book</option></datalist>
 <datalist id="bookLanguageOptions"><option>English</option><option>Hindi</option><option>Marathi</option><option>Bengali</option><option>Tamil</option><option>Telugu</option><option>Kannada</option><option>Malayalam</option><option>Gujarati</option><option>Punjabi</option><option>Urdu</option></datalist>

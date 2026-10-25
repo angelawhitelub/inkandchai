@@ -25,6 +25,7 @@ export { XbBookingJob } from './xb-booking-job.js';
 import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable, staleProductKey, renderWithLastGood } from './cache-policy.mjs';
 import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
 import soldOutUtil from '../netlify/functions/utils/sold-out.js';
+import releaseDate from '../netlify/functions/utils/release-date.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
 import newArrivals from '../netlify/functions/utils/new-arrivals.js';
 import lifetimeSales from '../netlify/functions/utils/lifetime-sales.js';
@@ -473,6 +474,19 @@ function rewriteCatalogPage(response, entry) {
   return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
 }
 
+// ── Pre-orders ──────────────────────────────────────────────────────────────
+// A catalogue book whose admin "Published" date is a full date still ahead
+// gets the pre-order script (utils/release-date.js, public/js/release-date.js):
+// release notice, ship-by and delivery dates from the release day. The page
+// re-checks the date itself, so an edge-cached copy reverts on release day.
+function withRelease(response, entry) {
+  const iso = releaseDate.upcomingRelease(entry && entry.published_on);
+  if (!iso) return response;
+  return new HTMLRewriter()
+    .on('body', { element(el) { el.append(releaseDate.releaseScriptTags(iso), { html: true }); } })
+    .transform(response);
+}
+
 // ── Sold-out books ──────────────────────────────────────────────────────────
 // The admin's manual stock (product_overrides.stock_qty <= 0) turns a page's
 // Buy buttons into "Coming Soon" -- but only in the browser, after the page's
@@ -816,7 +830,7 @@ export default {
       try { contentSlug = decodeURIComponent(productPath[1]).toLowerCase(); }
       catch { contentSlug = productPath[1].toLowerCase(); }
       const entry = (await catalogContent(env))[contentSlug];
-      let page = entry ? rewriteCatalogPage(assetResponse, entry) : assetResponse;
+      let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
       page = await withFreeDelivery(await withCodRule(page, contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
       return withSoldCount(page, contentSlug);

@@ -3,6 +3,7 @@ const SOCIAL_PROOF = require('../../data/social_proof.json').items || [];
 const { richText, plainText } = require('./utils/rich-text');
 const { applySiteTheme } = require('./utils/site-theme');
 const { withBadgeTag, selectTolerant } = require('./utils/publisher-sourced');
+const { parseReleaseDate, releaseScriptTags } = require('./utils/release-date');
 const { bookDetailRows, schemaBookDetails, SCHEMA_BOOK_FORMATS, SCHEMA_LANGUAGES } = require('./utils/book-details');
 const { fetchSettings } = require('./utils/product-settings');
 const { displayTitle } = require('./utils/listing-title');
@@ -275,6 +276,9 @@ function productHtml(product, aplusContent = null) {
   // Extra dispatch days for this title (product_settings.handling_days). Clamped
   // and integer-ised here because it is interpolated straight into page script.
   const handlingExtraDays = Math.max(0, Math.min(30, Math.round(Number(product.handling_days) || 0)));
+  // A full future date in "Published" makes this a pre-order; the page checks
+  // at view time whether it is still ahead (public/js/release-date.js).
+  const releaseIso = parseReleaseDate(product.published_on);
   const metaDesc = esc(shortDescription(product));
   const canonical = `https://inkandchai.in/product/${slug}/`;
   const image = absoluteImage(product.image_url);
@@ -540,6 +544,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
   // Per-product handling time: extra days on top of the default same-day
   // (before the cutoff) / next-day dispatch. 0 = the store default.
   var HANDLING = ${handlingExtraDays};
+  window.__iacHandlingDays = HANDLING;
   var days = (nowIST.getUTCHours() < CUTOFF ? 0 : 1) + HANDLING;
   var shipDate = addDays(nowIST, days);
   var rows = ZONES.map(function (z) {
@@ -562,6 +567,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
   if (window.iacDeliveryEtaInit) window.iacDeliveryEtaInit();
 }());
 </script>
+${releaseIso ? releaseScriptTags(releaseIso) : ''}
 <script src="/js/delivery-estimate.js" defer></script>
 <script src="/js/cart.js"></script>
 <!-- Google automated discounts: this page is rendered live, not prerendered by
