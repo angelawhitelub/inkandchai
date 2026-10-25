@@ -3,6 +3,7 @@ const { proxifySupabaseImage } = require('./utils/supabase-img');
 const { selectTolerant } = require('./utils/publisher-sourced');
 const { fetchSettings } = require('./utils/product-settings');
 const { readDeleted } = require('./utils/deleted-products');
+const { hiddenSlugSet } = require('./utils/search-hidden');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -179,7 +180,9 @@ exports.handler = async (event) => {
     // click the card and land on a 410. One Supabase read per edge-cache miss
     // (~hourly), and a missing table just means an empty list.
     const { slugs: deleted } = await readDeleted(supabase);
-    return { statusCode: 200, headers: cacheHeaders, body: JSON.stringify({ overrides, custom_products: customProducts, deleted }) };
+    // Still for sale, but the homepage search must not return them.
+    const search_hidden = [...await hiddenSlugSet()];
+    return { statusCode: 200, headers: cacheHeaders, body: JSON.stringify({ overrides, custom_products: customProducts, deleted, search_hidden }) };
   } catch (err) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ overrides: [], warning: err.message }) };
   }

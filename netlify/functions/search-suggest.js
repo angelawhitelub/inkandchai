@@ -27,6 +27,7 @@ const CORS = {
 
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 const { deletedSlugSet } = require('./utils/deleted-products');
+const { unsearchableSlugSet } = require('./utils/search-hidden');
 
 function absImg(u) {
   const s = String(u || '');
@@ -93,7 +94,8 @@ exports.handler = async (event) => {
 
   if (personal) { headers['Cache-Control'] = 'private, no-store'; headers['Netlify-CDN-Cache-Control'] = 'private, no-store'; }
   try {
-    const gone = await deletedSlugSet();
+    // Deleted books, plus the ones the owner hid from search (utils/search-hidden).
+    const gone = await unsearchableSlugSet(await deletedSlugSet());
     // Suggestions must answer even when discovery cannot: its lookups are
     // bounded, and this bounds the whole thing again.
     const fallback = () => discovery.choose(getCatalog(), [], prefs, gone);

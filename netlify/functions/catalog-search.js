@@ -15,6 +15,7 @@ const { createClient } = require('@supabase/supabase-js');
 const search = require('../../public/js/book-search');
 const { findCandidates } = require('./utils/search-candidates');
 const { deletedSlugSet } = require('./utils/deleted-products');
+const { unsearchableSlugSet } = require('./utils/search-hidden');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 
 const CORS = {
@@ -46,7 +47,7 @@ exports.handler = async (event) => {
 
     let data, count;
     if(q) {
-      const gone=await deletedSlugSet();
+      const gone=await unsearchableSlugSet(await deletedSlugSet());   // + hidden from search
       let ranked=(await findCandidates(supabase,q,true))
         .map(book=>({book,score:search.score(book,q)}))
         .filter(r=>r.score>0&&!gone.has(String(r.book.slug).toLowerCase()));

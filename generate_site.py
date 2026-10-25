@@ -3194,6 +3194,8 @@ async function loadProductOverrides() {
     const bySlug = new Map((data.overrides || []).map(o => [String(o.slug || '').toLowerCase(), o]));
     window._overrideBySlug = bySlug;  // reused when the full catalogue lazy-loads
     pruneDeletedBooks(data.deleted);  // before render, so a deleted card never paints
+    // Hidden from search by the owner: still listed and for sale, never a search hit.
+    window.__searchHiddenSlugs = new Set((data.search_hidden || []).map(s => String(s || '').toLowerCase()));
     BOOKS.forEach(book => applyProductOverride(book, bySlug.get(String(book.slug || '').toLowerCase())));
     (data.custom_products || []).forEach(product => {
       const book = customProductToBook(product);
@@ -3440,6 +3442,7 @@ function fuzzyWordHit(word, field) {
 }
 
 function searchScore(book, rawQuery) {
+  if (window.__searchHiddenSlugs && window.__searchHiddenSlugs.has(String(book.slug || '').toLowerCase())) return 0;
   const relevance = window.IACBookSearch.score(book, rawQuery);
   if (!relevance) return 0;
   return relevance + Math.min(trendScore(book), 120) * 0.35 + (book.n ? 12 : 0) - editionPenalty(book) * 2;

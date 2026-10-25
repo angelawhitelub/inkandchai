@@ -2048,6 +2048,20 @@ select,input,textarea{font-size:1rem;}
             <p class="hint" id="prodFreeDeliveryMsg" style="margin-top:.65rem;"></p>
             <div id="prodFreeDeliveryList" class="hint" style="margin-top:.4rem;"></div>
           </details>
+          <details id="prodSearchHiddenEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(122,110,98,.06);">
+            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔍 Hide from site search</summary>
+            <p class="hint" style="margin:.65rem 0 0;">Stops this book coming up in the <strong>search bar</strong>: the suggestions dropdown, the results page and the homepage search. It stays <strong>for sale</strong> — its product page, collections, categories, links and ads keep working. Takes effect within about 5 minutes.</p>
+            <p class="hint" id="prodSearchHiddenCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
+            <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
+              <input type="checkbox" id="prodSearchHidden" style="accent-color:var(--gold);"/> Hide this book from search
+            </label>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-green" type="button" id="prodSearchHiddenSaveBtn" onclick="saveSearchHidden()">Save Search Setting</button>
+              <button class="btn-outline" type="button" onclick="listSearchHidden()">List all hidden books</button>
+            </div>
+            <p class="hint" id="prodSearchHiddenMsg" style="margin-top:.65rem;"></p>
+            <div id="prodSearchHiddenList" class="hint" style="margin-top:.4rem;"></div>
+          </details>
           <details id="prodSalesLineageEditor" style="display:none;margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(232,160,48,.04);">
             <summary style="cursor:pointer;color:#e8a030;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔥 Sold count from the original listing</summary>
             <p class="hint" style="margin:.65rem 0 0;">For a duplicated listing: the product page's <strong>"🔥 N sold"</strong> line adds the original listing's sales to this page's own. Duplicates made with <em>Duplicate as New Listing</em> get this automatically; use this box for older copies. Shown from 10 sold; updates within the hour.</p>
@@ -9181,6 +9195,7 @@ function selectProduct(slug) {
   loadSalesLineageEditor(row);
   loadCodRuleEditor(row);
   loadFreeDeliveryEditor(row);
+  loadSearchHiddenEditor(row);
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
 }
@@ -9999,6 +10014,98 @@ async function listFreeDelivery() {
       : 'No books have free delivery yet.';
   } catch (e) {
     box.textContent = 'Could not list: ' + e.message;
+  }
+}
+
+// ── Hide from site search (admin-search-hidden) ──────────────────────────────
+function setSearchHiddenUi(hidden, note) {
+  const cb = document.getElementById('prodSearchHidden');
+  const cur = document.getElementById('prodSearchHiddenCurrent');
+  if (cb) cb.checked = !!hidden;
+  if (cur) cur.innerHTML = note ? esc(note) : hidden
+    ? '<strong style="color:var(--gold);">Hidden from search</strong> — still for sale on its page and in collections.'
+    : 'Shows in search as normal.';
+}
+
+async function loadSearchHiddenEditor(row) {
+  const msg = document.getElementById('prodSearchHiddenMsg');
+  if (msg) msg.textContent = '';
+  const list = document.getElementById('prodSearchHiddenList');
+  if (list) list.innerHTML = '';
+  if (!row?.slug) return;
+  setSearchHiddenUi(false, 'Checking…');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-search-hidden?slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setSearchHiddenUi(data.hidden);
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setSearchHiddenUi(false, 'Could not load: ' + e.message);
+  }
+}
+
+async function setSearchHidden(slug, hidden, title) {
+  const res = await adminFetch('/.netlify/functions/admin-search-hidden', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, hidden, title: title || '' }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+async function saveSearchHidden() {
+  const slug = selectedProduct?.slug;
+  const msg = document.getElementById('prodSearchHiddenMsg');
+  const btn = document.getElementById('prodSearchHiddenSaveBtn');
+  if (!slug) { if (msg) msg.textContent = 'Select a product first.'; return; }
+  const on = !!document.getElementById('prodSearchHidden')?.checked;
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const data = await setSearchHidden(slug, on, selectedProduct?.title);
+    if (selectedProduct?.slug === slug) setSearchHiddenUi(data.hidden);
+    if (msg) msg.textContent = data.hidden
+      ? 'Saved — this book no longer comes up in search (within about 5 minutes). It is still for sale.'
+      : 'Saved — this book shows in search again (within about 5 minutes).';
+  } catch (e) {
+    if (msg) msg.textContent = 'Could not save: ' + e.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function listSearchHidden() {
+  const box = document.getElementById('prodSearchHiddenList');
+  if (!box) return;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-search-hidden');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? '<strong>' + items.length + ' book' + (items.length === 1 ? '' : 's') + ' hidden from search:</strong><br>'
+        + items.map(i => '<span style="display:inline-flex;gap:.5rem;align-items:center;margin:.15rem 0;">'
+          + '<a href="/product/' + encodeURIComponent(i.slug) + '/" target="_blank" rel="noopener">' + esc(i.title || i.slug) + '</a>'
+          + ' <button class="btn-outline" type="button" style="padding:.15rem .5rem;font-size:.68rem;" data-slug="' + esc(i.slug) + '" onclick="unhideFromList(this)">Show in search</button></span>').join('<br>')
+      : 'No books are hidden from search.';
+  } catch (e) {
+    box.textContent = 'Could not list: ' + e.message;
+  }
+}
+
+async function unhideFromList(btn) {
+  const slug = btn.getAttribute('data-slug');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await setSearchHidden(slug, false);
+    if (selectedProduct?.slug === slug) setSearchHiddenUi(false);
+    listSearchHidden();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Failed — retry';
   }
 }
 
