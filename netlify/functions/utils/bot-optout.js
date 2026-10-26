@@ -118,21 +118,25 @@ async function optedOutPhoneSet(db) {
   const LIKE = ['stop', 'unsub', 'subscribe', 'opt', 'start', 'resume', 'continue',
     'block', 'remove me', 'leave me alone', 'mat bhejo', 'band karo', 'message']
     .map(k => `message.ilike.%${k}%`).join(',');
-  const { data, error } = await db
-    .from('bot_messages')
-    .select('customer_phone,message,created_at')
-    .eq('role', 'user')
-    .or(LIKE)
-    .order('created_at', { ascending: false })
-    .limit(5000);
-  if (error) throw new Error(`opt-out lookup failed: ${error.message}`);
-
+  // Supabase returns at most 1000 rows a request, so page: a STOP on row 1001
+  // must still count.
   const decided = new Set();
-  for (const row of data || []) {
-    const key = phoneKey(row.customer_phone);
-    if (!key || decided.has(key)) continue;   // newest-first: first hit wins
-    if (isOptOutKeyword(row.message)) { decided.add(key); out.add(key); }
-    else if (isOptInKeyword(row.message)) { decided.add(key); }
+  for (let from = 0; from < 50000; from += 1000) {
+    const { data, error } = await db
+      .from('bot_messages')
+      .select('customer_phone,message,created_at')
+      .eq('role', 'user')
+      .or(LIKE)
+      .order('created_at', { ascending: false })
+      .range(from, from + 999);
+    if (error) throw new Error(`opt-out lookup failed: ${error.message}`);
+    for (const row of data || []) {
+      const key = phoneKey(row.customer_phone);
+      if (!key || decided.has(key)) continue;   // newest-first: first hit wins
+      if (isOptOutKeyword(row.message)) { decided.add(key); out.add(key); }
+      else if (isOptInKeyword(row.message)) { decided.add(key); }
+    }
+    if (!data || data.length < 1000) break;
   }
   return out;
 }

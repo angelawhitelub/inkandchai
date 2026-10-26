@@ -2065,6 +2065,26 @@ select,input,textarea{font-size:1rem;}
             <p class="hint" id="prodSearchHiddenMsg" style="margin-top:.65rem;"></p>
             <div id="prodSearchHiddenList" class="hint" style="margin-top:.4rem;"></div>
           </details>
+          <details id="prodNewTitleAlert" style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(37,211,102,.05);">
+            <summary style="cursor:pointer;color:#25d366;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">📣 New-title alert (WhatsApp)</summary>
+            <p class="hint" style="margin:.65rem 0 0;">Tells past buyers about <strong>this book</strong> on WhatsApp: everyone who bought the same author before, or (if you pick it) the same kind of book. People who already bought this book, said STOP, or got any marketing message in the cooldown window are left out, and nobody gets the same book twice. <strong>Always press Dry run first</strong> — it sends nothing and shows who would get it and what it costs.</p>
+            <div class="form-grid" style="margin-top:.75rem;">
+              <div class="form-row"><label>Who</label>
+                <select id="ntaMatch"><option value="author">Bought this author before</option><option value="author_or_category">Bought this author or this kind of book</option></select></div>
+              <div class="form-row"><label>Orders from the last (days)</label><input id="ntaDays" type="number" min="30" max="730" value="365"/></div>
+              <div class="form-row"><label>Skip anyone messaged in the last (days)</label><input id="ntaCooldown" type="number" min="0" max="60" value="7"/></div>
+              <div class="form-row"><label>Send to at most</label><input id="ntaLimit" type="number" min="1" max="1000" value="300"/></div>
+            </div>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-outline" type="button" id="ntaDryBtn" onclick="newTitleAlert('dry')">Dry run</button>
+              <button class="btn-green" type="button" id="ntaSendBtn" onclick="newTitleAlert('send')" disabled>Send to customers</button>
+            </div>
+            <div class="form-row" style="margin-top:.8rem;"><label>Check it on one phone first (optional)</label>
+              <div style="display:flex;gap:.5rem;"><input id="ntaTestPhone" placeholder="your WhatsApp number" autocomplete="off" style="flex:1;"/>
+              <button class="btn-outline" type="button" id="ntaTestBtn" onclick="newTitleAlert('test')">Send test</button></div></div>
+            <div id="ntaResult" class="hint" style="margin-top:.7rem;"></div>
+            <p class="hint" style="margin-top:.7rem;">Uses the WhatsApp template <code>new_title_alert_v1</code> (or <code>WHATSAPP_NEW_TITLE_TEMPLATE</code>), which must be approved in Meta as <em>Marketing</em> first. About ₹0.91 a message.</p>
+          </details>
           <details id="prodSalesLineageEditor" style="display:none;margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(232,160,48,.04);">
             <summary style="cursor:pointer;color:#e8a030;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔥 Sold count from the original listing</summary>
             <p class="hint" style="margin:.65rem 0 0;">For a duplicated listing: the product page's <strong>"🔥 N sold"</strong> line adds the original listing's sales to this page's own. Duplicates made with <em>Duplicate as New Listing</em> get this automatically; use this box for older copies. Shown from 10 sold; updates within the hour.</p>
@@ -9204,6 +9224,7 @@ function selectProduct(slug) {
   loadCodRuleEditor(row);
   loadFreeDeliveryEditor(row);
   loadSearchHiddenEditor(row);
+  resetNewTitleAlert();
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
 }
@@ -10044,6 +10065,98 @@ function preorderBadgeHtml(o) {
   const col = p.waiting ? '#e8a030' : '#a09080';
   const label = p.waiting ? `Pre-order · ship on/after ${when}` : `Pre-order · released ${when}`;
   return `<div title="${esc('Pre-order: ' + p.titles.join(', '))}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(232,160,48,${p.waiting ? '0.12' : '0.04'});border:1px solid ${col};color:${col};font-weight:600;">📅 ${label}</div>`;
+}
+
+// ── New-title alert (admin-new-title-alert) ──────────────────────────────────
+let _ntaDry = null;   // the dry run the Send button is allowed to act on
+
+function resetNewTitleAlert() {
+  _ntaDry = null;
+  const send = document.getElementById('ntaSendBtn');
+  if (send) { send.disabled = true; send.textContent = 'Send to customers'; }
+  const out = document.getElementById('ntaResult');
+  if (out) out.innerHTML = '';
+}
+
+function ntaOptions() {
+  const v = (id) => document.getElementById(id)?.value;
+  return { match: v('ntaMatch'), days_back: Number(v('ntaDays')), cooldown_days: Number(v('ntaCooldown')), limit: Number(v('ntaLimit')) };
+}
+
+function ntaSummaryHtml(d) {
+  const c = d.counts || {};
+  const p = d.preview_params || [];
+  const rows = [
+    ['Past customers looked at', c.customers], ['Match', c.matched], ['Already bought this book', c.already_bought],
+    ['Said STOP / unsubscribed', c.opted_out], ['Already alerted for this book', c.already_sent_this_book],
+    ['Messaged in the cooldown window', c.cooldown], ['Eligible', c.eligible],
+  ].map(([k, n]) => `<div style="display:flex;justify-content:space-between;gap:1rem;"><span>${esc(k)}</span><b>${Number(n || 0).toLocaleString('en-IN')}</b></div>`).join('');
+  const sample = (d.sample || []).map((r) => `${esc(r.phone)} · ${esc(r.name)} · ${esc(r.reason)}`).join('<br>');
+  return `<div style="border:1px solid var(--border);border-radius:10px;padding:.7rem;max-width:520px;">
+    <div style="margin-bottom:.4rem;"><b>${esc(d.book?.title || '')}</b> — ${esc(d.book?.author || 'no author')}</div>${rows}
+    <div style="margin-top:.6rem;font-size:.9rem;"><b>Will send ${Number(d.will_send || 0).toLocaleString('en-IN')}</b> (limit ${d.limit}) · about <b>₹${Number(d.est_cost_inr || 0).toLocaleString('en-IN')}</b></div>
+    ${d.blocked_reason ? `<div style="color:#e05a4e;margin-top:.5rem;">${esc(d.blocked_reason)}</div>` : ''}
+    <div style="margin-top:.6rem;color:var(--cream-dim);">Message: Hi <b>${esc(p[0] || '')}</b>! Since you've read <b>${esc(p[1] || '')}</b>… <b>${esc(p[2] || '')}</b> is now available at Ink &amp; Chai — ${esc(p[3] || '')}.</div>
+    ${sample ? `<div style="margin-top:.5rem;font-size:.75rem;">${sample}</div>` : ''}</div>`;
+}
+
+async function newTitleAlert(kind) {
+  const slug = selectedProduct?.slug;
+  const out = document.getElementById('ntaResult');
+  const send = document.getElementById('ntaSendBtn');
+  if (!slug) { out.textContent = 'Select a product first.'; return; }
+  const opts = ntaOptions();
+  const body = { slug, ...opts };
+  if (kind === 'test') {
+    body.test_phone = document.getElementById('ntaTestPhone')?.value.trim();
+    if (!body.test_phone) { out.textContent = 'Type the phone number to test on.'; return; }
+  } else if (kind === 'dry') {
+    body.dry_run = true;
+  } else {
+    if (!_ntaDry || _ntaDry.slug !== slug || JSON.stringify(_ntaDry.opts) !== JSON.stringify(opts)) {
+      resetNewTitleAlert(); out.textContent = 'The settings changed — run the dry run again first.'; return;
+    }
+    const n = _ntaDry.will_send;
+    if (!confirm(`Send the WhatsApp alert for "${selectedProduct.title || slug}" to ${n.toLocaleString('en-IN')} customers?\n\nAbout ₹${_ntaDry.cost.toLocaleString('en-IN')} in Meta charges. This cannot be undone.`)) return;
+    body.dry_run = false;
+    body.expect = n;
+  }
+  const btns = ['ntaDryBtn', 'ntaSendBtn', 'ntaTestBtn'].map((id) => document.getElementById(id));
+  btns.forEach((b) => { if (b) b.disabled = true; });
+  out.textContent = kind === 'send' ? 'Sending… keep this tab open.' : kind === 'test' ? 'Sending the test…' : 'Working out who would get it…';
+  let keepSend = false;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-new-title-alert', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== slug) return;
+    if (kind === 'test') {
+      keepSend = !!_ntaDry;
+      out.innerHTML = d.ok ? `Test sent ✓ — check WhatsApp. Variables: ${esc((d.params || []).join(' | '))}` : esc('Test failed: ' + (d.error || ('HTTP ' + res.status)));
+      return;
+    }
+    if (!res.ok) { _ntaDry = null; out.innerHTML = esc(d.error || ('HTTP ' + res.status)) + (d.counts ? ntaSummaryHtml(d) : ''); return; }
+    if (kind === 'dry') {
+      out.innerHTML = ntaSummaryHtml(d);
+      if (d.will_send > 0 && !d.blocked_reason) {
+        _ntaDry = { slug, opts, will_send: d.will_send, cost: d.est_cost_inr };
+        send.textContent = `Send to ${d.will_send.toLocaleString('en-IN')} customers`;
+        keepSend = true;
+      }
+      return;
+    }
+    _ntaDry = null;
+    out.innerHTML = `<b style="color:#25d366;">Sent ${d.sent}</b>${d.failed ? `, <b style="color:#e05a4e;">${d.failed} failed</b>` : ''}.`
+      + (d.remaining > 0 ? ` ${d.remaining} more are eligible — run the dry run again to send the next batch.` : '')
+      + ((d.sample_failures || []).length ? '<br>' + d.sample_failures.map((f) => esc(f.phone + ': ' + f.error)).join('<br>') : '');
+  } catch (e) {
+    out.textContent = 'Failed: ' + e.message + (kind === 'send' ? ' — run the dry run again to see what went out before sending more.' : '');
+  } finally {
+    btns.forEach((b) => { if (b) b.disabled = false; });
+    if (send) send.disabled = !keepSend;
+    if (!keepSend && send) send.textContent = 'Send to customers';
+  }
 }
 
 // ── Hide from site search (admin-search-hidden) ──────────────────────────────
