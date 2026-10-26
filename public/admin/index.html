@@ -10072,6 +10072,7 @@ function preorderBadgeHtml(o) {
 
 // ── New-title alert (admin-new-title-alert) ──────────────────────────────────
 let _ntaDry = null;   // the dry run the Send button is allowed to act on
+let _ntaAllowFallback = false;   // the cover could not be converted: test with the shop card
 
 function resetNewTitleAlert() {
   _ntaDry = null;
@@ -10139,6 +10140,7 @@ async function newTitleAlert(kind, _retried) {
   const body = { slug, ...opts };
   if (kind === 'test') {
     body.test_phone = document.getElementById('ntaTestPhone')?.value.trim();
+    if (_ntaAllowFallback) body.allow_fallback = true;
     if (!body.test_phone) { out.textContent = 'Type the phone number to test on.'; return; }
   } else if (kind === 'dry') {
     body.dry_run = true;
@@ -10161,6 +10163,15 @@ async function newTitleAlert(kind, _retried) {
     });
     const d = await res.json().catch(() => ({}));
     if (selectedProduct?.slug !== slug) return;
+    if (kind === 'test' && d.need_cover && d.cover?.convert_from && !_retried) {
+      out.textContent = 'Making a JPEG copy of the cover for WhatsApp…';
+      let made = true;
+      try { await ntaConvertCover(slug, d.cover.convert_from); } catch (e) { made = false; console.warn('[nta] cover convert:', e.message); }
+      _ntaAllowFallback = !made;
+      try { await newTitleAlert('test', true); } finally { _ntaAllowFallback = false; }
+      keepSend = !!_ntaDry;
+      return;
+    }
     if (kind === 'test') {
       keepSend = !!_ntaDry;
       out.innerHTML = d.ok ? `Meta accepted the test ✓ — it should arrive within a minute. Variables: ${esc((d.params || []).join(' | '))}${d.cover ? ` · Image: <a href="${esc(d.cover.url)}" target="_blank" rel="noopener">${d.cover.fallback ? 'shop card' : 'cover'}</a>` : ''}` : esc('Test failed: ' + (d.error || ('HTTP ' + res.status)));

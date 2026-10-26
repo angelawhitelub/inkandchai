@@ -86,10 +86,21 @@ function catalogueMeta(item, custom) {
   return edited && edited.author ? { ...(base || {}), author: edited.author } : base;
 }
 
+// Absolute URL; Supabase storage covers become their same-site /spimg/ path,
+// as product-page shows them, so the admin page can read them into a canvas.
 const absolute = (u) => {
   const s = String(u || '').trim();
   if (!s || s.startsWith('data:')) return '';
-  if (/^https?:\/\//i.test(s)) return s.replace(/^http:/i, 'https:');
+  if (/^https?:\/\//i.test(s)) {
+    try {
+      const supa = process.env.SUPABASE_URL ? new URL(process.env.SUPABASE_URL).host : '';
+      const url = new URL(s);
+      if (supa && url.host === supa && url.pathname.startsWith('/storage/v1/object/public/')) {
+        return `${SITE}/spimg/${url.pathname.slice('/storage/v1/object/public/'.length)}`;
+      }
+    } catch { /* not a URL: use as is */ }
+    return s.replace(/^http:/i, 'https:');
+  }
   return SITE + (s.startsWith('/') ? s : '/' + s);
 };
 
@@ -251,6 +262,10 @@ exports.handler = async (event) => {
     if (body.test_phone) {
       const phone = normalizePhone(body.test_phone);
       if (!phone) return json(400, { error: 'Test phone is not a valid Indian mobile' });
+      // Make the JPEG copy first rather than test with the shop card.
+      if (cover && cover.fallback && cover.convert_from && !body.allow_fallback) {
+        return json(409, { need_cover: true, cover, error: 'The cover needs a JPEG copy first.' });
+      }
       const params = A.templateParams({ name: 'there', reason: A.authorsOf(book.author).length ? book.author : (A.shelfOf(book.category) || 'books like this') }, book);
       const res = await sendWhatsApp({ to: phone, template, params, lang, headerImageUrl, urlButtonParam: book.slug, marketing: true });
       return json(res && res.ok ? 200 : 502, { test: true, ok: !!(res && res.ok), params, cover, error: res && !res.ok ? (res.data?.error?.message || res.error || 'send failed') : undefined });

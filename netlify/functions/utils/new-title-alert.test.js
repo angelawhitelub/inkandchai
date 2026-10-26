@@ -306,3 +306,23 @@ test('cover_jpeg that is not a JPEG is refused', async () => {
   assert.strictEqual(r.status, 500);
   assert.strictEqual(r2.length, 0);
 });
+
+test('a Supabase storage cover is read through /spimg/, and a test waits for its JPEG copy', async () => {
+  process.env.SUPABASE_URL = 'https://abc.supabase.co';
+  try {
+    const tables = baseTables();
+    tables.custom_products[0].image_url = 'https://abc.supabase.co/storage/v1/object/public/product-images/custom/court.webp';
+    images = {};
+    const sent = [];
+    const handler = loadHandler({ tables, sent, writes: [], r2: [] });
+    const dry = await call(handler, { slug: 'a-court-of-splintered-harmony', dry_run: true });
+    assert.strictEqual(dry.body.cover.convert_from, 'https://inkandchai.in/spimg/product-images/custom/court.webp');
+    const test1 = await call(handler, { slug: 'a-court-of-splintered-harmony', test_phone: '9876543210' });
+    assert.strictEqual(test1.status, 409);
+    assert.strictEqual(test1.body.need_cover, true);
+    assert.strictEqual(sent.length, 0, 'nothing sent with the shop card');
+    const test2 = await call(handler, { slug: 'a-court-of-splintered-harmony', test_phone: '9876543210', allow_fallback: true });
+    assert.strictEqual(test2.status, 200);
+    assert.strictEqual(sent.length, 1);
+  } finally { delete process.env.SUPABASE_URL; }
+});
