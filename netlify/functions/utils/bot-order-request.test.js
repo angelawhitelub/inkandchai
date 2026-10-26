@@ -102,9 +102,9 @@ test('YES places the draft exactly once, with the order id and total', async () 
   assert.equal(sent.length, 1);
 });
 
-test('a chat order during the festive sale costs what checkout charges', async () => {
+test('a chat order during the festive sale is full price: the coupon is picked on the website', async () => {
   const db = fakeDb();
-  const festive = new Date('2026-10-25T08:00:00Z');
+  const festive = new Date('2026-10-28T08:00:00Z');
   let amount = 0;
   const { d } = deps(db, {
     now: () => festive,
@@ -112,15 +112,13 @@ test('a chat order during the festive sale costs what checkout charges', async (
     createPaymentLink: async (o) => { amount = o.amountPaise; return { short_url: 'https://rzp.io/x', id: 'plink_1' }; },
   });
   const drafted = await draftOrderRequest(d, PHONE, { ...ARGS, payment_mode: 'prepaid' });
-  // Prepaid above ₹399 also ships free (utils/free-delivery), so ₹500 − ₹50.
-  assert.equal(drafted.summary.sale_discount_rs, 50);
-  assert.equal(drafted.summary.total_rs, 450);
-  assert.equal(db.table[0].amount_paise, 45000);
+  // Prepaid above ₹399 ships free (utils/free-delivery); FESTIVE7 is opt-in.
+  assert.equal(drafted.summary.sale_discount_rs, undefined);
+  assert.equal(drafted.summary.total_rs, 500);
   db.table[0].created_at = festive.toISOString();
   const yes = await confirmDraftOrder(d, PHONE, 'confirm');
-  assert.equal(amount, 45000, 'the payment link asks for the sale price');
-  assert.match(yes.reply, /₹450 \(books ₹500 − Dussehra & Diwali Sale 10% off ₹50/);
-  assert.doesNotMatch(yes.reply, /shipping ₹40/);
+  assert.equal(amount, 50000);
+  assert.doesNotMatch(yes.reply, /Diwali Sale/);
 });
 
 test('a COD chat order still pays shipping below ₹499; prepaid above ₹399 does not', async () => {
@@ -131,8 +129,7 @@ test('a COD chat order still pays shipping below ₹499; prepaid above ₹399 do
       priceBooksList: async () => ({ items: [], subtotalRs: 450, shippingRs: 40, totalRs: 490, totalPaise: 49000, unmatched: [] }),
     });
     const drafted = await draftOrderRequest(d, PHONE, { ...ARGS, payment_mode: mode });
-    // ₹450 also earns the festive 10% (₹45) — subtract it from both.
-    assert.equal(drafted.summary.total_rs, total - 45, mode);
+    assert.equal(drafted.summary.total_rs, total, mode);
   }
 });
 

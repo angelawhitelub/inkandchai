@@ -1,10 +1,11 @@
 /**
  * Dussehra & Diwali Sale — the storefront dressing (20 Oct – 10 Nov 2026 IST).
  *
- * Flat 10% off every order above ₹399, applied automatically on every payment
- * mode. The till is netlify/functions/utils/site-sale.js (FESTIVE10) and the
- * checkout page mirrors it; this file only advertises it, so its dates,
- * threshold and percentage MUST match those two.
+ * 7% off every order above ₹499 on every payment mode, with coupon FESTIVE7.
+ * It is not automatic: "Apply coupon" on a product page stores the code where
+ * the checkout reads it (iac_checkout_coupon), or the customer types it there.
+ * The till is netlify/functions/utils/site-sale.js and the checkout page
+ * mirrors it, so the code, dates, threshold and percentage MUST match those two.
  *
  * Loaded on every storefront page through the IAC-THEME block (site_theme.py,
  * and utils/site-theme.js for function-rendered pages). Outside the window it
@@ -13,16 +14,16 @@
  *
  *   • a festive bar with a live countdown at the top of every page
  *   • a hero with a big countdown above the homepage carousel
- *   • on a product page, the price after 10% (or how much more to add)
+ *   • on a product page, the price after the coupon and an "Apply coupon" button
  *   • a one-line reminder in the cart drawer
  */
 (function () {
   'use strict';
 
   var SALE = {
-    code: 'FESTIVE10',
-    percent: 10,
-    threshold: 399,                                   // strictly above: ₹400 qualifies
+    code: 'FESTIVE7',
+    percent: 7,
+    threshold: 499,                                   // strictly above: ₹500 qualifies
     start: Date.parse('2026-10-19T18:30:00Z'),        // 20 Oct 2026, 00:00 IST
     end: Date.parse('2026-11-10T18:29:59Z'),          // 10 Nov 2026, 23:59:59 IST
     diwali: Date.parse('2026-11-07T18:30:00Z'),       // 8 Nov 2026, 00:00 IST
@@ -96,6 +97,9 @@
     '.iacf-pdp-price{font-size:1.25rem;font-weight:800;color:#8e1c13;margin-top:.2rem;}',
     '.iacf-pdp-price small{font-size:.8rem;font-weight:600;color:inherit;opacity:.85;margin-left:.35rem;}',
     '.iacf-pdp-note{font-size:.82rem;margin-top:.2rem;opacity:.9;}',
+    '.iacf-pdp-apply{display:inline-flex;align-items:center;gap:.35rem;margin-top:.5rem;padding:.45rem .95rem;border-radius:999px;border:1.5px dashed #a3360f;background:#ffd56b;color:#4a0d0d;font:inherit;font-size:.82rem;font-weight:800;cursor:pointer;}',
+    '.iacf-pdp-apply:hover{background:#ffe7a0;}',
+    '.iacf-pdp-apply[aria-pressed="true"]{border-style:solid;background:#e9f4e4;color:#2f6b28;border-color:#5d9b55;cursor:default;}',
     '.iacf-pdp-clock{font-size:.8rem;margin-top:.35rem;font-weight:700;font-variant-numeric:tabular-nums;color:#a3360f;}',
     'html:not(.iac-light):not([data-theme="light"]) .iacf-pdp-head,html:not(.iac-light):not([data-theme="light"]) .iacf-pdp-clock{color:#ffb35a;}',
     'html:not(.iac-light):not([data-theme="light"]) .iacf-pdp-price{color:#ffd56b;}',
@@ -125,8 +129,8 @@
     bar.setAttribute('aria-label', 'Dussehra and Diwali Sale');
     bar.innerHTML =
       '<b class="iacf-phase">' + p.head + '</b><span class="iacf-sep">·</span>' +
-      '<span>Flat <b>10% off</b> on orders above ₹399</span>' +
-      '<span class="iacf-hide-sm"><span class="iacf-sep">·</span><span class="iacf-sub">Auto-applied at checkout</span></span>' +
+      '<span><b>' + SALE.percent + '% off</b> on orders above ₹' + SALE.threshold + '</span>' +
+      '<span class="iacf-hide-sm"><span class="iacf-sep">·</span><span class="iacf-sub">Use code ' + SALE.code + '</span></span>' +
       '<span class="iacf-sep">·</span><span class="iacf-hide-sm">Ends in</span>' +
       '<span class="iacf-clock" aria-live="off"><span data-iacf="d">--</span>d<span data-iacf="h">--</span>:<span data-iacf="m">--</span>:<span data-iacf="s">--</span></span>' +
       (isCheckout ? '' : '<a class="iacf-shop" href="/books/">Shop now</a>') +
@@ -152,7 +156,7 @@
         '<div>' +
           '<div class="iacf-eyebrow">' + p.head + ' · ' + p.sub + '</div>' +
           '<h2 class="iacf-title">Dussehra &amp; Diwali <em>Sale</em></h2>' +
-          '<p class="iacf-lead">Flat <b>10% off</b> on every order above <b>₹399</b> — applied automatically at checkout, on Pay Now and Cash on Delivery. Gift a book this festive season.</p>' +
+          '<p class="iacf-lead"><b>' + SALE.percent + '% off</b> on every order above <b>₹' + SALE.threshold + '</b> with code <b>' + SALE.code + '</b> — tap “Apply coupon” on any book page. Valid on Pay Now and Cash on Delivery. Gift a book this festive season.</p>' +
           '<a class="iacf-cta" href="/books/">Shop the Festive Sale →</a>' +
         '</div>' +
         '<div class="iacf-timer">' +
@@ -196,23 +200,46 @@
     renderProductBox();
   }
 
-  var lastPrice = -1;
+  // The checkout's coupon slot (COUPON_KEY / SCRATCH_KEY in the checkout page).
+  var COUPON_KEY = 'iac_checkout_coupon';
+  function couponApplied() {
+    try { return String(localStorage.getItem(COUPON_KEY) || '').toUpperCase() === SALE.code; } catch (e) { return false; }
+  }
+  function applyCoupon() {
+    try {
+      localStorage.setItem(COUPON_KEY, SALE.code);
+      localStorage.removeItem('iac_scratch_card');      // one code at a time
+    } catch (e) { /* private mode: they can still type it at checkout */ }
+    lastRender = '';
+    renderProductBox();
+    var note = document.querySelector('.iacf-cart');
+    if (note) { note.remove(); addCartNote(); }
+  }
+
+  var lastRender = '';
   function renderProductBox() {
     var body = document.querySelector('.iacf-pdp .iacf-pdp-body');
     if (!body) return;
     var price = productPrice();
-    if (price === lastPrice) return;
-    lastPrice = price;
+    var applied = couponApplied();
+    var key = price + '|' + applied;
+    if (key === lastRender) return;
+    lastRender = key;
+    var html;
     if (price > SALE.threshold) {
       var off = Math.floor(price * SALE.percent / 100);
-      body.innerHTML = '<div class="iacf-pdp-price">' + inr(price - off) + '<small>after 10% off (save ' + inr(off) + ')</small></div>' +
-        '<div class="iacf-pdp-note">Applied automatically at checkout — no code needed.</div>';
+      html = '<div class="iacf-pdp-price">' + inr(price - off) + '<small>with ' + SALE.code + ' (save ' + inr(off) + ')</small></div>';
     } else {
       var more = price > 0 ? (SALE.threshold + 1) - price : 0;
-      body.innerHTML = '<div class="iacf-pdp-note"><b>Flat 10% off</b> your whole order above ₹399' +
-        (more > 0 ? ' — add ' + inr(more) + ' more in books to unlock it.' : '.') +
-        ' Applied automatically at checkout.</div>';
+      html = '<div class="iacf-pdp-note"><b>' + SALE.percent + '% off</b> your whole order above ₹' + SALE.threshold +
+        (more > 0 ? ' — add ' + inr(more) + ' more in books to unlock it.' : '.') + '</div>';
     }
+    html += applied
+      ? '<button type="button" class="iacf-pdp-apply" aria-pressed="true" disabled>✓ ' + SALE.code + ' applied — ' + SALE.percent + '% off at checkout</button>'
+      : '<button type="button" class="iacf-pdp-apply" aria-pressed="false">🏷️ Apply coupon ' + SALE.code + '</button>';
+    body.innerHTML = html;
+    var btn = body.querySelector('.iacf-pdp-apply:not([disabled])');
+    if (btn) btn.addEventListener('click', applyCoupon);
   }
 
   // ── Cart drawer ────────────────────────────────────────────────────────────
@@ -221,7 +248,8 @@
     if (!footer || footer.querySelector('.iacf-cart')) return;
     var note = document.createElement('div');
     note.className = 'iacf-cart';
-    note.innerHTML = '🪔 <b>Festive Sale:</b> 10% off is applied automatically at checkout on orders above ₹399.';
+    note.innerHTML = '🪔 <b>Festive Sale:</b> ' + SALE.percent + '% off orders above ₹' + SALE.threshold + ' with code <b>' + SALE.code + '</b>' +
+      (couponApplied() ? ' — applied, you will see it at checkout.' : ' — tap “Apply coupon” on a book page, or enter it at checkout.');
     footer.insertBefore(note, footer.firstChild);
   }
 

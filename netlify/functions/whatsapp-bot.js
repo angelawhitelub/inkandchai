@@ -1106,6 +1106,13 @@ function saleInstructions(now = Date.now()) {
   const sale = activeSiteSale(now);
   if (!sale) return '';
   const ends = new Date(sale.endsAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
+  if (sale.optIn) {
+    return `\n\nSALE ON NOW — ${sale.name}, until ${ends}:\n`
+      + `- ${sale.percent}% off EVERY order above ₹${sale.threshold} (₹${sale.threshold + 1} and up) with coupon code ${sale.code} — on prepaid, Cash on Delivery AND partial COD. It is NOT automatic: on the website the customer taps "Apply coupon ${sale.code}" on any book page, or enters ${sale.code} in the coupon box at checkout.\n`
+      + `- It does not stack with the coupons above: one code per order.\n`
+      + `- Orders placed in this chat do NOT get it. If someone wants the sale price, send them to the book on the website to apply ${sale.code} and order there.\n`
+      + `- Mention it when someone asks about discounts, offers or prices. Do not push it in complaints, tracking or refund chats.`;
+  }
   return `\n\nSALE ON NOW — ${sale.name} (${sale.code}), until ${ends}:\n`
     + `- ${sale.percent}% off EVERY order above ₹${sale.threshold} (₹${sale.threshold + 1} and up) — on prepaid, Cash on Delivery AND partial COD. It is applied automatically at checkout; no code is needed (${sale.code} is the sale's name if they ask for a code).\n`
     + `- It does not stack with the coupons above: on a prepaid order the checkout applies whichever is bigger (e.g. SAVE15 on ₹1499+ beats the sale).\n`

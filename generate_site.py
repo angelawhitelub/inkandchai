@@ -8567,22 +8567,27 @@ function freedomIsLive() {
   return Date.now() <= new Date(COUPONS.FREEDOM.expiresAt).getTime();
 }
 
-// Dussehra & Diwali Sale: 10% off every order above ₹399, every payment mode,
-// automatic. MUST match FESTIVE10 in netlify/functions/utils/site-sale.js, the
-// till -- a total that differs from the server's is refused with a 409.
-const FESTIVE_SALE = { code: 'FESTIVE10', percent: 10, threshold: 399, startsAt: '2026-10-19T18:30:00Z', endsAt: '2026-11-10T18:29:59Z' };
+// Dussehra & Diwali Sale: 7% off every order above ₹499, every payment mode,
+// only when the customer picked the code ("Apply coupon" on a product page,
+// or typed here). MUST match FESTIVE7 in netlify/functions/utils/site-sale.js,
+// the till -- a total that differs from the server's is refused with a 409.
+const FESTIVE_SALE = { code: 'FESTIVE7', percent: 7, threshold: 499, startsAt: '2026-10-19T18:30:00Z', endsAt: '2026-11-10T18:29:59Z' };
 function festiveIsLive() {
   const t = Date.now();
   return t >= new Date(FESTIVE_SALE.startsAt).getTime() && t <= new Date(FESTIVE_SALE.endsAt).getTime();
 }
 function festiveSaleDiscount(subtotal) {
-  if (!festiveIsLive() || !(subtotal > FESTIVE_SALE.threshold)) return { code: '', discount: 0, message: '' };
-  return { code: FESTIVE_SALE.code, discount: Math.floor(subtotal * FESTIVE_SALE.percent / 100), message: '🪔 Dussehra & Diwali Sale — 10% off applied automatically.' };
+  const code = FESTIVE_SALE.code;
+  if (!festiveIsLive()) return { code, discount: 0, message: `${code} has ended.` };
+  if (!(subtotal > FESTIVE_SALE.threshold)) {
+    return { code, discount: 0, message: `Add ₹${(FESTIVE_SALE.threshold + 1 - subtotal).toLocaleString('en-IN')} more to use ${code} (orders above ₹${FESTIVE_SALE.threshold}).` };
+  }
+  return { code, discount: Math.floor(subtotal * FESTIVE_SALE.percent / 100), message: `🪔 ${code} applied — ${FESTIVE_SALE.percent}% off for the Dussehra & Diwali Sale.` };
 }
 
 /** The hint under the coupon box, which must not promise an ended sale. */
 function defaultCouponHint() {
-  if (festiveIsLive()) return '🪔 Dussehra & Diwali Sale: 10% off applies automatically when your subtotal is above ₹399. A prepaid code that saves more is used instead.';
+  if (festiveIsLive()) return `🪔 Dussehra & Diwali Sale: ${FESTIVE_SALE.percent}% off orders above ₹${FESTIVE_SALE.threshold} with ${FESTIVE_SALE.code} — tap "Apply coupon" on any book page, or enter it here.`;
   return freedomIsLive()
     ? '🇮🇳 Add books until the subtotal is above ₹399 and FREEDOM will apply 15% off automatically.'
     : 'Prepaid orders unlock the offers above. Pick one, or enter a private code.';
@@ -8615,14 +8620,9 @@ function couponDiscount(cart, method = 'online') {
     return { code: 'FREEDOM', discount, message: '🇮🇳 FREEDOM automatically applied — 15% off your books.' };
   }
 
-  // Dussehra & Diwali Sale: automatic and never stacked. A chosen code wins
-  // only on a prepaid order where it saves more (the server does the same).
-  const festive = festiveSaleDiscount(subtotal);
-  if (festive.discount > 0) {
-    if (method === 'cod') return festive;
-    const chosen = chosenCouponDiscount(cart, method, subtotal, code);
-    return chosen.discount > festive.discount ? chosen : festive;
-  }
+  // Dussehra & Diwali Sale: only when its code is the one picked, on every
+  // payment mode. One code at a time, so it never stacks.
+  if (code === FESTIVE_SALE.code) return festiveSaleDiscount(subtotal);
   return chosenCouponDiscount(cart, method, subtotal, code);
 }
 
@@ -8872,7 +8872,7 @@ async function applyCoupon() {
   }
   // Product-specific codes are fetched on demand as well as shown in the
   // dropdown. Payment functions independently verify the product and price.
-  if (!COUPONS[code]) {
+  if (!COUPONS[code] && code !== FESTIVE_SALE.code) {
     if (msg) { msg.textContent = 'Checking coupon…'; msg.style.color = 'var(--cream-dim)'; }
     await loadManagedPromotionCode(code);
     if (!COUPONS[code]) await loadProductCoupons(getCart(), code);
@@ -9620,7 +9620,7 @@ async function doPartialPayment(addr) {
   // (same UX as doCOD).
   if (appliedCouponCode) {
     const codCheck = couponDiscount(cart, 'cod');
-    if (codCheck.discount <= 0 && codCheck.message) {
+    if (codCheck.discount <= 0 && codCheck.message && appliedCouponCode !== FESTIVE_SALE.code) {
       const removed = appliedCouponCode;
       appliedCouponCode = '';
       try { localStorage.removeItem(COUPON_KEY); } catch (e) {}
@@ -9663,7 +9663,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
         cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
         payment_mode: isPartial ? 'partial_cod' : 'online',
-        coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
+        coupon: isPartial ? partial.couponCode : (totals.discount > 0 ? totals.couponCode : ''),
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
         ad_click: (window.iacAdClick ? window.iacAdClick() : null),
       }),
@@ -9719,7 +9719,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
       body: JSON.stringify({
         cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
-        coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
+        coupon: isPartial ? partial.couponCode : (totals.discount > 0 ? totals.couponCode : ''),
         payment_mode: isPartial ? 'partial_cod' : 'full',
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
         notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, shipping_address: addr.address || '', books: cart.map(i=>i.title||'').filter(Boolean).join(', ').slice(0,200) },
@@ -9800,7 +9800,7 @@ async function doCOD(addr) {
   // checkout with an alert until the user removed the code by hand.
   if (appliedCouponCode) {
     const codCheck = couponDiscount(cart, 'cod');
-    if (codCheck.discount <= 0 && codCheck.message) {
+    if (codCheck.discount <= 0 && codCheck.message && appliedCouponCode !== FESTIVE_SALE.code) {
       const removed = appliedCouponCode;
       appliedCouponCode = '';
       try { localStorage.removeItem(COUPON_KEY); } catch (e) {}
@@ -9824,6 +9824,7 @@ async function doCOD(addr) {
         cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
         amount: totals.total, shipping: totals.shipping,
+        coupon: totals.discount > 0 ? totals.couponCode : '',
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
         ad_click: (window.iacAdClick ? window.iacAdClick() : null),
       }),

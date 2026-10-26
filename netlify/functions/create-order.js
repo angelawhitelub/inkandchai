@@ -56,10 +56,10 @@ function staticCouponDiscount(subtotal, rawCode) {
 }
 
 async function resolveCoupon(supabase, cart, subtotal, rawCode, { saleOnly = false } = {}) {
-  // A site-wide sale (utils/site-sale) is automatic on every payment mode and
-  // never stacks with a code: the customer gets whichever is worth more.
-  // Partial COD takes only the sale.
-  const saleHit = siteSaleDiscount(subtotal);
+  // A site-wide sale (utils/site-sale) runs on every payment mode -- an opt-in
+  // one only when rawCode is its code -- and never stacks with a code: the
+  // customer gets whichever is worth more. Partial COD takes only the sale.
+  const saleHit = siteSaleDiscount(subtotal, Date.now(), rawCode);
   if (saleOnly) return saleHit;
   return betterOfSale(saleHit, await resolveChosenCoupon(supabase, cart, subtotal, rawCode));
 }

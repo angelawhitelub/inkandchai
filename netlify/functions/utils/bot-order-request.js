@@ -119,6 +119,7 @@ function rupees(paise) { return Math.round(Number(paise || 0) / 100); }
 // The site-wide sale (utils/site-sale.js) on a bot order, so a chat order costs
 // what the same books cost at checkout. `at` is when the draft was priced: the
 // confirmation re-prices only for the breakdown and must match the stored total.
+// An opt-in sale (a coupon picked on the website) never applies here.
 function withSiteSale(pricing, at) {
   const sale = siteSaleDiscount(pricing.subtotalRs, at);
   if (!sale.discount) return pricing;
