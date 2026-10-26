@@ -2065,7 +2065,7 @@ select,input,textarea{font-size:1rem;}
             <p class="hint" id="prodSearchHiddenMsg" style="margin-top:.65rem;"></p>
             <div id="prodSearchHiddenList" class="hint" style="margin-top:.4rem;"></div>
           </details>
-          <details id="prodNewTitleAlert" style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(37,211,102,.05);">
+          <details id="prodNewTitleAlert" ontoggle="if (this.open) loadNtaReport()" style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(37,211,102,.05);">
             <summary style="cursor:pointer;color:#25d366;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">📣 New-title alert (WhatsApp)</summary>
             <p class="hint" style="margin:.65rem 0 0;">Tells past buyers about <strong>this book</strong> on WhatsApp: everyone who bought the same author before, or (if you pick it) the same kind of book. People who already bought this book, said STOP, or got any marketing message in the cooldown window are left out, and nobody gets the same book twice. <strong>Always press Dry run first</strong> — it sends nothing and shows who would get it and what it costs.</p>
             <div class="form-grid" style="margin-top:.75rem;">
@@ -2086,6 +2086,10 @@ select,input,textarea{font-size:1rem;}
               <div style="display:flex;gap:.5rem;"><input id="ntaTestPhone" placeholder="your WhatsApp number" autocomplete="off" style="flex:1;"/>
               <button class="btn-outline" type="button" id="ntaTestBtn" onclick="newTitleAlert('test')">Send test</button></div></div>
             <div id="ntaResult" class="hint" style="margin-top:.7rem;"></div>
+            <div style="margin-top:.8rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">
+              <button class="btn-outline" type="button" onclick="loadNtaReport()">Delivery report</button>
+              <span class="hint" style="margin:0;">What WhatsApp actually delivered for this book. Updates as phones receive and read it.</span></div>
+            <div id="ntaReport" class="hint" style="margin-top:.5rem;"></div>
             <p class="hint" style="margin-top:.7rem;">Sends the book's cover as the picture on top. Uses the WhatsApp template <code>new_title_alert_v1</code> (or <code>WHATSAPP_NEW_TITLE_TEMPLATE</code>), which must be approved in Meta as <em>Marketing</em> with an <em>Image</em> header first. About ₹0.91 a message.</p>
           </details>
           <details id="prodSalesLineageEditor" style="display:none;margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(232,160,48,.04);">
@@ -10074,8 +10078,47 @@ function preorderBadgeHtml(o) {
 let _ntaDry = null;   // the dry run the Send button is allowed to act on
 let _ntaAllowFallback = false;   // the cover could not be converted: test with the shop card
 
+const NTA_CODES = {
+  131049: 'Meta held it back (its limit on marketing messages per person)',
+  131026: 'not on WhatsApp / could not receive',
+  131050: 'the customer stopped marketing messages from us',
+  131047: 'outside the 24-hour window',
+  131053: 'the cover image could not be downloaded',
+};
+
+async function loadNtaReport() {
+  const slug = selectedProduct?.slug;
+  const box = document.getElementById('ntaReport');
+  if (!slug || !box) return;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-new-title-alert', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug, report: true }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== slug) return;
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    const r = d.report || {};
+    if (!r.attempted) { box.textContent = 'Not sent for this book yet.'; return; }
+    const n = (x) => Number(x || 0).toLocaleString('en-IN');
+    const codes = Object.entries(r.failed_codes || {}).map(([c, k]) => `<div style="padding-left:1rem;">${n(k)} × ${esc(NTA_CODES[c] || ('error ' + c))}</div>`).join('');
+    box.innerHTML = `<div style="border:1px solid var(--border);border-radius:10px;padding:.7rem;max-width:520px;">
+      <div><b>${n(r.attempted)}</b> tried · <b>${n(r.accepted)}</b> accepted by Meta${d.last_sent_at ? ` · last sent ${esc(new Date(d.last_sent_at).toLocaleString('en-IN'))}` : ''}</div>
+      <div style="margin-top:.4rem;color:#25d366;"><b>${n(r.delivered)}</b> delivered (${n(r.read)} read)</div>
+      ${r.failed_by_meta ? `<div style="margin-top:.3rem;color:#e05a4e;"><b>${n(r.failed_by_meta)}</b> not delivered:</div>${codes}` : ''}
+      ${r.failed_at_send ? `<div style="margin-top:.3rem;color:#e05a4e;"><b>${n(r.failed_at_send)}</b> refused at send time</div>` : ''}
+      ${r.waiting ? `<div style="margin-top:.3rem;color:var(--cream-dim);">${n(r.waiting)} waiting for a receipt (phone off, or receipts still coming in)</div>` : ''}
+      <div style="margin-top:.4rem;font-size:.75rem;color:var(--cream-dim);">Meta only charges for delivered messages. Customers it held back are not tried again for this book.</div></div>`;
+  } catch (e) {
+    box.textContent = 'Could not load: ' + e.message;
+  }
+}
+
 function resetNewTitleAlert() {
   _ntaDry = null;
+  const rep = document.getElementById('ntaReport');
+  if (rep) rep.innerHTML = '';
+  setTimeout(() => { if (document.getElementById('prodNewTitleAlert')?.open) loadNtaReport(); }, 0);
   const send = document.getElementById('ntaSendBtn');
   if (send) { send.disabled = true; send.textContent = 'Send to customers'; }
   const out = document.getElementById('ntaResult');
@@ -10193,8 +10236,10 @@ async function newTitleAlert(kind, _retried) {
       return;
     }
     _ntaDry = null;
+    setTimeout(loadNtaReport, 60000);
     out.innerHTML = `<b style="color:#25d366;">Sent ${d.sent}</b>${d.failed ? `, <b style="color:#e05a4e;">${d.failed} failed</b>` : ''}.`
       + (d.remaining > 0 ? ` ${d.remaining} more are eligible — run the dry run again to send the next batch.` : '')
+      + ' Meta can still hold some back after accepting them — check the Delivery report below in a few minutes.'
       + ((d.sample_failures || []).length ? '<br>' + d.sample_failures.map((f) => esc(f.phone + ': ' + f.error)).join('<br>') : '');
   } catch (e) {
     out.textContent = 'Failed: ' + e.message + (kind === 'send' ? ' — run the dry run again to see what went out before sending more.' : '');

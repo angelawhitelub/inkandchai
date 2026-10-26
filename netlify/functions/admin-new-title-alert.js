@@ -34,6 +34,7 @@ const { releasesFor } = require('./utils/release-date');
 const crypto = require('crypto');
 const { r2PutObject, r2Config, r2Configured } = require('./utils/r2-put');
 const A = require('./utils/new-title-alert');
+const { summarize } = require('./utils/campaign-receipts');
 const CATALOGUE = require('../../data/ALL_BOOKS.json');
 
 const CORS = {
@@ -57,15 +58,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const mask = (p) => String(p).slice(0, 4) + '****' + String(p).slice(-3);
 
 // Supabase answers 1000 rows at most; a list cut short would re-message people.
-async function phoneKeys(query) {
-  const out = new Set();
+async function allRows(query) {
+  const rows = [];
   for (let from = 0; from < 100000; from += 1000) {
     const { data, error } = await query().range(from, from + 999);
-    if (error) return { keys: out, error: error.message };
-    for (const r of data || []) out.add(phoneKey(r.customer_phone));
+    if (error) return { rows, error: error.message };
+    rows.push(...(data || []));
     if (!data || data.length < 1000) break;
   }
-  return { keys: out, error: '' };
+  return { rows, error: '' };
+}
+async function phoneKeys(query, keep = () => true) {
+  const { rows, error } = await allRows(query);
+  return { keys: new Set(rows.filter(keep).map((r) => phoneKey(r.customer_phone))), error };
 }
 
 // Author/category for a past cart line: catalogue by slug, then by title.
@@ -245,6 +250,14 @@ exports.handler = async (event) => {
 
   try {
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    // What Meta did with this book's alerts (receipts from whatsapp-bot).
+    if (body.report) {
+      const { rows, error } = await allRows(() => db.from('whatsapp_campaign_deliveries')
+        .select('status,metadata,created_at').eq('campaign_key', campaignKey).order('id'));
+      if (error) return json(500, { error: 'Delivery ledger unreadable: ' + error });
+      const last = rows.reduce((m, r) => (r.created_at > m ? r.created_at : m), '');
+      return json(200, { report: summarize(rows), last_sent_at: last || null });
+    }
     const book = await loadBook(db, slug);
     if (!book) return json(404, { error: 'No live product with that slug' });
     if (book.sold_out) return json(400, { error: 'This book is marked sold out — restock it before announcing it.' });
@@ -282,7 +295,10 @@ exports.handler = async (event) => {
     if (unsub.error) listError = listError || unsub.error;
     const unsubscribed = unsub.keys;
     // The ledger: who already had this book, and who had any marketing lately.
-    const prior = await phoneKeys(() => db.from('whatsapp_campaign_deliveries').select('customer_phone').eq('campaign_key', campaignKey).eq('status', 'sent').order('id'));
+    // Meta accepted it (even if it later dropped it, e.g. its 131049 marketing
+    // limit): do not try that customer again for this book.
+    const prior = await phoneKeys(() => db.from('whatsapp_campaign_deliveries').select('customer_phone,status,metadata').eq('campaign_key', campaignKey).order('id'),
+      (r) => r.status === 'sent' || !!(r.metadata && r.metadata.meta_failed));
     const already = prior.keys;
     let ledgerError = prior.error;
     let recent = new Set();
@@ -327,16 +343,16 @@ exports.handler = async (event) => {
       const results = await Promise.all(batch.map(async (r) => {
         try {
           const res = await sendWhatsApp({ to: r.phone, template, params: A.templateParams(r, book), lang, headerImageUrl, urlButtonParam: book.slug, marketing: true });
-          return { r, ok: !!(res && res.ok), error: res && !res.ok ? (res.data?.error?.message || res.error || 'send failed') : '' };
+          return { r, ok: !!(res && res.ok), wamid: res?.data?.messages?.[0]?.id || null, error: res && !res.ok ? (res.data?.error?.message || res.error || 'send failed') : '' };
         } catch (e) { return { r, ok: false, error: e.message }; }
       }));
-      const rows = results.map(({ r, ok, error }) => {
+      const rows = results.map(({ r, ok, wamid, error }) => {
         if (ok) sent++; else { failed++; if (failures.length < 10) failures.push({ phone: mask(r.phone), error }); }
         return {
           campaign_key: campaignKey, customer_phone: r.phone, template_name: template,
           status: ok ? 'sent' : 'failed', error: ok ? null : String(error).slice(0, 1000),
           product_url: `https://inkandchai.in/product/${book.slug}/`,
-          metadata: { source: 'new_title', reason: r.reason, via: r.via, match },
+          metadata: { source: 'new_title', reason: r.reason, via: r.via, match, ...(wamid ? { wamid } : {}) },
         };
       });
       const { error: logError } = await db.from('whatsapp_campaign_deliveries').upsert(rows, { onConflict: 'campaign_key,customer_phone' });

@@ -20,6 +20,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { recordCampaignReceipts } = require('./utils/campaign-receipts');
 const { normalizePhone } = require('./utils/whatsapp');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
@@ -1924,6 +1925,13 @@ exports.handler = async (event) => {
   // Statuses ride along in the same POST as inbound messages; log them before
   // the inbound loop so a throw below cannot swallow them.
   try { logStatusUpdates(body); } catch (e) { console.error('logStatusUpdates:', e.message); }
+  // Write delivered / read / failed back onto marketing ledger rows (new-title
+  // alerts), so the admin sees what Meta actually delivered.
+  if (body?.entry?.some((e) => e?.changes?.some((c) => c?.value?.statuses?.length))) {
+    try {
+      await recordCampaignReceipts(createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), body);
+    } catch (e) { console.error('recordCampaignReceipts:', e.message); }
+  }
 
   try {
     // Meta may batch several messages into one delivery, and may send more than

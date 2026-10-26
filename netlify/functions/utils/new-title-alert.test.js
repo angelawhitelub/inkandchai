@@ -126,7 +126,7 @@ function loadHandler({ tables, sent, writes, sendOk = true, r2 = null }) {
     './utils/release-date': { releasesFor: async () => ({}) },
     './utils/whatsapp': {
       normalizePhone: (p) => { const d = String(p || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? '91' + d : null; },
-      sendWhatsApp: async (m) => { sent.push(m); return sendOk ? { ok: true } : { ok: false, error: 'template not approved' }; },
+      sendWhatsApp: async (m) => { sent.push(m); return sendOk ? { ok: true, data: { messages: [{ id: 'wamid.' + sent.length }] } } : { ok: false, error: 'template not approved' }; },
     },
     '../../data/ALL_BOOKS.json': [],
   };
@@ -193,6 +193,7 @@ test('send needs the confirmed count, then logs every delivery', async () => {
   assert.strictEqual(writes[0].campaign_key, 'new-title:a-court-of-splintered-harmony');
   assert.strictEqual(writes[0].status, 'sent');
   assert.notStrictEqual(writes[0].metadata.pilot, true, 'must not eat the broadcast pilot cap');
+  assert.strictEqual(writes[0].metadata.wamid, 'wamid.1');
 });
 
 test('already alerted for this book → not again', async () => {
@@ -325,4 +326,20 @@ test('a Supabase storage cover is read through /spimg/, and a test waits for its
     assert.strictEqual(test2.status, 200);
     assert.strictEqual(sent.length, 1);
   } finally { delete process.env.SUPABASE_URL; }
+});
+
+test('the send stores Meta\'s message id; held-back customers are not retried for the book; report sums it', async () => {
+  const tables = baseTables();
+  tables.bot_messages = [];
+  tables.whatsapp_campaign_deliveries = [
+    { id: 5, campaign_key: 'new-title:a-court-of-splintered-harmony', customer_phone: '919000000002', status: 'failed', created_at: '2026-01-01T00:00:00Z', metadata: { wamid: 'w', meta_failed: true, failed_code: 131049 } },
+  ];
+  const sent = [], writes = [];
+  const handler = loadHandler({ tables, sent, writes });
+  // stub returns no message id; give it one
+  const dry = await call(handler, { slug: 'a-court-of-splintered-harmony', dry_run: true });
+  assert.strictEqual(dry.body.counts.already_sent_this_book, 1);
+  const rep = await call(handler, { slug: 'a-court-of-splintered-harmony', report: true });
+  assert.strictEqual(rep.body.report.failed_by_meta, 1);
+  assert.deepStrictEqual(rep.body.report.failed_codes, { 131049: 1 });
 });
