@@ -10136,7 +10136,7 @@ async function newTitleAlert(kind) {
     if (selectedProduct?.slug !== slug) return;
     if (kind === 'test') {
       keepSend = !!_ntaDry;
-      out.innerHTML = d.ok ? `Test sent ✓ — check WhatsApp. Variables: ${esc((d.params || []).join(' | '))}` : esc('Test failed: ' + (d.error || ('HTTP ' + res.status)));
+      out.innerHTML = d.ok ? `Meta accepted the test ✓ — it should arrive within a minute. Variables: ${esc((d.params || []).join(' | '))}${d.cover ? ` · Image: <a href="${esc(d.cover.url)}" target="_blank" rel="noopener">${d.cover.fallback ? 'shop card' : 'cover'}</a>` : ''}` : esc('Test failed: ' + (d.error || ('HTTP ' + res.status)));
       return;
     }
     if (!res.ok) { _ntaDry = null; out.innerHTML = esc(d.error || ('HTTP ' + res.status)) + (d.counts ? ntaSummaryHtml(d) : ''); return; }

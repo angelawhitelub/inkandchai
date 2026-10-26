@@ -49,6 +49,12 @@ test('templateParams: discount line, and a pre-order line when releasing later',
   assert.match(line, /^pre-order now at ₹499 \(44% off MRP\) — releases 5 Nov$/);
 });
 
+test('bareTitle drops a trailing "by <same author>" only', () => {
+  assert.strictEqual(A.bareTitle('A Court of Splintered Harmony by Sarah J. Maas', 'Sarah J. Maas'), 'A Court of Splintered Harmony');
+  assert.strictEqual(A.bareTitle('Stand by Me by Someone', 'Sarah J. Maas'), 'Stand by Me by Someone');
+  assert.strictEqual(A.bareTitle('Stand by Me', 'Sarah J. Maas'), 'Stand by Me');
+});
+
 // ── Handler against a fake database (no network, WhatsApp stubbed) ──────────
 function fakeDb(tables, writes) {
   return {

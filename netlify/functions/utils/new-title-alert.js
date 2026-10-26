@@ -105,7 +105,17 @@ function templateParams(recipient, book) {
     const when = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)));
     line = `pre-order now at ${line} — releases ${when}`;
   }
-  return [recipient.name, recipient.reason, clean(book.title).slice(0, 120), line];
+  return [recipient.name, recipient.reason, bareTitle(book.title, book.author).slice(0, 120), line];
 }
 
-module.exports = { CAMPAIGN_PREFIX, normAuthor, authorsOf, shelfOf, matchCustomers, templateParams };
+/** "Title by Author" → "Title": the message already names the author. */
+function bareTitle(title, author) {
+  const t = clean(title);
+  const m = t.match(/^(.+?)\s+by\s+(.+)$/i);
+  if (!m) return t;
+  const named = authorsOf(m[2]);
+  const want = new Set(authorsOf(author));
+  return named.length && named.every((a) => want.has(a)) ? m[1] : t;
+}
+
+module.exports = { CAMPAIGN_PREFIX, normAuthor, authorsOf, shelfOf, matchCustomers, templateParams, bareTitle };
