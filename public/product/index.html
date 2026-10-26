@@ -1063,7 +1063,7 @@ function trackProductView(b) {
 // ── Render product page ───────────────────────────────────────────────────
 function renderProduct(b) {
   const pageTitle = b.t + (b.a ? ' by ' + b.a : '') + ' — Buy Online at Ink & Chai';
-  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day returns and free replacement.');
+  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping on prepaid above ₹399 (COD ₹499+), 7-day returns and free replacement.');
   const canonical = 'https://inkandchai.in/product/' + b.slug + '/';
   const imgAbs = (b.img || '').startsWith('http') ? b.img : ('https://inkandchai.in' + (b.img || ''));
 

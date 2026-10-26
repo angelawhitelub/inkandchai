@@ -2039,7 +2039,7 @@ select,input,textarea{font-size:1rem;}
           </details>
           <details id="prodFreeDeliveryEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(93,155,85,.05);">
             <summary style="cursor:pointer;color:#5d9b55;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🚚 Free delivery for this book</summary>
-            <p class="hint" style="margin:.65rem 0 0;">Ships this book free. <strong>Any order containing it ships free</strong>, whatever the total (normally ₹40 below ₹499). The product page badge reads <em>“🚚 FREE delivery”</em>, and the cart, checkout and WhatsApp-bot orders charge ₹0 delivery.</p>
+            <p class="hint" style="margin:.65rem 0 0;">Ships this book free. <strong>Any order containing it ships free</strong>, whatever the total (normally ₹40 unless prepaid above ₹399 or COD ₹499+). The product page badge reads <em>“🚚 FREE delivery”</em>, and the cart, checkout and WhatsApp-bot orders charge ₹0 delivery.</p>
             <p class="hint" id="prodFreeDeliveryCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
             <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
               <input type="checkbox" id="prodFreeDelivery" style="accent-color:#5d9b55;"/> Free delivery for this book
@@ -2562,7 +2562,7 @@ select,input,textarea{font-size:1rem;}
     <section class="product-panel">
       <div class="product-head"><div><h2>Promotions &amp; coupons</h2><p>Create, schedule, pause, end, reactivate, or delete discounts. Only one promotion applies per order—the customer receives the highest eligible saving.</p></div><button class="btn-outline" onclick="loadPromotionsAdmin()">↻ Refresh</button></div>
       <div id="promotionSummary" class="hint" style="margin-bottom:1rem;">Loading promotions…</div>
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;font-size:.72rem"><div class="stat-card" style="cursor:default"><div class="stat-label">Shipping</div><strong>Free at ₹499+</strong><br><span class="hint">₹40 below threshold</span></div><div class="stat-card" style="cursor:default"><div class="stat-label">COD incentive</div><strong>₹20 fee waived at ₹999+</strong></div><div class="stat-card" style="cursor:default"><div class="stat-label">Partial COD</div><strong>Pay 10% now</strong><br><span class="hint">COD fee waived</span></div><div class="stat-card" style="cursor:default"><div class="stat-label">Scratch rewards</div><strong>₹30–₹200</strong><br><span class="hint">30 days · min ₹399</span></div></div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;font-size:.72rem"><div class="stat-card" style="cursor:default"><div class="stat-label">Shipping</div><strong>Free: prepaid above ₹399 · COD ₹499+</strong><br><span class="hint">₹40 otherwise</span></div><div class="stat-card" style="cursor:default"><div class="stat-label">COD incentive</div><strong>₹20 fee waived at ₹999+</strong></div><div class="stat-card" style="cursor:default"><div class="stat-label">Partial COD</div><strong>Pay 10% now</strong><br><span class="hint">COD fee waived</span></div><div class="stat-card" style="cursor:default"><div class="stat-label">Scratch rewards</div><strong>₹30–₹200</strong><br><span class="hint">30 days · min ₹399</span></div></div>
       <div style="display:grid;grid-template-columns:minmax(420px,1.15fr) minmax(320px,.85fr);gap:1.2rem;align-items:start;">
         <div class="tbl-wrap" style="box-shadow:none"><table class="mini-table"><thead><tr><th>Promotion</th><th>Offer</th><th>Scope</th><th>Status</th><th>Actions</th></tr></thead><tbody id="promotionsBody"></tbody></table></div>
         <div class="product-editor">
@@ -9959,7 +9959,7 @@ function setFreeDeliveryUi(free, note) {
   if (cb) cb.checked = !!free;
   if (cur) cur.innerHTML = note ? esc(note) : free
     ? '<strong style="color:#5d9b55;">Free delivery is ON</strong> — any order with this book ships free.'
-    : 'Normal delivery charge (₹40 below ₹499).';
+    : 'Normal delivery charge (₹40 unless prepaid above ₹399 or COD ₹499+).';
 }
 
 async function loadFreeDeliveryEditor(row) {

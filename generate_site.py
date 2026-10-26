@@ -984,8 +984,8 @@ HTML = r"""<!DOCTYPE html>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<title>Ink & Chai — Buy Books Online India · Hindi & English · Free Shipping above ₹499</title>
-<meta name="description" content="Buy books online in India — 25,000+ Hindi & English titles across fiction, romance, self-help and manga. Free shipping above ₹499, COD, 7-day returns and free replacement." />
+<title>Ink & Chai — Buy Books Online India · Hindi & English · Free Shipping on Prepaid above ₹399</title>
+<meta name="description" content="Buy books online in India — 25,000+ Hindi & English titles across fiction, romance, self-help and manga. Free shipping on prepaid above ₹399 (COD ₹499+), COD, 7-day returns and free replacement." />
 <meta name="keywords" content="buy books online india, hindi books online, online bookstore india, self help books hindi, romance books, fiction books, manga books, ana huang books, david goggins hindi, robin sharma, robert kiyosaki, mythology books, books at 99, cash on delivery books, free shipping books india, ink and chai" />
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
 <meta name="author" content="Ink & Chai" />
@@ -1011,8 +1011,8 @@ HTML = r"""<!DOCTYPE html>
 <!-- Open Graph / Facebook / WhatsApp -->
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Ink & Chai" />
-<meta property="og:title" content="Ink & Chai — Buy Books Online India · Free Shipping above ₹499" />
-<meta property="og:description" content="25,000+ titles in Hindi and English. Curated fiction, romance, self-help, mythology & more. Free pan-India shipping above ₹499. Cash on delivery." />
+<meta property="og:title" content="Ink & Chai — Buy Books Online India · Free Shipping on Prepaid above ₹399" />
+<meta property="og:description" content="25,000+ titles in Hindi and English. Curated fiction, romance, self-help, mythology & more. Free pan-India shipping on prepaid above ₹399 (COD ₹499+). Cash on delivery." />
 <meta property="og:image" content="https://inkandchai.in/images/og-default.jpg" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
@@ -1022,7 +1022,7 @@ HTML = r"""<!DOCTYPE html>
 <!-- Twitter -->
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Ink & Chai — Buy Books Online India" />
-<meta name="twitter:description" content="25,000+ titles in Hindi and English. Free shipping above ₹499. COD available." />
+<meta name="twitter:description" content="25,000+ titles in Hindi and English. Free shipping on prepaid above ₹399 (COD ₹499+). COD available." />
 <meta name="twitter:image" content="https://inkandchai.in/images/og-default.jpg" />
 
 <!-- Structured Data: Organization -->
@@ -1034,7 +1034,7 @@ HTML = r"""<!DOCTYPE html>
   "alternateName": "Ink and Chai",
   "url": "https://inkandchai.in",
   "logo": "https://inkandchai.in/images/og-default.jpg",
-  "description": "Online bookstore in India offering 25,000+ titles in Hindi and English. Free shipping above ₹499, cash on delivery available, 7-day returns and free replacement.",
+  "description": "Online bookstore in India offering 25,000+ titles in Hindi and English. Free shipping on prepaid above ₹399 (COD ₹499+), cash on delivery available, 7-day returns and free replacement.",
   "address": {
     "@type": "PostalAddress",
     "streetAddress": "2379 Kucha Mir Hashim, Turkman Gate",
@@ -2570,7 +2570,7 @@ html[data-theme="light"] .btn-primary{
       </div>
       <div class="hero-stats">
         <div><div class="stat-num">Hindi</div><div class="stat-label">Self-help focus</div></div>
-        <div><div class="stat-num">₹499+</div><div class="stat-label">Free shipping</div></div>
+        <div><div class="stat-num">₹400+</div><div class="stat-label">Free prepaid shipping</div></div>
         <div><div class="stat-num">COD</div><div class="stat-label">UPI available</div></div>
       </div>
     </div>
@@ -2704,12 +2704,12 @@ html[data-theme="light"] .btn-primary{
 <!-- MARQUEE -->
 <div class="marquee-bar">
   <div class="marquee-track">
-    <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">Free delivery on prepaid orders above ₹399 · COD ₹499+ <span class="marquee-dot" aria-hidden="true">◆</span></span>
     <span class="marquee-item">Prepaid offers: 10% on ₹499+, 12% on ₹999+, 15% on ₹1499+ <span class="marquee-dot" aria-hidden="true">◆</span></span>
     <span class="marquee-item">Cash on delivery available <span class="marquee-dot" aria-hidden="true">◆</span></span>
     <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot" aria-hidden="true">◆</span></span>
     <span class="marquee-item">7-day replacement support <span class="marquee-dot" aria-hidden="true">◆</span></span>
-    <span class="marquee-item">Free delivery on ₹499+ orders <span class="marquee-dot" aria-hidden="true">◆</span></span>
+    <span class="marquee-item">Free delivery on prepaid orders above ₹399 · COD ₹499+ <span class="marquee-dot" aria-hidden="true">◆</span></span>
     <span class="marquee-item">Prepaid offers: 10% on ₹499+, 12% on ₹999+, 15% on ₹1499+ <span class="marquee-dot" aria-hidden="true">◆</span></span>
     <span class="marquee-item">Cash on delivery available <span class="marquee-dot" aria-hidden="true">◆</span></span>
     <span class="marquee-item">UPI, cards, and net banking accepted <span class="marquee-dot" aria-hidden="true">◆</span></span>
@@ -2722,7 +2722,7 @@ html[data-theme="light"] .btn-primary{
   <div class="trust-item">
     <div class="trust-icon">🚚</div>
     <div class="trust-title">Free Pan-India Shipping</div>
-    <div class="trust-text">On all prepaid orders above ₹499. Trusted courier partners.</div>
+    <div class="trust-text">On prepaid orders above ₹399 (COD ₹499+). Trusted courier partners.</div>
   </div>
   <div class="trust-item">
     <div class="trust-icon">🛡</div>
@@ -5725,7 +5725,7 @@ function trackProductView(b) {
 // ── Render product page ───────────────────────────────────────────────────
 function renderProduct(b) {
   const pageTitle = b.t + (b.a ? ' by ' + b.a : '') + ' — Buy Online at Ink & Chai';
-  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping above ₹499, 7-day returns and free replacement.');
+  const shortDesc = (b.desc || '').slice(0, 250) || ('Buy ' + b.t + (b.a ? ' by ' + b.a : '') + ' online at Ink & Chai. Fast pan-India delivery, free shipping on prepaid above ₹399 (COD ₹499+), 7-day returns and free replacement.');
   const canonical = 'https://inkandchai.in/product/' + b.slug + '/';
   const imgAbs = (b.img || '').startsWith('http') ? b.img : ('https://inkandchai.in' + (b.img || ''));
 
@@ -6744,7 +6744,7 @@ def product_faq_json_ld(book):
                 "name": f"How long does delivery take for {title}?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Standard pan-India delivery takes 2–5 business days. Orders are dispatched within 24 hours from our Delhi warehouse. Free shipping applies on orders above ₹499."
+                    "text": "Standard pan-India delivery takes 2–5 business days. Orders are dispatched within 24 hours from our Delhi warehouse. Free shipping applies on prepaid orders above ₹399 and on cash-on-delivery orders of ₹499 or more."
                 }
             },
             {
@@ -6768,7 +6768,7 @@ def product_faq_json_ld(book):
                 "name": f"What's the price of {title}?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": f"{title} is available on inkandchai.in for ₹{price}. Prices include all taxes. Free shipping on orders above ₹499."
+                    "text": f"{title} is available on inkandchai.in for ₹{price}. Prices include all taxes. Free shipping on prepaid orders above ₹399 and on COD orders of ₹499 or more."
                 }
             },
         ],
@@ -7436,7 +7436,7 @@ html[data-theme="light"] .cart-header,html[data-theme="light"] .cart-footer{{bac
 </style>
 </head>
 <body>
-<div class="promo"><strong>Free delivery on ₹499+</strong> · Prepaid offers up to <strong>15% off</strong> · COD available</div>
+<div class="promo"><strong>Free delivery: prepaid above ₹399 · COD ₹499+</strong> · Prepaid offers up to <strong>15% off</strong> · COD available</div>
 <nav><a class="logo" href="/">Ink &amp; Chai</a><form class="pdp-search" action="/" method="get" role="search"><input type="search" name="q" placeholder="Search books&hellip;" aria-label="Search books" autocomplete="off"/><button type="submit" aria-label="Search">&#128269;</button></form><div style="display:flex;align-items:center;gap:1rem"><a class="back" href="/books/">All Books</a><button class="pdp-cart-btn" id="pdpCartBtn" onclick="if(window.openCart)openCart()" aria-label="Open cart" title="Cart">🛒<span class="pdp-cart-badge" id="cartBadge" style="display:none">0</span></button><button class="theme-btn" onclick="(function(){{var d=document.documentElement;var t=d.getAttribute('data-theme');var n=t==='light'?null:'light';if(n)d.setAttribute('data-theme',n);else d.removeAttribute('data-theme');try{{localStorage.setItem('iac_theme',n||'dark')}}catch(e){{}}}})()" title="Toggle theme">☀</button></div></nav>
 <main class="wrap">
   <div>
@@ -7972,10 +7972,10 @@ def landing_html(slug, heading, intro, selected):
         <span class="price">{html_escape(clean(b.get('p')))}</span>
       </a>""" for b in selected[:36])
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>{html_escape(heading)} | Ink &amp; Chai</title><meta name="description" content="{html_escape(intro)} Buy online at Ink & Chai with COD, UPI, cards, and free delivery on ₹499+ orders."/>
+<title>{html_escape(heading)} | Ink &amp; Chai</title><meta name="description" content="{html_escape(intro)} Buy online at Ink & Chai with COD, UPI, cards, and free delivery on prepaid orders above ₹399 (COD ₹499+)."/>
 <link rel="canonical" href="{SITE}/{slug}/"/><meta name="robots" content="index,follow"/>
 <style>:root{{--bg:#0d0b08;--gold:#c9a84c;--cream:#f0e8d8;--muted:#a09080;--border:rgba(201,168,76,.2)}}*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--cream);font-family:'Inter',Arial,sans-serif}}nav{{padding:1rem clamp(1rem,4vw,4rem);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:1rem;align-items:center}}a{{color:inherit;text-decoration:none}}.logo{{font-family:serif;font-size:1.5rem;color:var(--gold)}}.links{{display:flex;gap:1rem;flex-wrap:wrap;color:var(--muted);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase}}main{{max-width:1180px;margin:auto;padding:clamp(2rem,6vw,5rem) 1rem}}.eyebrow{{color:var(--gold);letter-spacing:.24em;text-transform:uppercase;font-size:.65rem}}h1{{font-family:serif;font-size:clamp(2.5rem,7vw,5rem);font-weight:400;line-height:1;margin:.8rem 0}}p{{color:var(--muted);max-width:760px;line-height:1.8}}.grid{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1.4rem;margin-top:2.5rem}}.card{{min-width:0}}.cover{{display:flex;aspect-ratio:2/3;background:#17130f;border:1px solid var(--border);align-items:center;justify-content:center;margin-bottom:.8rem}}img{{max-width:100%;max-height:100%;object-fit:contain}}strong{{display:block;font-family:serif;font-size:1.05rem;line-height:1.25}}small{{display:block;color:var(--muted);margin:.25rem 0 .4rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.price{{color:var(--gold);font-weight:700}}.trust{{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.4rem;color:var(--gold);font-size:.8rem}}.cta{{margin-top:1.6rem;display:inline-block;border:1px solid var(--gold);padding:.8rem 1.2rem;color:var(--gold);font-size:.7rem;letter-spacing:.16em;text-transform:uppercase}}@media(max-width:900px){{.grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}@media(max-width:560px){{nav{{align-items:flex-start;flex-direction:column}}.links{{font-size:.62rem}}.grid{{grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}}}}</style></head>
-<body><nav><a class="logo" href="/">Ink &amp; Chai</a><div class="links"><a href="/hindi-books/">Hindi</a><a href="/self-help-books/">Self-help</a><a href="/bestsellers/">Bestsellers</a><a href="/new-arrivals/">New</a><a href="/book-combos/">Combos</a></div></nav><main><div class="eyebrow">Curated collection</div><h1>{html_escape(heading)}</h1><p>{html_escape(intro)}</p><div class="trust"><span>Free delivery on ₹499+</span><span>COD available</span><span>UPI/cards accepted</span><span>7-day replacement support</span></div><a class="cta" href="/">Search full catalogue</a><section class="grid">{cards}</section></main>{_DELETED_PRUNE_JS}<script src="/js/ink-ai.js" defer></script></body></html>"""
+<body><nav><a class="logo" href="/">Ink &amp; Chai</a><div class="links"><a href="/hindi-books/">Hindi</a><a href="/self-help-books/">Self-help</a><a href="/bestsellers/">Bestsellers</a><a href="/new-arrivals/">New</a><a href="/book-combos/">Combos</a></div></nav><main><div class="eyebrow">Curated collection</div><h1>{html_escape(heading)}</h1><p>{html_escape(intro)}</p><div class="trust"><span>Free delivery: prepaid above ₹399 · COD ₹499+</span><span>COD available</span><span>UPI/cards accepted</span><span>7-day replacement support</span></div><a class="cta" href="/">Search full catalogue</a><section class="grid">{cards}</section></main>{_DELETED_PRUNE_JS}<script src="/js/ink-ai.js" defer></script></body></html>"""
 
 for slug, heading, intro, predicate in LANDING_PAGES:
     selected = sorted([b for b in slim if predicate(b)], key=landing_rank)
@@ -11273,7 +11273,7 @@ for _author_name, _author_books in _author_pages:
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>{html_escape(_author_name)} — All {_book_count} Books Online India | Ink &amp; Chai</title>
-<meta name="description" content="Buy all {_book_count} books by {html_escape(_author_name)} online in India at Ink &amp; Chai. Free delivery above ₹499, cash on delivery, 7-day returns and free replacement. Genuine paperbacks from the publisher."/>
+<meta name="description" content="Buy all {_book_count} books by {html_escape(_author_name)} online in India at Ink &amp; Chai. Free delivery on prepaid above ₹399 (COD ₹499+), cash on delivery, 7-day returns and free replacement. Genuine paperbacks from the publisher."/>
 <meta name="robots" content="index,follow,max-image-preview:large"/>
 <link rel="canonical" href="{_author_canon}"/>
 <meta property="og:title" content="{html_escape(_author_name)} — All Books | Ink &amp; Chai"/>
@@ -11335,7 +11335,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
 <main>
   <div class="crumb"><a href="/">Home</a> / <a href="/">Authors</a> / {html_escape(_author_name)}</div>
   <h1>{html_escape(_author_name)}</h1>
-  <p class="subtitle">All <strong>{_book_count} books</strong> by {html_escape(_author_name)} available at Ink &amp; Chai. Pan-India delivery, free shipping above ₹499, cash on delivery, 7-day returns and free replacement.</p>
+  <p class="subtitle">All <strong>{_book_count} books</strong> by {html_escape(_author_name)} available at Ink &amp; Chai. Pan-India delivery, free shipping on prepaid above ₹399 (COD ₹499+), cash on delivery, 7-day returns and free replacement.</p>
 
   <div class="best-pick">
     <a href="{_best['url']}" class="best-pick-img"><img src="{_best.get('img','')}" alt="{html_escape(_best['t'])}" loading="lazy"/></a>
@@ -11359,7 +11359,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
     <details class="faq"><summary>Is cash on delivery available for {html_escape(_author_name)}'s books?</summary>
       <p>Yes — COD is available pan-India on every {html_escape(_author_name)} book. You can also pay online via UPI, cards, or net banking and earn a guaranteed cashback scratch card worth up to ₹200.</p></details>
     <details class="faq"><summary>How long does delivery take?</summary>
-      <p>Standard delivery is 2–5 business days anywhere in India. We dispatch within 24 hours from our Delhi warehouse. Free shipping on orders above ₹499.</p></details>
+      <p>Standard delivery is 2–5 business days anywhere in India. We dispatch within 24 hours from our Delhi warehouse. Free shipping on prepaid orders above ₹399 and on COD orders of ₹499 or more.</p></details>
     <details class="faq"><summary>Can I return a book if I don't like it?</summary>
       <p>Return any book within 7 days of delivery for a full refund, or get a free replacement if it arrives defective, misprinted, wrong or missing. <a href="/return-policy/" style="color:var(--gold)">See replacement policy →</a></p></details>
   </div>
@@ -11395,7 +11395,7 @@ _LANDING_PAGES = [
         "slug":  "best-romance-books-india",
         "title": "Best Romance Books in India — 2026 Edition",
         "h1":    "Best Romance Books in India",
-        "intro": "From slow-burn small-town love stories to dark contemporary romance and BookTok obsessions, here's our hand-picked collection of the romance novels Indian readers can't put down. Free pan-India shipping above ₹499, cash on delivery available, 7-day returns and free replacement.",
+        "intro": "From slow-burn small-town love stories to dark contemporary romance and BookTok obsessions, here's our hand-picked collection of the romance novels Indian readers can't put down. Free pan-India shipping on prepaid above ₹399 (COD ₹499+), cash on delivery available, 7-day returns and free replacement.",
         "body":  "Romance is the fastest-growing fiction category in India, and for good reason — these books deliver the swoon, tension, and emotional payoff that no other genre matches. Our collection spans contemporary romance (think Colleen Hoover, Carley Fortune), dark romance (Ana Huang, Penelope Douglas), college and sports romance (Elle Kennedy's Off-Campus series), and Indian-set love stories. Every paperback is sourced directly from the publisher — no pirated copies, no photocopies, no scans. Pay online via UPI or cards for a guaranteed cashback scratch card (up to ₹200 off your next book), or choose cash on delivery and pay only when your book arrives.\n\nNot sure where to start? If you loved <em>It Ends With Us</em>, try <em>Our Perfect Storm</em> by Carley Fortune. If you devoured <em>Twisted Love</em>, <em>King of Gluttony</em> is Ana Huang's latest dark obsession. For college romance fans, <em>The Deal</em> kicks off Elle Kennedy's iconic Off-Campus series.",
         "filter": lambda b: _has_tag(b, "romance", "love story", "off-campus", "off campus", "smut"),
         "limit": 40,
@@ -11404,7 +11404,7 @@ _LANDING_PAGES = [
         "slug":  "best-self-help-books-india",
         "title": "Best Self-Help Books in India — 30 Life-Changing Reads",
         "h1":    "Best Self-Help Books in India",
-        "intro": "The 30 self-help books that have actually changed lives — Atomic Habits, Rich Dad Poor Dad, The Psychology of Money, Think and Grow Rich, and more. Curated for serious readers, not gimmicks. Free shipping above ₹499. COD available.",
+        "intro": "The 30 self-help books that have actually changed lives — Atomic Habits, Rich Dad Poor Dad, The Psychology of Money, Think and Grow Rich, and more. Curated for serious readers, not gimmicks. Free shipping on prepaid above ₹399 (COD ₹499+). COD available.",
         "body":  "Self-help is the most-read non-fiction category in India year after year. The reason: a good self-help book costs ₹300 and can shift your habits, finances, or mindset for life. Our curated list focuses on books with proven, measurable impact — not vague motivational slogans.\n\nFor habits and behaviour change: <em>Atomic Habits</em> by James Clear is the gold standard, used by Olympians and CEOs. For money mindset: <em>The Psychology of Money</em> by Morgan Housel reframes wealth as behaviour, not math. <em>Rich Dad Poor Dad</em> is still the entry point for understanding cash flow and assets. For deep focus and performance: <em>Can't Hurt Me</em> by David Goggins. For trading and investing: <em>The Disciplined Trader</em> by Mark Douglas, <em>The Intelligent Investor</em>, and Naval Ravikant's collected wisdom. Every book ships in 2-5 days pan-India. Free replacement if a copy arrives defective, wrong or missing.",
         "filter": lambda b: _has_tag(b, "self-help", "self help", "habits", "mindset", "personal development", "productivity") or "self" in (b.get("cat") or "").lower(),
         "limit": 40,
@@ -11413,7 +11413,7 @@ _LANDING_PAGES = [
         "slug":  "best-hindi-books",
         "title": "Best Hindi Books — हिंदी की बेहतरीन किताबें | Ink & Chai",
         "h1":    "Best Hindi Books — हिंदी की बेहतरीन किताबें",
-        "intro": "Premchand से लेकर modern self-help तक — Hindi की सबसे popular किताबें एक जगह। Free delivery on orders above ₹499. Cash on delivery available across India.",
+        "intro": "Premchand से लेकर modern self-help तक — Hindi की सबसे popular किताबें एक जगह। Free delivery on prepaid orders above ₹399 (COD ₹499+). Cash on delivery available across India.",
         "body":  "Hindi literature has a depth no other Indian language matches — from Premchand's social realism to Osho's spiritual essays to translations of every global bestseller. Our Hindi collection is the largest curated catalogue of Hindi paperbacks available online in India, and we specialise in titles Amazon and Flipkart often skip or sell at inflated prices.\n\nFor self-development in Hindi: Atomic Habits, Rich Dad Poor Dad, and Think and Grow Rich are all available in proper Hindi translations. For literature lovers: complete works of Munshi Premchand (Godan, Gaban, Karmabhoomi), Harivansh Rai Bachchan's poetry, and Mahadevi Verma. For philosophical and spiritual readers: dozens of Osho's discourses, Krishnamurti, and modern translations of the Gita and Upanishads. Every book is a properly printed paperback — not the cheaply photocopied versions you'll find at footpath stalls.",
         "filter": lambda b: "hindi" in (b.get("cat") or "").lower() or _has_tag(b, "hindi", "हिंदी"),
         "limit": 50,
@@ -11431,17 +11431,17 @@ _LANDING_PAGES = [
         "slug":  "books-under-299",
         "title": "Best Books Under ₹299 in India — Affordable Reads",
         "h1":    "Best Books Under ₹299",
-        "intro": "Real books, real authors, real low prices. Every paperback under ₹299 — perfect for stocking your shelf without breaking your wallet. Free shipping above ₹499. COD available.",
-        "body":  "Books shouldn't cost more than a meal at a restaurant. Our under-₹299 section is the largest budget catalogue online — and unlike footpath piracy, every copy is a legitimate publisher-printed paperback. We're able to offer these prices by sourcing in bulk directly from publishers and skipping the bookstore middlemen.\n\nGreat for: building a starter library, gifting to readers, students stocking up before college, or just trying out an author before committing to their full catalogue. Pair any 2 books for the ₹499 free-shipping threshold and you're effectively paying ₹250 each delivered.",
+        "intro": "Real books, real authors, real low prices. Every paperback under ₹299 — perfect for stocking your shelf without breaking your wallet. Free shipping on prepaid above ₹399 (COD ₹499+). COD available.",
+        "body":  "Books shouldn't cost more than a meal at a restaurant. Our under-₹299 section is the largest budget catalogue online — and unlike footpath piracy, every copy is a legitimate publisher-printed paperback. We're able to offer these prices by sourcing in bulk directly from publishers and skipping the bookstore middlemen.\n\nGreat for: building a starter library, gifting to readers, students stocking up before college, or just trying out an author before committing to their full catalogue. Pair any 2 books to cross ₹399 and prepaid delivery is free — about ₹250 each, delivered.",
         "filter": lambda b: 0 < _price_int(b) <= 299,
         "limit": 40,
     },
     {
         "slug":  "books-under-499",
-        "title": "Best Books Under ₹499 — Free Shipping on Every Order",
-        "h1":    "Best Books Under ₹499 — Free Shipping Included",
-        "intro": "Every book under ₹499 ships free across India. Pick any title from this curated list — no shipping fee, no minimum order, no hidden charges.",
-        "body":  "When a book is under ₹499 and ships free, the total you pay is exactly what you see. No bait-and-switch with shipping fees added at checkout. This page lists our most-loved books in that sweet-spot price range — bestsellers, new arrivals, classics, and curated discoveries. Cash on delivery is available pan-India, or pay online and earn a guaranteed cashback scratch card worth up to ₹200 off your next purchase.",
+        "title": "Best Books Under ₹499 — Free Shipping on Prepaid above ₹399",
+        "h1":    "Best Books Under ₹499 — Free Prepaid Shipping above ₹399",
+        "intro": "Every book here is under ₹499, and prepaid orders above ₹399 ship free across India (Cash on Delivery from ₹499). Pick any title from this curated list — no hidden charges.",
+        "body":  "When your prepaid order is above ₹399, delivery is free and the total you pay is exactly what you see. No bait-and-switch with shipping fees added at checkout. This page lists our most-loved books in that sweet-spot price range — bestsellers, new arrivals, classics, and curated discoveries. Cash on delivery is available pan-India, or pay online and earn a guaranteed cashback scratch card worth up to ₹200 off your next purchase.",
         "filter": lambda b: 0 < _price_int(b) <= 499,
         "limit": 48,
     },
@@ -11450,7 +11450,7 @@ _LANDING_PAGES = [
         "title": "Best Manga in India — One Piece, Naruto, Demon Slayer, Jujutsu Kaisen",
         "h1":    "Buy Manga Online in India",
         "intro": "One Piece, Naruto, Demon Slayer, Jujutsu Kaisen, Chainsaw Man, Tokyo Revengers — the manga every otaku in India is collecting, in stock and shipping today.",
-        "body":  "Manga is the most expensive habit in Indian fandom — until now. We import manga in bulk and pass the savings on to collectors. Whether you're starting a new series or completing your existing One Piece run (yes, all current volumes are stocked), our manga catalogue covers shōnen, seinen, shōjo, and horror across the most popular and the cult-classic series.\n\nVolumes ship as new paperbacks from the official English publishers (Viz Media, Kodansha, Yen Press). No scanlations, no pirated print-on-demand copies — these are the real deal that hold their value and look right on your shelf. Cash on delivery available, free shipping above ₹499.",
+        "body":  "Manga is the most expensive habit in Indian fandom — until now. We import manga in bulk and pass the savings on to collectors. Whether you're starting a new series or completing your existing One Piece run (yes, all current volumes are stocked), our manga catalogue covers shōnen, seinen, shōjo, and horror across the most popular and the cult-classic series.\n\nVolumes ship as new paperbacks from the official English publishers (Viz Media, Kodansha, Yen Press). No scanlations, no pirated print-on-demand copies — these are the real deal that hold their value and look right on your shelf. Cash on delivery available, free shipping on prepaid above ₹399 (COD ₹499+).",
         "filter": lambda b: _has_tag(b, "manga", "one piece", "naruto", "demon slayer", "jujutsu kaisen", "chainsaw man") or "manga" in (b.get("cat") or "").lower(),
         "limit": 40,
     },
@@ -11458,7 +11458,7 @@ _LANDING_PAGES = [
         "slug":  "booktok-bestsellers",
         "title": "BookTok Bestsellers in India — Every Viral Book in One Place",
         "h1":    "BookTok Bestsellers India",
-        "intro": "It Ends With Us, Twisted Love, A Little Life, The Seven Husbands of Evelyn Hugo, Iron Flame, Fourth Wing, Powerless — every viral BookTok pick available in India. Free shipping above ₹499.",
+        "intro": "It Ends With Us, Twisted Love, A Little Life, The Seven Husbands of Evelyn Hugo, Iron Flame, Fourth Wing, Powerless — every viral BookTok pick available in India. Free shipping on prepaid above ₹399 (COD ₹499+).",
         "body":  "If a book trended on BookTok, chances are it's in stock here. We track what's trending on Indian #BookTok and #Bookstagram daily and stock the titles that matter. Whether you're chasing the hype on the latest Colleen Hoover, Sarah J. Maas, or Ana Huang release, or hunting down the underground bestsellers that exploded out of nowhere — this is the shortcut.\n\nEvery book is a genuine paperback. Many BookTok titles are sold as scanned/pirated PDFs or low-quality print copies on Amazon — we never stock those. If you see a book on TikTok and want the real thing, you'll find it here. We also stock signed editions and special covers where available — check individual product pages.",
         "filter": lambda b: _has_tag(b, "booktok", "bookstagram", "tiktok", "viral", "trending") or _has_tag(b, "colleen hoover", "ana huang", "sarah j. maas", "rebecca yarros", "elle kennedy"),
         "limit": 40,
@@ -11485,7 +11485,7 @@ _LANDING_PAGES = [
         "slug":  "book-combos-bundles",
         "title": "Best Book Combos & Bundles — Save on Sets",
         "h1":    "Book Combos & Bundles",
-        "intro": "Self-help combos, thriller box sets, manga complete editions, romance series bundles — buy multiple books together and save up to 40%. Free shipping on every bundle.",
+        "intro": "Self-help combos, thriller box sets, manga complete editions, romance series bundles — buy multiple books together and save up to 40%. Free shipping on prepaid orders above ₹399.",
         "body":  "Box sets and combos are the cheapest way to build a serious library. We curate combo packs across every category — self-help essentials (Atomic Habits + Psychology of Money + Rich Dad combo), complete series (Off-Campus 5-book set, Kings of Sin complete set), Hindi bestsellers bundles, and manga series volumes. Every combo is priced 15-40% below buying the books individually.\n\nGifting? Combos are the highest-impact book gift — your friend gets a complete reading journey, not just one title. Every order ships in branded packaging suitable for gifting.",
         "filter": lambda b: _has_tag(b, "combo", "box set", "bundle", "set of", "boxset", "complete set") or "combo" in (b.get("cat") or "").lower(),
         "limit": 40,
@@ -11684,7 +11684,7 @@ def _cat_description(label, books):
     authors = _cat_top_authors(books, 2)
     if authors:
         bits.append("including " + " and ".join(authors))
-    tail = " Free delivery above Rs.499, cash on delivery, 7-day replacement."
+    tail = " Free delivery on prepaid above Rs.399 (COD Rs.499+), cash on delivery, 7-day replacement."
     # Drop optional clauses whole rather than truncating mid-sentence — cutting
     # "including Elle Kennedy and Colleen Hoover" at a word boundary leaves
     # "including Elle Kennedy and." in the SERP snippet.
@@ -11861,7 +11861,7 @@ for _slug, _grp in sorted(_cat_groups.items()):
         _pgdesc = _desc if _pg == 1 else (
             f"Page {_pg} of {_npages}: {_label} books "
             f"{(_pg - 1) * CAT_PAGE_SIZE + 1}-{(_pg - 1) * CAT_PAGE_SIZE + len(_chunk)} "
-            f"of {_total} at Ink & Chai. Free delivery above Rs.499, cash on delivery."
+            f"of {_total} at Ink & Chai. Free delivery on prepaid above Rs.399 (COD Rs.499+), cash on delivery."
         )
 
         _html = _cat_page_html(
@@ -12231,7 +12231,7 @@ main{{max-width:760px;padding-top:2.2rem}}
 </nav>
 <main>
   <h1>Your Cart</h1>
-  <p class="cart-lede">Free delivery on orders over &#8377;499 &middot; Cash on delivery available</p>
+  <p class="cart-lede">Free delivery on prepaid orders over &#8377;399 (COD &#8377;499+) &middot; Cash on delivery available</p>
   <div class="cart-empty" id="cartEmpty">
     <div class="cart-empty-icon">&#128218;</div>
     <div>Your cart is empty.<br/>Add some books to get started.</div>
