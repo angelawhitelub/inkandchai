@@ -16,7 +16,8 @@ test('authorsOf splits co-authors and drops placeholders', () => {
 test('shelfOf maps raw categories to a shelf, broad ones to nothing', () => {
   assert.strictEqual(A.shelfOf('Romance Fiction'), 'romance');
   assert.strictEqual(A.shelfOf('Hindi Literature'), 'Hindi books');
-  assert.strictEqual(A.shelfOf('Fiction'), '');
+  assert.strictEqual(A.shelfOf('Fiction'), 'fiction');
+  assert.strictEqual(A.shelfOf('Preloved Books'), '');
 });
 
 test('matches same-author buyers and skips anyone who already bought the book', () => {
@@ -32,7 +33,7 @@ test('matches same-author buyers and skips anyone who already bought the book', 
   assert.strictEqual(recipients[0].name, 'Riya');
   assert.strictEqual(recipients[1].name, 'there');
   assert.strictEqual(recipients[0].reason, 'Sarah J. Maas');
-  assert.deepStrictEqual(counts, { customers: 4, matched: 2, already_bought: 1 });
+  assert.deepStrictEqual(counts, { customers: 4, matched: 2, already_bought: 1, by_author: 2, by_title: 0, by_category: 0 });
 });
 
 test('category matching is only used when asked for', () => {
@@ -53,6 +54,32 @@ test('bareTitle drops a trailing "by <same author>" only', () => {
   assert.strictEqual(A.bareTitle('A Court of Splintered Harmony by Sarah J. Maas', 'Sarah J. Maas'), 'A Court of Splintered Harmony');
   assert.strictEqual(A.bareTitle('Stand by Me by Someone', 'Sarah J. Maas'), 'Stand by Me by Someone');
   assert.strictEqual(A.bareTitle('Stand by Me', 'Sarah J. Maas'), 'Stand by Me');
+});
+
+test('JSON-text carts, author-in-title and series names all match', () => {
+  const customers = new Map([
+    ['1', { name: 'A', orders: [{ cart_items: JSON.stringify([{ title: '(5 books set) A Court of Thorns and Roses Paperback Box Set by Sarah J. Maas' }]) }] }],
+    ['2', { name: 'B', orders: [{ cart_items: [{ title: 'A Court of Thorns and Roses 4 books boxset (Paperback)' }] }] }],
+    ['3', { name: 'C', orders: [{ cart_items: '[{"title":"A Court of Splintered Harmony"}]' }] }],
+    ['4', { name: 'D', orders: [{ cart_items: 'not json' }] }],
+  ]);
+  const b = { ...book, title: 'A Court of Splintered Harmony by Sarah J. Maas' };
+  const without = A.matchCustomers(customers, b, null, { match: 'author' });
+  assert.deepStrictEqual(without.recipients.map((r) => r.phone), ['1']);
+  assert.strictEqual(without.counts.already_bought, 1);
+  const withSeries = A.matchCustomers(customers, b, null, { match: 'author', keywords: 'Court of Thorns, ab' });
+  assert.deepStrictEqual(withSeries.recipients.map((r) => [r.phone, r.via, r.reason]), [['1', 'title', 'Sarah J. Maas'], ['2', 'title', 'Sarah J. Maas']]);
+  assert.strictEqual(withSeries.counts.by_title, 2);
+});
+
+test('romance and fantasy buyers count as fiction for a fiction title', () => {
+  const customers = new Map([['1', { name: 'A', orders: [{ cart_items: [{ title: 'It Ends With Us' }] }] }]]);
+  const metaOf = () => ({ category: 'All Romance Books' });
+  const r = A.matchCustomers(customers, { ...book, author: 'Someone New', category: 'Fiction' }, metaOf, { match: 'author_or_category' });
+  assert.deepStrictEqual(r.recipients.map((x) => [x.via, x.reason]), [['category', 'fiction']]);
+  // …but a plain fiction buyer is not a romance reader.
+  const r2 = A.matchCustomers(customers, { ...book, author: 'Someone New', category: 'Romance' }, () => ({ category: 'Fiction' }), { match: 'author_or_category' });
+  assert.strictEqual(r2.recipients.length, 0);
 });
 
 // ── Handler against a fake database (no network, WhatsApp stubbed) ──────────
@@ -82,8 +109,13 @@ function fakeDb(tables, writes) {
   };
 }
 
-function loadHandler({ tables, sent, writes, sendOk = true }) {
+function loadHandler({ tables, sent, writes, sendOk = true, r2 = null }) {
   const stubs = {
+    './utils/r2-put': {
+      r2Configured: () => !!r2,
+      r2Config: () => ({ publicBase: 'https://r2.example' }),
+      r2PutObject: async (cfg, o) => { r2.push(o); return 'https://r2.example/' + o.key; },
+    },
     '@supabase/supabase-js': { createClient: () => fakeDb(tables, writes) },
     './utils/admin-auth': { requireAdmin: () => null },
     './utils/pricing': {
@@ -231,7 +263,7 @@ test('cover: a webp or missing cover falls back to the shop card', async () => {
   tables.custom_products[0].image_url = 'https://cdn.shopify.com/gone.webp';
   images = { 'https://cdn.shopify.com/gone.webp': WEBP };
   const r = await call(loadHandler({ tables, sent: [], writes: [] }), { slug: 'a-court-of-splintered-harmony', dry_run: true });
-  assert.deepStrictEqual(r.body.cover, { url: 'https://inkandchai.in/images/og-default.jpg', fallback: true });
+  assert.deepStrictEqual(r.body.cover, { url: 'https://inkandchai.in/images/og-default.jpg', fallback: true, convert_from: null });
 });
 
 test('WHATSAPP_NEW_TITLE_IMAGE=off sends no image header', async () => {
@@ -243,4 +275,34 @@ test('WHATSAPP_NEW_TITLE_IMAGE=off sends no image header', async () => {
     assert.strictEqual(sent[0].headerImageUrl, null);
     assert.strictEqual(fetched.length, 0);
   } finally { delete process.env.WHATSAPP_NEW_TITLE_IMAGE; }
+});
+
+test('a webp cover on our site is offered for conversion, and the JPEG copy is used once saved', async () => {
+  const tables = baseTables();
+  tables.custom_products[0].image_url = '/spimg/product-images/custom/court.webp';
+  images = { 'https://inkandchai.in/spimg/product-images/custom/court.webp': WEBP };
+  const r2 = [];
+  const handler = loadHandler({ tables, sent: [], writes: [], r2 });
+  const dry = await call(handler, { slug: 'a-court-of-splintered-harmony', dry_run: true });
+  assert.strictEqual(dry.body.cover.fallback, true);
+  assert.strictEqual(dry.body.cover.convert_from, 'https://inkandchai.in/spimg/product-images/custom/court.webp');
+
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2000)]).toString('base64');
+  const saved = await call(handler, { slug: 'a-court-of-splintered-harmony', cover_jpeg: 'data:image/jpeg;base64,' + jpeg });
+  assert.strictEqual(saved.status, 200);
+  assert.match(r2[0].key, /^covers\/wa\/a-court-of-splintered-harmony-[0-9a-f]{10}\.jpg$/);
+  assert.strictEqual(r2[0].contentType, 'image/jpeg');
+
+  images[saved.body.url] = JPEG;
+  const again = await call(handler, { slug: 'a-court-of-splintered-harmony', dry_run: true });
+  assert.deepStrictEqual(again.body.cover, { url: saved.body.url, fallback: false });
+});
+
+test('cover_jpeg that is not a JPEG is refused', async () => {
+  const tables = baseTables();
+  tables.custom_products[0].image_url = '/spimg/x.webp';
+  const r2 = [];
+  const r = await call(loadHandler({ tables, sent: [], writes: [], r2 }), { slug: 'a-court-of-splintered-harmony', cover_jpeg: Buffer.alloc(3000).toString('base64') });
+  assert.strictEqual(r.status, 500);
+  assert.strictEqual(r2.length, 0);
 });

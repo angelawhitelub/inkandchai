@@ -2075,6 +2075,9 @@ select,input,textarea{font-size:1rem;}
               <div class="form-row"><label>Skip anyone messaged in the last (days)</label><input id="ntaCooldown" type="number" min="0" max="60" value="7"/></div>
               <div class="form-row"><label>Send to at most</label><input id="ntaLimit" type="number" min="1" max="1000" value="300"/></div>
             </div>
+            <div class="form-row" style="margin-top:.6rem;"><label>Also match past titles containing (series names, comma-separated)</label>
+              <input id="ntaKeywords" placeholder="e.g. Court of Thorns, Throne of Glass, Crescent City" autocomplete="off"/>
+              <p class="hint" style="margin:.3rem 0 0;">Many older listings have no author filled in, only the title. The author's name is always looked for in titles; add series names to catch box sets like "A Court of Thorns and Roses 4 books boxset".</p></div>
             <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
               <button class="btn-outline" type="button" id="ntaDryBtn" onclick="newTitleAlert('dry')">Dry run</button>
               <button class="btn-green" type="button" id="ntaSendBtn" onclick="newTitleAlert('send')" disabled>Send to customers</button>
@@ -10080,18 +10083,20 @@ function resetNewTitleAlert() {
 
 function ntaOptions() {
   const v = (id) => document.getElementById(id)?.value;
-  return { match: v('ntaMatch'), days_back: Number(v('ntaDays')), cooldown_days: Number(v('ntaCooldown')), limit: Number(v('ntaLimit')) };
+  return { match: v('ntaMatch'), keywords: String(v('ntaKeywords') || '').trim(), days_back: Number(v('ntaDays')), cooldown_days: Number(v('ntaCooldown')), limit: Number(v('ntaLimit')) };
 }
 
 function ntaSummaryHtml(d) {
   const c = d.counts || {};
   const p = d.preview_params || [];
   const rows = [
-    ['Past customers looked at', c.customers], ['Match', c.matched], ['Already bought this book', c.already_bought],
+    ['Past customers looked at', c.customers], ['Match', c.matched],
+    ['  · same author', c.by_author], ['  · author / series in the title', c.by_title], ['  · same kind of book', c.by_category],
+    ['Already bought this book', c.already_bought],
     ['Said STOP / unsubscribed', c.opted_out], ['Already alerted for this book', c.already_sent_this_book],
     ['Messaged in the cooldown window', c.cooldown], ['Eligible', c.eligible],
   ].map(([k, n]) => `<div style="display:flex;justify-content:space-between;gap:1rem;"><span>${esc(k)}</span><b>${Number(n || 0).toLocaleString('en-IN')}</b></div>`).join('');
-  const sample = (d.sample || []).map((r) => `${esc(r.phone)} · ${esc(r.name)} · ${esc(r.reason)}`).join('<br>');
+  const sample = (d.sample || []).map((r) => `${esc(r.phone)} · ${esc(r.name)} · ${esc(r.reason)}${r.via ? ` (${esc(r.via)})` : ''}`).join('<br>');
   const cover = d.cover ? `<div style="display:flex;gap:.6rem;align-items:flex-start;margin-bottom:.5rem;">
       <img src="${esc(d.cover.url)}" alt="" style="width:64px;border-radius:6px;border:1px solid var(--border);"/>
       <span>Image: ${d.cover.fallback ? '<b style="color:#e8a030;">the shop card</b> — this book has no JPEG/PNG cover WhatsApp can use. Upload a .jpg or .png cover to send the real one.' : 'the book cover'}</span></div>` : '';
@@ -10103,7 +10108,29 @@ function ntaSummaryHtml(d) {
     ${sample ? `<div style="margin-top:.5rem;font-size:.75rem;">${sample}</div>` : ''}</div>`;
 }
 
-async function newTitleAlert(kind) {
+// WhatsApp takes JPEG/PNG only; admin-uploaded covers are webp. Draw the cover
+// on a canvas and hand the server a JPEG to keep in R2.
+async function ntaConvertCover(slug, src) {
+  const url = String(src).replace(/^https:\/\/inkandchai\.in/i, '');
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image(); i.crossOrigin = 'anonymous';
+    i.onload = () => resolve(i); i.onerror = () => reject(new Error('cover did not load'));
+    i.src = url;
+  });
+  const w = Math.min(800, img.naturalWidth || 800);
+  const h = Math.round((img.naturalHeight || w) * w / (img.naturalWidth || w));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+  const res = await adminFetch('/.netlify/functions/admin-new-title-alert', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, cover_jpeg: c.toDataURL('image/jpeg', 0.88) }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+  return d.url;
+}
+
+async function newTitleAlert(kind, _retried) {
   const slug = selectedProduct?.slug;
   const out = document.getElementById('ntaResult');
   const send = document.getElementById('ntaSendBtn');
@@ -10140,6 +10167,11 @@ async function newTitleAlert(kind) {
       return;
     }
     if (!res.ok) { _ntaDry = null; out.innerHTML = esc(d.error || ('HTTP ' + res.status)) + (d.counts ? ntaSummaryHtml(d) : ''); return; }
+    if (kind === 'dry' && d.cover?.fallback && d.cover.convert_from && !_retried) {
+      out.textContent = 'Making a JPEG copy of the cover for WhatsApp…';
+      try { await ntaConvertCover(slug, d.cover.convert_from); await newTitleAlert('dry', true); keepSend = !!_ntaDry; return; }
+      catch (e) { console.warn('[nta] cover convert:', e.message); }
+    }
     if (kind === 'dry') {
       out.innerHTML = ntaSummaryHtml(d);
       if (d.will_send > 0 && !d.blocked_reason) {

@@ -17,8 +17,11 @@
  *
  * The header is the book's cover, but WhatsApp takes only JPEG/PNG (≤ 5 MB)
  * and some covers are webp or gone from Shopify, so each candidate is fetched
- * and checked; webp catalogue covers use the JPEG copy in /images/wa/; failing
- * all that, the shop's card /images/og-default.jpg.
+ * and checked; webp catalogue covers use the JPEG copy in /images/wa/. Covers
+ * uploaded in admin are webp, so the admin page converts one in the browser
+ * and posts it back ({ slug, cover_jpeg }) to R2 at covers/wa/<slug>-<hash of
+ * the source>.jpg — a new cover gets a new copy. Failing all that, the shop's
+ * card /images/og-default.jpg.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -28,6 +31,8 @@ const { optedOutPhoneSet, phoneKey } = require('./utils/bot-optout');
 const { resolveCartPrices, makeSlug } = require('./utils/pricing');
 const { catalogueBook } = require('./utils/catalog-content');
 const { releasesFor } = require('./utils/release-date');
+const crypto = require('crypto');
+const { r2PutObject, r2Config, r2Configured } = require('./utils/r2-put');
 const A = require('./utils/new-title-alert');
 const CATALOGUE = require('../../data/ALL_BOOKS.json');
 
@@ -76,7 +81,9 @@ function catalogueMeta(item, custom) {
     }
   }
   const slug = String(item.url || item.id || '').match(/\/product\/([^/?#]+)/i)?.[1]?.toLowerCase() || String(item.slug || '').toLowerCase();
-  return custom.get(slug) || _bySlug.get(slug) || _byTitle.get(String(item.title || '').trim().toLowerCase()) || null;
+  const base = custom.get(slug) || _bySlug.get(slug) || _byTitle.get(String(item.title || '').trim().toLowerCase()) || null;
+  const edited = custom.get('override:' + slug);   // author typed in admin for a catalogue book
+  return edited && edited.author ? { ...(base || {}), author: edited.author } : base;
 }
 
 const absolute = (u) => {
@@ -100,7 +107,19 @@ async function isSendableImage(url) {
   } catch { return false; }
 }
 
-async function coverFor(images) {
+// Where the browser-made JPEG copy of a cover lives in R2.
+function jpegCopyKey(slug, sourceUrl) {
+  const h = crypto.createHash('sha1').update(String(sourceUrl)).digest('hex').slice(0, 10);
+  return `covers/wa/${slug}-${h}.jpg`;
+}
+
+async function coverFor(images, slug) {
+  const first = absolute(images.find((u) => absolute(u)));
+  const r2 = r2Configured() ? r2Config() : null;
+  if (first && r2 && r2.publicBase) {
+    const copy = `${r2.publicBase}/${jpegCopyKey(slug, first)}`;
+    if (await isSendableImage(copy)) return { url: copy, fallback: false };
+  }
   for (const raw of images) {
     const url = absolute(raw);
     if (!url) continue;
@@ -108,7 +127,19 @@ async function coverFor(images) {
     const tries = local ? [`${SITE}/images/wa/${local[1]}.jpg`] : [url];
     for (const t of tries) if (await isSendableImage(t)) return { url: t, fallback: false };
   }
-  return { url: FALLBACK_COVER, fallback: true };
+  // The admin page can make a JPEG of a cover on our own site and post it back.
+  const convertible = first && r2 && /^https:\/\/inkandchai\.in\//i.test(first) ? first : null;
+  return { url: FALLBACK_COVER, fallback: true, convert_from: convertible };
+}
+
+async function saveJpegCopy(slug, images, base64) {
+  if (!r2Configured()) throw new Error('R2 is not configured');
+  const first = absolute(images.find((u) => absolute(u)));
+  if (!first) throw new Error('This book has no cover');
+  const bytes = Buffer.from(String(base64).replace(/^data:image\/jpeg;base64,/, ''), 'base64');
+  if (bytes.length < 1000 || bytes.length > 3 * 1024 * 1024) throw new Error('The converted cover is the wrong size');
+  if (!(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)) throw new Error('The converted cover is not a JPEG');
+  return r2PutObject(r2Config(), { key: jpegCopyKey(slug, first), body: bytes, contentType: 'image/jpeg' });
 }
 
 async function loadBook(db, slug) {
@@ -160,10 +191,11 @@ async function pastCustomers(db, daysBack) {
   return customers;
 }
 
-// Author/category for admin-added books seen in past orders.
+// Author/category for admin-added books seen in past orders, and authors the
+// admin filled in for catalogue books (product_overrides, key 'override:<slug>').
 async function customMeta(db, customers) {
   const slugs = new Set();
-  for (const { orders } of customers.values()) for (const o of orders) for (const i of o.cart_items || []) {
+  for (const { orders } of customers.values()) for (const o of orders) for (const i of A.cartItemsOf(o)) {
     const s = String((i && (i.url || i.id)) || '').match(/\/product\/([^/?#]+)/i)?.[1];
     if (s && !(i && i.author)) slugs.add(s.toLowerCase());
   }
@@ -173,6 +205,9 @@ async function customMeta(db, customers) {
     const { data } = await db.from('custom_products').select('slug,author,category')
       .or(list.slice(k, k + 150).map((s) => `slug.ilike.${s}`).join(','));
     for (const r of data || []) out.set(String(r.slug).toLowerCase(), { author: r.author, category: r.category });
+    const { data: ov } = await db.from('product_overrides').select('slug,author')
+      .or(list.slice(k, k + 150).map((s) => `slug.ilike.${s}`).join(','));
+    for (const r of ov || []) if (r.author) out.set('override:' + String(r.slug).toLowerCase(), { author: r.author });
   }
   return out;
 }
@@ -191,6 +226,7 @@ exports.handler = async (event) => {
   const daysBack = Math.max(30, Math.min(730, parseInt(body.days_back, 10) || 365));
   const cooldownDays = Math.max(0, Math.min(60, body.cooldown_days === 0 ? 0 : parseInt(body.cooldown_days, 10) || 7));
   const limit = Math.max(1, Math.min(MAX_SEND, parseInt(body.limit, 10) || 300));
+  const keywords = A.keywordsOf(body.keywords);
   const template = String(process.env.WHATSAPP_NEW_TITLE_TEMPLATE || 'new_title_alert_v1').trim();
   const lang = String(process.env.WHATSAPP_NEW_TITLE_LANG || 'en').trim();
   const withImage = !/^(off|0|false|no)$/i.test(String(process.env.WHATSAPP_NEW_TITLE_IMAGE || '').trim());
@@ -201,10 +237,14 @@ exports.handler = async (event) => {
     const book = await loadBook(db, slug);
     if (!book) return json(404, { error: 'No live product with that slug' });
     if (book.sold_out) return json(400, { error: 'This book is marked sold out — restock it before announcing it.' });
-    if (!A.authorsOf(book.author).length && match === 'author') {
-      return json(400, { error: `This book has no usable author ("${book.author || 'blank'}"). Fill in the author, or match by author or category.` });
+    if (!A.authorsOf(book.author).length && !keywords.length && match === 'author') {
+      return json(400, { error: `This book has no usable author ("${book.author || 'blank'}"). Fill in the author, add series names, or match by author or category.` });
     }
-    const cover = withImage ? await coverFor(book.images) : null;
+    if (body.cover_jpeg) {
+      const url = await saveJpegCopy(book.slug, book.images, body.cover_jpeg);
+      return json(200, { cover_saved: true, url });
+    }
+    const cover = withImage ? await coverFor(book.images, book.slug) : null;
     const headerImageUrl = cover ? cover.url : null;
 
     // One number, for checking the message on a phone before the real send.
@@ -218,7 +258,7 @@ exports.handler = async (event) => {
 
     const customers = await pastCustomers(db, daysBack);
     const custom = await customMeta(db, customers);
-    const { recipients: matched, counts } = A.matchCustomers(customers, book, (item) => catalogueMeta(item, custom), { match });
+    const { recipients: matched, counts } = A.matchCustomers(customers, book, (item) => catalogueMeta(item, custom), { match, keywords });
 
     // Opt-outs. Either list unreadable → no send (a dry run still reports).
     let optedOut = new Set(), listError = '';
@@ -250,12 +290,12 @@ exports.handler = async (event) => {
     const preview = A.templateParams(toSend[0] || { name: 'Riya', reason: book.author }, book);
     const summary = {
       book: { slug: book.slug, title: book.title, author: book.author, category: book.category, price: book.price, release: book.release || null },
-      template, cover, match, days_back: daysBack, cooldown_days: cooldownDays,
+      template, cover, match, keywords, days_back: daysBack, cooldown_days: cooldownDays,
       counts: { ...counts, ...removed, eligible: eligible.length },
       will_send: toSend.length, limit,
       est_cost_inr: Math.round(toSend.length * COST_PER_MSG),
       preview_params: preview,
-      sample: toSend.slice(0, 8).map((r) => ({ phone: mask(r.phone), name: r.name, reason: r.reason })),
+      sample: toSend.slice(0, 8).map((r) => ({ phone: mask(r.phone), name: r.name, reason: r.reason, via: r.via })),
       blocked_reason: listError ? `Opt-out list unreadable (${listError})` : ledgerError ? `Delivery ledger unreadable — run sql/whatsapp_campaign_deliveries.sql (${ledgerError})` : '',
     };
 
@@ -281,7 +321,7 @@ exports.handler = async (event) => {
           campaign_key: campaignKey, customer_phone: r.phone, template_name: template,
           status: ok ? 'sent' : 'failed', error: ok ? null : String(error).slice(0, 1000),
           product_url: `https://inkandchai.in/product/${book.slug}/`,
-          metadata: { source: 'new_title', reason: r.reason, match },
+          metadata: { source: 'new_title', reason: r.reason, via: r.via, match },
         };
       });
       const { error: logError } = await db.from('whatsapp_campaign_deliveries').upsert(rows, { onConflict: 'campaign_key,customer_phone' });
