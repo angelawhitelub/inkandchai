@@ -11,8 +11,14 @@
  *   POST { slug, test_phone }  → sends to that one number only, no ledger.
  *
  * Template: WHATSAPP_NEW_TITLE_TEMPLATE (default new_title_alert_v1), a Meta
- * MARKETING template with four body variables and a URL button whose base is
- * https://inkandchai.in/product/{{1}} (see the admin box for the copy).
+ * MARKETING template with an IMAGE header, four body variables and a URL
+ * button whose base is https://inkandchai.in/product/{{1}}. For a template
+ * without the image header set WHATSAPP_NEW_TITLE_IMAGE=off.
+ *
+ * The header is the book's cover, but WhatsApp takes only JPEG/PNG (≤ 5 MB)
+ * and some covers are webp or gone from Shopify, so each candidate is fetched
+ * and checked; webp catalogue covers use the JPEG copy in /images/wa/; failing
+ * all that, the shop's card /images/og-default.jpg.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -37,6 +43,10 @@ const STATUSES = ['paid', 'delivered', 'shipped', 'out_for_delivery', 'cod_pendi
 const MAX_SEND = 1000;
 const BATCH = 20;
 const COST_PER_MSG = 0.91;   // ₹, Meta marketing conversation (India), as the broadcast modal quotes
+
+const SITE = 'https://inkandchai.in';
+const FALLBACK_COVER = SITE + '/images/og-default.jpg';
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const mask = (p) => String(p).slice(0, 4) + '****' + String(p).slice(-3);
@@ -69,9 +79,41 @@ function catalogueMeta(item, custom) {
   return custom.get(slug) || _bySlug.get(slug) || _byTitle.get(String(item.title || '').trim().toLowerCase()) || null;
 }
 
+const absolute = (u) => {
+  const s = String(u || '').trim();
+  if (!s || s.startsWith('data:')) return '';
+  if (/^https?:\/\//i.test(s)) return s.replace(/^http:/i, 'https:');
+  return SITE + (s.startsWith('/') ? s : '/' + s);
+};
+
+// A real JPEG/PNG that WhatsApp can fetch, judged by its first bytes.
+async function isSendableImage(url) {
+  try {
+    const res = await fetch(url, { headers: { Accept: 'image/jpeg,image/png' }, redirect: 'follow' });
+    if (!res.ok) return false;
+    const len = Number(res.headers.get('content-length') || 0);
+    if (len > MAX_IMAGE_BYTES) return false;
+    const head = new Uint8Array((await res.arrayBuffer()).slice(0, 8));
+    const jpeg = head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+    const png = head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47;
+    return jpeg || png;
+  } catch { return false; }
+}
+
+async function coverFor(images) {
+  for (const raw of images) {
+    const url = absolute(raw);
+    if (!url) continue;
+    const local = url.match(/^https:\/\/inkandchai\.in\/images\/([^/?#]+)\.webp(?:[?#].*)?$/i);
+    const tries = local ? [`${SITE}/images/wa/${local[1]}.jpg`] : [url];
+    for (const t of tries) if (await isSendableImage(t)) return { url: t, fallback: false };
+  }
+  return { url: FALLBACK_COVER, fallback: true };
+}
+
 async function loadBook(db, slug) {
   const { data: rows } = await db.from('custom_products')
-    .select('slug,title,author,category,original_price_inr,is_active').ilike('slug', slug).limit(1);
+    .select('slug,title,author,category,original_price_inr,is_active,image_url').ilike('slug', slug).limit(1);
   const custom = rows && rows[0];
   const cat = custom ? null : catalogueBook(slug);
   if (!custom && !cat) return null;
@@ -80,7 +122,13 @@ async function loadBook(db, slug) {
   const priced = await resolveCartPrices([{ id: `/product/${slug}/`, url: `/product/${slug}/`, qty: 1 }], db);
   const line = priced.cart[0];
   const release = (await releasesFor(db, [slug]))[slug.toLowerCase()] || '';
+  let override = null;
+  if (!custom) {
+    const { data } = await db.from('product_overrides').select('image_url').eq('slug', slug).limit(1);
+    override = data && data[0];
+  }
   return {
+    images: [custom && custom.image_url, override && override.image_url, src.image_url].filter(Boolean),
     slug: custom ? custom.slug : slug,
     title: (line && line.title) || src.title,
     author: src.author || '',
@@ -145,6 +193,7 @@ exports.handler = async (event) => {
   const limit = Math.max(1, Math.min(MAX_SEND, parseInt(body.limit, 10) || 300));
   const template = String(process.env.WHATSAPP_NEW_TITLE_TEMPLATE || 'new_title_alert_v1').trim();
   const lang = String(process.env.WHATSAPP_NEW_TITLE_LANG || 'en').trim();
+  const withImage = !/^(off|0|false|no)$/i.test(String(process.env.WHATSAPP_NEW_TITLE_IMAGE || '').trim());
   const campaignKey = A.CAMPAIGN_PREFIX + slug;
 
   try {
@@ -155,14 +204,16 @@ exports.handler = async (event) => {
     if (!A.authorsOf(book.author).length && match === 'author') {
       return json(400, { error: `This book has no usable author ("${book.author || 'blank'}"). Fill in the author, or match by author or category.` });
     }
+    const cover = withImage ? await coverFor(book.images) : null;
+    const headerImageUrl = cover ? cover.url : null;
 
     // One number, for checking the message on a phone before the real send.
     if (body.test_phone) {
       const phone = normalizePhone(body.test_phone);
       if (!phone) return json(400, { error: 'Test phone is not a valid Indian mobile' });
       const params = A.templateParams({ name: 'there', reason: A.authorsOf(book.author).length ? book.author : (A.shelfOf(book.category) || 'books like this') }, book);
-      const res = await sendWhatsApp({ to: phone, template, params, lang, urlButtonParam: book.slug, marketing: true });
-      return json(res && res.ok ? 200 : 502, { test: true, ok: !!(res && res.ok), params, error: res && !res.ok ? (res.data?.error?.message || res.error || 'send failed') : undefined });
+      const res = await sendWhatsApp({ to: phone, template, params, lang, headerImageUrl, urlButtonParam: book.slug, marketing: true });
+      return json(res && res.ok ? 200 : 502, { test: true, ok: !!(res && res.ok), params, cover, error: res && !res.ok ? (res.data?.error?.message || res.error || 'send failed') : undefined });
     }
 
     const customers = await pastCustomers(db, daysBack);
@@ -199,7 +250,7 @@ exports.handler = async (event) => {
     const preview = A.templateParams(toSend[0] || { name: 'Riya', reason: book.author }, book);
     const summary = {
       book: { slug: book.slug, title: book.title, author: book.author, category: book.category, price: book.price, release: book.release || null },
-      template, match, days_back: daysBack, cooldown_days: cooldownDays,
+      template, cover, match, days_back: daysBack, cooldown_days: cooldownDays,
       counts: { ...counts, ...removed, eligible: eligible.length },
       will_send: toSend.length, limit,
       est_cost_inr: Math.round(toSend.length * COST_PER_MSG),
@@ -220,7 +271,7 @@ exports.handler = async (event) => {
       const batch = toSend.slice(i, i + BATCH);
       const results = await Promise.all(batch.map(async (r) => {
         try {
-          const res = await sendWhatsApp({ to: r.phone, template, params: A.templateParams(r, book), lang, urlButtonParam: book.slug, marketing: true });
+          const res = await sendWhatsApp({ to: r.phone, template, params: A.templateParams(r, book), lang, headerImageUrl, urlButtonParam: book.slug, marketing: true });
           return { r, ok: !!(res && res.ok), error: res && !res.ok ? (res.data?.error?.message || res.error || 'send failed') : '' };
         } catch (e) { return { r, ok: false, error: e.message }; }
       }));

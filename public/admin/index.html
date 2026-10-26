@@ -2083,7 +2083,7 @@ select,input,textarea{font-size:1rem;}
               <div style="display:flex;gap:.5rem;"><input id="ntaTestPhone" placeholder="your WhatsApp number" autocomplete="off" style="flex:1;"/>
               <button class="btn-outline" type="button" id="ntaTestBtn" onclick="newTitleAlert('test')">Send test</button></div></div>
             <div id="ntaResult" class="hint" style="margin-top:.7rem;"></div>
-            <p class="hint" style="margin-top:.7rem;">Uses the WhatsApp template <code>new_title_alert_v1</code> (or <code>WHATSAPP_NEW_TITLE_TEMPLATE</code>), which must be approved in Meta as <em>Marketing</em> first. About ₹0.91 a message.</p>
+            <p class="hint" style="margin-top:.7rem;">Sends the book's cover as the picture on top. Uses the WhatsApp template <code>new_title_alert_v1</code> (or <code>WHATSAPP_NEW_TITLE_TEMPLATE</code>), which must be approved in Meta as <em>Marketing</em> with an <em>Image</em> header first. About ₹0.91 a message.</p>
           </details>
           <details id="prodSalesLineageEditor" style="display:none;margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(232,160,48,.04);">
             <summary style="cursor:pointer;color:#e8a030;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔥 Sold count from the original listing</summary>
@@ -10092,8 +10092,11 @@ function ntaSummaryHtml(d) {
     ['Messaged in the cooldown window', c.cooldown], ['Eligible', c.eligible],
   ].map(([k, n]) => `<div style="display:flex;justify-content:space-between;gap:1rem;"><span>${esc(k)}</span><b>${Number(n || 0).toLocaleString('en-IN')}</b></div>`).join('');
   const sample = (d.sample || []).map((r) => `${esc(r.phone)} · ${esc(r.name)} · ${esc(r.reason)}`).join('<br>');
+  const cover = d.cover ? `<div style="display:flex;gap:.6rem;align-items:flex-start;margin-bottom:.5rem;">
+      <img src="${esc(d.cover.url)}" alt="" style="width:64px;border-radius:6px;border:1px solid var(--border);"/>
+      <span>Image: ${d.cover.fallback ? '<b style="color:#e8a030;">the shop card</b> — this book has no JPEG/PNG cover WhatsApp can use. Upload a .jpg or .png cover to send the real one.' : 'the book cover'}</span></div>` : '';
   return `<div style="border:1px solid var(--border);border-radius:10px;padding:.7rem;max-width:520px;">
-    <div style="margin-bottom:.4rem;"><b>${esc(d.book?.title || '')}</b> — ${esc(d.book?.author || 'no author')}</div>${rows}
+    <div style="margin-bottom:.4rem;"><b>${esc(d.book?.title || '')}</b> — ${esc(d.book?.author || 'no author')}</div>${cover}${rows}
     <div style="margin-top:.6rem;font-size:.9rem;"><b>Will send ${Number(d.will_send || 0).toLocaleString('en-IN')}</b> (limit ${d.limit}) · about <b>₹${Number(d.est_cost_inr || 0).toLocaleString('en-IN')}</b></div>
     ${d.blocked_reason ? `<div style="color:#e05a4e;margin-top:.5rem;">${esc(d.blocked_reason)}</div>` : ''}
     <div style="margin-top:.6rem;color:var(--cream-dim);">Message: Hi <b>${esc(p[0] || '')}</b>! Since you've read <b>${esc(p[1] || '')}</b>… <b>${esc(p[2] || '')}</b> is now available at Ink &amp; Chai — ${esc(p[3] || '')}.</div>

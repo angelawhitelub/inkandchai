@@ -113,6 +113,16 @@ const baseTables = () => ({
   whatsapp_marketing_subscribers: [],
   whatsapp_campaign_deliveries: [{ id: 1, campaign_key: 'weekly-x', customer_phone: '919000000003', status: 'sent', created_at: now }],
 });
+// Covers: only these URLs answer with real image bytes.
+const JPEG = [0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46], WEBP = [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0];
+let images = {};
+const fetched = [];
+global.fetch = async (url) => {
+  fetched.push(url);
+  const bytes = images[url];
+  if (!bytes) return { ok: false, status: 404, headers: new Map(), arrayBuffer: async () => new ArrayBuffer(0) };
+  return { ok: true, status: 200, headers: new Map([['content-length', '1000']]), arrayBuffer: async () => new Uint8Array(bytes).buffer };
+};
 const call = (handler, body) => handler({ httpMethod: 'POST', headers: {}, body: JSON.stringify(body) }).then((r) => ({ status: r.statusCode, body: JSON.parse(r.body) }));
 
 test('dry run reports the audience and sends nothing', async () => {
@@ -188,4 +198,43 @@ test('test_phone sends one message and writes no ledger row', async () => {
   assert.strictEqual(sent.length, 1);
   assert.strictEqual(sent[0].to, '919876543210');
   assert.strictEqual(writes.length, 0);
+});
+
+test('cover: the book\'s own JPEG is the image header', async () => {
+  const tables = baseTables();
+  tables.custom_products[0].image_url = 'https://cdn.example.com/cover.jpg';
+  images = { 'https://cdn.example.com/cover.jpg': JPEG };
+  const sent = [], writes = [];
+  const handler = loadHandler({ tables, sent, writes });
+  const dry = await call(handler, { slug: 'a-court-of-splintered-harmony', dry_run: true });
+  assert.deepStrictEqual(dry.body.cover, { url: 'https://cdn.example.com/cover.jpg', fallback: false });
+  await call(handler, { slug: 'a-court-of-splintered-harmony', dry_run: false, expect: 1 });
+  assert.strictEqual(sent[0].headerImageUrl, 'https://cdn.example.com/cover.jpg');
+});
+
+test('cover: a webp catalogue cover uses its JPEG copy in /images/wa/', async () => {
+  const tables = baseTables();
+  tables.custom_products[0].image_url = '/images/some-book.webp';
+  images = { 'https://inkandchai.in/images/some-book.webp': WEBP, 'https://inkandchai.in/images/wa/some-book.jpg': JPEG };
+  const r = await call(loadHandler({ tables, sent: [], writes: [] }), { slug: 'a-court-of-splintered-harmony', dry_run: true });
+  assert.strictEqual(r.body.cover.url, 'https://inkandchai.in/images/wa/some-book.jpg');
+});
+
+test('cover: a webp or missing cover falls back to the shop card', async () => {
+  const tables = baseTables();
+  tables.custom_products[0].image_url = 'https://cdn.shopify.com/gone.webp';
+  images = { 'https://cdn.shopify.com/gone.webp': WEBP };
+  const r = await call(loadHandler({ tables, sent: [], writes: [] }), { slug: 'a-court-of-splintered-harmony', dry_run: true });
+  assert.deepStrictEqual(r.body.cover, { url: 'https://inkandchai.in/images/og-default.jpg', fallback: true });
+});
+
+test('WHATSAPP_NEW_TITLE_IMAGE=off sends no image header', async () => {
+  process.env.WHATSAPP_NEW_TITLE_IMAGE = 'off';
+  try {
+    const sent = [];
+    fetched.length = 0;
+    await call(loadHandler({ tables: baseTables(), sent, writes: [] }), { slug: 'a-court-of-splintered-harmony', test_phone: '9876543210' });
+    assert.strictEqual(sent[0].headerImageUrl, null);
+    assert.strictEqual(fetched.length, 0);
+  } finally { delete process.env.WHATSAPP_NEW_TITLE_IMAGE; }
 });
