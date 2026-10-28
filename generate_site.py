@@ -10688,12 +10688,12 @@ async function chkSendOtp() {
     // Show OTP boxes
     const box = document.getElementById('chkAuthModal')?.querySelector('div');
     if (box) box.innerHTML += `
-      <p style="font-size:.7rem;color:#a09080;margin-top:.8rem;">Enter the 8-digit code sent to <strong style="color:#c9a84c">${email}</strong></p>
+      <p style="font-size:.7rem;color:#a09080;margin-top:.8rem;">Enter the 6-digit code sent to <strong style="color:#c9a84c">${email}</strong></p>
       <div style="display:flex;gap:.4rem;margin:.6rem 0;">
-        ${[0,1,2,3,4,5,6,7].map(i=>`<input id="cOtp${i}" type="text" inputmode="numeric" maxlength="1"
+        ${[0,1,2,3,4,5].map(i=>`<input id="cOtp${i}" type="text" inputmode="numeric" maxlength="1"
           style="flex:1;height:44px;text-align:center;font-size:1.2rem;font-weight:600;background:#141210;
                  border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;font-family:'Inter',sans-serif;outline:none;"
-          oninput="(function(el,i){el.value=el.value.replace(/\\\\D/g,'').slice(-1);if(el.value&&i<7)document.getElementById('cOtp'+(i+1))?.focus();const c=[0,1,2,3,4,5,6,7].map(j=>document.getElementById('cOtp'+j)?.value||'').join('');if(c.length===8)chkVerifyOtp();})(this,${i})"
+          oninput="(function(el,i){el.value=el.value.replace(/\\\\D/g,'').slice(-1);if(el.value&&i<5)document.getElementById('cOtp'+(i+1))?.focus();const c=[0,1,2,3,4,5].map(j=>document.getElementById('cOtp'+j)?.value||'').join('');if(c.length===6)chkVerifyOtp();})(this,${i})"
           onkeydown="if(event.key==='Backspace'&&!this.value&&${i}>0)document.getElementById('cOtp'+(${i}-1))?.focus()"/>`).join('')}
       </div>
       <p id="chkVerifyMsg" style="font-size:.7rem;color:#e06060;min-height:1em;"></p>`;
@@ -10705,9 +10705,9 @@ async function chkSendOtp() {
 }
 
 async function chkVerifyOtp() {
-  const code = [0,1,2,3,4,5,6,7].map(i=>document.getElementById('cOtp'+i)?.value||'').join('');
+  const code = [0,1,2,3,4,5].map(i=>document.getElementById('cOtp'+i)?.value||'').join('');
   const msg  = document.getElementById('chkVerifyMsg');
-  if (code.length < 8) { if(msg){msg.textContent='Enter all 8 digits.';} return; }
+  if (code.length < 6) { if(msg){msg.textContent='Enter all 6 digits.';} return; }
   const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
   try {
     const { data, error } = await sb.auth.verifyOtp({ email: _chkOtpEmail, token: code, type: 'email' });
