@@ -29,6 +29,7 @@ import releaseDate from '../netlify/functions/utils/release-date.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
 import newArrivals from '../netlify/functions/utils/new-arrivals.js';
 import lifetimeSales from '../netlify/functions/utils/lifetime-sales.js';
+import bestsellerRank from '../netlify/functions/utils/bestseller-rank.js';
 import codRules from '../netlify/functions/utils/cod-rules.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
@@ -694,6 +695,39 @@ async function sitemapWithCustom(request, env, ctx, origin) {
   return new Response(xml, { status: 200, headers });
 }
 
+// /bestsellers/ is baked as a hand-picked collection. With ranks published
+// (utils/bestseller-rank, hourly) it lists the live Top 100 instead -- or a
+// shelf's top 50 with ?shelf= -- in rank order. Without them, or on any
+// failure, the baked page is served unchanged.
+async function bestsellersPage(request, env, url) {
+  const asset = await env.ASSETS.fetch(new Request(`${url.origin}/bestsellers/`, request));
+  if (request.method !== 'GET' || asset.status !== 200
+      || !/text\/html/i.test(asset.headers.get('content-type') || '')) return asset;
+  let parts;
+  try {
+    const doc = await lifetimeSales.readLifetimeSales();
+    if (!doc || !doc.bsr) return asset;
+    parts = bestsellerRank.pageParts(doc.bsr, url.searchParams.get('shelf') || '');
+  } catch (err) {
+    console.warn('[bestsellers] ranks unavailable:', err && err.message);
+    return asset;
+  }
+  if (!parts.count) return asset;
+  const once = (fn) => { let done = false; return { element(el) { if (!done) { done = true; fn(el); } } }; };
+  const out = new HTMLRewriter()
+    .on('title', once((el) => el.setInnerContent(`${parts.heading} | Ink & Chai`)))
+    .on('main .eyebrow', once((el) => el.setInnerContent('Updated every hour')))
+    .on('main h1', once((el) => el.setInnerContent(parts.heading)))
+    .on('main > p', once((el) => el.setInnerContent(parts.intro, { html: true })))
+    .on('section.grid', once((el) => { el.before(parts.chips, { html: true }); el.setInnerContent(parts.cards, { html: true }); }))
+    .transform(asset);
+  const headers = new Headers(out.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  headers.set('Cache-Control', 'public, max-age=300');
+  headers.set('X-Bestsellers', `${parts.shelf || 'all'}:${parts.count}`);
+  return new Response(out.body, { status: 200, headers });
+}
+
 // /new-arrivals/ and /new-arrivals-2026/ are baked from the catalogue, so books
 // created in the admin never showed there. The newest ones go first in the
 // grid (utils/new-arrivals). A failed read serves the baked page unchanged.
@@ -726,17 +760,25 @@ async function newArrivalsPage(request, env, ctx, origin) {
 }
 
 // "🔥 N sold" under the stock line of a bestseller's product page (lifetime
-// units, utils/lifetime-sales; shown from SHOW_ON_PAGE_MIN). A failed read
-// leaves the page as it was.
+// units, utils/lifetime-sales; shown from SHOW_ON_PAGE_MIN), and the Best
+// Sellers Rank (utils/bestseller-rank): a row in the Details table for any
+// book that has sold, and a "#1 Best Seller" badge for a shelf's top book.
+// Both come from the same hourly KV document. A failed read leaves the page
+// as it was.
 async function withSoldCount(response, slug) {
   if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
   const doc = await lifetimeSales.readLifetimeSales();
   // unitsSold adds what a duplicated listing carries from its original.
   const line = lifetimeSales.soldLine(lifetimeSales.unitsSold(doc, slug));
-  if (!line) return response;
+  const rank = bestsellerRank.rankOf(doc && doc.bsr, slug);
+  const underStock = bestsellerRank.badgeHtml(rank) + line;
+  const row = bestsellerRank.rankRowHtml(rank);
+  if (!underStock && !row) return response;
   let done = false;
+  let rowDone = false;
   const out = new HTMLRewriter()
-    .on('span.stock', { element(el) { if (!done) { el.after(line, { html: true }); done = true; } } })
+    .on('span.stock', { element(el) { if (!done && underStock) { el.after(underStock, { html: true }); done = true; } } })
+    .on('div.details dl', { element(el) { if (!rowDone && row) { el.append(row, { html: true }); rowDone = true; } } })
     .transform(response);
   const headers = new Headers(out.headers);
   headers.delete('etag');
@@ -854,6 +896,8 @@ export default {
     if (url.pathname === '/feed.xml') return soldOutFeed(request, env, ctx, url.origin);
     if (url.pathname === '/sitemap.xml') return sitemapWithCustom(request, env, ctx, url.origin);
     if (/^\/new-arrivals(?:-2026)?\/?$/.test(url.pathname)) return newArrivalsPage(request, env, ctx, url.origin);
+    if (url.pathname === '/bestsellers') return Response.redirect(`${url.origin}/bestsellers/${url.search}`, 301);
+    if (url.pathname === '/bestsellers/') return bestsellersPage(request, env, url);
 
     const assetResponse = await env.ASSETS.fetch(request);
 

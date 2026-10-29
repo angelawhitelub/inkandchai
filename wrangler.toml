@@ -41,6 +41,9 @@ run_worker_first = [
   "/new-arrivals/",
   "/new-arrivals-2026",
   "/new-arrivals-2026/",
+  # The live Best Sellers Top 100 (utils/bestseller-rank, worker/index.js).
+  "/bestsellers",
+  "/bestsellers/",
   "/custom-feed-bulk/*",
   "/.netlify/functions/*",
   # The WooCommerce-shaped order feed XpressBees polls. Both patterns are
