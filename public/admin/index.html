@@ -200,6 +200,8 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 /* Per-item price breakdown: title wraps, price stays pinned to the first line. */
 .items-cell .item-line{display:flex;align-items:baseline;gap:0.5rem;justify-content:space-between;}
 .items-cell .item-line .it-title{white-space:normal;overflow-wrap:anywhere;min-width:0;line-height:1.35;}
+.cust-name .cust-link{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor;}
+.cust-name .cust-link:hover{color:var(--gold);border-bottom-style:solid;}
 .items-cell .item-line .it-link{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor;}
 .items-cell .item-line .it-link:hover{color:var(--gold);border-bottom-style:solid;}
 .items-cell .item-line .it-price{flex-shrink:0;color:var(--gold);font-variant-numeric:tabular-nums;font-size:0.7rem;}
@@ -6073,6 +6075,18 @@ function itemLineHtml(i) {
   </div>`;
 }
 
+// The customer's name filters the orders list to everyone of theirs. Searches
+// by the last 10 phone digits (rows are stored with and without the 91), else
+// the email, else the name -- two customers can share a name.
+function customerNameHtml(o) {
+  const name = esc(o?.customer_name || '—');
+  const digits = String(o?.customer_phone || '').replace(/\D/g, '').slice(-10);
+  const key = digits.length === 10 ? digits : String(o?.customer_email || o?.customer_name || '').trim();
+  if (!key) return name;
+  return `<a href="#" class="cust-link" data-cust="${esc(key)}" title="Show all orders from this customer"
+    onclick="event.preventDefault(); event.stopPropagation(); searchOrders(this.dataset.cust)">${name}</a>`;
+}
+
 function itemProductSlug(i) {
   for (const v of [i?.url, i?.id, i?.link, i?.product_url]) {
     const m = String(v || '').match(/\/product\/([^/?#]+)/i);
@@ -6773,7 +6787,7 @@ function _drawTable() {
       </td>
       <td data-label="Date" style="font-size:0.65rem;color:var(--cream-dim);white-space:nowrap;">${date}</td>
       <td data-label="Customer">
-        <div class="cust-name">${esc(o.customer_name || '—')}</div>
+        <div class="cust-name">${customerNameHtml(o)}</div>
         <div class="cust-sub">${esc(o.customer_phone || '')}</div>
         <div class="cust-sub">${esc(o.customer_email || '')}</div>
       </td>
@@ -16886,7 +16900,7 @@ function renderReplacementRequests() {
           : `<a href="#" onclick="event.preventDefault(); searchOrders('${esc(originalId)}')" title="Open the original order" style="color:var(--gold);text-decoration:underline;">${esc(originalId)}</a>`}</div>
       </td>
       <td data-label="Customer">
-        <div class="cust-name">${esc(o.customer_name || '—')}</div>
+        <div class="cust-name">${customerNameHtml(o)}</div>
         <div class="cust-sub">${esc(o.customer_phone || '')}</div>
         <div class="cust-sub">${esc(o.customer_email || '')}</div>
       </td>
