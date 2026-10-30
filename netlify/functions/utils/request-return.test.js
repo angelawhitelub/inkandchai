@@ -109,9 +109,11 @@ test('a return is recorded, the pickup is booked, and nothing is paid yet', asyn
   assert.match(JSON.parse(res.body).message, /as soon as the courier accepts/);
 });
 
+const codOrder = (mode = 'cod') => order({ razorpay_payment_id: null, cart_items: [{ title: 'Book One', qty: 1, price: 400, _payment: { mode } }] });
+
 test('store credit is not handed out at request time', async () => {
-  state = { orders: [order()] };
-  const res = await call({ refund_method: 'wallet' });
+  state = { orders: [codOrder()] };
+  const res = await call({});
   assert.equal(res.statusCode, 200, res.body);
   assert.equal(state.return_requests[0].refund_status, 'awaiting_return_delivery');
   assert.equal(state.scratch_cards, undefined);
@@ -130,14 +132,22 @@ test('out of the window, undelivered, a replacement, or already replaced: refuse
   assert.equal(state.return_requests, undefined);
 });
 
-test('a COD return to the original method needs a UPI ID', async () => {
-  state = { orders: [order({ razorpay_payment_id: null, cart_items: [{ title: 'Book One', qty: 1, price: 400, _payment: { mode: 'cod' } }] })] };
-  const res = await call({});
-  assert.equal(res.statusCode, 400);
-  assert.equal(JSON.parse(res.body).need_upi, true);
-  const ok = await call({ upi_id: 'asha@ybl' });
-  assert.equal(ok.statusCode, 200, ok.body);
-  assert.equal(state.return_requests[0].refund_status, 'manual_payout_pending');
+test('COD and partial COD returns are store credit only; prepaid goes back to the original method', async () => {
+  for (const mode of ['cod', 'partial_cod']) {
+    state = { orders: [codOrder(mode)] };
+    const res = await call({ refund_method: 'original', upi_id: 'asha@ybl' });   // an older page's choice is ignored
+    assert.equal(res.statusCode, 200, res.body);
+    const row = state.return_requests[0];
+    assert.equal(row.refund_method, 'wallet', mode);
+    assert.equal(row.refund_status, 'awaiting_return_delivery', mode);
+    assert.equal(row.upi_id, undefined);
+    assert.match(JSON.parse(res.body).message, /store credit/);
+  }
+  state = { orders: [order()] };
+  const res = await call({ refund_method: 'wallet' });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(state.return_requests[0].refund_method, 'original');
+  assert.match(JSON.parse(res.body).message, /original payment method/);
 });
 
 test('one return per order', async () => {

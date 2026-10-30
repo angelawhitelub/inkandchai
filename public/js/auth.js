@@ -2580,33 +2580,20 @@ window.IACClaimEvidence = {
     });
   }
 
-  // How a return is refunded: back to the original payment, or store credit
-  // with a ₹50 bonus. A Cash on Delivery order has no online payment to
-  // reverse, so the original-method refund needs a UPI ID.
+  // How a return is refunded, decided by how the order was paid (the server's
+  // own answer, get-my-orders return_refund_method): prepaid goes back to the
+  // original payment method, Cash on Delivery is store credit only.
   function returnRefundFieldsHtml(order) {
-    const cod = ('refund_upi_required' in order) ? !!order.refund_upi_required : isCodOrder(order);
-    const name = 'ret-method-' + escHtmlAttr(order.id);
-    const opt = (value, checked, label, hint) => `
-      <label style="display:flex;gap:0.5rem;align-items:flex-start;cursor:pointer;border:1px solid rgba(201,168,76,0.22);padding:0.5rem 0.7rem;margin-bottom:0.4rem;">
-        <input type="radio" name="${name}" value="${value}" ${checked ? 'checked' : ''} onchange="iacReturnMethodChanged(this)" style="margin-top:0.2rem;">
-        <span style="font-size:0.72rem;color:#f0e8d8;">${label}<br><span style="font-size:0.62rem;color:#a09080;">${hint}</span></span></label>`;
+    const wallet = (order.return_refund_method || (isCodOrder(order) ? 'wallet' : 'original')) === 'wallet';
     return `
-      <div class="ret-refund" data-cod="${cod ? '1' : ''}" style="display:none;margin-bottom:0.6rem;">
-        <div style="font-size:0.62rem;color:#a09080;margin-bottom:0.4rem;">How would you like your refund?</div>
-        ${opt('original', true, cod ? 'Refund to my UPI' : 'Refund to my original payment method', cod ? 'This was Cash on Delivery, so we transfer it to your UPI ID.' : 'Back to the card, UPI or wallet you paid with.')}
-        ${opt('wallet', false, 'Store credit + ₹50 bonus', 'A code for your next order, valid 6 months.')}
-        <div class="ret-upi-wrap" style="display:${cod ? '' : 'none'};margin-top:0.3rem;">
-          <input class="ret-upi" type="text" inputmode="email" autocomplete="off" maxlength="128" placeholder="Your UPI ID, e.g. 9876543210@ybl"
-            style="width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.45rem 0.6rem;font-family:inherit;font-size:0.72rem;"/>
-        </div>
-        <div style="font-size:0.6rem;color:#7a6330;line-height:1.5;margin-top:0.4rem;">The refund is issued when the books reach us — usually 2–3 days after the courier collects them.</div>
+      <div class="ret-refund" style="display:none;margin-bottom:0.6rem;border:1px solid rgba(201,168,76,0.22);padding:0.5rem 0.7rem;">
+        <div style="font-size:0.72rem;color:#f0e8d8;">${wallet ? 'Refund as store credit + ₹50 bonus' : 'Refund to your original payment method'}</div>
+        <div style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-top:0.2rem;">${wallet
+          ? 'Cash on Delivery orders are refunded in Ink &amp; Chai store credit only: a code for your next order, valid 6 months.'
+          : 'Back to the card, UPI or wallet you paid with.'}</div>
+        <div style="font-size:0.6rem;color:#7a6330;line-height:1.5;margin-top:0.4rem;">The ${wallet ? 'credit' : 'refund'} is issued when the books reach us — usually 2–3 days after the courier collects them.</div>
       </div>`;
   }
-
-  window.iacReturnMethodChanged = function (input) {
-    const box = input.closest('.ret-refund');
-    box.querySelector('.ret-upi-wrap').style.display = input.value === 'original' && box.dataset.cod ? '' : 'none';
-  };
 
   window.iacSubmitReturn = async function (btn) {
     const wrap = btn.closest('[id^="miss-wrap-"]');
@@ -2619,10 +2606,6 @@ window.IACClaimEvidence = {
         return { title: row.dataset.title, qty: Math.min(max, Math.max(1, Number(row.querySelector('.miss-qty')?.value) || max)) };
       });
     if (!picked.length) return say('Please tap the book(s) you want to return.');
-    const box = wrap.querySelector('.ret-refund');
-    const method = box.querySelector('input[type=radio]:checked')?.value || 'original';
-    const upi = (box.querySelector('.ret-upi')?.value || '').trim();
-    if (method === 'original' && box.dataset.cod && !upi) { box.querySelector('.ret-upi').focus(); return say('Please enter your UPI ID for the refund.'); }
     const note = (wrap.querySelector('.miss-comment').value || '').trim();
 
     const orig = btn.textContent;
@@ -2636,12 +2619,10 @@ window.IACClaimEvidence = {
       const res = await fetch('/.netlify/functions/request-return', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ order_id: btn.dataset.id, items: picked, reason: note || 'Returned within 7 days', refund_method: method, upi_id: upi }),
+        body: JSON.stringify({ order_id: btn.dataset.id, items: picked, reason: note || 'Returned within 7 days' }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        // Partial COD and other cases the server alone knows need a UPI ID.
-        if (data.need_upi) { box.dataset.cod = '1'; box.querySelector('.ret-upi-wrap').style.display = ''; }
         throw new Error(data.error || 'Could not request the return.');
       }
       wrap.innerHTML = `

@@ -14,7 +14,7 @@
  *   • otherwise → cod (COD orders are inserted with razorpay_payment_id = null)
  */
 
-const WALLET_BONUS_RUPEES = 50;                 // extra store credit for choosing wallet
+const WALLET_BONUS_RUPEES = 50;                 // extra store credit on top of the refund
 const WALLET_EXPIRY_DAYS  = 180;                // 6 months to spend it
 
 function paymentMeta(order) {
@@ -24,6 +24,16 @@ function paymentMeta(order) {
 function resolvePaymentType(order) {
   if (paymentMeta(order).mode === 'partial_cod') return 'partial_cod';
   return order?.razorpay_payment_id ? 'prepaid' : 'cod';
+}
+
+/**
+ * How a return is refunded, by how the order was paid (owner's rule, 30 Oct
+ * 2026): prepaid goes back to the original payment method; COD and partial
+ * COD get store credit only. The customer no longer chooses, so no COD return
+ * ever needs a UPI ID or a hand payout.
+ */
+function returnRefundMethod(paymentType) {
+  return String(paymentType || '').toLowerCase() === 'prepaid' ? 'original' : 'wallet';
 }
 
 /** Rupees the customer actually paid, and therefore should get back. */
@@ -202,6 +212,7 @@ module.exports = {
   WALLET_BONUS_RUPEES,
   WALLET_EXPIRY_DAYS,
   resolvePaymentType,
+  returnRefundMethod,
   refundBasePaise,
   pickReturnItems,
   mintWalletCredit,

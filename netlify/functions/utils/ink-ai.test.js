@@ -77,7 +77,8 @@ test('the prompt forbids collecting payout details in chat', () => {
 test('the prompt carries the replacement and refund routes the code actually implements', () => {
   // 7-day returns (back 2026-10-23) next to free replacements; the refund only on receipt.
   assert.match(STORE_FACTS, /RETURNS & REPLACEMENTS — both within 7 days of delivery/);
-  assert.match(STORE_FACTS, /store credit with a ₹50 bonus/);
+  assert.match(STORE_FACTS, /Cash on Delivery and Partial COD → Ink & Chai store credit only/);
+  assert.doesNotMatch(STORE_FACTS, /COD: their UPI ID/);
   assert.match(STORE_FACTS, /issued only when the books reach our warehouse/);
   assert.match(STORE_FACTS, /defective book \/ misprint/);
   assert.match(STORE_FACTS, /Defective or wrong book: within 7 days of delivery/);

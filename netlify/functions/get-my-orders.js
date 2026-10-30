@@ -9,6 +9,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
+const { resolvePaymentType, returnRefundMethod } = require('./utils/return-refund');
 const { quoteLateCancel } = require('./utils/prepaid-late-cancel');
 const { quoteUnpickedCancel } = require('./utils/unpicked-cancel');
 const { buildTrackingUrl } = require('./utils/tracking-url');
@@ -168,6 +169,9 @@ exports.handler = async (event) => {
         // the same flag track-order already sends. A browser-side copy of this
         // rule drifted once and hid a required field from COD customers.
         o.refund_upi_required = isDefinitelyCod(o);
+        // How a return on it would be refunded, as request-return decides it:
+        // 'original' (prepaid) or 'wallet' (COD and partial COD, store credit only).
+        o.return_refund_method = returnRefundMethod(resolvePaymentType(o));
         // Prepaid cancellation after the 30-minute window: the server's own
         // terms, so the button quotes exactly what cancel-prepaid-order pays.
         // Offered only once sql/orders_late_cancel.sql has run: select('*')

@@ -11,19 +11,18 @@
  * Post). The customer sees it approved, with the pickup AWB, once a courier
  * accepts. Nothing is paid out here: the refund, or the store credit, is
  * issued when the parcel is delivered back to us (utils/return-auto-refund).
+ *
+ * Since 30 Oct 2026 the payment mode decides the refund (returnRefundMethod):
+ * prepaid → the original payment method, COD and partial COD → store credit.
  */
 
 const { createClient } = require('@supabase/supabase-js');
 
 const { sendEmail } = require('./utils/email');
-const { sendText } = require('./utils/whatsapp');
 const {
   WALLET_BONUS_RUPEES,
   resolvePaymentType,
-  needsManualPayout,
-  resolvePayoutDestination,
-  payoutLabel,
-  payoutLabelMasked,
+  returnRefundMethod,
   pickReturnItems,
 } = require('./utils/return-refund');
 const { isReplacementOrder } = require('./utils/replacement-order');
@@ -73,20 +72,8 @@ function ownerEmailHtml(order, reason, info = {}) {
   if (info.refundMethod === 'wallet') {
     refundBlock = `
       <div style="margin:16px 0;padding:14px 16px;background:#eef7ec;border-left:4px solid #4a9d4a;">
-        <p style="margin:0;"><strong>Refund method:</strong> Ink &amp; Chai Wallet (store credit)</p>
+        <p style="margin:0;"><strong>Refund method:</strong> Ink &amp; Chai Wallet (store credit — ${info.paymentType === 'partial_cod' ? 'partial COD' : 'COD'} orders are refunded in store credit only)</p>
         <p style="margin:6px 0 0;">A store-credit code worth <strong>₹${(info.walletRupees||0).toLocaleString('en-IN')}</strong> (₹${rupees} refund + ₹${info.bonus} bonus) is issued automatically when the parcel is delivered back to us.</p>
-      </div>`;
-  } else if (info.manualPayout) {
-    // partial COD reads the same as COD here on purpose: the gateway holds only
-    // the deposit, so the whole amount goes out by hand in one transfer.
-    const kind = info.paymentType === 'partial_cod'
-      ? 'Partial COD → manual payout (gateway holds only the deposit)'
-      : 'COD → manual payout';
-    refundBlock = `
-      <div style="margin:16px 0;padding:14px 16px;background:#fbf1e6;border-left:4px solid #c9852b;">
-        <p style="margin:0;"><strong>Refund method:</strong> Original method — <strong>${esc(kind)}</strong></p>
-        <p style="margin:6px 0 0;font-size:16px;"><strong>Pay the customer ₹${rupees}</strong> to <strong style="color:#8a3a1f;">${esc(payoutLabel(info.destination))}</strong></p>
-        <p style="margin:6px 0 0;color:#5a4a38;font-size:13px;">⚠️ Only pay out AFTER the returned book is back with you. Then mark it refunded.</p>
       </div>`;
   } else {
     refundBlock = `
@@ -119,10 +106,7 @@ function customerEmailHtml(order, info = {}) {
   let block;
   if (info.refundMethod === 'wallet') {
     block = `
-      <p>You chose <strong>Ink &amp; Chai store credit</strong>: <strong>₹${(info.walletRupees||0).toLocaleString('en-IN')}</strong> (₹${rupees} refund + ₹${info.bonus} bonus), valid 6 months. We email you the code as soon as the books reach us.</p>`;
-  } else if (info.manualPayout) {
-    block = `
-      <p>We'll transfer your refund of <strong>₹${rupees}</strong> to <strong>${esc(payoutLabelMasked(info.destination))}</strong> once the books reach us.</p>`;
+      <p>As this was a Cash on Delivery order, it is refunded as <strong>Ink &amp; Chai store credit</strong>: <strong>₹${(info.walletRupees||0).toLocaleString('en-IN')}</strong> (₹${rupees} refund + ₹${info.bonus} bonus), valid 6 months. We email you the code as soon as the books reach us.</p>`;
   } else {
     block = `
       <p>Your refund of <strong>₹${rupees}</strong> goes back to your original payment method <strong>automatically once the books are delivered back to us</strong>.</p>`;
@@ -168,15 +152,7 @@ exports.handler = async (event) => {
     const body = JSON.parse(event.body || '{}');
     const orderId = clean(body.order_id || body.id, 120);
     const reason = clean(body.reason, 1000);
-    const refundMethod = clean(body.refund_method, 20).toLowerCase(); // 'original' | 'wallet'
-    const upiIdRaw = clean(body.upi_id, 80);
-    const bankAccountRaw = clean(body.bank_account, 34);
-    const bankIfscRaw    = clean(body.bank_ifsc, 15);
-    const bankHolderRaw  = clean(body.bank_holder, 80);
     if (!orderId) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing order id.' }) };
-    if (!['original', 'wallet'].includes(refundMethod)) {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Please choose a refund method: "original" or "wallet".' }) };
-    }
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -246,39 +222,13 @@ exports.handler = async (event) => {
     const refundPaise = pick.refundPaise;                   // what they paid for the books coming back
     const refundRupees = Math.round(refundPaise / 100);
 
-    // Neither COD nor partial COD has a transaction the gateway can reverse for
-    // the full amount, so both need a destination from the customer before the
-    // request is allowed to exist at all. Accepting one without it is what
-    // stranded partial-COD refunds: the panel said "Prepaid (auto)" while the
-    // gateway could only ever have returned the deposit.
-    const manualPayout = refundMethod === 'original' && needsManualPayout(paymentType);
-    let destination = { upiId: '', bankAccount: '', bankIfsc: '', bankHolder: '' };
-    if (manualPayout) {
-      const resolved = resolvePayoutDestination({
-        upiId: upiIdRaw,
-        bankAccount: bankAccountRaw,
-        bankIfsc: bankIfscRaw,
-        bankHolder: bankHolderRaw,
-      });
-      if (!resolved.ok) {
-        return { statusCode: 400, headers: CORS, body: JSON.stringify({
-          error: resolved.error,
-          // need_upi keeps older clients working; need_payout lets a newer one
-          // offer the bank fields too, and payment_type lets it say why.
-          need_upi: true,
-          need_payout: true,
-          payment_type: paymentType,
-        }) };
-      }
-      destination = resolved.destination;
-    }
-    const upiId = destination.upiId;
+    // Not the customer's choice any more: prepaid → original method, COD and
+    // partial COD → store credit. body.refund_method from an older page is ignored.
+    const refundMethod = returnRefundMethod(paymentType);
 
-    // Store credit is issued on receipt too (utils/return-auto-refund), like a
-    // refund: handing it out before the books came back paid people who never
-    // sent them.
-    const refundStatus = manualPayout ? 'manual_payout_pending'     // paid by hand after the return is received
-                       :                'awaiting_return_delivery'; // prepaid or wallet → issued when it is delivered back
+    // Both are settled on receipt (utils/return-auto-refund), never before the
+    // books are back: handing credit out at request paid people who never sent them.
+    const refundStatus = 'awaiting_return_delivery';
 
     // Save the return request first (so a mint failure never leaves an orphan code).
     const baseRow = {
@@ -296,64 +246,26 @@ exports.handler = async (event) => {
       status:              'approved',
       refund_method:       refundMethod,
       payment_type:        paymentType,
-      upi_id:              destination.upiId || null,
       refund_amount_paise: refundPaise,
       refund_status:       refundStatus,
     };
-    const bankRow = {
-      bank_account: destination.bankAccount || null,
-      bank_ifsc:    destination.bankIfsc || null,
-      bank_holder:  destination.bankHolder || null,
-    };
-    const gaveBank = Boolean(destination.bankAccount);
-
-    let { data: inserted, error: insertErr } = await supabase
-      .from('return_requests').insert({ ...baseRow, ...bankRow }).select('id').single();
-
-    // The three bank columns ship ahead of their migration. Until it is run,
-    // retry without them so UPI and prepaid returns keep working -- but only
-    // when there are no bank details to lose. Dropping a destination the
-    // customer typed would leave a refund owed with nowhere to send it.
-    if (insertErr && /bank_account|bank_ifsc|bank_holder|column .* does not exist/i.test(String(insertErr.message || ''))) {
-      if (gaveBank) {
-        console.error('[request-return] bank columns missing; refusing to drop the destination');
-        return { statusCode: 503, headers: CORS, body: JSON.stringify({
-          error: 'We cannot record bank details just yet — please enter a UPI ID instead, '
-               + 'or contact us and we will take them down by hand.',
-          need_upi: true, need_payout: true, payment_type: paymentType,
-        }) };
-      }
-      console.warn('[request-return] bank columns not migrated yet; inserting without them');
-      ({ data: inserted, error: insertErr } = await supabase
-        .from('return_requests').insert(baseRow).select('id').single());
-    }
+    const { data: inserted, error: insertErr } = await supabase
+      .from('return_requests').insert(baseRow).select('id').single();
     if (insertErr) throw insertErr;
 
     const walletRupees = refundMethod === 'wallet' ? refundRupees + WALLET_BONUS_RUPEES : 0;
 
-    const info = { refundMethod, paymentType, upiId, destination, manualPayout,
-                   refundRupees, walletRupees, bonus: WALLET_BONUS_RUPEES };
+    const info = { refundMethod, paymentType, refundRupees, walletRupees, bonus: WALLET_BONUS_RUPEES };
 
-    // ── Notify owner (email always; WhatsApp too for the COD manual payout) ────
+    // ── Notify owner (email) ────────────────────────────────────────────────────
     const ownerTo = process.env.STORE_OWNER_EMAIL || 'support@inkandchai.in';
     await sendEmail({
       to: ownerTo,
       subject: refundMethod === 'wallet'
         ? `Return + wallet credit: ${order.razorpay_order_id || order.id}`
-        : (manualPayout
-            ? `⚠️ Return + ${paymentType === 'partial_cod' ? 'PARTIAL COD' : 'COD'} refund ₹${refundRupees} → ${payoutLabel(destination)} (${order.razorpay_order_id || order.id})`
-            : `Return + prepaid refund ₹${refundRupees}: ${order.razorpay_order_id || order.id}`),
+        : `Return + prepaid refund ₹${refundRupees}: ${order.razorpay_order_id || order.id}`,
       html: ownerEmailHtml({ ...order, cart_items: pick.items }, reason, info),
     }).catch(e => console.error('request-return owner email:', e.message));
-
-    if (manualPayout && process.env.STORE_OWNER_PHONE) {
-      // Free-form text to the owner (they're inside the 24h window via the bot).
-      // If out-of-window this silently no-ops; the email still lands.
-      await sendText(
-        process.env.STORE_OWNER_PHONE,
-        `🔁 ${paymentType === 'partial_cod' ? 'PARTIAL COD' : 'COD'} return — pay the customer\nOrder: ${order.razorpay_order_id || order.id}\nCustomer: ${order.customer_name || '—'} · ${order.customer_phone || '—'}\n💸 Refund ₹${refundRupees} to ${payoutLabel(destination)}\n\n⚠️ Pay only AFTER the returned book reaches you.`
-      ).catch(() => {});
-    }
 
     // Notify the customer (email; WhatsApp for the wallet code so it's handy).
     await sendEmail({
@@ -410,10 +322,8 @@ exports.handler = async (event) => {
         auto_pickup: autoPickup,
         message: 'Return requested. We are booking the courier pickup now — you will see it approved here, with the pickup tracking number, as soon as the courier accepts it. '
           + (refundMethod === 'wallet'
-            ? `₹${walletRupees} store credit (₹${refundRupees} + ₹${WALLET_BONUS_RUPEES} bonus) is issued when the books reach us.`
-            : manualPayout
-              ? `₹${refundRupees} is refunded to ${payoutLabelMasked(destination)} when the books reach us.`
-              : `₹${refundRupees} is refunded to your original payment method when the books reach us.`),
+            ? `Cash on Delivery orders are refunded in store credit: ₹${walletRupees} (₹${refundRupees} + ₹${WALLET_BONUS_RUPEES} bonus) is issued when the books reach us.`
+            : `₹${refundRupees} is refunded to your original payment method when the books reach us.`),
       }),
     };
   } catch (err) {

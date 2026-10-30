@@ -89,7 +89,7 @@
       '<h3 id="pol-returns">7-day returns and free replacements</h3>' +
       '<p>Return any book within <strong>7 days</strong> of delivery for a full refund: sign in, open <strong>My Orders</strong>, ' +
       'choose <strong>Return or replace</strong> → <strong>Return for a refund</strong> and pick the book(s). We collect it from you, ' +
-      'and refund you when it reaches us — or give store credit with a ₹50 bonus.</p>' +
+      'and refund you when it reaches us: paid online, to your original payment method; Cash on Delivery, as store credit only (+ ₹50 bonus).</p>' +
       '<p>We also replace, free of charge, any book that arrived <strong>defective or misprinted</strong>, the <strong>wrong book</strong>, ' +
       'or a book <strong>missing</strong> from the parcel — from My Orders or Track Order, within <strong>7 days</strong> of delivery.</p>' +
 

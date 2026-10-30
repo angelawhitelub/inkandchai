@@ -29,6 +29,10 @@ function refundLine(ret, received) {
   const amt = ret.refund_amount_paise ? ` of ${rs(ret.refund_amount_paise)}` : '';
   switch (ret.refund_status) {
     case 'awaiting_return_delivery':
+      if (ret.refund_method === 'wallet') {
+        // COD and partial COD returns: store credit only (owner's rule, 30 Oct 2026).
+        return `Store credit${amt} + ₹50 bonus (a COD order, so store credit only — no cash, UPI or bank refund) is emailed as a code once the returned books reach us${received ? '; they have reached us, so it is being issued' : ''}.`;
+      }
       return received
         ? `Refund${amt} to the original payment method is released once the return reaches us; it has reached us, so it is being processed.`
         : `Refund${amt} to the original payment method is released automatically once the returned books reach us.`;
