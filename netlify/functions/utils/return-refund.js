@@ -14,7 +14,17 @@
  *   • otherwise → cod (COD orders are inserted with razorpay_payment_id = null)
  */
 
-const WALLET_BONUS_RUPEES = 50;                 // extra store credit on top of the refund
+const WALLET_BONUS_RUPEES = 50;                 // extra store credit on top of the refund, until WALLET_BONUS_END
+// The owner ended the bonus on 30 Oct 2026: store credit is now what the
+// customer paid, nothing added. A return requested before this was promised
+// the bonus in its confirmation email, so it still gets it when minted.
+const WALLET_BONUS_END = Date.parse('2026-10-30T01:00:00Z');
+
+/** Bonus rupees on a store-credit return requested at `requestedAt` (ISO or ms; 0 from WALLET_BONUS_END). */
+function walletBonusRupees(requestedAt) {
+  const t = typeof requestedAt === 'number' ? requestedAt : Date.parse(requestedAt || '');
+  return Number.isFinite(t) && t < WALLET_BONUS_END ? WALLET_BONUS_RUPEES : 0;
+}
 const WALLET_EXPIRY_DAYS  = 180;                // 6 months to spend it
 
 function paymentMeta(order) {
@@ -210,6 +220,8 @@ function payoutLabelMasked(dest = {}) {
 
 module.exports = {
   WALLET_BONUS_RUPEES,
+  WALLET_BONUS_END,
+  walletBonusRupees,
   WALLET_EXPIRY_DAYS,
   resolvePaymentType,
   returnRefundMethod,

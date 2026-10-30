@@ -159,7 +159,7 @@ test('one return per order', async () => {
 test('on receipt: a prepaid return is refunded, and store credit is minted, once', async () => {
   state = { orders: [order()], return_requests: [
     { id: 'a', order_id: ORDER_ID, awb: 'AWB1', status: 'pickup_scheduled', refund_method: 'original', payment_type: 'prepaid', refund_status: 'awaiting_return_delivery', refund_amount_paise: 42667, customer_email: 'asha@example.com' },
-    { id: 'b', order_id: ORDER_ID, awb: 'AWB2', status: 'pickup_scheduled', refund_method: 'wallet', payment_type: 'cod', refund_status: 'awaiting_return_delivery', refund_amount_paise: 30000, customer_email: 'asha@example.com' },
+    { id: 'b', order_id: ORDER_ID, awb: 'AWB2', status: 'pickup_scheduled', refund_method: 'wallet', payment_type: 'cod', refund_status: 'awaiting_return_delivery', refund_amount_paise: 30000, customer_email: 'asha@example.com', created_at: '2026-10-25T10:00:00Z' },
     { id: 'c', order_id: ORDER_ID, awb: 'AWB3', status: 'pickup_scheduled', refund_method: 'original', payment_type: 'cod', refund_status: 'manual_payout_pending', refund_amount_paise: 30000 },
   ] };
   const db = fakeDb(state);
@@ -172,10 +172,34 @@ test('on receipt: a prepaid return is refunded, and store credit is minted, once
   assert.equal(b.provider, 'wallet');
   assert.equal(state.return_requests[1].refund_status, 'wallet_issued');
   assert.equal(state.scratch_cards.length, 1);
-  assert.equal(state.scratch_cards[0].value_paise, 30000 + 5000, 'refund + ₹50 bonus');
+  assert.equal(state.scratch_cards[0].value_paise, 30000 + 5000, 'requested before the bonus ended: refund + ₹50 bonus');
   assert.ok(sent.email.some((m) => m.html.includes(state.scratch_cards[0].code)));
 
   assert.equal((await handleReturnAwbDelivered(db, 'AWB2')).matched, false, 'never twice');
   assert.equal((await handleReturnAwbDelivered(db, 'AWB3')).matched, false, 'a COD payout stays manual');
   assert.equal(state.scratch_cards.length, 1);
+});
+
+test('the ₹50 store-credit bonus ended on 30 Oct 2026: a COD return now gets exactly what was paid', async () => {
+  const { walletBonusRupees } = require('./return-refund');
+  assert.equal(walletBonusRupees('2026-10-29T18:00:00Z'), 50, 'promised before it ended');
+  assert.equal(walletBonusRupees('2026-10-30T02:00:00Z'), 0);
+  assert.equal(walletBonusRupees(''), 0);
+
+  state = { orders: [codOrder()] };
+  const realNow = Date.now;
+  Date.now = () => Date.parse('2026-10-31T09:00:00Z');
+  let res;
+  try { res = await call({}); } finally { Date.now = realNow; }
+  assert.equal(res.statusCode, 200, res.body);
+  const body = JSON.parse(res.body);
+  assert.equal(body.wallet_rupees, Math.round(64000 / 100), 'no bonus on top');
+  assert.doesNotMatch(body.message, /bonus/);
+  assert.doesNotMatch(sent.email.find((m) => m.to === 'asha@example.com').html, /bonus/);
+
+  state = { orders: [order()], return_requests: [
+    { id: 'n', order_id: ORDER_ID, awb: 'AWB9', status: 'pickup_scheduled', refund_method: 'wallet', payment_type: 'cod', refund_status: 'awaiting_return_delivery', refund_amount_paise: 30000, customer_email: 'asha@example.com', created_at: '2026-10-31T09:00:00Z' },
+  ] };
+  assert.equal((await handleReturnAwbDelivered(fakeDb(state), 'AWB9')).provider, 'wallet');
+  assert.equal(state.scratch_cards[0].value_paise, 30000, 'credit = what was paid');
 });

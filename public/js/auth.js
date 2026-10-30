@@ -2333,7 +2333,7 @@ window.IACClaimEvidence = {
           + `<br>Pickup tracking no.: <strong style="color:#c9a84c;font-family:monospace;">${escHtml(r.awb)}</strong>`
           + (r.tracking_url ? ` · <a href="${escHtmlAttr(r.tracking_url)}" target="_blank" rel="noopener" style="color:#c9a84c;">Track pickup</a>` : ''))
           + note(r.refund_method === 'wallet'
-            ? `Your ${rs(r.refund_paise)} + ₹50 bonus store credit is emailed when the books reach us (usually 2–3 days after pickup).`
+            ? `Your ${rs(r.refund_paise)}${r.wallet_bonus_rupees ? ` + ₹${r.wallet_bonus_rupees} bonus` : ''} store credit is emailed when the books reach us (usually 2–3 days after pickup).`
             : `Your refund of ${rs(r.refund_paise)} is issued when the books reach us (usually 2–3 days after pickup), not at pickup.`);
       }
     } else {
@@ -2587,7 +2587,7 @@ window.IACClaimEvidence = {
     const wallet = (order.return_refund_method || (isCodOrder(order) ? 'wallet' : 'original')) === 'wallet';
     return `
       <div class="ret-refund" style="display:none;margin-bottom:0.6rem;border:1px solid rgba(201,168,76,0.22);padding:0.5rem 0.7rem;">
-        <div style="font-size:0.72rem;color:#f0e8d8;">${wallet ? 'Refund as store credit + ₹50 bonus' : 'Refund to your original payment method'}</div>
+        <div style="font-size:0.72rem;color:#f0e8d8;">${wallet ? 'Refund as store credit' : 'Refund to your original payment method'}</div>
         <div style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-top:0.2rem;">${wallet
           ? 'Cash on Delivery orders are refunded in Ink &amp; Chai store credit only: a code for your next order, valid 6 months.'
           : 'Back to the card, UPI or wallet you paid with.'}</div>

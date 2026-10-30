@@ -11,6 +11,7 @@
  */
 
 const { trackReturns, STAGES } = require('./return-tracking');
+const { walletBonusRupees } = require('./return-refund');
 
 const STALE_MS = 90 * 60 * 1000;
 const LIVE_TIMEOUT_MS = 7000;
@@ -31,7 +32,8 @@ function refundLine(ret, received) {
     case 'awaiting_return_delivery':
       if (ret.refund_method === 'wallet') {
         // COD and partial COD returns: store credit only (owner's rule, 30 Oct 2026).
-        return `Store credit${amt} + ₹50 bonus (a COD order, so store credit only — no cash, UPI or bank refund) is emailed as a code once the returned books reach us${received ? '; they have reached us, so it is being issued' : ''}.`;
+        const bonus = walletBonusRupees(ret.created_at);
+        return `Store credit${amt}${bonus ? ` + ₹${bonus} bonus` : ''} (a COD order, so store credit only — no cash, UPI or bank refund) is emailed as a code once the returned books reach us${received ? '; they have reached us, so it is being issued' : ''}.`;
       }
       return received
         ? `Refund${amt} to the original payment method is released once the return reaches us; it has reached us, so it is being processed.`

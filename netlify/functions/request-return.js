@@ -20,7 +20,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const { sendEmail } = require('./utils/email');
 const {
-  WALLET_BONUS_RUPEES,
+  walletBonusRupees,
   resolvePaymentType,
   returnRefundMethod,
   pickReturnItems,
@@ -73,7 +73,7 @@ function ownerEmailHtml(order, reason, info = {}) {
     refundBlock = `
       <div style="margin:16px 0;padding:14px 16px;background:#eef7ec;border-left:4px solid #4a9d4a;">
         <p style="margin:0;"><strong>Refund method:</strong> Ink &amp; Chai Wallet (store credit — ${info.paymentType === 'partial_cod' ? 'partial COD' : 'COD'} orders are refunded in store credit only)</p>
-        <p style="margin:6px 0 0;">A store-credit code worth <strong>₹${(info.walletRupees||0).toLocaleString('en-IN')}</strong> (₹${rupees} refund + ₹${info.bonus} bonus) is issued automatically when the parcel is delivered back to us.</p>
+        <p style="margin:6px 0 0;">A store-credit code worth <strong>₹${(info.walletRupees||0).toLocaleString('en-IN')}</strong>${info.bonus ? ` (₹${rupees} refund + ₹${info.bonus} bonus)` : ''} is issued automatically when the parcel is delivered back to us.</p>
       </div>`;
   } else {
     refundBlock = `
@@ -106,7 +106,7 @@ function customerEmailHtml(order, info = {}) {
   let block;
   if (info.refundMethod === 'wallet') {
     block = `
-      <p>As this was a Cash on Delivery order, it is refunded as <strong>Ink &amp; Chai store credit</strong>: <strong>₹${(info.walletRupees||0).toLocaleString('en-IN')}</strong> (₹${rupees} refund + ₹${info.bonus} bonus), valid 6 months. We email you the code as soon as the books reach us.</p>`;
+      <p>As this was a Cash on Delivery order, it is refunded as <strong>Ink &amp; Chai store credit</strong>: <strong>₹${(info.walletRupees||0).toLocaleString('en-IN')}</strong>${info.bonus ? ` (₹${rupees} refund + ₹${info.bonus} bonus)` : ''}, valid 6 months. We email you the code as soon as the books reach us.</p>`;
   } else {
     block = `
       <p>Your refund of <strong>₹${rupees}</strong> goes back to your original payment method <strong>automatically once the books are delivered back to us</strong>.</p>`;
@@ -253,9 +253,10 @@ exports.handler = async (event) => {
       .from('return_requests').insert(baseRow).select('id').single();
     if (insertErr) throw insertErr;
 
-    const walletRupees = refundMethod === 'wallet' ? refundRupees + WALLET_BONUS_RUPEES : 0;
+    const bonus = refundMethod === 'wallet' ? walletBonusRupees(Date.now()) : 0;
+    const walletRupees = refundMethod === 'wallet' ? refundRupees + bonus : 0;
 
-    const info = { refundMethod, paymentType, refundRupees, walletRupees, bonus: WALLET_BONUS_RUPEES };
+    const info = { refundMethod, paymentType, refundRupees, walletRupees, bonus };
 
     // ── Notify owner (email) ────────────────────────────────────────────────────
     const ownerTo = process.env.STORE_OWNER_EMAIL || 'support@inkandchai.in';
@@ -322,7 +323,7 @@ exports.handler = async (event) => {
         auto_pickup: autoPickup,
         message: 'Return requested. We are booking the courier pickup now — you will see it approved here, with the pickup tracking number, as soon as the courier accepts it. '
           + (refundMethod === 'wallet'
-            ? `Cash on Delivery orders are refunded in store credit: ₹${walletRupees} (₹${refundRupees} + ₹${WALLET_BONUS_RUPEES} bonus) is issued when the books reach us.`
+            ? `Cash on Delivery orders are refunded in store credit: ₹${walletRupees}${bonus ? ` (₹${refundRupees} + ₹${bonus} bonus)` : ''} is issued when the books reach us.`
             : `₹${refundRupees} is refunded to your original payment method when the books reach us.`),
       }),
     };

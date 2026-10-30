@@ -9,7 +9,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
-const { resolvePaymentType, returnRefundMethod } = require('./utils/return-refund');
+const { resolvePaymentType, returnRefundMethod, walletBonusRupees } = require('./utils/return-refund');
 const { quoteLateCancel } = require('./utils/prepaid-late-cancel');
 const { quoteUnpickedCancel } = require('./utils/unpicked-cancel');
 const { buildTrackingUrl } = require('./utils/tracking-url');
@@ -28,6 +28,7 @@ function returnView(r) {
     refund_status: r.refund_status || '',
     refund_paise: Number(r.refund_amount_paise) || 0,
     wallet_code: r.refund_status === 'wallet_issued' ? (r.wallet_code || '') : '',
+    wallet_bonus_rupees: r.refund_method === 'wallet' ? walletBonusRupees(r.created_at) : 0,
     tracking_stage: r.tracking_status || '',
     received_at: r.return_delivered_at || null,
     requested_at: r.created_at || null,

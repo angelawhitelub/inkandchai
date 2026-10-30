@@ -6,7 +6,8 @@
  * Called too by return-tracking-scheduled, when a reverse AWB booked straight
  * with XpressBees (which sends no webhook here) is tracked delivered back.
  *
- * Store-credit returns are settled here as well: the code (refund + bonus) is
+ * Store-credit returns are settled here as well: the code (the refund, plus the
+ * ₹50 bonus only on a return requested before it ended, walletBonusRupees) is
  * minted and emailed on receipt, never before the books are back.
  *
  * Safety:
@@ -20,7 +21,7 @@
  */
 
 const { issueRazorpayRefund } = require('./razorpay-refund');
-const { mintWalletCredit, WALLET_BONUS_RUPEES } = require('./return-refund');
+const { mintWalletCredit, walletBonusRupees } = require('./return-refund');
 const { sendEmail } = require('./email');
 const { sendText }  = require('./whatsapp');
 
@@ -67,8 +68,9 @@ async function handleReturnAwbDelivered(supabase, awb) {
   const amountRs = Math.round(amountPaise / 100);
 
   if (wallet) {
+    const bonus = walletBonusRupees(ret.created_at);
     try {
-      const minted = await mintWalletCredit(supabase, { order: order || ret, valuePaise: amountPaise + WALLET_BONUS_RUPEES * 100 });
+      const minted = await mintWalletCredit(supabase, { order: order || ret, valuePaise: amountPaise + bonus * 100 });
       const creditRs = Math.round(minted.value_paise / 100);
       await supabase.from('return_requests').update({
         refund_status: 'wallet_issued', wallet_code: minted.code, refunded_at: new Date().toISOString(),
@@ -83,7 +85,7 @@ async function handleReturnAwbDelivered(supabase, awb) {
             <div style="margin:16px 0;padding:16px;background:#f4ecd9;border:1px dashed #c9a84c;text-align:center;">
               <div style="font-family:monospace;font-size:22px;color:#8a3a1f;margin:4px 0;">${minted.code}</div>
               <div style="font-size:20px;color:#4a9d4a;font-weight:600;">₹${creditRs.toLocaleString('en-IN')}</div>
-              <div style="font-size:12px;color:#8a7a62;">(₹${amountRs} refund + ₹${WALLET_BONUS_RUPEES} bonus) · valid 6 months</div>
+              <div style="font-size:12px;color:#8a7a62;">${bonus ? `(₹${amountRs} refund + ₹${bonus} bonus) · ` : ''}valid 6 months</div>
             </div>
             <p style="font-size:13px;">Enter the code in the coupon box at checkout on your next order.</p>
             <p style="font-size:12px;color:#8a7a62;margin-top:20px;">Ink &amp; Chai · inkandchai.in</p>
@@ -94,7 +96,7 @@ async function handleReturnAwbDelivered(supabase, awb) {
       return { matched: true, refunded: true, provider: 'wallet', code: minted.code };
     } catch (e) {
       await supabase.from('return_requests').update({ refund_status: 'awaiting_return_delivery' }).eq('id', ret.id);
-      await ownerAlert(`⚠️ Store credit FAILED for return ${oid}: ${e.message}\nReturn is received — issue ₹${amountRs + WALLET_BONUS_RUPEES} credit by hand.`);
+      await ownerAlert(`⚠️ Store credit FAILED for return ${oid}: ${e.message}\nReturn is received — issue ₹${amountRs + bonus} credit by hand.`);
       return { matched: true, refunded: false, error: e.message };
     }
   }
