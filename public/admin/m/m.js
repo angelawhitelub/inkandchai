@@ -339,20 +339,23 @@
     }
     const c = state.care.counts || {};
     const convs = state.care.convs || [];
-    const chatsWaiting = convs.filter((x) => x.status !== 'resolved' && (x.unread_count > 0 || x.category === 'attention')).length;
-    const returnsOpen = (state.care.returns || []).filter((r) => !['refunded', 'closed', 'rejected', 'completed', 'cancelled'].includes(String(r.status))).length;
+    const chatsWaiting = convs.filter(problemChat).length;
+    const returnsOpen = (state.care.returns || []).filter(recentOpenReturn).length;
     out += `<div class="section-title">Needs you</div><div class="attn">
       <a class="card ${c.unanswered ? 'hot' : ''}" href="#/care/tickets"><div class="v">${c.unanswered ?? '—'}</div><div class="k">Unanswered tickets</div></a>
       <a class="card ${c.overdue ? 'hot' : ''}" href="#/care/tickets"><div class="v">${c.overdue ?? '—'}</div><div class="k">Overdue tickets</div></a>
-      <a class="card ${chatsWaiting ? 'hot' : ''}" href="#/care/chats"><div class="v">${state.care.convs ? chatsWaiting : '—'}</div><div class="k">WhatsApp chats waiting</div></a>
-      <a class="card" href="#/care/returns"><div class="v">${state.care.returns ? returnsOpen : '—'}</div><div class="k">Returns in progress</div></a>
+      <a class="card ${chatsWaiting ? 'hot' : ''}" href="#/care/chats"><div class="v">${state.care.convs ? chatsWaiting : '—'}</div><div class="k">WhatsApp problem chats</div></a>
+      <a class="card" href="#/care/returns"><div class="v">${state.care.returns ? returnsOpen : '—'}</div><div class="k">Open returns · 30 days</div></a>
     </div>`;
     return out;
   }
+  // Almost every chat carries an unread count (the bot answers without
+  // clearing it), so it is no signal. The inbox classifier's 'top' tier is:
+  // missing books, cancellations and refund disputes (utils/conversation-priority).
+  const problemChat = (x) => x.status !== 'resolved' && x.category === 'top';
   function updateCareBadge() {
     const c = state.care.counts || {};
-    const chats = (state.care.convs || []).filter((x) => x.status !== 'resolved' && x.unread_count > 0).length;
-    state.careBadge = (c.unanswered || 0) + chats;
+    state.careBadge = c.unanswered || 0;
   }
 
   // ── Orders ────────────────────────────────────────────────────────────────
@@ -768,12 +771,15 @@
   }
 
   // ── Care ──────────────────────────────────────────────────────────────────
-  const RETURN_DONE = ['refunded', 'closed', 'rejected', 'completed', 'cancelled'];
+  // Statuses a return ends in (request-return, process-return, return-tracking).
+  const RETURN_DONE = ['refunded', 'wallet_issued', 'rejected', 'rto', 'closed', 'completed', 'cancelled'];
+  const returnOpen = (r) => !RETURN_DONE.includes(String(r.status));
+  const recentOpenReturn = (r) => returnOpen(r) && Date.now() - new Date(r.created_at).getTime() < 30 * 86400000;
   async function viewCare(tab, force) {
     const c = state.care;
     c.tab = tab || c.tab;
     const counts = c.counts || {};
-    const unreadChats = (c.convs || []).filter((x) => x.status !== 'resolved' && x.unread_count > 0).length;
+    const unreadChats = (c.convs || []).filter(problemChat).length;
     const root = mount(appbar({ title: 'Customer care', actions: refreshBtn })
       + `<div class="seg">
         <button class="${c.tab === 'tickets' ? 'on' : ''}" data-t="tickets">Tickets${counts.unanswered ? `<span class="c">${counts.unanswered}</span>` : ''}</button>
@@ -822,19 +828,20 @@
   function chatsHtml() {
     const order = { attention: 0, top: 1, low: 2, closed: 3 };
     const list = (state.care.convs || []).slice().sort((a, b) =>
-      ((b.unread_count > 0) - (a.unread_count > 0)) || ((order[a.category] ?? 2) - (order[b.category] ?? 2)) || (new Date(b.last_message_at) - new Date(a.last_message_at)));
+      (problemChat(b) - problemChat(a)) || (new Date(b.last_message_at) - new Date(a.last_message_at)));
     if (!list.length) return '<div class="empty"><div class="e">💬</div>No conversations.</div>';
     return '<div class="card" style="padding:0;overflow:hidden">' + list.map((c, i) => `<a class="conv list-item" style="${i ? 'border-top:1px solid var(--line)' : ''}" href="#/chat/${encodeURIComponent(c.customer_phone)}">
       <div class="avatar">${esc(initials(c.customer_name || c.customer_phone))}</div>
       <div style="min-width:0"><div class="nm ellipsis">${esc(c.customer_name || '+' + c.customer_phone)}</div>
         <div class="lm ellipsis">${c.human_takeover ? '🙋 ' : ''}${esc(c.last_message || '')}</div>
-        ${c.category === 'attention' && c.status !== 'resolved' ? '<span class="pill red" style="margin-top:4px">Needs attention</span>' : c.refund_issue ? '<span class="pill orange" style="margin-top:4px">Refund</span>' : c.status === 'resolved' ? '<span class="pill" style="margin-top:4px">Resolved</span>' : ''}</div>
+        ${problemChat(c) ? `<span class="pill red" style="margin-top:4px">${esc(c.category_reason || 'Problem')}</span>` : c.status === 'resolved' ? '<span class="pill" style="margin-top:4px">Resolved</span>' : ''}</div>
       <div class="tm">${esc(ago(c.last_message_at))}${c.unread_count ? `<br><span class="badge-n">${c.unread_count}</span>` : ''}</div></a>`).join('') + '</div>';
   }
   function returnsHtml() {
     const list = (state.care.returns || []);
-    const open = list.filter((r) => !RETURN_DONE.includes(String(r.status)));
-    const done = list.filter((r) => RETURN_DONE.includes(String(r.status))).slice(0, 20);
+    const open = list.filter(recentOpenReturn);
+    const stale = list.filter((r) => returnOpen(r) && !recentOpenReturn(r));
+    const done = list.filter((r) => !returnOpen(r)).slice(0, 20);
     const card = (r, i) => `<div class="list-item" style="${i ? 'border-top:1px solid var(--line)' : ''}">
       <div class="oi-top"><a class="oi-id" href="#/order/${encodeURIComponent(r.order_display_id || r.order_id || '')}" style="color:var(--accent)">${esc(r.order_display_id || r.order_id || '')}</a><span class="oi-when">${esc(ago(r.created_at))}</span></div>
       <div class="oi-name ellipsis">${esc(r.customer_name || '')}</div>
@@ -843,8 +850,9 @@
         ${r.refund_method ? `<span class="pill">${r.refund_method === 'wallet' ? 'Store credit' : 'Original payment'}</span>` : ''}
         ${r.refund_amount_paise ? `<span class="pill gold">${rupees(r.refund_amount_paise / 100)}</span>` : ''}
         ${r.tracking_last_scan ? `<span class="pill purple">${esc(r.tracking_last_scan)}</span>` : ''}</div></div>`;
-    return `<div class="section-title" style="margin-top:4px">In progress · ${open.length}</div>`
-      + (open.length ? '<div class="card" style="padding:0;overflow:hidden">' + open.map(card).join('') + '</div>' : '<div class="card empty">Nothing in progress.</div>')
+    return `<div class="section-title" style="margin-top:4px">Open · last 30 days · ${open.length}</div>`
+      + (open.length ? '<div class="card" style="padding:0;overflow:hidden">' + open.map(card).join('') + '</div>' : '<div class="card empty">Nothing open.</div>')
+      + (stale.length ? `<div class="section-title">Older, still open · ${stale.length}</div><div class="card" style="padding:0;overflow:hidden">${stale.slice(0, 30).map(card).join('')}</div>` : '')
       + (done.length ? `<div class="section-title">Recently finished</div><div class="card" style="padding:0;overflow:hidden">${done.map(card).join('')}</div>` : '')
       + '<a class="desk-link" href="/admin/?desktop=1#returns">Approve, push and refund on desktop</a>';
   }
