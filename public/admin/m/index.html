@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#f6f3ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f0d0a" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ink Admin">
+<title>Ink &amp; Chai Admin</title>
+<link rel="manifest" href="/admin/m/manifest.json">
+<link rel="apple-touch-icon" href="/images/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+  // Theme before first paint: the viewer's saved choice, else the system's.
+  try { var t = localStorage.getItem('iac_m_theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+</script>
+<link rel="stylesheet" href="/admin/m/m.css?v=1">
+</head>
+<body>
+  <div id="app" aria-live="polite"></div>
+  <nav id="tabbar" class="tabbar" hidden></nav>
+  <div id="sheet-root"></div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="/admin/m/m.js?v=1"></script>
+</body>
+</html>

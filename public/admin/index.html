@@ -3,6 +3,17 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<script>
+  // Phones get the mobile admin (/admin/m/). "Desktop view" there links back
+  // with ?desktop=1, which keeps this tab on the desktop admin until it closes.
+  (function () {
+    try {
+      if (/[?&]desktop=1\b/.test(location.search)) { sessionStorage.setItem('iac_admin_desktop', '1'); return; }
+      if (sessionStorage.getItem('iac_admin_desktop') === '1') return;
+      if (window.matchMedia('(max-width: 760px) and (pointer: coarse)').matches) location.replace('/admin/m/');
+    } catch (e) {}
+  })();
+</script>
 <title>Admin — Ink &amp; Chai</title>
 <meta name="admin-build" content="admin-grouped-nav-v1"/>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>

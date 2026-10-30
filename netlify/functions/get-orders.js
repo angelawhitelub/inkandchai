@@ -14,6 +14,18 @@ const CORS = {
 };
 
 const CHANGE_COLUMNS = ['last_courier_status_at', 'last_nimbuspost_event_at', 'delivered_at', 'shipment_moved_at'];
+const SEARCH_COLUMNS = ['razorpay_order_id', 'razorpay_payment_id', 'tracking_id', 'customer_name', 'customer_email'];
+
+/** PostgREST `or` terms for a search box value, or null for an empty one. */
+function searchFilter(raw) {
+  const q = String(raw || '').replace(/[^A-Za-z0-9@.+_ -]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (q.length < 2) return null;
+  const terms = SEARCH_COLUMNS.map((c) => `${c}.ilike.*${q}*`);
+  // Phones are stored with and without +91 / 91 / spaces: match the last ten digits.
+  const digits = q.replace(/\D/g, '');
+  if (/^[+\d\s-]+$/.test(q) && digits.length >= 6) terms.push(`customer_phone.ilike.*${digits.slice(-10)}*`);
+  return terms.join(',');
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
@@ -59,14 +71,23 @@ exports.handler = async (event) => {
       ? CHANGE_COLUMNS.map((c) => `${c}.gte.${changedSince}`).join(',')
       : null;
 
+    // `q`: find orders by order id, payment id, AWB, customer name, phone or
+    // email on the server. The desktop admin loads every order and searches in
+    // the browser; the mobile admin (public/admin/m/) cannot page 20,000 orders
+    // over a phone connection. Characters that mean something inside a
+    // PostgREST `or` (commas, parentheses, quotes, *, %) are dropped, not
+    // escaped; dots are safe there, since only the first two split the term.
+    const search = searchFilter(event.queryStringParameters?.q);
+    const narrow = changed || search;
+
     let query = supabase
       .from('orders')
       .select('*', { count: 'exact' });
     // Exclude the paperbound store's orders. One `or` filter, so the
-    // changed_since branch nests inside it rather than relying on how two
+    // changed_since / q branch nests inside it rather than relying on how two
     // separate `or` parameters combine.
-    query = changed
-      ? query.or(`and(source.is.null,or(${changed})),and(source.neq.paperbound,or(${changed}))`)
+    query = narrow
+      ? query.or(`and(source.is.null,or(${narrow})),and(source.neq.paperbound,or(${narrow}))`)
       : query.or('source.is.null,source.neq.paperbound');
     query = query
       .order('created_at', { ascending: false })
@@ -88,3 +109,5 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
 };
+
+module.exports.searchFilter = searchFilter;

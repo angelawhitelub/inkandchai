@@ -1,0 +1,12 @@
+{
+  "name": "Ink & Chai Admin",
+  "short_name": "Ink Admin",
+  "start_url": "/admin/m/",
+  "scope": "/admin/m/",
+  "display": "standalone",
+  "background_color": "#f6f3ee",
+  "theme_color": "#f6f3ee",
+  "icons": [
+    { "src": "/images/icon-192.png", "sizes": "192x192", "type": "image/png" }
+  ]
+}
