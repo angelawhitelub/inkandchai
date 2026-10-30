@@ -189,6 +189,9 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   // a slow connection could press Buy Now first, so every order path refuses
   // it here (see findShippingRestriction).
   const soldOut = new Set();
+  // Counted stock (sql/order_stock_moves.sql): copies left of a book whose
+  // admin quantity is a number, so a cart cannot ask for more than remain.
+  const stockLeft = {};
   if (items.length && supabase) {
     const { data, error } = await selectTolerant(cols => supabase
       .from('product_overrides')
@@ -200,6 +203,8 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
       if (row.is_active === false) continue;
       if (row.stock_qty !== null && row.stock_qty !== undefined && Number(row.stock_qty) <= 0) {
         soldOut.add(String(row.slug).toLowerCase());
+      } else if (row.stock_qty !== null && row.stock_qty !== undefined) {
+        stockLeft[String(row.slug).toLowerCase()] = Math.floor(Number(row.stock_qty));
       }
       if (row.publisher_sourced === true || row.publisher_sourced === false) {
         overrideBadgeMap[String(row.slug).toLowerCase()] = row.publisher_sourced;
@@ -302,6 +307,9 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
     // Only the server says what is sold out; whatever the browser sent is dropped.
     if (soldOut.has(String(item.slug || '').toLowerCase())) item._sold_out = true;
     else delete item._sold_out;
+    const left = stockLeft[String(item.slug || '').toLowerCase()];
+    if (Number.isFinite(left)) item._stock_left = left;
+    else delete item._stock_left;
   }
 
   // ── Google automated discounts ───────────────────────────────────────────

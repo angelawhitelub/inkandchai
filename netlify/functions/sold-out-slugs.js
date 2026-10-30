@@ -1,15 +1,20 @@
 /**
  * Netlify Function: sold-out-slugs
- * GET /.netlify/functions/sold-out-slugs  ->  { slugs: [...] }
+ * GET /.netlify/functions/sold-out-slugs  ->  { slugs: [...], scarce: [...] | null }
  *
  * Public and read-only: the slugs the storefront already shows as "Coming
  * Soon". The Worker reads it (at most once a minute per isolate) to mark
  * those books out of stock in feed.xml and in each product page's structured
  * data before Google sees them -- see utils/sold-out.js.
+ *
+ * `scarce` rides along for the same reader: the books whose product page shows
+ * the "Only 4 left" badge (utils/scarcity.js). null when it could not be read,
+ * so the Worker leaves pages as baked rather than stripping every badge.
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const { soldOutSlugs } = require('./utils/sold-out');
+const { scarceSlugs } = require('./utils/scarcity');
 
 const HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -24,7 +29,10 @@ exports.handler = async (event = {}) => {
   try {
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const slugs = [...await soldOutSlugs(db)].sort();
-    return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ slugs }) };
+    let scarce = null;
+    try { scarce = [...await scarceSlugs(db)].sort(); }
+    catch (e) { console.warn('[sold-out-slugs] scarcity:', e.message); }
+    return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ slugs, scarce }) };
   } catch (e) {
     console.error('[sold-out-slugs]', e.message);
     return { statusCode: 500, headers: { ...HEADERS, 'Cache-Control': 'no-store' }, body: JSON.stringify({ error: e.message }) };

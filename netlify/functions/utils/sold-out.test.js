@@ -89,3 +89,20 @@ test('feed.xml: only the sold-out items say out of stock', () => {
 test('product JSON-LD: InStock becomes OutOfStock', () => {
   assert.equal(markJsonLdSoldOut('{"availability": "https://schema.org/InStock"}'), '{"availability": "https://schema.org/OutOfStock"}');
 });
+
+test('counted stock: a cart cannot ask for more copies than are left', async () => {
+  const db = fakeDb({ product_overrides: [{ slug: SLUG, is_active: true, stock_qty: 2, price_inr: null }] });
+  let { cart } = await resolveCartPrices([line(SLUG, { qty: 2 })], db);
+  assert.equal(cart[0]._stock_left, 2);
+  assert.equal(findSoldOut(cart).blocked, false, 'exactly what is left is fine');
+  ({ cart } = await resolveCartPrices([line(SLUG, { qty: 3, _stock_left: 99 })], db));
+  const r = findShippingRestriction(cart, { pincode: '110006' });
+  assert.equal(r.blocked, true);
+  assert.equal(r.code, 'product_stock_short');
+  assert.match(r.error, /^Only 2 copies of .* are left\. Please reduce the quantity/);
+  // No quantity set: never capped, and a browser-sent cap is dropped.
+  const free = fakeDb({ product_overrides: [{ slug: SLUG, is_active: true, stock_qty: null, price_inr: null }] });
+  ({ cart } = await resolveCartPrices([line(SLUG, { qty: 50, _stock_left: 1 })], free));
+  assert.equal(cart[0]._stock_left, undefined);
+  assert.equal(findSoldOut(cart).blocked, false);
+});

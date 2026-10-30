@@ -68,8 +68,29 @@ function pinMatches(rule, pin) {
  * function blocks, and show its `error` to the customer.
  */
 function findSoldOut(cart) {
-  const sold = (Array.isArray(cart) ? cart : []).filter((i) => i && i._sold_out === true);
-  if (!sold.length) return { blocked: false };
+  const lines = Array.isArray(cart) ? cart : [];
+  const sold = lines.filter((i) => i && i._sold_out === true);
+  if (!sold.length) {
+    // Counted stock (resolveCartPrices sets _stock_left): more copies asked for
+    // than remain. Lines of the same book are added up.
+    const want = {};
+    for (const i of lines) {
+      if (!i || !Number.isFinite(i._stock_left)) continue;
+      const k = String(i.slug || i.title || '').toLowerCase();
+      want[k] = want[k] || { item: i, qty: 0 };
+      want[k].qty += Math.max(1, Math.floor(Number(i.qty) || 1));
+    }
+    const short = Object.values(want).find((w) => w.qty > w.item._stock_left);
+    if (!short) return { blocked: false };
+    const n = short.item._stock_left;
+    return {
+      blocked: true,
+      code: 'product_stock_short',
+      title: short.item.title || '',
+      stock_left: n,
+      error: `Only ${n} ${n === 1 ? 'copy' : 'copies'} of ${short.item.title || 'a book in your cart'} ${n === 1 ? 'is' : 'are'} left. Please reduce the quantity to continue.`,
+    };
+  }
   const titles = sold.map((i) => i.title || 'A book in your cart');
   const many = sold.length > 1;
   return {

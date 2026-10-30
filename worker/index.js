@@ -25,6 +25,7 @@ export { XbBookingJob } from './xb-booking-job.js';
 import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable, staleProductKey, renderWithLastGood } from './cache-policy.mjs';
 import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
 import soldOutUtil from '../netlify/functions/utils/sold-out.js';
+import scarcityUtil from '../netlify/functions/utils/scarcity.js';
 import releaseDate from '../netlify/functions/utils/release-date.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
 import newArrivals from '../netlify/functions/utils/new-arrivals.js';
@@ -533,6 +534,9 @@ function withShippingCopy(response) {
 const SOLD_TTL_MS = 60_000;
 let _soldSet = null;
 let _soldAt = 0;
+// The "Only 4 left" list comes in the same document (utils/scarcity.js);
+// null until read, and kept at its last good value when a read misses it.
+let _scarceSet = null;
 
 async function soldOutSet(env, ctx, origin) {
   const now = Date.now();
@@ -542,6 +546,7 @@ async function soldOutSet(env, ctx, origin) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const doc = await res.json();
     _soldSet = new Set((Array.isArray(doc.slugs) ? doc.slugs : []).map((x) => String(x || '').toLowerCase()));
+    if (Array.isArray(doc.scarce)) _scarceSet = new Set(doc.scarce.map((x) => String(x || '').toLowerCase()));
     _soldAt = now;
   } catch (err) {
     console.warn('[sold-out] read failed:', err && err.message);
@@ -625,6 +630,27 @@ async function withFreeDelivery(response, slug, env, ctx, origin) {
   headers.delete('etag');
   headers.delete('content-length');
   headers.set('X-Free-Delivery', '1');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
+// The admin's "Scarcity badge" tick, on every product page: the badge takes
+// the place of the "In Stock" line, as the baked badge does, and an untick
+// puts "In Stock" back. Never on a sold-out book. With no list yet read the
+// page stays as baked.
+async function withScarcity(response, slug, env, ctx, origin) {
+  if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  const key = String(slug || '').toLowerCase();
+  const sold = await soldOutSet(env, ctx, origin);
+  if (!_scarceSet) return response;
+  const want = _scarceSet.has(key) && !sold.has(key);
+  const out = new HTMLRewriter()
+    .on('span.stock', { element(el) { if (want) el.replace(scarcityUtil.BADGE_HTML, { html: true }); } })
+    .on('div.prod-scarcity', { element(el) { if (!want) el.replace(`<span class="stock">${sold.has(key) ? 'Coming Soon' : 'In Stock'}</span>`, { html: true }); } })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('content-length');
+  if (want) headers.set('X-Scarcity', '1');
   return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
 }
 
@@ -910,7 +936,7 @@ export default {
       let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
       page = await withFreeDelivery(await withCodRule(withShippingCopy(page), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
-      return withSoldCount(page, contentSlug);
+      return withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin);
     }
 
     // Admin-created products have no generated page: the catalogue books are
@@ -928,9 +954,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
+          return withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin);
         }
-        if (rendered.status !== 404) return withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
+        if (rendered.status !== 404) return withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a
