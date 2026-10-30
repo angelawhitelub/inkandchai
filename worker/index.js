@@ -633,6 +633,20 @@ async function withFreeDelivery(response, slug, env, ctx, origin) {
   return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
 }
 
+// The quantity selector (public/js/pdp-qty.js), on every product page: baked
+// and admin-created alike, without rebuilding the baked ones.
+const PDP_QTY_SRC = '/js/pdp-qty.js?v=1';
+function withQtySelector(response) {
+  if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  const out = new HTMLRewriter()
+    .on('body', { element(el) { el.append(`<script src="${PDP_QTY_SRC}" defer></script>`, { html: true }); } })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('content-length');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
 // The admin's "Scarcity badge" tick, on every product page: the badge takes
 // the place of the "In Stock" line, as the baked badge does, and an untick
 // puts "In Stock" back. Never on a sold-out book. With no list yet read the
@@ -936,7 +950,7 @@ export default {
       let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
       page = await withFreeDelivery(await withCodRule(withShippingCopy(page), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
-      return withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin);
+      return withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin));
     }
 
     // Admin-created products have no generated page: the catalogue books are
@@ -954,9 +968,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin);
+          return withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin));
         }
-        if (rendered.status !== 404) return withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin);
+        if (rendered.status !== 404) return withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin));
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a
