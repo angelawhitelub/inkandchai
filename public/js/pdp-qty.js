@@ -8,6 +8,8 @@
  * is set to the chosen quantity. Baked pages: addBookToCart / buyNowBook.
  * Admin-created pages: addProductToCart(buyNow).
  *
+ * Desktop and tablet only: hidden at the product page's phone breakpoint.
+ *
  * Checkout still decides what can be bought: a counted book with fewer copies
  * left is refused there with "Only N copies ... are left".
  */
@@ -87,8 +89,9 @@
       + '.actions .pdp-qty button:disabled{opacity:.3;cursor:default}'
       + '.actions .pdp-qty button:focus-visible{outline:2px solid var(--q-line,#c9a84c);outline-offset:-3px}'
       + '.pdp-qty-n{display:flex;align-items:center;justify-content:center;min-width:1.6rem;font:700 .95rem/1 var(--q-font,system-ui,sans-serif);color:var(--q-ink,#c9a84c);font-variant-numeric:tabular-nums}'
-      + '@media(max-width:420px){.actions.has-qty{gap:.5rem}.actions .pdp-qty button{width:34px}.pdp-qty-n{min-width:1.3rem}'
-      + '.actions.has-qty>button{letter-spacing:.1em;padding-left:.4rem;padding-right:.4rem}}';
+      // Not on phones (owner, 30 Oct 2026): the fixed bottom bar keeps just its
+      // two buttons there, and a phone order is one copy unless changed in the cart.
+      + '@media(max-width:760px){.actions.has-qty{grid-template-columns:1fr 1fr}.actions .pdp-qty{display:none}}';
     document.head.appendChild(style);
 
     var box = document.createElement('div');

@@ -126,6 +126,29 @@ html[data-theme="light"] .btn-partial{background:#f7efe0;border-color:rgba(138,1
 html[data-theme="light"] .btn-partial:hover{background:#f1e3c9;}
 .btn-partial:disabled{opacity:0.72;cursor:not-allowed;}
 .partial-note{font-size:0.58rem;color:var(--cream-dim);letter-spacing:0.04em;line-height:1.6;margin:-0.25rem 0 0.75rem;}
+/* Payment area (30 Oct 2026): real round radios, one type scale for the three
+   pay buttons, readable notes in both themes. The #paymentBlock prefix outranks
+   the site theme's !important pill rules. */
+#paymentBlock .pay-method{border-radius:18px!important;padding:.85rem 1rem!important;gap:.85rem!important}
+#paymentBlock .pay-method input[type="radio"]{-webkit-appearance:none;appearance:none;flex:0 0 20px;width:20px!important;height:20px!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:1.5px solid var(--cream-dim)!important;border-radius:50%!important;background:transparent!important;box-shadow:none!important;cursor:pointer;transition:border-color .15s,background .15s}
+#paymentBlock .pay-method input[type="radio"]:checked{border-color:var(--gold)!important;background:radial-gradient(circle,var(--gold) 0 4.5px,transparent 5px)!important}
+#paymentBlock .pay-method input[type="radio"]:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+#paymentBlock .pay-method-icon{width:36px!important;height:36px!important;border-radius:12px!important;font-size:1rem!important}
+#paymentBlock .pay-method-title{font-size:.95rem;font-weight:650;letter-spacing:0;color:var(--cream)}
+#paymentBlock .pay-method-badge{font-size:.56rem;letter-spacing:.12em;font-weight:700}
+#paymentBlock .pay-method-sub{font-size:.74rem;letter-spacing:0;color:var(--cream-dim)}
+#paymentBlock .btn-pay,#paymentBlock .btn-partial,#paymentBlock .btn-cod{min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.15rem;padding:.8rem 1rem!important;font-size:.92rem!important;font-weight:650!important;letter-spacing:.01em!important;text-transform:none!important;line-height:1.25!important}
+#paymentBlock .btn-pay{font-size:1rem!important;font-weight:700!important;margin-bottom:.4rem}
+#paymentBlock .btn-partial{margin:1.1rem 0 .5rem;color:var(--cream)!important;background:rgba(201,168,76,.09)!important;background:color-mix(in srgb,var(--gold) 9%,transparent)!important;border:1.5px solid rgba(201,168,76,.55)!important;border-color:color-mix(in srgb,var(--gold) 55%,transparent)!important}
+#paymentBlock .btn-cod{color:var(--cream)!important;background:transparent!important;border:1.5px solid rgba(160,144,128,.45)!important;border-color:color-mix(in srgb,var(--cream) 22%,transparent)!important}
+#paymentBlock .btn-partial:hover:not(:disabled),#paymentBlock .btn-cod:hover:not(:disabled){border-color:var(--gold)!important}
+#paymentBlock .btn-partial .pb-sub{font-size:.72rem;font-weight:500;color:var(--cream-dim)}
+#paymentBlock .btn-pay.is-loading,#paymentBlock .btn-partial.is-loading,#paymentBlock .btn-cod.is-loading{color:transparent!important}
+#paymentBlock .btn-partial.is-loading .pb-sub{visibility:hidden}
+#paymentBlock .partial-note,#paymentBlock .cod-note{font-size:.74rem!important;line-height:1.55!important;letter-spacing:0!important;color:var(--cream-dim)!important;text-align:center;margin:0 0 1rem!important;padding:0 .3rem}
+#paymentBlock .partial-note:empty{display:none}
+#paymentBlock .pay-trust{display:flex;align-items:center;justify-content:center;gap:.4rem;margin:0;font-size:.72rem;color:var(--cream-dim);letter-spacing:0}
+#paymentBlock .pay-trust strong{color:var(--cream);font-weight:600}
 .btn-pay.is-loading,.btn-cod.is-loading,.btn-partial.is-loading{position:relative;color:transparent!important;pointer-events:none}
 .btn-pay.is-loading::after,.btn-cod.is-loading::after,.btn-partial.is-loading::after{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:#fff}
 .btn-cod.is-loading::after{color:var(--gold)}
@@ -543,9 +566,9 @@ gtag('config', 'G-ZPZDFWMDP6');
         <button class="btn-pay" id="btnPayNow" onclick="submitOrder('online')">
           ⚡ Pay Now
         </button>
-        <div style="display:flex;align-items:center;gap:0.45rem;margin-top:0.35rem;font-size:0.7rem;color:#a09080;letter-spacing:0.04em;">
-          <span style="font-size:0.85rem;">☁️</span>
-          <span>Refunds Powered By <strong style="color:#f0e8d8;">Amazon Web Services (AWS)</strong></span>
+        <div class="pay-trust">
+          <span aria-hidden="true">☁️</span>
+          <span>Refunds powered by <strong>Amazon Web Services (AWS)</strong></span>
         </div>
         <button class="btn-partial" id="btnPartial" onclick="submitOrder('partial')">
           Pay 10% Now · 90% on Delivery
@@ -1341,12 +1364,14 @@ function renderSummary() {
   if (btnPartial) {
     const partial = partialPaymentTotals(cart);
     btnPartial.disabled = !partial.eligible;
-    btnPartial.textContent = partial.eligible
-      ? `Pay 10% Now — ₹${partial.deposit.toLocaleString('en-IN')} · Collect ₹${partial.balance.toLocaleString('en-IN')}`
-      : 'Pay 10% Now · 90% on Delivery';
+    // Two lines: what is paid now, then the rest and the waived fee (the note
+    // under it used to repeat the same sums, so it is empty while eligible).
+    btnPartial.innerHTML = partial.eligible
+      ? `<span>Pay 10% now · ₹${partial.deposit.toLocaleString('en-IN')}</span><span class="pb-sub">₹${partial.balance.toLocaleString('en-IN')} on delivery · ₹${COD_HANDLING_FEE} COD fee waived</span>`
+      : 'Pay 10% now · rest on delivery';
     if (partialNote) {
       partialNote.innerHTML = partial.eligible
-        ? `Pay ₹${partial.deposit.toLocaleString('en-IN')} now, ₹${partial.balance.toLocaleString('en-IN')} on delivery. <strong style="color:#5d9b55;">₹${COD_HANDLING_FEE} COD fee waived</strong> when you pay partially.`
+        ? ''
         : `Available on orders of ₹299 and above. COD fee waived. Add ₹${(PARTIAL_PAYMENT_THRESHOLD - partial.total).toLocaleString('en-IN')} more to enable.`;
     }
   }

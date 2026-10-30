@@ -635,7 +635,7 @@ async function withFreeDelivery(response, slug, env, ctx, origin) {
 
 // The quantity selector (public/js/pdp-qty.js), on every product page: baked
 // and admin-created alike, without rebuilding the baked ones.
-const PDP_QTY_SRC = '/js/pdp-qty.js?v=1';
+const PDP_QTY_SRC = '/js/pdp-qty.js?v=2';
 function withQtySelector(response) {
   if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
   const out = new HTMLRewriter()
