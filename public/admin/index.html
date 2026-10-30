@@ -119,6 +119,14 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .product-editor{border:1px solid var(--border);background:var(--bg2);padding:1.2rem;}
 .product-editor .form-row input{background:var(--bg3);}
 .product-editor-actions{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.8rem;}
+/* Product editor tabs (buildProductEditorTabs) */
+.pe-tabs{display:flex;gap:.35rem;flex-wrap:wrap;margin:0 0 1rem;padding-bottom:.6rem;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:3;background:var(--bg2);padding-top:.2rem;}
+.pe-tab{background:transparent;border:1px solid var(--border);color:var(--cream-dim);padding:.5rem .85rem;border-radius:999px;font-family:inherit;font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;}
+.pe-tab:hover{color:var(--gold);border-color:var(--gold);}
+.pe-tab[aria-selected="true"]{background:var(--gold);border-color:var(--gold);color:var(--bg,#0d0b08);}
+.pe-panel[hidden]{display:none !important;}
+.pe-panel>details{margin-top:0 !important;margin-bottom:.8rem;}
+@media (min-width:900px){#productEditorForm .product-editor-actions{position:sticky;bottom:0;z-index:3;background:var(--bg2);padding:.7rem 0 .2rem;border-top:1px solid var(--border);}}
 .copy-listing-box{border:1px dashed var(--border);background:var(--bg2);padding:0.9rem 1rem;margin-bottom:1.1rem;}
 .copy-listing-box>label{display:block;font-size:0.66rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.45rem;}
 .copy-listing-box input{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.7rem 0.9rem;font-family:'Manrope',sans-serif;font-size:0.84rem;outline:none;}
@@ -11737,6 +11745,73 @@ async function generateProductCopy() {
     if (btn) { btn.disabled = false; btn.innerHTML = old || '✨ Draft with AI'; }
   }
 }
+
+// The product editor in tabs (owner's request, 30 Oct 2026): one long scroll
+// made things hard to find. The existing blocks are moved, not rebuilt, so
+// every id, save button and loader keeps working; fields on a hidden tab are
+// still saved by "Save Product Override". The open tab is remembered.
+const PRODUCT_EDITOR_TABS = [
+  ['price', 'Price & stock', () => [
+    peRowOf('prodSlug'), peRowOf('prodGoogleId'),
+    peRowOf('prodPrice')?.parentElement, peRowOf('prodPrice')?.parentElement?.nextElementSibling,
+    peRowOf('prodStock')?.parentElement, document.getElementById('prodActive')?.closest('label')?.parentElement,
+  ]],
+  ['details', 'Book details & SEO', () => [peRowOf('prodTitle'), peRowOf('prodAuthor'), peRowOf('prodCategory'), peById('prodMetadataEditor')]],
+  ['media', 'Images & A+', () => [peRowOf('prodImageUrl'), peById('prodGalleryUploadRow'), peById('prodAplusEditor'), peById('prodSampleEditor')]],
+  ['delivery', 'Delivery & COD', () => [peRowOf('prodExcludedStates')?.parentElement?.parentElement, peById('prodCodEditor'), peById('prodFreeDeliveryEditor')]],
+  ['promo', 'Coupons & marketing', () => [peById('prodCouponEditor'), peById('prodNewTitleAlert'), peById('prodMarketplaceEditor')]],
+  ['more', 'Visibility & sales', () => [peById('prodSearchHiddenEditor'), peById('prodSalesLineageEditor')]],
+];
+const PRODUCT_TAB_KEY = 'iac_admin_product_tab';
+function peById(id) { return document.getElementById(id); }
+function peRowOf(id) { return peById(id)?.closest('.form-row') || null; }
+
+function buildProductEditorTabs() {
+  const form = peById('productEditorForm');
+  const actions = form && form.querySelector('.product-editor-actions');
+  if (!form || !actions || form.querySelector('.pe-tabs')) return;
+  const bar = document.createElement('div');
+  bar.className = 'pe-tabs';
+  bar.setAttribute('role', 'tablist');
+  for (const [key, label, parts] of PRODUCT_EDITOR_TABS) {
+    const panel = document.createElement('div');
+    panel.className = 'pe-panel';
+    panel.dataset.tab = key;
+    panel.setAttribute('role', 'tabpanel');
+    // In the form before filling it: a block nested in an earlier tab's block
+    // (the delivery exclusions inside Book details) must still be found there.
+    form.insertBefore(panel, actions);
+    for (const el of parts()) if (el && form.contains(el)) panel.appendChild(el);
+    if (key === 'delivery') {
+      // The exclusions box sat inside Book details; it is saved with the override.
+      const box = panel.firstElementChild;
+      if (box && box.querySelector('#prodExcludedStates')) box.style.marginTop = '0';
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pe-tab';
+    btn.dataset.tab = key;
+    btn.setAttribute('role', 'tab');
+    btn.textContent = label;
+    btn.onclick = () => showProductEditorTab(key);
+    bar.appendChild(btn);
+  }
+  form.insertBefore(bar, form.firstChild);
+  let saved = '';
+  try { saved = localStorage.getItem(PRODUCT_TAB_KEY) || ''; } catch (e) {}
+  showProductEditorTab(PRODUCT_EDITOR_TABS.some(([k]) => k === saved) ? saved : 'price');
+}
+
+function showProductEditorTab(key) {
+  const form = peById('productEditorForm');
+  if (!form) return;
+  form.querySelectorAll('.pe-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === key)));
+  form.querySelectorAll('.pe-panel').forEach((p) => { p.hidden = p.dataset.tab !== key; });
+  try { localStorage.setItem(PRODUCT_TAB_KEY, key); } catch (e) {}
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildProductEditorTabs);
+else buildProductEditorTabs();
 
 // The "Only 4 left" badge as the storefront shows it (utils/scarcity.js): an
 // active override's own true/false, else the baked pin (row.sc).
