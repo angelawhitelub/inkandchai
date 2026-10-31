@@ -799,8 +799,8 @@ async function newArrivalsPage(request, env, ctx, origin) {
   return new Response(html, { status: 200, headers });
 }
 
-// "🔥 N sold" under the stock line of a bestseller's product page (lifetime
-// units, utils/lifetime-sales; shown from SHOW_ON_PAGE_MIN), and the Best
+// "🔥 2K+ bought in past month" under the stock line of a product page
+// (yesterday's units × 30, utils/lifetime-sales boughtLine; from 50), and the Best
 // Sellers Rank (utils/bestseller-rank): a row in the Details table for any
 // book that has sold, and a "#1 Best Seller" badge for a shelf's top book.
 // Both come from the same hourly KV document. A failed read leaves the page
@@ -808,8 +808,8 @@ async function newArrivalsPage(request, env, ctx, origin) {
 async function withSoldCount(response, slug) {
   if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
   const doc = await lifetimeSales.readLifetimeSales();
-  // unitsSold adds what a duplicated listing carries from its original.
-  const line = lifetimeSales.soldLine(lifetimeSales.unitsSold(doc, slug));
+  // monthlyUnits adds what a duplicated listing carries from its original.
+  const line = lifetimeSales.boughtLine(lifetimeSales.monthlyUnits(doc, slug));
   const rank = bestsellerRank.rankOf(doc && doc.bsr, slug);
   const underStock = bestsellerRank.badgeHtml(rank) + line;
   const row = bestsellerRank.rankRowHtml(rank);

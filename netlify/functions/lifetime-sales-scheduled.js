@@ -16,6 +16,7 @@ const { catalogueBook } = require('./utils/catalog-content');
 const { readDeleted } = require('./utils/deleted-products');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 const bsr = require('./utils/bestseller-rank');
+const { istDay, istDayStart } = require('./utils/ad-spend');
 
 const json = (statusCode, body) => ({ statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -122,6 +123,11 @@ exports.handler = async (event = {}) => {
     const tally = newTally();
     const recentTally = newTally();
     const since = Date.now() - bsr.WINDOW_DAYS * 86400000;
+    // Yesterday, as a whole IST day, for the product page's monthly line.
+    const yesterdayTally = newTally();
+    const yesterday = istDay(Date.now() - 86400000);
+    const yFrom = istDayStart(yesterday).getTime();
+    const yTo = yFrom + 86400000;
     let read = 0;
     for (let from = 0; from < 500000; from += 1000) {
       const { data, error } = await db.from('orders')
@@ -132,6 +138,7 @@ exports.handler = async (event = {}) => {
       if (error) throw new Error(`orders: ${error.message}`);
       addOrders(tally, data || [], { slugByTitle });
       addOrders(recentTally, (data || []).filter((o) => Date.parse(o.created_at) >= since), { slugByTitle });
+      addOrders(yesterdayTally, (data || []).filter((o) => { const t = Date.parse(o.created_at); return t >= yFrom && t < yTo; }), { slugByTitle });
       read += (data || []).length;
       if (!data || data.length < 1000) break;
     }
@@ -139,6 +146,8 @@ exports.handler = async (event = {}) => {
     // Kept apart from `counts` so the Reader Bestsellers ranking still counts
     // each listing's own sales once; product pages and cards add them.
     doc.carried = carriedCounts(doc.counts, lineage);
+    const yCounts = finishTally(yesterdayTally).counts;
+    doc.yesterday = { day: yesterday, counts: yCounts, carried: carriedCounts(yCounts, lineage) };
     // A failure here must not cost the page its sold counts: publish without ranks.
     try {
       doc.bsr = await buildRanks(db, { doc, recentDoc: finishTally(recentTally), lineage, meta, info: tally.info });

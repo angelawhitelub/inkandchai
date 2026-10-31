@@ -43,6 +43,18 @@ test('the product page shows the count from 10 sold', () => {
   assert.match(soldLine(1500), /1,500 sold/);
 });
 
+test('product pages show yesterday × 30, rounded down Amazon-style, from 50', () => {
+  const { monthlyUnits, monthBucket, boughtLine } = require('./lifetime-sales');
+  assert.deepEqual([0, 49, 50, 99, 100, 270, 999, 1000, 2970, 12345].map(monthBucket),
+    ['', '', '50+', '50+', '100+', '200+', '900+', '1K+', '2K+', '12K+']);
+  const doc = { yesterday: { day: '2026-10-31', counts: { hit: 70, one: 1 }, carried: { copy: 2 } } };
+  assert.equal(monthlyUnits(doc, 'HIT'), 2100);
+  assert.equal(monthlyUnits(doc, 'copy'), 60, 'a duplicated listing carries its original');
+  assert.equal(monthlyUnits({ counts: { hit: 5 } }, 'hit'), 0, 'before the first run with yesterday: nothing');
+  assert.match(boughtLine(monthlyUnits(doc, 'hit')), /🔥 2K\+ bought in past month/);
+  assert.equal(boughtLine(monthlyUnits(doc, 'one')), '', 'one copy (30) is under 50');
+});
+
 test('Reader Bestsellers keeps the month order but shows lifetime units', () => {
   const { withLifetimeCounts } = require('../homepage-merchandising')._test;
   const month = [{ slug: 'New-Hit', title: 'New Hit', qty: 40 }, { slug: 'classic', title: 'Classic', qty: 12 }, { slug: '', title: 'No Slug', qty: 5 }];

@@ -32,6 +32,17 @@ test('ranks by the last 30 days, shelves by category, skips deleted listings', a
     { razorpay_order_id: 'IC-3', status: 'paid', created_at: ago(1), cart_items: JSON.stringify([line('hot'), line('warm')]) },
     { razorpay_order_id: 'IC-R-4', status: 'shipped', created_at: ago(1), cart_items: [line('warm', 50)] },   // a replacement is no sale
   ];
+  // Yesterday as a whole IST day, wherever "now" falls in today ("gone" is
+  // deleted, so these leave the ranks below alone).
+  const { istDay, istDayStart } = require('./ad-spend');
+  const yStart = istDayStart(istDay(Date.now() - DAY)).getTime();
+  const at = (ms) => new Date(ms).toISOString();
+  orders.push(
+    { razorpay_order_id: 'IC-Y1', status: 'shipped', created_at: at(yStart + 60_000), cart_items: [line('gone', 2)] },
+    { razorpay_order_id: 'IC-Y2', status: 'paid', created_at: at(yStart + DAY - 60_000), cart_items: [line('gone', 1)] },
+    { razorpay_order_id: 'IC-T', status: 'paid', created_at: at(yStart + DAY + 60_000), cart_items: [line('gone', 9)] },
+  );
+  orders.sort((x, y) => Date.parse(x.created_at) - Date.parse(y.created_at));
   const tables = {
     orders,
     custom_products: [
@@ -58,6 +69,8 @@ test('ranks by the last 30 days, shelves by category, skips deleted listings', a
   }
   const doc = published['lifetime-sales'];
   assert.equal(doc.counts.hot, 3);
+  assert.equal(doc.yesterday.day, istDay(Date.now() - DAY));
+  assert.equal(doc.yesterday.counts.gone, 3, 'both ends of yesterday count; today and 5 days ago do not');
   assert.equal(doc.counts.warm, 1, 'the replacement order is not counted');
   const b = doc.bsr;
   assert.deepEqual(b.order, ['hot', 'warm', 'old']);
