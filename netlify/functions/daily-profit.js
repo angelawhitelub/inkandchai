@@ -67,7 +67,10 @@ exports.handler = async (event) => {
     }
 
     const [spend, firstDays] = await Promise.all([S.fetchSpend(db, oldestDay, days[0]), S.coverage(db)]);
-    const platforms = Object.keys(firstDays);
+    // ?actual=0 is the admin's "real ad spend" switch turned off: every day
+    // then uses the per-order average, as if nothing were connected.
+    const useActual = q.actual !== '0';
+    const platforms = useActual ? Object.keys(firstDays) : [];
     const avgs = D.outcomeAverages(orders, now.getTime());
     const rows = D.dailyProfit({ orders, days, spend, avgs, rateOverrides, platforms });
 
@@ -79,6 +82,7 @@ exports.handler = async (event) => {
       ok: true,
       generated_at: now.toISOString(),
       rates: { ...DEFAULT_RATES, ...rateOverrides },
+      ads_mode: useActual ? 'actual' : 'average',
       averages: avgs,
       connected: {
         google: firstDays.google ? { since: firstDays.google } : null,

@@ -151,3 +151,13 @@ test('a replacement earns nothing but still costs the parcel and the book', () =
   assert.equal(e.shipping, 62);
   assert.equal(e.cogs, 160);
 });
+
+test('real spend switched off: the average is used even where spend exists, and no platform split', () => {
+  const avgs = D.outcomeAverages(history(), NOW);
+  const today = [cod({ created_at: daysAgo(0.1) }), prepaid({ created_at: daysAgo(0.1) })];
+  const spend = { byDay: { '2026-10-19': { google: 300, meta: 200, total: 500 } } };
+  const [row] = D.dailyProfit({ orders: today, days: ['2026-10-19'], spend, avgs, platforms: [], rateOverrides: { adCostPerOrder: 92 } });
+  assert.equal(row.ads_source, 'average');
+  assert.equal(row.ads, 217.12, '2 × ₹92 + 18% GST');
+  assert.equal(row.ads_google, 0); assert.equal(row.ads_meta, 0);
+});

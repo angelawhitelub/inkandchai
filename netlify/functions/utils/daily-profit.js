@@ -153,8 +153,9 @@ function dailyProfit({ orders, days, spend, avgs, rateOverrides = {}, platforms 
     }
     const s = spend && spend.byDay && spend.byDay[day];
     const actual = !!s && platforms.length > 0;
-    row.ads_google = s ? r2(withAdGst(s.google, r)) : 0;
-    row.ads_meta = s ? r2(withAdGst(s.meta, r)) : 0;
+    // Only when this day's ads ARE the platform figures, so a total never mixes the two.
+    row.ads_google = actual ? r2(withAdGst(s.google, r)) : 0;
+    row.ads_meta = actual ? r2(withAdGst(s.meta, r)) : 0;
     const beforeGst = actual ? Number(s.total) || 0 : r.adCostPerOrder * list.length;
     row.ads = r2(withAdGst(beforeGst, r));
     row.ads_gst = r2(row.ads - beforeGst);
