@@ -123,31 +123,63 @@ async function lookupBook(rawTitle) {
   return { title: best.title, price: best.price, slug: best.slug, source: best.source };
 }
 
+// Split a books string into titles on STRUCTURAL separators only — commas,
+// semicolons, newlines, pipes and bullets. Deliberately NOT " and "/"&"/"+"/"/",
+// which occur inside real titles (Pride and Prejudice, wealth & happiness, C++).
+// Also strip a leading list marker ("1. ", "2) ", "- ", "• ") the LLM sometimes
+// prepends when it enumerates many books.
+function splitBookTitles(raw) {
+  return String(raw || '')
+    .split(/[,;\n|•·]+/)
+    .map(s => s.replace(/^\s*(?:\d{1,2}[.)]|[-*])\s+/, '').trim())
+    .filter(Boolean);
+}
+
+// How many copies one title line asks for. 1 Nov 2026: "Who Moved My Cheese
+// ×60" was priced, pushed and stored as ONE copy at ₹139. Only explicit
+// markers count — "×2", "x 2", "2x", "* 2", "(2 copies)", "- 3 pcs",
+// "qty 3", "2 x …", "3 copies of …" — never a bare number, which is part
+// of titles ("Vol 2", "Catch-22", "1984").
+const QTY_TAIL = /\s*(?:[x×*]\s*(\d{1,4})|(\d{1,4})\s*[x×]|\(\s*(?:qty\s*[:=]?\s*(\d{1,4})|(\d{1,4})\s*(?:copies|copy|pcs|pieces|nos?))\s*\)|[-–:]?\s*(\d{1,4})\s*(?:copies|copy|pcs|pieces|nos)\.?|[-–(]?\s*qty\s*[:=]?\s*(\d{1,4})\)?)\s*$/i;
+const QTY_HEAD = /^\s*(\d{1,4})\s*(?:[x×*]|copies of|copy of|pcs of|nos?\.? of)\s+/i;
+function parseQuantity(line) {
+  const text = String(line || '').trim();
+  let m = text.match(QTY_HEAD);
+  if (m) return { title: text.slice(m[0].length).trim(), qty: Math.max(1, Number(m[1]) || 1) };
+  m = text.match(QTY_TAIL);
+  if (m && m.index > 0) {
+    const n = Number(m.slice(1).find(Boolean));
+    return { title: text.slice(0, m.index).trim(), qty: Math.max(1, n || 1) };
+  }
+  return { title: text, qty: 1 };
+}
+
 /**
  * Price a customer's comma-separated book list.
  * Missing matches use the fallback per-book price so a payment link can still
  * be generated — the owner sees an "unmatched book" note in their alert.
+ * Items line up one-to-one with splitBookTitles(rawBooksList).
  *
- * @param {string} rawBooksList  e.g. "Heartstopper Vol 6, Atomic Habits"
+ * @param {string} rawBooksList  e.g. "Heartstopper Vol 6, Atomic Habits ×2"
  * @param {number} [fallbackRs]  Per-book fallback price when no match. Default ₹349.
  * @returns {Promise<{
- *   items: Array<{query, matchedTitle, price, matched}>,
- *   subtotalRs, shippingRs, totalRs, totalPaise,
+ *   items: Array<{query, title, qty, unitPrice, price, matchedTitle, slug?, matched}>,
+ *   subtotalRs, shippingRs, totalRs, totalPaise, copies,
  *   unmatched: string[]
- * }>}
+ * }>}  item.price is the line total (unitPrice × qty).
  */
-async function priceBooksList(rawBooksList, fallbackRs = 349) {
-  const queries = String(rawBooksList || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+async function priceBooksList(rawBooksList, fallbackRs = 349, deps = {}) {
+  const lookup = deps.lookupBook || lookupBook;
   const items = [];
   const unmatched = [];
-  for (const q of queries) {
-    const hit = await lookupBook(q);
-    if (hit) {
-      items.push({ query: q, matchedTitle: hit.title, price: hit.price, slug: hit.slug, matched: true });
-    } else {
-      items.push({ query: q, matchedTitle: q, price: fallbackRs, matched: false });
-      unmatched.push(q);
-    }
+  for (const q of splitBookTitles(rawBooksList)) {
+    const { title, qty } = parseQuantity(q);
+    const hit = await lookup(title);
+    const unitPrice = hit ? hit.price : fallbackRs;
+    items.push(hit
+      ? { query: q, title, qty, unitPrice, price: unitPrice * qty, matchedTitle: hit.title, slug: hit.slug, matched: true }
+      : { query: q, title, qty, unitPrice, price: unitPrice * qty, matchedTitle: title, matched: false });
+    if (!hit) unmatched.push(title);
   }
   const subtotalRs = items.reduce((s, i) => s + i.price, 0);
   // Free shipping from ₹499 — the website's COD rule; bot-order-request lifts
@@ -160,8 +192,9 @@ async function priceBooksList(rawBooksList, fallbackRs = 349) {
     shippingRs,
     totalRs,
     totalPaise: Math.round(totalRs * 100),
+    copies: items.reduce((s, i) => s + i.qty, 0),
     unmatched,
   };
 }
 
-module.exports = { lookupBook, priceBooksList };
+module.exports = { lookupBook, priceBooksList, splitBookTitles, parseQuantity };

@@ -32,6 +32,10 @@ const HIDDEN_STATUSES = [DRAFT, DISCARDED];
 const DRAFT_TTL_MS = 2 * 60 * 60 * 1000;          // a YES after 2h places nothing
 const DUPLICATE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const UNMATCHED_BOOK_FALLBACK_RS = 349;
+// A COD order the customer says YES to goes straight to Orders (owner,
+// 3 Nov 2026), unless a person should look first: a title we could not price,
+// or a bulk order.
+const AUTO_PUSH_MAX_COPIES = 10;
 
 const last10 = (phone) => String(phone || '').replace(/\D/g, '').slice(-10);
 
@@ -232,6 +236,9 @@ async function draftOrderRequest(deps, phone, args) {
       name: f.customerName,
       address: f.address,
       payment_mode: f.paymentMode,
+      ...(Array.isArray(pricing.items) && pricing.items.length ? {
+        items: pricing.items.map((i) => ({ title: i.matchedTitle || i.title || i.query, copies: i.qty || 1, price_each_rs: i.unitPrice ?? i.price, line_rs: i.price })),
+      } : {}),
       subtotal_rs: pricing.subtotalRs,
       ...(pricing.saleRs ? { sale_discount_rs: pricing.saleRs, sale: pricing.saleLabel } : {}),
       shipping_rs: pricing.shippingRs,
@@ -239,7 +246,7 @@ async function draftOrderRequest(deps, phone, args) {
       total_rs: pricing.totalRs,
     },
     other_open_orders: others,
-    message: 'NOT PLACED YET. Read the summary back to the customer (books, name, address, COD or prepaid, total) and ask them to reply YES to place the order or tell you what to change. Do not say the order is placed and do not share an order ID yet.'
+    message: 'NOT PLACED YET. Read the summary back to the customer (books with the number of copies of each, name, address, COD or prepaid, total) and ask them to reply YES to place the order or tell you what to change. Do not say the order is placed and do not share an order ID yet.'
       + (others.length ? ` Also mention they already have order ${others.join(', ')} — this would be a separate, additional order.` : ''),
   };
 }
@@ -270,10 +277,20 @@ function placedMessage(row, pricing, paymentLink) {
   return `Your COD order is placed ✅\nOrder ID: ${row.order_id}\nTotal: ₹${total}${breakdown}\nPay ₹${total} in cash when the courier delivers. We'll dispatch it soon 📚`;
 }
 
+/** Why a confirmed COD order must wait for a person instead of going to Orders, or null. */
+function autoPushHold(pricing) {
+  if (pricing.unmatched && pricing.unmatched.length) return 'a title is not in the catalogue, so its price is a guess';
+  const copies = Number(pricing.copies) || (pricing.items || []).reduce((n, i) => n + (Number(i && i.qty) || 1), 0);
+  if (copies > AUTO_PUSH_MAX_COPIES) return `bulk order of ${copies} copies`;
+  return null;
+}
+
 /**
  * The customer's YES/NO to a draft. Returns null when there is no live draft
  * (the message then goes on to the other handlers / the model).
- * deps: { db, priceBooksList, createPaymentLink, upsertBotCustomer, notifyOwner, now? }
+ * A confirmed COD order is pushed to Orders here (deps.pushOrder, which is
+ * utils/push-bot-order); prepaid goes there once its link is paid.
+ * deps: { db, priceBooksList, createPaymentLink, upsertBotCustomer, notifyOwner, pushOrder?, now? }
  */
 async function confirmDraftOrder(deps, phone, decision) {
   const { db } = deps;
@@ -337,6 +354,25 @@ async function confirmDraftOrder(deps, phone, decision) {
   try { await deps.upsertBotCustomer(phone, { customer_name: row.customer_name, address: row.address, order_id: row.order_id }); }
   catch (e) { console.error('confirmDraftOrder upsertBotCustomer:', e.message); }
 
+  // COD: straight to Orders, the customer's YES being the confirmation the
+  // team used to get by phone. The bot's reply below is their confirmation.
+  let pushedId = '';
+  let pushNote = '';
+  if (row.payment_mode !== 'prepaid' && deps.pushOrder) {
+    const hold = autoPushHold(pricing);
+    if (hold) pushNote = `⚠️ Not pushed automatically: ${hold}. Check it, then Book Requests → Push to Orders.`;
+    else {
+      try {
+        const pushed = await deps.pushOrder({ ...row, status: 'new', customer_confirmed_at: nowIso });
+        if (pushed && pushed.ok) pushedId = pushed.order_id;
+        else pushNote = `⚠️ Auto-push failed: ${(pushed && pushed.error) || 'unknown'}. Book Requests → Push to Orders.`;
+      } catch (e) {
+        console.error('confirmDraftOrder push:', e.message);
+        pushNote = `⚠️ Auto-push failed: ${e.message}. Book Requests → Push to Orders.`;
+      }
+    }
+  }
+
   const total = rupees(row.amount_paise);
   const modeLabel = row.payment_mode === 'prepaid'
     ? (paymentLink ? `💳 Prepaid — ${paymentLink}` : `💳 Prepaid — ⚠️ link failed: ${linkError || 'unknown'}`)
@@ -345,11 +381,13 @@ async function confirmDraftOrder(deps, phone, decision) {
     ? `\n⚠️ Titles not in catalogue (verify price): ${pricing.unmatched.join('; ')}` : '';
   try {
     await deps.notifyOwner(
-      `🆕 New book order request (WhatsApp bot, confirmed by customer)\n\n🆔 ${row.order_id}\n👤 ${row.customer_name}\n📞 ${row.customer_phone}\n📚 ${row.books}\n📍 ${row.address}\n💰 Total ₹${total}${unmatched}\n${modeLabel}${row.notes ? `\n📝 ${row.notes}` : ''}\n\nOpen admin panel → Book Requests → Push to Orders.`);
+      `🆕 New book order request (WhatsApp bot, confirmed by customer)\n\n🆔 ${row.order_id}\n👤 ${row.customer_name}\n📞 ${row.customer_phone}\n📚 ${row.books}\n📍 ${row.address}\n💰 Total ₹${total}${unmatched}\n${modeLabel}${row.notes ? `\n📝 ${row.notes}` : ''}\n\n${
+        pushedId ? `✅ Pushed to Orders as ${pushedId} — ship it from the Orders tab.`
+        : pushNote || 'Open admin panel → Book Requests → Push to Orders.'}`);
   } catch (e) { console.error('confirmDraftOrder notifyOwner:', e.message); }
 
-  console.log(`[ORDER-REQUEST] ${row.order_id} ${row.customer_phone} confirmed -> ${String(row.books).slice(0, 60)} mode=${row.payment_mode} total=₹${total}`);
-  return { handled: true, placed: true, order_id: row.order_id, reply: placedMessage(row, pricing, paymentLink) };
+  console.log(`[ORDER-REQUEST] ${row.order_id} ${row.customer_phone} confirmed -> ${String(row.books).slice(0, 60)} mode=${row.payment_mode} total=₹${total}${pushedId ? ` pushed=${pushedId}` : pushNote ? ' not-pushed' : ''}`);
+  return { handled: true, placed: true, order_id: row.order_id, pushed_order_id: pushedId || null, reply: placedMessage(row, pricing, paymentLink) };
 }
 
 // ── What the model is told about this number's bot orders ────────────────────
@@ -396,7 +434,7 @@ async function lookupBotRequest(db, orderId) {
 }
 
 module.exports = {
-  DRAFT, DISCARDED, LIVE, HIDDEN_STATUSES, DRAFT_TTL_MS,
+  DRAFT, DISCARDED, LIVE, HIDDEN_STATUSES, DRAFT_TTL_MS, AUTO_PUSH_MAX_COPIES,
   validateOrderFields, sameBooks, draftReplyDecision,
   draftOrderRequest, confirmDraftOrder, botOrdersContext, lookupBotRequest, describeRequest,
 };

@@ -262,3 +262,62 @@ test('placeholder and status-query "orders" are still refused before anything is
   assert.equal(out.ok, false);
   assert.equal(db.table.length, 0);
 });
+
+// ── Confirmed COD → Orders (owner, 3 Nov 2026) ──────────────────────────────
+test('YES on a COD draft pushes it to Orders once and tells the owner', async () => {
+  const db = fakeDb();
+  const pushed = [];
+  const { d, sent } = deps(db, { pushOrder: async (row) => { pushed.push(row); return { ok: true, order_id: row.order_id }; } });
+  const drafted = await draftOrderRequest(d, PHONE, ARGS);
+  const yes = await confirmDraftOrder(d, PHONE, 'confirm');
+  assert.equal(pushed.length, 1);
+  assert.equal(pushed[0].order_id, drafted.order_id);
+  assert.equal(pushed[0].payment_mode, 'cod');
+  assert.equal(yes.pushed_order_id, drafted.order_id);
+  assert.match(sent[0], /Pushed to Orders as/);
+  assert.equal(await confirmDraftOrder(d, PHONE, 'confirm'), null);
+  assert.equal(pushed.length, 1, 'a second YES pushes nothing');
+});
+
+test('prepaid is not pushed on YES: it waits for the payment', async () => {
+  const db = fakeDb();
+  let pushes = 0;
+  const { d } = deps(db, { pushOrder: async () => { pushes++; return { ok: true }; } });
+  await draftOrderRequest(d, PHONE, { ...ARGS, payment_mode: 'prepaid' });
+  await confirmDraftOrder(d, PHONE, 'confirm');
+  assert.equal(pushes, 0);
+});
+
+test('bulk or unpriced COD orders are held for a person', async () => {
+  for (const [priced, why] of [
+    [{ items: [{ title: 'Who Moved My Cheese', qty: 60, unitPrice: 99, price: 5940 }], copies: 60, subtotalRs: 5940, shippingRs: 0, totalRs: 5940, totalPaise: 594000, unmatched: [] }, /bulk order of 60 copies/],
+    [{ items: [{ title: 'Some Rare Book', qty: 1, unitPrice: 349, price: 349 }], copies: 1, subtotalRs: 349, shippingRs: 40, totalRs: 389, totalPaise: 38900, unmatched: ['Some Rare Book'] }, /not in the catalogue/],
+  ]) {
+    const db = fakeDb();
+    let pushes = 0;
+    const { d, sent } = deps(db, { priceBooksList: async () => priced, pushOrder: async () => { pushes++; return { ok: true }; } });
+    await draftOrderRequest(d, PHONE, ARGS);
+    const yes = await confirmDraftOrder(d, PHONE, 'confirm');
+    assert.equal(pushes, 0);
+    assert.equal(yes.placed, true, 'still placed as a request');
+    assert.match(sent[0], why);
+  }
+});
+
+test('a failed push still places the request and says so to the owner', async () => {
+  const db = fakeDb();
+  const { d, sent } = deps(db, { pushOrder: async () => ({ ok: false, error: 'Order exists' }) });
+  await draftOrderRequest(d, PHONE, ARGS);
+  const yes = await confirmDraftOrder(d, PHONE, 'confirm');
+  assert.equal(yes.placed, true);
+  assert.equal(db.table[0].status, 'new');
+  assert.match(sent[0], /Auto-push failed: Order exists/);
+});
+
+test('the draft summary reads back copies per title', async () => {
+  const db = fakeDb();
+  const { d } = deps(db, { priceBooksList: async () => ({ items: [{ title: 'Ikigai', matchedTitle: 'Ikigai', qty: 2, unitPrice: 250, price: 500 }], copies: 2, subtotalRs: 500, shippingRs: 0, totalRs: 500, totalPaise: 50000, unmatched: [] }) });
+  const out = await draftOrderRequest(d, PHONE, { ...ARGS, books: 'Ikigai ×2' });
+  assert.deepEqual(out.summary.items, [{ title: 'Ikigai', copies: 2, price_each_rs: 250, line_rs: 500 }]);
+  assert.equal(out.summary.total_rs, 500);
+});

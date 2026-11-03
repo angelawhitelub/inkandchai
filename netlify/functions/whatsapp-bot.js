@@ -31,6 +31,7 @@ const { chatPayload, currentBotModel, FALLBACK_MODEL } = require('./utils/bot-mo
 const { returnsContext } = require('./utils/return-bot-context');
 const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
+const { pushBotOrder } = require('./utils/push-bot-order');
 const rtoReship = require('./utils/rto-reship');
 const { draftOrderRequest, confirmDraftOrder, draftReplyDecision, botOrdersContext, lookupBotRequest, describeRequest } = require('./utils/bot-order-request');
 const {
@@ -948,7 +949,7 @@ const OPENAI_TOOLS = [{
       properties: {
         customer_name: { type: 'string', description: 'Customer\'s REAL full name, as they typed it. Not a placeholder.' },
         address:       { type: 'string', description: 'REAL complete delivery address including pincode, as the customer typed it. Not "N/A".' },
-        books:         { type: 'string', description: 'The actual book TITLE(s) the customer wants to buy, comma-separated. Not the generic word "book".' },
+        books:         { type: 'string', description: 'The actual book TITLE(s) the customer wants to buy, comma-separated. Not the generic word "book". For more than one copy of a title put the count after it with ×, e.g. "Ikigai ×2, Atomic Habits" — never put quantity only in notes, or it is charged as one copy.' },
         payment_mode:  { type: 'string', enum: ['cod', 'prepaid'], description: 'Customer\'s chosen payment mode. "cod" = Cash on Delivery. "prepaid" = pay online now. Must be a real explicit choice from the customer — do NOT guess or default.' },
         notes:         { type: 'string', description: 'Any extra notes (quantity, language, edition, etc.)' },
       },
@@ -1881,6 +1882,9 @@ async function handleDraftOrderReply(from, decision, senderPhoneId) {
       const ownerPhone = process.env.STORE_OWNER_PHONE;
       if (ownerPhone) await sendReply(ownerPhone, text);
     },
+    // Confirmed COD → Orders now. notify:false: the reply below and the
+    // owner ping above already say it is placed.
+    pushOrder: (row) => pushBotOrder(db, row, { notify: false }),
   }, from, decision);
   if (!out || !out.handled) return false;
   if (out.reply) {
