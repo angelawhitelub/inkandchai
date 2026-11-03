@@ -95,10 +95,10 @@
 
       '<h3 id="pol-refunds">How your refund reaches you</h3>' +
       '<div class="pol-row"><b>Paid online</b><span>Straight back to the same card or account, automatically. 2–4 business days.</span></div>' +
-      '<div class="pol-row"><b>Cash on Delivery</b><span>Nothing was paid online, so we transfer it to a UPI ID or bank account you give us.</span></div>' +
-      '<div class="pol-row"><b>Partial COD</b><span>Only the deposit was taken online. We send the <strong>whole amount — deposit and cash together — as one transfer</strong>, never split in two.</span></div>' +
+      '<div class="pol-row"><b>Cash on Delivery</b><span>Returned COD orders are refunded in <strong>Ink &amp; Chai store credit only</strong> — not cash, UPI or bank transfer. The full amount you paid, as a code emailed when the books reach us, valid for <strong>6 months</strong>.</span></div>' +
+      '<div class="pol-row"><b>Partial COD</b><span>Treated as Cash on Delivery: the <strong>whole amount — deposit and cash together — as store credit</strong>.</span></div>' +
 
-      '<div class="pol-note">Paid cash? If a book has to be refunded instead of replaced, we ask for a <strong>UPI ID</strong>, ' +
+      '<div class="pol-note">Paid cash and a <strong>missing book</strong> cannot be sent? Only then we ask for a <strong>UPI ID</strong> to refund that book, ' +
       'because a cash payment cannot be reversed online.</div>' +
 
       '<h3 id="pol-cancel">Cancelling an order</h3>' +
