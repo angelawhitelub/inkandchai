@@ -4,7 +4,8 @@ const {
   classify, unitsOf, revenueOf, costsOf, computeProfit, DEFAULT_RATES,
 } = require('../../netlify/functions/utils/profit-model');
 
-const RATES = DEFAULT_RATES;          // 92 ads / 62 shipping / 80 book
+// 92 ads / 62 shipping / 80 book; GST on ads is tested on its own below.
+const RATES = { ...DEFAULT_RATES, adGstRate: 0 };
 const book = (qty = 1) => ({ qty, price: 299, title: 'X' });
 const order = (o) => ({ amount_paise: 29900, cart_items: [book()], ...o });
 
@@ -87,7 +88,7 @@ test('computeProfit: end-to-end on a mixed book of orders', () => {
     { status: 'rto',       amount_paise: 39900, cart_items: [book()] },
     { status: 'cancelled', amount_paise: 39900, cart_items: [book()] },
   ];
-  const r = computeProfit(orders);
+  const r = computeProfit(orders, RATES);
 
   // delivered: 798 revenue − 184 ads − 124 shipping − 160 books = 330
   assert.equal(r.buckets.delivered.revenue, 798);
@@ -118,4 +119,11 @@ test('computeProfit: empty input does not divide by zero', () => {
   assert.equal(r.totals.net, 0);
   assert.equal(r.kpis.rto_rate_pct, 0);
   assert.equal(r.kpis.margin_pct, 0);
+});
+
+test('ad cost carries the 18% GST the platforms bill on top', () => {
+  assert.equal(DEFAULT_RATES.adGstRate, 0.18);
+  const c = costsOf(order({ status: 'cancelled' }), 'cancelled', DEFAULT_RATES);
+  assert.equal(Math.round(c.ads * 100) / 100, 108.56, '₹92 + 18%');
+  assert.equal(costsOf(order({ status: 'cancelled' }), 'cancelled', { ...DEFAULT_RATES, adGstRate: 0 }).ads, 92);
 });

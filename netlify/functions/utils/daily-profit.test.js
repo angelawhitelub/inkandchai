@@ -101,10 +101,12 @@ test('today: real ad spend, unshipped orders at their expected value', () => {
   // COD 62 × (0.60 + 2×0.25) + prepaid 62 × (0.96 + 2×0.04)
   assert.equal(row.shipping, Math.round((62 * 1.1 + 62 * 1.04) * 100) / 100);
   assert.equal(row.cogs, Math.round((80 * 0.6 + 80 * 0.96) * 100) / 100);
-  assert.equal(row.ads, 500); assert.equal(row.ads_google, 300); assert.equal(row.ads_meta, 200);
+  // Platform spend 300 + 200, plus 18% GST billed on top.
+  assert.equal(row.ads, 590); assert.equal(row.ads_google, 354); assert.equal(row.ads_meta, 236);
+  assert.equal(row.ads_gst, 90);
   assert.equal(row.ads_source, 'actual');
-  assert.equal(row.ads_per_order, 250);
-  assert.equal(row.net, Math.round((528 - 500 - row.shipping - row.cogs) * 100) / 100);
+  assert.equal(row.ads_per_order, 295);
+  assert.equal(row.net, Math.round((528 - 590 - row.shipping - row.cogs) * 100) / 100);
 });
 
 test('a day with no spend data uses the average, and finished orders use what happened', () => {
@@ -116,7 +118,8 @@ test('a day with no spend data uses the average, and finished orders use what ha
   const day = S.istDay(daysAgo(3));
   const [row] = D.dailyProfit({ orders, days: [day], spend: { byDay: {} }, avgs, platforms: ['google'], rateOverrides: { adCostPerOrder: 92, shippingPerOrder: 62, bookCost: 80 } });
   assert.equal(row.ads_source, 'average');
-  assert.equal(row.ads, 184);
+  assert.equal(row.ads, 217.12, '2 × ₹92 + 18% GST');
+  assert.equal(row.ads_gst, 33.12);
   assert.equal(row.revenue, 400);
   assert.equal(row.order_value, 400);      // the cancelled one is not "ordered value"
   assert.equal(row.shipping, 62);          // cancelled ships nothing

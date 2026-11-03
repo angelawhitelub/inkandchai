@@ -317,7 +317,7 @@
       </a>
       <div class="kpis">
         <div class="card kpi"><div class="k">Ordered</div><div class="v">${compactRupees(d0.order_value)}</div><div class="s">expected ${compactRupees(d0.revenue)}</div></div>
-        <div class="card kpi"><div class="k">Ad spend${adsGuess ? ' (est.)' : ''}</div><div class="v red">${compactRupees(d0.ads)}</div><div class="s">${adsGuess ? `₹${Math.round(d0.ads_per_order || 0)}/order average` : `Google ${compactRupees(d0.ads_google)} · Meta ${compactRupees(d0.ads_meta)}`}</div></div>
+        <div class="card kpi"><div class="k">Ad spend${adsGuess ? ' (est.)' : ''}</div><div class="v red">${compactRupees(d0.ads)}</div><div class="s">${adsGuess ? `₹${Math.round(d0.ads_per_order || 0)}/order average` : `Google ${compactRupees(d0.ads_google)} · Meta ${compactRupees(d0.ads_meta)}`} · incl. GST</div></div>
         <div class="card kpi"><div class="k">Shipping</div><div class="v">${compactRupees(d0.shipping)}</div><div class="s">expected</div></div>
         <div class="card kpi"><div class="k">Book cost</div><div class="v">${compactRupees(d0.cogs)}</div><div class="s">expected</div></div>
       </div>`;

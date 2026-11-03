@@ -22,10 +22,12 @@
  *   finished          what actually happened (profit-model's revenue and costs)
  *
  * Ad spend is the platforms' own figure for that IST day when we have it, and
- * the owner's per-order average only for days with no spend data at all.
+ * the owner's per-order average only for days with no spend data at all --
+ * either way plus the 18% GST the platforms bill on top (profit-model
+ * withAdGst). ads_gst is that GST, already inside ads/ads_google/ads_meta.
  */
 
-const { classify, unitsOf, revenueOf, costsOf, DEFAULT_RATES } = require('./profit-model');
+const { classify, unitsOf, revenueOf, costsOf, DEFAULT_RATES, withAdGst } = require('./profit-model');
 const { classifyShipmentMoney } = require('./shipment-money');
 const { isReplacementOrder } = require('./replacement-order');
 const { istDay } = require('./ad-spend');
@@ -151,9 +153,11 @@ function dailyProfit({ orders, days, spend, avgs, rateOverrides = {}, platforms 
     }
     const s = spend && spend.byDay && spend.byDay[day];
     const actual = !!s && platforms.length > 0;
-    row.ads_google = s ? r2(s.google || 0) : 0;
-    row.ads_meta = s ? r2(s.meta || 0) : 0;
-    row.ads = actual ? r2(s.total) : r2(r.adCostPerOrder * list.length);
+    row.ads_google = s ? r2(withAdGst(s.google, r)) : 0;
+    row.ads_meta = s ? r2(withAdGst(s.meta, r)) : 0;
+    const beforeGst = actual ? Number(s.total) || 0 : r.adCostPerOrder * list.length;
+    row.ads = r2(withAdGst(beforeGst, r));
+    row.ads_gst = r2(row.ads - beforeGst);
     row.ads_source = actual ? 'actual' : 'average';
     row.ads_per_order = list.length ? r2(row.ads / list.length) : null;
     for (const k of ['order_value', 'revenue', 'shipping', 'cogs']) row[k] = r2(row[k]);

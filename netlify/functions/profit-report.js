@@ -14,7 +14,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { computeProfit, DEFAULT_RATES } = require('./utils/profit-model');
+const { computeProfit, DEFAULT_RATES, withAdGst } = require('./utils/profit-model');
 const AdSpend = require('./utils/ad-spend');
 
 const CORS = {
@@ -83,10 +83,12 @@ exports.handler = async (event) => {
     const covers = !!sinceDay && platforms.length > 0 && platforms.every((p) => firstDays[p] <= sinceDay);
     let adsActual = null;
     if (spend && spend.available) {
+      // Platform figures plus the GST billed on them, as the costs are (profit-model withAdGst).
       adsActual = {
-        google: Math.round(spend.total.google), meta: Math.round(spend.total.meta), total: Math.round(spend.total.total),
+        google: Math.round(withAdGst(spend.total.google, rates)), meta: Math.round(withAdGst(spend.total.meta, rates)),
+        total: Math.round(withAdGst(spend.total.total, rates)), gst: Math.round(withAdGst(spend.total.total, rates) - spend.total.total),
         platforms, first_day: firstDays, covers_range: covers,
-        per_order: orders.length ? Math.round((spend.total.total / orders.length) * 100) / 100 : null,
+        per_order: orders.length ? Math.round((withAdGst(spend.total.total, rates) / orders.length) * 100) / 100 : null,
       };
       if (q.actual === '1' && covers && orders.length) rates.adCostPerOrder = spend.total.total / orders.length;
     }

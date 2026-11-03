@@ -2968,7 +2968,7 @@ select,input,textarea{font-size:1rem;}
     </div>
 
     <div style="display:flex;flex-wrap:wrap;gap:.9rem;align-items:flex-end;margin-bottom:1.2rem;">
-      <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);">Google Ads / order ₹<br>
+      <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);">Google Ads / order ₹ (before GST)<br>
         <input type="number" id="pftAd" value="92" min="0" step="1" style="padding:.4rem;width:110px;" onchange="loadProfit()"></label>
       <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);display:flex;align-items:center;gap:.35rem;align-self:center;">
         <input type="checkbox" id="pftActual" checked onchange="loadProfit()"> Use real ad spend when connected</label>
@@ -17782,7 +17782,7 @@ function renderDailyProfit(d) {
   document.getElementById('dpToday').innerHTML = t ? [
     card('Today’s orders', t.orders.toLocaleString('en-IN'), '', `${t.cod} COD · ${t.prepaid} prepaid`),
     card('Expected revenue', rs(t.revenue), '', `of ${rs(t.order_value)} ordered`),
-    card('Ad spend today', rs(t.ads), 'var(--red)', t.ads_source === 'actual' ? `Google ${rs(t.ads_google)} · Meta ${rs(t.ads_meta)}` : 'estimated from your average'),
+    card('Ad spend today', rs(t.ads), 'var(--red)', (t.ads_source === 'actual' ? `Google ${rs(t.ads_google)} · Meta ${rs(t.ads_meta)}` : 'estimated from your average') + ` · incl. ${rs(t.ads_gst || 0)} GST`),
     card('Expected profit today', signed(t.net), t.net >= 0 ? 'var(--green)' : 'var(--red)', t.ads_per_order != null ? `ads ${rs(t.ads_per_order)} per order` : ''),
   ].join('') : '';
 
@@ -17816,7 +17816,8 @@ function renderDailyProfit(d) {
     `<strong>prepaid</strong> ${pct(a.prepaid.p_delivered)} delivered, ${pct(a.prepaid.p_rto)} RTO. ` +
     `Once an AWB is assigned, COD delivers ${pct(a.cod_awb.p_delivered)} (cancellations before pickup included), and ${pct(a.cod_moved.p_delivered)} once the courier has picked it up. ` +
     `Delivered, returned and cancelled orders use what actually happened. Shipping ₹${d.rates.shippingPerOrder}/parcel (RTO twice), stock ₹${d.rates.bookCost}/book. ` +
-    `Days marked ≈ have no ad spend data and use your ₹${d.rates.adCostPerOrder}/order average. Today’s spend keeps rising until midnight.`;
+    `Ad spend includes the 18% GST Google and Meta bill on top (books are GST-exempt, so it cannot be claimed back). ` +
+    `Days marked ≈ have no ad spend data and use your ₹${d.rates.adCostPerOrder}/order average plus GST. Today’s spend keeps rising until midnight.`;
 }
 
 // ═══════════════ PROFIT TAB ═══════════════
@@ -17931,8 +17932,8 @@ function renderProfit(d) {
 
   document.getElementById('pftNote').textContent =
     (d.ads_source === 'actual'
-      ? `Ads: real spend ${pftRs(d.ads_actual.total)} (Google ${pftRs(d.ads_actual.google)}, Meta ${pftRs(d.ads_actual.meta)}) ÷ ${d.orders_counted.toLocaleString('en-IN')} orders = ₹${Math.round(d.rates.adCostPerOrder)} per order, on ${d.rates_applied_to.ads}. `
-      : `Ads charged at your average of ₹${Math.round(d.rates.adCostPerOrder)} on ${d.rates_applied_to.ads}` +
+      ? `Ads: real spend ${pftRs(d.ads_actual.total)} incl. ${pftRs(d.ads_actual.gst || 0)} GST (Google ${pftRs(d.ads_actual.google)}, Meta ${pftRs(d.ads_actual.meta)}) ÷ ${d.orders_counted.toLocaleString('en-IN')} orders = ₹${Math.round(d.ads_actual.per_order || 0)} per order, on ${d.rates_applied_to.ads}. `
+      : `Ads charged at your average of ₹${Math.round(d.rates.adCostPerOrder)} + 18% GST = ₹${Math.round(d.rates.adCostPerOrder * 1.18)} on ${d.rates_applied_to.ads}` +
         (d.ads_actual ? ` (real spend data only starts ${Object.values(d.ads_actual.first_day).sort().pop()}, so it cannot cover this whole period)` : '') + '. ') +
     `Shipping at ₹${d.rates.shippingPerOrder}: ${d.rates_applied_to.shipping}. ` +
     `Stock at ₹${d.rates.bookCost} per book, ${d.rates_applied_to.books}. ` +
