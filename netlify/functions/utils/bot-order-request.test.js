@@ -291,7 +291,7 @@ test('prepaid is not pushed on YES: it waits for the payment', async () => {
 test('bulk or unpriced COD orders are held for a person', async () => {
   for (const [priced, why] of [
     [{ items: [{ title: 'Who Moved My Cheese', qty: 60, unitPrice: 99, price: 5940 }], copies: 60, subtotalRs: 5940, shippingRs: 0, totalRs: 5940, totalPaise: 594000, unmatched: [] }, /bulk order of 60 copies/],
-    [{ items: [{ title: 'Some Rare Book', qty: 1, unitPrice: 349, price: 349 }], copies: 1, subtotalRs: 349, shippingRs: 40, totalRs: 389, totalPaise: 38900, unmatched: ['Some Rare Book'] }, /not in the catalogue/],
+    [{ items: [{ title: 'Some Rare Book', qty: 1, unitPrice: 349, price: 349 }], copies: 1, subtotalRs: 349, shippingRs: 40, totalRs: 389, totalPaise: 38900, unmatched: ['Some Rare Book'] }, /PRICE NEEDED/],
   ]) {
     const db = fakeDb();
     let pushes = 0;
@@ -320,4 +320,41 @@ test('the draft summary reads back copies per title', async () => {
   const out = await draftOrderRequest(d, PHONE, { ...ARGS, books: 'Ikigai ×2' });
   assert.deepEqual(out.summary.items, [{ title: 'Ikigai', copies: 2, price_each_rs: 250, line_rs: 500 }]);
   assert.equal(out.summary.total_rs, 500);
+});
+
+// ── Unlisted titles are never priced by a guess (4 Nov 2026, IC-W-20261031-4VZFO) ──
+const unlistedPricing = async () => ({
+  items: [{ title: 'Designing Data-Intensive Applications', qty: 1, unitPrice: 349, price: 349, matched: false }],
+  copies: 1, subtotalRs: 349, shippingRs: 40, totalRs: 389, totalPaise: 38900, unmatched: ['Designing Data-Intensive Applications'],
+});
+
+test('an unlisted title gets no price in the draft, and the model is told not to quote one', async () => {
+  const db = fakeDb();
+  const { d } = deps(db, { priceBooksList: unlistedPricing });
+  const out = await draftOrderRequest(d, PHONE, { ...ARGS, books: 'Designing Data-Intensive Applications' });
+  assert.equal(out.price_unknown, true);
+  assert.equal(out.summary.total_rs, undefined);
+  assert.doesNotMatch(JSON.stringify(out.summary), /349|389/);
+  assert.match(out.message, /Do NOT quote/);
+  assert.equal(db.table[0].amount_paise, null);
+});
+
+test('YES on an unlisted title places a price-needed request: no amount, no push, no payment link', async () => {
+  for (const mode of ['cod', 'prepaid']) {
+    const db = fakeDb();
+    let pushes = 0, links = 0;
+    const { d, sent } = deps(db, {
+      priceBooksList: unlistedPricing,
+      pushOrder: async () => { pushes++; return { ok: true }; },
+      createPaymentLink: async () => { links++; return { short_url: 'x', id: 'y' }; },
+    });
+    await draftOrderRequest(d, PHONE, { ...ARGS, payment_mode: mode, books: 'Designing Data-Intensive Applications' });
+    const yes = await confirmDraftOrder(d, PHONE, 'confirm');
+    assert.equal(yes.placed, true);
+    assert.equal(db.table[0].status, 'new');
+    assert.equal(pushes + links, 0, mode);
+    assert.doesNotMatch(yes.reply, /₹/);
+    assert.match(yes.reply, /message you the exact price/);
+    assert.match(sent[0], /PRICE NEEDED/);
+  }
 });

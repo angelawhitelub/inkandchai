@@ -31,6 +31,12 @@ const HIDDEN_STATUSES = [DRAFT, DISCARDED];
 
 const DRAFT_TTL_MS = 2 * 60 * 60 * 1000;          // a YES after 2h places nothing
 const DUPLICATE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// priceBooksList's per-book placeholder for a title it cannot find. It is
+// NEVER quoted: until 4 Nov 2026 it was, and Designing Data-Intensive
+// Applications (~₹500, not listed) went to a customer as ₹349 (IC-W-20261031-
+// 4VZFO). A request with an unlisted title is placed with no amount; the team
+// confirms availability and price with the customer, and Push to Orders asks
+// for the amount.
 const UNMATCHED_BOOK_FALLBACK_RS = 349;
 // A COD order the customer says YES to goes straight to Orders (owner,
 // 3 Nov 2026), unless a person should look first: a title we could not price,
@@ -198,6 +204,7 @@ async function draftOrderRequest(deps, phone, args) {
   }
 
   const pricing = withSiteSale(withPaymentShipping(await withFreeDelivery(db, await priceSafely(deps.priceBooksList, f.books)), f.paymentMode), nowMs);
+  const unlisted = unlistedTitles(pricing);
   const draft = rows.find((r) => r.status === DRAFT && nowMs - new Date(r.created_at).getTime() < DRAFT_TTL_MS);
   const values = {
     customer_name: f.customerName,
@@ -205,7 +212,7 @@ async function draftOrderRequest(deps, phone, args) {
     books:         f.books,
     notes:         f.notes,
     payment_mode:  f.paymentMode,
-    amount_paise:  pricing.totalPaise,
+    amount_paise:  unlisted.length ? null : pricing.totalPaise,
   };
 
   let orderId;
@@ -227,6 +234,29 @@ async function draftOrderRequest(deps, phone, args) {
   }
 
   const others = placed.map((r) => r.order_id).filter(Boolean);
+  const othersNote = others.length ? ` Also mention they already have order ${others.join(', ')} — this would be a separate, additional order.` : '';
+  if (unlisted.length) {
+    return {
+      ok: true,
+      needs_confirmation: true,
+      price_unknown: true,
+      order_id: orderId,
+      summary: {
+        books: f.books,
+        name: f.customerName,
+        address: f.address,
+        payment_mode: f.paymentMode,
+        not_in_catalogue: unlisted,
+        price: 'to be confirmed by our team',
+      },
+      other_open_orders: others,
+      message: `NOT PLACED YET, and there is NO PRICE: ${unlisted.join('; ')} ${unlisted.length > 1 ? 'are' : 'is'} not listed in our catalogue. `
+        + 'Do NOT quote, estimate or guess any price or total for this order — not even for the other books. Read back the books, name, address and COD/prepaid, '
+        + 'and explain that because this title is not listed, our team will check availability and message them the exact price here before anything is shipped or paid. '
+        + 'Ask them to reply YES to send this request to the team, or to tell you what to change (they can drop the unlisted title to order the rest now at our listed prices).'
+        + othersNote,
+    };
+  }
   return {
     ok: true,
     needs_confirmation: true,
@@ -247,8 +277,13 @@ async function draftOrderRequest(deps, phone, args) {
     },
     other_open_orders: others,
     message: 'NOT PLACED YET. Read the summary back to the customer (books with the number of copies of each, name, address, COD or prepaid, total) and ask them to reply YES to place the order or tell you what to change. Do not say the order is placed and do not share an order ID yet.'
-      + (others.length ? ` Also mention they already have order ${others.join(', ')} — this would be a separate, additional order.` : ''),
+      + othersNote,
   };
+}
+
+/** Titles priceBooksList could not find; their price is only the placeholder. */
+function unlistedTitles(pricing) {
+  return (pricing && Array.isArray(pricing.unmatched) ? pricing.unmatched : []).filter(Boolean);
 }
 
 // Whole-message affirmatives/negatives only: "yes but change the address" must
@@ -263,6 +298,10 @@ function draftReplyDecision(text) {
 }
 
 function placedMessage(row, pricing, paymentLink) {
+  if (!Number(row.amount_paise)) {
+    const titles = unlistedTitles(pricing);
+    return `Your request is placed ✅\nOrder ID: ${row.order_id}\n\n${titles.length ? `${titles.join(', ')} ${titles.length > 1 ? 'are' : 'is'} not listed on our site yet, so` : 'So'} our team will check availability and message you the exact price here. Nothing is shipped${row.payment_mode === 'prepaid' ? ' or charged' : ''} until you agree to it 📚`;
+  }
   const total = rupees(row.amount_paise);
   const sale = pricing && pricing.saleRs ? ` − ${pricing.saleLabel} ₹${pricing.saleRs}` : '';
   const ship = pricing && pricing.shippingRs ? ` + shipping ₹${pricing.shippingRs}` : pricing && pricing.freeDelivery ? ' · free delivery 🚚' : '';
@@ -324,9 +363,11 @@ async function confirmDraftOrder(deps, phone, decision) {
 
   const pricing = withSiteSale(withPaymentShipping(await withFreeDelivery(db, await priceSafely(deps.priceBooksList, row.books)), row.payment_mode), new Date(row.created_at).getTime());
 
+  // No amount: an unlisted title, priced by the team, not by a guess.
+  const priceNeeded = !Number(row.amount_paise);
   let paymentLink = '';
   let linkError = '';
-  if (row.payment_mode === 'prepaid') {
+  if (row.payment_mode === 'prepaid' && !priceNeeded) {
     try {
       const link = await deps.createPaymentLink({
         amountPaise: Number(row.amount_paise),
@@ -359,7 +400,7 @@ async function confirmDraftOrder(deps, phone, decision) {
   let pushedId = '';
   let pushNote = '';
   if (row.payment_mode !== 'prepaid' && deps.pushOrder) {
-    const hold = autoPushHold(pricing);
+    const hold = priceNeeded ? 'no price yet — a title is not in the catalogue' : autoPushHold(pricing);
     if (hold) pushNote = `⚠️ Not pushed automatically: ${hold}. Check it, then Book Requests → Push to Orders.`;
     else {
       try {
@@ -375,15 +416,16 @@ async function confirmDraftOrder(deps, phone, decision) {
 
   const total = rupees(row.amount_paise);
   const modeLabel = row.payment_mode === 'prepaid'
-    ? (paymentLink ? `💳 Prepaid — ${paymentLink}` : `💳 Prepaid — ⚠️ link failed: ${linkError || 'unknown'}`)
+    ? priceNeeded ? '💳 Prepaid — send a payment link once the price is agreed' : (paymentLink ? `💳 Prepaid — ${paymentLink}` : `💳 Prepaid — ⚠️ link failed: ${linkError || 'unknown'}`)
     : '💵 COD';
   const unmatched = pricing.unmatched && pricing.unmatched.length
-    ? `\n⚠️ Titles not in catalogue (verify price): ${pricing.unmatched.join('; ')}` : '';
+    ? `\n⚠️ Not in catalogue: ${pricing.unmatched.join('; ')}` : '';
   try {
     await deps.notifyOwner(
-      `🆕 New book order request (WhatsApp bot, confirmed by customer)\n\n🆔 ${row.order_id}\n👤 ${row.customer_name}\n📞 ${row.customer_phone}\n📚 ${row.books}\n📍 ${row.address}\n💰 Total ₹${total}${unmatched}\n${modeLabel}${row.notes ? `\n📝 ${row.notes}` : ''}\n\n${
+      `🆕 New book order request (WhatsApp bot, confirmed by customer)\n\n🆔 ${row.order_id}\n👤 ${row.customer_name}\n📞 ${row.customer_phone}\n📚 ${row.books}\n📍 ${row.address}\n💰 ${priceNeeded ? 'PRICE NEEDED — confirm availability and price with the customer, then Push to Orders with the agreed amount' : `Total ₹${total}`}${unmatched}\n${modeLabel}${row.notes ? `\n📝 ${row.notes}` : ''}\n\n${
         pushedId ? `✅ Pushed to Orders as ${pushedId} — ship it from the Orders tab.`
-        : pushNote || 'Open admin panel → Book Requests → Push to Orders.'}`);
+        : priceNeeded ? 'Admin → Book Requests: WhatsApp them, then Push to Orders.'
+      : pushNote || 'Open admin panel → Book Requests → Push to Orders.'}`);
   } catch (e) { console.error('confirmDraftOrder notifyOwner:', e.message); }
 
   console.log(`[ORDER-REQUEST] ${row.order_id} ${row.customer_phone} confirmed -> ${String(row.books).slice(0, 60)} mode=${row.payment_mode} total=₹${total}${pushedId ? ` pushed=${pushedId}` : pushNote ? ' not-pushed' : ''}`);
@@ -402,7 +444,7 @@ const STATUS_WORDS = {
 };
 function describeRequest(r) {
   const status = STATUS_WORDS[r.status] || r.status;
-  const amount = r.amount_paise ? ` · ₹${rupees(r.amount_paise)}` : '';
+  const amount = r.amount_paise ? ` · ₹${rupees(r.amount_paise)}` : ' · price NOT set — the team will confirm it with the customer; never quote one';
   const mode = r.payment_mode ? ` · ${String(r.payment_mode).toUpperCase()}${r.payment_mode === 'prepaid' && r.payment_status === 'paid' ? ' (paid)' : ''}` : '';
   const pushed = r.order_pushed_id && r.order_pushed_id !== r.order_id ? ` · now order ${r.order_pushed_id}` : '';
   return `- ${r.order_id}: ${r.books}${amount}${mode} — ${status}${pushed} (${new Date(r.created_at).toISOString().slice(0, 10)})`;
