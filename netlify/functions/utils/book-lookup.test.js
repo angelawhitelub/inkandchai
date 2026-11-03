@@ -34,3 +34,12 @@ test('the Orders cart carries the copies', async () => {
     [{ title: 'Ikigai', qty: 2, price: 250 }, { title: 'Atomic Habits', qty: 1, price: 400 }]);
   assert.deepEqual(await buildCartFromBooks('Ikigai', 299), [{ title: 'Ikigai', qty: 1, price: 299 }]);
 });
+
+test('a pasted Amazon title with " | " stays one cart line; unmatched titles share the total', async () => {
+  const pasted = "System Design Interview Vol 1 & Vol 2 Combo Set by Alex Xu | An Insider's Guide to System Design Interviews | Complete 2 Books Collection";
+  const priceBooksList = async () => ({ items: [{ unitPrice: 349, matched: false }] });
+  assert.deepEqual(await buildCartFromBooks(pasted, 389, { priceBooksList }), [{ title: pasted, qty: 1, price: 389 }]);
+  const two = async () => ({ items: [{ unitPrice: 450, matched: true }, { unitPrice: 349, matched: false }] });
+  assert.deepEqual(await buildCartFromBooks('Designing Data-Intensive Applications, Database Internals', 698, { priceBooksList: two }),
+    [{ title: 'Designing Data-Intensive Applications', qty: 1, price: 450 }, { title: 'Database Internals', qty: 1, price: 349 }]);
+});

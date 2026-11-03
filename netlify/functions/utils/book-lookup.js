@@ -124,13 +124,16 @@ async function lookupBook(rawTitle) {
 }
 
 // Split a books string into titles on STRUCTURAL separators only — commas,
-// semicolons, newlines, pipes and bullets. Deliberately NOT " and "/"&"/"+"/"/",
-// which occur inside real titles (Pride and Prejudice, wealth & happiness, C++).
+// semicolons, newlines and bullets. Deliberately NOT " and "/"&"/"+"/"/",
+// which occur inside real titles (Pride and Prejudice, wealth & happiness, C++),
+// and not "|": customers paste Amazon titles ("System Design Interview Vol 1 &
+// Vol 2 Combo Set by Alex Xu | An Insider's Guide … | Complete 2 Books
+// Collection" became four cart lines, three priced at the ₹349 guess).
 // Also strip a leading list marker ("1. ", "2) ", "- ", "• ") the LLM sometimes
 // prepends when it enumerates many books.
 function splitBookTitles(raw) {
   return String(raw || '')
-    .split(/[,;\n|•·]+/)
+    .split(/[,;\n•·]+/)
     .map(s => s.replace(/^\s*(?:\d{1,2}[.)]|[-*])\s+/, '').trim())
     .filter(Boolean);
 }

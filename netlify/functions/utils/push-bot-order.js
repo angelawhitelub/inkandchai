@@ -42,14 +42,16 @@ async function buildCartFromBooks(booksStr, amountRupees, deps = {}) {
   }
 
   // Per-book catalogue prices, index-aligned with `lines`. Best-effort — fall
-  // back to an even split per copy.
+  // back to an even split per copy, also for a title the catalogue did not
+  // match (its unitPrice is only the ₹349 guess).
   let priced = null;
   try { priced = await (deps.priceBooksList || priceBooksList)(raw); } catch (e) { console.error('buildCartFromBooks price:', e.message); }
   const copies = lines.reduce((n, l) => n + l.qty, 0);
   const evenPrice = Math.max(1, Math.round(amountRupees / copies));
   const items = Array.isArray(priced?.items) && priced.items.length === lines.length ? priced.items : null;
   return lines.map(({ title, qty }, i) => {
-    const unit = items && Number(items[i]?.unitPrice) > 0 ? Math.round(Number(items[i].unitPrice)) : evenPrice;
+    const it = items && items[i];
+    const unit = it && it.matched !== false && Number(it.unitPrice) > 0 ? Math.round(Number(it.unitPrice)) : evenPrice;
     return { title, qty, price: unit };
   });
 }
