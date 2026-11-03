@@ -22,10 +22,20 @@
  */
 
 const DEFAULT_RATES = {
-  adCostPerOrder: 92,     // average Google Ads cost to acquire one order
+  adCostPerOrder: 92,     // average Google Ads cost to acquire one order, before GST
+  // Google and Meta report spend before the 18% GST on their invoices. Books
+  // are GST-exempt, so that GST cannot be set off as input credit: it is a
+  // cost like the spend itself. Applied to the average and to real spend alike.
+  adGstRate: 0.18,
   shippingPerOrder: 62,   // one-way courier charge
   bookCost: 80,           // average cost of one book to us
 };
+
+/** Platform spend (before GST) as it is actually paid, GST included. */
+function withAdGst(amount, rates = DEFAULT_RATES) {
+  const gst = Number.isFinite(Number(rates.adGstRate)) ? Number(rates.adGstRate) : DEFAULT_RATES.adGstRate;
+  return (Number(amount) || 0) * (1 + gst);
+}
 
 const BUCKETS = ['delivered', 'in_transit', 'rto', 'cancelled', 'refunded', 'pending'];
 
@@ -83,7 +93,7 @@ function revenueOf(order, bucket) {
 function costsOf(order, bucket, rates) {
   const units = unitsOf(order);
   // Paid to acquire the click; nothing that happens later gives it back.
-  const ads = rates.adCostPerOrder;
+  const ads = withAdGst(rates.adCostPerOrder, rates);
 
   let shipping = 0;
   let cogs = 0;
@@ -167,4 +177,4 @@ function computeProfit(orders, rateOverrides = {}) {
   };
 }
 
-module.exports = { DEFAULT_RATES, BUCKETS, BUCKET_LABELS, classify, unitsOf, revenueOf, costsOf, computeProfit };
+module.exports = { DEFAULT_RATES, BUCKETS, BUCKET_LABELS, classify, unitsOf, revenueOf, costsOf, computeProfit, withAdGst };

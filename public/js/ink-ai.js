@@ -62,7 +62,10 @@
     '.ink-fab[hidden]{display:none!important}',
     '@media(max-width:780px){.ink-fab{right:14px;font-size:0}',
       '.ink-fab{width:46px;height:46px;padding:0;justify-content:center}',
-      '.ink-fab .ink-fab-i{font-size:1.25rem}}',
+      '.ink-fab .ink-fab-i{font-size:1.25rem}',
+      // The site theme forces the button's font-size back to 13px (!important),
+      // which pushed "Ink AI" out of the circle; hide the label itself instead.
+      '.ink-fab .ink-fab-t{display:none}}',
     '.ink-fab-i{font-size:0.95rem;line-height:1}',
 
     // The UA's [hidden]{display:none} is a bare-element rule, so every class
@@ -377,7 +380,7 @@
     fab.setAttribute('aria-haspopup', 'dialog');
     fab.setAttribute('title', 'Ask Ink AI');
     fab.setAttribute('aria-label', 'Ask Ink AI');
-    fab.innerHTML = '<span class="ink-fab-i" aria-hidden="true">✨</span><span>Ink AI</span>';
+    fab.innerHTML = '<span class="ink-fab-i" aria-hidden="true">✨</span><span class="ink-fab-t">Ink AI</span>';
     fab.addEventListener('click', openPanel);
     document.body.appendChild(fab);
 

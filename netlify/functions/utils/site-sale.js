@@ -1,15 +1,19 @@
 'use strict';
 
 /**
- * Site-wide sales: an automatic % off every order above a threshold, on every
- * payment mode (prepaid, COD and partial COD), for a fixed window.
+ * Site-wide sales: a % off every order above a threshold, on every payment
+ * mode (prepaid, COD and partial COD), for a fixed window.
+ *
+ * An `optIn` sale is not automatic (owner, 27 Oct 2026): it applies only when
+ * the order carries its code, which the customer picks with "Apply coupon" on
+ * a product page (public/js/festive-sale.js) or types at checkout.
  *
  * This is the till. The storefront banners and timers (public/js/festive-sale.js)
  * and the checkout page (CHECKOUT_HTML in generate_site.py) only describe it,
  * and MUST carry the same dates, threshold and percentage -- a page that shows
  * a different total is answered with a 409 "price changed".
  *
- * "Above ₹399" is strict: ₹399 does not qualify, ₹400 does.
+ * "Above ₹499" is strict: ₹499 does not qualify, ₹500 does.
  */
 const SITE_SALES = Object.freeze([
   Object.freeze({
@@ -17,7 +21,8 @@ const SITE_SALES = Object.freeze([
     startsAt: '2026-08-12T18:30:00Z', endsAt: '2026-08-15T18:29:59Z', // 13–15 Aug 2026 IST
   }),
   Object.freeze({
-    code: 'FESTIVE10', name: 'Dussehra & Diwali Sale', percent: 10, threshold: 399,
+    // 10% above ₹399, automatic, until 27 Oct 2026; then 7% above ₹499, opt-in.
+    code: 'FESTIVE7', name: 'Dussehra & Diwali Sale', percent: 7, threshold: 499, optIn: true,
     startsAt: '2026-10-19T18:30:00Z', endsAt: '2026-11-10T18:29:59Z', // 20 Oct – 10 Nov 2026 IST
   }),
 ]);
@@ -32,11 +37,17 @@ function activeSiteSale(now = Date.now()) {
   return SITE_SALES.find((s) => t >= ms(s.startsAt) && t <= ms(s.endsAt)) || null;
 }
 
-/** { code, discount, source: 'site_sale', label } for this subtotal, or a zero discount. */
-function siteSaleDiscount(subtotal, now = Date.now()) {
+const normCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/**
+ * { code, discount, source: 'site_sale', label } for this subtotal, or a zero
+ * discount. `chosenCode` is the code the order carries; an optIn sale needs it.
+ */
+function siteSaleDiscount(subtotal, now = Date.now(), chosenCode = '') {
   const value = Number(subtotal) || 0;
   const sale = activeSiteSale(now);
   if (!sale || value <= sale.threshold) return { code: '', discount: 0, source: '' };
+  if (sale.optIn && normCode(chosenCode) !== sale.code) return { code: '', discount: 0, source: '' };
   return {
     code: sale.code,
     discount: Math.max(0, Math.floor(value * sale.percent / 100)),

@@ -147,7 +147,9 @@ async function runReturnPickup(deps, returnRequestId) {
   const why = settled(ret);
   if (why) return { outcome: 'skipped', reason: why };
 
-  const xb = await processReturn({ return_request_id: returnRequestId, action: 'xpressbees' });
+  // quiet_on_fail: a refusal here is not the end, so process-return must not
+  // tell the customer anything; whoever books it (or India Post) does.
+  const xb = await processReturn({ return_request_id: returnRequestId, action: 'xpressbees', quiet_on_fail: true });
   if (xb.data.pushed === true) return { outcome: 'xpressbees', awb: xb.data.awb || null };
   const xbWhy = refusal(xb);
 
@@ -157,22 +159,31 @@ async function runReturnPickup(deps, returnRequestId) {
   const mid = settled(ret);
   if (mid) return { outcome: 'skipped', reason: mid, xpressbees: xbWhy };
 
-  const np = await processReturn({ return_request_id: returnRequestId });
+  const np = await processReturn({ return_request_id: returnRequestId, quiet_on_fail: true });
   if (np.data.pushed === true) return { outcome: 'nimbuspost', awb: np.data.awb || null, xpressbees: xbWhy };
   const npWhy = refusal(np);
 
-  // Claim before messaging, so the customer hears this once.
-  const { data: claimed, error: claimErr } = await supabase.from('return_requests')
-    .update({
-      courier_name: INDIA_POST,
-      last_push_error: `XpressBees: ${xbWhy} | NimbusPost: ${npWhy}`.slice(0, 500),
-      last_push_error_at: new Date().toISOString(),
-    })
+  // Claim before messaging, so the customer hears this once. The reason columns
+  // come from sql/return_requests_push_error.sql; without them the claim is made
+  // on courier_name alone (2026-10-23: a missing column threw here and lost both
+  // couriers' reasons).
+  const claim = (fields) => supabase.from('return_requests')
+    .update(fields)
     .eq('id', returnRequestId).eq('status', 'approved').is('awb', null)
     // Quoted: the value has parentheses, which PostgREST's or() syntax reserves.
     .or(`courier_name.is.null,courier_name.neq."${INDIA_POST}"`)
     .select('id');
-  if (claimErr) throw new Error(`India Post claim: ${claimErr.message}`);
+  let { data: claimed, error: claimErr } = await claim({
+    courier_name: INDIA_POST,
+    last_push_error: `XpressBees: ${xbWhy} | NimbusPost: ${npWhy}`.slice(0, 500),
+    last_push_error_at: new Date().toISOString(),
+  });
+  if (claimErr && /last_push_error/.test(claimErr.message || '')) ({ data: claimed, error: claimErr } = await claim({ courier_name: INDIA_POST }));
+  if (claimErr) {
+    const e = new Error(`India Post claim: ${claimErr.message}`);
+    e.couriers = { xpressbees: xbWhy, nimbuspost: npWhy };
+    throw e;
+  }
   if (!claimed || !claimed.length) return { outcome: 'skipped', reason: 'changed while booking', xpressbees: xbWhy, nimbuspost: npWhy };
 
   const addr = deps.address || returnAddress();
@@ -207,8 +218,9 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, ...out }) };
   } catch (e) {
     console.error(`[auto-return-pickup] ${returnRequestId} error:`, e.message);
+    const why = e.couriers ? `\n\nXpressBees: ${e.couriers.xpressbees}\nNimbusPost: ${e.couriers.nimbuspost}` : '';
     await defaultAlertOwner(`⚠️ Return auto-pickup failed — ${returnRequestId}`,
-      `${e.message}\n\nOpen the Returns tab and book the pickup by hand.`);
+      `${e.message}${why}\n\nOpen the Returns tab and book the pickup by hand.`);
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: e.message }) };
   }
 };

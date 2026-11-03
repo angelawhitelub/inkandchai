@@ -1,7 +1,7 @@
 'use strict';
 
-// Returns were retired in favour of replacements. These pin the two endpoints:
-// request-return refuses, request-replacement accepts the new reasons, the
+// Replacements, and the switch that turns returns off. These pin the two endpoints:
+// request-return refuses when RETURNS_ENABLED=off, request-replacement accepts the new reasons, the
 // Track Order page's email/phone proof, and a chosen subset of books.
 
 const test = require('node:test');
@@ -74,10 +74,13 @@ function order(extra = {}) {
 const call = (body) => replacement.handler({ httpMethod: 'POST', headers: {}, body: JSON.stringify(body) });
 const base = { original_order_id: 'IC-20260928-ABCDE', reason: 'defective', note: 'Pages 40 to 56 are blank', photos: [photo] };
 
-test('request-return refuses new returns', async () => {
-  const res = await ret.handler({ httpMethod: 'POST', headers: {}, body: '{}' });
-  assert.equal(res.statusCode, 410);
-  assert.equal(JSON.parse(res.body).replacement_only, true);
+test('request-return refuses new returns when the owner switches them off', async () => {
+  process.env.RETURNS_ENABLED = 'off';
+  try {
+    const res = await ret.handler({ httpMethod: 'POST', headers: {}, body: '{}' });
+    assert.equal(res.statusCode, 410);
+    assert.equal(JSON.parse(res.body).replacement_only, true);
+  } finally { delete process.env.RETURNS_ENABLED; }
 });
 
 test('Track Order proof: the email or phone on the order is enough, anything else is refused', async () => {

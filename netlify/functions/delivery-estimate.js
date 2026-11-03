@@ -79,7 +79,9 @@ exports.handler = async (event) => {
   // Was capped at 5 when the only source was a hardcoded slow-shipping list.
   // Handling time is now per product (product_settings.handling_days, max 30),
   // so the cap has to match or a long handling time would quote too early.
-  const extraShipDays = Math.min(30, Math.max(0, parseInt(params.extra_days, 10) || 0));
+  // A pre-order adds the days until its release (public/js/release-date.js),
+  // so allow a year plus the longest handling time.
+  const extraShipDays = Math.min(400, Math.max(0, parseInt(params.extra_days, 10) || 0));
 
   if (pincode.length !== 6 || isFakePincode(pincode)) {
     return noStore(400, { error: 'Enter a valid 6-digit pincode.' });

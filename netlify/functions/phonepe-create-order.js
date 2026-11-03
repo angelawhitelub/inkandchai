@@ -37,7 +37,8 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-// Shipping: utils/free-delivery orderShipping (₹40 below ₹499, free with a free-delivery book).
+// Shipping: utils/free-delivery orderShipping (₹40 unless prepaid above ₹399 /
+// partial COD from ₹499, free with a free-delivery book).
 
 function normalizeCouponCode(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -62,10 +63,11 @@ function couponDiscount(subtotal, code) {
   return { code: normalized, discount: Math.max(0, discount) };
 }
 
-// A site-wide sale (utils/site-sale) is automatic and never stacks with a code:
-// the customer gets whichever is worth more. Partial COD takes only the sale.
+// A site-wide sale (utils/site-sale) -- an opt-in one only when rawCode is its
+// code -- never stacks with a code: the customer gets whichever is worth more.
+// Partial COD takes only the sale.
 async function resolveCouponDiscount(supabase, cart, subtotal, rawCode, { saleOnly = false } = {}) {
-  const saleResult = siteSaleDiscount(subtotal);
+  const saleResult = siteSaleDiscount(subtotal, Date.now(), rawCode);
   if (saleOnly) return saleResult;
   return betterOfSale(saleResult, await resolveChosenCoupon(supabase, cart, subtotal, rawCode));
 }
@@ -179,9 +181,10 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify(shippingRestriction) };
   }
   const subtotal    = priced.subtotal;
-  const shipping    = orderShipping(cart, subtotal);
   const meta        = paymentMeta(cart);
   const isPartial   = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
+  // Partial COD is a COD order (free from ₹499); full prepaid is free above ₹399.
+  const shipping    = orderShipping(cart, subtotal, isPartial ? 'cod' : 'prepaid');
   let couponInfo    = await resolveCouponDiscount(_supabaseForCoupon, cart, subtotal, coupon, { saleOnly: isPartial });
 
   // Generate order id early so we can atomically claim a scratch card to it.

@@ -269,7 +269,7 @@
     head.appendChild(el('span', 'sp-badge ' + t.status, t.status_label));
     box.appendChild(head);
     var meta = el('div', 'sp-meta');
-    [t.category_label, 'Order ' + t.order_id, 'Opened ' + when(t.created_at)].forEach(function (s) { meta.appendChild(el('span', null, s)); });
+    [t.category_label, t.order_id ? 'Order ' + t.order_id : 'General enquiry', 'Opened ' + when(t.created_at)].forEach(function (s) { meta.appendChild(el('span', null, s)); });
     box.appendChild(meta);
 
     var sla = el('div', 'sp-sla');

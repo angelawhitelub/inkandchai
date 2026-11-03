@@ -3,6 +3,17 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<script>
+  // Phones get the mobile admin (/admin/m/). "Desktop view" there links back
+  // with ?desktop=1, which keeps this tab on the desktop admin until it closes.
+  (function () {
+    try {
+      if (/[?&]desktop=1\b/.test(location.search)) { sessionStorage.setItem('iac_admin_desktop', '1'); return; }
+      if (sessionStorage.getItem('iac_admin_desktop') === '1') return;
+      if (window.matchMedia('(max-width: 760px) and (pointer: coarse)').matches) location.replace('/admin/m/');
+    } catch (e) {}
+  })();
+</script>
 <title>Admin — Ink &amp; Chai</title>
 <meta name="admin-build" content="admin-grouped-nav-v1"/>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png"/>
@@ -119,6 +130,14 @@ input[type="date"]:focus{border-color:rgba(201,168,76,0.4);}
 .product-editor{border:1px solid var(--border);background:var(--bg2);padding:1.2rem;}
 .product-editor .form-row input{background:var(--bg3);}
 .product-editor-actions{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.8rem;}
+/* Product editor tabs (buildProductEditorTabs) */
+.pe-tabs{display:flex;gap:.35rem;flex-wrap:wrap;margin:0 0 1rem;padding-bottom:.6rem;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:3;background:var(--bg2);padding-top:.2rem;}
+.pe-tab{background:transparent;border:1px solid var(--border);color:var(--cream-dim);padding:.5rem .85rem;border-radius:999px;font-family:inherit;font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;}
+.pe-tab:hover{color:var(--gold);border-color:var(--gold);}
+.pe-tab[aria-selected="true"]{background:var(--gold);border-color:var(--gold);color:var(--bg,#0d0b08);}
+.pe-panel[hidden]{display:none !important;}
+.pe-panel>details{margin-top:0 !important;margin-bottom:.8rem;}
+@media (min-width:900px){#productEditorForm .product-editor-actions{position:sticky;bottom:0;z-index:3;background:var(--bg2);padding:.7rem 0 .2rem;border-top:1px solid var(--border);}}
 .copy-listing-box{border:1px dashed var(--border);background:var(--bg2);padding:0.9rem 1rem;margin-bottom:1.1rem;}
 .copy-listing-box>label{display:block;font-size:0.66rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:0.45rem;}
 .copy-listing-box input{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--cream);padding:0.7rem 0.9rem;font-family:'Manrope',sans-serif;font-size:0.84rem;outline:none;}
@@ -200,6 +219,10 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 /* Per-item price breakdown: title wraps, price stays pinned to the first line. */
 .items-cell .item-line{display:flex;align-items:baseline;gap:0.5rem;justify-content:space-between;}
 .items-cell .item-line .it-title{white-space:normal;overflow-wrap:anywhere;min-width:0;line-height:1.35;}
+.cust-name .cust-link{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor;}
+.cust-name .cust-link:hover{color:var(--gold);border-bottom-style:solid;}
+.items-cell .item-line .it-link{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor;}
+.items-cell .item-line .it-link:hover{color:var(--gold);border-bottom-style:solid;}
 .items-cell .item-line .it-price{flex-shrink:0;color:var(--gold);font-variant-numeric:tabular-nums;font-size:0.7rem;}
 .items-cell .items-subtotal{margin-top:0.25rem;padding-top:0.25rem;border-top:1px dashed var(--border);color:var(--gold-dim);font-size:0.66rem;}
 .amount{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--gold);}
@@ -1140,6 +1163,7 @@ select,input,textarea{font-size:1rem;}
     <button class="filter-btn" data-status="paid" onclick="setFilter(this,'paid')">Paid Online</button>
     <button class="filter-btn" data-status="replacement_pending" onclick="setFilter(this,'replacement_pending')" style="border-color:rgba(109,191,109,0.5);color:#6dbf6d;">🔄 Replacement</button>
     <button class="filter-btn" data-status="cw_only" onclick="setFilter(this,'cw_only')" style="border-color:rgba(201,168,76,0.5);color:#c9a84c;" title="Orders containing Crossword-migrated genuine-tag books (IC-CW-…)">📚 Crossword</button>
+    <button class="filter-btn" data-status="preorder_waiting" onclick="setFilter(this,'preorder_waiting')" style="border-color:rgba(232,160,48,0.5);color:#e8a030;" title="Open orders holding a book whose release day is still ahead — do not ship before it">📅 Pre-orders</button>
     <button class="filter-btn" data-status="cancelled" onclick="setFilter(this,'cancelled')">Cancelled</button>
     <button class="filter-btn" data-status="cancel_requested" onclick="setFilter(this,'cancel_requested')" style="border-color:rgba(232,160,48,0.5);color:var(--orange);" title="Live orders where the customer requested cancellation (request only — not yet cancelled)">⏳ Cancel Requests</button>
     <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
@@ -1636,7 +1660,7 @@ select,input,textarea{font-size:1rem;}
           </div>
           <div>
             <label style="display:block;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem;">Published</label>
-            <input id="newProdPublished" maxlength="40" placeholder="March 2024"/>
+            <input id="newProdPublished" maxlength="40" placeholder="March 2024" title="A full future date (27 October 2026) makes the book a pre-order."/>
           </div>
           <div>
             <label style="display:block;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:.3rem;">Reading age</label>
@@ -1644,6 +1668,7 @@ select,input,textarea{font-size:1rem;}
           </div>
         </div>
         <p class="hint" style="margin-top:.5rem;">Weight is in grams and prints as kg above 1000. Dimensions are shown exactly as typed, so any unit is fine. These are facts about the physical copy, so <strong>✨ Draft with AI never fills them</strong> — it would be guessing. Take them off the back cover or the listing you sourced the book from.</p>
+        <p class="hint" style="margin-top:.4rem;"><strong>📅 Pre-orders:</strong> put a full date that is still ahead in <strong>Published</strong> (e.g. <em>27 October 2026</em>, <em>2026-10-27</em> or <em>27/10/2026</em>). Until that day the product page says <strong>“Pre-order · Releases on …”</strong>, and the ship-by and delivery dates start from the release day plus any handling time. From release day it is a normal listing again. A month or year alone (“March 2024”) never makes a pre-order.</p>
       </div>
       <div class="form-row wide">
         <label style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
@@ -1814,8 +1839,8 @@ select,input,textarea{font-size:1rem;}
           <p class="hint" style="margin:.45rem 0 0;">Sale price, MRP and handling time stay live even if you disable the override — they are what the product costs, not a temporary override. To hand a product back to its catalogue price, clear the price box and save.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;margin-top:0.6rem;">
             <div class="form-row">
-              <label>Stock quantity <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— 0 shows “Coming Soon”. Default 999.</span></label>
-              <input id="prodStock" type="number" min="0" step="1" inputmode="numeric" placeholder="999"/>
+              <label>Stock quantity <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— blank = not counted, always in stock. A number is counted: each order takes copies off, a cancelled order puts them back, 0 shows “Coming Soon”.</span></label>
+              <input id="prodStock" type="number" min="0" step="1" inputmode="numeric" placeholder="Not counted"/>
             </div>
             <div class="form-row">
               <label>Handling time <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— extra days before dispatch. Blank or 0 = store default.</span></label>
@@ -1860,12 +1885,13 @@ select,input,textarea{font-size:1rem;}
               </div>
               <div class="form-row">
                 <label>Published</label>
-                <input id="prodPublished" maxlength="40" placeholder="March 2024" title="Type it as the copyright page has it. Blank hides the row."/>
+                <input id="prodPublished" maxlength="40" placeholder="March 2024" title="Type it as the copyright page has it. A full future date (27 October 2026) makes the book a pre-order. Blank hides the row."/>
               </div>
               <div class="form-row">
                 <label>Reading age</label>
                 <input id="prodReadingAge" maxlength="40" placeholder="8-12 years" title="Mainly for children's books. Blank hides the row."/>
               </div>
+              <p class="hint" style="grid-column:1/-1;margin:.2rem 0 0;"><strong>📅 Pre-order:</strong> a full date still ahead in <strong>Published</strong> (<em>27 October 2026</em>, <em>2026-10-27</em>, <em>27/10/2026</em>) shows “Pre-order · Releases on …” on the product page, and ship-by / delivery dates start from that day plus the handling time. It turns back into a normal listing on release day by itself.</p>
 <datalist id="bookDimensionOptions"><option>19.8 x 12.9 x 2 cm</option><option>21.6 x 14 x 2.1 cm</option><option>23.4 x 15.6 x 2.5 cm</option><option>20.3 x 25.4 x 1 cm</option></datalist>
 <datalist id="bookFormatOptions"><option>Paperback</option><option>Hardcover</option><option>Boxed Set</option><option>Board Book</option></datalist>
 <datalist id="bookLanguageOptions"><option>English</option><option>Hindi</option><option>Marathi</option><option>Bengali</option><option>Tamil</option><option>Telugu</option><option>Kannada</option><option>Malayalam</option><option>Gujarati</option><option>Punjabi</option><option>Urdu</option></datalist>
@@ -2037,7 +2063,7 @@ select,input,textarea{font-size:1rem;}
           </details>
           <details id="prodFreeDeliveryEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(93,155,85,.05);">
             <summary style="cursor:pointer;color:#5d9b55;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🚚 Free delivery for this book</summary>
-            <p class="hint" style="margin:.65rem 0 0;">Ships this book free. <strong>Any order containing it ships free</strong>, whatever the total (normally ₹40 below ₹499). The product page badge reads <em>“🚚 FREE delivery”</em>, and the cart, checkout and WhatsApp-bot orders charge ₹0 delivery.</p>
+            <p class="hint" style="margin:.65rem 0 0;">Ships this book free. <strong>Any order containing it ships free</strong>, whatever the total (normally ₹40 unless prepaid above ₹399 or COD ₹499+). The product page badge reads <em>“🚚 FREE delivery”</em>, and the cart, checkout and WhatsApp-bot orders charge ₹0 delivery.</p>
             <p class="hint" id="prodFreeDeliveryCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
             <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
               <input type="checkbox" id="prodFreeDelivery" style="accent-color:#5d9b55;"/> Free delivery for this book
@@ -2048,6 +2074,47 @@ select,input,textarea{font-size:1rem;}
             </div>
             <p class="hint" id="prodFreeDeliveryMsg" style="margin-top:.65rem;"></p>
             <div id="prodFreeDeliveryList" class="hint" style="margin-top:.4rem;"></div>
+          </details>
+          <details id="prodSearchHiddenEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(122,110,98,.06);">
+            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔍 Hide from site search</summary>
+            <p class="hint" style="margin:.65rem 0 0;">Stops this book coming up in the <strong>search bar</strong>: the suggestions dropdown, the results page and the homepage search. It stays <strong>for sale</strong> — its product page, collections, categories, links and ads keep working. Takes effect within about 5 minutes.</p>
+            <p class="hint" id="prodSearchHiddenCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
+            <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
+              <input type="checkbox" id="prodSearchHidden" style="accent-color:var(--gold);"/> Hide this book from search
+            </label>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-green" type="button" id="prodSearchHiddenSaveBtn" onclick="saveSearchHidden()">Save Search Setting</button>
+              <button class="btn-outline" type="button" onclick="listSearchHidden()">List all hidden books</button>
+            </div>
+            <p class="hint" id="prodSearchHiddenMsg" style="margin-top:.65rem;"></p>
+            <div id="prodSearchHiddenList" class="hint" style="margin-top:.4rem;"></div>
+          </details>
+          <details id="prodNewTitleAlert" ontoggle="if (this.open) loadNtaReport()" style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(37,211,102,.05);">
+            <summary style="cursor:pointer;color:#25d366;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">📣 New-title alert (WhatsApp)</summary>
+            <p class="hint" style="margin:.65rem 0 0;">Tells past buyers about <strong>this book</strong> on WhatsApp: everyone who bought the same author before, or (if you pick it) the same kind of book. People who already bought this book, said STOP, or got any marketing message in the cooldown window are left out, and nobody gets the same book twice. <strong>Always press Dry run first</strong> — it sends nothing and shows who would get it and what it costs.</p>
+            <div class="form-grid" style="margin-top:.75rem;">
+              <div class="form-row"><label>Who</label>
+                <select id="ntaMatch"><option value="author">Bought this author before</option><option value="author_or_category">Bought this author or this kind of book</option></select></div>
+              <div class="form-row"><label>Orders from the last (days)</label><input id="ntaDays" type="number" min="30" max="730" value="365"/></div>
+              <div class="form-row"><label>Skip anyone messaged in the last (days)</label><input id="ntaCooldown" type="number" min="0" max="60" value="7"/></div>
+              <div class="form-row"><label>Send to at most</label><input id="ntaLimit" type="number" min="1" max="1000" value="300"/></div>
+            </div>
+            <div class="form-row" style="margin-top:.6rem;"><label>Also match past titles containing (series names, comma-separated)</label>
+              <input id="ntaKeywords" placeholder="e.g. Court of Thorns, Throne of Glass, Crescent City" autocomplete="off"/>
+              <p class="hint" style="margin:.3rem 0 0;">Many older listings have no author filled in, only the title. The author's name is always looked for in titles; add series names to catch box sets like "A Court of Thorns and Roses 4 books boxset".</p></div>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-outline" type="button" id="ntaDryBtn" onclick="newTitleAlert('dry')">Dry run</button>
+              <button class="btn-green" type="button" id="ntaSendBtn" onclick="newTitleAlert('send')" disabled>Send to customers</button>
+            </div>
+            <div class="form-row" style="margin-top:.8rem;"><label>Check it on one phone first (optional)</label>
+              <div style="display:flex;gap:.5rem;"><input id="ntaTestPhone" placeholder="your WhatsApp number" autocomplete="off" style="flex:1;"/>
+              <button class="btn-outline" type="button" id="ntaTestBtn" onclick="newTitleAlert('test')">Send test</button></div></div>
+            <div id="ntaResult" class="hint" style="margin-top:.7rem;"></div>
+            <div style="margin-top:.8rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">
+              <button class="btn-outline" type="button" onclick="loadNtaReport()">Delivery report</button>
+              <span class="hint" style="margin:0;">What WhatsApp actually delivered for this book. Updates as phones receive and read it.</span></div>
+            <div id="ntaReport" class="hint" style="margin-top:.5rem;"></div>
+            <p class="hint" style="margin-top:.7rem;">Sends the book's cover as the picture on top. Uses the WhatsApp template <code>new_title_alert_v1</code> (or <code>WHATSAPP_NEW_TITLE_TEMPLATE</code>), which must be approved in Meta as <em>Marketing</em> with an <em>Image</em> header first. About ₹0.91 a message.</p>
           </details>
           <details id="prodSalesLineageEditor" style="display:none;margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(232,160,48,.04);">
             <summary style="cursor:pointer;color:#e8a030;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔥 Sold count from the original listing</summary>
@@ -2356,29 +2423,48 @@ select,input,textarea{font-size:1rem;}
   </div><!-- /tab-returns -->
 
   <!-- ═══ ADMIN ACCESS TAB ═══ -->
+  <style>
+    /* Tickets are read line by line; the admin's pale secondary grey and
+       0.6–0.8rem text were too faint here (owner, 2026-10-25). */
+    #tab-tickets { --cream-dim:#3a3128; line-height:1.55; }
+    #tab-tickets textarea, #tab-tickets input, #tab-tickets select { font-size:0.95rem !important; color:var(--cream) !important; }
+    #tab-tickets textarea::placeholder, #tab-tickets input::placeholder { color:#7a6e62; }
+    #tab-tickets .btn-green, #tab-tickets .btn-outline { font-size:0.85rem; }
+  </style>
   <div class="admin-section" id="tab-tickets">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
       <div>
-        <h2 style="margin:0;font-size:1.1rem;">🎫 Support tickets</h2>
-        <div style="font-size:0.72rem;color:var(--cream-dim);margin-top:0.3rem;max-width:760px;line-height:1.6;">
+        <h2 style="margin:0;font-size:1.34rem;">🎫 Support tickets</h2>
+        <div style="font-size:0.88rem;color:var(--cream-dim);margin-top:0.3rem;max-width:760px;line-height:1.6;">
           Raised by customers at <a href="/support/" target="_blank" rel="noopener" style="color:var(--gold);">inkandchai.in/support</a> with their order ID.
           Promise: first reply within <strong>24 h</strong>, resolved within <strong>48 h</strong>. Past 48 h the customer is emailed that it is taking longer than expected
           (and so are you). <strong>Resolve &amp; close</strong> sends the customer your resolution and stops the clock.
         </div>
       </div>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-        <select id="tkStatus" onchange="loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;">
+        <select id="tkStatus" onchange="loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.88rem;border-radius:6px;outline:none;">
           <option value="active">Active (open + in progress)</option>
           <option value="waiting">Waiting on customer</option>
           <option value="closed">Closed</option>
           <option value="all">All</option>
         </select>
-        <input id="tkSearch" placeholder="Search ticket, order, name, email…" onkeydown="if(event.key==='Enter')loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.72rem;border-radius:6px;outline:none;min-width:220px;"/>
+        <select id="tkSort" onchange="tkSortChanged()" title="Sort by" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.88rem;border-radius:6px;outline:none;">
+          <option value="urgent">Sort: most urgent</option>
+          <option value="newest">Sort: newest first</option>
+          <option value="oldest">Sort: oldest first</option>
+          <option value="overdue">Sort: most overdue</option>
+          <option value="unanswered">Sort: unanswered first</option>
+          <option value="customer">Sort: customer replied last</option>
+          <option value="priority">Sort: high priority first</option>
+          <option value="category">Sort: issue type</option>
+          <option value="name">Sort: customer name</option>
+        </select>
+        <input id="tkSearch" placeholder="Search ticket, order, name, email…" onkeydown="if(event.key==='Enter')loadTickets()" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:0.5rem 0.8rem;font-size:0.88rem;border-radius:6px;outline:none;min-width:220px;"/>
         <button class="btn-outline" onclick="loadTickets()">↻ Reload</button>
       </div>
     </div>
-    <div id="tkCounts" style="font-size:0.72rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
-    <div id="tkMsg" style="font-size:0.72rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
+    <div id="tkCounts" style="font-size:0.88rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
+    <div id="tkMsg" style="font-size:0.88rem;color:var(--cream-dim);margin-bottom:0.7rem;"></div>
     <div id="tkList"></div>
     <div id="tkDetail" style="display:none;"></div>
   </div><!-- /tab-tickets -->
@@ -2527,7 +2613,7 @@ select,input,textarea{font-size:1rem;}
     <section class="product-panel">
       <div class="product-head"><div><h2>Promotions &amp; coupons</h2><p>Create, schedule, pause, end, reactivate, or delete discounts. Only one promotion applies per order—the customer receives the highest eligible saving.</p></div><button class="btn-outline" onclick="loadPromotionsAdmin()">↻ Refresh</button></div>
       <div id="promotionSummary" class="hint" style="margin-bottom:1rem;">Loading promotions…</div>
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;font-size:.72rem"><div class="stat-card" style="cursor:default"><div class="stat-label">Shipping</div><strong>Free at ₹499+</strong><br><span class="hint">₹40 below threshold</span></div><div class="stat-card" style="cursor:default"><div class="stat-label">COD incentive</div><strong>₹20 fee waived at ₹999+</strong></div><div class="stat-card" style="cursor:default"><div class="stat-label">Partial COD</div><strong>Pay 10% now</strong><br><span class="hint">COD fee waived</span></div><div class="stat-card" style="cursor:default"><div class="stat-label">Scratch rewards</div><strong>₹30–₹200</strong><br><span class="hint">30 days · min ₹399</span></div></div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;font-size:.72rem"><div class="stat-card" style="cursor:default"><div class="stat-label">Shipping</div><strong>Free: prepaid above ₹399 · COD ₹499+</strong><br><span class="hint">₹40 otherwise</span></div><div class="stat-card" style="cursor:default"><div class="stat-label">COD incentive</div><strong>₹20 fee waived at ₹999+</strong></div><div class="stat-card" style="cursor:default"><div class="stat-label">Partial COD</div><strong>Pay 10% now</strong><br><span class="hint">COD fee waived</span></div><div class="stat-card" style="cursor:default"><div class="stat-label">Scratch rewards</div><strong>₹30–₹200</strong><br><span class="hint">30 days · min ₹399</span></div></div>
       <div style="display:grid;grid-template-columns:minmax(420px,1.15fr) minmax(320px,.85fr);gap:1.2rem;align-items:start;">
         <div class="tbl-wrap" style="box-shadow:none"><table class="mini-table"><thead><tr><th>Promotion</th><th>Offer</th><th>Scope</th><th>Status</th><th>Actions</th></tr></thead><tbody id="promotionsBody"></tbody></table></div>
         <div class="product-editor">
@@ -2822,11 +2908,13 @@ select,input,textarea{font-size:1rem;}
 
     <div id="dpBox" style="border:1px solid var(--border);border-radius:14px;padding:1rem 1.1rem;margin-bottom:1.6rem;background:rgba(201,168,76,.035);">
       <div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;justify-content:space-between;">
-        <h3 class="section-title" style="margin:0;">📅 Daily profit — real ad spend</h3>
+        <h3 class="section-title" style="margin:0;">📅 Daily profit</h3>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
           <select id="dpDays" onchange="loadDailyProfit()" style="padding:.35rem;">
-            <option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="60">60 days</option>
+            <option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option>
           </select>
+          <label style="font-size:.72rem;color:var(--cream-dim,#8a7a62);display:flex;align-items:center;gap:.35rem;" title="Off: every day uses the Google Ads / order average below, plus GST">
+            <input type="checkbox" id="dpActual" checked onchange="loadDailyProfit()"> Real ad spend</label>
           <button class="btn-outline" type="button" onclick="loadDailyProfit()">↻ Refresh</button>
           <button class="btn-outline" type="button" id="dpSyncBtn" onclick="loadDailyProfit('meta')">Sync Meta now</button>
         </div>
@@ -2834,7 +2922,7 @@ select,input,textarea{font-size:1rem;}
       <p id="dpConn" style="font-size:.72rem;color:var(--cream-dim,#8a7a62);margin:.6rem 0 0;line-height:1.6;"></p>
       <div class="stats-row" id="dpToday" style="margin-top:.8rem;"></div>
       <div style="overflow-x:auto;margin-top:.6rem;">
-        <table style="width:100%;border-collapse:collapse;font-size:.76rem;min-width:820px;">
+        <table style="width:100%;border-collapse:collapse;font-size:.76rem;min-width:980px;">
           <thead><tr style="text-align:right;">
             <th style="text-align:left;padding:.45rem;">Day</th>
             <th style="padding:.45rem;">Orders</th>
@@ -2846,9 +2934,11 @@ select,input,textarea{font-size:1rem;}
             <th style="padding:.45rem;">Ad ₹/order</th>
             <th style="padding:.45rem;">Shipping</th>
             <th style="padding:.45rem;">Stock</th>
+            <th style="padding:.45rem;" title="Orders that have finished (delivered, RTO, cancelled, refunded): what actually happened, less their share of the day's ads">Realised</th>
+            <th style="padding:.45rem;" title="Orders still in flight, at their expected outcome (COD/prepaid delivery and RTO rates), less their share of the day's ads">Estimated</th>
             <th style="padding:.45rem;">Net profit</th>
           </tr></thead>
-          <tbody id="dpRows"><tr><td colspan="11" style="padding:.6rem;color:var(--cream-dim);">Loading…</td></tr></tbody>
+          <tbody id="dpRows"><tr><td colspan="13" style="padding:.6rem;color:var(--cream-dim);">Loading…</td></tr></tbody>
           <tfoot id="dpFoot"></tfoot>
         </table>
       </div>
@@ -2883,7 +2973,7 @@ select,input,textarea{font-size:1rem;}
     </div>
 
     <div style="display:flex;flex-wrap:wrap;gap:.9rem;align-items:flex-end;margin-bottom:1.2rem;">
-      <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);">Google Ads / order ₹<br>
+      <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);">Google Ads / order ₹ (before GST)<br>
         <input type="number" id="pftAd" value="92" min="0" step="1" style="padding:.4rem;width:110px;" onchange="loadProfit()"></label>
       <label style="font-size:.7rem;color:var(--cream-dim,#8a7a62);display:flex;align-items:center;gap:.35rem;align-self:center;">
         <input type="checkbox" id="pftActual" checked onchange="loadProfit()"> Use real ad spend when connected</label>
@@ -3385,7 +3475,7 @@ function tkDueText(t) {
 }
 
 function tkChip(label, colour) {
-  return '<span style="display:inline-block;border:1px solid ' + colour + ';color:' + colour + ';border-radius:999px;padding:.05rem .55rem;font-size:.62rem;letter-spacing:.06em;">' + esc(label) + '</span>';
+  return '<span style="display:inline-block;border:1px solid ' + colour + ';color:' + colour + ';border-radius:999px;padding:.05rem .55rem;font-size:0.76rem;letter-spacing:.06em;">' + esc(label) + '</span>';
 }
 
 async function refreshTicketBadge() {
@@ -3984,6 +4074,32 @@ async function cancelNotPickedSelected(btn, onlyRows) {
   }
 }
 
+// Sorting is done here on the list already loaded, so changing it is instant.
+let tkLoaded = null;
+const tkTime = (v) => (v ? new Date(v).getTime() : 0);
+const tkUnanswered = (t) => t.status === 'open' && !t.first_response_at;
+const TK_SORTS = {
+  urgent: (a, b) => (!!b.overdue - !!a.overdue) || ((b.priority === 'high') - (a.priority === 'high')) || (tkTime(a.due_at) - tkTime(b.due_at)),
+  newest: (a, b) => tkTime(b.created_at) - tkTime(a.created_at),
+  oldest: (a, b) => tkTime(a.created_at) - tkTime(b.created_at),
+  // Past the 48 h promise the longest first; the rest by how soon they fall due.
+  overdue: (a, b) => (!!b.overdue - !!a.overdue) || (tkTime(a.due_at) - tkTime(b.due_at)),
+  unanswered: (a, b) => (tkUnanswered(b) - tkUnanswered(a)) || (tkTime(a.created_at) - tkTime(b.created_at)),
+  customer: (a, b) => tkTime(b.last_customer_at || b.created_at) - tkTime(a.last_customer_at || a.created_at),
+  priority: (a, b) => ((b.priority === 'high') - (a.priority === 'high')) || (tkTime(b.created_at) - tkTime(a.created_at)),
+  category: (a, b) => String(a.category_label || '').localeCompare(String(b.category_label || '')) || (tkTime(a.created_at) - tkTime(b.created_at)),
+  name: (a, b) => String(a.customer_name || a.customer_email || '').localeCompare(String(b.customer_name || b.customer_email || ''), 'en', { sensitivity: 'base' }),
+};
+const TK_SORT_TEXT = { urgent: 'most urgent first', newest: 'newest first', oldest: 'oldest first', overdue: 'most overdue first',
+  unanswered: 'unanswered first', customer: 'latest customer reply first', priority: 'high priority first', category: 'by issue type', name: 'by customer name' };
+(function () {
+  try { const v = localStorage.getItem('tkSort'); const el = document.getElementById('tkSort'); if (v && TK_SORTS[v] && el) el.value = v; } catch (e) { /* default sort */ }
+})();
+function tkSortChanged() {
+  try { localStorage.setItem('tkSort', document.getElementById('tkSort').value); } catch (e) { /* not remembered */ }
+  if (tkLoaded) renderTicketList();
+}
+
 async function loadTickets() {
   const list = document.getElementById('tkList');
   const msg = document.getElementById('tkMsg');
@@ -4013,27 +4129,38 @@ async function loadTickets() {
       + (c.unanswered ? ' · <strong style="color:#e0a060;">' + c.unanswered + ' unanswered</strong>' : '');
     const b = document.getElementById('ticketsBadge');
     if (b) { b.textContent = c.active; b.style.background = c.overdue ? '#c93636' : '#c98a36'; b.style.display = c.active ? 'inline-block' : 'none'; }
-    if (!data.tickets.length) { msg.textContent = q ? 'No tickets match that search.' : 'No tickets here.'; return; }
-    msg.textContent = data.tickets.length + ' shown' + (status === 'active' ? ' — most urgent first' : ', newest first');
-    list.innerHTML = data.tickets.map(function (t) {
+    if (!data.tickets.length) { tkLoaded = null; msg.textContent = q ? 'No tickets match that search.' : 'No tickets here.'; return; }
+    tkLoaded = data.tickets;
+    renderTicketList();
+  } catch (e) {
+    msg.style.color = '#e06060';
+    msg.textContent = 'Could not load tickets: ' + e.message;
+  }
+}
+
+function renderTicketList() {
+  const list = document.getElementById('tkList');
+  const msg = document.getElementById('tkMsg');
+  const sortBy = TK_SORTS[document.getElementById('tkSort')?.value] ? document.getElementById('tkSort').value : 'urgent';
+  const rows = tkLoaded.slice().sort(TK_SORTS[sortBy]);
+  msg.textContent = rows.length + ' shown — ' + TK_SORT_TEXT[sortBy];
+  {
+    list.innerHTML = rows.map(function (t) {
       const border = t.overdue ? 'rgba(224,96,96,.55)' : t.status === 'open' && !t.first_response_at ? 'rgba(224,176,96,.45)' : 'var(--border)';
       return '<div onclick="openTicket(\'' + esc(t.id) + '\')" style="cursor:pointer;border:1px solid ' + border + ';border-radius:12px;padding:.8rem 1rem;margin-bottom:.6rem;">'
         + '<div style="display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:center;">'
-        +   '<div style="font-size:.78rem;"><strong style="color:var(--gold);">' + esc(t.ticket_no) + '</strong> · ' + esc(t.order_id) + ' · ' + esc(t.customer_name || t.customer_email || t.customer_phone || '')
+        +   '<div style="font-size:0.95rem;"><strong style="color:var(--gold);">' + esc(t.ticket_no) + '</strong> · ' + esc(tkOrderLabel(t)) + ' · ' + esc(t.customer_name || t.customer_email || t.customer_phone || '')
         +     (t.evidence_count ? ' · 📎 ' + t.evidence_count : '') + '</div>'
         +   '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">'
         +     (t.priority === 'high' ? tkChip('high priority', '#e06060') : '')
         +     (t.status === 'open' && !t.first_response_at ? tkChip('no reply yet', '#e0a060') : '')
         +     tkChip(TK_STATUS[t.status] || t.status, TK_COLOUR[t.status] || '#888')
-        +     '<span style="font-size:.7rem;">' + tkDueText(t) + '</span>'
+        +     '<span style="font-size:0.85rem;">' + tkDueText(t) + '</span>'
         +   '</div></div>'
-        + '<div style="font-size:.72rem;color:var(--cream-dim);margin-top:.35rem;">' + esc(t.category_label) + ' · opened ' + esc(new Date(t.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>'
-        + '<div style="font-size:.82rem;margin-top:.35rem;color:var(--cream);">' + esc(t.preview) + (t.preview && t.preview.length >= 140 ? '…' : '') + '</div>'
+        + '<div style="font-size:0.88rem;color:var(--cream-dim);margin-top:.35rem;">' + esc(t.category_label) + ' · opened ' + esc(new Date(t.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>'
+        + '<div style="font-size:1rem;margin-top:.35rem;color:var(--cream);">' + esc(t.preview) + (t.preview && t.preview.length >= 140 ? '…' : '') + '</div>'
         + '</div>';
     }).join('');
-  } catch (e) {
-    msg.style.color = '#e06060';
-    msg.textContent = 'Could not load tickets: ' + e.message;
   }
 }
 
@@ -4042,16 +4169,19 @@ async function openTicket(id) {
   tkOpenId = id;
   document.getElementById('tkList').style.display = 'none';
   box.style.display = '';
-  box.innerHTML = '<div style="color:var(--cream-dim);font-size:.8rem;">Loading ticket…</div>';
+  box.innerHTML = '<div style="color:var(--cream-dim);font-size:0.98rem;">Loading ticket…</div>';
   try {
     const res = await adminFetch(TK_API + '?id=' + encodeURIComponent(id));
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     renderTicketDetail(data);
   } catch (e) {
-    box.innerHTML = '<div style="color:#e06060;font-size:.8rem;">Could not open the ticket: ' + esc(e.message) + ' <button class="btn-outline" onclick="loadTickets()">← Back</button></div>';
+    box.innerHTML = '<div style="color:#e06060;font-size:0.98rem;">Could not open the ticket: ' + esc(e.message) + ' <button class="btn-outline" onclick="loadTickets()">← Back</button></div>';
   }
 }
+
+// Contact-page tickets have no order; their order_id is ENQ-<ticket no>.
+function tkOrderLabel(t) { return /^ENQ-/.test(t.order_id || '') ? 'General enquiry' : (t.order_id || ''); }
 
 function renderTicketDetail(d) {
   const t = d.ticket, o = d.order, box = document.getElementById('tkDetail');
@@ -4061,56 +4191,57 @@ function renderTicketDetail(d) {
       + (o.courier ? ' · ' + esc(o.courier) + ' ' + esc(o.awb || '') : '')
       + (o.refund_state ? ' · refund: ' + esc(o.refund_state) : '')
       + (o.items.length ? '<br/>' + o.items.map(i => esc(i.title) + ' ×' + esc(String(i.qty))).join('; ') : '')
+    : /^ENQ-/.test(t.order_id || '') ? 'No order — general enquiry from the contact page'
     : esc(t.order_id) + ' <span style="color:#e0a060;">(order not found)</span>';
   const closed = t.status === 'closed';
   const evidence = (t.evidence || []).map(function (f, i) {
     return '<div class="tk-ev" data-i="' + i + '" data-type="' + esc(f.type) + '" style="width:120px;">'
       + '<div class="tk-ev-box" style="height:90px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg3);cursor:pointer;font-size:1.6rem;" onclick="tkOpenEvidence(this.parentNode)">'
-      + (/^image\//.test(f.type) ? '<span style="font-size:.7rem;color:var(--cream-dim);">loading…</span>' : (/^video\//.test(f.type) ? '🎬' : '📄')) + '</div>'
-      + '<div style="font-size:.62rem;color:var(--cream-dim);margin-top:.2rem;word-break:break-all;">' + esc(f.name) + '</div></div>';
+      + (/^image\//.test(f.type) ? '<span style="font-size:0.85rem;color:var(--cream-dim);">loading…</span>' : (/^video\//.test(f.type) ? '🎬' : '📄')) + '</div>'
+      + '<div style="font-size:0.76rem;color:var(--cream-dim);margin-top:.2rem;word-break:break-all;">' + esc(f.name) + '</div></div>';
   }).join('');
   const events = (d.events || []).map(function (e) {
     const who = e.actor === 'customer' ? 'Customer' : e.actor === 'staff' ? 'Staff' : 'System';
     const colour = e.internal ? '#c98a36' : e.actor === 'customer' ? 'var(--gold)' : e.actor === 'staff' ? '#5d9b55' : 'var(--cream-dim)';
-    const files = (e.attachments || []).length ? '<div style="font-size:.68rem;color:var(--cream-dim);margin-top:.2rem;">📎 ' + e.attachments.map(a => esc(a.name)).join(', ') + '</div>' : '';
+    const files = (e.attachments || []).length ? '<div style="font-size:0.83rem;color:var(--cream-dim);margin-top:.2rem;">📎 ' + e.attachments.map(a => esc(a.name)).join(', ') + '</div>' : '';
     return '<div style="border-left:3px solid ' + colour + ';padding:.4rem .8rem;margin:.5rem 0;' + (e.internal ? 'background:rgba(201,138,54,.07);' : '') + '">'
-      + '<div style="font-size:.65rem;color:var(--cream-dim);">' + (e.internal ? '🔒 internal note · ' : '') + '<strong style="color:' + colour + ';">' + who + '</strong> · ' + esc(new Date(e.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>'
-      + (e.body ? '<div style="font-size:.84rem;white-space:pre-wrap;margin-top:.15rem;">' + esc(e.body) + '</div>' : '') + files + '</div>';
+      + '<div style="font-size:0.79rem;color:var(--cream-dim);">' + (e.internal ? '🔒 internal note · ' : '') + '<strong style="color:' + colour + ';">' + who + '</strong> · ' + esc(new Date(e.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>'
+      + (e.body ? '<div style="font-size:1.02rem;white-space:pre-wrap;margin-top:.15rem;">' + esc(e.body) + '</div>' : '') + files + '</div>';
   }).join('');
-  const inputCss = 'width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:.55rem .7rem;font-size:.8rem;border-radius:8px;outline:none;';
+  const inputCss = 'width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:.55rem .7rem;font-size:0.98rem;border-radius:8px;outline:none;';
   box.innerHTML =
     '<button class="btn-outline" onclick="loadTickets()" style="margin-bottom:.8rem;">← All tickets</button>'
     + '<div style="border:1px solid var(--border);border-radius:14px;padding:1.1rem 1.2rem;">'
     +   '<div style="display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:center;">'
-    +     '<h3 style="margin:0;font-size:1rem;color:var(--gold);">' + esc(t.ticket_no) + ' — ' + esc(t.category_label) + '</h3>'
-    +     '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">' + (t.priority === 'high' ? tkChip('high priority', '#e06060') : '') + (t.overdue ? tkChip('OVERDUE', '#e06060') : '') + tkChip(TK_STATUS[t.status], TK_COLOUR[t.status]) + '<span style="font-size:.72rem;">' + tkDueText(t) + '</span></div>'
+    +     '<h3 style="margin:0;font-size:1.22rem;color:var(--gold);">' + esc(t.ticket_no) + ' — ' + esc(t.category_label) + '</h3>'
+    +     '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">' + (t.priority === 'high' ? tkChip('high priority', '#e06060') : '') + (t.overdue ? tkChip('OVERDUE', '#e06060') : '') + tkChip(TK_STATUS[t.status], TK_COLOUR[t.status]) + '<span style="font-size:0.88rem;">' + tkDueText(t) + '</span></div>'
     +   '</div>'
-    +   '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.9rem;margin-top:.9rem;font-size:.78rem;line-height:1.7;">'
-    +     '<div><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Customer</div>' + esc(t.customer_name || '—') + '<br/>' + esc(t.customer_email || '') + '<br/>' + esc(t.customer_phone || '')
+    +   '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.9rem;margin-top:.9rem;font-size:0.95rem;line-height:1.7;">'
+    +     '<div><div style="font-size:0.73rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Customer</div>' + esc(t.customer_name || '—') + '<br/>' + esc(t.customer_email || '') + '<br/>' + esc(t.customer_phone || '')
     +       (phone ? ' · <a href="https://wa.me/91' + phone + '" target="_blank" rel="noopener" style="color:var(--gold);">WhatsApp</a>' : '') + '</div>'
-    +     '<div><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Order</div>' + orderLine + '</div>'
-    +     '<div><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Timeline</div>Opened ' + esc(new Date(t.created_at).toLocaleString('en-IN')) + '<br/>Reply by ' + esc(new Date(t.respond_by).toLocaleString('en-IN')) + '<br/>Resolve by ' + esc(new Date(t.due_at).toLocaleString('en-IN'))
+    +     '<div><div style="font-size:0.73rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Order</div>' + orderLine + '</div>'
+    +     '<div><div style="font-size:0.73rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Timeline</div>Opened ' + esc(new Date(t.created_at).toLocaleString('en-IN')) + '<br/>Reply by ' + esc(new Date(t.respond_by).toLocaleString('en-IN')) + '<br/>Resolve by ' + esc(new Date(t.due_at).toLocaleString('en-IN'))
     +       (t.delay_notices ? '<br/><span style="color:#e0a060;">Customer told of delay ' + t.delay_notices + '×</span>' : '') + (t.reopened_count ? '<br/>Reopened ' + t.reopened_count + '×' : '') + '</div>'
     +   '</div>'
-    +   (evidence ? '<div style="margin-top:1rem;"><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:.4rem;">Evidence (click to open)</div><div style="display:flex;gap:.6rem;flex-wrap:wrap;">' + evidence + '</div></div>' : '')
-    +   (closed && t.resolution ? '<div style="margin-top:1rem;border-left:3px solid #5d9b55;padding:.5rem .9rem;background:rgba(93,155,85,.08);font-size:.82rem;white-space:pre-wrap;"><strong>Resolution:</strong> ' + esc(t.resolution) + '</div>' : '')
-    +   '<div style="margin-top:1rem;"><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Conversation</div>' + events + '</div>'
-    +   '<div id="tkDetailMsg" style="font-size:.74rem;margin:.8rem 0 .2rem;min-height:1em;"></div>'
+    +   (evidence ? '<div style="margin-top:1rem;"><div style="font-size:0.73rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:.4rem;">Evidence (click to open)</div><div style="display:flex;gap:.6rem;flex-wrap:wrap;">' + evidence + '</div></div>' : '')
+    +   (closed && t.resolution ? '<div style="margin-top:1rem;border-left:3px solid #5d9b55;padding:.5rem .9rem;background:rgba(93,155,85,.08);font-size:1rem;white-space:pre-wrap;"><strong>Resolution:</strong> ' + esc(t.resolution) + '</div>' : '')
+    +   '<div style="margin-top:1rem;"><div style="font-size:0.73rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);">Conversation</div>' + events + '</div>'
+    +   '<div id="tkDetailMsg" style="font-size:0.9rem;margin:.8rem 0 .2rem;min-height:1em;"></div>'
     +   (closed
         ? '<button class="btn-green" onclick="tkAct(\'reopen\', {})">Reopen ticket</button>'
         : '<div style="display:grid;gap:.9rem;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:.4rem;">'
-        +   '<div><div style="font-size:.66rem;font-weight:700;color:var(--gold);margin-bottom:.3rem;">Reply to customer (emails them)</div>'
+        +   '<div><div style="font-size:0.81rem;font-weight:700;color:var(--gold);margin-bottom:.3rem;">Reply to customer (emails them)</div>'
         +     '<textarea id="tkReply" rows="4" style="' + inputCss + '" placeholder="Your reply…"></textarea>'
         +     '<div style="display:flex;gap:.5rem;margin-top:.4rem;flex-wrap:wrap;align-items:center;">'
-        +       '<select id="tkReplyStatus" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:.4rem .6rem;font-size:.72rem;border-radius:6px;"><option value="in_progress">Then: in progress</option><option value="waiting_customer">Then: waiting on customer (pauses the clock)</option></select>'
+        +       '<select id="tkReplyStatus" style="background:var(--bg3);border:1px solid var(--border);color:var(--white);padding:.4rem .6rem;font-size:0.88rem;border-radius:6px;"><option value="in_progress">Then: in progress</option><option value="waiting_customer">Then: waiting on customer (pauses the clock)</option></select>'
         +       '<button class="btn-green" onclick="tkAct(\'reply\', {message: document.getElementById(\'tkReply\').value, status: document.getElementById(\'tkReplyStatus\').value}, this)">Send reply</button></div></div>'
-        +   '<div><div style="font-size:.66rem;font-weight:700;color:#c98a36;margin-bottom:.3rem;">🔒 Internal note (customer never sees it)</div>'
+        +   '<div><div style="font-size:0.81rem;font-weight:700;color:#c98a36;margin-bottom:.3rem;">🔒 Internal note (customer never sees it)</div>'
         +     '<textarea id="tkNote" rows="4" style="' + inputCss + '" placeholder="What you found, what you tried…"></textarea>'
         +     '<div style="margin-top:.4rem;display:flex;gap:.5rem;flex-wrap:wrap;"><button class="btn-outline" onclick="tkAct(\'note\', {body: document.getElementById(\'tkNote\').value}, this)">Add note</button>'
         +       (t.status !== 'open' ? '<button class="btn-outline" onclick="tkAct(\'status\', {status:\'open\'}, this)">Mark open</button>' : '')
         +       (t.status !== 'in_progress' ? '<button class="btn-outline" onclick="tkAct(\'status\', {status:\'in_progress\'}, this)">Mark in progress</button>' : '') + '</div></div>'
         +   '</div>'
-        +   '<div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:.9rem;"><div style="font-size:.66rem;font-weight:700;color:#5d9b55;margin-bottom:.3rem;">Resolve &amp; close — this text is emailed to the customer</div>'
+        +   '<div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:.9rem;"><div style="font-size:0.81rem;font-weight:700;color:#5d9b55;margin-bottom:.3rem;">Resolve &amp; close — this text is emailed to the customer</div>'
         +     '<textarea id="tkResolution" rows="3" style="' + inputCss + '" placeholder="What was done to fix it (e.g. replacement dispatched, AWB …; refund of ₹… initiated)"></textarea>'
         +     '<button class="btn-green" style="margin-top:.5rem;" onclick="tkClose(this)">✅ Resolve &amp; close ticket</button></div>')
     + '</div>';
@@ -4133,7 +4264,7 @@ async function tkPreviewEvidence(node) {
     const url = await tkEvidenceUrl(node);
     boxEl.innerHTML = '<img src="' + url + '" alt="" style="width:100%;height:100%;object-fit:cover;"/>';
   } catch (e) {
-    boxEl.innerHTML = '<span style="font-size:.65rem;color:#e06060;padding:.3rem;text-align:center;">' + esc(e.message) + '</span>';
+    boxEl.innerHTML = '<span style="font-size:0.79rem;color:#e06060;padding:.3rem;text-align:center;">' + esc(e.message) + '</span>';
   }
 }
 
@@ -5425,7 +5556,7 @@ async function fetchOrdersPage(pageNum, limit, filterSnapshot = currentFilter) {
     // them to refund_pending → refunded/refund_failed. Fetch the whole family or
     // the tab shows COD orders only.
     params.set('statuses', CANCELLED_FAMILY.join(','));
-  } else if (filterSnapshot && filterSnapshot !== '__unshipped' && filterSnapshot !== '__in_transit' && filterSnapshot !== 'partial_cod_pending' && filterSnapshot !== 'online_pending' && filterSnapshot !== 'cw_only' && filterSnapshot !== 'cancel_requested') {
+  } else if (filterSnapshot && filterSnapshot !== '__unshipped' && filterSnapshot !== '__in_transit' && filterSnapshot !== 'partial_cod_pending' && filterSnapshot !== 'online_pending' && filterSnapshot !== 'cw_only' && filterSnapshot !== 'preorder_waiting' && filterSnapshot !== 'cancel_requested') {
     params.set('status', filterSnapshot);
   }
   const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
@@ -5972,9 +6103,36 @@ function itemLineHtml(i) {
   // readable on hover. Always set, not just when it overflows — whether it
   // overflows depends on the column width at render time, which this cannot know.
   const full = esc(i?.title || '');
+  // The title opens the book's page in a new tab when the line knows its slug
+  // (cart lines carry url/id "/product/<slug>/"; some carry a bare slug).
+  const slug = itemProductSlug(i);
+  const name = slug
+    ? `<a class="it-link" href="/product/${encodeURIComponent(slug)}/" target="_blank" rel="noopener" onclick="event.stopPropagation()">${full}</a>`
+    : full;
   return `<div class="item-line">
-    <span class="it-title" title="${full}">· ${full} ×${qty}</span>${priceHtml}
+    <span class="it-title" title="${full}">· ${name} ×${qty}</span>${priceHtml}
   </div>`;
+}
+
+// The customer's name filters the orders list to everyone of theirs. Searches
+// by the last 10 phone digits (rows are stored with and without the 91), else
+// the email, else the name -- two customers can share a name.
+function customerNameHtml(o) {
+  const name = esc(o?.customer_name || '—');
+  const digits = String(o?.customer_phone || '').replace(/\D/g, '').slice(-10);
+  const key = digits.length === 10 ? digits : String(o?.customer_email || o?.customer_name || '').trim();
+  if (!key) return name;
+  return `<a href="#" class="cust-link" data-cust="${esc(key)}" title="Show all orders from this customer"
+    onclick="event.preventDefault(); event.stopPropagation(); searchOrders(this.dataset.cust)">${name}</a>`;
+}
+
+function itemProductSlug(i) {
+  for (const v of [i?.url, i?.id, i?.link, i?.product_url]) {
+    const m = String(v || '').match(/\/product\/([^/?#]+)/i);
+    if (m) { try { return decodeURIComponent(m[1]).toLowerCase(); } catch { return m[1].toLowerCase(); } }
+  }
+  const s = String(i?.slug || '').trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9-]*$/.test(s) ? s : '';
 }
 
 function isPendingOnlineOrder(o) {
@@ -6498,6 +6656,10 @@ function applyFilters() {
     if (currentFilter === 'partial_cod_pending' && !isPartialOrder(o)) return false;
     if (currentFilter === 'online_pending' && !isPendingOnlineOrder(o)) return false;
     if (currentFilter === 'cancel_requested' && !hasOpenCancelRequest(o)) return false;
+    if (currentFilter === 'preorder_waiting') {
+      if (!orderPreorder(o).waiting) return false;
+      if (['cancelled', 'refunded', 'refund_pending'].includes(String(o.status || '').toLowerCase())) return false;
+    }
     if (currentFilter === 'cw_only') {
       if (!/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || ''))) return false;
       // Keep the Crossword tab to actionable orders — hide cancelled/refunded.
@@ -6639,6 +6801,7 @@ function _drawTable() {
       <td data-label="Order" data-card-head>
         <div class="order-id">${esc(o.razorpay_order_id || o.id || '—')}</div>
         ${o.razorpay_payment_id ? `<div class="pay-id">${esc(o.razorpay_payment_id)}</div>` : ''}
+        ${preorderBadgeHtml(o)}
         ${/^IC-(?:R-)?CW-/i.test(String(o.razorpay_order_id || '')) ? `<div title="Contains Crossword-migrated genuine-tag book(s)" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.4);color:#c9a84c;font-weight:600;">📚 Crossword</div>` : ''}
         ${isReplacement ? (() => {
           const meta = items.find(i => i && i._replacement)?._replacement;
@@ -6663,7 +6826,7 @@ function _drawTable() {
       </td>
       <td data-label="Date" style="font-size:0.65rem;color:var(--cream-dim);white-space:nowrap;">${date}</td>
       <td data-label="Customer">
-        <div class="cust-name">${esc(o.customer_name || '—')}</div>
+        <div class="cust-name">${customerNameHtml(o)}</div>
         <div class="cust-sub">${esc(o.customer_phone || '')}</div>
         <div class="cust-sub">${esc(o.customer_email || '')}</div>
       </td>
@@ -9050,11 +9213,13 @@ function selectProduct(slug) {
   document.getElementById('prodExcludedStates').value = (shippingRule.excluded_states || shippingTagParts.states).join(', ');
   document.getElementById('prodExcludedPincodes').value = (shippingRule.excluded_pincodes || shippingTagParts.pins).join(', ');
   document.getElementById('prodActive').checked = p.is_active !== false;
-  document.getElementById('prodScarcity').checked = !!(row.sc || (row.override && row.override.scarcity));
-  // Stock: existing override value, else default 999 (in stock).
+  // An active override's answer wins over the baked pin, so an untick sticks.
+  document.getElementById('prodScarcity').checked = scarcityOf(row);
+  // Stock: the override's count, else blank (not counted, in stock). 999 was
+  // the old "no limit" default and is shown blank too (sql/order_stock_moves.sql).
   {
     const sq = row.override && row.override.stock_qty;
-    document.getElementById('prodStock').value = (sq === null || sq === undefined) ? 999 : sq;
+    document.getElementById('prodStock').value = (sq === null || sq === undefined || Number(sq) === 999) ? '' : sq;
     // Handling time rides in on the same feed (product_settings, merged into the
     // override entry). Blank means "store default", so 0 renders as blank.
     const hd = row.override && row.override.handling_days;
@@ -9137,6 +9302,8 @@ function selectProduct(slug) {
   loadSalesLineageEditor(row);
   loadCodRuleEditor(row);
   loadFreeDeliveryEditor(row);
+  loadSearchHiddenEditor(row);
+  resetNewTitleAlert();
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
 }
@@ -9892,7 +10059,7 @@ function setFreeDeliveryUi(free, note) {
   if (cb) cb.checked = !!free;
   if (cur) cur.innerHTML = note ? esc(note) : free
     ? '<strong style="color:#5d9b55;">Free delivery is ON</strong> — any order with this book ships free.'
-    : 'Normal delivery charge (₹40 below ₹499).';
+    : 'Normal delivery charge (₹40 unless prepaid above ₹399 or COD ₹499+).';
 }
 
 async function loadFreeDeliveryEditor(row) {
@@ -9955,6 +10122,296 @@ async function listFreeDelivery() {
       : 'No books have free delivery yet.';
   } catch (e) {
     box.textContent = 'Could not list: ' + e.message;
+  }
+}
+
+// ── Pre-orders (utils/release-date) ──────────────────────────────────────────
+// utils/pricing stamps each pre-order line with its release day (_release) when
+// the order is placed. The latest one decides when the parcel can leave.
+function orderPreorder(o) {
+  const items = Array.isArray(o && o.cart_items) ? o.cart_items : [];
+  const dates = items.map(i => String((i && i._release) || '')).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  const release = dates[dates.length - 1] || '';
+  const today = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10);
+  const titles = items.filter(i => i && i._release).map(i => i.title || i.slug || '').filter(Boolean);
+  return { release, waiting: !!release && release > today, titles };
+}
+function preorderBadgeHtml(o) {
+  const p = orderPreorder(o);
+  if (!p.release) return '';
+  const [y, m, d] = p.release.split('-').map(Number);
+  const when = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const col = p.waiting ? '#e8a030' : '#a09080';
+  const label = p.waiting ? `Pre-order · ship on/after ${when}` : `Pre-order · released ${when}`;
+  return `<div title="${esc('Pre-order: ' + p.titles.join(', '))}" style="display:inline-flex;align-items:center;gap:0.32rem;margin-top:4px;padding:2px 8px;font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;background:rgba(232,160,48,${p.waiting ? '0.12' : '0.04'});border:1px solid ${col};color:${col};font-weight:600;">📅 ${label}</div>`;
+}
+
+// ── New-title alert (admin-new-title-alert) ──────────────────────────────────
+let _ntaDry = null;   // the dry run the Send button is allowed to act on
+let _ntaAllowFallback = false;   // the cover could not be converted: test with the shop card
+
+const NTA_CODES = {
+  131049: 'Meta held it back (its limit on marketing messages per person)',
+  130472: 'in Meta\'s marketing experiment group (gets no marketing, at random)',
+  131026: 'not on WhatsApp / could not receive',
+  131050: 'the customer stopped marketing messages from us',
+  131047: 'outside the 24-hour window',
+  131053: 'the cover image could not be downloaded',
+};
+
+async function loadNtaReport() {
+  const slug = selectedProduct?.slug;
+  const box = document.getElementById('ntaReport');
+  if (!slug || !box) return;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-new-title-alert', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug, report: true }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== slug) return;
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    const r = d.report || {};
+    if (!r.attempted) { box.textContent = 'Not sent for this book yet.'; return; }
+    const n = (x) => Number(x || 0).toLocaleString('en-IN');
+    const codes = Object.entries(r.failed_codes || {}).map(([c, k]) => `<div style="padding-left:1rem;">${n(k)} × ${esc(NTA_CODES[c] || ('error ' + c))}</div>`).join('');
+    box.innerHTML = `<div style="border:1px solid var(--border);border-radius:10px;padding:.7rem;max-width:520px;">
+      <div><b>${n(r.attempted)}</b> tried · <b>${n(r.accepted)}</b> accepted by Meta${d.last_sent_at ? ` · last sent ${esc(new Date(d.last_sent_at).toLocaleString('en-IN'))}` : ''}</div>
+      <div style="margin-top:.4rem;color:#25d366;"><b>${n(r.delivered)}</b> delivered (${n(r.read)} read)</div>
+      ${r.failed_by_meta ? `<div style="margin-top:.3rem;color:#e05a4e;"><b>${n(r.failed_by_meta)}</b> not delivered:</div>${codes}` : ''}
+      ${r.failed_at_send ? `<div style="margin-top:.3rem;color:#e05a4e;"><b>${n(r.failed_at_send)}</b> refused at send time</div>` : ''}
+      ${r.waiting ? `<div style="margin-top:.3rem;color:var(--cream-dim);">${n(r.waiting)} waiting for a receipt (phone off, or receipts still coming in)</div>` : ''}
+      <div style="margin-top:.4rem;font-size:.75rem;color:var(--cream-dim);">Meta only charges for delivered messages. Customers it held back are not tried again for this book.</div></div>`;
+  } catch (e) {
+    box.textContent = 'Could not load: ' + e.message;
+  }
+}
+
+function resetNewTitleAlert() {
+  _ntaDry = null;
+  const rep = document.getElementById('ntaReport');
+  if (rep) rep.innerHTML = '';
+  setTimeout(() => { if (document.getElementById('prodNewTitleAlert')?.open) loadNtaReport(); }, 0);
+  const send = document.getElementById('ntaSendBtn');
+  if (send) { send.disabled = true; send.textContent = 'Send to customers'; }
+  const out = document.getElementById('ntaResult');
+  if (out) out.innerHTML = '';
+}
+
+function ntaOptions() {
+  const v = (id) => document.getElementById(id)?.value;
+  return { match: v('ntaMatch'), keywords: String(v('ntaKeywords') || '').trim(), days_back: Number(v('ntaDays')), cooldown_days: Number(v('ntaCooldown')), limit: Number(v('ntaLimit')) };
+}
+
+function ntaSummaryHtml(d) {
+  const c = d.counts || {};
+  const p = d.preview_params || [];
+  const rows = [
+    ['Past customers looked at', c.customers], ['Match', c.matched],
+    ['  · same author', c.by_author], ['  · author / series in the title', c.by_title], ['  · same kind of book', c.by_category],
+    ['Already bought this book', c.already_bought],
+    ['Said STOP / unsubscribed', c.opted_out], ['Already alerted for this book', c.already_sent_this_book],
+    ['Messaged in the cooldown window', c.cooldown], ['Eligible', c.eligible],
+  ].map(([k, n]) => `<div style="display:flex;justify-content:space-between;gap:1rem;"><span>${esc(k)}</span><b>${Number(n || 0).toLocaleString('en-IN')}</b></div>`).join('');
+  const sample = (d.sample || []).map((r) => `${esc(r.phone)} · ${esc(r.name)} · ${esc(r.reason)}${r.via ? ` (${esc(r.via)})` : ''}`).join('<br>');
+  const cover = d.cover ? `<div style="display:flex;gap:.6rem;align-items:flex-start;margin-bottom:.5rem;">
+      <img src="${esc(d.cover.url)}" alt="" style="width:64px;border-radius:6px;border:1px solid var(--border);"/>
+      <span>Image: ${d.cover.fallback ? '<b style="color:#e8a030;">the shop card</b> — this book has no JPEG/PNG cover WhatsApp can use. Upload a .jpg or .png cover to send the real one.' : 'the book cover'}</span></div>` : '';
+  return `<div style="border:1px solid var(--border);border-radius:10px;padding:.7rem;max-width:520px;">
+    <div style="margin-bottom:.4rem;"><b>${esc(d.book?.title || '')}</b> — ${esc(d.book?.author || 'no author')}</div>${cover}${rows}
+    <div style="margin-top:.6rem;font-size:.9rem;"><b>Will send ${Number(d.will_send || 0).toLocaleString('en-IN')}</b> (limit ${d.limit}) · about <b>₹${Number(d.est_cost_inr || 0).toLocaleString('en-IN')}</b></div>
+    ${d.blocked_reason ? `<div style="color:#e05a4e;margin-top:.5rem;">${esc(d.blocked_reason)}</div>` : ''}
+    <div style="margin-top:.6rem;color:var(--cream-dim);">Message: Hi <b>${esc(p[0] || '')}</b>! Since you've read <b>${esc(p[1] || '')}</b>… <b>${esc(p[2] || '')}</b> is now available at Ink &amp; Chai — ${esc(p[3] || '')}.</div>
+    ${sample ? `<div style="margin-top:.5rem;font-size:.75rem;">${sample}</div>` : ''}</div>`;
+}
+
+// WhatsApp takes JPEG/PNG only; admin-uploaded covers are webp. Draw the cover
+// on a canvas and hand the server a JPEG to keep in R2.
+async function ntaConvertCover(slug, src) {
+  const url = String(src).replace(/^https:\/\/inkandchai\.in/i, '');
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image(); i.crossOrigin = 'anonymous';
+    i.onload = () => resolve(i); i.onerror = () => reject(new Error('cover did not load'));
+    i.src = url;
+  });
+  const w = Math.min(800, img.naturalWidth || 800);
+  const h = Math.round((img.naturalHeight || w) * w / (img.naturalWidth || w));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+  const res = await adminFetch('/.netlify/functions/admin-new-title-alert', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, cover_jpeg: c.toDataURL('image/jpeg', 0.88) }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+  return d.url;
+}
+
+async function newTitleAlert(kind, _retried) {
+  const slug = selectedProduct?.slug;
+  const out = document.getElementById('ntaResult');
+  const send = document.getElementById('ntaSendBtn');
+  if (!slug) { out.textContent = 'Select a product first.'; return; }
+  const opts = ntaOptions();
+  const body = { slug, ...opts };
+  if (kind === 'test') {
+    body.test_phone = document.getElementById('ntaTestPhone')?.value.trim();
+    if (_ntaAllowFallback) body.allow_fallback = true;
+    if (!body.test_phone) { out.textContent = 'Type the phone number to test on.'; return; }
+  } else if (kind === 'dry') {
+    body.dry_run = true;
+  } else {
+    if (!_ntaDry || _ntaDry.slug !== slug || JSON.stringify(_ntaDry.opts) !== JSON.stringify(opts)) {
+      resetNewTitleAlert(); out.textContent = 'The settings changed — run the dry run again first.'; return;
+    }
+    const n = _ntaDry.will_send;
+    if (!confirm(`Send the WhatsApp alert for "${selectedProduct.title || slug}" to ${n.toLocaleString('en-IN')} customers?\n\nAbout ₹${_ntaDry.cost.toLocaleString('en-IN')} in Meta charges. This cannot be undone.`)) return;
+    body.dry_run = false;
+    body.expect = n;
+  }
+  const btns = ['ntaDryBtn', 'ntaSendBtn', 'ntaTestBtn'].map((id) => document.getElementById(id));
+  btns.forEach((b) => { if (b) b.disabled = true; });
+  out.textContent = kind === 'send' ? 'Sending… keep this tab open.' : kind === 'test' ? 'Sending the test…' : 'Working out who would get it…';
+  let keepSend = false;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-new-title-alert', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== slug) return;
+    if (kind === 'test' && d.need_cover && d.cover?.convert_from && !_retried) {
+      out.textContent = 'Making a JPEG copy of the cover for WhatsApp…';
+      let made = true;
+      try { await ntaConvertCover(slug, d.cover.convert_from); } catch (e) { made = false; console.warn('[nta] cover convert:', e.message); }
+      _ntaAllowFallback = !made;
+      try { await newTitleAlert('test', true); } finally { _ntaAllowFallback = false; }
+      keepSend = !!_ntaDry;
+      return;
+    }
+    if (kind === 'test') {
+      keepSend = !!_ntaDry;
+      out.innerHTML = d.ok ? `Meta accepted the test ✓ — it should arrive within a minute. Variables: ${esc((d.params || []).join(' | '))}${d.cover ? ` · Image: <a href="${esc(d.cover.url)}" target="_blank" rel="noopener">${d.cover.fallback ? 'shop card' : 'cover'}</a>` : ''}` : esc('Test failed: ' + (d.error || ('HTTP ' + res.status)));
+      return;
+    }
+    if (!res.ok) { _ntaDry = null; out.innerHTML = esc(d.error || ('HTTP ' + res.status)) + (d.counts ? ntaSummaryHtml(d) : ''); return; }
+    if (kind === 'dry' && d.cover?.fallback && d.cover.convert_from && !_retried) {
+      out.textContent = 'Making a JPEG copy of the cover for WhatsApp…';
+      try { await ntaConvertCover(slug, d.cover.convert_from); await newTitleAlert('dry', true); keepSend = !!_ntaDry; return; }
+      catch (e) { console.warn('[nta] cover convert:', e.message); }
+    }
+    if (kind === 'dry') {
+      out.innerHTML = ntaSummaryHtml(d);
+      if (d.will_send > 0 && !d.blocked_reason) {
+        _ntaDry = { slug, opts, will_send: d.will_send, cost: d.est_cost_inr };
+        send.textContent = `Send to ${d.will_send.toLocaleString('en-IN')} customers`;
+        keepSend = true;
+      }
+      return;
+    }
+    _ntaDry = null;
+    setTimeout(loadNtaReport, 60000);
+    out.innerHTML = `<b style="color:#25d366;">Sent ${d.sent}</b>${d.failed ? `, <b style="color:#e05a4e;">${d.failed} failed</b>` : ''}.`
+      + (d.remaining > 0 ? ` ${d.remaining} more are eligible — run the dry run again to send the next batch.` : '')
+      + ' Meta can still hold some back after accepting them — check the Delivery report below in a few minutes.'
+      + ((d.sample_failures || []).length ? '<br>' + d.sample_failures.map((f) => esc(f.phone + ': ' + f.error)).join('<br>') : '');
+  } catch (e) {
+    out.textContent = 'Failed: ' + e.message + (kind === 'send' ? ' — run the dry run again to see what went out before sending more.' : '');
+  } finally {
+    btns.forEach((b) => { if (b) b.disabled = false; });
+    if (send) send.disabled = !keepSend;
+    if (!keepSend && send) send.textContent = 'Send to customers';
+  }
+}
+
+// ── Hide from site search (admin-search-hidden) ──────────────────────────────
+function setSearchHiddenUi(hidden, note) {
+  const cb = document.getElementById('prodSearchHidden');
+  const cur = document.getElementById('prodSearchHiddenCurrent');
+  if (cb) cb.checked = !!hidden;
+  if (cur) cur.innerHTML = note ? esc(note) : hidden
+    ? '<strong style="color:var(--gold);">Hidden from search</strong> — still for sale on its page and in collections.'
+    : 'Shows in search as normal.';
+}
+
+async function loadSearchHiddenEditor(row) {
+  const msg = document.getElementById('prodSearchHiddenMsg');
+  if (msg) msg.textContent = '';
+  const list = document.getElementById('prodSearchHiddenList');
+  if (list) list.innerHTML = '';
+  if (!row?.slug) return;
+  setSearchHiddenUi(false, 'Checking…');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-search-hidden?slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setSearchHiddenUi(data.hidden);
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setSearchHiddenUi(false, 'Could not load: ' + e.message);
+  }
+}
+
+async function setSearchHidden(slug, hidden, title) {
+  const res = await adminFetch('/.netlify/functions/admin-search-hidden', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, hidden, title: title || '' }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+async function saveSearchHidden() {
+  const slug = selectedProduct?.slug;
+  const msg = document.getElementById('prodSearchHiddenMsg');
+  const btn = document.getElementById('prodSearchHiddenSaveBtn');
+  if (!slug) { if (msg) msg.textContent = 'Select a product first.'; return; }
+  const on = !!document.getElementById('prodSearchHidden')?.checked;
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const data = await setSearchHidden(slug, on, selectedProduct?.title);
+    if (selectedProduct?.slug === slug) setSearchHiddenUi(data.hidden);
+    if (msg) msg.textContent = data.hidden
+      ? 'Saved — this book no longer comes up in search (within about 5 minutes). It is still for sale.'
+      : 'Saved — this book shows in search again (within about 5 minutes).';
+  } catch (e) {
+    if (msg) msg.textContent = 'Could not save: ' + e.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function listSearchHidden() {
+  const box = document.getElementById('prodSearchHiddenList');
+  if (!box) return;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-search-hidden');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? '<strong>' + items.length + ' book' + (items.length === 1 ? '' : 's') + ' hidden from search:</strong><br>'
+        + items.map(i => '<span style="display:inline-flex;gap:.5rem;align-items:center;margin:.15rem 0;">'
+          + '<a href="/product/' + encodeURIComponent(i.slug) + '/" target="_blank" rel="noopener">' + esc(i.title || i.slug) + '</a>'
+          + ' <button class="btn-outline" type="button" style="padding:.15rem .5rem;font-size:.68rem;" data-slug="' + esc(i.slug) + '" onclick="unhideFromList(this)">Show in search</button></span>').join('<br>')
+      : 'No books are hidden from search.';
+  } catch (e) {
+    box.textContent = 'Could not list: ' + e.message;
+  }
+}
+
+async function unhideFromList(btn) {
+  const slug = btn.getAttribute('data-slug');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await setSearchHidden(slug, false);
+    if (selectedProduct?.slug === slug) setSearchHiddenUi(false);
+    listSearchHidden();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Failed — retry';
   }
 }
 
@@ -10323,7 +10780,7 @@ async function saveCustomProductImages() {
       seo_title: row.seo_title || '',
       meta_description: row.meta_description || '',
       is_active: row.is_active !== false,
-      scarcity: !!(row.sc || row.override?.scarcity),
+      scarcity: scarcityOf(row),
       // Preserve existing stock on image-only saves (upsert replaces the row, so
       // omitting this would reset the product to in-stock).
       stock_qty: row.override?.stock_qty ?? null,
@@ -10927,7 +11384,7 @@ async function saveProductGallery(row, gallery) {
       seo_title: row.seo_title || '',
       meta_description: row.meta_description || '',
       is_active: row.is_active !== false,
-      scarcity: !!(row.sc || row.override?.scarcity),
+      scarcity: scarcityOf(row),
       stock_qty: row.override?.stock_qty ?? null,
       image_url: p.image_url || '',
       gallery_images: gallery,
@@ -11320,6 +11777,81 @@ async function generateProductCopy() {
   }
 }
 
+// The product editor in tabs (owner's request, 30 Oct 2026): one long scroll
+// made things hard to find. The existing blocks are moved, not rebuilt, so
+// every id, save button and loader keeps working; fields on a hidden tab are
+// still saved by "Save Product Override". The open tab is remembered.
+const PRODUCT_EDITOR_TABS = [
+  ['price', 'Price & stock', () => [
+    peRowOf('prodSlug'), peRowOf('prodGoogleId'),
+    peRowOf('prodPrice')?.parentElement, peRowOf('prodPrice')?.parentElement?.nextElementSibling,
+    peRowOf('prodStock')?.parentElement, document.getElementById('prodActive')?.closest('label')?.parentElement,
+  ]],
+  ['details', 'Book details & SEO', () => [peRowOf('prodTitle'), peRowOf('prodAuthor'), peRowOf('prodCategory'), peById('prodMetadataEditor')]],
+  ['media', 'Images & A+', () => [peRowOf('prodImageUrl'), peById('prodGalleryUploadRow'), peById('prodAplusEditor'), peById('prodSampleEditor')]],
+  ['delivery', 'Delivery & COD', () => [peRowOf('prodExcludedStates')?.parentElement?.parentElement, peById('prodCodEditor'), peById('prodFreeDeliveryEditor')]],
+  ['promo', 'Coupons & marketing', () => [peById('prodCouponEditor'), peById('prodNewTitleAlert'), peById('prodMarketplaceEditor')]],
+  ['more', 'Visibility & sales', () => [peById('prodSearchHiddenEditor'), peById('prodSalesLineageEditor')]],
+];
+const PRODUCT_TAB_KEY = 'iac_admin_product_tab';
+function peById(id) { return document.getElementById(id); }
+function peRowOf(id) { return peById(id)?.closest('.form-row') || null; }
+
+function buildProductEditorTabs() {
+  const form = peById('productEditorForm');
+  const actions = form && form.querySelector('.product-editor-actions');
+  if (!form || !actions || form.querySelector('.pe-tabs')) return;
+  const bar = document.createElement('div');
+  bar.className = 'pe-tabs';
+  bar.setAttribute('role', 'tablist');
+  for (const [key, label, parts] of PRODUCT_EDITOR_TABS) {
+    const panel = document.createElement('div');
+    panel.className = 'pe-panel';
+    panel.dataset.tab = key;
+    panel.setAttribute('role', 'tabpanel');
+    // In the form before filling it: a block nested in an earlier tab's block
+    // (the delivery exclusions inside Book details) must still be found there.
+    form.insertBefore(panel, actions);
+    for (const el of parts()) if (el && form.contains(el)) panel.appendChild(el);
+    if (key === 'delivery') {
+      // The exclusions box sat inside Book details; it is saved with the override.
+      const box = panel.firstElementChild;
+      if (box && box.querySelector('#prodExcludedStates')) box.style.marginTop = '0';
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pe-tab';
+    btn.dataset.tab = key;
+    btn.setAttribute('role', 'tab');
+    btn.textContent = label;
+    btn.onclick = () => showProductEditorTab(key);
+    bar.appendChild(btn);
+  }
+  form.insertBefore(bar, form.firstChild);
+  let saved = '';
+  try { saved = localStorage.getItem(PRODUCT_TAB_KEY) || ''; } catch (e) {}
+  showProductEditorTab(PRODUCT_EDITOR_TABS.some(([k]) => k === saved) ? saved : 'price');
+}
+
+function showProductEditorTab(key) {
+  const form = peById('productEditorForm');
+  if (!form) return;
+  form.querySelectorAll('.pe-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === key)));
+  form.querySelectorAll('.pe-panel').forEach((p) => { p.hidden = p.dataset.tab !== key; });
+  try { localStorage.setItem(PRODUCT_TAB_KEY, key); } catch (e) {}
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildProductEditorTabs);
+else buildProductEditorTabs();
+
+// The "Only 4 left" badge as the storefront shows it (utils/scarcity.js): an
+// active override's own true/false, else the baked pin (row.sc).
+function scarcityOf(row) {
+  const o = row && row.override;
+  if (o && o.is_active !== false && (o.scarcity === true || o.scarcity === false)) return o.scarcity;
+  return !!(row && row.sc);
+}
+
 async function saveProductOverride(activeOverride = true) {
   if (!selectedProduct) return;
   const msg = document.getElementById('productSaveMsg');
@@ -11333,7 +11865,8 @@ async function saveProductOverride(activeOverride = true) {
     original_price_inr: document.getElementById('prodOriginalPrice').value,
     is_active: activeOverride && document.getElementById('prodActive').checked,
     scarcity: document.getElementById('prodScarcity').checked,
-    // Manual stock. Blank → null (in stock / unlimited); 0 → sold out ("Coming Soon").
+    // Stock. Blank → null (not counted, in stock); a number is counted down by
+    // orders and back up by cancellations (sql/order_stock_moves.sql); 0 → "Coming Soon".
     stock_qty: (document.getElementById('prodStock')?.value ?? '').trim() === '' ? null : document.getElementById('prodStock').value,
     image_url: document.getElementById('prodImageUrl')?.value.trim() || '',
     // Works for catalogue books too: the flag lives on the override row, which
@@ -13962,7 +14495,6 @@ async function dlRunPush(includeShiprocket, expected) {
 // no cancel request, older than 30 minutes), so a stale screen cannot book a
 // cancelled order. XpressBees itself refuses an order number it already holds,
 // which is what stops an order imported into the panel being booked twice.
-let xbbActive = false;
 let xbbState = null;
 // "Surface Xpressbees 0.5 K.G" in XpressBees' courier list.
 const XBB_SURFACE_05 = '1';
@@ -13982,8 +14514,9 @@ function xbbModal(html) {
       html +
     '</div>';
 }
+// Closing only hides the screen: a run lives on the server (xb-booking-job).
 function xbbClose() {
-  if (xbbActive) return;                       // never hide a run that is still booking
+  clearTimeout(xbbPollTimer);
   document.getElementById('xbBookModal')?.remove();
 }
 const XBB_H = (t) => '<h2 style="' + DL_H + '">' + t + '</h2>';
@@ -14058,9 +14591,19 @@ function xbbHeldList(skipped) {
       '</details>').join('');
 }
 
+// Opening shows the server's run if there is one — still going, or finished
+// and not yet cleared — and otherwise the chooser.
+async function xbBookOpen() {
+  xbbModal(XBB_H('Book on XpressBees (API)') + '<p style="color:var(--cream-dim);"><span class="spinner"></span>Checking for a run in progress…</p>');
+  let job = null;
+  try { job = (await xbbCall({ action: 'job_status' })).job; } catch (e) { /* no runner: the chooser still works and says so on start */ }
+  // A finished price check older than 6 hours is stale; start fresh.
+  if (job && !(job.state === 'done' && job.mode === 'preview' && Date.now() - (job.finished_at || 0) > 6 * 3600e3)) { xbbWatch(); return; }
+  xbbChooser();
+}
+
 // Step 1: choose what to book and on which service.
-function xbBookOpen() {
-  if (xbbActive) { alert('An XpressBees booking is already running. Please wait for it to finish.'); return; }
+function xbbChooser() {
   const selected = getSelectedOrders().map(o => o.razorpay_order_id || o.id).filter(Boolean);
   const radio = (name, value, checked, label, hint) =>
     '<label style="display:flex;gap:0.6rem;align-items:flex-start;cursor:pointer;border:1px solid var(--border);padding:0.6rem 0.8rem;margin-bottom:0.4rem;">' +
@@ -14081,54 +14624,75 @@ function xbBookOpen() {
   xbbState = { selected };
 }
 
-// Step 2: dry run in batches; books nothing.
+// Step 2: the price check runs on the server as a job (worker/xb-booking-job.js);
+// this tab only starts it and watches. Books nothing. Each order's check is
+// saved, so the booking that follows (or a second check) does not ask again.
 async function xbbPreview() {
   const scope = document.querySelector('input[name=xbbScope]:checked')?.value || 'all';
   const service = document.querySelector('input[name=xbbService]:checked')?.value || 'surface';
   const days = parseInt(document.getElementById('xbbDays')?.value, 10) || 30;
   const courierId = service === 'surface' ? XBB_SURFACE_05 : undefined;
-  const st = xbbState = { ...xbbState, scope, service, days, courierId, ready: [], failed: [], skipped: [] };
-
+  xbbState = { ...xbbState, scope, service, days, courierId };
   xbbModal(XBB_H('Book on XpressBees (API)') + '<p style="color:var(--cream-dim);"><span class="spinner"></span>Finding orders…</p>');
-  let ids;
   try {
-    if (scope === 'selected') {
-      ids = st.selected.slice();
-    } else {
-      const c = await xbbCall({ action: 'candidates', days });
-      ids = (c.ready || []).map(r => r.order_id);
-      st.skipped.push(...(c.held || []).map(h => ({ order_id: h.order_id, kind: h.kind, reason: h.reason })));
-    }
+    await xbbCall({ action: 'job_start', mode: 'preview', service, days,
+      ...(scope === 'selected' ? { order_ids: xbbState.selected } : {}), ...(courierId ? { courier_id: courierId } : {}) });
   } catch (e) {
-    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Could not load the orders', e.message, 'Nothing was sent to XpressBees.') +
+    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Could not start the price check', e.message, 'Nothing was sent to XpressBees.') +
       '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="xbbClose()">Close</button></div>');
     return;
   }
+  xbbWatch();
+}
 
-  for (let i = 0; i < ids.length; i += 10) {
-    xbbModal(XBB_H('Book on XpressBees (API)') +
-      '<p style="color:var(--cream-dim);"><span class="spinner"></span>Asking XpressBees for prices… ' + Math.min(i, ids.length) + ' of ' + ids.length + '</p>' +
-      '<p style="color:var(--cream-dim);font-size:0.72rem;">Nothing is booked in this step.</p>');
-    try {
-      const d = await xbbCall({ order_ids: ids.slice(i, i + 10), dry_run: true, ...(courierId ? { courier_id: courierId } : {}) });
-      st.ready.push(...(d.booked || []));
-      st.failed.push(...(d.failed || []));
-      st.skipped.push(...(d.skipped || []));
-    } catch (e) {
-      xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('The preview stopped', e.message, 'Nothing was booked. Try again in a minute.') +
-        '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="xbbClose()">Close</button></div>');
-      return;
-    }
+// Polls the job and draws whichever screen it is at. Stops when the modal is closed.
+let xbbPollTimer = null;
+async function xbbWatch() {
+  clearTimeout(xbbPollTimer);
+  if (!document.getElementById('xbBookModal')) return;
+  let job;
+  try { job = (await xbbCall({ action: 'job_status' })).job; }
+  catch (e) {
+    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Could not read the run', e.message,
+      'The run carries on at the server either way. Trying again in a few seconds…'));
+    xbbPollTimer = setTimeout(xbbWatch, 5000);
+    return;
   }
+  if (!document.getElementById('xbBookModal')) return;
+  if (!job) { xbbChooser(); return; }
+  if (job.state === 'running') {
+    const book = job.mode === 'book';
+    const total = job.order_ids.length;
+    xbbModal(XBB_H(book ? 'Booking on XpressBees…' : 'Book on XpressBees (API)') +
+      '<p style="color:var(--cream-dim);"><span class="spinner"></span>' +
+        (book ? Math.min(job.cursor, total) + ' of ' + total + ' sent · ✅ ' + job.booked.length + ' booked · ❌ ' + job.failed.length + ' failed'
+              : 'Asking XpressBees for prices… ' + Math.min(job.cursor, total) + ' of ' + total) + '</p>' +
+      (job.last_error ? '<p style="color:var(--red);font-size:0.72rem;">Retrying after: ' + dlEsc(job.last_error) + '</p>' : '') +
+      '<p style="color:var(--cream-dim);font-size:0.72rem;">' + (book
+        ? 'This runs on the server: you can close this tab or this window. The full result is emailed to you when it finishes.'
+        : 'Nothing is booked in this step. It runs on the server, so you can close this and come back — press the button again to see the prices.') + '</p>' +
+      '<div style="display:flex;justify-content:flex-end;margin-top:0.8rem;"><button class="btn-outline" onclick="xbbClose()">Close (keeps running)</button></div>');
+    xbbPollTimer = setTimeout(xbbWatch, 1500);
+    return;
+  }
+  if (job.mode === 'book') xbbRenderBooked(job); else xbbRenderPreview(job);
+}
 
+function xbbRenderPreview(job) {
+  const st = xbbState = { ...(xbbState || {}), courierId: job.courier_id || undefined, ready: job.booked, failed: job.failed, skipped: job.skipped };
   const ready = st.ready;
   const cod = ready.filter(r => Number(r.collectable) > 0);
   const freight = ready.reduce((t, r) => t + (Number(r.courier_charges) || 0), 0);
   const services = {};
   ready.forEach(r => { const n = r.courier?.name || 'XpressBees'; services[n] = (services[n] || 0) + 1; });
+  const saved = ready.filter(r => r.cached).length + st.failed.filter(f => f.cached).length;
+  const age = job.finished_at ? Math.round((Date.now() - job.finished_at) / 60000) : 0;
 
   let h = XBB_H('Book on XpressBees (API) — preview') +
-    '<p style="color:var(--cream-dim);font-size:0.74rem;margin:0 0 0.6rem;">Nothing has been booked yet.</p>' +
+    '<p style="color:var(--cream-dim);font-size:0.74rem;margin:0 0 0.6rem;">Nothing has been booked yet.' +
+      (age >= 2 ? ' Prices checked ' + age + ' min ago.' : '') + (saved ? ' ' + saved + ' order(s) came from saved price checks.' : '') + '</p>' +
+    (job.stop_reason === 'auth' ? dlErrorBox('Could not sign in to XpressBees', 'Check the XPRESSBEES_EMAIL / XPRESSBEES_PASSWORD Worker secrets.', 'The check stopped early.') : '') +
+    (job.stop_reason === 'error' ? dlErrorBox('The price check stopped', job.error || '', 'Press Back and run it again; orders already checked are saved.') : '') +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.6rem;margin:0.6rem 0;">' +
       '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.5rem;color:var(--green);">' + ready.length + '</div><div style="font-size:0.66rem;color:var(--cream-dim);">ready to book</div></div>' +
       '<div style="border:1px solid var(--border);padding:0.7rem;"><div style="font-size:1.1rem;">' + dlRupees(Math.round(freight)) + '</div><div style="font-size:0.66rem;color:var(--cream-dim);">freight from the wallet</div></div>' +
@@ -14150,7 +14714,7 @@ async function xbbPreview() {
   h += xbbHeldList(st.skipped);
 
   h += '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.3rem;flex-wrap:wrap;">' +
-    '<button class="btn-outline" onclick="xbBookOpen()">Back</button>' +
+    '<button class="btn-outline" onclick="xbbStartOver()">Back</button>' +
     '<button class="btn-outline" onclick="xbbClose()">Cancel</button>' +
     (ready.length
       ? '<button class="btn-green" onclick="xbbBook()" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;">Book ' + ready.length + ' on XpressBees · ' + dlRupees(Math.round(freight)) + '</button>'
@@ -14159,54 +14723,48 @@ async function xbbPreview() {
   xbbModal(h);
 }
 
-// Step 3: book in batches of 5 and show every outcome.
+// Step 3: the booking runs on the server too; the tab may close at any time.
 async function xbbBook() {
   const st = xbbState;
-  if (xbbActive || !st || !st.ready.length) return;
-  if (!confirm('Book ' + st.ready.length + ' order(s) on XpressBees now?\n\nEach gets a real AWB, the wallet is charged, and the customer is notified. This cannot be undone from here.')) return;
-  xbbActive = true;
-  const ids = st.ready.map(r => r.order_id);
-  const out = { booked: [], failed: [], skipped: [], unknown: [] };
-  let stopped = '';
-
-  for (let i = 0; i < ids.length; i += 5) {
-    xbbModal(XBB_H('Booking on XpressBees…') +
-      '<p style="color:var(--cream-dim);"><span class="spinner"></span>' + Math.min(i, ids.length) + ' of ' + ids.length + ' sent · ✅ ' + out.booked.length + ' booked · ❌ ' + out.failed.length + ' failed</p>' +
-      '<p style="color:var(--cream-dim);font-size:0.72rem;">Do not close this tab.</p>');
-    const batch = ids.slice(i, i + 5);
-    try {
-      const d = await xbbCall({ order_ids: batch, ...(st.courierId ? { courier_id: st.courierId } : {}) });
-      out.booked.push(...(d.booked || []));
-      out.failed.push(...(d.failed || []));
-      out.skipped.push(...(d.skipped || []));
-      if ((d.failed || []).some(f => f.kind === 'wallet')) { stopped = 'wallet'; break; }
-      if ((d.failed || []).some(f => f.kind === 'auth')) { stopped = 'auth'; break; }
-    } catch (e) {
-      // No answer: these may or may not have been booked.
-      out.unknown.push(...batch);
-      stopped = 'transport';
-      out.error = e.message;
-      break;
-    }
+  if (!st || !st.ready || !st.ready.length) return;
+  if (!confirm('Book ' + st.ready.length + ' order(s) on XpressBees now?\n\nEach gets a real AWB, the wallet is charged, and the customer is notified. This cannot be undone from here.\n\nIt runs on the server: you can close the tab, and the result is emailed to you.')) return;
+  xbbModal(XBB_H('Booking on XpressBees…') + '<p style="color:var(--cream-dim);"><span class="spinner"></span>Starting…</p>');
+  try {
+    await xbbCall({ action: 'job_start', mode: 'book', order_ids: st.ready.map(r => r.order_id), ...(st.courierId ? { courier_id: st.courierId } : {}) });
+  } catch (e) {
+    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Could not start the booking', e.message, 'Nothing was booked.') +
+      '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="xbbClose()">Close</button></div>');
+    return;
   }
-  const sent = new Set([...out.booked, ...out.failed, ...out.skipped].map(r => r.order_id).concat(out.unknown));
-  const notAttempted = ids.filter(id => !sent.has(id));
-  xbbActive = false;
+  xbbWatch();
+}
 
+// A finished run: dismiss it (the server forgets it) and start from the chooser.
+async function xbbStartOver() {
+  try { await xbbCall({ action: 'job_dismiss' }); } catch (e) { /* a running job refuses; the chooser says so */ }
+  xbbChooser();
+}
+
+function xbbRenderBooked(job) {
+  const out = { booked: job.booked || [], failed: job.failed || [], skipped: job.skipped || [] };
+  const stopped = job.stop_reason || '';
+  const notAttempted = job.not_attempted || [];
   const notSaved = out.booked.filter(b => b.db_updated === false);
   const notNotified = out.booked.filter(b => b.notified && !b.notified.whatsapp && !b.notified.email && !b.notified.skipped);
   const freight = out.booked.reduce((t, b) => t + (Number(b.courier_charges) || 0), 0);
 
   let h = XBB_H('XpressBees booking finished') +
+    '<p style="color:var(--cream-dim);font-size:0.72rem;margin:0 0 0.4rem;">Started ' + dlEsc(new Date(job.started_at).toLocaleString('en-IN')) +
+      (job.email && job.email.sent ? ' · the result was emailed to you' : job.email && job.email.error ? ' · ⚠ the result email failed: ' + dlEsc(job.email.error) : '') + '</p>' +
     '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:0.9rem;margin:0.3rem 0 0.6rem;">' +
       '<span style="color:var(--green);">✅ Booked <b>' + out.booked.length + '</b> · ' + dlRupees(Math.round(freight)) + '</span>' +
       '<span style="color:' + (out.failed.length ? 'var(--red)' : 'var(--cream-dim)') + ';">❌ Failed <b>' + out.failed.length + '</b></span>' +
       '<span style="color:var(--cream-dim);">⏭ Not sent <b>' + (out.skipped.length + notAttempted.length) + '</b></span>' +
     '</div>';
 
-  if (stopped === 'transport') {
-    h += dlErrorBox('No answer from the server — stopped', out.error + '\n\nOutcome unknown for: ' + out.unknown.join(', '),
-      'These may or may not have been booked. Open this button again and preview: any that got an AWB are skipped, and XpressBees refuses an order number it already holds, so nothing is booked twice.');
+  if (stopped === 'error') {
+    h += dlErrorBox('The run stopped on an error', (job.error || '') + (notAttempted.length ? '\n\nNot attempted: ' + notAttempted.join(', ') : ''),
+      'Run the button again: any order that got an AWB is skipped, and XpressBees refuses an order number it already holds, so nothing is booked twice.');
   }
   if (stopped === 'wallet') h += dlErrorBox('Stopped: the XpressBees wallet ran out', notAttempted.length + ' order(s) were not attempted.', 'Recharge the wallet, then run this again for the rest.');
   if (stopped === 'auth') h += dlErrorBox('Stopped: could not sign in to XpressBees', 'Check the XPRESSBEES_EMAIL / XPRESSBEES_PASSWORD Worker secrets.', notAttempted.length + ' order(s) were not attempted.');
@@ -14232,9 +14790,10 @@ async function xbbBook() {
   }
   h += xbbHeldList(out.skipped.concat(notAttempted.map(id => ({ order_id: id, kind: stopped === 'wallet' ? 'wallet_stop' : 'not_attempted', reason: 'not attempted' }))));
   h += '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.3rem;">' +
+    '<button class="btn-outline" onclick="xbbStartOver()">New booking</button>' +
     '<button class="btn-green" onclick="xbbClose()">Done</button></div>';
   xbbModal(h);
-  try { selectedOrderIds.clear(); await refreshRecentOrders(); } catch (e) { /* the table refreshes on its own */ }
+  try { selectedOrderIds.clear(); refreshRecentOrders(); } catch (e) { /* the table refreshes on its own */ }
 }
 
 // ── NimbusPost: push ONE order to the panel, no courier, no AWB ─────────────
@@ -16458,7 +17017,7 @@ function renderReplacementRequests() {
           : `<a href="#" onclick="event.preventDefault(); searchOrders('${esc(originalId)}')" title="Open the original order" style="color:var(--gold);text-decoration:underline;">${esc(originalId)}</a>`}</div>
       </td>
       <td data-label="Customer">
-        <div class="cust-name">${esc(o.customer_name || '—')}</div>
+        <div class="cust-name">${customerNameHtml(o)}</div>
         <div class="cust-sub">${esc(o.customer_phone || '')}</div>
         <div class="cust-sub">${esc(o.customer_email || '')}</div>
       </td>
@@ -17205,7 +17764,8 @@ async function loadDailyProfit(sync) {
   const syncBtn = document.getElementById('dpSyncBtn');
   if (sync && syncBtn) { syncBtn.disabled = true; syncBtn.textContent = 'Syncing Meta…'; }
   try {
-    const qs = `days=${days}&ship=${ship}&book=${book}&ad=${ad}` + (sync ? `&sync=${sync}` : '');
+    const actual = document.getElementById('dpActual')?.checked === false ? '&actual=0' : '';
+    const qs = `days=${days}&ship=${ship}&book=${book}&ad=${ad}${actual}` + (sync ? `&sync=${sync}` : '');
     const res = await adminFetch('/.netlify/functions/daily-profit?' + qs);
     const d = await res.json();
     if (seq !== _dpSeq) return;
@@ -17243,8 +17803,10 @@ function renderDailyProfit(d) {
   document.getElementById('dpToday').innerHTML = t ? [
     card('Today’s orders', t.orders.toLocaleString('en-IN'), '', `${t.cod} COD · ${t.prepaid} prepaid`),
     card('Expected revenue', rs(t.revenue), '', `of ${rs(t.order_value)} ordered`),
-    card('Ad spend today', rs(t.ads), 'var(--red)', t.ads_source === 'actual' ? `Google ${rs(t.ads_google)} · Meta ${rs(t.ads_meta)}` : 'estimated from your average'),
+    card('Ad spend today', rs(t.ads), 'var(--red)', (t.ads_source === 'actual' ? `Google ${rs(t.ads_google)} · Meta ${rs(t.ads_meta)}` : 'estimated from your average') + ` · incl. ${rs(t.ads_gst || 0)} GST`),
     card('Expected profit today', signed(t.net), t.net >= 0 ? 'var(--green)' : 'var(--red)', t.ads_per_order != null ? `ads ${rs(t.ads_per_order)} per order` : ''),
+    card(`Realised · ${d.days.length} days`, signed(d.totals.net_realised), d.totals.net_realised >= 0 ? 'var(--green)' : 'var(--red)',
+      `${(d.totals.settled || 0).toLocaleString('en-IN')} of ${d.totals.orders.toLocaleString('en-IN')} orders finished · ${signed(d.totals.net_estimated)} still estimated`),
   ].join('') : '';
 
   const cell = (v, colour) => `<td style="padding:.45rem;${colour ? 'color:' + colour + ';' : ''}">${v}</td>`;
@@ -17259,6 +17821,8 @@ function renderDailyProfit(d) {
       ${cell(r.ads_per_order != null ? rs(r.ads_per_order) : '—')}
       ${cell('−' + rs(r.shipping), 'var(--red)')}
       ${cell('−' + rs(r.cogs), 'var(--red)')}
+      ${cell(signed(r.net_realised || 0), (r.net_realised || 0) >= 0 ? 'var(--green)' : 'var(--red)')}
+      ${cell(signed(r.net_estimated || 0) + `<div style="font-size:.62rem;color:var(--cream-dim);">${r.orders - r.settled} in flight</div>`, 'var(--cream-dim)')}
       <td style="padding:.45rem;font-weight:600;color:${r.net >= 0 ? 'var(--green)' : 'var(--red)'};">${signed(r.net)}</td>
     </tr>`).join('');
 
@@ -17267,6 +17831,7 @@ function renderDailyProfit(d) {
     <td style="text-align:left;padding:.5rem .45rem;">Total</td>${cell(T.orders.toLocaleString('en-IN'))}${cell('')}${cell(rs(T.order_value))}${cell(rs(T.revenue))}
     ${cell('−' + rs(T.ads_google), 'var(--red)')}${cell('−' + rs(T.ads_meta), 'var(--red)')}${cell(T.ads_per_order != null ? rs(T.ads_per_order) : '—')}
     ${cell('−' + rs(T.shipping), 'var(--red)')}${cell('−' + rs(T.cogs), 'var(--red)')}
+    ${cell(signed(T.net_realised || 0), (T.net_realised || 0) >= 0 ? 'var(--green)' : 'var(--red)')}${cell(signed(T.net_estimated || 0))}
     <td style="padding:.5rem .45rem;color:${T.net >= 0 ? 'var(--green)' : 'var(--red)'};">${signed(T.net)}</td></tr>`;
 
   const a = d.averages;
@@ -17277,7 +17842,8 @@ function renderDailyProfit(d) {
     `<strong>prepaid</strong> ${pct(a.prepaid.p_delivered)} delivered, ${pct(a.prepaid.p_rto)} RTO. ` +
     `Once an AWB is assigned, COD delivers ${pct(a.cod_awb.p_delivered)} (cancellations before pickup included), and ${pct(a.cod_moved.p_delivered)} once the courier has picked it up. ` +
     `Delivered, returned and cancelled orders use what actually happened. Shipping ₹${d.rates.shippingPerOrder}/parcel (RTO twice), stock ₹${d.rates.bookCost}/book. ` +
-    `Days marked ≈ have no ad spend data and use your ₹${d.rates.adCostPerOrder}/order average. Today’s spend keeps rising until midnight.`;
+    `Ad spend includes the 18% GST Google and Meta bill on top (books are GST-exempt, so it cannot be claimed back). ` +
+    `Days marked ≈ have no ad spend data and use your ₹${d.rates.adCostPerOrder}/order average plus GST. Today’s spend keeps rising until midnight.`;
 }
 
 // ═══════════════ PROFIT TAB ═══════════════
@@ -17392,8 +17958,8 @@ function renderProfit(d) {
 
   document.getElementById('pftNote').textContent =
     (d.ads_source === 'actual'
-      ? `Ads: real spend ${pftRs(d.ads_actual.total)} (Google ${pftRs(d.ads_actual.google)}, Meta ${pftRs(d.ads_actual.meta)}) ÷ ${d.orders_counted.toLocaleString('en-IN')} orders = ₹${Math.round(d.rates.adCostPerOrder)} per order, on ${d.rates_applied_to.ads}. `
-      : `Ads charged at your average of ₹${Math.round(d.rates.adCostPerOrder)} on ${d.rates_applied_to.ads}` +
+      ? `Ads: real spend ${pftRs(d.ads_actual.total)} incl. ${pftRs(d.ads_actual.gst || 0)} GST (Google ${pftRs(d.ads_actual.google)}, Meta ${pftRs(d.ads_actual.meta)}) ÷ ${d.orders_counted.toLocaleString('en-IN')} orders = ₹${Math.round(d.ads_actual.per_order || 0)} per order, on ${d.rates_applied_to.ads}. `
+      : `Ads charged at your average of ₹${Math.round(d.rates.adCostPerOrder)} + 18% GST = ₹${Math.round(d.rates.adCostPerOrder * 1.18)} on ${d.rates_applied_to.ads}` +
         (d.ads_actual ? ` (real spend data only starts ${Object.values(d.ads_actual.first_day).sort().pop()}, so it cannot cover this whole period)` : '') + '. ') +
     `Shipping at ₹${d.rates.shippingPerOrder}: ${d.rates_applied_to.shipping}. ` +
     `Stock at ₹${d.rates.bookCost} per book, ${d.rates_applied_to.books}. ` +

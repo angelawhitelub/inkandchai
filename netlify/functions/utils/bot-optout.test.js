@@ -91,6 +91,7 @@ function stubDb(rows, { error = null } = {}) {
   const q = {
     select: () => q, eq: () => q, or: () => q, order: () => q,
     limit: () => Promise.resolve({ data: rows, error }),
+    range: () => Promise.resolve({ data: rows, error }),
   };
   return { from: () => q };
 }
@@ -138,4 +139,19 @@ test('optedOutPhoneSet THROWS on error — a broadcast must not guess', async ()
   await assert.rejects(
     () => optedOutPhoneSet(stubDb(null, { error: { message: 'timeout' } })),
     /opt-out lookup failed/);
+});
+
+test('optedOutPhoneSet reads past the first 1000 rows', async () => {
+  const pages = [
+    Array.from({ length: 1000 }, (_, i) => ({ customer_phone: '91' + String(9000000000 + i), message: 'hi' })),
+    [{ customer_phone: '919876543210', message: 'STOP' }],
+  ];
+  const seen = [];
+  const q = {
+    select: () => q, eq: () => q, or: () => q, order: () => q,
+    range: (from) => { seen.push(from); return Promise.resolve({ data: pages[from / 1000] || [], error: null }); },
+  };
+  const set = await optedOutPhoneSet({ from: () => q });
+  assert.deepStrictEqual(seen, [0, 1000]);
+  assert.ok(set.has('9876543210'));
 });

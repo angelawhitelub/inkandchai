@@ -99,8 +99,12 @@ function clearCart() {
 }
 
 // ── Shipping rules (must match server-side cod-order.js / verify-payment.js) ─
-const FREE_SHIPPING_THRESHOLD = 499;   // ₹499 → free shipping
-const SHIPPING_FEE            = 40;    // Below ₹499 → flat ₹40 Delhivery
+// Free delivery by payment mode (utils/free-delivery): prepaid ABOVE ₹399,
+// Cash on Delivery from ₹499. The drawer quotes the prepaid figure (what Pay
+// Now charges) and says what COD adds; checkout prices each button exactly.
+const PREPAID_FREE_ABOVE      = 399;   // prepaid: ₹400+ ships free
+const FREE_SHIPPING_THRESHOLD = 499;   // COD: ₹499+ ships free
+const SHIPPING_FEE            = 40;    // otherwise flat ₹40
 // Books the admin set to ship free (free-delivery-slugs, utils/free-delivery):
 // any one in the cart makes the whole order ship free. Fetched once per page,
 // and only once the cart has something in it.
@@ -120,8 +124,36 @@ function iacHasFreeDelivery(cart) {
   }
   return items.some(i => _iacFreeDelivery.has(iacCartSlug(i)));
 }
-window.calcShipping = function(subtotal) {
-  return subtotal >= FREE_SHIPPING_THRESHOLD || iacHasFreeDelivery() ? 0 : SHIPPING_FEE;
+// Pre-orders (preorder-slugs, utils/release-date): { slug: 'YYYY-MM-DD' } for
+// books whose release day is still ahead. Display only -- the order records
+// the date server-side. Fetched once per page, once the cart has something.
+let _iacPreorders = {};
+let _iacPreordersAsked = false;
+function iacPreorderRelease(item, cart) {
+  if (!_iacPreordersAsked && (cart || getCart()).length) {
+    _iacPreordersAsked = true;
+    fetch('/.netlify/functions/preorder-slugs').then(r => r.ok ? r.json() : null).then(d => {
+      const rel = (d && d.releases) || {};
+      if (!Object.keys(rel).length) return;
+      _iacPreorders = rel;
+      if (typeof updateCartUI === 'function') updateCartUI();
+    }).catch(() => {});
+  }
+  const iso = _iacPreorders[iacCartSlug(item)] || '';
+  const today = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10);
+  return iso > today ? iso : '';
+}
+function iacPreorderLine(item, cart) {
+  const iso = iacPreorderRelease(item, cart);
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const when = new Intl.DateTimeFormat('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(y, m - 1, d)));
+  return `<div class="cart-item-preorder" style="font-size:0.66rem;color:#e8a030;font-weight:700;margin:2px 0;">📅 Pre-order · ships on release, ${when}</div>`;
+}
+window.calcShipping = function(subtotal, mode) {
+  const free = mode === 'cod' ? subtotal >= FREE_SHIPPING_THRESHOLD : subtotal > PREPAID_FREE_ABOVE;
+  return free || iacHasFreeDelivery() ? 0 : SHIPPING_FEE;
 };
 
 // ── UI helpers ─────────────────────────────────────────────────────────────
@@ -177,7 +209,9 @@ function updateCartUI() {
   }
   if (totalEl) {
     if (shipping === 0) {
-      totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.55rem;color:var(--ship-free,#2f6e37);letter-spacing:0.15em;text-transform:uppercase;font-family:'Montserrat',sans-serif;font-weight:500;margin-top:4px;">✓ Free Shipping</div>`;
+      const codShip = window.calcShipping(sum, 'cod');
+      totalEl.innerHTML = `₹ ${grand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}<div style="font-size:0.55rem;color:var(--ship-free,#2f6e37);letter-spacing:0.15em;text-transform:uppercase;font-family:'Montserrat',sans-serif;font-weight:500;margin-top:4px;">✓ Free Shipping${codShip ? ' on prepaid' : ''}</div>`
+        + (codShip ? `<div style="font-size:0.58rem;color:var(--muted,#a09080);font-family:'Montserrat',sans-serif;margin-top:2px;letter-spacing:0.03em;">Cash on Delivery adds ₹${codShip} below ₹${FREE_SHIPPING_THRESHOLD}</div>` : '');
     } else {
       // The free-shipping gap is stated once, on the progress bar above the
       // add-on rows -- repeating it here just said the same sentence twice.
@@ -195,6 +229,7 @@ function updateCartUI() {
       <div class="cart-item-info">
         <div class="cart-item-title">${esc(item.title)}</div>
         <div class="cart-item-author">${esc(item.author || '')}</div>
+        ${iacPreorderLine(item, cart)}
         <div class="cart-item-price">₹ ${(item.price * item.qty).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
         <div class="cart-item-controls">
           <button class="qty-btn" data-cart-act="dec" data-cart-id="${esc(item.id)}" aria-label="One fewer">−</button>
@@ -275,16 +310,25 @@ function shipNudgeHtml(subtotal) {
       <div class="iac-ship-bar"><div class="iac-ship-fill" style="width:100%"></div></div>
     </div>`;
   }
-  const need = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal);
-  const pct = Math.max(0, Math.min(100, Math.round((subtotal / FREE_SHIPPING_THRESHOLD) * 100)));
-  if (need <= 0) {
+  if (subtotal >= FREE_SHIPPING_THRESHOLD) {
     return `<div class="iac-ship-nudge is-free">
       <div class="iac-ship-text">&#10003; You have free delivery</div>
       <div class="iac-ship-bar"><div class="iac-ship-fill" style="width:100%"></div></div>
     </div>`;
   }
+  if (subtotal > PREPAID_FREE_ABOVE) {
+    // Prepaid already ships free; the bar now counts towards free COD delivery.
+    const codNeed = FREE_SHIPPING_THRESHOLD - subtotal;
+    return `<div class="iac-ship-nudge is-free">
+      <div class="iac-ship-text">&#10003; Free delivery on prepaid &middot; add &#8377;${codNeed.toLocaleString('en-IN')} more for free Cash on Delivery</div>
+      <div class="iac-ship-bar"><div class="iac-ship-fill" style="width:${Math.round((subtotal / FREE_SHIPPING_THRESHOLD) * 100)}%"></div></div>
+    </div>`;
+  }
+  const target = PREPAID_FREE_ABOVE + 1;
+  const need = target - subtotal;
+  const pct = Math.max(0, Math.min(100, Math.round((subtotal / target) * 100)));
   return `<div class="iac-ship-nudge">
-    <div class="iac-ship-text">Add &#8377;${need.toLocaleString('en-IN')} more for FREE delivery</div>
+    <div class="iac-ship-text">Add &#8377;${need.toLocaleString('en-IN')} more for FREE delivery on prepaid</div>
     <div class="iac-ship-bar"><div class="iac-ship-fill" style="width:${pct}%"></div></div>
   </div>`;
 }

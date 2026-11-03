@@ -47,13 +47,13 @@ const rupees = (n) => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
  * rest of the site words them.
  *
  * Left to write these freely the model produced "free delivery / on all
- * orders" on its first real run. Delivery is free over Rs 499, not on all
- * orders, and a false shipping promise on the homepage is a consumer-law
+ * orders" on its first real run. Delivery is free on prepaid above Rs 399 and
+ * COD from Rs 499, not on all orders, and a false shipping promise on the homepage is a consumer-law
  * problem, not a copy nit. So the model picks an ID from this list and the
  * server supplies the wording -- it cannot invent a term we do not offer.
  */
 const PROMISES = {
-  free_shipping: { num: '₹499+',   label: 'free delivery' },
+  free_shipping: { num: '₹400+',   label: 'free prepaid delivery' },
   cod:           { num: 'COD',     label: 'UPI available' },
   replacement:   { num: '7-day',   label: 'replacement support' },
   payments:      { num: 'UPI',     label: 'cards · net banking' },

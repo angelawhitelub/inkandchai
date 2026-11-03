@@ -10,6 +10,6 @@
 --   >= 1         → in stock, that many units.
 --   0 (or below) → sold out → storefront shows "Coming Soon" and hides Buy.
 --
--- The admin product editor defaults the field to 999; the owner lowers it for any
--- product they want to limit. (Auto-decrement on each sale is a later phase.)
+-- Since 30 Oct 2026 a number is counted down by each order and back up by a
+-- cancellation, and blank means not counted: see sql/order_stock_moves.sql.
 alter table product_overrides add column if not exists stock_qty integer;

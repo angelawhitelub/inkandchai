@@ -29,6 +29,10 @@
 
 /favicon.ico  /images/favicon-96.png  301
 
+# Mobile admin: the short address for phones (public/admin/m/).
+/m   /admin/m/  302
+/m/  /admin/m/  302
+
 # The homepage hero linked these four with the OLD uppercase suffix until the
 # slug-case fix. Anything Google indexed, or a bookmark, still asks for that
 # spelling and Cloudflare matches case-sensitively, so redirect rather than 404.

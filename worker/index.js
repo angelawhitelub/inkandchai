@@ -21,12 +21,16 @@ import * as bindingsNs from './shims/runtime-bindings.js';
 export { RateLimiter } from './rate-limiter.js';
 export { ClaimGuard } from './claim-guard.js';
 export { SpendGuard } from './spend-guard.js';
+export { XbBookingJob } from './xb-booking-job.js';
 import { EDGE_HEADER, CLIENT_CC_HEADER, edgePolicy, effectiveTtl, edgeCacheKey, isStorable, staleProductKey, renderWithLastGood } from './cache-policy.mjs';
 import catalogRender from '../netlify/functions/utils/catalog-content-render.js';
 import soldOutUtil from '../netlify/functions/utils/sold-out.js';
+import scarcityUtil from '../netlify/functions/utils/scarcity.js';
+import releaseDate from '../netlify/functions/utils/release-date.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
 import newArrivals from '../netlify/functions/utils/new-arrivals.js';
 import lifetimeSales from '../netlify/functions/utils/lifetime-sales.js';
+import bestsellerRank from '../netlify/functions/utils/bestseller-rank.js';
 import codRules from '../netlify/functions/utils/cod-rules.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
@@ -472,6 +476,52 @@ function rewriteCatalogPage(response, entry) {
   return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
 }
 
+// ── Pre-orders ──────────────────────────────────────────────────────────────
+// A catalogue book whose admin "Published" date is a full date still ahead
+// gets the pre-order script (utils/release-date.js, public/js/release-date.js):
+// release notice, ship-by and delivery dates from the release day. The page
+// re-checks the date itself, so an edge-cached copy reverts on release day.
+function withRelease(response, entry) {
+  const iso = releaseDate.upcomingRelease(entry && entry.published_on);
+  if (!iso) return response;
+  return new HTMLRewriter()
+    .on('body', { element(el) { el.append(releaseDate.releaseScriptTags(iso), { html: true }); } })
+    .transform(response);
+}
+
+// ── Free-delivery copy on product pages ─────────────────────────────────────
+// Free delivery depends on how the order is paid (utils/free-delivery): prepaid
+// above ₹399, Cash on Delivery from ₹499. ~2,700 baked pages still say
+// "Free delivery on ₹499+" in the promo bar and their FAQ data, and they are
+// never regenerated locally, so the copy is set here for every product page.
+const SHIP_NOTE_HTML = '<div class="ship-free-note" data-ship-note style="margin:0.6rem 0 0.2rem;font-size:0.74rem;line-height:1.55;color:var(--cream);">'
+  + '🚚 <strong>Free delivery</strong> on prepaid orders above ₹399 · Cash on Delivery orders ship free from ₹499 (₹40 below)</div>';
+const PROMO_HTML = '<strong>Free delivery: prepaid above ₹399 · COD ₹499+</strong> · Prepaid offers up to <strong>15% off</strong> · COD available';
+const OLD_FAQ_SHIPPING = 'Free shipping applies on orders above ₹499.';
+const NEW_FAQ_SHIPPING = 'Free shipping applies on prepaid orders above ₹399 and on cash-on-delivery orders of ₹499 or more.';
+function withShippingCopy(response) {
+  let noted = false;
+  let ldBuf = '';
+  const out = new HTMLRewriter()
+    .on('div.promo', { element(el) { el.setInnerContent(PROMO_HTML, { html: true }); } })
+    .on('div.trust', { element(el) { if (!noted) { el.after(SHIP_NOTE_HTML, { html: true }); noted = true; } } })
+    .on('script[type="application/ld+json"]', {
+      text(chunk) {
+        ldBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = ldBuf;
+        ldBuf = '';
+        chunk.replace(whole.split(OLD_FAQ_SHIPPING).join(NEW_FAQ_SHIPPING), { html: true });
+      },
+    })
+    .transform(response);
+  // The baked file's ETag would let a browser revalidate to a copy with the old wording.
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('last-modified');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
 // ── Sold-out books ──────────────────────────────────────────────────────────
 // The admin's manual stock (product_overrides.stock_qty <= 0) turns a page's
 // Buy buttons into "Coming Soon" -- but only in the browser, after the page's
@@ -484,6 +534,9 @@ function rewriteCatalogPage(response, entry) {
 const SOLD_TTL_MS = 60_000;
 let _soldSet = null;
 let _soldAt = 0;
+// The "Only 4 left" list comes in the same document (utils/scarcity.js);
+// null until read, and kept at its last good value when a read misses it.
+let _scarceSet = null;
 
 async function soldOutSet(env, ctx, origin) {
   const now = Date.now();
@@ -493,6 +546,7 @@ async function soldOutSet(env, ctx, origin) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const doc = await res.json();
     _soldSet = new Set((Array.isArray(doc.slugs) ? doc.slugs : []).map((x) => String(x || '').toLowerCase()));
+    if (Array.isArray(doc.scarce)) _scarceSet = new Set(doc.scarce.map((x) => String(x || '').toLowerCase()));
     _soldAt = now;
   } catch (err) {
     console.warn('[sold-out] read failed:', err && err.message);
@@ -579,6 +633,41 @@ async function withFreeDelivery(response, slug, env, ctx, origin) {
   return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
 }
 
+// The quantity selector (public/js/pdp-qty.js), on every product page: baked
+// and admin-created alike, without rebuilding the baked ones.
+const PDP_QTY_SRC = '/js/pdp-qty.js?v=2';
+function withQtySelector(response) {
+  if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  const out = new HTMLRewriter()
+    .on('body', { element(el) { el.append(`<script src="${PDP_QTY_SRC}" defer></script>`, { html: true }); } })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('content-length');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
+// The admin's "Scarcity badge" tick, on every product page: the badge takes
+// the place of the "In Stock" line, as the baked badge does, and an untick
+// puts "In Stock" back. Never on a sold-out book. With no list yet read the
+// page stays as baked.
+async function withScarcity(response, slug, env, ctx, origin) {
+  if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  const key = String(slug || '').toLowerCase();
+  const sold = await soldOutSet(env, ctx, origin);
+  if (!_scarceSet) return response;
+  const want = _scarceSet.has(key) && !sold.has(key);
+  const out = new HTMLRewriter()
+    .on('span.stock', { element(el) { if (want) el.replace(scarcityUtil.BADGE_HTML, { html: true }); } })
+    .on('div.prod-scarcity', { element(el) { if (!want) el.replace(`<span class="stock">${sold.has(key) ? 'Coming Soon' : 'In Stock'}</span>`, { html: true }); } })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('content-length');
+  if (want) headers.set('X-Scarcity', '1');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
 function markSoldOutPage(response) {
   let ldBuf = '';
   const out = new HTMLRewriter()
@@ -646,6 +735,39 @@ async function sitemapWithCustom(request, env, ctx, origin) {
   return new Response(xml, { status: 200, headers });
 }
 
+// /bestsellers/ is baked as a hand-picked collection. With ranks published
+// (utils/bestseller-rank, hourly) it lists the live Top 100 instead -- or a
+// shelf's top 50 with ?shelf= -- in rank order. Without them, or on any
+// failure, the baked page is served unchanged.
+async function bestsellersPage(request, env, url) {
+  const asset = await env.ASSETS.fetch(new Request(`${url.origin}/bestsellers/`, request));
+  if (request.method !== 'GET' || asset.status !== 200
+      || !/text\/html/i.test(asset.headers.get('content-type') || '')) return asset;
+  let parts;
+  try {
+    const doc = await lifetimeSales.readLifetimeSales();
+    if (!doc || !doc.bsr) return asset;
+    parts = bestsellerRank.pageParts(doc.bsr, url.searchParams.get('shelf') || '');
+  } catch (err) {
+    console.warn('[bestsellers] ranks unavailable:', err && err.message);
+    return asset;
+  }
+  if (!parts.count) return asset;
+  const once = (fn) => { let done = false; return { element(el) { if (!done) { done = true; fn(el); } } }; };
+  const out = new HTMLRewriter()
+    .on('title', once((el) => el.setInnerContent(`${parts.heading} | Ink & Chai`)))
+    .on('main .eyebrow', once((el) => el.setInnerContent('Updated every hour')))
+    .on('main h1', once((el) => el.setInnerContent(parts.heading)))
+    .on('main > p', once((el) => el.setInnerContent(parts.intro, { html: true })))
+    .on('section.grid', once((el) => { el.before(parts.chips, { html: true }); el.setInnerContent(parts.cards, { html: true }); }))
+    .transform(asset);
+  const headers = new Headers(out.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  headers.set('Cache-Control', 'public, max-age=300');
+  headers.set('X-Bestsellers', `${parts.shelf || 'all'}:${parts.count}`);
+  return new Response(out.body, { status: 200, headers });
+}
+
 // /new-arrivals/ and /new-arrivals-2026/ are baked from the catalogue, so books
 // created in the admin never showed there. The newest ones go first in the
 // grid (utils/new-arrivals). A failed read serves the baked page unchanged.
@@ -677,18 +799,26 @@ async function newArrivalsPage(request, env, ctx, origin) {
   return new Response(html, { status: 200, headers });
 }
 
-// "🔥 N sold" under the stock line of a bestseller's product page (lifetime
-// units, utils/lifetime-sales; shown from SHOW_ON_PAGE_MIN). A failed read
-// leaves the page as it was.
+// "🔥 2K+ bought in past month" under the stock line of a product page
+// (yesterday's units × 30, utils/lifetime-sales boughtLine; from 50), and the Best
+// Sellers Rank (utils/bestseller-rank): a row in the Details table for any
+// book that has sold, and a "#1 Best Seller" badge for a shelf's top book.
+// Both come from the same hourly KV document. A failed read leaves the page
+// as it was.
 async function withSoldCount(response, slug) {
   if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
   const doc = await lifetimeSales.readLifetimeSales();
-  // unitsSold adds what a duplicated listing carries from its original.
-  const line = lifetimeSales.soldLine(lifetimeSales.unitsSold(doc, slug));
-  if (!line) return response;
+  // monthlyUnits adds what a duplicated listing carries from its original.
+  const line = lifetimeSales.boughtLine(lifetimeSales.monthlyUnits(doc, slug));
+  const rank = bestsellerRank.rankOf(doc && doc.bsr, slug);
+  const underStock = bestsellerRank.badgeHtml(rank) + line;
+  const row = bestsellerRank.rankRowHtml(rank);
+  if (!underStock && !row) return response;
   let done = false;
+  let rowDone = false;
   const out = new HTMLRewriter()
-    .on('span.stock', { element(el) { if (!done) { el.after(line, { html: true }); done = true; } } })
+    .on('span.stock', { element(el) { if (!done && underStock) { el.after(underStock, { html: true }); done = true; } } })
+    .on('div.details dl', { element(el) { if (!rowDone && row) { el.append(row, { html: true }); rowDone = true; } } })
     .transform(response);
   const headers = new Headers(out.headers);
   headers.delete('etag');
@@ -806,6 +936,8 @@ export default {
     if (url.pathname === '/feed.xml') return soldOutFeed(request, env, ctx, url.origin);
     if (url.pathname === '/sitemap.xml') return sitemapWithCustom(request, env, ctx, url.origin);
     if (/^\/new-arrivals(?:-2026)?\/?$/.test(url.pathname)) return newArrivalsPage(request, env, ctx, url.origin);
+    if (url.pathname === '/bestsellers') return Response.redirect(`${url.origin}/bestsellers/${url.search}`, 301);
+    if (url.pathname === '/bestsellers/') return bestsellersPage(request, env, url);
 
     const assetResponse = await env.ASSETS.fetch(request);
 
@@ -815,10 +947,10 @@ export default {
       try { contentSlug = decodeURIComponent(productPath[1]).toLowerCase(); }
       catch { contentSlug = productPath[1].toLowerCase(); }
       const entry = (await catalogContent(env))[contentSlug];
-      let page = entry ? rewriteCatalogPage(assetResponse, entry) : assetResponse;
+      let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
-      page = await withFreeDelivery(await withCodRule(page, contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
-      return withSoldCount(page, contentSlug);
+      page = await withFreeDelivery(await withCodRule(withShippingCopy(page), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
+      return withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin));
     }
 
     // Admin-created products have no generated page: the catalogue books are
@@ -836,9 +968,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withSoldCount(await withFreeDelivery(await withCodRule(markSoldOutPage(rendered), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
+          return withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin));
         }
-        if (rendered.status !== 404) return withSoldCount(await withFreeDelivery(await withCodRule(rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug);
+        if (rendered.status !== 404) return withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin));
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a

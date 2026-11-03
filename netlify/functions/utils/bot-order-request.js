@@ -20,7 +20,7 @@
  */
 
 const { siteSaleDiscount } = require('./site-sale');
-const { freeDeliveryFor } = require('./free-delivery');
+const { freeDeliveryFor, freeByAmount } = require('./free-delivery');
 
 const DRAFT = 'awaiting_confirmation';
 const DISCARDED = 'draft_discarded';
@@ -119,6 +119,7 @@ function rupees(paise) { return Math.round(Number(paise || 0) / 100); }
 // The site-wide sale (utils/site-sale.js) on a bot order, so a chat order costs
 // what the same books cost at checkout. `at` is when the draft was priced: the
 // confirmation re-prices only for the breakdown and must match the stored total.
+// An opt-in sale (a coupon picked on the website) never applies here.
 function withSiteSale(pricing, at) {
   const sale = siteSaleDiscount(pricing.subtotalRs, at);
   if (!sale.discount) return pricing;
@@ -134,6 +135,14 @@ async function withFreeDelivery(db, pricing) {
   let free;
   try { free = await freeDeliveryFor(db, slugs); } catch (e) { console.error('bot-order-request free delivery:', e.message); return pricing; }
   if (!free.size) return pricing;
+  const totalRs = pricing.totalRs - pricing.shippingRs;
+  return { ...pricing, shippingRs: 0, freeDelivery: true, totalRs, totalPaise: totalRs * 100 };
+}
+
+// priceBooksList charges shipping below ₹499 (the COD rule). A prepaid chat
+// order ships free above ₹399, as at checkout (utils/free-delivery).
+function withPaymentShipping(pricing, paymentMode) {
+  if (!pricing.shippingRs || paymentMode !== 'prepaid' || !freeByAmount(pricing.subtotalRs, 'prepaid')) return pricing;
   const totalRs = pricing.totalRs - pricing.shippingRs;
   return { ...pricing, shippingRs: 0, freeDelivery: true, totalRs, totalPaise: totalRs * 100 };
 }
@@ -184,7 +193,7 @@ async function draftOrderRequest(deps, phone, args) {
     };
   }
 
-  const pricing = withSiteSale(await withFreeDelivery(db, await priceSafely(deps.priceBooksList, f.books)), nowMs);
+  const pricing = withSiteSale(withPaymentShipping(await withFreeDelivery(db, await priceSafely(deps.priceBooksList, f.books)), f.paymentMode), nowMs);
   const draft = rows.find((r) => r.status === DRAFT && nowMs - new Date(r.created_at).getTime() < DRAFT_TTL_MS);
   const values = {
     customer_name: f.customerName,
@@ -296,7 +305,7 @@ async function confirmDraftOrder(deps, phone, decision) {
   if (claimErr) { console.error('confirmDraftOrder claim:', claimErr.message); return null; }
   if (!claimed || !claimed.length) return { handled: true, order_id: row.order_id, reply: null };
 
-  const pricing = withSiteSale(await withFreeDelivery(db, await priceSafely(deps.priceBooksList, row.books)), new Date(row.created_at).getTime());
+  const pricing = withSiteSale(withPaymentShipping(await withFreeDelivery(db, await priceSafely(deps.priceBooksList, row.books)), row.payment_mode), new Date(row.created_at).getTime());
 
   let paymentLink = '';
   let linkError = '';

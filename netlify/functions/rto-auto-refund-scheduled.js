@@ -21,7 +21,11 @@
  *      delivered back to origin (utils/rto-refund.js). Our own status column is
  *      never enough: it is written by webhooks, and it says "rto" from the
  *      moment the parcel is turned round.
- *   7. The order is atomically claimed (refund_state AUTO_CLAIMED where it is
+ *   7. The customer is not still deciding on the RTO re-ship offer
+ *      (utils/rto-reship.js). With the offer open, the refund waits until 48 h
+ *      after this job first saw the delivered-back scan (rto_back_at); a NO
+ *      refunds at once, a YES creates a free replacement and so step 4 skips it.
+ *   8. The order is atomically claimed (refund_state AUTO_CLAIMED where it is
  *      still rto with no refund), so a second run or a Refund click in the
  *      admin at the same moment cannot pay it twice.
  *
@@ -40,6 +44,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const rto = require('./utils/rto-refund');
+const reship = require('./utils/rto-reship');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -120,16 +125,25 @@ async function runAutoRefund(deps, opts = {}) {
   };
 
   const sinceIso = new Date(now - days * 86400000).toISOString();
+  const BASE_COLS = 'id, razorpay_order_id, razorpay_payment_id, amount_paise, status, created_at, customer_name, '
+            + 'cart_items, tracking_id, courier_name, refund_id, refund_state';
+  // The re-ship offer columns may not exist yet (sql/orders_rto_reship.sql).
+  // Without them nothing was offered, so the job runs exactly as before.
+  let cols = `${BASE_COLS}, ${reship.OFFER_COLUMNS}`;
+  const page = (from) => supabase.from('orders')
+    .select(cols)
+    .eq('status', 'rto')
+    .is('refund_id', null)
+    .gte('created_at', sinceIso)
+    .order('created_at', { ascending: true })
+    .range(from, from + 999);
   const rows = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from('orders')
-      .select('id, razorpay_order_id, razorpay_payment_id, amount_paise, status, created_at, customer_name, '
-            + 'cart_items, tracking_id, courier_name, refund_id, refund_state')
-      .eq('status', 'rto')
-      .is('refund_id', null)
-      .gte('created_at', sinceIso)
-      .order('created_at', { ascending: true })
-      .range(from, from + 999);
+    let { data, error } = await page(from);
+    if (error && cols !== BASE_COLS && reship.missingColumn(error)) {
+      cols = BASE_COLS;
+      ({ data, error } = await page(from));
+    }
     if (error) throw new Error(error.message);
     rows.push(...(data || []));
     if (!data || data.length < 1000) break;
@@ -181,6 +195,17 @@ async function runAutoRefund(deps, opts = {}) {
     catch (e) { summary.skipped.push({ ...base, reason: e.message }); continue; }
     if (repl.length) { summary.skipped.push({ ...base, reason: `replacement sent (${repl.join(', ')})` }); continue; }
 
+    const held = reship.refundHold(order, now);
+    if (held.hold) {
+      if (held.markBack && !dryRun) {
+        await supabase.from('orders').update({ rto_back_at: new Date(now).toISOString() })
+          .eq('id', order.id).is('rto_back_at', null)
+          .then(() => {}, () => {});
+      }
+      summary.waiting.push({ ...base, reason: held.reason });
+      continue;
+    }
+
     const item = { ...base, scan: check.scan };
     if (dryRun) { summary.would_refund.push(item); continue; }
     if (summary.refunded.length + summary.failed.length >= maxPerRun) {
@@ -190,10 +215,12 @@ async function runAutoRefund(deps, opts = {}) {
 
     // Claim: only if it is still an untouched RTO. Loses to a concurrent
     // admin click or another run, which is the point.
-    const { data: claimed, error: claimErr } = await supabase.from('orders')
+    let claimQ = supabase.from('orders')
       .update({ refund_state: CLAIM, refund_updated_at: new Date(now).toISOString() })
-      .eq('id', order.id).eq('status', 'rto').is('refund_id', null).is('refund_state', null)
-      .select('id');
+      .eq('id', order.id).eq('status', 'rto').is('refund_id', null).is('refund_state', null);
+    // An offered order also loses to a YES that lands between the read and here.
+    if (order.rto_offer_sent_at) claimQ = claimQ.eq('rto_offer_state', order.rto_offer_state);
+    const { data: claimed, error: claimErr } = await claimQ.select('id');
     if (claimErr || !claimed || !claimed.length) {
       summary.skipped.push({ ...item, reason: claimErr ? `claim failed: ${claimErr.message}` : 'changed since it was read' });
       continue;

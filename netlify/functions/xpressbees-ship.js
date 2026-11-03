@@ -217,6 +217,280 @@ async function notifyShipped(supabase, order) {
   return { whatsapp: !!sent.whatsapp?.ok, email: !!sent.email?.ok, ...(sent.error ? { error: sent.error } : {}) };
 }
 
+// ── Saved price checks ───────────────────────────────────────────────────────
+// A price check (the address worked out, the payload built, the service and
+// price XpressBees quoted) is kept per order, so the second look at the same
+// order -- the booking right after the preview, or a preview run again -- skips
+// both the address lookup and the serviceability call. It is keyed on every
+// order field buildOrder and the money rules read: change the address, phone,
+// books, amount or status and the saved check no longer matches and is redone.
+// Refusals that come from the order itself or XpressBees' coverage are kept
+// too; network, wallet and sign-in failures never are.
+const QUOTE_STORE = 'xb-quote';
+const QUOTE_TTL_MS = 12 * 60 * 60 * 1000;
+const STICKY_FAILURES = new Set(['no_service', 'pincode', 'address', 'phone']);
+
+function quoteSig(order, courierId, suffix) {
+  const fields = ['customer_address', 'customer_phone', 'customer_name', 'cart_items', 'amount_paise',
+    'advance_paid_paise', 'status', 'source', 'razorpay_payment_id'];
+  const raw = JSON.stringify([fields.map((f) => order[f] ?? null), String(courierId || ''), suffix || '', pickupPincodeSafe()]);
+  return require('node:crypto').createHash('sha1').update(raw).digest('hex');
+}
+function pickupPincodeSafe() { try { return xb.pickupFromEnv().pincode; } catch { return ''; } }
+
+function quoteStore() {
+  try { return require('@netlify/blobs').getStore(QUOTE_STORE); } catch { return null; }
+}
+async function readQuote(store, orderId, sig) {
+  if (!store) return null;
+  try {
+    const hit = await store.get(orderId, { type: 'json' });
+    return hit && hit.sig === sig && Date.now() - hit.at < QUOTE_TTL_MS ? hit : null;
+  } catch { return null; }
+}
+async function writeQuote(store, orderId, value) {
+  if (!store) return;
+  try { await store.set(orderId, JSON.stringify({ ...value, at: Date.now() })); } catch (e) { console.warn('[xpressbees-ship] quote save:', e.message); }
+}
+async function dropQuote(store, orderId) {
+  if (!store) return;
+  try { await store.delete(orderId); } catch { /* expires on its own */ }
+}
+
+/** Runs fn over items, `limit` at a time, in order of start. */
+async function pool(items, limit, fn) {
+  let next = 0;
+  const run = async () => { while (next < items.length) { const i = next++; await fn(items[i], i); } };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, run));
+}
+
+/** Everything bookable right now: { ready, held }. Books nothing. */
+async function listCandidates(supabase, days) {
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const { data, error } = await supabase.from('orders')
+    .select('id, razorpay_order_id, status, created_at, tracking_id, cancellation_requested_at, source, customer_name, amount_paise')
+    .in('status', BOOKABLE_STATUSES)
+    .is('tracking_id', null)
+    .gte('created_at', since)
+    .order('created_at', { ascending: true })
+    .limit(1000);
+  if (error) throw error;
+  const ready = [], held = [];
+  for (const o of data || []) {
+    if (o.source === 'paperbound') continue;
+    const hold = bookingHold(o);
+    const row = { order_id: o.razorpay_order_id || o.id, created_at: o.created_at, status: o.status, customer: o.customer_name || '' };
+    if (hold) held.push({ ...row, ...hold }); else ready.push(row);
+  }
+  return { ready, held };
+}
+
+/**
+ * Quote (dry_run) or book the given orders. Shared by the HTTP call and the
+ * background job (worker/xb-booking-job.js). Orders are worked `concurrency`
+ * at a time; after a wallet refusal nothing new is started.
+ */
+async function processOrders(ids, opts = {}) {
+  const supabase = opts.supabase || createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  const suffix = String(opts.suffix || '');
+  const priority = String(process.env.XPRESSBEES_COURIER_PRIORITY || 'surface')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  const store = opts.quoteStore === undefined ? quoteStore() : opts.quoteStore;
+
+  const { data: orders, error } = await supabase.from('orders').select('*').in('razorpay_order_id', ids);
+  if (error) throw error;
+  const found = new Set((orders || []).map(o => String(o.razorpay_order_id || o.id)));
+
+  const booked = [], skipped = [], failed = [];
+  for (const id of ids) if (!found.has(String(id))) skipped.push({ order_id: id, kind: 'missing', reason: 'no such order' });
+  if (!orders || !orders.length) return { booked, skipped, failed };
+
+  const pickupPincode = xb.pickupFromEnv().pincode;
+  // After a wallet refusal every later booking fails the same way; stop
+  // rather than pile up identical errors.
+  let walletEmpty = false;
+  const concurrency = opts.concurrency || (opts.dry_run ? 6 : 4);
+
+  await pool(orders, concurrency, async (order) => {
+    const orderId = order.razorpay_order_id || order.id;
+    // cancel_existing is a re-book by definition, so it implies force.
+    const force = !!opts.force || !!opts.cancel_existing;
+    if (order.tracking_id && !force) {
+      skipped.push({ order_id: orderId, kind: 'has_awb', reason: `already has tracking ${order.tracking_id}` });
+      return;
+    }
+    if (!force) {
+      const hold = bookingHold(order);
+      if (hold) { skipped.push({ order_id: orderId, ...hold }); return; }
+    }
+    if (walletEmpty) {
+      skipped.push({ order_id: orderId, kind: 'wallet_stop', reason: 'not attempted: the XpressBees wallet ran out on an earlier order' });
+      return;
+    }
+    let cancelled = null;
+    if (order.tracking_id && opts.cancel_existing) {
+      // Live, never from a stored status: the DB says 'shipped' for all of
+      // these and a two-day-old panel export said 'booked' for shipments
+      // that were by then in transit.
+      let state = '';
+      try { state = String((await xb.track(order.tracking_id))?.status || ''); }
+      catch (e) {
+        failed.push({ order_id: orderId, error: `cannot read live status of ${order.tracking_id}, refusing to cancel blind: ${e.message}` });
+        return;
+      }
+      if (!CANCELLABLE.test(state)) {
+        failed.push({ order_id: orderId, error: `refusing to cancel ${order.tracking_id}: courier reports "${state}"` });
+        return;
+      }
+      try { cancelled = { awb: order.tracking_id, message: await xb.cancel(order.tracking_id), was: state }; }
+      catch (e) {
+        failed.push({ order_id: orderId, error: `cancel of ${order.tracking_id} failed, not re-booking: ${e.message}` });
+        return;
+      }
+    }
+    // A re-book never reuses a saved check: the AWB it replaces changes things.
+    const sig = cancelled ? '' : quoteSig(order, opts.courier_id, suffix);
+    const saved = sig ? await readQuote(store, orderId, sig) : null;
+    let stage = 'quote';
+    try {
+      if (saved && saved.failure) {
+        failed.push({ ...saved.failure, cached: true });
+        return;
+      }
+      let built, courier;
+      if (saved && saved.built && saved.courier) {
+        ({ built, courier } = saved);
+      } else {
+        built = await buildOrder(order, suffix);
+        const quotes = await xb.serviceability({
+          origin: pickupPincode, destination: built._meta.pincode,
+          paymentType: built.payload.payment_type,
+          orderAmount: built.payload.order_amount,
+          weight: BOX.weight, length: BOX.length, breadth: BOX.breadth, height: BOX.height,
+        });
+        courier = chooseCourier(quotes, { forceId: opts.courier_id, priority });
+        if (!courier) throw new Error(`No XpressBees service is serviceable for pincode ${built._meta.pincode}`);
+        courier = { id: courier.id, name: courier.name, total_charges: courier.total_charges };
+        if (sig) await writeQuote(store, orderId, { sig, built, courier });
+      }
+
+      if (opts.dry_run) {
+        booked.push({ ...built._meta, dry_run: true, cached: !!saved, courier_charges: courier.total_charges,
+          courier, ...(opts.with_payload ? { payload: built.payload } : {}) });
+        return;
+      }
+
+      stage = 'book';
+      const res = await xb.book({ ...built.payload, courier_id: String(courier.id) });
+
+      const awb = res.awb_number;
+      const assignedAt = new Date().toISOString();
+      const update = {
+        status: 'shipped',
+        tracking_id: awb,
+        courier_name: res.courier_name || courier.name || 'XpressBees',
+        tracking_url: trackUrl(awb),
+        shipped_at: assignedAt,
+        awb_assigned_at: assignedAt,
+        shipment_payment_type: built._meta.payment_type,
+      };
+      const { error: updErr } = await supabase.from('orders').update(update).eq('id', order.id);
+      if (updErr) console.warn(`[xpressbees-ship] ${orderId} booked as ${awb} but Supabase update failed:`, updErr.message);
+      await dropQuote(store, orderId);
+
+      // Every booking tells the customer, like every other way an order
+      // becomes shipped. 13 Oct 2026: 32 orders were booked through here and
+      // nobody heard a thing. Fire-once on shipped_notified_at, the same claim
+      // admin-resend-shipped uses, so a re-book cannot message twice.
+      const notified = updErr ? { skipped: 'order not updated' } : await notifyShipped(supabase, { ...order, ...update });
+
+      booked.push({
+        order_id: orderId, awb,
+        booked_as: built._meta.booked_as,
+        cancelled_awb: cancelled ? cancelled.awb : undefined,
+        courier_name: update.courier_name,
+        courier_charges: courier.total_charges,
+        collectable: built._meta.collectable,
+        label: res.label || null,
+        shipment_id: res.shipment_id || null,
+        tracking_url: update.tracking_url,
+        db_updated: !updErr,
+        notified,
+      });
+    } catch (err) {
+      // A cancel that succeeded before a book that failed leaves the order
+      // with NO live AWB. Say so loudly: it is not shipped and nothing else
+      // will notice on its own.
+      const f = describeFailure(orderId, String(err.message || err), {
+        cancelled_awb_now_void: cancelled ? cancelled.awb : undefined,
+      });
+      if (f.kind === 'wallet') walletEmpty = true;
+      // Only a quote can be wrong the same way next time; a refused booking
+      // with a good quote is worth trying again.
+      if (sig && stage === 'quote' && STICKY_FAILURES.has(f.kind) && !saved) await writeQuote(store, orderId, { sig, failure: f });
+      failed.push(f);
+    }
+  });
+
+  // The admin screen lists them in the order they were asked for.
+  const rank = new Map(ids.map((id, i) => [String(id), i]));
+  const byAsk = (a, b) => (rank.get(String(a.order_id)) ?? 1e9) - (rank.get(String(b.order_id)) ?? 1e9);
+  return { booked: booked.sort(byAsk), skipped: skipped.sort(byAsk), failed: failed.sort(byAsk) };
+}
+
+// ── The background job (worker/xb-booking-job.js) ────────────────────────────
+// One XpressBees job at a time, held by a Durable Object so it keeps going when
+// the admin tab is closed. These calls only talk to it.
+function jobStub() {
+  const ns = require('../../worker/shims/runtime-bindings').get('XB_BOOKING_JOB');
+  if (!ns) throw new Error('The background booking runner is not available here (XB_BOOKING_JOB binding missing).');
+  return ns.get(ns.idFromName('xpressbees'));
+}
+async function jobCall(payload) {
+  const res = await jobStub().fetch('https://xb-booking.internal/', { method: 'POST', body: JSON.stringify(payload) });
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, data };
+}
+
+const rs = (n) => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+const escHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** The owner's email when a background booking finishes. Called by the job. */
+async function jobFinished(job, deps = {}) {
+  if (job.mode !== 'book') return { skipped: 'preview' };
+  const to = process.env.STORE_OWNER_EMAIL;
+  if (!to) return { skipped: 'STORE_OWNER_EMAIL not set' };
+  const sendEmail = deps.sendEmail || require('./utils/email').sendEmail;
+  const booked = job.booked || [], failed = job.failed || [], skipped = job.skipped || [];
+  const notAttempted = job.not_attempted || [];
+  const freight = booked.reduce((t, b) => t + (Number(b.courier_charges) || 0), 0);
+  const unnotified = booked.filter(b => b.notified && !b.notified.whatsapp && !b.notified.email && !b.notified.skipped);
+  const notSaved = booked.filter(b => b.db_updated === false);
+  const row = (cells) => '<tr>' + cells.map(c => `<td style="padding:4px 8px;border-bottom:1px solid #eee;">${c}</td>`).join('') + '</tr>';
+  const table = (head, rows) => rows.length
+    ? `<table style="border-collapse:collapse;font-size:13px;margin:6px 0 14px;">${row(head.map(h => `<b>${h}</b>`))}${rows.join('')}</table>` : '';
+  const stop = { wallet: 'Stopped: the XpressBees wallet ran out. Recharge it and run the button again for the rest.',
+    auth: 'Stopped: could not sign in to XpressBees (check XPRESSBEES_EMAIL / XPRESSBEES_PASSWORD).',
+    error: `Stopped on an error: ${escHtml(job.error || '')}` }[job.stop_reason] || '';
+  const html = `<p><b>XpressBees booking finished</b> — started ${escHtml(new Date(job.started_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }))} IST.</p>`
+    + `<p>✅ Booked <b>${booked.length}</b> (${rs(freight)} freight) · ❌ Failed <b>${failed.length}</b> · ⏭ Not sent <b>${skipped.length + notAttempted.length}</b></p>`
+    + (stop ? `<p style="color:#b42318;"><b>${stop}</b></p>` : '')
+    + (notSaved.length ? `<p style="color:#b42318;"><b>${notSaved.length} booked at XpressBees but NOT saved on the order</b> — put these AWBs on by hand: ${notSaved.map(b => escHtml(b.order_id + ' → ' + b.awb)).join(', ')}</p>` : '')
+    + (unnotified.length ? `<p style="color:#b42318;">${unnotified.length} customer(s) were not notified: ${unnotified.map(b => escHtml(b.order_id)).join(', ')} — resend from the order.</p>` : '')
+    + (failed.length ? '<h3>Failed</h3>' + table(['Order', 'Why'], failed.map(f => row([escHtml(f.order_id), escHtml(f.title || f.kind || '') + ' — ' + escHtml(String(f.error || '').slice(0, 180))]))) : '')
+    + (booked.length ? '<h3>Booked</h3>' + table(['Order', 'AWB', 'Payment', 'Freight', 'Customer told'], booked.map(b => row([
+        escHtml(b.order_id), escHtml(b.awb), Number(b.collectable) > 0 ? 'COD ' + rs(b.collectable) : 'Prepaid', rs(b.courier_charges),
+        b.notified && (b.notified.whatsapp || b.notified.email) ? 'yes' : (b.notified && b.notified.skipped ? 'already' : 'NO')]))) : '')
+    + (skipped.length || notAttempted.length ? '<h3>Not sent</h3>' + table(['Order', 'Why'], skipped.map(s => row([escHtml(s.order_id), escHtml(s.reason || s.kind || '')])).concat(notAttempted.map(id => row([escHtml(id), 'not attempted'])))) : '');
+  try {
+    await sendEmail({ to, subject: `XpressBees booking: ${booked.length} booked, ${failed.length} failed${stop ? ' — stopped' : ''}`, html });
+    return { sent: true };
+  } catch (e) {
+    console.error('[xpressbees-ship] job email:', e.message);
+    return { error: e.message };
+  }
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST')    return json(405, { error: 'Method not allowed' });
@@ -231,26 +505,44 @@ exports.handler = async (event) => {
   if (body.action === 'candidates') {
     try {
       const days = Math.min(120, Math.max(1, parseInt(body.days, 10) || 30));
-      const since = new Date(Date.now() - days * 86400000).toISOString();
       const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-      const { data, error } = await supabase.from('orders')
-        .select('id, razorpay_order_id, status, created_at, tracking_id, cancellation_requested_at, source, customer_name, amount_paise')
-        .in('status', BOOKABLE_STATUSES)
-        .is('tracking_id', null)
-        .gte('created_at', since)
-        .order('created_at', { ascending: true })
-        .limit(1000);
-      if (error) throw error;
-      const ready = [], held = [];
-      for (const o of data || []) {
-        if (o.source === 'paperbound') continue;
-        const hold = bookingHold(o);
-        const row = { order_id: o.razorpay_order_id || o.id, created_at: o.created_at, status: o.status, customer: o.customer_name || '' };
-        if (hold) held.push({ ...row, ...hold }); else ready.push(row);
-      }
-      return json(200, { days, ready, held });
+      return json(200, { days, ...(await listCandidates(supabase, days)) });
     } catch (err) {
       return json(500, { error: `Could not list orders: ${err.message || err}` });
+    }
+  }
+
+  // The background job: start a price check or a booking, read its progress,
+  // or clear a finished one. It runs on the server; the tab only watches.
+  if (body.action === 'job_status' || body.action === 'job_dismiss') {
+    try {
+      const { status, data } = await jobCall({ action: body.action === 'job_status' ? 'status' : 'dismiss' });
+      return json(status, data);
+    } catch (err) {
+      return json(503, { error: String(err.message || err) });
+    }
+  }
+  if (body.action === 'job_start') {
+    try {
+      const mode = body.mode === 'book' ? 'book' : 'preview';
+      let ids = Array.isArray(body.order_ids) ? body.order_ids.map(String).filter(Boolean) : [];
+      let held = [];
+      if (!ids.length && mode === 'preview') {
+        const days = Math.min(120, Math.max(1, parseInt(body.days, 10) || 30));
+        const c = await listCandidates(createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), days);
+        ids = c.ready.map(r => r.order_id);
+        held = c.held.map(h => ({ order_id: h.order_id, kind: h.kind, reason: h.reason }));
+      }
+      if (!ids.length && !held.length) return json(400, { error: 'No orders to check.' });
+      if (ids.length > 1000) return json(400, { error: `At most 1000 orders per run (got ${ids.length}).` });
+      const { status, data } = await jobCall({ action: 'start', job: {
+        mode, order_ids: [...new Set(ids)], held,
+        courier_id: body.courier_id ? String(body.courier_id) : '',
+        service: String(body.service || ''),
+      } });
+      return json(status, data);
+    } catch (err) {
+      return json(503, { error: String(err.message || err) });
     }
   }
 
@@ -263,24 +555,18 @@ exports.handler = async (event) => {
     return json(400, { error: `suffix must be 1-8 characters of A-Z, 0-9, - or _ (got ${JSON.stringify(suffix)})` });
   }
 
-  const priority = String(process.env.XPRESSBEES_COURIER_PRIORITY || 'surface')
-    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-
   try {
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const { data: orders, error } = await supabase.from('orders').select('*').in('razorpay_order_id', ids);
-    if (error) throw error;
-    if (!orders?.length) return json(404, { error: 'No orders found for given IDs' });
-    const found = new Set(orders.map(o => String(o.razorpay_order_id || o.id)));
-    const missing = ids.filter(id => !found.has(String(id)));
-
-    const pickupPincode = xb.pickupFromEnv().pincode;
-
     // Rates only, book nothing.
     if (body.action === 'serviceability') {
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const { data: orders, error } = await supabase.from('orders').select('*').in('razorpay_order_id', ids);
+      if (error) throw error;
+      if (!orders?.length) return json(404, { error: 'No orders found for given IDs' });
+      const priority = String(process.env.XPRESSBEES_COURIER_PRIORITY || 'surface')
+        .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
       const built = await buildOrder(orders[0], suffix);
       const quotes = await xb.serviceability({
-        origin: pickupPincode, destination: built._meta.pincode,
+        origin: xb.pickupFromEnv().pincode, destination: built._meta.pincode,
         paymentType: built.payload.payment_type,
         orderAmount: built.payload.order_amount,
         weight: BOX.weight, length: BOX.length, breadth: BOX.breadth, height: BOX.height,
@@ -293,115 +579,14 @@ exports.handler = async (event) => {
       });
     }
 
-    const booked = [], skipped = [], failed = [];
-    for (const id of missing) skipped.push({ order_id: id, kind: 'missing', reason: 'no such order' });
-    // After a wallet refusal every later booking fails the same way; stop
-    // rather than pile up identical errors.
-    let walletEmpty = false;
-
-    for (const order of orders) {
-      const orderId = order.razorpay_order_id || order.id;
-      // cancel_existing is a re-book by definition, so it implies force.
-      const force = !!body.force || !!body.cancel_existing;
-      if (order.tracking_id && !force) {
-        skipped.push({ order_id: orderId, kind: 'has_awb', reason: `already has tracking ${order.tracking_id}` });
-        continue;
-      }
-      if (!force) {
-        const hold = bookingHold(order);
-        if (hold) { skipped.push({ order_id: orderId, ...hold }); continue; }
-      }
-      if (walletEmpty) {
-        skipped.push({ order_id: orderId, kind: 'wallet_stop', reason: 'not attempted: the XpressBees wallet ran out on an earlier order' });
-        continue;
-      }
-      let cancelled = null;
-      if (order.tracking_id && body.cancel_existing) {
-        // Live, never from a stored status: the DB says 'shipped' for all of
-        // these and a two-day-old panel export said 'booked' for shipments
-        // that were by then in transit.
-        let state = '';
-        try { state = String((await xb.track(order.tracking_id))?.status || ''); }
-        catch (e) {
-          failed.push({ order_id: orderId, error: `cannot read live status of ${order.tracking_id}, refusing to cancel blind: ${e.message}` });
-          continue;
-        }
-        if (!CANCELLABLE.test(state)) {
-          failed.push({ order_id: orderId, error: `refusing to cancel ${order.tracking_id}: courier reports "${state}"` });
-          continue;
-        }
-        try { cancelled = { awb: order.tracking_id, message: await xb.cancel(order.tracking_id), was: state }; }
-        catch (e) {
-          failed.push({ order_id: orderId, error: `cancel of ${order.tracking_id} failed, not re-booking: ${e.message}` });
-          continue;
-        }
-      }
-      try {
-        const built = await buildOrder(order, suffix);
-
-        const quotes = await xb.serviceability({
-          origin: pickupPincode, destination: built._meta.pincode,
-          paymentType: built.payload.payment_type,
-          orderAmount: built.payload.order_amount,
-          weight: BOX.weight, length: BOX.length, breadth: BOX.breadth, height: BOX.height,
-        });
-        const courier = chooseCourier(quotes, { forceId: body.courier_id, priority });
-        if (!courier) throw new Error(`No XpressBees service is serviceable for pincode ${built._meta.pincode}`);
-
-        if (body.dry_run) {
-          booked.push({ ...built._meta, dry_run: true, courier_charges: courier.total_charges,
-            courier: { id: courier.id, name: courier.name, total_charges: courier.total_charges },
-            payload: built.payload });
-          continue;
-        }
-
-        const res = await xb.book({ ...built.payload, courier_id: String(courier.id) });
-
-        const awb = res.awb_number;
-        const assignedAt = new Date().toISOString();
-        const update = {
-          status: 'shipped',
-          tracking_id: awb,
-          courier_name: res.courier_name || courier.name || 'XpressBees',
-          tracking_url: trackUrl(awb),
-          shipped_at: assignedAt,
-          awb_assigned_at: assignedAt,
-          shipment_payment_type: built._meta.payment_type,
-        };
-        const { error: updErr } = await supabase.from('orders').update(update).eq('id', order.id);
-        if (updErr) console.warn(`[xpressbees-ship] ${orderId} booked as ${awb} but Supabase update failed:`, updErr.message);
-
-        // Every booking tells the customer, like every other way an order
-        // becomes shipped. 13 Oct 2026: 32 orders were booked through here and
-        // nobody heard a thing. Fire-once on shipped_notified_at, the same claim
-        // admin-resend-shipped uses, so a re-book cannot message twice.
-        const notified = updErr ? { skipped: 'order not updated' } : await notifyShipped(supabase, { ...order, ...update });
-
-        booked.push({
-          order_id: orderId, awb,
-          booked_as: built._meta.booked_as,
-          cancelled_awb: cancelled ? cancelled.awb : undefined,
-          courier_name: update.courier_name,
-          courier_charges: courier.total_charges,
-          collectable: built._meta.collectable,
-          label: res.label || null,
-          shipment_id: res.shipment_id || null,
-          tracking_url: update.tracking_url,
-          db_updated: !updErr,
-          notified,
-        });
-      } catch (err) {
-        // A cancel that succeeded before a book that failed leaves the order
-        // with NO live AWB. Say so loudly: it is not shipped and nothing else
-        // will notice on its own.
-        const f = describeFailure(orderId, String(err.message || err), {
-          cancelled_awb_now_void: cancelled ? cancelled.awb : undefined,
-        });
-        if (f.kind === 'wallet') walletEmpty = true;
-        failed.push(f);
-      }
+    const out = await processOrders(ids, {
+      dry_run: !!body.dry_run, courier_id: body.courier_id, force: body.force,
+      cancel_existing: body.cancel_existing, suffix, with_payload: !!body.dry_run,
+    });
+    if (out.skipped.length === ids.length && out.skipped.every(s => s.kind === 'missing')) {
+      return json(404, { error: 'No orders found for given IDs' });
     }
-
+    const { booked, skipped, failed } = out;
     return json(200, {
       dry_run: !!body.dry_run,
       totals: {
@@ -422,3 +607,6 @@ module.exports.bookingHold   = bookingHold;
 module.exports.describeFailure = describeFailure;
 module.exports.buildOrder    = buildOrder;
 module.exports.chooseCourier = chooseCourier;
+module.exports.processOrders = processOrders;
+module.exports.jobFinished   = jobFinished;
+module.exports.quoteSig      = quoteSig;

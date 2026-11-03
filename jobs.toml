@@ -122,6 +122,14 @@
 [functions."rto-auto-refund-scheduled"]
   schedule = "30 7-12 * * *"
 
+# RTO re-ship offer: WhatsApps prepaid customers whose order the courier has
+# just marked RTO, once, asking if they want it again free or a refund. Hourly
+# on the shared trigger; the handler only sends 09:00-21:00 IST. Sends nothing
+# until WHATSAPP_RTO_RESHIP_TEMPLATE is set. Replies are handled by the bot;
+# the refund above waits 48 h for them.
+[functions."rto-reship-offer-scheduled"]
+  schedule = "0 * * * *"
+
 # READ-ONLY refund reconciliation, hourly around the clock. Refunds complete at
 # any hour; this flips PENDING → refunded and notifies the customer as soon as
 # PhonePe confirms, instead of waiting for the afternoon re-issue window above

@@ -15,6 +15,7 @@ const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipp
 const { grantMap, feedOfferId } = require('./google-discount');
 const { selectTolerant } = require('./publisher-sourced');
 const { fetchSettings } = require('./product-settings');
+const { releasesFor } = require('./release-date');
 
 // Hardcoded slug overrides — MUST stay in sync with `make_slug` in generate_site.py.
 // (Combo packs ship under hand-picked slugs that don't follow the auto-slug rule.)
@@ -188,6 +189,9 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   // a slow connection could press Buy Now first, so every order path refuses
   // it here (see findShippingRestriction).
   const soldOut = new Set();
+  // Counted stock (sql/order_stock_moves.sql): copies left of a book whose
+  // admin quantity is a number, so a cart cannot ask for more than remain.
+  const stockLeft = {};
   if (items.length && supabase) {
     const { data, error } = await selectTolerant(cols => supabase
       .from('product_overrides')
@@ -199,6 +203,8 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
       if (row.is_active === false) continue;
       if (row.stock_qty !== null && row.stock_qty !== undefined && Number(row.stock_qty) <= 0) {
         soldOut.add(String(row.slug).toLowerCase());
+      } else if (row.stock_qty !== null && row.stock_qty !== undefined) {
+        stockLeft[String(row.slug).toLowerCase()] = Math.floor(Number(row.stock_qty));
       }
       if (row.publisher_sourced === true || row.publisher_sourced === false) {
         overrideBadgeMap[String(row.slug).toLowerCase()] = row.publisher_sourced;
@@ -282,6 +288,16 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
     else delete item._free_delivery;
   }
 
+  // Pre-orders (utils/release-date): the line carries its release day, so the
+  // saved order says which books cannot ship before then. Server-decided like
+  // _free_delivery; it never changes the price.
+  const releases = resolved.length && supabase ? await releasesFor(supabase, resolved.map((i) => i.slug)) : {};
+  for (const item of resolved) {
+    const iso = releases[String(item.slug || '').toLowerCase()];
+    if (iso) item._release = iso;
+    else delete item._release;
+  }
+
   // The Merchant Center id for each line. Google Ads "conversions with cart
   // data" only counts if the item ids match the feed exactly, and only the
   // server knows which feed a product came from: a custom_products hit ships
@@ -291,6 +307,9 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
     // Only the server says what is sold out; whatever the browser sent is dropped.
     if (soldOut.has(String(item.slug || '').toLowerCase())) item._sold_out = true;
     else delete item._sold_out;
+    const left = stockLeft[String(item.slug || '').toLowerCase()];
+    if (Number.isFinite(left)) item._stock_left = left;
+    else delete item._stock_left;
   }
 
   // ── Google automated discounts ───────────────────────────────────────────

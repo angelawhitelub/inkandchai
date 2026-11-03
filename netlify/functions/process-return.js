@@ -249,13 +249,16 @@ async function notifyApprovedOnce(supabase, ret) {
  * return is approved and a pickup is being arranged, and answer 200 with the
  * gateway's own words so the admin knows exactly what to fix.
  */
-async function pushFailed(supabase, ret, reason) {
+async function pushFailed(supabase, ret, reason, { quiet = false } = {}) {
   const detail = String(reason || 'unknown error').slice(0, 500);
   await softUpdate(supabase, ret.id, {
     last_push_error:    detail,
     last_push_error_at: new Date().toISOString(),
   });
-  const notify = await notifyApprovedOnce(supabase, ret);
+  // quiet: the automatic pickup (auto-return-pickup-background) tries the next
+  // courier and tells the customer itself. Without approved_notified_at each
+  // refusal used to send another "return approved" with no pickup behind it.
+  const notify = quiet ? { sent: false, reason: 'quiet' } : await notifyApprovedOnce(supabase, ret);
   console.error(`[process-return] push failed for ${ret.order_display_id || ret.id}: ${detail}`);
   return { statusCode: 200, headers: CORS, body: JSON.stringify({
     success:  true,
@@ -426,7 +429,7 @@ exports.handler = async (event) => {
       try {
         booked = await bookReverseForReturn(ret, { addr1, city, state, pincode });
       } catch (e) {
-        return pushFailed(supabase, ret, `XpressBees rejected the reverse pickup — ${e.message}`);
+        return pushFailed(supabase, ret, `XpressBees rejected the reverse pickup — ${e.message}`, { quiet: !!body.quiet_on_fail });
       }
       const shipment = booked.shipment || {};
       const awb = String(shipment.awb_number);
@@ -512,7 +515,7 @@ exports.handler = async (event) => {
         `no reverse-capable courier services pickup from pincode ${pincode} `
         + `(NimbusPost offers only forward couriers there, which decline reverse pickup). `
         + `Clone the original order as reverse in the NimbusPost panel, then add the AWB here. `
-        + `NP serviceability: ${JSON.stringify(svcData).slice(0, 300)}`);
+        + `NP serviceability: ${JSON.stringify(svcData).slice(0, 300)}`, { quiet: !!body.quiet_on_fail });
     }
     console.log(`[process-return] pincode=${pincode} → reverse courier ${chosen.courier_name || chosen.name} (id=${reverseCourierId})`);
 
@@ -536,7 +539,7 @@ exports.handler = async (event) => {
 
     const { ok, data: npData } = await npFetch('/shipments', { method: 'POST', token, body: payload });
     if (!ok || npData.status === false) {
-      return pushFailed(supabase, ret, `NimbusPost rejected the reverse order — ${npData && npData.message ? npData.message : JSON.stringify(npData)}`);
+      return pushFailed(supabase, ret, `NimbusPost rejected the reverse order — ${npData && npData.message ? npData.message : JSON.stringify(npData)}`, { quiet: !!body.quiet_on_fail });
     }
 
     const shipment = npData.data && typeof npData.data === 'object' ? npData.data : npData;

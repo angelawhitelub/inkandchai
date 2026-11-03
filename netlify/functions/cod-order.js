@@ -171,9 +171,10 @@ exports.handler = async (event, context) => {
   // Order ID — IC-CW-... for Crossword-migrated genuine-tag carts, IC-... otherwise.
   const orderId = await makeOrderId('IC', cart);
   const subtotal = priced.subtotal;
-  const shipping = orderShipping(cart, subtotal);
+  const shipping = orderShipping(cart, subtotal, 'cod');
   const codFee   = subtotal >= COD_FEE_WAIVER_THRESHOLD ? 0 : COD_HANDLING_FEE;
-  const couponInfo = siteSaleDiscount(subtotal);
+  // The site sale is the one discount on COD; an opt-in sale needs its code.
+  const couponInfo = siteSaleDiscount(subtotal, Date.now(), body.coupon);
   const total    = Math.max(1, subtotal + shipping + codFee - couponInfo.discount);
   if (couponInfo.code && cart[0]) {
     cart[0]._coupon = { code: couponInfo.code, discount: couponInfo.discount, source: couponInfo.source };

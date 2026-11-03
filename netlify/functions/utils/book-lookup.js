@@ -150,7 +150,8 @@ async function priceBooksList(rawBooksList, fallbackRs = 349) {
     }
   }
   const subtotalRs = items.reduce((s, i) => s + i.price, 0);
-  // Free shipping over ₹499 — same rule as the website.
+  // Free shipping from ₹499 — the website's COD rule; bot-order-request lifts
+  // it for prepaid orders above ₹399 (utils/free-delivery).
   const shippingRs = subtotalRs >= 499 ? 0 : 40;
   const totalRs    = subtotalRs + shippingRs;
   return {

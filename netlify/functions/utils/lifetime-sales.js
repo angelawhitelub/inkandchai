@@ -2,7 +2,7 @@
 
 /**
  * Lifetime units sold per book, for the homepage "Reader Bestsellers" badges
- * and the "🔥 N sold" line on product pages (owner's request, 12 Oct 2026; the
+ * and the "🔥 N sold" line on book cards (product pages: boughtLine below) (owner's request, 12 Oct 2026; the
  * badges used to count this month only).
  *
  * Built hourly by lifetime-sales-scheduled over every order that was actually
@@ -140,7 +140,43 @@ function unitsSold(doc, slug) {
   return (Number(doc.counts && doc.counts[key]) || 0) + (Number(doc.carried && doc.carried[key]) || 0);
 }
 
-/** The product-page line, or '' below the threshold. */
+/**
+ * Amazon-style "2K+ bought in past month" on product pages (owner's request,
+ * 1 Nov 2026, replacing the lifetime "🔥 N sold" there). By the owner's rule
+ * the month is yesterday's units (one IST day, doc.yesterday, built hourly)
+ * times 30, so it is a pace, not a count of the last 30 days. Book cards keep
+ * the lifetime number (sold-counts).
+ */
+const MONTH_FROM_DAYS = 30;
+const MONTH_SHOW_MIN = 50;
+
+/** Yesterday's units for a slug (own plus carried from an original) × 30. */
+function monthlyUnits(doc, slug) {
+  const y = doc && doc.yesterday;
+  const key = String(slug || '').toLowerCase();
+  if (!y || !key) return 0;
+  const units = (Number(y.counts && y.counts[key]) || 0) + (Number(y.carried && y.carried[key]) || 0);
+  return units * MONTH_FROM_DAYS;
+}
+
+/** 50+, 100+ … 900+, 1K+, 2K+ …: rounded down, so the "+" stays true. '' under 50. */
+function monthBucket(units) {
+  const n = Math.floor(Number(units) || 0);
+  if (n < MONTH_SHOW_MIN) return '';
+  if (n < 100) return '50+';
+  if (n < 1000) return `${Math.floor(n / 100) * 100}+`;
+  return `${Math.floor(n / 1000)}K+`;
+}
+
+/** The product-page line, or '' below MONTH_SHOW_MIN. */
+function boughtLine(units) {
+  const label = monthBucket(units);
+  if (!label) return '';
+  return `<div class="sold-count" style="display:inline-flex;align-items:center;gap:.35rem;margin:.35rem 0 .2rem;padding:.3rem .7rem;`
+    + `border-radius:999px;background:#fff4e5;color:#9a4b00;font-size:.85rem;font-weight:600;">🔥 ${label} bought in past month</div>`;
+}
+
+/** The lifetime line, or '' below the threshold. */
 function soldLine(units) {
   const n = Math.floor(Number(units) || 0);
   if (n < SHOW_ON_PAGE_MIN) return '';
@@ -150,6 +186,6 @@ function soldLine(units) {
 
 module.exports = {
   countLifetimeSales, newTally, addOrders, finishTally, publishLifetimeSales, readLifetimeSales, soldLine, titleKey,
-  cleanSalesSlug, carriedCounts, unitsSold,
+  cleanSalesSlug, carriedCounts, unitsSold, monthlyUnits, monthBucket, boughtLine,
   SOLD_STATUSES, SHOW_ON_PAGE_MIN, STORE, KEY,
 };

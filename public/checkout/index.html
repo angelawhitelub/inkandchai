@@ -126,6 +126,29 @@ html[data-theme="light"] .btn-partial{background:#f7efe0;border-color:rgba(138,1
 html[data-theme="light"] .btn-partial:hover{background:#f1e3c9;}
 .btn-partial:disabled{opacity:0.72;cursor:not-allowed;}
 .partial-note{font-size:0.58rem;color:var(--cream-dim);letter-spacing:0.04em;line-height:1.6;margin:-0.25rem 0 0.75rem;}
+/* Payment area (30 Oct 2026): real round radios, one type scale for the three
+   pay buttons, readable notes in both themes. The #paymentBlock prefix outranks
+   the site theme's !important pill rules. */
+#paymentBlock .pay-method{border-radius:18px!important;padding:.85rem 1rem!important;gap:.85rem!important}
+#paymentBlock .pay-method input[type="radio"]{-webkit-appearance:none;appearance:none;flex:0 0 20px;width:20px!important;height:20px!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:1.5px solid var(--cream-dim)!important;border-radius:50%!important;background:transparent!important;box-shadow:none!important;cursor:pointer;transition:border-color .15s,background .15s}
+#paymentBlock .pay-method input[type="radio"]:checked{border-color:var(--gold)!important;background:radial-gradient(circle,var(--gold) 0 4.5px,transparent 5px)!important}
+#paymentBlock .pay-method input[type="radio"]:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+#paymentBlock .pay-method-icon{width:36px!important;height:36px!important;border-radius:12px!important;font-size:1rem!important}
+#paymentBlock .pay-method-title{font-size:.95rem;font-weight:650;letter-spacing:0;color:var(--cream)}
+#paymentBlock .pay-method-badge{font-size:.56rem;letter-spacing:.12em;font-weight:700}
+#paymentBlock .pay-method-sub{font-size:.74rem;letter-spacing:0;color:var(--cream-dim)}
+#paymentBlock .btn-pay,#paymentBlock .btn-partial,#paymentBlock .btn-cod{min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.15rem;padding:.8rem 1rem!important;font-size:.92rem!important;font-weight:650!important;letter-spacing:.01em!important;text-transform:none!important;line-height:1.25!important}
+#paymentBlock .btn-pay{font-size:1rem!important;font-weight:700!important;margin-bottom:.4rem}
+#paymentBlock .btn-partial{margin:1.1rem 0 .5rem;color:var(--cream)!important;background:rgba(201,168,76,.09)!important;background:color-mix(in srgb,var(--gold) 9%,transparent)!important;border:1.5px solid rgba(201,168,76,.55)!important;border-color:color-mix(in srgb,var(--gold) 55%,transparent)!important}
+#paymentBlock .btn-cod{color:var(--cream)!important;background:transparent!important;border:1.5px solid rgba(160,144,128,.45)!important;border-color:color-mix(in srgb,var(--cream) 22%,transparent)!important}
+#paymentBlock .btn-partial:hover:not(:disabled),#paymentBlock .btn-cod:hover:not(:disabled){border-color:var(--gold)!important}
+#paymentBlock .btn-partial .pb-sub{font-size:.72rem;font-weight:500;color:var(--cream-dim)}
+#paymentBlock .btn-pay.is-loading,#paymentBlock .btn-partial.is-loading,#paymentBlock .btn-cod.is-loading{color:transparent!important}
+#paymentBlock .btn-partial.is-loading .pb-sub{visibility:hidden}
+#paymentBlock .partial-note,#paymentBlock .cod-note{font-size:.74rem!important;line-height:1.55!important;letter-spacing:0!important;color:var(--cream-dim)!important;text-align:center;margin:0 0 1rem!important;padding:0 .3rem}
+#paymentBlock .partial-note:empty{display:none}
+#paymentBlock .pay-trust{display:flex;align-items:center;justify-content:center;gap:.4rem;margin:0;font-size:.72rem;color:var(--cream-dim);letter-spacing:0}
+#paymentBlock .pay-trust strong{color:var(--cream);font-weight:600}
 .btn-pay.is-loading,.btn-cod.is-loading,.btn-partial.is-loading{position:relative;color:transparent!important;pointer-events:none}
 .btn-pay.is-loading::after,.btn-cod.is-loading::after,.btn-partial.is-loading::after{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spinBtn .75s linear infinite;color:#fff}
 .btn-cod.is-loading::after{color:var(--gold)}
@@ -543,9 +566,9 @@ gtag('config', 'G-ZPZDFWMDP6');
         <button class="btn-pay" id="btnPayNow" onclick="submitOrder('online')">
           ⚡ Pay Now
         </button>
-        <div style="display:flex;align-items:center;gap:0.45rem;margin-top:0.35rem;font-size:0.7rem;color:#a09080;letter-spacing:0.04em;">
-          <span style="font-size:0.85rem;">☁️</span>
-          <span>Refunds Powered By <strong style="color:#f0e8d8;">Amazon Web Services (AWS)</strong></span>
+        <div class="pay-trust">
+          <span aria-hidden="true">☁️</span>
+          <span>Refunds powered by <strong>Amazon Web Services (AWS)</strong></span>
         </div>
         <button class="btn-partial" id="btnPartial" onclick="submitOrder('partial')">
           Pay 10% Now · 90% on Delivery
@@ -571,7 +594,7 @@ gtag('config', 'G-ZPZDFWMDP6');
         <div class="trust-row">
           <span>🔒 Secure checkout</span>
           <span>🚀 Pan-India delivery</span>
-          <span>🔄 7-day free replacement</span>
+          <span>🔄 7-day returns and free replacement</span>
         </div>
 
         <!-- Directly under the trust row, because "what if I need to send this
@@ -579,7 +602,7 @@ gtag('config', 'G-ZPZDFWMDP6');
              paying. A sheet, not a link: navigating away here loses the order. -->
         <div style="text-align:center;margin-top:0.7rem;">
           <button type="button" class="pol-trigger" data-policy-sheet="refunds"
-                  aria-haspopup="dialog">🛡 Replacements &amp; refunds</button>
+                  aria-haspopup="dialog">🛡 Returns &amp; refunds</button>
         </div>
 
       </div>
@@ -629,7 +652,7 @@ gtag('config', 'G-ZPZDFWMDP6');
   <div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.1rem;justify-content:center;margin-top:0.35rem;">
     <a href="/ebooks/" style="color:var(--cream-dim,#a09080);text-decoration:none;">eBooks</a>
     <a href="/shipping-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Shipping</a>
-    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Replacements</a>
+    <a href="/return-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Returns &amp; Replacements</a>
     <a href="/refund-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Refunds</a>
     <a href="/terms/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Terms</a>
     <a href="/privacy-policy/" style="color:var(--cream-dim,#a09080);text-decoration:none;">Privacy</a>
@@ -711,7 +734,9 @@ function checkoutSessionId() {
   return id;
 }
 
-// Shipping rules — must match cart.js + server functions
+// Shipping rules — must match cart.js + server functions (utils/free-delivery):
+// prepaid ships free ABOVE ₹399 (₹400 qualifies), COD and partial COD from ₹499.
+const PREPAID_FREE_ABOVE = 399;
 const FREE_SHIPPING_THRESHOLD = 499;
 const SHIPPING_FEE = 40;
 const COD_HANDLING_FEE = 20;  // extra ₹20 charged on COD orders to cover RTO risk + courier surcharge
@@ -741,10 +766,25 @@ function loadScratchState() {
   try { return JSON.parse(localStorage.getItem(SCRATCH_KEY) || 'null'); } catch { return null; }
 }
 let appliedScratchCard = loadScratchState(); // {code, value_paise, min_subtotal_paise, expires_at} or null
-// Free from ₹499, or when the cart holds a book the admin set to ship free
-// (loadFreeDelivery flags it; utils/free-delivery orderShipping decides the same).
-function calcShipping(subtotal, cart = getCart()) {
-  return subtotal >= FREE_SHIPPING_THRESHOLD || cart.some(i => i && i._free_delivery === true) ? 0 : SHIPPING_FEE;
+// Free above ₹399 on Pay Now ('online'), from ₹499 on COD / partial COD, or when
+// the cart holds a book the admin set to ship free (loadFreeDelivery flags it;
+// utils/free-delivery orderShipping decides the same).
+function freeByAmount(subtotal, method) {
+  return method === 'online' ? subtotal > PREPAID_FREE_ABOVE : subtotal >= FREE_SHIPPING_THRESHOLD;
+}
+function calcShipping(subtotal, cart = getCart(), method = 'cod') {
+  return freeByAmount(subtotal, method) || cart.some(i => i && i._free_delivery === true) ? 0 : SHIPPING_FEE;
+}
+// The free-delivery line under the summary: what each way of paying costs.
+function shippingNoteHtml(cart, subtotal) {
+  const bookFree = cart.some(i => i && i._free_delivery === true);
+  const style = 'font-size:0.62rem;letter-spacing:0.03em;line-height:1.5;padding:0 0 0.6rem;';
+  if (bookFree && !freeByAmount(subtotal, 'cod')) return `<div style="${style}color:#5d9b55;">🚚 Free delivery — a book in your order ships free</div>`;
+  if (freeByAmount(subtotal, 'cod')) return `<div style="${style}color:#5d9b55;">🚚 Free delivery on this order — prepaid or Cash on Delivery</div>`;
+  if (freeByAmount(subtotal, 'online')) {
+    return `<div style="${style}color:#5d9b55;">🚚 <strong>Free delivery with Pay Now</strong> (prepaid above ₹${PREPAID_FREE_ABOVE}). Cash on Delivery adds ₹${SHIPPING_FEE} below ₹${FREE_SHIPPING_THRESHOLD} — add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more for free COD delivery.</div>`;
+  }
+  return `<div style="${style}color:var(--gold);">💡 Add ₹${(PREPAID_FREE_ABOVE + 1 - subtotal).toLocaleString('en-IN')} more for <strong>free delivery on prepaid</strong> (above ₹${PREPAID_FREE_ABOVE}), or ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more on Cash on Delivery (₹${FREE_SHIPPING_THRESHOLD}+).</div>`;
 }
 function itemQty(item) { return Math.max(1, Number(item?.qty) || 1); }
 function itemPrice(item) { return Number(item?.price) || 0; }
@@ -771,22 +811,27 @@ function freedomIsLive() {
   return Date.now() <= new Date(COUPONS.FREEDOM.expiresAt).getTime();
 }
 
-// Dussehra & Diwali Sale: 10% off every order above ₹399, every payment mode,
-// automatic. MUST match FESTIVE10 in netlify/functions/utils/site-sale.js, the
-// till -- a total that differs from the server's is refused with a 409.
-const FESTIVE_SALE = { code: 'FESTIVE10', percent: 10, threshold: 399, startsAt: '2026-10-19T18:30:00Z', endsAt: '2026-11-10T18:29:59Z' };
+// Dussehra & Diwali Sale: 7% off every order above ₹499, every payment mode,
+// only when the customer picked the code ("Apply coupon" on a product page,
+// or typed here). MUST match FESTIVE7 in netlify/functions/utils/site-sale.js,
+// the till -- a total that differs from the server's is refused with a 409.
+const FESTIVE_SALE = { code: 'FESTIVE7', percent: 7, threshold: 499, startsAt: '2026-10-19T18:30:00Z', endsAt: '2026-11-10T18:29:59Z' };
 function festiveIsLive() {
   const t = Date.now();
   return t >= new Date(FESTIVE_SALE.startsAt).getTime() && t <= new Date(FESTIVE_SALE.endsAt).getTime();
 }
 function festiveSaleDiscount(subtotal) {
-  if (!festiveIsLive() || !(subtotal > FESTIVE_SALE.threshold)) return { code: '', discount: 0, message: '' };
-  return { code: FESTIVE_SALE.code, discount: Math.floor(subtotal * FESTIVE_SALE.percent / 100), message: '🪔 Dussehra & Diwali Sale — 10% off applied automatically.' };
+  const code = FESTIVE_SALE.code;
+  if (!festiveIsLive()) return { code, discount: 0, message: `${code} has ended.` };
+  if (!(subtotal > FESTIVE_SALE.threshold)) {
+    return { code, discount: 0, message: `Add ₹${(FESTIVE_SALE.threshold + 1 - subtotal).toLocaleString('en-IN')} more to use ${code} (orders above ₹${FESTIVE_SALE.threshold}).` };
+  }
+  return { code, discount: Math.floor(subtotal * FESTIVE_SALE.percent / 100), message: `🪔 ${code} applied — ${FESTIVE_SALE.percent}% off for the Dussehra & Diwali Sale.` };
 }
 
 /** The hint under the coupon box, which must not promise an ended sale. */
 function defaultCouponHint() {
-  if (festiveIsLive()) return '🪔 Dussehra & Diwali Sale: 10% off applies automatically when your subtotal is above ₹399. A prepaid code that saves more is used instead.';
+  if (festiveIsLive()) return `🪔 Dussehra & Diwali Sale: ${FESTIVE_SALE.percent}% off orders above ₹${FESTIVE_SALE.threshold} with ${FESTIVE_SALE.code} — tap "Apply coupon" on any book page, or enter it here.`;
   return freedomIsLive()
     ? '🇮🇳 Add books until the subtotal is above ₹399 and FREEDOM will apply 15% off automatically.'
     : 'Prepaid orders unlock the offers above. Pick one, or enter a private code.';
@@ -819,14 +864,9 @@ function couponDiscount(cart, method = 'online') {
     return { code: 'FREEDOM', discount, message: '🇮🇳 FREEDOM automatically applied — 15% off your books.' };
   }
 
-  // Dussehra & Diwali Sale: automatic and never stacked. A chosen code wins
-  // only on a prepaid order where it saves more (the server does the same).
-  const festive = festiveSaleDiscount(subtotal);
-  if (festive.discount > 0) {
-    if (method === 'cod') return festive;
-    const chosen = chosenCouponDiscount(cart, method, subtotal, code);
-    return chosen.discount > festive.discount ? chosen : festive;
-  }
+  // Dussehra & Diwali Sale: only when its code is the one picked, on every
+  // payment mode. One code at a time, so it never stacks.
+  if (code === FESTIVE_SALE.code) return festiveSaleDiscount(subtotal);
   return chosenCouponDiscount(cart, method, subtotal, code);
 }
 
@@ -872,7 +912,7 @@ function chosenCouponDiscount(cart, method, subtotal, code) {
 }
 function orderTotals(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
-  const shipping = calcShipping(subtotal, cart);
+  const shipping = calcShipping(subtotal, cart, method);
   const coupon = couponDiscount(cart, method);
   // COD fee waived on subtotal >= ₹999 (pushes customers to add more to cart)
   const codFee  = (method === 'cod' && subtotal < COD_FEE_WAIVER_THRESHOLD) ? COD_HANDLING_FEE : 0;
@@ -943,6 +983,38 @@ async function loadFreeDelivery() {
     if (changed) { saveCart(cart); renderSummary(); }
   } catch (_) {
     // The order functions decide the charge anyway.
+  }
+}
+// Pre-orders (preorder-slugs): the line carries its release day as _release,
+// shown on the line and in the summary. utils/pricing stamps the same date on
+// the saved order; it never changes the price.
+function preorderTodayIST() { return new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10); }
+function itemRelease(i) {
+  const iso = i && /^\d{4}-\d{2}-\d{2}$/.test(String(i._release || '')) ? i._release : '';
+  return iso && iso > preorderTodayIST() ? iso : '';
+}
+function fmtRelease(iso, long) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-IN', long
+    ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }
+    : { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)));
+}
+async function loadPreorders() {
+  try {
+    const res = await fetch('/.netlify/functions/preorder-slugs');
+    if (!res.ok) return;
+    const releases = (await res.json()).releases || {};
+    const cart = getCart();
+    let changed = false;
+    for (const item of cart) {
+      if (!item) continue;
+      const iso = releases[String(couponItemSlug(item) || '').toLowerCase()] || '';
+      if (iso && item._release !== iso) { item._release = iso; changed = true; }
+      if (!iso && item._release) { delete item._release; changed = true; }
+    }
+    if (changed) { saveCart(cart); renderSummary(); }
+  } catch (_) {
+    // Display only: the order records the release day server-side anyway.
   }
 }
 // How far this cart is from qualifying for COD, in rupees. 0 means it qualifies.
@@ -1044,7 +1116,7 @@ async function applyCoupon() {
   }
   // Product-specific codes are fetched on demand as well as shown in the
   // dropdown. Payment functions independently verify the product and price.
-  if (!COUPONS[code]) {
+  if (!COUPONS[code] && code !== FESTIVE_SALE.code) {
     if (msg) { msg.textContent = 'Checking coupon…'; msg.style.color = 'var(--cream-dim)'; }
     await loadManagedPromotionCode(code);
     if (!COUPONS[code]) await loadProductCoupons(getCart(), code);
@@ -1183,6 +1255,17 @@ function reportInitiateCheckout(cart, total) {
   });
 }
 
+// The latest release in the cart decides when the order can leave.
+function preorderNotice(cart) {
+  const dates = cart.map(itemRelease).filter(Boolean).sort();
+  if (!dates.length) return '';
+  const last = dates[dates.length - 1];
+  const all = dates.length === cart.length;
+  return `<div class="preorder-note" data-preorder-note style="font-size:0.7rem;line-height:1.55;color:var(--cream);border:1px solid rgba(232,160,48,0.45);background:rgba(232,160,48,0.08);border-radius:10px;padding:0.65rem 0.8rem;margin:0 0 0.7rem;">`
+    + `<strong style="color:#e8a030;">📅 ${all ? 'Pre-order' : 'Your order includes a pre-order'}</strong><br>`
+    + (all ? 'It releases on ' : 'Everything ships together once it releases on ')
+    + `<strong>${fmtRelease(last, true)}</strong>. We dispatch it then and send tracking as soon as it ships.</div>`;
+}
 function renderSummary() {
   // Cheap and idempotent, and renderSummary is the one function that always
   // runs before the coupon box is shown.
@@ -1238,6 +1321,7 @@ function renderSummary() {
       <div class="item-info">
         <div class="item-title">${esc(i.title)}</div>
         ${i.author ? `<div class="item-author">${esc(i.author)}</div>` : ''}
+        ${itemRelease(i) ? `<div class="item-preorder" style="font-size:0.66rem;color:#e8a030;font-weight:700;margin:0.15rem 0;">📅 Pre-order · releases ${fmtRelease(itemRelease(i))}</div>` : ''}
         <div class="item-qty-price">
           <span>₹${itemPrice(i).toLocaleString('en-IN')} each</span>
           &nbsp;·&nbsp;
@@ -1260,11 +1344,11 @@ function renderSummary() {
       <span class="summary-line-value">- ₹${discount.toLocaleString('en-IN')}</span>
     </div>` : ''}
     <div class="summary-line" style="padding-bottom:0.7rem;">
-      <span class="summary-line-label">Shipping (Delhivery)</span>
+      <span class="summary-line-label">Shipping${shipping === 0 && !freeByAmount(subtotal, 'cod') && !cart.some(i => i && i._free_delivery === true) ? ' (Pay Now)' : ''}</span>
       <span class="summary-line-value" style="color:${shipping === 0 ? '#5d9b55' : 'var(--cream)'};">${shipping === 0 ? 'FREE' : '₹' + shipping}</span>
     </div>
-    ${shipping > 0 ? `<div style="font-size:0.6rem;color:var(--gold);letter-spacing:0.05em;padding:0 0 0.6rem;">💡 Add ₹${(FREE_SHIPPING_THRESHOLD - subtotal).toLocaleString('en-IN')} more to qualify for free shipping</div>` : ''}
-    ${shipping === 0 && subtotal < FREE_SHIPPING_THRESHOLD ? `<div style="font-size:0.6rem;color:#5d9b55;letter-spacing:0.05em;padding:0 0 0.6rem;">🚚 Free delivery — a book in your order ships free</div>` : ''}`;
+    ${shippingNoteHtml(cart, subtotal)}
+    ${preorderNotice(cart)}`;
 
   totalEl.textContent = '₹' + grand.toLocaleString('en-IN');
   totalRow.style.display = 'flex';
@@ -1280,12 +1364,14 @@ function renderSummary() {
   if (btnPartial) {
     const partial = partialPaymentTotals(cart);
     btnPartial.disabled = !partial.eligible;
-    btnPartial.textContent = partial.eligible
-      ? `Pay 10% Now — ₹${partial.deposit.toLocaleString('en-IN')} · Collect ₹${partial.balance.toLocaleString('en-IN')}`
-      : 'Pay 10% Now · 90% on Delivery';
+    // Two lines: what is paid now, then the rest and the waived fee (the note
+    // under it used to repeat the same sums, so it is empty while eligible).
+    btnPartial.innerHTML = partial.eligible
+      ? `<span>Pay 10% now · ₹${partial.deposit.toLocaleString('en-IN')}</span><span class="pb-sub">₹${partial.balance.toLocaleString('en-IN')} on delivery · ₹${COD_HANDLING_FEE} COD fee waived</span>`
+      : 'Pay 10% now · rest on delivery';
     if (partialNote) {
       partialNote.innerHTML = partial.eligible
-        ? `Pay ₹${partial.deposit.toLocaleString('en-IN')} now, ₹${partial.balance.toLocaleString('en-IN')} on delivery. <strong style="color:#5d9b55;">₹${COD_HANDLING_FEE} COD fee waived</strong> when you pay partially.`
+        ? ''
         : `Available on orders of ₹299 and above. COD fee waived. Add ₹${(PARTIAL_PAYMENT_THRESHOLD - partial.total).toLocaleString('en-IN')} more to enable.`;
     }
   }
@@ -1780,7 +1866,7 @@ async function doPartialPayment(addr) {
   // (same UX as doCOD).
   if (appliedCouponCode) {
     const codCheck = couponDiscount(cart, 'cod');
-    if (codCheck.discount <= 0 && codCheck.message) {
+    if (codCheck.discount <= 0 && codCheck.message && appliedCouponCode !== FESTIVE_SALE.code) {
       const removed = appliedCouponCode;
       appliedCouponCode = '';
       try { localStorage.removeItem(COUPON_KEY); } catch (e) {}
@@ -1823,7 +1909,7 @@ async function doPhonePe(addr, paymentMode = 'online') {
         cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
         payment_mode: isPartial ? 'partial_cod' : 'online',
-        coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
+        coupon: isPartial ? partial.couponCode : (totals.discount > 0 ? totals.couponCode : ''),
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
         ad_click: (window.iacAdClick ? window.iacAdClick() : null),
       }),
@@ -1879,7 +1965,7 @@ async function doRazorpay(addr, paymentMode = 'online') {
       body: JSON.stringify({
         cart: isPartial ? cartWithPaymentMeta(cart, paymentMeta) : cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
-        coupon: isPartial ? '' : (totals.discount > 0 ? totals.couponCode : ''),
+        coupon: isPartial ? partial.couponCode : (totals.discount > 0 ? totals.couponCode : ''),
         payment_mode: isPartial ? 'partial_cod' : 'full',
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
         notes: { customer_email: addr.email, customer_phone: addr.phone, customer_name: addr.name, shipping_address: addr.address || '', books: cart.map(i=>i.title||'').filter(Boolean).join(', ').slice(0,200) },
@@ -1960,7 +2046,7 @@ async function doCOD(addr) {
   // checkout with an alert until the user removed the code by hand.
   if (appliedCouponCode) {
     const codCheck = couponDiscount(cart, 'cod');
-    if (codCheck.discount <= 0 && codCheck.message) {
+    if (codCheck.discount <= 0 && codCheck.message && appliedCouponCode !== FESTIVE_SALE.code) {
       const removed = appliedCouponCode;
       appliedCouponCode = '';
       try { localStorage.removeItem(COUPON_KEY); } catch (e) {}
@@ -1984,6 +2070,7 @@ async function doCOD(addr) {
         cart,
         customer: { name: addr.name, phone: addr.phone, email: addr.email, address: addr.address, whatsapp_optin: addr.whatsapp_optin },
         amount: totals.total, shipping: totals.shipping,
+        coupon: totals.discount > 0 ? totals.couponCode : '',
         discount_grants: (window.iacDiscountGrants ? window.iacDiscountGrants() : []),
         ad_click: (window.iacAdClick ? window.iacAdClick() : null),
       }),
@@ -2664,6 +2751,7 @@ loadManagedPromotions().then(() => loadProductCoupons(getCart())).then(renderSum
 renderSummary();
 loadCodRules();
 _freeDeliveryReady = loadFreeDelivery();
+loadPreorders();
 
 // When returning to checkout — including bfcache back/forward from a payment
 // page (PhonePe redirect, Razorpay) — clear any stuck loading state and repaint
@@ -2846,12 +2934,12 @@ async function chkSendOtp() {
     // Show OTP boxes
     const box = document.getElementById('chkAuthModal')?.querySelector('div');
     if (box) box.innerHTML += `
-      <p style="font-size:.7rem;color:#a09080;margin-top:.8rem;">Enter the 8-digit code sent to <strong style="color:#c9a84c">${email}</strong></p>
+      <p style="font-size:.7rem;color:#a09080;margin-top:.8rem;">Enter the 6-digit code sent to <strong style="color:#c9a84c">${email}</strong></p>
       <div style="display:flex;gap:.4rem;margin:.6rem 0;">
-        ${[0,1,2,3,4,5,6,7].map(i=>`<input id="cOtp${i}" type="text" inputmode="numeric" maxlength="1"
+        ${[0,1,2,3,4,5].map(i=>`<input id="cOtp${i}" type="text" inputmode="numeric" maxlength="1"
           style="flex:1;height:44px;text-align:center;font-size:1.2rem;font-weight:600;background:#141210;
                  border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;font-family:'Inter',sans-serif;outline:none;"
-          oninput="(function(el,i){el.value=el.value.replace(/\\D/g,'').slice(-1);if(el.value&&i<7)document.getElementById('cOtp'+(i+1))?.focus();const c=[0,1,2,3,4,5,6,7].map(j=>document.getElementById('cOtp'+j)?.value||'').join('');if(c.length===8)chkVerifyOtp();})(this,${i})"
+          oninput="(function(el,i){el.value=el.value.replace(/\\D/g,'').slice(-1);if(el.value&&i<5)document.getElementById('cOtp'+(i+1))?.focus();const c=[0,1,2,3,4,5].map(j=>document.getElementById('cOtp'+j)?.value||'').join('');if(c.length===6)chkVerifyOtp();})(this,${i})"
           onkeydown="if(event.key==='Backspace'&&!this.value&&${i}>0)document.getElementById('cOtp'+(${i}-1))?.focus()"/>`).join('')}
       </div>
       <p id="chkVerifyMsg" style="font-size:.7rem;color:#e06060;min-height:1em;"></p>`;
@@ -2863,9 +2951,9 @@ async function chkSendOtp() {
 }
 
 async function chkVerifyOtp() {
-  const code = [0,1,2,3,4,5,6,7].map(i=>document.getElementById('cOtp'+i)?.value||'').join('');
+  const code = [0,1,2,3,4,5].map(i=>document.getElementById('cOtp'+i)?.value||'').join('');
   const msg  = document.getElementById('chkVerifyMsg');
-  if (code.length < 8) { if(msg){msg.textContent='Enter all 8 digits.';} return; }
+  if (code.length < 6) { if(msg){msg.textContent='Enter all 6 digits.';} return; }
   const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
   try {
     const { data, error } = await sb.auth.verifyOtp({ email: _chkOtpEmail, token: code, type: 'email' });

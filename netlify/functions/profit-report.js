@@ -4,6 +4,7 @@
  * Admin endpoint — net profit across a date range. Requires X-Admin-Key.
  *
  * ?days   = 7 | 30 | 90 | 180 | 365 | all   (default 30)
+ * ?from=YYYY-MM-DD[&to=YYYY-MM-DD]  IST calendar days instead of ?days (e.g. a month)
  * ?ad, ?ship, ?book  override the per-order averages (rupees)
  *
  * The arithmetic lives in utils/profit-model.js; this function's only job is
@@ -14,7 +15,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
-const { computeProfit, DEFAULT_RATES } = require('./utils/profit-model');
+const { computeProfit, DEFAULT_RATES, withAdGst } = require('./utils/profit-model');
 const AdSpend = require('./utils/ad-spend');
 
 const CORS = {
@@ -49,7 +50,12 @@ exports.handler = async (event) => {
     bookCost:         num(q.book, DEFAULT_RATES.bookCost),
   };
 
-  const since = days ? new Date(Date.now() - days * 86400_000).toISOString() : null;
+  const dayRe = /^\d{4}-\d{2}-\d{2}$/;
+  const fromDay = dayRe.test(String(q.from || '')) ? String(q.from) : null;
+  const toDay = fromDay && dayRe.test(String(q.to || '')) ? String(q.to) : null;
+  const since = fromDay ? AdSpend.istDayStart(fromDay).toISOString()
+    : days ? new Date(Date.now() - days * 86400_000).toISOString() : null;
+  const until = toDay ? new Date(AdSpend.istDayStart(toDay).getTime() + 86400_000).toISOString() : null;
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -65,6 +71,7 @@ exports.handler = async (event) => {
         .order('created_at', { ascending: false })
         .range(from, from + PAGE - 1);
       if (since) query = query.gte('created_at', since);
+      if (until) query = query.lt('created_at', until);
 
       const { data, error } = await query;
       if (error) throw new Error(error.message);
@@ -79,14 +86,16 @@ exports.handler = async (event) => {
     const firstDays = await AdSpend.coverage(supabase);
     const platforms = Object.keys(firstDays);
     const sinceDay = since ? AdSpend.istDay(since) : null;
-    const spend = platforms.length ? await AdSpend.fetchSpend(supabase, sinceDay, AdSpend.istDay()) : null;
+    const spend = platforms.length ? await AdSpend.fetchSpend(supabase, sinceDay, toDay || AdSpend.istDay()) : null;
     const covers = !!sinceDay && platforms.length > 0 && platforms.every((p) => firstDays[p] <= sinceDay);
     let adsActual = null;
     if (spend && spend.available) {
+      // Platform figures plus the GST billed on them, as the costs are (profit-model withAdGst).
       adsActual = {
-        google: Math.round(spend.total.google), meta: Math.round(spend.total.meta), total: Math.round(spend.total.total),
+        google: Math.round(withAdGst(spend.total.google, rates)), meta: Math.round(withAdGst(spend.total.meta, rates)),
+        total: Math.round(withAdGst(spend.total.total, rates)), gst: Math.round(withAdGst(spend.total.total, rates) - spend.total.total),
         platforms, first_day: firstDays, covers_range: covers,
-        per_order: orders.length ? Math.round((spend.total.total / orders.length) * 100) / 100 : null,
+        per_order: orders.length ? Math.round((withAdGst(spend.total.total, rates) / orders.length) * 100) / 100 : null,
       };
       if (q.actual === '1' && covers && orders.length) rates.adCostPerOrder = spend.total.total / orders.length;
     }
@@ -98,7 +107,7 @@ exports.handler = async (event) => {
       headers: CORS,
       body: JSON.stringify({
         ok: true,
-        range: { days: days || 'all', since, until: new Date().toISOString() },
+        range: { days: fromDay ? null : (days || 'all'), from: fromDay, to: toDay, since, until: until || new Date().toISOString() },
         orders_counted: orders.length,
         truncated,
         ...report,

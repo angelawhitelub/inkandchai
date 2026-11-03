@@ -41,6 +41,9 @@ run_worker_first = [
   "/new-arrivals/",
   "/new-arrivals-2026",
   "/new-arrivals-2026/",
+  # The live Best Sellers Top 100 (utils/bestseller-rank, worker/index.js).
+  "/bestsellers",
+  "/bestsellers/",
   "/custom-feed-bulk/*",
   "/.netlify/functions/*",
   # The WooCommerce-shaped order feed XpressBees polls. Both patterns are
@@ -76,7 +79,7 @@ crons = [
   "15 * * * *",    # auto-cancel-stale-cod (phonepe-reconcile-refunds shares this
                    # trigger and is held off by ENABLED_JOBS in worker/scheduled-jobs.mjs)
   "0 * * * *",     # auto-recover-carts, deploy-drift-check, lifetime-sales-scheduled, support-ticket-sla-scheduled,
-                   # return-tracking-scheduled, courier-status-sync-scheduled
+                   # return-tracking-scheduled, courier-status-sync-scheduled, rto-reship-offer-scheduled
   "30 15 * * *",   # daily-unshipped-report
   "*/2 * * * *",   # bot-order-followup-background
   "*/15 * * * *",  # auto-push-replacements-scheduled
@@ -180,3 +183,13 @@ class_name = "ClaimGuard"
 [[migrations]]
 tag = "v3-customer-claims"
 new_sqlite_classes = ["ClaimGuard"]
+
+# The admin "Book on XpressBees (API)" run, held on the server so closing the
+# tab does not stop it (worker/xb-booking-job.js). One instance, one job.
+[[durable_objects.bindings]]
+name = "XB_BOOKING_JOB"
+class_name = "XbBookingJob"
+
+[[migrations]]
+tag = "v4-xb-booking-job"
+new_sqlite_classes = ["XbBookingJob"]

@@ -14,7 +14,17 @@
  *   • otherwise → cod (COD orders are inserted with razorpay_payment_id = null)
  */
 
-const WALLET_BONUS_RUPEES = 50;                 // extra store credit for choosing wallet
+const WALLET_BONUS_RUPEES = 50;                 // extra store credit on top of the refund, until WALLET_BONUS_END
+// The owner ended the bonus on 30 Oct 2026: store credit is now what the
+// customer paid, nothing added. A return requested before this was promised
+// the bonus in its confirmation email, so it still gets it when minted.
+const WALLET_BONUS_END = Date.parse('2026-10-30T01:00:00Z');
+
+/** Bonus rupees on a store-credit return requested at `requestedAt` (ISO or ms; 0 from WALLET_BONUS_END). */
+function walletBonusRupees(requestedAt) {
+  const t = typeof requestedAt === 'number' ? requestedAt : Date.parse(requestedAt || '');
+  return Number.isFinite(t) && t < WALLET_BONUS_END ? WALLET_BONUS_RUPEES : 0;
+}
 const WALLET_EXPIRY_DAYS  = 180;                // 6 months to spend it
 
 function paymentMeta(order) {
@@ -24,6 +34,16 @@ function paymentMeta(order) {
 function resolvePaymentType(order) {
   if (paymentMeta(order).mode === 'partial_cod') return 'partial_cod';
   return order?.razorpay_payment_id ? 'prepaid' : 'cod';
+}
+
+/**
+ * How a return is refunded, by how the order was paid (owner's rule, 30 Oct
+ * 2026): prepaid goes back to the original payment method; COD and partial
+ * COD get store credit only. The customer no longer chooses, so no COD return
+ * ever needs a UPI ID or a hand payout.
+ */
+function returnRefundMethod(paymentType) {
+  return String(paymentType || '').toLowerCase() === 'prepaid' ? 'original' : 'wallet';
 }
 
 /** Rupees the customer actually paid, and therefore should get back. */
@@ -38,6 +58,49 @@ function refundBasePaise(order) {
   }
   // prepaid → they paid amount_paise online; cod → they paid amount_paise cash.
   return amountPaise;
+}
+
+/**
+ * The books a customer picked to return, checked against the order, and what
+ * they get back for them. Returning everything refunds everything they paid,
+ * delivery included (refundBasePaise). Returning some refunds that share of
+ * it, by list price, so a sale or coupon discount is shared out the same way.
+ * A book already reported missing is not on the parcel and cannot be returned.
+ *
+ * @param picked [{ title, qty }]; empty or absent means the whole order.
+ * @returns {{ ok:true, items, refundPaise, whole } | { ok:false, error }}
+ */
+function pickReturnItems(order, picked) {
+  const norm = (t) => String(t || '').trim().toLowerCase();
+  const lines = (Array.isArray(order?.cart_items) ? order.cart_items : [])
+    .filter((i) => i && (i.title || i.name))
+    .map((i) => ({ title: String(i.title || i.name).trim(), qty: Math.max(1, Number(i.qty || i.quantity) || 1),
+                   price: Math.max(0, Number(i.price) || 0), sku: i.sku || '', missing: !!i._missing }));
+  const returnable = lines.filter((l) => !l.missing);
+  if (!returnable.length) return { ok: false, error: 'There is nothing on this order that can be returned.' };
+
+  let chosen;
+  if (!Array.isArray(picked) || !picked.length) {
+    chosen = returnable.map((l) => ({ ...l }));
+  } else {
+    chosen = [];
+    for (const p of picked) {
+      const line = returnable.find((l) => norm(l.title) === norm(p && p.title));
+      if (!line) return { ok: false, error: `"${String(p && p.title || '').slice(0, 80)}" is not a book on this order that can be returned.` };
+      if (chosen.some((c) => c.title === line.title)) continue;
+      chosen.push({ ...line, qty: Math.min(line.qty, Math.max(1, Number(p.qty) || line.qty)) });
+    }
+  }
+  if (!chosen.length) return { ok: false, error: 'Please pick the book(s) you want to return.' };
+
+  const base = refundBasePaise(order);
+  const whole = !lines.some((l) => l.missing)
+    && returnable.every((l) => (chosen.find((c) => c.title === l.title) || {}).qty === l.qty);
+  // Priced by list price; an order with no prices on it is shared by copies.
+  const value = (ls) => ls.reduce((t, l) => t + (lines.some((x) => x.price > 0) ? l.price : 1) * l.qty, 0);
+  const refundPaise = whole ? base : Math.round(base * value(chosen) / Math.max(1, value(lines)));
+  return { ok: true, whole, refundPaise,
+    items: chosen.map(({ title, qty, price, sku }) => ({ title, qty, price, ...(sku ? { sku } : {}) })) };
 }
 
 function randomCode() {
@@ -157,9 +220,13 @@ function payoutLabelMasked(dest = {}) {
 
 module.exports = {
   WALLET_BONUS_RUPEES,
+  WALLET_BONUS_END,
+  walletBonusRupees,
   WALLET_EXPIRY_DAYS,
   resolvePaymentType,
+  returnRefundMethod,
   refundBasePaise,
+  pickReturnItems,
   mintWalletCredit,
   MANUAL_PAYOUT_TYPES,
   needsManualPayout,

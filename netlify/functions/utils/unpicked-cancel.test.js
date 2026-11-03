@@ -2,25 +2,33 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { quoteUnpickedCancel } = require('./unpicked-cancel');
+const { quoteUnpickedCancel, unpickedCancelFrom, UNPICKED_DAYS } = require('./unpicked-cancel');
 
 const NOW = Date.parse('2026-10-11T10:00:00Z');
 const daysAgo = (d) => new Date(NOW - d * 86400e3).toISOString();
 
 const prepaidBooked = (over = {}) => ({
   id: 'u1', razorpay_order_id: 'IC-20260930-AAAAA', status: 'shipped',
-  razorpay_payment_id: 'pay_X', amount_paise: 49900, created_at: daysAgo(11),
+  razorpay_payment_id: 'pay_X', amount_paise: 49900, created_at: daysAgo(8),
   tracking_id: '1234567890', courier_name: 'XpressBees',
   cart_items: [{ title: 'Ikigai', qty: 1, price: 499 }], ...over,
 });
 
-test('prepaid, booked, not picked up after 10 days: full refund', () => {
+test('prepaid, booked, not picked up after 7 days: full refund', () => {
   const q = quoteUnpickedCancel(prepaidBooked(), NOW);
   assert.deepEqual(q, { eligible: true, refundPaise: 49900, partialCod: false, hasAwb: true });
 });
 
-test('before 10 days it is not offered', () => {
-  assert.equal(quoteUnpickedCancel(prepaidBooked({ created_at: daysAgo(9.9) }), NOW).reason, 'too_soon');
+test('the rule is 7 days: not offered before, offered from then', () => {
+  assert.equal(UNPICKED_DAYS, 7);
+  assert.equal(quoteUnpickedCancel(prepaidBooked({ created_at: daysAgo(6.9) }), NOW).reason, 'too_soon');
+  assert.equal(quoteUnpickedCancel(prepaidBooked({ created_at: daysAgo(7) }), NOW).eligible, true);
+  assert.equal(unpickedCancelFrom(prepaidBooked({ created_at: daysAgo(2) })), NOW + 5 * 86400e3);
+});
+
+test('prepaid never booked (no AWB): full refund too, late cancel refuses it', () => {
+  const q = quoteUnpickedCancel(prepaidBooked({ tracking_id: null, courier_name: null, status: 'paid' }), NOW);
+  assert.deepEqual(q, { eligible: true, refundPaise: 49900, partialCod: false, hasAwb: false });
 });
 
 test('moved, delivered or in transit by what we know: not offered', () => {
@@ -37,11 +45,10 @@ test('partial COD refunds the advance, with or without an AWB', () => {
   assert.equal(quoteUnpickedCancel(prepaidBooked(shipped), NOW).eligible, true);
 });
 
-test('COD, replacements, prepaid without AWB, and orders already being cancelled are left to their own rules', () => {
+test('COD, replacements, and orders already being cancelled are left to their own rules', () => {
   assert.equal(quoteUnpickedCancel(prepaidBooked({ razorpay_payment_id: null, status: 'cod_pending' }), NOW).reason, 'nothing_paid');
   assert.equal(quoteUnpickedCancel(prepaidBooked({ razorpay_order_id: 'IC-R-20260930-AAAAA' }), NOW).reason, 'replacement');
   assert.equal(quoteUnpickedCancel(prepaidBooked({ source: 'replacement' }), NOW).reason, 'replacement');
-  assert.equal(quoteUnpickedCancel(prepaidBooked({ tracking_id: null, status: 'paid' }), NOW).reason, 'late_cancel_covers');
   assert.equal(quoteUnpickedCancel(prepaidBooked({ cancellation_requested_at: daysAgo(1) }), NOW).reason, 'already_requested');
   assert.equal(quoteUnpickedCancel(prepaidBooked({ late_cancel_at: daysAgo(1) }), NOW).reason, 'already_requested');
 });
@@ -80,7 +87,7 @@ const call = (db, handleOne, alerts = []) => handler(
   { httpMethod: 'POST', headers: { authorization: 'Bearer good' }, body: JSON.stringify({ order_id: 'u1' }) },
   {}, { db, handleOne, alertOwner: async (o, line) => { alerts.push(line); } },
 );
-// The real rule reads the clock; these orders are well past 10 days.
+// The real rule reads the clock; these orders are well past 7 days.
 const order = prepaidBooked({ customer_email: 'a@b.in', created_at: '2026-01-01T00:00:00Z' });
 
 test('courier stopped it: cancelled, refund message', async () => {

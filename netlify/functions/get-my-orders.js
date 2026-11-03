@@ -9,8 +9,31 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
+const { resolvePaymentType, returnRefundMethod, walletBonusRupees } = require('./utils/return-refund');
 const { quoteLateCancel } = require('./utils/prepaid-late-cancel');
 const { quoteUnpickedCancel } = require('./utils/unpicked-cancel');
+const { buildTrackingUrl } = require('./utils/tracking-url');
+
+/** What My Orders shows of a return: where the pickup is and what is owed. */
+function returnView(r) {
+  const awb = r.awb ? String(r.awb) : '';
+  const courier = r.courier_name || '';
+  const indiaPost = /india post/i.test(courier);
+  return {
+    status: r.status, awb, courier,
+    tracking_url: awb && !indiaPost ? buildTrackingUrl({ courier, awb }) : '',
+    india_post: indiaPost,
+    items: Array.isArray(r.items) ? r.items.map((i) => ({ title: i.title || i.name || '', qty: Number(i.qty) || 1 })) : [],
+    refund_method: r.refund_method || '',
+    refund_status: r.refund_status || '',
+    refund_paise: Number(r.refund_amount_paise) || 0,
+    wallet_code: r.refund_status === 'wallet_issued' ? (r.wallet_code || '') : '',
+    wallet_bonus_rupees: r.refund_method === 'wallet' ? walletBonusRupees(r.created_at) : 0,
+    tracking_stage: r.tracking_status || '',
+    received_at: r.return_delivered_at || null,
+    requested_at: r.created_at || null,
+  };
+}
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -123,9 +146,9 @@ exports.handler = async (event) => {
     if (orders.length) {
       const orderIds = orders.map(o => o.id);
       const { data: returns } = await supabase
-        .from('return_requests').select('order_id, status').in('order_id', orderIds);
+        .from('return_requests').select('*').in('order_id', orderIds);
       const returnMap = {};
-      (returns || []).forEach(r => { returnMap[r.order_id] = r.status; });
+      (returns || []).forEach(r => { returnMap[r.order_id] = r; });
 
       // Build a map: original_order_id -> { replacement_order_id, status }
       // from any source='replacement' rows already in this user's order list.
@@ -147,12 +170,15 @@ exports.handler = async (event) => {
         // the same flag track-order already sends. A browser-side copy of this
         // rule drifted once and hid a required field from COD customers.
         o.refund_upi_required = isDefinitelyCod(o);
+        // How a return on it would be refunded, as request-return decides it:
+        // 'original' (prepaid) or 'wallet' (COD and partial COD, store credit only).
+        o.return_refund_method = returnRefundMethod(resolvePaymentType(o));
         // Prepaid cancellation after the 30-minute window: the server's own
         // terms, so the button quotes exactly what cancel-prepaid-order pays.
         // Offered only once sql/orders_late_cancel.sql has run: select('*')
         // carries the column (as null) from then on, and before it the
         // endpoint would refuse every click.
-        // Paid, and the courier has not picked it up 10+ days after ordering:
+        // Paid, and the courier has not picked it up 7+ days after ordering:
         // full refund (utils/unpicked-cancel). Offered instead of the late
         // cancel, which would keep shipping back.
         const uc = quoteUnpickedCancel(o);
@@ -164,7 +190,10 @@ exports.handler = async (event) => {
           o.late_cancel = { refund_paise: lc.refundPaise, deduction_paise: lc.deductionPaise,
                             books: lc.books, slab_kg: lc.slabKg, has_awb: lc.hasAwb };
         }
-        if (returnMap[o.id]) o.return_request_status = returnMap[o.id];
+        if (returnMap[o.id]) {
+          o.return_request_status = returnMap[o.id].status;
+          o.return_request = returnView(returnMap[o.id]);
+        }
         const rm = o.razorpay_order_id && replMap[o.razorpay_order_id];
         if (rm) { o.replacement_order_id = rm.replacement_order_id; o.replacement_status = rm.status; }
       });

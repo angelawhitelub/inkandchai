@@ -23,9 +23,14 @@
  *      claimed through delivered_alerted_at so it is sent once. No column, no
  *      alert: without it the alert would repeat every hour.
  *
- * NOTHING HERE MOVES MONEY OR MESSAGES CUSTOMERS. Prepaid refunds on receipt
- * stay with the NimbusPost webhook (utils/return-auto-refund.js); the owner
- * alert says when a received return still has its refund pending.
+ *   4. A return tracked delivered back with its refund still waiting is settled
+ *      through utils/return-auto-refund.js: the same claimed, once-only code the
+ *      NimbusPost webhook runs, which pays prepaid refunds and issues store
+ *      credit. Reverse pickups booked straight with XpressBees send us no
+ *      webhook, so without this they were never refunded. COD payouts stay
+ *      manual; the owner alert says what is due.
+ *
+ * Nothing else here messages customers.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -69,10 +74,11 @@ function receivedAlert(ret, view) {
   const oid = ret.order_display_id || ret.order_id;
   const when = view.delivered_at ? new Date(view.delivered_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) : 'just now';
   const refund = {
-    awaiting_return_delivery: `Refund ${rs(ret.refund_amount_paise)} is still waiting. The webhook normally pays it on this scan; if it does not show as refunded in the admin within the hour, refund it by hand.`,
+    awaiting_return_delivery: `Refund ${rs(ret.refund_amount_paise)} is still waiting: the automatic refund did not go through. Refund it by hand from the admin.`,
+    refunded: `Refund ${rs(ret.refund_amount_paise)} was paid automatically.`,
     manual_payout_pending: `Manual payout of ${rs(ret.refund_amount_paise)} is due${ret.upi_id ? ` to UPI ${ret.upi_id}` : ret.bank_account ? ' to the bank account on file' : ' (no payout destination on file)'}.`,
     manual_refund_pending: `Manual refund of ${rs(ret.refund_amount_paise)} is due from the admin.`,
-    wallet_issued: 'Wallet credit was already issued.',
+    wallet_issued: `Store credit was issued${ret.wallet_code ? ` (${ret.wallet_code})` : ''}.`,
   }[ret.refund_status] || (ret.refund_status ? `Refund status: ${ret.refund_status}.` : 'No refund recorded — check the return in the admin.');
   return `📦 Return received\nOrder: ${oid}\nCustomer: ${ret.customer_name || '-'}\nAWB: ${ret.awb}${ret.courier_name ? ` (${ret.courier_name})` : ''}\nDelivered back: ${when}\n${refund}`;
 }
@@ -123,7 +129,8 @@ async function backfillAwbs(db, rows, awbMap, summary) {
 async function refresh(db, deps = {}) {
   const track = deps.trackReturns || trackReturns;
   const ownerAlert = deps.ownerAlert || defaultOwnerAlert;
-  const summary = { tracked: 0, saved: 0, delivered: [], alerted: [], awb_backfilled: [], awb_missing: 0, columns_missing: [], errors: [] };
+  const settle = deps.settleRefund || ((awb) => require('./utils/return-auto-refund').handleReturnAwbDelivered(db, awb));
+  const summary = { tracked: 0, saved: 0, delivered: [], alerted: [], refunded: [], awb_backfilled: [], awb_missing: 0, columns_missing: [], errors: [] };
 
   const rows = await openReturns(db);
   await backfillAwbs(db, rows, deps.awbMap || defaultAwbMap, summary);
@@ -163,6 +170,19 @@ async function refresh(db, deps = {}) {
     if ((r.dropped || []).length < TRACKING_COLUMNS.length) summary.saved++;
 
     if (v.stage !== 'delivered') continue;
+    // A live "delivered" on the reverse AWB is the courier's own scan of the
+    // parcel reaching us (an RTO back to the customer is its own stage).
+    if (ret.refund_status === 'awaiting_return_delivery') {
+      try {
+        const paid = await settle(String(ret.awb).trim());
+        if (paid && paid.refunded) {
+          ret.refund_status = paid.provider === 'wallet' ? 'wallet_issued' : 'refunded';
+          if (paid.code) ret.wallet_code = paid.code;
+          summary.refunded.push(`${ret.order_display_id || ret.order_id} (${paid.provider})`);
+        } else if (paid && paid.manual) ret.refund_status = 'manual_refund_pending';
+        else if (paid && paid.error) summary.errors.push(`refund ${ret.order_display_id || ret.order_id}: ${paid.error}`);
+      } catch (e) { summary.errors.push(`refund ${ret.id}: ${e.message}`); }
+    }
     // Claim the alert first: only the run whose claim lands sends it.
     const claim = await db.from('return_requests').update({ delivered_alerted_at: now })
       .eq('id', ret.id).is('delivered_alerted_at', null).select('id');

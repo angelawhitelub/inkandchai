@@ -2,6 +2,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { handlingDays, isMissingTable } = require('./utils/product-settings');
 const { purgeCacheTags } = require('./utils/purge-cache');
+const { catalogueBook } = require('./utils/catalog-content');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -39,6 +40,46 @@ const MIME_EXTENSIONS = {
   'image/avif': 'avif',
   'image/jpeg': 'jpg',
 };
+
+const PARTIAL_KEYS = ['price_inr', 'original_price_inr', 'stock_qty', 'scarcity'];
+
+/**
+ * A partial body filled out to the full row the handler expects: the stored
+ * override and product_settings values, with the sent PARTIAL_KEYS on top.
+ * With no override row yet, title/author/category come from the listing, as
+ * the desktop form fills them, so a new row never carries a blank title.
+ */
+async function withStoredValues(supabase, slug, body) {
+  const [row, setting] = await Promise.all([
+    supabase.from('product_overrides').select('*').ilike('slug', slug).maybeSingle(),
+    supabase.from('product_settings').select('price_inr,original_price_inr,handling_days').eq('slug', slug).maybeSingle(),
+  ]);
+  if (row.error) throw row.error;
+  const o = row.data;
+  const s = setting.error ? null : setting.data;   // the table may not exist yet
+  let base = o;
+  if (!base) {
+    const custom = await supabase.from('custom_products').select('title,author,category').eq('slug', slug).maybeSingle();
+    base = (custom.data && custom.data.title) ? custom.data : catalogueBook(slug);
+    if (!base || !base.title) throw new Error(`No product with slug "${slug}"`);
+  }
+  const pick = (key) => (s && s[key] !== null && s[key] !== undefined ? s[key] : o ? o[key] : null);
+  const full = {
+    slug,
+    title: base.title,
+    author: base.author,
+    category: base.category,
+    price_inr: pick('price_inr'),
+    original_price_inr: pick('original_price_inr'),
+    handling_days: s ? s.handling_days : null,
+    scarcity: o ? o.scarcity === true : false,
+    stock_qty: o ? o.stock_qty : null,
+    is_active: o ? o.is_active !== false : true,
+    image_url: o ? o.image_url || '' : '',
+  };
+  for (const key of PARTIAL_KEYS) if (Object.prototype.hasOwnProperty.call(body, key)) full[key] = body[key];
+  return full;
+}
 
 function extensionFromMime(mime) {
   return MIME_EXTENSIONS[String(mime || '').toLowerCase()] || 'jpg';
@@ -86,6 +127,11 @@ exports.handler = async (event) => {
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    // partial: true -- the mobile admin's quick edit (public/admin/m/). Only the
+    // keys it sends change; every other column keeps its stored value. The
+    // desktop form always sends the whole row, so a full replace is right
+    // there, but a phone screen showing four fields must not blank the rest.
+    if (body.partial === true) body = await withStoredValues(supabase, slug, body);
     const imageValue = body.image_data_url !== undefined ? body.image_data_url : body.image_url;
     const imageUrl = await uploadImage(supabase, slug, imageValue);
     let galleryImages;

@@ -96,6 +96,24 @@ async function tellOwner(deps, mail) {
 
 // ── Customer: open a ticket ────────────────────────────────────────────────
 
+// One new ticket per connection per window (owner, 25 Oct 2026). Counted by
+// the salted IP hash the ticket already stores, so no raw IP is kept. Mobile
+// networks put many people behind one address, which is why the refusal points
+// to WhatsApp rather than just saying no.
+const IP_WINDOW_HOURS = () => Math.max(1, Math.min(168, parseInt(process.env.SUPPORT_TICKET_IP_HOURS, 10) || 24));
+
+async function ipAlreadyRaised(deps, ipHash) {
+  if (!ipHash) return { hit: false };
+  const since = new Date(nowOf(deps) - IP_WINDOW_HOURS() * 3600 * 1000).toISOString();
+  const { data, error } = await deps.db.from(TICKETS).select('id').eq('source_ip_hash', ipHash).gte('created_at', since).limit(1);
+  if (error) return { error };
+  return { hit: !!(data && data.length) };
+}
+
+function ipRefusal() {
+  return fail(429, `A ticket has already been raised from this connection in the last ${IP_WINDOW_HOURS()} hours. We'll reply on that one — check your email for its number. For anything else, WhatsApp us 24×7 on +91 92171 75546.`, { field: 'ip' });
+}
+
 async function createTicket(deps, body, { ipHash = null } = {}) {
   const parsed = T.parseNewTicket(body);
   if (!parsed.ok) return fail(400, parsed.error, { field: parsed.field });
@@ -114,6 +132,10 @@ async function createTicket(deps, body, { ipHash = null } = {}) {
     return fail(404, 'We could not match that order ID with that email or phone number. Please check both — they must be the ones used when the order was placed.', { field: 'order_id' });
   }
   const realOrderId = order.razorpay_order_id || orderId;
+
+  const byIp = await ipAlreadyRaised(deps, ipHash);
+  if (byIp.error && MISSING_TABLE.test(byIp.error.message || '')) return fail(503, NO_TABLE);
+  if (byIp.hit) return ipRefusal();
 
   // One unresolved ticket per order, whatever the topic, until it is closed.
   const open = await unresolvedTicketFor(deps, realOrderId);
@@ -174,6 +196,63 @@ async function createTicket(deps, body, { ipHash = null } = {}) {
   ]);
 
   return ok({ ticket_no: ticket.ticket_no, respond_by: ticket.respond_by, due_at: ticket.due_at, uploads, evidence_error: evidenceError });
+}
+
+/**
+ * The contact page: anyone may write, order or not. With an order id it is the
+ * ordinary order ticket above (the contact must match the order). Without one
+ * it is an enquiry, stored with order_id ENQ-<ticket no> (T.enquiryOrderId).
+ */
+async function createGeneralTicket(deps, body, { ipHash = null } = {}) {
+  const parsed = T.parseGeneralTicket(body);
+  if (!parsed.ok) return fail(400, parsed.error, { field: parsed.field });
+  const { name, email, phone, orderId, category, message } = parsed.value;
+  if (orderId) {
+    return createTicket(deps, { order_id: orderId, contact: email || phone, category: category.id, message, files: [] }, { ipHash });
+  }
+
+  const byIp = await ipAlreadyRaised(deps, ipHash);
+  if (byIp.error && MISSING_TABLE.test(byIp.error.message || '')) return fail(503, NO_TABLE);
+  if (byIp.hit) return ipRefusal();   // any other lookup error fails open
+
+  const now = nowOf(deps);
+  const sla = T.slaDates(now);
+  const base = {
+    customer_name: name,
+    customer_email: email || null,
+    customer_phone: phone || null,
+    category: category.id,
+    priority: category.priority,
+    subject: category.label,
+    message,
+    evidence: [],
+    status: 'open',
+    created_at: new Date(now).toISOString(),
+    updated_at: new Date(now).toISOString(),
+    respond_by: sla.respond_by,
+    due_at: sla.due_at,
+    last_customer_at: new Date(now).toISOString(),
+    source_ip_hash: ipHash,
+  };
+  let ticket = null;
+  for (let attempt = 0; attempt < 5 && !ticket; attempt += 1) {
+    const ticketNo = T.newTicketNo(deps.randomBytes ? deps.randomBytes() : undefined);
+    const { data, error } = await deps.db.from(TICKETS).insert({ ...base, ticket_no: ticketNo, order_id: T.enquiryOrderId(ticketNo) }).select('*').single();
+    if (!error) { ticket = data; break; }
+    if (MISSING_TABLE.test(error.message || '')) return fail(503, NO_TABLE);
+    if (error.code !== UNIQUE_VIOLATION) {
+      console.error('[support-ticket] enquiry insert:', error.message);
+      return fail(500, 'We could not save your message just now. Please try again, or WhatsApp us on +91 92171 75546.');
+    }
+  }
+  if (!ticket) return fail(500, 'We could not save your message just now. Please try again.');
+
+  await addEvent(deps, ticket.id, { actor: 'customer', kind: 'created', body: message });
+  await Promise.all([
+    sendBoth(deps, { to: ticket.customer_email, mail: T.customerConfirmation(ticket), wa: { phone: ticket.customer_phone, ...T.customerWhatsApp('received', ticket) } }),
+    tellOwner(deps, T.ownerNewTicket(ticket, null)),
+  ]);
+  return ok({ ticket_no: ticket.ticket_no, respond_by: ticket.respond_by, due_at: ticket.due_at, uploads: [] });
 }
 
 // ── Customer: evidence ─────────────────────────────────────────────────────
@@ -442,7 +521,7 @@ async function runSlaSweep(deps, { dryRun = false, limit = 60 } = {}) {
 }
 
 module.exports = {
-  createTicket, signMore, attachEvidence, lookupTicket, findTickets, customerReply,
+  createTicket, createGeneralTicket, signMore, attachEvidence, lookupTicket, findTickets, customerReply,
   staffReply, staffNote, staffSetStatus, staffClose, staffReopen, runSlaSweep,
   loadEvents, MISSING_TABLE,
 };
