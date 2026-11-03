@@ -8,7 +8,7 @@
  *   not picked up yet   -> NOT cancellable here, AWB or not. The 28 Sep rule
  *                          let these cancel with shipping kept, and kept
  *                          Rs 740 off IC-CW-20261010-ZO6K3 for a parcel
- *                          XpressBees never collected. The 10-day unpicked
+ *                          XpressBees never collected. The 7-day unpicked
  *                          cancel (utils/unpicked-cancel.js) still applies.
  *   picked up           -> cancelled, refund minus shipping: Rs 74 per 0.5 kg
  *                          slab, slab from the number of books

@@ -178,7 +178,7 @@ exports.handler = async (event) => {
         // Offered only once sql/orders_late_cancel.sql has run: select('*')
         // carries the column (as null) from then on, and before it the
         // endpoint would refuse every click.
-        // Paid, and the courier has not picked it up 10+ days after ordering:
+        // Paid, and the courier has not picked it up 7+ days after ordering:
         // full refund (utils/unpicked-cancel). Offered instead of the late
         // cancel, which would keep shipping back.
         const uc = quoteUnpickedCancel(o);

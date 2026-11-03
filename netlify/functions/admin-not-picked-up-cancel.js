@@ -185,6 +185,6 @@ exports.handler = async (event) => {
   }
 };
 
-// The customer's own cancel of an order not picked up in 10 days
+// The customer's own cancel of an order not picked up in 7 days
 // (cancel-unpicked-order.js) runs this same per-order flow.
 exports.handleOne = handleOne;

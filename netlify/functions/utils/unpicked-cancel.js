@@ -1,16 +1,17 @@
 /**
- * Customer cancel for a paid order the courier has not picked up 10+ days
- * after it was placed (owner's rule, 11 Oct 2026): full refund, sent as soon
- * as the cancel goes through. Used by cancel-unpicked-order.js; My Orders
- * shows the button from get-my-orders → order.unpicked_cancel.
+ * Customer cancel for a paid order the courier has not picked up 7+ days
+ * after it was placed (owner's rule, 11 Oct 2026 at 10 days; 7 days since
+ * 3 Nov 2026): full refund, sent as soon as the cancel goes through. Used by
+ * cancel-unpicked-order.js (My Orders button, from get-my-orders →
+ * order.unpicked_cancel) and the WhatsApp bot's cancel_order.
  *
  * Covers what the other customer cancels do not:
- *   - prepaid with an AWB    late cancel (utils/prepaid-late-cancel) would
- *                            keep shipping back; here nothing is kept
- *   - partial COD            otherwise only cancellable in its first 30 min;
- *                            here the advance comes back
+ *   - prepaid, booked or not  late cancel (utils/prepaid-late-cancel) refuses
+ *                             anything not yet picked up (15 Oct rule)
+ *   - partial COD             otherwise only cancellable in its first 30 min;
+ *                             here the advance comes back
  * Untouched: cancel-order.js (30-minute prepaid, COD before pickup) and the
- * late cancel for prepaid orders with no AWB (already a full refund).
+ * automatic 10-day cancel of unshipped orders (utils/cancellation-guard).
  *
  * "Not picked up" is never taken from what we stored. The admin's Not Picked
  * Up cancel (admin-not-picked-up-cancel.handleOne) asks the courier live,
@@ -24,7 +25,7 @@
 const { classify } = require('./not-picked-up');
 const { isReplacementOrder } = require('./missing-books');
 
-const UNPICKED_DAYS = 10;
+const UNPICKED_DAYS = 7;
 const OPEN = ['paid', 'confirmed', 'processing', 'shipped', 'partial_cod_pending'];
 
 function cartOf(order) {
@@ -44,7 +45,7 @@ function isPartialCod(order) {
 }
 
 /**
- * Can the customer cancel this order under the 10-day rule? Pure: no I/O.
+ * Can the customer cancel this order under the unpicked rule (UNPICKED_DAYS)? Pure: no I/O.
  * @returns {{eligible:true, refundPaise:number, partialCod:boolean, hasAwb:boolean}
  *          | {eligible:false, reason:string}}
  */
@@ -68,9 +69,13 @@ function quoteUnpickedCancel(order, now = Date.now()) {
 
   const partialCod = isPartialCod(order);
   const hasAwb = !!String(order.tracking_id || '').trim();
-  // A prepaid order with no AWB already gets a full refund from late cancel.
-  if (!partialCod && !hasAwb) return no('late_cancel_covers');
   return { eligible: true, refundPaise: amount, partialCod, hasAwb };
 }
 
-module.exports = { quoteUnpickedCancel, isPartialCod, UNPICKED_DAYS };
+/** When the order becomes cancellable under this rule (ms), for a "from <date>" answer. */
+function unpickedCancelFrom(order) {
+  const created = Date.parse(order?.created_at || '');
+  return Number.isFinite(created) ? created + UNPICKED_DAYS * 86400e3 : null;
+}
+
+module.exports = { quoteUnpickedCancel, unpickedCancelFrom, isPartialCod, UNPICKED_DAYS };

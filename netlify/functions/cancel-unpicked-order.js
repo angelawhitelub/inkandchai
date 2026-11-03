@@ -3,8 +3,10 @@
  * POST /.netlify/functions/cancel-unpicked-order   { order_id: <orders.id> }
  *
  * A customer cancelling a paid order (prepaid, or partial COD's advance) that
- * the courier has not picked up 10+ days after it was placed. Full refund, no
- * shipping kept. Rules: utils/unpicked-cancel.js.
+ * the courier has not picked up 7+ days after it was placed. Full refund, no
+ * shipping kept. Rules: utils/unpicked-cancel.js. Steps 2-4 are
+ * cancelUnpickedOrder, which the WhatsApp bot's cancel_order also runs once
+ * it has matched the order to the customer's number.
  *
  *   1. Ownership (Supabase JWT, matched by email -- as cancel-order.js).
  *   2. Claim the order: cancellation_requested_at, only if still empty, so a
@@ -22,7 +24,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { signAdminToken } = require('./utils/admin-auth');
-const { quoteUnpickedCancel } = require('./utils/unpicked-cancel');
+const { quoteUnpickedCancel, UNPICKED_DAYS } = require('./utils/unpicked-cancel');
 const { handleOne } = require('./admin-not-picked-up-cancel');
 const { sendEmail } = require('./utils/email');
 const { sendText } = require('./utils/whatsapp');
@@ -36,11 +38,12 @@ const CORS = {
 const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stringify(body) });
 const rs = (paise) => `₹${Math.round(Number(paise || 0) / 100).toLocaleString('en-IN')}`;
 
-const NOTE = 'Customer cancel: not picked up 10+ days after ordering (full refund).';
+// public/js/auth.js matches the start of this note to show "Cancellation received".
+const NOTE = `Customer cancel: not picked up ${UNPICKED_DAYS}+ days after ordering (full refund).`;
 
 async function alertOwner(order, line) {
   const id = order.razorpay_order_id || order.id;
-  const text = `⏳ ${id}: customer cancelled (not picked up in 10+ days)\n${line}\n`
+  const text = `⏳ ${id}: customer cancelled (not picked up in ${UNPICKED_DAYS}+ days)\n${line}\n`
     + `${order.customer_name || ''} ${order.customer_phone || ''}\n`
     + `${order.tracking_id ? `AWB ${order.courier_name || ''} ${order.tracking_id}\n` : ''}`
     + 'Admin → Not Picked Up: cancel & refund it there once the courier panel is sorted.';
@@ -49,7 +52,7 @@ async function alertOwner(order, line) {
   if (process.env.STORE_OWNER_EMAIL) {
     jobs.push(sendEmail({
       to: process.env.STORE_OWNER_EMAIL,
-      subject: `⏳ ${id} — customer cancel needs you (not picked up 10+ days)`,
+      subject: `⏳ ${id} — customer cancel needs you (not picked up ${UNPICKED_DAYS}+ days)`,
       html: `<pre style="font-family:Arial,sans-serif;font-size:14px;white-space:pre-wrap;">${text.replace(/</g, '&lt;')}</pre>`,
     }).catch(() => {}));
   }
@@ -60,6 +63,68 @@ async function alertOwner(order, line) {
 function internalEvent() {
   const token = signAdminToken({ sub: 'system:customer-unpicked-cancel', role: 'owner', ttlMs: 5 * 60 * 1000 });
   return { headers: { 'x-admin-token': token } };
+}
+
+/**
+ * Quote, claim, stop the parcel, cancel and refund, for an order whose owner
+ * is already established (My Orders: JWT email; bot: the WhatsApp number).
+ * @returns {Promise<{status:number, body:object}>}
+ */
+async function cancelUnpickedOrder(supabase, order, deps = {}) {
+  const out = (status, body) => ({ status, body });
+  const q = quoteUnpickedCancel(order);
+  if (!q.eligible) {
+    return out(422, { error: q.reason === 'already_requested'
+      ? 'We already have a cancellation for this order and are working on it.'
+      : 'This order can no longer be cancelled here. Please refresh your orders.', reason: q.reason });
+  }
+
+  // Claim: one cancel per order, whatever happens next.
+  const at = new Date().toISOString();
+  const { data: claimed, error: claimErr } = await supabase.from('orders')
+    .update({ cancellation_requested_at: at, cancellation_request_note: NOTE })
+    .eq('id', order.id).is('cancellation_requested_at', null).select('id');
+  if (claimErr) {
+    console.error('[cancel-unpicked-order] claim:', claimErr.message);
+    return out(503, { error: 'Could not cancel this order right now. Please try again.' });
+  }
+  if (!claimed || !claimed.length) {
+    return out(409, { error: 'We already have a cancellation for this order and are working on it.' });
+  }
+
+  const id = order.razorpay_order_id || order.id;
+  let r;
+  try {
+    r = await (deps.handleOne || handleOne)(internalEvent(), supabase, { ...order, cancellation_requested_at: at }, { dryRun: false, confirmManual: false });
+  } catch (e) {
+    console.error('[cancel-unpicked-order]', id, e);
+    r = { outcome: 'failed', reason: e.message };
+  }
+  console.log('[cancel-unpicked-order]', id, r.outcome, r.reason || '');
+
+  if (r.outcome === 'cancelled') {
+    return out(200, {
+      success: true, outcome: 'cancelled',
+      message: `Order cancelled. Your full refund of ${rs(q.refundPaise)} has been started to your original payment method — banks usually take 3–7 working days to show it.`,
+    });
+  }
+
+  // The courier has it after all: not cancellable, and nothing was changed.
+  if (r.outcome === 'skipped' && /courier says|moved/i.test(String(r.reason || ''))) {
+    await supabase.from('orders').update({ cancellation_requested_at: null, cancellation_request_note: null })
+      .eq('id', order.id).eq('cancellation_requested_at', at);
+    return out(422, {
+      error: 'Good news — the courier has just picked up your parcel, so it is on its way and can no longer be cancelled.',
+      reason: 'moved',
+    });
+  }
+
+  // Could not stop the parcel on our own: the owner finishes it.
+  await (deps.alertOwner || alertOwner)(order, `${r.outcome}: ${r.reason || 'no reason given'}`);
+  return out(202, {
+    success: true, outcome: 'requested',
+    message: `We've received your cancellation. We couldn't confirm with the courier just now, so our team will stop the parcel and send your full refund of ${rs(q.refundPaise)} within 24 hours. You don't need to do anything else.`,
+  });
 }
 
 exports.handler = async (event = {}, context, deps = {}) => {
@@ -91,57 +156,8 @@ exports.handler = async (event = {}, context, deps = {}) => {
     return json(403, { error: 'You do not have permission to cancel this order' });
   }
 
-  const q = quoteUnpickedCancel(order);
-  if (!q.eligible) {
-    return json(422, { error: q.reason === 'already_requested'
-      ? 'We already have a cancellation for this order and are working on it.'
-      : 'This order can no longer be cancelled here. Please refresh your orders.', reason: q.reason });
-  }
-
-  // Claim: one cancel per order, whatever happens next.
-  const at = new Date().toISOString();
-  const { data: claimed, error: claimErr } = await supabase.from('orders')
-    .update({ cancellation_requested_at: at, cancellation_request_note: NOTE })
-    .eq('id', order.id).is('cancellation_requested_at', null).select('id');
-  if (claimErr) {
-    console.error('[cancel-unpicked-order] claim:', claimErr.message);
-    return json(503, { error: 'Could not cancel this order right now. Please try again.' });
-  }
-  if (!claimed || !claimed.length) {
-    return json(409, { error: 'We already have a cancellation for this order and are working on it.' });
-  }
-
-  const id = order.razorpay_order_id || order.id;
-  let r;
-  try {
-    r = await (deps.handleOne || handleOne)(internalEvent(), supabase, { ...order, cancellation_requested_at: at }, { dryRun: false, confirmManual: false });
-  } catch (e) {
-    console.error('[cancel-unpicked-order]', id, e);
-    r = { outcome: 'failed', reason: e.message };
-  }
-  console.log('[cancel-unpicked-order]', id, r.outcome, r.reason || '');
-
-  if (r.outcome === 'cancelled') {
-    return json(200, {
-      success: true, outcome: 'cancelled',
-      message: `Order cancelled. Your full refund of ${rs(q.refundPaise)} has been started to your original payment method — banks usually take 3–7 working days to show it.`,
-    });
-  }
-
-  // The courier has it after all: not cancellable, and nothing was changed.
-  if (r.outcome === 'skipped' && /courier says|moved/i.test(String(r.reason || ''))) {
-    await supabase.from('orders').update({ cancellation_requested_at: null, cancellation_request_note: null })
-      .eq('id', order.id).eq('cancellation_requested_at', at);
-    return json(422, {
-      error: 'Good news — the courier has just picked up your parcel, so it is on its way and can no longer be cancelled.',
-      reason: 'moved',
-    });
-  }
-
-  // Could not stop the parcel on our own: the owner finishes it.
-  await (deps.alertOwner || alertOwner)(order, `${r.outcome}: ${r.reason || 'no reason given'}`);
-  return json(202, {
-    success: true, outcome: 'requested',
-    message: `We've received your cancellation. We couldn't confirm with the courier just now, so our team will stop the parcel and send your full refund of ${rs(q.refundPaise)} within 24 hours. You don't need to do anything else.`,
-  });
+  const out = await cancelUnpickedOrder(supabase, order, deps);
+  return json(out.status, out.body);
 };
+
+exports.cancelUnpickedOrder = cancelUnpickedOrder;
