@@ -89,17 +89,17 @@
       '<h3 id="pol-returns">7-day returns and free replacements</h3>' +
       '<p>Return any book within <strong>7 days</strong> of delivery for a full refund: sign in, open <strong>My Orders</strong>, ' +
       'choose <strong>Return or replace</strong> → <strong>Return for a refund</strong> and pick the book(s). We collect it from you, ' +
-      'and refund you when it reaches us: paid online, to your original payment method; Cash on Delivery, as store credit only.</p>' +
+      'and refund you when it reaches us: paid online, to your original payment method; Cash on Delivery and Partial COD, as Ink &amp; Chai store credit only.</p>' +
       '<p>We also replace, free of charge, any book that arrived <strong>defective or misprinted</strong>, the <strong>wrong book</strong>, ' +
       'or a book <strong>missing</strong> from the parcel — from My Orders or Track Order, within <strong>7 days</strong> of delivery.</p>' +
 
       '<h3 id="pol-refunds">How your refund reaches you</h3>' +
       '<div class="pol-row"><b>Paid online</b><span>Straight back to the same card or account, automatically. 2–4 business days.</span></div>' +
-      '<div class="pol-row"><b>Cash on Delivery</b><span>Nothing was paid online, so we transfer it to a UPI ID or bank account you give us.</span></div>' +
-      '<div class="pol-row"><b>Partial COD</b><span>Only the deposit was taken online. We send the <strong>whole amount — deposit and cash together — as one transfer</strong>, never split in two.</span></div>' +
+      '<div class="pol-row"><b>Cash on Delivery</b><span><strong>Store credit only</strong> — a code for exactly what you paid, emailed when the book reaches us and valid 6 months. Not cash, UPI or a bank transfer.</span></div>' +
+      '<div class="pol-row"><b>Partial COD</b><span>Treated as Cash on Delivery: the <strong>whole amount — deposit and cash together — as store credit</strong>.</span></div>' +
 
-      '<div class="pol-note">Paid cash? If a book has to be refunded instead of replaced, we ask for a <strong>UPI ID</strong>, ' +
-      'because a cash payment cannot be reversed online.</div>' +
+      '<div class="pol-note">Paid cash and a missing book can\'t be replaced? Only then do we refund that book to a <strong>UPI ID</strong>, ' +
+      'because a cash payment cannot be reversed online. Returns on cash orders are always store credit.</div>' +
 
       '<h3 id="pol-cancel">Cancelling an order</h3>' +
       '<div class="pol-row"><b>Cash on Delivery</b><span>Any time before dispatch. Nothing was paid, so nothing to refund.</span></div>' +

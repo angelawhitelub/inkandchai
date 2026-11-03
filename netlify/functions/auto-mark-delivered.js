@@ -75,7 +75,7 @@ async function notifyDelivered(order) {
             <p>We hope you love your books! If you have a moment, would you mind <a href="${reviewUrl}" style="color:#8a6a1f;">leaving a quick review</a>?</p>
             <hr style="border:none;border-top:1px solid #eadfca;margin:24px 0;"/>
             <p style="font-size:13px;color:#5a4a38;">
-              <strong>Not what you wanted?</strong> Return any book within <strong>7 days</strong> of today for a full refund — sign in to
+              <strong>Not what you wanted?</strong> Return any book within <strong>7 days</strong> of today for a full refund (store credit on Cash on Delivery orders) — sign in to
               <a href="https://inkandchai.in/?orders=1" style="color:#8a6a1f;">My Orders</a> and choose <em>Return or replace</em>; we collect it from you.<br/><br/>
               <strong>Defective copy, misprint, wrong book or a book missing?</strong><br/>
               We'll replace it free. Open your order on the <a href="https://inkandchai.in/track/?id=${encodeURIComponent(orderId)}" style="color:#8a6a1f;">Track Order</a> page or in My Orders —

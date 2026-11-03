@@ -2494,7 +2494,7 @@ window.IACClaimEvidence = {
       <div id="miss-wrap-${escJs(order.id)}" data-cod-upi="${escHtmlAttr(missUpiFieldHtml(order) ? '1' : '')}" style="margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(201,168,76,0.08);">
         <div style="font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.4rem;">↩ Return or replace</div>
         <div style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-bottom:0.6rem;">
-          Return any book within 7 days of delivery for a full refund — we collect it from you. A defective, misprinted, wrong or missing book is replaced free of charge.
+          Return any book within 7 days of delivery for a full refund — we collect it from you (Cash on Delivery orders are refunded as store credit). A defective, misprinted, wrong or missing book is replaced free of charge.
           ${win.eligible ? `<span style="color:#7a6330;">${win.daysLeft} day${win.daysLeft === 1 ? '' : 's'} left to return or replace.</span>` : ''}
         </div>
         <select class="repl-reason" onchange="iacReplReasonChanged(this)" style="${field}font-size:0.76rem;padding:0.6rem 0.7rem;margin-bottom:0.6rem;">

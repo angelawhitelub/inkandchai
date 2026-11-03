@@ -6760,7 +6760,7 @@ def product_faq_json_ld(book):
                 "name": "Can I return or replace a book?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Yes. You can return any book within 7 days of delivery for a full refund: request it from My Orders on inkandchai.in and we collect it from you. A book that arrives defective, misprinted, wrong or missing can be replaced free of charge instead."
+                    "text": "Yes. You can return any book within 7 days of delivery for a full refund (Cash on Delivery orders are refunded as Ink & Chai store credit): request it from My Orders on inkandchai.in and we collect it from you. A book that arrives defective, misprinted, wrong or missing can be replaced free of charge instead."
                 }
             },
             {
@@ -11387,7 +11387,7 @@ footer{{text-align:center;padding:2rem;border-top:1px solid var(--border);font-s
     <details class="faq"><summary>How long does delivery take?</summary>
       <p>Standard delivery is 2–5 business days anywhere in India. We dispatch within 24 hours from our Delhi warehouse. Free shipping on prepaid orders above ₹399 and on COD orders of ₹499 or more.</p></details>
     <details class="faq"><summary>Can I return a book if I don't like it?</summary>
-      <p>Return any book within 7 days of delivery for a full refund, or get a free replacement if it arrives defective, misprinted, wrong or missing. <a href="/return-policy/" style="color:var(--gold)">See replacement policy →</a></p></details>
+      <p>Return any book within 7 days of delivery for a full refund (store credit on Cash on Delivery orders), or get a free replacement if it arrives defective, misprinted, wrong or missing. <a href="/return-policy/" style="color:var(--gold)">See replacement policy →</a></p></details>
   </div>
 </main>
 <footer>© 2026 Ink &amp; Chai · inkandchai.in · <a href="/" style="color:var(--muted)">Browse all books</a></footer>
