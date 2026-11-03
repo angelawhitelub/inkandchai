@@ -161,3 +161,18 @@ test('real spend switched off: the average is used even where spend exists, and 
   assert.equal(row.ads, 217.12, '2 × ₹92 + 18% GST');
   assert.equal(row.ads_google, 0); assert.equal(row.ads_meta, 0);
 });
+
+test('net splits into finished orders (realised) and orders still in flight (estimated)', () => {
+  const avgs = D.outcomeAverages(history(), NOW);
+  const orders = [
+    cod({ status: 'delivered', tracking_id: 'A', created_at: daysAgo(3) }),   // realised: 400 − 62 − 80
+    cod({ status: 'cancelled', created_at: daysAgo(3) }),                     // realised: 0
+    cod({ created_at: daysAgo(3) }),                                          // in flight
+  ];
+  const day = S.istDay(daysAgo(3));
+  const [row] = D.dailyProfit({ orders, days: [day], spend: { byDay: {} }, avgs, platforms: [], rateOverrides: { adCostPerOrder: 100, adGstRate: 0, shippingPerOrder: 62, bookCost: 80 } });
+  assert.equal(row.settled, 2);
+  assert.equal(row.revenue_realised, 400);
+  assert.equal(row.net_realised, 400 - 62 - 80 - 2 * 100, 'two finished orders carry two shares of the ads');
+  assert.equal(Math.round((row.net_realised + row.net_estimated) * 100) / 100, row.net);
+});

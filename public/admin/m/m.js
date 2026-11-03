@@ -314,7 +314,13 @@
         <div class="label">Expected profit today</div>
         <div class="big ${Number(d0.net) < 0 ? 'neg' : ''}">${rupees(d0.net)}</div>
         <div class="meta"><span><b>${d0.orders || 0}</b> orders</span><span><b>${d0.cod || 0}</b> COD · <b>${d0.prepaid || 0}</b> prepaid</span></div>
-      </a>
+      </a>`;
+      const T = t.profit.value.totals || {};
+      out += `<div class="kpis">
+        <div class="card kpi"><div class="k">Realised · 7 days</div><div class="v ${Number(T.net_realised) < 0 ? 'red' : ''}">${compactRupees(T.net_realised)}</div><div class="s">${T.settled || 0} of ${T.orders || 0} orders finished</div></div>
+        <div class="card kpi"><div class="k">Still estimated</div><div class="v">${compactRupees(T.net_estimated)}</div><div class="s">${(T.orders || 0) - (T.settled || 0)} orders in flight</div></div>
+      </div>`;
+      out += `
       <div class="kpis">
         <div class="card kpi"><div class="k">Ordered</div><div class="v">${compactRupees(d0.order_value)}</div><div class="s">expected ${compactRupees(d0.revenue)}</div></div>
         <div class="card kpi"><div class="k">Ad spend${adsGuess ? ' (est.)' : ''}</div><div class="v red">${compactRupees(d0.ads)}</div><div class="s">${adsGuess ? `₹${Math.round(d0.ads_per_order || 0)}/order average` : `Google ${compactRupees(d0.ads_google)} · Meta ${compactRupees(d0.ads_meta)}`} · incl. GST</div></div>

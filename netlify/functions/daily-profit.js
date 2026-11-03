@@ -75,7 +75,7 @@ exports.handler = async (event) => {
     const rows = D.dailyProfit({ orders, days, spend, avgs, rateOverrides, platforms });
 
     const sum = (k) => Math.round(rows.reduce((s, r) => s + (r[k] || 0), 0) * 100) / 100;
-    const totals = Object.fromEntries(['orders', 'order_value', 'revenue', 'ads', 'ads_google', 'ads_meta', 'shipping', 'cogs', 'net'].map((k) => [k, sum(k)]));
+    const totals = Object.fromEntries(['orders', 'settled', 'order_value', 'revenue', 'revenue_realised', 'ads', 'ads_gst', 'ads_google', 'ads_meta', 'shipping', 'cogs', 'net', 'net_realised', 'net_estimated'].map((k) => [k, sum(k)]));
     totals.ads_per_order = totals.orders ? Math.round((totals.ads / totals.orders) * 100) / 100 : null;
 
     return json(200, {

@@ -2910,7 +2910,7 @@ select,input,textarea{font-size:1rem;}
         <h3 class="section-title" style="margin:0;">📅 Daily profit</h3>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
           <select id="dpDays" onchange="loadDailyProfit()" style="padding:.35rem;">
-            <option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="60">60 days</option>
+            <option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option>
           </select>
           <label style="font-size:.72rem;color:var(--cream-dim,#8a7a62);display:flex;align-items:center;gap:.35rem;" title="Off: every day uses the Google Ads / order average below, plus GST">
             <input type="checkbox" id="dpActual" checked onchange="loadDailyProfit()"> Real ad spend</label>
@@ -2921,7 +2921,7 @@ select,input,textarea{font-size:1rem;}
       <p id="dpConn" style="font-size:.72rem;color:var(--cream-dim,#8a7a62);margin:.6rem 0 0;line-height:1.6;"></p>
       <div class="stats-row" id="dpToday" style="margin-top:.8rem;"></div>
       <div style="overflow-x:auto;margin-top:.6rem;">
-        <table style="width:100%;border-collapse:collapse;font-size:.76rem;min-width:820px;">
+        <table style="width:100%;border-collapse:collapse;font-size:.76rem;min-width:980px;">
           <thead><tr style="text-align:right;">
             <th style="text-align:left;padding:.45rem;">Day</th>
             <th style="padding:.45rem;">Orders</th>
@@ -2933,9 +2933,11 @@ select,input,textarea{font-size:1rem;}
             <th style="padding:.45rem;">Ad ₹/order</th>
             <th style="padding:.45rem;">Shipping</th>
             <th style="padding:.45rem;">Stock</th>
+            <th style="padding:.45rem;" title="Orders that have finished (delivered, RTO, cancelled, refunded): what actually happened, less their share of the day's ads">Realised</th>
+            <th style="padding:.45rem;" title="Orders still in flight, at their expected outcome (COD/prepaid delivery and RTO rates), less their share of the day's ads">Estimated</th>
             <th style="padding:.45rem;">Net profit</th>
           </tr></thead>
-          <tbody id="dpRows"><tr><td colspan="11" style="padding:.6rem;color:var(--cream-dim);">Loading…</td></tr></tbody>
+          <tbody id="dpRows"><tr><td colspan="13" style="padding:.6rem;color:var(--cream-dim);">Loading…</td></tr></tbody>
           <tfoot id="dpFoot"></tfoot>
         </table>
       </div>
@@ -17787,6 +17789,8 @@ function renderDailyProfit(d) {
     card('Expected revenue', rs(t.revenue), '', `of ${rs(t.order_value)} ordered`),
     card('Ad spend today', rs(t.ads), 'var(--red)', (t.ads_source === 'actual' ? `Google ${rs(t.ads_google)} · Meta ${rs(t.ads_meta)}` : 'estimated from your average') + ` · incl. ${rs(t.ads_gst || 0)} GST`),
     card('Expected profit today', signed(t.net), t.net >= 0 ? 'var(--green)' : 'var(--red)', t.ads_per_order != null ? `ads ${rs(t.ads_per_order)} per order` : ''),
+    card(`Realised · ${d.days.length} days`, signed(d.totals.net_realised), d.totals.net_realised >= 0 ? 'var(--green)' : 'var(--red)',
+      `${(d.totals.settled || 0).toLocaleString('en-IN')} of ${d.totals.orders.toLocaleString('en-IN')} orders finished · ${signed(d.totals.net_estimated)} still estimated`),
   ].join('') : '';
 
   const cell = (v, colour) => `<td style="padding:.45rem;${colour ? 'color:' + colour + ';' : ''}">${v}</td>`;
@@ -17801,6 +17805,8 @@ function renderDailyProfit(d) {
       ${cell(r.ads_per_order != null ? rs(r.ads_per_order) : '—')}
       ${cell('−' + rs(r.shipping), 'var(--red)')}
       ${cell('−' + rs(r.cogs), 'var(--red)')}
+      ${cell(signed(r.net_realised || 0), (r.net_realised || 0) >= 0 ? 'var(--green)' : 'var(--red)')}
+      ${cell(signed(r.net_estimated || 0) + `<div style="font-size:.62rem;color:var(--cream-dim);">${r.orders - r.settled} in flight</div>`, 'var(--cream-dim)')}
       <td style="padding:.45rem;font-weight:600;color:${r.net >= 0 ? 'var(--green)' : 'var(--red)'};">${signed(r.net)}</td>
     </tr>`).join('');
 
@@ -17809,6 +17815,7 @@ function renderDailyProfit(d) {
     <td style="text-align:left;padding:.5rem .45rem;">Total</td>${cell(T.orders.toLocaleString('en-IN'))}${cell('')}${cell(rs(T.order_value))}${cell(rs(T.revenue))}
     ${cell('−' + rs(T.ads_google), 'var(--red)')}${cell('−' + rs(T.ads_meta), 'var(--red)')}${cell(T.ads_per_order != null ? rs(T.ads_per_order) : '—')}
     ${cell('−' + rs(T.shipping), 'var(--red)')}${cell('−' + rs(T.cogs), 'var(--red)')}
+    ${cell(signed(T.net_realised || 0), (T.net_realised || 0) >= 0 ? 'var(--green)' : 'var(--red)')}${cell(signed(T.net_estimated || 0))}
     <td style="padding:.5rem .45rem;color:${T.net >= 0 ? 'var(--green)' : 'var(--red)'};">${signed(T.net)}</td></tr>`;
 
   const a = d.averages;
