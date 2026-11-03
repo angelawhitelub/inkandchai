@@ -136,3 +136,26 @@ test('the payment terms move to the new first line when the book is swapped', as
   assert.equal(r.cartItems[0].title, 'Atomic Habits');
   assert.equal(r.cartItems[0]._payment.balance, 395);
 });
+
+// ── A total typed by the admin (4 Nov 2026) ─────────────────────────────────
+const { setOrderTotal } = require('./order-books-rebuild');
+
+test('an unpaid COD order takes the agreed total; a single title follows it', () => {
+  const order = { status: 'cod_pending', amount_paise: 69800, cart_items: [{ title: 'DDIA', qty: 1, price: 698 }] };
+  const t = setOrderTotal(order, '1049', order.cart_items);
+  assert.equal(t.amountPaise, 104900);
+  assert.deepEqual(t.cartItems, [{ title: 'DDIA', qty: 1, price: 1049 }]);
+  assert.equal(order.cart_items[0].price, 698, 'input not mutated');
+  const two = setOrderTotal(order, 1000, [{ title: 'A', qty: 1, price: 349 }, { title: 'B', qty: 1, price: 349 }]);
+  assert.deepEqual(two.cartItems.map((i) => i.price), [349, 349], 'several titles keep their line prices');
+});
+
+test('paid orders, booked AWBs and nonsense totals are refused', () => {
+  assert.match(setOrderTotal({ status: 'paid', razorpay_payment_id: 'pay_1' }, 500, []).error, /paid/);
+  assert.match(setOrderTotal({ status: 'cod_pending', tracking_id: '1234', courier_name: 'XpressBees' }, 500, []).error, /AWB 1234/);
+  for (const bad of [0, -5, 'abc', 300000]) assert.ok(setOrderTotal({ status: 'cod_pending' }, bad, []).error, String(bad));
+});
+
+test('an order already sent to a courier panel is changed with a warning', () => {
+  assert.match(setOrderTotal({ status: 'cod_pending', nimbus_pushed_at: '2026-11-03' }, 500, []).warning, /NimbusPost/);
+});

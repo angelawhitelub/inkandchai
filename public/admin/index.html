@@ -13271,6 +13271,8 @@ function openEditOrderModal(orderUuid) {
       <textarea id="iacEditAddress" rows="3" placeholder="Full address with pincode" style="width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.3);color:#f0e8d8;padding:0.6rem;font-family:inherit;font-size:0.85rem;box-sizing:border-box;resize:vertical;"></textarea>
       ${field('Books (comma-separated)', 'iacEditBooks', 'Ikigai ×2, Sapiens')}
       <p style="color:#7a6f5f;font-size:0.62rem;line-height:1.5;margin:0.4rem 0 0;">Editing books rebuilds the item list. Add <strong style="color:#c9a84c;">×N</strong> after a title for quantity (e.g. <em>Ikigai ×4</em>). Prices come from the catalogue, and on an unpaid COD order the total is recalculated to match.</p>
+      ${field('Order total ₹ (what the customer pays)', 'iacEditTotal', 'e.g. 549')}
+      <p id="iacEditTotalNote" style="color:#7a6f5f;font-size:0.62rem;line-height:1.5;margin:0.4rem 0 0;">Type the agreed price for a book the catalogue doesn't have. Wins over the catalogue total above. Only on an unpaid order not yet given an AWB.</p>
       <div id="iacEditMsg" style="display:none;font-size:0.72rem;line-height:1.5;margin:0.7rem 0 0;"></div>
       <div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1rem;">
         <button onclick="document.getElementById('iacEditModal')?.remove()"
@@ -13286,6 +13288,21 @@ function openEditOrderModal(orderUuid) {
   document.getElementById('iacEditEmail').value   = o.customer_email   || '';
   document.getElementById('iacEditAddress').value = o.customer_address || '';
   document.getElementById('iacEditBooks').value   = books;
+  // The total is editable only where update-order-details allows it
+  // (utils/order-books-rebuild setOrderTotal): unpaid, and no AWB yet.
+  const total = document.getElementById('iacEditTotal');
+  total.value = String(Math.round(Number(o.amount_paise || 0) / 100) || '');
+  total.dataset.orig = total.value;
+  total.inputMode = 'numeric';
+  const paid = !!o.razorpay_payment_id || Number(o.advance_paid_paise || 0) > 0
+    || ['paid', 'partial_cod_pending', 'refunded', 'partially_refunded'].includes(String(o.status || ''));
+  const awb = String(o.tracking_id || '').trim();
+  if (paid || awb) {
+    total.disabled = true; total.style.opacity = '0.5';
+    document.getElementById('iacEditTotalNote').textContent = paid
+      ? 'Paid order — the total is what the customer paid. Refund or collect a difference instead.'
+      : `Booked on AWB ${awb} — cancel the AWB first; the courier would still collect the old amount.`;
+  }
   document.getElementById('iacEditName').focus();
 }
 
@@ -13301,6 +13318,13 @@ async function submitEditOrder(orderUuid) {
     customer_address: document.getElementById('iacEditAddress').value,
     books:            document.getElementById('iacEditBooks').value,
   };
+  const totalEl = document.getElementById('iacEditTotal');
+  if (totalEl && !totalEl.disabled && totalEl.value.trim() !== totalEl.dataset.orig) {
+    const rs = Number(totalEl.value.replace(/[₹,\s]/g, ''));
+    if (!Number.isFinite(rs) || rs <= 0) { show('Enter the order total in rupees, e.g. 549.', '#e06060'); return; }
+    if (!confirm(`Change the order total to ₹${Math.round(rs)}? This is what the courier collects on COD.`)) return;
+    payload.amount_rupees = Math.round(rs);
+  }
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
     const res = await adminFetch('/.netlify/functions/update-order-details', {
@@ -13322,10 +13346,10 @@ async function submitEditOrder(orderUuid) {
     // Book lines are priced from the catalogue on the server now, and the
     // order total can move with them, so there is nothing sensible to mirror
     // locally — refetch and show what was actually saved.
-    if (payload.books.trim() && typeof fetchOrders === 'function') await fetchOrders(true);
+    if ((payload.books.trim() || payload.amount_rupees) && typeof fetchOrders === 'function') await fetchOrders(true);
     else if (typeof renderTable === 'function') renderTable();
     if (data.repriced) {
-      alert(`Books repriced from the catalogue. Order total ₹${data.repriced.from} → ₹${data.repriced.to}.`
+      alert(`${data.repriced.manual ? 'Order total set' : 'Books repriced from the catalogue. Order total'} ₹${data.repriced.from} → ₹${data.repriced.to}.`
         + (data.warning ? `\n\n${data.warning}` : ''));
     } else if (data.warning) {
       alert(data.warning);

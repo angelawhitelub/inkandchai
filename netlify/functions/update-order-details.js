@@ -13,15 +13,18 @@
  *   customer_name?, customer_phone?,
  *   customer_email?, customer_address?,  // any subset — only provided keys change
  *   books?                               // comma-separated titles → rebuilds cart_items
+ *   amount_rupees?                       // the order total, typed by the admin
  * }
  *
- * Only whitelisted fields are writable. Never touches status/amount/payment ids.
+ * Only whitelisted fields are writable. Never touches status/payment ids. The
+ * total moves only on an unpaid order with no AWB (utils/order-books-rebuild
+ * setOrderTotal), and a typed total wins over the catalogue repricing.
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { lookupBook } = require('./utils/book-lookup');
-const { rebuildOrderBooks } = require('./utils/order-books-rebuild');
+const { rebuildOrderBooks, setOrderTotal } = require('./utils/order-books-rebuild');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -76,6 +79,18 @@ exports.handler = async (event) => {
         if (rebuilt.amountPaise !== null) patch.amount_paise = rebuilt.amountPaise;
         repriced = rebuilt.repriced;
         warning  = rebuilt.warning;
+      }
+    }
+
+    if (body.amount_rupees !== undefined && body.amount_rupees !== null && body.amount_rupees !== '') {
+      const t = setOrderTotal(order, body.amount_rupees, patch.cart_items || order.cart_items);
+      if (t.error) return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: t.error }) };
+      const from = repriced ? repriced.from : Math.round(Number(order.amount_paise || 0) / 100);
+      if (t.amountPaise !== Number(order.amount_paise) || patch.amount_paise !== undefined) {
+        patch.amount_paise = t.amountPaise;
+        patch.cart_items = t.cartItems;
+        repriced = { from, to: t.amountPaise / 100, manual: true };
+        if (t.warning) warning = warning ? `${warning} ${t.warning}` : t.warning;
       }
     }
 

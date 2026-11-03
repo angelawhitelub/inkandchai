@@ -122,4 +122,30 @@ async function rebuildOrderBooks(raw, order, lookupBook) {
   return { cartItems, amountPaise, repriced, warning, unpriced, unchanged: false };
 }
 
-module.exports = { rebuildOrderBooks, parseBooksList, booksListOf, isSettled, SHIPPING_RS, FREE_SHIPPING_OVER_RS };
+/**
+ * The admin typing the order total by hand: the price agreed with the
+ * customer for a book the catalogue does not have (4 Nov 2026: bot orders
+ * 4VZFO / IMV5L had been quoted a ₹349 placeholder). Only while no money has
+ * moved and no courier holds the old COD amount on an AWB.
+ * @returns {{amountPaise:number, cartItems:Array, warning:string} | {error:string}}
+ */
+function setOrderTotal(order, rupees, cartItems) {
+  const rs = Math.round(Number(rupees));
+  if (!Number.isFinite(rs) || rs <= 0 || rs > 200000) return { error: 'Enter a total between ₹1 and ₹2,00,000.' };
+  if (isSettled(order)) return { error: 'This order is paid, so its total is what the customer paid — refund or collect a difference instead.' };
+  const awb = String(order.tracking_id || '').trim();
+  if (awb) {
+    return { error: `Already booked on ${order.courier_name || 'a courier'} (AWB ${awb}), which will collect the old amount. Cancel that AWB first, then change the total.` };
+  }
+  const items = Array.isArray(cartItems) ? cartItems.map((i) => ({ ...i })) : [];
+  // One title: its unit price follows the total, as a bot order's cart does.
+  if (items.length === 1) items[0].price = Math.max(1, Math.round(rs / (Number(items[0].qty) || 1)));
+  const panel = order.nimbus_pushed_at ? 'NimbusPost' : order.xpressbees_feed_at ? 'XpressBees panel' : order.ithink_pushed_at ? 'iThink' : '';
+  return {
+    amountPaise: rs * 100,
+    cartItems: items,
+    warning: panel ? `This order was already sent to the ${panel} with the old amount — update or re-push it there before booking.` : '',
+  };
+}
+
+module.exports = { rebuildOrderBooks, setOrderTotal, parseBooksList, booksListOf, isSettled, SHIPPING_RS, FREE_SHIPPING_OVER_RS };
