@@ -17,6 +17,7 @@
 const path = require('path');
 const fs   = require('fs');
 const { createClient } = require('@supabase/supabase-js');
+const { findCandidates } = require('./search-candidates');
 
 const STOP_WORDS = new Set([
   'the','a','an','of','and','or','in','on','to','for','by','is','it','my',
@@ -58,31 +59,39 @@ function getStaticCatalogue() {
   return _static;
 }
 
-// ── Custom products (Supabase), cached for 5 min ───────────────────────────
-let _customCache = { rows: null, at: 0 };
-async function getCustomProducts() {
-  if (_customCache.rows && Date.now() - _customCache.at < 5 * 60_000) return _customCache.rows;
+// ── Custom products (Supabase), searched per title ─────────────────────────
+// This used to load `.limit(2000)` rows with no order and match against those.
+// custom_products holds 26,000+ active rows, so most listed books were never
+// seen: on 4 Nov 2026 the bot told a customer "Without Fear or Favour" (live at
+// Rs 549) was not listed. Ask the database for this title instead, using the
+// same candidate query as the site's search.
+async function findCustomProducts(rawTitle) {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const { data } = await supabase
-      .from('custom_products')
-      .select('slug,title,author,price_inr')
-      .eq('is_active', true)
-      .limit(2000);
-    const rows = (data || []).map(b => ({
-      title:  b.title || '',
-      author: b.author || '',
-      price:  parseFloat(b.price_inr || 0) || 0,
-      slug:   b.slug || '',
-      source: 'custom',
-      _titleTokens: tokens(`${b.title} ${b.author}`),
-    })).filter(b => b.title && b.price > 0);
-    _customCache = { rows, at: Date.now() };
+    return await findCandidates(supabase, rawTitle);
   } catch (e) {
-    console.error('[book-lookup] custom load failed:', e.message);
-    _customCache = { rows: _customCache.rows || [], at: Date.now() };
+    console.error('[book-lookup] custom search failed:', e.message);
+    return [];
   }
-  return _customCache.rows;
+}
+
+function customRowToBook(b) {
+  return {
+    title:  b.title || '',
+    author: b.author || '',
+    price:  parseFloat(b.price_inr || 0) || 0,
+    slug:   b.slug || '',
+    source: 'custom',
+    _titleTokens: tokens(`${b.title} ${b.author}`),
+  };
+}
+
+const CUSTOM_MIN_COVERAGE = 0.75;
+
+/** Share of the customer's words found in this book's title and author. */
+function titleCoverage(queryTokens, book) {
+  const titleTokens = new Set(book._titleTokens);
+  return queryTokens.filter((q) => titleTokens.has(q)).length / queryTokens.length;
 }
 
 function scoreMatch(queryTokens, book) {
@@ -100,14 +109,19 @@ function scoreMatch(queryTokens, book) {
 
 /**
  * Find the best matching book for a free-text title.
- * @returns {Promise<{title,price,slug,source}|null>}
+ * @returns {Promise<{title,author,price,slug,source}|null>}
  */
-async function lookupBook(rawTitle) {
+async function lookupBook(rawTitle, deps = {}) {
   const qTokens = tokens(rawTitle);
   if (!qTokens.length) return null;
 
-  const staticBooks = getStaticCatalogue();
-  const customBooks = await getCustomProducts();
+  const staticBooks = deps.staticBooks || getStaticCatalogue();
+  const customRows = await (deps.findCustomProducts || findCustomProducts)(rawTitle);
+  // The search reaches the whole imported catalogue, where a shared word or two
+  // is common ("Mind Without Fear" for "Without Fear or Favour"). Quoting that
+  // book's price would be wrong, so these rows must match most of the title.
+  const customBooks = (customRows || []).map(customRowToBook)
+    .filter((b) => b.title && b.price > 0 && titleCoverage(qTokens, b) >= CUSTOM_MIN_COVERAGE);
   const all = [...staticBooks, ...customBooks];
 
   let best = null;
@@ -120,7 +134,7 @@ async function lookupBook(rawTitle) {
   // "some random book" would grab a low-quality match and mislead pricing.
   const minAcceptable = 0.5;
   if (!best || bestScore < minAcceptable) return null;
-  return { title: best.title, price: best.price, slug: best.slug, source: best.source };
+  return { title: best.title, author: best.author, price: best.price, slug: best.slug, source: best.source };
 }
 
 // Split a books string into titles on STRUCTURAL separators only — commas,
@@ -180,7 +194,7 @@ async function priceBooksList(rawBooksList, fallbackRs = 349, deps = {}) {
     const hit = await lookup(title);
     const unitPrice = hit ? hit.price : fallbackRs;
     items.push(hit
-      ? { query: q, title, qty, unitPrice, price: unitPrice * qty, matchedTitle: hit.title, slug: hit.slug, matched: true }
+      ? { query: q, title, qty, unitPrice, price: unitPrice * qty, matchedTitle: hit.title, matchedAuthor: hit.author || '', slug: hit.slug, matched: true }
       : { query: q, title, qty, unitPrice, price: unitPrice * qty, matchedTitle: title, matched: false });
     if (!hit) unmatched.push(title);
   }

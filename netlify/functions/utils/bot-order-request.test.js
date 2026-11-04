@@ -358,3 +358,50 @@ test('YES on an unlisted title places a price-needed request: no amount, no push
     assert.match(sent[0], /PRICE NEEDED/);
   }
 });
+
+const { authorMatchingName, buildRequestEdit } = require('./bot-order-request');
+
+test('the 4 Nov case: the author of the requested book is not taken as the customer', () => {
+  assert.equal(authorMatchingName('Sanjay Kishore Kaul', 'Without Fear or Favour by Sanjay Kaul', null), 'Sanjay Kaul');
+  const pricing = { items: [{ matchedAuthor: 'Sanjay Kishan Kaul, Jay Vinayak Ojha' }] };
+  assert.equal(authorMatchingName('Sanjay Kaul', 'Without Fear or Favour', pricing), 'Sanjay Kishan Kaul');
+  assert.equal(authorMatchingName('Sanjay', 'Without Fear or Favour by Sanjay Kaul', null), 'Sanjay Kaul');
+});
+
+test('an ordinary customer is not stopped by sharing one name with the author', () => {
+  assert.equal(authorMatchingName('Arvind Chaudhary', 'Without Fear or Favour by Sanjay Kaul', null), '');
+  assert.equal(authorMatchingName('Sanjay Sharma', 'Without Fear or Favour by Sanjay Kaul', null), '');
+  assert.equal(authorMatchingName('Rahul Verma', 'Ikigai, Atomic Habits', { items: [{ matchedAuthor: 'James Clear' }] }), '');
+});
+
+const editOf = (over = {}) => ({ customer_name: 'Arvind Chaudhary', address: 'Flat 20, Sector 28, Rohini, Delhi 110089', books: 'Without Fear or Favour', amount_rupees: '₹549', payment_mode: 'cod', notes: '', ...over });
+
+test('an admin edit saves the corrected fields and the amount in paise', () => {
+  assert.deepEqual(buildRequestEdit({ status: 'new', payment_mode: 'cod', amount_paise: null }, editOf()).values, {
+    customer_name: 'Arvind Chaudhary', address: 'Flat 20, Sector 28, Rohini, Delhi 110089', books: 'Without Fear or Favour', notes: '', payment_mode: 'cod', amount_paise: 54900,
+  });
+  assert.equal(buildRequestEdit({ status: 'new', payment_mode: 'cod', amount_paise: 54900 }, editOf({ amount_rupees: '' })).values.amount_paise, null);
+});
+
+test('an admin edit is refused once pushed, on bad input, or against a sent payment link', () => {
+  assert.equal(buildRequestEdit({ status: 'ordered', order_pushed_id: 'IC-W-1' }, editOf()).code, 409);
+  assert.equal(buildRequestEdit({ status: 'new' }, editOf({ customer_name: '' })).code, 400);
+  assert.equal(buildRequestEdit({ status: 'new' }, editOf({ address: 'Delhi' })).code, 400);
+  assert.equal(buildRequestEdit({ status: 'new' }, editOf({ amount_rupees: 'abc' })).code, 400);
+  const linked = { status: 'new', payment_mode: 'prepaid', amount_paise: 54900, payment_link: 'https://rzp.io/x' };
+  assert.equal(buildRequestEdit(linked, editOf({ payment_mode: 'prepaid', amount_rupees: '499' })).code, 409);
+  assert.ok(buildRequestEdit(linked, editOf({ payment_mode: 'prepaid', customer_name: 'New Name' })).values);
+});
+
+
+test('a draft under the author\'s name is not saved until the customer says it is theirs', async () => {
+  const db = fakeDb();
+  const deps = { db, priceBooksList: async () => ({ items: [{ matched: true, unitPrice: 549, price: 549, qty: 1, matchedAuthor: 'Sanjay Kishan Kaul' }], subtotalRs: 549, shippingRs: 0, totalRs: 549, totalPaise: 54900, unmatched: [] }), now: () => NOW };
+  const args = { ...ARGS, customer_name: 'Sanjay Kishore Kaul', books: 'Without Fear or Favour' };
+  const stopped = await draftOrderRequest(deps, PHONE, args);
+  assert.equal(stopped.error, 'name_matches_author');
+  assert.equal(db.calls.inserts, 0);
+  const own = await draftOrderRequest(deps, PHONE, { ...args, name_confirmed: true });
+  assert.equal(own.needs_confirmation, true);
+  assert.equal(db.calls.inserts, 1);
+});

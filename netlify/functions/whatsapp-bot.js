@@ -289,6 +289,7 @@ PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book r
     • general questions, greetings, "hi", complaints.
   If the customer is asking about an order they ALREADY placed, it is NOT a new order — never submit it as one.
 - For a genuine new purchase you need exactly FOUR REAL things: (1) the actual book title(s) they want, (2) their real full name, (3) their real complete delivery address with pincode, (4) their preferred payment mode — **COD (Cash on Delivery)** or **Prepaid (Pay Now online)**.
+- A message that is only a person's name, sent before any book has been named, may be the AUTHOR of the book they want. Do not thank or address them by that name yet. Ask: "Is that your name, or the author of the book you want?" An author's name is never the customer's name.
 - Ask ONLY for the pieces you don't already have yet, ONE at a time. CRITICAL: NEVER re-ask for or re-confirm a detail the customer has ALREADY given earlier in this same conversation. Read back through the conversation — if the name, address, book, or payment mode is already there, treat it as final and move on. Do NOT say "just to confirm your name/address" — that annoys customers.
 - PAYMENT MODE — always ask this LAST (after you have book, name, address). Ask exactly like: "Would you like to pay Cash on Delivery, or pay online now (prepaid)? Prepaid orders get 10-15% off with our coupons 💚". Accept: "cod"/"cash"/"delivery" → cod. "prepaid"/"online"/"upi"/"now"/"pay now" → prepaid.
 - NEVER invent, guess, or use placeholder values like "N/A", "book", "Customer", "Delhi", or a date. If you don't have a REAL book title, a REAL name, a REAL full address, AND a real payment mode choice, DO NOT call the tool — ask the customer for the missing real detail instead.
@@ -947,7 +948,8 @@ const OPENAI_TOOLS = [{
     parameters: {
       type: 'object',
       properties: {
-        customer_name: { type: 'string', description: 'Customer\'s REAL full name, as they typed it. Not a placeholder.' },
+        customer_name: { type: 'string', description: 'Customer\'s REAL full name, as they typed it. Not a placeholder, and never the book\'s author.' },
+        name_confirmed: { type: 'boolean', description: 'Only after the tool reported name_matches_author: true if the customer then said this really is their own name. Otherwise leave it out.' },
         address:       { type: 'string', description: 'REAL complete delivery address including pincode, as the customer typed it. Not "N/A".' },
         books:         { type: 'string', description: 'The actual book TITLE(s) the customer wants to buy, comma-separated. Not the generic word "book". For more than one copy of a title put the count after it with ×, e.g. "Ikigai ×2, Atomic Habits" — never put quantity only in notes, or it is charged as one copy.' },
         payment_mode:  { type: 'string', enum: ['cod', 'prepaid'], description: 'Customer\'s chosen payment mode. "cod" = Cash on Delivery. "prepaid" = pay online now. Must be a real explicit choice from the customer — do NOT guess or default.' },

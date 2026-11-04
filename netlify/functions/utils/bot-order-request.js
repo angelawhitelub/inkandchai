@@ -85,6 +85,57 @@ function validateOrderFields(args = {}) {
   return { fields: { customerName, address, books, notes, paymentMode } };
 }
 
+// ── "Is that the customer, or the author?" ────────────────────────────────
+// 4 Nov 2026: asked for the book, name and address together, a customer sent
+// "Sanjay Kishore Kaul", the author of the book they wanted. The bot thanked
+// "Sanjay" and the request was saved under the author's name. A name matching
+// the author of the requested book has to be checked before it is saved.
+const nameWords = (s) => String(s || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter((w) => w.length >= 3);
+
+function authorMatchingName(customerName, books, pricing) {
+  const name = nameWords(customerName);
+  if (!name.length) return '';
+  const typed = String(books || '').split(/[,;\n]+/).map((b) => (b.match(/\bby\s+(.+)$/i) || [])[1] || '');
+  const items = (pricing && Array.isArray(pricing.items)) ? pricing.items : [];
+  const authors = [...typed, ...items.flatMap((i) => String(i.matchedAuthor || '').split(/,|&|\band\b/i))];
+  for (const raw of authors) {
+    const author = new Set(nameWords(raw));
+    if (!author.size) continue;
+    const shared = name.filter((w) => author.has(w)).length;
+    if (shared >= 2 || shared === name.length) return raw.trim();
+  }
+  return '';
+}
+
+// ── Admin edit of a request ───────────────────────────────────────────────
+// Returns { values } for the update, or { error, code }. A pushed request is an
+// order now, and a payment link already sent is for one fixed amount.
+function buildRequestEdit(req, edit = {}) {
+  if (req.order_pushed_id) return { error: `Already pushed as ${req.order_pushed_id}. Edit it from the Orders tab.`, code: 409 };
+  if (HIDDEN_STATUSES.includes(req.status)) return { error: 'The customer has not confirmed this order on WhatsApp yet.', code: 409 };
+
+  const customer_name = String(edit.customer_name || '').trim().slice(0, 160);
+  const address = String(edit.address || '').trim().slice(0, 600);
+  const books = String(edit.books || '').trim().slice(0, 600);
+  const notes = String(edit.notes || '').trim().slice(0, 400);
+  const payment_mode = edit.payment_mode === 'prepaid' ? 'prepaid' : edit.payment_mode === 'cod' ? 'cod' : '';
+  if (customer_name.length < 2) return { error: 'Enter the customer name.', code: 400 };
+  if (!books) return { error: 'Enter the book title.', code: 400 };
+  if (address.length < 12 && !/\b\d{6}\b/.test(address)) return { error: 'Enter the full delivery address with pincode.', code: 400 };
+  if (!payment_mode) return { error: 'Choose COD or Prepaid.', code: 400 };
+
+  const rawAmount = String(edit.amount_rupees ?? '').replace(/[₹,\s]/g, '');
+  const rupeesValue = rawAmount === '' ? null : Number(rawAmount);
+  if (rupeesValue !== null && (!Number.isFinite(rupeesValue) || rupeesValue <= 0)) return { error: 'Enter the amount in rupees, e.g. 549.', code: 400 };
+  const amount_paise = rupeesValue === null ? null : Math.round(rupeesValue) * 100;
+
+  const priceChanged = (Number(req.amount_paise) || 0) !== (amount_paise || 0) || req.payment_mode !== payment_mode;
+  if (priceChanged && (req.payment_link || req.payment_status === 'paid')) {
+    return { error: 'A payment link has already gone out for this request, so the amount and payment mode cannot change here.', code: 409 };
+  }
+  return { values: { customer_name, address, books, notes, payment_mode, amount_paise } };
+}
+
 // ── "Same books?" ────────────────────────────────────────────────────────────
 // The model rewrites titles between calls ("vol1+vol2 by Alex xu" →
 // "System Design Interview Vol 1, Vol 2 by Alex Xu"), so compare word sets,
@@ -204,6 +255,14 @@ async function draftOrderRequest(deps, phone, args) {
   }
 
   const pricing = withSiteSale(withPaymentShipping(await withFreeDelivery(db, await priceSafely(deps.priceBooksList, f.books)), f.paymentMode), nowMs);
+  const author = args.name_confirmed === true ? '' : authorMatchingName(f.customerName, f.books, pricing);
+  if (author) {
+    return {
+      ok: false,
+      error: 'name_matches_author',
+      message: `NOT saved. "${f.customerName}" looks like the author of the book (${author}), not the customer. Do NOT use it as their name. Ask them: "Is ${f.customerName} your own name, or the author of the book? Please send the name to put on the parcel." Then call this tool again with the name they give. Set name_confirmed to true only if they say it really is their own name.`,
+    };
+  }
   const unlisted = unlistedTitles(pricing);
   const draft = rows.find((r) => r.status === DRAFT && nowMs - new Date(r.created_at).getTime() < DRAFT_TTL_MS);
   const values = {
@@ -476,6 +535,8 @@ async function lookupBotRequest(db, orderId) {
 }
 
 module.exports = {
+  authorMatchingName,
+  buildRequestEdit,
   DRAFT, DISCARDED, LIVE, HIDDEN_STATUSES, DRAFT_TTL_MS, AUTO_PUSH_MAX_COPIES,
   validateOrderFields, sameBooks, draftReplyDecision,
   draftOrderRequest, confirmDraftOrder, botOrdersContext, lookupBotRequest, describeRequest,
