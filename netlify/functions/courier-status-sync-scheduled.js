@@ -1,6 +1,7 @@
 /**
  * Scheduled function: courier-status-sync-scheduled   (hourly, jobs.toml)
  * POST (admin) { "limit": 80, "dry_run": true }   -- manual run / preview
+ * POST (admin) { "order_ids": [uuid, …], "dry_run": true }   -- named orders, delivered only
  *
  * Moves no-scan bookings (Amazon, iThink Delhivery, NimbusPost DTDC/Ekart...)
  * to out_for_delivery / delivered from the courier's own tracking, via
@@ -65,6 +66,62 @@ async function run(supabase, { limit = DEFAULT_LIMIT, dryRun = false, check = ch
   };
 }
 
+// Orders a person named, for parcels past the poller's window (about 500 May-Aug
+// parcels sat at out_for_delivery for months after being delivered). It asks the
+// courier again and only ever moves an order to delivered.
+//
+// Delivered is not just a label for some orders: the XpressBees status job pays
+// a pending wrong-COD refund on any delivered order within 15 minutes, and the
+// late-cancel sweep acts on it too. Those are held back for a person.
+function heldBack(o) {
+  if (o.wrong_cod_paise != null && !o.wrong_cod_refund_at) return 'wrong_cod_refund_pending';
+  if (o.late_cancel_state) return 'late_cancel';
+  if (o.cancellation_requested_at) return 'cancellation_requested';
+  return '';
+}
+
+async function runSelected(supabase, { orderIds, dryRun = false, check = checkPickups, now = new Date() }) {
+  const { data: orders, error } = await supabase
+    .from('orders')
+    .select('id, razorpay_order_id, status, tracking_id, courier_name, nimbus_pushed_at, ithink_pushed_at, '
+          + 'last_nimbuspost_status, last_courier_status, shipment_moved_at, delivered_at, shipped_at, '
+          + 'wrong_cod_paise, wrong_cod_refund_at, late_cancel_state, cancellation_requested_at')
+    .in('id', orderIds)
+    .in('status', SYNCABLE)
+    .not('tracking_id', 'is', null);
+  if (error) throw new Error(`orders query failed: ${error.message}`);
+
+  const live = await check(orders || []);
+  const stamp = now.toISOString();
+  const changes = [];
+  const held = [];
+  const notDelivered = [];
+  const failed = [];
+  for (const o of orders || []) {
+    const ref = o.razorpay_order_id || o.id;
+    const answer = live.get(o.id);
+    const { fields, to } = planUpdate(o, answer, stamp);
+    if (to !== 'delivered') { notDelivered.push({ order: ref, courier_says: answer?.status || '' }); continue; }
+    const why = heldBack(o);
+    if (why) { held.push({ order: ref, why }); continue; }
+    changes.push({ order: ref, delivered_at: fields.delivered_at || null });
+    if (dryRun) continue;
+    const { error: upErr } = await supabase.from('orders').update(fields).eq('id', o.id).in('status', SYNCABLE);
+    if (upErr) failed.push({ order: ref, error: upErr.message });
+  }
+  return {
+    dry_run: dryRun,
+    requested: orderIds.length,
+    found: (orders || []).length,
+    to_delivered: changes.length,
+    undated: changes.filter((c) => !c.delivered_at).length,
+    held,
+    not_delivered: notDelivered,
+    failed,
+    changes,
+  };
+}
+
 exports.handler = async (event = {}) => {
   // The scheduler's event has no rawUrl; anything over HTTP must be an admin.
   let body = {};
@@ -75,6 +132,11 @@ exports.handler = async (event = {}) => {
   }
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    if (Array.isArray(body.order_ids)) {
+      const orderIds = [...new Set(body.order_ids.map(String).filter(Boolean))];
+      if (!orderIds.length || orderIds.length > MAX_LIMIT) return json(400, { error: `Send 1 to ${MAX_LIMIT} order_ids` });
+      return json(200, await runSelected(supabase, { orderIds, dryRun: body.dry_run === true }));
+    }
     const out = await run(supabase, {
       limit: Math.min(MAX_LIMIT, Math.max(1, Number(body.limit) || DEFAULT_LIMIT)),
       dryRun: body.dry_run === true,
@@ -87,4 +149,4 @@ exports.handler = async (event = {}) => {
   }
 };
 
-exports._test = { run };
+exports._test = { run, runSelected };

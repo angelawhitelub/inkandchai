@@ -76,3 +76,69 @@ test('the job writes only through the guarded update, and a dry run writes nothi
   assert.equal(dry.changes[0].order, 'IC-A');
   assert.equal(writes.length, 0);
 });
+
+const { _test: { runSelected } } = require('../courier-status-sync-scheduled');
+
+function fakeDb(rows) {
+  const writes = [];
+  const chain = (result) => {
+    const c = { in: () => c, eq: () => c, not: () => c, then: (ok) => ok(result) };
+    return c;
+  };
+  return {
+    writes,
+    from: () => ({
+      select: () => chain({ data: rows, error: null }),
+      update: (fields) => { writes.push(fields); return chain({ error: null }); },
+    }),
+  };
+}
+
+const LATER = new Date('2026-11-05T00:00:00Z');
+const answers = (map) => async (orders) => new Map(orders.map((o) => [o.id, map[o.id]]));
+const DELIVERED = { status: 'Delivered', state: 'moved', at: '2026-06-07T10:00:00.000Z' };
+
+test('named orders move to delivered on the courier\'s date, and a preview writes nothing', async () => {
+  const rows = [{ id: 'a', razorpay_order_id: 'IC-A', status: 'out_for_delivery', shipped_at: '2026-06-01T00:00:00Z' }];
+  const preview = fakeDb(rows);
+  const p = await runSelected(preview, { orderIds: ['a'], dryRun: true, check: answers({ a: DELIVERED }), now: LATER });
+  assert.equal(p.to_delivered, 1);
+  assert.equal(preview.writes.length, 0);
+
+  const real = fakeDb(rows);
+  await runSelected(real, { orderIds: ['a'], check: answers({ a: DELIVERED }), now: LATER });
+  assert.equal(real.writes[0].status, 'delivered');
+  assert.equal(real.writes[0].delivered_at, '2026-06-07T10:00:00.000Z');
+});
+
+test('an old parcel the courier gives no date for stays undated', async () => {
+  const db = fakeDb([{ id: 'a', status: 'out_for_delivery', shipped_at: '2026-06-01T00:00:00Z' }]);
+  const r = await runSelected(db, { orderIds: ['a'], check: answers({ a: { status: 'Delivered', state: 'moved' } }), now: LATER });
+  assert.equal(r.undated, 1);
+  assert.equal('delivered_at' in db.writes[0], false);
+});
+
+test('orders where delivered would start a refund or a cancel flow are held for a person', async () => {
+  const base = { status: 'out_for_delivery', shipped_at: '2026-06-01T00:00:00Z' };
+  const rows = [
+    { ...base, id: 'w', razorpay_order_id: 'W', wrong_cod_paise: 5000 },
+    { ...base, id: 'l', razorpay_order_id: 'L', late_cancel_state: 'awaiting_return' },
+    { ...base, id: 'c', razorpay_order_id: 'C', cancellation_requested_at: '2026-06-02T00:00:00Z' },
+    { ...base, id: 'p', razorpay_order_id: 'P', wrong_cod_paise: 5000, wrong_cod_refund_at: '2026-06-09T00:00:00Z' },
+  ];
+  const db = fakeDb(rows);
+  const r = await runSelected(db, { orderIds: ['w', 'l', 'c', 'p'], check: answers({ w: DELIVERED, l: DELIVERED, c: DELIVERED, p: DELIVERED }), now: LATER });
+  assert.deepEqual(r.held.map((h) => h.why), ['wrong_cod_refund_pending', 'late_cancel', 'cancellation_requested']);
+  assert.equal(r.to_delivered, 1, 'a wrong-COD refund already paid is not held');
+  assert.equal(db.writes.length, 1);
+});
+
+test('a courier that does not say delivered changes nothing, not even the stored status', async () => {
+  const db = fakeDb([
+    { id: 'x', razorpay_order_id: 'X', status: 'out_for_delivery' },
+    { id: 'y', razorpay_order_id: 'Y', status: 'out_for_delivery' },
+  ]);
+  const r = await runSelected(db, { orderIds: ['x', 'y'], check: answers({ x: { status: 'exception', state: 'moved' }, y: undefined }), now: LATER });
+  assert.equal(db.writes.length, 0);
+  assert.deepEqual(r.not_delivered.map((n) => n.order), ['X', 'Y']);
+});

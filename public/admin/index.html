@@ -1031,6 +1031,10 @@ select,input,textarea{font-size:1rem;}
       <div class="stat-label">In Transit</div>
       <div class="stat-val" id="statInTransit" style="color:#4db8ff;">—</div>
     </div>
+    <div class="stat-card" data-status="__delivery_failed" onclick="setFilter(this,'__delivery_failed')">
+      <div class="stat-label">Delivery Failed</div>
+      <div class="stat-val" id="statDeliveryFailed" style="color:var(--red);">—</div>
+    </div>
     <div class="stat-card" data-status="delivered" onclick="setFilter(this,'delivered')">
       <div class="stat-label">Delivered</div>
       <div class="stat-val" id="statDelivered" style="color:var(--green);">—</div>
@@ -1161,6 +1165,7 @@ select,input,textarea{font-size:1rem;}
     <button class="filter-btn" data-status="confirmed" onclick="setFilter(this,'confirmed')">Confirmed</button>
     <button class="filter-btn" data-status="shipped" onclick="setFilter(this,'shipped')">Shipped</button>
     <button class="filter-btn" data-status="__in_transit" onclick="setFilter(this,'__in_transit')" style="border-color:rgba(77,184,255,0.5);color:#4db8ff;">🚚 In Transit</button>
+    <button class="filter-btn" data-status="__delivery_failed" onclick="setFilter(this,'__delivery_failed')" style="border-color:rgba(224,96,96,0.5);color:var(--red);" title="The courier could not deliver or reports a problem">⚠ Delivery Failed</button>
     <button class="filter-btn" data-status="delivered" onclick="setFilter(this,'delivered')">Delivered</button>
     <button class="filter-btn" data-status="paid" onclick="setFilter(this,'paid')">Paid Online</button>
     <button class="filter-btn" data-status="replacement_pending" onclick="setFilter(this,'replacement_pending')" style="border-color:rgba(109,191,109,0.5);color:#6dbf6d;">🔄 Replacement</button>
@@ -5283,6 +5288,15 @@ function isInTransit(o) {
   return /^(?:in[ -]?transit|rad|reached (?:at|nearest|destination) hub|in sorting centre|sorting|spd)$/.test(raw);
 }
 
+// The courier tried and could not deliver (customer away, bad address, dispute)
+// or reports a problem. Such a scan does not move `status`, so these sat inside
+// Out for Delivery with no way to find them. A failed tracking lookup is not one.
+function isDeliveryFailed(o) {
+  if (!['shipped','out_for_delivery'].includes(String(o?.status || '').toLowerCase())) return false;
+  const courier = String(o?.last_courier_status || '').toLowerCase().trim();
+  return !courier.startsWith('lookup failed') && /exception|undelivered|ndr|failed/.test(courier);
+}
+
 // Customer asked to cancel but the order is still live (not yet cancelled/
 // refunded). Mirrors the row badge; once the order is actually cancelled or
 // refunded the request is resolved and drops out of this list.
@@ -5629,7 +5643,7 @@ async function fetchOrdersPage(pageNum, limit, filterSnapshot = currentFilter) {
     // them to refund_pending → refunded/refund_failed. Fetch the whole family or
     // the tab shows COD orders only.
     params.set('statuses', CANCELLED_FAMILY.join(','));
-  } else if (filterSnapshot && filterSnapshot !== '__unshipped' && filterSnapshot !== '__in_transit' && filterSnapshot !== 'partial_cod_pending' && filterSnapshot !== 'online_pending' && filterSnapshot !== 'cw_only' && filterSnapshot !== 'preorder_waiting' && filterSnapshot !== 'cancel_requested') {
+  } else if (filterSnapshot && filterSnapshot !== '__unshipped' && filterSnapshot !== '__in_transit' && filterSnapshot !== '__delivery_failed' && filterSnapshot !== 'partial_cod_pending' && filterSnapshot !== 'online_pending' && filterSnapshot !== 'cw_only' && filterSnapshot !== 'preorder_waiting' && filterSnapshot !== 'cancel_requested') {
     params.set('status', filterSnapshot);
   }
   const res = await fetch(`/.netlify/functions/get-orders?${params}`, {
@@ -6508,7 +6522,8 @@ function updateStats(opts = {}) {
   const partial      = base.filter(isPartialOrder).length;
   const onlinePending= base.filter(isPendingOnlineOrder).length;
   const paid         = base.filter(o => o.status === 'paid').length;
-  const shipped      = base.filter(o => o.status === 'shipped').length;
+  const shipped      = base.filter(o => o.status === 'shipped' && !isDeliveryFailed(o)).length;
+  const deliveryFailed = base.filter(isDeliveryFailed).length;
   const inTransit    = base.filter(isInTransit).length;
   const delivered    = base.filter(o => o.status === 'delivered').length;
   const cancelled    = base.filter(o => o.status === 'cancelled').length;
@@ -6555,6 +6570,8 @@ function updateStats(opts = {}) {
   document.getElementById('statShipped').textContent   = stillLoading ? '…' : shipped;
   const transitEl = document.getElementById('statInTransit');
   if (transitEl) transitEl.textContent = stillLoading ? '…' : inTransit;
+  const failedEl = document.getElementById('statDeliveryFailed');
+  if (failedEl) failedEl.textContent = stillLoading ? '…' : deliveryFailed;
   const delEl = document.getElementById('statDelivered');
   if (delEl) delEl.textContent = stillLoading ? '…' : delivered;
   const cancelEl = document.getElementById('statCancelled');
@@ -6578,17 +6595,18 @@ function updateStats(opts = {}) {
   // Full breakdown — every status so the maths adds up to Total
   if (!stillLoading) {
     const counts = {};
-    base.forEach(o => { const s = o.status || 'unknown'; counts[s] = (counts[s]||0)+1; });
+    base.forEach(o => { const s = isDeliveryFailed(o) ? '__delivery_failed' : (o.status || 'unknown'); counts[s] = (counts[s]||0)+1; });
     const ORDER = ['cod_pending','partial_cod_pending','paid','confirmed','shipped',
-                   'out_for_delivery','delivered','undelivered','rto','lost','cancelled','refunded','partially_refunded','replacement_pending'];
+                   'out_for_delivery','__delivery_failed','delivered','undelivered','rto','lost','cancelled','refunded','partially_refunded','replacement_pending'];
     const LABEL = {
+      __delivery_failed:'Delivery Failed',
       cod_pending:'COD', partial_cod_pending:'Partial COD', paid:'Paid Online',
       confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery',
       delivered:'Delivered', undelivered:'Undelivered', rto:'RTO', lost:'Lost',
       cancelled:'Cancelled', refunded:'Refunded',
     };
     const COLOR = {
-      shipped:'#c9a84c', out_for_delivery:'#4db8ff', delivered:'#6dbf6d',
+      __delivery_failed:'#e06060', shipped:'#c9a84c', out_for_delivery:'#4db8ff', delivered:'#6dbf6d',
       cancelled:'#e06060', rto:'#e06060', undelivered:'#e8a030', lost:'#e06060',
       refunded:'#a09080', paid:'#6dbf6d', confirmed:'#c9a84c',
       cod_pending:'#e8a030', partial_cod_pending:'#e8a030',
@@ -6738,6 +6756,8 @@ function applyFilters() {
   filtered = allOrders.filter(o => {
     if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
     if (currentFilter === '__in_transit' && !isInTransit(o)) return false;
+    if (currentFilter === '__delivery_failed' && !isDeliveryFailed(o)) return false;
+    if (['shipped','out_for_delivery'].includes(currentFilter) && isDeliveryFailed(o)) return false;
     if (currentFilter === 'partial_cod_pending' && !isPartialOrder(o)) return false;
     if (currentFilter === 'online_pending' && !isPendingOnlineOrder(o)) return false;
     if (currentFilter === 'cancel_requested' && !hasOpenCancelRequest(o)) return false;
@@ -6944,6 +6964,7 @@ function _drawTable() {
       </td>
       <td data-label="Status">
         <span class="badge ${bc}">${esc((o.status||'pending').replace(/_/g,' '))}</span>
+        ${isDeliveryFailed(o) ? `<div title="Latest courier status: ${esc(o.last_courier_status)}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">⚠ Delivery failed</div>` : ''}
         ${isInTransit(o) ? `<div title="Latest courier status: ${esc(o.last_courier_status || o.last_nimbuspost_status || 'in transit')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(77,184,255,0.1);border:1px solid rgba(77,184,255,0.45);color:#4db8ff;">🚚 In transit</div>` : ''}
         ${(o.cancellation_requested_at && !['cancelled','refunded','refund_pending','partially_refunded'].includes(String(o.status||'').toLowerCase())) ? `<div title="Customer requested cancellation on ${esc(String(o.cancellation_requested_at).slice(0,16).replace('T',' '))}${o.cancellation_request_note ? ' — “' + esc(o.cancellation_request_note) + '”' : ''}. This is a request only — nothing was auto-cancelled." style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(232,160,48,0.14);border:1px solid rgba(232,160,48,0.6);color:var(--orange);font-weight:700;">⏳ Cancellation requested</div>` : ''}
         ${o.cancellation_source === 'stale_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no courier movement for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · stale COD 7d</div>` : ''}
