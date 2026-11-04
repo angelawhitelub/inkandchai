@@ -58,3 +58,16 @@ test('a storage failure keeps the last good set instead of breaking search', asy
     assert.deepEqual([...await H.hiddenSlugSet()], ['hid']);
   } finally { Date.now = real; }
 });
+
+test('the search and browsing lists are separate', async () => {
+  await H.setHidden('only-search', true);
+  await H.browse.setHidden('only-browse', true, { title: 'B' });
+  assert.deepEqual([...await H.hiddenSlugSet()], ['only-search']);
+  assert.deepEqual([...await H.browse.hiddenSlugSet()], ['only-browse']);
+  assert.deepEqual((await H.browse.readHidden()).map((i) => i.title), ['B']);
+  assert.ok(blobs.has('catalog:browse-hidden'));
+  await H.browse.setHidden('only-browse', false);
+  assert.deepEqual([...await H.browse.hiddenSlugSet()], []);
+  assert.deepEqual([...await H.hiddenSlugSet()], ['only-search']);
+});
+

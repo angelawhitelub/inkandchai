@@ -15,7 +15,7 @@ const { createClient } = require('@supabase/supabase-js');
 const search = require('../../public/js/book-search');
 const { findCandidates } = require('./utils/search-candidates');
 const { deletedSlugSet } = require('./utils/deleted-products');
-const { unsearchableSlugSet } = require('./utils/search-hidden');
+const { unsearchableSlugSet, browse } = require('./utils/search-hidden');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 
 const CORS = {
@@ -64,6 +64,10 @@ exports.handler = async (event) => {
         // The /books browse grid serves the big browse-only catalogues that are
         // kept off the homepage feed: crossword.in + 99bookstores.
         .or('tags.ilike.%crossword-catalog%,tags.ilike.%99bookstores-catalog%');
+
+      // With no query this is the browse grid, so books hidden from browsing go.
+      const notListed = [...await browse.hiddenSlugSet()];
+      if (notListed.length) query = query.not('slug', 'in', `(${notListed.map((s) => `"${s.replace(/"/g, '')}"`).join(',')})`);
 
       if (sort === 'price_asc')       query = query.order('price_inr', { ascending: true });
       else if (sort === 'price_desc') query = query.order('price_inr', { ascending: false });

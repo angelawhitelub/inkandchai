@@ -2075,18 +2075,29 @@ select,input,textarea{font-size:1rem;}
             <div id="prodFreeDeliveryList" class="hint" style="margin-top:.4rem;"></div>
           </details>
           <details id="prodSearchHiddenEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(122,110,98,.06);">
-            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔍 Hide from site search</summary>
+            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔍 Hide from search or browsing</summary>
             <p class="hint" style="margin:.65rem 0 0;">Stops this book coming up in the <strong>search bar</strong>: the suggestions dropdown, the results page and the homepage search. It stays <strong>for sale</strong> — its product page, collections, categories, links and ads keep working. Takes effect within about 5 minutes.</p>
+            <p class="hint" style="margin:.5rem 0 0;">The second setting takes it off every page that <strong>lists books</strong>: homepage, categories, collections, authors, bestsellers, new arrivals, "also bought" and the "just ordered" pop-up. <strong>Tick both</strong> and the book opens only from its direct link. It stays for sale either way.</p>
             <p class="hint" id="prodSearchHiddenCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
             <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
               <input type="checkbox" id="prodSearchHidden" style="accent-color:var(--gold);"/> Hide this book from search
             </label>
             <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
               <button class="btn-green" type="button" id="prodSearchHiddenSaveBtn" onclick="saveSearchHidden()">Save Search Setting</button>
-              <button class="btn-outline" type="button" onclick="listSearchHidden()">List all hidden books</button>
+              <button class="btn-outline" type="button" onclick="listSearchHidden()">List hidden from search</button>
             </div>
             <p class="hint" id="prodSearchHiddenMsg" style="margin-top:.65rem;"></p>
             <div id="prodSearchHiddenList" class="hint" style="margin-top:.4rem;"></div>
+            <p class="hint" id="prodBrowseHiddenCurrent" style="margin:.85rem 0 0;padding-top:.75rem;border-top:1px solid var(--border);color:var(--cream-dim);"></p>
+            <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
+              <input type="checkbox" id="prodBrowseHidden" style="accent-color:var(--gold);"/> Hide this book while browsing the site
+            </label>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-green" type="button" id="prodBrowseHiddenSaveBtn" onclick="saveBrowseHidden()">Save Browsing Setting</button>
+              <button class="btn-outline" type="button" onclick="listBrowseHidden()">List hidden from browsing</button>
+            </div>
+            <p class="hint" id="prodBrowseHiddenMsg" style="margin-top:.65rem;"></p>
+            <div id="prodBrowseHiddenList" class="hint" style="margin-top:.4rem;"></div>
           </details>
           <details id="prodNewTitleAlert" ontoggle="if (this.open) loadNtaReport()" style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(37,211,102,.05);">
             <summary style="cursor:pointer;color:#25d366;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">📣 New-title alert (WhatsApp)</summary>
@@ -9357,6 +9368,7 @@ function selectProduct(slug) {
   loadCodRuleEditor(row);
   loadFreeDeliveryEditor(row);
   loadSearchHiddenEditor(row);
+  loadBrowseHiddenEditor(row);
   resetNewTitleAlert();
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
@@ -10383,7 +10395,7 @@ function setSearchHiddenUi(hidden, note) {
   const cur = document.getElementById('prodSearchHiddenCurrent');
   if (cb) cb.checked = !!hidden;
   if (cur) cur.innerHTML = note ? esc(note) : hidden
-    ? '<strong style="color:var(--gold);">Hidden from search</strong> — still for sale on its page and in collections.'
+    ? '<strong style="color:var(--gold);">Hidden from search</strong> — still for sale.'
     : 'Shows in search as normal.';
 }
 
@@ -10464,6 +10476,98 @@ async function unhideFromList(btn) {
     await setSearchHidden(slug, false);
     if (selectedProduct?.slug === slug) setSearchHiddenUi(false);
     listSearchHidden();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Failed — retry';
+  }
+}
+
+// ── Hide while browsing (admin-search-hidden, scope browse) ──────────────────
+function setBrowseHiddenUi(hidden, note) {
+  const cb = document.getElementById('prodBrowseHidden');
+  const cur = document.getElementById('prodBrowseHiddenCurrent');
+  if (cb) cb.checked = !!hidden;
+  if (cur) cur.innerHTML = note ? esc(note) : hidden
+    ? '<strong style="color:var(--gold);">Hidden while browsing</strong> — still for sale on its own page.'
+    : 'Shows on listing pages as normal.';
+}
+
+async function loadBrowseHiddenEditor(row) {
+  const msg = document.getElementById('prodBrowseHiddenMsg');
+  if (msg) msg.textContent = '';
+  const list = document.getElementById('prodBrowseHiddenList');
+  if (list) list.innerHTML = '';
+  if (!row?.slug) return;
+  setBrowseHiddenUi(false, 'Checking…');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-search-hidden?scope=browse&slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setBrowseHiddenUi(data.hidden);
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setBrowseHiddenUi(false, 'Could not load: ' + e.message);
+  }
+}
+
+async function setBrowseHidden(slug, hidden, title) {
+  const res = await adminFetch('/.netlify/functions/admin-search-hidden', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, hidden, title: title || '', scope: 'browse' }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+async function saveBrowseHidden() {
+  const slug = selectedProduct?.slug;
+  const msg = document.getElementById('prodBrowseHiddenMsg');
+  const btn = document.getElementById('prodBrowseHiddenSaveBtn');
+  if (!slug) { if (msg) msg.textContent = 'Select a product first.'; return; }
+  const on = !!document.getElementById('prodBrowseHidden')?.checked;
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const data = await setBrowseHidden(slug, on, selectedProduct?.title);
+    if (selectedProduct?.slug === slug) setBrowseHiddenUi(data.hidden);
+    if (msg) msg.textContent = data.hidden
+      ? 'Saved — this book comes off listing pages within about 5 minutes. Its own page still opens.'
+      : 'Saved — this book shows on listing pages again within about 5 minutes.';
+  } catch (e) {
+    if (msg) msg.textContent = 'Could not save: ' + e.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function listBrowseHidden() {
+  const box = document.getElementById('prodBrowseHiddenList');
+  if (!box) return;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-search-hidden?scope=browse');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? '<strong>' + items.length + ' book' + (items.length === 1 ? '' : 's') + ' hidden while browsing:</strong><br>'
+        + items.map(i => '<span style="display:inline-flex;gap:.5rem;align-items:center;margin:.15rem 0;">'
+          + '<a href="/product/' + encodeURIComponent(i.slug) + '/" target="_blank" rel="noopener">' + esc(i.title || i.slug) + '</a>'
+          + ' <button class="btn-outline" type="button" style="padding:.15rem .5rem;font-size:.68rem;" data-slug="' + esc(i.slug) + '" onclick="unhideBrowseFromList(this)">Show while browsing</button></span>').join('<br>')
+      : 'No books are hidden while browsing.';
+  } catch (e) {
+    box.textContent = 'Could not list: ' + e.message;
+  }
+}
+
+async function unhideBrowseFromList(btn) {
+  const slug = btn.getAttribute('data-slug');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await setBrowseHidden(slug, false);
+    if (selectedProduct?.slug === slug) setBrowseHiddenUi(false);
+    listBrowseHidden();
   } catch (e) {
     btn.disabled = false; btn.textContent = 'Failed — retry';
   }

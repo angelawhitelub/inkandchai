@@ -27,7 +27,7 @@ const CORS = {
 
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 const { deletedSlugSet } = require('./utils/deleted-products');
-const { unsearchableSlugSet } = require('./utils/search-hidden');
+const { unsearchableSlugSet, browse } = require('./utils/search-hidden');
 
 function absImg(u) {
   const s = String(u || '');
@@ -98,8 +98,10 @@ exports.handler = async (event) => {
     const gone = await unsearchableSlugSet(await deletedSlugSet());
     // Suggestions must answer even when discovery cannot: its lookups are
     // bounded, and this bounds the whole thing again.
-    const fallback = () => discovery.choose(getCatalog(), [], prefs, gone);
-    const picks = await discovery.withTimeout(discovery.discover(getCatalog(), prefs, gone).catch(fallback), 6000, null) || fallback();
+    // "For you" and bestseller picks are browsing; a typed search is not.
+    const notPicked = new Set([...gone, ...await browse.hiddenSlugSet()]);
+    const fallback = () => discovery.choose(getCatalog(), [], prefs, notPicked);
+    const picks = await discovery.withTimeout(discovery.discover(getCatalog(), prefs, notPicked).catch(fallback), 6000, null) || fallback();
     const clean = r => ({title:r.title,author:r.author,price:r.price,mrp:r.mrp>r.price?r.mrp:0,img:r.img,url:r.url});
     const sections = Object.fromEntries(Object.entries(picks).map(([k,v])=>[k,v.map(clean)]));
     if(q.length < 2)return {statusCode:200,headers,body:JSON.stringify({results:[],matched_count:null,...sections})};

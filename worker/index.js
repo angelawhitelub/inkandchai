@@ -390,6 +390,21 @@ async function deletedSlugs(env) {
   }
 }
 
+// Books hidden from browsing (utils/search-hidden). Never a 410: their product
+// pages stay open, so this list must stay apart from deletedSlugs.
+async function browseHiddenSlugs(env) {
+  try {
+    const ns = env.ORDER_FALLBACK;
+    if (!ns) return [];
+    const doc = await ns.get('catalog:browse-hidden', { type: 'json', cacheTtl: 60 });
+    return (doc && Array.isArray(doc.items) ? doc.items : [])
+      .map((i) => String((i && i.slug) || '').toLowerCase()).filter(Boolean);
+  } catch (err) {
+    console.warn('[browse-hidden] KV read failed:', err && err.message);
+    return [];
+  }
+}
+
 // ── Admin-written copy for catalogue books ───────────────────────────────────
 // The baked page carries the feed's description. When the admin has rewritten
 // it (netlify/functions/update-catalog-content.js), the saved copy is published
@@ -908,6 +923,16 @@ export default {
     if (url.pathname === '/deleted-products.json') {
       const gone = await deletedSlugs(env);
       return new Response(JSON.stringify({ slugs: [...gone] }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    if (url.pathname === '/browse-hidden.json') {
+      return new Response(JSON.stringify({ slugs: await browseHiddenSlugs(env) }), {
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',

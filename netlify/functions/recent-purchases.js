@@ -4,6 +4,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { makeSlug } = require('./utils/pricing');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 const { deletedSlugSet } = require('./utils/deleted-products');
+const { browse } = require('./utils/search-hidden');
 const { MAX_AGE_MS, STATUSES, slugOf, eligible, project } = require('./utils/recent-purchases');
 let catalog;
 function getCatalog() {
@@ -40,7 +41,7 @@ exports.handler = async event => {
         else products.delete(slug);
       }
     }
-    const purchases = project(orders,products,await deletedSlugSet(),now,process.env.SUPABASE_SERVICE_KEY);
+    const purchases = project(orders,products,new Set([...await deletedSlugSet(),...await browse.hiddenSlugSet()]),now,process.env.SUPABASE_SERVICE_KEY);
     return {statusCode:200,headers:{...headers,'Netlify-CDN-Cache-Control':'public, s-maxage=15'},body:JSON.stringify({generated_at:new Date(now).toISOString(),purchases})};
   } catch(error) {
     console.warn('[recent-purchases] Feed unavailable');

@@ -1,12 +1,13 @@
 /**
  * Netlify Function: admin-search-hidden   (admin)
  *
- * Hide one book from the site search, or show it again (utils/search-hidden).
- * The book stays on sale: only search stops returning it.
+ * Hide one book from the site search or from browsing, or show it again
+ * (utils/search-hidden). The two are separate lists; the book stays on sale.
+ * Pass scope=browse for the browsing list; the default is search.
  *
- *   GET  ?slug=…                    → { hidden: bool, hidden_at }
- *   GET  (no slug)                  → { items: [{ slug, title, hidden_at }, …] }
- *   POST { slug, hidden, title? }   → { hidden, cache_purged }
+ *   GET  ?slug=…[&scope=browse]            → { hidden: bool, hidden_at }
+ *   GET  [?scope=browse]                   → { items: [{ slug, title, hidden_at }, …] }
+ *   POST { slug, hidden, title?, scope? }  → { hidden, cache_purged }
  */
 
 const { requireAdmin } = require('./utils/admin-auth');
@@ -28,8 +29,9 @@ exports.handler = async (event) => {
 
   try {
     if (event.httpMethod === 'GET') {
-      const items = await H.readHidden();
-      const raw = (event.queryStringParameters || {}).slug;
+      const qs = event.queryStringParameters || {};
+      const items = await (qs.scope === 'browse' ? H.browse : H).readHidden();
+      const raw = qs.slug;
       if (!raw) return json(200, { items });
       const slug = H.normSlug(raw);
       if (!slug) return json(400, { error: 'Missing product slug' });
@@ -43,6 +45,12 @@ exports.handler = async (event) => {
     const slug = H.normSlug(body.slug);
     if (!slug) return json(400, { error: 'Missing product slug' });
     const hidden = body.hidden === true;
+    if (body.scope === 'browse') {
+      // Pages read /browse-hidden.json directly, so there is nothing to purge.
+      await H.browse.setHidden(slug, hidden, { title: body.title });
+      console.log(`[admin-search-hidden] ${slug} → ${hidden ? 'hidden from' : 'back in'} browsing`);
+      return json(200, { hidden, cache_purged: false });
+    }
     await H.setHidden(slug, hidden, { title: body.title });
 
     // The homepage search reads get-product-overrides; purge it so the change

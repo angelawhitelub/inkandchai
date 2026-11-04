@@ -6,6 +6,89 @@
 
 const CART_KEY = 'akshar_cart';
 
+// ── Books the owner has hidden from browsing (admin, utils/search-hidden) ───
+// This script loads on every shopping page, so it can take these books off
+// baked pages without rewriting them. Search results stay: a book is kept out
+// of search by its own separate setting. So do cart lines and the book's own page.
+window.IACBrowseHidden = (function () {
+  var CARDS = '.ah-card,.card,.book-card,.shelf-card,.rel-card,.hero-cover-card,.best-pick';
+  var SEARCH_RESULTS = '#srchResults,.sugg-box,.srch-hit';
+  // Pages that list what a customer has bought or is buying. /books/ is filtered
+  // on the server, because the same grid also shows its search results.
+  var KEEP_PATHS = /^\/(cart|checkout|track|order-help|support|review|refund-upi|books)(\/|$)/;
+  var LS_KEY = 'iac_browse_hidden';
+  var hidden = new Set();
+
+  function slugOf(href) {
+    var m = String(href || '').match(/\/product\/([^/?#]+)/i);
+    if (!m) return '';
+    try { return decodeURIComponent(m[1]).toLowerCase(); } catch (e) { return m[1].toLowerCase(); }
+  }
+  var ownSlug = slugOf(location.pathname);
+  var keepPage = KEEP_PATHS.test(location.pathname);
+
+  function isSearchResult(link) {
+    if (link.closest(SEARCH_RESULTS)) return true;
+    // The homepage shows its search results in the main book grid.
+    return typeof currentQuery !== 'undefined' && !!currentQuery && !!link.closest('#booksGrid');
+  }
+  function hideLink(link) {
+    var slug = slugOf(link.getAttribute('href'));
+    if (!slug || slug === ownSlug || !hidden.has(slug) || isSearchResult(link)) return;
+    var card = link.closest(CARDS);
+    // A wrapper that also links to other books is not this book's card.
+    if (card) {
+      var others = card.querySelectorAll('a[href*="/product/"]');
+      for (var i = 0; i < others.length; i++) {
+        if (slugOf(others[i].getAttribute('href')) !== slug) { card = null; break; }
+      }
+    }
+    (card || link).style.setProperty('display', 'none', 'important');
+  }
+  function scan(root) {
+    if (root.matches && root.matches('a[href*="/product/"]')) hideLink(root);
+    if (root.querySelectorAll) root.querySelectorAll('a[href*="/product/"]').forEach(hideLink);
+  }
+
+  var observer = null;
+  function apply(slugs) {
+    hidden = new Set((slugs || []).map(function (s) { return String(s || '').toLowerCase(); }).filter(Boolean));
+    if (!hidden.size || keepPage) return;
+    scan(document);
+    if (observer) return;
+    observer = new MutationObserver(function (records) {
+      records.forEach(function (r) {
+        if (r.type === 'attributes') scan(r.target);
+        else r.addedNodes.forEach(function (n) { if (n.nodeType === 1) scan(n); });
+      });
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] });
+  }
+
+  // Last known list first, so a card does not show while the fetch is running.
+  try { apply(JSON.parse(localStorage.getItem(LS_KEY) || '[]')); } catch (e) {}
+  var ready = fetch('/browse-hidden.json').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+    if (!d || !Array.isArray(d.slugs)) return;
+    apply(d.slugs);
+    try {
+      if (d.slugs.length) localStorage.setItem(LS_KEY, JSON.stringify(d.slugs));
+      else localStorage.removeItem(LS_KEY);
+    } catch (e) {}
+  }).catch(function () {});
+
+  return {
+    // For recommendation lists, which keep their own state and totals.
+    filter: function (books) {
+      var wait = new Promise(function (done) { setTimeout(done, 1500); });
+      return Promise.race([ready, wait]).then(function () {
+        return (books || []).filter(function (b) {
+          return !b || !hidden.has(String(b.slug || slugOf(b.url)).toLowerCase());
+        });
+      });
+    },
+  };
+})();
+
 // ── State ──────────────────────────────────────────────────────────────────
 // Every item is keyed by a STRING id. Carts saved by older versions of the site
 // (and by other pages writing this key) can hold a numeric id, no id at all, or
@@ -405,7 +488,9 @@ async function renderCartRecommendations() {
   // The cart changed while we were fetching — a stale list would be wrong.
   if (token !== _iacRecToken) return;
 
-  const recs = (data.recommendations || []).filter(p => p && p.title && Number(p.price) > 0).slice(0, 2);
+  const shown = await window.IACBrowseHidden.filter(data.recommendations);
+  if (token !== _iacRecToken) return;
+  const recs = shown.filter(p => p && p.title && Number(p.price) > 0).slice(0, 2);
   if (!recs.length) return;
 
   host.innerHTML = shipNudgeHtml(subtotal)
@@ -857,6 +942,7 @@ async function initFrequentlyBoughtTogether() {
     const res = await fetch(`/.netlify/functions/frequently-bought?slug=${encodeURIComponent(slug)}`, { cache: 'force-cache' });
     if (!res.ok) return;
     const data = await res.json();
+    data.recommendations = await window.IACBrowseHidden.filter(data.recommendations);
     renderInjectedFbt(data);
   } catch (err) {
     console.warn('Frequently bought together unavailable:', err.message);

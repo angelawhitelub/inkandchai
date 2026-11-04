@@ -657,11 +657,12 @@
     const root = mount(appbar({ title: base.title, back: '#/products' }) + '<div data-body>' + skeletonList(3, 120) + '</div>', { tab: 'products', noTabs: true });
     const body = root.querySelector('[data-body]');
     try {
-      const [ov, cod, hidden] = await Promise.all([
+      const [ov, cod, hidden, browseHidden] = await Promise.all([
         // The timestamp skips the edge copy, so a save made a moment ago shows.
         fetch(FN + 'get-product-overrides?slug=' + encodeURIComponent(slug) + '&t=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
         api('admin-cod-rules', { query: { slug } }).catch((e) => ({ error: e.message })),
         api('admin-search-hidden', { query: { slug } }).catch((e) => ({ error: e.message })),
+        api('admin-search-hidden', { query: { slug, scope: 'browse' } }).catch((e) => ({ error: e.message })),
       ]);
       const o = (ov.overrides || []).find((x) => String(x.slug).toLowerCase() === slug) || null;
       const cur = {
@@ -672,8 +673,9 @@
         cod: !(cod && cod.rule),
         codNote: (cod && cod.default_note) || '',
         searchable: !(hidden && hidden.hidden),
+        browsable: !(browseHidden && browseHidden.hidden),
       };
-      body.innerHTML = productHtml(base, cur, { codError: cod.error, hiddenError: hidden.error });
+      body.innerHTML = productHtml(base, cur, { codError: cod.error, hiddenError: hidden.error, browseError: browseHidden.error });
       wireProduct(body, base, cur);
     } catch (e) { if (!e.quiet) body.innerHTML = errorBox(e); }
   }
@@ -705,6 +707,7 @@
       <div class="card" style="padding:4px 16px">
         <label class="toggle-row"><div class="grow"><div class="t">Cash on Delivery</div><div class="d">${errs.codError ? esc(errs.codError) : 'Off: prepaid and 10% COD only for this book'}</div></div><span class="switch"><input type="checkbox" data-k="cod" ${cur.cod ? 'checked' : ''} ${errs.codError ? 'disabled' : ''}><i></i></span></label>
         <label class="toggle-row"><div class="grow"><div class="t">Show in site search</div><div class="d">${errs.hiddenError ? esc(errs.hiddenError) : 'Off: still for sale, but search won’t list it'}</div></div><span class="switch"><input type="checkbox" data-k="searchable" ${cur.searchable ? 'checked' : ''} ${errs.hiddenError ? 'disabled' : ''}><i></i></span></label>
+        <label class="toggle-row"><div class="grow"><div class="t">Show while browsing</div><div class="d">${errs.browseError ? esc(errs.browseError) : 'Off: still for sale, but off the homepage and listing pages'}</div></div><span class="switch"><input type="checkbox" data-k="browsable" ${cur.browsable ? 'checked' : ''} ${errs.browseError ? 'disabled' : ''}><i></i></span></label>
         <label class="toggle-row"><div class="grow"><div class="t">“Only 4 left” badge</div><div class="d">Urgency badge on the product page</div></div><span class="switch"><input type="checkbox" data-k="scarcity" ${cur.scarcity ? 'checked' : ''}><i></i></span></label>
       </div>
       <a class="desk-link" href="/admin/?desktop=1#products">Title, images, delivery &amp; more on desktop</a>
@@ -718,6 +721,7 @@
       stock: el('stock').value === '' ? '' : Math.max(0, Math.round(Number(el('stock').value))),
       cod: el('cod').checked,
       searchable: el('searchable').checked,
+      browsable: el('browsable').checked,
       scarcity: el('scarcity').checked,
     });
     const save = body.querySelector('[data-save]');
@@ -768,6 +772,10 @@
       if (changed.includes('searchable')) {
         try { await api('admin-search-hidden', { method: 'POST', body: { slug: b.slug, hidden: !now.searchable, title: b.title } }); cur.searchable = now.searchable; }
         catch (e) { errors.push('Search: ' + e.message); }
+      }
+      if (changed.includes('browsable')) {
+        try { await api('admin-search-hidden', { method: 'POST', body: { slug: b.slug, hidden: !now.browsable, title: b.title, scope: 'browse' } }); cur.browsable = now.browsable; }
+        catch (e) { errors.push('Browsing: ' + e.message); }
       }
       if (errors.length) toast('Not saved: ' + errors.join(' · '), true);
       else toast(notes.length ? 'Saved — but ' + notes.join('; ') : 'Saved and live', !!notes.length);

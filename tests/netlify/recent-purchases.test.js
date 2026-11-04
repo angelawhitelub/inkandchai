@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname,'../..');
-function fixture({failed=false,disabled=false,empty=false}={}) {
+function fixture({failed=false,disabled=false,empty=false,hidden=[]}={}) {
  const queries=[];
  const data = empty?[]:[{id:'private-id',customer_name:'Sahil Secret',customer_phone:'private-phone',status:'paid',source:null,created_at:new Date(Date.now()-60000).toISOString(),amount_paise:40000,cart_items:[{slug:'test-hardcover'}]}];
  const db={from(table){const q={};for(const key of ['select','or','in','gte','order','limit'])q[key]=(...args)=>{queries.push([table,key,...args]);return q};q.then=(resolve,reject)=>Promise.resolve(failed?{error:new Error('secret database error')}:{data:table==='orders'?data:[{slug:'test-hardcover',title:'Correct Hardcover',image_url:'/cover.jpg',is_active:!disabled}]}).then(resolve,reject);return q}};
@@ -12,6 +12,7 @@ function fixture({failed=false,disabled=false,empty=false}={}) {
  const req=id=>{
   if(id==='@supabase/supabase-js')return {createClient:()=>db};
   if(id==='./utils/deleted-products')return {deletedSlugSet:async()=>new Set()};
+  if(id==='./utils/search-hidden')return {browse:{hiddenSlugSet:async()=>new Set(hidden)}};
   if(id==='./utils/pricing')return {makeSlug:()=>''};
   if(id==='fs')return {readFileSync:()=> '[]'};
   if(id.startsWith('./'))return require(path.join(root,'netlify/functions',id));
@@ -35,3 +36,6 @@ test('database errors fail closed without exposing diagnostics',async()=>{
  const r=await fixture({failed:true}).handler({httpMethod:'GET'});assert.equal(r.statusCode,503);assert.deepEqual(JSON.parse(r.body).purchases,[]);assert(!r.body.includes('secret'));assert.equal(r.headers['Cache-Control'],'no-store');assert.equal(r.headers['Netlify-CDN-Cache-Control'],undefined);
 });
 test('does not expose writes',async()=>{assert.equal((await fixture().handler({httpMethod:'POST'})).statusCode,405)});
+test('a book hidden from browsing never appears in the pop-up',async()=>{
+ const r=await fixture({hidden:['test-hardcover']}).handler({httpMethod:'GET'});assert.equal(r.statusCode,200);assert.deepEqual(JSON.parse(r.body).purchases,[]);
+});
