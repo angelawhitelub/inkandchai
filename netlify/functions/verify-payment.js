@@ -6,7 +6,7 @@
 
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
-const { sendWhatsApp } = require('./utils/whatsapp');
+const { sendOrderConfirmed, coverAndTitleHtml } = require('./utils/order-cover');
 const { afterResponse } = require('./utils/after-response');
 const { sendEmail }    = require('./utils/email');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
@@ -43,7 +43,7 @@ const CORS = {
 function cartTable(cart, shippingFee, discount = 0, coupon = '') {
   const rows = cart.map(i => `
     <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${coverAndTitleHtml(i)}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:center;">${i.qty}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:right;color:#c9a84c;">₹${(i.price*i.qty).toLocaleString('en-IN')}</td>
     </tr>`).join('');
@@ -417,9 +417,9 @@ exports.handler = async (event, context) => {
     const bookList = Array.isArray(cart) && cart.length
       ? cart.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200)
       : 'your books';
-    await sendWhatsApp({
+    await sendOrderConfirmed({
       to: customer.phone,
-      template: 'order_confirmed',
+      cart: cart,
       params: [firstName, inkOrderId, amtDisplay, addrShort, bookList],
     });
   }

@@ -14,7 +14,7 @@
 
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
-const { sendWhatsApp } = require('./utils/whatsapp');
+const { sendOrderConfirmed, orderCoversHtml } = require('./utils/order-cover');
 const { afterResponse } = require('./utils/after-response');
 const { sendEmail }    = require('./utils/email');
 const { generateCardForOrder } = require('./utils/scratch-cards');
@@ -411,9 +411,9 @@ exports.handler = async (event, context) => {
   const amtDisplay = `₹${(amount_paise / 100).toLocaleString('en-IN')}`;
   if (phone) {
     try {
-      const r = await sendWhatsApp({
+      const r = await sendOrderConfirmed({
         to: phone,
-        template: 'order_confirmed',
+        cart: cartItems,
         params: [
           firstName, inkOrderId, amtDisplay,
           (address || '').slice(0, 80),
@@ -443,6 +443,7 @@ exports.handler = async (event, context) => {
               ? `We received your 10% booking payment of <strong style="color:#c9a84c;">${amtDisplay}</strong>. Please keep the remaining <strong style="color:#c9a84c;">₹${balanceRs.toLocaleString('en-IN')}</strong> ready for the delivery agent.`
               : `Your payment of <strong style="color:#c9a84c;">${amtDisplay}</strong> was received successfully.`}
           </p>
+          ${orderCoversHtml(cartItems)}
           <p style="color:#a09080;font-size:13px;"><strong style="color:#f0e8d8;">Delivery address:</strong><br/>${address || '—'}</p>
           <p style="margin-top:16px;color:#7a6330;font-size:12px;">Order ID: <strong style="color:#c9a84c;">${inkOrderId}</strong></p>
           <div style="margin-top:20px;padding:14px 16px;background:#1c1916;border-left:3px solid #c9a84c;">

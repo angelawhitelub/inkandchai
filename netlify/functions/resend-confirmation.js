@@ -10,7 +10,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { sendWhatsApp } = require('./utils/whatsapp');
+const { sendOrderConfirmed, orderCoversHtml } = require('./utils/order-cover');
 const { sendEmail }    = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
 
@@ -74,9 +74,9 @@ exports.handler = async (event) => {
 
   if (phone) {
     try {
-      const r = await sendWhatsApp({
+      const r = await sendOrderConfirmed({
         to: phone,
-        template: 'order_confirmed',
+        cart: cart,
         params: [firstName, orderId, amtDisplay, addrShort, bookList],
       });
       result.wa = { ok: true, message_id: r?.messages?.[0]?.id || '' };
@@ -100,8 +100,8 @@ exports.handler = async (event) => {
             Hi ${firstName}, here's a fresh copy of your order confirmation.<br/>
             Amount: <strong style="color:#c9a84c;">${amtDisplay}</strong><br/>
             ${isPartial && balanceDue > 0 ? `Please keep <strong style="color:#f0e8d8;">₹${balanceDue.toLocaleString('en-IN')}</strong> ready for the delivery agent.<br/>` : ''}
-            ${bookList ? `Books: <strong style="color:#f0e8d8;">${bookList}</strong>` : ''}
           </p>
+          ${orderCoversHtml(cart)}
           <p style="color:#a09080;font-size:13px;"><strong style="color:#f0e8d8;">Delivery address:</strong><br/>${address || '—'}</p>
           <p style="margin-top:16px;color:#7a6330;font-size:12px;">Order ID: <strong style="color:#c9a84c;">${orderId}</strong></p>
           <div style="margin-top:20px;padding:14px 16px;background:#1c1916;border-left:3px solid #c9a84c;">

@@ -23,6 +23,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const { sendEmail } = require('./utils/email');
+const { coverAndTitleHtml } = require('./utils/order-cover');
 const { requireAdmin } = require('./utils/admin-auth');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 
@@ -69,7 +70,7 @@ function paidEmailHtml(order) {
   const balance = isPartial ? Math.max(0, Number(meta.balance) || 0) : 0;
   const rows = items.map(i => `
     <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${coverAndTitleHtml(i)}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:center;">${i.qty}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:right;color:#c9a84c;">₹${(i.price*i.qty).toLocaleString('en-IN')}</td>
     </tr>`).join('');

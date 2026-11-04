@@ -24,7 +24,7 @@
 
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
-const { sendWhatsApp }  = require('./utils/whatsapp');
+const { sendOrderConfirmed, coverAndTitleHtml } = require('./utils/order-cover');
 
 const { sendEmail } = require('./utils/email');
 const { claimPaidNotify } = require('./utils/paid-notify-once');
@@ -184,7 +184,7 @@ function paidEmailHtml(order) {
   const balance = isPartial ? Math.max(0, Number(meta.balance) || 0) : 0;
   const rows = items.map(i => `
     <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${coverAndTitleHtml(i)}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:center;">${i.qty}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:right;color:#c9a84c;">₹${(i.price*i.qty).toLocaleString('en-IN')}</td>
     </tr>`).join('');
@@ -472,9 +472,9 @@ exports.handler = async (event) => {
           ? cartItems.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200)
           : 'your books';
         try {
-          await sendWhatsApp({
+          await sendOrderConfirmed({
             to:       order.customer_phone,
-            template: 'order_confirmed',
+            cart: cartItems,
             params:   [firstName, order.razorpay_order_id || order.id, amtDisplay, addrShort, bookList],
           });
         } catch (waErr) {

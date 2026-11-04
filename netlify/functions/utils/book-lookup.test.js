@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { lookupBook, parseQuantity, priceBooksList } = require('./book-lookup');
-const { buildCartFromBooks } = require('./push-bot-order');
+const { buildCartFromBooks, withCovers } = require('./push-bot-order');
 
 test('explicit copy markers are read; numbers inside titles are not', () => {
   const cases = {
@@ -69,3 +69,13 @@ test('a catalogue row with an extra word in the request still matches; no price 
   assert.equal((await lookupBook('Without Fear or Favour Sanjay Kaul hardcover', deps)).slug, WFF.slug);
   assert.equal(await lookupBook('Without Fear or Favour', { staticBooks: [], findCustomProducts: async () => [{ ...WFF, price_inr: 0 }] }), null);
 });
+
+test('bot order lines get the listed cover; an unmatched line or a failed lookup stays as it was', async () => {
+  const cart = [{ title: 'Ikigai', qty: 1, price: 199 }, { title: 'Unlisted', qty: 1, price: 300 }, { title: 'Boom', qty: 1, price: 1 }];
+  const lookupBook = async (t) => {
+    if (t === 'Boom') throw new Error('db down');
+    return t === 'Ikigai' ? { title: 'Ikigai', image: '/images/ikigai.webp' } : null;
+  };
+  assert.deepEqual(await withCovers(cart, { lookupBook }), [{ title: 'Ikigai', qty: 1, price: 199, img: '/images/ikigai.webp' }, cart[1], cart[2]]);
+});
+

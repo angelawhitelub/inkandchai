@@ -20,8 +20,9 @@
 const { pushOrderToNimbusPost } = require('./nimbuspost-import');
 const { nimbusAutoPushOn } = require('./nimbus-push-once');
 const { fetchPaymentLinkStatus } = require('./razorpay-payment-link');
-const { sendWhatsApp, sendText } = require('./whatsapp');
-const { priceBooksList, splitBookTitles, parseQuantity } = require('./book-lookup');
+const { sendText } = require('./whatsapp');
+const { sendOrderConfirmed } = require('./order-cover');
+const { lookupBook, priceBooksList, splitBookTitles, parseQuantity } = require('./book-lookup');
 
 // The bot stores multiple books as a single comma-separated string in
 // `req.books` (see whatsapp-bot.js — the `books` tool field is documented as
@@ -56,10 +57,23 @@ async function buildCartFromBooks(booksStr, amountRupees, deps = {}) {
   });
 }
 
+// Adds the listed book's cover to each cart line. Best-effort: a missing cover
+// never holds up an order. Deliberately not the slug, which would start counting
+// these lines in stock and bestseller figures.
+async function withCovers(cart, deps = {}) {
+  const lookup = deps.lookupBook || lookupBook;
+  return Promise.all(cart.map(async (line) => {
+    try {
+      const hit = await lookup(line.title);
+      return hit && hit.image ? { ...line, img: hit.image } : line;
+    } catch { return line; }
+  }));
+}
+
 // Order-confirmation WhatsApp to the customer AND the store owner, fired the
 // moment a book request is confirmed into a real order (both COD and prepaid).
 // Best-effort — never blocks or fails the push.
-async function notifyOrderConfirmed({ orderId, phone10, customerName, address, books, amountRupees, paymentKind }) {
+async function notifyOrderConfirmed({ orderId, phone10, customerName, address, books, amountRupees, paymentKind, cart }) {
   const firstName = String(customerName || 'there').split(' ')[0];
   const bookList  = String(books || 'your books').slice(0, 200);
   const modeLabel = paymentKind === 'online_paid' ? 'Paid'
@@ -70,9 +84,9 @@ async function notifyOrderConfirmed({ orderId, phone10, customerName, address, b
   // Customer — reuse the same approved template the website order flow uses.
   if (phone10) {
     try {
-      await sendWhatsApp({
+      await sendOrderConfirmed({
         to: phone10,
-        template: 'order_confirmed',
+        cart: cart,
         params: [firstName, orderId, amtLabel, String(address || '').slice(0, 80), bookList],
       });
     } catch (e) { console.error('[push-bot-order] customer confirm WA:', e.message); }
@@ -160,7 +174,7 @@ async function pushBotOrder(supabase, req, opts = {}) {
   const orderId    = mintOrderId(req.order_id);
   const phone10    = String(req.customer_phone || '').replace(/\D/g, '').slice(-10);
   const amountPaise = amountRupees * 100;
-  const cart = await buildCartFromBooks(req.books, amountRupees);
+  const cart = await withCovers(await buildCartFromBooks(req.books, amountRupees));
 
   // Status + payment markers by kind:
   //   cod              → cod_pending, no payment_status
@@ -222,10 +236,10 @@ async function pushBotOrder(supabase, req, opts = {}) {
   // it runs before the function returns, but its own errors never throw.
   if (opts.notify !== false) await notifyOrderConfirmed({
     orderId, phone10, customerName: req.customer_name, address: req.address,
-    books: req.books, amountRupees, paymentKind,
+    books: req.books, amountRupees, paymentKind, cart,
   });
 
   return { ok: true, order_id: orderId, status, amount: amountRupees, payment_kind: paymentKind };
 }
 
-module.exports = { pushBotOrder, buildCartFromBooks };
+module.exports = { pushBotOrder, buildCartFromBooks, withCovers };

@@ -18,7 +18,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { sendWhatsApp }  = require('./utils/whatsapp');
+const { sendOrderConfirmed, coverAndTitleHtml } = require('./utils/order-cover');
 const { sendEmail }     = require('./utils/email');
 const { claimPaidNotify } = require('./utils/paid-notify-once');
 const { afterResponse } = require('./utils/after-response');
@@ -103,7 +103,7 @@ function paidEmailHtml(order) {
   const fullTotal = isPartial ? Math.max(total + balance, Number(meta.full_total) || 0) : total;
   const rows = items.map(i => `
     <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${coverAndTitleHtml(i)}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:center;">${i.qty}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;text-align:right;color:#c9a84c;">₹${(i.price*i.qty).toLocaleString('en-IN')}</td>
     </tr>`).join('');
@@ -292,9 +292,9 @@ async function reconcilePaidOrder(orderId, phonepeTxnId, amount) {
         ? cartItems.map(i => i.title || i.name || '').filter(Boolean).join(', ').slice(0, 200)
         : 'your books';
       try {
-        await sendWhatsApp({
+        await sendOrderConfirmed({
           to:       order.customer_phone,
-          template: 'order_confirmed',
+          cart: cartItems,
           params:   [firstName, order.razorpay_order_id || order.id, amtDisplay, addrShort, bookList],
         });
       } catch (waErr) {

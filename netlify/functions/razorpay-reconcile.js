@@ -11,7 +11,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { sendWhatsApp } = require('./utils/whatsapp');
+const { sendOrderConfirmed } = require('./utils/order-cover');
 const { makeOrderId } = require('./utils/pricing');
 const { requireAdmin } = require('./utils/admin-auth');
 
@@ -141,9 +141,9 @@ exports.handler = async (event) => {
     if (finalPhone) {
       const firstName = (customer.name || name || 'there').split(' ')[0];
       const amtDisplay = `₹${(amount / 100).toLocaleString('en-IN')}`;
-      await sendWhatsApp({
+      await sendOrderConfirmed({
         to: finalPhone,
-        template: 'order_confirmed',
+        cart: cart,
         params: [
           firstName,
           inkOrderId,

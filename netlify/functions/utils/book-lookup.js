@@ -47,6 +47,7 @@ function getStaticCatalogue() {
       title:  b.title || '',
       author: b.author || '',
       price:  parseFloat(b.price_inr || 0) || 0,
+      image:  b.image_url || '',
       slug:   (String(b.url || '').match(/\/product\/([^/?#]+)/) || [])[1] || '',
       source: 'static',
       _titleTokens: tokens(`${b.title} ${b.author}`),
@@ -80,6 +81,7 @@ function customRowToBook(b) {
     title:  b.title || '',
     author: b.author || '',
     price:  parseFloat(b.price_inr || 0) || 0,
+    image:  b.image_url || '',
     slug:   b.slug || '',
     source: 'custom',
     _titleTokens: tokens(`${b.title} ${b.author}`),
@@ -109,7 +111,7 @@ function scoreMatch(queryTokens, book) {
 
 /**
  * Find the best matching book for a free-text title.
- * @returns {Promise<{title,author,price,slug,source}|null>}
+ * @returns {Promise<{title,author,image,price,slug,source}|null>}
  */
 async function lookupBook(rawTitle, deps = {}) {
   const qTokens = tokens(rawTitle);
@@ -134,7 +136,7 @@ async function lookupBook(rawTitle, deps = {}) {
   // "some random book" would grab a low-quality match and mislead pricing.
   const minAcceptable = 0.5;
   if (!best || bestScore < minAcceptable) return null;
-  return { title: best.title, author: best.author, price: best.price, slug: best.slug, source: best.source };
+  return { title: best.title, author: best.author, image: best.image, price: best.price, slug: best.slug, source: best.source };
 }
 
 // Split a books string into titles on STRUCTURAL separators only — commas,
