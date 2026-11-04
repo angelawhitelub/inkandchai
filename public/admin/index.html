@@ -5269,13 +5269,18 @@ function isCourierCancelled(o) {
   return /cancel/i.test(String(o.last_nimbuspost_status || ''));
 }
 
-// NimbusPost intentionally leaves the top-level order status as "shipped" for
-// hub scans. Expose the courier's current wording as a filterable sub-status.
-function isNimbusInTransit(o) {
+// Hub scans leave the top-level order status as "shipped", so "in transit" comes
+// from the courier's own wording. last_courier_status is the live check for every
+// courier; last_nimbuspost_status alone left out XpressBees, so this read 201 while
+// the XpressBees panel alone read 916. A failed lookup says nothing either way.
+function isInTransit(o) {
   const status = String(o?.status || '').toLowerCase();
   if (['out_for_delivery','delivered','rto','undelivered','lost','cancelled','refunded','refund_pending'].includes(status)) return false;
-  const raw = String(o?.last_nimbuspost_status || '').toLowerCase().trim();
-  return /^(?:in[ -]?transit|reached (?:at|nearest|destination) hub|in sorting centre|sorting|spd)$/.test(raw);
+  const courier = String(o?.last_courier_status || '').toLowerCase().trim();
+  const raw = courier && !courier.startsWith('lookup failed')
+    ? courier
+    : String(o?.last_nimbuspost_status || '').toLowerCase().trim();
+  return /^(?:in[ -]?transit|rad|reached (?:at|nearest|destination) hub|in sorting centre|sorting|spd)$/.test(raw);
 }
 
 // Customer asked to cancel but the order is still live (not yet cancelled/
@@ -6504,7 +6509,7 @@ function updateStats(opts = {}) {
   const onlinePending= base.filter(isPendingOnlineOrder).length;
   const paid         = base.filter(o => o.status === 'paid').length;
   const shipped      = base.filter(o => o.status === 'shipped').length;
-  const inTransit    = base.filter(isNimbusInTransit).length;
+  const inTransit    = base.filter(isInTransit).length;
   const delivered    = base.filter(o => o.status === 'delivered').length;
   const cancelled    = base.filter(o => o.status === 'cancelled').length;
   const refunded     = base.filter(o => o.status === 'refunded').length;
@@ -6732,7 +6737,7 @@ function applyFilters() {
 
   filtered = allOrders.filter(o => {
     if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
-    if (currentFilter === '__in_transit' && !isNimbusInTransit(o)) return false;
+    if (currentFilter === '__in_transit' && !isInTransit(o)) return false;
     if (currentFilter === 'partial_cod_pending' && !isPartialOrder(o)) return false;
     if (currentFilter === 'online_pending' && !isPendingOnlineOrder(o)) return false;
     if (currentFilter === 'cancel_requested' && !hasOpenCancelRequest(o)) return false;
@@ -6939,7 +6944,7 @@ function _drawTable() {
       </td>
       <td data-label="Status">
         <span class="badge ${bc}">${esc((o.status||'pending').replace(/_/g,' '))}</span>
-        ${isNimbusInTransit(o) ? `<div title="Latest NimbusPost status: ${esc(o.last_nimbuspost_status || 'in transit')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(77,184,255,0.1);border:1px solid rgba(77,184,255,0.45);color:#4db8ff;">🚚 In transit</div>` : ''}
+        ${isInTransit(o) ? `<div title="Latest courier status: ${esc(o.last_courier_status || o.last_nimbuspost_status || 'in transit')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(77,184,255,0.1);border:1px solid rgba(77,184,255,0.45);color:#4db8ff;">🚚 In transit</div>` : ''}
         ${(o.cancellation_requested_at && !['cancelled','refunded','refund_pending','partially_refunded'].includes(String(o.status||'').toLowerCase())) ? `<div title="Customer requested cancellation on ${esc(String(o.cancellation_requested_at).slice(0,16).replace('T',' '))}${o.cancellation_request_note ? ' — “' + esc(o.cancellation_request_note) + '”' : ''}. This is a request only — nothing was auto-cancelled." style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(232,160,48,0.14);border:1px solid rgba(232,160,48,0.6);color:var(--orange);font-weight:700;">⏳ Cancellation requested</div>` : ''}
         ${o.cancellation_source === 'stale_cod_7_day' ? `<div title="${esc(o.cancellation_reason || 'Out of stock — no courier movement for 7 days')}" style="display:block;width:max-content;margin-top:0.35rem;padding:2px 7px;font-size:0.5rem;letter-spacing:0.09em;text-transform:uppercase;background:rgba(224,96,96,0.1);border:1px solid rgba(224,96,96,0.45);color:var(--red);">Auto-cancelled · stale COD 7d</div>` : ''}
         ${o.cancellation_source === 'admin' && o.cancellation_reason ? `<div title="${esc(o.cancellation_reason)}" style="display:block;max-width:220px;margin-top:0.35rem;padding:2px 7px;font-size:0.55rem;line-height:1.4;white-space:normal;background:rgba(224,96,96,0.08);border:1px solid rgba(224,96,96,0.35);color:var(--red);">Cancelled · ${esc(o.cancellation_reason)}</div>` : ''}
