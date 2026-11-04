@@ -15,6 +15,7 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sendOrderConfirmed, orderCoversHtml } = require('./utils/order-cover');
+const { withCovers } = require('./utils/book-lookup');
 const { afterResponse } = require('./utils/after-response');
 const { sendEmail }    = require('./utils/email');
 const { generateCardForOrder } = require('./utils/scratch-cards');
@@ -174,7 +175,7 @@ exports.handler = async (event, context) => {
           if (!existing.customer_address && botReq.address) patch.customer_address = botReq.address;
           if (!existing.customer_phone && botReq.customer_phone) patch.customer_phone = botReq.customer_phone;
           if ((!Array.isArray(existing.cart_items) || !existing.cart_items.length) && botReq.books) {
-            patch.cart_items = splitBooksNote(botReq.books, existing.amount_paise || amount_paise || 0);
+            patch.cart_items = await withCovers(splitBooksNote(botReq.books, existing.amount_paise || amount_paise || 0));
           }
           if (!/^IC-W-/i.test(existing.razorpay_order_id || '') && /^IC-W-\d{8}-[A-Z0-9]{5}$/i.test(botReq.order_id || '')) {
             patch.razorpay_order_id = botReq.order_id.toUpperCase();
@@ -271,7 +272,7 @@ exports.handler = async (event, context) => {
   // comma-separated "Title ×qty" list, so split it into SEPARATE lines with
   // their quantities instead of one placeholder priced at the whole amount —
   // that single-line collapse is exactly what shipped one book on a 5-book order.
-  const cartItems = cart.length > 0 ? cart : splitBooksNote(notesBooks, amount_paise);
+  const cartItems = cart.length > 0 ? cart : await withCovers(splitBooksNote(notesBooks, amount_paise));
 
   // ── Partial COD ──────────────────────────────────────────────────────────
   // A partial-COD deposit is an ordinary captured payment as far as Razorpay is

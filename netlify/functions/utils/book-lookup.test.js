@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { lookupBook, parseQuantity, priceBooksList } = require('./book-lookup');
+const { findBookCover, lookupBook, parseQuantity, priceBooksList } = require('./book-lookup');
 const { buildCartFromBooks, withCovers } = require('./push-bot-order');
 
 test('explicit copy markers are read; numbers inside titles are not', () => {
@@ -70,12 +70,51 @@ test('a catalogue row with an extra word in the request still matches; no price 
   assert.equal(await lookupBook('Without Fear or Favour', { staticBooks: [], findCustomProducts: async () => [{ ...WFF, price_inr: 0 }] }), null);
 });
 
-test('bot order lines get the listed cover; an unmatched line or a failed lookup stays as it was', async () => {
-  const cart = [{ title: 'Ikigai', qty: 1, price: 199 }, { title: 'Unlisted', qty: 1, price: 300 }, { title: 'Boom', qty: 1, price: 1 }];
-  const lookupBook = async (t) => {
-    if (t === 'Boom') throw new Error('db down');
-    return t === 'Ikigai' ? { title: 'Ikigai', image: '/images/ikigai.webp' } : null;
+test('order lines get the cover of that book; an unmatched line, a failed or a slow lookup stays as it was', async () => {
+  const cart = [{ title: 'Ikigai', qty: 1, price: 199 }, { title: 'Unlisted', qty: 1, price: 300 }, { title: 'Boom', qty: 1, price: 1 }, { title: 'Slow', qty: 1, price: 1 }];
+  const findBookCover = (t) => {
+    if (t === 'Boom') return Promise.reject(new Error('db down'));
+    if (t === 'Slow') return new Promise(() => {});
+    return Promise.resolve(t === 'Ikigai' ? '/images/ikigai.webp' : '');
   };
-  assert.deepEqual(await withCovers(cart, { lookupBook }), [{ title: 'Ikigai', qty: 1, price: 199, img: '/images/ikigai.webp' }, cart[1], cart[2]]);
+  assert.deepEqual(await withCovers(cart, { findBookCover, timeoutMs: 20 }), [{ title: 'Ikigai', qty: 1, price: 199, img: '/images/ikigai.webp' }, cart[1], cart[2], cart[3]]);
 });
 
+const coverOf = (title, books) => findBookCover(title, {
+  findCustomProducts: async () => [],
+  staticBooks: books.map(([t, image]) => ({ title: t, image })),
+});
+
+test('a cover needs the same main title: a near match is another book', async () => {
+  const life = ['You Can Heal Your Life by Louise Hay', '/life.jpg'];
+  assert.equal(await coverOf('You Can Heal Your Body (Hindi)', [life]), '');
+  assert.equal(await coverOf('You Can Heal Your Body', [life]), '');
+  assert.equal(await coverOf('Heartstopper Vol 6', [['Heartstopper Vol 5', '/5.jpg']]), '');
+  assert.equal(await coverOf('Harry Potter', [['Harry Potter and the Goblet of Fire', '/hp.jpg']]), '');
+  assert.equal(await coverOf('You Can Heal Your Life', [life]), '/life.jpg');
+});
+
+test('subtitle, author, tags, case and leading articles do not change which book it is', async () => {
+  assert.equal(await coverOf('Heal Your Body', [['Heal Your Body: The Mental Causes for Physical Illness', '/h.jpg']]), '/h.jpg');
+  assert.equal(await coverOf('forty rules of love by elif shafak', [['The Forty Rules of Love', '/f.jpg']]), '/f.jpg');
+  assert.equal(await coverOf('Who Moved My Cheese', [['Who Moved My Cheese? #Trending', '/c.jpg']]), '/c.jpg');
+  assert.equal(await coverOf('Without Fear or Favour by Sanjay Kaul', [['Without Fear or Favour by Sanjay Kishan Kaul', '/w.jpg']]), '/w.jpg');
+});
+
+test('a cover must be in the language asked for', async () => {
+  const english = ['The Alchemist', '/en.jpg'];
+  const hindi = ['(Hindi) The Alchemist', '/hi.jpg'];
+  assert.equal(await coverOf('The Alchemist (Hindi)', [english]), '');
+  assert.equal(await coverOf('The Alchemist', [hindi]), '');
+  assert.equal(await coverOf('The Alchemist Hindi', [english, hindi]), '/hi.jpg');
+});
+
+test('a placeholder is not a cover, and the live catalogue is asked first', async () => {
+  assert.equal(await coverOf('Ikigai', [['Ikigai', '/images/cover-coming-soon.png']]), '');
+  assert.equal(await coverOf('Ikigai', [['Ikigai', '']]), '');
+  const cover = await findBookCover('Ikigai', {
+    findCustomProducts: async () => [{ title: 'Ikigai', image_url: '/live.webp' }],
+    staticBooks: [{ title: 'Ikigai', image: '/old.jpg' }],
+  });
+  assert.equal(cover, '/live.webp');
+});

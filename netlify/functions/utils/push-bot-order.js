@@ -22,7 +22,7 @@ const { nimbusAutoPushOn } = require('./nimbus-push-once');
 const { fetchPaymentLinkStatus } = require('./razorpay-payment-link');
 const { sendText } = require('./whatsapp');
 const { sendOrderConfirmed } = require('./order-cover');
-const { lookupBook, priceBooksList, splitBookTitles, parseQuantity } = require('./book-lookup');
+const { priceBooksList, splitBookTitles, parseQuantity, withCovers } = require('./book-lookup');
 
 // The bot stores multiple books as a single comma-separated string in
 // `req.books` (see whatsapp-bot.js — the `books` tool field is documented as
@@ -55,19 +55,6 @@ async function buildCartFromBooks(booksStr, amountRupees, deps = {}) {
     const unit = it && it.matched !== false && Number(it.unitPrice) > 0 ? Math.round(Number(it.unitPrice)) : evenPrice;
     return { title, qty, price: unit };
   });
-}
-
-// Adds the listed book's cover to each cart line. Best-effort: a missing cover
-// never holds up an order. Deliberately not the slug, which would start counting
-// these lines in stock and bestseller figures.
-async function withCovers(cart, deps = {}) {
-  const lookup = deps.lookupBook || lookupBook;
-  return Promise.all(cart.map(async (line) => {
-    try {
-      const hit = await lookup(line.title);
-      return hit && hit.image ? { ...line, img: hit.image } : line;
-    } catch { return line; }
-  }));
 }
 
 // Order-confirmation WhatsApp to the customer AND the store owner, fired the

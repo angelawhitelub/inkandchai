@@ -216,4 +216,60 @@ async function priceBooksList(rawBooksList, fallbackRs = 349, deps = {}) {
   };
 }
 
-module.exports = { lookupBook, priceBooksList, splitBookTitles, parseQuantity };
+// ── Order covers ──────────────────────────────────────────────────────────
+// A cover goes to the customer and the packing team, so it has to be this book.
+// lookupBook is too loose for that: half the words is enough for a price guess,
+// and "You Can Heal Your Body (Hindi)" came back as the English "You Can Heal
+// Your Life". Here the main titles must hold the same words and the language
+// must agree; no cover is better than the wrong one.
+const COVER_LANGUAGES = new Set([
+  'hindi', 'urdu', 'marathi', 'bengali', 'bangla', 'tamil', 'telugu', 'gujarati',
+  'kannada', 'malayalam', 'punjabi', 'odia', 'assamese', 'sanskrit',
+]);
+const COVER_LOOKUP_TIMEOUT_MS = 3000;
+
+/** The words of a title without its subtitle, author, tags or language. */
+function coverIdentity(title) {
+  const raw = String(title || '');
+  const languages = [...new Set(normalize(raw).split(' ').filter((w) => COVER_LANGUAGES.has(w)))].sort();
+  const main = raw
+    .replace(/[([][^)\]]*[)\]]/g, ' ')
+    .replace(/#\S+/g, ' ')
+    .split(/\s*[:|—–]\s*|\s+-\s+|\s+by\s+/i)[0];
+  const words = [...new Set(tokens(main).filter((w) => !COVER_LANGUAGES.has(w)))].sort();
+  return words.length ? `${words.join(' ')}|${languages.join(' ')}` : '';
+}
+
+function isRealCover(url) {
+  return !!url && !/cover-coming-soon|ChatGPT_Image/i.test(url);
+}
+
+/** The cover of exactly this book, or '' when the catalogue has no such book. */
+async function findBookCover(rawTitle, deps = {}) {
+  const wanted = coverIdentity(rawTitle);
+  if (!wanted) return '';
+  const customRows = await (deps.findCustomProducts || findCustomProducts)(rawTitle);
+  const custom = (customRows || []).map((b) => ({ title: b.title, image: b.image_url }));
+  const candidates = [...custom, ...(deps.staticBooks || getStaticCatalogue())];
+  const hit = candidates.find((b) => isRealCover(b.image) && coverIdentity(b.title) === wanted);
+  return hit ? hit.image : '';
+}
+
+// Adds the book's cover to each cart line. Best-effort, and bounded: a slow or
+// failed lookup leaves the line without a cover and never holds up an order.
+// Deliberately not the slug, which would start counting these lines in stock
+// and bestseller figures.
+async function withCovers(cart, deps = {}) {
+  const find = deps.findBookCover || findBookCover;
+  const timeoutMs = deps.timeoutMs || COVER_LOOKUP_TIMEOUT_MS;
+  return Promise.all((cart || []).map(async (line) => {
+    let timer;
+    try {
+      const expired = new Promise((resolve) => { timer = setTimeout(() => resolve(''), timeoutMs); });
+      const img = await Promise.race([find(line.title), expired]);
+      return img ? { ...line, img } : line;
+    } catch { return line; } finally { clearTimeout(timer); }
+  }));
+}
+
+module.exports = { lookupBook, priceBooksList, splitBookTitles, parseQuantity, findBookCover, withCovers };

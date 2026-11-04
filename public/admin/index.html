@@ -218,8 +218,9 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .items-cell div{white-space:normal;overflow-wrap:anywhere;margin-bottom:0.1rem;}
 /* Per-item price breakdown: title wraps, price stays pinned to the first line. */
 .items-cell .item-line{display:flex;align-items:flex-start;gap:0.5rem;justify-content:space-between;margin-bottom:0.4rem;}
-.items-cell .item-line .it-thumb{flex:0 0 40px;width:40px;height:56px;display:block;background:#fff;border:1px solid var(--border);border-radius:2px;overflow:hidden;}
+.items-cell .item-line .it-thumb{flex:0 0 40px;width:40px;height:56px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--border);border-radius:2px;overflow:hidden;}
 .items-cell .item-line .it-thumb img{width:100%;height:100%;object-fit:contain;display:block;}
+.items-cell .item-line .it-thumb:empty::after{content:'No cover';font-size:0.55rem;line-height:1.2;color:#777;text-align:center;}
 .items-cell .item-line .it-title{flex:1 1 auto;white-space:normal;overflow-wrap:anywhere;min-width:0;line-height:1.35;}
 .cust-name .cust-link{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor;}
 .cust-name .cust-link:hover{color:var(--gold);border-bottom-style:solid;}
