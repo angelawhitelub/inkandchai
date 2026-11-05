@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { cancelReturn, whyNotCancellable } = require('./return-cancel');
+const { cancelReturn, whyNotCancellable, notifyReturnCancelled } = require('./return-cancel');
 
 const NOW = Date.parse('2026-11-05T10:00:00Z');
 const OLD = '2026-11-01T10:00:00Z';
@@ -64,7 +64,6 @@ test('a pickup still waiting is voided at the courier and the refund is stopped'
   assert.equal(db.row.status, 'cancelled');
   assert.equal(db.row.refund_status, 'cancelled');
   assert.equal(db.row.tracking_status, 'cancelled');
-  assert.match(out.message, /not been messaged/);
 });
 
 test('NimbusPost tracking routes the void to NimbusPost whatever the row is labelled', async () => {
@@ -173,4 +172,77 @@ test('a return still being booked waits, so the booking cannot overwrite the can
   const fresh = ret({ status: 'approved', awb: null, created_at: new Date(NOW - 60 * 1000).toISOString() });
   assert.match(whyNotCancellable(fresh, NOW), /still being booked/);
   assert.equal(whyNotCancellable({ ...fresh, created_at: OLD }, NOW), '');
+});
+
+// ── Telling the customer ──────────────────────────────────────────────────────
+function senders({ emailFails = false, waResult = { ok: true } } = {}) {
+  const sent = { emails: [], templates: [], texts: [] };
+  return {
+    sent,
+    sendEmail: async (m) => { if (emailFails) throw new Error('smtp down'); sent.emails.push(m); },
+    whatsapp: {
+      sendWhatsApp: async (m) => { sent.templates.push(m); return waResult; },
+      sendText: async (to, text) => { sent.texts.push({ to, text }); return waResult; },
+    },
+  };
+}
+const customer = { customer_name: 'Aayush <b>Jaiswal', customer_email: 'a@example.com', customer_phone: '917992161557' };
+
+test('without a template the customer gets an email and a plain WhatsApp, flagged as window-only', async () => {
+  const d = senders();
+  const out = await notifyReturnCancelled(ret(customer), { ...d, template: '' });
+  assert.equal(d.sent.emails.length, 1);
+  assert.equal(d.sent.templates.length, 0);
+  assert.equal(d.sent.texts[0].to, '917992161557');
+  assert.match(d.sent.texts[0].text, /IC-1 has been cancelled/);
+  assert.match(d.sent.texts[0].text, /no refund or store credit/);
+  assert.match(d.sent.texts[0].text, /don't need to hand anything over/);
+  assert.equal(out.email.ok, true);
+  assert.equal(out.whatsapp.ok, true);
+  assert.match(out.whatsapp.note, /24 hours/);
+});
+
+test('once the template is set it is used, with first name and order id', async () => {
+  const d = senders();
+  const out = await notifyReturnCancelled(ret(customer), { ...d, template: 'return_cancelled' });
+  assert.equal(d.sent.texts.length, 0);
+  assert.equal(d.sent.templates[0].template, 'return_cancelled');
+  assert.deepEqual(d.sent.templates[0].params, ['Aayush', 'IC-1']);
+  assert.equal(out.whatsapp.note, undefined);
+});
+
+test('the courier line only appears when a pickup was booked', async () => {
+  const d = senders();
+  await notifyReturnCancelled(ret({ ...customer, awb: null }), { ...d, template: '' });
+  assert.doesNotMatch(d.sent.texts[0].text, /courier/);
+  assert.doesNotMatch(d.sent.emails[0].html, /courier/);
+});
+
+test('customer text is escaped in the email', async () => {
+  const d = senders();
+  await notifyReturnCancelled(ret({ ...customer, customer_name: '<b>Aayush' }), { ...d, template: '' });
+  assert.doesNotMatch(d.sent.emails[0].html, /<b>Aayush/);
+  assert.match(d.sent.emails[0].html, /&lt;b&gt;Aayush/);
+});
+
+test('a failed channel is reported, does not stop the other, and never throws', async () => {
+  const d = senders({ emailFails: true });
+  const out = await notifyReturnCancelled(ret(customer), { ...d, template: '' });
+  assert.equal(out.email.ok, false);
+  assert.match(out.email.error, /smtp down/);
+  assert.equal(d.sent.texts.length, 1);
+
+  const refused = senders({ waResult: { ok: false, status: 400, data: { error: { message: 'Template not found' } } } });
+  const out2 = await notifyReturnCancelled(ret(customer), { ...refused, template: 'nope' });
+  assert.equal(refused.sent.emails.length, 1);
+  assert.equal(out2.whatsapp.ok, false);
+  assert.match(out2.whatsapp.error, /Template not found/);
+});
+
+test('no contact details are reported as skipped, not failed silently', async () => {
+  const d = senders();
+  const out = await notifyReturnCancelled(ret(), { ...d, template: '' });
+  assert.equal(out.email.skipped, 'no email on record');
+  assert.equal(out.whatsapp.skipped, 'no phone on record');
+  assert.equal(d.sent.emails.length + d.sent.texts.length, 0);
 });

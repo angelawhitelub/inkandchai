@@ -15,8 +15,9 @@
  *     tracking job both skip it, and refund_status moves off the value they look
  *     for. Nothing is cancelled once money has gone out.
  *
- * It messages nobody. The customer's order page and the bot both say the return
- * is cancelled; anything further is the owner's call.
+ * The customer is told by email and WhatsApp once the cancel has gone through
+ * (notifyReturnCancelled). The claim on the row makes that once only: a second
+ * press is refused before it gets that far.
  */
 
 // The parcel is with the courier, so it is on its way to us.
@@ -31,8 +32,6 @@ const SETTLED_REFUNDS = new Set(['refunding', 'refunded', 'completed', 'wallet_i
 // auto-return-pickup books straight after the request and writes its AWB without
 // checking the status, so a cancel inside this window would be overwritten.
 const BOOKING_WINDOW_MS = 3 * 60 * 1000;
-
-const NOT_MESSAGED = 'The customer has not been messaged.';
 
 function whyNotCancellable(ret, nowMs = Date.now()) {
   const status = String(ret?.status || '').toLowerCase();
@@ -86,7 +85,7 @@ async function cancelReturn(db, ret, opts = {}, deps = {}) {
   const close = async (note, message, extra = {}) => {
     const out = await casUpdate(db, id, prev, closingFields(ret, note, nowIso));
     if (!out.ok) return { ok: false, http: 409, message: `Could not cancel this return: ${out.error}.` };
-    return { ok: true, http: 200, status: 'cancelled', message: `${message} ${NOT_MESSAGED}`, ...extra };
+    return { ok: true, http: 200, status: 'cancelled', message, ...extra };
   };
 
   if (!awb) {
@@ -169,8 +168,79 @@ async function cancelReturn(db, ret, opts = {}, deps = {}) {
 
   return {
     ok: true, http: 200, status: 'cancelled', courier_cancelled: true,
-    message: `Return cancelled. ${outcome.message} No refund or store credit will be issued.${after} ${NOT_MESSAGED}`,
+    message: `Return cancelled. ${outcome.message} No refund or store credit will be issued.${after}`,
   };
 }
 
-module.exports = { cancelReturn, whyNotCancellable };
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const firstNameOf = (name) => String(name || '').trim().split(/\s+/)[0] || 'there';
+
+function cancelledCopy(ret) {
+  const oid = String(ret.order_display_id || ret.order_id || '');
+  return {
+    oid,
+    first: firstNameOf(ret.customer_name),
+    main: `your return for order ${oid} has been cancelled. You keep the books, and no refund or store credit will be issued for this return.`,
+    // Tracking can lag, and a forced close leaves the pickup live.
+    courier: ret.awb ? "If a courier comes for the pickup, you don't need to hand anything over." : '',
+  };
+}
+
+/**
+ * Tell the customer, after the cancel has gone through. Each channel is tried on
+ * its own and reported back; this never throws, because the return is already
+ * cancelled and a failed message must not read as a failed cancel.
+ *
+ * WhatsApp uses WHATSAPP_RETURN_CANCELLED_TEMPLATE ({{1}} first name, {{2}} order id)
+ * once that is set. Until then it is plain text, which Meta only delivers inside
+ * the 24 hours after the customer last messaged us, and it answers 200 either way.
+ */
+async function notifyReturnCancelled(ret, deps = {}) {
+  const sendEmail = deps.sendEmail || require('./email').sendEmail;
+  const { sendWhatsApp, sendText } = deps.whatsapp || require('./whatsapp');
+  const template = deps.template !== undefined ? deps.template : process.env.WHATSAPP_RETURN_CANCELLED_TEMPLATE;
+  const c = cancelledCopy(ret);
+  const result = { email: null, whatsapp: null };
+
+  if (ret.customer_email) {
+    try {
+      await sendEmail({
+        to: ret.customer_email,
+        subject: `Your return has been cancelled (${c.oid})`,
+        html: `<div style="font-family:Georgia,serif;color:#3a2f25;max-width:520px;margin:0 auto;">
+    <h2 style="color:#8a6a1f;">Return cancelled</h2>
+    <p>Hi ${esc(c.first)},</p>
+    <p>${esc(c.main)}</p>
+    ${c.courier ? `<p>${esc(c.courier)}</p>` : ''}
+    <p>If this isn't what you wanted, message us on WhatsApp and we'll help.</p>
+    <p style="color:#6f6255;font-size:13px;">Thank you,<br>Ink &amp; Chai</p>
+  </div>`,
+      });
+      result.email = { ok: true, to: ret.customer_email };
+    } catch (e) {
+      result.email = { ok: false, error: e.message };
+    }
+  } else {
+    result.email = { ok: false, skipped: 'no email on record' };
+  }
+
+  if (ret.customer_phone) {
+    try {
+      const wa = template
+        ? await sendWhatsApp({ to: ret.customer_phone, template, params: [c.first, c.oid] })
+        : await sendText(ret.customer_phone, `Hi ${c.first}, ${c.main}${c.courier ? ` ${c.courier}` : ''} If this isn't what you wanted, reply here and we'll help.`);
+      result.whatsapp = wa?.ok
+        ? { ok: true, to: ret.customer_phone, ...(template ? {} : { note: 'plain text: arrives only if they messaged us in the last 24 hours' }) }
+        : { ok: false, to: ret.customer_phone, error: wa?.data?.error?.message || wa?.error || (wa?.skipped ? 'not sent' : `status ${wa?.status || '?'}`) };
+    } catch (e) {
+      result.whatsapp = { ok: false, to: ret.customer_phone, error: e.message };
+    }
+  } else {
+    result.whatsapp = { ok: false, skipped: 'no phone on record' };
+  }
+
+  console.log(`[return-cancel] notify ${c.oid}: email=${result.email.ok ? 'sent' : 'not sent'} whatsapp=${result.whatsapp.ok ? (template ? 'template' : 'text') : 'not sent'}`);
+  return result;
+}
+
+module.exports = { cancelReturn, whyNotCancellable, notifyReturnCancelled };

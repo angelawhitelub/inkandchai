@@ -18747,14 +18747,14 @@ async function markReturnRefunded(id, btn) {
 }
 
 async function cancelReturnAdmin(id, btn) {
-  if (!confirm('Cancel this return?\n\nThe courier is asked first. If the pickup has not been collected it is cancelled with them. If the parcel has already been picked up, nothing changes.\n\nNo refund or store credit will be issued on it, and the customer is not messaged. The customer cannot file another return for this order.')) return;
+  if (!confirm('Cancel this return?\n\nThe courier is asked first. If the pickup has not been collected it is cancelled with them. If the parcel has already been picked up, nothing changes.\n\nNo refund or store credit will be issued on it. The customer is told by email and WhatsApp, and cannot file another return for this order.')) return;
   const label = btn ? btn.textContent : '';
   try {
     const data = await _returnCall({ return_request_id: id, action: 'cancel' }, btn);
-    alert('✅ ' + data.message);
+    alert('✅ ' + data.message + _notifySummary(data.notify_detail));
   } catch (e) {
     if (e.canForce && confirm(e.message + '\n\nClose it on our side anyway? The courier may still come, so the customer should refuse the pickup. If the parcel does come back, no refund runs for it automatically.')) {
-      try { alert(await _returnCall({ return_request_id: id, action: 'cancel', force: true }, btn).then(d => d.message)); }
+      try { alert(await _returnCall({ return_request_id: id, action: 'cancel', force: true }, btn).then(d => d.message + _notifySummary(d.notify_detail))); }
       catch (e2) { alert('Could not cancel: ' + e2.message); }
     } else if (!e.canForce) {
       alert(e.message);
@@ -18815,7 +18815,7 @@ function _notifySummary(nd) {
   if (!nd) return '';
   const line = (label, r) => {
     if (!r) return `\n${label}: —`;
-    if (r.ok) return `\n${label}: ✅ sent${r.to ? ' → ' + r.to : ''}`;
+    if (r.ok) return `\n${label}: ✅ sent${r.to ? ' → ' + r.to : ''}${r.note ? ' (' + r.note + ')' : ''}`;
     if (r.skipped) return `\n${label}: ⏭ ${r.skipped}`;
     return `\n${label}: ❌ ${r.error || 'failed'}`;
   };
