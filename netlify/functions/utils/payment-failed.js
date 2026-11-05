@@ -39,7 +39,53 @@ function neverCapturedPayment(order) {
   return false;
 }
 
+// ── Has the customer already tried again? ─────────────────────────────────────
+// PhonePe's FAILED callback typically lands about 20 minutes after the attempt,
+// by which time the customer has often paid on a second one. Telling them "your
+// order was cancelled" then reads as losing the order they just paid for: on
+// 4 Nov 2026 a customer answered it with "Please reorder" and paid a third time.
+// 202 of 861 failed-payment notices in the prior 30 days went out that late.
+const PLACED_STATUSES = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'cod_awaiting_confirmation',
+  'shipped', 'out_for_delivery', 'delivered'];
+
+/**
+ * A later order on the same phone number that really went through, or null.
+ * Any trouble answers null: this only ever suppresses a message, so when unsure
+ * the customer hears about the failure as they always did.
+ */
+async function newerOrderSince(db, order) {
+  const ten = String(order?.customer_phone || '').replace(/\D/g, '').slice(-10);
+  if (ten.length !== 10 || !order?.created_at) return null;
+  try {
+    const { data, error } = await db.from('orders')
+      .select('razorpay_order_id, status, created_at')
+      .or(`customer_phone.eq.${ten},customer_phone.eq.91${ten},customer_phone.eq.+91${ten}`)
+      .gt('created_at', order.created_at)
+      .in('status', PLACED_STATUSES)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (error) return null;
+    return (data && data[0]) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** Sends the failed-payment cancellation unless a newer order makes it misleading. */
+async function notifyPaymentFailed(db, order, send) {
+  const newer = await newerOrderSince(db, order);
+  if (newer) {
+    console.log(`[payment-failed] no cancellation notice for ${order.razorpay_order_id}: customer has since placed ${newer.razorpay_order_id}`);
+    return { sent: false, newer };
+  }
+  await send();
+  return { sent: true };
+}
+
 module.exports = {
+  PLACED_STATUSES,
+  newerOrderSince,
+  notifyPaymentFailed,
   PAYMENT_FAILED_REASON,
   NEVER_CAPTURED_ERROR,
   isPaymentFailedCancellation,

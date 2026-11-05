@@ -158,6 +158,83 @@ function sameBooks(a, b) {
   return both / (x.size + y.size - both) >= 0.75;
 }
 
+// ── Same book on an order that is already active ─────────────────────────────
+// sameBooks compares whole requests, so "Fractured Communities" does not match a
+// full subtitle. Here one side being contained in the other counts: a false match
+// costs one extra question, a miss costs a duplicate shipment and a refund.
+const ACTIVE_ORDER_STATUSES = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'cod_awaiting_confirmation',
+  'shipped', 'out_for_delivery'];
+const ACTIVE_ORDER_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+function sameTitle(a, b) {
+  const x = bookWords(a);
+  const y = bookWords(b);
+  if (!x.size || !y.size) return false;
+  const [small, large] = x.size <= y.size ? [x, y] : [y, x];
+  return [...small].every((w) => large.has(w));
+}
+
+function requestedTitles(books) {
+  return String(books || '').split(/[,\n]+/)
+    .map((t) => t.replace(/[×x]\s*\d+\b|\b\d+\s*(?:copies|copy|pcs|nos?)\b/gi, '').trim())
+    .filter(Boolean);
+}
+
+function orderTitles(order) {
+  const cart = Array.isArray(order?.cart_items) ? order.cart_items : [];
+  return cart.map((i) => String(i?.title || i?.name || '').trim()).filter(Boolean);
+}
+
+/** Website and WhatsApp orders on this number still on their way. Throws on a failed read. */
+async function activeOrders(db, phone, nowMs) {
+  const ten = last10(phone);
+  if (ten.length !== 10) return [];
+  const { data, error } = await db.from('orders')
+    .select('razorpay_order_id, status, amount_paise, cart_items, created_at')
+    .or(`customer_phone.eq.${ten},customer_phone.eq.91${ten},customer_phone.eq.+91${ten}`)
+    .in('status', ACTIVE_ORDER_STATUSES)
+    .gte('created_at', new Date(nowMs - ACTIVE_ORDER_WINDOW_MS).toISOString())
+    .order('created_at', { ascending: false })
+    .limit(10);
+  if (error) throw new Error(error.message);
+  return (data || []).filter((o) => orderTitles(o).length);
+}
+
+function describeActive(o) {
+  const paid = /cod/.test(o.status) ? 'Cash on Delivery' : `paid${o.amount_paise ? ` ₹${rupees(o.amount_paise)}` : ''}`;
+  const placed = o.created_at ? new Date(o.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }) : '';
+  return `${o.razorpay_order_id}: ${orderTitles(o).join(', ')} (${paid}, status ${o.status}${placed ? `, placed ${placed}` : ''})`;
+}
+
+/** The first active order holding a requested title, or null. Never blocks an order on a failed read. */
+async function sameBookActiveOrder(db, phone, books, nowMs) {
+  let orders;
+  try { orders = await activeOrders(db, phone, nowMs); }
+  catch (e) { console.warn('sameBookActiveOrder:', e.message); return null; }
+  for (const wanted of requestedTitles(books)) {
+    for (const order of orders) {
+      const title = orderTitles(order).find((t) => sameTitle(wanted, t));
+      if (title) return { order, title };
+    }
+  }
+  return null;
+}
+
+/** ORDER CONTEXT block, on every message: the model cannot tell "active" from three raw rows. */
+async function activeOrdersContext(db, phone, now = new Date()) {
+  try {
+    const orders = await activeOrders(db, phone, now.getTime());
+    if (!orders.length) return '';
+    return 'ACTIVE ORDERS ON THIS NUMBER (from our database, not yet delivered):\n'
+      + orders.map(describeActive).join('\n')
+      + '\nA cancelled order with a failed payment on this number is a separate attempt and does not affect these.'
+      + '\nIf the customer asks to reorder or buy a book listed here, follow ACTIVE ORDER FOR THE SAME BOOK before asking for any details.';
+  } catch (e) {
+    console.warn('activeOrdersContext:', e.message);
+    return '';
+  }
+}
+
 function mintOrderId(now = new Date()) {
   const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
   const randPart = Math.random().toString(36).slice(2, 7).toUpperCase().padEnd(5, 'X');
@@ -252,6 +329,24 @@ async function draftOrderRequest(deps, phone, args) {
       payment_link: dup.payment_mode === 'prepaid' && dup.payment_status !== 'paid' ? (dup.payment_link || null) : null,
       message: `NOT placed again — this customer ALREADY HAS order ${dup.order_id} for these books (placed ${new Date(dup.created_at).toISOString().slice(0, 10)}). Tell them their order ${dup.order_id} is already placed and will be dispatched; do not create another. If they really want an additional copy, a human will add it: https://wa.me/919217175546`,
     };
+  }
+
+  // 4 Nov 2026: a failed-attempt notice made a customer who had already paid say
+  // "Please reorder", the bot offered to, and they paid again. A draft for these
+  // books means the customer has already been through this question.
+  const drafting = rows.some((r) => r.status === DRAFT && nowMs - new Date(r.created_at).getTime() < DRAFT_TTL_MS && sameBooks(r.books, f.books));
+  if (args.second_copy_confirmed !== true && !drafting) {
+    const clash = await sameBookActiveOrder(db, phone, f.books, nowMs);
+    if (clash) {
+      return {
+        ok: false,
+        error: 'same_book_active',
+        order_id: clash.order.razorpay_order_id,
+        book: clash.title,
+        status: clash.order.status,
+        message: `NOT saved. This customer already has active order ${describeActive(clash.order)}. Tell them that order is active and on its way, and ask whether they really want a SECOND copy of "${clash.title}". Do not offer a reorder until they answer. Only if they clearly say yes, call submit_order_request again with second_copy_confirmed: true. If they say no, nothing more is needed.`,
+      };
+    }
   }
 
   const pricing = withSiteSale(withPaymentShipping(await withFreeDelivery(db, await priceSafely(deps.priceBooksList, f.books)), f.paymentMode), nowMs);
@@ -538,6 +633,6 @@ module.exports = {
   authorMatchingName,
   buildRequestEdit,
   DRAFT, DISCARDED, LIVE, HIDDEN_STATUSES, DRAFT_TTL_MS, AUTO_PUSH_MAX_COPIES,
-  validateOrderFields, sameBooks, draftReplyDecision,
-  draftOrderRequest, confirmDraftOrder, botOrdersContext, lookupBotRequest, describeRequest,
+  validateOrderFields, sameBooks, sameTitle, requestedTitles, draftReplyDecision,
+  draftOrderRequest, confirmDraftOrder, botOrdersContext, activeOrdersContext, lookupBotRequest, describeRequest,
 };

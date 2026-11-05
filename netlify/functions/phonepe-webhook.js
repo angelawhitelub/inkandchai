@@ -32,7 +32,7 @@ const { generateCardForOrder } = require('./utils/scratch-cards');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { sendRefundInitiated } = require('./utils/refund-notifications');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
-const { PAYMENT_FAILED_REASON } = require('./utils/payment-failed');
+const { PAYMENT_FAILED_REASON, notifyPaymentFailed } = require('./utils/payment-failed');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -394,11 +394,11 @@ exports.handler = async (event) => {
     }
 
     if (dbStatus === 'cancelled' && existing?.status !== 'cancelled') {
-      await notifyOrderCancelled(order, {
+      await notifyPaymentFailed(supabase, order, () => notifyOrderCancelled(order, {
         reason: 'PhonePe reported that the payment failed. Your order has been cancelled.',
         skipRefund: true,     // FAILED/DECLINED payment — nothing was captured
         paymentFailed: true,  // don't email the owner about a failed checkout
-      });
+      }));
     }
 
     // Send notifications for both full payment and partial COD booking payment,

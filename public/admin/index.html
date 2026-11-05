@@ -18531,6 +18531,7 @@ const RETURN_STAGE = {
 };
 
 function returnTrackGroup(r) {
+  if (r.status === 'cancelled') return 'closed';
   if (!r.awb) return 'no_awb';
   const t = returnTrack(r);
   const st = t ? t.stage : '';
@@ -18565,6 +18566,7 @@ const RETURN_STATUS_COLORS = {
   pending:          'border-color:rgba(232,160,48,0.5);color:#b56b12;',
   approved:         'border-color:rgba(35,122,59,0.4);color:#237a3b;',
   rejected:         'border-color:rgba(201,80,80,0.5);color:#c93636;',
+  cancelled:        'border-color:rgba(160,144,128,0.5);color:#6f6255;',
   pickup_scheduled: 'border-color:rgba(201,168,76,0.5);color:#8a6a1f;',
 };
 
@@ -18627,7 +18629,7 @@ function renderReturns() {
 
   const tm = document.getElementById('returnsTrackMeta');
   if (tm && !returnTrackingBusy) {
-    const open = allReturnRequests.filter(r => r.status !== 'rejected');
+    const open = allReturnRequests.filter(r => r.status !== 'rejected' && r.status !== 'cancelled');
     const n = (g) => open.filter(r => returnTrackGroup(r) === g).length;
     tm.textContent = `Tracking: ${n('received')} received back · ${n('moving')} on the way · ${n('awaiting')} awaiting pickup · ${n('problem')} need attention · ${n('no_awb')} without AWB`
       + (returnTrackingAt ? ` — live as of ${new Date(returnTrackingAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : '');
@@ -18658,7 +18660,11 @@ function renderReturns() {
     const canPickup = !r.awb && r.status === 'approved';
     const canApprove = r.status === 'pending';
     const canReject  = r.status === 'pending';
-    const canTrack   = !r.awb && r.status !== 'rejected';
+    const canTrack   = !r.awb && r.status !== 'rejected' && r.status !== 'cancelled';
+    // Mirrors whyNotCancellable() in netlify/functions/utils/return-cancel.js,
+    // which has the last word and asks the courier first.
+    const canCancel  = !['rejected', 'cancelled'].includes(r.status) && !r.return_delivered_at && !r.refunded_at
+      && !['refunding', 'refunded', 'completed', 'wallet_issued', 'manual_refund_pending'].includes(r.refund_status);
 
     return `<tr>
       <td data-label="Date" style="white-space:nowrap;font-size:0.72rem;">${date}</td>
@@ -18679,6 +18685,7 @@ function renderReturns() {
           ${canPickup ? `<button class="btn-green" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="pushSingleReturnNoAwb('${r.id}',this)" title="Push ONLY this return into the NimbusPost panel as a New reverse order — no courier, no AWB. Assign the reverse AWB later inside NimbusPost by hitting Ship.">⬆ Push to NP (No AWB)</button>` : ''}
           ${canPickup ? `<button class="btn-outline" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturn('${r.id}',this)" title="Auto-book a reverse pickup via NimbusPost">🚚 Auto Pickup (NimbusPost)</button>` : ''}
           ${canPickup ? `<button class="btn-outline" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="processReturnXb('${r.id}',this)" title="Book a reverse pickup directly with XpressBees (Express Reverse) — AWB + auto-pickup from the customer's address to the Delhi office">🐝 Auto Pickup (XpressBees)</button>` : ''}
+          ${canCancel ? `<button class="btn-danger" style="font-size:0.6rem;padding:0.35rem 0.8rem;" onclick="cancelReturnAdmin('${r.id}',this)" title="Cancel this return: voids the pickup with the courier if it has not been collected, and stops the refund">✕ Cancel return</button>` : ''}
         </div>
         ${canTrack ? `<div style="display:flex;gap:0.3rem;flex-wrap:wrap;align-items:center;margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);">
           <input id="trk_${r.id}" placeholder="Tracking ID" style="width:100px;font-size:0.62rem;padding:0.3rem 0.4rem;background:var(--bg2);border:1px solid var(--border);color:var(--cream);border-radius:4px;">
@@ -18693,6 +18700,7 @@ function renderReturns() {
 
 // Refund method / amount / status + a "mark paid" control for the manual cases.
 function returnRefundInfo(r) {
+  if (r.status === 'cancelled') return `<div style="margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);font-size:0.63rem;color:var(--cream-dim);line-height:1.7;">Return cancelled. No refund or store credit is due.</div>`;
   if (!r.refund_method) return '';
   const rupees = r.refund_amount_paise ? '₹' + money(r.refund_amount_paise / 100) : '';
   // Mirrors needsManualPayout() in netlify/functions/utils/return-refund.js.
@@ -18720,7 +18728,8 @@ function returnRefundInfo(r) {
   // Pre-fix rows: a COD/partial-COD return parked on the prepaid status. The
   // auto-refund filters those out, so it is waiting on something that will
   // never happen.
-  const stranded = manualPayout && r.refund_status === 'awaiting_return_delivery';
+  // Store credit is not one of them: it is minted automatically on receipt.
+  const stranded = manualPayout && r.refund_method !== 'wallet' && r.refund_status === 'awaiting_return_delivery';
   return `<div style="margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);font-size:0.63rem;color:var(--cream-dim);line-height:1.7;">
     Refund: ${method} ${rupees ? '· ' + rupees : ''} · <span style="color:${stranded ? '#e05050' : stColor};">${stranded ? 'STRANDED — no auto-refund runs for a manual payout' : st}</span>
     ${(needsManual || stranded) ? `<button onclick="markReturnRefunded('${r.id}',this)" title="Mark this refund as paid (after you've sent the UPI/manual refund)" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.5);color:#6dbf6d;cursor:pointer;border-radius:4px;">✓ Mark refund paid</button>` : ''}
@@ -18737,6 +18746,24 @@ async function markReturnRefunded(id, btn) {
   }
 }
 
+async function cancelReturnAdmin(id, btn) {
+  if (!confirm('Cancel this return?\n\nThe courier is asked first. If the pickup has not been collected it is cancelled with them. If the parcel has already been picked up, nothing changes.\n\nNo refund or store credit will be issued on it, and the customer is not messaged. The customer cannot file another return for this order.')) return;
+  const label = btn ? btn.textContent : '';
+  try {
+    const data = await _returnCall({ return_request_id: id, action: 'cancel' }, btn);
+    alert('✅ ' + data.message);
+  } catch (e) {
+    if (e.canForce && confirm(e.message + '\n\nClose it on our side anyway? The courier may still come, so the customer should refuse the pickup. If the parcel does come back, no refund runs for it automatically.')) {
+      try { alert(await _returnCall({ return_request_id: id, action: 'cancel', force: true }, btn).then(d => d.message)); }
+      catch (e2) { alert('Could not cancel: ' + e2.message); }
+    } else if (!e.canForce) {
+      alert(e.message);
+    }
+  }
+  if (btn) btn.textContent = label;
+  await fetchReturnRequests();
+}
+
 async function _returnCall(body, btn) {
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
@@ -18746,7 +18773,7 @@ async function _returnCall(body, btn) {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (!res.ok) { const err = new Error(data.error || `HTTP ${res.status}`); err.canForce = !!data.can_force; throw err; }
     return data;
   } finally {
     if (btn) btn.disabled = false;

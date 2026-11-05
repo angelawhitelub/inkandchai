@@ -221,3 +221,21 @@ test('bot context reads saved tracking when fresh and skips the live call', asyn
   assert.equal(live, false);
   assert.match(txt, /On the way to us — latest scan: In Transit · Gurgaon/);
 });
+
+test('a cancelled return tells the bot the pickup is off and no refund is due, and is not tracked', async () => {
+  const row = {
+    status: 'cancelled', order_display_id: 'IC-1', awb: 'A1', courier_name: 'XpressBees', created_at: new Date().toISOString(),
+    refund_method: 'wallet', refund_status: 'cancelled', refund_amount_paise: 57800, tracking_status: 'cancelled',
+    items: [{ title: 'Book', qty: 1 }],
+  };
+  const text = describeReturn(row, { stage: 'cancelled' });
+  assert.match(text, /CANCELLED/);
+  assert.match(text, /no refund or store credit is due/);
+  assert.doesNotMatch(text, /rebook/);
+  assert.doesNotMatch(text, /AWB A1/);
+
+  let tracked = false;
+  const b = { select() { return b; }, or() { return b; }, gte() { return b; }, order() { return b; }, limit() { return Promise.resolve({ data: [row], error: null }); } };
+  await returnsContext({ from: () => b }, '919876543210', [], { trackReturns: async () => { tracked = true; return new Map(); } });
+  assert.equal(tracked, false);
+});

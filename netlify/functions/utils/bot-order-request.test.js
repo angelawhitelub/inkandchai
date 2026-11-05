@@ -405,3 +405,86 @@ test('a draft under the author\'s name is not saved until the customer says it i
   assert.equal(own.needs_confirmation, true);
   assert.equal(db.calls.inserts, 1);
 });
+
+// ── Same book on an active order (4 Nov 2026 double payment) ─────────────────
+{
+  const { activeOrdersContext, sameTitle, requestedTitles } = require('./bot-order-request');
+  const ACTIVE = {
+    razorpay_order_id: 'IC-20261104-HARDZ', status: 'paid', amount_paise: 23900, created_at: '2026-11-04T17:10:00Z',
+    cart_items: [{ title: 'Fractured Communities: Adivasi Histories and the Politics of Power', qty: 1 }],
+  };
+  // bot_order_requests comes from the shared fake; orders from these rows.
+  const withOrders = (base, orders, { fail = false } = {}) => ({
+    ...base,
+    from(table) {
+      if (table !== 'orders') return base.from(table);
+      const b = {
+        select() { return b; }, or() { return b; }, in() { return b; }, gte() { return b; }, order() { return b; },
+        limit() { return Promise.resolve(fail ? { data: null, error: { message: 'down' } } : { data: orders, error: null }); },
+      };
+      return b;
+    },
+  });
+  const ask = (books, extra = {}) => ({ customer_name: 'Rakshith B K', address: '12 MG Road, Bengaluru 560001', books, payment_mode: 'prepaid', ...extra });
+  const phone = '919916401419';
+
+  test('asks before drafting when an active order holds the same book, even by a short title', async () => {
+    const db = withOrders(fakeDb(), [ACTIVE]);
+    const out = await draftOrderRequest(deps(db).d, phone, ask('Fractured Communities'));
+    assert.equal(out.ok, false);
+    assert.equal(out.error, 'same_book_active');
+    assert.equal(out.order_id, 'IC-20261104-HARDZ');
+    assert.match(out.message, /SECOND copy/);
+    assert.equal(db.table.length, 0);
+  });
+
+  test('a confirmed second copy goes through to the normal YES step', async () => {
+    const db = withOrders(fakeDb(), [ACTIVE]);
+    const out = await draftOrderRequest(deps(db).d, phone, ask('Fractured Communities', { second_copy_confirmed: true }));
+    assert.equal(out.needs_confirmation, true);
+    assert.equal(db.table.length, 1);
+  });
+
+  test('a different book is not held up', async () => {
+    const db = withOrders(fakeDb(), [ACTIVE]);
+    const out = await draftOrderRequest(deps(db).d, phone, ask('Atomic Habits'));
+    assert.equal(out.needs_confirmation, true);
+  });
+
+  test('one clashing title in a longer list is enough to ask', async () => {
+    const db = withOrders(fakeDb(), [ACTIVE]);
+    const out = await draftOrderRequest(deps(db).d, phone, ask('Atomic Habits, Fractured Communities ×2'));
+    assert.equal(out.error, 'same_book_active');
+  });
+
+  test('a failed read of orders never stops a customer ordering', async () => {
+    const db = withOrders(fakeDb(), [ACTIVE], { fail: true });
+    const out = await draftOrderRequest(deps(db).d, phone, ask('Fractured Communities'));
+    assert.equal(out.needs_confirmation, true);
+  });
+
+  test('editing a draft they already agreed to does not ask again', async () => {
+    const db = withOrders(fakeDb(), [ACTIVE]);
+    const first = deps(db).d;
+    await draftOrderRequest(first, phone, ask('Fractured Communities', { second_copy_confirmed: true }));
+    const out = await draftOrderRequest(first, phone, ask('Fractured Communities', { address: '99 New Road, Bengaluru 560002' }));
+    assert.equal(out.needs_confirmation, true);
+    assert.equal(db.table.length, 1);
+  });
+
+  test('the context block names the active order and says a failed attempt does not affect it', async () => {
+    const text = await activeOrdersContext(withOrders(fakeDb(), [ACTIVE]), phone, new Date(NOW));
+    assert.match(text, /IC-20261104-HARDZ/);
+    assert.match(text, /Fractured Communities/);
+    assert.match(text, /₹239/);
+    assert.match(text, /failed payment/);
+    assert.equal(await activeOrdersContext(withOrders(fakeDb(), []), phone, new Date(NOW)), '');
+    assert.equal(await activeOrdersContext(withOrders(fakeDb(), [], { fail: true }), phone, new Date(NOW)), '');
+  });
+
+  test('title matching tolerates short forms and quantities, not other books', () => {
+    assert.ok(sameTitle('Fractured Communities', ACTIVE.cart_items[0].title));
+    assert.ok(!sameTitle('Atomic Habits', ACTIVE.cart_items[0].title));
+    assert.deepEqual(requestedTitles('Atomic Habits ×2, Ikigai x3\nDune'), ['Atomic Habits', 'Ikigai', 'Dune']);
+  });
+}

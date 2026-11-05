@@ -56,6 +56,7 @@ function statusLine(ret) {
     case 'pushed_to_nimbus': return 'Return approved and sent to our courier partner. The pickup tracking ID has not been assigned yet.';
     case 'pickup_scheduled': return 'Reverse pickup booked with the courier.';
     case 'rejected': return 'Return request was declined by our team.';
+    case 'cancelled': return 'This return was CANCELLED. The pickup is off, the customer keeps the books, and no refund or store credit is due on it.';
     default: return `Return status: ${ret.status || 'unknown'}.`;
   }
 }
@@ -65,6 +66,7 @@ function describeReturn(ret, view) {
   const items = Array.isArray(ret.items) ? ret.items.map((i) => `${i?.title || 'Book'} ×${i?.qty || 1}`).join(', ') : '';
   if (items) lines.push(`Books being returned: ${items}`);
   lines.push(statusLine(ret));
+  if (ret.status === 'cancelled') return lines.join('\n');
   let received = !!ret.return_delivered_at;
   if (ret.awb) {
     lines.push(`Return pickup: ${ret.courier_name || 'Courier'} AWB ${ret.awb}`);
@@ -112,7 +114,7 @@ async function returnsContext(db, from, orderIds = [], deps = {}) {
   // Saved tracking if it is fresh, otherwise ask the courier (bounded, so a slow
   // courier API cannot hold the reply up).
   const views = new Map();
-  const stale = data.filter((r) => r.awb && !r.return_delivered_at
+  const stale = data.filter((r) => r.awb && !r.return_delivered_at && r.status !== 'cancelled'
     && !(r.tracking_status && r.tracking_checked_at && Date.now() - Date.parse(r.tracking_checked_at) < STALE_MS));
   if (stale.length) {
     const live = await withTimeout(track(stale.map((r) => r.awb)).catch(() => null), LIVE_TIMEOUT_MS);

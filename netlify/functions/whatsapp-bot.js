@@ -33,7 +33,7 @@ const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
 const { pushBotOrder } = require('./utils/push-bot-order');
 const rtoReship = require('./utils/rto-reship');
-const { draftOrderRequest, confirmDraftOrder, draftReplyDecision, botOrdersContext, lookupBotRequest, describeRequest } = require('./utils/bot-order-request');
+const { draftOrderRequest, confirmDraftOrder, draftReplyDecision, botOrdersContext, activeOrdersContext, lookupBotRequest, describeRequest } = require('./utils/bot-order-request');
 const {
   findAwaitingOrders, applyRecoveredDetails, isAwaitingDetails,
 } = require('./utils/order-detail-recovery');
@@ -298,6 +298,7 @@ PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book r
     "Please check your order 👇\n📚 <books>\n👤 <name>\n📍 <address>\n💵 <COD or Prepaid> · Total ₹<total_rs> (books ₹<subtotal_rs> + shipping ₹<shipping_rs>)\n\nReply *YES* to place it, or tell me what to change."
   Do NOT say the order is placed, and do NOT give an order ID or payment link at this step. When they reply YES, the order is placed automatically and they get the order ID (and payment link if prepaid) straight away — you do not need to do anything.
 - If they change something (a book, the address, the payment mode), call submit_order_request again with the corrected values — it updates the same pending order — and ask for YES again.
+- ACTIVE ORDER FOR THE SAME BOOK: when ORDER CONTEXT has ACTIVE ORDERS ON THIS NUMBER and the customer says "reorder", "order again" or asks to buy a book on that list, do NOT start collecting details and do NOT offer a new order. First tell them that order (give the order ID) is active and on its way, that any cancelled failed-payment attempt does not affect it, and ask whether they really want a second copy. Only after a clear yes, carry on as a new purchase and pass second_copy_confirmed: true to submit_order_request. If the tool returns same_book_active, do exactly the same.
 - If the tool returns already_placed, that order EXISTS. Tell them their order <order_id> is already placed (and share the payment_link if one is returned). NEVER try to place it again.
 - A customer asking "is my order placed?", "did it go through?", or re-sending their earlier message is NOT a new order. Answer from WHATSAPP ORDERS ON THIS NUMBER in the order context; never call submit_order_request to check.
 - If shipping_rs is 0 (free delivery), skip the "+ shipping" part and just say "Total ₹<total_rs>".
@@ -814,7 +815,9 @@ async function buildOrderContext(from, userText) {
         [...named, extractOrderId(userText)].filter(Boolean));
     } catch (e) { console.warn('[returns] context failed:', e.message); }
   }
-  return [wrongCod, rest, returns, botOrders].filter(Boolean).join('\n\n');
+  const active = await activeOrdersContext(
+    createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), from);
+  return [wrongCod, rest, returns, botOrders, active].filter(Boolean).join('\n\n');
 }
 
 const ORDER_QUERY_RE = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book|refund|refnd|cancel|return|wapas|paisa|paise|payment|money|amount|credit|utr|reference|paid|prepaid|twice|dobara|double|cash|cod|charge|vasool|missing|incomplete|nahi\s*aa|nhi\s*aa|nahi\s*mil|nhi\s*mil|only\s*got|received\s*only|got\s*only|short/i;
@@ -950,6 +953,7 @@ const OPENAI_TOOLS = [{
       properties: {
         customer_name: { type: 'string', description: 'Customer\'s REAL full name, as they typed it. Not a placeholder, and never the book\'s author.' },
         name_confirmed: { type: 'boolean', description: 'Only after the tool reported name_matches_author: true if the customer then said this really is their own name. Otherwise leave it out.' },
+        second_copy_confirmed: { type: 'boolean', description: 'Only true after the customer was told they already have an active order for this book and clearly said they want a second copy. Otherwise leave it out.' },
         address:       { type: 'string', description: 'REAL complete delivery address including pincode, as the customer typed it. Not "N/A".' },
         books:         { type: 'string', description: 'The actual book TITLE(s) the customer wants to buy, comma-separated. Not the generic word "book". For more than one copy of a title put the count after it with ×, e.g. "Ikigai ×2, Atomic Habits" — never put quantity only in notes, or it is charged as one copy.' },
         payment_mode:  { type: 'string', enum: ['cod', 'prepaid'], description: 'Customer\'s chosen payment mode. "cod" = Cash on Delivery. "prepaid" = pay online now. Must be a real explicit choice from the customer — do NOT guess or default.' },

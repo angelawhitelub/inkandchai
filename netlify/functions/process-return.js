@@ -23,6 +23,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
+const { cancelReturn } = require('./utils/return-cancel');
 const { sanitizeOrderId, orderIdFilter } = require('./utils/order-id-filter');
 const { bookReverseForReturn } = require('./utils/xpressbees-reverse');
 
@@ -316,6 +317,11 @@ exports.handler = async (event) => {
 
       const { data: existing } = await supabase
         .from('return_requests').select('*').eq('order_id', order.id).maybeSingle();
+      if (existing?.status === 'cancelled') {
+        // Checked here because the pre-approve below would quietly reopen it,
+        // with its refund already stopped.
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'The return on this order was cancelled, so it cannot be restarted from here.' }) };
+      }
       if (existing) {
         ret = existing;
       } else {
@@ -344,6 +350,16 @@ exports.handler = async (event) => {
     }
 
     if (!ret) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Return request not found' }) };
+
+    if (action === 'cancel') {
+      const out = await cancelReturn(supabase, ret, { force: body.force === true });
+      console.log(`[process-return] cancel ${ret.order_display_id || ret.id}: ${out.ok ? 'done' : 'refused'}: ${out.message}`);
+      const { ok, http, message, ...rest } = out;
+      return { statusCode: http, headers: CORS, body: JSON.stringify(ok ? { success: true, message, ...rest } : { error: message, ...rest }) };
+    }
+    if (ret.status === 'cancelled') {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'This return was cancelled.' }) };
+    }
 
     // Handle status updates (approve/reject without creating pickup)
     if (action === 'reject') {

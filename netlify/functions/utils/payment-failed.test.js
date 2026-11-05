@@ -109,3 +109,71 @@ test('a failed payment with no stored payment id is filtered out twice over', ()
   assert.equal(isPhonePePayment(afterFix.razorpay_payment_id), false);
   assert.ok(neverCapturedPayment(afterFix));
 });
+
+// ── The late "your order was cancelled" notice ───────────────────────────────
+const { newerOrderSince, notifyPaymentFailed, PLACED_STATUSES } = require('./payment-failed');
+
+function ordersDb(rows, { error = null, throws = false } = {}) {
+  const seen = {};
+  return {
+    seen,
+    from() {
+      if (throws) throw new Error('db down');
+      const b = {
+        select() { return b; },
+        or(v) { seen.or = v; return b; },
+        gt(c, v) { seen.gt = v; return b; },
+        in(c, v) { seen.in = v; return b; },
+        order() { return b; },
+        limit() {
+          const hits = rows.filter((r) => r.created_at > seen.gt && seen.in.includes(r.status)
+            && seen.or.includes(String(r.customer_phone)));
+          return Promise.resolve({ data: error ? null : hits, error });
+        },
+      };
+      return b;
+    },
+  };
+}
+
+const failed = { razorpay_order_id: 'IC-FAILED', customer_phone: '919916401419', created_at: '2026-11-04T17:09:00Z' };
+
+test('a newer paid order on the same phone suppresses the notice, in any phone format', async () => {
+  for (const phone of ['9916401419', '919916401419', '+919916401419']) {
+    const db = ordersDb([{ razorpay_order_id: 'IC-PAID', status: 'paid', customer_phone: phone, created_at: '2026-11-04T17:10:00Z' }]);
+    let sent = 0;
+    const out = await notifyPaymentFailed(db, failed, async () => { sent++; });
+    assert.equal(sent, 0, phone);
+    assert.equal(out.newer.razorpay_order_id, 'IC-PAID');
+  }
+});
+
+test('the notice still goes when nothing newer went through', async () => {
+  const cases = [
+    [],
+    [{ status: 'paid', customer_phone: '9916401419', created_at: '2026-11-04T16:00:00Z' }],   // older
+    [{ status: 'cancelled', customer_phone: '9916401419', created_at: '2026-11-04T17:10:00Z' }], // also failed
+    [{ status: 'pending_phonepe', customer_phone: '9916401419', created_at: '2026-11-04T17:10:00Z' }], // still unpaid
+    [{ status: 'paid', customer_phone: '9000000000', created_at: '2026-11-04T17:10:00Z' }],   // someone else
+  ];
+  for (const rows of cases) {
+    let sent = 0;
+    await notifyPaymentFailed(ordersDb(rows), failed, async () => { sent++; });
+    assert.equal(sent, 1, JSON.stringify(rows));
+  }
+});
+
+test('any lookup trouble falls back to sending the notice', async () => {
+  for (const db of [ordersDb([], { error: { message: 'boom' } }), ordersDb([], { throws: true })]) {
+    let sent = 0;
+    await notifyPaymentFailed(db, failed, async () => { sent++; });
+    assert.equal(sent, 1);
+  }
+  assert.equal(await newerOrderSince(ordersDb([]), { customer_phone: '', created_at: 'x' }), null);
+  assert.equal(await newerOrderSince(ordersDb([]), { customer_phone: '9916401419' }), null);
+});
+
+test('COD orders and delivered orders count as having gone through', () => {
+  for (const s of ['paid', 'cod_pending', 'partial_cod_pending', 'shipped', 'delivered']) assert.ok(PLACED_STATUSES.includes(s), s);
+  assert.ok(!PLACED_STATUSES.includes('cancelled'));
+});

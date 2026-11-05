@@ -26,6 +26,7 @@ const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { generateCardForOrder, redeemScratchCardForOrder } = require('./utils/scratch-cards');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
+const { notifyPaymentFailed } = require('./utils/payment-failed');
 
 let _tokenCache = { token: null, expiresAt: 0 };
 
@@ -367,11 +368,11 @@ exports.handler = async (event, context) => {
             .from('orders')
             .update({ status: 'cancelled' })
             .eq('razorpay_order_id', id);
-          await notifyOrderCancelled({ ...existing, status: 'cancelled' }, {
+          await notifyPaymentFailed(supabase, existing, () => notifyOrderCancelled({ ...existing, status: 'cancelled' }, {
             reason: `PhonePe reported the payment as ${state}. Your order has been cancelled.`,
             skipRefund: true,     // payment failed — nothing was captured, nothing to refund
             paymentFailed: true,  // don't email the owner about a failed checkout
-          });
+          }));
           console.log(`Auto-cancelled order ${id} — PhonePe state: ${state}`);
         }
       } catch (cancelErr) {
