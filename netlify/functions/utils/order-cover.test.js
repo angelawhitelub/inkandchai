@@ -94,3 +94,14 @@ test('the WhatsApp cover is fitted whole inside a banner, not cropped', () => {
   assert.match(url, /&output=jpg/);
   assert.equal(whatsappCoverUrl([{ title: 'No cover' }]), '');
 });
+
+test('if Meta refuses the image template, the plain confirmation still goes', async () => {
+  await withTemplate(IMAGE, async () => {
+    const sent = [];
+    const sendWhatsApp = async (m) => { sent.push(m); return m.headerImageUrl ? { ok: false, status: 404, data: { error: { message: 'template name does not exist in en' } } } : { ok: true }; };
+    const res = await C.sendOrderConfirmed({ to: '91', params: PARAMS, cart: CART }, { sendWhatsApp, fetch: answer(JPEG) });
+    assert.equal(sent.length, 2);
+    assert.equal(sent[1].template, 'order_confirmed');
+    assert.equal(res.ok, true);
+  });
+});

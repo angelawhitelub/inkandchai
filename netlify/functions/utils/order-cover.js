@@ -82,8 +82,12 @@ async function sendOrderConfirmed({ to, params, cart }, deps = {}) {
   const template = process.env.WHATSAPP_ORDER_CONFIRMED_IMAGE_TEMPLATE;
   const image = template ? whatsappCoverUrl(cart) : '';
   if (image && await isJpeg(image, deps.fetch)) {
+    // Meta's refusal comes back as a result, not an exception. A wrong template
+    // name or language would otherwise cost every customer their confirmation.
     try {
-      return await send({ to, template, params, headerImageUrl: image });
+      const res = await send({ to, template, params, headerImageUrl: image });
+      if (res?.ok) return res;
+      console.warn('[order-cover] image confirmation refused, sending plain:', JSON.stringify(res?.data?.error?.message || res?.error || res?.status || 'no detail'));
     } catch (e) {
       console.warn('[order-cover] image confirmation failed, sending plain:', e.message);
     }
