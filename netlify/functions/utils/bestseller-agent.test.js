@@ -41,6 +41,18 @@ function productPage({ title = 'Some Book: A Subtitle | Marketing Words', author
   </html>`;
 }
 
+/** The format buttons as Amazon.in serves them on a Kindle page (Nov 2026). */
+function swatches({ paperback = 'B0HNQ23RBY', hardcover = '9390166934' } = {}) {
+  const button = (id, href) => `<div id="tmm-grid-swatch-${id}" class="a-column a-span6 swatchElement unselected celwidget" role="listitem">
+    <span class="a-button"><span class="a-button-inner"><a href="${href}" role="radio" class="a-button-text a-text-left"><span class="slot-title">${id}</span></a></span></span></div>`;
+  return `<div id="tmmSwatches">
+    <div id="tmm-grid-swatch-KINDLE" class="selected"><span class="a-button"><a href="javascript:void(0)" role="radio" aria-checked="true">Kindle Edition</a></span></div>
+    ${button('AUDIO_DOWNLOAD', '/Psychology-Money/dp/B0GQCKH8K3/ref=tmm_aud_swatch_0')}
+    ${hardcover ? button('HARDCOVER', `/Psychology-Money-Deluxe/dp/${hardcover}/ref=tmm_hrd_swatch_0`) : ''}
+    ${paperback ? button('PAPERBACK', `/Psychology-Money/dp/${paperback}/ref=tmm_pap_swatch_0`) : ''}
+  </div>`;
+}
+
 // ── parsing ────────────────────────────────────────────────────────────────
 
 test('list page: rendered titles plus the unrendered ranks from data-client-recs-list', () => {
@@ -315,4 +327,44 @@ test('scheduled endpoint: an HTTP request without an admin session is refused', 
   const { handler } = require('../bestseller-agent-scheduled');
   const res = await handler({ rawUrl: 'https://inkandchai.in/.netlify/functions/bestseller-agent-scheduled', httpMethod: 'POST', headers: { 'x-cloudflare-cron': '0 22 * * *' }, path: '/.netlify/functions/bestseller-agent-scheduled', body: '{}' });
   assert.equal(res.statusCode, 401);
+});
+
+// ── Kindle pages ──────────────────────────────────────────────────────────────
+
+test('printEditions: Paperback first, then Hardcover; no Kindle, no audiobook', () => {
+  assert.deepEqual(agent.printEditions(swatches()), [
+    { format: 'Paperback', asin: 'B0HNQ23RBY' },
+    { format: 'Hardcover', asin: '9390166934' },
+  ]);
+});
+
+test('printEditions: a page with only eBook and audio formats has none', () => {
+  assert.deepEqual(agent.printEditions(swatches({ paperback: '', hardcover: '' })), []);
+  assert.deepEqual(agent.printEditions('<html>no buttons here</html>'), []);
+});
+
+test('printEditions: the same ASIN under two buttons is listed once', () => {
+  assert.equal(agent.printEditions(swatches({ paperback: '9390166934' })).length, 1);
+});
+
+test('a Kindle page is still refused by default, so the nightly agent never drafts one', () => {
+  const r = agent.parseProductPage(productPage({ format: 'Kindle Edition', isbn13: '' }), 'B08FHZ5L47');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'kindle edition');
+});
+
+test('kindleFacts gives the facts but never the eBook price, ISBN or binding', () => {
+  const r = agent.parseProductPage(productPage({ format: 'Kindle Edition', isbn13: '' }), 'B08FHZ5L47', { kindleFacts: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.kindle, true);
+  assert.equal(r.author, 'Jane Doe');
+  assert.equal(r.publisher, 'Penguin Ananda');
+  assert.equal(r.pages, 256);
+  for (const k of ['isbn13', 'mrp', 'price', 'format', 'weight_grams', 'dimensions']) assert.equal(r[k], null, k);
+});
+
+test('kindleFacts does not make a non-book page acceptable', () => {
+  const r = agent.parseProductPage(productPage({ format: 'Audio CD', isbn13: '' }), 'B0ABCDEFGH', { kindleFacts: true });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /no ISBN/);
 });

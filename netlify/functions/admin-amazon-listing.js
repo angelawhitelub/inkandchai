@@ -11,6 +11,11 @@
  *              for the admin: Amazon's images are never used.
  *   duplicate  { kind: 'exact'|'near', title, slug } when we already list it.
  *
+ * A Kindle link is followed to the book's Paperback, then Hardcover, because
+ * that is what we sell. With no readable print edition the form still gets the
+ * facts the eBook page has, with ISBN, M.R.P. and price left blank: an eBook's
+ * price says nothing about the printed book, so none is guessed from it.
+ *
  * Facts, price (M.R.P. − 40%) and the duplicate check are the bestseller
  * agent's (utils/bestseller-agent); the copy is drafted fresh by the model with
  * Amazon's blurb as facts only, never copied.
@@ -44,6 +49,43 @@ async function resolveShortLink(shortUrl, fetchImpl) {
   return '';
 }
 
+/** One Amazon page, parsed; html is kept so a Kindle page's links can be read. */
+async function readPage(asin, fetchImpl) {
+  try {
+    const { status, body: html } = await agent.fetchText(`https://www.amazon.in/dp/${asin}`, { fetchImpl });
+    if (status !== 200) return { page: { ok: false, reason: `HTTP ${status}` }, html: '' };
+    return { page: agent.parseProductPage(html, asin), html };
+  } catch (e) {
+    return { page: { ok: false, reason: e.name === 'AbortError' ? 'Amazon took too long' : e.message }, html: '' };
+  }
+}
+
+/**
+ * The page to fill the form from when the link was a Kindle edition, and the
+ * note that says so: the first print edition that reads properly, else the
+ * eBook page's own facts.
+ */
+async function fromKindle(kindleAsin, kindleHtml, fetchImpl) {
+  const editions = agent.printEditions(kindleHtml);
+  const failed = [];
+  for (const edition of editions) {
+    const { page } = await readPage(edition.asin, fetchImpl);
+    if (page.ok) {
+      return {
+        page,
+        note: `That link was the Kindle edition, so this was filled from the ${edition.format} (${edition.asin}). Check it is the edition you stock.`,
+      };
+    }
+    failed.push(`${edition.format} ${edition.asin}: ${page.reason}`);
+  }
+  const page = agent.parseProductPage(kindleHtml, kindleAsin, { kindleFacts: true });
+  const why = failed.length ? `Its print editions could not be read (${failed.join('; ')})` : 'Amazon shows no print edition for it';
+  return {
+    page,
+    note: `That link is a Kindle edition. ${why}, so this was filled from the Kindle page: enter the ISBN, format, weight, M.R.P. and price from the printed book.`,
+  };
+}
+
 exports.handler = async (event = {}, context, deps = {}) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return json(405, { error: 'POST only' });
@@ -63,20 +105,21 @@ exports.handler = async (event = {}, context, deps = {}) => {
   }
 
   // 1. The product page.
-  let page;
-  try {
-    const { status, body: html } = await agent.fetchText(`https://www.amazon.in/dp/${asin}`, { fetchImpl });
-    page = status === 200 ? agent.parseProductPage(html, asin) : { ok: false, reason: `HTTP ${status}` };
-  } catch (e) {
-    page = { ok: false, reason: e.name === 'AbortError' ? 'Amazon took too long' : e.message };
+  const first = await readPage(asin, fetchImpl);
+  let { page } = first;
+  let kindleNote = '';
+  if (!page.ok && page.reason === 'kindle edition') {
+    const followed = await fromKindle(asin, first.html, fetchImpl);
+    page = followed.page;
+    kindleNote = followed.note;
+    if (page.ok) asin = page.asin;
   }
   if (!page.ok) {
     const why = page.reason === 'blocked'
       ? 'Amazon showed a robot check instead of the page. Try again in a minute.'
       : /^HTTP 404/.test(page.reason) ? 'Amazon has no page for that product.'
-        : /kindle/i.test(page.reason) ? 'That link is the Kindle edition. Open the Paperback or Hardcover on Amazon and paste that link.'
-          : /ISBN/.test(page.reason) ? 'That product has no ISBN, so it is not a print book.'
-            : `Could not read the Amazon page (${page.reason}).`;
+        : /ISBN/.test(page.reason) ? 'That product has no ISBN, so it is not a print book.'
+          : `Could not read the Amazon page (${page.reason}).`;
     return json(422, { error: why, asin });
   }
 
@@ -84,10 +127,12 @@ exports.handler = async (event = {}, context, deps = {}) => {
   const supabase = deps.db || createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const category = agent.categoryFor({ category: '' }, page.breadcrumbs) || '';
+  // Kindle pages nest one level deeper: Kindle Store › Kindle eBooks › the shelf.
+  const crumbs = page.kindle ? (page.breadcrumbs || []).slice(1) : page.breadcrumbs;
+  const category = agent.categoryFor({ category: '' }, crumbs) || '';
   const title = agent.listingTitle(page.title, page.author);
   const [crossword, catalogue, copy] = await Promise.all([
-    agent.crosswordLookup(page.isbn13, { fetchImpl }),
+    page.isbn13 ? agent.crosswordLookup(page.isbn13, { fetchImpl }) : null,
     (deps.loadCatalogue || loadCatalogue)(supabase).catch((e) => { console.warn('[admin-amazon-listing] catalogue:', e.message); return null; }),
     agent.draftCopy({ ...page, category }, {
       fetchImpl, apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_BESTSELLER_MODEL || 'gpt-4.1-mini',
@@ -96,8 +141,8 @@ exports.handler = async (event = {}, context, deps = {}) => {
 
   const money = agent.decideMrp({ amazonMrp: page.mrp, amazonPrice: page.price, crosswordMrp: crossword && crossword.mrp });
   const price = agent.priceFromMrp(money.mrp);
-  const warnings = [...money.warnings];
-  if (!category) warnings.push(`Category not recognised from Amazon (${(page.breadcrumbs || []).slice(1, 3).join(' › ') || 'none shown'}). Pick one.`);
+  const warnings = [...(kindleNote ? [kindleNote] : []), ...money.warnings];
+  if (!category) warnings.push(`Category not recognised from Amazon (${(crumbs || []).slice(1, 3).join(' › ') || 'none shown'}). Pick one.`);
   if (copy.error) warnings.push(`Description not drafted: ${copy.error}. Use ✨ Draft with AI.`);
   else if (copy.skipped) warnings.push(`Description not drafted: ${copy.skipped}.`);
   if (crossword && crossword.available === false) warnings.push('Out of stock at Crossword.');

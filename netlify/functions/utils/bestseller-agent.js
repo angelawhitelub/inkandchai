@@ -187,7 +187,7 @@ function detailRows(html) {
  * The facts on a product page. Returns { ok:false, reason } when the page is
  * not a print book we can list (a bot wall, a Kindle edition, no ISBN).
  */
-function parseProductPage(html, asin) {
+function parseProductPage(html, asin, { kindleFacts = false } = {}) {
   const s = String(html || '');
   if (s.length < 20000 || /captcha|Robot Check|Type the characters you see/i.test(s.slice(0, 20000))) {
     return { ok: false, reason: 'blocked', asin };
@@ -211,8 +211,9 @@ function parseProductPage(html, asin) {
   const format = text((byline.match(/Format:\s*<\/span>\s*<span[^>]*>([\s\S]*?)<\/span>/) || [])[1]) || null;
 
   const isbn13 = isbnToGtin(rows['isbn-13'] || '') || isbnToGtin(rows['isbn-10'] || '') || isbn13FromAsin(asin);
-  if (!isbn13 || /kindle/i.test(format || '')) {
-    return { ok: false, reason: /kindle/i.test(format || '') ? 'kindle edition' : 'no ISBN (not a print book)', asin, title };
+  const isKindle = /kindle/i.test(format || '');
+  if (isKindle ? !kindleFacts : !isbn13) {
+    return { ok: false, reason: isKindle ? 'kindle edition' : 'no ISBN (not a print book)', asin, title };
   }
 
   // The buy box. Other M.R.P.s on the page belong to "customers also bought".
@@ -253,19 +254,27 @@ function parseProductPage(html, asin) {
     return g ? Math.round(Number(g[1])) || null : null;
   })();
 
+  // kindleFacts: what an eBook page can honestly say about the book. Its prices
+  // are the eBook's, and it has no ISBN, binding, weight or size to offer.
+  if (isKindle) {
+    mrp = null;
+    price = null;
+  }
+
   return {
     ok: true,
+    kindle: isKindle,
     asin,
-    isbn13,
+    isbn13: isKindle ? null : isbn13,
     title: title || null,
     author,
-    format,
+    format: isKindle ? null : format,
     publisher: (rows.publisher || '').replace(/;.*$/, '').replace(/\s*\(.*\)\s*$/, '').trim() || null,
     published_on: rows['publication date'] || null,
     language: rows.language || null,
     pages,
-    weight_grams: grams,
-    dimensions: rows.dimensions || null,
+    weight_grams: isKindle ? null : grams,
+    dimensions: isKindle ? null : (rows.dimensions || null),
     reading_age: (rows['reading age'] || '').replace(/^customer suggested age:\s*/i, '') || null,
     mrp,
     price,
@@ -317,6 +326,35 @@ function categoryFor(list, crumbs) {
     if (re.test(top)) return typeof cat === 'function' ? cat(crumbs) : cat;
   }
   return list.category;
+}
+
+const PRINT_SWATCH = [
+  [/PAPERBACK/, 'Paperback'],
+  [/HARDCOVER/, 'Hardcover'],
+  [/MASS_MARKET|FLEXIBOUND|BOARD|SPIRAL/, 'Print edition'],
+];
+
+/**
+ * The print editions a Kindle page's format buttons link to, Paperback first,
+ * then Hardcover. Each is { format, asin }. Audiobook and Kindle are left out.
+ */
+function printEditions(html) {
+  const s = String(html || '');
+  const found = [];
+  for (const m of s.matchAll(/id="tmm-grid-swatch-([A-Z_]+)"/g)) {
+    const rank = PRINT_SWATCH.findIndex(([re]) => re.test(m[1]));
+    if (rank < 0) continue;
+    // Only this button's own link: the selected button has none, and looking
+    // further would pick up the next format's.
+    const link = s.slice(m.index, m.index + 1500).match(/<a\b[^>]*?\bhref="([^"]*)"/);
+    const asin = ((link && link[1]) || '').match(/\/dp\/([A-Z0-9]{10})(?:[/?]|$)/);
+    if (asin) found.push({ rank, format: PRINT_SWATCH[rank][1], asin: asin[1] });
+  }
+  const seen = new Set();
+  return found
+    .sort((a, b) => a.rank - b.rank)
+    .filter((e) => !seen.has(e.asin) && seen.add(e.asin))
+    .map(({ format, asin }) => ({ format, asin }));
 }
 
 // ── matching against what we already sell ──────────────────────────────────
@@ -813,6 +851,7 @@ module.exports = {
   isbn13FromAsin,
   parseListPage,
   parseProductPage,
+  printEditions,
   coreTitle,
   listingTitle,
   categoryFor,
