@@ -109,7 +109,7 @@ test('missing columns read as "run the SQL", not a crash', async () => {
 });
 
 const asked = (over = {}) => order({ delivery_failed_asked_at: '2026-11-05T05:00:00Z', delivery_failed_state: 'asked', ...over });
-const reply = (db, text) => ask.handleReply({ supabase: db }, text, { ...db.rows[0] });
+const reply = (db, text) => ask.handleReply({ supabase: db, now: () => NOW }, text, { ...db.rows[0] });
 
 test('want → nobody came → alternate number is stored step by step', async () => {
   const db = fakeDb([asked()]);
@@ -132,12 +132,16 @@ test('want → nobody came → alternate number is stored step by step', async (
   assert.equal(db.rows[0].delivery_failed_state, 'closed');
 });
 
-test('want → future delivery finishes without asking for a number', async () => {
+test('want → future delivery asks the date and stores it, with no number asked', async () => {
   const db = fakeDb([asked()]);
   await reply(db, ask.WANT_BUTTON);
-  const out = await reply(db, ask.FUTURE_BUTTON);
-  assert.match(out.reply, /later delivery/);
+  const one = await reply(db, ask.FUTURE_BUTTON);
+  assert.match(one.reply, /Which date/);
   assert.equal(db.rows[0].delivery_failed_reason, 'future_delivery');
+  assert.equal(db.rows[0].delivery_failed_state, 'date');
+  const two = await reply(db, '12 Nov');
+  assert.match(two.reply, /12 Nov 2026/);
+  assert.equal(db.rows[0].delivery_failed_future_date, '2026-11-12');
   assert.equal(db.rows[0].delivery_failed_state, 'closed');
   assert.equal(db.rows[0].delivery_failed_alt_phone, undefined);
 });
@@ -168,7 +172,7 @@ test('no alternate number closes it and records nothing as a number', async () =
 });
 
 test('anything else goes to the AI and changes nothing', async () => {
-  for (const [state, text] of [['asked', 'where is my parcel right now?'], ['reason', 'what do you mean'], ['number', 'why do you need it']]) {
+  for (const [state, text] of [['asked', 'where is my parcel right now?'], ['reason', 'what do you mean'], ['date', 'what do you mean'], ['number', 'why do you need it']]) {
     const db = fakeDb([asked({ delivery_failed_state: state })]);
     const out = await reply(db, text);
     assert.equal(out.handled, false, text);
@@ -248,4 +252,112 @@ test('a bare no cancels only as the answer to "do you still want it?"', async ()
   assert.equal(out.handled, false);
   assert.equal(atReason.rows[0].delivery_failed_choice, 'want');
   assert.equal(atReason.rows[0].delivery_failed_state, 'reason');
+});
+
+// NOW is Thursday 5 Nov 2026, 11:30 IST.
+test('reads the dates people actually type', () => {
+  const iso = (t, o) => ask.futureDateOf(t, NOW, o)?.iso;
+  assert.equal(iso('12 Nov'), '2026-11-12');
+  assert.equal(iso('12th november'), '2026-11-12');
+  assert.equal(iso('Nov 12'), '2026-11-12');
+  assert.equal(iso('12 of nov'), '2026-11-12');
+  assert.equal(iso('12/11'), '2026-11-12');
+  assert.equal(iso('12-11-2026'), '2026-11-12');
+  assert.equal(iso('12.11.26'), '2026-11-12');
+  assert.equal(iso('deliver on 3 dec please'), '2026-12-03');
+  assert.equal(iso('tomorrow'), '2026-11-06');
+  assert.equal(iso('kal'), '2026-11-06');
+  assert.equal(iso('parso'), '2026-11-07');
+  assert.equal(iso('day after tomorrow'), '2026-11-07');
+  assert.equal(iso('monday'), '2026-11-09');
+  assert.equal(iso('next somvar'), '2026-11-09');
+  assert.equal(iso('thursday'), '2026-11-12');
+  assert.equal(iso('5 jan'), '2027-01-05');
+});
+
+test('a bare day counts only where we just asked for a date', () => {
+  assert.equal(ask.futureDateOf('15', NOW), null);
+  assert.equal(ask.futureDateOf('15', NOW, { bareDay: true }).iso, '2026-11-15');
+  assert.equal(ask.futureDateOf('15th', NOW, { bareDay: true }).iso, '2026-11-15');
+  assert.equal(ask.futureDateOf('15 tareekh', NOW, { bareDay: true }).iso, '2026-11-15');
+  assert.equal(ask.futureDateOf('2', NOW, { bareDay: true }).iso, '2026-12-02');
+  assert.equal(ask.futureDateOf('45', NOW, { bareDay: true }), null);
+});
+
+test('past or far-off dates are sent back, and nonsense is not a date', () => {
+  assert.deepEqual(ask.futureDateOf('2 Nov', NOW), { bad: true });
+  assert.deepEqual(ask.futureDateOf('1/1/2020', NOW), { bad: true });
+  assert.deepEqual(ask.futureDateOf('10 Sep 2027', NOW), { bad: true });
+  assert.equal(ask.futureDateOf('31 feb', NOW), null);
+  assert.equal(ask.futureDateOf('what do you mean', NOW), null);
+  assert.equal(ask.futureDateOf('where is my book', NOW), null);
+});
+
+test('words for a time are kept as they said them', () => {
+  assert.equal(ask.futureDateOf('next week', NOW).words, 'next week');
+  assert.equal(ask.futureDateOf('After 5 days', NOW).words, 'After 5 days');
+  assert.equal(ask.futureDateOf('agle hafte', NOW).words, 'agle hafte');
+});
+
+test('at the date step: a bad date asks again, words are stored, no date closes', async () => {
+  const dateStep = () => fakeDb([asked({ delivery_failed_state: 'date', delivery_failed_choice: 'want', delivery_failed_reason: 'future_delivery' })]);
+  let db = dateStep();
+  const bad = await reply(db, '2 Nov');
+  assert.match(bad.reply, /upcoming date/);
+  assert.equal(db.rows[0].delivery_failed_state, 'date');
+  assert.equal(db.updates.length, 0);
+
+  db = dateStep();
+  await reply(db, 'next week');
+  assert.equal(db.rows[0].delivery_failed_future_date, 'next week');
+  assert.equal(db.rows[0].delivery_failed_state, 'closed');
+
+  db = dateStep();
+  await reply(db, "don't know yet");
+  assert.equal(db.rows[0].delivery_failed_state, 'closed');
+  assert.equal(db.rows[0].delivery_failed_future_date, undefined);
+  assert.equal(db.rows[0].delivery_failed_reason, 'future_delivery');
+
+  db = dateStep();
+  await reply(db, 'cancel it');
+  assert.equal(db.rows[0].delivery_failed_choice, 'cancel');
+  assert.equal(db.rows[0].delivery_failed_reason, null);
+});
+
+test('a date given early skips the date question', async () => {
+  let db = fakeDb([asked()]);
+  await reply(db, ask.WANT_BUTTON);
+  await reply(db, '15 Nov');
+  assert.equal(db.rows[0].delivery_failed_reason, 'future_delivery');
+  assert.equal(db.rows[0].delivery_failed_future_date, '2026-11-15');
+  assert.equal(db.rows[0].delivery_failed_state, 'closed');
+
+  db = fakeDb([asked()]);
+  await reply(db, 'please deliver later on 15 nov');
+  assert.equal(db.rows[0].delivery_failed_choice, 'want');
+  assert.equal(db.rows[0].delivery_failed_future_date, '2026-11-15');
+  assert.equal(db.rows[0].delivery_failed_state, 'closed');
+});
+
+test('option 2 at the reason step is not read as the 2nd of the month', async () => {
+  const db = fakeDb([asked()]);
+  await reply(db, ask.WANT_BUTTON);
+  await reply(db, '2');
+  assert.equal(db.rows[0].delivery_failed_reason, 'nobody_came');
+  assert.equal(db.rows[0].delivery_failed_state, 'number');
+});
+
+test('a day mentioned in passing is not taken as the date they want', async () => {
+  for (const text of ['the courier came on monday', 'kal aaya tha', 'I was out of town on saturday when he tried']) {
+    const db = fakeDb([asked()]);
+    await reply(db, ask.WANT_BUTTON);
+    const out = await reply(db, text);
+    assert.equal(out.handled, false, text);
+    assert.equal(db.rows[0].delivery_failed_state, 'reason', text);
+    assert.equal(db.rows[0].delivery_failed_future_date, undefined, text);
+  }
+  const db = fakeDb([asked()]);
+  await reply(db, ask.WANT_BUTTON);
+  await reply(db, 'kal');
+  assert.equal(db.rows[0].delivery_failed_future_date, '2026-11-06');
 });

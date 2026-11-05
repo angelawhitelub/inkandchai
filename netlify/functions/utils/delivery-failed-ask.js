@@ -6,7 +6,7 @@
  *     Cancel → recorded. Nothing is cancelled or refunded here: the parcel is
  *              with the courier, and that decision stays with the owner.
  *     Want   → "Why was the delivery missed?"
- *       I requested future delivery → recorded, finished.
+ *       I requested future delivery → asks which date, recorded.
  *       Nobody came for delivery    → asks for an alternate number, recorded.
  *
  * Decided in code, like the RTO re-ship offer: the model never records an answer.
@@ -14,11 +14,12 @@
  *
  * Everything lives on the order row (sql/orders_delivery_failed_ask.sql):
  *   delivery_failed_asked_at     when the template went out (the once-only claim)
- *   delivery_failed_state        asked → reason → number → closed
+ *   delivery_failed_state        asked → reason → date | number → closed
  *                                ('backlog' = already failed when this went live)
  *   delivery_failed_choice       want | cancel
  *   delivery_failed_reason       future_delivery | nobody_came
  *   delivery_failed_alt_phone    the alternate number, 10 digits
+ *   delivery_failed_future_date  YYYY-MM-DD, or their own words ("next week")
  *   delivery_failed_answered_at  their first answer
  *
  * Nothing is sent until WHATSAPP_DELIVERY_FAILED_TEMPLATE names an approved
@@ -34,7 +35,7 @@ const FUTURE_BUTTON = 'Future delivery';
 const NOBODY_BUTTON = 'Nobody came';
 const OWN_BUTTONS = new Set([WANT_BUTTON, CANCEL_BUTTON, FUTURE_BUTTON, NOBODY_BUTTON].map((b) => b.toLowerCase()));
 
-const OPEN_STATES = ['asked', 'reason', 'number'];
+const OPEN_STATES = ['asked', 'reason', 'date', 'number'];
 // An answer days later is about something else.
 const OPEN_MS = 7 * 86400000;
 const MAX_ORDER_AGE_DAYS = 30;
@@ -158,7 +159,7 @@ function reasonOf(text) {
   const t = String(text || '').trim().toLowerCase();
   if (!t || t.length > 120) return null;
   if (t === '2' || /\bno ?(one|body)\b|\bnobody\b|\bkoi nahi\b|\bkoi nhi\b|\bkoi nahin\b|\bnot (come|came)\b|\b(didn'?t|did not) (come|visit|call)\b|\bnahi aay|\bnhi aay|\bnahin aay/.test(t)) return 'nobody_came';
-  if (t === '1' || /\bfuture\b|\blater\b|\banother (day|date)\b|\bnext (day|week)\b|\bbaad me|\bkal\b|\breschedul|\bdate\b|\brequested\b/.test(t)) return 'future_delivery';
+  if (t === '1' || /\bfuture\b|\blater\b|\banother (day|date)\b|\bnext (day|week)\b|\bbaad me|\breschedul|\bdate\b|\brequested\b/.test(t)) return 'future_delivery';
   return null;
 }
 
@@ -171,6 +172,88 @@ function numberOf(text) {
 function noNumber(text) {
   const t = String(text || '').trim().toLowerCase();
   return t.length <= 40 && /^(no|nope|nah|na|nahi|nahin|nhi|none|nil|same|this)\b|\bsame number\b|\bno (other|alternate|another)\b/.test(t);
+}
+
+// ── The date they want it delivered ──────────────────────────────────────────
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const WEEKDAYS = [
+  /\b(sunday|sun|ravivar|raviwar|itwar|etwar)\b/, /\b(monday|mon|somvar|somwar)\b/, /\b(tuesday|tue|tues|mangalvar|mangalwar|mangal)\b/,
+  /\b(wednesday|wed|budhvar|budhwar|budh)\b/, /\b(thursday|thu|thurs|guruvar|guruwar|brihaspativar)\b/,
+  /\b(friday|fri|shukravar|shukrawar|shukra)\b/, /\b(saturday|sat|shanivar|shaniwar|shani)\b/,
+];
+const FUTURE_DATE_DAYS = 90;
+const DAY_MS = 86400000;
+// A time they gave in words: worth keeping as they said it, not a date to work out.
+const VAGUE_TIME = /\bnext (week|month|weekend)\b|\bthis (week|weekend|month)\b|\bweekend\b|\bafter \d+ (days?|weeks?)\b|\b\d+ (din|days?|weeks?) (baad|bad|later|after)\b|\bagle (hafte|mahine)\b|\bagla (hafta|mahina)\b|\bend of (the )?(week|month)\b|\bmonth end\b|\bdiwali\b/;
+
+const isoOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+
+/**
+ * Reads a date from the customer's words, in IST. bareDay lets "15" or "15th" mean
+ * a day of the month: only where we have just asked for a date, because "2" at the
+ * reason step picks an option.
+ * @returns {{iso}|{bad:true}|{words}|null}  bad = a real date, but not an upcoming one
+ */
+function futureDateOf(text, nowMs = Date.now(), { bareDay = false } = {}) {
+  const t = String(text || '').trim().toLowerCase();
+  if (!t || t.length > 80) return null;
+  const istNow = new Date(nowMs + 330 * 60000);
+  const today = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate());
+  const after = (days) => ({ iso: isoOf(today + days * DAY_MS) });
+
+  if (/\bday after tomorrow\b|\bparso\b/.test(t)) return after(2);
+  if (/\btomorrow\b|\bkal\b/.test(t)) return after(1);
+  if (/\btoday\b|\baaj\b/.test(t)) return after(0);
+
+  // Without a year, a date already gone means next year, which is too far to be
+  // what they meant, and is sent back as not upcoming.
+  const pick = (day, month, year) => {
+    if (month < 0 || month > 11 || day < 1 || day > 31) return null;
+    let y = year == null ? istNow.getUTCFullYear() : (year < 100 ? 2000 + year : year);
+    let ms = Date.UTC(y, month, day);
+    if (new Date(ms).getUTCDate() !== day) return null;
+    if (year == null && ms < today) { y += 1; ms = Date.UTC(y, month, day); }
+    if (ms < today || ms > today + FUTURE_DATE_DAYS * DAY_MS) return { bad: true };
+    return { iso: isoOf(ms) };
+  };
+
+  const monthName = '(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*';
+  let m = t.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:of\\s+)?${monthName}\\.?(?:[\\s,]+(\\d{2,4}))?\\b`));
+  if (m) return pick(+m[1], MONTHS.indexOf(m[2]), m[3] ? +m[3] : null) || null;
+  m = t.match(new RegExp(`\\b${monthName}\\.?\\s*(\\d{1,2})(?:st|nd|rd|th)?(?:[\\s,]+(\\d{2,4}))?\\b`));
+  if (m) return pick(+m[2], MONTHS.indexOf(m[1]), m[3] ? +m[3] : null) || null;
+  // Day first, the way dates are written in India.
+  m = t.match(/\b(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?\b/);
+  if (m) return pick(+m[1], +m[2] - 1, m[3] ? +m[3] : null) || null;
+
+  if (VAGUE_TIME.test(t)) return { words: String(text).trim().replace(/\s+/g, ' ').slice(0, 60) };
+
+  for (let d = 0; d < 7; d++) {
+    if (WEEKDAYS[d].test(t)) {
+      const ahead = (d - new Date(today).getUTCDay() + 7) % 7;
+      return after(ahead === 0 ? 7 : ahead);
+    }
+  }
+
+  if (bareDay) {
+    m = t.match(/^(?:on\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s*(?:ko|tareekh|tarikh|date))?[.!]*$/);
+    if (m) {
+      const day = +m[1];
+      const thisMonth = istNow.getUTCDate() <= day ? istNow.getUTCMonth() : istNow.getUTCMonth() + 1;
+      return pick(day, thisMonth % 12, thisMonth > 11 ? istNow.getUTCFullYear() + 1 : null);
+    }
+  }
+  return null;
+}
+
+/** They can't say when. Still an answer, so the question closes. */
+function noDate(text) {
+  const t = String(text || '').trim().toLowerCase();
+  return t.length <= 40 && /^(no|nope|nah|na|nahi|nahin|nhi)[.!]*$|\bnot sure\b|\bdon'?t know\b|\bpata nahi\b|\bpata nhi\b|\bany ?(day|time)\b|\bkabhi bhi\b/.test(t);
+}
+
+function dateLabel(iso) {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /**
@@ -216,9 +299,23 @@ const REASON_BODY = (id) => `Thank you! Why was the delivery of order ${id} miss
  */
 async function handleReply(deps, text, order) {
   const { supabase } = deps;
+  const nowMs = deps.now ? deps.now() : Date.now();
   const id = idOf(order);
   const state = order.delivery_failed_state;
   const done = (reply) => ({ handled: true, reply });
+  // Future delivery: straight to the date if they already gave one, else ask.
+  const futureDelivery = async (fields, found) => {
+    if (found && found.iso) {
+      if (!await move(supabase, order, { ...fields, delivery_failed_reason: 'future_delivery', delivery_failed_future_date: found.iso, delivery_failed_state: 'closed' })) return { handled: false };
+      return done(`Thank you, we've noted ${dateLabel(found.iso)} as your delivery date for order ${id}. Our team will follow it up with the courier.`);
+    }
+    if (found && found.words) {
+      if (!await move(supabase, order, { ...fields, delivery_failed_reason: 'future_delivery', delivery_failed_future_date: found.words, delivery_failed_state: 'closed' })) return { handled: false };
+      return done(`Thank you, we've noted "${found.words}" as your delivery time for order ${id}. Our team will follow it up with the courier.`);
+    }
+    if (!await move(supabase, order, { ...fields, delivery_failed_reason: 'future_delivery', delivery_failed_state: 'date' })) return { handled: false };
+    return done(`Which date should we deliver order ${id}? For example: 12 Nov.`);
+  };
 
   if (state === 'number') {
     const number = numberOf(text);
@@ -234,27 +331,24 @@ async function handleReply(deps, text, order) {
   }
 
   // A phone number while the question is open can only be the alternate number.
-  const typedNumber = numberOf(text);
+  const typedNumber = state === 'date' ? '' : numberOf(text);
   if (typedNumber) {
     if (!await move(supabase, order, { delivery_failed_choice: 'want', delivery_failed_alt_phone: typedNumber, delivery_failed_state: 'closed' })) return { handled: false };
     return done(`Thank you! We've saved ${typedNumber} as the alternate number for order ${id}, and our team will pass it to the courier.`);
   }
 
-  // Cancel is accepted at either step, since changing their mind is an answer
-  // too, but at the reason step only when they say so: "no" answers nothing there.
+  // Cancel is accepted at any step, since changing their mind is an answer too,
+  // but after the first only when they say so: "no" does not mean cancel there.
   const short = String(text || '').trim().toLowerCase();
   if (state === 'asked' ? choiceOf(text) === 'cancel' : (short.length <= 80 && SAYS_CANCEL.test(short))) {
-    if (!await move(supabase, order, { delivery_failed_choice: 'cancel', delivery_failed_reason: null, delivery_failed_state: 'closed' })) return { handled: false };
+    if (!await move(supabase, order, { delivery_failed_choice: 'cancel', delivery_failed_reason: null, delivery_failed_future_date: null, delivery_failed_state: 'closed' })) return { handled: false };
     return done(`Understood. We've noted that you don't want order ${id}, and our team will take it from here. Please don't accept the parcel if the courier comes again.`);
   }
 
   if (state === 'asked') {
     // "Nobody came" answers both questions at once.
     const already = short.length > 1 ? reasonOf(text) : null;
-    if (already === 'future_delivery') {
-      if (!await move(supabase, order, { delivery_failed_choice: 'want', delivery_failed_reason: already, delivery_failed_state: 'closed' })) return { handled: false };
-      return done(`Thank you, we've noted that you requested a later delivery for order ${id}. Our team will follow it up with the courier.`);
-    }
+    if (already === 'future_delivery') return futureDelivery({ delivery_failed_choice: 'want' }, futureDateOf(text, nowMs));
     if (already === 'nobody_came') {
       if (!await move(supabase, order, { delivery_failed_choice: 'want', delivery_failed_reason: already, delivery_failed_state: 'number' })) return { handled: false };
       return done(`Sorry about that. Please send an alternate phone number the courier can call for order ${id}. If there isn't one, just reply NO.`);
@@ -266,13 +360,33 @@ async function handleReply(deps, text, order) {
 
   if (state === 'reason') {
     const reason = reasonOf(text);
-    if (reason === 'future_delivery') {
-      if (!await move(supabase, order, { delivery_failed_reason: reason, delivery_failed_state: 'closed' })) return { handled: false };
-      return done(`Thank you, we've noted that you requested a later delivery for order ${id}. Our team will follow it up with the courier.`);
-    }
+    // "He came on Monday" names a day but is not asking for one. Without a word
+    // for later, a date only counts when it is all they said.
+    const narrated = /\b(came|come|aaya|aya|aayi|aye|called|visited)\b/i.test(String(text));
+    const found = reason === 'nobody_came' || narrated ? null : futureDateOf(text, nowMs);
+    const justADate = found && !found.bad && String(text).trim().length <= 24;
+    if (reason === 'future_delivery' || justADate) return futureDelivery({}, found);
     if (reason === 'nobody_came') {
       if (!await move(supabase, order, { delivery_failed_reason: reason, delivery_failed_state: 'number' })) return { handled: false };
       return done(`Sorry about that. Please send an alternate phone number the courier can call for order ${id}. If there isn't one, just reply NO.`);
+    }
+    return { handled: false };
+  }
+
+  if (state === 'date') {
+    const found = futureDateOf(text, nowMs, { bareDay: true });
+    if (found && found.iso) {
+      if (!await move(supabase, order, { delivery_failed_future_date: found.iso, delivery_failed_state: 'closed' })) return { handled: false };
+      return done(`Thank you, we've noted ${dateLabel(found.iso)} as your delivery date for order ${id}. Our team will follow it up with the courier.`);
+    }
+    if (found && found.words) {
+      if (!await move(supabase, order, { delivery_failed_future_date: found.words, delivery_failed_state: 'closed' })) return { handled: false };
+      return done(`Thank you, we've noted "${found.words}" as your delivery time for order ${id}. Our team will follow it up with the courier.`);
+    }
+    if (found && found.bad) return done(`That date doesn't look right. Please send an upcoming date for order ${id}, for example: 12 Nov.`);
+    if (noDate(text)) {
+      if (!await move(supabase, order, { delivery_failed_state: 'closed' })) return { handled: false };
+      return done(`No problem. We've noted that you requested a later delivery for order ${id}, and our team will follow it up with the courier.`);
     }
     return { handled: false };
   }
@@ -285,6 +399,8 @@ function contextFor(order) {
   const id = idOf(order);
   const open = order.delivery_failed_state === 'number'
     ? 'They said nobody came for delivery, and we are waiting for an alternate phone number (or NO).'
+    : order.delivery_failed_state === 'date'
+      ? 'They said they requested a future delivery, and we are waiting for the date they want it.'
     : order.delivery_failed_state === 'reason'
       ? 'They said they still want it, and we are waiting to hear whether they requested a future delivery or nobody came for delivery.'
       : 'We asked whether they still want it or want to cancel it, with no answer yet.';
@@ -295,5 +411,5 @@ function contextFor(order) {
 module.exports = {
   WANT_BUTTON, CANCEL_BUTTON, FUTURE_BUTTON, NOBODY_BUTTON, OPEN_STATES,
   askTemplate, isOwnButton, askEligible, askParams, askedText, sendAsks,
-  choiceOf, reasonOf, numberOf, noNumber, findOpenAsk, handleReply, contextFor, missingColumn,
+  choiceOf, reasonOf, numberOf, noNumber, futureDateOf, noDate, findOpenAsk, handleReply, contextFor, missingColumn,
 };

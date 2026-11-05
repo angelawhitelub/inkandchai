@@ -5311,11 +5311,18 @@ function deliveryAnswerHtml(o) {
   if (o.delivery_failed_choice === 'cancel') parts.push('Wants to CANCEL');
   else if (o.delivery_failed_choice === 'want') parts.push('Still wants it');
   else parts.push('Asked on WhatsApp, no reply yet');
-  if (o.delivery_failed_reason === 'future_delivery') parts.push('requested future delivery');
+  if (o.delivery_failed_reason === 'future_delivery') {
+    const when = String(o.delivery_failed_future_date || '');
+    const iso = /^\d{4}-\d{2}-\d{2}$/.test(when)
+      ? new Date(when + 'T00:00:00Z').toLocaleDateString('en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
+      : esc(when);
+    parts.push(when ? 'deliver on ' + iso : 'requested future delivery');
+  }
   if (o.delivery_failed_reason === 'nobody_came') parts.push('nobody came');
   if (o.delivery_failed_alt_phone) parts.push('alt no. ' + esc(o.delivery_failed_alt_phone));
   else if (state === 'number') parts.push('waiting for alternate number');
   else if (state === 'reason') parts.push('waiting for reason');
+  else if (state === 'date') parts.push('waiting for date');
   const colour = o.delivery_failed_choice === 'cancel' ? 'var(--red)' : (o.delivery_failed_choice ? 'var(--green,#6dbf6d)' : 'var(--cream-dim)');
   return `<div style="margin-top:0.3rem;max-width:210px;font-size:0.62rem;line-height:1.4;color:${colour};">📞 ${parts.join(' · ')}</div>`;
 }

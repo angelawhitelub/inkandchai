@@ -6,9 +6,10 @@ alter table orders add column if not exists delivery_failed_state       text;
 alter table orders add column if not exists delivery_failed_choice      text;
 alter table orders add column if not exists delivery_failed_reason      text;
 alter table orders add column if not exists delivery_failed_alt_phone   text;
+alter table orders add column if not exists delivery_failed_future_date text;  -- YYYY-MM-DD, or their words ("next week")
 alter table orders add column if not exists delivery_failed_answered_at timestamptz;
 create index if not exists orders_delivery_failed_open_idx on orders (delivery_failed_state)
-  where delivery_failed_state in ('asked', 'reason', 'number');
+  where delivery_failed_state in ('asked', 'reason', 'date', 'number');
 
 update orders
    set delivery_failed_asked_at = now(), delivery_failed_state = 'backlog'
