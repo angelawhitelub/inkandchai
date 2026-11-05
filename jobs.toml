@@ -130,6 +130,12 @@
 [functions."rto-reship-offer-scheduled"]
   schedule = "0 * * * *"
 
+# Failed delivery: asks the customer once on WhatsApp whether they still want the
+# order, 09:00-21:00 IST. Sends nothing until WHATSAPP_DELIVERY_FAILED_TEMPLATE is
+# set. Replies are handled by the bot and kept on the order.
+[functions."delivery-failed-ask-scheduled"]
+  schedule = "0 * * * *"
+
 # READ-ONLY refund reconciliation, hourly around the clock. Refunds complete at
 # any hour; this flips PENDING → refunded and notifies the customer as soon as
 # PhonePe confirms, instead of waiting for the afternoon re-issue window above

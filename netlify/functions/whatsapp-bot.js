@@ -33,6 +33,7 @@ const { createRazorpayPaymentLink } = require('./utils/razorpay-payment-link');
 const { priceBooksList } = require('./utils/book-lookup');
 const { pushBotOrder } = require('./utils/push-bot-order');
 const rtoReship = require('./utils/rto-reship');
+const deliveryFailedAsk = require('./utils/delivery-failed-ask');
 const { draftOrderRequest, confirmDraftOrder, draftReplyDecision, botOrdersContext, activeOrdersContext, lookupBotRequest, describeRequest } = require('./utils/bot-order-request');
 const {
   findAwaitingOrders, applyRecoveredDetails, isAwaitingDetails,
@@ -607,6 +608,35 @@ async function upsertBotCustomer(phone, { customer_name, address, order_id }) {
 // (Meta puts it in the webhook payload as value.metadata.phone_number_id).
 // One bot, both numbers: each replies through itself. Falls back to the
 // env-configured PHONE_ID when the caller doesn't know the sender.
+// Tappable reply buttons (titles max 20 characters). Only works inside the
+// 24-hour window, which is where it is used; on any error the plain text goes
+// instead, and the customer can still type the answer.
+async function sendReplyButtons(to, text, titles, senderPhoneId) {
+  const token = process.env.WHATSAPP_TOKEN;
+  const phoneId = senderPhoneId || PHONE_ID;
+  try {
+    const res = await fetch(`https://graph.facebook.com/${API_VER}/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: normalizePhone(to) || to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text },
+          action: { buttons: titles.map((title, i) => ({ type: 'reply', reply: { id: `opt_${i + 1}`, title } })) },
+        },
+      }),
+    });
+    if (res.ok) return { ok: true };
+    console.error('sendReplyButtons failed:', res.status, JSON.stringify(await res.json().catch(() => ({}))));
+  } catch (e) {
+    console.error('sendReplyButtons exception:', e.message);
+  }
+  return sendReply(to, text, senderPhoneId);
+}
+
 async function sendReply(to, text, senderPhoneId) {
   const token = process.env.WHATSAPP_TOKEN;
   if (!token) {
@@ -1925,6 +1955,24 @@ async function handleRtoOfferReply(from, text, offer, senderPhoneId, customerNam
   }
 }
 
+// ── Failed-delivery question reply ───────────────────────────────────────────
+// Recorded in code. Returns true when it answered (the AI then stays out).
+async function handleDeliveryFailedReply(from, text, order, senderPhoneId, customerName) {
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const out = await deliveryFailedAsk.handleReply({ supabase }, text, order);
+    if (!out.handled) return false;
+    if (out.buttons) await sendReplyButtons(from, out.reply, out.buttons, senderPhoneId);
+    else await sendReply(from, out.reply, senderPhoneId);
+    await persistMessage(from, 'bot', out.reply, customerName, senderPhoneId);
+    console.log(`[DELIVERY-FAILED] ${from} -> ${order.razorpay_order_id}`);
+    return true;
+  } catch (e) {
+    console.error('handleDeliveryFailedReply error:', e.message);
+    return false;
+  }
+}
+
 function extractOrderId(text) {
   // IC-W- (WhatsApp), IC-CW- (Crossword) and IC-R- (replacement) ids too — the
   // bot used to answer "not our format" to the ids it had issued itself.
@@ -2014,7 +2062,9 @@ async function handleInboundMessage(msg, value) {
     if (msg.type === 'button' || msg.type === 'interactive') {
       const btnLabel = buttonLabelOf(msg);
       const btnText = btnLabel.toLowerCase();
-      if (btnText.includes('confirm') || btnText.includes('cancel')) {
+      // "Cancel this order" on the failed-delivery question must not cancel a
+      // different order that happens to be awaiting COD confirmation.
+      if (!deliveryFailedAsk.isOwnButton(btnLabel) && (btnText.includes('confirm') || btnText.includes('cancel'))) {
         // Log the tap BEFORE acting on it. It used to return without persisting,
         // so an order confirmed or cancelled by button left no trace in the inbox.
         await persistMessage(from, 'user', btnLabel || '[button tap]', customerName, recvPhoneId);
@@ -2099,6 +2149,15 @@ async function handleInboundMessage(msg, value) {
       return;
     }
 
+    // ── Failed-delivery question (utils/delivery-failed-ask.js) ───────────────
+    // A tap on its buttons is the answer the owner asked to keep, so it is saved
+    // even in a chat a human has taken over.
+    const tapped = msg.type === 'button' || msg.type === 'interactive';
+    const deliveryAsk = await deliveryFailedAsk.findOpenAsk(
+      createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), from);
+    if (deliveryAsk && tapped && deliveryFailedAsk.isOwnButton(userText)
+      && await handleDeliveryFailedReply(from, userText, deliveryAsk, recvPhoneId, customerName)) return;
+
     // ── If human has taken over this conversation, just persist + stop ────────
     if (await isHumanTakeover(from)) {
       console.log(`[TAKEOVER] ${from} — bot suppressed, human handling`);
@@ -2111,7 +2170,6 @@ async function handleInboundMessage(msg, value) {
     // is the conversation the customer is in.
     const rtoOffer = await rtoReship.findOpenOffer(
       createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), from);
-    const tapped = msg.type === 'button' || msg.type === 'interactive';
     if (rtoOffer && tapped && await handleRtoOfferReply(from, userText, rtoOffer, recvPhoneId, customerName)) return;
 
     // ── YES/NO to an order the bot just drafted ──────────────────────────────
@@ -2119,6 +2177,7 @@ async function handleInboundMessage(msg, value) {
     const draftDecision = draftReplyDecision(userText);
     if (draftDecision && await handleDraftOrderReply(from, draftDecision, recvPhoneId)) return;
     if (rtoOffer && !tapped && await handleRtoOfferReply(from, userText, rtoOffer, recvPhoneId, customerName)) return;
+    if (deliveryAsk && await handleDeliveryFailedReply(from, userText, deliveryAsk, recvPhoneId, customerName)) return;
 
     // ── Short YES/NO reply to the 5-min bot-order confirmation ping ──────────
     // Only act on it if a follow-up was actually sent for this customer, so a
@@ -2135,7 +2194,7 @@ async function handleInboundMessage(msg, value) {
     }
 
     // ── Check order context by ID or customer phone ──────────────────────────
-    const extraContext = [rtoOffer ? rtoReship.offerContext(rtoOffer) : '', await buildOrderContext(from, userText)]
+    const extraContext = [rtoOffer ? rtoReship.offerContext(rtoOffer) : '', deliveryFailedAsk.contextFor(deliveryAsk), await buildOrderContext(from, userText)]
       .filter(Boolean).join('\n\n');
 
     // ── Get AI reply ──────────────────────────────────────────────────────────
