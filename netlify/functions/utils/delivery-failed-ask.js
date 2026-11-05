@@ -15,7 +15,8 @@
  * Everything lives on the order row (sql/orders_delivery_failed_ask.sql):
  *   delivery_failed_asked_at     when the template went out (the once-only claim)
  *   delivery_failed_state        asked → reason → date | number → closed
- *                                ('backlog' = already failed when this went live)
+ *                                ('backlog' = already failed when this went live;
+ *                                the owner released these, see BACKLOG_SEND_FROM)
  *   delivery_failed_choice       want | cancel
  *   delivery_failed_reason       future_delivery | nobody_came
  *   delivery_failed_alt_phone    the alternate number, 10 digits
@@ -47,6 +48,11 @@ const OPEN_STATES = ['asked', 'reason', 'date', 'number'];
 const OPEN_MS = 7 * 86400000;
 const MAX_ORDER_AGE_DAYS = 30;
 
+// Orders that had already failed when this went live were held back. The owner
+// asked for them to be messaged on the morning of 6 Nov 2026: the job runs at half
+// past each hour IST, so the first batch goes at 10:30 and each run takes up to 40.
+const BACKLOG_SEND_FROM = Date.parse('2026-11-06T04:55:00Z');
+
 const FAILED = /exception|undelivered|ndr|failed/;
 
 const last10 = (p) => String(p || '').replace(/\D/g, '').slice(-10);
@@ -66,11 +72,12 @@ function isOwnButton(label) {
 }
 
 /** Same meaning as isDeliveryFailed in admin, narrowed to orders that were out for delivery. */
-function askEligible(order) {
+function askEligible(order, { backlog = false } = {}) {
   const courier = String(order?.last_courier_status || '').toLowerCase().trim();
   if (String(order?.status || '') !== 'out_for_delivery') return { ok: false, reason: `status ${order?.status}` };
   if (courier.startsWith('lookup failed') || !FAILED.test(courier)) return { ok: false, reason: `courier says ${courier || 'nothing'}` };
-  if (order.delivery_failed_asked_at) return { ok: false, reason: 'already asked' };
+  const released = backlog && order.delivery_failed_state === 'backlog';
+  if (order.delivery_failed_asked_at && !released) return { ok: false, reason: 'already asked' };
   if (order.cancellation_requested_at || order.late_cancel_at) return { ok: false, reason: 'customer already asked to cancel' };
   if (last10(order.customer_phone).length < 10) return { ok: false, reason: 'no phone' };
   return { ok: true };
@@ -103,22 +110,29 @@ async function sendAsks(deps, opts = {}) {
   const summary = { dry_run: dryRun, enabled: !!template, sent: [], would_send: [], skipped: [], failed: [] };
   if (!template && !dryRun) return summary;
 
-  const { data, error } = await supabase.from('orders')
+  // A preview shows the held-back orders before their release, so they can be checked.
+  const backlog = dryRun || now >= BACKLOG_SEND_FROM;
+  const failedOrders = () => supabase.from('orders')
     .select('*')
     .eq('status', 'out_for_delivery')
-    .is('delivery_failed_asked_at', null)
     .or('last_courier_status.ilike.%exception%,last_courier_status.ilike.%undelivered%,last_courier_status.ilike.%ndr%,last_courier_status.ilike.%failed%')
     .gte('created_at', new Date(now - MAX_ORDER_AGE_DAYS * 86400000).toISOString())
     .order('created_at', { ascending: true })
     .limit(300);
+  const [fresh, held] = await Promise.all([
+    failedOrders().is('delivery_failed_asked_at', null),
+    backlog ? failedOrders().eq('delivery_failed_state', 'backlog') : { data: [], error: null },
+  ]);
+  const error = fresh.error || held.error;
   if (error) {
     if (missingColumn(error)) { summary.error = 'run sql/orders_delivery_failed_ask.sql first'; return summary; }
     throw new Error(error.message);
   }
+  const data = [...(fresh.data || []), ...(held.data || [])];
 
-  for (const order of data || []) {
+  for (const order of data) {
     const id = idOf(order);
-    const elig = askEligible(order);
+    const elig = askEligible(order, { backlog });
     if (!elig.ok) { summary.skipped.push({ order_id: id, reason: elig.reason }); continue; }
     if (deps.isOptedOut && await deps.isOptedOut(supabase, order.customer_phone)) {
       summary.skipped.push({ order_id: id, reason: 'customer opted out of WhatsApp' });
@@ -129,10 +143,15 @@ async function sendAsks(deps, opts = {}) {
     if (summary.sent.length + summary.failed.length >= max) { summary.skipped.push({ order_id: id, reason: 'per-run cap; next run' }); continue; }
 
     // Claim first: two overlapping runs cannot both message the customer.
-    const { data: claimed, error: claimErr } = await supabase.from('orders')
+    const wasHeld = order.delivery_failed_state === 'backlog';
+    const heldSince = order.delivery_failed_asked_at;
+    const claim = supabase.from('orders')
       .update({ delivery_failed_asked_at: new Date(now).toISOString(), delivery_failed_state: 'asked' })
-      .eq('id', order.id).eq('status', 'out_for_delivery').is('delivery_failed_asked_at', null)
-      .select('id');
+      .eq('id', order.id).eq('status', 'out_for_delivery');
+    const { data: claimed, error: claimErr } = await (wasHeld
+      ? claim.eq('delivery_failed_state', 'backlog')
+      : claim.is('delivery_failed_asked_at', null)
+    ).select('id');
     if (claimErr || !claimed || !claimed.length) {
       summary.skipped.push({ order_id: id, reason: claimErr ? `claim failed: ${claimErr.message}` : 'changed since it was read' });
       continue;
@@ -146,7 +165,9 @@ async function sendAsks(deps, opts = {}) {
       // Not delivered: release the claim, and the next run tries again.
       summary.failed.push({ order_id: id, error: String((res && (res.data?.error?.message || res.error || res.status)) || 'send failed').slice(0, 160) });
       await supabase.from('orders')
-        .update({ delivery_failed_asked_at: null, delivery_failed_state: null })
+        .update(wasHeld
+          ? { delivery_failed_asked_at: heldSince, delivery_failed_state: 'backlog' }
+          : { delivery_failed_asked_at: null, delivery_failed_state: null })
         .eq('id', order.id).eq('delivery_failed_state', 'asked')
         .then(() => {}, () => {});
     }
@@ -422,7 +443,7 @@ function contextFor(order) {
 }
 
 module.exports = {
-  WANT_BUTTON, CANCEL_BUTTON, FUTURE_BUTTON, NOBODY_BUTTON, OPEN_STATES,
+  WANT_BUTTON, CANCEL_BUTTON, FUTURE_BUTTON, NOBODY_BUTTON, OPEN_STATES, BACKLOG_SEND_FROM,
   FALLBACK_IMAGE, askTemplate, isOwnButton, askEligible, askParams, askedText, headerImageFor, sendAsks,
   choiceOf, reasonOf, numberOf, noNumber, futureDateOf, noDate, findOpenAsk, handleReply, contextFor, missingColumn,
 };

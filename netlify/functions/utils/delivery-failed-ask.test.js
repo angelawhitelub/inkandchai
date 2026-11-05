@@ -102,6 +102,63 @@ test('opted-out customers and old orders are left alone; the run is capped', asy
   assert.equal(capped.skipped[0].reason, 'per-run cap; next run');
 });
 
+const asked = (over = {}) => order({ delivery_failed_asked_at: '2026-11-05T05:00:00Z', delivery_failed_state: 'asked', ...over });
+const held = (over = {}) => order({ delivery_failed_asked_at: '2026-11-05T05:00:00Z', delivery_failed_state: 'backlog', ...over });
+const RELEASED = ask.BACKLOG_SEND_FROM + 5 * 60000;
+
+test('held-back orders are not messaged before their release time, but the preview lists them', async () => {
+  const db = fakeDb([held()]);
+  const send = sender();
+  const before = ask.BACKLOG_SEND_FROM - 60000;
+  const run = await ask.sendAsks({ supabase: db, send, now: () => before, isJpeg: async () => true }, { template: 'x' });
+  assert.equal(send.calls.length, 0);
+  assert.equal(run.sent.length, 0);
+  assert.equal(db.rows[0].delivery_failed_state, 'backlog');
+  const preview = await ask.sendAsks({ supabase: db, send, now: () => before }, { template: 'x', dryRun: true });
+  assert.equal(preview.would_send.length, 1);
+  assert.equal(send.calls.length, 0);
+});
+
+test('from the release time a held-back order is asked once, and its reply window starts then', async () => {
+  const db = fakeDb([held()]);
+  const send = sender();
+  const deps = { supabase: db, send, now: () => RELEASED, isJpeg: async () => true };
+  const first = await ask.sendAsks(deps, { template: 'x' });
+  assert.equal(first.sent.length, 1);
+  assert.equal(db.rows[0].delivery_failed_state, 'asked');
+  assert.equal(db.rows[0].delivery_failed_asked_at, new Date(RELEASED).toISOString());
+  await ask.sendAsks(deps, { template: 'x' });
+  assert.equal(send.calls.length, 1);
+});
+
+test('a failed send puts a held-back order back in the queue for the next run', async () => {
+  const db = fakeDb([held()]);
+  const out = await ask.sendAsks({ supabase: db, send: sender({ ok: false, status: 400 }), now: () => RELEASED, isJpeg: async () => true }, { template: 'x' });
+  assert.equal(out.failed.length, 1);
+  assert.equal(db.rows[0].delivery_failed_state, 'backlog');
+  assert.equal(db.rows[0].delivery_failed_asked_at, '2026-11-05T05:00:00Z');
+});
+
+test('release only frees backlog rows: an order asked, answered, delivered or cancelled stays out', async () => {
+  const db = fakeDb([
+    asked(), held({ id: 'u2', delivery_failed_state: 'closed' }), held({ id: 'u3', status: 'delivered' }),
+    held({ id: 'u4', status: 'cancelled' }), held({ id: 'u5', cancellation_requested_at: '2026-11-05T01:00:00Z' }),
+  ]);
+  const send = sender();
+  await ask.sendAsks({ supabase: db, send, now: () => RELEASED, isJpeg: async () => true }, { template: 'x' });
+  assert.equal(send.calls.length, 0);
+});
+
+test('the per-run cap spreads held-back orders over several runs', async () => {
+  const rows = [1, 2, 3].map((n) => held({ id: `u${n}`, razorpay_order_id: `IC-${n}` }));
+  const db = fakeDb(rows);
+  const send = sender();
+  const deps = { supabase: db, send, now: () => RELEASED, isJpeg: async () => true };
+  assert.equal((await ask.sendAsks(deps, { template: 'x', max: 2 })).sent.length, 2);
+  assert.equal((await ask.sendAsks(deps, { template: 'x', max: 2 })).sent.length, 1);
+  assert.equal(send.calls.length, 3);
+});
+
 test('missing columns read as "run the SQL", not a crash', async () => {
   const db = fakeDb([], { error: { message: 'column orders.delivery_failed_asked_at does not exist' } });
   const out = await ask.sendAsks({ supabase: db, send: sender(), now: () => NOW }, { template: 'x' });
@@ -109,7 +166,6 @@ test('missing columns read as "run the SQL", not a crash', async () => {
   assert.equal(await ask.findOpenAsk(db, '919876543210', NOW), null);
 });
 
-const asked = (over = {}) => order({ delivery_failed_asked_at: '2026-11-05T05:00:00Z', delivery_failed_state: 'asked', ...over });
 const reply = (db, text) => ask.handleReply({ supabase: db, now: () => NOW }, text, { ...db.rows[0] });
 
 test('want → nobody came → alternate number is stored step by step', async () => {
