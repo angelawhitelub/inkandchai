@@ -55,11 +55,16 @@ function orderCoversHtml(cart) {
     + '</table>';
 }
 
-/** The first book's cover as a JPEG URL WhatsApp can fetch, or ''. */
+/**
+ * The first book's cover as a JPEG URL WhatsApp can fetch, or ''. WhatsApp shows a
+ * template's image as a 1.91:1 banner and crops anything taller, which cuts the
+ * title off a book cover. So the whole cover is fitted inside a banner of that
+ * shape, on a plain background.
+ */
 function whatsappCoverUrl(cart) {
   const url = (Array.isArray(cart) ? cart : []).map(coverUrl).find(Boolean);
   if (!url) return '';
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=600&output=jpg&q=80`;
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=800&h=418&fit=contain&cbg=1a1613&output=jpg&q=80`;
 }
 
 async function isJpeg(url, fetchImpl = fetch) {

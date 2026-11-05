@@ -85,3 +85,12 @@ test('a rejected image template falls back to the plain confirmation', async () 
     assert.deepEqual(r.sent.map((m) => m.template), [IMAGE, 'order_confirmed']);
   });
 });
+
+test('the WhatsApp cover is fitted whole inside a banner, not cropped', () => {
+  const { whatsappCoverUrl } = require('./order-cover');
+  const url = whatsappCoverUrl([{ img: '/images/ikigai.webp' }]);
+  assert.match(url, /&w=800&h=418&/);
+  assert.match(url, /&fit=contain&/);
+  assert.match(url, /&output=jpg/);
+  assert.equal(whatsappCoverUrl([{ title: 'No cover' }]), '');
+});
