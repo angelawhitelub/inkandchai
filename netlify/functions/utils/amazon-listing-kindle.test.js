@@ -94,6 +94,16 @@ test('a Paperback that cannot be read falls through to the Hardcover', async () 
   assert.equal(body.fields.original_price_inr, 599);
 });
 
+test('a Paperback listing with no ISBN is skipped for the Hardcover, and the note says so', async () => {
+  const { body } = await fill(link, {
+    [KINDLE]: kindlePage(swatchesFor(PAPERBACK, HARDCOVER)),
+    [PAPERBACK]: page({ format: 'Paperback', mrp: '399', price: '139' }),
+    [HARDCOVER]: printPage('Hardcover', '599'),
+  });
+  assert.equal(body.asin, HARDCOVER);
+  assert.match(body.warnings[0], /filled from the Hardcover \(9390166934\)\. Skipped Paperback B0HNQ23RBY: no ISBN\./);
+});
+
 test('with no print edition the facts fill and the price stays blank, never the eBook price', async () => {
   const { status, body } = await fill(link, { [KINDLE]: kindlePage('') });
   assert.equal(status, 200);
@@ -112,7 +122,7 @@ test('print editions that all fail say so, and the eBook price is still not used
   assert.equal(status, 200);
   assert.equal(body.asin, KINDLE);
   assert.equal(body.fields.price_inr, '');
-  assert.match(body.warnings.join(' '), /could not be read \(Paperback B0HNQ23RBY: HTTP 404; Hardcover 9390166934: HTTP 404\)/);
+  assert.match(body.warnings.join(' '), /could not be used \(Paperback B0HNQ23RBY: HTTP 404; Hardcover 9390166934: HTTP 404\)/);
 });
 
 test('a print link behaves as before: no Kindle note and one fetch of Amazon', async () => {

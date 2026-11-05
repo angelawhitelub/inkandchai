@@ -71,15 +71,16 @@ async function fromKindle(kindleAsin, kindleHtml, fetchImpl) {
   for (const edition of editions) {
     const { page } = await readPage(edition.asin, fetchImpl);
     if (page.ok) {
+      const skipped = failed.length ? ` Skipped ${failed.join('; ')}.` : '';
       return {
         page,
-        note: `That link was the Kindle edition, so this was filled from the ${edition.format} (${edition.asin}). Check it is the edition you stock.`,
+        note: `That link was the Kindle edition, so this was filled from the ${edition.format} (${edition.asin}).${skipped} Check it is the edition you stock.`,
       };
     }
-    failed.push(`${edition.format} ${edition.asin}: ${page.reason}`);
+    failed.push(`${edition.format} ${edition.asin}: ${page.reason.replace(/^no ISBN.*/, 'no ISBN')}`);
   }
   const page = agent.parseProductPage(kindleHtml, kindleAsin, { kindleFacts: true });
-  const why = failed.length ? `Its print editions could not be read (${failed.join('; ')})` : 'Amazon shows no print edition for it';
+  const why = failed.length ? `Its print editions could not be used (${failed.join('; ')})` : 'Amazon shows no print edition for it';
   return {
     page,
     note: `That link is a Kindle edition. ${why}, so this was filled from the Kindle page: enter the ISBN, format, weight, M.R.P. and price from the printed book.`,
