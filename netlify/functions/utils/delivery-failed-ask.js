@@ -23,11 +23,18 @@
  *   delivery_failed_answered_at  their first answer
  *
  * Nothing is sent until WHATSAPP_DELIVERY_FAILED_TEMPLATE names an approved
- * template: {{1}} first name, {{2}} order id, {{3}} books, with the two quick-reply
- * buttons below, worded exactly.
+ * template: an image header, {{1}} first name, {{2}} order id, {{3}} books, with the
+ * two quick-reply buttons below, worded exactly.
+ *
+ * An image-header template cannot go out without an image, and Meta fetches it
+ * after accepting the send, so a bad one loses the message. The first book's cover
+ * is checked first; no cover, or any doubt, sends the store image instead.
  */
 
 const { booksLine } = require('./rto-reship');
+const { whatsappCoverUrl, isJpeg } = require('./order-cover');
+
+const FALLBACK_IMAGE = 'https://inkandchai.in/images/og-default.jpg';
 
 const WANT_BUTTON = 'I want this order';
 const CANCEL_BUTTON = 'Cancel this order';
@@ -78,6 +85,11 @@ function askedText(params) {
   return `Hi ${params[0]}, the courier could not deliver your order ${params[1]} (${params[2]}). Do you still want this order, or would you like to cancel it?`;
 }
 
+async function headerImageFor(order, isJpegFn = isJpeg) {
+  const cover = whatsappCoverUrl(order.cart_items);
+  return cover && await isJpegFn(cover) ? cover : FALLBACK_IMAGE;
+}
+
 /**
  * Asks every eligible order not asked yet.
  * deps { supabase, send({to, template, params}), isOptedOut(db, phone), logMessage?, now }
@@ -113,7 +125,7 @@ async function sendAsks(deps, opts = {}) {
       continue;
     }
     const params = askParams(order);
-    if (dryRun) { summary.would_send.push({ order_id: id, params }); continue; }
+    if (dryRun) { summary.would_send.push({ order_id: id, params, image: whatsappCoverUrl(order.cart_items) || FALLBACK_IMAGE }); continue; }
     if (summary.sent.length + summary.failed.length >= max) { summary.skipped.push({ order_id: id, reason: 'per-run cap; next run' }); continue; }
 
     // Claim first: two overlapping runs cannot both message the customer.
@@ -125,7 +137,8 @@ async function sendAsks(deps, opts = {}) {
       summary.skipped.push({ order_id: id, reason: claimErr ? `claim failed: ${claimErr.message}` : 'changed since it was read' });
       continue;
     }
-    const res = await deps.send({ to: order.customer_phone, template, params });
+    const headerImageUrl = await headerImageFor(order, deps.isJpeg);
+    const res = await deps.send({ to: order.customer_phone, template, params, headerImageUrl });
     if (res && res.ok) {
       summary.sent.push({ order_id: id });
       if (deps.logMessage) await deps.logMessage(order.customer_phone, askedText(params)).catch(() => {});
@@ -410,6 +423,6 @@ function contextFor(order) {
 
 module.exports = {
   WANT_BUTTON, CANCEL_BUTTON, FUTURE_BUTTON, NOBODY_BUTTON, OPEN_STATES,
-  askTemplate, isOwnButton, askEligible, askParams, askedText, sendAsks,
+  FALLBACK_IMAGE, askTemplate, isOwnButton, askEligible, askParams, askedText, headerImageFor, sendAsks,
   choiceOf, reasonOf, numberOf, noNumber, futureDateOf, noDate, findOpenAsk, handleReply, contextFor, missingColumn,
 };

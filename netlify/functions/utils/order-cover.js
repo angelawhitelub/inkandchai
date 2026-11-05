@@ -86,4 +86,4 @@ async function sendOrderConfirmed({ to, params, cart }, deps = {}) {
   return send({ to, template: 'order_confirmed', params });
 }
 
-module.exports = { coverUrl, coverAndTitleHtml, orderCoversHtml, whatsappCoverUrl, sendOrderConfirmed };
+module.exports = { coverUrl, coverAndTitleHtml, orderCoversHtml, whatsappCoverUrl, isJpeg, sendOrderConfirmed };

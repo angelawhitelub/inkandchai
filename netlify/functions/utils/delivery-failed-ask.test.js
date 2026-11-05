@@ -55,15 +55,16 @@ test('only an out-for-delivery order with a failure from the courier is asked', 
   ]) assert.equal(ask.askEligible(order(over)).ok, false, JSON.stringify(over));
 });
 
-test('sends the template once, with name, order and books, and logs it', async () => {
-  const db = fakeDb([order()]);
+test('sends the template once, with cover, name, order and books, and logs it', async () => {
+  const db = fakeDb([order({ cart_items: [{ title: 'Atomic Habits', qty: 1, img: 'https://cdn.example.com/a.webp' }] })]);
   const send = sender();
   const logged = [];
-  const deps = { supabase: db, send, now: () => NOW, logMessage: async (p, m) => { logged.push(m); } };
+  const deps = { supabase: db, send, now: () => NOW, isJpeg: async () => true, logMessage: async (p, m) => { logged.push(m); } };
   const first = await ask.sendAsks(deps, { template: 'delivery_failed_ask' });
   assert.equal(first.sent.length, 1);
   assert.equal(send.calls[0].template, 'delivery_failed_ask');
   assert.deepEqual(send.calls[0].params, ['Riya', 'IC-1', 'Atomic Habits']);
+  assert.match(send.calls[0].headerImageUrl, /^https:\/\/wsrv\.nl\/.*a\.webp.*output=jpg/);
   assert.equal(db.rows[0].delivery_failed_state, 'asked');
   assert.match(logged[0], /still want this order/);
   await ask.sendAsks(deps, { template: 'delivery_failed_ask' });
@@ -83,7 +84,7 @@ test('no template sends nothing; a preview writes nothing', async () => {
 
 test('a failed send releases the claim so the next run retries', async () => {
   const db = fakeDb([order()]);
-  const out = await ask.sendAsks({ supabase: db, send: sender({ ok: false, status: 400 }), now: () => NOW }, { template: 'x' });
+  const out = await ask.sendAsks({ supabase: db, send: sender({ ok: false, status: 400 }), now: () => NOW, isJpeg: async () => true }, { template: 'x' });
   assert.equal(out.failed.length, 1);
   assert.equal(db.rows[0].delivery_failed_asked_at, null);
   assert.equal(db.rows[0].delivery_failed_state, null);
@@ -96,7 +97,7 @@ test('opted-out customers and old orders are left alone; the run is capped', asy
   assert.equal(send.calls.length, 0);
   assert.equal(out.skipped.length, 1);
   const many = fakeDb([order(), order({ id: 'u2', razorpay_order_id: 'IC-2' })]);
-  const capped = await ask.sendAsks({ supabase: many, send: sender(), now: () => NOW }, { template: 'x', max: 1 });
+  const capped = await ask.sendAsks({ supabase: many, send: sender(), now: () => NOW, isJpeg: async () => true }, { template: 'x', max: 1 });
   assert.equal(capped.sent.length, 1);
   assert.equal(capped.skipped[0].reason, 'per-run cap; next run');
 });
@@ -360,4 +361,18 @@ test('a day mentioned in passing is not taken as the date they want', async () =
   await reply(db, ask.WANT_BUTTON);
   await reply(db, 'kal');
   assert.equal(db.rows[0].delivery_failed_future_date, '2026-11-06');
+});
+
+test('no cover, or a cover that fails the check, sends the store image, so the message is never lost', async () => {
+  const withCover = order({ cart_items: [{ title: 'A', img: 'https://cdn.example.com/a.webp' }] });
+  assert.match(await ask.headerImageFor(withCover, async () => true), /wsrv\.nl/);
+  assert.equal(await ask.headerImageFor(withCover, async () => false), ask.FALLBACK_IMAGE);
+  let checked = false;
+  assert.equal(await ask.headerImageFor(order(), async () => { checked = true; return true; }), ask.FALLBACK_IMAGE);
+  assert.equal(checked, false);
+
+  const db = fakeDb([order()]);
+  const send = sender();
+  await ask.sendAsks({ supabase: db, send, now: () => NOW }, { template: 'x' });
+  assert.equal(send.calls[0].headerImageUrl, ask.FALLBACK_IMAGE);
 });
