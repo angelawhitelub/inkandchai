@@ -17,8 +17,7 @@
  * caller can surface them.
  */
 
-const { pushOrderToNimbusPost } = require('./nimbuspost-import');
-const { nimbusAutoPushOn } = require('./nimbus-push-once');
+const { nimbusAutoPushOn, pushUnlessPreorder } = require('./nimbus-push-once');
 const { fetchPaymentLinkStatus } = require('./razorpay-payment-link');
 const { sendText } = require('./whatsapp');
 const { sendOrderConfirmed } = require('./order-cover');
@@ -209,7 +208,7 @@ async function pushBotOrder(supabase, req, opts = {}) {
 
   // Automatic, so gated by NIMBUS_AUTO_PUSH (see utils/nimbus-push-once); the
   // order then waits in Unshipped for a manual push like every other.
-  if (nimbusAutoPushOn()) pushOrderToNimbusPost({
+  if (nimbusAutoPushOn()) pushUnlessPreorder(supabase, {
     razorpay_order_id: orderId,
     status,
     customer_name: req.customer_name || '',

@@ -19,6 +19,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { preorderChecker } = require('./utils/preorder-hold');
 const woo = require('./woo-channel');
 const { COLUMNS, QUESTION_COLUMNS, toDtdcRow } = require('./utils/dtdc-upload');
 
@@ -52,8 +53,11 @@ async function build({ days = 30 } = {}, deps = {}) {
   const rows = [];
   const included = [];
   const skipped = [];
+  const holdFor = await preorderChecker(supabase);
   for (const o of orders) {
     const number = o.razorpay_order_id || o.id;
+    const hold = holdFor(o);
+    if (hold) { skipped.push({ order: number, error: hold.reason }); continue; }
     try {
       const { row, cod, collect, orderValue } = toDtdcRow(await toWooOrder(o));
       rows.push(row);

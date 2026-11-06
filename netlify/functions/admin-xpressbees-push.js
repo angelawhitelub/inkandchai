@@ -35,6 +35,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { preorderChecker, splitHeld } = require('./utils/preorder-hold');
 const { feedAdmits } = require('./woo-channel');
 
 const CORS = {
@@ -92,9 +93,13 @@ exports.handler = async (event) => {
     let rows;
     try { rows = await loadCandidates(supabase, null); }
     catch (e) { return json(500, { error: e.message }); }
+    // Pre-orders are held out of the feed, so they are not visible to XpressBees.
+    const split = splitHeld(rows, await preorderChecker(supabase));
+    rows = split.free;
     const inWindow = rows.filter((o) => o.created_at >= since);
     const older    = rows.filter((o) => o.created_at < since);
     return json(200, {
+      held_preorders: split.held.length,
       feed_since: since,
       unshipped_total: rows.length,
       visible_to_xpressbees: inWindow.length,
@@ -122,6 +127,13 @@ exports.handler = async (event) => {
 
   const found = new Set(rows.map((o) => String(o.razorpay_order_id)));
   const results = [];
+
+  // A pre-order stays out of the feed until its publish date, so it is not queued.
+  const split = splitHeld(rows, await preorderChecker(supabase));
+  rows = split.free;
+  for (const h of split.held) {
+    results.push({ orderNumber: h.order.razorpay_order_id, action: 'refused', reason: h.reason });
+  }
 
   // Anything asked for that the feed will never carry. Saying so per order
   // beats a silent count, because "why is it not in the panel" is the question

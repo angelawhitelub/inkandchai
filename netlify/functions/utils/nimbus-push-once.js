@@ -29,6 +29,7 @@
 
 const { pushOrderToNimbusPost } = require('./nimbuspost-import');
 const { ensureOrderAddress } = require('./address-fixer');
+const { preorderChecker } = require('./preorder-hold');
 
 /**
  * Automatic panel pushes are OFF unless NIMBUS_AUTO_PUSH is "on" (26 Sep 2026:
@@ -81,6 +82,13 @@ async function pushToNimbusOnce(supabase, order) {
     return { pushed: false, reason: 'already_pushed', detail: elsewhere };
   }
 
+  // A pre-order waits for its publish date, unclaimed so it can go afterwards.
+  const hold = (await preorderChecker(supabase))(order);
+  if (hold) {
+    console.log(`[NimbusPost] not pushing ${label}: ${hold.reason}`);
+    return { pushed: false, reason: 'preorder_hold', detail: hold.reason };
+  }
+
   try { await ensureOrderAddress(supabase, order); }
   catch (error) { return { pushed: false, reason: 'address_review', error: error.message }; }
 
@@ -123,4 +131,14 @@ async function pushToNimbusOnce(supabase, order) {
   }
 }
 
-module.exports = { pushToNimbusOnce, nimbusAutoPushOn, bookedElsewhere };
+/** For the automatic pushes that go straight to the importer. */
+async function pushUnlessPreorder(supabase, order) {
+  const hold = (await preorderChecker(supabase))(order);
+  if (hold) {
+    console.log(`[NimbusPost] not pushing ${order.razorpay_order_id}: ${hold.reason}`);
+    return { skipped: true, reason: hold.reason };
+  }
+  return pushOrderToNimbusPost(order);
+}
+
+module.exports = { pushToNimbusOnce, pushUnlessPreorder, nimbusAutoPushOn, bookedElsewhere };

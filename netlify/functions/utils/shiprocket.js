@@ -15,6 +15,7 @@
  *   SHIPROCKET_CHANNEL_ID      — channel ID from the Manual channel you created (leave blank to omit)
  */
 
+const { holdFromReleases } = require('./preorder-hold');
 const { createClient } = require('@supabase/supabase-js');
 const { classifyShipmentMoney } = require('./shipment-money');
 const { isReplacementOrder } = require('./replacement-order');
@@ -244,6 +245,12 @@ function autoPushOrderToShiprocket(payload) {
   if (mode !== 'shiprocket') {
     console.log(`[Shiprocket] auto-push skipped for ${payload && payload.inkOrderId} (SHIPMENT_AUTO_PUSH=${mode})`);
     return Promise.resolve({ skipped: true, mode });
+  }
+  // The checkout's own line stamps: the book was priced seconds ago.
+  const hold = holdFromReleases({ cart_items: payload && payload.cartItems }, null);
+  if (hold) {
+    console.log(`[Shiprocket] auto-push skipped for ${payload && payload.inkOrderId}: ${hold.reason}`);
+    return Promise.resolve({ skipped: true, reason: hold.reason });
   }
   return pushOrderToShiprocket(payload);
 }

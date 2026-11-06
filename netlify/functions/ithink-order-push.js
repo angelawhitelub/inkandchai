@@ -40,6 +40,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier, sanitizeAddressText } = require('./utils/nimbuspost-import');
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { requireAdmin } = require('./utils/admin-auth');
+const { preorderChecker } = require('./utils/preorder-hold');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { classifyShipmentMoney, parseCartItems } = require('./utils/shipment-money');
 
@@ -352,8 +353,11 @@ exports.handler = async (event) => {
 
   const built = [], skipped = [], failed = [];
   const rePushed = [];
+  const holdFor = await preorderChecker(supabase);
   for (const order of orders) {
     const orderId = order.razorpay_order_id || order.id;
+    const hold = holdFor(order);
+    if (hold) { skipped.push({ order_id: orderId, reason: hold.reason }); continue; }
     if (order.tracking_id) { skipped.push({ order_id: orderId, reason: `already has AWB ${order.tracking_id}` }); continue; }
     // A suffixed push is deliberately a DIFFERENT record at iThink, so the
     // "already pushed" stamp does not describe it and must not block it. The

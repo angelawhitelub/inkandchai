@@ -15,6 +15,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
+const { preorderChecker } = require('./utils/preorder-hold');
 const { sendText } = require('./utils/whatsapp');
 const { shipOrder, npAuthenticate, resolveWarehouseId } = require('./nimbuspost-ship');
 
@@ -37,7 +38,7 @@ exports.handler = async (event) => {
   if (!ids.length) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Provide order_ids' }) };
 
   const started = Date.now();
-  const summary = { requested: ids.length, shipped: 0, skipped: 0, failed: 0, failures: [] };
+  const summary = { requested: ids.length, shipped: 0, skipped: 0, held_preorders: 0, failed: 0, failures: [] };
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -49,8 +50,10 @@ exports.handler = async (event) => {
     const token       = await npAuthenticate();
     const warehouseId = await resolveWarehouseId(token);
 
+    const holdFor = await preorderChecker(supabase);
     for (const order of orders) {
       const oid = order.razorpay_order_id || order.id;
+      if (holdFor(order)) { summary.held_preorders++; continue; }
       if (order.tracking_id) { summary.skipped++; continue; }
       try {
         await shipOrder(supabase, token, warehouseId, order, null);
@@ -77,6 +80,7 @@ exports.handler = async (event) => {
       process.env.STORE_OWNER_PHONE,
       `🚀 Bulk AWB creation finished (${mins} min)\n` +
       `✅ Shipped: ${summary.shipped}\n⏭ Skipped (had AWB): ${summary.skipped}\n❌ Failed: ${summary.failed}` +
+      (summary.held_preorders ? `\n📅 Pre-orders held until their publish date: ${summary.held_preorders}` : '') +
       (failLines ? `\n\nFailures:\n${failLines}${summary.failures.length > 6 ? `\n… +${summary.failures.length - 6} more` : ''}` : '') +
       (summary.fatal ? `\n\n⚠️ Run aborted early: ${summary.fatal}` : '') +
       `\n\nRefresh the admin Orders tab to see the AWBs.`

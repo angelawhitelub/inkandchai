@@ -24,6 +24,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier } = require('./utils/nimbuspost-import');
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { requireAdmin } = require('./utils/admin-auth');
+const { preorderChecker, splitHeld } = require('./utils/preorder-hold');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { bookedElsewhere } = require('./utils/nimbus-push-once');
 
@@ -286,7 +287,7 @@ async function pushOrder(order, apiKey) {
   return data;
 }
 
-async function suffixRun({ body, orders, apiKey, supabase }) {
+async function suffixRun({ body, orders, apiKey, supabase, heldPreorders = [] }) {
   const suffix = String(body.suffix || '').trim();
   if (!/^-[A-Za-z0-9]{1,3}$/.test(suffix)) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'suffix must look like "-c" or "-c2"' }) };
@@ -300,7 +301,7 @@ async function suffixRun({ body, orders, apiKey, supabase }) {
   await getExistingOrderNumbers(apiKey, { pages: Number(body.scan_pages) || 20, rowsByNumber, sample });
 
   const plan = [];
-  const skipped = { has_awb: [], live_in_panel: [], suffix_taken: [], pushed_before_not_found: [] };
+  const skipped = { has_awb: [], live_in_panel: [], suffix_taken: [], pushed_before_not_found: [], preorder: heldPreorders };
   for (const order of orders) {
     const id = String(order.razorpay_order_id || order.id);
     const base = normalizeOrderNumber(id);
@@ -380,11 +381,15 @@ exports.handler = async (event) => {
       }) };
     }
 
-    const { data: orders, error } = await query;
+    const { data: rows, error } = await query;
     if (error) throw error;
 
+    // Pre-orders never reach the panel before their publish date, whoever asks.
+    const { free: orders, held } = splitHeld(rows || [], await preorderChecker(supabase));
+    const heldPreorders = held.map((h) => `${h.order.razorpay_order_id || h.order.id}: ${h.reason}`);
+
     if (body.suffix !== undefined) {
-      return await suffixRun({ body, orders: orders || [], apiKey, supabase });
+      return await suffixRun({ body, orders, apiKey, supabase, heldPreorders });
     }
 
     // Dedup is best-effort: if the panel lookup fails, proceed with the push
@@ -397,11 +402,11 @@ exports.handler = async (event) => {
       dedupWarning = `Duplicate pre-check skipped (${String(err.message || err).slice(0, 160)}). Orders were still pushed.`;
       console.warn('[nimbuspost-order-push] preflight skipped:', err.message);
     }
-    const summary = { pushed: 0, skipped: 0, failed: 0, errors: [], booked_elsewhere: [] };
+    const summary = { pushed: 0, skipped: 0, failed: 0, errors: [], booked_elsewhere: [], held_preorders: heldPreorders };
     // Only a named order can be forced past the other-courier check, and only
     // after the admin has been warned about that order specifically.
     const forceElsewhere = body.include_booked_elsewhere === true && !body.all_unshipped;
-    for (const order of orders || []) {
+    for (const order of orders) {
       const orderNumber = normalizeOrderNumber(order.razorpay_order_id || order.id);
 
       // Pushed to iThink or queued for XpressBees, with its AWB not back yet:
@@ -446,7 +451,7 @@ exports.handler = async (event) => {
           summary.errors.push(`${order.razorpay_order_id || order.id}: ${message.slice(0, 220)}`);
         }
       }
-      if ((orders || []).length > 5) await new Promise(resolve => setTimeout(resolve, 250));
+      if (orders.length > 5) await new Promise(resolve => setTimeout(resolve, 250));
     }
 
     return {

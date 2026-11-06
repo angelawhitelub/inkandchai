@@ -16,6 +16,7 @@ const { pushOrderToShiprocket } = require('./utils/shiprocket');
 const { classifyShipmentMoney } = require('./utils/shipment-money');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { requireAdmin } = require('./utils/admin-auth');
+const { preorderChecker } = require('./utils/preorder-hold');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -82,7 +83,8 @@ exports.handler = async (event) => {
   // Get a single Shiprocket token upfront (avoid re-authenticating for every order)
   // We do this by pushing the first order which internally caches nothing,
   // but we batch with a small delay to avoid rate limiting
-  const summary = { pushed: 0, skipped: 0, failed: 0, errors: [] };
+  const summary = { pushed: 0, skipped: 0, failed: 0, errors: [], held_preorders: [] };
+  const holdFor = await preorderChecker(supabase);
 
   // Dry run: classify every order with the same function the real push uses and
   // report what the courier would be told to collect, without contacting
@@ -95,6 +97,8 @@ exports.handler = async (event) => {
     const rows = [], refused = [];
     for (const order of orders) {
       const id = order.razorpay_order_id || order.id;
+      const hold = holdFor(order);
+      if (hold) { refused.push({ order_id: id, reason: hold.reason }); continue; }
       if (order.tracking_id) { refused.push({ order_id: id, reason: `already has AWB ${order.tracking_id}` }); continue; }
       if (order.shiprocket_order_id) { refused.push({ order_id: id, reason: `already in Shiprocket as ${order.shiprocket_order_id}` }); continue; }
       let money;
@@ -112,6 +116,12 @@ exports.handler = async (event) => {
   }
 
   for (const order of orders) {
+    const hold = holdFor(order);
+    if (hold) {
+      summary.skipped++;
+      summary.held_preorders.push(`${order.razorpay_order_id || order.id}: ${hold.reason}`);
+      continue;
+    }
     // An order that already carries an AWB has been booked with some courier.
     // Pushing it again creates a second parcel for one sale.
     if (order.tracking_id) {

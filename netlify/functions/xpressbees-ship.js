@@ -30,6 +30,7 @@ const { sanitizeForCourier, sanitizeAddressText } = require('./utils/nimbuspost-
 const { buildTrackingUrl } = require('./utils/tracking-url');
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { requireAdmin } = require('./utils/admin-auth');
+const { preorderChecker } = require('./utils/preorder-hold');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { classifyShipmentMoney, parseCartItems } = require('./utils/shipment-money');
 const xb = require('./utils/xpressbees');
@@ -268,7 +269,7 @@ async function pool(items, limit, fn) {
 async function listCandidates(supabase, days) {
   const since = new Date(Date.now() - days * 86400000).toISOString();
   const { data, error } = await supabase.from('orders')
-    .select('id, razorpay_order_id, status, created_at, tracking_id, cancellation_requested_at, source, customer_name, amount_paise')
+    .select('id, razorpay_order_id, status, created_at, tracking_id, cancellation_requested_at, source, customer_name, amount_paise, cart_items')
     .in('status', BOOKABLE_STATUSES)
     .is('tracking_id', null)
     .gte('created_at', since)
@@ -276,9 +277,10 @@ async function listCandidates(supabase, days) {
     .limit(1000);
   if (error) throw error;
   const ready = [], held = [];
+  const holdFor = await preorderChecker(supabase);
   for (const o of data || []) {
     if (o.source === 'paperbound') continue;
-    const hold = bookingHold(o);
+    const hold = bookingHold(o) || holdFor(o);
     const row = { order_id: o.razorpay_order_id || o.id, created_at: o.created_at, status: o.status, customer: o.customer_name || '' };
     if (hold) held.push({ ...row, ...hold }); else ready.push(row);
   }
@@ -310,9 +312,16 @@ async function processOrders(ids, opts = {}) {
   // rather than pile up identical errors.
   let walletEmpty = false;
   const concurrency = opts.concurrency || (opts.dry_run ? 6 : 4);
+  const preorderHold = await preorderChecker(supabase);
 
   await pool(orders, concurrency, async (order) => {
     const orderId = order.razorpay_order_id || order.id;
+    // Before force: nothing books a pre-order ahead of its publish date.
+    const preorder = preorderHold(order);
+    if (preorder) {
+      skipped.push({ order_id: orderId, kind: preorder.kind, reason: preorder.reason });
+      return;
+    }
     // cancel_existing is a re-book by definition, so it implies force.
     const force = !!opts.force || !!opts.cancel_existing;
     if (order.tracking_id && !force) {

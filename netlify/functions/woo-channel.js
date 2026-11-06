@@ -85,6 +85,7 @@ const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier, sanitizeAddressText } = require('./utils/nimbuspost-import');
+const { preorderChecker, splitHeld } = require('./utils/preorder-hold');
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { classifyShipmentMoney, parseCartItems } = require('./utils/shipment-money');
@@ -985,6 +986,11 @@ exports.handler = async (event) => {
   let rows;
   try { rows = await loadOrders(supabase); }
   catch (e) { return wpError('woocommerce_rest_cannot_view', e.message, 500); }
+
+  // A pre-order stays out of the feed until its publish date.
+  const split = splitHeld(rows, await preorderChecker(supabase));
+  rows = split.free;
+  if (split.held.length) console.log(`[woo-channel] held ${split.held.length} pre-orders: ${split.held.map((h) => h.order.razorpay_order_id || h.order.id).join(', ')}`);
 
   // An order that cannot be shipped (no pincode, no phone) is skipped rather
   // than failing the whole page: one unmappable row must not stop the other 96.

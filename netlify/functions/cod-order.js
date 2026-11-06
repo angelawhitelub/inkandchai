@@ -12,8 +12,7 @@ const { sendEmail }    = require('./utils/email');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
 const { recordAdClick } = require('./utils/ad-click');
 const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
-const { pushOrderToNimbusPost } = require('./utils/nimbuspost-import');
-const { nimbusAutoPushOn } = require('./utils/nimbus-push-once');
+const { nimbusAutoPushOn, pushUnlessPreorder } = require('./utils/nimbus-push-once');
 const { resolveCartPrices, makeOrderId, cartHasNoCod } = require('./utils/pricing');
 const { codBlockedForCustomer, COD_BLOCKED_MESSAGE } = require('./utils/cod-risk');
 const { pincodeRejection } = require('./utils/pincode-valid');
@@ -284,7 +283,7 @@ exports.handler = async (event, context) => {
     // why COD orders kept arriving in the panel after auto-push was turned off.
     if (!nimbusAutoPushOn()) {
       console.log(`[NimbusPost] cod-order auto-push skipped for ${orderId}: NIMBUS_AUTO_PUSH is off`);
-    } else afterResponse(context, pushOrderToNimbusPost({
+    } else afterResponse(context, pushUnlessPreorder(supabase, {
       razorpay_order_id: orderId,
       status: 'cod_pending',
       customer_name: customer.name || '',

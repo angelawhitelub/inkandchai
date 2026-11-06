@@ -29,6 +29,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier } = require('./utils/nimbuspost-import');
 const { requireAdmin } = require('./utils/admin-auth');
+const { preorderChecker } = require('./utils/preorder-hold');
 const { ensureOrderAddress } = require('./utils/address-fixer');
 const { isReplacementOrder } = require('./utils/replacement-order');
 
@@ -487,8 +488,14 @@ exports.handler = async (event) => {
     // ── Create shipments ────────────────────────────────────────────────
     const results  = [];
     const failures = [];
+    const holdFor  = await preorderChecker(supabase);
 
     for (const order of orders) {
+      const hold = holdFor(order);
+      if (hold) {
+        results.push({ order_id: order.razorpay_order_id || order.id, skipped: true, reason: hold.reason });
+        continue;
+      }
       // Skip already-shipped orders
       if (order.tracking_id) {
         results.push({ order_id: order.razorpay_order_id || order.id, skipped: true, reason: 'Already has tracking: ' + order.tracking_id });
