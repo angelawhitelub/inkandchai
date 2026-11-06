@@ -27,6 +27,7 @@ import catalogRender from '../netlify/functions/utils/catalog-content-render.js'
 import soldOutUtil from '../netlify/functions/utils/sold-out.js';
 import scarcityUtil from '../netlify/functions/utils/scarcity.js';
 import releaseDate from '../netlify/functions/utils/release-date.js';
+import shipHolidays from '../netlify/functions/utils/ship-holidays.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
 import newArrivals from '../netlify/functions/utils/new-arrivals.js';
 import lifetimeSales from '../netlify/functions/utils/lifetime-sales.js';
@@ -504,6 +505,25 @@ function withRelease(response, entry) {
     .transform(response);
 }
 
+// ── Shipping holidays ─────────────────────────────────────────────────────
+// Added on every request while a holiday is ahead, so the admin's list reaches
+// the ~2,700 baked pages and admin-added books alike within a minute. With none
+// ahead the page is untouched. A failed read leaves the page as it was.
+async function withShipHolidays(response, env) {
+  if (response.status !== 200 || !env.ORDER_FALLBACK) return response;
+  let tags = '';
+  try {
+    const doc = await env.ORDER_FALLBACK.get(`${shipHolidays.STORE}:${shipHolidays.KEY}`, { type: 'json', cacheTtl: 60 });
+    tags = shipHolidays.shipHolidayTags(doc && doc.items);
+  } catch (err) {
+    console.warn('[ship-holidays] KV read failed:', err && err.message);
+  }
+  if (!tags) return response;
+  return new HTMLRewriter()
+    .on('body', { element(el) { el.append(tags, { html: true }); } })
+    .transform(response);
+}
+
 // ── Free-delivery copy on product pages ─────────────────────────────────────
 // Free delivery depends on how the order is paid (utils/free-delivery): prepaid
 // above ₹399, Cash on Delivery from ₹499. ~2,700 baked pages still say
@@ -975,7 +995,7 @@ export default {
       let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
       page = await withFreeDelivery(await withCodRule(withShippingCopy(page), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
-      return withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin));
+      return withShipHolidays(withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin)), env);
     }
 
     // Admin-created products have no generated page: the catalogue books are
@@ -993,9 +1013,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin));
+          return withShipHolidays(withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
         }
-        if (rendered.status !== 404) return withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin));
+        if (rendered.status !== 404) return withShipHolidays(withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a

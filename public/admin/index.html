@@ -1238,6 +1238,20 @@ select,input,textarea{font-size:1rem;}
     <h1>Tools</h1>
     <p class="subtitle">Exports, bulk updates, courier pushes and maintenance jobs. These act on the orders currently loaded and filtered on the Orders tab.</p>
 
+  <!-- Shipping holidays: days dispatch is closed. Product pages skip them. -->
+  <div style="border:1px solid var(--border);background:var(--bg2);padding:0.9rem 1.1rem;margin:0.8rem 0 1rem;">
+    <strong style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);">🚚 Shipping holidays</strong>
+    <p class="hint" style="margin:0.45rem 0 0.7rem;">Add the days nothing leaves the warehouse. Every product page then shows the next open day as its "Ships by" date, moves its delivery estimates to match and counts handling days on open days only. Changes show within about a minute.</p>
+    <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;">
+      <label style="font-size:0.62rem;color:var(--cream-dim);display:flex;flex-direction:column;gap:0.25rem;">First day<input type="date" id="shipHolidayFrom"/></label>
+      <label style="font-size:0.62rem;color:var(--cream-dim);display:flex;flex-direction:column;gap:0.25rem;">Last day (blank = one day)<input type="date" id="shipHolidayTo"/></label>
+      <label style="font-size:0.62rem;color:var(--cream-dim);display:flex;flex-direction:column;gap:0.25rem;">Note for you (not shown to customers)<input type="text" id="shipHolidayNote" maxlength="80" placeholder="Diwali"/></label>
+      <button class="btn-green" type="button" id="shipHolidayAddBtn" onclick="addShipHoliday()">Add holiday</button>
+    </div>
+    <p class="hint" id="shipHolidayMsg" style="margin:0.6rem 0 0;"></p>
+    <div id="shipHolidayList" style="margin-top:0.6rem;font-size:0.72rem;color:var(--cream);"></div>
+  </div>
+
   <!-- Google Ads adjustment feed: teach it which conversions Google cannot find.
        The feed is a pull, so nothing server-side ever learns an upload's
        outcome; this file is the only feedback channel Google offers. -->
@@ -10266,6 +10280,63 @@ async function listFreeDelivery() {
   }
 }
 
+// ── Shipping holidays (admin-ship-holidays) ──────────────────────────────────
+function shipHolidayDay(iso) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+function renderShipHolidays(items) {
+  const box = document.getElementById('shipHolidayList');
+  if (!box) return;
+  if (!items.length) { box.innerHTML = '<span style="color:var(--cream-dim);">No holidays ahead. Ship-by dates are running as normal.</span>'; return; }
+  box.innerHTML = items.map(h => `<div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;padding:0.35rem 0;border-top:1px solid var(--border);">
+    <span>${esc(shipHolidayDay(h.from))}${h.to !== h.from ? ' to ' + esc(shipHolidayDay(h.to)) : ''}</span>
+    ${h.note ? `<span style="color:var(--cream-dim);">${esc(h.note)}</span>` : ''}
+    <span style="flex:1;"></span>
+    <button class="btn-outline" type="button" style="padding:0.3rem 0.8rem;font-size:0.56rem;" data-from="${esc(h.from)}" data-to="${esc(h.to)}" onclick="removeShipHoliday(this.dataset.from, this.dataset.to)">Remove</button>
+  </div>`).join('');
+}
+async function shipHolidayCall(options) {
+  const res = await adminFetch('/.netlify/functions/admin-ship-holidays', options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  renderShipHolidays(data.items || []);
+  return data;
+}
+function shipHolidaySay(text, color) {
+  const msg = document.getElementById('shipHolidayMsg');
+  if (msg) { msg.textContent = text; msg.style.color = color || 'var(--cream-dim)'; }
+}
+async function loadShipHolidays() {
+  try { await shipHolidayCall({ method: 'GET' }); }
+  catch (e) { shipHolidaySay('Could not read the holidays: ' + e.message, '#e06060'); }
+}
+function shipHolidayPost(body) {
+  return shipHolidayCall({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+async function addShipHoliday() {
+  const btn = document.getElementById('shipHolidayAddBtn');
+  const val = (id) => (document.getElementById(id)?.value || '').trim();
+  btn.disabled = true;
+  try {
+    await shipHolidayPost({ action: 'add', from: val('shipHolidayFrom'), to: val('shipHolidayTo'), note: val('shipHolidayNote') });
+    ['shipHolidayFrom', 'shipHolidayTo', 'shipHolidayNote'].forEach(id => { document.getElementById(id).value = ''; });
+    shipHolidaySay('Saved. Product pages pick this up within about a minute.', 'var(--green)');
+  } catch (e) {
+    shipHolidaySay(e.message, '#e06060');
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function removeShipHoliday(from, to) {
+  try {
+    await shipHolidayPost({ action: 'remove', from, to });
+    shipHolidaySay('Removed. Product pages pick this up within about a minute.', 'var(--green)');
+  } catch (e) {
+    shipHolidaySay(e.message, '#e06060');
+  }
+}
+
 // ── Pre-orders (utils/release-date) ──────────────────────────────────────────
 // utils/pricing stamps each pre-order line with its release day (_release) when
 // the order is placed. The latest one decides when the parcel can leave.
@@ -14125,6 +14196,7 @@ async function pushAllToNimbusPanel(btn) {
     const s = data.summary || {};
     let message = `NimbusPost panel import complete:\n\n✅ Newly pushed: ${s.pushed || 0}\n⏭ Already in NimbusPost: ${s.skipped || 0}\n🚚 Left alone, booked with another courier: ${(s.booked_elsewhere || []).length}\n❌ Failed: ${s.failed || 0}`;
     if (s.booked_elsewhere?.length) message += `\n\nBooked elsewhere (not pushed):\n${s.booked_elsewhere.slice(0, 8).join('\n')}`;
+    if (s.held_preorders?.length) message += `\n\n📅 Pre-orders held back:\n${s.held_preorders.slice(0, 8).join('\n')}`;
     if (data.errors?.length) message += `\n\nFirst errors:\n${data.errors.slice(0, 5).join('\n')}`;
     message += '\n\nOpen NimbusPost → Orders to assign couriers and generate AWBs.';
     alert(message);
@@ -14805,6 +14877,7 @@ async function xbbCall(body) {
 const XBB_HOLD_TEXT = {
   fresh: 'Placed under 30 minutes ago (customer can still cancel)',
   cancel_requested: 'Customer asked to cancel',
+  preorder: 'Pre-order: publish date has not arrived',
   status: 'No longer waiting to ship',
   has_awb: 'Already has an AWB',
   missing: 'Order not found',
@@ -15079,6 +15152,10 @@ async function npPushOrderToPanel(orderId, btn, forceElsewhere = false) {
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
 
     const s = data.summary || {};
+    if (s.held_preorders?.length) {
+      alert(`📅 ${s.held_preorders[0]}\n\nIf the book has arrived early, change its Published date to today, then push again.`);
+      return;
+    }
     if (s.booked_elsewhere?.length) {
       // Another courier already has it and its AWB has not come back yet.
       // Pushing anyway is sometimes right (that booking was cancelled), so it
@@ -17638,7 +17715,7 @@ function switchTab(tab, pushState = true) {
   // The cookie is deliberately unreadable to JavaScript, so its verified flag
   // is the only client-side signal that the remembered session is authenticated.
   const _authed = adminToken || adminKey || adminCookieSession;
-  if (tab === 'tools' && _authed) gadsSuppressStatus();
+  if (tab === 'tools' && _authed) { gadsSuppressStatus(); loadShipHolidays(); }
   if (tab === 'products' && _authed) { fetchProducts(); fetchRemovedListings(); fetchDeletedPages(); }
   if (tab === 'create' && _authed && !productRows.length) fetchProducts();
   if (tab === 'ebooks' && _authed && adminRole === 'owner') loadEbooks();

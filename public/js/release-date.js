@@ -40,8 +40,10 @@
     if (!(release > today)) return null;            // released: a normal page
     handling = Math.max(0, Math.min(30, parseInt(handling, 10) || 0));
     var normal = today + (new Date(ist).getUTCHours() < CUTOFF ? 0 : 1);
-    var ship = Math.max(normal, release) + handling;
-    return { release: release, ship: ship, extra: ship - normal, handling: handling, daysToRelease: release - today };
+    var plain = Math.max(normal, release) + handling;
+    // Shipping holidays (public/js/ship-holidays.js, only on a page while one is ahead).
+    var ship = root.iacShipDates ? root.iacShipDates.fromDay(Math.max(normal, release), handling) : plain;
+    return { release: release, ship: ship, extra: ship - normal, handling: handling, daysToRelease: release - today, holiday: ship !== plain };
   }
 
   function fmt(dayNum, w) {
@@ -65,7 +67,9 @@
 
   function notice(p) {
     var when = (p.daysToRelease === 1 ? 'tomorrow, ' : 'on ') + fmt(p.release, 'long');
-    var dispatch = p.handling > 0
+    var dispatch = p.holiday
+      ? 'we dispatch it by ' + fmt(p.ship, 'long') + ', after our shipping holiday'
+      : p.handling > 0
       ? 'we dispatch it within ' + p.handling + ' ' + (p.handling === 1 ? 'day' : 'days') + ' of release'
       : 'we dispatch it on release day';
     return '<div class="iac-preorder" data-preorder style="border:1px solid rgba(232,160,48,0.45);'
@@ -87,7 +91,7 @@
       return '<div class="eta-row"><span class="eta-zone">' + z[0] + '</span>'
         + '<span class="eta-date">' + fmt(p.ship + z[1], 'short') + '</span></div>';
     }).join('');
-    var sub = 'Pre-order — dispatched '
+    var sub = p.holiday ? 'Pre-order — dispatched after our shipping holiday' : 'Pre-order — dispatched '
       + (p.handling > 0 ? p.handling + ' ' + (p.handling === 1 ? 'day' : 'days') + ' after release' : 'on release day');
     el.innerHTML = '<div class="ship-by-box"><div class="ship-by-icon">📦</div><div class="ship-by-text">'
       + '<div class="ship-by-label">Ships by</div>'
@@ -109,6 +113,7 @@
     render(root.__iacHandlingDays);
   };
   render(root.__iacHandlingDays);
+  api.repaint = function () { render(root.__iacHandlingDays); };
 
   var stock = doc.querySelector('.stock');
   if (stock && !root.__soldOut) { stock.textContent = 'Pre-order'; stock.style.color = '#e8a030'; stock.style.borderColor = 'rgba(232,160,48,0.4)'; }
