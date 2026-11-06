@@ -106,6 +106,11 @@ const asked = (over = {}) => order({ delivery_failed_asked_at: '2026-11-05T05:00
 const held = (over = {}) => order({ delivery_failed_asked_at: '2026-11-05T05:00:00Z', delivery_failed_state: 'backlog', ...over });
 const RELEASED = ask.BACKLOG_SEND_FROM + 5 * 60000;
 
+test('the job is switched on in the Worker: a schedule alone never runs it', async () => {
+  const { ENABLED_JOBS } = await import('../../../worker/scheduled-jobs.mjs');
+  assert.ok(ENABLED_JOBS.has('delivery-failed-ask-scheduled'));
+});
+
 test('held-back orders are not messaged before their release time, but the preview lists them', async () => {
   const db = fakeDb([held()]);
   const send = sender();

@@ -57,6 +57,7 @@ export const ENABLED_JOBS = new Set([
   'whatsapp-broadcast-scheduled',
   'whatsapp-broadcast-oneoff',
   'rto-reship-offer-scheduled',     // silent until WHATSAPP_RTO_RESHIP_TEMPLATE is set
+  'delivery-failed-ask-scheduled',
   // catalogue
   'bestseller-agent-scheduled',
   'lifetime-sales-scheduled',

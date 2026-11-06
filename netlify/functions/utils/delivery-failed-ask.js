@@ -49,9 +49,9 @@ const OPEN_MS = 7 * 86400000;
 const MAX_ORDER_AGE_DAYS = 30;
 
 // Orders that had already failed when this went live were held back. The owner
-// asked for them to be messaged on the morning of 6 Nov 2026: the job runs at half
-// past each hour IST, so the first batch goes at 10:30 and each run takes up to 40.
-const BACKLOG_SEND_FROM = Date.parse('2026-11-06T04:55:00Z');
+// asked for them to be messaged in the morning. The job runs at half past each hour
+// IST, so the first batch goes at 10:30 on 7 Nov 2026 and each run takes up to 40.
+const BACKLOG_SEND_FROM = Date.parse('2026-11-07T04:55:00Z');
 
 const FAILED = /exception|undelivered|ndr|failed/;
 
