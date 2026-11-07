@@ -30,6 +30,9 @@ const READY = 'pending pickup,pickup reattempt,awaiting scan';
 const PAGE = 100;
 const CHUNK = 50;
 const MAX_LABELS = 1000;
+// Labels of shipments not yet picked up come from the panel's S3 (xbees.in);
+// already-shipped ones from shipment.xpressbees.com/assets.
+const LABEL_HOST = /^https:\/\/([\w-]+\.)*(xbees\.in|xpressbees\.com)\//;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -108,7 +111,7 @@ async function readyShipments(call, { days }) {
 async function labelPdf(call, awbs, fetchImpl = fetch) {
   const out = await call('/ship/assets/label', { method: 'POST', body: { awbs: awbs.join(',') }, ms: 60000 });
   const url = out.data?.data;
-  if (out.httpStatus !== 200 || out.data?.status !== true || typeof url !== 'string' || !/^https:\/\/[\w.-]+\.xbees\.in\//.test(url)) {
+  if (out.httpStatus !== 200 || out.data?.status !== true || typeof url !== 'string' || !LABEL_HOST.test(url)) {
     throw new XbError(`XpressBees label download failed (HTTP ${out.httpStatus}): ${out.data?.message || out.raw}`, 502);
   }
   const res = await fetchImpl(url);

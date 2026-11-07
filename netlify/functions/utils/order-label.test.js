@@ -58,3 +58,12 @@ test('a refused login is a real error', async () => {
 test('AWBs are cleaned before matching', () => {
   assert.equal(ep.cleanAwb(' 7d130601918 '), '7D130601918');
 });
+
+test('a shipped AWB label from shipment.xpressbees.com is accepted', async () => {
+  const bytes = await pdfWith(['143449611592728']);
+  const d = deps(bytes);
+  d.ucpFetch = async () => ({ httpStatus: 200, data: { status: true, data: 'https://shipment.xpressbees.com/assets/x.pdf' } });
+  assert.ok((await ep.xpressBeesLabel('143449611592728', d)).pdf);
+  d.ucpFetch = async () => ({ httpStatus: 200, data: { status: true, data: 'https://evil.example.com/xpressbees.com/x.pdf' } });
+  assert.equal((await ep.xpressBeesLabel('143449611592728', d)).notFound, true);
+});
