@@ -1805,6 +1805,7 @@ select,input,textarea{font-size:1rem;}
       <div class="mini-actions">
         <input id="merchantPriceCsv" type="file" accept=".csv,text/csv" style="max-width:210px;font-size:.62rem;"/>
         <button class="btn-green" onclick="applyMerchantPriceCsv(this)">Apply Suggested Prices</button>
+        <button class="btn-outline" onclick="switchTab('inventory')">📋 Bulk edit in Manage Inventory</button>
         <button class="btn-outline" onclick="fetchProducts()">Refresh Products</button>
       </div>
     </div>
@@ -19679,6 +19680,7 @@ async function loadInventory(fresh, btn) {
       r.source = (data.sources || [])[r.source] || 'custom';
       r.key = String(r.slug || '').toLowerCase();
       r.hay = [r.title, r.author, r.slug, r.isbn, r.publisher, r.category].join(' ').toLowerCase();
+      r.sortTitle = String(r.title || r.slug || '').replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase();
       return r;
     });
     invBySlug = new Map(invRows.map((r) => [r.key, r]));
@@ -19788,7 +19790,8 @@ function invSetSort(s) {
 }
 
 function invSortRows() {
-  const t = (a, b) => String(a.title).localeCompare(String(b.title));
+  // Leading quotes and colons ("'impossible…", ": Saundaryalahari…") sort as if absent.
+  const t = (a, b) => (a.sortTitle || '').localeCompare(b.sortTitle || '');
   const nul = (v, big) => (v === null || v === undefined ? big : v);
   const disc = (r) => (r.mrp && r.price ? 1 - r.price / r.mrp : 0);
   const by = {
