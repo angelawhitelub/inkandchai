@@ -120,3 +120,15 @@ test('checkValue and cleanUndoItem reject junk', () => {
   assert.equal(u.slug, 'a');
   assert.equal(u.setting, null);
 });
+
+test('buildRows: a stranded upper-case override row at 0 makes the book sold out, as readers see it', () => {
+  const rows = INV.buildRows({
+    catalogue: [cat('set-age-4', '599', '1499')],
+    overrides: [
+      { slug: 'set-age-4', price_inr: '529', stock_qty: null, is_active: true },
+      { slug: 'set-AGE-4', price_inr: '599', stock_qty: 0, is_active: true },
+    ],
+  });
+  assert.equal(rows[0].stock, 0);
+  assert.equal(rows[0].price, 529, 'fields still come from the lower-case row');
+});

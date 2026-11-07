@@ -63,10 +63,19 @@ function sourceOf(custom) {
 function buildRows({ catalogue = [], custom = [], overrides = [], settings = {}, codOff = {}, free = new Set(),
   searchHidden = new Set(), browseHidden = new Set(), deleted = new Set(), sold = () => 0 }) {
   const ovr = new Map();
+  // Every reader lower-cases slugs, so a stranded "...-AGE-4" row counts as the
+  // same product: the sold-out list and the stock trigger both act on it.
+  // The lower-case row supplies the fields; stock is the lowest any active
+  // row holds, because one row at 0 is enough to show "Coming Soon".
+  const variantStock = new Map();
   for (const o of overrides) {
     const k = low(o.slug);
-    // A stranded upper-case duplicate must not beat the lower-case row readers use.
-    if (!k || (ovr.has(k) && o.slug !== k)) continue;
+    if (!k) continue;
+    if (o.is_active !== false && o.stock_qty !== null && o.stock_qty !== undefined) {
+      const n = Math.floor(Number(o.stock_qty));
+      variantStock.set(k, variantStock.has(k) ? Math.min(variantStock.get(k), n) : n);
+    }
+    if (ovr.has(k) && o.slug !== k) continue;
     ovr.set(k, o);
   }
   const base = new Map();
@@ -103,7 +112,7 @@ function buildRows({ catalogue = [], custom = [], overrides = [], settings = {},
       ?? posPrice(c ? c.original_price_inr : null)
       ?? posPrice(b.catalogue ? b.catalogue.original_price_inr : b.original_price_inr);
 
-    const stock = on && o.stock_qty !== null && o.stock_qty !== undefined ? Math.floor(Number(o.stock_qty)) : null;
+    const stock = variantStock.has(k) ? variantStock.get(k) : null;
     const image = (on && o.image_url) || (c && c.image_url) || b.image_url || '';
 
     let flags = 0;

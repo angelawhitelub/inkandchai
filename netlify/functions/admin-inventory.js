@@ -137,6 +137,7 @@ async function loadState(db, { fresh = false } = {}) {
 async function storedFor(db, slugs) {
   const overrides = new Map();
   const settings = new Map();
+  const variants = new Map();
   for (let i = 0; i < slugs.length; i += 100) {
     const group = slugs.slice(i, i + 100);
     const [o, s] = await Promise.all([
@@ -145,10 +146,21 @@ async function storedFor(db, slugs) {
     ]);
     if (o.error) throw new Error(`product_overrides: ${o.error.message}`);
     for (const r of o.data || []) overrides.set(INV.low(r.slug), r);
+    // Case variants ("...-AGE-4") of these slugs: readers treat them as the
+    // same product, so stock changes have to reach them too.
+    const v = await db.from('product_overrides').select('slug,stock_qty,is_active')
+      .or(group.map((g) => `slug.ilike.${g}`).join(','));
+    if (v.error) throw new Error(`product_overrides: ${v.error.message}`);
+    for (const r of v.data || []) {
+      if (r.slug === INV.low(r.slug)) continue;
+      const k = INV.low(r.slug);
+      if (!variants.has(k)) variants.set(k, []);
+      variants.get(k).push(r);
+    }
     if (s.error && !/product_settings/.test(s.error.message)) throw new Error(`product_settings: ${s.error.message}`);
     for (const r of s.data || []) settings.set(INV.low(r.slug), r);
   }
-  return { overrides, settings };
+  return { overrides, settings, variants };
 }
 
 function chunks(list, size) {
@@ -172,7 +184,7 @@ async function purge(slugs) {
 async function fieldAction(db, state, action, value, slugs, dryRun) {
   const known = slugs.filter((k) => state.rowBySlug.has(k));
   const missing = slugs.filter((k) => !state.rowBySlug.has(k));
-  const { overrides, settings } = await storedFor(db, known);
+  const { overrides, settings, variants } = await storedFor(db, known);
   // Rebuild each row from what is stored now, so a stale page cannot write
   // yesterday's price back over today's.
   const items = known.map((k) => {
@@ -182,7 +194,7 @@ async function fieldAction(db, state, action, value, slugs, dryRun) {
     const [fresh] = INV.buildRows({
       catalogue: cat ? [cat] : [],
       custom: custom ? [custom] : [],
-      overrides: overrides.has(k) ? [overrides.get(k)] : [],
+      overrides: (overrides.has(k) ? [overrides.get(k)] : []).concat(variants.get(k) || []),
       settings: settings.has(k) ? { [k]: settings.get(k) } : {},
     });
     return {
@@ -206,6 +218,18 @@ async function fieldAction(db, state, action, value, slugs, dryRun) {
     const { error } = await db.from('product_settings').upsert(group, { onConflict: 'slug' });
     if (error) throw new Error(`product_settings: ${error.message}`);
   }
+  // Stock goes to the case-variant rows as well, or the one left at 0 keeps
+  // the page on "Coming Soon" (8 Nov 2026: the Atomic Habits set of 4).
+  if (INV.STOCK_ACTIONS.has(action)) {
+    for (const r of w.overrides) {
+      for (const v of variants.get(r.slug) || []) {
+        if ((v.stock_qty ?? null) === r.stock_qty) continue;
+        const { error } = await db.from('product_overrides')
+          .update({ stock_qty: r.stock_qty, updated_at: r.updated_at }).eq('slug', v.slug);
+        if (error) throw new Error(`product_overrides: ${error.message}`);
+      }
+    }
+  }
   for (const [category, customSlugs] of Object.entries(w.customCategory)) {
     for (const group of chunks(customSlugs, 200)) {
       const { error } = await db.from('custom_products').update({ category }).in('slug', group);
@@ -217,7 +241,10 @@ async function fieldAction(db, state, action, value, slugs, dryRun) {
   const failed = w.overrides.filter((r) => {
     const got = after.overrides.get(r.slug);
     if (!got) return true;
-    if (INV.STOCK_ACTIONS.has(action)) return (got.stock_qty ?? null) !== r.stock_qty;
+    if (INV.STOCK_ACTIONS.has(action)) {
+      return (got.stock_qty ?? null) !== r.stock_qty
+        || (after.variants.get(r.slug) || []).some((v) => (v.stock_qty ?? null) !== r.stock_qty);
+    }
     if (INV.PRICE_ACTIONS.has(action)) {
       const s = after.settings.get(r.slug);
       return !s || Number(s.price_inr || 0).toFixed(2) !== Number(r.price_inr || 0).toFixed(2)
