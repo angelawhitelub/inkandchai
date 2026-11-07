@@ -7115,6 +7115,13 @@ function _drawTable() {
           onmouseout="this.style.background='rgba(109,191,109,0.08)';">
           📦 Replace book
         </button>` : ''}
+        ${o.tracking_id ? `<button onclick="downloadOrderLabel(this)" data-awb="${esc(o.tracking_id)}" data-order="${esc(o.razorpay_order_id||o.id)}" data-courier="${esc(o.courier_name||'')}"
+          title="${/xpress\s*bees/i.test(o.courier_name||'') ? 'Download this order\'s XpressBees label (AWB ' + esc(o.tracking_id) + '). If XpressBees does not have it, opens the NimbusPost panel searched to this AWB.' : 'Opens the NimbusPost panel searched to AWB ' + esc(o.tracking_id) + ' — then ⋮ → Download Label. Orders booked on DTDC or Delhivery directly are not there.'}"
+          style="display:block;margin-top:0.4rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
+          onmouseover="this.style.background='rgba(201,168,76,0.18)';"
+          onmouseout="this.style.background='rgba(201,168,76,0.08)';">
+          🏷 ${/xpress\s*bees/i.test(o.courier_name||'') ? 'Download label' : 'Label (NimbusPost)'}
+        </button>` : ''}
         <button onclick="printPicklist('${esc(o.id)}')" title="Print the full, untruncated list of books in this order — one tick box per line for the packer"
           style="display:block;margin-top:0.4rem;background:rgba(160,144,128,0.08);border:1px solid rgba(160,144,128,0.4);color:var(--cream-dim);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
           onmouseover="this.style.background='rgba(160,144,128,0.18)';"
@@ -14264,6 +14271,52 @@ async function downloadCourierLabels(btn, courier) {
     alert(c.name + ' labels failed:\n\n' + err.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// One order's label (admin-order-label.js). XpressBees comes straight from its
+// panel API; NimbusPost's new panel only works with your own sign-in, so it is
+// opened searched to the AWB (then ⋮ → Download Label).
+function nimbusPanelUrl(awb) {
+  return 'https://app.nimbuspost.com/orders?tab=All&q=' + encodeURIComponent(awb) + '&gsearch=1&searchBy=q';
+}
+function openNimbusLabel(awb) {
+  const w = window.open(nimbusPanelUrl(awb), '_blank', 'noopener');
+  if (!w) alert('Your browser blocked the new tab. Open this in a tab signed in to NimbusPost:\n\n' + nimbusPanelUrl(awb) + '\n\nthen ⋮ → Download Label.');
+}
+async function downloadOrderLabel(btn) {
+  const awb = String(btn.dataset.awb || '').trim();
+  const order = String(btn.dataset.order || '').trim();
+  if (!awb) return;
+  if (!/xpress\s*bees/i.test(btn.dataset.courier || '')) { openNimbusLabel(awb); return; }
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Fetching label…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-order-label?awb=' + encodeURIComponent(awb) + '&order=' + encodeURIComponent(order));
+    if (res.ok && (res.headers.get('Content-Type') || '').includes('pdf')) {
+      const blob = await res.blob();
+      const name = ((res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || 'label_' + awb + '.pdf';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (data.not_found) {
+      if (confirm('XpressBees has no label for AWB ' + awb + '.\n\nIt was probably booked through NimbusPost. Open the NimbusPost panel searched to this AWB?')) openNimbusLabel(awb);
+      return;
+    }
+    throw new Error(data.error || ('HTTP ' + res.status));
+  } catch (err) {
+    alert('Label download failed:\n\n' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
   }
 }
 

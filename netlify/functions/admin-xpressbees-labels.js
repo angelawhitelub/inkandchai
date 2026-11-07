@@ -178,3 +178,5 @@ exports.handler = async (event = {}) => {
 };
 
 exports._test = { run, readyShipments, makeCaller, istDate, UCP };
+// Shared with admin-order-label.js (one order's label).
+exports.lib = { makeCaller, labelPdf, XbError };
