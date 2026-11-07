@@ -77,6 +77,33 @@ async function nimbusPostLabel(awb, deps = {}) {
   return { pdf };
 }
 
+// TEMPORARY (2026-11-08): what NimbusPost's new label PDFs look like inside --
+// operator counts and fonts only, no page text.
+async function debugNimbus(awb) {
+  const call = npV2.makeV2Caller({});
+  const found = await npV2.findByAwb(call, awb);
+  if (!found) return { found: false };
+  const bytes = await npV2.labelPdf(call, [found.id]);
+  const { PDFDocument, PDFName } = require('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const raw = Buffer.from(bytes).toString('latin1');
+  const pages = doc.getPages().map((p) => {
+    let c = '';
+    try { c = require('./utils/label-sort')._content ? '' : ''; } catch { /* none */ }
+    const r = readPage(p);
+    return { size: p.getSize(), texts: r.texts.length, awbLike: r.texts.filter((t) => /\d{8,}/.test(t.t)).map((t) => t.t.replace(/\D/g, '').slice(0, 4) + '…' + t.t.length) };
+  });
+  const count = (re) => (raw.match(re) || []).length;
+  return {
+    found: true, pageCount: doc.getPageCount(), bytes: bytes.length, pages,
+    producer: (raw.match(/\/Producer\s*\(([^)]{0,60})\)/) || [])[1] || null,
+    creator: (raw.match(/\/Creator\s*\(([^)]{0,60})\)/) || [])[1] || null,
+    fonts: [...new Set((raw.match(/\/Subtype\s*\/(Type0|TrueType|Type1|Type3|CIDFontType2)/g) || []))],
+    identityH: count(/Identity-H/g), toUnicode: count(/\/ToUnicode/g), flate: count(/FlateDecode/g),
+    awbInRaw: raw.includes(awb), images: count(/\/Subtype\s*\/Image/g),
+  };
+}
+
 const SOURCES = { xpressbees: xpressBeesLabel, nimbuspost: nimbusPostLabel };
 const NAMES = { xpressbees: 'XpressBees', nimbuspost: 'NimbusPost' };
 
@@ -105,6 +132,7 @@ exports.handler = async (event = {}) => {
   const order = String(q.order || '').replace(/[^\w-]/g, '').slice(0, 40);
 
   try {
+    if (q.debug === 'np') return json(200, await debugNimbus(awb));   // TEMPORARY: label format check
     const got = await findLabel(awb, q.courier);
     if (!got.pdf) {
       console.warn('[order-label]', awb, JSON.stringify(got.tried));
