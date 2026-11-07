@@ -186,6 +186,7 @@ function soldLine(units) {
 
 module.exports = {
   countLifetimeSales, newTally, addOrders, finishTally, publishLifetimeSales, readLifetimeSales, soldLine, titleKey,
+  slugOf, cartOf,
   cleanSalesSlug, carriedCounts, unitsSold, monthlyUnits, monthBucket, boughtLine,
   SOLD_STATUSES, SHOW_ON_PAGE_MIN, STORE, KEY,
 };

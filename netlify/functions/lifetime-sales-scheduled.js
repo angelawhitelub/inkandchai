@@ -16,6 +16,7 @@ const { catalogueBook } = require('./utils/catalog-content');
 const { readDeleted } = require('./utils/deleted-products');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 const bsr = require('./utils/bestseller-rank');
+const fbt = require('./utils/fbt-signals');
 const { istDay, istDayStart } = require('./utils/ad-spend');
 
 const json = (statusCode, body) => ({ statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -125,6 +126,8 @@ exports.handler = async (event = {}) => {
     const since = Date.now() - bsr.WINDOW_DAYS * 86400000;
     // Yesterday, as a whole IST day, for the product page's monthly line.
     const yesterdayTally = newTally();
+    // Same pass: which books were bought in the same order (frequently-bought.js).
+    const pairTally = fbt.newPairTally();
     const yesterday = istDay(Date.now() - 86400000);
     const yFrom = istDayStart(yesterday).getTime();
     const yTo = yFrom + 86400000;
@@ -138,6 +141,7 @@ exports.handler = async (event = {}) => {
       if (error) throw new Error(`orders: ${error.message}`);
       addOrders(tally, data || [], { slugByTitle });
       addOrders(recentTally, (data || []).filter((o) => Date.parse(o.created_at) >= since), { slugByTitle });
+      fbt.addBaskets(pairTally, data || [], { slugByTitle });
       addOrders(yesterdayTally, (data || []).filter((o) => { const t = Date.parse(o.created_at); return t >= yFrom && t < yTo; }), { slugByTitle });
       read += (data || []).length;
       if (!data || data.length < 1000) break;
@@ -155,11 +159,19 @@ exports.handler = async (event = {}) => {
       console.error('[lifetime-sales] best sellers rank:', e.message);
     }
     await publishLifetimeSales(doc);
+    let fbtDoc = null;
+    try {
+      fbtDoc = fbt.finishPairs(pairTally);
+      await fbt.publishSignals(fbtDoc);
+    } catch (e) {
+      console.error('[lifetime-sales] frequently bought together:', e.message);
+    }
     const books = Object.keys(doc.counts).length;
     console.log(`[lifetime-sales] ${read} orders read, ${doc.orders} counted, ${books} books, ${Object.keys(doc.carried).length} copies carry counts, top ${doc.top[0] ? `${doc.top[0].slug}=${doc.top[0].qty}` : '-'}`);
     return json(200, {
       ok: true, orders_read: read, orders_counted: doc.orders, books, carried: doc.carried, top: doc.top.slice(0, 5).map((t) => [t.slug, t.qty]),
       ranked: doc.bsr ? Object.keys(doc.bsr.ranks).length : 0, bsr_top: doc.bsr ? doc.bsr.order.slice(0, 5) : [],
+      fbt: fbtDoc ? { baskets: fbtDoc.baskets, products_with_partners: fbtDoc.products_with_partners } : null,
     });
   } catch (e) {
     console.error('[lifetime-sales]', e.message);

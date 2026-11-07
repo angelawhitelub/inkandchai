@@ -21,6 +21,31 @@ const HEADERS = {
 // Everything below degrades cleanly when the file is missing or empty -- a
 // deploy where Supabase was unreachable still serves similarity-only results.
 // ---------------------------------------------------------------------------
+const fbtSignals = require('./utils/fbt-signals');
+
+function shapeSignals(raw) {
+  const rank = new Map();
+  (raw.bestsellers || []).forEach(([slug, sold], i) => rank.set(slug, { sold, rank: i }));
+  return { pairs: raw.pairs || {}, rank, generatedAt: raw.generated_at || null };
+}
+
+// Live signals from KV (built hourly from real orders by lifetime-sales-scheduled,
+// utils/fbt-signals.js); the bundled file only when KV has nothing.
+let _live = null;
+let _liveRaw = null;
+async function loadLiveSignals() {
+  try {
+    const raw = await fbtSignals.readSignals();
+    if (raw && raw.pairs) {
+      if (raw !== _liveRaw) { _liveRaw = raw; _live = shapeSignals(raw); }
+      return _live;
+    }
+  } catch (err) {
+    console.warn('fbt-signals KV unavailable:', err.message);
+  }
+  return loadSignals();
+}
+
 let _signals = null;
 function loadSignals() {
   if (_signals) return _signals;
@@ -311,7 +336,7 @@ exports.handler = async (event) => {
       // This prevents "Top resources not found" noise in analytics
       // Unknown slug. Show what actually sells rather than a hash-shuffled
       // three -- this is the response a brand-new or mistyped product gets.
-      const signals = loadSignals();
+      const signals = await loadLiveSignals();
       const fallback = products
         .filter((p) => p.img && p.price > 0)
         .map((product) => ({ product, sold: unitsSold(signals, product) }))
@@ -325,7 +350,7 @@ exports.handler = async (event) => {
       };
     }
 
-    const signals = loadSignals();
+    const signals = await loadLiveSignals();
     const limit = Math.min(Math.max(Number(event.queryStringParameters?.limit) || 3, 1), 6);
     const exclude = new Set(String(event.queryStringParameters?.exclude || '')
       .split(',').map((v) => v.trim().toLowerCase()).filter(Boolean));
