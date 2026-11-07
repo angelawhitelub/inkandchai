@@ -299,59 +299,67 @@ test('no phones configured: nothing is built or sent', async () => {
 const { _test: np } = require('../admin-nimbuspost-labels');
 const { _test: npSend } = require('../nimbuspost-labels-send-scheduled');
 
-/** NimbusPost with `awbs` pending pickup (shipment id = 'S' + awb); label PDFs come back REVERSED. */
+/** NimbusPost Partner API with `awbs` in the Pickups tab (order id = 'S' + awb); label PDFs come back REVERSED. */
 function fakeNp(awbs, { extra = [], labelUrl = null, rejectAlways = false } = {}) {
   const calls = [];
-  const logins = [];
-  const recs = [...awbs.map((a) => ({ id: `S${a}`, awb_number: a, ship_status: 'pending pickup', courier_name: 'DTDC Surface' })), ...extra];
+  const recs = [
+    ...awbs.map((a, i) => ({ order_id: `S${a}`, status_tab: 'ready_to_ship',
+      shipment: { awb: a, courier_name: 'DTDC Surface', created_at: new Date(Date.UTC(2026, 10, 1) - i * 60000).toISOString() } })),
+    ...extra,
+  ];
   return {
-    calls, logins,
-    login: async () => { logins.push(1); return `tok${logins.length}`; },
-    mapiFetch: async (path, opts) => {
+    calls,
+    v2Fetch: async (path, opts = {}) => {
       calls.push({ path, opts });
-      if (rejectAlways) return { httpStatus: 401, data: { message: 'Unauthenticated' } };
-      if (path.startsWith('/shipment/list')) {
+      if (rejectAlways) return { httpStatus: 401, data: { success: false, error: { detail: 'invalid api key' } } };
+      if (path.startsWith('/v2/orders')) {
         const q = new URLSearchParams(path.split('?')[1]);
-        const page = Number(q.get('page'));
         const limit = Number(q.get('limit'));
-        return { httpStatus: 200, data: { status: true, data: { count: recs.length, records: recs.slice((page - 1) * limit, page * limit) } } };
+        const from = Number(q.get('cursor') || 0);
+        const page = recs.slice(from, from + limit);
+        const next = from + limit < recs.length ? String(from + limit) : null;
+        return { httpStatus: 200, data: { success: true, data: page, meta: { pagination: { next_cursor: next, limit } } } };
       }
-      const ids = opts.body.shipping_ids;
-      return { httpStatus: 200, data: { status: true, code: 200, data: labelUrl || `https://nimubs-assets.s3.amazonaws.com/labels/${ids.join(',')}.pdf` } };
+      const ids = opts.body.order_ids;
+      return { httpStatus: 200, data: { success: true, data: { url: labelUrl || `https://labels.nimbuspost.com/bulk/${ids.join(',')}.pdf`, pageCount: ids.length } } };
     },
     fetch: async (url) => {
-      const ids = decodeURIComponent(url.split('/labels/')[1].replace('.pdf', '')).split(',');
+      const ids = decodeURIComponent(url.split('/bulk/')[1].replace('.pdf', '')).split(',');
       const bytes = await labelPdf(ids.reverse().map((id, i) => ({ awb: id.slice(1), orderNo: `IC-${id}`, items: [{ name: `Book ${i % 2}`, qty: 1 }] })));
       return { ok: true, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
     },
   };
 }
 
-test('NimbusPost: lists pending pickup by POST across pages, oldest first, skipping other statuses', async () => {
-  const awbs = Array.from({ length: 130 }, (_, i) => `7D${1000 + i}`);
-  const n = fakeNp(awbs, { extra: [{ id: 'X1', awb_number: '9999', ship_status: 'in transit' }, { id: 'X2', awb_number: '', ship_status: 'pending pickup' }] });
+test('NimbusPost: lists the Pickups tab across cursor pages, oldest first, skipping other tabs and unbooked rows', async () => {
+  const awbs = Array.from({ length: 230 }, (_, i) => `7D${1000 + i}`);
+  const n = fakeNp(awbs, { extra: [
+    { order_id: 'X1', status_tab: 'in_transit', shipment: { awb: '9999' } },
+    { order_id: 'X2', status_tab: 'ready_to_ship', shipment: { awb: '' } },
+  ] });
   const out = await np.run({ summaryOnly: true }, n);
-  assert.equal(out.awbs.length, 130);
-  assert.equal(out.awbs[0], '7D1129', 'panel lists newest first; we pack oldest first');
-  const lists = n.calls.filter((c) => c.path.startsWith('/shipment/list'));
+  assert.equal(out.awbs.length, 230);
+  assert.equal(out.awbs[0], '7D1229', 'oldest booking first');
+  const lists = n.calls.filter((c) => c.path.startsWith('/v2/orders'));
   assert.equal(lists.length, 2);
-  assert.deepEqual(lists[0].opts.body, { ship_status_in: 'pending pickup', applied_tags: '' });
-  assert.equal(n.logins.length, 1, 'one login per run');
+  const q = new URLSearchParams(lists[0].path.split('?')[1]);
+  assert.equal(q.get('order_status'), 'ready_to_ship');
+  assert.equal(q.get('has_shipment'), 'true');
 });
 
-test('NimbusPost: labels by shipment id 50 at a time, pages matched by AWB, S3 URL only', async () => {
+test('NimbusPost: labels by order id 50 at a time, pages matched by AWB; a refused key is said plainly', async () => {
   const awbs = Array.from({ length: 60 }, (_, i) => `7D${1000 + i}`);
   const n = fakeNp(awbs);
   const out = await np.run({}, n);
   assert.equal(out.summary.labels, 60);
-  const label = n.calls.filter((c) => c.path === '/pricing/get-third-party-response');
-  assert.deepEqual(label.map((c) => c.opts.body.shipping_ids.length), [50, 10]);
-  assert.equal(label[0].opts.body.url, 'api/Ivr/generate_label');
-  assert.equal(label[0].opts.body.shipping_ids[0], 'S7D1059');
+  const label = n.calls.filter((c) => c.path === '/v2/shipments/labels');
+  assert.deepEqual(label.map((c) => c.opts.body.order_ids.length), [50, 10]);
+  assert.equal(label[0].opts.method, 'POST');
+  assert.equal(label[0].opts.body.order_ids[0], 'S7D1059');
 
-  const evil = fakeNp(['7D1'], { labelUrl: 'https://evil.example/x.pdf' });
-  await assert.rejects(np.run({}, { ...evil, fetch: async () => assert.fail('must not fetch') }), /label download failed/);
-  await assert.rejects(np.run({ summaryOnly: true }, fakeNp(['7D1'], { rejectAlways: true })), /refused the API login/);
+  const bad = fakeNp(['7D1'], { labelUrl: 'http://insecure.example/x.pdf' });
+  await assert.rejects(np.run({}, { ...bad, fetch: async () => assert.fail('must not fetch') }), /label download failed/);
+  await assert.rejects(np.run({ summaryOnly: true }, fakeNp(['7D1'], { rejectAlways: true })), /refused the API key/);
 });
 
 test('NimbusPost: WhatsApp send uses its own sent list and names the courier', async () => {

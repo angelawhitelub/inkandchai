@@ -1,35 +1,34 @@
 /**
  * Owner endpoint: admin-order-label
  *
- * The XpressBees shipping label of ONE order that already has an AWB -- for a
- * lost or torn label, or a reprint.
+ * The shipping label of ONE order that already has an AWB -- for a lost or
+ * torn label, or a reprint. Picked up or not.
  *
- *   GET ?awb=<AWB>&order=<order id, for the file name>
+ *   GET ?awb=<AWB>&order=<order id, for the file name>&courier=<courier name>
  *       -> application/pdf (attachment), the single label page
- *       -> 404 { not_found: true } when XpressBees has no label for that AWB
+ *       -> 404 { not_found: true } when neither panel has a label for that AWB
  *
- * Same panel endpoint as the bulk sorted-label button, which takes any AWB on
- * the account, picked up or not:
- *   POST {UCP}/ship/assets/label { awbs: "<awb>" } -> S3 url of the PDF
- *
- * NimbusPost is not here: its new panel (app.nimbuspost.com, Nov 2026) signs
- * in with the browser session only, and the old mapi endpoints time out. The
- * admin button opens that panel searched to the AWB instead.
+ *   XpressBees  POST {UCP}/ship/assets/label { awbs: "<awb>" }   (panel API, any AWB on the account)
+ *   NimbusPost  Partner API: GET /v2/orders?awb= -> order_id, then
+ *               POST /v2/shipments/labels { order_ids: [id] }   (utils/nimbuspost-v2.js)
+ * Which panel booked an order is not stored, so the likelier one (by courier
+ * name) is asked first and the other second.
  *
  * Before anything is returned, the label page must show the requested AWB --
  * a wrong label would send a parcel to the wrong person.
  *
- * READ-ONLY at XpressBees: nothing is booked, cancelled or changed.
+ * READ-ONLY at both couriers: nothing is booked, cancelled or changed.
  */
 
 const { requireAdmin } = require('./utils/admin-auth');
 const { readPage } = require('./utils/label-sort');
 const xbLabels = require('./admin-xpressbees-labels');
+const npV2 = require('./utils/nimbuspost-v2');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key, X-Admin-Token',
-  'Access-Control-Expose-Headers': 'Content-Disposition',
+  'Access-Control-Expose-Headers': 'Content-Disposition, X-Label-Source',
 };
 const json = (statusCode, body) => ({
   statusCode, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(body),
@@ -67,6 +66,33 @@ async function xpressBeesLabel(awb, deps = {}) {
   return { pdf };
 }
 
+async function nimbusPostLabel(awb, deps = {}) {
+  if (!deps.v2Fetch && !npV2.configured()) return { notFound: true, reason: 'NimbusPost API key not set' };
+  const call = npV2.makeV2Caller(deps);
+  const found = await npV2.findByAwb(call, awb);
+  if (!found) return { notFound: true, reason: 'AWB not found in NimbusPost' };
+  const bytes = await npV2.labelPdf(call, [found.id], deps.fetch || fetch);
+  const pdf = await pickLabelPage(bytes, awb).catch(() => null);
+  if (!pdf) return { notFound: true, reason: `the label NimbusPost returned does not show AWB ${awb}` };
+  return { pdf };
+}
+
+const SOURCES = { xpressbees: xpressBeesLabel, nimbuspost: nimbusPostLabel };
+const NAMES = { xpressbees: 'XpressBees', nimbuspost: 'NimbusPost' };
+
+/** XpressBees first only when the order says XpressBees; NimbusPost books XpressBees too. */
+const sourceOrder = (courier) => (/xpress\s*bees/i.test(String(courier || '')) ? ['xpressbees', 'nimbuspost'] : ['nimbuspost', 'xpressbees']);
+
+async function findLabel(awb, courier, deps = {}) {
+  const tried = [];
+  for (const src of sourceOrder(courier)) {
+    const got = await (deps.sources?.[src] || SOURCES[src])(awb, deps[src] || {});
+    if (got.pdf) return { pdf: got.pdf, source: src };
+    tried.push(`${NAMES[src]}: ${got.reason}`);
+  }
+  return { tried };
+}
+
 exports.handler = async (event = {}) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   const block = requireAdmin(event, CORS);
@@ -79,10 +105,11 @@ exports.handler = async (event = {}) => {
   const order = String(q.order || '').replace(/[^\w-]/g, '').slice(0, 40);
 
   try {
-    const got = await xpressBeesLabel(awb);
+    const got = await findLabel(awb, q.courier);
     if (!got.pdf) {
-      console.warn('[order-label]', awb, got.reason);
-      return json(404, { not_found: true, error: `XpressBees has no label for AWB ${awb} (${got.reason}).` });
+      console.warn('[order-label]', awb, JSON.stringify(got.tried));
+      return json(404, { not_found: true, tried: got.tried,
+        error: `No label for AWB ${awb} in XpressBees or NimbusPost. If DTDC or Delhivery booked it directly, download it from that courier.` });
     }
     return new Response(got.pdf, {
       status: 200,
@@ -91,6 +118,7 @@ exports.handler = async (event = {}) => {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="label_${order ? order + '_' : ''}${awb}.pdf"`,
         'Cache-Control': 'no-store, private',
+        'X-Label-Source': got.source,
       },
     });
   } catch (e) {
@@ -99,4 +127,4 @@ exports.handler = async (event = {}) => {
   }
 };
 
-exports._test = { pickLabelPage, xpressBeesLabel, cleanAwb };
+exports._test = { pickLabelPage, xpressBeesLabel, nimbusPostLabel, findLabel, sourceOrder, cleanAwb };

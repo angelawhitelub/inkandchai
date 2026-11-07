@@ -67,3 +67,41 @@ test('a shipped AWB label from shipment.xpressbees.com is accepted', async () =>
   d.ucpFetch = async () => ({ httpStatus: 200, data: { status: true, data: 'https://evil.example.com/xpressbees.com/x.pdf' } });
   assert.equal((await ep.xpressBeesLabel('143449611592728', d)).notFound, true);
 });
+
+// ── NimbusPost Partner API ──────────────────────────────────────────────────
+const npDeps = (bytes, rows) => ({
+  v2Fetch: async (path, opts = {}) => {
+    if (path.startsWith('/v2/orders')) return { httpStatus: 200, data: { success: true, data: rows, meta: { pagination: {} } } };
+    assert.deepEqual(opts.body, { order_ids: ['ORD-9'] });
+    return { httpStatus: 200, data: { success: true, data: { url: 'https://labels.nimbuspost.com/bulk/a.pdf' } } };
+  },
+  fetch: async () => ({ ok: true, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) }),
+});
+
+test('NimbusPost: AWB -> order id -> label, checked against the page', async () => {
+  const bytes = await pdfWith(['7D130601918']);
+  const got = await ep.nimbusPostLabel('7D130601918', npDeps(bytes, [{ order_id: 'ORD-9', shipment: { awb: '7D130601918' } }]));
+  assert.ok(got.pdf);
+});
+
+test('NimbusPost: a list row with a different AWB is never used', async () => {
+  const bytes = await pdfWith(['7D130601918']);
+  const got = await ep.nimbusPostLabel('7D130601918', npDeps(bytes, [{ order_id: 'ORD-9', shipment: { awb: '7D999' } }]));
+  assert.equal(got.notFound, true);
+});
+
+test('courier name picks which panel is asked first; both are asked', async () => {
+  assert.deepEqual(ep.sourceOrder('Xpressbees'), ['xpressbees', 'nimbuspost']);
+  assert.deepEqual(ep.sourceOrder('DTDC Surface'), ['nimbuspost', 'xpressbees']);
+  const asked = [];
+  const sources = {
+    xpressbees: async () => { asked.push('xb'); return { notFound: true, reason: 'no' }; },
+    nimbuspost: async () => { asked.push('np'); return { pdf: new Uint8Array([1]) }; },
+  };
+  const got = await ep.findLabel('1434X', 'Xpressbees', { sources });
+  assert.deepEqual(asked, ['xb', 'np']);
+  assert.equal(got.source, 'nimbuspost');
+  const none = await ep.findLabel('1434X', 'Delhivery', { sources: { ...sources, nimbuspost: async () => ({ notFound: true, reason: 'nope' }) } });
+  assert.equal(none.pdf, undefined);
+  assert.equal(none.tried.length, 2);
+});

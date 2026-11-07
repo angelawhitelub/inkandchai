@@ -10,13 +10,11 @@
  *   GET                the sorted PDF (attachment)
  *   GET ?format=json   only the summary: how many labels, by courier, nothing built
  *
- * The public NimbusPost API has no bulk label download. These are the seller
- * panel's own endpoints (the "Waiting for Pickup" tab and its "Print Label"),
- * called with the API login token:
- *   POST {MAPI}/shipment/list?limit=100&page=N  { ship_status_in: 'pending pickup' }
- *   POST {MAPI}/pricing/get-third-party-response
- *        { url: 'api/Ivr/generate_label', shipping_ids: [<shipment id>, …] }
- *        -> { status: true, data: <S3 url of one merged PDF> }
+ * NimbusPost Partner API (utils/nimbuspost-v2.js), since NimbusPost moved to
+ * app.nimbuspost.com in Nov 2026 (the old ship.nimbuspost.com/mapi panel
+ * endpoints stopped answering):
+ *   GET  /v2/orders?order_status=ready_to_ship&has_shipment=true   (the Pickups tab)
+ *   POST /v2/shipments/labels { order_ids: [...] } -> { data: { url } } one merged PDF
  * label-sort matches every page to the AWB printed on it and refuses to build
  * if a page shows none of the requested AWBs.
  *
@@ -24,15 +22,12 @@
  */
 
 const { requireAdmin } = require('./utils/admin-auth');
-const { npAuthenticate } = require('./utils/nimbuspost-cancel');
+const v2 = require('./utils/nimbuspost-v2');
 const { buildSortedLabels } = require('./utils/label-sort');
 
-const MAPI = 'https://ship.nimbuspost.com/mapi/v1';
-const READY = 'pending pickup';
-const PAGE = 100;
+const READY = 'ready_to_ship';
 const CHUNK = 50;
 const MAX_LABELS = 1000;
-const LABEL_URL = /^https:\/\/nimubs-assets\.s3\.amazonaws\.com\//;   // sic: NimbusPost's bucket name
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -43,86 +38,24 @@ const json = (statusCode, body) => ({
   statusCode, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(body),
 });
 
-class NpError extends Error {
-  constructor(message, status) { super(message); this.status = status; }
-}
+const NpError = v2.NpV2Error;
+const makeCaller = (deps = {}) => v2.makeV2Caller(deps);
 
-async function mapiFetch(path, { token, body, ms = 30000, fetchImpl = fetch } = {}) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetchImpl(`${MAPI}${path}`, {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body || {}),
-      signal: ctrl.signal,
-    });
-    const text = await res.text();
-    let data = null;
-    try { data = JSON.parse(text); } catch { /* raw below */ }
-    return { httpStatus: res.status, data, raw: text.slice(0, 300) };
-  } catch (e) {
-    if (e.name === 'AbortError') return { httpStatus: 599, data: null, raw: `timed out after ${Math.round(ms / 1000)}s` };
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/** mapiFetch with the API login token, logging in again once on a 401/403. */
-function makeCaller(deps) {
-  const login = deps.login || npAuthenticate;
-  const call = deps.mapiFetch || mapiFetch;
-  let token = null;
-  return async (path, opts = {}) => {
-    if (!token) token = await login();
-    let out = await call(path, { ...opts, token });
-    if (out.httpStatus === 401 || out.httpStatus === 403) {
-      token = await login();
-      out = await call(path, { ...opts, token });
-    }
-    if (out.httpStatus === 401 || out.httpStatus === 403) {
-      throw new NpError(`The NimbusPost panel API refused the API login (HTTP ${out.httpStatus}). `
-        + 'Download the labels from the NimbusPost panel instead.', 502);
-    }
-    return out;
-  };
-}
-
-/** Every shipment in the Waiting for Pickup tab, oldest first (the panel lists newest first). */
+/** Every booked order in the Pickups tab, oldest first. */
 async function readyShipments(call) {
-  const rows = [];
-  for (let page = 1; page <= Math.ceil(MAX_LABELS / PAGE); page++) {
-    const out = await call(`/shipment/list?limit=${PAGE}&page=${page}`, { body: { ship_status_in: READY, applied_tags: '' } });
-    const recs = out.data?.data?.records;
-    if (out.httpStatus !== 200 || !Array.isArray(recs)) {
-      throw new NpError(`NimbusPost shipment list failed (HTTP ${out.httpStatus}): ${out.data?.message || out.raw}`, 502);
-    }
-    rows.push(...recs);
-    if (recs.length < PAGE) break;
-  }
+  const rows = await v2.listOrders(call, { order_status: READY, has_shipment: 'true' }, { max: MAX_LABELS });
   const seen = new Set();
-  return rows.filter((r) => {
-    const awb = String(r.awb_number || '').trim();
-    if (!awb || !r.id || seen.has(awb)) return false;
+  return rows.map(v2.toShipment).filter((r) => {
+    if (!r.awb_number || !r.id || seen.has(r.awb_number)) return false;
     // The list is filtered server-side; this guards against the filter being ignored.
-    if (String(r.ship_status || '').toLowerCase() !== READY) return false;
-    seen.add(awb);
+    if (r.ship_status && r.ship_status !== READY) return false;
+    seen.add(r.awb_number);
     return true;
-  }).reverse();
+  }).sort((a, b) => String(a.created).localeCompare(String(b.created)));
 }
 
 async function labelPdf(call, shipments, fetchImpl = fetch) {
-  const out = await call('/pricing/get-third-party-response', {
-    body: { url: 'api/Ivr/generate_label', shipping_ids: shipments.map((r) => String(r.id)) }, ms: 60000,
-  });
-  const url = out.data?.data;
-  if (out.httpStatus !== 200 || out.data?.status !== true || typeof url !== 'string' || !LABEL_URL.test(url)) {
-    throw new NpError(`NimbusPost label download failed (HTTP ${out.httpStatus}): ${out.data?.message || out.raw}`, 502);
-  }
-  const res = await fetchImpl(url);
-  if (!res.ok) throw new NpError(`Label PDF download failed (HTTP ${res.status})`, 502);
-  return new Uint8Array(await res.arrayBuffer());
+  return v2.labelPdf(call, shipments.map((r) => r.id), fetchImpl);
 }
 
 const istDate = (d = new Date()) => {
@@ -186,4 +119,4 @@ exports.handler = async (event = {}) => {
   }
 };
 
-exports._test = { run, readyShipments, makeCaller, labelPdf, istDate, MAPI };
+exports._test = { run, readyShipments, makeCaller, labelPdf, istDate, READY };

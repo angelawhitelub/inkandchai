@@ -7116,11 +7116,11 @@ function _drawTable() {
           📦 Replace book
         </button>` : ''}
         ${o.tracking_id ? `<button onclick="downloadOrderLabel(this)" data-awb="${esc(o.tracking_id)}" data-order="${esc(o.razorpay_order_id||o.id)}" data-courier="${esc(o.courier_name||'')}"
-          title="${/xpress\s*bees/i.test(o.courier_name||'') ? 'Download this order\'s XpressBees label (AWB ' + esc(o.tracking_id) + '). If XpressBees does not have it, opens the NimbusPost panel searched to this AWB.' : 'Opens the NimbusPost panel searched to AWB ' + esc(o.tracking_id) + ' — then ⋮ → Download Label. Orders booked on DTDC or Delhivery directly are not there.'}"
+          title="Download this order's shipping label (AWB ${esc(o.tracking_id)}) from XpressBees or NimbusPost. Orders booked on DTDC or Delhivery directly are not there."
           style="display:block;margin-top:0.4rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
           onmouseover="this.style.background='rgba(201,168,76,0.18)';"
           onmouseout="this.style.background='rgba(201,168,76,0.08)';">
-          🏷 ${/xpress\s*bees/i.test(o.courier_name||'') ? 'Download label' : 'Label (NimbusPost)'}
+          🏷 Download label
         </button>` : ''}
         <button onclick="printPicklist('${esc(o.id)}')" title="Print the full, untruncated list of books in this order — one tick box per line for the packer"
           style="display:block;margin-top:0.4rem;background:rgba(160,144,128,0.08);border:1px solid rgba(160,144,128,0.4);color:var(--cream-dim);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
@@ -14274,9 +14274,9 @@ async function downloadCourierLabels(btn, courier) {
   }
 }
 
-// One order's label (admin-order-label.js). XpressBees comes straight from its
-// panel API; NimbusPost's new panel only works with your own sign-in, so it is
-// opened searched to the AWB (then ⋮ → Download Label).
+// One order's label (admin-order-label.js): XpressBees panel API or the
+// NimbusPost Partner API. If neither has it, the NimbusPost panel can be opened
+// searched to the AWB (then ⋮ → Download Label).
 function nimbusPanelUrl(awb) {
   return 'https://app.nimbuspost.com/orders?tab=All&q=' + encodeURIComponent(awb) + '&gsearch=1&searchBy=q';
 }
@@ -14288,12 +14288,11 @@ async function downloadOrderLabel(btn) {
   const awb = String(btn.dataset.awb || '').trim();
   const order = String(btn.dataset.order || '').trim();
   if (!awb) return;
-  if (!/xpress\s*bees/i.test(btn.dataset.courier || '')) { openNimbusLabel(awb); return; }
   const orig = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>Fetching label…';
   try {
-    const res = await adminFetch('/.netlify/functions/admin-order-label?awb=' + encodeURIComponent(awb) + '&order=' + encodeURIComponent(order));
+    const res = await adminFetch('/.netlify/functions/admin-order-label?awb=' + encodeURIComponent(awb) + '&order=' + encodeURIComponent(order) + '&courier=' + encodeURIComponent(btn.dataset.courier || ''));
     if (res.ok && (res.headers.get('Content-Type') || '').includes('pdf')) {
       const blob = await res.blob();
       const name = ((res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || 'label_' + awb + '.pdf';
@@ -14308,7 +14307,7 @@ async function downloadOrderLabel(btn) {
     }
     const data = await res.json().catch(() => ({}));
     if (data.not_found) {
-      if (confirm('XpressBees has no label for AWB ' + awb + '.\n\nIt was probably booked through NimbusPost. Open the NimbusPost panel searched to this AWB?')) openNimbusLabel(awb);
+      if (confirm((data.error || ('No label found for AWB ' + awb + '.')) + '\n\nOpen the NimbusPost panel searched to this AWB anyway?')) openNimbusLabel(awb);
       return;
     }
     throw new Error(data.error || ('HTTP ' + res.status));
