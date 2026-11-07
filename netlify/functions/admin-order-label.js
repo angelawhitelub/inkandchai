@@ -133,6 +133,16 @@ exports.handler = async (event = {}) => {
 
   try {
     if (q.debug === 'np') return json(200, await debugNimbus(awb));   // TEMPORARY: label format check
+    if (q.debug === 'nplist') {   // TEMPORARY: do list rows carry their own label link and items?
+      const rows = await npV2.listOrders(npV2.makeV2Caller({}), { order_status: 'ready_to_ship', has_shipment: 'true' }, { max: 400 });
+      const withUrl = rows.filter((r) => r.shipment && r.shipment.label_url);
+      const host = (u) => { try { return new URL(u).host; } catch { return '?'; } };
+      const it = rows.find((r) => Array.isArray(r.items) && r.items.length);
+      return json(200, { rows: rows.length, with_label_url: withUrl.length,
+        hosts: [...new Set(withUrl.map((r) => host(r.shipment.label_url)))].slice(0, 5),
+        label_downloaded: rows.filter((r) => r.shipment && r.shipment.label_downloaded_at).length,
+        item_keys: it ? Object.keys(it.items[0]).slice(0, 15) : null, order_number_sample: rows[0] ? String(rows[0].order_number || '').slice(0, 6) : null });
+    }
     const got = await findLabel(awb, q.courier);
     if (!got.pdf) {
       console.warn('[order-label]', awb, JSON.stringify(got.tried));
