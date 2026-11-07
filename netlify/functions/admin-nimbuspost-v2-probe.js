@@ -41,5 +41,9 @@ exports.handler = async (event = {}) => {
     probe({ 'NP-API-KEY': key }),
     probe({ 'x-api-key': key }),
   ]);
-  return json(200, { key_prefix_npk: key.startsWith('npk_'), bearer, np_api_key_header: npHeader, x_api_key_header: xApiKey });
+  // A new-panel key (npk_…) from app.nimbuspost.com/settings/api-keys, if the owner has stored one.
+  const v2 = process.env.NIMBUSPOST_V2_API_KEY || '';
+  const v2Result = v2 ? await probe({ Authorization: `Bearer ${v2}` }) : null;
+  return json(200, { key_prefix_npk: key.startsWith('npk_'), bearer, np_api_key_header: npHeader, x_api_key_header: xApiKey,
+    v2_key_set: !!v2, v2_key_prefix_npk: v2.startsWith('npk_'), v2_key: v2Result });
 };
