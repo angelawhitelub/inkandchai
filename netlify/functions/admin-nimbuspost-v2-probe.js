@@ -38,14 +38,17 @@ exports.handler = async (event = {}) => {
   if (block) return block;
   let token;
   try { token = await npAuthenticate(); } catch (e) { return json(502, { error: 'v1 login failed: ' + String(e.message).slice(0, 160) }); }
-  const auth = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+  const UA = { 'User-Agent': 'InkAndChai-Admin/1.0 (+https://inkandchai.in)' };
+  const auth = { Accept: 'application/json', ...UA, Authorization: `Bearer ${token}` };
   const qs = 'page=1&limit=1&fields=order_id%2Cshipment.awb&order_status=ready_to_ship&include_tab_counts=false&include_total=false';
-  const [v2, mapi] = await Promise.all([
+  const [v2, v2_no_token, v2_no_ua, mapi] = await Promise.all([
     timed(`https://api-v2.nimbuspost.com/orders/api/v1/orders?${qs}`, { headers: auth }),
+    timed(`https://api-v2.nimbuspost.com/orders/api/v1/orders?${qs}`, { headers: { Accept: 'application/json', ...UA } }),
+    timed(`https://api-v2.nimbuspost.com/orders/api/v1/orders?${qs}`, { headers: { Accept: 'application/json' } }),
     timed('https://ship.nimbuspost.com/mapi/v1/shipment/list?limit=1&page=1', {
       method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ ship_status_in: 'pending pickup', applied_tags: '' }),
     }),
   ]);
   const looksJwt = /^eyJ/.test(String(token));
-  return json(200, { v1_login: 'ok', v1_token_is_jwt: looksJwt, v1_token_length: String(token).length, v2_orders: v2, old_mapi: mapi });
+  return json(200, { v1_login: 'ok', v1_token_is_jwt: looksJwt, v1_token_length: String(token).length, v2_orders: v2, v2_no_token, v2_no_ua, old_mapi: mapi });
 };
