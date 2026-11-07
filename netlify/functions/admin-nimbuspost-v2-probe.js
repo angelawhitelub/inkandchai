@@ -43,7 +43,24 @@ exports.handler = async (event = {}) => {
   ]);
   // A new-panel key (npk_…) from app.nimbuspost.com/settings/api-keys, if the owner has stored one.
   const v2 = process.env.NIMBUSPOST_V2_API_KEY || '';
-  const v2Result = v2 ? await probe({ Authorization: `Bearer ${v2}` }) : null;
+  const secret = process.env.NIMBUSPOST_V2_API_SECRET || '';
+  // Partner API (api-v2.nimbuspost.com/docs/reference/v2): x-api-key + x-api-secret on every request.
+  let v2Result = null; let track = null;
+  if (v2 && secret) {
+    const h = { ...UA, 'x-api-key': v2, 'x-api-secret': secret };
+    const call = async (path) => {
+      const res = await fetch(`https://api-v2.nimbuspost.com${path}`, { headers: h });
+      let d = null; try { d = await res.json(); } catch { /* raw */ }
+      return { http: res.status, success: d?.success ?? null, code: d?.error?.code || null,
+        detail: String(d?.error?.detail || d?.error?.title || '').slice(0, 160),
+        rows: Array.isArray(d?.data) ? d.data.length : null,
+        first_keys: Array.isArray(d?.data) && d.data[0] ? Object.keys(d.data[0]).slice(0, 14) : (d?.data && typeof d.data === 'object' ? Object.keys(d.data).slice(0, 14) : null),
+        has_order_id: !!(d?.data?.orderId || (Array.isArray(d?.data) && d.data[0] && (d.data[0].order_id || d.data[0].orderId))) };
+    };
+    v2Result = await call('/v2/orders?limit=1&order_status=ready_to_ship');
+    const awb = String((event.queryStringParameters || {}).awb || '').replace(/[^A-Za-z0-9]/g, '');
+    if (awb) track = await call(`/v2/tracking/${awb}`);
+  }
   return json(200, { key_prefix_npk: key.startsWith('npk_'), bearer, np_api_key_header: npHeader, x_api_key_header: xApiKey,
-    v2_key_set: !!v2, v2_key_prefix_npk: v2.startsWith('npk_'), v2_key: v2Result });
+    v2_key_set: !!v2, v2_secret_set: !!secret, v2_key_prefix_npk: v2.startsWith('npk_'), v2_key: v2Result, v2_track: track });
 };
