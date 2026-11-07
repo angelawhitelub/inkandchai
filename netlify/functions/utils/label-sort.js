@@ -83,7 +83,11 @@ function readPage(page) {
     lows.push(y - 3);   // descenders
   }
   const imgRe = /(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+cm\s*\/\w+\s+Do/g;
-  while ((m = imgRe.exec(c))) lows.push(Number(m[6]));
+  const imgs = [];
+  while ((m = imgRe.exec(c))) {
+    lows.push(Number(m[6]));
+    imgs.push({ x: Number(m[5]), y: Number(m[6]), w: Number(m[1]), h: Number(m[4]) });
+  }
   const lineRe = /(-?[\d.]+)\s+(-?[\d.]+)\s+m\s+(-?[\d.]+)\s+(-?[\d.]+)\s+l/g;
   while ((m = lineRe.exec(c))) {
     const [x1, y1, x2, y2] = m.slice(1, 5).map(Number);
@@ -100,7 +104,7 @@ function readPage(page) {
     if (Math.abs(w) > width * 0.95 && Math.abs(h) > height * 0.9) continue;
     lows.push(Math.min(y, y + h));
   }
-  return { texts, segs, contentBottom: lows.length ? Math.max(0, Math.min(...lows)) : height, width, height };
+  return { texts, segs, imgs, contentBottom: lows.length ? Math.max(0, Math.min(...lows)) : height, width, height };
 }
 
 /**

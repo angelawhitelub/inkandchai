@@ -114,3 +114,30 @@ test('NimbusPost: a one-page picture label (no text) is accepted; two pages are 
   const two = await ep.nimbusPostLabel('236454102367483', npDeps(await pic(2), row));
   assert.equal(two.notFound, true);
 });
+
+test('fitToThermal: an A4 page with the label in its corner becomes one 4 × 6 page; a 4 × 6 page is left alone', async () => {
+  const { PDFDocument, rgb } = require('pdf-lib');
+  const { fitToThermal } = require('../admin-order-label')._test;
+  const a4 = await PDFDocument.create();
+  const page = a4.addPage([595.28, 841.89]);
+  // A 274 × 390 frame in the top-left corner, as XpressBees draws it.
+  const [l, r, t, b] = [16, 290, 827, 437];
+  for (const [x1, y1, x2, y2] of [[l, t, r, t], [r, t, r, b], [r, b, l, b], [l, b, l, t], [l, 700, r, 700]]) {
+    page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 1, color: rgb(0, 0, 0) });
+  }
+  const out = await fitToThermal(await a4.save());
+  const doc = await PDFDocument.load(out);
+  assert.equal(doc.getPageCount(), 1);
+  assert.deepEqual(doc.getPage(0).getSize(), { width: 288, height: 432 });
+
+  const small = await PDFDocument.create();
+  small.addPage([286.3, 436.5]);
+  const bytes = await small.save();
+  assert.equal(await fitToThermal(bytes), bytes);
+
+  // Nothing readable drawn: returned unchanged rather than guessed at.
+  const blank = await PDFDocument.create();
+  blank.addPage([595.28, 841.89]);
+  const blankBytes = await blank.save();
+  assert.equal(await fitToThermal(blankBytes), blankBytes);
+});

@@ -60,6 +60,66 @@ async function isSingleImagePage(bytes) {
   } catch { return false; }
 }
 
+// 4 × 6 inch thermal label, in points.
+const THERMAL_W = 288;
+const THERMAL_H = 432;
+
+/**
+ * The label on a 4 × 6 page (owner, 8 Nov 2026). XpressBees answers a
+ * one-order request with an A4 page, the label drawn in its top-left corner
+ * (about 274 × 390 pt), which a thermal printer prints tiny or not at all.
+ * The drawn area is found from the page's own lines, text and images, cropped,
+ * and scaled to fit 4 × 6 (never enlarged past 1:1 more than the fit needs).
+ * A page already 4 × 6 or smaller, or one whose drawing cannot be read, is
+ * returned unchanged.
+ */
+async function fitToThermal(bytes) {
+  const { PDFDocument } = require('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  if (doc.getPageCount() !== 1) return bytes;
+  const page = doc.getPage(0);
+  const { width, height } = page.getSize();
+  if (width <= THERMAL_W + 12 && height <= THERMAL_H + 12) return bytes;
+  const r = readPage(page);
+  const xs = [];
+  const ys = [];
+  for (const s of r.segs) { xs.push(s.x1, s.x2); ys.push(s.y1, s.y2); }
+  for (const i of r.imgs) { xs.push(i.x, i.x + i.w); ys.push(i.y, i.y + i.h); }
+  // Text gives its start only; its width is a guess, so it sets the sides only
+  // when nothing is drawn (the frame lines and pictures are exact).
+  const guessX = !xs.length;
+  for (const t of r.texts) {
+    ys.push(t.y, t.y + 10);
+    if (guessX) xs.push(t.x, t.x + 4.5 * t.t.length);
+    else xs.push(t.x);
+  }
+  if (xs.length < 4) return bytes;
+  const pad = 3;
+  const box = {
+    left: Math.max(0, Math.min(...xs) - pad),
+    right: Math.min(width, Math.max(...xs) + pad),
+    bottom: Math.max(0, Math.min(r.contentBottom, ...ys) - pad),
+    top: Math.min(height, Math.max(...ys) + pad),
+  };
+  const w = box.right - box.left;
+  const h = box.top - box.bottom;
+  if (w < 100 || h < 100) return bytes;
+  const out = await PDFDocument.create();
+  // The whole page is placed, scaled and shifted so the label's box lands
+  // centred on the 4 × 6 page; the page edge does the cropping. (embedPage's
+  // own bounding box clipped in the wrong place.)
+  const embedded = await out.embedPage(page);
+  const scale = Math.min(THERMAL_W / w, THERMAL_H / h);
+  const label = out.addPage([THERMAL_W, THERMAL_H]);
+  label.drawPage(embedded, {
+    x: (THERMAL_W - w * scale) / 2 - box.left * scale,
+    y: (THERMAL_H - h * scale) / 2 - box.bottom * scale,
+    width: width * scale,
+    height: height * scale,
+  });
+  return out.save();
+}
+
 async function xpressBeesLabel(awb, deps = {}) {
   const call = xbLabels.lib.makeCaller(deps);
   let bytes;
@@ -100,7 +160,7 @@ async function findLabel(awb, courier, deps = {}) {
   const tried = [];
   for (const src of sourceOrder(courier)) {
     const got = await (deps.sources?.[src] || SOURCES[src])(awb, deps[src] || {});
-    if (got.pdf) return { pdf: got.pdf, source: src };
+    if (got.pdf) return { pdf: await fitToThermal(got.pdf).catch(() => got.pdf), source: src };
     tried.push(`${NAMES[src]}: ${got.reason}`);
   }
   return { tried };
@@ -140,4 +200,4 @@ exports.handler = async (event = {}) => {
   }
 };
 
-exports._test = { isSingleImagePage, pickLabelPage, xpressBeesLabel, nimbusPostLabel, findLabel, sourceOrder, cleanAwb };
+exports._test = { fitToThermal, isSingleImagePage, pickLabelPage, xpressBeesLabel, nimbusPostLabel, findLabel, sourceOrder, cleanAwb };
