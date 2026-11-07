@@ -51,6 +51,15 @@ async function pickLabelPage(bytes, awb) {
   return out.save();
 }
 
+/** One page that carries no text at all (a label drawn as a single picture). */
+async function isSingleImagePage(bytes) {
+  try {
+    const { PDFDocument } = require('pdf-lib');
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    return doc.getPageCount() === 1 && readPage(doc.getPage(0)).texts.length === 0;
+  } catch { return false; }
+}
+
 async function xpressBeesLabel(awb, deps = {}) {
   const call = xbLabels.lib.makeCaller(deps);
   let bytes;
@@ -73,35 +82,12 @@ async function nimbusPostLabel(awb, deps = {}) {
   if (!found) return { notFound: true, reason: 'AWB not found in NimbusPost' };
   const bytes = await npV2.labelPdf(call, [found.id], deps.fetch || fetch);
   const pdf = await pickLabelPage(bytes, awb).catch(() => null);
-  if (!pdf) return { notFound: true, reason: `the label NimbusPost returned does not show AWB ${awb}` };
-  return { pdf };
-}
-
-// TEMPORARY (2026-11-08): what NimbusPost's new label PDFs look like inside --
-// operator counts and fonts only, no page text.
-async function debugNimbus(awb) {
-  const call = npV2.makeV2Caller({});
-  const found = await npV2.findByAwb(call, awb);
-  if (!found) return { found: false };
-  const bytes = await npV2.labelPdf(call, [found.id]);
-  const { PDFDocument, PDFName } = require('pdf-lib');
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  const raw = Buffer.from(bytes).toString('latin1');
-  const pages = doc.getPages().map((p) => {
-    let c = '';
-    try { c = require('./utils/label-sort')._content ? '' : ''; } catch { /* none */ }
-    const r = readPage(p);
-    return { size: p.getSize(), texts: r.texts.length, awbLike: r.texts.filter((t) => /\d{8,}/.test(t.t)).map((t) => t.t.replace(/\D/g, '').slice(0, 4) + '…' + t.t.length) };
-  });
-  const count = (re) => (raw.match(re) || []).length;
-  return {
-    found: true, pageCount: doc.getPageCount(), bytes: bytes.length, pages,
-    producer: (raw.match(/\/Producer\s*\(([^)]{0,60})\)/) || [])[1] || null,
-    creator: (raw.match(/\/Creator\s*\(([^)]{0,60})\)/) || [])[1] || null,
-    fonts: [...new Set((raw.match(/\/Subtype\s*\/(Type0|TrueType|Type1|Type3|CIDFontType2)/g) || []))],
-    identityH: count(/Identity-H/g), toUnicode: count(/\/ToUnicode/g), flate: count(/FlateDecode/g),
-    awbInRaw: raw.includes(awb), images: count(/\/Subtype\s*\/Image/g),
-  };
+  if (pdf) return { pdf };
+  // NimbusPost's new labels (Nov 2026) are one picture with no text, so the AWB
+  // cannot be read off the page. Accept only that case: one page, no text, for
+  // the order found by its exact AWB. A page WITH text must show the AWB.
+  if (await isSingleImagePage(bytes)) return { pdf: bytes, imageOnly: true };
+  return { notFound: true, reason: `the label NimbusPost returned does not show AWB ${awb}` };
 }
 
 const SOURCES = { xpressbees: xpressBeesLabel, nimbuspost: nimbusPostLabel };
@@ -132,17 +118,6 @@ exports.handler = async (event = {}) => {
   const order = String(q.order || '').replace(/[^\w-]/g, '').slice(0, 40);
 
   try {
-    if (q.debug === 'np') return json(200, await debugNimbus(awb));   // TEMPORARY: label format check
-    if (q.debug === 'nplist') {   // TEMPORARY: do list rows carry their own label link and items?
-      const rows = await npV2.listOrders(npV2.makeV2Caller({}), { order_status: 'ready_to_ship', has_shipment: 'true' }, { max: 400 });
-      const withUrl = rows.filter((r) => r.shipment && r.shipment.label_url);
-      const host = (u) => { try { return new URL(u).host; } catch { return '?'; } };
-      const it = rows.find((r) => Array.isArray(r.items) && r.items.length);
-      return json(200, { rows: rows.length, with_label_url: withUrl.length,
-        hosts: [...new Set(withUrl.map((r) => host(r.shipment.label_url)))].slice(0, 5),
-        label_downloaded: rows.filter((r) => r.shipment && r.shipment.label_downloaded_at).length,
-        item_keys: it ? Object.keys(it.items[0]).slice(0, 15) : null, order_number_sample: rows[0] ? String(rows[0].order_number || '').slice(0, 6) : null });
-    }
     const got = await findLabel(awb, q.courier);
     if (!got.pdf) {
       console.warn('[order-label]', awb, JSON.stringify(got.tried));
@@ -165,4 +140,4 @@ exports.handler = async (event = {}) => {
   }
 };
 
-exports._test = { pickLabelPage, xpressBeesLabel, nimbusPostLabel, findLabel, sourceOrder, cleanAwb };
+exports._test = { isSingleImagePage, pickLabelPage, xpressBeesLabel, nimbusPostLabel, findLabel, sourceOrder, cleanAwb };

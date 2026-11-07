@@ -110,12 +110,14 @@ function makeLabelSender(courier) {
 
     const s = out.summary;
     const day = `${istDay()} (${courier.name})`;
-    const filename = `${courier.slug}_labels_${s.labels}_sorted_${courier.labels.istDate()}.pdf`;
+    const filename = `${courier.slug}_labels_${s.labels}_${s.unsorted ? 'unsorted' : 'sorted'}_${courier.labels.istDate()}.pdf`;
     const media = await wa.uploadMedia(out.pdf, { mime: 'application/pdf', filename });
     if (!media.ok) throw new Error(`WhatsApp media upload failed: ${media.data?.error?.message || media.error || media.status}`);
 
     const params = [day, s.labels, s.units];
-    const caption = `Packing labels for ${day}: ${s.labels} labels, ${s.units} books. Pick list first, then the labels in packing order. - Ink & Chai`;
+    const caption = s.unsorted
+      ? `Packing labels for ${day}: ${s.labels} labels, ${s.units} books, in NimbusPost's order (no pick list). - Ink & Chai`
+      : `Packing labels for ${day}: ${s.labels} labels, ${s.units} books. Pick list first, then the labels in packing order. - Ink & Chai`;
     const whatsapp = [];
     for (const phone of to) whatsapp.push(await deliver(phone, { mediaId: media.id, filename, template, params, caption }, wa));
 

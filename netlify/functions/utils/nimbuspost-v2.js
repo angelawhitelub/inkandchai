@@ -73,6 +73,7 @@ function toShipment(r) {
     courier_name: s.courier_name || '',
     ship_status: String(r?.status_tab || r?.order_status || ''),
     created: s.created_at || r?.order_date || r?.created_at || '',
+    units: (Array.isArray(r?.items) ? r.items : []).reduce((n, i) => n + (Number(i?.qty) || 0), 0),
   };
 }
 

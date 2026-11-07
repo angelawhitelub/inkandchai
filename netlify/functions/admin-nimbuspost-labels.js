@@ -32,7 +32,7 @@ const MAX_LABELS = 1000;
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key, X-Admin-Token',
-  'Access-Control-Expose-Headers': 'Content-Disposition, X-Label-Count, X-Label-Units, X-Label-Mixed, X-Label-Unread',
+  'Access-Control-Expose-Headers': 'Content-Disposition, X-Label-Count, X-Label-Units, X-Label-Mixed, X-Label-Unread, X-Label-Unsorted',
 };
 const json = (statusCode, body) => ({
   statusCode, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(body),
@@ -58,6 +58,38 @@ async function labelPdf(call, shipments, fetchImpl = fetch) {
   return v2.labelPdf(call, shipments.map((r) => r.id), fetchImpl);
 }
 
+// NimbusPost's new labels (Nov 2026) are each one picture with no text, so
+// pages cannot be matched to AWBs or read for book names: no sorting, no pick
+// list, no stamps. They are then handed over as NimbusPost merged them -- the
+// same file as the panel's own bulk download -- once the page count matches.
+async function allPicturePages(sources) {
+  const { PDFDocument } = require('pdf-lib');
+  const { readPage } = require('./utils/label-sort');
+  for (const src of sources) {
+    const doc = await PDFDocument.load(src.bytes, { updateMetadata: false });
+    if (doc.getPages().some((p) => readPage(p).texts.length > 0)) return false;
+  }
+  return true;
+}
+
+async function mergeUnsorted(sources, picked) {
+  const { PDFDocument } = require('pdf-lib');
+  const out = await PDFDocument.create();
+  for (const src of sources) {
+    const doc = await PDFDocument.load(src.bytes, { updateMetadata: false });
+    if (doc.getPageCount() !== src.awbs.length) {
+      throw new NpError(`NimbusPost returned ${doc.getPageCount()} label pages for ${src.awbs.length} orders; nothing was built`);
+    }
+    const pages = await out.copyPages(doc, doc.getPageIndices());
+    pages.forEach((p) => out.addPage(p));
+  }
+  const units = picked.reduce((n, r) => n + (r.units || 0), 0);
+  return {
+    pdf: await out.save(),
+    summary: { labels: picked.length, units, titles: 0, mixed: 0, unread: [], unstamped: [], unsorted: true },
+  };
+}
+
 const istDate = (d = new Date()) => {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit' })
     .formatToParts(d).map((x) => [x.type, x.value]));
@@ -78,7 +110,13 @@ async function run({ summaryOnly = false, only = null } = {}, deps = {}) {
     const chunk = picked.slice(i, i + CHUNK);
     sources.push({ bytes: await labelPdf(call, chunk, deps.fetch || fetch), awbs: chunk.map((r) => String(r.awb_number).trim()) });
   }
-  const built = await buildSortedLabels(sources, { date: new Date() });
+  let built;
+  try {
+    built = await buildSortedLabels(sources, { date: new Date() });
+  } catch (e) {
+    if (!/does not show AWB/.test(String(e.message)) || !(await allPicturePages(sources))) throw e;
+    built = await mergeUnsorted(sources, picked);
+  }
   return { awbs, ready, shipments, ...built };
 }
 
@@ -105,12 +143,13 @@ exports.handler = async (event = {}) => {
       headers: {
         ...CORS,
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="nimbuspost_labels_${s.labels}_sorted_${istDate()}.pdf"`,
+        'Content-Disposition': `attachment; filename="nimbuspost_labels_${s.labels}_${s.unsorted ? 'unsorted' : 'sorted'}_${istDate()}.pdf"`,
         'Cache-Control': 'no-store, private',
         'X-Label-Count': String(s.labels),
         'X-Label-Units': String(s.units),
         'X-Label-Mixed': String(s.mixed),
         'X-Label-Unread': String(s.unread.length),
+        'X-Label-Unsorted': s.unsorted ? '1' : '0',
       },
     });
   } catch (e) {

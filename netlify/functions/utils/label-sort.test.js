@@ -374,3 +374,26 @@ test('NimbusPost: WhatsApp send uses its own sent list and names the courier', a
   assert.match(wa.sent[0].headerDocument.filename, /^nimbuspost_labels_2_sorted_/);
   assert.deepEqual(Object.keys(JSON.parse(kv.store.get(npSend.SENT_KEY))).sort(), ['7D1', '7D2', '7D3']);
 });
+
+// NimbusPost's new labels are one picture each, with no text.
+async function picturePdf(n) {
+  const doc = await PDFDocument.create();
+  for (let i = 0; i < n; i++) {
+    const page = doc.addPage([283.9, 426]);
+    page.drawRectangle({ x: 10, y: 10, width: 50, height: 50 });
+  }
+  return doc.save();
+}
+
+test('NimbusPost: picture-only labels come back unsorted, page count checked', async () => {
+  const awbs = ['7D1', '7D2', '7D3'];
+  const n = fakeNp(awbs);
+  n.fetch = async () => { const b = await picturePdf(3); return { ok: true, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) }; };
+  const out = await np.run({}, n);
+  assert.equal(out.summary.unsorted, true);
+  assert.equal(out.summary.labels, 3);
+  assert.equal((await PDFDocument.load(out.pdf)).getPageCount(), 3);
+
+  n.fetch = async () => { const b = await picturePdf(2); return { ok: true, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) }; };
+  await assert.rejects(np.run({}, n), /2 label pages for 3 (AWBs|orders)/);
+});

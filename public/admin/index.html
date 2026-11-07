@@ -14265,7 +14265,9 @@ async function downloadCourierLabels(btn, courier) {
     const unread = Number(res.headers.get('X-Label-Unread') || 0);
     alert('Downloaded ' + name + '\n\n' +
       res.headers.get('X-Label-Count') + ' labels \u00b7 ' + res.headers.get('X-Label-Units') + ' books \u00b7 ' +
-      res.headers.get('X-Label-Mixed') + ' mixed orders' +
+      (res.headers.get('X-Label-Unsorted') === '1'
+        ? 'unsorted: NimbusPost labels are pictures, so no pick list or book names'
+        : res.headers.get('X-Label-Mixed') + ' mixed orders') +
       (unread ? '\n\n\u26a0\ufe0f ' + unread + ' label(s) could not be read \u2014 they are at the end, check their item table by hand.' : ''));
   } catch (err) {
     alert(c.name + ' labels failed:\n\n' + err.message);

@@ -105,3 +105,12 @@ test('courier name picks which panel is asked first; both are asked', async () =
   assert.equal(none.pdf, undefined);
   assert.equal(none.tried.length, 2);
 });
+
+test('NimbusPost: a one-page picture label (no text) is accepted; two pages are not', async () => {
+  const pic = async (n) => { const d = await PDFDocument.create(); for (let i = 0; i < n; i++) d.addPage([283.9, 426]).drawRectangle({ x: 5, y: 5, width: 9, height: 9 }); return d.save(); };
+  const row = [{ order_id: 'ORD-9', shipment: { awb: '236454102367483' } }];
+  const one = await ep.nimbusPostLabel('236454102367483', npDeps(await pic(1), row));
+  assert.ok(one.pdf);
+  const two = await ep.nimbusPostLabel('236454102367483', npDeps(await pic(2), row));
+  assert.equal(two.notFound, true);
+});
