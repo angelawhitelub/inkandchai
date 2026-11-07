@@ -56,6 +56,31 @@ function makeList(key, label) {
     return items;
   }
 
+  /**
+   * Hides or shows many books in one rewrite (admin inventory). `titles` maps
+   * slug → title. Returns { items, changed: [slug] } -- only the slugs whose
+   * state actually changed, so an undo touches nothing else.
+   */
+  async function setManyHidden(slugs, hidden, { titles = {} } = {}) {
+    const want = [...new Set((slugs || []).map(normSlug).filter(Boolean))];
+    let items = await readHidden();
+    const had = new Set(items.map((i) => i.slug));
+    const changed = want.filter((s) => had.has(s) !== !!hidden);
+    if (!changed.length) return { items, changed };
+    const drop = new Set(changed);
+    if (hidden) {
+      const stamp = new Date().toISOString();
+      items = changed.map((s) => ({ slug: s, title: String(titles[s] || '').slice(0, 200), hidden_at: stamp })).concat(items);
+    } else {
+      items = items.filter((i) => !drop.has(i.slug));
+    }
+    if (items.length > MAX) throw new Error(`At most ${MAX} books can be hidden from ${label}.`);
+    await getStore(STORE).setJSON(key, { items, updated_at: new Date().toISOString() });
+    set = new Set(items.map((i) => i.slug));
+    at = Date.now();
+    return { items, changed };
+  }
+
   async function hiddenSlugSet() {
     if (set && Date.now() - at < TTL_MS) return set;
     try {
@@ -67,7 +92,7 @@ function makeList(key, label) {
     return set || new Set();
   }
 
-  return { readHidden, setHidden, hiddenSlugSet };
+  return { readHidden, setHidden, setManyHidden, hiddenSlugSet };
 }
 
 const TTL_MS = 60_000;

@@ -941,6 +941,7 @@ select,input,textarea{font-size:1rem;}
       <div class="admin-nav-menu" id="admin-menu-catalogue" hidden><p class="admin-menu-title">Books & listings</p>
         <a class="admin-tab" data-tab="create" href="/admin/#create" onclick="return adminTabClick(event,'create')">➕ Create Listing</a>
         <a class="admin-tab" data-tab="products" href="/admin/#products" onclick="return adminTabClick(event,'products')">✏️ Products &amp; Prices</a>
+        <a class="admin-tab owner-only" data-tab="inventory" href="/admin/#inventory" onclick="return adminTabClick(event,'inventory')">📋 Manage Inventory</a>
         <a class="admin-tab owner-only" data-tab="ebooks" href="/admin/#ebooks" onclick="return adminTabClick(event,'ebooks')">📄 eBooks</a>
         <div class="admin-menu-divider" aria-hidden="true"></div>
         <a class="admin-tab" data-tab="bundles" href="/admin/#bundles" onclick="return adminTabClick(event,'bundles')">📦 Bundles</a>
@@ -2205,6 +2206,199 @@ select,input,textarea{font-size:1rem;}
   </section>
 
   </div><!-- /tab-products -->
+
+  <div class="admin-section" id="tab-inventory">
+  <style>
+    #tab-inventory .inv-filters{display:grid;grid-template-columns:minmax(220px,2.4fr) repeat(4,minmax(120px,1fr));gap:.55rem;margin:.2rem 0 .7rem;}
+    #tab-inventory .inv-filters input,#tab-inventory .inv-filters select,#tab-inventory .inv-bulk input,#tab-inventory .inv-bulk select,#tab-inventory .inv-bulk textarea{font-family:'Manrope',sans-serif;font-size:.78rem;padding:.48rem .6rem;border:1px solid var(--border);background:var(--bg3);color:var(--cream);min-width:0;width:100%;box-sizing:border-box;}
+    #tab-inventory .inv-filters .inv-price{display:flex;gap:.35rem;}
+    #tab-inventory .inv-selbar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .8rem;padding:.6rem .8rem;margin:0 0 .6rem;background:var(--bg2,#fffdf8);border:1px solid var(--border);font-size:.74rem;}
+    #tab-inventory .inv-selbar strong{color:var(--gold);}
+    #tab-inventory .inv-link{background:none;border:0;padding:0;color:var(--gold);text-decoration:underline;cursor:pointer;font:inherit;}
+    #tab-inventory .inv-bulk{display:grid;grid-template-columns:minmax(200px,1.4fr) minmax(120px,1fr) auto;gap:.5rem;align-items:start;width:100%;}
+    #tab-inventory .inv-bulk textarea{min-height:2.3rem;grid-column:1 / -1;}
+    #tab-inventory .inv-table-wrap{overflow-x:auto;border:1px solid var(--border);}
+    #tab-inventory table.inv-table{width:100%;border-collapse:collapse;font-size:.74rem;min-width:880px;}
+    #tab-inventory .inv-table th{position:sticky;top:0;background:var(--bg2,#fffdf8);text-align:left;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--cream-dim);padding:.5rem .45rem;border-bottom:1px solid var(--border);white-space:nowrap;cursor:default;}
+    #tab-inventory .inv-table th[data-sort]{cursor:pointer;}
+    #tab-inventory .inv-table td{padding:.42rem .45rem;border-bottom:1px solid var(--border);vertical-align:middle;}
+    #tab-inventory .inv-table tr.sel td{background:rgba(138,106,31,.08);}
+    #tab-inventory .inv-table tr.dead td{opacity:.55;}
+    #tab-inventory .inv-table img{width:30px;height:42px;object-fit:cover;display:block;background:var(--bg);}
+    #tab-inventory .inv-title{font-weight:600;color:var(--cream);cursor:pointer;}
+    #tab-inventory .inv-title:hover{text-decoration:underline;}
+    #tab-inventory .inv-sub{color:var(--cream-dim);font-size:.66rem;margin-top:.1rem;word-break:break-all;}
+    #tab-inventory .inv-num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+    #tab-inventory .inv-pill{display:inline-block;font-size:.56rem;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--border);padding:.08rem .35rem;margin:.08rem .12rem .08rem 0;color:var(--cream-dim);white-space:nowrap;}
+    #tab-inventory .inv-pill.red{color:var(--red);border-color:rgba(201,54,54,.4);}
+    #tab-inventory .inv-pill.green{color:var(--green);border-color:rgba(35,122,59,.35);}
+    #tab-inventory .inv-pill.orange{color:var(--orange);border-color:rgba(181,107,18,.4);}
+    #tab-inventory .inv-stock0{color:var(--red);font-weight:700;}
+    #tab-inventory .inv-stocklow{color:var(--orange);font-weight:700;}
+    #tab-inventory .inv-pager{display:flex;align-items:center;gap:.6rem;justify-content:flex-end;margin:.6rem 0;font-size:.72rem;color:var(--cream-dim);}
+    #tab-inventory .inv-preview{border:1px solid var(--gold-dim);background:var(--bg3);padding:1rem 1.1rem;margin:0 0 .9rem;}
+    #tab-inventory .inv-preview h3{margin:0 0 .4rem;font-size:.95rem;}
+    #tab-inventory .inv-preview table{width:100%;border-collapse:collapse;font-size:.72rem;margin:.5rem 0;}
+    #tab-inventory .inv-preview td,#tab-inventory .inv-preview th{padding:.3rem .4rem;border-bottom:1px solid var(--border);text-align:left;}
+    #tab-inventory .inv-preview .scroll{max-height:320px;overflow:auto;}
+    #tab-inventory .inv-chips{display:flex;flex-wrap:wrap;gap:.35rem;margin:-.2rem 0 .7rem;}
+    #tab-inventory .inv-chip{font-size:.66rem;padding:.25rem .6rem;border:1px solid var(--border);background:var(--bg3);color:var(--cream-dim);cursor:pointer;}
+    #tab-inventory .inv-chip.on{border-color:var(--gold);color:var(--gold);font-weight:700;}
+    @media (max-width:760px){
+      #tab-inventory .inv-filters{grid-template-columns:1fr 1fr;}
+      #tab-inventory .inv-filters .inv-q{grid-column:1 / -1;}
+      #tab-inventory .inv-bulk{grid-template-columns:1fr;}
+    }
+  </style>
+
+  <section class="product-panel" id="inventorySection">
+    <div class="product-head">
+      <div>
+        <h2>Manage inventory</h2>
+        <p>Every product in one list. Search and filter, tick the products you want (or <strong>select all that match</strong>), then change price, MRP, stock, category, badges, COD, free delivery or visibility for all of them at once. Every change is previewed first, and can be undone straight after.</p>
+      </div>
+      <div class="mini-actions">
+        <button class="btn-outline" onclick="invTogglePaste()">📋 Select from a list</button>
+        <button class="btn-outline" onclick="invExportCsv()">⬇ Export CSV</button>
+        <button class="btn-outline" onclick="loadInventory(true, this)">Refresh</button>
+      </div>
+    </div>
+
+    <div id="invPasteBox" style="display:none;margin:0 0 .8rem;">
+      <textarea id="invPasteText" placeholder="Paste slugs, product URLs or exact titles — one per line (or separated by commas)" style="width:100%;min-height:90px;box-sizing:border-box;font-family:'Manrope',sans-serif;font-size:.78rem;padding:.5rem;border:1px solid var(--border);background:var(--bg3);color:var(--cream);"></textarea>
+      <div style="display:flex;gap:.5rem;align-items:center;margin-top:.4rem;flex-wrap:wrap;">
+        <button class="btn-green" onclick="invSelectFromPaste()">Select these</button>
+        <span class="hint" id="invPasteMsg"></span>
+      </div>
+    </div>
+
+    <div class="inv-filters">
+      <input class="inv-q" id="invQ" type="search" placeholder="🔍 Title, author, slug, ISBN, publisher — every word must match; &quot;exact phrase&quot;, -exclude" oninput="invFilterSoon()"/>
+      <select id="invSource" onchange="invApplyFilters()">
+        <option value="">All sources</option>
+        <option value="catalogue">Catalogue (baked)</option>
+        <option value="custom">Admin listings</option>
+        <option value="crossword">Crossword import</option>
+        <option value="99bookstores">99bookstores import</option>
+      </select>
+      <select id="invCategory" onchange="invApplyFilters()"><option value="">All categories</option></select>
+      <select id="invStatus" onchange="invApplyFilters()">
+        <option value="">All except deleted</option>
+        <option value="all">Everything (incl. deleted)</option>
+        <optgroup label="Stock">
+          <option value="counted">Stock counted</option>
+          <option value="low">Low stock (1–5)</option>
+          <option value="soldout">Sold out</option>
+          <option value="uncounted">Stock not counted</option>
+        </optgroup>
+        <optgroup label="Sales">
+          <option value="selling">Has sold</option>
+          <option value="neversold">Never sold</option>
+        </optgroup>
+        <optgroup label="Settings">
+          <option value="codoff">COD off</option>
+          <option value="free">Free delivery</option>
+          <option value="scarcity">Scarcity badge</option>
+          <option value="edited">Edited (override on)</option>
+          <option value="overrideoff">Override switched off</option>
+          <option value="noimage">No cover image</option>
+          <option value="nomrp">No MRP</option>
+        </optgroup>
+        <optgroup label="Visibility">
+          <option value="searchhidden">Hidden from search</option>
+          <option value="browsehidden">Hidden from browsing</option>
+          <option value="removed">Removed listing (inactive)</option>
+          <option value="deleted">Deleted pages (410)</option>
+        </optgroup>
+      </select>
+      <div class="inv-price">
+        <input id="invMin" type="number" min="0" placeholder="₹ min" oninput="invFilterSoon()"/>
+        <input id="invMax" type="number" min="0" placeholder="₹ max" oninput="invFilterSoon()"/>
+      </div>
+    </div>
+    <div class="inv-chips" id="invSortChips">
+      <span class="hint" style="align-self:center;">Sort:</span>
+      <button class="inv-chip on" data-sort="title" onclick="invSetSort('title')">Title A–Z</button>
+      <button class="inv-chip" data-sort="sold" onclick="invSetSort('sold')">Most sold</button>
+      <button class="inv-chip" data-sort="price_asc" onclick="invSetSort('price_asc')">Price ↑</button>
+      <button class="inv-chip" data-sort="price_desc" onclick="invSetSort('price_desc')">Price ↓</button>
+      <button class="inv-chip" data-sort="discount" onclick="invSetSort('discount')">Biggest discount</button>
+      <button class="inv-chip" data-sort="stock" onclick="invSetSort('stock')">Stock ↑</button>
+      <button class="inv-chip" data-sort="updated" onclick="invSetSort('updated')">Recently edited</button>
+    </div>
+
+    <div class="inv-selbar" id="invSelBar">
+      <span id="invCount">Inventory loads after login.</span>
+      <span id="invSelInfo"></span>
+      <div class="inv-bulk" id="invBulk" style="display:none;">
+        <select id="invAction" onchange="invActionChanged()">
+          <option value="">Choose a bulk action…</option>
+          <optgroup label="Price">
+            <option value="price_set">Set price to ₹…</option>
+            <option value="price_pct">Change price by %… (−10 = 10% off)</option>
+            <option value="price_add">Change price by ₹… (−20 = ₹20 off)</option>
+            <option value="price_from_mrp">Price = MRP minus %…</option>
+            <option value="mrp_set">Set MRP to ₹…</option>
+            <option value="mrp_clear">Clear MRP</option>
+          </optgroup>
+          <optgroup label="Stock">
+            <option value="stock_set">Set stock to… copies</option>
+            <option value="stock_add">Add / remove copies…</option>
+            <option value="sold_out">Mark sold out (Coming Soon)</option>
+            <option value="stock_clear">Stop counting stock (back on sale)</option>
+          </optgroup>
+          <optgroup label="Details &amp; badges">
+            <option value="category_set">Set category…</option>
+            <option value="scarcity_on">Scarcity badge on</option>
+            <option value="scarcity_off">Scarcity badge off</option>
+          </optgroup>
+          <optgroup label="Checkout">
+            <option value="cod_off">Switch COD off…</option>
+            <option value="cod_on">Switch COD back on</option>
+            <option value="free_on">Free delivery on</option>
+            <option value="free_off">Free delivery off</option>
+          </optgroup>
+          <optgroup label="Visibility">
+            <option value="search_hide">Hide from search</option>
+            <option value="search_show">Show in search</option>
+            <option value="browse_hide">Hide from browsing</option>
+            <option value="browse_show">Show in browsing</option>
+          </optgroup>
+          <optgroup label="Danger">
+            <option value="delete">Delete product pages (410 Gone)…</option>
+            <option value="undelete">Restore deleted pages</option>
+          </optgroup>
+        </select>
+        <input id="invValue" style="display:none;" oninput="invHidePreview()"/>
+        <button class="btn-green" id="invPreviewBtn" onclick="invPreview(this)">Preview</button>
+        <textarea id="invNote" style="display:none;" oninput="invHidePreview()"></textarea>
+      </div>
+    </div>
+
+    <div id="invPreview"></div>
+
+    <div class="inv-table-wrap">
+      <table class="inv-table">
+        <thead><tr>
+          <th style="width:28px;"><input type="checkbox" id="invPageCheck" onclick="invTogglePage(this.checked)" title="Select this page"/></th>
+          <th style="width:36px;"></th>
+          <th data-sort="title" onclick="invSetSort('title')">Product</th>
+          <th>Category</th>
+          <th class="inv-num" data-sort="price_asc" onclick="invSetSort(invSort==='price_asc'?'price_desc':'price_asc')">Price</th>
+          <th class="inv-num">MRP</th>
+          <th class="inv-num" data-sort="stock" onclick="invSetSort('stock')">Stock</th>
+          <th class="inv-num" data-sort="sold" onclick="invSetSort('sold')">Sold</th>
+          <th>Status</th>
+          <th data-sort="updated" onclick="invSetSort('updated')">Edited</th>
+        </tr></thead>
+        <tbody id="invBody"><tr><td colspan="10" class="hint" style="padding:1rem;">Inventory loads after login.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="inv-pager" id="invPager"></div>
+    <p class="hint">Click a title to open it in the Product editor. Shift-click a tick box to tick everything between it and the last one. “Sold” is lifetime units from real orders (refreshed hourly). Prices go to the always-live price table, so they reach product pages, cart and checkout together within a minute.</p>
+  </section>
+
+  </div><!-- /tab-inventory -->
 
   <div class="admin-section" id="tab-abandoned">
 
@@ -16585,7 +16779,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','inventory','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -17771,6 +17965,7 @@ function switchTab(tab, pushState = true) {
   const _authed = adminToken || adminKey || adminCookieSession;
   if (tab === 'tools' && _authed) { gadsSuppressStatus(); loadShipHolidays(); }
   if (tab === 'products' && _authed) { fetchProducts(); fetchRemovedListings(); fetchDeletedPages(); }
+  if (tab === 'inventory' && _authed && adminRole === 'owner') loadInventory(false);
   if (tab === 'create' && _authed && !productRows.length) fetchProducts();
   if (tab === 'ebooks' && _authed && adminRole === 'owner') loadEbooks();
   if (tab === 'reels' && _authed) loadSiteReels();
@@ -19425,6 +19620,568 @@ function startInboxPolling() {
   }, 30000);
 }
 startInboxPolling();
+</script>
+<script>
+// ── Manage inventory (owner, 8 Nov 2026) ─────────────────────────────────────
+// Every product comes down once (admin-inventory GET) and is searched, filtered
+// and sorted here, so typing is instant across all ~30k rows. Bulk actions go
+// back through admin-inventory: a dry run first (the preview), then the real
+// write in chunks of 500, then an Undo built from what was stored before.
+let invRows = [];
+let invBySlug = new Map();
+let invFiltered = [];
+const invSelected = new Set();
+let invPage = 0;
+const INV_PAGE = 100;
+let invSort = 'title';
+let invFlags = {};
+let invLoadedAt = 0;
+let invLoading = false;
+let invDefaultCodNote = '';
+let invLastClicked = -1;
+let invPlan = null;          // { action, value, note, reason, slugs, changes, skipped }
+let invUndoPayloads = [];
+let invFilterTimer = null;
+
+const INV_ACTIONS = {
+  price_set:      { value: 'number', placeholder: 'New price, ₹ (e.g. 299)' },
+  price_pct:      { value: 'number', placeholder: '% change (e.g. -10 or 5)' },
+  price_add:      { value: 'number', placeholder: '₹ change (e.g. -20 or 30)' },
+  price_from_mrp: { value: 'number', placeholder: '% off MRP (e.g. 40)' },
+  mrp_set:        { value: 'number', placeholder: 'New MRP, ₹' },
+  stock_set:      { value: 'number', placeholder: 'Copies in stock (0 = sold out)' },
+  stock_add:      { value: 'number', placeholder: 'Copies to add (e.g. 10 or -3)' },
+  category_set:   { value: 'text',   placeholder: 'Category name', list: true },
+  cod_off:        { note: true,      placeholder: 'Note the customer reads (leave blank for the standard note)' },
+  delete:         { note: true,      placeholder: 'Reason (kept with the takedown record, optional)', danger: true },
+};
+
+function invFlag(r, name) { return !!(r.flags & (invFlags[name] || 0)); }
+const invMoney = (v) => (v === null || v === undefined || v === '' ? '—' : '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
+
+async function loadInventory(fresh, btn) {
+  const count = document.getElementById('invCount');
+  if (!(adminToken || adminKey || adminCookieSession) || !count || invLoading) return;
+  if (!fresh && invRows.length && Date.now() - invLoadedAt < 3 * 60_000) { invApplyFilters(); return; }
+  invLoading = true;
+  if (btn) btn.disabled = true;
+  count.textContent = 'Loading every product…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-inventory' + (fresh ? '?fresh=1' : ''));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const cols = data.cols || [];
+    invFlags = data.flags || {};
+    invDefaultCodNote = data.default_cod_note || '';
+    invRows = (data.rows || []).map((a) => {
+      const r = {};
+      cols.forEach((c, i) => { r[c] = a[i]; });
+      r.source = (data.sources || [])[r.source] || 'custom';
+      r.key = String(r.slug || '').toLowerCase();
+      r.hay = [r.title, r.author, r.slug, r.isbn, r.publisher, r.category].join(' ').toLowerCase();
+      return r;
+    });
+    invBySlug = new Map(invRows.map((r) => [r.key, r]));
+    for (const k of [...invSelected]) if (!invBySlug.has(k)) invSelected.delete(k);
+    invLoadedAt = Date.now();
+    invFillCategories();
+    invApplyFilters();
+    if ((data.warnings || []).length) count.title = 'Some data could not be read: ' + data.warnings.join('; ');
+  } catch (err) {
+    count.textContent = 'Inventory did not load: ' + err.message;
+  } finally {
+    invLoading = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+function invFillCategories() {
+  const sel = document.getElementById('invCategory');
+  const keep = sel.value;
+  const counts = new Map();
+  for (const r of invRows) {
+    if (invFlag(r, 'DELETED')) continue;
+    const c = String(r.category || '').trim() || '(none)';
+    counts.set(c, (counts.get(c) || 0) + 1);
+  }
+  const cats = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  sel.innerHTML = '<option value="">All categories</option>' + cats.map(([c, n]) => `<option value="${esc(c)}">${esc(c)} (${n.toLocaleString('en-IN')})</option>`).join('');
+  sel.value = keep;
+  let dl = document.getElementById('invCategoryList');
+  if (!dl) { dl = document.createElement('datalist'); dl.id = 'invCategoryList'; document.body.appendChild(dl); }
+  dl.innerHTML = cats.filter(([c]) => c !== '(none)').map(([c]) => `<option value="${esc(c)}"></option>`).join('');
+}
+
+/** "every word" matching with "quoted phrases" and -exclusions. */
+function invParseQuery(q) {
+  const must = [];
+  const not = [];
+  String(q || '').toLowerCase().replace(/"([^"]+)"|(\S+)/g, (_, phrase, word) => {
+    const t = (phrase || word || '').trim();
+    if (!t) return '';
+    if (!phrase && t.startsWith('-') && t.length > 1) not.push(t.slice(1));
+    else must.push(t);
+    return '';
+  });
+  return { must, not };
+}
+
+const INV_STATUS = {
+  '':           (r) => !invFlag(r, 'DELETED'),
+  all:          () => true,
+  counted:      (r) => r.stock !== null && r.stock !== undefined,
+  low:          (r) => r.stock !== null && r.stock !== undefined && r.stock > 0 && r.stock <= 5,
+  soldout:      (r) => r.stock === 0,
+  uncounted:    (r) => r.stock === null || r.stock === undefined,
+  selling:      (r) => r.sold > 0,
+  neversold:    (r) => !r.sold,
+  codoff:       (r) => invFlag(r, 'COD_OFF'),
+  free:         (r) => invFlag(r, 'FREE_DELIVERY'),
+  scarcity:     (r) => invFlag(r, 'SCARCITY'),
+  edited:       (r) => invFlag(r, 'OVERRIDE'),
+  overrideoff:  (r) => invFlag(r, 'OVERRIDE_OFF'),
+  noimage:      (r) => invFlag(r, 'NO_IMAGE'),
+  nomrp:        (r) => !r.mrp,
+  searchhidden: (r) => invFlag(r, 'SEARCH_HIDDEN'),
+  browsehidden: (r) => invFlag(r, 'BROWSE_HIDDEN'),
+  removed:      (r) => invFlag(r, 'INACTIVE') && !invFlag(r, 'DELETED'),
+  deleted:      (r) => invFlag(r, 'DELETED'),
+};
+
+function invFilterSoon() {
+  clearTimeout(invFilterTimer);
+  invFilterTimer = setTimeout(invApplyFilters, 140);
+}
+
+function invApplyFilters() {
+  const { must, not } = invParseQuery(document.getElementById('invQ').value);
+  const source = document.getElementById('invSource').value;
+  const category = document.getElementById('invCategory').value;
+  const status = document.getElementById('invStatus').value;
+  const min = parseFloat(document.getElementById('invMin').value);
+  const max = parseFloat(document.getElementById('invMax').value);
+  const keepDeleted = status === 'deleted' || status === 'all';
+  const statusFn = INV_STATUS[status] || INV_STATUS[''];
+  invFiltered = invRows.filter((r) => {
+    if (!keepDeleted && invFlag(r, 'DELETED')) return false;
+    if (!statusFn(r)) return false;
+    if (source && r.source !== source) return false;
+    if (category && (String(r.category || '').trim() || '(none)') !== category) return false;
+    if (Number.isFinite(min) && !(r.price >= min)) return false;
+    if (Number.isFinite(max) && !(r.price <= max)) return false;
+    for (const w of must) if (!r.hay.includes(w)) return false;
+    for (const w of not) if (r.hay.includes(w)) return false;
+    return true;
+  });
+  invSortRows();
+  invPage = 0;
+  invLastClicked = -1;
+  invRender();
+}
+
+function invSetSort(s) {
+  invSort = s;
+  document.querySelectorAll('#invSortChips .inv-chip').forEach((b) => b.classList.toggle('on', b.dataset.sort === s));
+  invSortRows();
+  invPage = 0;
+  invRender();
+}
+
+function invSortRows() {
+  const t = (a, b) => String(a.title).localeCompare(String(b.title));
+  const nul = (v, big) => (v === null || v === undefined ? big : v);
+  const disc = (r) => (r.mrp && r.price ? 1 - r.price / r.mrp : 0);
+  const by = {
+    title: t,
+    sold: (a, b) => (b.sold || 0) - (a.sold || 0) || t(a, b),
+    price_asc: (a, b) => nul(a.price, 1e9) - nul(b.price, 1e9) || t(a, b),
+    price_desc: (a, b) => nul(b.price, -1) - nul(a.price, -1) || t(a, b),
+    discount: (a, b) => disc(b) - disc(a) || t(a, b),
+    stock: (a, b) => nul(a.stock, 1e9) - nul(b.stock, 1e9) || t(a, b),
+    updated: (a, b) => String(b.updated || '').localeCompare(String(a.updated || '')) || t(a, b),
+  }[invSort] || t;
+  invFiltered.sort(by);
+}
+
+function invStatusPills(r) {
+  const p = [];
+  const pill = (txt, cls = '') => p.push(`<span class="inv-pill ${cls}">${txt}</span>`);
+  if (invFlag(r, 'DELETED')) pill('deleted', 'red');
+  else if (invFlag(r, 'INACTIVE')) pill('removed', 'red');
+  if (r.stock === 0) pill('sold out', 'red');
+  if (invFlag(r, 'COD_OFF')) pill('COD off', 'orange');
+  if (invFlag(r, 'FREE_DELIVERY')) pill('free delivery', 'green');
+  if (invFlag(r, 'SCARCITY')) pill('scarcity', 'orange');
+  if (invFlag(r, 'SEARCH_HIDDEN')) pill('no search');
+  if (invFlag(r, 'BROWSE_HIDDEN')) pill('no browse');
+  if (invFlag(r, 'OVERRIDE_OFF')) pill('override off');
+  else if (invFlag(r, 'OVERRIDE')) pill('edited', 'green');
+  if (invFlag(r, 'PUBLISHER')) pill('publisher');
+  if (invFlag(r, 'NO_IMAGE')) pill('no image', 'red');
+  return p.join('');
+}
+
+const INV_SOURCE_LABEL = { catalogue: 'Catalogue', custom: 'Admin listing', crossword: 'Crossword', '99bookstores': '99bookstores' };
+
+function invRender() {
+  const body = document.getElementById('invBody');
+  const pages = Math.max(1, Math.ceil(invFiltered.length / INV_PAGE));
+  if (invPage >= pages) invPage = pages - 1;
+  const start = invPage * INV_PAGE;
+  const rows = invFiltered.slice(start, start + INV_PAGE);
+  document.getElementById('invCount').innerHTML = `<strong>${invFiltered.length.toLocaleString('en-IN')}</strong> of ${invRows.length.toLocaleString('en-IN')} products match`
+    + (invLoadedAt ? ` <span class="hint">· loaded ${new Date(invLoadedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>` : '');
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="10" class="hint" style="padding:1rem;">${invRows.length ? 'Nothing matches these filters.' : 'No products loaded.'}</td></tr>`;
+  } else {
+    body.innerHTML = rows.map((r, i) => {
+      const sel = invSelected.has(r.key);
+      const stock = r.stock === null || r.stock === undefined ? '<span class="hint" title="Not counted — always in stock">—</span>'
+        : r.stock === 0 ? '<span class="inv-stock0">0</span>'
+        : r.stock <= 5 ? `<span class="inv-stocklow">${r.stock}</span>` : String(r.stock);
+      const off = r.mrp && r.price && r.mrp > r.price ? ` <span class="hint">−${Math.round((1 - r.price / r.mrp) * 100)}%</span>` : '';
+      return `<tr class="${sel ? 'sel' : ''} ${invFlag(r, 'DELETED') ? 'dead' : ''}">
+        <td><input type="checkbox" ${sel ? 'checked' : ''} onclick="invToggleRow(event, ${start + i})"/></td>
+        <td>${r.image ? `<img src="${esc(productImageSrc(r.image))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"/>` : ''}</td>
+        <td><div class="inv-title" onclick="invOpenEditor('${esc(r.slug)}')">${esc(r.title || r.slug)}</div>
+          <div class="inv-sub">${esc(r.author || '—')} · ${esc(INV_SOURCE_LABEL[r.source] || r.source)} · <a href="/product/${encodeURIComponent(r.key)}/" target="_blank" rel="noopener" style="color:inherit;">${esc(r.slug)}</a></div></td>
+        <td>${esc(r.category || '—')}</td>
+        <td class="inv-num">${invMoney(r.price)}${off}</td>
+        <td class="inv-num">${invMoney(r.mrp)}</td>
+        <td class="inv-num">${stock}</td>
+        <td class="inv-num">${r.sold ? Number(r.sold).toLocaleString('en-IN') : '<span class="hint">0</span>'}</td>
+        <td>${invStatusPills(r)}</td>
+        <td class="hint" style="white-space:nowrap;">${esc(r.updated || '')}</td>
+      </tr>`;
+    }).join('');
+  }
+  const pageCheck = document.getElementById('invPageCheck');
+  pageCheck.checked = rows.length > 0 && rows.every((r) => invSelected.has(r.key));
+  document.getElementById('invPager').innerHTML = invFiltered.length > INV_PAGE
+    ? `<button class="btn-outline" ${invPage ? '' : 'disabled'} onclick="invGo(-1)">‹ Prev</button>
+       <span>Page ${invPage + 1} of ${pages.toLocaleString('en-IN')} · ${(start + 1).toLocaleString('en-IN')}–${(start + rows.length).toLocaleString('en-IN')}</span>
+       <button class="btn-outline" ${invPage < pages - 1 ? '' : 'disabled'} onclick="invGo(1)">Next ›</button>` : '';
+  invRenderSelection();
+}
+
+function invGo(d) {
+  invPage += d;
+  invRender();
+  document.getElementById('inventorySection').scrollIntoView({ block: 'start' });
+}
+
+function invRenderSelection() {
+  const n = invSelected.size;
+  const info = document.getElementById('invSelInfo');
+  const matchingUnselected = invFiltered.length - invFiltered.filter((r) => invSelected.has(r.key)).length;
+  info.innerHTML = (n ? `<strong>${n.toLocaleString('en-IN')} selected</strong> · ` : '')
+    + (matchingUnselected ? `<button class="inv-link" onclick="invSelectAllMatching()">Select all ${invFiltered.length.toLocaleString('en-IN')} matching</button>` : '')
+    + (n ? ` · <button class="inv-link" onclick="invShowSelected()">Show selected</button> · <button class="inv-link" onclick="invClearSelection()">Clear</button>` : '');
+  document.getElementById('invBulk').style.display = n ? '' : 'none';
+}
+
+function invToggleRow(ev, index) {
+  const r = invFiltered[index];
+  if (!r) return;
+  const on = ev.target.checked;
+  if (ev.shiftKey && invLastClicked >= 0) {
+    const [a, b] = [Math.min(invLastClicked, index), Math.max(invLastClicked, index)];
+    for (let i = a; i <= b; i++) { const x = invFiltered[i]; if (x) on ? invSelected.add(x.key) : invSelected.delete(x.key); }
+  } else {
+    on ? invSelected.add(r.key) : invSelected.delete(r.key);
+  }
+  invLastClicked = index;
+  invHidePreview();
+  invRender();
+}
+
+function invTogglePage(on) {
+  const start = invPage * INV_PAGE;
+  for (const r of invFiltered.slice(start, start + INV_PAGE)) on ? invSelected.add(r.key) : invSelected.delete(r.key);
+  invHidePreview();
+  invRender();
+}
+
+function invSelectAllMatching() {
+  for (const r of invFiltered) invSelected.add(r.key);
+  invHidePreview();
+  invRender();
+}
+
+function invClearSelection() {
+  invSelected.clear();
+  invHidePreview();
+  invRender();
+}
+
+function invShowSelected() {
+  invFiltered = invRows.filter((r) => invSelected.has(r.key));
+  invSortRows();
+  invPage = 0;
+  invRender();
+  document.getElementById('invCount').innerHTML += ' <span class="hint">· showing the selection — change any filter to go back</span>';
+}
+
+function invTogglePaste() {
+  const box = document.getElementById('invPasteBox');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+  if (box.style.display === '') document.getElementById('invPasteText').focus();
+}
+
+function invSelectFromPaste() {
+  const lines = String(document.getElementById('invPasteText').value || '').split(/\n|,(?=\S)|\t/).map((s) => s.trim()).filter(Boolean);
+  const byTitle = new Map();
+  for (const r of invRows) {
+    const t = String(r.title || '').toLowerCase().trim();
+    if (t && !byTitle.has(t)) byTitle.set(t, []);
+    if (t) byTitle.get(t).push(r);
+  }
+  let hit = 0;
+  const miss = [];
+  for (const line of lines) {
+    let key = line.toLowerCase().replace(/[?#].*$/, '').replace(/^https?:\/\/[^/]+/, '').replace(/^\/?product\//, '').replace(/^\/+|\/+$/g, '');
+    try { key = decodeURIComponent(key); } catch (_) { /* keep as typed */ }
+    const bySlug = invBySlug.get(key);
+    const found = bySlug ? [bySlug] : (byTitle.get(line.toLowerCase()) || []);
+    if (!found.length) { miss.push(line); continue; }
+    for (const r of found) { invSelected.add(r.key); hit++; }
+  }
+  document.getElementById('invPasteMsg').textContent = `${hit} selected` + (miss.length ? ` · ${miss.length} not found: ${miss.slice(0, 8).join(' | ')}${miss.length > 8 ? ' …' : ''}` : '');
+  invHidePreview();
+  invShowSelected();
+}
+
+function invActionChanged() {
+  const a = document.getElementById('invAction').value;
+  const cfg = INV_ACTIONS[a] || {};
+  const v = document.getElementById('invValue');
+  const n = document.getElementById('invNote');
+  v.style.display = cfg.value ? '' : 'none';
+  v.type = cfg.value === 'number' ? 'number' : 'text';
+  v.placeholder = cfg.value ? cfg.placeholder : '';
+  if (cfg.list) v.setAttribute('list', 'invCategoryList'); else v.removeAttribute('list');
+  v.value = '';
+  n.style.display = cfg.note ? '' : 'none';
+  n.placeholder = cfg.note ? cfg.placeholder : '';
+  n.value = '';
+  if (a === 'cod_off') n.title = 'Standard note: ' + invDefaultCodNote;
+  invHidePreview();
+}
+
+function invHidePreview() {
+  invPlan = null;
+  const box = document.getElementById('invPreview');
+  if (box && !box.dataset.keep) box.innerHTML = '';
+}
+
+/** POSTs in chunks of 500; returns the merged result. */
+async function invPost(body, slugs, onChunk) {
+  const out = { changes: [], skipped: [], applied: 0, failed: [], undo: [], purged: true, index: true };
+  for (let i = 0; i < slugs.length; i += 500) {
+    const res = await adminFetch('/.netlify/functions/admin-inventory', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, slugs: slugs.slice(i, i + 500) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(data.error || ('HTTP ' + res.status)), { partial: out });
+    out.changes.push(...(data.changes || []));
+    out.skipped.push(...(data.skipped || []));
+    out.applied += data.applied || 0;
+    out.failed.push(...(data.failed || []));
+    if (data.undo) out.undo.push(data.undo);
+    if (data.cache_purged === false) out.purged = false;
+    if (data.index_published === false) out.index = false;
+    if (onChunk) onChunk(Math.min(slugs.length, i + 500), slugs.length);
+  }
+  return out;
+}
+
+function invDescribe(v) {
+  if (v === null || v === undefined) return '—';
+  if (typeof v !== 'object') return esc(String(v));
+  return '';
+}
+
+function invChangeCells(ch) {
+  if (typeof ch.before === 'string' || ch.before === null) return `<td>${invDescribe(ch.before)}</td><td>${invDescribe(ch.after)}</td>`;
+  const parts = (o) => {
+    const b = ch.before;
+    const out = [];
+    for (const [k, label] of [['price', 'Price'], ['mrp', 'MRP'], ['stock', 'Stock'], ['scarcity', 'Scarcity'], ['category', 'Category']]) {
+      if (b[k] === ch.after[k]) continue;
+      const val = o[k];
+      out.push(`${label} ${k === 'price' || k === 'mrp' ? invMoney(val) : k === 'stock' ? (val === null ? 'not counted' : val) : k === 'scarcity' ? (val ? 'on' : 'off') : esc(val || '—')}`);
+    }
+    return out.join(' · ');
+  };
+  return `<td>${parts(ch.before)}</td><td><strong>${parts(ch.after)}</strong></td>`;
+}
+
+async function invPreview(btn) {
+  const action = document.getElementById('invAction').value;
+  if (!action) { alert('Choose a bulk action first.'); return; }
+  const cfg = INV_ACTIONS[action] || {};
+  const value = document.getElementById('invValue').value.trim();
+  const note = document.getElementById('invNote').value.trim();
+  if (cfg.value && value === '') { alert('Fill in the value for this action.'); return; }
+  const slugs = [...invSelected];
+  if (!slugs.length) return;
+  const box = document.getElementById('invPreview');
+  btn.disabled = true;
+  box.innerHTML = `<div class="inv-preview"><span class="hint">Checking ${slugs.length.toLocaleString('en-IN')} products against what is stored now…</span></div>`;
+  try {
+    const body = { action, value, note, reason: note, dry_run: true };
+    const plan = await invPost(body, slugs, (done, all) => {
+      box.innerHTML = `<div class="inv-preview"><span class="hint">Checked ${done.toLocaleString('en-IN')} of ${all.toLocaleString('en-IN')}…</span></div>`;
+    });
+    invPlan = { action, value, note, slugs: plan.changes.map((c) => c.slug), changes: plan.changes, skipped: plan.skipped };
+    invRenderPlan();
+  } catch (err) {
+    box.innerHTML = `<div class="inv-preview" style="border-color:var(--red);"><strong style="color:var(--red);">Preview failed:</strong> ${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function invActionLabel(action) {
+  const opt = document.querySelector(`#invAction option[value="${action}"]`);
+  return opt ? opt.textContent.replace(/….*$/, '').replace(/\s*\(.*\)$/, '') : action;
+}
+
+function invRenderPlan() {
+  const p = invPlan;
+  const box = document.getElementById('invPreview');
+  if (!p) { box.innerHTML = ''; return; }
+  const danger = (INV_ACTIONS[p.action] || {}).danger;
+  const reasons = new Map();
+  for (const s of p.skipped) reasons.set(s.reason, (reasons.get(s.reason) || 0) + 1);
+  const skippedHtml = reasons.size ? `<details style="margin:.4rem 0;"><summary class="hint" style="cursor:pointer;">${p.skipped.length.toLocaleString('en-IN')} will be left alone — ${[...reasons.entries()].sort((a, b) => b[1] - a[1]).map(([r, n]) => `${n} ${esc(r)}`).join('; ')}</summary>
+      <div class="scroll"><table><tbody>${p.skipped.slice(0, 500).map((s) => `<tr><td>${esc(s.title || s.slug)}</td><td class="hint">${esc(s.reason)}</td></tr>`).join('')}</tbody></table></div></details>` : '';
+  const valueText = p.value !== '' ? ` <strong>${esc(p.value)}</strong>` : '';
+  box.innerHTML = `<div class="inv-preview" ${danger ? 'style="border-color:var(--red);"' : ''}>
+    <h3>${esc(invActionLabel(p.action))}${valueText} — ${p.changes.length.toLocaleString('en-IN')} product${p.changes.length === 1 ? '' : 's'} will change</h3>
+    ${p.changes.length ? `<div class="scroll"><table><thead><tr><th>Product</th><th>Now</th><th>After</th></tr></thead><tbody>
+      ${p.changes.slice(0, 300).map((ch) => `<tr><td>${esc(ch.title || ch.slug)}</td>${invChangeCells(ch)}</tr>`).join('')}
+      ${p.changes.length > 300 ? `<tr><td colspan="3" class="hint">… and ${(p.changes.length - 300).toLocaleString('en-IN')} more</td></tr>` : ''}
+    </tbody></table></div>` : ''}
+    ${skippedHtml}
+    ${p.changes.length ? `<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.6rem;">
+      ${danger ? `<input id="invConfirmText" placeholder="Type DELETE to confirm" style="max-width:200px;padding:.45rem .6rem;border:1px solid var(--red);"/>` : ''}
+      <button class="${danger ? 'btn-danger' : 'btn-green'}" onclick="invApply(this)">Apply to ${p.changes.length.toLocaleString('en-IN')} product${p.changes.length === 1 ? '' : 's'}</button>
+      <button class="btn-outline" onclick="invHidePreview()">Cancel</button>
+      ${danger ? '<span class="hint">The pages answer 410 Gone and drop out of Google. Every one can be restored from the Products tab or with “Restore deleted pages”.</span>' : ''}
+    </div>` : '<p class="hint">Nothing to change.</p>'}
+  </div>`;
+}
+
+async function invApply(btn) {
+  const p = invPlan;
+  if (!p || !p.changes.length) return;
+  if ((INV_ACTIONS[p.action] || {}).danger) {
+    const typed = (document.getElementById('invConfirmText') || {}).value || '';
+    if (typed.trim() !== 'DELETE') { alert('Type DELETE in the box to confirm.'); return; }
+  }
+  const box = document.getElementById('invPreview');
+  btn.disabled = true;
+  let result;
+  try {
+    result = await invPost({ action: p.action, value: p.value, note: p.note, reason: p.note, dry_run: false }, p.slugs, (done, all) => {
+      btn.textContent = `Applying… ${done.toLocaleString('en-IN')} / ${all.toLocaleString('en-IN')}`;
+    });
+  } catch (err) {
+    const part = err.partial || { applied: 0, undo: [] };
+    invUndoPayloads = part.undo || [];
+    box.innerHTML = `<div class="inv-preview" style="border-color:var(--red);"><strong style="color:var(--red);">Stopped part-way:</strong> ${esc(err.message)}. ${part.applied} product(s) were changed before it stopped.
+      ${invUndoPayloads.length ? '<button class="btn-outline" onclick="invUndo(this)">Undo those</button>' : ''}</div>`;
+    invPlan = null;
+    loadInventory(true);
+    return;
+  }
+  invPlan = null;
+  invUndoPayloads = result.undo;
+  const notes = [];
+  if (result.failed.length) notes.push(`${result.failed.length} did not read back as saved: ${result.failed.slice(0, 5).join(', ')}`);
+  if (!result.purged) notes.push('the storefront cache could not be purged, so it can take up to an hour to show everywhere');
+  if (!result.index) notes.push('the takedown list could not be published — use “Refresh & republish” under Deleted pages on the Products tab');
+  box.dataset.keep = '1';
+  box.innerHTML = `<div class="inv-preview" style="border-color:var(--green);">
+    <h3 style="color:var(--green);">Done — ${result.applied.toLocaleString('en-IN')} product${result.applied === 1 ? '' : 's'} changed</h3>
+    ${notes.length ? `<p class="hint" style="color:var(--orange);">Note: ${esc(notes.join('; '))}.</p>` : ''}
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.4rem;">
+      ${invUndoPayloads.length ? '<button class="btn-outline" onclick="invUndo(this)">↶ Undo this change</button>' : ''}
+      <button class="btn-outline" onclick="delete document.getElementById(\'invPreview\').dataset.keep; invHidePreview()">Close</button>
+    </div></div>`;
+  loadInventory(true);
+}
+
+async function invUndo(btn) {
+  if (!invUndoPayloads.length) return;
+  if (!confirm('Put these products back exactly as they were before the last bulk change?')) return;
+  btn.disabled = true;
+  btn.textContent = 'Undoing…';
+  let done = 0;
+  try {
+    for (const u of invUndoPayloads) {
+      const res = await adminFetch('/.netlify/functions/admin-inventory', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...u, dry_run: false }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      done += data.applied || 0;
+    }
+    invUndoPayloads = [];
+    const box = document.getElementById('invPreview');
+    box.dataset.keep = '1';
+    box.innerHTML = `<div class="inv-preview"><h3>Undone — ${done.toLocaleString('en-IN')} product${done === 1 ? '' : 's'} put back.</h3>
+      <button class="btn-outline" onclick="delete document.getElementById('invPreview').dataset.keep; invHidePreview()">Close</button></div>`;
+  } catch (err) {
+    alert('Undo stopped: ' + err.message + (done ? ` (${done} already put back)` : ''));
+    btn.disabled = false;
+    btn.textContent = '↶ Undo this change';
+  }
+  loadInventory(true);
+}
+
+function invExportCsv() {
+  const rows = invSelected.size ? invRows.filter((r) => invSelected.has(r.key)) : invFiltered;
+  if (!rows.length) { alert('Nothing to export.'); return; }
+  const flagNames = Object.keys(invFlags);
+  const cell = (v) => { const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const head = ['slug', 'title', 'author', 'category', 'source', 'price', 'mrp', 'stock', 'sold', 'status', 'edited', 'isbn', 'publisher', 'url'];
+  const lines = [head.join(',')].concat(rows.map((r) => [
+    r.slug, r.title, r.author, r.category, r.source, r.price, r.mrp, r.stock, r.sold,
+    flagNames.filter((f) => invFlag(r, f)).join(' ').toLowerCase(), r.updated, r.isbn, r.publisher,
+    `https://inkandchai.in/product/${encodeURIComponent(r.key)}/`,
+  ].map(cell).join(',')));
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `inventory-${invSelected.size ? 'selected' : 'filtered'}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+/** Opens one product in the Products tab editor (it may need a server search to find it). */
+function invOpenEditor(slug) {
+  switchTab('products');
+  const box = document.getElementById('productSearch');
+  if (box) { box.value = slug; renderProductList(); }
+  let tries = 0;
+  const timer = setInterval(() => {
+    tries++;
+    const row = (typeof productRows !== 'undefined' ? productRows : []).find((p) => String(p.slug).toLowerCase() === String(slug).toLowerCase());
+    if (row || tries > 40) {
+      clearInterval(timer);
+      if (row) {
+        if (box) { box.value = slug; renderProductList(); }
+        selectProduct(row.slug);
+        document.getElementById('productEditorSection')?.scrollIntoView({ block: 'start' });
+      }
+    }
+  }, 250);
+}
 </script>
 </body>
 </html>
