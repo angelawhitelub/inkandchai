@@ -27,6 +27,7 @@
 'use strict';
 
 const { createClient } = require('@supabase/supabase-js');
+const { catalogueCategory } = require('./utils/catalogue-category');
 const { requireAdmin } = require('./utils/admin-auth');
 const { purgeProductSlugs, purgeProducts } = require('./utils/purge-cache');
 const { makeSlug } = require('./utils/pricing');
@@ -65,7 +66,7 @@ function catalogueRows() {
     if (!sid || !b.title || seen.has(sid)) continue;
     seen.add(sid);
     _catalogue.push({
-      slug: makeSlug(b.title, sid), title: b.title, author: b.author || '', category: b.category || '',
+      slug: makeSlug(b.title, sid), title: b.title, author: b.author || '', category: catalogueCategory(b),
       price_inr: b.price_inr, original_price_inr: b.original_price_inr, image_url: b.image_url || '',
     });
   }

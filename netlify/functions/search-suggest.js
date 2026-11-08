@@ -12,6 +12,7 @@
  */
 
 const path = require('path');
+const { catalogueCategory } = require('./utils/catalogue-category');
 const fs   = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const { makeSlug } = require('./utils/pricing');
@@ -60,7 +61,7 @@ function getCatalog() {
     const slug = makeSlug(b.title || '', b.shopify_id || '').toLowerCase();
     if (!slug) continue;
     _catalog.push({
-      slug, category: String(b.category || ''), isbn: String(b.isbn || ''),
+      slug, category: String(catalogueCategory(b)), isbn: String(b.isbn || ''),
       title: String(b.title).slice(0, 200),
       author: String(b.author || ''),
       price,

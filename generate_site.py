@@ -209,6 +209,17 @@ for b in raw:
 books = list(seen.values())
 print(f"Unique books: {len(books)}")
 
+# A catalogue book's category is the first shop collection it was imported
+# under -- often a sale bucket ("Self-help (On Sale)") rather than its genre.
+# data/category_fixes.json maps shopify_id -> real genre; the Node functions
+# read the same file (utils/catalogue-category.js). Copies, so collection
+# membership (built from the raw rows) is untouched.
+_cat_fix_path = Path(__file__).parent / "data" / "category_fixes.json"
+if _cat_fix_path.exists():
+    _CAT_FIX = json.loads(_cat_fix_path.read_text())
+    books = [dict(b, category=_CAT_FIX[b["shopify_id"]]) if b.get("shopify_id") in _CAT_FIX else b for b in books]
+    print(f"Category fixes applied: {sum(1 for b in books if b.get('shopify_id') in _CAT_FIX)}")
+
 # ── Deleted product pages ────────────────────────────────────────────────────
 # Pages taken down for good from the admin ("Delete Product Page"). A catalogue
 # book has no database row, so the takedown lives in Supabase deleted_products,

@@ -140,6 +140,7 @@ function findCataloguePath() {
 // under e.g. "...-NG-HI" while the storefront looks for "...-ng-hi". 13 override
 // rows — 12 of them price overrides — were silently doing nothing as a result.
 const { makeSlug } = require('./utils/pricing');
+const { catalogueCategory } = require('./utils/catalogue-category');
 
 function slugFromUrl(url) {
   try {
@@ -187,7 +188,7 @@ function normalizeRawBook(book) {
     url: `/product/${slug}/`,
     title: book.title || '',
     author: book.author || '',
-    category: book.category || 'Books',
+    category: catalogueCategory(book) || 'Books',
     tags: book.tags || '',
     description: book.description || '',
     price,
