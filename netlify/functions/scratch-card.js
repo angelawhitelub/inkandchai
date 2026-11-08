@@ -6,6 +6,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { earningOrderGone } = require('./utils/scratch-cards');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -37,6 +38,8 @@ exports.handler = async (event) => {
 
     if (error) return bad(500, error.message);
     if (!card) return ok({ card: null });
+    // A cancelled or refunded order has no card to offer (utils/scratch-cards).
+    if (card.status !== 'redeemed' && await earningOrderGone(supabase, card)) return ok({ card: null });
 
     // Don't reveal the value if still unscratched — only after they scratch
     return ok({
@@ -68,6 +71,8 @@ exports.handler = async (event) => {
       .from('scratch_cards').select('*').eq('code', code).maybeSingle();
     if (fetchErr) return bad(500, fetchErr.message);
     if (!card)    return bad(404, 'Card not found');
+
+    if (await earningOrderGone(supabase, card)) return bad(410, 'This card was cancelled along with its order.');
 
     if (card.status !== 'unscratched') {
       // Already scratched — just return the value (idempotent UX)

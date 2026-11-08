@@ -162,9 +162,12 @@ async function claimScratchCardForOrder(supabase, code, identifier) {
   if (!normalized.startsWith('SCRATCH-')) return { claimed: false, reason: 'not_scratch_code' };
 
   const { data: card } = await supabase
-    .from('scratch_cards').select('id, value_paise, status, redeemed_order_id, expires_at')
+    .from('scratch_cards').select('id, value_paise, min_subtotal_paise, status, redeemed_order_id, expires_at, source_order_id')
     .eq('code', normalized).maybeSingle();
   if (!card)                                      return { claimed: false, reason: 'not_found' };
+  if (card.status === 'scratched' && await earningOrderGone(supabase, card)) {
+    return { claimed: false, reason: 'earning_order_cancelled' };
+  }
   if (card.expires_at && new Date(card.expires_at) < new Date()) return { claimed: false, reason: 'expired' };
   // Already claimed for the SAME order — idempotent (e.g. a retried create-order)
   if (card.status === 'redeemed' && card.redeemed_order_id === identifier) {
@@ -194,4 +197,39 @@ async function claimScratchCardForOrder(supabase, code, identifier) {
   return { claimed: true, value_paise: updated[0].value_paise };
 }
 
-module.exports = { generateCardForOrder, redeemScratchCardForOrder, claimScratchCardForOrder, MIN_SUBTOTAL_PAISE, VALIDITY_DAYS };
+/**
+ * A reward card (won by scratching after a prepaid order) as opposed to the
+ * store-credit codes utils/return-refund.js mints under the same SCRATCH-
+ * prefix. Credit is minted with min_subtotal = its own value; a reward card's
+ * minimum (₹399) is always above its value (₹30–₹200). Credit comes FROM a
+ * refunded order by design, so only reward cards are tied to their order.
+ */
+function isRewardCard(card) {
+  return !!card && Number(card.min_subtotal_paise) !== Number(card.value_paise);
+}
+
+/**
+ * Owner, 8 Nov 2026: a reward card is earned by a purchase that stands. A
+ * customer paid ₹439, won ₹75, cancelled for a full refund and could still
+ * reorder at ₹364. True when the card's earning order exists and no longer
+ * counts as sold (cancelled, refunded, failed, RTO, returned...). A missing
+ * order or a read error is not held against the customer.
+ */
+async function earningOrderGone(supabase, card) {
+  if (!isRewardCard(card) || !card.source_order_id) return false;
+  try {
+    const { data, error } = await supabase
+      .from('orders').select('status').eq('razorpay_order_id', card.source_order_id).maybeSingle();
+    if (error || !data) return false;
+    const { SOLD_STATUSES } = require('./lifetime-sales');
+    return !SOLD_STATUSES.includes(String(data.status || '').toLowerCase());
+  } catch (err) {
+    console.warn('[ScratchCard] earning-order check:', err.message);
+    return false;
+  }
+}
+
+module.exports = {
+  generateCardForOrder, redeemScratchCardForOrder, claimScratchCardForOrder,
+  isRewardCard, earningOrderGone, MIN_SUBTOTAL_PAISE, VALIDITY_DAYS,
+};
