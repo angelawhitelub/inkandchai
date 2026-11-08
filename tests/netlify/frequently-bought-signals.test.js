@@ -58,7 +58,7 @@ test('a real co-purchase outranks every similarity heuristic', () => {
 });
 
 test('popularity is capped so a bestseller cannot bury a genuine match', () => {
-  assert.match(fbt, /Math\.min\(Math\.round\(Math\.log2\(sold \+ 1\) \* 22\), 190\)/);
+  assert.match(fbt, /Math\.min\(Math\.round\(Math\.log2\(sold \+ 1\) \* 22\), related \? 190 : 20\)/);
 });
 
 test('the same book never appears twice in one panel', () => {
@@ -137,3 +137,15 @@ if (fs.existsSync(signalPath)) {
     }
   });
 }
+
+test('a custom book outside the loaded list still gets its own picks', () => {
+  // It used to be "unknown" and showed bestsellers that had nothing to do with it.
+  assert.match(fbt, /if \(!base\) base = await findCustomBase\(slug\)/);
+  // Custom books that real orders mention are candidates, not just the newest 100.
+  assert.match(fbt, /signalSlugs\(await loadLiveSignals\(\)\)/);
+});
+
+test('popularity only lifts a related book', () => {
+  // Uncapped, a bestseller beat category + author + word overlap together.
+  assert.match(fbt, /Math\.min\(Math\.round\(Math\.log2\(sold \+ 1\) \* 22\), related \? 190 : 20\)/);
+});

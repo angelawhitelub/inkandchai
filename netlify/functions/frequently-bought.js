@@ -241,35 +241,94 @@ async function loadProducts() {
   return _productsLoading;
 }
 
+const CUSTOM_COLS = 'slug,title,author,category,description,price_inr,original_price_inr,image_url,tags,is_active';
+
+function supabaseClient() {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return null;
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+}
+
+// Custom books that real orders talk about: everything in the bestseller list
+// and every co-purchase partner. Only the newest 100 custom books used to be
+// candidates, so an admin-added book that sells (or is bought alongside
+// another) could never be recommended -- and ~25k of the ~30k books are custom.
+function signalSlugs(signals) {
+  const out = new Set();
+  for (const slug of signals.rank.keys()) out.add(slug);
+  for (const [slug, partners] of Object.entries(signals.pairs || {})) {
+    out.add(slug);
+    for (const [partner] of partners || []) out.add(partner);
+  }
+  return out;
+}
+
 async function buildProducts() {
   const raw = JSON.parse(fs.readFileSync(findCataloguePath(), 'utf8'));
   const products = raw.map(normalizeRawBook).filter((p) => p.slug && p.title && p.price > 0 && p.img);
-  const seen = new Set(products.map((p) => p.slug));
+  const seen = new Set();
+  for (const p of products) for (const k of [p.slug, ...(p.aliases || [])]) seen.add(k);
+  const add = (row) => {
+    const product = normalizeCustomProduct(row);
+    if (product.slug && product.title && product.price > 0 && product.img && !seen.has(product.slug)) {
+      products.unshift(product);
+      seen.add(product.slug);
+    }
+  };
 
-  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+  const supabase = supabaseClient();
+  if (supabase) {
     try {
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
       const { data, error } = await supabase
         .from('custom_products')
-        .select('slug,title,author,category,description,price_inr,original_price_inr,image_url,tags,is_active')
+        .select(CUSTOM_COLS)
         .eq('is_active', true)
         .order('updated_at', { ascending: false })
         .limit(100);
-      if (!error) {
-        for (const row of data || []) {
-          const product = normalizeCustomProduct(row);
-          if (product.slug && product.title && product.price > 0 && product.img && !seen.has(product.slug)) {
-            products.unshift(product);
-            seen.add(product.slug);
-          }
-        }
-      }
+      if (!error) (data || []).forEach(add);
     } catch (err) {
       console.warn('custom_products unavailable for frequently-bought:', err.message);
+    }
+    try {
+      const wanted = [...signalSlugs(await loadLiveSignals())].filter((slug) => !seen.has(slug));
+      for (let i = 0; i < wanted.length && i < 3000; i += 150) {
+        const { data, error } = await supabase
+          .from('custom_products')
+          .select(CUSTOM_COLS)
+          .eq('is_active', true)
+          .in('slug', wanted.slice(i, i + 150));
+        if (error) break;
+        (data || []).forEach(add);
+      }
+    } catch (err) {
+      console.warn('signal books unavailable for frequently-bought:', err.message);
     }
   }
 
   return products;
+}
+
+// A product page for a custom book outside the loaded list. Before this the
+// book was "unknown" and its panel showed bestsellers (or, while sales data was
+// empty, a hash-shuffled three) that had nothing to do with it.
+const _baseCache = new Map();
+async function findCustomBase(slug) {
+  if (!/^[a-z0-9][a-z0-9-]{1,200}$/.test(slug)) return null;
+  const hit = _baseCache.get(slug);
+  if (hit && Date.now() - hit.at < PRODUCTS_TTL_MS) return hit.product;
+  const supabase = supabaseClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('custom_products')
+    .select(CUSTOM_COLS)
+    .ilike('slug', slug)
+    .eq('is_active', true)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  const product = data && data[0] ? normalizeCustomProduct(data[0]) : null;
+  const usable = product && product.title && product.price > 0 ? product : null;
+  if (_baseCache.size > 2000) _baseCache.clear();
+  _baseCache.set(slug, { product: usable, at: Date.now() });
+  return usable;
 }
 
 function scoreCandidate(base, candidate, signals) {
@@ -288,7 +347,6 @@ function scoreCandidate(base, candidate, signals) {
   // co-purchase history recommends the thing in its category that people
   // actually buy, instead of whichever title happens to share a word.
   const sold = signals ? unitsSold(signals, candidate) : 0;
-  if (sold > 0) score += Math.min(Math.round(Math.log2(sold + 1) * 22), 190);
 
   const baseCat = String(base.category || '').toLowerCase();
   const candCat = String(candidate.category || '').toLowerCase();
@@ -306,6 +364,16 @@ function scoreCandidate(base, candidate, signals) {
   let overlap = 0;
   for (const word of baseWords) if (candWords.has(word)) overlap++;
   score += Math.min(overlap * 8, 48);
+
+  // Popularity only lifts a book that is related to this one (same category or
+  // author, or a real word in common). Uncapped, a bestseller beat every
+  // relevance signal combined (190 vs 70 + 55 + 48), so a book on Adivasi
+  // history recommended a stock-market guide and a Sherlock Holmes.
+  const related = together > 0
+    || (baseCat && candCat && baseCat === candCat)
+    || (baseAuthor && candAuthor && baseAuthor === candAuthor)
+    || overlap >= 2;
+  if (sold > 0) score += Math.min(Math.round(Math.log2(sold + 1) * 22), related ? 190 : 20);
 
   const diff = Math.abs((base.price || 0) - (candidate.price || 0));
   if (diff <= 75) score += 14;
@@ -330,7 +398,11 @@ exports.handler = async (event) => {
       .filter(Boolean)[0]
       .toLowerCase();
     const products = await loadProducts();
-    const base = products.find((p) => p.slug === slug || (p.aliases || []).includes(slug)) || null;
+    let base = products.find((p) => p.slug === slug || (p.aliases || []).includes(slug)) || null;
+    if (!base) base = await findCustomBase(slug).catch((err) => {
+      console.warn('frequently-bought base lookup failed:', err.message);
+      return null;
+    });
     if (!base) {
       // Slug not found — return popular books as fallback instead of 404
       // This prevents "Top resources not found" noise in analytics
