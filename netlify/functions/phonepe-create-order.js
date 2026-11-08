@@ -21,7 +21,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { recordMarketingOptIn } = require('./utils/marketing-optin');
 const { resolveCartPrices, makeOrderId } = require('./utils/pricing');
-const { claimScratchCardForOrder, earningOrderGone } = require('./utils/scratch-cards');
+const { claimScratchCardForOrder, rewardCardBlock } = require('./utils/scratch-cards');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { orderShipping } = require('./utils/free-delivery');
@@ -91,7 +91,7 @@ async function resolveChosenCoupon(supabase, cart, subtotal, rawCode) {
   if (card.status !== 'scratched')                            return { code: '', discount: 0, error: 'not_scratched' };
   if (new Date(card.expires_at) < new Date())                 return { code: '', discount: 0, error: 'expired' };
   if (subtotal * 100 < (card.min_subtotal_paise || 0))        return { code: '', discount: 0, error: 'min_subtotal' };
-  if (await earningOrderGone(supabase, card))                 return { code: '', discount: 0, error: 'earning_order_cancelled' };
+  { const block = await rewardCardBlock(supabase, card); if (block) return { code: '', discount: 0, error: block.reason }; }
 
   return {
     code: scratchCode,

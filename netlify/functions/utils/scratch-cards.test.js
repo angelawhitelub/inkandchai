@@ -51,11 +51,29 @@ test('claimScratchCardForOrder refuses a card whose order was cancelled, and cla
   const card = reward();
   let db = fakeDb({ orders: { 'IC-1': 'cancelled' }, cards: { [card.code]: card } });
   let r = await S.claimScratchCardForOrder(db, card.code, 'IC-2');
-  assert.deepEqual(r, { claimed: false, reason: 'earning_order_cancelled' });
+  assert.deepEqual(r, { claimed: false, reason: 'order_cancelled' });
   assert.equal(db.updates.length, 0);
 
-  db = fakeDb({ orders: { 'IC-1': 'paid' }, cards: { [card.code]: card } });
+  db = fakeDb({ orders: { 'IC-1': 'shipped' }, cards: { [card.code]: card } });
   r = await S.claimScratchCardForOrder(db, card.code, 'IC-2');
   assert.equal(r.claimed, true);
   assert.equal(r.value_paise, 7500);
+});
+
+test('rewardCardBlock: usable only once the earning order has shipped; store credit always usable', async () => {
+  const cases = [['paid', 'not_unlocked'], ['pickup_scheduled', 'not_unlocked'], ['shipped', null], ['in_transit', null], ['delivered', null], ['refunded', 'order_cancelled']];
+  for (const [status, want] of cases) {
+    const block = await S.rewardCardBlock(fakeDb({ orders: { 'IC-1': status } }), reward());
+    assert.equal(block ? block.reason : null, want, status);
+  }
+  const b = await S.rewardCardBlock(fakeDb({ orders: { 'IC-1': 'paid' } }), reward());
+  assert.match(b.message, /IC-1 ships/);
+  const credit = reward({ value_paise: 43900, min_subtotal_paise: 43900 });
+  assert.equal(await S.rewardCardBlock(fakeDb({ orders: { 'IC-1': 'refunded' } }), credit), null);
+});
+
+test('claimScratchCardForOrder waits for the earning order to ship', async () => {
+  const card = reward();
+  const db = fakeDb({ orders: { 'IC-1': 'paid' }, cards: { [card.code]: card } });
+  assert.deepEqual(await S.claimScratchCardForOrder(db, card.code, 'IC-2'), { claimed: false, reason: 'not_unlocked' });
 });

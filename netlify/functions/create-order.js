@@ -17,7 +17,7 @@ const Razorpay = require('razorpay');
 const { createClient } = require('@supabase/supabase-js');
 const { recordMarketingOptIn } = require('./utils/marketing-optin');
 const { resolveCartPrices } = require('./utils/pricing');
-const { claimScratchCardForOrder, earningOrderGone } = require('./utils/scratch-cards');
+const { claimScratchCardForOrder, rewardCardBlock } = require('./utils/scratch-cards');
 const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { orderShipping } = require('./utils/free-delivery');
@@ -80,7 +80,7 @@ async function resolveChosenCoupon(supabase, cart, subtotal, rawCode) {
   if (card.status !== 'scratched')                      return { code: '', discount: 0 };
   if (new Date(card.expires_at) < new Date())           return { code: '', discount: 0 };
   if (subtotal * 100 < (card.min_subtotal_paise || 0)) return { code: '', discount: 0 };
-  if (await earningOrderGone(supabase, card))           return { code: '', discount: 0 };
+  if (await rewardCardBlock(supabase, card))            return { code: '', discount: 0 };
   return {
     code: scratchCode,
     discount: Math.round((card.value_paise || 0) / 100),

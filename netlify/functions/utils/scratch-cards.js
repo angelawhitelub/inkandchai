@@ -165,8 +165,9 @@ async function claimScratchCardForOrder(supabase, code, identifier) {
     .from('scratch_cards').select('id, value_paise, min_subtotal_paise, status, redeemed_order_id, expires_at, source_order_id')
     .eq('code', normalized).maybeSingle();
   if (!card)                                      return { claimed: false, reason: 'not_found' };
-  if (card.status === 'scratched' && await earningOrderGone(supabase, card)) {
-    return { claimed: false, reason: 'earning_order_cancelled' };
+  if (card.status === 'scratched') {
+    const block = await rewardCardBlock(supabase, card);
+    if (block) return { claimed: false, reason: block.reason };
   }
   if (card.expires_at && new Date(card.expires_at) < new Date()) return { claimed: false, reason: 'expired' };
   // Already claimed for the SAME order — idempotent (e.g. a retried create-order)
@@ -215,21 +216,51 @@ function isRewardCard(card) {
  * counts as sold (cancelled, refunded, failed, RTO, returned...). A missing
  * order or a read error is not held against the customer.
  */
-async function earningOrderGone(supabase, card) {
-  if (!isRewardCard(card) || !card.source_order_id) return false;
+async function earningOrderStatus(supabase, card) {
+  if (!isRewardCard(card) || !card.source_order_id) return null;
   try {
     const { data, error } = await supabase
       .from('orders').select('status').eq('razorpay_order_id', card.source_order_id).maybeSingle();
-    if (error || !data) return false;
-    const { SOLD_STATUSES } = require('./lifetime-sales');
-    return !SOLD_STATUSES.includes(String(data.status || '').toLowerCase());
+    if (error || !data) return null;
+    return String(data.status || '').toLowerCase();
   } catch (err) {
     console.warn('[ScratchCard] earning-order check:', err.message);
-    return false;
+    return null;
   }
+}
+
+async function earningOrderGone(supabase, card) {
+  const status = await earningOrderStatus(supabase, card);
+  if (status === null) return false;
+  const { SOLD_STATUSES } = require('./lifetime-sales');
+  return !SOLD_STATUSES.includes(status);
+}
+
+// Owner's rule, 8 Nov 2026: a won card is usable only once the order that won
+// it has shipped. Used straight away, the earning order could still be
+// cancelled for a full refund after the discount was spent -- which today's
+// cancel check above cannot see coming.
+const SHIPPED_STATUSES = ['shipped', 'in_transit', 'out_for_delivery', 'delivered'];
+
+/**
+ * Why a card cannot be spent yet, or null when it can. Store credit and cards
+ * whose order cannot be read are never held back.
+ *   { reason: 'order_cancelled' | 'not_unlocked', message }
+ */
+async function rewardCardBlock(supabase, card) {
+  const status = await earningOrderStatus(supabase, card);
+  if (status === null) return null;
+  const { SOLD_STATUSES } = require('./lifetime-sales');
+  if (!SOLD_STATUSES.includes(status)) {
+    return { reason: 'order_cancelled', message: 'This scratch card was cancelled along with the order that won it.' };
+  }
+  if (!SHIPPED_STATUSES.includes(status)) {
+    return { reason: 'not_unlocked', message: `This scratch card unlocks once order ${card.source_order_id} ships — use it on your next order after that.` };
+  }
+  return null;
 }
 
 module.exports = {
   generateCardForOrder, redeemScratchCardForOrder, claimScratchCardForOrder,
-  isRewardCard, earningOrderGone, MIN_SUBTOTAL_PAISE, VALIDITY_DAYS,
+  isRewardCard, earningOrderGone, rewardCardBlock, SHIPPED_STATUSES, MIN_SUBTOTAL_PAISE, VALIDITY_DAYS,
 };

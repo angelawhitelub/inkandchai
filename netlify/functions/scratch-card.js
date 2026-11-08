@@ -6,7 +6,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { earningOrderGone } = require('./utils/scratch-cards');
+const { earningOrderGone, rewardCardBlock } = require('./utils/scratch-cards');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -119,6 +119,8 @@ exports.handler = async (event) => {
     if (card.status === 'redeemed') return ok({ valid: false, reason: 'already_used' });
     if (card.status === 'unscratched') return ok({ valid: false, reason: 'not_scratched' });
     if (new Date(card.expires_at) < new Date()) return ok({ valid: false, reason: 'expired' });
+    const block = await rewardCardBlock(supabase, card);
+    if (block) return ok({ valid: false, reason: block.reason, message: block.message });
     if (subtotalPaise < (card.min_subtotal_paise || 0)) {
       return ok({
         valid: false,

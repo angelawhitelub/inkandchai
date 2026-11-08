@@ -1095,7 +1095,7 @@ async function applyCoupon() {
           not_scratched: 'Please scratch the card first.',
           expired: 'This scratch card has expired.',
           min_subtotal: `Add ₹${Math.max(0, ((j.min_subtotal_paise||0)/100 - cartSubtotal(cart))).toLocaleString('en-IN')} more to use this card.`,
-        }[j.reason] || 'Scratch card not valid.';
+        }[j.reason] || j.message || 'Scratch card not valid.';
         if (msg) { msg.textContent = reasonText; msg.style.color = '#c97a7a'; }
         return;
       }
@@ -2315,7 +2315,7 @@ function renderScratchCard(slot, card) {
           <div class="scratch-prize-amt" id="sAmt">${isScratched ? '₹' + (card.value_paise/100) : '✦'}</div>
           <div class="scratch-prize-label">cashback coupon</div>
           <div class="scratch-prize-code">${card.code}</div>
-          <div class="scratch-prize-exp">Min order ${minOrder} · Expires ${expStr}</div>
+          <div class="scratch-prize-exp">Use after this order ships · Min order ${minOrder} · Expires ${expStr}</div>
         </div>
         <canvas class="scratch-canvas" id="sCanvas" width="280" height="280"></canvas>
       </div>
