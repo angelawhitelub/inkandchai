@@ -1126,6 +1126,7 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-outline" onclick="sendCourierLabelsToTeam(this,'nimbuspost')" style="border-color:rgba(201,168,76,0.5);color:var(--gold);" title="WhatsApp the sorted NimbusPost label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send NimbusPost Labels to Team</button>
       <button class="btn-outline" onclick="downloadDtdcUpload(this)" style="border-color:rgba(255,204,0,0.55);color:#ffcc00;" title="Every unshipped order (no AWB, last 30 days) filled into DTDC's Bulk Upload template (sample-consignment-upload.xlsx): COD amount only on COD orders, the balance on partial COD. Upload it in the DTDC customer portal. Books nothing.">⬇ DTDC Bulk Upload (.xlsx)</button>
       <button class="btn-green" onclick="pushAllToIthinkPanel(this)" style="background:rgba(120,160,255,0.14);border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel. Shows a dry-run preview with the COD collectable total before anything is sent. No courier is chosen and no AWB is generated. A suffix is added to the order number sent to iThink so the batch is identifiable and does not collide with records already in the panel.">Push to iThink Panel (No AWB)</button>
+      <button class="btn-outline" onclick="xbClearShipped(this)" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Remove orders from the XpressBees panel's Pending list that another courier is already carrying (they have an AWB here) or that were cancelled/refunded here. Only unbooked rows are touched, never a real XpressBees shipment. Shows the list first; nothing is sent to customers. Also runs by itself daily at 09:00 IST.">🧹 Clear Shipped from XpressBees Pending</button>
       <button class="btn-green" onclick="xbBookOpen()" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Book orders on XpressBees through the Custom API: real AWBs, charged to the XpressBees wallet, customer notified. Uses the ticked orders, or every unshipped order. Preview with prices first; failures grouped by cause with what to do.">🐝 Book on XpressBees (API, AWB)</button>
       <button class="btn-green" onclick="pushServiceableToDelhivery(this)" style="background:rgba(181,107,18,0.12);border-color:rgba(181,107,18,0.55);color:var(--orange);" title="Book every unshipped order whose pincode Delhivery serves. Shows a preview first; each booked order gets a real AWB and is charged to the Delhivery wallet. Failures are grouped by cause with what to do next.">🚚 Book Serviceable on Delhivery (AWB)</button>
       <button class="btn-green" onclick="npBulkShip(this)" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Create NimbusPost shipments now. This assigns couriers and AWBs immediately.">🚀 Create All NimbusPost Shipments (AWB)</button>
@@ -14578,6 +14579,77 @@ async function sendCourierLabelsToTeam(btn, courier) {
 }
 
 let xbPanelPushActive = false;
+// ── XpressBees: clear Pending rows that are already shipped elsewhere ──────
+// The panel's channel importer never drops a row it pulled, so an order we
+// shipped through NimbusPost/DTDC/Delhivery (or cancelled here) keeps sitting
+// in its Pending list with a live Ship button -- a double shipment waiting to
+// happen. xpressbees-order-cancel (any_courier + closed_here) clears only
+// unbooked 'new' rows whose order has an AWB here or will never ship; booked
+// XpressBees shipments are never touched. Dry run first, then the owner
+// confirms the exact list. Customers are not notified; our orders are untouched.
+let xbClearActive = false;
+async function xbClearShipped(btn) {
+  if (xbClearActive) { alert('A clear-up is already running.'); return; }
+  xbClearActive = true;
+  const orig = btn ? btn.innerHTML : '';
+  const body = { any_courier: true, closed_here: true, limit: 200 };
+  const call = async (dry) => {
+    const res = await adminFetch('/.netlify/functions/xpressbees-order-cancel', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, dry_run: dry }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    return data;
+  };
+  try {
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Reading XpressBees…'; }
+    const plan = await call(true);
+    const rows = plan.plan || [];
+    if (!rows.length) {
+      alert('Nothing to clear.\n\nRead ' + (plan.panel_rows_read || 0) + ' XpressBees panel rows: none of the unbooked ones belongs to an order that is already shipped or cancelled here.');
+      return;
+    }
+    const byCourier = {};
+    let closed = 0;
+    for (const r of rows) {
+      if (r.reason === 'closed_here') closed++;
+      else byCourier[r.carried_by || 'other'] = (byCourier[r.carried_by || 'other'] || 0) + 1;
+    }
+    const lines = Object.entries(byCourier).sort((a, b) => b[1] - a[1]).map(([c, n]) => '  • ' + n + ' shipped by ' + c);
+    if (closed) lines.push('  • ' + closed + ' cancelled/refunded here (will never ship)');
+    const sample = rows.slice(0, 12).map((r) => '  ' + r.order + (r.carried_by ? ' — ' + r.carried_by : ' — ' + r.our_status)).join('\n');
+    const more = rows.length > 12 ? '\n  …and ' + (rows.length - 12) + ' more' : '';
+    const ok = confirm(
+      'Clear ' + rows.length + ' order' + (rows.length === 1 ? '' : 's') + ' from XpressBees Pending?\n\n' +
+      lines.join('\n') + '\n\n' + sample + more + '\n\n' +
+      'Only unbooked panel rows are removed (no XpressBees AWB, nothing charged). Booked XpressBees shipments are never touched' +
+      ((plan.skipped_booked || plan.skipped_has_awb) ? ' (' + ((plan.skipped_booked || 0) + (plan.skipped_has_awb || 0)) + ' left alone)' : '') +
+      '. Customers are not messaged and your orders do not change.\n\nThis cannot be undone in the panel.'
+    );
+    if (!ok) return;
+    if (btn) btn.innerHTML = '<span class="spinner"></span>Clearing ' + rows.length + '…';
+    const out = await call(false);
+    const results = out.results || [];
+    const done = results.filter((r) => r.ok);
+    const failed = results.filter((r) => !r.ok);
+    let msg = '✅ Cleared from XpressBees Pending: ' + done.length;
+    if (failed.length) {
+      const why = {};
+      for (const f of failed) { const m = String(f.message || f.error || 'unknown').slice(0, 80); why[m] = (why[m] || 0) + 1; }
+      msg += '\n❌ Not cleared: ' + failed.length + '\n' + Object.entries(why).map(([m, n]) => '  • ' + n + ' × ' + m).join('\n');
+    }
+    if ((out.to_cancel || 0) >= 200) msg += '\n\nThere may be more — press the button again.';
+    msg += '\n\nRefresh the XpressBees Orders page to see the shorter list.';
+    alert(msg);
+  } catch (e) {
+    alert('Could not clear XpressBees Pending: ' + e.message);
+  } finally {
+    xbClearActive = false;
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
 async function pushAllToXpressbeesPanel(btn) {
   if (xbPanelPushActive) {
     alert('An XpressBees queue run is already in progress. Please wait for it to finish.');
