@@ -89,7 +89,7 @@ crons = [
   "30 4 * * *",    # request-reviews-scheduled, not-picked-up-report-scheduled
   "30 14 * * *",   # whatsapp-broadcast-oneoff
   "30 13 * * 2,5", # whatsapp-broadcast-scheduled
-  "0 22 * * *",     # bestseller-agent-scheduled
+  "0 22 * * *",     # bestseller-agent-scheduled, ai-related-scheduled
   "30 3 * * *",    # xpressbees-queue-cleanup-scheduled
   "30 3,8 * * *",  # xpressbees- + nimbuspost-labels-send-scheduled (09:00 + 14:00 IST)
   "0 7 * * *",     # stock-delay-notify-scheduled (12:30 IST; STOCK_DELAY_NOTIFY gates it)

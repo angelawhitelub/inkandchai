@@ -174,6 +174,14 @@ function scoreRelated(base, cand, ctx) {
 
   if (together > 0) { score += 180 + Math.round(Math.log2(together + 1) * 50); why.push('bought'); }
 
+  // AI similarity (utils/ai-related.js): books close in meaning even when they
+  // share no words. A close one counts as related on its own.
+  const near = ctx.ai;
+  if (near && near.sim > 0) {
+    score += ctx.aiBonus ? ctx.aiBonus(near.sim, near.rank) : 0;
+    if (near.sim >= 0.5 || (near.rank < 12 && near.sim >= 0.42)) why.push('ai');
+  }
+
   // Cosine over IDF-weighted word sets (title + tags + description).
   let dot = 0;
   const bAll = new Set([...b.title, ...b.body]);
@@ -213,6 +221,8 @@ function rankRelated(base, pool, ctx) {
     if (!cand.img || !(cand.price > 0)) continue;
     const r = scoreRelated(base, cand, {
       index: ctx.index,
+      ai: ctx.ai ? ctx.ai(cand) : null,
+      aiBonus: ctx.aiBonus,
       together: ctx.coBuy ? ctx.coBuy(cand) : 0,
       sold: ctx.unitsSold ? ctx.unitsSold(cand) : 0,
     });

@@ -425,6 +425,44 @@ async function targetedCandidates(base, index) {
   return out;
 }
 
+// AI similarity vectors (ai-related-scheduled keeps them in KV). ~9 MB, read
+// once per isolate and kept for an hour; missing or unreadable means the shelf
+// simply ranks without AI.
+const aiRelated = require('./utils/ai-related');
+const AI_TTL_MS = 60 * 60 * 1000;
+let _ai = null;
+let _aiAt = 0;
+let _aiLoading = null;
+async function loadAiIndex() {
+  if (_aiAt && Date.now() - _aiAt < AI_TTL_MS) return _ai;
+  if (!_aiLoading) {
+    _aiLoading = (async () => {
+      try {
+        const store = require('@netlify/blobs').getStore(aiRelated.STORE);
+        const [meta, vec] = await Promise.all([
+          store.get(aiRelated.META_KEY, { type: 'json' }),
+          store.get(aiRelated.VEC_KEY),
+        ]);
+        _ai = meta && vec ? aiRelated.buildIndex(meta, aiRelated.fromBase64(vec)) : null;
+      } catch (err) {
+        console.warn('ai-related index unavailable:', err.message);
+        _ai = null;
+      }
+      _aiAt = Date.now();
+      return _ai;
+    })().finally(() => { _aiLoading = null; });
+  }
+  return _aiLoading;
+}
+
+async function customBySlugs(slugs) {
+  const supabase = supabaseClient();
+  if (!supabase || !slugs.length) return [];
+  const { data, error } = await supabase.from('custom_products').select(CUSTOM_COLS)
+    .eq('is_active', true).in('slug', slugs.slice(0, 150));
+  return error ? [] : (data || []).map(normalizeCustomProduct);
+}
+
 const _relatedCache = new Map();
 async function relatedFor(base, products, signals, { limit, exclude }) {
   const key = `${base.slug}|${limit}|${[...exclude].sort().join(',')}`;
@@ -433,8 +471,19 @@ async function relatedFor(base, products, signals, { limit, exclude }) {
 
   const index = indexFor(products);
   const known = new Set(products.map((p) => p.slug));
-  const extra = (await targetedCandidates(base, index).catch(() => []))
-    .filter((p) => p.slug && !known.has(p.slug));
+  const [targeted, aiIndex] = await Promise.all([
+    targetedCandidates(base, index).catch(() => []),
+    loadAiIndex(),
+  ]);
+  const extra = targeted.filter((p) => p.slug && !known.has(p.slug));
+
+  // The books nearest in meaning, from all ~35k -- admin-added ones outside
+  // the shared pool are fetched by slug.
+  const near = aiRelated.neighbours(aiIndex, [base.slug, ...(base.aliases || [])], 80, 0.3);
+  const nearBy = new Map(near.map((row, rank) => [row.slug, { sim: row.sim, rank }]));
+  const have = new Set([...known, ...extra.map((p) => p.slug)]);
+  const missing = near.map((row) => row.slug).filter((slug) => !have.has(slug));
+  if (missing.length) extra.push(...await customBySlugs(missing).catch(() => []));
 
   // The frequently-bought-together panel already shows its top three; the
   // shelf under it should not repeat them.
@@ -452,6 +501,8 @@ async function relatedFor(base, products, signals, { limit, exclude }) {
     coBuy: (cand) => coBuyCount(signals, base, cand),
     unitsSold: (cand) => unitsSold(signals, cand),
     hash: (cand) => deterministicHash(`${base.slug}:${cand.slug}`),
+    ai: (cand) => nearBy.get(cand.slug) || null,
+    aiBonus: aiRelated.aiBonus,
   });
 
   const body = {
@@ -459,6 +510,7 @@ async function relatedFor(base, products, signals, { limit, exclude }) {
     recommendations: rows.map((row) => related.slim(row.product, row.why)),
     heading: related.shelfHeading(base, rows),
     basis: 'related',
+    ai: aiIndex ? { books: aiIndex.n, updated_at: aiIndex.updatedAt, matched: near.length > 0 } : null,
   };
   if (_relatedCache.size > 3000) _relatedCache.clear();
   _relatedCache.set(key, { at: Date.now(), body });
