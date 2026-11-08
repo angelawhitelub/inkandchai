@@ -1118,7 +1118,7 @@ select,input,textarea{font-size:1rem;}
     <div class="focus-actions">
       <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
-      <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Import all unshipped orders into the NimbusPost Orders panel without choosing couriers or generating AWBs.">Push to NimbusPost Panel (No AWB)</button>
+      <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Checks which unshipped orders XpressBees can deliver first, then lets you push only the XpressBees-unserviceable ones to the NimbusPost Orders panel, or all of them. No couriers chosen, no AWBs generated.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="pushAllToXpressbeesPanel(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel. Recent orders are collected automatically; this also queues the older ones. No courier is chosen and no AWB is generated.">Push to XpressBees Panel (No AWB)</button>
       <button class="btn-green" onclick="downloadCourierLabels(this,'xpressbees')" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Every XpressBees shipment in Ready to Pickup as one label PDF sorted for packing: pick list first, same-book orders grouped with the biggest quantities first, mixed orders after, the book names stamped under each label, and a blank page last. Read-only at XpressBees.">🏷️ XpressBees Labels (sorted)</button>
       <button class="btn-outline" onclick="sendCourierLabelsToTeam(this,'xpressbees')" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="WhatsApp the sorted XpressBees label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send XpressBees Labels to Team</button>
@@ -14372,6 +14372,10 @@ async function runReviewRequest(dryRun, btn) {
 
 // ── Shiprocket: push all unshipped orders ────────────────────────────────────
 let nimbusPanelPushActive = false;
+// Before pushing to NimbusPost, ask XpressBees which unshipped orders it can
+// deliver (admin-xb-serviceability, a read-only rate check per pincode). The
+// operator then pushes only the ones XpressBees cannot serve -- the rest stay
+// for XpressBees -- or pushes everything as before.
 async function pushAllToNimbusPanel(btn) {
   if (nimbusPanelPushActive) {
     alert('A NimbusPost panel import is already running. Please wait for it to finish.');
@@ -14380,8 +14384,67 @@ async function pushAllToNimbusPanel(btn) {
   const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending','replacement_pending'];
   const unshipped = allOrders.filter(o => UNSHIPPED.includes(o.status));
   if (!unshipped.length) { alert('No unshipped orders found in the current view.'); return; }
-  if (!confirm(`Push ${unshipped.length} unshipped order${unshipped.length > 1 ? 's' : ''} to the NimbusPost Orders panel?\n\nNo courier will be selected and no AWB will be generated. You can ship these orders later from NimbusPost.`)) return;
 
+  const orig = btn ? btn.innerHTML : '';
+  const allNimbusPushButtons = [...document.querySelectorAll('[onclick="pushAllToNimbusPanel(this)"]')];
+  allNimbusPushButtons.forEach(button => { button.disabled = true; });
+  if (btn) btn.innerHTML = '<span class="spinner"></span>Checking XpressBees pincodes…';
+  let check = null;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-xb-serviceability', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    check = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(check.error || ('HTTP ' + res.status));
+  } catch (err) {
+    check = { error: err.message };
+  } finally {
+    allNimbusPushButtons.forEach(button => { button.disabled = false; });
+    if (btn) btn.innerHTML = orig;
+  }
+  npPushChoice(btn, unshipped.length, check);
+}
+
+function npPushChoice(btn, total, check) {
+  document.getElementById('npPushChoice')?.remove();
+  const c = (check && check.counts) || {};
+  const bad = ((check && check.orders) || []).filter(o => o.serviceable === false);
+  const unknown = ((check && check.orders) || []).filter(o => o.serviceable === null && !o.booked);
+  const wrap = document.createElement('div');
+  wrap.id = 'npPushChoice';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+  const list = bad.slice(0, 40).map(o => `<div style="display:flex;justify-content:space-between;gap:.6rem;font-size:.72rem;padding:.2rem 0;border-bottom:1px solid var(--border,#3333)"><span>${esc(o.order)}</span><span style="opacity:.75">${esc(o.pincode || '')} · ${esc(o.payment || '')}</span></div>`).join('')
+    + (bad.length > 40 ? `<div style="font-size:.7rem;opacity:.7;padding-top:.3rem">…and ${bad.length - 40} more</div>` : '');
+  const summary = check && check.error
+    ? `<p style="color:#ff6a5e;font-size:.8rem">Could not check XpressBees serviceability: ${esc(check.error)}</p>`
+    : `<p style="font-size:.82rem;line-height:1.6;margin:.2rem 0 .6rem">
+         ✅ <b>${c.serviceable || 0}</b> order${c.serviceable === 1 ? '' : 's'} serviceable on XpressBees<br>
+         ⛔ <b>${c.not_serviceable || 0}</b> not serviceable on XpressBees<br>
+         ${c.unknown ? `❔ <b>${c.unknown}</b> could not be checked (no readable pincode or XpressBees did not answer)<br>` : ''}
+         ${c.booked ? `🚚 ${c.booked} already have an AWB (never pushed)<br>` : ''}
+         <span style="opacity:.7;font-size:.72rem">${c.pincodes_checked || 0} pincode checks from pickup ${esc(check.origin || '')}. Nothing is booked or charged by this check.</span></p>`;
+  wrap.innerHTML = `
+    <div style="background:var(--bg-card,#1b1b1b);color:var(--text,#eee);border:1px solid var(--border,#444);border-radius:14px;max-width:520px;width:100%;max-height:85vh;overflow:auto;padding:1.2rem 1.3rem;">
+      <h3 style="margin:0 0 .4rem;font-size:1rem">Push to NimbusPost Panel (No AWB)</h3>
+      ${summary}
+      ${bad.length ? `<details style="margin-bottom:.8rem"><summary style="cursor:pointer;font-size:.75rem">Show the ${bad.length} not serviceable on XpressBees</summary>${list}</details>` : ''}
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <button class="btn-green" id="npPushBad" ${bad.length ? '' : 'disabled'}>Push only ${bad.length} unserviceable to NimbusPost</button>
+        <button class="btn-outline" id="npPushAll">Push all ${total} anyway</button>
+        <button class="btn-outline" id="npPushCancel" style="opacity:.8">Cancel</button>
+      </div>
+      ${unknown.length ? `<p style="font-size:.68rem;opacity:.7;margin:.6rem 0 0">The ${unknown.length} that could not be checked are not in "only unserviceable"; use "Push all" or push them by hand.</p>` : ''}
+    </div>`;
+  document.body.appendChild(wrap);
+  const close = () => wrap.remove();
+  wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+  wrap.querySelector('#npPushCancel').onclick = close;
+  wrap.querySelector('#npPushAll').onclick = () => { close(); runNimbusPanelPush(btn, { all_unshipped: true }); };
+  wrap.querySelector('#npPushBad').onclick = () => { close(); runNimbusPanelPush(btn, { order_ids: bad.map(o => o.order), xb_unserviceable: true }); };
+}
+
+async function runNimbusPanelPush(btn, body) {
+  if (nimbusPanelPushActive) { alert('A NimbusPost panel import is already running.'); return; }
   const orig = btn ? btn.innerHTML : '';
   const allNimbusPushButtons = [...document.querySelectorAll('[onclick="pushAllToNimbusPanel(this)"]')];
   nimbusPanelPushActive = true;
@@ -14392,12 +14455,12 @@ async function pushAllToNimbusPanel(btn) {
     const res = await fetch('/.netlify/functions/nimbuspost-order-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
-      body: JSON.stringify({ all_unshipped: true }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     const s = data.summary || {};
-    let message = `NimbusPost panel import complete:\n\n✅ Newly pushed: ${s.pushed || 0}\n⏭ Already in NimbusPost: ${s.skipped || 0}\n🚚 Left alone, booked with another courier: ${(s.booked_elsewhere || []).length}\n❌ Failed: ${s.failed || 0}`;
+    let message = `NimbusPost panel import complete${body.order_ids ? ' (XpressBees-unserviceable only)' : ''}:\n\n✅ Newly pushed: ${s.pushed || 0}\n⏭ Already in NimbusPost: ${s.skipped || 0}\n🚚 Left alone, booked with another courier: ${(s.booked_elsewhere || []).length}\n❌ Failed: ${s.failed || 0}`;
     if (s.booked_elsewhere?.length) message += `\n\nBooked elsewhere (not pushed):\n${s.booked_elsewhere.slice(0, 8).join('\n')}`;
     if (s.held_preorders?.length) message += `\n\n📅 Pre-orders held back:\n${s.held_preorders.slice(0, 8).join('\n')}`;
     if (data.errors?.length) message += `\n\nFirst errors:\n${data.errors.slice(0, 5).join('\n')}`;

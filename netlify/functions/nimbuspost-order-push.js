@@ -412,7 +412,13 @@ exports.handler = async (event) => {
       // Pushed to iThink or queued for XpressBees, with its AWB not back yet:
       // pushing it here too is how IC-20260914-9VP7A shipped three times.
       const elsewhere = bookedElsewhere(order);
-      if (elsewhere && !forceElsewhere) {
+      // xb_unserviceable: the admin checked these named orders against
+      // XpressBees serviceability and it cannot deliver them, so a queued
+      // XpressBees feed row is no reason to hold them back. An AWB or an
+      // iThink push still is.
+      const xbQueueOnly = elsewhere === 'already queued for XpressBees'
+        && body.xb_unserviceable === true && !body.all_unshipped;
+      if (elsewhere && !forceElsewhere && !xbQueueOnly) {
         summary.booked_elsewhere.push(`${order.razorpay_order_id || order.id}: ${elsewhere}`);
         continue;
       }
