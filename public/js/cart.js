@@ -479,7 +479,7 @@ async function renderCartRecommendations() {
   if (!data) {
     try {
       const res = await fetch(`/.netlify/functions/frequently-bought?slug=${encodeURIComponent(seed)}`
-        + `&limit=2&exclude=${encodeURIComponent(inCart.join(','))}`);
+        + `&limit=1&exclude=${encodeURIComponent(inCart.join(','))}`);
       if (!res.ok) return;
       data = await res.json();
       IAC_REC_CACHE.set(key, data);
@@ -490,12 +490,14 @@ async function renderCartRecommendations() {
 
   const shown = await window.IACBrowseHidden.filter(data.recommendations);
   if (token !== _iacRecToken) return;
-  const recs = shown.filter(p => p && p.title && Number(p.price) > 0).slice(0, 2);
+  // One suggestion only (owner, 9 Nov 2026): a single strong pick reads as
+  // advice; two read as an ad.
+  const recs = shown.filter(p => p && p.title && Number(p.price) > 0).slice(0, 1);
   if (!recs.length) return;
 
   host.innerHTML = shipNudgeHtml(subtotal)
     + `<div class="iac-cart-rec">
-        <div class="iac-cart-rec-head">${data.basis === 'co_purchase' ? 'Readers also bought' : 'You may also like'}</div>
+        <div class="iac-cart-rec-head">${data.basis === 'co_purchase' ? 'Frequently bought together' : 'You may also like'}</div>
         ${recs.map(recRowHtml).join('')}
       </div>`;
 }
@@ -630,6 +632,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initMarketplaceLinks();
   initProductCouponBadge();
   initFrequentlyBoughtTogether();
+  initRelatedShelf();
 
   // Close cart on overlay click
   const overlay = document.getElementById('cartOverlay');
@@ -930,6 +933,107 @@ function renderInjectedFbt(data) {
     main.insertAdjacentElement('afterend', section);
   }
   updateInjectedFbtTotal();
+}
+
+// ── You may also like ──────────────────────────────────────────────────────
+// Ranked by the server (frequently-bought?mode=related, utils/related-books.js):
+// same series, same author, bought together, then books about the same thing,
+// one language and one format of each book. Baked pages get their build-time
+// shelf replaced in place (same card markup, so the theme styles still apply);
+// admin-added books, which had no shelf at all, get one added.
+function relHeadingHtml(heading) {
+  return heading && heading.kind === 'author' && heading.author
+    ? `More by <em>${esc(heading.author)}</em>`
+    : 'You May Also <em>Like</em>';
+}
+
+function fillBakedCard(card, p) {
+  card.setAttribute('href', p.url);
+  const img = card.querySelector('img');
+  if (img) {
+    img.src = iacImg(p.img, 400);
+    img.alt = p.title;
+    img.removeAttribute('srcset');
+  }
+  const divs = card.querySelectorAll(':scope > div');
+  if (divs[1]) divs[1].textContent = p.title;
+  if (divs[2]) divs[2].textContent = p.author && !/^various$/i.test(p.author) ? p.author : '';
+  if (divs[3]) divs[3].textContent = p.priceText || formatFbtPrice(p.price);
+  return card;
+}
+
+function injectRelStyles() {
+  if (document.getElementById('iacRelStyles')) return;
+  const style = document.createElement('style');
+  style.id = 'iacRelStyles';
+  style.textContent = `
+    .iac-rel{max-width:1260px;margin:2.2rem auto 0;padding:2rem 1rem 3rem;border-top:1px solid var(--border,rgba(138,106,31,.2))}
+    .iac-rel h2{font-family:'Cormorant Garamond',Georgia,serif;font-weight:400;font-size:1.7rem;margin:0 0 1.4rem;color:var(--cream,inherit)}
+    .iac-rel-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:1.1rem}
+    .iac-rel-card{display:block;text-decoration:none;color:inherit}
+    .iac-rel-cover{aspect-ratio:2/3;overflow:hidden;margin-bottom:.6rem;border-radius:14px;background:var(--panel,rgba(0,0,0,.04))}
+    .iac-rel-cover img{width:100%;height:100%;object-fit:contain;display:block}
+    .iac-rel-name{font-size:.88rem;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .iac-rel-author{font-size:.7rem;color:var(--muted,#888);margin:.15rem 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .iac-rel-price{font-size:.84rem;font-weight:600;color:var(--gold,inherit)}
+    @media (max-width:900px){.iac-rel-grid{grid-template-columns:repeat(3,1fr)}}
+    @media (max-width:560px){.iac-rel-grid{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:.8rem;padding-bottom:.4rem}
+      .iac-rel-card{flex:0 0 38%;scroll-snap-align:start}}
+  `;
+  document.head.appendChild(style);
+}
+
+function relCardHtml(p) {
+  const author = p.author && !/^various$/i.test(p.author) ? p.author : '';
+  return `<a class="iac-rel-card" href="${esc(p.url)}">
+      <div class="iac-rel-cover"><img src="${esc(iacImg(p.img, 400))}" alt="${esc(p.title)}" loading="lazy"></div>
+      <div class="iac-rel-name">${esc(p.title)}</div>
+      <div class="iac-rel-author">${esc(author)}</div>
+      <div class="iac-rel-price">${esc(p.priceText || formatFbtPrice(p.price))}</div>
+    </a>`;
+}
+
+async function initRelatedShelf() {
+  if (!isProductDetailPage()) return;
+  const slug = getProductPageSlug();
+  if (!slug || document.getElementById('iacRelatedShelf')) return;
+  let data;
+  try {
+    const res = await fetch(`/.netlify/functions/frequently-bought?slug=${encodeURIComponent(slug)}&mode=related&limit=12`, { cache: 'force-cache' });
+    if (!res.ok) return;
+    data = await res.json();
+  } catch (e) { return; }
+  // An unknown book gets bestsellers back; the page's own shelf is better than that.
+  if (!data || data.basis !== 'related') return;
+  const shown = await window.IACBrowseHidden.filter(data.recommendations || []);
+  const recs = shown.filter(p => p && p.url && p.title && p.img && Number(p.price) > 0);
+  if (recs.length < 3) return;
+
+  const bakedGrid = document.querySelector('.also-grid');
+  if (bakedGrid) {
+    const template = bakedGrid.querySelector('a[href*="/product/"]');
+    const h2 = bakedGrid.parentElement && bakedGrid.parentElement.querySelector('h2');
+    if (!template) return;
+    const cards = recs.map(p => fillBakedCard(template.cloneNode(true), p));
+    bakedGrid.replaceChildren(...cards);
+    bakedGrid.parentElement.id = 'iacRelatedShelf';
+    if (h2) {
+      h2.innerHTML = relHeadingHtml(data.heading);
+      // Baked inline colour is near-white, which vanishes on the light theme.
+      h2.style.color = 'inherit';
+    }
+    return;
+  }
+
+  injectRelStyles();
+  const section = document.createElement('section');
+  section.id = 'iacRelatedShelf';
+  section.className = 'iac-rel';
+  section.innerHTML = `<h2>${relHeadingHtml(data.heading)}</h2><div class="iac-rel-grid">${recs.map(relCardHtml).join('')}</div>`;
+  const footer = document.querySelector('footer');
+  const main = document.querySelector('main.wrap') || document.querySelector('main');
+  if (footer && footer.parentNode) footer.insertAdjacentElement('beforebegin', section);
+  else if (main && main.parentNode) main.insertAdjacentElement('afterend', section);
 }
 
 async function initFrequentlyBoughtTogether() {

@@ -387,6 +387,86 @@ function scoreCandidate(base, candidate, signals) {
   return score;
 }
 
+// ── "You may also like" (mode=related) ─────────────────────────────────────
+// Product pages show this shelf under the frequently-bought-together panel.
+// Logic in utils/related-books.js; this part finds candidates and caches.
+const related = require('./utils/related-books');
+
+let _index = null;
+let _indexFor = null;
+function indexFor(products) {
+  if (_indexFor !== products) { _index = related.buildIndex(products); _indexFor = products; }
+  return _index;
+}
+
+// Admin-added books by the same author or in the same series. The shared pool
+// holds only ~3k of the ~30k custom books, so without this a Harry Potter page
+// could not see the Harry Potters that were added in admin.
+async function targetedCandidates(base, index) {
+  const supabase = supabaseClient();
+  if (!supabase) return [];
+  const out = [];
+  const jobs = [];
+  const author = related.realAuthor(base.author) ? String(base.author).trim() : '';
+  if (author && author.length >= 4) {
+    jobs.push(supabase.from('custom_products').select(CUSTOM_COLS).eq('is_active', true)
+      .ilike('author', author.replace(/[%_,()]/g, ' ')).limit(40));
+  }
+  const words = related.seriesWords(base, index).filter((w) => /^[a-z0-9]+$/.test(w)).slice(0, 2);
+  if (words.length === 2) {
+    jobs.push(supabase.from('custom_products').select(CUSTOM_COLS).eq('is_active', true)
+      .ilike('title', `%${words[0]}%`).ilike('title', `%${words[1]}%`).limit(40));
+  }
+  const results = await Promise.allSettled(jobs);
+  for (const r of results) {
+    if (r.status !== 'fulfilled' || r.value.error) continue;
+    for (const row of r.value.data || []) out.push(normalizeCustomProduct(row));
+  }
+  return out;
+}
+
+const _relatedCache = new Map();
+async function relatedFor(base, products, signals, { limit, exclude }) {
+  const key = `${base.slug}|${limit}|${[...exclude].sort().join(',')}`;
+  const hit = _relatedCache.get(key);
+  if (hit && Date.now() - hit.at < PRODUCTS_TTL_MS) return hit.body;
+
+  const index = indexFor(products);
+  const known = new Set(products.map((p) => p.slug));
+  const extra = (await targetedCandidates(base, index).catch(() => []))
+    .filter((p) => p.slug && !known.has(p.slug));
+
+  // The frequently-bought-together panel already shows its top three; the
+  // shelf under it should not repeat them.
+  const fbtTop = takeDistinct(products
+    .filter((p) => p.slug !== base.slug && dedupeKey(p) !== dedupeKey(base))
+    .map((product) => ({ product, score: scoreCandidate(base, product, signals) }))
+    .filter((row) => Number.isFinite(row.score))
+    .sort((a, b) => b.score - a.score), 3, (row) => row.product).map((row) => row.product.slug);
+  const skip = new Set([...exclude, ...fbtTop]);
+
+  const rows = related.rankRelated(base, extra.concat(products), {
+    index,
+    exclude: skip,
+    limit,
+    coBuy: (cand) => coBuyCount(signals, base, cand),
+    unitsSold: (cand) => unitsSold(signals, cand),
+    hash: (cand) => deterministicHash(`${base.slug}:${cand.slug}`),
+  });
+
+  const body = {
+    current: related.slim(base),
+    recommendations: rows.map((row) => related.slim(row.product, row.why)),
+    heading: related.shelfHeading(base, rows),
+    basis: 'related',
+  };
+  if (_relatedCache.size > 3000) _relatedCache.clear();
+  _relatedCache.set(key, { at: Date.now(), body });
+  return body;
+}
+
+exports._test = { relatedFor, targetedCandidates };
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: HEADERS, body: '' };
   if (event.httpMethod !== 'GET') {
@@ -424,9 +504,16 @@ exports.handler = async (event) => {
     }
 
     const signals = await loadLiveSignals();
-    const limit = Math.min(Math.max(Number(event.queryStringParameters?.limit) || 3, 1), 6);
     const exclude = new Set(String(event.queryStringParameters?.exclude || '')
       .split(',').map((v) => v.trim().toLowerCase()).filter(Boolean));
+
+    if (event.queryStringParameters?.mode === 'related') {
+      const relLimit = Math.min(Math.max(Number(event.queryStringParameters?.limit) || 12, 1), 18);
+      const body = await relatedFor(base, products, signals, { limit: relLimit, exclude });
+      return { statusCode: 200, headers: HEADERS, body: JSON.stringify(body) };
+    }
+
+    const limit = Math.min(Math.max(Number(event.queryStringParameters?.limit) || 3, 1), 6);
 
     const ranked = products
       .filter((p) => p.slug !== base.slug && !exclude.has(p.slug) && dedupeKey(p) !== dedupeKey(base))

@@ -7161,7 +7161,11 @@ def static_product_html(book):
     # ── You May Also Like section (pre-computed at build time) ──────────────
     related_books = related_books_for(book)
     author_label = html_escape(book.get("a") or "")
-    if related_books and related_books[0].get("a", "").lower().strip() == (book.get("a") or "").lower().strip():
+    # A blank or "Various" author matched every other blank one, so pages read
+    # "More by" with no name. Only a real author gets the "More by" heading.
+    _own_author = (book.get("a") or "").lower().strip()
+    if (related_books and _own_author and _own_author not in ("various", "unknown")
+            and related_books[0].get("a", "").lower().strip() == _own_author):
         also_heading = f'More by <em>{author_label}</em>'
     else:
         also_heading = 'You May Also <em>Like</em>'
