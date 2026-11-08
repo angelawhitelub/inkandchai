@@ -122,4 +122,23 @@ exports.handler = async (event) => {
   return json(200, { origin, counts, orders });
 };
 
+/**
+ * One order: can XpressBees deliver it? { serviceable: true|false|null, reason, pincode }.
+ * null = could not tell (no pincode, sign-in or network failure). Read-only.
+ */
+async function orderServiceability(order) {
+  let origin;
+  try { origin = xb.pickupFromEnv().pincode; } catch (e) { return { serviceable: null, reason: `XpressBees pickup not configured: ${e.message}` }; }
+  const pincode = parseAddress((order && order.customer_address) || '').pincode;
+  if (!/^\d{6}$/.test(String(pincode || ''))) return { serviceable: null, reason: 'no readable pincode' };
+  let payment = 'prepaid'; let amount = Number((order && order.amount_paise) || 0) / 100;
+  try {
+    const m = classifyShipmentMoney(order, isReplacementOrder(order));
+    payment = m.isCOD ? 'cod' : 'prepaid'; amount = m.orderValueRs;
+  } catch { /* keep defaults */ }
+  const v = await checkKey(store(), origin, pincode, payment, amount);
+  return { serviceable: v.serviceable, reason: v.reason || '', pincode, payment };
+}
+
+exports.orderServiceability = orderServiceability;
 exports._test = { verdict };

@@ -53,6 +53,7 @@ function quoteUnpickedCancel(order, now = Date.now()) {
   const no = (reason) => ({ eligible: false, reason });
   if (!order) return no('not_found');
   if (isReplacementOrder(order) || /^IC-R-/i.test(String(order.razorpay_order_id || ''))) return no('replacement');
+  if (require('./order-split').splitChildren(order).length) return no('split');
   const amount = Number(order.amount_paise) || 0;
   if (!String(order.razorpay_payment_id || '').trim() || amount <= 0) return no('nothing_paid');
   if (order.wrong_cod_paise) return no('wrong_cod');

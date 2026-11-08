@@ -72,6 +72,9 @@ function internalEvent() {
  */
 async function cancelUnpickedOrder(supabase, order, deps = {}) {
   const out = (status, body) => ({ status, body });
+  // Split into several parcels (admin-split-order): a person settles it.
+  const splitBlock = require('./utils/order-split').splitCancelBlock(order);
+  if (splitBlock) return out(409, { error: splitBlock, reason: 'split_order' });
   const q = quoteUnpickedCancel(order);
   if (!q.eligible) {
     return out(422, { error: q.reason === 'already_requested'

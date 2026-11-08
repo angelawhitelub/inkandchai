@@ -186,6 +186,9 @@ exports.handler = async (event) => {
     }
     // A free replacement was never paid for, so there is nothing to refund on it;
     // and an order that already had a free replacement is settled that way.
+    if (require('./utils/order-split').isSplitChild(order)) {
+      return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'This parcel is part of a bigger order we sent in separate parcels. To return a book from it, please message us on WhatsApp and we will arrange it.' }) };
+    }
     if (isReplacementOrder(order)) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'A free replacement order cannot be returned for a refund.' }) };
     }

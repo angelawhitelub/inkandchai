@@ -17,7 +17,11 @@
  */
 function isReplacementOrder(order, items) {
   if (!order) return false;
-  if (String(order.source || '').toLowerCase() === 'replacement') return true;
+  const source = String(order.source || '').toLowerCase();
+  if (source === 'replacement') return true;
+  // A split shipment (admin-split-order.js) carries books the customer already
+  // paid for on the original order: same money rules as a free reshipment.
+  if (source === 'split') return true;
   if (String(order.status || '').toLowerCase() === 'replacement_pending') return true;
   if (/^IC-R-/i.test(String(order.razorpay_order_id || ''))) return true;
 
@@ -25,7 +29,7 @@ function isReplacementOrder(order, items) {
   if (typeof cart === 'string') {
     try { cart = JSON.parse(cart); } catch { cart = []; }
   }
-  return Array.isArray(cart) && cart.some(item => item && item._replacement);
+  return Array.isArray(cart) && (cart.some(item => item && item._replacement) || !!(cart[0] && cart[0]._split && cart[0]._split.of));
 }
 
 module.exports = { isReplacementOrder };

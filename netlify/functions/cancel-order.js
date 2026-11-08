@@ -230,6 +230,12 @@ exports.handler = async (event) => {
   if ((order.customer_email || '').toLowerCase() !== userEmail)
     return { statusCode: 403, headers: CORS, body: JSON.stringify({ error: 'You do not have permission to cancel this order' }) };
 
+  // Split into several parcels (admin-split-order): a person settles it.
+  {
+    const splitBlock = require('./utils/order-split').splitCancelBlock(order);
+    if (splitBlock) return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: splitBlock, reason: 'split_order' }) };
+  }
+
   const status = String(order.status || '').toLowerCase();
   const partialCod = isPartialCod(order);
 

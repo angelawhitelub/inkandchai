@@ -1497,7 +1497,8 @@ window.IACClaimEvidence = {
 
     container.innerHTML = data.map(o => {
       const date   = new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-      const amount = o.amount_paise ? '₹' + (o.amount_paise / 100).toLocaleString('en-IN') : '—';
+      const split  = splitInfoClient(o);
+      const amount = o.amount_paise ? '₹' + (o.amount_paise / 100).toLocaleString('en-IN') : (split.of ? 'Paid' : '—');
       const items  = Array.isArray(o.cart_items) ? o.cart_items : [];
 
       // Complete status colour map — covers every status the NimbusPost webhook can set
@@ -1591,10 +1592,11 @@ window.IACClaimEvidence = {
                               font-size:0.55rem;">Deliver to</span><br/>
                  ${escHtml(o.customer_address)}
                </div>` : ''}
+          ${splitNoticeBlock(o)}
           ${addressUpdateBlock(o)}
           ${orderTrackingBlock(o)}
-          ${(() => { const c = unpickedCancelBlock(o) || cancelOrderBlock(o); return c || lateCancelBlock(o) || requestCancellationBlock(o); })()}
-          ${returnRequestBlock(o)}
+          ${(split.of || split.children.length) ? '' : (() => { const c = unpickedCancelBlock(o) || cancelOrderBlock(o); return c || lateCancelBlock(o) || requestCancellationBlock(o); })()}
+          ${split.of ? '' : returnRequestBlock(o)}
           ${replacementRequestBlock(o)}
           ${invoiceDownloadBlock(o)}
         </div>`;
@@ -1738,6 +1740,12 @@ window.IACClaimEvidence = {
   // invoice is coming rather than thinking it's missing.
   function invoiceDownloadBlock(order) {
     const status = String(order.status || '').toLowerCase();
+    const split = splitInfoClient(order);
+    if (split.of) {
+      return `
+        <div style="margin-top:0.8rem;padding-top:0.8rem;border-top:1px solid rgba(201,168,76,0.08);
+                    font-size:0.6rem;color:#8a7f70;">The invoice for these books is on order ${escHtml(split.of)}.</div>`;
+    }
     // Terminal non-fulfilment states never get an invoice.
     if (['cancelled','refunded','refund_pending','refund_failed'].includes(status)) return '';
 
@@ -1775,7 +1783,8 @@ window.IACClaimEvidence = {
       return;
     }
     const date  = new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
-    const items = Array.isArray(o.cart_items) ? o.cart_items : [];
+    // A split order's invoice lists everything bought: it holds the whole payment.
+    const items = splitInfoClient(o).originalCart || (Array.isArray(o.cart_items) ? o.cart_items : []);
     const subtotal = items.reduce((s, i) => s + (i.price * (i.qty || 1)), 0);
     const total  = o.amount_paise ? o.amount_paise / 100 : subtotal;
     const shipping = Math.max(0, Math.round(total - subtotal));
@@ -1961,6 +1970,32 @@ window.IACClaimEvidence = {
   // block below read "no money captured + not moved yet" as an undispatched COD
   // parcel — so the customer was told their free replacement was Cash on
   // Delivery and offered a Cancel button for it.
+  // Sent in separate parcels (admin-split-order): the original keeps the
+  // payment; each split shipment is "<original>-S2" with nothing to pay.
+  function splitInfoClient(order) {
+    let cart = order && order.cart_items;
+    if (typeof cart === 'string') { try { cart = JSON.parse(cart); } catch (e) { cart = []; } }
+    const m = (Array.isArray(cart) && cart[0] && cart[0]._split) || {};
+    const isChild = String((order && order.source) || '').toLowerCase() === 'split' || !!m.of;
+    return {
+      of: isChild ? String(m.of || '') || 'your original order' : '',
+      n: Number(m.n) || 0,
+      children: !isChild && Array.isArray(m.children) ? m.children.map(String) : [],
+      originalCart: !isChild && Array.isArray(m.original_cart) ? m.original_cart : null,
+    };
+  }
+
+  function splitNoticeBlock(order) {
+    const s = splitInfoClient(order);
+    if (!s.of && !s.children.length) return '';
+    const text = s.of
+      ? `📦 Parcel ${s.n || ''} of order <strong style="color:#c9a84c;">${escHtml(s.of)}</strong>, sent separately so your books reach you sooner. Already paid: nothing to pay on delivery.`
+      : `📦 Sent in ${s.children.length + 1} parcels. This one has the books above; the rest come as <strong style="color:#c9a84c;">${s.children.map(escHtml).join(', ')}</strong>, each with its own tracking. To cancel or change anything, message us on WhatsApp.`;
+    return `
+      <div style="margin-top:0.8rem;padding:0.7rem 0.9rem;border:1px solid rgba(201,168,76,0.18);
+                  background:rgba(201,168,76,0.05);font-size:0.66rem;color:#d8ccb8;line-height:1.6;">${text}</div>`;
+  }
+
   function isReplacementOrderClient(order) {
     if (!order) return false;
     if (String(order.source || '').toLowerCase() === 'replacement') return true;

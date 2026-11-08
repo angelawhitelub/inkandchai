@@ -1586,6 +1586,13 @@ async function cancelOrderViaBot(phone, args = {}) {
       return { ok: false, error: 'not-found', message: `I couldn't find order ${wantId || ''} under this WhatsApp number. Please double-check the Order ID (IC-…), or share the number/email you ordered with.` };
     }
 
+    // Sent in separate parcels (admin-split-order): the money sits on the
+    // original, so no automatic cancel or refund -- a person settles it.
+    {
+      const splitBlock = require('./utils/order-split').splitCancelBlock(target);
+      if (splitBlock) return { ok: false, error: 'split-order', order_id: target.razorpay_order_id, message: splitBlock };
+    }
+
     const st = String(target.status || '').toLowerCase();
     const isPartialCod = st === 'partial_cod_pending'
       || Number(target.advance_paid_paise || 0) > 0
@@ -1976,7 +1983,7 @@ async function handleDeliveryFailedReply(from, text, order, senderPhoneId, custo
 function extractOrderId(text) {
   // IC-W- (WhatsApp), IC-CW- (Crossword) and IC-R- (replacement) ids too — the
   // bot used to answer "not our format" to the ids it had issued itself.
-  const match = text.match(/\bIC-(?:[A-Z]{1,2}-)?\d{8}-[A-Z0-9]{5}\b/i);
+  const match = text.match(/\bIC-(?:[A-Z]{1,2}-)?\d{8}-[A-Z0-9]{5}(?:-S\d{1,2})?\b/i);
   return match ? match[0].toUpperCase() : null;
 }
 
