@@ -954,6 +954,8 @@ function fillBakedCard(card, p) {
     img.src = iacImg(p.img, 400);
     img.alt = p.title;
     img.removeAttribute('srcset');
+    // A missing cover leaves an empty box; drop the card instead.
+    img.onerror = function () { card.remove(); };
   }
   const divs = card.querySelectorAll(':scope > div');
   if (divs[1]) divs[1].textContent = p.title;
@@ -986,7 +988,7 @@ function injectRelStyles() {
 function relCardHtml(p) {
   const author = p.author && !/^various$/i.test(p.author) ? p.author : '';
   return `<a class="iac-rel-card" href="${esc(p.url)}">
-      <div class="iac-rel-cover"><img src="${esc(iacImg(p.img, 400))}" alt="${esc(p.title)}" loading="lazy"></div>
+      <div class="iac-rel-cover"><img src="${esc(iacImg(p.img, 400))}" alt="${esc(p.title)}" loading="lazy" onerror="this.closest('a').remove()"></div>
       <div class="iac-rel-name">${esc(p.title)}</div>
       <div class="iac-rel-author">${esc(author)}</div>
       <div class="iac-rel-price">${esc(p.priceText || formatFbtPrice(p.price))}</div>
