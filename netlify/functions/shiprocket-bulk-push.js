@@ -17,6 +17,7 @@ const { classifyShipmentMoney } = require('./utils/shipment-money');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { requireAdmin } = require('./utils/admin-auth');
 const { preorderChecker } = require('./utils/preorder-hold');
+const { bookingGuard, releasedFrom } = require('./utils/booking-guard');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -85,6 +86,7 @@ exports.handler = async (event) => {
   // but we batch with a small delay to avoid rate limiting
   const summary = { pushed: 0, skipped: 0, failed: 0, errors: [], held_preorders: [] };
   const holdFor = await preorderChecker(supabase);
+  const guard = await bookingGuard({ courier: 'shiprocket', released: releasedFrom(body, body.order_ids) });
 
   // Dry run: classify every order with the same function the real push uses and
   // report what the courier would be told to collect, without contacting
@@ -99,7 +101,8 @@ exports.handler = async (event) => {
       const id = order.razorpay_order_id || order.id;
       const hold = holdFor(order);
       if (hold) { refused.push({ order_id: id, reason: hold.reason }); continue; }
-      if (order.tracking_id) { refused.push({ order_id: id, reason: `already has AWB ${order.tracking_id}` }); continue; }
+      const block = guard(order);
+      if (block) { refused.push({ order_id: id, kind: block.kind, reason: block.reason }); continue; }
       if (order.shiprocket_order_id) { refused.push({ order_id: id, reason: `already in Shiprocket as ${order.shiprocket_order_id}` }); continue; }
       let money;
       try { money = classifyShipmentMoney(order, isReplacementOrder(order)); }
@@ -124,8 +127,10 @@ exports.handler = async (event) => {
     }
     // An order that already carries an AWB has been booked with some courier.
     // Pushing it again creates a second parcel for one sale.
-    if (order.tracking_id) {
+    const block = guard(order);
+    if (block) {
       summary.skipped++;
+      summary.errors.push(`${order.razorpay_order_id || order.id}: ${block.reason}`);
       continue;
     }
     // A Shiprocket id without an AWB is an order already sitting in the panel

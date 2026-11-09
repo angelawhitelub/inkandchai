@@ -7,6 +7,9 @@ const assert = require('node:assert');
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'http://supabase.invalid';
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'x';
 const xb = require('./xpressbees');
+
+// The double-booking guard reads the XpressBees panel live; here it is empty.
+require('./xpressbees').panelOrders = async () => ({ rows: [] });
 const ship = require('../xpressbees-ship');
 
 const old = Date.now() - 2 * 3600e3;

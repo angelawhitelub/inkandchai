@@ -22,6 +22,9 @@ function isReplacementOrder(order, items) {
   // A split shipment (admin-split-order.js) carries books the customer already
   // paid for on the original order: same money rules as a free reshipment.
   if (source === 'split') return true;
+  // A free copy (admin-clone-order.js, payment 'free'): nothing to collect. A
+  // COD copy has amount_paise > 0 and is an ordinary COD sale.
+  if (source === 'clone' && !(Number(order.amount_paise) > 0)) return true;
   if (String(order.status || '').toLowerCase() === 'replacement_pending') return true;
   if (/^IC-R-/i.test(String(order.razorpay_order_id || ''))) return true;
 

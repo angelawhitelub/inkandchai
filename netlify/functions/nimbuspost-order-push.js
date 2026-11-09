@@ -27,6 +27,7 @@ const { requireAdmin } = require('./utils/admin-auth');
 const { preorderChecker, splitHeld } = require('./utils/preorder-hold');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { bookedElsewhere } = require('./utils/nimbus-push-once');
+const { bookingGuard, releasedFrom } = require('./utils/booking-guard');
 
 const NP_ORDER_URL = 'https://ship.nimbuspost.com/api/orders/create';
 const NP_ORDERS_URL = 'https://ship.nimbuspost.com/api/orders';
@@ -287,7 +288,7 @@ async function pushOrder(order, apiKey) {
   return data;
 }
 
-async function suffixRun({ body, orders, apiKey, supabase, heldPreorders = [] }) {
+async function suffixRun({ body, orders, apiKey, supabase, heldPreorders = [], guard = () => null }) {
   const suffix = String(body.suffix || '').trim();
   if (!/^-[A-Za-z0-9]{1,3}$/.test(suffix)) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'suffix must look like "-c" or "-c2"' }) };
@@ -301,12 +302,14 @@ async function suffixRun({ body, orders, apiKey, supabase, heldPreorders = [] })
   await getExistingOrderNumbers(apiKey, { pages: Number(body.scan_pages) || 20, rowsByNumber, sample });
 
   const plan = [];
-  const skipped = { has_awb: [], live_in_panel: [], suffix_taken: [], pushed_before_not_found: [], preorder: heldPreorders };
+  const skipped = { has_awb: [], blocked: [], live_in_panel: [], suffix_taken: [], pushed_before_not_found: [], preorder: heldPreorders };
   for (const order of orders) {
     const id = String(order.razorpay_order_id || order.id);
     const base = normalizeOrderNumber(id);
     const suffixed = normalizeOrderNumber(id + suffix);
     if (String(order.tracking_id || '').trim()) { skipped.has_awb.push(`${id} (${order.courier_name || '?'} ${order.tracking_id})`); continue; }
+    const block = guard(order);
+    if (block) { skipped.blocked.push(`${id}: ${block.reason}`); continue; }
     const rows = rowsByNumber.get(base) || [];
     if (rows.some((r) => !r.cancelled)) { skipped.live_in_panel.push(id); continue; }
     if (rowsByNumber.has(suffixed)) { skipped.suffix_taken.push(id + suffix); continue; }
@@ -388,8 +391,18 @@ exports.handler = async (event) => {
     const { free: orders, held } = splitHeld(rows || [], await preorderChecker(supabase));
     const heldPreorders = held.map((h) => `${h.order.razorpay_order_id || h.order.id}: ${h.reason}`);
 
+    // One order, one parcel: an AWB anywhere or a live XpressBees panel
+    // booking is never overridden -- not by include_booked_elsewhere, not by
+    // xb_unserviceable. IC-20261104-Y3KMW was in transit with XpressBees
+    // (AWB never pushed back to us) and still went out a second time.
+    // include_booked_elsewhere on named orders (after the admin's warning) is
+    // that same release, for the iThink / Shiprocket stamps only.
+    const released = body.include_booked_elsewhere === true && !body.all_unshipped && Array.isArray(body.order_ids)
+      ? body.order_ids : releasedFrom(body, body.order_ids);
+    const guard = await bookingGuard({ courier: 'nimbuspost', released });
+
     if (body.suffix !== undefined) {
-      return await suffixRun({ body, orders, apiKey, supabase, heldPreorders });
+      return await suffixRun({ body, orders, apiKey, supabase, heldPreorders, guard });
     }
 
     // Dedup is best-effort: if the panel lookup fails, proceed with the push
@@ -402,12 +415,21 @@ exports.handler = async (event) => {
       dedupWarning = `Duplicate pre-check skipped (${String(err.message || err).slice(0, 160)}). Orders were still pushed.`;
       console.warn('[nimbuspost-order-push] preflight skipped:', err.message);
     }
-    const summary = { pushed: 0, skipped: 0, failed: 0, errors: [], booked_elsewhere: [], held_preorders: heldPreorders };
+    const summary = { pushed: 0, skipped: 0, failed: 0, errors: [], booked_elsewhere: [], blocked: [], held_preorders: heldPreorders };
     // Only a named order can be forced past the other-courier check, and only
     // after the admin has been warned about that order specifically.
     const forceElsewhere = body.include_booked_elsewhere === true && !body.all_unshipped;
     for (const order of orders) {
       const orderNumber = normalizeOrderNumber(order.razorpay_order_id || order.id);
+
+      const block = guard(order);
+      if (block) {
+        // pushed_elsewhere (iThink / Shiprocket) is the owner's call once that
+        // panel is cleared; the rest are never overridden.
+        if (block.kind !== 'pushed_elsewhere') summary.blocked.push(`${order.razorpay_order_id || order.id}: ${block.reason}`);
+        summary.booked_elsewhere.push(`${order.razorpay_order_id || order.id}: ${block.reason}`);
+        continue;
+      }
 
       // Pushed to iThink or queued for XpressBees, with its AWB not back yet:
       // pushing it here too is how IC-20260914-9VP7A shipped three times.

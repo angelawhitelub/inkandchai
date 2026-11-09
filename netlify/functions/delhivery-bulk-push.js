@@ -41,6 +41,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { preorderChecker } = require('./utils/preorder-hold');
+const { bookingGuard, releasedFrom } = require('./utils/booking-guard');
 const { classifyShipmentMoney } = require('./utils/shipment-money');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { buildShipment, createShipments } = require('./utils/delhivery');
@@ -106,13 +107,15 @@ exports.handler = async (event) => {
   const preview = { queued: 0, cod_orders: 0, cod_collectable: 0, prepaid_orders: 0, prepaid_declared: 0 };
   const rows = [];
   const holdFor = await preorderChecker(supabase);
+  const guard = await bookingGuard({ courier: 'delhivery', released: releasedFrom(body, body.order_ids) });
 
   for (const order of orders) {
     const id = order.razorpay_order_id || order.id;
     const hold = holdFor(order);
     if (hold) { refused.push({ order_id: id, kind: hold.kind, reason: hold.reason }); continue; }
-    // An AWB means some courier is already carrying this sale.
-    if (order.tracking_id) { refused.push({ order_id: id, kind: 'has_awb', reason: `already has AWB ${order.tracking_id}` }); continue; }
+    // An AWB, a live XpressBees panel booking, or a push to another panel.
+    const block = guard(order);
+    if (block) { refused.push({ order_id: id, kind: block.kind, reason: block.reason }); continue; }
     let money, shipment;
     try {
       money = classifyShipmentMoney(order, isReplacementOrder(order));

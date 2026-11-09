@@ -30,6 +30,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sanitizeForCourier } = require('./utils/nimbuspost-import');
 const { requireAdmin } = require('./utils/admin-auth');
 const { preorderChecker } = require('./utils/preorder-hold');
+const { assertBookable } = require('./utils/booking-guard');
 const { ensureOrderAddress } = require('./utils/address-fixer');
 const { isReplacementOrder } = require('./utils/replacement-order');
 
@@ -227,7 +228,10 @@ async function npCreateShipment(token, payload) {
 }
 
 // ── Core: ship a single order ──────────────────────────────────────────────
-async function shipOrder(supabase, token, warehouseId, order, forceCourierId) {
+async function shipOrder(supabase, token, warehouseId, order, forceCourierId, guardOpts = {}) {
+  // One order, one parcel: refuses an AWB anywhere, a live XpressBees panel
+  // booking, or an iThink push. Throws, so every caller reports it as a failure.
+  await assertBookable(order, 'nimbuspost', guardOpts);
   const addressFix = await ensureOrderAddress(supabase, order);
   const orderId = order.razorpay_order_id || order.id;
   const { addr1, addr2, city, state, pincode } = parseAddress(order.customer_address || '');

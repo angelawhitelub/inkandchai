@@ -26,6 +26,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { preorderChecker } = require('./utils/preorder-hold');
+const { bookingGuard, releasedFrom } = require('./utils/booking-guard');
 const ek = require('./utils/ekart');
 
 const CORS = {
@@ -67,11 +68,13 @@ exports.handler = async (event) => {
   const queued = [];
   const refused = [];
   const holdFor = await preorderChecker(supabase);
+  const guard = await bookingGuard({ courier: 'ekart', released: releasedFrom(body, ids) });
   for (const o of rows || []) {
     const id = o.razorpay_order_id || o.id;
     const hold = holdFor(o);
     if (hold) { refused.push({ order_id: id, reason: hold.reason }); continue; }
-    if (o.tracking_id) { refused.push({ order_id: id, reason: `already has AWB ${o.tracking_id} (${o.courier_name || '?'})` }); continue; }
+    const block = guard(o);
+    if (block) { refused.push({ order_id: id, kind: block.kind, reason: block.reason }); continue; }
     let payload;
     try { payload = ek.buildShipment(o, suffix); }
     catch (e) { refused.push({ order_id: id, reason: e.message }); continue; }

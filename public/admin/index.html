@@ -1254,6 +1254,15 @@ select,input,textarea{font-size:1rem;}
     <div id="shipHolidayList" style="margin-top:0.6rem;font-size:0.72rem;color:var(--cream);"></div>
   </div>
 
+  <!-- Double bookings: read-only. One order, more than one live parcel. -->
+  <div style="border:1px solid var(--border);background:var(--bg2);padding:0.9rem 1.1rem;margin:0.8rem 0 1rem;">
+    <strong style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);">📦📦 Double bookings</strong>
+    <p class="hint" style="margin:0.45rem 0 0.7rem;">Reads the XpressBees panel and our orders and lists every order with more than one live parcel: two XpressBees bookings, or XpressBees next to Ekart, NimbusPost, iThink or Shiprocket. It only reads. Nothing is cancelled. Takes up to a minute.</p>
+    <button class="btn-green" type="button" id="dblBookBtn" onclick="loadDoubleBookings()">Find double bookings</button>
+    <p class="hint" id="dblBookMsg" style="margin:0.6rem 0 0;"></p>
+    <div id="dblBookList" style="margin-top:0.6rem;font-size:0.72rem;color:var(--cream);overflow-x:auto;"></div>
+  </div>
+
   <!-- Google Ads adjustment feed: teach it which conversions Google cannot find.
        The feed is a pull, so nothing server-side ever learns an upload's
        outcome; this file is the only feedback channel Google offers. -->
@@ -7318,6 +7327,12 @@ function _drawTable() {
           onmouseout="this.style.background='rgba(190,140,255,0.08)';">
           ✂️ Split shipment
         </button>` : ''}
+        ${Array.isArray(o.cart_items) && o.cart_items.length && !['cancelled','refunded'].includes(String(o.status||'').toLowerCase()) ? `<button onclick="openCloneModal('${esc(o.id)}')" title="Create a fresh copy of this order as a new order (${esc(String(o.razorpay_order_id||''))}-N2): to re-send a failed or returned parcel, with an edited address or alternate number. Free or COD."
+          style="display:block;margin-top:0.4rem;background:rgba(96,170,220,0.08);border:1px solid rgba(96,170,220,0.45);color:#60aadc;padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;width:100%;"
+          onmouseover="this.style.background='rgba(96,170,220,0.18)';"
+          onmouseout="this.style.background='rgba(96,170,220,0.08)';">
+          ⧉ Clone order
+        </button>` : ''}
         ${o.tracking_id ? `<button onclick="downloadOrderLabel(this)" data-awb="${esc(o.tracking_id)}" data-order="${esc(o.razorpay_order_id||o.id)}" data-courier="${esc(o.courier_name||'')}"
           title="Download this order's shipping label (AWB ${esc(o.tracking_id)}) from XpressBees or NimbusPost. Orders booked on DTDC or Delhivery directly are not there."
           style="display:block;margin-top:0.4rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
@@ -10487,6 +10502,38 @@ async function listFreeDelivery() {
       : 'No books have free delivery yet.';
   } catch (e) {
     box.textContent = 'Could not list: ' + e.message;
+  }
+}
+
+// ── Double bookings (admin-double-bookings, read-only) ───────────────────────
+async function loadDoubleBookings() {
+  const btn = document.getElementById('dblBookBtn');
+  const msg = document.getElementById('dblBookMsg');
+  const box = document.getElementById('dblBookList');
+  btn.disabled = true; msg.style.color = 'var(--cream-dim)';
+  msg.textContent = 'Reading the XpressBees panel…'; box.innerHTML = '';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-double-bookings', { method: 'GET' });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    const dbl = d.doubles || [], miss = d.awb_missing || [];
+    msg.textContent = `${dbl.length} order${dbl.length === 1 ? '' : 's'} with more than one parcel · ${miss.length} booked in XpressBees whose AWB never reached us · ${d.scanned_rows} panel rows read`;
+    msg.style.color = dbl.length ? '#e0a040' : 'var(--cream-dim)';
+    const row = (o, why) => `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:0.35rem 0.5rem;white-space:nowrap;"><a href="#" data-id="${esc(o.order_id)}" onclick="event.preventDefault();searchOrders(this.dataset.id)">${esc(o.order_id)}</a></td>
+      <td style="padding:0.35rem 0.5rem;">${esc(why)}</td>
+      <td style="padding:0.35rem 0.5rem;white-space:nowrap;">${esc((o.xb_awbs || []).join(', ') || '(blank)')}</td>
+      <td style="padding:0.35rem 0.5rem;white-space:nowrap;">${esc(o.our_awb ? `${o.our_courier || ''} ${o.our_awb}` : '—')}</td>
+      <td style="padding:0.35rem 0.5rem;">${esc(o.status || '')}</td>
+      <td style="padding:0.35rem 0.5rem;">${esc(o.customer || '')}</td>
+      <td style="padding:0.35rem 0.5rem;white-space:nowrap;">${esc(String(o.created_at || '').slice(0, 10))}</td></tr>`;
+    const head = '<tr style="color:var(--gold);text-align:left;"><th style="padding:0.35rem 0.5rem;">Order</th><th style="padding:0.35rem 0.5rem;">Why</th><th style="padding:0.35rem 0.5rem;">XpressBees AWBs</th><th style="padding:0.35rem 0.5rem;">Our AWB</th><th style="padding:0.35rem 0.5rem;">Status</th><th style="padding:0.35rem 0.5rem;">Customer</th><th style="padding:0.35rem 0.5rem;">Placed</th></tr>';
+    box.innerHTML = (dbl.length ? `<table style="border-collapse:collapse;width:100%;">${head}${dbl.map(o => row(o, o.why.join('; '))).join('')}</table>` : '<p>No order has two live parcels.</p>')
+      + (miss.length ? `<p style="margin:1rem 0 0.3rem;color:var(--gold);">Booked in XpressBees, AWB missing here (no second booking will be allowed; sync these):</p><table style="border-collapse:collapse;width:100%;">${head}${miss.map(o => row(o, 'AWB never pushed back')).join('')}</table>` : '');
+  } catch (e) {
+    msg.textContent = 'Could not build the report: ' + e.message; msg.style.color = '#e06060';
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -13763,6 +13810,95 @@ async function submitSplit(btn) {
   }
 }
 
+// ── Clone order (admin-clone-order) ─────────────────────────────────────────
+// A fresh copy as a new order <id>-N2: re-send a failed / returned parcel.
+let cloneModalState = null;
+function openCloneModal(orderUuid) {
+  const o = allOrders.find(x => String(x.id) === String(orderUuid) || String(x.razorpay_order_id) === String(orderUuid));
+  if (!o) { alert('Order not found in the current list — refresh and try again.'); return; }
+  cloneModalState = { order: o, preview: null, key: '' };
+  const items = Array.isArray(o.cart_items) ? o.cart_items : [];
+  const displayId = String(o.razorpay_order_id || o.id);
+  const field = 'width:100%;background:#0d0b08;border:1px solid rgba(96,170,220,.35);color:#f0e8d8;padding:.45rem;font-family:inherit;font-size:.8rem;box-sizing:border-box;';
+  const label = 'display:block;color:#a09080;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;margin:.7rem 0 .25rem;';
+  const rows = items.map((i, idx) => {
+    const q = Math.max(1, Math.floor(Number(i.qty || i.quantity) || 1));
+    return `<div style="display:grid;grid-template-columns:1fr 70px;gap:.5rem;align-items:center;padding:.4rem 0;border-bottom:1px solid rgba(201,168,76,.12);">
+      <div style="color:#f0e8d8;font-size:.8rem;">${esc(i.title || i.name || 'Book')} <span style="color:#7a6f5f;font-size:.65rem;">ordered ${q}</span></div>
+      <input type="number" class="iac-clone-q" data-index="${idx}" min="0" max="20" value="${q}" style="${field}"/></div>`;
+  }).join('');
+  const alt = String(o.delivery_failed_alt_phone || '').trim();
+  document.getElementById('iacCloneModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'iacCloneModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.9);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:10100;padding:1rem;';
+  modal.innerHTML = `
+    <div style="background:#1c1916;border:1px solid rgba(96,170,220,.4);width:min(560px,96vw);max-height:92vh;overflow:auto;padding:1.6rem;position:relative;">
+      <button onclick="closeCloneModal()" style="position:absolute;top:.9rem;right:1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
+      <h3 style="font-family:'DM Serif Display',serif;color:#60aadc;font-weight:500;margin:0 0 .3rem;font-size:1.3rem;">⧉ Clone order</h3>
+      <p style="color:#a09080;font-size:.72rem;margin:0 0 .6rem;">Copy of <strong style="color:#c9a84c;">${esc(displayId)}</strong> · ${esc(o.customer_name || '')}${o.tracking_id ? ` · AWB ${esc(o.tracking_id)} (${esc(o.status || '')})` : ''}</p>
+      <p style="color:#7a6f5f;font-size:.66rem;margin:0 0 .6rem;line-height:1.6;">Makes a new order ${esc(displayId)}-N2 in the unshipped list. Book it like any order. The customer is not messaged now; they get the shipped message when it is booked. Set a book to 0 to leave it out.</p>
+      ${rows}
+      <label style="${label}">Payment</label>
+      <select id="iacClonePay" onchange="document.getElementById('iacCloneCodWrap').style.display=this.value==='cod'?'block':'none'" style="${field}">
+        <option value="free">Free re-ship: collect nothing</option>
+        <option value="cod">Cash on delivery: courier collects</option>
+      </select>
+      <div id="iacCloneCodWrap" style="display:none;"><label style="${label}">Amount to collect (₹)</label><input type="number" id="iacCloneCod" min="1" style="${field}"/></div>
+      <label style="${label}">Name</label><input id="iacCloneName" value="${esc(o.customer_name || '')}" style="${field}"/>
+      <label style="${label}">Phone${alt ? ` <span style="text-transform:none;letter-spacing:0;color:#6dbf6d;">· customer gave alt. no. ${esc(alt)} <a href="#" onclick="event.preventDefault();document.getElementById('iacClonePhone').value='${esc(alt)}'" style="color:#60aadc;">use it</a></span>` : ''}</label>
+      <input id="iacClonePhone" value="${esc(o.customer_phone || '')}" style="${field}"/>
+      <label style="${label}">Address</label><textarea id="iacCloneAddr" rows="3" style="${field}resize:vertical;">${esc(o.customer_address || '')}</textarea>
+      <label style="${label}">Note (internal)</label><input id="iacCloneNote" maxlength="500" placeholder="Delivery failed, re-sending to alt. number" style="${field}"/>
+      <div id="iacClonePreview" style="margin-top:.8rem;font-size:.72rem;color:#d8ccb8;line-height:1.6;white-space:pre-wrap;"></div>
+      <div id="iacCloneMsg" style="color:#e87070;font-size:.72rem;margin-top:.5rem;min-height:1em;"></div>
+      <div style="display:flex;gap:.6rem;margin-top:.9rem;">
+        <button onclick="closeCloneModal()" style="flex:1;background:none;border:1px solid rgba(201,168,76,.3);color:#a09080;padding:.7rem;font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;">Cancel</button>
+        <button id="iacCloneGo" onclick="submitClone(this)" style="flex:2;background:#60aadc;border:none;color:#0d0b08;padding:.7rem;font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;font-weight:700;cursor:pointer;font-family:'Manrope',sans-serif;">Preview clone</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+function closeCloneModal() { document.getElementById('iacCloneModal')?.remove(); cloneModalState = null; }
+async function submitClone(btn) {
+  const st = cloneModalState; if (!st) return;
+  const v = (id) => (document.getElementById(id)?.value || '').trim();
+  const items = [...document.querySelectorAll('.iac-clone-q')].map(el => ({ index: Number(el.dataset.index), qty: Math.max(0, Math.floor(Number(el.value) || 0)) })).filter(i => i.qty > 0);
+  const payload = {
+    order_id: String(st.order.razorpay_order_id || st.order.id), items,
+    payment: v('iacClonePay'), cod_rs: Number(v('iacCloneCod')) || 0,
+    customer_name: v('iacCloneName'), customer_phone: v('iacClonePhone'), customer_address: v('iacCloneAddr'), note: v('iacCloneNote'),
+  };
+  const key = JSON.stringify(payload);
+  const confirmRun = !!st.preview && st.key === key;
+  payload.dry_run = !confirmRun;
+  const msg = document.getElementById('iacCloneMsg');
+  const old = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = `<span class="spinner"></span>${confirmRun ? 'Creating…' : 'Checking…'}`;
+  if (msg) msg.textContent = '';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-clone-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    const summary = `New order ${d.new_order}:\n` + d.books.map(b => `   • ${b.title}${b.qty > 1 ? ' ×' + b.qty : ''}`).join('\n')
+      + `\n\n💰 ${d.payment === 'cod' ? `Cash on delivery: courier collects ₹${d.collect_rs}.` : 'Free re-ship: nothing collected.'}`
+      + `\n📍 ${d.ship_to.name} · ${d.ship_to.phone}\n${d.ship_to.address}`
+      + (d.warnings || []).map(w => `\n⚠️ ${w}`).join('');
+    if (!confirmRun) {
+      st.preview = summary; st.key = key;
+      document.getElementById('iacClonePreview').textContent = summary + '\n\nPress "Create clone" to make it.';
+      btn.disabled = false; btn.innerHTML = 'Create clone';
+      return;
+    }
+    closeCloneModal();
+    alert(`✅ Created ${d.new_order}.\n\n${summary}\n\n${d.note || ''}`);
+    loadOrders();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+    btn.disabled = false; btn.innerHTML = old;
+  }
+}
+
 function openReplacementModal(orderUuid) {
   const o = allOrders.find(x => String(x.id) === String(orderUuid) || String(x.razorpay_order_id) === String(orderUuid));
   if (!o) { alert('Order not found in the current list — refresh and try again.'); return; }
@@ -15685,7 +15821,7 @@ async function npPushOrderToPanel(orderId, btn, forceElsewhere = false) {
     const res = await fetch('/.netlify/functions/nimbuspost-order-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
-      body: JSON.stringify({ order_ids: [orderId], include_booked_elsewhere: forceElsewhere }),
+      body: JSON.stringify({ order_ids: [orderId], include_booked_elsewhere: forceElsewhere, released_elsewhere: forceElsewhere ? [orderId] : undefined }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
@@ -15693,6 +15829,11 @@ async function npPushOrderToPanel(orderId, btn, forceElsewhere = false) {
     const s = data.summary || {};
     if (s.held_preorders?.length) {
       alert(`📅 ${s.held_preorders[0]}\n\nIf the book has arrived early, change its Published date to today, then push again.`);
+      return;
+    }
+    if (s.blocked?.length) {
+      // Hard stop: an AWB, or XpressBees has it booked in its panel. No override.
+      alert(`⛔ Not pushed. ${s.blocked[0]}`);
       return;
     }
     if (s.booked_elsewhere?.length) {

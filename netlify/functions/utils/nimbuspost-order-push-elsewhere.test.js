@@ -7,6 +7,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+// The double-booking guard reads the XpressBees panel live; here it is empty.
+require('./xpressbees').panelOrders = async () => ({ rows: [] });
+
 const base = {
   status: 'paid', customer_name: 'Asha Rao', customer_phone: '9876543210', customer_email: 'a@example.com',
   customer_address: '12, MG Road, Indiranagar, Bengaluru, Karnataka 560038',

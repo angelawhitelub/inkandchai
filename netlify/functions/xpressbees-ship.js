@@ -31,6 +31,7 @@ const { buildTrackingUrl } = require('./utils/tracking-url');
 const { normalizeIndianPhone, parseAddress, enrichAddress } = require('./utils/np-normalize');
 const { requireAdmin } = require('./utils/admin-auth');
 const { preorderChecker } = require('./utils/preorder-hold');
+const { bookingGuard, releasedFrom } = require('./utils/booking-guard');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { classifyShipmentMoney, parseCartItems } = require('./utils/shipment-money');
 const xb = require('./utils/xpressbees');
@@ -313,6 +314,9 @@ async function processOrders(ids, opts = {}) {
   let walletEmpty = false;
   const concurrency = opts.concurrency || (opts.dry_run ? 6 : 4);
   const preorderHold = await preorderChecker(supabase);
+  // One order, one parcel. Not bypassed by force; cancel_existing may replace
+  // only the order's own XpressBees AWB (see utils/booking-guard.js).
+  const guard = opts.bookingGuard || await bookingGuard({ courier: 'xpressbees', released: opts.released_elsewhere || [] });
 
   await pool(orders, concurrency, async (order) => {
     const orderId = order.razorpay_order_id || order.id;
@@ -324,8 +328,9 @@ async function processOrders(ids, opts = {}) {
     }
     // cancel_existing is a re-book by definition, so it implies force.
     const force = !!opts.force || !!opts.cancel_existing;
-    if (order.tracking_id && !force) {
-      skipped.push({ order_id: orderId, kind: 'has_awb', reason: `already has tracking ${order.tracking_id}` });
+    const block = guard(order, { rebookingAwb: opts.cancel_existing ? order.tracking_id : null });
+    if (block) {
+      skipped.push({ order_id: orderId, kind: block.kind, reason: block.reason });
       return;
     }
     if (!force) {
@@ -591,6 +596,7 @@ exports.handler = async (event) => {
     const out = await processOrders(ids, {
       dry_run: !!body.dry_run, courier_id: body.courier_id, force: body.force,
       cancel_existing: body.cancel_existing, suffix, with_payload: !!body.dry_run,
+      released_elsewhere: releasedFrom(body, ids),
     });
     if (out.skipped.length === ids.length && out.skipped.every(s => s.kind === 'missing')) {
       return json(404, { error: 'No orders found for given IDs' });

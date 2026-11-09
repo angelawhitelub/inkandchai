@@ -16,6 +16,9 @@ require.cache[importPath] = {
 
 const { pushToNimbusOnce, nimbusAutoPushOn } = require('./nimbus-push-once');
 
+// The double-booking guard reads the XpressBees panel live; here it is empty.
+require('./xpressbees').panelOrders = async () => ({ rows: [] });
+
 // Automatic pushing is off by default; the claim tests below exercise it on.
 process.env.NIMBUS_AUTO_PUSH = 'on';
 

@@ -30,6 +30,7 @@
 const { pushOrderToNimbusPost } = require('./nimbuspost-import');
 const { ensureOrderAddress } = require('./address-fixer');
 const { preorderChecker } = require('./preorder-hold');
+const { bookingGuard } = require('./booking-guard');
 
 /**
  * Automatic panel pushes are OFF unless NIMBUS_AUTO_PUSH is "on" (26 Sep 2026:
@@ -64,7 +65,7 @@ function bookedElsewhere(order) {
  * @returns {Promise<{pushed: boolean, reason?: string, error?: string}>}
  *   Never throws — every caller treats the push as non-fatal.
  */
-async function pushToNimbusOnce(supabase, order) {
+async function pushToNimbusOnce(supabase, order, opts = {}) {
   const col = order?.id ? 'id' : 'razorpay_order_id';
   const key = order?.id || order?.razorpay_order_id;
   const label = order?.razorpay_order_id || key;
@@ -87,6 +88,13 @@ async function pushToNimbusOnce(supabase, order) {
   if (hold) {
     console.log(`[NimbusPost] not pushing ${label}: ${hold.reason}`);
     return { pushed: false, reason: 'preorder_hold', detail: hold.reason };
+  }
+
+  // Live XpressBees panel check: a booking there whose AWB never reached us.
+  const block = (opts.bookingGuard || await bookingGuard({ courier: 'nimbuspost' }))(order);
+  if (block) {
+    console.log(`[NimbusPost] not pushing ${label}: ${block.reason}`);
+    return { pushed: false, reason: block.kind === 'guard_unavailable' ? 'guard_unavailable' : 'already_pushed', detail: block.reason };
   }
 
   try { await ensureOrderAddress(supabase, order); }
