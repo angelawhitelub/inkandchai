@@ -14673,7 +14673,9 @@ async function pushAllToNimbusPanel(btn) {
     return;
   }
   const UNSHIPPED = ['paid','confirmed','cod_pending','partial_cod_pending','replacement_pending'];
-  const unshipped = allOrders.filter(o => UNSHIPPED.includes(o.status));
+  // Same rule as the Unshipped card: an order with an AWB is already with a
+  // courier and the push skips it, so it is not counted in "Push all N".
+  const unshipped = allOrders.filter(o => UNSHIPPED.includes(o.status) && !String(o.tracking_id || '').trim());
   if (!unshipped.length) { alert('No unshipped orders found in the current view.'); return; }
 
   const orig = btn ? btn.innerHTML : '';
@@ -14712,7 +14714,7 @@ function npPushChoice(btn, total, check) {
          ✅ <b>${c.serviceable || 0}</b> order${c.serviceable === 1 ? '' : 's'} serviceable on XpressBees<br>
          ⛔ <b>${c.not_serviceable || 0}</b> not serviceable on XpressBees<br>
          ${c.unknown ? `❔ <b>${c.unknown}</b> could not be checked (no readable pincode or XpressBees did not answer)<br>` : ''}
-         ${c.booked ? `🚚 ${c.booked} already have an AWB (never pushed)<br>` : ''}
+         ${c.booked ? `🚚 ${c.booked} already have an AWB but their status was never moved to shipped. They are skipped, not pushed<br>` : ''}
          <span style="opacity:.7;font-size:.72rem">${c.pincodes_checked || 0} pincode checks from pickup ${esc(check.origin || '')}. Nothing is booked or charged by this check.</span></p>`;
   wrap.innerHTML = `
     <div style="background:var(--bg-card,#1b1b1b);color:var(--text,#eee);border:1px solid var(--border,#444);border-radius:14px;max-width:520px;width:100%;max-height:85vh;overflow:auto;padding:1.2rem 1.3rem;">
