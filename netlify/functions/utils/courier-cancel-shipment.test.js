@@ -80,3 +80,21 @@ test('status after refund follows the refund', () => {
   assert.equal(statusAfterRefund(hf8jf({ refund_amount_paise: 54100 })), 'refunded');
   assert.equal(statusAfterRefund(hf8jf({ late_cancel_state: 'refund_pending' })), 'refund_pending');
 });
+
+test('a named AWB is cancelled for a cancelled order, and refused when another order carries it', async () => {
+  const { stopShipment } = require('../courier-cancel-shipment').__test;
+  const sbWith = (holders) => ({ from: () => {
+    const q = { select: () => q, eq: () => q, neq: () => q, limit: async () => ({ data: holders, error: null }), update: () => q };
+    return q;
+  } });
+  const order = { id: 'u1', razorpay_order_id: 'IC-1', status: 'cancelled', tracking_id: null, courier_name: null };
+  let asked = null;
+  const deps = { cancelCourierShipment: async (o) => { asked = o; return { action: 'cancelled', awb: o.tracking_id }; }, recordCourierCancel: async () => {} };
+  const ok = await stopShipment(sbWith([]), order, deps, { awb: '143449611603129', courierHint: 'xpressbees' });
+  require('node:assert/strict').equal(ok.body.ok, true);
+  require('node:assert/strict').equal(asked.tracking_id, '143449611603129');
+  const refused = await stopShipment(sbWith([{ id: 'u2', razorpay_order_id: 'IC-2' }]), order, deps, { awb: '143449611603129', courierHint: 'xpressbees' });
+  require('node:assert/strict').equal(refused.code, 400);
+  const live = await stopShipment(sbWith([]), { ...order, status: 'paid' }, deps, { awb: '143449611603129', courierHint: 'xpressbees' });
+  require('node:assert/strict').equal(live.code, 400, 'never for an order that is not cancelled');
+});

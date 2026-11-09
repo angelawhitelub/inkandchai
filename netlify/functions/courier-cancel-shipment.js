@@ -27,6 +27,12 @@
  * (utils/pickup-live) and only a parcel still waiting for pickup is cancelled.
  *
  * id: row uuid or IC-… order id.
+ *
+ * Optional { awb, courier: 'xpressbees' | 'nimbuspost' }: stop THAT shipment of
+ * the cancelled order -- one the courier booked whose AWB never reached our
+ * row (found by the Couriers <-> Admin check). Same rules: the order must be
+ * cancelled here, the courier is asked live, and only a parcel still waiting
+ * for pickup is cancelled. An AWB another order carries is refused.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -74,7 +80,18 @@ function statusAfterRefund(order) {
   return Number(order.refund_amount_paise) < Number(order.amount_paise) ? 'partially_refunded' : 'refunded';
 }
 
-async function stopShipment(sb, order, deps = {}) {
+async function stopShipment(sb, order, deps = {}, { awb = '', courierHint = '' } = {}) {
+  if (awb) {
+    const { data: holders, error } = await sb.from('orders').select('id,razorpay_order_id').eq('tracking_id', awb).neq('id', order.id).limit(1);
+    if (error) return { code: 503, body: { error: `Could not check who carries ${awb}: ${error.message}` } };
+    if (holders && holders.length) return { code: 400, body: { error: `${awb} belongs to ${holders[0].razorpay_order_id}, not this order. Not cancelled.` } };
+    order = {
+      ...order,
+      tracking_id: awb,
+      courier_name: courierHint === 'xpressbees' ? 'XpressBees' : (courierHint === 'nimbuspost' && /xpress/i.test(String(order.courier_name || '')) ? 'NimbusPost' : (order.courier_name || 'NimbusPost')),
+      ...(courierHint === 'nimbuspost' && !order.nimbus_pushed_at ? { nimbus_pushed_at: order.created_at || new Date().toISOString() } : {}),
+    };
+  }
   const status = String(order.status || '').toLowerCase();
   const byCustomer = customerCancelled(order);
   if (status !== 'cancelled' && !byCustomer) {
@@ -116,7 +133,9 @@ exports.handler = async (event) => {
       .eq(UUID.test(id) ? 'id' : 'razorpay_order_id', id).maybeSingle();
     if (error) throw error;
     if (!order) return json(404, { error: 'Order not found' });
-    const r = await stopShipment(sb, order);
+    const awb = String(body.awb || '').trim();
+    if (awb && !/^[A-Za-z0-9]{8,24}$/.test(awb)) return json(400, { error: 'awb looks wrong' });
+    const r = await stopShipment(sb, order, {}, { awb, courierHint: String(body.courier || '').toLowerCase() });
     return json(r.code, r.body);
   } catch (e) {
     console.error('[courier-cancel-shipment]', e);
