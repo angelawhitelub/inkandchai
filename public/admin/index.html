@@ -1126,7 +1126,7 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-outline" onclick="sendCourierLabelsToTeam(this,'nimbuspost')" style="border-color:rgba(201,168,76,0.5);color:var(--gold);" title="WhatsApp the sorted NimbusPost label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send NimbusPost Labels to Team</button>
       <button class="btn-outline" onclick="downloadDtdcUpload(this)" style="border-color:rgba(255,204,0,0.55);color:#ffcc00;" title="Every unshipped order (no AWB, last 30 days) filled into DTDC's Bulk Upload template (sample-consignment-upload.xlsx): COD amount only on COD orders, the balance on partial COD. Upload it in the DTDC customer portal. Books nothing.">⬇ DTDC Bulk Upload (.xlsx)</button>
       <button class="btn-green" onclick="pushAllToIthinkPanel(this)" style="background:rgba(120,160,255,0.14);border-color:rgba(120,160,255,0.55);color:#8fb4ff;" title="Import unshipped orders into the iThink Logistics panel. Shows a dry-run preview with the COD collectable total before anything is sent. No courier is chosen and no AWB is generated. A suffix is added to the order number sent to iThink so the batch is identifiable and does not collide with records already in the panel.">Push to iThink Panel (No AWB)</button>
-      <button class="btn-outline" onclick="xbReconcile(this)" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Compare every XpressBees shipment of the last 30 days with our orders: which are shown as shipped here, which still say paid / COD pending, which have no AWB here, and which look booked twice. Shows the list first; you choose what to fix.">🔁 Check XpressBees ↔ Admin</button>
+      <button class="btn-outline" onclick="xbReconcile(this)" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Compare every XpressBees and NimbusPost (DTDC, Delhivery, Ekart …) shipment of the last 30 days with our orders: which are shown as shipped here, which still say paid / COD pending, which have no AWB here, and which look booked twice. Shows the list first; you choose what to fix.">🔁 Check Couriers ↔ Admin</button>
       <button class="btn-outline" onclick="xbClearShipped(this)" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Remove orders from the XpressBees panel's Pending list that another courier is already carrying (they have an AWB here) or that were cancelled/refunded here. Only unbooked rows are touched, never a real XpressBees shipment. Shows the list first; nothing is sent to customers. Also runs by itself daily at 09:00 IST.">🧹 Clear Shipped from XpressBees Pending</button>
       <button class="btn-green" onclick="xbBookOpen()" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Book orders on XpressBees through the Custom API: real AWBs, charged to the XpressBees wallet, customer notified. Uses the ticked orders, or every unshipped order. Preview with prices first; failures grouped by cause with what to do.">🐝 Book on XpressBees (API, AWB)</button>
       <button class="btn-green" onclick="pushServiceableToDelhivery(this)" style="background:rgba(181,107,18,0.12);border-color:rgba(181,107,18,0.55);color:var(--orange);" title="Book every unshipped order whose pincode Delhivery serves. Shows a preview first; each booked order gets a real AWB and is charged to the Delhivery wallet. Failures are grouped by cause with what to do next.">🚚 Book Serviceable on Delhivery (AWB)</button>
@@ -14947,15 +14947,15 @@ let xbPanelPushActive = false;
 let xbClearActive = false;
 // ── XpressBees ↔ Admin check (admin-xb-reconcile) ───────────────────────────
 const XB_REC_LABEL = {
-  status_stale: 'Has the XpressBees AWB but still says paid / COD pending',
-  awb_missing: 'Booked on XpressBees, AWB never reached us',
+  status_stale: 'Has the courier AWB but still says paid / COD pending',
+  awb_missing: 'Booked with the courier, AWB never reached us',
   other_awb: 'Has a different AWB here: booked twice or re-booked',
-  order_closed: 'Cancelled / refunded here but live on XpressBees',
+  order_closed: 'Cancelled / refunded here but live with the courier',
   not_found: 'No matching order here',
 };
 async function xbReconcile(btn) {
   const orig = btn.innerHTML;
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Reading XpressBees…';
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Reading XpressBees + NimbusPost…';
   let d;
   try {
     const res = await adminFetch('/.netlify/functions/admin-xb-reconcile?days=30', { method: 'GET' });
@@ -14975,7 +14975,7 @@ async function xbReconcile(btn) {
       <table style="border-collapse:collapse;width:100%;font-size:.7rem;margin-top:.3rem;">${rows.map(r => `<tr style="border-top:1px solid var(--border,#3333);">
         ${fix ? `<td style="padding:.25rem;"><input type="checkbox" class="xb-rec-pick" value="${esc(r.order_id)}" checked></td>` : ''}
         <td style="padding:.25rem;white-space:nowrap;">${r.order_id ? `<a href="#" data-id="${esc(r.order_id)}" onclick="event.preventDefault();document.getElementById('xbRecModal').remove();searchOrders(this.dataset.id)">${esc(r.order_id)}</a>` : esc(r.xb_order || '?')}</td>
-        <td style="padding:.25rem;white-space:nowrap;">XB ${esc(r.awb)} · ${esc(r.xb_status || '')}</td>
+        <td style="padding:.25rem;white-space:nowrap;">${esc(r.source === 'NimbusPost' ? (r.courier || 'NimbusPost') + ' (NP)' : 'XB')} ${esc(r.awb)} · ${esc(r.xb_status || '')}</td>
         <td style="padding:.25rem;">${esc(r.our_status || '')}${r.our_awb && r.our_awb !== r.awb ? ` · ours ${esc(r.our_courier || '')} ${esc(r.our_awb)}` : ''}</td>
         <td style="padding:.25rem;">${esc(r.customer || '')}${fix && r.notify ? ' · 📩 will be told' : ''}</td></tr>`).join('')}</table></details>`;
   }).join('');
@@ -14983,11 +14983,13 @@ async function xbReconcile(btn) {
   wrap.id = 'xbRecModal';
   wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px;';
   wrap.innerHTML = `<div style="background:var(--bg-card,#1b1b1b);color:var(--text,#eee);border:1px solid var(--border,#444);border-radius:14px;max-width:820px;width:100%;max-height:88vh;overflow:auto;padding:1.2rem 1.3rem;">
-    <h3 style="margin:0 0 .4rem;font-size:1rem">XpressBees ↔ Admin (last ${d.days} days)</h3>
-    <p style="font-size:.8rem;line-height:1.6;margin:.2rem 0 .4rem">${d.live} live XpressBees shipments · ✅ <b>${c.ok || 0}</b> shown as shipped here${fixable.length ? ` · ⚠️ <b>${fixable.length}</b> to fix` : ' · nothing to fix'}${c.other_awb ? ` · ⛔ <b>${c.other_awb}</b> booked twice?` : ''}</p>
-    <p style="font-size:.66rem;opacity:.7;margin:0 0 .4rem">XpressBees statuses: ${esc(Object.entries(d.xb_statuses || {}).map(([k, v]) => `${k} ${v}`).join(' · '))}</p>
-    ${groups || '<p>Every XpressBees shipment is shown as shipped here.</p>'}
-    ${fixable.length ? `<p style="font-size:.7rem;opacity:.8;margin:.6rem 0">Fix = put the XpressBees AWB on the ticked orders and mark them shipped. Customers marked 📩 were never told it shipped and get the usual shipped email + WhatsApp. Nothing is booked or cancelled at XpressBees. The rest are for you to look at.</p>` : ''}
+    <h3 style="margin:0 0 .4rem;font-size:1rem">Couriers ↔ Admin (last ${d.days} days)</h3>
+    ${Object.entries(d.errors || {}).map(([k, v]) => `<p style="color:#ff6a5e;font-size:.75rem;margin:.2rem 0">Could not read ${esc(k)}: ${esc(v)}</p>`).join('')}
+    <p style="font-size:.72rem;opacity:.8;margin:.2rem 0">${Object.entries(d.by_source || {}).map(([k, v]) => `${esc(k)}: ${Object.values(v).reduce((a, b) => a + b, 0)} live, ${v.ok || 0} shown as shipped`).join(' · ')}</p>
+    <p style="font-size:.8rem;line-height:1.6;margin:.2rem 0 .4rem">${d.live} live courier shipments · ✅ <b>${c.ok || 0}</b> shown as shipped here${fixable.length ? ` · ⚠️ <b>${fixable.length}</b> to fix` : ' · nothing to fix'}${c.other_awb ? ` · ⛔ <b>${c.other_awb}</b> booked twice?` : ''}</p>
+    <p style="font-size:.66rem;opacity:.7;margin:0 0 .4rem">Courier statuses: ${esc(Object.entries(d.xb_statuses || {}).map(([k, v]) => `${k} ${v}`).join(' · '))}</p>
+    ${groups || '<p>Every courier shipment is shown as shipped here.</p>'}
+    ${fixable.length ? `<p style="font-size:.7rem;opacity:.8;margin:.6rem 0">Fix = put the courier's AWB on the ticked orders and mark them shipped. Customers marked 📩 were never told it shipped and get the usual shipped email + WhatsApp. Nothing is booked or cancelled at any courier. The rest are for you to look at.</p>` : ''}
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
       ${fixable.length ? `<button class="btn-green" id="xbRecFix">Fix ticked orders</button>` : ''}
       <button class="btn-outline" onclick="document.getElementById('xbRecModal').remove()">Close</button>

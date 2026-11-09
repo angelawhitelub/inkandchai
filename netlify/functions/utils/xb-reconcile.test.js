@@ -1,8 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classify, applyOne } = require('../admin-xb-reconcile')._test;
+const { classify, applyOne, fromXb, fromNp } = require('../admin-xb-reconcile')._test;
 
-const ship = (awb, order_number, ship_status = 'booked') => ({ awb_number: awb, order_number, ship_status });
+const ship = (awb, order_number, ship_status = 'booked') => fromXb({ awb_number: awb, order_number, ship_status });
 const order = (id, extra = {}) => ({ id: 'u-' + id, razorpay_order_id: id, status: 'shipped', tracking_id: null, ...extra });
 
 test('every live XpressBees shipment is sorted against our order', () => {
@@ -48,4 +48,14 @@ test('a fix sets AWB + shipped only while the order is still unshipped, and tell
 test('the check never cancels or books at XpressBees', () => {
   const src = require('fs').readFileSync(require('path').resolve(__dirname, '../admin-xb-reconcile.js'), 'utf8');
   assert.doesNotMatch(src, /cancelCourierShipment|xb\.cancel|createShipment|\/ship\/assets\/label|from\([^)]*\)\.delete\(/);
+});
+
+test('a NimbusPost booking (DTDC via NimbusPost) next to an XpressBees AWB shows as booked twice', () => {
+  const np = fromNp({ order_id: 'np1', order_number: 'IC-20261104-Y3KMW-c', status_tab: 'ready_to_ship', shipment: { awb: '7D130602252', courier_name: 'DTDC Surface' } });
+  assert.equal(np.source, 'NimbusPost');
+  assert.equal(np.courier, 'DTDC Surface');
+  const ours = order('IC-20261104-Y3KMW', { tracking_id: '143449611656930', courier_name: 'XpressBees' });
+  const rows = classify([np], new Map(), new Map([['IC-20261104-Y3KMW', ours]]));
+  assert.equal(rows[0].kind, 'other_awb');
+  assert.equal(rows[0].order_id, 'IC-20261104-Y3KMW');
 });

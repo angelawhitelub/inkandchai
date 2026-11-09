@@ -1,10 +1,12 @@
 /**
  * Netlify Function: admin-xb-reconcile   (owner)
  *
- * "Is everything XpressBees has booked shown as shipped in our admin?"
+ * "Is everything the couriers have booked shown as shipped in our admin?"
  * Reads every XpressBees shipment of the last N days from the panel's own
- * list (the same API as the label download), matches each to our order by
- * AWB, then by order number, and sorts them:
+ * list (the same API as the label download) and every NimbusPost order with
+ * a shipment (Partner API v2: DTDC, Delhivery, Ekart ... booked through
+ * NimbusPost), matches each to our order by AWB, then by order number, and
+ * sorts them:
  *
  *   ok            our order carries this AWB and is shipped or later
  *   status_stale  our order carries this AWB but still says paid / COD pending   (fixable)
@@ -27,6 +29,7 @@ const { makeCaller } = require('./admin-xpressbees-labels').lib;
 const { buildTrackingUrl } = require('./utils/tracking-url');
 const { sendShippedNotification } = require('./utils/shipped-notification');
 const { baseOrderNumber } = require('./utils/booking-guard');
+const v2 = require('./utils/nimbuspost-v2');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -41,11 +44,25 @@ const MAX_PAGES = 80;
 const COURIER = 'XpressBees';
 const UNSHIPPED = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending'];
 const CLOSED = ['cancelled', 'refunded', 'refund_pending', 'refund_failed'];
-const XB_DEAD = /cancel/i;
+const DEAD = /cancel|void/i;
 
 const lc = (s) => String(s || '').trim().toLowerCase();
 /** Where the panel puts our order number; its record shape is not documented. */
 const orderNumberOf = (r) => String(r.order_number || r.order_id || r.client_order_id || r.reference_number || r.order_no || '').trim();
+
+/** One shape for both couriers: { source, awb, status, number, courier }. */
+const fromXb = (r) => ({ source: 'XpressBees', awb: String(r.awb_number || '').trim(), status: String(r.ship_status || r.status || '').trim(), number: orderNumberOf(r), courier: COURIER });
+const fromNp = (r) => {
+  const s = v2.toShipment(r);
+  return { source: 'NimbusPost', awb: s.awb_number, status: s.ship_status, number: String(r.order_number || '').trim(), courier: s.courier_name || 'NimbusPost' };
+};
+
+async function npShipments({ days }, deps = {}) {
+  const call = v2.makeV2Caller(deps);
+  const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const rows = await v2.listOrders(call, { has_shipment: 'true', date_from: from, date_to: new Date().toISOString() }, { max: 5000 });
+  return rows.map(fromNp).filter((s) => s.awb);
+}
 
 async function xbShipments(call, { days }) {
   const end = Math.floor(Date.now() / 1000);
@@ -61,13 +78,7 @@ async function xbShipments(call, { days }) {
     rows.push(...recs);
     if (recs.length < PAGE) break;
   }
-  const seen = new Set();
-  return rows.filter((r) => {
-    const awb = String(r.awb_number || '').trim();
-    if (!awb || seen.has(awb)) return false;
-    seen.add(awb);
-    return true;
-  });
+  return rows.map(fromXb).filter((s) => s.awb);
 }
 
 async function ordersBy(supabase, column, values) {
@@ -86,11 +97,13 @@ async function ordersBy(supabase, column, values) {
 /** Pure: shipments + our orders → one row per live XpressBees shipment, classified. */
 function classify(shipments, byAwb, byNumber) {
   const rows = [];
+  const seen = new Set();
   for (const s of shipments) {
-    const awb = String(s.awb_number).trim();
-    const xbStatus = String(s.ship_status || s.status || '').trim();
-    if (XB_DEAD.test(xbStatus)) continue;
-    const number = orderNumberOf(s);
+    const awb = s.awb;
+    const xbStatus = s.status;
+    if (!awb || seen.has(awb) || DEAD.test(xbStatus)) continue;
+    seen.add(awb);
+    const number = s.number;
     const o = byAwb.get(awb) || byNumber.get(baseOrderNumber(number)) || null;
     const st = o ? lc(o.status) : '';
     const ourAwb = o ? String(o.tracking_id || '').trim() : '';
@@ -102,6 +115,8 @@ function classify(shipments, byAwb, byNumber) {
     else kind = UNSHIPPED.includes(st) ? 'awb_missing' : 'other_awb';
     rows.push({
       kind,
+      source: s.source,
+      courier: s.courier,
       awb,
       xb_status: xbStatus || null,
       xb_order: number || null,
@@ -117,24 +132,33 @@ function classify(shipments, byAwb, byNumber) {
   return rows;
 }
 
-async function report(supabase, call, { days }) {
-  const shipments = await xbShipments(call, { days });
-  const awbOrders = await ordersBy(supabase, 'tracking_id', shipments.map((s) => String(s.awb_number).trim()));
+async function report(supabase, call, { days }, deps = {}) {
+  const errors = {};
+  const [xbList, npList] = await Promise.all([
+    xbShipments(call, { days }).catch((e) => { errors.XpressBees = e.message; return []; }),
+    (deps.npShipments || npShipments)({ days }).catch((e) => { errors.NimbusPost = e.message; return []; }),
+  ]);
+  if (errors.XpressBees && errors.NimbusPost) throw new Error(`XpressBees: ${errors.XpressBees} · NimbusPost: ${errors.NimbusPost}`);
+  const shipments = [...xbList, ...npList];
+  const awbOrders = await ordersBy(supabase, 'tracking_id', shipments.map((s) => s.awb));
   const byAwb = new Map(awbOrders.map((o) => [String(o.tracking_id).trim(), o]));
-  const numbers = shipments.filter((s) => !byAwb.has(String(s.awb_number).trim())).map(orderNumberOf).filter(Boolean);
+  const numbers = shipments.filter((s) => !byAwb.has(s.awb)).map((s) => s.number).filter(Boolean);
   const wanted = [...new Set(numbers.flatMap((n) => [n, baseOrderNumber(n), n.replace(/-(P|C\d*|D|R\d*)$/i, '')]))];
   const numOrders = await ordersBy(supabase, 'razorpay_order_id', wanted);
   const byNumber = new Map(numOrders.map((o) => [String(o.razorpay_order_id).toUpperCase(), o]));
   const rows = classify(shipments, byAwb, byNumber);
   const counts = rows.reduce((m, r) => { m[r.kind] = (m[r.kind] || 0) + 1; return m; }, {});
-  const xbStatuses = rows.reduce((m, r) => { m[r.xb_status || '?'] = (m[r.xb_status || '?'] || 0) + 1; return m; }, {});
+  const xbStatuses = rows.reduce((m, r) => { const k = `${r.source} ${r.xb_status || '?'}`; m[k] = (m[k] || 0) + 1; return m; }, {});
+  const bySource = rows.reduce((m, r) => { m[r.source] = m[r.source] || {}; m[r.source][r.kind] = (m[r.source][r.kind] || 0) + 1; return m; }, {});
   return {
     days,
-    xb_shipments: shipments.length,
+    xb_shipments: xbList.length,
+    np_shipments: npList.length,
     live: rows.length,
     counts,
+    by_source: bySource,
     xb_statuses: xbStatuses,
-    record_keys: shipments[0] ? Object.keys(shipments[0]).slice(0, 40) : [],
+    errors,
     rows,
   };
 }
@@ -146,8 +170,8 @@ async function applyOne(supabase, row, deps = {}) {
   const update = {
     status: 'shipped',
     tracking_id: row.awb,
-    courier_name: o.courier_name && row.kind === 'status_stale' ? o.courier_name : COURIER,
-    tracking_url: buildTrackingUrl({ courier: COURIER, awb: row.awb, orderNumber: o.razorpay_order_id }),
+    courier_name: o.courier_name && row.kind === 'status_stale' ? o.courier_name : (row.courier || COURIER),
+    tracking_url: buildTrackingUrl({ courier: row.courier || COURIER, awb: row.awb, orderNumber: o.razorpay_order_id }),
     ...(o.shipped_at ? {} : { shipped_at: now }),
     awb_assigned_at: now,
   };
@@ -159,7 +183,7 @@ async function applyOne(supabase, row, deps = {}) {
   let notified = null;
   if (row.notify) {
     const send = deps.sendShippedNotification || sendShippedNotification;
-    notified = await send({ ...o, ...update }, { awb: row.awb, courier: COURIER, trackingUrl: update.tracking_url })
+    notified = await send({ ...o, ...update }, { awb: row.awb, courier: update.courier_name, trackingUrl: update.tracking_url })
       .catch((e) => ({ error: e.message }));
   }
   return { order_id: o.razorpay_order_id, ok: true, awb: row.awb, notified: !!notified && !notified.error, notify_error: notified && notified.error };
@@ -202,4 +226,4 @@ exports.handler = async (event = {}) => {
   }
 };
 
-exports._test = { classify, applyOne, orderNumberOf };
+exports._test = { classify, applyOne, orderNumberOf, fromXb, fromNp };
