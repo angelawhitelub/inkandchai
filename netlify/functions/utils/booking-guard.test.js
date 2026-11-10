@@ -131,3 +131,27 @@ test('the report is read-only', () => {
   const src = fs.readFileSync(path.resolve(__dirname, '../admin-double-bookings.js'), 'utf8');
   assert.doesNotMatch(src, /\.update\(|\.insert\(|\.delete\(|cancel\(|sendText|sendEmail/);
 });
+
+test('Shiprocket is retired: its stamp no longer blocks other couriers unless SHIPROCKET_ACTIVE=1', async () => {
+  const prev = process.env.SHIPROCKET_ACTIVE;
+  try {
+    delete process.env.SHIPROCKET_ACTIVE;
+    const guard = await g.bookingGuard({ courier: 'nimbuspost', deps: panel([]) });
+    assert.equal(guard(order({ shiprocket_order_id: '1720035677' })), null);
+    process.env.SHIPROCKET_ACTIVE = '1';
+    const guard2 = await g.bookingGuard({ courier: 'nimbuspost', deps: panel([]) });
+    assert.equal(guard2(order({ shiprocket_order_id: '1720035677' })).kind, 'pushed_elsewhere');
+  } finally {
+    if (prev === undefined) delete process.env.SHIPROCKET_ACTIVE; else process.env.SHIPROCKET_ACTIVE = prev;
+  }
+});
+
+test('Shiprocket checkout push is off unless SHIPMENT_AUTO_PUSH=shiprocket', async () => {
+  const prev = process.env.SHIPMENT_AUTO_PUSH;
+  delete process.env.SHIPMENT_AUTO_PUSH;
+  try {
+    const out = await require('./shiprocket').autoPushOrderToShiprocket({ inkOrderId: 'IC-1', cartItems: [] });
+    assert.equal(out.skipped, true);
+    assert.equal(out.mode, 'off');
+  } finally { if (prev !== undefined) process.env.SHIPMENT_AUTO_PUSH = prev; }
+});

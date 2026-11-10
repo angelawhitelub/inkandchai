@@ -18,7 +18,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const xb = require('./utils/xpressbees');
-const { baseOrderNumber, panelState } = require('./utils/booking-guard');
+const { baseOrderNumber, panelState, shiprocketActive } = require('./utils/booking-guard');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -75,7 +75,7 @@ function analyse(panelRows, ordersById) {
     }
     if (o && !ourAwb && o.nimbus_pushed_at) why.push('also pushed to the NimbusPost panel');
     if (o && !ourAwb && o.ithink_pushed_at) why.push('also pushed to iThink');
-    if (o && !ourAwb && o.shiprocket_order_id) why.push(`also in Shiprocket (${o.shiprocket_order_id})`);
+    if (o && !ourAwb && o.shiprocket_order_id && shiprocketActive()) why.push(`also in Shiprocket (${o.shiprocket_order_id})`);
     const row = {
       order_id: o ? o.razorpay_order_id : key,
       xb_awbs: xbAwbs,

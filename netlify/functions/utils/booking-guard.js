@@ -98,6 +98,9 @@ async function xbPanelIndex({ deps = {} } = {}) {
 /** Forget the cached panel read (after a booking changes it, and in tests). */
 function resetPanelCache() { _cache = null; _cacheAt = 0; }
 
+/** Shiprocket stamps only count while Shiprocket is in use. */
+const shiprocketActive = () => String(process.env.SHIPROCKET_ACTIVE || '') === '1';
+
 const orderKey = (order) => String((order && (order.razorpay_order_id || order.id)) || '');
 
 /**
@@ -129,7 +132,11 @@ function blockReason(order, courier, panelRow, released, { rebookingAwb = null }
   if (order.ithink_pushed_at && courier !== 'ithink' && !isReleased) {
     return { kind: 'pushed_elsewhere', reason: 'already pushed to iThink; cancel it there first, then confirm' };
   }
-  if (order.shiprocket_order_id && courier !== 'shiprocket' && !isReleased) {
+  // Shiprocket is retired (owner, 2026-11-11: unused since ~July). The site
+  // kept stamping new orders with a Shiprocket id at checkout, so this rule
+  // was blocking real bookings for parcels nobody would ever ship there.
+  // SHIPROCKET_ACTIVE=1 restores it if Shiprocket is ever used again.
+  if (shiprocketActive() && order.shiprocket_order_id && courier !== 'shiprocket' && !isReleased) {
     return { kind: 'pushed_elsewhere', reason: `already in Shiprocket as ${order.shiprocket_order_id}; cancel it there first, then confirm` };
   }
   return null;
@@ -178,7 +185,7 @@ function releasedFrom(body, namedIds) {
   return body.released_elsewhere.map((s) => String(s).trim().toUpperCase()).filter((s) => named.has(s));
 }
 
-module.exports = {
+module.exports = { shiprocketActive,
   bookingGuard, assertBookable, blockReason, releasedFrom,
   xbPanelIndex, resetPanelCache, baseOrderNumber, panelState,
 };

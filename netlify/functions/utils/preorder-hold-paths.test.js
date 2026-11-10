@@ -59,7 +59,11 @@ test('DTDC sheet: a pre-order is left off and named', async () => {
 
 test('Shiprocket checkout push: skipped on the line stamp', async () => {
   const { autoPushOrderToShiprocket } = require('./shiprocket');
-  const out = await autoPushOrderToShiprocket({ inkOrderId: 'IC-1', cartItems: preorder().cart_items });
+  const prev = process.env.SHIPMENT_AUTO_PUSH;
+  process.env.SHIPMENT_AUTO_PUSH = 'shiprocket';
+  let out;
+  try { out = await autoPushOrderToShiprocket({ inkOrderId: 'IC-1', cartItems: preorder().cart_items }); }
+  finally { if (prev === undefined) delete process.env.SHIPMENT_AUTO_PUSH; else process.env.SHIPMENT_AUTO_PUSH = prev; }
   assert.equal(out.skipped, true);
   assert.match(out.reason, /pre-order/);
 });

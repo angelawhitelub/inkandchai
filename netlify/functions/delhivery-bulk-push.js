@@ -41,7 +41,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { preorderChecker } = require('./utils/preorder-hold');
-const { bookingGuard, releasedFrom } = require('./utils/booking-guard');
+const { bookingGuard, releasedFrom, shiprocketActive } = require('./utils/booking-guard');
 const { classifyShipmentMoney } = require('./utils/shipment-money');
 const { isReplacementOrder } = require('./utils/replacement-order');
 const { buildShipment, createShipments } = require('./utils/delhivery');
@@ -143,7 +143,7 @@ exports.handler = async (event) => {
     // After the serviceability check on purpose: an order Delhivery cannot
     // serve should be reported as that, not as "cancel it in Shiprocket first"
     // -- cancelling it there would strand it with no courier at all.
-    if (order.shiprocket_order_id && !body.force) { refused.push({ order_id: id, kind: 'shiprocket', shiprocket_order_id: String(order.shiprocket_order_id), reason: `already in Shiprocket as ${order.shiprocket_order_id} — cancel it there, then re-run with force:true` }); continue; }
+    if (order.shiprocket_order_id && shiprocketActive() && !body.force) { refused.push({ order_id: id, kind: 'shiprocket', shiprocket_order_id: String(order.shiprocket_order_id), reason: `already in Shiprocket as ${order.shiprocket_order_id} — cancel it there, then re-run with force:true` }); continue; }
 
     preview.queued++;
     if (money.isCOD) { preview.cod_orders++; preview.cod_collectable += money.collectableAmount; }
