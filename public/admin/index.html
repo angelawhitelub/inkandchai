@@ -2149,8 +2149,8 @@ select,input,textarea{font-size:1rem;}
             <p class="hint" style="margin:.6rem 0 0;">Want customers who ordered a particular book instead? <button class="btn-outline" type="button" onclick="openTitleAlertFor()" style="margin-left:.3rem;">📣 Pick by a book they ordered</button></p>
             <div class="form-row" style="margin-top:.6rem;"><label>Send by</label>
               <div style="display:flex;gap:1.2rem;flex-wrap:wrap;">
-                <label style="display:flex;gap:.4rem;align-items:center;text-transform:none;letter-spacing:0;"><input type="checkbox" id="ntaViaWa" checked/> WhatsApp (about ₹0.91 each)</label>
-                <label style="display:flex;gap:.4rem;align-items:center;text-transform:none;letter-spacing:0;"><input type="checkbox" id="ntaViaEmail" checked/> Email (free; only customers who gave one)</label></div>
+                <label style="display:flex;gap:.5rem;align-items:center;text-transform:none;letter-spacing:0;font-size:.75rem;white-space:nowrap;"><input type="checkbox" id="ntaViaWa" style="width:18px;height:18px;flex:none;margin:0;" checked/> WhatsApp (about ₹0.91 each)</label>
+                <label style="display:flex;gap:.5rem;align-items:center;text-transform:none;letter-spacing:0;font-size:.75rem;white-space:nowrap;"><input type="checkbox" id="ntaViaEmail" style="width:18px;height:18px;flex:none;margin:0;" checked/> Email (free; only customers who gave one)</label></div>
               <p class="hint" style="margin:.3rem 0 0;">With both ticked, at most 400 per channel in one press.</p></div>
             <div class="form-row" id="ntaKeywordsRow" style="margin-top:.6rem;"><label>Also match past titles containing (series names, comma-separated)</label>
               <input id="ntaKeywords" placeholder="e.g. Court of Thorns, Throne of Glass, Crescent City" autocomplete="off"/>
@@ -2864,14 +2864,14 @@ select,input,textarea{font-size:1rem;}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.2rem;align-items:start;">
         <div class="product-editor">
           <h3 style="font-family:'DM Serif Display',serif;font-size:1.2rem;font-weight:400;margin-bottom:.6rem;">1. Customers who ordered</h3>
-          <input id="taBoughtSearch" placeholder="Search a title or author…" autocomplete="off" oninput="taSearchDebounced('bought', this.value)"/>
+          <input id="taBoughtSearch" placeholder="Search a title or author…" autocomplete="off" style="width:100%;box-sizing:border-box;padding:.6rem .7rem;font-size:.8rem;" oninput="taSearchDebounced('bought', this.value)"/>
           <div id="taBoughtHits" style="margin-top:.3rem;"></div>
           <div id="taBoughtPicked" style="margin-top:.6rem;"></div>
           <p class="hint" style="margin:.4rem 0 0;">Add one or more books (up to 20). Anyone who ordered any of them is included.</p>
         </div>
         <div class="product-editor">
           <h3 style="font-family:'DM Serif Display',serif;font-size:1.2rem;font-weight:400;margin-bottom:.6rem;">2. Tell them about</h3>
-          <input id="taNotifySearch" placeholder="Search a title or author…" autocomplete="off" oninput="taSearchDebounced('notify', this.value)"/>
+          <input id="taNotifySearch" placeholder="Search a title or author…" autocomplete="off" style="width:100%;box-sizing:border-box;padding:.6rem .7rem;font-size:.8rem;" oninput="taSearchDebounced('notify', this.value)"/>
           <div id="taNotifyHits" style="margin-top:.3rem;"></div>
           <div id="taNotifyPicked" style="margin-top:.6rem;"></div>
           <p class="hint" style="margin:.4rem 0 0;">Customers who already ordered this one are left out.</p>
@@ -2881,8 +2881,8 @@ select,input,textarea{font-size:1rem;}
         <h3 style="font-family:'DM Serif Display',serif;font-size:1.2rem;font-weight:400;margin-bottom:.6rem;">3. Send</h3>
         <div class="form-row"><label>Send by</label>
           <div style="display:flex;gap:1.2rem;flex-wrap:wrap;">
-            <label style="display:flex;gap:.4rem;align-items:center;text-transform:none;letter-spacing:0;"><input type="checkbox" id="taViaWa" checked onchange="taReset()"/> WhatsApp (about ₹0.91 each)</label>
-            <label style="display:flex;gap:.4rem;align-items:center;text-transform:none;letter-spacing:0;"><input type="checkbox" id="taViaEmail" checked onchange="taReset()"/> Email (free; only customers who gave one)</label></div></div>
+            <label style="display:flex;gap:.5rem;align-items:center;text-transform:none;letter-spacing:0;font-size:.75rem;white-space:nowrap;"><input type="checkbox" id="taViaWa" style="width:18px;height:18px;flex:none;margin:0;" checked onchange="taReset()"/> WhatsApp (about ₹0.91 each)</label>
+            <label style="display:flex;gap:.5rem;align-items:center;text-transform:none;letter-spacing:0;font-size:.75rem;white-space:nowrap;"><input type="checkbox" id="taViaEmail" style="width:18px;height:18px;flex:none;margin:0;" checked onchange="taReset()"/> Email (free; only customers who gave one)</label></div></div>
         <div class="form-grid" style="margin-top:.4rem;">
           <div class="form-row"><label>Orders from the last (days)</label><input id="taDays" type="number" min="30" max="730" value="365" onchange="taReset()"/></div>
           <div class="form-row"><label>Skip anyone messaged in the last (days)</label><input id="taCooldown" type="number" min="0" max="60" value="7" onchange="taReset()"/></div>
