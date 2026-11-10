@@ -485,3 +485,20 @@ test('email-unsubscribe: GET only asks, POST records, a forged token does nothin
   assert.match(post.body, /unsubscribed/);
   assert.ok(unsub.has(EU.hashEmail('riya@example.com')));
 });
+
+test('cover: the whole cover is fitted into a 1.91:1 banner for WhatsApp, the email keeps it upright', async () => {
+  const tables = baseTables();
+  tables.custom_products[0].image_url = 'https://inkandchai.in/images/acosh.webp';
+  const banner = 'https://wsrv.nl/?url=' + encodeURIComponent('https://inkandchai.in/images/acosh.webp') + '&w=800&h=418&fit=contain&cbg=1a1613&output=jpg&q=80';
+  images = { [banner]: JPEG };
+  try {
+    const sent = [], mails = [];
+    const handler = loadHandler({ tables, sent, writes: [], mails });
+    const dry = await call(handler, { slug: 'a-court-of-splintered-harmony', dry_run: true, email: true });
+    assert.strictEqual(dry.body.cover.url, banner);
+    assert.strictEqual(dry.body.cover.fallback, false);
+    await call(handler, { slug: 'a-court-of-splintered-harmony', dry_run: false, expect: 1, expect_email: dry.body.email.will_email });
+    assert.strictEqual(sent[0].headerImageUrl, banner);
+    assert.match(dry.body.email.preview_html, /w=440&amp;output=jpg/);
+  } finally { images = {}; }
+});

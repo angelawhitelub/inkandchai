@@ -144,8 +144,19 @@ function jpegCopyKey(slug, sourceUrl) {
   return `covers/wa/${slug}-${h}.jpg`;
 }
 
+// WhatsApp shows a template image as a 1.91:1 banner and crops a tall cover
+// to its middle strip. Fit the whole cover into a banner instead, the way
+// order_confirmed_image does (utils/order-cover whatsappCoverUrl): wsrv.nl
+// also turns webp into JPEG. Only the public cover URL goes to wsrv.
+const bannerUrl = (src) => `https://wsrv.nl/?url=${encodeURIComponent(src)}&w=800&h=418&fit=contain&cbg=1a1613&output=jpg&q=80`;
+const emailCoverUrl = (src) => `https://wsrv.nl/?url=${encodeURIComponent(src)}&w=440&output=jpg&q=82`;
+
 async function coverFor(images, slug) {
   const first = absolute(images.find((u) => absolute(u)));
+  if (first && !/^off$/i.test(String(process.env.WHATSAPP_NEW_TITLE_BANNER || '').trim())) {
+    const banner = bannerUrl(first);
+    if (await isSendableImage(banner)) return { url: banner, email_url: emailCoverUrl(first), banner: true, fallback: false };
+  }
   const r2 = r2Configured() ? r2Config() : null;
   if (first && r2 && r2.publicBase) {
     const copy = `${r2.publicBase}/${jpegCopyKey(slug, first)}`;
@@ -325,7 +336,7 @@ exports.handler = async (event) => {
       to: r.email,
       subject: `Exclusive: ${A.bareTitle(book.title, book.author).slice(0, 90)} is now available`,
       html: A.emailHtml(r, book, {
-        coverUrl: cover ? cover.url : '',
+        coverUrl: cover ? cover.email_url || cover.url : '',
         productUrl: `${productUrl}?utm_source=email&utm_medium=new_title&utm_campaign=${encodeURIComponent(book.slug)}`,
         unsubscribeUrl: EU.unsubscribeUrl(r.email),
       }),
@@ -446,7 +457,7 @@ exports.handler = async (event) => {
         counts: { ...emailRemoved, eligible: emailEligible.length },
         will_email: toEmail.length,
         subject: emailOf({ ...previewRecipient, email: 'preview@example.com' }).subject,
-        preview_html: A.emailHtml({ ...previewRecipient, name: previewRecipient.name || 'there' }, book, { coverUrl: cover ? cover.url : '', productUrl, unsubscribeUrl: '#' }),
+        preview_html: A.emailHtml({ ...previewRecipient, name: previewRecipient.name || 'there' }, book, { coverUrl: cover ? cover.email_url || cover.url : '', productUrl, unsubscribeUrl: '#' }),
         blocked_reason: emailError,
       } : null,
       blocked_reason: listError ? `Opt-out list unreadable (${listError})` : ledgerError ? `Delivery ledger unreadable — run sql/whatsapp_campaign_deliveries.sql (${ledgerError})` : '',
