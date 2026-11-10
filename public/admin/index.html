@@ -15934,7 +15934,7 @@ async function xbReconcile(btn) {
     <p style="font-size:.8rem;line-height:1.6;margin:.2rem 0 .4rem">${d.live} live courier shipments · ✅ <b>${c.ok || 0}</b> shown as shipped here${fixable.length ? ` · ⚠️ <b>${fixable.length}</b> to fix` : ' · nothing to fix'}${c.other_awb ? ` · ⛔ <b>${c.other_awb}</b> booked twice?` : ''}</p>
     <p style="font-size:.66rem;opacity:.7;margin:0 0 .4rem">Courier statuses: ${esc(Object.entries(d.xb_statuses || {}).map(([k, v]) => `${k} ${v}`).join(' · '))}</p>
     ${groups || '<p>Every courier shipment is shown as shipped here.</p>'}
-    ${fixable.length ? `<p style="font-size:.7rem;opacity:.8;margin:.6rem 0">Fix = put the courier's AWB on the ticked orders and mark them shipped. Customers marked 📩 were never told it shipped and get the usual shipped email + WhatsApp. Nothing is booked or cancelled at any courier. The rest are for you to look at.</p>` : ''}
+    ${fixable.length ? `<p style="font-size:.7rem;opacity:.8;margin:.6rem 0">Fix = put the courier's AWB on the ticked orders and mark them shipped. Each row says where it is booked: XB = XpressBees, (NP) = NimbusPost. A NimbusPost booking will not show as shipped in the XpressBees panel. Customers marked 📩 were never told it shipped and get the usual shipped email + WhatsApp. Nothing is booked or cancelled at any courier. The rest are for you to look at.</p>` : ''}
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
       ${fixable.length ? `<button class="btn-green" id="xbRecFix">Fix ticked orders</button>` : ''}
       <button class="btn-outline" onclick="document.getElementById('xbRecModal').remove()">Close</button>
@@ -15945,7 +15945,16 @@ async function xbReconcile(btn) {
   if (fixBtn) fixBtn.onclick = async () => {
     const ids = [...wrap.querySelectorAll('.xb-rec-pick:checked')].map(el => el.value);
     if (!ids.length) { alert('Tick at least one order.'); return; }
-    if (!confirm(`Mark ${ids.length} order(s) shipped with their XpressBees AWB?\n\nCustomers never told it shipped get the shipped email + WhatsApp.`)) return;
+    // Say WHERE each one is booked. This used to read "their XpressBees AWB"
+    // for NimbusPost bookings too; the owner looked the orders up in the
+    // XpressBees panel, saw them unbooked there, and took the list for wrong.
+    const picked = fixable.filter(r => ids.includes(r.order_id));
+    const where = {};
+    picked.forEach(r => { const k = r.source === 'NimbusPost' ? 'NimbusPost · ' + (r.courier || 'courier') : 'XpressBees'; where[k] = (where[k] || 0) + 1; });
+    const whereLines = Object.entries(where).map(([k, n]) => '  ' + n + ' × ' + k).join('\n');
+    const npNote = picked.some(r => r.source === 'NimbusPost')
+      ? '\n\nThe NimbusPost ones can still show as New in the XpressBees panel. That is only its copy of the order: do NOT press Ship there. Use "🧹 Clear Shipped from XpressBees Pending" afterwards.' : '';
+    if (!confirm(`Mark ${ids.length} order(s) shipped with the AWB the courier already gave them?\n\nBooked at:\n${whereLines}${npNote}\n\nCustomers never told it shipped get the shipped email + WhatsApp.`)) return;
     fixBtn.disabled = true; fixBtn.innerHTML = '<span class="spinner"></span>Fixing…';
     const msg = wrap.querySelector('#xbRecMsg');
     try {
