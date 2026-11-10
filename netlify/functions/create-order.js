@@ -39,7 +39,7 @@ const COUPONS = {
   '499HIT':   { type: 'percent', value: 10, minSubtotal: 499  },
   SAVE12:     { type: 'percent', value: 12, minSubtotal: 999  },
   SAVE15:     { type: 'percent', value: 15, minSubtotal: 1499 },
-  CHAI10BACK: { type: 'percent', value: 10, minSubtotal: 299  },
+  CHAI10BACK: { type: 'percent', value: 10, minSubtotal: 399  },
 };
 
 function normalizeCouponCode(v) {

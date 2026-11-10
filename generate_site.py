@@ -8550,7 +8550,7 @@ const COUPONS = {
   '499HIT':  { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
   SAVE12:    { type: 'percent', value: 12, minSubtotal: 999, onlineOnly: true, label: '12% prepaid discount' },
   SAVE15:    { type: 'percent', value: 15, minSubtotal: 1499, onlineOnly: true, label: '15% prepaid discount' },
-  CHAI10BACK:{ type: 'percent', value: 10, minSubtotal: 299, onlineOnly: true, label: 'Private 10% recovery discount' },
+  CHAI10BACK:{ type: 'percent', value: 10, minSubtotal: 399, onlineOnly: true, label: 'Private 10% recovery discount' },
 };
 const PARTIAL_PAYMENT_THRESHOLD = 299;
 const PARTIAL_PAYMENT_RATE = 0.10;

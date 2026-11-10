@@ -79,7 +79,7 @@ function recoveryEmailHtml(lead) {
       <div style="border:1px dashed rgba(201,168,76,0.5);background:rgba(201,168,76,0.07);padding:18px;margin:20px 0;text-align:center;">
         <div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#a09080;margin-bottom:8px;">Your private coupon</div>
         <div style="font-size:26px;letter-spacing:4px;font-weight:700;color:#c9a84c;">${RECOVERY_COUPON}</div>
-        <div style="font-size:13px;color:#a09080;margin-top:8px;">10% off on prepaid orders above ₹299. One use only.</div>
+        <div style="font-size:13px;color:#a09080;margin-top:8px;">10% off on prepaid orders above ₹399. One use only.</div>
       </div>
       <a href="https://inkandchai.in/checkout/" style="display:inline-block;background:#c9a84c;color:#0d0b08;text-decoration:none;padding:12px 22px;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Complete Checkout →</a>
       <p style="color:#c9b98a;font-size:13px;line-height:1.7;margin-top:22px;border-top:1px solid rgba(201,168,76,0.18);padding-top:16px;">📸 Still doubtful? Please check our Instagram for reference — real reader photos, genuine books &amp; happy customers: <a href="https://instagram.com/theinkandchai.in" style="color:#c9a84c;font-weight:600;text-decoration:none;">@theinkandchai.in</a></p>

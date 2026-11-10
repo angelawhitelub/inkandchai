@@ -7983,13 +7983,13 @@ function abandonedWhatsappUrl(lead) {
     ? items.slice(0, 4).map(i => `- ${i.title || 'Book'} x${i.qty || 1}`).join('\n')
     : '- Your selected books';
   const extra = items.length > 4 ? `\n+${items.length - 4} more` : '';
-  const text = `Hi ${lead.customer_name || 'there'}, this is Ink & Chai. These books are still waiting in your checkout:\n${bookList}${extra}\n\nUse private coupon CHAI10BACK for 10% off on your prepaid order above ₹299. This code is only for checkout recovery and is not shown publicly on our website: https://inkandchai.in/checkout/`;
+  const text = `Hi ${lead.customer_name || 'there'}, this is Ink & Chai. These books are still waiting in your checkout:\n${bookList}${extra}\n\nUse private coupon CHAI10BACK for 10% off on your prepaid order above ₹399. This code is only for checkout recovery and is not shown publicly on our website: https://inkandchai.in/checkout/`;
   return phoneWithCountry ? `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(text)}` : '';
 }
 
 function abandonedEmailText(lead) {
   const items = Array.isArray(lead.cart_items) ? lead.cart_items : [];
-  return `Hi ${lead.customer_name || 'there'},\n\nThe books you selected at Ink & Chai are still waiting:\n${items.map(i => `- ${i.title || 'Book'} x${i.qty || 1}`).join('\n')}\n\nUse private coupon CHAI10BACK for 10% off on your prepaid order above ₹299. This code is not shown publicly on our website.\n\nComplete checkout here: https://inkandchai.in/checkout/\n\nInk & Chai`;
+  return `Hi ${lead.customer_name || 'there'},\n\nThe books you selected at Ink & Chai are still waiting:\n${items.map(i => `- ${i.title || 'Book'} x${i.qty || 1}`).join('\n')}\n\nUse private coupon CHAI10BACK for 10% off on your prepaid order above ₹399. This code is not shown publicly on our website.\n\nComplete checkout here: https://inkandchai.in/checkout/\n\nInk & Chai`;
 }
 
 function exportAbandonedCsv() {
@@ -10070,7 +10070,7 @@ const STATIC_COUPONS = [
   { code:'499HIT',     value:'10%', min:499,  note:'Prepaid only — duplicate of INKLOVE10' },
   { code:'SAVE12',     value:'12%', min:999,  note:'Prepaid only' },
   { code:'SAVE15',     value:'15%', min:1499, note:'Prepaid only' },
-  { code:'CHAI10BACK', value:'10%', min:299,  note:'Prepaid only — private, used in cart-recovery messages' },
+  { code:'CHAI10BACK', value:'10%', min:399,  note:'Prepaid only — private, used in cart-recovery messages' },
   { code:'FREEDOM',    value:'15%', min:400,  note:'Ended 15 Aug 2026', dead:true },
   { code:'SUMMER10',   value:'10%', min:299,  note:'Ended 19 May 2026', dead:true },
 ];
