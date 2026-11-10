@@ -957,6 +957,7 @@ select,input,textarea{font-size:1rem;}
         <a class="admin-tab owner-only" data-tab="banners" href="/admin/#banners" onclick="return adminTabClick(event,'banners')">🎨 Banner Studio</a>
         <div class="admin-menu-divider" aria-hidden="true"></div>
         <a class="admin-tab" data-tab="coupons" href="/admin/#coupons" onclick="return adminTabClick(event,'coupons')">🏷️ Coupons</a>
+        <a class="admin-tab owner-only" data-tab="titlealerts" href="/admin/#titlealerts" onclick="return adminTabClick(event,'titlealerts')">📣 Title Alerts</a>
         <a class="admin-tab" data-tab="abandoned" href="/admin/#abandoned" onclick="return adminTabClick(event,'abandoned')">🛒 Abandoned Carts</a>
       </div>
     </div>
@@ -2140,14 +2141,12 @@ select,input,textarea{font-size:1rem;}
             <p class="hint" style="margin:.65rem 0 0;">Tells past buyers about <strong>this book</strong> on WhatsApp and/or email: everyone who bought the same author before, the same kind of book, or <strong>a specific book you name</strong> ("people who ordered X, you may like this"). People who already bought this book, said STOP, unsubscribed, or got a marketing message in the cooldown window are left out, and nobody gets the same book twice on the same channel. <strong>Always press Dry run first</strong> — it sends nothing and shows who would get it and what it costs.</p>
             <div class="form-grid" style="margin-top:.75rem;">
               <div class="form-row"><label>Who</label>
-                <select id="ntaMatch" onchange="ntaMatchChanged()"><option value="author">Bought this author before</option><option value="author_or_category">Bought this author or this kind of book</option><option value="bought">Ordered a specific book</option></select></div>
+                <select id="ntaMatch"><option value="author">Bought this author before</option><option value="author_or_category">Bought this author or this kind of book</option></select></div>
               <div class="form-row"><label>Orders from the last (days)</label><input id="ntaDays" type="number" min="30" max="730" value="365"/></div>
               <div class="form-row"><label>Skip anyone messaged in the last (days)</label><input id="ntaCooldown" type="number" min="0" max="60" value="7"/></div>
               <div class="form-row"><label>Send to at most (per channel)</label><input id="ntaLimit" type="number" min="1" max="1000" value="300"/></div>
             </div>
-            <div class="form-row" id="ntaBoughtRow" style="margin-top:.6rem;display:none;"><label>Customers who ordered (one book per line: its link or slug, up to 20)</label>
-              <textarea id="ntaBought" rows="3" placeholder="https://inkandchai.in/product/throne-of-glass/&#10;crescent-city-house-of-earth-and-blood" autocomplete="off"></textarea>
-              <p class="hint" style="margin:.3rem 0 0;">Matched on the book's link and its title in past orders. Anyone who already ordered <em>this</em> book is left out.</p></div>
+            <p class="hint" style="margin:.6rem 0 0;">Want customers who ordered a particular book instead? <button class="btn-outline" type="button" onclick="openTitleAlertFor()" style="margin-left:.3rem;">📣 Pick by a book they ordered</button></p>
             <div class="form-row" style="margin-top:.6rem;"><label>Send by</label>
               <div style="display:flex;gap:1.2rem;flex-wrap:wrap;">
                 <label style="display:flex;gap:.4rem;align-items:center;text-transform:none;letter-spacing:0;"><input type="checkbox" id="ntaViaWa" checked/> WhatsApp (about ₹0.91 each)</label>
@@ -2858,6 +2857,58 @@ select,input,textarea{font-size:1rem;}
     </p>
     <div id="couponStaticList"></div>
   </div><!-- /tab-coupons -->
+
+  <div class="admin-section" id="tab-titlealerts">
+    <section class="product-panel">
+      <div class="product-head"><div><h2>Title alerts</h2><p>Pick a book customers already ordered, then the book to tell them about. They get it on WhatsApp and/or email with the cover on top: <em>"Since you ordered X… Y is now available."</em> Nothing goes out until you press Send after a dry run.</p></div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.2rem;align-items:start;">
+        <div class="product-editor">
+          <h3 style="font-family:'DM Serif Display',serif;font-size:1.2rem;font-weight:400;margin-bottom:.6rem;">1. Customers who ordered</h3>
+          <input id="taBoughtSearch" placeholder="Search a title or author…" autocomplete="off" oninput="taSearchDebounced('bought', this.value)"/>
+          <div id="taBoughtHits" style="margin-top:.3rem;"></div>
+          <div id="taBoughtPicked" style="margin-top:.6rem;"></div>
+          <p class="hint" style="margin:.4rem 0 0;">Add one or more books (up to 20). Anyone who ordered any of them is included.</p>
+        </div>
+        <div class="product-editor">
+          <h3 style="font-family:'DM Serif Display',serif;font-size:1.2rem;font-weight:400;margin-bottom:.6rem;">2. Tell them about</h3>
+          <input id="taNotifySearch" placeholder="Search a title or author…" autocomplete="off" oninput="taSearchDebounced('notify', this.value)"/>
+          <div id="taNotifyHits" style="margin-top:.3rem;"></div>
+          <div id="taNotifyPicked" style="margin-top:.6rem;"></div>
+          <p class="hint" style="margin:.4rem 0 0;">Customers who already ordered this one are left out.</p>
+        </div>
+      </div>
+      <div class="product-editor" style="margin-top:1.2rem;">
+        <h3 style="font-family:'DM Serif Display',serif;font-size:1.2rem;font-weight:400;margin-bottom:.6rem;">3. Send</h3>
+        <div class="form-row"><label>Send by</label>
+          <div style="display:flex;gap:1.2rem;flex-wrap:wrap;">
+            <label style="display:flex;gap:.4rem;align-items:center;text-transform:none;letter-spacing:0;"><input type="checkbox" id="taViaWa" checked onchange="taReset()"/> WhatsApp (about ₹0.91 each)</label>
+            <label style="display:flex;gap:.4rem;align-items:center;text-transform:none;letter-spacing:0;"><input type="checkbox" id="taViaEmail" checked onchange="taReset()"/> Email (free; only customers who gave one)</label></div></div>
+        <div class="form-grid" style="margin-top:.4rem;">
+          <div class="form-row"><label>Orders from the last (days)</label><input id="taDays" type="number" min="30" max="730" value="365" onchange="taReset()"/></div>
+          <div class="form-row"><label>Skip anyone messaged in the last (days)</label><input id="taCooldown" type="number" min="0" max="60" value="7" onchange="taReset()"/></div>
+          <div class="form-row"><label>Send to at most (per channel)</label><input id="taLimit" type="number" min="1" max="1000" value="300" onchange="taReset()"/></div>
+        </div>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+          <button class="btn-outline" type="button" id="taDryBtn" onclick="taRun('dry')">Dry run</button>
+          <button class="btn-green" type="button" id="taSendBtn" onclick="taRun('send')" disabled>Send to customers</button>
+        </div>
+        <div class="form-grid" style="margin-top:.8rem;">
+          <div class="form-row"><label>Test on one phone (optional)</label>
+            <div style="display:flex;gap:.5rem;"><input id="taTestPhone" placeholder="your WhatsApp number" autocomplete="off" style="flex:1;"/>
+            <button class="btn-outline" type="button" id="taTestBtn" onclick="taRun('test')">Send test</button></div></div>
+          <div class="form-row"><label>Test on one email (optional)</label>
+            <div style="display:flex;gap:.5rem;"><input id="taTestEmail" type="email" placeholder="your email" autocomplete="off" style="flex:1;"/>
+            <button class="btn-outline" type="button" id="taTestEmailBtn" onclick="taRun('test_email')">Send test email</button></div></div>
+        </div>
+        <div id="taResult" class="hint" style="margin-top:.7rem;"></div>
+        <div style="margin-top:.8rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">
+          <button class="btn-outline" type="button" onclick="taReport()">Delivery report</button>
+          <span class="hint" style="margin:0;">What went out for the book in step 2, on both channels.</span></div>
+        <div id="taReportBox" class="hint" style="margin-top:.5rem;"></div>
+        <p class="hint" style="margin-top:.7rem;">WhatsApp uses the template <code>new_title_alert_v1</code> (or <code>WHATSAPP_NEW_TITLE_TEMPLATE</code>), which Meta must approve first. Nobody gets the same book twice on the same channel; STOP and unsubscribes are always respected.</p>
+      </div>
+    </section>
+  </div>
 
   <div class="admin-section" id="tab-promotions">
     <section class="product-panel">
@@ -10779,20 +10830,11 @@ function resetNewTitleAlert() {
   if (out) out.innerHTML = '';
 }
 
-function ntaMatchChanged() {
-  const bought = document.getElementById('ntaMatch')?.value === 'bought';
-  const b = document.getElementById('ntaBoughtRow'); if (b) b.style.display = bought ? '' : 'none';
-  const k = document.getElementById('ntaKeywordsRow'); if (k) k.style.display = bought ? 'none' : '';
-}
-
 function ntaOptions() {
   const v = (id) => document.getElementById(id)?.value;
   const on = (id) => !!document.getElementById(id)?.checked;
-  const match = v('ntaMatch');
-  const o = { match, keywords: match === 'bought' ? '' : String(v('ntaKeywords') || '').trim(), days_back: Number(v('ntaDays')), cooldown_days: Number(v('ntaCooldown')), limit: Number(v('ntaLimit')),
+  return { match: v('ntaMatch'), keywords: String(v('ntaKeywords') || '').trim(), days_back: Number(v('ntaDays')), cooldown_days: Number(v('ntaCooldown')), limit: Number(v('ntaLimit')),
     whatsapp: on('ntaViaWa'), email: on('ntaViaEmail') };
-  if (match === 'bought') o.bought_slugs = String(v('ntaBought') || '').split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
-  return o;
 }
 
 function ntaSummaryHtml(d) {
@@ -10811,7 +10853,8 @@ function ntaSummaryHtml(d) {
       <img src="${esc(d.cover.url)}" alt="" style="width:64px;border-radius:6px;border:1px solid var(--border);"/>
       <span>Image: ${d.cover.fallback ? '<b style="color:#e8a030;">the shop card</b> — this book has no JPEG/PNG cover WhatsApp can use. Upload a .jpg or .png cover to send the real one.' : 'the book cover'}</span></div>` : '';
   const nf = (x) => Number(x || 0).toLocaleString('en-IN');
-  const bought = (d.bought || []).length ? `<div style="margin-bottom:.4rem;">Customers who ordered: ${d.bought.map((b) => `<b>${esc(b.title)}</b>`).join(', ')}</div>` : '';
+  const per = c.per_book || {};
+  const bought = (d.bought || []).length ? `<div style="margin-bottom:.4rem;">Customers who ordered: ${d.bought.map((b) => `<b>${esc(b.title)}</b>${per[b.slug] != null ? ` (${Number(per[b.slug]).toLocaleString('en-IN')})` : ''}`).join(', ')}</div>` : '';
   const e = d.email;
   const ec = (e && e.counts) || {};
   const emailBox = e ? `<div style="margin-top:.7rem;padding-top:.6rem;border-top:1px dashed var(--border);">
@@ -10861,7 +10904,6 @@ async function newTitleAlert(kind, _retried) {
   if (!slug) { out.textContent = 'Select a product first.'; return; }
   const opts = ntaOptions();
   const body = { slug, ...opts };
-  if (kind !== 'send' && opts.match === 'bought' && !(opts.bought_slugs || []).length) { out.textContent = 'Paste the link of the book the customers ordered.'; return; }
   if (kind === 'test') {
     body.test_phone = document.getElementById('ntaTestPhone')?.value.trim();
     if (_ntaAllowFallback) body.allow_fallback = true;
@@ -10941,6 +10983,235 @@ async function newTitleAlert(kind, _retried) {
       + (d.remaining > 0 ? ` ${d.remaining} more are eligible — run the dry run again to send the next batch.` : '')
       + ' Meta can still hold some back after accepting them — check the Delivery report below in a few minutes.'
       + ((d.sample_failures || []).length ? '<br>' + d.sample_failures.map((f) => esc(f.phone + ': ' + f.error)).join('<br>') : '');
+  } catch (e) {
+    out.textContent = 'Failed: ' + e.message + (kind === 'send' ? ' — run the dry run again to see what went out before sending more.' : '');
+  } finally {
+    btns.forEach((b) => { if (b) b.disabled = false; });
+    if (send) send.disabled = !keepSend;
+    if (!keepSend && send) send.textContent = 'Send to customers';
+  }
+}
+
+// ── Title Alerts tab: customers who ordered book(s) X → tell them about book Y ──
+// Same endpoint as the product editor's box (admin-new-title-alert, match
+// 'bought'); this tab just lets the owner pick both books by search.
+let _taBought = [];      // [{ slug, title, author, img }]
+let _taNotify = null;    // { slug, title, author, img, price }
+let _taDry = null;
+let _taAllowFallback = false;
+const _taTimers = {};
+
+function taSearchDebounced(kind, q) {
+  clearTimeout(_taTimers[kind]);
+  _taTimers[kind] = setTimeout(() => taSearch(kind, q), 250);
+}
+
+async function taSearch(kind, q) {
+  const box = document.getElementById(kind === 'bought' ? 'taBoughtHits' : 'taNotifyHits');
+  if (!box) return;
+  if (!q || q.trim().length < 2) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="hint">Searching…</div>';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-product-search?limit=10&q=' + encodeURIComponent(q));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const books = data.books || [];
+    if (!books.length) { box.innerHTML = '<div class="hint">Nothing matches that.</div>'; return; }
+    box.innerHTML = books.map((b) => `
+      <div class="bnr-hit" onclick="taPick('${kind}','${encodeURIComponent(JSON.stringify({ slug: b.slug, title: b.title, author: b.author || '', img: b.img || '', price: b.price }))}')">
+        <img src="${esc(b.img || '')}" alt="" loading="lazy"/>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.66rem;line-height:1.35;">${esc(b.title)}</div>
+          <div class="hint" style="margin:0;">${b.author ? esc(b.author) + ' · ' : ''}₹${esc(b.price)}</div>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="hint">Search failed: ' + esc(e.message) + '</div>';
+  }
+}
+
+function taPick(kind, encoded) {
+  let b; try { b = JSON.parse(decodeURIComponent(encoded)); } catch { return; }
+  if (!b || !b.slug) return;
+  if (kind === 'bought') {
+    if (!_taBought.some((x) => x.slug === b.slug)) {
+      if (_taBought.length >= 20) { alert('Up to 20 books.'); return; }
+      _taBought.push(b);
+    }
+  } else {
+    _taNotify = b;
+  }
+  const ids = kind === 'bought' ? ['taBoughtHits', 'taBoughtSearch'] : ['taNotifyHits', 'taNotifySearch'];
+  document.getElementById(ids[0]).innerHTML = '';
+  document.getElementById(ids[1]).value = '';
+  taReset();
+  taRender();
+}
+
+function taUnpick(kind, slug) {
+  if (kind === 'bought') _taBought = _taBought.filter((x) => x.slug !== slug);
+  else _taNotify = null;
+  taReset();
+  taRender();
+}
+
+function taCard(b, kind) {
+  return `<div style="display:flex;gap:.7rem;align-items:center;padding:.5rem;border:1px solid var(--border);border-radius:6px;margin-bottom:.4rem;">
+    <img src="${esc(b.img || '')}" alt="" style="width:${kind === 'notify' ? 54 : 34}px;height:${kind === 'notify' ? 78 : 48}px;object-fit:cover;border-radius:3px;"/>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:.7rem;">${esc(b.title)}</div>
+      <div class="hint" style="margin:0;">${b.author ? esc(b.author) + ' · ' : ''}${esc(b.slug)}</div>
+    </div>
+    <button class="btn-outline" type="button" onclick="taUnpick('${kind}','${esc(b.slug)}')">${kind === 'notify' ? 'Change' : 'Remove'}</button>
+  </div>`;
+}
+
+function taRender() {
+  const bp = document.getElementById('taBoughtPicked');
+  const np = document.getElementById('taNotifyPicked');
+  if (bp) bp.innerHTML = _taBought.length ? _taBought.map((b) => taCard(b, 'bought')).join('') : '<div class="hint" style="margin:0;">No book picked yet.</div>';
+  if (np) np.innerHTML = _taNotify ? taCard(_taNotify, 'notify') : '<div class="hint" style="margin:0;">No book picked yet.</div>';
+}
+
+function taReset() {
+  _taDry = null;
+  const send = document.getElementById('taSendBtn');
+  if (send) { send.disabled = true; send.textContent = 'Send to customers'; }
+  const out = document.getElementById('taResult');
+  if (out) out.innerHTML = '';
+}
+
+// From the product editor: open this tab with that book as the one to announce.
+function openTitleAlertFor() {
+  if (selectedProduct && selectedProduct.slug) {
+    const p = mergedProduct(selectedProduct);
+    _taNotify = { slug: selectedProduct.slug, title: p.title || selectedProduct.slug, author: p.author || '', img: productImageSrc(p.image_url || selectedProduct.image_url), price: p.price_inr };
+  }
+  taReset();
+  switchTab('titlealerts');
+  taRender();
+  setTimeout(() => document.getElementById('taBoughtSearch')?.focus(), 50);
+}
+
+function taOptions() {
+  const v = (id) => document.getElementById(id)?.value;
+  const on = (id) => !!document.getElementById(id)?.checked;
+  return { match: 'bought', bought_slugs: _taBought.map((b) => b.slug), keywords: '',
+    days_back: Number(v('taDays')), cooldown_days: Number(v('taCooldown')), limit: Number(v('taLimit')),
+    whatsapp: on('taViaWa'), email: on('taViaEmail') };
+}
+
+async function taReport() {
+  const box = document.getElementById('taReportBox');
+  if (!box) return;
+  if (!_taNotify) { box.textContent = 'Pick the book in step 2 first.'; return; }
+  const slug = _taNotify.slug;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-new-title-alert', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug, report: true }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    const r = d.report || {};
+    const n = (x) => Number(x || 0).toLocaleString('en-IN');
+    const wa = r.attempted
+      ? `💬 WhatsApp: <b>${n(r.attempted)}</b> tried · <b>${n(r.accepted)}</b> accepted · <b style="color:#25d366;">${n(r.delivered)}</b> delivered (${n(r.read)} read)${r.failed_by_meta ? ` · <span style="color:#e05a4e;">${n(r.failed_by_meta)} not delivered</span>` : ''}`
+      : '💬 WhatsApp: not sent for this book yet.';
+    const em = d.email && (d.email.sent || d.email.failed)
+      ? `✉️ Email: <b>${n(d.email.sent)}</b> sent${d.email.failed ? `, ${n(d.email.failed)} failed` : ''}`
+      : '✉️ Email: not sent for this book yet.';
+    box.innerHTML = `<div style="border:1px solid var(--border);border-radius:10px;padding:.7rem;max-width:560px;">${wa}<div style="margin-top:.4rem;">${em}</div><div style="margin-top:.4rem;font-size:.75rem;color:var(--cream-dim);">Counts every send for this book, from this tab and the product editor.</div></div>`;
+  } catch (e) {
+    box.textContent = 'Could not load: ' + e.message;
+  }
+}
+
+async function taRun(kind, _retried) {
+  const out = document.getElementById('taResult');
+  const send = document.getElementById('taSendBtn');
+  if (!_taBought.length) { out.textContent = 'Step 1: pick the book the customers ordered.'; return; }
+  if (!_taNotify) { out.textContent = 'Step 2: pick the book to tell them about.'; return; }
+  const slug = _taNotify.slug;
+  const opts = taOptions();
+  const body = { slug, ...opts };
+  if (kind === 'test') {
+    body.test_phone = document.getElementById('taTestPhone')?.value.trim();
+    if (_taAllowFallback) body.allow_fallback = true;
+    if (!body.test_phone) { out.textContent = 'Type the phone number to test on.'; return; }
+  } else if (kind === 'test_email') {
+    body.test_email = document.getElementById('taTestEmail')?.value.trim();
+    if (!body.test_email) { out.textContent = 'Type the email address to test on.'; return; }
+  } else if (kind === 'dry') {
+    if (!opts.whatsapp && !opts.email) { out.textContent = 'Tick WhatsApp, email or both.'; return; }
+    body.dry_run = true;
+  } else {
+    if (!_taDry || _taDry.slug !== slug || JSON.stringify(_taDry.opts) !== JSON.stringify(opts)) {
+      taReset(); out.textContent = 'Something changed — run the dry run again first.'; return;
+    }
+    const n = _taDry.will_send, m = _taDry.will_email;
+    const parts = [];
+    if (opts.whatsapp) parts.push(`WhatsApp to ${n.toLocaleString('en-IN')} customers (about ₹${_taDry.cost.toLocaleString('en-IN')} in Meta charges)`);
+    if (opts.email) parts.push(`email to ${m.toLocaleString('en-IN')} customers`);
+    if (!confirm(`Tell customers who ordered ${_taBought.map((b) => '"' + b.title + '"').join(', ')} about "${_taNotify.title}":\n\n• ${parts.join('\n• ')}\n\nThis cannot be undone.`)) return;
+    body.dry_run = false;
+    body.expect = n;
+    body.expect_email = m;
+  }
+  const btns = ['taDryBtn', 'taSendBtn', 'taTestBtn', 'taTestEmailBtn'].map((id) => document.getElementById(id));
+  btns.forEach((b) => { if (b) b.disabled = true; });
+  out.textContent = kind === 'send' ? 'Sending… keep this tab open.' : kind === 'dry' ? 'Working out who would get it…' : 'Sending the test…';
+  let keepSend = false;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-new-title-alert', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (_taNotify?.slug !== slug) return;
+    if (kind === 'test' && d.need_cover && d.cover?.convert_from && !_retried) {
+      out.textContent = 'Making a JPEG copy of the cover for WhatsApp…';
+      let made = true;
+      try { await ntaConvertCover(slug, d.cover.convert_from); } catch (e) { made = false; console.warn('[ta] cover convert:', e.message); }
+      _taAllowFallback = !made;
+      try { await taRun('test', true); } finally { _taAllowFallback = false; }
+      keepSend = !!_taDry;
+      return;
+    }
+    if (kind === 'test_email') {
+      keepSend = !!_taDry;
+      out.innerHTML = d.ok ? `Test email sent to ${esc(d.email || '')} ✓ — check the inbox (and spam) in a minute.` : esc('Test email failed: ' + (d.error || ('HTTP ' + res.status)));
+      return;
+    }
+    if (kind === 'test') {
+      keepSend = !!_taDry;
+      out.innerHTML = d.ok ? `Meta accepted the test ✓ — it should arrive within a minute. Variables: ${esc((d.params || []).join(' | '))}` : esc('Test failed: ' + (d.error || ('HTTP ' + res.status)));
+      return;
+    }
+    if (!res.ok && !(kind === 'send' && (d.sent || d.emailed))) { _taDry = null; out.innerHTML = esc(d.error || ('HTTP ' + res.status)) + (d.counts ? ntaSummaryHtml(d) : ''); return; }
+    if (kind === 'dry' && d.cover?.fallback && d.cover.convert_from && !_retried) {
+      out.textContent = 'Making a JPEG copy of the cover for WhatsApp…';
+      try { await ntaConvertCover(slug, d.cover.convert_from); await taRun('dry', true); keepSend = !!_taDry; return; }
+      catch (e) { console.warn('[ta] cover convert:', e.message); }
+    }
+    if (kind === 'dry') {
+      out.innerHTML = ntaSummaryHtml(d);
+      const waN = opts.whatsapp ? d.will_send || 0 : 0;
+      const emN = opts.email && d.email ? d.email.will_email || 0 : 0;
+      const blocked = d.blocked_reason || (opts.email && d.email && d.email.blocked_reason);
+      if ((waN > 0 || emN > 0) && !blocked) {
+        _taDry = { slug, opts, will_send: d.will_send || 0, will_email: emN, cost: d.est_cost_inr || 0 };
+        send.textContent = 'Send ' + [opts.whatsapp ? `${waN.toLocaleString('en-IN')} WhatsApp` : '', opts.email ? `${emN.toLocaleString('en-IN')} email` : ''].filter(Boolean).join(' + ');
+        keepSend = true;
+      }
+      return;
+    }
+    _taDry = null;
+    setTimeout(taReport, 60000);
+    out.innerHTML = (opts.whatsapp ? `<b style="color:#25d366;">WhatsApp: sent ${d.sent || 0}</b>${d.failed ? `, <b style="color:#e05a4e;">${d.failed} failed</b>` : ''}.` : '')
+      + (d.whatsapp_stopped ? ` <b style="color:#e05a4e;">${esc(d.whatsapp_stopped)}</b>` : '')
+      + (opts.email ? ` <b style="color:#25d366;">Email: sent ${d.emailed || 0}</b>${d.email_failed ? `, <b style="color:#e05a4e;">${d.email_failed} failed</b>` : ''}.` : '')
+      + (d.remaining > 0 ? ` ${d.remaining} more are eligible on WhatsApp — run the dry run again to send the next batch.` : '')
+      + ((d.sample_failures || []).concat(d.email_failures || []).length ? '<br>' + (d.sample_failures || []).concat(d.email_failures || []).map((f) => esc(f.phone + ': ' + f.error)).join('<br>') : '');
   } catch (e) {
     out.textContent = 'Failed: ' + e.message + (kind === 'send' ? ' — run the dry run again to see what went out before sending more.' : '');
   } finally {
@@ -17445,7 +17716,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','inventory','ebooks','bundles','coupons','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','inventory','ebooks','bundles','coupons','titlealerts','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -18641,6 +18912,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'rtorefunds' && _authed && adminRole === 'owner') loadRtoRefunds();
   if (tab === 'coupons' && _authed) loadCouponManager();
   if (tab === 'promotions' && _authed && adminRole === 'owner') loadPromotionsAdmin();
+  if (tab === 'titlealerts' && _authed && adminRole === 'owner') taRender();
   if (tab === 'bundles' && _authed) initBundleBuilder();
   if (tab === 'reviews') fetchPendingReviews();
   if (tab === 'replacements' && _authed) renderReplacementRequests();

@@ -378,6 +378,7 @@ test('matchBuyersOf: only buyers of the picked book, minus anyone who has the ne
   const { recipients, counts } = A.matchBuyersOf(customers, book, [{ slug: 'throne-of-glass', title: 'Throne of Glass', author: 'Sarah J. Maas' }]);
   assert.deepStrictEqual(recipients.map((r) => [r.phone, r.name, r.email, r.reason]), [['91a', 'Riya', 'r@x.in', 'Throne of Glass']]);
   assert.strictEqual(counts.already_bought, 1);
+  assert.deepStrictEqual(counts.per_book, { 'throne-of-glass': 1 });
 });
 
 test('emailHtml: cover header, Exclusive, the book they ordered, price and unsubscribe; escapes names', () => {

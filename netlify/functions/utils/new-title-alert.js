@@ -147,7 +147,8 @@ function matchBuyersOf(customers, book, targets) {
     title: normTitle(bareTitle(t.title, t.author)),
     label: bareTitle(clean(t.title), t.author).slice(0, 80),
   })).filter((t) => t.slug || t.title);
-  const counts = { customers: customers.size, matched: 0, already_bought: 0, by_book: 0 };
+  const counts = { customers: customers.size, matched: 0, already_bought: 0, by_book: 0, per_book: {} };
+  for (const t of want) counts.per_book[t.slug || t.title] = 0;
   const recipients = [];
   for (const [phone, info] of customers) {
     let hit = null, bought = false;
@@ -165,6 +166,7 @@ function matchBuyersOf(customers, book, targets) {
     if (!hit) continue;
     counts.matched++;
     counts.by_book++;
+    counts.per_book[hit.slug || hit.title]++;
     recipients.push({ phone, name: clean(info.name).split(' ')[0] || 'there', email: info.email || '', reason: hit.label, via: 'book' });
   }
   return { recipients, counts };
