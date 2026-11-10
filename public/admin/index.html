@@ -13432,7 +13432,12 @@ async function orderReportPdf(btn, scope) {
   const orig = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Preparing PDF…';
   try {
-    if (scope !== 'selected') orders = (await fetchAllOrdersForExport()).filter(orderIsUnshipped);
+    if (scope !== 'selected') {
+      // Same list as the Unshipped card: every loaded order. The export loader
+      // only reads the newest 5,000 orders and misses older unshipped ones.
+      if (typeof loadingAll !== 'undefined' && loadingAll) { alert('Orders are still loading. Wait for the Unshipped count to appear, then press this again.'); return; }
+      orders = (allOrders.length ? allOrders : await fetchAllOrdersForExport()).filter(orderIsUnshipped);
+    }
     if (!orders.length) { alert('There are no unshipped orders.'); return; }
     const payload = orders.map(o => ({
       id: orderKey(o),
