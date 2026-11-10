@@ -10174,7 +10174,7 @@ function renderStaticCoupons(staticList) {
     const offer = r.discount_type === 'fixed' ? '₹' + Number(r.discount_value) : Number(r.discount_value) + '%';
     const ends = r.ends_at ? new Date(r.ends_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
     const methods = (r.payment_methods || []).length === 1 && r.payment_methods[0] === 'prepaid' ? 'Prepaid only' : (r.payment_methods || []).join(', ');
-    const note = (st.label === 'Ended' && ends ? 'Ended ' + ends : (ends ? 'Ends ' + ends + ' · ' : '') + methods)
+    const note = (!st.stored && c.dead) ? c.note : (st.label === 'Ended' && ends ? 'Ended ' + ends : (ends ? 'Ends ' + ends + ' · ' : '') + methods)
       + (c.code === '499HIT' ? ' — duplicate of INKLOVE10' : '') + (r.private ? ' — private, used in cart-recovery messages' : '');
     const editing = siteCodeEditing === c.code;
     const localDate = r.ends_at ? new Date(new Date(r.ends_at).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
