@@ -132,7 +132,8 @@ function badgeHtml(r) {
 }
 
 /** The /bestsellers/ grid: ranked cards, plus the shelf chips that go above it. */
-function pageParts(bsr, shelf) {
+/** `noRank`: slugs whose rank number must not show (owner hid their sold count); they stay listed. */
+function pageParts(bsr, shelf, { noRank = new Set() } = {}) {
   const info = (bsr && bsr.info) || {};
   const order = (bsr && bsr.order) || [];
   const shelves = (bsr && bsr.shelves) || {};
@@ -147,7 +148,7 @@ function pageParts(bsr, shelf) {
   }
   const cards = rows.map((b) => `
       <a class="card bsr-card" href="/product/${encodeURIComponent(b.slug)}/">
-        <span class="cover" style="position:relative;">${b.img ? `<img src="${esc(b.img)}" alt="${esc(b.title)} cover" loading="lazy"/>` : ''}<b class="bsr-num" style="position:absolute;top:.4rem;left:.4rem;background:#c45500;color:#fff;font:700 .8rem/1 Arial,sans-serif;padding:.3rem .45rem;border-radius:3px;">#${b.rank}</b></span>
+        <span class="cover" style="position:relative;">${b.img ? `<img src="${esc(b.img)}" alt="${esc(b.title)} cover" loading="lazy"/>` : ''}${noRank.has(String(b.slug).toLowerCase()) ? '' : `<b class="bsr-num" style="position:absolute;top:.4rem;left:.4rem;background:#c45500;color:#fff;font:700 .8rem/1 Arial,sans-serif;padding:.3rem .45rem;border-radius:3px;">#${b.rank}</b>`}</span>
         <strong>${esc(b.title)}</strong>
         ${b.author ? `<small>${esc(b.author)}</small>` : ''}
       </a>`).join('');

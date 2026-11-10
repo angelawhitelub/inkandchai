@@ -2139,7 +2139,7 @@ select,input,textarea{font-size:1rem;}
             <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
               <input type="checkbox" id="prodSoldHidden" style="accent-color:var(--gold);"/> Hide this book's sold count
             </label>
-            <p class="hint" style="margin:.35rem 0 0;">Removes the "🔥 N sold" line on its book cards and the "bought in past month" line on its page. Its sales still count in Best Sellers and reports.</p>
+            <p class="hint" style="margin:.35rem 0 0;">Removes the "🔥 N sold" line on its book cards, and on its page the "bought in past month" line, the #1 Best Seller badge and the Best Sellers Rank row. On the Best Sellers page it stays listed without its #number. Its sales still count in reports.</p>
             <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
               <button class="btn-green" type="button" id="prodSoldHiddenSaveBtn" onclick="saveSoldHidden()">Save Sold Count Setting</button>
               <button class="btn-outline" type="button" onclick="listSoldHidden()">List hidden sold counts</button>
@@ -11423,7 +11423,7 @@ function setSoldHiddenUi(hidden, note) {
   const cur = document.getElementById('prodSoldHiddenCurrent');
   if (cb) cb.checked = !!hidden;
   if (cur) cur.innerHTML = note ? esc(note) : hidden
-    ? '<strong style="color:var(--gold);">Sold count hidden</strong> — no "sold" or "bought" numbers on its card or page.'
+    ? '<strong style="color:var(--gold);">Sold count hidden</strong> — no sold/bought numbers, Best Seller badge or rank on its card or page.'
     : 'Sold count shows as normal.';
 }
 
@@ -11467,7 +11467,7 @@ async function saveSoldHidden() {
   try {
     const data = await setSoldHidden(slug, on, selectedProduct?.title);
     if (selectedProduct?.slug === slug) setSoldHiddenUi(data.hidden);
-    if (msg) msg.textContent = (data.hidden ? 'Saved — the sold count is gone from its page within a minute' : 'Saved — the sold count shows again on its page within a minute')
+    if (msg) msg.textContent = (data.hidden ? 'Saved — the sold count, badge and rank are gone from its page within a minute' : 'Saved — the sold count, badge and rank show again on its page within a minute')
       + (data.cache_purged ? ' and from book cards right away.' : ', and from book cards within 15 minutes.')
       + ' Visitors who already had the page open may need a refresh.';
   } catch (e) {

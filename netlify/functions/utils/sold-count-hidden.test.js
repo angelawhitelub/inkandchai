@@ -41,10 +41,21 @@ test('hiding a sold count drops it from sold-counts only, and the search/browse 
   assert.equal((await H.sold.readHidden()).length, 0);
 });
 
-test('the product page skips the bought line for a hidden book but keeps the rank', () => {
+test('the product page skips the bought line, badge and rank row for a hidden book', () => {
   const src = fs.readFileSync(path.resolve(__dirname, '../../../worker/index.js'), 'utf8');
   const fn = src.slice(src.indexOf('async function withSoldCount'), src.indexOf('function gonePage'));
   assert.match(fn, /searchHidden\.sold\.hiddenSlugSet\(\)/);
   assert.match(fn, /const line = countHidden \? '' :/);
-  assert.match(fn, /rankOf\(/);
+  assert.match(fn, /const rank = countHidden \? null :/);
+  const page = src.slice(src.indexOf('async function bestsellersPage'), src.indexOf('const ARRIVALS_TTL_MS'));
+  assert.match(page, /noRank: await searchHidden\.sold\.hiddenSlugSet\(\)/);
+});
+
+test('the Best Sellers page keeps a hidden book but drops its #N', () => {
+  const R = require('./bestseller-rank');
+  const bsr = { order: ['a', 'b'], ranks: { a: [1, 'romance', 1], b: [2, 'romance', 2] }, info: { a: { title: 'A' }, b: { title: 'B' } }, shelves: { romance: 'Romance' } };
+  const html = R.pageParts(bsr, '', { noRank: new Set(['a']) }).cards;
+  assert.ok(html.includes('>A<') && html.includes('>B<'));
+  assert.ok(!html.includes('#1<'));
+  assert.ok(html.includes('#2<'));
 });

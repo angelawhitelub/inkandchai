@@ -783,7 +783,8 @@ async function bestsellersPage(request, env, url) {
   try {
     const doc = await lifetimeSales.readLifetimeSales();
     if (!doc || !doc.bsr) return asset;
-    parts = bestsellerRank.pageParts(doc.bsr, url.searchParams.get('shelf') || '');
+    // Books whose sold count the owner hid stay listed, without their #N.
+    parts = bestsellerRank.pageParts(doc.bsr, url.searchParams.get('shelf') || '', { noRank: await searchHidden.sold.hiddenSlugSet() });
   } catch (err) {
     console.warn('[bestsellers] ranks unavailable:', err && err.message);
     return asset;
@@ -844,12 +845,12 @@ async function newArrivalsPage(request, env, ctx, origin) {
 async function withSoldCount(response, slug) {
   if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
   const doc = await lifetimeSales.readLifetimeSales();
-  // The owner can hide a book's sold count (admin Visibility & sales); its
-  // rank and #1 badge still show, they carry no number of copies.
+  // The owner can hide a book's sold count (admin Visibility & sales): then
+  // no bought line, no #1 badge and no Best Sellers Rank row either.
   const countHidden = (await searchHidden.sold.hiddenSlugSet()).has(String(slug || '').toLowerCase());
   // monthlyUnits adds what a duplicated listing carries from its original.
   const line = countHidden ? '' : lifetimeSales.boughtLine(lifetimeSales.monthlyUnits(doc, slug));
-  const rank = bestsellerRank.rankOf(doc && doc.bsr, slug);
+  const rank = countHidden ? null : bestsellerRank.rankOf(doc && doc.bsr, slug);
   const underStock = bestsellerRank.badgeHtml(rank) + line;
   const row = bestsellerRank.rankRowHtml(rank);
   if (!underStock && !row) return response;

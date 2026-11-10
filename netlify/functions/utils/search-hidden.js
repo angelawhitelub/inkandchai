@@ -13,7 +13,9 @@
  *
  * Sold count (10 Nov 2026): the book's "🔥 N sold" card line (sold-counts) and
  * its product page "bought in past month" line (Worker withSoldCount) are not
- * shown. Sales still count everywhere else (bestseller ranks, reports).
+ * shown, nor its #1 Best Seller badge, Best Sellers Rank row or the #N on its
+ * /bestsellers/ card (it stays listed there). Sales still count in the ranks
+ * of other books and in reports.
  *
  * Each list is small and hand-curated, so it lives in one blob (KV keys
  * `catalog:search-hidden` and `catalog:browse-hidden` on the Worker) and every
