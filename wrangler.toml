@@ -28,6 +28,7 @@ run_worker_first = [
   "/deleted-products.json",
   # Same again, for books the owner has hidden from browsing (their pages stay open).
   "/browse-hidden.json",
+  "/qty-limits.json",
   # Same idea: admin-written catalogue copy, which scripts/sync-catalog-content.mjs
   # pulls down so the next `npm run build` bakes it into the pages and feed.xml.
   "/catalog-content.json",
