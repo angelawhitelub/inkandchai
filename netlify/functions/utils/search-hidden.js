@@ -11,6 +11,10 @@
  * shopping page, hides its cards. It still comes up in search unless it is on
  * the search list too, so a book on both lists opens only from its URL.
  *
+ * Sold count (10 Nov 2026): the book's "🔥 N sold" card line (sold-counts) and
+ * its product page "bought in past month" line (Worker withSoldCount) are not
+ * shown. Sales still count everywhere else (bestseller ranks, reports).
+ *
  * Each list is small and hand-curated, so it lives in one blob (KV keys
  * `catalog:search-hidden` and `catalog:browse-hidden` on the Worker) and every
  * change rewrites it whole, like the deleted-products index. No SQL migration.
@@ -20,6 +24,7 @@ const { getStore } = require('@netlify/blobs');
 const STORE = 'catalog';
 const KEY = 'search-hidden';
 const BROWSE_KEY = 'browse-hidden';
+const SOLD_KEY = 'sold-count-hidden';
 const MAX = 2000;
 
 const normSlug = (s) => String(s || '').trim().toLowerCase()
@@ -98,6 +103,7 @@ function makeList(key, label) {
 const TTL_MS = 60_000;
 const search = makeList(KEY, 'search');
 const browse = makeList(BROWSE_KEY, 'browsing');
+const sold = makeList(SOLD_KEY, 'sold counts');
 const { readHidden, setHidden, hiddenSlugSet } = search;
 
 /** Deleted + hidden: the slugs search must never return. */
@@ -107,4 +113,4 @@ async function unsearchableSlugSet(deletedSet) {
   return new Set([...deletedSet, ...hidden]);
 }
 
-module.exports = { readHidden, setHidden, hiddenSlugSet, unsearchableSlugSet, normSlug, browse, STORE, KEY, BROWSE_KEY };
+module.exports = { readHidden, setHidden, hiddenSlugSet, unsearchableSlugSet, normSlug, browse, sold, STORE, KEY, BROWSE_KEY, SOLD_KEY };

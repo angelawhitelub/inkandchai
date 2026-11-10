@@ -2112,7 +2112,7 @@ select,input,textarea{font-size:1rem;}
             <div id="prodFreeDeliveryList" class="hint" style="margin-top:.4rem;"></div>
           </details>
           <details id="prodSearchHiddenEditor" open style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(122,110,98,.06);">
-            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔍 Hide from search or browsing</summary>
+            <summary style="cursor:pointer;color:var(--gold);font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">🔍 Hide from search, browsing or sold count</summary>
             <p class="hint" style="margin:.65rem 0 0;">Stops this book coming up in the <strong>search bar</strong>: the suggestions dropdown, the results page and the homepage search. It stays <strong>for sale</strong> — its product page, collections, categories, links and ads keep working. Takes effect within about 5 minutes.</p>
             <p class="hint" style="margin:.5rem 0 0;">The second setting takes it off every page that <strong>lists books</strong>: homepage, categories, collections, authors, bestsellers, new arrivals, "also bought" and the "just ordered" pop-up. <strong>Tick both</strong> and the book opens only from its direct link. It stays for sale either way.</p>
             <p class="hint" id="prodSearchHiddenCurrent" style="margin:.6rem 0 0;color:var(--cream-dim);"></p>
@@ -2135,6 +2135,17 @@ select,input,textarea{font-size:1rem;}
             </div>
             <p class="hint" id="prodBrowseHiddenMsg" style="margin-top:.65rem;"></p>
             <div id="prodBrowseHiddenList" class="hint" style="margin-top:.4rem;"></div>
+            <p class="hint" id="prodSoldHiddenCurrent" style="margin:.85rem 0 0;padding-top:.75rem;border-top:1px solid var(--border);color:var(--cream-dim);"></p>
+            <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
+              <input type="checkbox" id="prodSoldHidden" style="accent-color:var(--gold);"/> Hide this book's sold count
+            </label>
+            <p class="hint" style="margin:.35rem 0 0;">Removes the "🔥 N sold" line on its book cards and the "bought in past month" line on its page. Its sales still count in Best Sellers and reports.</p>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-green" type="button" id="prodSoldHiddenSaveBtn" onclick="saveSoldHidden()">Save Sold Count Setting</button>
+              <button class="btn-outline" type="button" onclick="listSoldHidden()">List hidden sold counts</button>
+            </div>
+            <p class="hint" id="prodSoldHiddenMsg" style="margin-top:.65rem;"></p>
+            <div id="prodSoldHiddenList" class="hint" style="margin-top:.4rem;"></div>
           </details>
           <details id="prodNewTitleAlert" ontoggle="if (this.open) loadNtaReport()" style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(37,211,102,.05);">
             <summary style="cursor:pointer;color:#25d366;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">📣 New-title alert (WhatsApp + email)</summary>
@@ -9746,6 +9757,7 @@ function selectProduct(slug) {
   loadFreeDeliveryEditor(row);
   loadSearchHiddenEditor(row);
   loadBrowseHiddenEditor(row);
+  loadSoldHiddenEditor(row);
   resetNewTitleAlert();
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
@@ -11400,6 +11412,98 @@ async function unhideBrowseFromList(btn) {
     await setBrowseHidden(slug, false);
     if (selectedProduct?.slug === slug) setBrowseHiddenUi(false);
     listBrowseHidden();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Failed — retry';
+  }
+}
+
+// ── Hide a book's sold count (admin-search-hidden scope=sold) ────────────────
+function setSoldHiddenUi(hidden, note) {
+  const cb = document.getElementById('prodSoldHidden');
+  const cur = document.getElementById('prodSoldHiddenCurrent');
+  if (cb) cb.checked = !!hidden;
+  if (cur) cur.innerHTML = note ? esc(note) : hidden
+    ? '<strong style="color:var(--gold);">Sold count hidden</strong> — no "sold" or "bought" numbers on its card or page.'
+    : 'Sold count shows as normal.';
+}
+
+async function loadSoldHiddenEditor(row) {
+  const msg = document.getElementById('prodSoldHiddenMsg');
+  if (msg) msg.textContent = '';
+  const list = document.getElementById('prodSoldHiddenList');
+  if (list) list.innerHTML = '';
+  if (!row?.slug) return;
+  setSoldHiddenUi(false, 'Checking…');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-search-hidden?scope=sold&slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setSoldHiddenUi(data.hidden);
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setSoldHiddenUi(false, 'Could not load: ' + e.message);
+  }
+}
+
+async function setSoldHidden(slug, hidden, title) {
+  const res = await adminFetch('/.netlify/functions/admin-search-hidden', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, hidden, title: title || '', scope: 'sold' }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+async function saveSoldHidden() {
+  const slug = selectedProduct?.slug;
+  const msg = document.getElementById('prodSoldHiddenMsg');
+  const btn = document.getElementById('prodSoldHiddenSaveBtn');
+  if (!slug) { if (msg) msg.textContent = 'Select a product first.'; return; }
+  const on = !!document.getElementById('prodSoldHidden')?.checked;
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const data = await setSoldHidden(slug, on, selectedProduct?.title);
+    if (selectedProduct?.slug === slug) setSoldHiddenUi(data.hidden);
+    if (msg) msg.textContent = (data.hidden ? 'Saved — the sold count is gone from its page within a minute' : 'Saved — the sold count shows again on its page within a minute')
+      + (data.cache_purged ? ' and from book cards right away.' : ', and from book cards within 15 minutes.')
+      + ' Visitors who already had the page open may need a refresh.';
+  } catch (e) {
+    if (msg) msg.textContent = 'Could not save: ' + e.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function listSoldHidden() {
+  const box = document.getElementById('prodSoldHiddenList');
+  if (!box) return;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-search-hidden?scope=sold');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? '<strong>' + items.length + ' book' + (items.length === 1 ? '' : 's') + ' with the sold count hidden:</strong><br>'
+        + items.map(i => '<span style="display:inline-flex;gap:.5rem;align-items:center;margin:.15rem 0;">'
+          + '<a href="/product/' + encodeURIComponent(i.slug) + '/" target="_blank" rel="noopener">' + esc(i.title || i.slug) + '</a>'
+          + ' <button class="btn-outline" type="button" style="padding:.15rem .5rem;font-size:.68rem;" data-slug="' + esc(i.slug) + '" onclick="unhideSoldFromList(this)">Show sold count</button></span>').join('<br>')
+      : 'No books have the sold count hidden.';
+  } catch (e) {
+    box.textContent = 'Could not list: ' + e.message;
+  }
+}
+
+async function unhideSoldFromList(btn) {
+  const slug = btn.getAttribute('data-slug');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await setSoldHidden(slug, false);
+    if (selectedProduct?.slug === slug) setSoldHiddenUi(false);
+    listSoldHidden();
   } catch (e) {
     btn.disabled = false; btn.textContent = 'Failed — retry';
   }

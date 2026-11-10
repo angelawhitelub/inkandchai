@@ -9,15 +9,18 @@
  */
 
 const { readLifetimeSales, unitsSold, SHOW_ON_PAGE_MIN } = require('./utils/lifetime-sales');
+const { sold: soldHidden } = require('./utils/search-hidden');
 
 exports.handler = async () => {
   const doc = await readLifetimeSales();
   const counts = {};
+  // Books the owner chose to show without a sold count (admin Visibility & sales).
+  const hidden = await soldHidden.hiddenSlugSet();
   // A duplicated listing shows its original's units too (doc.carried).
   const slugs = new Set([...Object.keys((doc && doc.counts) || {}), ...Object.keys((doc && doc.carried) || {})]);
   for (const slug of slugs) {
     const n = unitsSold(doc, slug);
-    if (n >= SHOW_ON_PAGE_MIN) counts[slug] = n;
+    if (n >= SHOW_ON_PAGE_MIN && !hidden.has(String(slug).toLowerCase())) counts[slug] = n;
   }
   return {
     statusCode: 200,

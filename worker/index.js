@@ -31,6 +31,7 @@ import shipHolidays from '../netlify/functions/utils/ship-holidays.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
 import newArrivals from '../netlify/functions/utils/new-arrivals.js';
 import lifetimeSales from '../netlify/functions/utils/lifetime-sales.js';
+import searchHidden from '../netlify/functions/utils/search-hidden.js';
 import bestsellerRank from '../netlify/functions/utils/bestseller-rank.js';
 import codRules from '../netlify/functions/utils/cod-rules.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
@@ -843,8 +844,11 @@ async function newArrivalsPage(request, env, ctx, origin) {
 async function withSoldCount(response, slug) {
   if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
   const doc = await lifetimeSales.readLifetimeSales();
+  // The owner can hide a book's sold count (admin Visibility & sales); its
+  // rank and #1 badge still show, they carry no number of copies.
+  const countHidden = (await searchHidden.sold.hiddenSlugSet()).has(String(slug || '').toLowerCase());
   // monthlyUnits adds what a duplicated listing carries from its original.
-  const line = lifetimeSales.boughtLine(lifetimeSales.monthlyUnits(doc, slug));
+  const line = countHidden ? '' : lifetimeSales.boughtLine(lifetimeSales.monthlyUnits(doc, slug));
   const rank = bestsellerRank.rankOf(doc && doc.bsr, slug);
   const underStock = bestsellerRank.badgeHtml(rank) + line;
   const row = bestsellerRank.rankRowHtml(rank);

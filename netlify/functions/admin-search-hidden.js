@@ -3,7 +3,8 @@
  *
  * Hide one book from the site search or from browsing, or show it again
  * (utils/search-hidden). The two are separate lists; the book stays on sale.
- * Pass scope=browse for the browsing list; the default is search.
+ * Pass scope=browse for the browsing list, scope=sold to hide the book's sold
+ * count; the default is search.
  *
  *   GET  ?slug=…[&scope=browse]            → { hidden: bool, hidden_at }
  *   GET  [?scope=browse]                   → { items: [{ slug, title, hidden_at }, …] }
@@ -11,7 +12,7 @@
  */
 
 const { requireAdmin } = require('./utils/admin-auth');
-const { purgeCacheTags } = require('./utils/purge-cache');
+const { purgeCacheTags, purgeUrls } = require('./utils/purge-cache');
 const H = require('./utils/search-hidden');
 
 const CORS = {
@@ -30,7 +31,7 @@ exports.handler = async (event) => {
   try {
     if (event.httpMethod === 'GET') {
       const qs = event.queryStringParameters || {};
-      const items = await (qs.scope === 'browse' ? H.browse : H).readHidden();
+      const items = await (qs.scope === 'browse' ? H.browse : qs.scope === 'sold' ? H.sold : H).readHidden();
       const raw = qs.slug;
       if (!raw) return json(200, { items });
       const slug = H.normSlug(raw);
@@ -45,6 +46,16 @@ exports.handler = async (event) => {
     const slug = H.normSlug(body.slug);
     if (!slug) return json(400, { error: 'Missing product slug' });
     const hidden = body.hidden === true;
+    if (body.scope === 'sold') {
+      await H.sold.setHidden(slug, hidden, { title: body.title });
+      // Book cards read sold-counts (edge-cached 15 min); product pages check
+      // the list on every view (cached a minute per Worker isolate).
+      let purged = false;
+      try { const r = await purgeUrls(['https://inkandchai.in/.netlify/functions/sold-counts']); purged = !!(r && r.purged); }
+      catch (e) { console.warn('[admin-search-hidden] sold purge:', e.message); }
+      console.log(`[admin-search-hidden] ${slug} → sold count ${hidden ? 'hidden' : 'shown'}`);
+      return json(200, { hidden, cache_purged: purged });
+    }
     if (body.scope === 'browse') {
       // Pages read /browse-hidden.json directly, so there is nothing to purge.
       await H.browse.setHidden(slug, hidden, { title: body.title });
