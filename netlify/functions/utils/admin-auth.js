@@ -30,6 +30,7 @@ const ADMIN_COOKIE_NAME = 'iac_admin_session';
 // owner-only, even if a staff member manually calls the function URL.
 const STAFF_ENDPOINT_PERMISSIONS = {
   'get-orders': 'orders.read',
+  'admin-order-report-pdf': 'orders.read',
   'admin-nimbuspost-cancelled': 'orders.read',
   'admin-bundle': 'products.write',
   'update-order-status': 'orders.manage',

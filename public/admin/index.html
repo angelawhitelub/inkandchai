@@ -1120,6 +1120,8 @@ select,input,textarea{font-size:1rem;}
     <div class="focus-actions">
       <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
+      <button class="btn-green" onclick="orderReportPdf(this,'unshipped')" title="PDF of every unshipped order: all books with their total quantity, most copies first (a pick list), then the orders, most copies first.">📄 Unshipped Report (PDF)</button>
+      <button class="btn-outline" onclick="orderReportPdf(this,'selected')" title="The same PDF for only the orders you have ticked in the list below.">📄 Selected Orders Report (PDF)</button>
       <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Checks which unshipped orders XpressBees can deliver first, then lets you push only the XpressBees-unserviceable ones to the NimbusPost Orders panel, or all of them. No couriers chosen, no AWBs generated.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="pushAllToXpressbeesPanel(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel. Recent orders are collected automatically; this also queues the older ones. No courier is chosen and no AWB is generated.">Push to XpressBees Panel (No AWB)</button>
       <button class="btn-green" onclick="downloadCourierLabels(this,'xpressbees')" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Every XpressBees shipment in Ready to Pickup as one label PDF sorted for packing: pick list first, same-book orders grouped with the biggest quantities first, mixed orders after, the book names stamped under each label, and a blank page last. Read-only at XpressBees.">🏷️ XpressBees Labels (sorted)</button>
@@ -13416,6 +13418,47 @@ function exportSelectedCsv() {
   if (!orders.length) { alert('Select one or more orders first.'); return; }
   const today = new Date().toISOString().slice(0,10);
   downloadCsv(ordersToExportRows(orders), `inkandchai-selected-orders-${today}.csv`);
+}
+
+// ── Orders report PDF: books most copies first, then the orders ─────────────
+// The page sends the orders it already has; admin-order-report-pdf only lays
+// them out (pdf-lib, server side), so nothing is changed anywhere.
+async function orderReportPdf(btn, scope) {
+  let orders;
+  if (scope === 'selected') {
+    orders = getSelectedOrders();
+    if (!orders.length) { alert('Tick the orders you want in the list first (the box at the start of each row), then press this again.'); return; }
+  }
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Preparing PDF…';
+  try {
+    if (scope !== 'selected') orders = (await fetchAllOrdersForExport()).filter(orderIsUnshipped);
+    if (!orders.length) { alert('There are no unshipped orders.'); return; }
+    const payload = orders.map(o => ({
+      id: orderKey(o),
+      date: o.created_at ? new Date(o.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '',
+      customer: o.customer_name || '',
+      pay: (orderPaymentBreakdown(o) || {}).method || '',
+      items: (Array.isArray(o.cart_items) ? o.cart_items : []).map(i => ({ title: i.title || i.name || '', slug: i.slug || '', qty: Number(i.qty) || 1 })),
+    }));
+    const title = scope === 'selected' ? `Selected orders report (${orders.length})` : 'Unshipped orders report';
+    const res = await adminFetch('/.netlify/functions/admin-order-report-pdf', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, orders: payload }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.pdf) throw new Error(d.error || ('HTTP ' + res.status));
+    const bytes = Uint8Array.from(atob(d.pdf), c => c.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = d.filename || 'orders-report.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    alert('Could not make the report: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.innerHTML = orig;
+  }
 }
 
 async function exportUnshippedCsv() {
