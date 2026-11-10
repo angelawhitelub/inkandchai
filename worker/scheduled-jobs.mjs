@@ -32,6 +32,7 @@ export const ENABLED_JOBS = new Set([
   'xpressbees-status-sync-scheduled',
   'courier-status-sync-scheduled',
   'xpressbees-queue-cleanup-scheduled',
+  'cancelled-parcels-scheduled',    // stops waiting parcels of cancelled orders, owner told of the rest
   'support-ticket-sla-scheduled',
   'auto-recover-carts',
   'daily-unshipped-report',

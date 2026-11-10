@@ -227,3 +227,5 @@ exports.handler = async (event = {}) => {
 };
 
 exports._test = { classify, applyOne, orderNumberOf, fromXb, fromNp };
+// cancelled-parcels-scheduled reads the same courier lists.
+exports.lib = { report };

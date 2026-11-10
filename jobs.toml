@@ -491,6 +491,12 @@
 [functions."xpressbees-queue-cleanup-scheduled"]
   schedule = "30 3 * * *"
 
+# 09:00 IST: parcels the couriers still carry for orders cancelled here. Stops
+# the ones waiting for pickup (live check first), tells the owner about the
+# ones already picked up. CANCELLED_PARCELS_STOP=0 makes it list-only.
+[functions."cancelled-parcels-scheduled"]
+  schedule = "30 3 * * *"
+
 # Hourly: the support-ticket promise (reply in 24 h, resolve in 48 h). Tells the
 # customer when a ticket is taking longer than expected and nudges the owner
 # about unanswered ones. See support-ticket-sla-scheduled; SUPPORT_TICKET_SLA.
