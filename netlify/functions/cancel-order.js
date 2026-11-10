@@ -26,6 +26,8 @@ const { issueRazorpayRefund } = require('./utils/razorpay-refund');
 const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
 const { npShipmentMoved, statusImpliesMovement } = require('./utils/nimbuspost-track');
 const { checkPickups, pickupState } = require('./utils/pickup-live');
+const { recordCourierCancel } = require('./utils/courier-shipment-cancel');
+const { stopXpressbeesFirst, isXpressbees } = require('./utils/xb-stop-first');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -77,6 +79,13 @@ function shipmentHasMoved(order) {
   if (order?.shipment_moved_at || order?.delivered_at) return true;
   if (statusImpliesMovement(order?.last_nimbuspost_status)) return true;
   return !!order?.last_courier_status && pickupState(order.last_courier_status) === 'moved';
+}
+
+async function ownerAlert(text) {
+  const jobs = [];
+  if (process.env.STORE_OWNER_PHONE) jobs.push(require('./utils/whatsapp').sendText(process.env.STORE_OWNER_PHONE, text).catch(() => {}));
+  if (process.env.STORE_OWNER_EMAIL) jobs.push(sendEmail({ to: process.env.STORE_OWNER_EMAIL, subject: text.split('\n')[0].replace(/^\W+/, ''), html: `<pre style="font:14px sans-serif">${text.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</pre>` }).catch(() => {}));
+  await Promise.all(jobs);
 }
 
 // Ask every system that might know the AWB, not just NimbusPost. NimbusPost
@@ -327,6 +336,30 @@ exports.handler = async (event) => {
       }
     }
 
+    let xbStop = null;
+    if (order.tracking_id && isXpressbees(order)) {
+      xbStop = await stopXpressbeesFirst(order);
+      if (xbStop.ok) {
+        await recordCourierCancel(supabase, order_id, xbStop.result);
+      } else if (xbStop.moved) {
+        await supabase.from('orders').update({
+          shipment_moved_at: new Date().toISOString(),
+          last_courier_status: String(xbStop.result.state || 'picked').slice(0, 200),
+          last_courier_status_at: new Date().toISOString(),
+        }).eq('id', order_id);
+        return {
+          statusCode: 422, headers: CORS,
+          body: JSON.stringify({ error: `This order has already been picked up by ${order.courier_name || 'the courier'} (AWB ${order.tracking_id}). Cancellation is not possible once a parcel is with the courier — please refuse the delivery instead, or contact us.` }),
+        };
+      } else {
+        console.error(`[cancel-order] XpressBees stop failed for ${order.tracking_id}: ${xbStop.result.message || xbStop.result.action}`);
+        return {
+          statusCode: 503, headers: CORS,
+          body: JSON.stringify({ error: 'We could not reach the courier to stop your parcel just now, so the order has NOT been cancelled. Please try again in a few minutes, or WhatsApp us and we will cancel it for you.' }),
+        };
+      }
+    }
+
     // Recheck status + movement in the UPDATE itself. This closes the race where
     // an in-transit webhook arrives after the order was fetched but before the
     // customer confirms cancellation.
@@ -351,6 +384,11 @@ exports.handler = async (event) => {
       return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Could not cancel this order. Please try again.' }) };
     }
     if (!cancelled.data) {
+      if (xbStop && xbStop.ok && xbStop.result.action === 'cancelled') {
+        // The parcel is already stopped but the order moved on under us: a
+        // person has to look (re-book it, or finish the cancellation).
+        await ownerAlert(`⚠️ Customer cancel half-done\nOrder: ${order.razorpay_order_id || order.id}\nXpressBees AWB ${order.tracking_id} was CANCELLED, but the order changed status meanwhile and was not cancelled. Re-book it or cancel the order.`);
+      }
       return {
         statusCode: 409, headers: CORS,
         body: JSON.stringify({ error: 'The shipment status changed while cancelling. Refresh your orders to see its latest status.' }),
@@ -365,9 +403,23 @@ exports.handler = async (event) => {
     // Best-effort — never blocks the customer-facing cancellation. Whatever the
     // outcome, the owner email below reports it so a failed auto-cancel gets a
     // manual follow-up instead of silently shipping a cancelled order.
+    // Who cancelled and when; the order list showed none of this for
+    // customer cancels. Separate from the guarded update so a missing column
+    // can never undo a cancellation.
+    {
+      const { error: tErr } = await supabase.from('orders')
+        .update({ cancelled_at: new Date().toISOString(), cancellation_source: 'customer' })
+        .eq('id', order_id).is('cancelled_at', null);
+      if (tErr) console.warn('[cancel-order] cancel time not saved:', tErr.message);
+    }
+
     const displayId = order.razorpay_order_id || order.id;
     let npResult, npWhat;
-    if (order.tracking_id) {
+    if (xbStop && xbStop.ok) {
+      // Stopped at XpressBees above; NimbusPost does not know this AWB.
+      npWhat = `XpressBees AWB ${order.tracking_id}`;
+      npResult = { ok: true, skipped: 'xpressbees' };
+    } else if (order.tracking_id) {
       npWhat = `AWB ${order.tracking_id}`;
       npResult = await cancelNimbusShipment(order.tracking_id);
     } else {
@@ -394,6 +446,7 @@ exports.handler = async (event) => {
         ? 'Order cancelled successfully. Your advance payment refund is being processed.'
         : 'Order cancelled successfully.',
       nimbuspost: npResult.ok ? 'cancelled' : `failed: ${npResult.error}`,
+      ...(xbStop ? { xpressbees: xbStop.result.action } : {}),
     }) };
   }
 

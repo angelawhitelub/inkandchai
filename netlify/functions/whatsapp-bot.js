@@ -24,6 +24,8 @@ const { recordCampaignReceipts } = require('./utils/campaign-receipts');
 const { normalizePhone } = require('./utils/whatsapp');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { cancelNimbusShipment, cancelNimbusOrder } = require('./utils/nimbuspost-cancel');
+const { stopXpressbeesFirst, isXpressbees } = require('./utils/xb-stop-first');
+const { recordCourierCancel } = require('./utils/courier-shipment-cancel');
 const { quoteLateCancel, executeLateCancel } = require('./utils/prepaid-late-cancel');
 const { quoteUnpickedCancel, unpickedCancelFrom, UNPICKED_DAYS } = require('./utils/unpicked-cancel');
 const { cancelUnpickedOrder } = require('./cancel-unpicked-order');
@@ -1673,6 +1675,21 @@ async function cancelOrderViaBot(phone, args = {}) {
       };
     }
 
+    // An XpressBees AWB is stopped at XpressBees first (utils/xb-stop-first);
+    // NimbusPost, asked below, cannot cancel it, and those parcels shipped.
+    let xbStop = null;
+    if (target.tracking_id && isXpressbees(target)) {
+      xbStop = await stopXpressbeesFirst(target);
+      if (xbStop.moved) {
+        return { ok: false, error: 'shipped', message: `Your order ${target.razorpay_order_id} has already been picked up by the courier, so it can't be cancelled now. If you don't want it, you can refuse it at delivery, or reply here and we'll help.` };
+      }
+      if (!xbStop.ok) {
+        console.error(`[WHATSAPP-CANCEL] XpressBees stop failed for ${target.tracking_id}: ${xbStop.result.message || xbStop.result.action}`);
+        return { ok: false, error: 'courier-unreachable', message: 'Sorry, I couldn\'t reach the courier to stop your parcel just now, so the order is NOT cancelled yet. Please message our team here 👉 https://wa.me/919217175546 with your Order ID and we\'ll cancel it right away.' };
+      }
+      await recordCourierCancel(supabase, target.id, xbStop.result);
+    }
+
     // Cancel + auto-refund (notifyOrderCancelled → maybeAutoRefund for prepaid).
     let cancelQuery = supabase
       .from('orders')
@@ -1683,6 +1700,9 @@ async function cancelOrderViaBot(phone, args = {}) {
     const { data: cancelled, error: cancelErr } = await cancelQuery.select('id').maybeSingle();
     if (cancelErr) throw cancelErr;
     if (!cancelled) {
+      if (xbStop && xbStop.ok && xbStop.result.action === 'cancelled' && process.env.STORE_OWNER_PHONE) {
+        await require('./utils/whatsapp').sendText(process.env.STORE_OWNER_PHONE, `⚠️ WhatsApp cancel half-done\nOrder: ${target.razorpay_order_id}\nXpressBees AWB ${target.tracking_id} was CANCELLED, but the order changed status meanwhile and was not cancelled. Re-book it or cancel the order.`).catch(() => {});
+      }
       return { ok: false, error: 'status-changed', message: `The shipping status of order ${target.razorpay_order_id} changed while I was cancelling it. Please ask me to check its latest status before trying again.` };
     }
 
@@ -1691,9 +1711,11 @@ async function cancelOrderViaBot(phone, args = {}) {
     // and could still be shipped. Mirror the website cancellation endpoint:
     // cancel by AWB when present, otherwise by the IC order number in the panel.
     const displayId = target.razorpay_order_id || target.id;
-    const npResult = target.tracking_id
-      ? await cancelNimbusShipment(target.tracking_id)
-      : await cancelNimbusOrder(displayId);
+    const npResult = xbStop && xbStop.ok
+      ? { ok: true, skipped: 'xpressbees' }
+      : target.tracking_id
+        ? await cancelNimbusShipment(target.tracking_id)
+        : await cancelNimbusOrder(displayId);
     if (!npResult.ok) {
       console.error(`[WHATSAPP-CANCEL] NimbusPost cancel failed for ${displayId}: ${npResult.error}`);
     }
