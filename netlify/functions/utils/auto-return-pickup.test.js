@@ -51,7 +51,7 @@ function spyProcess(replies, onCall) {
   return fn;
 }
 function spy() { const calls = []; const fn = async (...a) => { calls.push(a); return { email: { ok: true }, whatsapp: { ok: true } }; }; fn.calls = calls; return fn; }
-const ADDR = { line: 'Ink and Chai, 2969 …, Delhi 110006. Phone 9625836117', name: 'Ink and Chai', address: '2969', city: 'Delhi', state: 'Delhi', pincode: '110006', phone: '9625836117' };
+const ADDR = { line: 'Ink and Chai, 1 Test Lane, Delhi - 110001. Phone 9000000000', name: 'Ink and Chai', address: '1 Test Lane', city: 'Delhi', state: 'Delhi', pincode: '110001', phone: '9000000000' };
 
 test('XpressBees is tried first and a booking there ends it', async () => {
   const processReturn = spyProcess([booked('14345XB')]);
@@ -133,6 +133,14 @@ test('the India Post email names the address, the order and that we pay', () => 
   assert.match(html, /IC-20260930-ABCDE/);
   assert.match(html, /Speed Post/);
   assert.match(html, /we will pay the postage/i);
-  assert.match(html, /110006/);
+  assert.match(html, /110001/);
   assert.match(html, /UPI/);
+});
+
+test('the posted-return address is the owner-chosen one, never the courier pickup address', () => {
+  const { returnAddress } = require('../auto-return-pickup-background');
+  const a = returnAddress({});
+  assert.equal(a.line, 'Ink and Chai, 6, Ansari Road, Delhi - 110002. Phone 9217587201');
+  assert.ok(!/kucha|2969|9625836117/i.test(JSON.stringify(a)));
+  assert.equal(returnAddress({ RETURN_POST_PHONE: '+91 98765 43210' }).phone, '9876543210');
 });

@@ -36,13 +36,24 @@ const WA_TEMPLATE = 'return_self_ship_india_post';
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const firstName = (n) => String(n || '').trim().split(/\s+/)[0] || 'there';
 
-/** Where the customer posts it: the same warehouse the couriers deliver returns to. */
-function returnAddress() {
-  const p = require('./utils/xpressbees').pickupFromEnv();
-  return {
-    line: `${p.name}, ${p.address}, ${p.address_2 ? p.address_2 + ', ' : ''}${p.city}, ${p.state} ${p.pincode}. Phone ${p.phone}`,
-    ...p,
+/**
+ * Where the customer posts it. NOT the courier pickup address: that is the
+ * owner's own address and personal number, and it went out in this notice to
+ * 29 customers (25 Oct - 10 Nov 2026) until the owner set a separate one.
+ * Env overrides: RETURN_POST_ADDRESS, RETURN_POST_CITY, RETURN_POST_STATE,
+ * RETURN_POST_PINCODE, RETURN_POST_PHONE.
+ */
+function returnAddress(env = process.env) {
+  const p = {
+    name: 'Ink and Chai',
+    address: String(env.RETURN_POST_ADDRESS || '6, Ansari Road').trim(),
+    address_2: '',
+    city: String(env.RETURN_POST_CITY || 'Delhi').trim(),
+    state: String(env.RETURN_POST_STATE || 'Delhi').trim(),
+    pincode: String(env.RETURN_POST_PINCODE || '110002').trim(),
+    phone: String(env.RETURN_POST_PHONE || '9217587201').replace(/\D/g, '').slice(-10),
   };
+  return { line: `${p.name}, ${p.address}, ${p.city} - ${p.pincode}. Phone ${p.phone}`, ...p };
 }
 
 /** process-return, in-process, authenticated as the owner. */
@@ -229,3 +240,4 @@ exports.runReturnPickup = runReturnPickup;
 exports.INDIA_POST = INDIA_POST;
 exports.WA_TEMPLATE = WA_TEMPLATE;
 exports.customerEmailHtml = customerEmailHtml;
+exports.returnAddress = returnAddress;

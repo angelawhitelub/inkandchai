@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const R = require('./campaign-receipts');
 
 const webhook = (...statuses) => ({ entry: [{ changes: [{ value: { statuses } }] }] });
-const failed131049 = { id: 'wamid.A', status: 'failed', recipient_id: '919625836117', timestamp: '1793020700',
+const failed131049 = { id: 'wamid.A', status: 'failed', recipient_id: '919000000123', timestamp: '1793020700',
   errors: [{ code: 131049, title: 'This message was not delivered to maintain healthy ecosystem engagement.', error_data: { details: 'In order to…' } }] };
 
 function fakeDb(rows) {
@@ -24,7 +24,7 @@ function fakeDb(rows) {
 }
 
 test('a 131049 failure marks the ledger row failed with its code', async () => {
-  const rows = [{ id: 7, customer_phone: '919625836117', status: 'sent', metadata: { wamid: 'wamid.A', source: 'new_title' } }];
+  const rows = [{ id: 7, customer_phone: '919000000123', status: 'sent', metadata: { wamid: 'wamid.A', source: 'new_title' } }];
   const db = fakeDb(rows);
   assert.strictEqual(await R.recordCampaignReceipts(db, webhook(failed131049)), 1);
   assert.strictEqual(rows[0].status, 'failed');
