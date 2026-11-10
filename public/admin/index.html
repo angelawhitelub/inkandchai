@@ -1842,6 +1842,17 @@ select,input,textarea{font-size:1rem;}
             <input id="prodSlug" readonly/>
           </div>
           <div class="form-row">
+            <label>Ink &amp; Chai product ID <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--cream-dim);">— our own fixed code for this book, like an ASIN</span></label>
+            <div style="display:flex;gap:.5rem;align-items:center;">
+              <input id="prodIcId" readonly style="flex:1;font-family:Menlo,Consolas,monospace;letter-spacing:.08em;"/>
+              <button type="button" onclick="copyIcId()"
+                style="white-space:nowrap;font-family:'Manrope',sans-serif;font-size:.52rem;letter-spacing:.16em;text-transform:uppercase;
+                       padding:.55rem .8rem;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.5);
+                       color:var(--gold);cursor:pointer;border-radius:3px;">Copy</button>
+            </div>
+            <p class="hint" id="prodIcIdHint" style="margin-top:.35rem;">Shown on the product page under Details. Search Products by it.</p>
+          </div>
+          <div class="form-row">
             <label>Google item ID <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--cream-dim);">— the Product ID in Merchant Center and Google Ads</span></label>
             <div style="display:flex;gap:.5rem;align-items:center;">
               <input id="prodGoogleId" readonly style="flex:1;font-family:Menlo,Consolas,monospace;"/>
@@ -2149,6 +2160,18 @@ select,input,textarea{font-size:1rem;}
             </div>
             <p class="hint" id="prodSoldHiddenMsg" style="margin-top:.65rem;"></p>
             <div id="prodSoldHiddenList" class="hint" style="margin-top:.4rem;"></div>
+            <p class="hint" id="prodQtyLimitCurrent" style="margin:.85rem 0 0;padding-top:.75rem;border-top:1px solid var(--border);color:var(--cream-dim);"></p>
+            <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;">
+              🔢 Most copies per order
+              <input type="number" id="prodQtyLimit" min="1" max="999" step="1" placeholder="No limit" style="width:7rem;padding:.4rem .5rem;"/>
+            </label>
+            <p class="hint" style="margin:.35rem 0 0;">Leave empty for no limit. Checkout refuses an order with more copies than this (website and Buy Now; COD, prepaid and partial COD), the product page and cart stop at it, and a WhatsApp bot order over it waits for you. Other orders from the same customer are not counted.</p>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-green" type="button" id="prodQtyLimitSaveBtn" onclick="saveQtyLimit()">Save Limit</button>
+              <button class="btn-outline" type="button" onclick="listQtyLimits()">List books with a limit</button>
+            </div>
+            <p class="hint" id="prodQtyLimitMsg" style="margin-top:.65rem;"></p>
+            <div id="prodQtyLimitList" class="hint" style="margin-top:.4rem;"></div>
           </details>
           <details id="prodNewTitleAlert" ontoggle="if (this.open) loadNtaReport()" style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(37,211,102,.05);">
             <summary style="cursor:pointer;color:#25d366;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">📣 New-title alert (WhatsApp + email)</summary>
@@ -9585,10 +9608,14 @@ function renderProductList() {
   if (!list) return;
   const q = (document.getElementById('productSearch')?.value || '').toLowerCase().trim();
   const gone = deletedSlugSet();
+  // An Ink & Chai product ID (IC + 8), whole or its start.
+  const idQ = q.replace(/[\s-]+/g, '');
+  const byId = /^ic[0-9a-z]{2,8}$/.test(idQ);
   const rows = productRows.filter(row => {
     const p = mergedProduct(row);
     if (gone.has(String(row.slug || '').toLowerCase())) return false;
     if (!q) return true;
+    if (byId && icIdCached(row.slug).toLowerCase().startsWith(idQ)) return true;
     // google_item_id too, so an id pasted from a Merchant Center issue finds its book.
     return [p.title, p.author, p.category, p.publisher, p.isbn, p.slug, p.shopify_id, row.google_item_id].join(' ').toLowerCase().includes(q);
   }).slice(0, 80);
@@ -9635,6 +9662,7 @@ function selectProduct(slug) {
   document.getElementById('productEditorEmpty').style.display = 'none';
   document.getElementById('productEditorForm').style.display = '';
   document.getElementById('prodSlug').value = row.slug;
+  { const ic = document.getElementById('prodIcId'); if (ic) ic.value = icProductId(row.slug); }
   {
     const gid = document.getElementById('prodGoogleId');
     const gh = document.getElementById('prodGoogleIdHint');
@@ -9776,6 +9804,7 @@ function selectProduct(slug) {
   loadSearchHiddenEditor(row);
   loadBrowseHiddenEditor(row);
   loadSoldHiddenEditor(row);
+  loadQtyLimitEditor(row);
   resetNewTitleAlert();
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
@@ -13040,6 +13069,105 @@ async function loadCatalogCopy(row) {
   } catch (err) {
     if (msg && selectedProduct === row) { msg.textContent = 'Could not load this book\'s copy: ' + err.message; msg.style.color = '#c96a6a'; }
   }
+}
+
+// ── Ink & Chai product ID — same as netlify/functions/utils/product-id.js ───
+// "IC" + 8 Crockford base32 characters from the slug (FNV-1a 64 + murmur3
+// finaliser). product-id.test.js runs this copy against the server's.
+function icProductId(slug) {
+  const s = String(slug || '').trim().toLowerCase()
+    .replace(/[?#].*$/, '').replace(/^https?:\/\/[^/]+/, '').replace(/^\/?product\//, '')
+    .replace(/^\/+|\/+$/g, '');
+  if (!s) return '';
+  const MASK = (1n << 64n) - 1n;
+  const ALPHA = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  let h = 0xcbf29ce484222325n;
+  for (const b of new TextEncoder().encode(s)) { h ^= BigInt(b); h = (h * 0x100000001b3n) & MASK; }
+  h ^= h >> 33n; h = (h * 0xff51afd7ed558ccdn) & MASK;
+  h ^= h >> 33n; h = (h * 0xc4ceb9fe1a85ec53n) & MASK;
+  h ^= h >> 33n;
+  let out = 'IC';
+  for (let i = 0; i < 8; i += 1) out += ALPHA[Number((h >> BigInt(5 * i)) & 31n)];
+  return out;
+}
+
+const _icIdCache = new Map();
+function icIdCached(slug) {
+  const k = String(slug || '');
+  if (!_icIdCache.has(k)) _icIdCache.set(k, icProductId(k));
+  return _icIdCache.get(k);
+}
+
+function copyIcId() {
+  const v = document.getElementById('prodIcId')?.value || '';
+  if (!v) return;
+  navigator.clipboard.writeText(v)
+    .then(() => { const h = document.getElementById('prodIcIdHint'); if (h) { h.dataset.was = h.dataset.was || h.textContent; h.textContent = 'Copied ' + v; setTimeout(() => { h.textContent = h.dataset.was; }, 1800); } })
+    .catch(() => alert('Could not copy — select the box and copy it by hand.'));
+}
+
+// ── Most copies per order (admin-qty-limits) ────────────────────────────────
+function setQtyLimitUi(max, note) {
+  const input = document.getElementById('prodQtyLimit');
+  const cur = document.getElementById('prodQtyLimitCurrent');
+  if (input) input.value = max ? String(max) : '';
+  if (cur) cur.textContent = note || (max ? `Limit: at most ${max} ${max === 1 ? 'copy' : 'copies'} of this book per order.` : 'No limit on copies per order.');
+}
+
+async function loadQtyLimitEditor(row) {
+  const msg = document.getElementById('prodQtyLimitMsg');
+  if (msg) msg.textContent = '';
+  const list = document.getElementById('prodQtyLimitList');
+  if (list) list.innerHTML = '';
+  if (!row?.slug) return;
+  setQtyLimitUi(null, 'Checking…');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-qty-limits?slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setQtyLimitUi(data.max);
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setQtyLimitUi(null, 'Could not load: ' + e.message);
+  }
+}
+
+async function saveQtyLimit() {
+  const row = selectedProduct;
+  if (!row) return;
+  const raw = String(document.getElementById('prodQtyLimit')?.value || '').trim();
+  const max = raw === '' ? null : Math.floor(Number(raw));
+  const msg = document.getElementById('prodQtyLimitMsg');
+  if (max !== null && !(max >= 1 && max <= 999)) { if (msg) { msg.textContent = 'Enter a whole number from 1 to 999, or leave it empty for no limit.'; msg.style.color = '#c96a6a'; } return; }
+  const btn = document.getElementById('prodQtyLimitSaveBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-qty-limits', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: row.slug, max, title: mergedProduct(row).title || row.slug }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setQtyLimitUi(data.max);
+    if (msg) { msg.textContent = data.max ? `Saved. Checkout enforces it within a minute; the product page and cart pick it up within 5 minutes.` : 'Limit removed.'; msg.style.color = ''; }
+  } catch (e) {
+    if (msg) { msg.textContent = 'Could not save: ' + e.message; msg.style.color = '#c96a6a'; }
+  } finally { if (btn) btn.disabled = false; }
+}
+
+async function listQtyLimits() {
+  const box = document.getElementById('prodQtyLimitList');
+  if (!box) return;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-qty-limits');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? `<strong>${items.length} book${items.length === 1 ? '' : 's'} with a limit:</strong><br>` + items.map(i => `max <strong>${i.max}</strong> · <a href="/product/${esc(i.slug)}/" target="_blank" rel="noopener" style="color:var(--gold-dim);">${esc(i.title || i.slug)}</a> <span style="font-family:Menlo,Consolas,monospace;">${esc(i.product_id || '')}</span>`).join('<br>')
+      : 'No book has a limit.';
+  } catch (e) { box.textContent = 'Could not load: ' + e.message; }
 }
 
 function copyGoogleItemId() {

@@ -475,6 +475,8 @@ function autoPushHold(pricing) {
   if (pricing.unmatched && pricing.unmatched.length) return 'a title is not in the catalogue, so its price is a guess';
   const copies = Number(pricing.copies) || (pricing.items || []).reduce((n, i) => n + (Number(i && i.qty) || 1), 0);
   if (copies > AUTO_PUSH_MAX_COPIES) return `bulk order of ${copies} copies`;
+  const over = (pricing.items || []).find((i) => i && Number(i.maxQty) >= 1 && (Number(i.qty) || 1) > Number(i.maxQty));
+  if (over) return `${over.qty} copies of ${over.matchedTitle || over.title}, over its limit of ${over.maxQty} per order`;
   return null;
 }
 
@@ -632,7 +634,7 @@ async function lookupBotRequest(db, orderId) {
 module.exports = {
   authorMatchingName,
   buildRequestEdit,
-  DRAFT, DISCARDED, LIVE, HIDDEN_STATUSES, DRAFT_TTL_MS, AUTO_PUSH_MAX_COPIES,
+  DRAFT, DISCARDED, LIVE, HIDDEN_STATUSES, DRAFT_TTL_MS, AUTO_PUSH_MAX_COPIES, autoPushHold,
   validateOrderFields, sameBooks, sameTitle, requestedTitles, draftReplyDecision,
   draftOrderRequest, confirmDraftOrder, botOrdersContext, activeOrdersContext, lookupBotRequest, describeRequest,
 };

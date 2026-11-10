@@ -34,6 +34,8 @@ import lifetimeSales from '../netlify/functions/utils/lifetime-sales.js';
 import searchHidden from '../netlify/functions/utils/search-hidden.js';
 import bestsellerRank from '../netlify/functions/utils/bestseller-rank.js';
 import codRules from '../netlify/functions/utils/cod-rules.js';
+import qtyLimits from '../netlify/functions/utils/qty-limits.js';
+import productIdUtil from '../netlify/functions/utils/product-id.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
@@ -671,7 +673,7 @@ async function withFreeDelivery(response, slug, env, ctx, origin) {
 
 // The quantity selector (public/js/pdp-qty.js), on every product page: baked
 // and admin-created alike, without rebuilding the baked ones.
-const PDP_QTY_SRC = '/js/pdp-qty.js?v=2';
+const PDP_QTY_SRC = '/js/pdp-qty.js?v=3';
 // Every product page: a short copyright notice under Details with a link to
 // the /copyright/ report form, pre-filled with this page (canonical comes
 // before Details in the document, so its slug is known by then).
@@ -683,14 +685,38 @@ function copyrightNoteHtml(slug) {
     + `We review every report and reply within 72 hours, and we act on valid reports, which can include removing this page.</p>`;
 }
 
-function withQtySelector(response) {
+// Also on every product page: the Ink & Chai product ID as the last Details
+// row (utils/product-id, like an ASIN), and the admin's "most copies per
+// order" (utils/qty-limits) as window.__maxQty for pdp-qty.js plus a visible
+// "Limit N per order" line above the buttons. Checkout enforces the limit.
+async function withQtySelector(response) {
   if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  let limits = {};
+  try { limits = await qtyLimits.limitMap(); } catch { limits = {}; }
   let slug = '';
   let noted = false;
+  let idDone = false;
+  let limitDone = false;
+  const maxFor = () => { const n = Number(limits[String(slug || '').toLowerCase()]); return n >= 1 ? Math.floor(n) : 0; };
   const out = new HTMLRewriter()
     .on('link[rel="canonical"]', { element(el) { const m = String(el.getAttribute('href') || '').match(/\/product\/([^/?#]+)/); if (m) slug = m[1]; } })
+    .on('div.details dl', { element(el) {
+      if (idDone || !slug) return;
+      idDone = true;
+      const pid = productIdUtil.productId(slug);
+      if (pid) el.append(`<dt>Ink &amp; Chai ID</dt><dd class="ic-pid" style="font-family:Menlo,Consolas,monospace;letter-spacing:.06em;">${pid}</dd>`, { html: true });
+    } })
+    .on('div.actions', { element(el) {
+      const n = maxFor();
+      if (limitDone || !n) return;
+      limitDone = true;
+      el.before(`<p class="ic-qty-limit" style="margin:.4rem 0 .2rem;font-size:.82rem;font-weight:600;opacity:.85;">Limit ${n} ${n === 1 ? 'copy' : 'copies'} per order</p>`, { html: true });
+    } })
     .on('div.details', { element(el) { if (!noted) { noted = true; el.after(copyrightNoteHtml(slug), { html: true }); } } })
-    .on('body', { element(el) { el.append(`<script src="${PDP_QTY_SRC}" defer></script>`, { html: true }); } })
+    .on('body', { element(el) {
+      const n = maxFor();
+      el.append(`${n ? `<script>window.__maxQty=${n};</script>` : ''}<script src="${PDP_QTY_SRC}" defer></script>`, { html: true });
+    } })
     .transform(response);
   const headers = new Headers(out.headers);
   headers.delete('etag');
@@ -971,6 +997,18 @@ export default {
       });
     }
 
+    if (url.pathname === '/qty-limits.json') {
+      let limits = {};
+      try { limits = await qtyLimits.limitMap(); } catch { limits = {}; }
+      return new Response(JSON.stringify({ limits }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
     if (url.pathname === '/browse-hidden.json') {
       return new Response(JSON.stringify({ slugs: await browseHiddenSlugs(env) }), {
         headers: {
@@ -1015,7 +1053,7 @@ export default {
       let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
       page = await withFreeDelivery(await withCodRule(withShippingCopy(page), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
-      return withShipHolidays(withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin)), env);
+      return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin)), env);
     }
 
     // Admin-created products have no generated page: the catalogue books are
@@ -1033,9 +1071,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withShipHolidays(withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
+          return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
         }
-        if (rendered.status !== 404) return withShipHolidays(withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
+        if (rendered.status !== 404) return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a

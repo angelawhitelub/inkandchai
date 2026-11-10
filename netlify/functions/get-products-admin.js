@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const { parseProductId, findCustomSlugsById } = require('./utils/product-id');
 const { requireAdmin } = require('./utils/admin-auth');
 
 const CORS = {
@@ -132,7 +133,17 @@ exports.handler = async (event) => {
       const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
       const safe = q.replace(/[%,()]/g, ' ').replace(/\s+/g, ' ').trim();
       let rows = [];
-      if (safe) {
+      // An Ink & Chai product ID (utils/product-id). Catalogue books are already
+      // in the full list the editor holds; only custom listings need the scan.
+      const pid = parseProductId(q);
+      if (pid) {
+        const hit = await findCustomSlugsById(supabase, pid);
+        if (hit.length) {
+          const { data, error } = await supabase.from('custom_products').select('*').in('slug', hit);
+          if (error) throw error;
+          rows = data || [];
+        }
+      } else if (safe) {
         const { data, error } = await supabase
           .from('custom_products')
           .select('*')

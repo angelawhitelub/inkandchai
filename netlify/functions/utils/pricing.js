@@ -10,6 +10,8 @@
  */
 
 const { codRulesFor } = require('./cod-rules');
+const qtyLimits = require('./qty-limits');
+const { productId } = require('./product-id');
 const { freeDeliveryFor } = require('./free-delivery');
 const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipping-restrictions');
 const { grantMap, feedOfferId } = require('./google-discount');
@@ -310,6 +312,17 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
     const left = stockLeft[String(item.slug || '').toLowerCase()];
     if (Number.isFinite(left)) item._stock_left = left;
     else delete item._stock_left;
+    item._pid = productId(item.slug);
+  }
+
+  // Most copies per order (utils/qty-limits, admin product editor). Only the
+  // server decides; findSoldOut refuses a cart over it on every order path.
+  let limits = {};
+  if (resolved.length) { try { limits = await qtyLimits.limitMap(); } catch { limits = {}; } }
+  for (const item of resolved) {
+    const max = limits[String(item.slug || '').toLowerCase()];
+    if (Number.isFinite(max) && max >= 1) item._max_qty = max;
+    else delete item._max_qty;
   }
 
   // ── Google automated discounts ───────────────────────────────────────────

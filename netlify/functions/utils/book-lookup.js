@@ -200,6 +200,16 @@ async function priceBooksList(rawBooksList, fallbackRs = 349, deps = {}) {
       : { query: q, title, qty, unitPrice, price: unitPrice * qty, matchedTitle: title, matched: false });
     if (!hit) unmatched.push(title);
   }
+  // Per-book "most copies per order" (utils/qty-limits): carried on the item
+  // so a confirmed order over it is held for the owner (bot-order-request).
+  if (items.some((i) => i.slug)) {
+    let limits = {};
+    try { limits = await (deps.limitMap || require('./qty-limits').limitMap)(); } catch { limits = {}; }
+    for (const i of items) {
+      const max = i.slug ? limits[String(i.slug).toLowerCase()] : undefined;
+      if (Number(max) >= 1) i.maxQty = Number(max);
+    }
+  }
   const subtotalRs = items.reduce((s, i) => s + i.price, 0);
   // Free shipping from ₹499 — the website's COD rule; bot-order-request lifts
   // it for prepaid orders above ₹399 (utils/free-delivery).

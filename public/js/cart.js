@@ -96,6 +96,26 @@ window.IACBrowseHidden = (function () {
 // compared the id strictly and matched nothing, so the book stayed in the cart
 // through every refresh -- and a text qty turned the badge count into "011".
 // Repair them on read and write the repaired cart back once.
+// ── Most copies per order (admin, per book) ──────────────────────────────────
+// /qty-limits.json from the Worker: { limits: { slug: max } }. Checkout refuses
+// a cart over a limit whatever happens here; this only keeps the cart honest.
+var QTY_LIMITS = {};
+try { QTY_LIMITS = JSON.parse(localStorage.getItem('iac_qty_limits') || '{}') || {}; } catch (e) { QTY_LIMITS = {}; }
+function cartSlugOf(item) {
+  var m = String((item && (item.url || item.id)) || '').match(/\/product\/([^/?#]+)/);
+  return String(m ? m[1] : ((item && item.slug) || '')).toLowerCase();
+}
+function cartMaxQty(item) {
+  var n = Math.floor(Number(QTY_LIMITS[cartSlugOf(item)]));
+  return n >= 1 ? n : 0;
+}
+fetch('/qty-limits.json').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+  if (!d || !d.limits || typeof d.limits !== 'object') return;
+  QTY_LIMITS = d.limits;
+  try { localStorage.setItem('iac_qty_limits', JSON.stringify(d.limits)); } catch (e) {}
+  if (typeof updateCartUI === 'function') { try { getCart(); updateCartUI(); } catch (e) {} }
+}).catch(function () {});
+
 function normalizeCartItem(item, index) {
   if (!item || typeof item !== 'object') return null;
   const raw = item.id != null && item.id !== '' ? item.id : (item.url || item.slug || item.title || ('item-' + index));
@@ -118,6 +138,7 @@ function getCart() {
     const dup = cart.find(c => c.id === item.id);   // same book twice -> one row
     if (dup) dup.qty += item.qty; else cart.push(item);
   }
+  for (const item of cart) { const max = cartMaxQty(item); if (max && item.qty > max) item.qty = max; }
   const fixed = JSON.stringify(cart);
   if (fixed !== JSON.stringify(raw)) { try { localStorage.setItem(CART_KEY, fixed); } catch {} }
   return cart;
@@ -141,6 +162,12 @@ function addToCart(book, opts) {
   const cart = getCart();
   const existing = cart.find(i => i.id === String(book.id));
   if (existing) {
+    const max = cartMaxQty(existing);
+    if (max && existing.qty >= max) {
+      showToast(`Limit ${max} ${max === 1 ? 'copy' : 'copies'} of this book per order`);
+      if (!(opts && opts.keepBrowsing)) openCart();
+      return;
+    }
     existing.qty += 1;
   } else {
     cart.push(normalizeCartItem({ ...book, qty: 1 }, cart.length));
@@ -173,6 +200,11 @@ function updateQty(id, delta) {
   const cart = getCart();
   const item = cart.find(i => i.id === String(id));
   if (!item) return;
+  const max = cartMaxQty(item);
+  if (delta > 0 && max && item.qty >= max) {
+    showToast(`Limit ${max} ${max === 1 ? 'copy' : 'copies'} of this book per order`);
+    return;
+  }
   item.qty = Math.max(1, item.qty + delta);
   saveCart(cart);
 }

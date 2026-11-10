@@ -45,6 +45,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { catalogueCategory } = require('./utils/catalogue-category');
 const { requireAdmin } = require('./utils/admin-auth');
+const { productId, parseProductId, findCustomSlugsById } = require('./utils/product-id');
 const { proxifySupabaseImage } = require('./utils/supabase-img');
 const { makeSlug } = require('./utils/pricing');
 const CATALOGUE = require('../../data/ALL_BOOKS.json');
@@ -95,6 +96,20 @@ const MAX_LIMIT = 24;
 // title and an incidental mid-sentence mention in the same undifferentiated pile.
 const CANDIDATES = 80;
 
+function toBook(r) {
+  return {
+    slug: r.slug,
+    title: r.title,
+    author: r.author || '',
+    category: r.category || '',
+    price: r.price_inr,
+    original_price: r.original_price_inr || null,
+    img: proxifySupabaseImage(r.image_url),
+    source: r.source || 'custom',
+    product_id: productId(r.slug),
+  };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'GET') return { statusCode: 405, headers: CORS, body: 'Method Not Allowed' };
@@ -116,6 +131,26 @@ exports.handler = async (event) => {
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+
+  // An Ink & Chai product ID (utils/product-id): it is derived from the slug,
+  // so every slug is hashed and compared. Every match is returned.
+  const pid = parseProductId(q);
+  if (pid) {
+    try {
+      const hits = catalogueRows().filter(b => productId(b.slug) === pid);
+      const custom = await findCustomSlugsById(supabase, pid);
+      if (custom.length) {
+        const { data } = await supabase.from('custom_products')
+          .select('slug,title,author,category,price_inr,original_price_inr,image_url').in('slug', custom);
+        const have = new Set(hits.map(h => h.slug.toLowerCase()));
+        for (const r of data || []) if (!have.has(String(r.slug).toLowerCase())) hits.unshift(r);
+      }
+      return json(200, { books: hits.map(r => toBook(r)), total: hits.length, product_id: pid });
+    } catch (e) {
+      console.error('[admin-product-search] id:', e.message);
+      return json(500, { error: e.message });
+    }
+  }
 
   // Every word must match (each .or() is ANDed with the others). A query of
   // only stop words falls back to the whole string.
@@ -181,16 +216,7 @@ exports.handler = async (event) => {
     console.warn('[admin-product-search] takedown filter:', e.message);
   }
 
-  const books = rows.slice(0, limit).map(r => ({
-    slug: r.slug,
-    title: r.title,
-    author: r.author || '',
-    category: r.category || '',
-    price: r.price_inr,
-    original_price: r.original_price_inr || null,
-    img: proxifySupabaseImage(r.image_url),
-    source: r.source || 'custom',
-  }));
+  const books = rows.slice(0, limit).map(r => toBook(r));
 
   return json(200, { books, total: books.length, truncated: rows.length >= CANDIDATES });
 };

@@ -81,7 +81,7 @@ function findSoldOut(cart) {
       want[k].qty += Math.max(1, Math.floor(Number(i.qty) || 1));
     }
     const short = Object.values(want).find((w) => w.qty > w.item._stock_left);
-    if (!short) return { blocked: false };
+    if (!short) return findQtyLimit(lines);
     const n = short.item._stock_left;
     return {
       blocked: true,
@@ -99,6 +99,31 @@ function findSoldOut(cart) {
     title: titles[0],
     sold_out: sold.map((i) => ({ slug: i.slug, title: i.title || '' })),
     error: `${titles.join(', ')} ${many ? 'are' : 'is'} sold out. Please remove ${many ? 'them' : 'it'} from your cart to continue.`,
+  };
+}
+
+/**
+ * Most copies per order (resolveCartPrices sets _max_qty from the admin's
+ * per-book limit). Lines of the same book are added up.
+ */
+function findQtyLimit(lines) {
+  const want = {};
+  for (const i of lines) {
+    if (!i || !(Number(i._max_qty) >= 1)) continue;
+    const k = String(i.slug || i.title || '').toLowerCase();
+    want[k] = want[k] || { item: i, qty: 0 };
+    want[k].qty += Math.max(1, Math.floor(Number(i.qty) || 1));
+  }
+  const over = Object.values(want).find((w) => w.qty > Number(w.item._max_qty));
+  if (!over) return { blocked: false };
+  const n = Number(over.item._max_qty);
+  const title = over.item.title || 'a book in your cart';
+  return {
+    blocked: true,
+    code: 'product_qty_limit',
+    title: over.item.title || '',
+    max_qty: n,
+    error: `You can order at most ${n} ${n === 1 ? 'copy' : 'copies'} of ${title} in one order. Please reduce the quantity to continue.`,
   };
 }
 
@@ -135,6 +160,7 @@ module.exports = {
   normalizeShippingRule,
   findShippingRestriction,
   findSoldOut,
+  findQtyLimit,
   normalizeState,
   stateFromPincode,
 };

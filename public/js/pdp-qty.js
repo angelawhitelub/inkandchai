@@ -15,7 +15,10 @@
  */
 (function () {
   'use strict';
-  var MAX = 10;
+  // The admin's "most copies per order" (Worker sets window.__maxQty); checkout
+  // enforces it, this only stops the stepper there.
+  var LIMIT = Math.floor(Number(window.__maxQty)) || 0;
+  var MAX = LIMIT >= 1 ? Math.min(10, LIMIT) : 10;
   var CART = 'akshar_cart';
   var BUY_NOW = 'iac_buy_now_cart';
   var qty = 1;
@@ -54,7 +57,7 @@
       } else {
         var cart = read(CART);
         if (lineQty(cart, id) <= before) return result;      // refused (sold out)
-        cart.forEach(function (l) { if (l && l.id === id) l.qty = before + qty; });
+        cart.forEach(function (l) { if (l && l.id === id) l.qty = LIMIT >= 1 ? Math.min(LIMIT, before + qty) : before + qty; });
         write(CART, cart);
         if (window.refreshCart) window.refreshCart();
       }
