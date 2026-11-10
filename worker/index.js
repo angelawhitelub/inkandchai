@@ -672,9 +672,24 @@ async function withFreeDelivery(response, slug, env, ctx, origin) {
 // The quantity selector (public/js/pdp-qty.js), on every product page: baked
 // and admin-created alike, without rebuilding the baked ones.
 const PDP_QTY_SRC = '/js/pdp-qty.js?v=2';
+// Every product page: a short copyright notice under Details with a link to
+// the /copyright/ report form, pre-filled with this page (canonical comes
+// before Details in the document, so its slug is known by then).
+function copyrightNoteHtml(slug) {
+  const q = /^[a-z0-9][a-z0-9-]*$/i.test(slug || '') ? `?product=${encodeURIComponent(slug)}` : '';
+  return `<p class="ic-copyright" style="margin:1.4rem 0 0;padding:.75rem .9rem;border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:.78rem;line-height:1.6;opacity:.9;">`
+    + `© We respect the copyrights of authors, publishers and artists. If you believe anything on this page infringes your copyright, `
+    + `<a href="/copyright/${q}" rel="nofollow" style="color:inherit;text-decoration:underline;">report a copyright issue</a>. `
+    + `We review every report and act on it, which can include removing this page.</p>`;
+}
+
 function withQtySelector(response) {
   if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
+  let slug = '';
+  let noted = false;
   const out = new HTMLRewriter()
+    .on('link[rel="canonical"]', { element(el) { const m = String(el.getAttribute('href') || '').match(/\/product\/([^/?#]+)/); if (m) slug = m[1]; } })
+    .on('div.details', { element(el) { if (!noted) { noted = true; el.after(copyrightNoteHtml(slug), { html: true }); } } })
     .on('body', { element(el) { el.append(`<script src="${PDP_QTY_SRC}" defer></script>`, { html: true }); } })
     .transform(response);
   const headers = new Headers(out.headers);
