@@ -2924,7 +2924,7 @@ select,input,textarea{font-size:1rem;}
 
   <div class="admin-section" id="tab-copyright">
     <section class="product-panel">
-      <div class="product-head"><div><h2>Copyright reports</h2><p>Reports sent from the <a href="/copyright/" target="_blank" rel="noopener" style="color:var(--gold-dim);">/copyright/</a> form on every product page. <strong>Take page down</strong> is the same action as the product editor's Delete Product Page: the URL answers 410 Gone and the page can be restored from here or from "Deleted pages".</p></div><button class="btn-outline" onclick="loadCopyrightReports()">↻ Refresh</button></div>
+      <div class="product-head"><div><h2>Copyright reports</h2><p>We promise reporters a reply within <strong>72 hours</strong>; open reports show the deadline. Reports sent from the <a href="/copyright/" target="_blank" rel="noopener" style="color:var(--gold-dim);">/copyright/</a> form on every product page. <strong>Take page down</strong> is the same action as the product editor's Delete Product Page: the URL answers 410 Gone and the page can be restored from here or from "Deleted pages".</p></div><button class="btn-outline" onclick="loadCopyrightReports()">↻ Refresh</button></div>
       <div id="crFilters" style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.2rem 0 1rem;">
         <button type="button" class="btn-outline" data-s="new" onclick="loadCopyrightReports('new')">New</button>
         <button type="button" class="btn-outline" data-s="reviewing" onclick="loadCopyrightReports('reviewing')">Reviewing</button>
@@ -11177,10 +11177,18 @@ function crCard(r) {
     ? '<span style="color:#5d9b55;font-weight:700;">Page taken down (410)</span>'
     : '<span style="color:#c93636;font-weight:700;">Page is live</span>';
   const mail = `mailto:${encodeURIComponent(r.reporter_email)}?subject=${encodeURIComponent('Re: your copyright report ' + r.ref)}`;
+  // 72-hour reply promise (public /copyright/ page, receipt email, bot).
+  const dueAt = new Date(new Date(r.created_at).getTime() + 72 * 3600000);
+  const open = r.status === 'new' || r.status === 'reviewing';
+  const hoursLeft = Math.round((dueAt - Date.now()) / 3600000);
+  const dueText = dueAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  const dueHtml = !open ? '' : hoursLeft < 0
+    ? `<span style="background:#c93636;color:#fff;border-radius:10px;padding:1px 8px;font-size:.65rem;margin-left:.4rem;">Reply overdue by ${-hoursLeft} h</span>`
+    : `<span style="color:${hoursLeft <= 24 ? '#c93636' : '#c98a36'};font-size:.72rem;margin-left:.4rem;font-weight:700;">Reply due by ${esc(dueText)} (${hoursLeft} h left)</span>`;
   return `<div class="product-editor" id="cr-${esc(r.ref)}" style="margin-bottom:1rem;">
     <div style="display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:baseline;">
       <div><strong style="font-size:.95rem;">${esc(r.ref)}</strong> <span class="hint" style="margin:0 0 0 .4rem;">${esc(when)}</span>
-        <span style="margin-left:.5rem;background:${CR_STATUS_COLOR[r.status] || '#8a7b6a'};color:#fff;border-radius:10px;padding:1px 8px;font-size:.65rem;">${esc(CR_STATUS_LABEL[r.status] || r.status)}</span></div>
+        <span style="margin-left:.5rem;background:${CR_STATUS_COLOR[r.status] || '#8a7b6a'};color:#fff;border-radius:10px;padding:1px 8px;font-size:.65rem;">${esc(CR_STATUS_LABEL[r.status] || r.status)}</span>${dueHtml}</div>
       <div style="font-size:.78rem;">${pageState} · <a href="${esc(page)}" target="_blank" rel="noopener" style="color:var(--gold-dim);">${esc(page)} ↗</a></div>
     </div>
     <div style="margin-top:.6rem;">

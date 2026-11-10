@@ -105,7 +105,7 @@ async function handle(event, injected) {
     const res = await deps.sendEmail({
       to: deps.ownerEmail,
       subject: `©️ Copyright report ${ref} — /product/${r.product_slug}/`,
-      html: C.ownerEmailHtml(ref, r, { saved, imageCount: images.length }),
+      html: C.ownerEmailHtml(ref, r, { saved, imageCount: images.length, now: deps.now() }),
       attachments: images.map((img, i) => ({ filename: `${ref}-${i + 1}.${img.ext}`, contentType: img.type, content: img.buf })),
     });
     mailed = !!(res && res.ok !== false);

@@ -680,7 +680,7 @@ function copyrightNoteHtml(slug) {
   return `<p class="ic-copyright" style="margin:1.4rem 0 0;padding:.75rem .9rem;border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:.78rem;line-height:1.6;opacity:.9;">`
     + `© We respect the copyrights of authors, publishers and artists. If you believe anything on this page infringes your copyright, `
     + `<a href="/copyright/${q}" rel="nofollow" style="color:inherit;text-decoration:underline;">report a copyright issue</a>. `
-    + `We review every report and act on it, which can include removing this page.</p>`;
+    + `We review every report and reply within 72 hours, and we act on valid reports, which can include removing this page.</p>`;
 }
 
 function withQtySelector(response) {

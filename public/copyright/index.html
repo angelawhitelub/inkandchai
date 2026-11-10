@@ -120,7 +120,7 @@ gtag('config', 'G-ZPZDFWMDP6');
 
   <h2>What we do with a report</h2>
   <ul class="cr-list">
-    <li>Every report is read by our team, usually within <strong>2 working days</strong>.</li>
+    <li>Every report is reviewed and answered by email <strong>within 72 hours</strong> of being sent.</li>
     <li>Where a report is valid we act on it. That can include <strong>removing the product page</strong>, stopping sale of the item, removing images or text, and taking further action against repeat infringement.</li>
     <li>We may write to you for more information, and we may share the report with the party who provided the content so they can respond.</li>
     <li>You will get a reference number by email as soon as you send the report.</li>
@@ -219,7 +219,7 @@ gtag('config', 'G-ZPZDFWMDP6');
       .then(function (d) {
         if (d && d.ok) {
           form.querySelectorAll('input,select,textarea,button').forEach(function (el) { el.disabled = true; });
-          show('ok', '✅ Thank you. Your report reference is <strong>' + esc(d.ref) + '</strong>. We have emailed you a copy and will review it, usually within 2 working days.');
+          show('ok', '✅ Thank you. Your report reference is <strong>' + esc(d.ref) + '</strong>. We have emailed you a copy and will review it and reply within 72 hours.');
           btn.textContent = 'Report sent';
           return;
         }

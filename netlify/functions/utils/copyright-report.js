@@ -14,6 +14,9 @@ const crypto = require('crypto');
 const MAX_IMAGES = 3;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 const LIMITS = { name: 120, email: 160, phone: 20, organisation: 160, product_url: 400, work: 4000, original_url: 400, details: 6000, signature: 120 };
+const REPLY_HOURS = 72;
+/** The promised reply deadline for a report sent at `sent`. */
+const replyDue = (sent) => new Date(new Date(sent).getTime() + REPLY_HOURS * 3600000);
 const ROLES = { owner: 'Copyright owner', agent: 'Authorised agent of the owner' };
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -88,10 +91,12 @@ function row(label, value) {
 }
 
 /** The owner's copy: every field, the images attached. */
-function ownerEmailHtml(ref, r, { saved, imageCount }) {
+function ownerEmailHtml(ref, r, { saved, imageCount, now = new Date() }) {
   const page = `https://inkandchai.in/product/${r.product_slug}/`;
+  const due = replyDue(now).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
   return `<div style="font-family:Arial,sans-serif;max-width:680px;color:#2b2118;">
   <h2 style="font-family:Georgia,serif;font-weight:400;margin:0 0 6px;">©️ Copyright report ${esc(ref)}</h2>
+  <p style="margin:0 0 8px;color:#b0412e;font-weight:bold;">Reply due within 72 hours: by ${esc(due)} IST.</p>
   <p style="margin:0 0 14px;color:#6b5a48;">About <a href="${esc(page)}">${esc(page)}</a>. Reply to the reporter at <a href="mailto:${esc(r.email)}">${esc(r.email)}</a>.</p>
   <table style="border-collapse:collapse;font-size:14px;border:1px solid #e6dccb;width:100%;">
     ${row('Reference', esc(ref))}
@@ -120,9 +125,10 @@ function reporterEmailHtml(ref, r) {
   <h2 style="font-family:Georgia,serif;font-weight:400;margin:0 0 10px;">We received your copyright report</h2>
   <p>Hi ${esc(r.name.split(' ')[0])},</p>
   <p>Thank you for telling us. Your reference is <strong>${esc(ref)}</strong>, about <a href="https://inkandchai.in/product/${esc(r.product_slug)}/">this page</a>.</p>
-  <p>We respect the rights of authors, publishers and artists. We review every report, usually within 2 working days, and where it is valid we act on it, which can include removing the product page and stopping sale of the item. We may write to you at this address if we need more information.</p>
+  <p>We respect the rights of authors, publishers and artists. We review every report and reply <strong>within 72 hours</strong>. Where it is valid we act on it, which can include removing the product page and stopping sale of the item. We may write to you at this address if we need more information.</p>
+  <p>Our copyright policy and the report form: <a href="https://inkandchai.in/copyright/">inkandchai.in/copyright</a>. Please quote ${esc(ref)} if you write to us about this report.</p>
   <p style="font-size:12px;color:#8a7b6a;margin-top:20px;">Ink &amp; Chai · inkandchai.in</p>
 </div>`;
 }
 
-module.exports = { parseReport, newRef, productSlug, imageKind, ownerEmailHtml, reporterEmailHtml, MAX_IMAGES, MAX_IMAGE_BYTES, ROLES };
+module.exports = { REPLY_HOURS, replyDue, parseReport, newRef, productSlug, imageKind, ownerEmailHtml, reporterEmailHtml, MAX_IMAGES, MAX_IMAGE_BYTES, ROLES };

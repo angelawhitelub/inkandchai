@@ -86,3 +86,17 @@ test('every product page gets the copyright note, and the page exists', () => {
   assert.match(page, /copyright-report/);
   assert.ok(!/@gmail|kucha|9625836117/i.test(page));
 });
+
+test('72-hour reply promise: receipt links the copyright page, owner email shows the deadline', () => {
+  const r = C.parseReport(good()).report;
+  const receipt = C.reporterEmailHtml('CR-20261110-ABCDE', r);
+  assert.match(receipt, /within 72 hours/);
+  assert.match(receipt, /https:\/\/inkandchai\.in\/copyright\//);
+  const owner = C.ownerEmailHtml('CR-20261110-ABCDE', r, { saved: true, imageCount: 0, now: new Date('2026-11-10T12:00:00Z') });
+  assert.match(owner, /Reply due within 72 hours: by 13 Nov 2026, 5:30 pm IST/);
+  assert.equal(C.replyDue('2026-11-10T12:00:00Z').toISOString(), '2026-11-13T12:00:00.000Z');
+  const page = fs.readFileSync(path.join(__dirname, '../../../public/copyright/index.html'), 'utf8');
+  assert.match(page, /within 72 hours/);
+  const bot = fs.readFileSync(path.join(__dirname, '../whatsapp-bot.js'), 'utf8');
+  assert.match(bot, /WITHIN 72 HOURS of it being sent through https:\/\/inkandchai\.in\/copyright\//);
+});
