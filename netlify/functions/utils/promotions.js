@@ -105,9 +105,37 @@ async function resolveManagedPromotion(cart, rawCode, paymentMethod = 'prepaid',
   return best;
 }
 
+/**
+ * The till's answer for a typed code that the Promotions store defines.
+ * null  = the store does not define this code; the caller uses its own table.
+ * else  = { code, discount } -- discount 0 when the code is paused, ended,
+ *         outside its dates, for another payment method or under its minimum.
+ * The store is the source of truth for every code it defines, the same rule
+ * the checkout page applies (registerManagedPromotion), so the price shown
+ * and the price charged agree. Scope "all" uses the till's own subtotal.
+ */
+async function storeCodeDiscount(rawCode, { subtotal = 0, cart = [], paymentMethod = 'prepaid', now = new Date() } = {}, deps = {}) {
+  const code = cleanCode(rawCode);
+  if (!code) return null;
+  const rows = await (deps.loadPromotions || loadPromotions)();
+  const p = rows.find(r => r.code === code);
+  if (!p) return null;
+  if (p.scope === 'all') {
+    if (!isLive(p, now) || !p.payment_methods.includes(paymentMethod)) return { code:'', discount:0 };
+    const eligible = Math.max(0, Number(subtotal) || 0);
+    if (eligible <= 0 || eligible < p.min_subtotal_inr) return { code:'', discount:0 };
+    let discount = p.discount_type === 'percent' ? Math.floor(eligible * p.discount_value / 100) : Math.floor(p.discount_value);
+    if (p.max_discount_inr) discount = Math.min(discount, p.max_discount_inr);
+    discount = Math.min(Math.floor(eligible), Math.max(0, discount));
+    return discount > 0 ? { code, discount } : { code:'', discount:0 };
+  }
+  const hit = calculatePromotion(p, cart, paymentMethod, now);
+  return hit.discount > 0 ? { code, discount: hit.discount } : { code:'', discount:0 };
+}
+
 function publicPromotion(p) {
   const n = normalizePromotion(p);
   return { ...n, private: undefined, visible: !n.private, is_live:isLive(n) };
 }
 
-module.exports = { DEFAULT_PROMOTIONS, normalizePromotion, loadPromotions, savePromotions, isLive, calculatePromotion, resolveManagedPromotion, publicPromotion, cleanCode };
+module.exports = { DEFAULT_PROMOTIONS, normalizePromotion, loadPromotions, savePromotions, isLive, calculatePromotion, resolveManagedPromotion, publicPromotion, cleanCode, storeCodeDiscount };

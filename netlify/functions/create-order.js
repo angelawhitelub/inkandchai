@@ -23,6 +23,7 @@ const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { orderShipping } = require('./utils/free-delivery');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 const { siteSaleDiscount, betterOfSale } = require('./utils/site-sale');
+const { storeCodeDiscount } = require('./utils/promotions');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -65,6 +66,11 @@ async function resolveCoupon(supabase, cart, subtotal, rawCode, { saleOnly = fal
 }
 
 async function resolveChosenCoupon(supabase, cart, subtotal, rawCode) {
+  // A code the admin Promotions store defines is priced from there (edited in
+  // admin); only codes it does not define use the built-in table below.
+  const managed = await storeCodeDiscount(rawCode, { subtotal, cart, paymentMethod: 'prepaid' })
+    .catch((e) => { console.warn('[create-order] promotions store unavailable:', e.message); return null; });
+  if (managed) return managed.discount > 0 ? { ...managed, source: 'static' } : { code: '', discount: 0 };
   const staticHit = staticCouponDiscount(subtotal, rawCode);
   if (staticHit.discount > 0) return { ...staticHit, source: 'static' };
 

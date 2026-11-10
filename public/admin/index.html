@@ -2842,8 +2842,8 @@ select,input,textarea{font-size:1rem;}
 
     <h3 style="margin-top:1.6rem;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);">Site-wide codes</h3>
     <p class="hint" style="margin:.4rem 0 .8rem;">
-      These are built into the checkout and are not editable here. They are listed so the
-      full discount picture is in one place.
+      The checkout's own codes. Edit changes the rate, minimum, status or end date on the
+      checkout page and in the payment till together, within about a minute.
     </p>
     <div id="couponStaticList"></div>
   </div><!-- /tab-coupons -->
@@ -10060,8 +10060,11 @@ function clearBundle() {
 // minimum. This lists all of them with the status the storefront applies.
 let couponManagerRows = [];
 
-// Mirrors the COUPONS table baked into the checkout. Read-only here: listed so
-// nobody has to read the generator to answer "what discounts exist right now".
+// The checkout's built-in codes. Their built-in values are the defaults below;
+// a row for the code in the Promotions store (admin-promotions, R2) overrides
+// them on the checkout page AND in both payment tills (utils/promotions
+// storeCodeDiscount), so editing here is editing what customers are charged.
+let couponStoreRows = [];
 const STATIC_COUPONS = [
   { code:'INKLOVE10',  value:'10%', min:499,  note:'Prepaid only' },
   { code:'499HIT',     value:'10%', min:499,  note:'Prepaid only — duplicate of INKLOVE10' },
@@ -10086,10 +10089,15 @@ async function loadCouponManager() {
   if (!list) return;
   list.innerHTML = '<p class="hint">Loading…</p>';
   try {
-    const res = await adminFetch('/.netlify/functions/admin-product-coupons');
+    const [res, storeRes] = await Promise.all([
+      adminFetch('/.netlify/functions/admin-product-coupons'),
+      adminFetch('/.netlify/functions/admin-promotions').catch(() => null),
+    ]);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     couponManagerRows = data.coupons || [];
+    const storeData = storeRes ? await storeRes.json().catch(() => ({})) : {};
+    couponStoreRows = storeRes && storeRes.ok ? (storeData.promotions || []) : [];
     if (msg) msg.textContent = '';
     renderCouponManager();
   } catch (err) {
@@ -10138,17 +10146,107 @@ function renderCouponManager() {
       + '</div>';
   }).join('') : '<p class="hint">No coupons to show.</p>';
 
-  if (staticList) {
-    staticList.innerHTML = STATIC_COUPONS.map(c => {
-      const colour = c.dead ? '#c93636' : '#4caf50';
-      return '<div style="border:1px solid var(--border);padding:.6rem .8rem;margin-bottom:.45rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">'
-        + '<strong style="color:var(--gold);letter-spacing:.08em;">' + c.code + '</strong>'
-        + '<span style="font-size:.6rem;padding:.1rem .4rem;border:1px solid ' + colour + ';color:' + colour + ';">' + (c.dead ? 'Ended' : 'Live') + '</span>'
-        + '<span style="font-size:.68rem;color:var(--cream);">' + c.value + ' off</span>'
-        + '<span style="font-size:.62rem;color:var(--cream-dim);">min ₹' + c.min + '</span>'
-        + '<span style="font-size:.62rem;color:var(--cream-dim);">' + c.note + '</span>'
-        + '</div>';
-    }).join('');
+  if (staticList) renderStaticCoupons(staticList);
+}
+
+// One built-in code as it stands now: the store's row if it has one, else the default.
+function siteCodeState(c) {
+  const row = couponStoreRows.find(p => String(p.code || '').toUpperCase() === c.code);
+  const value = Number(String(c.value).replace(/[^0-9.]/g, '')) || 0;
+  const r = row || {
+    id: c.code.toLowerCase(), code: c.code, name: c.note, discount_type: 'percent', discount_value: value,
+    min_subtotal_inr: c.min, payment_methods: ['prepaid'], status: c.dead ? 'ended' : 'active',
+    private: c.code === 'CHAI10BACK', scope: 'all', product_slugs: [],
+  };
+  const now = Date.now();
+  let label = 'Live', colour = '#4caf50';
+  if (r.status === 'paused') { label = 'Paused'; colour = '#c9a84c'; }
+  else if (r.status === 'ended' || (r.ends_at && new Date(r.ends_at).getTime() < now)) { label = 'Ended'; colour = '#c93636'; }
+  else if (r.starts_at && new Date(r.starts_at).getTime() > now) { label = 'Scheduled'; colour = '#c9a84c'; }
+  return { row: r, stored: !!row, label, colour };
+}
+
+let siteCodeEditing = '';
+function renderStaticCoupons(staticList) {
+  staticList.innerHTML = STATIC_COUPONS.map(c => {
+    const st = siteCodeState(c);
+    const r = st.row;
+    const offer = r.discount_type === 'fixed' ? '₹' + Number(r.discount_value) : Number(r.discount_value) + '%';
+    const ends = r.ends_at ? new Date(r.ends_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+    const methods = (r.payment_methods || []).length === 1 && r.payment_methods[0] === 'prepaid' ? 'Prepaid only' : (r.payment_methods || []).join(', ');
+    const note = (st.label === 'Ended' && ends ? 'Ended ' + ends : (ends ? 'Ends ' + ends + ' · ' : '') + methods)
+      + (c.code === '499HIT' ? ' — duplicate of INKLOVE10' : '') + (r.private ? ' — private, used in cart-recovery messages' : '');
+    const editing = siteCodeEditing === c.code;
+    const localDate = r.ends_at ? new Date(new Date(r.ends_at).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
+    return '<div style="border:1px solid var(--border);padding:.6rem .8rem;margin-bottom:.45rem;">'
+      + '<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">'
+        + '<strong style="color:var(--gold);letter-spacing:.08em;">' + esc(c.code) + '</strong>'
+        + '<span style="font-size:.6rem;padding:.1rem .4rem;border:1px solid ' + st.colour + ';color:' + st.colour + ';">' + st.label + '</span>'
+        + '<span style="font-size:.68rem;color:var(--cream);">' + offer + ' off</span>'
+        + '<span style="font-size:.62rem;color:var(--cream-dim);">min ₹' + Number(r.min_subtotal_inr || 0).toLocaleString('en-IN') + '</span>'
+        + (r.max_discount_inr ? '<span style="font-size:.62rem;color:var(--cream-dim);">max ₹' + Number(r.max_discount_inr).toLocaleString('en-IN') + '</span>' : '')
+        + '<span style="font-size:.62rem;color:var(--cream-dim);">' + esc(note) + '</span>'
+        + (editing ? '' : '<button class="btn-outline" type="button" onclick="editSiteCode(\'' + c.code + '\')" style="margin-left:auto;white-space:nowrap;">Edit</button>')
+      + '</div>'
+      + (editing ? '<div style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-top:.6rem;">'
+        + '<label style="font-size:.6rem;color:var(--cream-dim);">Discount<br><input id="scValue" type="number" min="1" step="1" value="' + Number(r.discount_value) + '" style="width:5.5rem;"/></label>'
+        + '<label style="font-size:.6rem;color:var(--cream-dim);">Type<br><select id="scType"><option value="percent"' + (r.discount_type !== 'fixed' ? ' selected' : '') + '>% off</option><option value="fixed"' + (r.discount_type === 'fixed' ? ' selected' : '') + '>₹ off</option></select></label>'
+        + '<label style="font-size:.6rem;color:var(--cream-dim);">Min order ₹<br><input id="scMin" type="number" min="0" step="1" value="' + Number(r.min_subtotal_inr || 0) + '" style="width:6rem;"/></label>'
+        + '<label style="font-size:.6rem;color:var(--cream-dim);">Max discount ₹ (blank = none)<br><input id="scMax" type="number" min="0" step="1" value="' + (r.max_discount_inr ? Number(r.max_discount_inr) : '') + '" style="width:6rem;"/></label>'
+        + '<label style="font-size:.6rem;color:var(--cream-dim);">Status<br><select id="scStatus">'
+          + ['active', 'paused', 'ended'].map(v => '<option value="' + v + '"' + (r.status === v ? ' selected' : '') + '>' + ({ active: 'Live', paused: 'Paused', ended: 'Ended' })[v] + '</option>').join('')
+        + '</select></label>'
+        + '<label style="font-size:.6rem;color:var(--cream-dim);">Ends (blank = never)<br><input id="scEnds" type="datetime-local" value="' + localDate + '"/></label>'
+        + '<button class="btn-green" type="button" onclick="saveSiteCode(\'' + c.code + '\')">Save</button>'
+        + '<button class="btn-outline" type="button" onclick="editSiteCode(\'\')">Cancel</button>'
+        + '<div id="scMsg" class="hint" style="flex-basis:100%;"></div>'
+      + '</div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function editSiteCode(code) {
+  siteCodeEditing = code;
+  const staticList = document.getElementById('couponStaticList');
+  if (staticList) renderStaticCoupons(staticList);
+}
+
+async function saveSiteCode(code) {
+  const c = STATIC_COUPONS.find(x => x.code === code);
+  if (!c) return;
+  const r = siteCodeState(c).row;
+  const msg = document.getElementById('scMsg');
+  const type = document.getElementById('scType').value;
+  const value = Number(document.getElementById('scValue').value);
+  const min = Number(document.getElementById('scMin').value) || 0;
+  const maxRaw = document.getElementById('scMax').value.trim();
+  const status = document.getElementById('scStatus').value;
+  const endsRaw = document.getElementById('scEnds').value;
+  const endsAt = endsRaw ? new Date(endsRaw).toISOString() : null;
+  if (!(value > 0) || (type === 'percent' && value > 90)) { msg.textContent = type === 'percent' ? 'Enter a discount from 1% to 90%.' : 'Enter a discount above ₹0.'; return; }
+  if (status === 'active' && endsAt && new Date(endsAt).getTime() < Date.now()) { msg.textContent = 'That end date has passed. Pick a later one, or clear it, to make the code live.'; return; }
+  const payload = {
+    ...r, id: r.id, code: c.code, discount_type: type, discount_value: value, min_subtotal_inr: min,
+    max_discount_inr: maxRaw ? Number(maxRaw) : null, status, ends_at: endsAt,
+    ended_at: status === 'ended' ? (r.ended_at || new Date().toISOString()) : null,
+    auto_apply: false, scope: 'all', product_slugs: [],
+    payment_methods: (r.payment_methods && r.payment_methods.length) ? r.payment_methods : ['prepaid'],
+  };
+  const offer = type === 'percent' ? value + '%' : '₹' + value;
+  if (!confirm(c.code + ': ' + offer + ' off, min ₹' + min + ', ' + ({ active: 'Live', paused: 'Paused', ended: 'Ended' })[status] + (endsAt ? ', ends ' + new Date(endsAt).toLocaleString('en-IN') : '') + '.\n\nThis changes what customers are charged at checkout. Save?')) return;
+  msg.textContent = 'Saving…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-promotions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    couponStoreRows = d.promotions || couponStoreRows;
+    siteCodeEditing = '';
+    const staticList = document.getElementById('couponStaticList');
+    if (staticList) renderStaticCoupons(staticList);
+    const top = document.getElementById('couponManagerMsg');
+    if (top) top.textContent = c.code + ' saved. Checkout and payment use it within about a minute.';
+  } catch (err) {
+    msg.textContent = 'Could not save: ' + err.message;
   }
 }
 

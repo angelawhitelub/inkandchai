@@ -44,7 +44,10 @@ function normalizeCouponCode(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
-// Must stay in sync with COUPONS object in public/checkout/index.html
+const { storeCodeDiscount } = require('./utils/promotions');
+
+// Defaults for codes the admin Promotions store does not define. Must stay in
+// sync with COUPONS in public/checkout/index.html and create-order.js.
 const COUPONS = {
   INKLOVE10:  { type: 'percent', value: 10, minSubtotal: 499  },
   '499HIT':   { type: 'percent', value: 10, minSubtotal: 499  },
@@ -74,6 +77,10 @@ async function resolveCouponDiscount(supabase, cart, subtotal, rawCode, { saleOn
 
 // Check static COUPONS first, then fall back to user-earned scratch cards
 async function resolveChosenCoupon(supabase, cart, subtotal, rawCode) {
+  // Admin Promotions store first, for every code it defines (create-order agrees).
+  const managed = await storeCodeDiscount(rawCode, { subtotal, cart, paymentMethod: 'prepaid' })
+    .catch((e) => { console.warn('[phonepe-create-order] promotions store unavailable:', e.message); return null; });
+  if (managed) return managed.discount > 0 ? { ...managed, source: 'static' } : { code: '', discount: 0 };
   // Static check
   const staticResult = couponDiscount(subtotal, rawCode);
   if (staticResult.discount > 0) return { ...staticResult, source: 'static' };

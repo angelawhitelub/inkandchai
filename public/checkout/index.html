@@ -1116,6 +1116,8 @@ async function applyCoupon() {
   }
   // Product-specific codes are fetched on demand as well as shown in the
   // dropdown. Payment functions independently verify the product and price.
+  // A built-in code the admin may have paused (private ones are not in the list).
+  if (COUPONS[code] && !MANAGED_PROMOTIONS.some(p => p.code === code)) await loadManagedPromotionCode(code);
   if (!COUPONS[code] && code !== FESTIVE_SALE.code) {
     if (msg) { msg.textContent = 'Checking coupon…'; msg.style.color = 'var(--cream-dim)'; }
     await loadManagedPromotionCode(code);
@@ -1203,6 +1205,12 @@ async function loadManagedPromotions() {
     MANAGED_PROMOTIONS = data.promotions || [];
     const select = document.getElementById('couponSelect');
     if (select) select.querySelectorAll('[data-managed-promo]').forEach(o => o.remove());
+    // Paused or ended in admin: the payment till refuses the code, so the
+    // checkout must not keep offering its built-in rate.
+    MANAGED_PROMOTIONS.filter(p => !p.is_live).forEach(p => {
+      delete COUPONS[p.code];
+      if (select) select.querySelectorAll(`option[value="${p.code}"]`).forEach(o => o.remove());
+    });
     MANAGED_PROMOTIONS.filter(p => p.is_live).forEach(p => {
       registerManagedPromotion(p);
       // The static markup lists the default rates. Once the panel overrides a
@@ -1221,6 +1229,10 @@ async function loadManagedPromotions() {
         select.appendChild(o);
       }
     });
+    // A private code (CHAI10BACK) is not in the public list: check the one
+    // this shopper carries, so a paused one stops applying here too.
+    const stored = String(localStorage.getItem(COUPON_KEY) || '').toUpperCase();
+    if (stored && COUPONS[stored] && !MANAGED_PROMOTIONS.some(p => p.code === stored)) await loadManagedPromotionCode(stored);
   } catch (err) {
     console.warn('Managed promotions unavailable:', err.message);
   }
@@ -1232,7 +1244,7 @@ async function loadManagedPromotionCode(code) {
     const res = await fetch('/.netlify/functions/promotions?code=' + encodeURIComponent(code), { cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return;
-    (data.promotions || []).filter(p => p.is_live).forEach(registerManagedPromotion);
+    (data.promotions || []).forEach(p => { if (p.is_live) registerManagedPromotion(p); else delete COUPONS[p.code]; });
   } catch (err) {
     console.warn('Managed promotion lookup failed:', err.message);
   }
