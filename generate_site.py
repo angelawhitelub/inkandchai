@@ -8701,8 +8701,10 @@ function chosenCouponDiscount(cart, method, subtotal, code) {
   if (discountBase < coupon.minSubtotal) {
     return { code, discount: 0, message: `Add ₹${(coupon.minSubtotal - discountBase).toLocaleString('en-IN')} more in eligible products to use ${code}.` };
   }
-  const discount = coupon.type === 'percent' ? Math.floor(discountBase * coupon.value / 100) : Math.min(Math.floor(discountBase), Math.floor(coupon.value));
-  return { code, discount: Math.max(0, discount), message: `${coupon.label} applied.` };
+  let discount = coupon.type === 'percent' ? Math.floor(discountBase * coupon.value / 100) : Math.min(Math.floor(discountBase), Math.floor(coupon.value));
+  // Max discount set in admin (Promotions): the till caps it, so the summary must too.
+  if (coupon.maxDiscount > 0) discount = Math.min(discount, Math.floor(coupon.maxDiscount));
+  return { code, discount: Math.max(0, discount), message: `${coupon.label} applied${coupon.maxDiscount > 0 && discount >= Math.floor(coupon.maxDiscount) ? ` (max ₹${Math.floor(coupon.maxDiscount).toLocaleString('en-IN')})` : ''}.` };
 }
 function orderTotals(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
