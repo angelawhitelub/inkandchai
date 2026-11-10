@@ -94,6 +94,8 @@ function fakeDb(tables, writes) {
         in: (c, vs) => { filters.push((r) => vs.includes(r[c])); return q; },
         gte: (c, v) => { filters.push((r) => String(r[c]) >= v); return q; },
         or: () => q,
+        like: (c, v) => { const re = new RegExp('^' + String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$'); filters.push((r) => re.test(String(r[c]))); return q; },
+        not: (c, op, v) => { const re = new RegExp('^' + String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$'); filters.push((r) => !re.test(String(r[c]))); return q; },
         range: (a, b) => { range = [a, b]; return q; },
         upsert: (rows) => { writes.push(...rows); return Promise.resolve({ error: null }); },
         then(res, rej) {
@@ -109,8 +111,13 @@ function fakeDb(tables, writes) {
   };
 }
 
-function loadHandler({ tables, sent, writes, sendOk = true, r2 = null }) {
+function loadHandler({ tables, sent, writes, sendOk = true, r2 = null, mails = [], mailOk = true, unsub = new Map(), unsubBroken = false }) {
   const stubs = {
+    './utils/email': { sendEmail: async (m) => { mails.push(m); return mailOk ? { ok: true, provider: 'test' } : { ok: false, error: 'provider down' }; } },
+    '@netlify/blobs': { getStore: () => ({
+      list: async () => { if (unsubBroken) throw new Error('kv down'); return { blobs: [...unsub.keys()].map((key) => ({ key })) }; },
+      setJSON: async (k, v) => { unsub.set(k, v); },
+    }) },
     './utils/r2-put': {
       r2Configured: () => !!r2,
       r2Config: () => ({ publicBase: 'https://r2.example' }),
@@ -134,6 +141,7 @@ function loadHandler({ tables, sent, writes, sendOk = true, r2 = null }) {
   Module._load = function (req, ...rest) { return Object.prototype.hasOwnProperty.call(stubs, req) ? stubs[req] : orig.call(this, req, ...rest); };
   try {
     delete require.cache[require.resolve('../admin-new-title-alert')];
+    delete require.cache[require.resolve('./email-unsub')];
     return require('../admin-new-title-alert').handler;
   } finally { Module._load = orig; }
 }
@@ -342,4 +350,137 @@ test('the send stores Meta\'s message id; held-back customers are not retried fo
   const rep = await call(handler, { slug: 'a-court-of-splintered-harmony', report: true });
   assert.strictEqual(rep.body.report.failed_by_meta, 1);
   assert.deepStrictEqual(rep.body.report.failed_codes, { 131049: 1 });
+});
+
+// ── "Ordered these books" audience + email channel ─────────────────────────
+process.env.EMAIL_UNSUB_SECRET = process.env.EMAIL_UNSUB_SECRET || 'test-secret';
+const EU = require('./email-unsub');
+const boughtTables = () => {
+  const t = baseTables();
+  t.custom_products.push({ slug: 'throne-of-glass', title: 'Throne of Glass', author: 'Sarah J. Maas', is_active: true });
+  t.orders = [
+    { customer_phone: '9000000001', customer_name: 'Riya', customer_email: 'Riya@Example.com', status: 'delivered', created_at: now, cart_items: [{ url: '/product/throne-of-glass/', title: 'Throne of Glass' }] },
+    { customer_phone: '9000000002', customer_name: 'Aman', customer_email: 'aman@example.com', status: 'delivered', created_at: now, cart_items: [{ title: 'Throne of Glass' }] },
+    { customer_phone: '9000000005', customer_name: 'Kabir', customer_email: 'kabir@example.com', status: 'delivered', created_at: now, cart_items: [{ title: 'Throne of Glass' }] },
+    { customer_phone: '9000000006', customer_name: 'Neel', customer_email: 'neel@example.com', status: 'delivered', created_at: now, cart_items: [{ title: 'Throne of Glass' }, { url: '/product/a-court-of-splintered-harmony/', title: 'A Court of Splintered Harmony' }] },
+    { customer_phone: '9000000007', customer_name: 'Ira', status: 'delivered', created_at: now, cart_items: [{ title: 'Crescent City', author: 'Sarah J. Maas' }] },
+  ];
+  return t;
+};
+const boughtBody = (extra) => ({ slug: 'a-court-of-splintered-harmony', match: 'bought', bought_slugs: 'https://inkandchai.in/product/throne-of-glass/', email: true, ...extra });
+
+test('matchBuyersOf: only buyers of the picked book, minus anyone who has the new one', () => {
+  const customers = new Map([
+    ['91a', { name: 'Riya Sharma', email: 'r@x.in', orders: [order({ url: '/product/throne-of-glass/', title: 'Throne of Glass' })] }],
+    ['91b', { name: 'Neel', orders: [order({ title: 'Throne of Glass by Sarah J. Maas' }, { title: 'A Court of Splintered Harmony' })] }],
+    ['91c', { name: 'Ira', orders: [order({ title: 'Crescent City' })] }],
+  ]);
+  const { recipients, counts } = A.matchBuyersOf(customers, book, [{ slug: 'throne-of-glass', title: 'Throne of Glass', author: 'Sarah J. Maas' }]);
+  assert.deepStrictEqual(recipients.map((r) => [r.phone, r.name, r.email, r.reason]), [['91a', 'Riya', 'r@x.in', 'Throne of Glass']]);
+  assert.strictEqual(counts.already_bought, 1);
+});
+
+test('emailHtml: cover header, Exclusive, the book they ordered, price and unsubscribe; escapes names', () => {
+  const html = A.emailHtml({ name: '<b>Riya</b>', reason: 'Throne of Glass' }, book, { coverUrl: 'https://c/x.jpg', productUrl: 'https://p/', unsubscribeUrl: 'https://u/' });
+  for (const want of ['https://c/x.jpg', 'Exclusive', 'Throne of Glass', 'A Court of Splintered Harmony', '₹499', 'https://u/']) assert.ok(html.includes(want), want);
+  assert.ok(!html.includes('<b>Riya</b>'));
+});
+
+test('bought audience: dry run counts both channels, email skips unsubscribed addresses and sends nothing', async () => {
+  const sent = [], writes = [], mails = [];
+  const unsub = new Map([[EU.hashEmail('kabir@example.com'), {}]]);
+  const r = await call(loadHandler({ tables: boughtTables(), sent, writes, mails, unsub }), boughtBody({ dry_run: true }));
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(r.body.counts.matched, 3);          // Riya, Aman, Kabir
+  assert.strictEqual(r.body.counts.already_bought, 1);   // Neel has it
+  assert.strictEqual(r.body.counts.opted_out, 1);        // Aman said STOP
+  assert.strictEqual(r.body.will_send, 2);
+  assert.strictEqual(r.body.email.will_email, 1);        // Kabir unsubscribed, Aman opted out
+  assert.strictEqual(r.body.email.counts.unsubscribed, 1);
+  assert.match(r.body.email.subject, /^Exclusive: A Court of Splintered Harmony is now available$/);
+  assert.match(r.body.email.preview_html, /Throne of Glass/);
+  assert.deepStrictEqual([sent.length, mails.length, writes.length], [0, 0, 0]);
+});
+
+test('bought audience: send needs both confirmed counts, emails once with a working unsubscribe link', async () => {
+  const tables = boughtTables();
+  const sent = [], writes = [], mails = [];
+  const handler = loadHandler({ tables, sent, writes, mails, unsub: new Map([[EU.hashEmail('kabir@example.com'), {}]]) });
+  const wrong = await call(handler, boughtBody({ dry_run: false, expect: 2, expect_email: 3 }));
+  assert.strictEqual(wrong.status, 409);
+  assert.deepStrictEqual([sent.length, mails.length], [0, 0]);
+  const ok = await call(handler, boughtBody({ dry_run: false, expect: 2, expect_email: 1 }));
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+  assert.deepStrictEqual([ok.body.sent, ok.body.emailed], [2, 1]);
+  assert.strictEqual(mails[0].to, 'riya@example.com');
+  const link = mails[0].html.match(/email-unsubscribe\?e=([^&"]+)&amp;t=([^"&]+)/);
+  assert.ok(link, 'unsubscribe link');
+  assert.ok(EU.verifyEmail(Buffer.from(link[1], 'base64url').toString(), link[2]));
+  const emailRows = writes.filter((w) => w.campaign_key === 'new-title-email:a-court-of-splintered-harmony');
+  assert.strictEqual(emailRows.length, 1);
+  assert.ok(!JSON.stringify(emailRows).includes('riya@example.com'), 'no plain address in the ledger');
+  // Next press: the ledger stops a second email and a second WhatsApp.
+  tables.whatsapp_campaign_deliveries.push(...writes.map((w, i) => ({ id: 100 + i, created_at: '2026-01-01T00:00:00Z', ...w })));
+  const again = await call(handler, boughtBody({ dry_run: true }));
+  assert.strictEqual(again.body.email.counts.already_emailed_this_book, 1);
+  assert.strictEqual(again.body.will_send, 0);
+});
+
+test('an email to another book does not hold back WhatsApp, and a WhatsApp does not hold back email', async () => {
+  const tables = boughtTables();
+  tables.whatsapp_campaign_deliveries.push(
+    { id: 9, campaign_key: 'new-title-email:other', customer_phone: '919000000001', status: 'sent', created_at: now },
+    { id: 10, campaign_key: 'weekly-y', customer_phone: '919000000005', status: 'sent', created_at: now });
+  const r = await call(loadHandler({ tables, sent: [], writes: [], mails: [] }), boughtBody({ dry_run: true }));
+  assert.strictEqual(r.body.counts.cooldown, 1);              // Kabir's WhatsApp broadcast
+  assert.strictEqual(r.body.email.counts.cooldown, 1);        // Riya's other email
+  assert.strictEqual(r.body.will_send, 1);                    // Riya still gets WhatsApp
+  assert.strictEqual(r.body.email.will_email, 1);             // Kabir still gets email
+});
+
+test('email only: no WhatsApp sent; unreadable unsubscribe list blocks the email send', async () => {
+  const sent = [], mails = [];
+  const ok = await call(loadHandler({ tables: boughtTables(), sent, writes: [], mails }), boughtBody({ whatsapp: false, dry_run: false, expect_email: 2 }));
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+  assert.deepStrictEqual([sent.length, mails.length], [0, 2]);
+  const broken = await call(loadHandler({ tables: boughtTables(), sent, writes: [], mails, unsubBroken: true }), boughtBody({ dry_run: true }));
+  assert.match(broken.body.email.blocked_reason, /unreadable/);
+  const r = await call(loadHandler({ tables: boughtTables(), sent, writes: [], mails, unsubBroken: true }), boughtBody({ dry_run: false, expect: 2, expect_email: 0 }));
+  assert.strictEqual(r.status, 409);
+  assert.deepStrictEqual([sent.length, mails.length], [0, 2]);
+});
+
+test('bought audience refuses unknown books and the book itself', async () => {
+  const h = loadHandler({ tables: boughtTables(), sent: [], writes: [] });
+  assert.strictEqual((await call(h, boughtBody({ bought_slugs: 'no-such-book', dry_run: true }))).status, 400);
+  assert.strictEqual((await call(h, boughtBody({ bought_slugs: 'a-court-of-splintered-harmony', dry_run: true }))).status, 400);
+});
+
+test('test_email sends one email and writes no ledger row', async () => {
+  const writes = [], mails = [];
+  const r = await call(loadHandler({ tables: boughtTables(), sent: [], writes, mails }), boughtBody({ test_email: 'me@example.com' }));
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(mails.length, 1);
+  assert.match(mails[0].html, /Since you ordered/);
+  assert.strictEqual(writes.length, 0);
+});
+
+test('email-unsubscribe: GET only asks, POST records, a forged token does nothing', async () => {
+  const unsub = new Map();
+  const stubs = { '@netlify/blobs': { getStore: () => ({ setJSON: async (k, v) => { unsub.set(k, v); }, list: async () => ({ blobs: [] }) }) } };
+  const orig = Module._load;
+  Module._load = function (req, ...rest) { return Object.prototype.hasOwnProperty.call(stubs, req) ? stubs[req] : orig.call(this, req, ...rest); };
+  let h;
+  try { delete require.cache[require.resolve('../email-unsubscribe')]; delete require.cache[require.resolve('./email-unsub')]; h = require('../email-unsubscribe').handler; } finally { Module._load = orig; }
+  const url = new URL(EU.unsubscribeUrl('Riya@Example.com'));
+  const q = Object.fromEntries(url.searchParams);
+  const get = await h({ httpMethod: 'GET', queryStringParameters: q });
+  assert.match(get.body, /<form method="post"/);
+  assert.strictEqual(unsub.size, 0);
+  const bad = await h({ httpMethod: 'POST', queryStringParameters: { ...q, t: 'x'.repeat(24) } });
+  assert.match(bad.body, /not valid/);
+  assert.strictEqual(unsub.size, 0);
+  const post = await h({ httpMethod: 'POST', queryStringParameters: q });
+  assert.match(post.body, /unsubscribed/);
+  assert.ok(unsub.has(EU.hashEmail('riya@example.com')));
 });
