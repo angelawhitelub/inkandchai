@@ -969,6 +969,7 @@ select,input,textarea{font-size:1rem;}
         <a class="admin-tab" data-tab="returns" href="/admin/#returns" onclick="return adminTabClick(event,'returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
         <div class="admin-menu-divider" aria-hidden="true"></div>
         <a class="admin-tab" data-tab="tickets" href="/admin/#tickets" onclick="return adminTabClick(event,'tickets')">🎫 Tickets <span id="ticketsBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <a class="admin-tab owner-only" data-tab="copyright" href="/admin/#copyright" onclick="return adminTabClick(event,'copyright')">©️ Copyright <span id="crBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
         <a class="admin-tab" data-tab="reviews" href="/admin/#reviews" onclick="return adminTabClick(event,'reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
       </div>
     </div>
@@ -2918,6 +2919,21 @@ select,input,textarea{font-size:1rem;}
         <div id="taReportBox" class="hint" style="margin-top:.5rem;"></div>
         <p class="hint" style="margin-top:.7rem;">WhatsApp uses the template <code>new_title_alert_v1</code> (or <code>WHATSAPP_NEW_TITLE_TEMPLATE</code>), which Meta must approve first. Nobody gets the same book twice on the same channel; STOP and unsubscribes are always respected.</p>
       </div>
+    </section>
+  </div>
+
+  <div class="admin-section" id="tab-copyright">
+    <section class="product-panel">
+      <div class="product-head"><div><h2>Copyright reports</h2><p>Reports sent from the <a href="/copyright/" target="_blank" rel="noopener" style="color:var(--gold-dim);">/copyright/</a> form on every product page. <strong>Take page down</strong> is the same action as the product editor's Delete Product Page: the URL answers 410 Gone and the page can be restored from here or from "Deleted pages".</p></div><button class="btn-outline" onclick="loadCopyrightReports()">↻ Refresh</button></div>
+      <div id="crFilters" style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.2rem 0 1rem;">
+        <button type="button" class="btn-outline" data-s="new" onclick="loadCopyrightReports('new')">New</button>
+        <button type="button" class="btn-outline" data-s="reviewing" onclick="loadCopyrightReports('reviewing')">Reviewing</button>
+        <button type="button" class="btn-outline" data-s="removed" onclick="loadCopyrightReports('removed')">Page removed</button>
+        <button type="button" class="btn-outline" data-s="rejected" onclick="loadCopyrightReports('rejected')">Rejected</button>
+        <button type="button" class="btn-outline" data-s="all" onclick="loadCopyrightReports('all')">All</button>
+      </div>
+      <div id="crMeta" class="hint" style="margin-bottom:.6rem;"></div>
+      <div id="crList"></div>
     </section>
   </div>
 
@@ -11078,6 +11094,219 @@ function taCard(b, kind) {
   </div>`;
 }
 
+// ── Copyright reports (owner) ───────────────────────────────────────────────
+// Reports from the public /copyright/ form. "Take page down" calls the same
+// delete-product action as the editor's Delete Product Page (410, restorable),
+// then marks the report 'removed'. Images live in the private R2 bucket and
+// are fetched through the admin endpoint, never from a public URL.
+let _crReports = [];
+let _crStatus = 'new';
+const CR_STATUS_LABEL = { new: 'New', reviewing: 'Reviewing', removed: 'Page removed', rejected: 'Rejected' };
+const CR_STATUS_COLOR = { new: '#c93636', reviewing: '#c98a36', removed: '#5d9b55', rejected: '#8a7b6a' };
+const CR_SQL = `create table if not exists public.copyright_reports (
+  id               bigserial primary key,
+  ref              text not null unique,
+  created_at       timestamptz not null default now(),
+  status           text not null default 'new',
+  product_url      text not null,
+  product_slug     text not null,
+  reporter_name    text not null,
+  reporter_email   text not null,
+  reporter_phone   text,
+  organisation     text,
+  role             text not null,
+  work_description text not null,
+  original_url     text,
+  details          text not null,
+  good_faith       boolean not null default false,
+  accurate         boolean not null default false,
+  signature        text not null,
+  image_keys       jsonb not null default '[]'::jsonb,
+  image_count      int not null default 0,
+  source_ip_hash   text,
+  user_agent       text,
+  owner_notes      text
+);
+create index if not exists copyright_reports_created_idx on public.copyright_reports (created_at desc);
+create index if not exists copyright_reports_ip_idx on public.copyright_reports (source_ip_hash, created_at);
+create index if not exists copyright_reports_slug_idx on public.copyright_reports (product_slug);
+alter table public.copyright_reports enable row level security;`;
+
+async function loadCopyrightReports(status) {
+  if (status) _crStatus = status;
+  const box = document.getElementById('crList');
+  const meta = document.getElementById('crMeta');
+  if (!box) return;
+  document.querySelectorAll('#crFilters button').forEach(b => {
+    const on = b.dataset.s === _crStatus;
+    b.style.background = on ? 'var(--gold)' : '';
+    b.style.color = on ? '#1a1613' : '';
+  });
+  meta.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-copyright-reports?status=' + encodeURIComponent(_crStatus));
+    const data = await res.json().catch(() => ({}));
+    if (data.table_missing) {
+      meta.textContent = 'The copyright_reports table has not been created yet, so reports only arrive by email. Run this once in Supabase → SQL Editor:';
+      box.innerHTML = `<pre style="white-space:pre-wrap;font-size:.72rem;background:rgba(0,0,0,.06);padding:.8rem;border-radius:6px;user-select:all;">${esc(CR_SQL)}</pre>`;
+      return;
+    }
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    _crReports = data.reports || [];
+    const c = data.counts || {};
+    document.querySelectorAll('#crFilters button').forEach(b => {
+      const n = b.dataset.s === 'all' ? null : c[b.dataset.s];
+      b.textContent = (b.dataset.s === 'all' ? 'All' : CR_STATUS_LABEL[b.dataset.s]) + (n ? ` (${n})` : '');
+    });
+    const badge = document.getElementById('crBadge');
+    if (badge) { badge.textContent = c.new || ''; badge.style.display = c.new ? '' : 'none'; }
+    meta.textContent = _crReports.length ? `${_crReports.length} report${_crReports.length === 1 ? '' : 's'}${_crStatus === 'all' ? '' : ' · ' + CR_STATUS_LABEL[_crStatus]}` : '';
+    box.innerHTML = _crReports.length ? _crReports.map(crCard).join('') : '<div class="lead-empty">No reports here.</div>';
+  } catch (e) {
+    meta.textContent = 'Could not load reports: ' + e.message;
+  }
+}
+
+function crCard(r) {
+  const page = '/product/' + r.product_slug + '/';
+  const when = new Date(r.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  const field = (label, html) => html ? `<div style="display:grid;grid-template-columns:140px 1fr;gap:.6rem;padding:.25rem 0;font-size:.8rem;"><div class="hint" style="margin:0;">${label}</div><div style="white-space:pre-wrap;word-break:break-word;">${html}</div></div>` : '';
+  const role = r.role === 'agent' ? 'Authorised agent of the owner' : 'Copyright owner';
+  const opts = Object.entries(CR_STATUS_LABEL).map(([v, l]) => `<option value="${v}"${v === r.status ? ' selected' : ''}>${l}</option>`).join('');
+  const pageState = r.page_deleted
+    ? '<span style="color:#5d9b55;font-weight:700;">Page taken down (410)</span>'
+    : '<span style="color:#c93636;font-weight:700;">Page is live</span>';
+  const mail = `mailto:${encodeURIComponent(r.reporter_email)}?subject=${encodeURIComponent('Re: your copyright report ' + r.ref)}`;
+  return `<div class="product-editor" id="cr-${esc(r.ref)}" style="margin-bottom:1rem;">
+    <div style="display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:baseline;">
+      <div><strong style="font-size:.95rem;">${esc(r.ref)}</strong> <span class="hint" style="margin:0 0 0 .4rem;">${esc(when)}</span>
+        <span style="margin-left:.5rem;background:${CR_STATUS_COLOR[r.status] || '#8a7b6a'};color:#fff;border-radius:10px;padding:1px 8px;font-size:.65rem;">${esc(CR_STATUS_LABEL[r.status] || r.status)}</span></div>
+      <div style="font-size:.78rem;">${pageState} · <a href="${esc(page)}" target="_blank" rel="noopener" style="color:var(--gold-dim);">${esc(page)} ↗</a></div>
+    </div>
+    <div style="margin-top:.6rem;">
+      ${field('Reporter', esc(r.reporter_name) + (r.organisation ? ' · ' + esc(r.organisation) : '') + ' · ' + esc(role))}
+      ${field('Email', `<a href="${esc(mail)}" style="color:var(--gold-dim);">${esc(r.reporter_email)}</a>`)}
+      ${field('Phone', esc(r.reporter_phone || ''))}
+      ${field('Copyrighted work', esc(r.work_description))}
+      ${field('Original', r.original_url ? `<a href="${esc(r.original_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--gold-dim);">${esc(r.original_url)}</a>` : '')}
+      ${field('What infringes', esc(r.details))}
+      ${field('Statements', (r.good_faith ? '✓ good faith' : '✗ good faith') + ' · ' + (r.accurate ? '✓ accurate' : '✗ accurate') + ' · signed “' + esc(r.signature) + '”')}
+      ${field('Images', r.image_count ? (r.image_keys.length ? `<button type="button" class="btn-outline" onclick="crShowImages('${esc(r.ref)}', ${r.image_keys.length}, this)">Show ${r.image_keys.length} image${r.image_keys.length === 1 ? '' : 's'}</button><div id="crImgs-${esc(r.ref)}" style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.4rem;"></div>` : `${r.image_count} sent, not stored — see the email`) : '')}
+    </div>
+    <div class="form-row" style="margin-top:.6rem;"><label>Your notes (private)</label>
+      <textarea id="crNotes-${esc(r.ref)}" rows="2" style="width:100%;box-sizing:border-box;">${esc(r.owner_notes || '')}</textarea></div>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.5rem;">
+      ${r.page_deleted
+        ? `<button type="button" class="btn-outline" onclick="crRestorePage('${esc(r.ref)}', this)">↩ Restore page</button>`
+        : `<button type="button" onclick="crTakeDown('${esc(r.ref)}', this)" style="background:#c93636;border:1px solid #c93636;color:#fff;padding:.55rem 1rem;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;">🗑 Take page down</button>`}
+      <label style="display:flex;gap:.4rem;align-items:center;font-size:.75rem;text-transform:none;letter-spacing:0;">Status
+        <select id="crStatus-${esc(r.ref)}" style="padding:.35rem .5rem;font-size:.78rem;">${opts}</select></label>
+      <button type="button" class="btn-outline" onclick="crSave('${esc(r.ref)}', this)">Save status &amp; notes</button>
+      <a class="btn-outline" href="${esc(mail)}" style="text-decoration:none;">✉ Reply</a>
+      <span id="crMsg-${esc(r.ref)}" class="hint" style="margin:0;"></span>
+    </div>
+  </div>`;
+}
+
+function crMsg(ref, text, bad) {
+  const el = document.getElementById('crMsg-' + ref);
+  if (el) { el.textContent = text; el.style.color = bad ? '#c96a6a' : ''; }
+}
+
+async function crPatch(ref, patch) {
+  const res = await adminFetch('/.netlify/functions/admin-copyright-reports', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ref, ...patch }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data.report;
+}
+
+async function crSave(ref, btn) {
+  const status = document.getElementById('crStatus-' + ref)?.value;
+  const notes = document.getElementById('crNotes-' + ref)?.value || '';
+  btn.disabled = true;
+  try {
+    await crPatch(ref, { status, owner_notes: notes });
+    crMsg(ref, 'Saved.');
+    setTimeout(() => loadCopyrightReports(), 600);
+  } catch (e) { crMsg(ref, 'Could not save: ' + e.message, true); }
+  finally { btn.disabled = false; }
+}
+
+function crTitleFor(slug) {
+  const row = (typeof productRows !== 'undefined' && productRows || []).find(x => String(x.slug).toLowerCase() === slug);
+  if (row) return (mergedProduct(row).title) || slug;
+  return slug.replace(/-/g, ' ');
+}
+
+async function crTakeDown(ref, btn) {
+  const r = _crReports.find(x => x.ref === ref);
+  if (!r) return;
+  const title = crTitleFor(r.product_slug);
+  if (!confirm(`Take down /product/${r.product_slug}/ because of copyright report ${ref}?\n\nThe URL answers 410 Gone within about a minute, Google drops it within days, and the card leaves category and search pages.\n\nReversible: "Restore page" here, or Restore under Products → Deleted pages.`)) return;
+  btn.disabled = true; btn.textContent = '⏳ Taking down…';
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 25000);
+  try {
+    const res = await adminFetch('/.netlify/functions/delete-product', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: r.product_slug, title, reason: 'Copyright report ' + ref }),
+      signal: ctl.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+    const notes = document.getElementById('crNotes-' + ref)?.value || '';
+    const stamp = `Page taken down ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}.`;
+    try { await crPatch(ref, { status: 'removed', owner_notes: notes ? notes + '\n' + stamp : stamp }); }
+    catch (e) { alert('The page was taken down, but the report status could not be updated: ' + e.message); }
+    if (data.index_published === false) alert(`Recorded the takedown, but publishing it to the edge failed (${data.index_reason || 'unknown'}) — the page is still serving. Products → Deleted pages → Refresh retries it.`);
+    if (typeof fetchDeletedPages === 'function') fetchDeletedPages();
+    loadCopyrightReports();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '🗑 Take page down';
+    crMsg(ref, ctl.signal.aborted ? 'Timed out — it may still have gone through. Refresh before trying again.' : 'Could not take it down: ' + e.message, true);
+  } finally { clearTimeout(timer); }
+}
+
+async function crRestorePage(ref, btn) {
+  const r = _crReports.find(x => x.ref === ref);
+  if (!r) return;
+  if (!confirm(`Put /product/${r.product_slug}/ back online?\n\nThe report's status is not changed; set it yourself (for example to Rejected).`)) return;
+  btn.disabled = true;
+  try {
+    const res = await adminFetch('/.netlify/functions/delete-product', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: r.product_slug, undo: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+    if (typeof fetchDeletedPages === 'function') fetchDeletedPages();
+    loadCopyrightReports();
+  } catch (e) { btn.disabled = false; crMsg(ref, 'Could not restore: ' + e.message, true); }
+}
+
+async function crShowImages(ref, n, btn) {
+  const box = document.getElementById('crImgs-' + ref);
+  if (!box) return;
+  btn.disabled = true; btn.textContent = 'Loading…';
+  box.innerHTML = '';
+  for (let i = 1; i <= n; i += 1) {
+    try {
+      const res = await adminFetch(`/.netlify/functions/admin-copyright-reports?ref=${encodeURIComponent(ref)}&image=${i}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.data) throw new Error(data.error || ('HTTP ' + res.status));
+      const bytes = Uint8Array.from(atob(data.data), ch => ch.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: data.type }));
+      box.insertAdjacentHTML('beforeend', `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="Image ${i}" style="max-width:220px;max-height:220px;border:1px solid rgba(0,0,0,.15);border-radius:4px;"/></a>`);
+    } catch (e) {
+      box.insertAdjacentHTML('beforeend', `<span class="hint" style="margin:0;">Image ${i}: ${esc(e.message)}</span>`);
+    }
+  }
+  btn.style.display = 'none';
+}
+
 function taRender() {
   const bp = document.getElementById('taBoughtPicked');
   const np = document.getElementById('taNotifyPicked');
@@ -17820,7 +18049,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','inventory','ebooks','bundles','coupons','titlealerts','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','inventory','ebooks','bundles','coupons','titlealerts','copyright','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -19023,6 +19252,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'missingbooks' && _authed) renderMissingBooks();
   if (tab === 'returns' && _authed) { fetchReturnRequests(); fetchReturnTracking(); }
   if (tab === 'tickets' && _authed) loadTickets();
+  if (tab === 'copyright' && _authed && adminRole === 'owner') loadCopyrightReports();
   if (tab === 'notpicked' && _authed) loadNotPicked();
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();

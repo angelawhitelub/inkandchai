@@ -110,7 +110,7 @@ function ownerEmailHtml(ref, r, { saved, imageCount }) {
     ${row('Images', imageCount ? `${imageCount} attached to this email` : 'None')}
   </table>
   ${saved ? '' : '<p style="color:#b0412e;margin-top:12px;">Not saved in Supabase (table copyright_reports missing or unreachable). This email is the only copy — run sql/copyright_reports.sql.</p>'}
-  <p style="font-size:12px;color:#8a7b6a;margin-top:14px;">To take the page down: admin → Products → open the book → Remove From Sale or Delete Product Page.</p>
+  <p style="font-size:12px;color:#8a7b6a;margin-top:14px;">Review it and take the page down in one click: <a href="https://inkandchai.in/admin/#copyright">admin → Customer Care → ©️ Copyright</a>.</p>
 </div>`;
 }
 
