@@ -789,7 +789,11 @@ function markSoldOutPage(response) {
         if (!chunk.lastInTextNode) { chunk.remove(); return; }
         const whole = jsBuf;
         jsBuf = '';
-        chunk.replace(whole.replace(/Coming Soon — out of stock|Out of stock — Coming Soon|Coming Soon/g, UNAVAILABLE), { html: true });
+        chunk.replace(whole
+          .replace(/Coming Soon — out of stock|Out of stock — Coming Soon|Coming Soon/g, UNAVAILABLE)
+          // Baked pages swap their own box into .actions after the stock
+          // fetch; keep ours instead (generate_site.py sold-out override).
+          .replace(/if \(actions\) actions\.innerHTML = /g, 'if (actions && !actions.querySelector(".ic-unavail")) actions.innerHTML = '), { html: true });
       },
     })
     .on('script[type="application/ld+json"]', {
