@@ -35,6 +35,7 @@ import searchHidden from '../netlify/functions/utils/search-hidden.js';
 import bestsellerRank from '../netlify/functions/utils/bestseller-rank.js';
 import codRules from '../netlify/functions/utils/cod-rules.js';
 import qtyLimits from '../netlify/functions/utils/qty-limits.js';
+import noReturns from '../netlify/functions/utils/no-returns.js';
 import productIdUtil from '../netlify/functions/utils/product-id.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
@@ -693,6 +694,10 @@ async function withQtySelector(response) {
   if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') || '')) return response;
   let limits = {};
   try { limits = await qtyLimits.limitMap(); } catch { limits = {}; }
+  // Stock clearance books (utils/no-returns): the notice under the trust badges.
+  let noRet = {};
+  try { noRet = await noReturns.noReturnMap(); } catch { noRet = {}; }
+  let noRetDone = false;
   let slug = '';
   let noted = false;
   let idDone = false;
@@ -711,6 +716,11 @@ async function withQtySelector(response) {
       if (limitDone || !n) return;
       limitDone = true;
       el.before(`<p class="ic-qty-limit" style="margin:.4rem 0 .2rem;font-size:.82rem;font-weight:600;opacity:.85;">Limit ${n} ${n === 1 ? 'copy' : 'copies'} per order</p>`, { html: true });
+    } })
+    .on('div.trust', { element(el) {
+      if (noRetDone || !slug || !noRet[String(slug).toLowerCase()]) return;
+      noRetDone = true;
+      el.after(noReturns.noticeHtml(), { html: true });
     } })
     .on('div.details', { element(el) { if (!noted) { noted = true; el.after(copyrightNoteHtml(slug), { html: true }); } } })
     .on('body', { element(el) {

@@ -2173,6 +2173,17 @@ select,input,textarea{font-size:1rem;}
             </div>
             <p class="hint" id="prodQtyLimitMsg" style="margin-top:.65rem;"></p>
             <div id="prodQtyLimitList" class="hint" style="margin-top:.4rem;"></div>
+            <p class="hint" id="prodNoReturnsCurrent" style="margin:.85rem 0 0;padding-top:.75rem;border-top:1px solid var(--border);color:var(--cream-dim);"></p>
+            <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
+              <input type="checkbox" id="prodNoReturns" style="accent-color:var(--gold);"/> 🏷️ Stock clearance sale: no returns, only replacements
+            </label>
+            <p class="hint" style="margin:.35rem 0 0;">The product page shows "Stock clearance sale: no returns, only replacements." My Orders refuses a return for this book, and the WhatsApp bot says so. A defective, misprinted, wrong or missing copy is still replaced free. It applies to orders placed from the moment you save. Anyone who bought it before keeps their 7-day return.</p>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-green" type="button" id="prodNoReturnsSaveBtn" onclick="saveNoReturns()">Save Returns Setting</button>
+              <button class="btn-outline" type="button" onclick="listNoReturns()">List no-return books</button>
+            </div>
+            <p class="hint" id="prodNoReturnsMsg" style="margin-top:.65rem;"></p>
+            <div id="prodNoReturnsList" class="hint" style="margin-top:.4rem;"></div>
           </details>
           <details id="prodNewTitleAlert" ontoggle="if (this.open) loadNtaReport()" style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(37,211,102,.05);">
             <summary style="cursor:pointer;color:#25d366;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">📣 New-title alert (WhatsApp + email)</summary>
@@ -9806,6 +9817,7 @@ function selectProduct(slug) {
   loadBrowseHiddenEditor(row);
   loadSoldHiddenEditor(row);
   loadQtyLimitEditor(row);
+  loadNoReturnsEditor(row);
   resetNewTitleAlert();
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
@@ -13235,6 +13247,70 @@ async function listQtyLimits() {
     box.innerHTML = items.length
       ? `<strong>${items.length} book${items.length === 1 ? '' : 's'} with a limit:</strong><br>` + items.map(i => `max <strong>${i.max}</strong> · <a href="/product/${esc(i.slug)}/" target="_blank" rel="noopener" style="color:var(--gold-dim);">${esc(i.title || i.slug)}</a> <span style="font-family:Menlo,Consolas,monospace;">${esc(i.product_id || '')}</span>`).join('<br>')
       : 'No book has a limit.';
+  } catch (e) { box.textContent = 'Could not load: ' + e.message; }
+}
+
+// ── Stock clearance: no returns, only replacements (admin-no-returns) ───────
+function setNoReturnsUi(on, since, note) {
+  const box = document.getElementById('prodNoReturns');
+  const cur = document.getElementById('prodNoReturnsCurrent');
+  if (box) box.checked = !!on;
+  if (cur) cur.textContent = note || (on
+    ? `No returns, only replacements, for orders placed since ${since ? new Date(since).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'it was switched on'}.`
+    : 'Returns allowed (the usual 7-day return).');
+}
+
+async function loadNoReturnsEditor(row) {
+  const msg = document.getElementById('prodNoReturnsMsg');
+  if (msg) msg.textContent = '';
+  const list = document.getElementById('prodNoReturnsList');
+  if (list) list.innerHTML = '';
+  if (!row?.slug) return;
+  setNoReturnsUi(false, null, 'Checking…');
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-no-returns?slug=' + encodeURIComponent(row.slug));
+    const data = await res.json().catch(() => ({}));
+    if (selectedProduct?.slug !== row.slug) return;
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setNoReturnsUi(data.on, data.since);
+  } catch (e) {
+    if (selectedProduct?.slug === row.slug) setNoReturnsUi(false, null, 'Could not load: ' + e.message);
+  }
+}
+
+async function saveNoReturns() {
+  const row = selectedProduct;
+  if (!row) return;
+  const on = !!document.getElementById('prodNoReturns')?.checked;
+  const msg = document.getElementById('prodNoReturnsMsg');
+  const btn = document.getElementById('prodNoReturnsSaveBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-no-returns', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: row.slug, on, title: mergedProduct(row).title || row.slug }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setNoReturnsUi(data.on, data.since);
+    if (msg) { msg.textContent = data.on ? 'Saved. Checkout and returns use it within a minute; the product page shows the notice within a few minutes.' : 'Returns allowed again for new orders.'; msg.style.color = ''; }
+  } catch (e) {
+    if (msg) { msg.textContent = 'Could not save: ' + e.message; msg.style.color = '#c96a6a'; }
+  } finally { if (btn) btn.disabled = false; }
+}
+
+async function listNoReturns() {
+  const box = document.getElementById('prodNoReturnsList');
+  if (!box) return;
+  box.textContent = 'Loading…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-no-returns');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? `<strong>${items.length} book${items.length === 1 ? '' : 's'} with no returns:</strong><br>` + items.map(i => `<a href="/product/${esc(i.slug)}/" target="_blank" rel="noopener" style="color:var(--gold-dim);">${esc(i.title || i.slug)}</a> · since ${esc(String(i.since || '').slice(0, 10))}`).join('<br>')
+      : 'No book is marked no-returns.';
   } catch (e) { box.textContent = 'Could not load: ' + e.message; }
 }
 

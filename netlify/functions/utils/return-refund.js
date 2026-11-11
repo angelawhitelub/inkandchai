@@ -70,14 +70,23 @@ function refundBasePaise(order) {
  * @param picked [{ title, qty }]; empty or absent means the whole order.
  * @returns {{ ok:true, items, refundPaise, whole } | { ok:false, error }}
  */
-function pickReturnItems(order, picked) {
+function pickReturnItems(order, picked, { noReturn } = {}) {
   const norm = (t) => String(t || '').trim().toLowerCase();
   const lines = (Array.isArray(order?.cart_items) ? order.cart_items : [])
     .filter((i) => i && (i.title || i.name))
     .map((i) => ({ title: String(i.title || i.name).trim(), qty: Math.max(1, Number(i.qty || i.quantity) || 1),
-                   price: Math.max(0, Number(i.price) || 0), sku: i.sku || '', missing: !!i._missing }));
-  const returnable = lines.filter((l) => !l.missing);
-  if (!returnable.length) return { ok: false, error: 'There is nothing on this order that can be returned.' };
+                   price: Math.max(0, Number(i.price) || 0), sku: i.sku || '', missing: !!i._missing,
+                   clearance: typeof noReturn === 'function' ? !!noReturn(i) : i._no_returns === true }));
+  // Stock clearance books (utils/no-returns) are replaced, never refunded.
+  const clearance = lines.filter((l) => !l.missing && l.clearance);
+  const clearanceError = (titles) => `${titles.join(', ')} ${titles.length === 1 ? 'was' : 'were'} bought in our stock clearance sale: no returns, only replacements. `
+    + 'If a copy is defective, misprinted or the wrong book, choose that reason instead for a free replacement.';
+  const returnable = lines.filter((l) => !l.missing && !l.clearance);
+  if (!returnable.length) {
+    return clearance.length
+      ? { ok: false, code: 'no_returns', error: clearanceError(clearance.map((l) => l.title)) }
+      : { ok: false, error: 'There is nothing on this order that can be returned.' };
+  }
 
   let chosen;
   if (!Array.isArray(picked) || !picked.length) {
@@ -85,6 +94,8 @@ function pickReturnItems(order, picked) {
   } else {
     chosen = [];
     for (const p of picked) {
+      const blocked = clearance.find((l) => norm(l.title) === norm(p && p.title));
+      if (blocked) return { ok: false, code: 'no_returns', error: clearanceError([blocked.title]) };
       const line = returnable.find((l) => norm(l.title) === norm(p && p.title));
       if (!line) return { ok: false, error: `"${String(p && p.title || '').slice(0, 80)}" is not a book on this order that can be returned.` };
       if (chosen.some((c) => c.title === line.title)) continue;
@@ -94,7 +105,7 @@ function pickReturnItems(order, picked) {
   if (!chosen.length) return { ok: false, error: 'Please pick the book(s) you want to return.' };
 
   const base = refundBasePaise(order);
-  const whole = !lines.some((l) => l.missing)
+  const whole = !lines.some((l) => l.missing || l.clearance)
     && returnable.every((l) => (chosen.find((c) => c.title === l.title) || {}).qty === l.qty);
   // Priced by list price; an order with no prices on it is shared by copies.
   const value = (ls) => ls.reduce((t, l) => t + (lines.some((x) => x.price > 0) ? l.price : 1) * l.qty, 0);

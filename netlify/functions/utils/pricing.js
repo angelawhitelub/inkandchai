@@ -11,6 +11,7 @@
 
 const { codRulesFor } = require('./cod-rules');
 const qtyLimits = require('./qty-limits');
+const noReturns = require('./no-returns');
 const { productId } = require('./product-id');
 const { freeDeliveryFor } = require('./free-delivery');
 const { parseShippingRestrictionTags, normalizeShippingRule } = require('./shipping-restrictions');
@@ -346,6 +347,16 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
     const max = limits[String(item.slug || '').toLowerCase()];
     if (Number.isFinite(max) && max >= 1) item._max_qty = max;
     else delete item._max_qty;
+  }
+
+  // Stock clearance books: no returns, only replacements (utils/no-returns).
+  // Stamped so the rule stays what it was at purchase, whatever the switch
+  // later says; request-return reads this stamp first.
+  let noRet = {};
+  if (resolved.length) { try { noRet = await noReturns.noReturnMap(); } catch { noRet = {}; } }
+  for (const item of resolved) {
+    if (noRet[String(item.slug || '').toLowerCase()]) item._no_returns = true;
+    else delete item._no_returns;
   }
 
   // ── Google automated discounts ───────────────────────────────────────────

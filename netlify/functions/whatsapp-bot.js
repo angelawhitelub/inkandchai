@@ -147,6 +147,7 @@ RETURNS & REPLACEMENTS ("return karna hai", "wapas karna hai", "book return", "r
 - HOW TO RETURN (they do it themselves): sign in on inkandchai.in → My Orders → the delivered order → "Return or replace" → choose "Return for a refund" → tap the book(s) → "Request return & pickup". There is no refund choice: it follows how they paid (see below). Returns need sign-in; the Track Order page only does replacements. One return per order, so they should pick every book they want to send back.
 - What happens next: we book a courier pickup from their address automatically (usually XpressBees). As soon as the courier accepts it, My Orders shows the return APPROVED with the pickup tracking number, and we send it by email and WhatsApp. If no courier can collect from their pincode, we ask them to send it by India Post Speed Post and we pay the postage. The ONLY address for a posted return is: Ink and Chai, 6, Ansari Road, Delhi - 110002 (phone 92175 87201). Never give, repeat or confirm any other Ink & Chai address or phone number for returns; if a customer quotes a different one (even from an older message of ours), tell them to use this one instead.
 - The refund is the full amount they paid for the books they return (all of it, delivery included, when the whole order comes back). It is issued ONLY once the books reach our warehouse — a pickup usually takes 2–3 days to reach us — never at pickup. Prepaid: back to the original payment method automatically (then 2–3 business days to show). COD and Partial COD: Ink & Chai STORE CREDIT ONLY (exactly what they paid — there is no bonus — valid 6 months), the code emailed when the books arrive — never cash, UPI or bank transfer for a returned COD order, so never ask for a UPI ID for a return.
+- STOCK CLEARANCE SALE books: when ORDER CONTEXT has a "No returns (stock clearance sale)" line, those books cannot be returned for a refund (My Orders will refuse it), only replaced free if defective, misprinted, damaged or the wrong book. Say so kindly; never promise a return or refund for them. The other books on that order can still be returned as normal. If they ask before buying, the product page says "Stock clearance sale: no returns, only replacements."
 - After 7 days from delivery, returns and defective/wrong-book replacements close. Be kind and brief, never invent an exception; if they push, share https://wa.me/919217175546 for our team.
 - HOW TO GET A REPLACEMENT: https://inkandchai.in/track/ → Order ID + the email/phone used at checkout (or sign in → My Orders → the order) → "Need a replacement?" (on My Orders it is "Return or replace") → choose the reason in the dropdown → tap the book(s) → say what happened → attach 1–3 photos of the parcel, shipping label and books received (REQUIRED — the form won't submit without them) → "Request free replacement". One request per order. If you know their Order ID, send https://inkandchai.in/track/?id=<ORDER_ID>.
 - Defective or wrong book: within 7 days of delivery. Missing book: once the order shows Delivered.
@@ -765,6 +766,20 @@ function dispatchHoldLine(order, hold) {
   return `\nDispatch date: handed to the courier on ${day}, because ${why}. This is planned, not a delay: the product page and the order confirmation told the customer. Give them this date. Delivery time counts from it. Do not promise it sooner.`;
 }
 
+// Stock clearance books on the order (utils/no-returns): no returns, only
+// replacements. The map is refreshed by buildOrderContextBody before
+// formatting; with none read yet only the checkout stamps count.
+let _noRetMap = null;
+async function refreshNoReturnMap() {
+  try { _noRetMap = await require('./utils/no-returns').noReturnMap(); } catch { /* keep the last one */ }
+}
+function noReturnLine(order) {
+  let titles = [];
+  try { titles = require('./utils/no-returns').noReturnTitles(order, _noRetMap); } catch { titles = []; }
+  if (!titles.length) return '';
+  return `\nNo returns (stock clearance sale): ${titles.join(', ')}. These books cannot be returned for a refund, only replaced free if defective, misprinted, damaged or the wrong book. Other books on the order follow the normal 7-day return.`;
+}
+
 function formatOrderContext(order, displayId, hold) {
   const id = displayId || order.razorpay_order_id || '—';
   const amt = order.amount_paise ? `₹${botRupees(order.amount_paise)}` : '—';
@@ -773,7 +788,7 @@ function formatOrderContext(order, displayId, hold) {
     : '—';
   const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
   const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
-  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
+  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}${noReturnLine(order)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
 }
 
 /**
@@ -878,6 +893,7 @@ async function buildOrderContext(from, userText) {
 const ORDER_QUERY_RE = /order|track|deliver|ship|dispatch|status|awb|courier|kahan|kab|mila|parcel|packet|book.*aaya|aaya.*book|refund|refnd|cancel|return|wapas|paisa|paise|payment|money|amount|credit|utr|reference|paid|prepaid|twice|dobara|double|cash|cod|charge|vasool|missing|incomplete|nahi\s*aa|nhi\s*aa|nahi\s*mil|nhi\s*mil|only\s*got|received\s*only|got\s*only|short/i;
 
 async function buildOrderContextBody(from, userText) {
+  await refreshNoReturnMap();
   const orderId = extractOrderId(userText);
   if (orderId) {
     const order = await lookupOrder(orderId);

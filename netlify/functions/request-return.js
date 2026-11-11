@@ -199,8 +199,11 @@ exports.handler = async (event) => {
         return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: `A free replacement (${repl[0].razorpay_order_id}) was already sent for this order, so it cannot also be returned. Please contact support.` }) };
       }
     }
-    const pick = pickReturnItems(order, body.items);
-    if (!pick.ok) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: pick.error }) };
+    const NR = require('./utils/no-returns');
+    let noRetMap = null;
+    try { noRetMap = await NR.noReturnMap(); } catch { noRetMap = null; }
+    const pick = pickReturnItems(order, body.items, { noReturn: (i) => NR.isNoReturnLine(i, noRetMap, order.created_at) });
+    if (!pick.ok) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: pick.error, ...(pick.code ? { code: pick.code } : {}) }) };
 
     // Reject duplicate return requests for the same order
     const { data: existing } = await supabase

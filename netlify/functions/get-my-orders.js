@@ -13,6 +13,7 @@ const { resolvePaymentType, returnRefundMethod, walletBonusRupees } = require('.
 const { quoteLateCancel } = require('./utils/prepaid-late-cancel');
 const { quoteUnpickedCancel } = require('./utils/unpicked-cancel');
 const { buildTrackingUrl } = require('./utils/tracking-url');
+const noReturns = require('./utils/no-returns');
 
 /** What My Orders shows of a return: where the pickup is and what is owed. */
 function returnView(r) {
@@ -164,7 +165,13 @@ exports.handler = async (event) => {
         }
       }
 
+      let noRetMap = null;
+      try { noRetMap = await noReturns.noReturnMap(); } catch { noRetMap = null; }
       orders.forEach(o => {
+        // Stock clearance books on it: no returns, only replacements
+        // (utils/no-returns), the same answer request-return gives.
+        const noRet = noReturns.noReturnTitles(o, noRetMap);
+        if (noRet.length) o.no_return_titles = noRet;
         // The server's own answer to "will report-missing-books demand a UPI
         // ID?", so My Orders shows the box exactly when it will be required --
         // the same flag track-order already sends. A browser-side copy of this

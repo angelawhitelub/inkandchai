@@ -2522,6 +2522,11 @@ window.IACClaimEvidence = {
 
     const win = replacementWindowInfo(order);
     const closedNote = win.eligible ? '' : ' (closed — 7 days after delivery)';
+    // Stock clearance books (server: get-my-orders no_return_titles): no
+    // returns, only replacements. request-return refuses them anyway.
+    const noRet = new Set(Array.isArray(order.no_return_titles) ? order.no_return_titles : []);
+    const allNoRet = lineItems.every(it => noRet.has(it.title));
+    const returnNote = allNoRet ? ' (not available — stock clearance sale)' : closedNote;
     const oid = order.razorpay_order_id || order.id;
     const q   = order.customer_email || order.customer_phone || '';
     const field = 'width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.5rem 0.7rem;font-family:inherit;font-size:0.72rem;';
@@ -2532,9 +2537,10 @@ window.IACClaimEvidence = {
           Return any book within 7 days of delivery for a full refund — we collect it from you (Cash on Delivery orders are refunded as store credit). A defective, misprinted, wrong or missing book is replaced free of charge.
           ${win.eligible ? `<span style="color:#7a6330;">${win.daysLeft} day${win.daysLeft === 1 ? '' : 's'} left to return or replace.</span>` : ''}
         </div>
+        ${noRet.size ? `<div style="font-size:0.62rem;color:#e8a030;line-height:1.5;margin-bottom:0.6rem;">🏷️ Stock clearance sale: no returns, only replacements — ${escHtml([...noRet].join(', '))}.</div>` : ''}
         <select class="repl-reason" onchange="iacReplReasonChanged(this)" style="${field}font-size:0.76rem;padding:0.6rem 0.7rem;margin-bottom:0.6rem;">
           <option value="">Choose what you need…</option>
-          <option value="return"${win.eligible ? '' : ' disabled'}>Return for a refund${closedNote}</option>
+          <option value="return"${win.eligible && !allNoRet ? '' : ' disabled'}>Return for a refund${returnNote}</option>
           <option value="defective"${win.eligible ? '' : ' disabled'}>Defective book / misprint${closedNote}</option>
           <option value="wrong_book"${win.eligible ? '' : ' disabled'}>Wrong book received${closedNote}</option>
           <option value="missing">Book missing from the parcel</option>
@@ -2543,7 +2549,7 @@ window.IACClaimEvidence = {
           <div class="repl-which" style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-bottom:0.5rem;">Tap the book(s) that need replacing.</div>
           <div class="miss-books" style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.7rem;">
             ${lineItems.map(it => `
-              <div class="miss-row" data-title="${escHtmlAttr(it.title)}" data-max="${it.qty}" style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+              <div class="miss-row" data-title="${escHtmlAttr(it.title)}" data-max="${it.qty}"${noRet.has(it.title) ? ' data-noret="1"' : ''} style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
                 <button type="button" data-on="0" onclick="iacToggleMissBook(this)"
                   style="flex:1;min-width:60%;text-align:left;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;
                          padding:0.55rem 0.8rem;font-size:0.74rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">
@@ -2582,6 +2588,12 @@ window.IACClaimEvidence = {
     wrap.querySelector('.repl-photos-wrap').style.display = r === 'return' ? 'none' : '';
     wrap.querySelector('.ret-refund').style.display = r === 'return' ? '' : 'none';
     wrap.querySelector('.repl-submit').textContent = r === 'return' ? 'Request return & pickup' : 'Request free replacement';
+    // Clearance books can be replaced but not returned: hide them for a return.
+    wrap.querySelectorAll('.miss-row[data-noret="1"]').forEach(row => {
+      row.style.display = r === 'return' ? 'none' : '';
+      const b = row.querySelector('button');
+      if (r === 'return' && b && b.dataset.on === '1') iacToggleMissBook(b);
+    });
     if (r === 'return') {
       wrap.querySelector('.repl-which').textContent = 'Tap the book(s) you want to return.';
       wrap.querySelector('.miss-comment').placeholder = 'Optional — why are you returning it? It helps us improve.';
