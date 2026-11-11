@@ -4609,7 +4609,8 @@ _BOOK_CARD_JS = r"""
 
     var badges = '';
     if (opts.badge) badges += '<span class="iac-tag">' + esc(opts.badge) + '</span>';
-    if (sold) badges += '<span class="iac-soon">Currently unavailable</span>';
+    // Longer than the old "Coming soon": allowed to wrap on narrow cards.
+    if (sold) badges += '<span class="iac-soon" style="white-space:normal;letter-spacing:.05em;line-height:1.25;text-align:left">Currently unavailable</span>';
     else if (off) badges += '<span class="iac-off">' + off + '% off</span>';
     // A caller's own label wins: the merchandising rows already say "New
     // arrival" over the card, and stacking our own "New" under it just
