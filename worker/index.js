@@ -911,14 +911,14 @@ function gonePage(slug) {
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="robots" content="noindex,nofollow"/>
-<title>This title is no longer available — Ink &amp; Chai</title>
+<title>Page not found — Ink &amp; Chai</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#faf6ef;color:#2b2118;
 font-family:system-ui,-apple-system,'Segoe UI',sans-serif;padding:2rem;text-align:center;line-height:1.6}
 .w{max-width:30rem}h1{font-size:1.4rem;margin:0 0 .6rem}p{margin:0 0 1.4rem;color:#6b5b4a}
 a{display:inline-block;margin:0 .3rem;padding:.7rem 1.4rem;border:1px solid #2b2118;color:#2b2118;
 text-decoration:none;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase}</style></head>
-<body><div class="w"><h1>This title is no longer available</h1>
-<p>We have taken this listing down permanently. There are plenty more where it came from.</p>
+<body><div class="w"><h1>Page not found</h1>
+<p>Looks like you have entered a wrong URL. Please check the address, or find your next book below.</p>
 <a href="/">Browse books</a><a href="/books/">Full catalogue</a></div></body></html>`;
   return new Response(body, {
     status: 410,
