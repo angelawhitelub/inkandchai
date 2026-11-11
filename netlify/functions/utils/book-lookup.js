@@ -19,6 +19,20 @@ const fs   = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const { findCandidates } = require('./search-candidates');
 
+// Pages taken down in the admin (delete-product → KV catalog:deleted-products,
+// the set the Worker answers 410 from). The bot must not sell what the site
+// no longer shows. Loaded lazily and fail-open: a KV hiccup must not stop the
+// bot pricing books, and plain Node tests have no @netlify/blobs.
+async function removedSlugs(deps) {
+  try {
+    const get = deps.deletedSlugSet || require('./deleted-products').deletedSlugSet;
+    const set = await get();
+    return set instanceof Set ? set : new Set(set || []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
 const STOP_WORDS = new Set([
   'the','a','an','of','and','or','in','on','to','for','by','is','it','my',
   'i','me','with','book','books','novel','edition','vol','volume','part',
@@ -125,16 +139,24 @@ async function lookupBook(rawTitle, deps = {}) {
   const customBooks = (customRows || []).map(customRowToBook)
     .filter((b) => b.title && b.price > 0 && titleCoverage(qTokens, b) >= CUSTOM_MIN_COVERAGE);
   const all = [...staticBooks, ...customBooks];
+  const removed = await removedSlugs(deps);
+  const isRemoved = (b) => !!b.slug && removed.has(String(b.slug).toLowerCase());
 
-  let best = null;
-  let bestScore = 0;
+  // Best live book, and best of everything. A removed page never gets priced;
+  // if it is the closest match the caller is told it was removed, so the bot
+  // can say "not available" instead of quoting it or guessing a price.
+  let best = null, bestScore = 0, bestAny = null, bestAnyScore = 0;
   for (const b of all) {
     const s = scoreMatch(qTokens, b);
-    if (s > bestScore) { bestScore = s; best = b; }
+    if (s > bestAnyScore) { bestAnyScore = s; bestAny = b; }
+    if (!isRemoved(b) && s > bestScore) { bestScore = s; best = b; }
   }
   // Threshold: at least half the query tokens must have matched. Otherwise
   // "some random book" would grab a low-quality match and mislead pricing.
   const minAcceptable = 0.5;
+  if (bestAny && isRemoved(bestAny) && bestAnyScore >= minAcceptable && bestAnyScore > bestScore) {
+    return { removed: true, title: bestAny.title, author: bestAny.author, slug: bestAny.slug, source: bestAny.source };
+  }
   if (!best || bestScore < minAcceptable) return null;
   return { title: best.title, author: best.author, image: best.image, price: best.price, slug: best.slug, source: best.source };
 }
@@ -191,9 +213,16 @@ async function priceBooksList(rawBooksList, fallbackRs = 349, deps = {}) {
   const lookup = deps.lookupBook || lookupBook;
   const items = [];
   const unmatched = [];
+  const removed = [];
   for (const q of splitBookTitles(rawBooksList)) {
     const { title, qty } = parseQuantity(q);
-    const hit = await lookup(title);
+    let hit = await lookup(title);
+    // A taken-down page: never priced. Also counted as unmatched, so every
+    // existing "no price" safeguard (no amount, held for a person) applies.
+    if (hit && hit.removed) {
+      removed.push(hit.title || title);
+      hit = null;
+    }
     const unitPrice = hit ? hit.price : fallbackRs;
     items.push(hit
       ? { query: q, title, qty, unitPrice, price: unitPrice * qty, matchedTitle: hit.title, matchedAuthor: hit.author || '', slug: hit.slug, matched: true }
@@ -223,6 +252,7 @@ async function priceBooksList(rawBooksList, fallbackRs = 349, deps = {}) {
     totalPaise: Math.round(totalRs * 100),
     copies: items.reduce((s, i) => s + i.qty, 0),
     unmatched,
+    removed,
   };
 }
 

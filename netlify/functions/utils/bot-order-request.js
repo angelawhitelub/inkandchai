@@ -358,6 +358,19 @@ async function draftOrderRequest(deps, phone, args) {
       message: `NOT saved. "${f.customerName}" looks like the author of the book (${author}), not the customer. Do NOT use it as their name. Ask them: "Is ${f.customerName} your own name, or the author of the book? Please send the name to put on the parcel." Then call this tool again with the name they give. Set name_confirmed to true only if they say it really is their own name.`,
     };
   }
+  // A book whose page was taken down in the admin is not for sale: say so,
+  // and save nothing until the customer drops or swaps it.
+  const gone = (pricing && Array.isArray(pricing.removed) ? pricing.removed : []).filter(Boolean);
+  if (gone.length) {
+    return {
+      ok: false,
+      error: 'book_not_available',
+      not_available: gone,
+      message: `NOT saved. ${gone.map((t) => `"${t}"`).join(', ')} ${gone.length > 1 ? 'are' : 'is'} not available: we no longer sell ${gone.length > 1 ? 'these books' : 'this book'}. `
+        + 'Tell the customer plainly that it is not available. Do NOT quote a price, do NOT promise to arrange it, do NOT send its link, and do NOT say why. '
+        + 'Ask whether they want to order the other books without it, or another book instead. Then call submit_order_request again with the updated list.',
+    };
+  }
   const unlisted = unlistedTitles(pricing);
   const draft = rows.find((r) => r.status === DRAFT && nowMs - new Date(r.created_at).getTime() < DRAFT_TTL_MS);
   const values = {
@@ -472,6 +485,7 @@ function placedMessage(row, pricing, paymentLink) {
 
 /** Why a confirmed COD order must wait for a person instead of going to Orders, or null. */
 function autoPushHold(pricing) {
+  if (pricing.removed && pricing.removed.length) return `${pricing.removed.join('; ')}: page taken down, not for sale`;
   if (pricing.unmatched && pricing.unmatched.length) return 'a title is not in the catalogue, so its price is a guess';
   const copies = Number(pricing.copies) || (pricing.items || []).reduce((n, i) => n + (Number(i && i.qty) || 1), 0);
   if (copies > AUTO_PUSH_MAX_COPIES) return `bulk order of ${copies} copies`;

@@ -118,3 +118,24 @@ test('a placeholder is not a cover, and the live catalogue is asked first', asyn
   });
   assert.equal(cover, '/live.webp');
 });
+
+test('a book whose page was taken down is never priced; the bot is told it was removed', async () => {
+  const { lookupBook, priceBooksList } = require('./book-lookup');
+  const staticBooks = [
+    { title: 'The Secret', author: 'Rhonda Byrne', price: 299, slug: 'the-secret-by-rhonda-byrne', source: 'static', _titleTokens: ['secret', 'rhonda', 'byrne'] },
+    { title: 'Atomic Habits', author: 'James Clear', price: 399, slug: 'atomic-habits', source: 'static', _titleTokens: ['atomic', 'habits', 'james', 'clear'] },
+  ];
+  const deps = { staticBooks, findCustomProducts: async () => [], deletedSlugSet: async () => new Set(['the-secret-by-rhonda-byrne']) };
+  const gone = await lookupBook('the secret rhonda byrne', deps);
+  assert.equal(gone.removed, true);
+  assert.equal(gone.price, undefined);
+  const live = await lookupBook('atomic habits', deps);
+  assert.equal(live.price, 399);
+  const lookup = (t) => lookupBook(t, deps);
+  const priced = await priceBooksList('The Secret by Rhonda Byrne, Atomic Habits', 349, { lookupBook: lookup, limitMap: async () => ({}) });
+  assert.deepEqual(priced.removed, ['The Secret']);
+  assert.ok(priced.unmatched.includes('The Secret by Rhonda Byrne'));
+  // Nothing removed: unchanged behaviour, and a KV failure fails open.
+  const open = await lookupBook('the secret', { ...deps, deletedSlugSet: async () => { throw new Error('kv down'); } });
+  assert.equal(open.price, 299);
+});

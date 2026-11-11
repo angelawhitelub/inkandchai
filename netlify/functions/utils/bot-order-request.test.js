@@ -488,3 +488,17 @@ test('a draft under the author\'s name is not saved until the customer says it i
     assert.deepEqual(requestedTitles('Atomic Habits ×2, Ikigai x3\nDune'), ['Atomic Habits', 'Ikigai', 'Dune']);
   });
 }
+
+test('a book whose page was taken down: nothing is saved and the bot is told it is not available', async () => {
+  const db = fakeDb();
+  const removedPricing = async () => ({ items: [], subtotalRs: 349, shippingRs: 40, totalRs: 389, totalPaise: 38900, unmatched: ['The Secret'], removed: ['The Secret'] });
+  const { d } = deps(db, { priceBooksList: removedPricing });
+  const out = await draftOrderRequest(d, PHONE, ARGS);
+  assert.equal(out.ok, false);
+  assert.equal(out.error, 'book_not_available');
+  assert.deepEqual(out.not_available, ['The Secret']);
+  assert.match(out.message, /not available/);
+  assert.equal(db.table.length, 0);
+  const { autoPushHold } = require('./bot-order-request');
+  assert.match(autoPushHold({ removed: ['The Secret'], unmatched: ['The Secret'], items: [] }), /taken down/);
+});
