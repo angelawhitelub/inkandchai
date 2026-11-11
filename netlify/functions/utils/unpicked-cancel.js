@@ -49,7 +49,7 @@ function isPartialCod(order) {
  * @returns {{eligible:true, refundPaise:number, partialCod:boolean, hasAwb:boolean}
  *          | {eligible:false, reason:string}}
  */
-function quoteUnpickedCancel(order, now = Date.now()) {
+function quoteUnpickedCancel(order, now = Date.now(), { untilShipped = false } = {}) {
   const no = (reason) => ({ eligible: false, reason });
   if (!order) return no('not_found');
   if (isReplacementOrder(order) || /^IC-R-/i.test(String(order.razorpay_order_id || ''))) return no('replacement');
@@ -62,7 +62,11 @@ function quoteUnpickedCancel(order, now = Date.now()) {
   if (!OPEN.includes(status)) return no('closed');
 
   const created = Date.parse(order.created_at || '');
-  if (!Number.isFinite(created) || now - created < UNPICKED_DAYS * 86400e3) return no('too_soon');
+  const hasAwbNow = !!String(order.tracking_id || '').trim();
+  // The owner's "cancel until shipped" switch (utils/cancel-window): while it
+  // is on, an order with no AWB yet need not wait the 7 days.
+  const early = untilShipped && !hasAwbNow && status !== 'shipped';
+  if (!Number.isFinite(created) || (!early && now - created < UNPICKED_DAYS * 86400e3)) return no('too_soon');
 
   // Moved, delivered, RTO or terminal by what we know: classify() is the Not
   // Picked Up tab's own rule. The courier is asked again before anything moves.
@@ -70,7 +74,9 @@ function quoteUnpickedCancel(order, now = Date.now()) {
 
   const partialCod = isPartialCod(order);
   const hasAwb = !!String(order.tracking_id || '').trim();
-  return { eligible: true, refundPaise: amount, partialCod, hasAwb };
+  const q = { eligible: true, refundPaise: amount, partialCod, hasAwb };
+  if (early && now - created < UNPICKED_DAYS * 86400e3) q.early = true;
+  return q;
 }
 
 /** When the order becomes cancellable under this rule (ms), for a "from <date>" answer. */

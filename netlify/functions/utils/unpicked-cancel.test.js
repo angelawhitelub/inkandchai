@@ -135,3 +135,64 @@ test('someone else\'s order is refused before anything runs', async () => {
   assert.equal(res.statusCode, 403);
   assert.equal(ran, 0);
 });
+
+// ── "Cancel until shipped" switch (utils/cancel-window) ───────────────────────
+test('window open: a paid order with no AWB is cancellable at once, marked early', () => {
+  const fresh = prepaidBooked({ tracking_id: null, courier_name: null, status: 'paid', created_at: daysAgo(0.2) });
+  assert.equal(quoteUnpickedCancel(fresh, NOW).reason, 'too_soon');
+  const q = quoteUnpickedCancel(fresh, NOW, { untilShipped: true });
+  assert.equal(q.eligible, true);
+  assert.equal(q.early, true);
+  assert.equal(q.refundPaise, 49900);
+  const partial = quoteUnpickedCancel(prepaidBooked({ tracking_id: null, status: 'partial_cod_pending', advance_paid_paise: 5000, created_at: daysAgo(1) }), NOW, { untilShipped: true });
+  assert.equal(partial.eligible, true);
+  assert.equal(partial.partialCod, true);
+});
+
+test('window open does not reach shipped orders, COD or orders past the rule', () => {
+  // Has an AWB: shipped, so the switch does not apply.
+  assert.equal(quoteUnpickedCancel(prepaidBooked({ created_at: daysAgo(1) }), NOW, { untilShipped: true }).reason, 'too_soon');
+  // COD: nothing paid, cancel-order handles it until pickup.
+  assert.equal(quoteUnpickedCancel(prepaidBooked({ tracking_id: null, status: 'cod_pending', razorpay_payment_id: null, created_at: daysAgo(1) }), NOW, { untilShipped: true }).reason, 'nothing_paid');
+  // Past 7 days it is the ordinary unpicked cancel, not "early".
+  assert.equal(quoteUnpickedCancel(prepaidBooked({ tracking_id: null, status: 'paid', created_at: daysAgo(9) }), NOW, { untilShipped: true }).early, undefined);
+});
+
+const freshNoAwb = prepaidBooked({ customer_email: 'a@b.in', tracking_id: null, courier_name: null, status: 'paid',
+  created_at: new Date(Date.now() - 3600e3).toISOString(), xpressbees_feed_at: new Date().toISOString() });
+const callEarly = (db, handleOne, panel) => handler(
+  { httpMethod: 'POST', headers: { authorization: 'Bearer good' }, body: JSON.stringify({ order_id: 'u1' }) },
+  {}, { db, handleOne, untilShipped: true, xbPanelIndex: async () => panel, alertOwner: async () => {} },
+);
+
+test('window open, queued in the XpressBees panel: cancelled through the usual path', async () => {
+  process.env.ADMIN_TOKEN_SECRET = process.env.ADMIN_TOKEN_SECRET || 'test-secret-for-signing-0123456789';
+  const db = fakeDb(freshNoAwb);
+  let seen = null;
+  const res = await callEarly(db, async (e, sb, o) => { seen = o; return { outcome: 'cancelled', reason: 'no AWB' }; },
+    new Map([['IC-20260930-AAAAA', { state: 'queued', awb: null }]]));
+  assert.equal(res.statusCode, 200);
+  assert.equal(seen.xpressbees_feed_at, null, 'panel checked, so handleOne need not stop for it');
+  assert.match(db.state.order.cancellation_request_note, /^Customer cancel: not picked up — before shipping/);
+});
+
+test('window open, but the XpressBees panel already booked it: refused, nothing claimed', async () => {
+  const db = fakeDb(freshNoAwb);
+  let ran = 0;
+  const res = await callEarly(db, async () => { ran++; return { outcome: 'cancelled' }; },
+    new Map([['IC-20260930-AAAAA', { state: 'booked', awb: '1434' }]]));
+  assert.equal(res.statusCode, 422);
+  assert.equal(JSON.parse(res.body).reason, 'booked');
+  assert.equal(ran, 0);
+  assert.ok(!db.state.order.cancellation_requested_at);
+});
+
+test('window closed: a fresh paid order is not cancellable here', async () => {
+  const db = fakeDb(freshNoAwb);
+  const res = await handler(
+    { httpMethod: 'POST', headers: { authorization: 'Bearer good' }, body: JSON.stringify({ order_id: 'u1' }) },
+    {}, { db, untilShipped: false, handleOne: async () => ({ outcome: 'cancelled' }) },
+  );
+  assert.equal(res.statusCode, 422);
+  assert.equal(JSON.parse(res.body).reason, 'too_soon');
+});

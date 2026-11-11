@@ -773,6 +773,20 @@ let _noRetMap = null;
 async function refreshNoReturnMap() {
   try { _noRetMap = await require('./utils/no-returns').noReturnMap(); } catch { /* keep the last one */ }
 }
+// The owner's "cancel until shipped" switch (utils/cancel-window), read with
+// the no-returns map before formatting.
+let _untilShipped = false;
+async function refreshCancelWindow() {
+  try { _untilShipped = await require('./utils/cancel-window').untilShippedOpen(); } catch { _untilShipped = false; }
+}
+function earlyCancelLine(order) {
+  if (!_untilShipped) return '';
+  let q;
+  try { q = quoteUnpickedCancel(order, Date.now(), { untilShipped: true }); } catch { return ''; }
+  if (!q || !q.eligible || !q.early) return '';
+  return '\nCancellable now: YES. It has not been shipped and our cancellation window is open, so if they want to cancel it they get a FULL refund of everything they paid (no deduction). Use cancel_order after they confirm. This overrides the 30-minute and 7-day limits for this order.';
+}
+
 function noReturnLine(order) {
   let titles = [];
   try { titles = require('./utils/no-returns').noReturnTitles(order, _noRetMap); } catch { titles = []; }
@@ -788,7 +802,7 @@ function formatOrderContext(order, displayId, hold) {
     : '—';
   const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
   const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
-  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}${noReturnLine(order)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
+  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}${noReturnLine(order)}${earlyCancelLine(order)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
 }
 
 /**
@@ -894,6 +908,7 @@ const ORDER_QUERY_RE = /order|track|deliver|ship|dispatch|status|awb|courier|kah
 
 async function buildOrderContextBody(from, userText) {
   await refreshNoReturnMap();
+  await refreshCancelWindow();
   const orderId = extractOrderId(userText);
   if (orderId) {
     const order = await lookupOrder(orderId);
@@ -1658,7 +1673,9 @@ async function cancelOrderViaBot(phone, args = {}) {
     // ordering: full refund, the same cancel as My Orders' button
     // (cancel-unpicked-order.js), which asks the courier live first. The
     // order is the customer's: it was found by their WhatsApp number.
-    if (quoteUnpickedCancel(target).eligible) {
+    let untilShipped = false;
+    try { untilShipped = await require('./utils/cancel-window').untilShippedOpen(); } catch { untilShipped = false; }
+    if (quoteUnpickedCancel(target, Date.now(), { untilShipped }).eligible) {
       const oid = target.razorpay_order_id;
       const r = await cancelUnpickedOrder(supabase, target);
       const b = r.body || {};

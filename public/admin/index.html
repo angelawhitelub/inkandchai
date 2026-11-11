@@ -921,8 +921,15 @@ select,input,textarea{font-size:1rem;}
       <h1>Orders Dashboard</h1>
       <p class="subtitle" id="dashSubtitle">Loading…</p>
     </div>
-    <button class="btn-outline" onclick="switchTab('orders');setTimeout(()=>document.getElementById('ordersTableSection')?.scrollIntoView({behavior:'smooth',block:'start'}),0)">↓ Go to orders table
-    </button>
+    <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+      <label id="cancelWindowBox" class="owner-only" title="When ON, customers can cancel a paid order (prepaid or partial COD) for a full refund until it gets an AWB, from My Orders or WhatsApp. COD can always be cancelled until pickup."
+        style="display:none;align-items:center;gap:.55rem;border:1px solid var(--border);border-radius:999px;padding:.45rem .85rem;font-size:.74rem;cursor:pointer;user-select:none;">
+        <input type="checkbox" id="cancelWindowToggle" onchange="toggleCancelWindow(this)" style="accent-color:#6dbf6d;width:1rem;height:1rem;cursor:pointer;"/>
+        <span>Cancel until shipped: <strong id="cancelWindowState">…</strong></span>
+      </label>
+      <button class="btn-outline" onclick="switchTab('orders');setTimeout(()=>document.getElementById('ordersTableSection')?.scrollIntoView({behavior:'smooth',block:'start'}),0)">↓ Go to orders table
+      </button>
+    </div>
   </div>
 
   <!-- Tab bar (hidden until login) -->
@@ -6968,6 +6975,7 @@ function updateStats(opts = {}) {
     document.getElementById('dashSubtitle').textContent = `Loading orders… ${allOrders.length} / ${serverTotal} (${pct}%)`;
   } else if (!opts.light) {
     document.getElementById('dashSubtitle').textContent = `${serverTotal != null ? serverTotal : allOrders.length} orders · refreshed ${new Date().toLocaleTimeString('en-IN')}`;
+    loadCancelWindow();
   }
 
   // Full breakdown — every status so the maths adds up to Total
@@ -13248,6 +13256,55 @@ async function listQtyLimits() {
       ? `<strong>${items.length} book${items.length === 1 ? '' : 's'} with a limit:</strong><br>` + items.map(i => `max <strong>${i.max}</strong> · <a href="/product/${esc(i.slug)}/" target="_blank" rel="noopener" style="color:var(--gold-dim);">${esc(i.title || i.slug)}</a> <span style="font-family:Menlo,Consolas,monospace;">${esc(i.product_id || '')}</span>`).join('<br>')
       : 'No book has a limit.';
   } catch (e) { box.textContent = 'Could not load: ' + e.message; }
+}
+
+// ── Cancel until shipped (admin-cancel-window) ──────────────────────────────
+function showCancelWindow(on, updatedAt) {
+  const box = document.getElementById('cancelWindowBox');
+  const t = document.getElementById('cancelWindowToggle');
+  const st = document.getElementById('cancelWindowState');
+  if (!box || !t || !st) return;
+  box.style.display = 'inline-flex';
+  t.checked = !!on;
+  st.textContent = on ? 'ON' : 'OFF (window closed)';
+  st.style.color = on ? '#6dbf6d' : '#e06060';
+  box.style.borderColor = on ? 'rgba(109,191,109,.55)' : '';
+  box.title = (on
+    ? 'ON: customers can cancel a paid order (prepaid or partial COD) for a full refund until it gets an AWB.'
+    : 'OFF: cancellation window closed. Prepaid and partial COD: 30 minutes, then 7 days not picked up. COD: until pickup.')
+    + (updatedAt ? `\nLast changed ${new Date(updatedAt).toLocaleString('en-IN')}` : '');
+}
+
+let _cancelWindowLoadedAt = 0;
+async function loadCancelWindow(force) {
+  if (!force && Date.now() - _cancelWindowLoadedAt < 60000) return;
+  _cancelWindowLoadedAt = Date.now();
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-cancel-window');
+    if (!res.ok) return;          // staff without owner rights: no switch
+    const d = await res.json();
+    showCancelWindow(d.on, d.updated_at);
+  } catch (e) { /* leave it hidden */ }
+}
+
+async function toggleCancelWindow(box) {
+  const on = !!box.checked;
+  const msg = on
+    ? 'Open the cancellation window?\n\nCustomers will be able to cancel any PAID order (prepaid or partial COD) that has no AWB yet, from My Orders or WhatsApp, and get a FULL refund automatically.\n\nCOD orders are not affected (they can already cancel until pickup).'
+    : 'Close the cancellation window?\n\nPaid orders go back to the usual rules: 30 minutes after ordering, then only if not picked up 7 days after ordering. COD can still cancel until pickup.';
+  if (!confirm(msg)) { box.checked = !on; return; }
+  box.disabled = true;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-cancel-window', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    showCancelWindow(d.on, d.updated_at);
+  } catch (e) {
+    box.checked = !on;
+    alert('Could not change it: ' + e.message);
+  } finally { box.disabled = false; }
 }
 
 // ── Stock clearance: no returns, only replacements (admin-no-returns) ───────

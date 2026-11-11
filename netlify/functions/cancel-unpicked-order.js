@@ -40,10 +40,14 @@ const rs = (paise) => `₹${Math.round(Number(paise || 0) / 100).toLocaleString(
 
 // public/js/auth.js matches the start of this note to show "Cancellation received".
 const NOTE = `Customer cancel: not picked up ${UNPICKED_DAYS}+ days after ordering (full refund).`;
+const EARLY_NOTE = 'Customer cancel: not picked up — before shipping, while the cancellation window was open (full refund).';
+const cancelWindow = require('./utils/cancel-window');
+const { xbPanelIndex, baseOrderNumber } = require('./utils/booking-guard');
 
-async function alertOwner(order, line) {
+async function alertOwner(order, line, { early = false } = {}) {
   const id = order.razorpay_order_id || order.id;
-  const text = `⏳ ${id}: customer cancelled (not picked up in ${UNPICKED_DAYS}+ days)\n${line}\n`
+  const why = early ? 'before shipping, cancellation window open' : `not picked up in ${UNPICKED_DAYS}+ days`;
+  const text = `⏳ ${id}: customer cancelled (${why})\n${line}\n`
     + `${order.customer_name || ''} ${order.customer_phone || ''}\n`
     + `${order.tracking_id ? `AWB ${order.courier_name || ''} ${order.tracking_id}\n` : ''}`
     + 'Admin → Not Picked Up: cancel & refund it there once the courier panel is sorted.';
@@ -52,7 +56,7 @@ async function alertOwner(order, line) {
   if (process.env.STORE_OWNER_EMAIL) {
     jobs.push(sendEmail({
       to: process.env.STORE_OWNER_EMAIL,
-      subject: `⏳ ${id} — customer cancel needs you (not picked up ${UNPICKED_DAYS}+ days)`,
+      subject: `⏳ ${id} — customer cancel needs you (${why})`,
       html: `<pre style="font-family:Arial,sans-serif;font-size:14px;white-space:pre-wrap;">${text.replace(/</g, '&lt;')}</pre>`,
     }).catch(() => {}));
   }
@@ -75,17 +79,41 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   // Split into several parcels (admin-split-order): a person settles it.
   const splitBlock = require('./utils/order-split').splitCancelBlock(order);
   if (splitBlock) return out(409, { error: splitBlock, reason: 'split_order' });
-  const q = quoteUnpickedCancel(order);
+  let untilShipped = false;
+  if (deps.untilShipped !== undefined) untilShipped = !!deps.untilShipped;
+  else { try { untilShipped = await cancelWindow.untilShippedOpen(); } catch { untilShipped = false; } }
+  const q = quoteUnpickedCancel(order, Date.now(), { untilShipped });
   if (!q.eligible) {
     return out(422, { error: q.reason === 'already_requested'
       ? 'We already have a cancellation for this order and are working on it.'
       : 'This order can no longer be cancelled here. Please refresh your orders.', reason: q.reason });
   }
 
+  // Early (window open, no AWB): the XpressBees panel may have booked it with
+  // the AWB not back yet. Ask it first; a booked row means it is shipping.
+  // A queued row is safe to leave: if it is booked after we cancel,
+  // woo-channel cancels that AWB at once. Panel unreadable: the order still
+  // carries its feed stamp, so handleOne leaves it to the owner.
+  let target = order;
+  if (q.early && order.xpressbees_feed_at) {
+    try {
+      const row = (await (deps.xbPanelIndex || xbPanelIndex)()).get(baseOrderNumber(order.razorpay_order_id || order.id));
+      if (row && row.state === 'booked') {
+        return out(422, {
+          error: 'This order has just been booked with the courier, so it can no longer be cancelled here. Please WhatsApp us and we will help.',
+          reason: 'booked',
+        });
+      }
+      target = { ...order, xpressbees_feed_at: null };
+    } catch (e) {
+      console.warn('[cancel-unpicked-order] XpressBees panel unreadable:', e.message);
+    }
+  }
+
   // Claim: one cancel per order, whatever happens next.
   const at = new Date().toISOString();
   const { data: claimed, error: claimErr } = await supabase.from('orders')
-    .update({ cancellation_requested_at: at, cancellation_request_note: NOTE })
+    .update({ cancellation_requested_at: at, cancellation_request_note: q.early ? EARLY_NOTE : NOTE })
     .eq('id', order.id).is('cancellation_requested_at', null).select('id');
   if (claimErr) {
     console.error('[cancel-unpicked-order] claim:', claimErr.message);
@@ -98,7 +126,7 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   const id = order.razorpay_order_id || order.id;
   let r;
   try {
-    r = await (deps.handleOne || handleOne)(internalEvent(), supabase, { ...order, cancellation_requested_at: at }, { dryRun: false, confirmManual: false });
+    r = await (deps.handleOne || handleOne)(internalEvent(), supabase, { ...target, cancellation_requested_at: at }, { dryRun: false, confirmManual: false });
   } catch (e) {
     console.error('[cancel-unpicked-order]', id, e);
     r = { outcome: 'failed', reason: e.message };
@@ -123,7 +151,7 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   }
 
   // Could not stop the parcel on our own: the owner finishes it.
-  await (deps.alertOwner || alertOwner)(order, `${r.outcome}: ${r.reason || 'no reason given'}`);
+  await (deps.alertOwner || alertOwner)(order, `${r.outcome}: ${r.reason || 'no reason given'}`, { early: !!q.early });
   return out(202, {
     success: true, outcome: 'requested',
     message: `We've received your cancellation. We couldn't confirm with the courier just now, so our team will stop the parcel and send your full refund of ${rs(q.refundPaise)} within 24 hours. You don't need to do anything else.`,

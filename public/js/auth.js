@@ -2179,12 +2179,12 @@ window.IACClaimEvidence = {
     const what = uc.partial_cod ? 'your advance of' : 'a full refund of';
     return row(`
         <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
-          Sorry — the courier still hasn't collected this order.
+          ${uc.early ? 'Not shipped yet.' : 'Sorry — the courier still hasn\'t collected this order.'}
           <span style="display:block;margin-top:0.2rem;color:#e8a030;">You can cancel it and get ${what} ${inrPaise(uc.refund_paise)} back.</span>
         </div>
         <button onclick="iacUnpickedCancel('${escJs(order.id)}')"
           id="unpicked-cancel-btn-${escJs(order.id)}"
-          data-refund="${Number(uc.refund_paise) || 0}"
+          data-refund="${Number(uc.refund_paise) || 0}" data-early="${uc.early ? '1' : ''}"
           style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
                  padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,112,112,0.4);
                  color:#e87070;cursor:pointer;transition:all 0.2s;">
@@ -2195,7 +2195,8 @@ window.IACClaimEvidence = {
   window.iacUnpickedCancel = async function (orderId) {
     const btn = document.getElementById(`unpicked-cancel-btn-${orderId}`);
     const refund = Number(btn?.dataset.refund || 0);
-    if (!confirm(`Cancel this order?\n\nThe courier hasn't picked it up yet, so you'll get ${inrPaise(refund)} back in full to your original payment method. This cannot be undone.`)) return;
+    const early = btn?.dataset.early === '1';
+    if (!confirm(`Cancel this order?\n\n${early ? "It hasn't been shipped yet" : "The courier hasn't picked it up yet"}, so you'll get ${inrPaise(refund)} back in full to your original payment method. This cannot be undone.`)) return;
     if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
     try {
       const sb = getSB();
