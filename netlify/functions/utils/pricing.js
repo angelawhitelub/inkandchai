@@ -300,6 +300,14 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
     else delete item._release;
   }
 
+  // Extra handling days (product_settings), stamped so the courier hold
+  // (utils/preorder-hold) still knows them if the settings cannot be read later.
+  for (const item of resolved) {
+    const hd = Number(settingsMap[String(item.slug || '').toLowerCase()]?.handling_days) || 0;
+    if (hd > 0) item._handling_days = hd;
+    else delete item._handling_days;
+  }
+
   // The Merchant Center id for each line. Google Ads "conversions with cart
   // data" only counts if the item ids match the feed exactly, and only the
   // server knows which feed a product came from: a custom_products hit ships

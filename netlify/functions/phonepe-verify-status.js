@@ -20,6 +20,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendOrderConfirmed, coverAndTitleHtml } = require('./utils/order-cover');
 const { sendEmail }     = require('./utils/email');
+const { handlingNoticeHtml } = require('./utils/handling-notice');
 const { claimPaidNotify } = require('./utils/paid-notify-once');
 const { afterResponse } = require('./utils/after-response');
 const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
@@ -126,6 +127,7 @@ function paidEmailHtml(order) {
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      ${handlingNoticeHtml(items, order.created_at)}
       <p style="color:#a09080;font-size:13px;line-height:1.8;">
         <strong style="color:#f0e8d8;">Delivery to:</strong><br/>${order.customer_address || '—'}
       </p>

@@ -112,6 +112,7 @@ DELIVERY TIME — "when will I get my order?" / "kitne din mein aayega?":
 - Other metros (Mumbai, Bengaluru, Chennai, Hyderabad, Kolkata, Pune): 2-3 business days
 - Rest of India: 3-5 business days
 - Always say "after dispatch" — remind them to check tracking for live updates
+- EXTRA HANDLING TIME: some books need extra days to prepare; their product page shows a later "Ships by" date, and the order confirmation tells the customer the date it is handed to the courier. Such an order is not sent to any courier before that date. When ORDER CONTEXT has a "Dispatch date" line, give the customer that date, say plainly it is the planned dispatch for that book (not a delay or a problem), and count delivery time from it. Never promise it sooner. If they ask before ordering, tell them to check "Ships by" on the book's page.
 
 ORDER CANCELLATION — "cancel my order" / "order cancel karna hai":
 - You can cancel the order for them RIGHT HERE, but ALWAYS ASK FOR CONFIRMATION FIRST. Cancelling is irreversible, so you must NOT call the cancel_order tool until the customer clearly confirms.
@@ -751,7 +752,20 @@ function orderBooksLine(order) {
   return parts.length ? parts.join('; ') : '(not recorded)';
 }
 
-function formatOrderContext(order, displayId) {
+// Why an unshipped order is waiting on purpose (utils/preorder-hold: the same
+// check every courier path runs). Empty when it is free to ship.
+const BOT_UNSHIPPED = ['paid', 'confirmed', 'cod_pending', 'partial_cod_pending', 'replacement_pending'];
+function dispatchHoldLine(order, hold) {
+  if (!hold || !hold.release || order.tracking_id || !BOT_UNSHIPPED.includes(String(order.status || ''))) return '';
+  const [y, m, d] = String(hold.release).split('-').map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const why = hold.kind === 'handling'
+    ? `a book in it needs extra preparation time (${(hold.titles || []).join(', ')})`
+    : `it has a pre-order book that releases on that day (${(hold.titles || []).join(', ')})`;
+  return `\nDispatch date: handed to the courier on ${day}, because ${why}. This is planned, not a delay: the product page and the order confirmation told the customer. Give them this date. Delivery time counts from it. Do not promise it sooner.`;
+}
+
+function formatOrderContext(order, displayId, hold) {
   const id = displayId || order.razorpay_order_id || '—';
   const amt = order.amount_paise ? `₹${botRupees(order.amount_paise)}` : '—';
   const date = order.created_at
@@ -759,7 +773,7 @@ function formatOrderContext(order, displayId) {
     : '—';
   const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
   const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
-  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
+  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
 }
 
 /**
@@ -867,7 +881,7 @@ async function buildOrderContextBody(from, userText) {
   const orderId = extractOrderId(userText);
   if (orderId) {
     const order = await lookupOrder(orderId);
-    if (order) return formatOrderContext(order, orderId);
+    if (order) return formatOrderContext(order, orderId, (await botHoldChecker())(order));
     // A WhatsApp order lives in bot_order_requests until the team pushes it.
     const req = /^IC-W-/i.test(orderId)
       ? await lookupBotRequest(createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY), orderId)
@@ -894,8 +908,20 @@ async function buildOrderContextBody(from, userText) {
   if (!isOrderQuery) return '';
   const orders = await lookupOrdersByPhone(from);
   if (!orders.length) return '';
+  const holdFor = orders.some((o) => !o.tracking_id) ? await botHoldChecker() : () => null;
   return `Customer's recent orders (looked up by their WhatsApp number):\n` +
-    orders.map((o, i) => `--- Order ${i + 1} ---\n${formatOrderContext(o, o.razorpay_order_id)}`).join('\n');
+    orders.map((o, i) => `--- Order ${i + 1} ---\n${formatOrderContext(o, o.razorpay_order_id, holdFor(o))}`).join('\n');
+}
+
+/** The courier hold check, or a no-op if it cannot be built. */
+async function botHoldChecker() {
+  try {
+    const { preorderChecker } = require('./utils/preorder-hold');
+    return await preorderChecker(createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY));
+  } catch (e) {
+    console.warn('[dispatch-hold] context failed:', e.message);
+    return () => null;
+  }
 }
 
 // ── High-value COD confirmation handler ───────────────────────────────────────

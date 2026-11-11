@@ -15769,7 +15769,7 @@ async function runNimbusPanelPush(btn, body) {
     const s = data.summary || {};
     let message = `NimbusPost panel import complete${body.order_ids ? ' (XpressBees-unserviceable only)' : ''}:\n\n✅ Newly pushed: ${s.pushed || 0}\n⏭ Already in NimbusPost: ${s.skipped || 0}\n🚚 Left alone, booked with another courier: ${(s.booked_elsewhere || []).length}\n❌ Failed: ${s.failed || 0}`;
     if (s.booked_elsewhere?.length) message += `\n\nBooked elsewhere (not pushed):\n${s.booked_elsewhere.slice(0, 8).join('\n')}`;
-    if (s.held_preorders?.length) message += `\n\n📅 Pre-orders held back:\n${s.held_preorders.slice(0, 8).join('\n')}`;
+    if (s.held_preorders?.length) message += `\n\n📅 Held back (pre-order or handling time):\n${s.held_preorders.slice(0, 8).join('\n')}`;
     if (data.errors?.length) message += `\n\nFirst errors:\n${data.errors.slice(0, 5).join('\n')}`;
     message += '\n\nOpen NimbusPost → Orders to assign couriers and generate AWBs.';
     alert(message);
@@ -16927,7 +16927,9 @@ async function npPushOrderToPanel(orderId, btn, forceElsewhere = false) {
 
     const s = data.summary || {};
     if (s.held_preorders?.length) {
-      alert(`📅 ${s.held_preorders[0]}\n\nIf the book has arrived early, change its Published date to today, then push again.`);
+      alert(`📅 ${s.held_preorders[0]}\n\n` + (/handling time/.test(s.held_preorders[0])
+        ? 'If the book is ready sooner, clear its Handling days in the product editor, then push again.'
+        : 'If the book has arrived early, change its Published date to today, then push again.'));
       return;
     }
     if (s.blocked?.length) {

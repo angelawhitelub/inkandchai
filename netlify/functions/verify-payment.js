@@ -9,6 +9,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendOrderConfirmed, coverAndTitleHtml } = require('./utils/order-cover');
 const { afterResponse } = require('./utils/after-response');
 const { sendEmail }    = require('./utils/email');
+const { handlingNoticeHtml } = require('./utils/handling-notice');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
 const { recordAdClick } = require('./utils/ad-click');
 const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
@@ -392,6 +393,7 @@ exports.handler = async (event, context) => {
             : `Your payment of <strong style="color:#c9a84c;">₹${paidTotal.toLocaleString('en-IN')}</strong> was received successfully.`}
         </p>
         ${cartTable(cart, shipFee, discountRupees, couponCode)}
+        ${handlingNoticeHtml(cart)}
         <p style="color:#a09080;font-size:13px;line-height:1.8;">
           <strong style="color:#f0e8d8;">Delivery address:</strong><br/>${customer.address||'—'}
         </p>

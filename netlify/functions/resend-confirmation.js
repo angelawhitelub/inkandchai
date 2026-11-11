@@ -77,6 +77,7 @@ exports.handler = async (event) => {
       const r = await sendOrderConfirmed({
         to: phone,
         cart: cart,
+        placedAt: order.created_at,
         params: [firstName, orderId, amtDisplay, addrShort, bookList],
       });
       result.wa = { ok: true, message_id: r?.messages?.[0]?.id || '' };

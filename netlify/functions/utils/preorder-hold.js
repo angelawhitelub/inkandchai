@@ -16,6 +16,17 @@
  */
 
 const { allReleases, isUpcoming } = require('./release-date');
+const { shipByDate, isoDay } = require('./delivery-eta');
+
+/*
+ * Handling time (owner, 11 Nov 2026): "orders should not be pushed to xb or np
+ * until handover date arrives." A book with extra handling days in the product
+ * editor (product_settings.handling_days) promises a later "Ships by" date on
+ * its page; the order stays out of every courier panel until that day (IST).
+ * The handover date is the same rule the page shows: delivery-eta shipByDate
+ * from the moment the order was placed, plus the book's handling days. Only
+ * books with handling days set are held; everything else ships as before.
+ */
 
 function linesOf(order) {
   let items = order && order.cart_items;
@@ -73,12 +84,83 @@ function holdFromReleases(order, live, now = Date.now()) {
   };
 }
 
-/** A function order → hold or null, for checking many orders on one read of the books. Never throws. */
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const todayIST = (now) => new Date(now + IST_OFFSET_MS).toISOString().slice(0, 10);
+
+/** Handover day 'YYYY-MM-DD' (IST) for an order placed at `placedAt` with `days` extra handling. */
+function handoverISO(placedAt, days) {
+  const t = Date.parse(placedAt);
+  if (!Number.isFinite(t)) return null;
+  return isoDay(shipByDate(t, Math.max(0, Number(days) || 0)));
+}
+
+/**
+ * Pure: why this order must wait for its handling time, or null.
+ * @param handling { slug: days } books with extra handling days set, or null
+ *                 when they could not be read (then the order's own stamps).
+ */
+function holdFromHandling(order, handling, now = Date.now()) {
+  const slugs = handling ? Object.keys(handling) : [];
+  let days = 0;
+  const titles = [];
+  for (const item of linesOf(order)) {
+    const slug = slugOf(item);
+    // The book's setting as it stands now decides; `_handling_days` stamped at
+    // checkout (utils/pricing) is the fallback when settings could not be read.
+    let d = !handling ? item._handling_days : (slug ? handling[slug] : undefined);
+    if (handling && d === undefined && !slug) {
+      const key = titleKey(item.title);
+      const hit = key.length >= MIN_TITLE_KEY ? slugs.find((s) => s === key || s.startsWith(`${key}-`)) : null;
+      if (hit) d = handling[hit];
+    }
+    if (Number(d) > 0) {
+      days = Math.max(days, Number(d));
+      titles.push(`${String(item.title || slug || 'a book')} +${d} day${Number(d) === 1 ? '' : 's'}`);
+    }
+  }
+  if (!days) return null;
+  const handover = handoverISO(order && order.created_at, days);
+  if (!handover || todayIST(now) >= handover) return null;
+  return {
+    kind: 'handling',
+    release: handover,
+    titles,
+    reason: `handling time: not sent to any courier before ${when(handover)} (${[...new Set(titles)].join(', ')})`,
+  };
+}
+
+/** { slug: days } for every book with extra handling days. Throws on a read error. */
+async function allHandling(db) {
+  const out = {};
+  for (let from = 0; from < 50000; from += 1000) {
+    const { data, error } = await db.from('product_settings').select('slug,handling_days')
+      .not('handling_days', 'is', null).gt('handling_days', 0).order('slug').range(from, from + 999);
+    if (error) {
+      if (/product_settings/.test(error.message || '') && /does not exist|could not find/i.test(error.message || '')) return out;
+      throw new Error(error.message);
+    }
+    for (const r of data || []) {
+      const d = Math.min(30, Math.round(Number(r.handling_days) || 0));
+      if (r.slug && d > 0) out[String(r.slug).toLowerCase()] = d;
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+/**
+ * A function order → hold or null, for checking many orders on one read of the
+ * books. Pre-orders first, then handling time. Never throws: if the books
+ * cannot be read, both rules fall back to what checkout stamped on the order.
+ */
 async function preorderChecker(db, now = Date.now()) {
   let live = null;
   try { live = await allReleases(db, now); }
   catch (e) { console.error('[preorder-hold] books unreadable, using the dates on the orders:', e.message); }
-  return (order) => holdFromReleases(order, live, now);
+  let handling = null;
+  try { handling = await allHandling(db); }
+  catch (e) { console.error('[preorder-hold] handling days unreadable, using the days on the orders:', e.message); }
+  return (order) => holdFromReleases(order, live, now) || holdFromHandling(order, handling, now);
 }
 
 /** Splits orders into those free to go and those waiting: { free, held: [{ order, ...hold }] }. */
@@ -92,4 +174,4 @@ function splitHeld(orders, holdFor) {
   return { free, held };
 }
 
-module.exports = { holdFromReleases, preorderChecker, splitHeld, titleKey };
+module.exports = { holdFromReleases, holdFromHandling, handoverISO, allHandling, preorderChecker, splitHeld, titleKey };

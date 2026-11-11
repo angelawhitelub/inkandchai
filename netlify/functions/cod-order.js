@@ -9,6 +9,7 @@ const { recordMarketingOptIn } = require('./utils/marketing-optin');
 const { afterResponse } = require('./utils/after-response');
 const { sendOrderConfirmed, coverAndTitleHtml } = require('./utils/order-cover');
 const { sendEmail }    = require('./utils/email');
+const { handlingNoticeHtml } = require('./utils/handling-notice');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
 const { recordAdClick } = require('./utils/ad-click');
 const { autoPushOrderToShiprocket } = require('./utils/shiprocket');
@@ -344,6 +345,7 @@ exports.handler = async (event, context) => {
           You'll pay <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> in cash when they arrive.
         </p>
         ${cartTable(cart, shipping, codFee, couponInfo.discount, couponInfo.code)}
+        ${handlingNoticeHtml(cart)}
         <p style="color:#a09080;font-size:13px;line-height:1.8;">
           <strong style="color:#f0e8d8;">Delivery address:</strong><br/>${customer.address||'—'}
         </p>

@@ -84,3 +84,34 @@ test('splitHeld separates the orders', () => {
   assert.equal(held[0].order, b);
   assert.equal(held[0].release, '2026-11-10');
 });
+
+test('handling time: an order waits until its handover date (IST), then goes', () => {
+  const { holdFromHandling, handoverISO } = require('./preorder-hold');
+  // Placed 11 Nov, 20:12 IST; the book has 3 extra handling days → ships by 15 Nov.
+  const placed = '2026-11-11T14:42:00Z';
+  assert.equal(handoverISO(placed, 3), '2026-11-15');
+  assert.equal(handoverISO('2026-11-11T20:00:00Z', 0), '2026-11-12'); // 01:30 IST: before the 03:00 cutoff
+  const o = { created_at: placed, cart_items: [{ slug: 'slow-book', title: 'Slow Book' }, { slug: 'verity', title: 'Verity' }] };
+  const H = { 'slow-book': 3 };
+  const hold = holdFromHandling(o, H, Date.parse('2026-11-14T18:29:00Z')); // 14 Nov, 23:59 IST
+  assert.equal(hold.kind, 'handling');
+  assert.equal(hold.release, '2026-11-15');
+  assert.match(hold.reason, /15 Nov 2026/);
+  assert.match(hold.reason, /Slow Book \+3 days/);
+  assert.equal(holdFromHandling(o, H, Date.parse('2026-11-14T18:31:00Z')), null); // 15 Nov, 00:01 IST
+  // Books without handling days are never held.
+  assert.equal(holdFromHandling({ created_at: placed, cart_items: [{ slug: 'verity' }] }, H, Date.parse(placed)), null);
+  // Settings unreadable: the days stamped at checkout decide.
+  assert.equal(holdFromHandling({ created_at: placed, cart_items: [{ slug: 'x', _handling_days: 2 }] }, null, Date.parse(placed)).release, '2026-11-14');
+});
+
+test('preorderChecker also holds for handling time, read once', async () => {
+  const NOWH = Date.parse('2026-11-12T06:00:00Z');
+  const db = { from: (table) => { const b = { select: () => b, or: () => b, order: () => b, not: () => b, gt: () => b,
+    range: async () => ({ data: table === 'product_settings' ? [{ slug: 'Slow-Book', handling_days: 3 }] : [], error: null }) }; return b; } };
+  const check = await preorderChecker(db, NOWH);
+  const hold = check({ created_at: '2026-11-11T14:42:00Z', cart_items: [{ slug: 'slow-book', title: 'Slow Book' }] });
+  assert.equal(hold.kind, 'handling');
+  assert.equal(hold.release, '2026-11-15');
+  assert.equal(check({ created_at: '2026-11-11T14:42:00Z', cart_items: [{ slug: 'verity' }] }), null);
+});

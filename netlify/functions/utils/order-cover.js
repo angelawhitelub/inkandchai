@@ -77,8 +77,15 @@ async function isJpeg(url, fetchImpl = fetch) {
 }
 
 /** The order_confirmed WhatsApp, with the book's cover once the template exists. */
-async function sendOrderConfirmed({ to, params, cart }, deps = {}) {
+async function sendOrderConfirmed({ to, params, cart, placedAt }, deps = {}) {
   const send = deps.sendWhatsApp || sendWhatsApp;
+  // A book with extra handling time: say when it ships, on the book-list line
+  // (the template has no free-text slot; a parameter cannot hold a newline).
+  const note = require('./handling-notice').handlingNoticeText(cart, placedAt);
+  if (note && Array.isArray(params) && params.length) {
+    params = params.slice();
+    params[params.length - 1] = `${String(params[params.length - 1] || '').slice(0, 180)} ${note}`.trim();
+  }
   const template = process.env.WHATSAPP_ORDER_CONFIRMED_IMAGE_TEMPLATE;
   const image = template ? whatsappCoverUrl(cart) : '';
   if (image && await isJpeg(image, deps.fetch)) {
