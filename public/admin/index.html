@@ -1780,7 +1780,7 @@ select,input,textarea{font-size:1rem;}
     <div class="product-head">
       <div>
         <h2>Removed listings</h2>
-        <p>Products currently off sale. <strong>Sold out</strong> means the product page shows “Coming Soon” instead of Add to Cart. <strong>Hidden</strong> means the listing is also gone from search and category pages. Restore puts a product back exactly as it was before it was removed.</p>
+        <p>Products currently off sale. <strong>Sold out</strong> means the product page shows “Currently Unavailable” instead of Add to Cart. <strong>Hidden</strong> means the listing is also gone from search and category pages. Restore puts a product back exactly as it was before it was removed.</p>
       </div>
       <div class="mini-actions">
         <button class="btn-outline" onclick="fetchRemovedListings(this)">Refresh</button>
@@ -1889,7 +1889,7 @@ select,input,textarea{font-size:1rem;}
           <p class="hint" style="margin:.45rem 0 0;">Sale price, MRP and handling time stay live even if you disable the override — they are what the product costs, not a temporary override. To hand a product back to its catalogue price, clear the price box and save.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;margin-top:0.6rem;">
             <div class="form-row">
-              <label>Stock quantity <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— blank = not counted, always in stock. A number is counted: each order takes copies off, a cancelled order puts them back, 0 shows “Coming Soon”.</span></label>
+              <label>Stock quantity <span style="text-transform:none;letter-spacing:0;color:var(--cream-dim);font-weight:400;">— blank = not counted, always in stock. A number is counted: each order takes copies off, a cancelled order puts them back, 0 shows “Currently Unavailable”.</span></label>
               <input id="prodStock" type="number" min="0" step="1" inputmode="numeric" placeholder="Not counted"/>
             </div>
             <div class="form-row">
@@ -2415,7 +2415,7 @@ select,input,textarea{font-size:1rem;}
           <optgroup label="Stock">
             <option value="stock_set">Set stock to… copies</option>
             <option value="stock_add">Add / remove copies…</option>
-            <option value="sold_out">Mark sold out (Coming Soon)</option>
+            <option value="sold_out">Mark sold out (Currently Unavailable)</option>
             <option value="stock_clear">Stop counting stock (back on sale)</option>
           </optgroup>
           <optgroup label="Details &amp; badges">
@@ -9334,7 +9334,7 @@ async function fetchProducts() {
 // Removed listings — products taken off sale, and the button to put them back.
 //
 // Two independent levers remove a product, and the panel shows both:
-//   sold-out → product_overrides.stock_qty <= 0, the page shows "Coming Soon"
+//   sold-out → product_overrides.stock_qty <= 0, the page shows "Currently Unavailable"
 //   hidden   → custom_products.is_active = false, gone from search/listings
 // A product can carry one or both. Restore clears whichever apply.
 // ---------------------------------------------------------------------------
@@ -9440,7 +9440,7 @@ async function toggleProductRemoved(btn) {
 
   const question = removed
     ? `Put "${title}" back on sale?`
-    : `Take "${title}" off sale?\n\nThe product page will show "Coming Soon" instead of Add to Cart. Existing orders are not affected.`;
+    : `Take "${title}" off sale?\n\nThe product page will show "Currently Unavailable" with no price or Add to Cart. Existing orders are not affected.`;
   if (!confirm(question)) return;
 
   btn.disabled = true;
@@ -13471,7 +13471,7 @@ async function saveProductOverride(activeOverride = true) {
     is_active: activeOverride && document.getElementById('prodActive').checked,
     scarcity: document.getElementById('prodScarcity').checked,
     // Stock. Blank → null (not counted, in stock); a number is counted down by
-    // orders and back up by cancellations (sql/order_stock_moves.sql); 0 → "Coming Soon".
+    // orders and back up by cancellations (sql/order_stock_moves.sql); 0 → "Currently Unavailable".
     stock_qty: (document.getElementById('prodStock')?.value ?? '').trim() === '' ? null : document.getElementById('prodStock').value,
     image_url: document.getElementById('prodImageUrl')?.value.trim() || '',
     // Works for catalogue books too: the flag lives on the override row, which

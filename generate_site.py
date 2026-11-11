@@ -3592,7 +3592,7 @@ function addToCartById(btn) {
   // Central sold-out guard: any card button carrying data-stock<=0 can't add.
   const st = btn && btn.dataset ? btn.dataset.stock : '';
   if (st !== '' && st !== undefined && st !== null && Number(st) <= 0) {
-    if (window.showToast) showToast('Out of stock — Coming Soon');
+    if (window.showToast) showToast('Currently unavailable');
     return;
   }
   addToCart({
@@ -4609,7 +4609,7 @@ _BOOK_CARD_JS = r"""
 
     var badges = '';
     if (opts.badge) badges += '<span class="iac-tag">' + esc(opts.badge) + '</span>';
-    if (sold) badges += '<span class="iac-soon">Coming soon</span>';
+    if (sold) badges += '<span class="iac-soon">Currently unavailable</span>';
     else if (off) badges += '<span class="iac-off">' + off + '% off</span>';
     // A caller's own label wins: the merchandising rows already say "New
     // arrival" over the card, and stacking our own "New" under it just
@@ -4664,7 +4664,8 @@ _BOOK_CARD_JS = r"""
       + '<div class="book-author">' + esc(b.a || '') + '</div>'
       + (noSold ? '' : soldLine(b))
       + '<div class="iac-meta">'
-      +   '<span class="book-price">' + esc(b.p) + (b.op ? '<span class="iac-orig">' + esc(b.op) + '</span>' : '') + '</span>'
+      // Sold out: no price (owner rule, 12 Nov 2026), only the badge.
+      +   (sold ? '' : '<span class="book-price">' + esc(b.p) + (b.op ? '<span class="iac-orig">' + esc(b.op) + '</span>' : '') + '</span>')
       +   (b.cat ? '<span class="iac-cat">' + esc(b.cat) + '</span>' : '')
       + '</div>'
       + '</a>';
@@ -4698,7 +4699,7 @@ _BOOK_CARD_JS = r"""
   function quickAdd(btn) {
     var d = btn.dataset || {};
     if (d.stock !== '' && d.stock != null && Number(d.stock) <= 0) {
-      if (window.showToast) window.showToast('Out of stock — coming soon');
+      if (window.showToast) window.showToast('Currently unavailable');
       return;
     }
     if (typeof window.addToCart !== 'function') {   // no cart on this page
@@ -5977,8 +5978,8 @@ function renderProduct(b) {
         <div class="prod-actions">
           ${isSoldOut(b) ? `
           <div class="coming-soon-box" style="display:flex;flex-direction:column;gap:0.3rem;padding:1rem 1.2rem;border:1px solid rgba(232,160,48,0.4);background:rgba(232,160,48,0.08);border-radius:2px;text-align:center;">
-            <div style="font-size:0.62rem;letter-spacing:0.28em;text-transform:uppercase;color:#e8a030;font-weight:700;">Coming Soon</div>
-            <div style="font-size:0.78rem;color:var(--cream-dim);">Currently out of stock — check back soon.</div>
+            <div style="font-size:0.62rem;letter-spacing:0.28em;text-transform:uppercase;color:#e8a030;font-weight:700;">Currently Unavailable</div>
+            <div style="font-size:0.78rem;color:var(--cream-dim);">This book is out of stock right now.</div>
           </div>` : `
           <button class="btn-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug, this)">
             + Add to Cart
@@ -6056,7 +6057,7 @@ function renderProduct(b) {
     <!-- Mobile sticky bottom bar (shown only on mobile via CSS) -->
     <div class="prod-bottom-bar">
       ${isSoldOut(b) ? `
-      <div style="flex:1;text-align:center;padding:0.7rem;font-size:0.66rem;letter-spacing:0.2em;text-transform:uppercase;color:#e8a030;font-weight:700;">Coming Soon — out of stock</div>` : `
+      <div style="flex:1;text-align:center;padding:0.7rem;font-size:0.66rem;letter-spacing:0.2em;text-transform:uppercase;color:#e8a030;font-weight:700;">Currently Unavailable</div>` : `
       <button class="pbb-cart" data-slug="${esc(b.slug)}" onclick="addBookToCart(this.dataset.slug, this)">
         + Add to Cart
       </button>
@@ -7681,9 +7682,9 @@ async function applyRuntimeProductOverride() {{
     if (override.stock_qty !== null && override.stock_qty !== undefined && Number(override.stock_qty) <= 0) {{
       window.__soldOut = true;
       const actions = document.querySelector('.actions');
-      if (actions) actions.innerHTML = '<div style="flex:1;padding:1rem 1.2rem;border:1px solid rgba(232,160,48,0.4);background:rgba(232,160,48,0.08);text-align:center;"><div style="font-size:0.62rem;letter-spacing:0.28em;text-transform:uppercase;color:#e8a030;font-weight:700;">Coming Soon</div><div style="font-size:0.78rem;color:var(--muted);margin-top:0.3rem;">Currently out of stock — check back soon.</div></div>';
+      if (actions) actions.innerHTML = '<div style="flex:1;padding:1rem 1.2rem;border:1px solid rgba(232,160,48,0.4);background:rgba(232,160,48,0.08);text-align:center;"><div style="font-size:0.62rem;letter-spacing:0.28em;text-transform:uppercase;color:#e8a030;font-weight:700;">Currently Unavailable</div><div style="font-size:0.78rem;color:var(--muted);margin-top:0.3rem;">This book is out of stock right now.</div></div>';
       const stockEl = document.querySelector('.stock');
-      if (stockEl) {{ stockEl.textContent = 'Coming Soon'; stockEl.style.color = '#e8a030'; stockEl.style.borderColor = 'rgba(232,160,48,0.4)'; }}
+      if (stockEl) {{ stockEl.textContent = 'Currently Unavailable'; stockEl.style.color = '#e8a030'; stockEl.style.borderColor = 'rgba(232,160,48,0.4)'; }}
     }}
   }} catch (err) {{
     console.warn('Product override unavailable:', err.message);
@@ -7721,7 +7722,7 @@ function reportViewContent() {{
   window.iacMeta('ViewContent', metaProductParams());
 }}
 function addBookToCart(btn) {{
-  if (window.__soldOut) {{ if (window.showToast) showToast('Out of stock — Coming Soon'); else alert('This book is currently out of stock (Coming Soon).'); return; }}
+  if (window.__soldOut) {{ if (window.showToast) showToast('Currently unavailable'); else alert('This book is currently unavailable.'); return; }}
   if (window.stopReaderActivity) stopReaderActivity();
   setBtnLoading(btn, true);
   localStorage.removeItem('iac_buy_now_cart');
@@ -7739,7 +7740,7 @@ function addBookToCart(btn) {{
   }}, 180);
 }}
 function buyNowBook(btn) {{
-  if (window.__soldOut) {{ if (window.showToast) showToast('Out of stock — Coming Soon'); else alert('This book is currently out of stock (Coming Soon).'); return; }}
+  if (window.__soldOut) {{ if (window.showToast) showToast('Currently unavailable'); else alert('This book is currently unavailable.'); return; }}
   if (window.stopReaderActivity) stopReaderActivity();
   setBtnLoading(btn, true);
   // Buy Now is an add too — it just skips the basket on the way to checkout.

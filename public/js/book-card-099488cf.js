@@ -110,7 +110,7 @@
 
     var badges = '';
     if (opts.badge) badges += '<span class="iac-tag">' + esc(opts.badge) + '</span>';
-    if (sold) badges += '<span class="iac-soon">Coming soon</span>';
+    if (sold) badges += '<span class="iac-soon">Currently unavailable</span>';
     else if (off) badges += '<span class="iac-off">' + off + '% off</span>';
     // A caller's own label wins: the merchandising rows already say "New
     // arrival" over the card, and stacking our own "New" under it just
@@ -165,7 +165,8 @@
       + '<div class="book-author">' + esc(b.a || '') + '</div>'
       + (noSold ? '' : soldLine(b))
       + '<div class="iac-meta">'
-      +   '<span class="book-price">' + esc(b.p) + (b.op ? '<span class="iac-orig">' + esc(b.op) + '</span>' : '') + '</span>'
+      // Sold out: no price (owner rule, 12 Nov 2026), only the badge.
+      +   (sold ? '' : '<span class="book-price">' + esc(b.p) + (b.op ? '<span class="iac-orig">' + esc(b.op) + '</span>' : '') + '</span>')
       +   (b.cat ? '<span class="iac-cat">' + esc(b.cat) + '</span>' : '')
       + '</div>'
       + '</a>';
@@ -199,7 +200,7 @@
   function quickAdd(btn) {
     var d = btn.dataset || {};
     if (d.stock !== '' && d.stock != null && Number(d.stock) <= 0) {
-      if (window.showToast) window.showToast('Out of stock — coming soon');
+      if (window.showToast) window.showToast('Currently unavailable');
       return;
     }
     if (typeof window.addToCart !== 'function') {   // no cart on this page

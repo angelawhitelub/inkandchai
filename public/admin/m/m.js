@@ -680,7 +680,7 @@
     } catch (e) { if (!e.quiet) body.innerHTML = errorBox(e); }
   }
   function productHtml(b, cur, errs) {
-    const stockNote = cur.stock === '' ? 'Not counted — always in stock.' : cur.stock <= 0 ? 'Sold out — shows “Coming Soon”.' : `${cur.stock} left — goes down with each order, back up on cancel.`;
+    const stockNote = cur.stock === '' ? 'Not counted — always in stock.' : cur.stock <= 0 ? 'Sold out — shows “Currently Unavailable”.' : `${cur.stock} left — goes down with each order, back up on cancel.`;
     return `
       <div class="card row" style="align-items:flex-start;gap:14px">
         <img class="cover lg" src="${esc(b.image_url || '')}" alt="" onerror="this.style.visibility='hidden'">
@@ -732,7 +732,7 @@
       const now = read();
       const pct = now.price && now.mrp && now.mrp > now.price ? Math.round((1 - now.price / now.mrp) * 100) : 0;
       off.textContent = pct ? `${pct}% off MRP` : now.price && now.mrp && now.price > now.mrp ? 'Price is above MRP' : '';
-      stockNote.textContent = now.stock === '' ? 'Not counted — always in stock.' : now.stock <= 0 ? 'Sold out — shows “Coming Soon”.' : `${now.stock} left — goes down with each order, back up on cancel.`;
+      stockNote.textContent = now.stock === '' ? 'Not counted — always in stock.' : now.stock <= 0 ? 'Sold out — shows “Currently Unavailable”.' : `${now.stock} left — goes down with each order, back up on cancel.`;
       const n = changes().length;
       save.disabled = !n;
       save.textContent = n ? `Save ${n} change${n === 1 ? '' : 's'}` : 'No changes';
