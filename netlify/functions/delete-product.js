@@ -88,7 +88,13 @@ exports.handler = async (event) => {
       // took it down, is_active=false is the other half. Do this BEFORE
       // dropping the record, so a failure here leaves the page consistently
       // down rather than half-restored.
-      if (rec.kind === 'custom') {
+      // Decide by the row, not only rec.kind: if the label is ever wrong, the
+      // 410 lifts but the row stays off and the page answers 404 (Belonging,
+      // 11 Nov 2026: record gone, row still is_active=false).
+      const { data: customRow, error: rowErr } = await supabase
+        .from('custom_products').select('slug').ilike('slug', slug).limit(1);
+      if (rowErr) throw rowErr;
+      if (rec.kind === 'custom' || (customRow && customRow.length)) {
         const { error: onErr } = await supabase
           .from('custom_products').update({ is_active: true }).ilike('slug', slug);
         if (onErr) throw onErr;

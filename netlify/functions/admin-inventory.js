@@ -400,8 +400,9 @@ async function flagAction(db, state, action, slugs, { note, reason }, dryRun) {
     const index = await D.publishDeletedIndex(db);
     extra = { index_published: index.published, index_reason: index.reason || null };
   } else if (action === 'undelete') {
-    const customSlugs = todo.filter((k) => (state.deletedRows.get(k) || {}).kind === 'custom')
-      .map((k) => state.customBySlug.get(k)).filter(Boolean).map((c) => c.slug);
+    // Every slug with a custom row comes back on, whatever kind was recorded:
+    // the label can be wrong, and a restored URL whose row stays off is a 404.
+    const customSlugs = todo.map((k) => state.customBySlug.get(k)).filter(Boolean).map((c) => c.slug);
     for (const group of chunks(customSlugs, 200)) {
       const { error } = await db.from('custom_products').update({ is_active: true }).in('slug', group);
       if (error) throw new Error(`custom_products: ${error.message}`);
