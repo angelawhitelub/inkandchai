@@ -69,6 +69,20 @@ function pinMatches(rule, pin) {
  */
 function findSoldOut(cart) {
   const lines = Array.isArray(cart) ? cart : [];
+  // A page taken down in the admin (resolveCartPrices sets _removed): not for
+  // sale at all, checked before anything else.
+  const gone = lines.filter((i) => i && i._removed === true);
+  if (gone.length) {
+    const titles = gone.map((i) => i.title || 'A book in your cart');
+    const many = gone.length > 1;
+    return {
+      blocked: true,
+      code: 'product_removed',
+      title: titles[0],
+      removed: gone.map((i) => ({ slug: i.slug, title: i.title || '' })),
+      error: `${titles.join(', ')} ${many ? 'are' : 'is'} no longer available. Please remove ${many ? 'them' : 'it'} from your cart to continue.`,
+    };
+  }
   const sold = lines.filter((i) => i && i._sold_out === true);
   if (!sold.length) {
     // Counted stock (resolveCartPrices sets _stock_left): more copies asked for

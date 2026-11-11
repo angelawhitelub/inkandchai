@@ -106,3 +106,16 @@ test('counted stock: a cart cannot ask for more copies than are left', async () 
   assert.equal(cart[0]._stock_left, undefined);
   assert.equal(findSoldOut(cart).blocked, false);
 });
+
+test('a book whose page was taken down cannot be bought, even from an old cart', () => {
+  const cart = [
+    { slug: 'belonging-a-journey-of-love-by-sonia-gandhi', title: 'Belonging: A Journey of Love', qty: 1, _removed: true },
+    { slug: 'atomic-habits', title: 'Atomic Habits', qty: 1 },
+  ];
+  const out = findSoldOut(cart);
+  assert.equal(out.blocked, true);
+  assert.equal(out.code, 'product_removed');
+  assert.match(out.error, /Belonging: A Journey of Love is no longer available/);
+  assert.equal(findShippingRestriction(cart, { pincode: '110002' }).code, 'product_removed');
+  assert.ok(!findSoldOut([{ slug: 'atomic-habits', title: 'Atomic Habits', qty: 1 }]).blocked);
+});

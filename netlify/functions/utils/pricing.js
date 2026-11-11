@@ -315,6 +315,21 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
     item._pid = productId(item.slug);
   }
 
+  // Pages taken down in the admin (utils/deleted-products, the set the Worker
+  // answers 410 from). A copy already in someone's cart, or a page left open,
+  // must not be bought: on 11 Nov 2026 two orders for "Belonging" came in after
+  // its page was removed. findSoldOut refuses these on every order path.
+  // Loaded lazily and fail-open (a KV hiccup must not stop checkout; plain Node
+  // tests have no @netlify/blobs).
+  let removedSet = new Set();
+  if (resolved.length) {
+    try { removedSet = await require('./deleted-products').deletedSlugSet(); } catch { removedSet = new Set(); }
+  }
+  for (const item of resolved) {
+    if (removedSet.has(String(item.slug || '').toLowerCase())) item._removed = true;
+    else delete item._removed;
+  }
+
   // Most copies per order (utils/qty-limits, admin product editor). Only the
   // server decides; findSoldOut refuses a cart over it on every order path.
   let limits = {};
