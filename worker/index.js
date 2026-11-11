@@ -765,10 +765,9 @@ async function withScarcity(response, slug, env, ctx, origin) {
 const UNAVAILABLE = 'Currently Unavailable';
 const SOLD_OUT_CSS = '<style id="ic-unavailable">'
   + '.price-row,.product-price-row,#shipBy,#staticShipBy,.ship-by-box,[data-delivery-eta],[data-ship-note],.ship-free-note,'
-  + '.ic-qty-limit,[data-cod-off],[data-no-returns],.trust,'
+  + '.ic-qty-limit,[data-cod-off],[data-no-returns],.trust,span.stock,'
   + '.actions>:not(.ic-unavail){display:none!important}'
   + '.actions{grid-template-columns:1fr!important}'
-  + 'span.stock{color:#e06060!important;border-color:rgba(224,96,96,.45)!important}'
   + '</style>';
 const UNAVAILABLE_BOX = '<div class="ic-unavail" style="padding:1rem 1.2rem;border:1px solid rgba(224,96,96,.45);'
   + 'background:rgba(224,96,96,.08);border-radius:999px;text-align:center;font-size:.72rem;letter-spacing:.22em;'
