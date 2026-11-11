@@ -746,7 +746,7 @@ async function withScarcity(response, slug, env, ctx, origin) {
   const want = _scarceSet.has(key) && !sold.has(key);
   const out = new HTMLRewriter()
     .on('span.stock', { element(el) { if (want) el.replace(scarcityUtil.BADGE_HTML, { html: true }); } })
-    .on('div.prod-scarcity', { element(el) { if (!want) el.replace(`<span class="stock">${sold.has(key) ? 'Coming Soon' : 'In Stock'}</span>`, { html: true }); } })
+    .on('div.prod-scarcity', { element(el) { if (!want) el.replace(`<span class="stock">${sold.has(key) ? UNAVAILABLE : 'In Stock'}</span>`, { html: true }); } })
     .transform(response);
   const headers = new Headers(out.headers);
   headers.delete('etag');
@@ -755,13 +755,44 @@ async function withScarcity(response, slug, env, ctx, origin) {
   return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
 }
 
+// Owner rule (12 Nov 2026): a sold-out page says "Currently Unavailable" and
+// shows no price, no ship-by or delivery box, no offer notes and no buy
+// buttons. Hidden with CSS rather than removed, so the page's own scripts
+// still find the elements they expect; the buttons stay in the DOM, hidden.
+// Its inline scripts still say "Coming Soon" when their own stock fetch
+// returns, so that wording is rewritten in them too. The JSON-LD keeps its
+// price (Google needs it) and says OutOfStock.
+const UNAVAILABLE = 'Currently Unavailable';
+const SOLD_OUT_CSS = '<style id="ic-unavailable">'
+  + '.price-row,.product-price-row,#shipBy,#staticShipBy,.ship-by-box,[data-delivery-eta],[data-ship-note],.ship-free-note,'
+  + '.ic-qty-limit,[data-cod-off],[data-no-returns],.trust,'
+  + '.actions>:not(.ic-unavail){display:none!important}'
+  + '.actions{grid-template-columns:1fr!important}'
+  + 'span.stock{color:#e06060!important;border-color:rgba(224,96,96,.45)!important}'
+  + '</style>';
+const UNAVAILABLE_BOX = '<div class="ic-unavail" style="padding:1rem 1.2rem;border:1px solid rgba(224,96,96,.45);'
+  + 'background:rgba(224,96,96,.08);border-radius:999px;text-align:center;font-size:.72rem;letter-spacing:.22em;'
+  + `text-transform:uppercase;font-weight:700;color:#e06060;">${UNAVAILABLE}</div>`;
+
 function markSoldOutPage(response) {
   let ldBuf = '';
+  let jsBuf = '';
+  let boxed = false;
   const out = new HTMLRewriter()
     // Before any of the page's scripts: the buy handlers check this flag, so a
     // tap before the override fetch returns is refused too.
-    .on('head', { element(el) { el.prepend('<script>window.__soldOut=true;</script>', { html: true }); } })
-    .on('span.stock', { element(el) { el.setInnerContent('Coming Soon'); } })
+    .on('head', { element(el) { el.prepend('<script>window.__soldOut=true;</script>', { html: true }); el.append(SOLD_OUT_CSS, { html: true }); } })
+    .on('span.stock', { element(el) { el.setInnerContent(UNAVAILABLE); } })
+    .on('div.actions', { element(el) { if (!boxed) { boxed = true; el.append(UNAVAILABLE_BOX, { html: true }); } } })
+    .on('script:not([type="application/ld+json"])', {
+      text(chunk) {
+        jsBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = jsBuf;
+        jsBuf = '';
+        chunk.replace(whole.replace(/Coming Soon — out of stock|Out of stock — Coming Soon|Coming Soon/g, UNAVAILABLE), { html: true });
+      },
+    })
     .on('script[type="application/ld+json"]', {
       text(chunk) {
         ldBuf += chunk.text;
